@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   backend:
     build:
@@ -13,6 +11,7 @@ services:
       - PORT=3001
       - LIDARR_URL=${LIDARR_URL:-http://lidarr:8686}
       - LIDARR_API_KEY=${LIDARR_API_KEY}
+      - LASTFM_API_KEY=${LASTFM_API_KEY}
       - CONTACT_EMAIL=${CONTACT_EMAIL:-user@example.com}
       - DEBUG=${DEBUG:-true}
       - AUTH_PASSWORD=${AUTH_PASSWORD}
@@ -20,18 +19,10 @@ services:
       - ./backend/data:/app/data
     networks:
       - aurral-network-dev
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "require('http').get('http://localhost:3001/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   frontend:
     build:
@@ -45,19 +36,10 @@ services:
       - backend
     networks:
       - aurral-network-dev
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--quiet",
-          "--tries=1",
-          "--spider",
-          "http://127.0.0.1:80",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
 networks:
   aurral-network-dev:

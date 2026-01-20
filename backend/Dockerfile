@@ -6,7 +6,7 @@ RUN apk add --no-cache su-exec
 
 COPY package*.json ./
 
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY . .
 COPY docker-entrypoint.sh /usr/local/bin/
