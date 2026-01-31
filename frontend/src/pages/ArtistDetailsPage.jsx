@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Loader,
@@ -11,6 +11,14 @@ import {
   MapPin,
   Tag,
   Sparkles,
+  Filter,
+  CheckSquare,
+  Square,
+  MinusSquare,
+  Eye,
+  EyeOff,
+  Search,
+  X,
 } from "lucide-react";
 import {
   getArtistDetails,
@@ -21,10 +29,13 @@ import {
   searchLidarrAlbum,
   getSimilarArtistsForArtist,
   lookupArtistsInLidarrBatch,
+  bulkUpdateAlbumMonitoring,
 } from "../utils/api";
 import { useToast } from "../contexts/ToastContext";
 import AddArtistModal from "../components/AddArtistModal";
 import ArtistImage from "../components/ArtistImage";
+
+const ALBUM_TYPES = ["Album", "EP", "Single", "Broadcast", "Other"];
 
 function ArtistDetailsPage() {
   const { mbid } = useParams();
@@ -42,6 +53,14 @@ function ArtistDetailsPage() {
   const [artistToAdd, setArtistToAdd] = useState(null);
   const [requestingAlbum, setRequestingAlbum] = useState(null);
   const { showSuccess, showError } = useToast();
+
+  // Album management state
+  const [albumFilter, setAlbumFilter] = useState("all");
+  const [showSecondaryTypes, setShowSecondaryTypes] = useState(true);
+  const [selectedAlbums, setSelectedAlbums] = useState(new Set());
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [showOnlyMonitored, setShowOnlyMonitored] = useState(false);
 
   useEffect(() => {
     const fetchArtistData = async () => {
@@ -72,17 +91,18 @@ function ArtistDetailsPage() {
         } catch (err) {
           console.log("No cover art available");
         }
-                      try {
-        const lookup = await lookupArtistInLidarr(mbid);
+
+        try {
+          const lookup = await lookupArtistInLidarr(mbid);
           setExistsInLidarr(lookup.exists);
-        if (lookup.exists && lookup.artist) {
+          if (lookup.exists && lookup.artist) {
             setLidarrArtist(lookup.artist);
             setTimeout(async () => {
-    try {
+              try {
                 const albums = await getLidarrAlbums(lookup.artist.id);
                 console.log("Lidarr Albums:", albums);
                 setLidarrAlbums(albums);
-    } catch (err) {
+              } catch (err) {
                 console.log("Retrying album fetch...");
                 setTimeout(async () => {
                   try {
@@ -90,7 +110,7 @@ function ArtistDetailsPage() {
                     setLidarrAlbums(albums);
                   } catch (e) {}
                 }, 2000);
-    }
+              }
             }, 1000);
           }
         } catch (err) {
@@ -98,7 +118,7 @@ function ArtistDetailsPage() {
         }
       } catch (err) {
         setError(
-          err.response?.data?.message || "Failed to fetch artist details",
+          err.response?.data?.message || "Failed to fetch artist details"
         );
       } finally {
         setLoading(false);
@@ -107,6 +127,7 @@ function ArtistDetailsPage() {
 
     fetchArtistData();
   }, [mbid]);
+
   const handleAddArtistClick = () => {
     setShowAddModal(true);
   };
@@ -119,22 +140,22 @@ function ArtistDetailsPage() {
     setShowAddModal(false);
     setArtistToAdd(null);
     showSuccess(`Successfully added ${addedArtist.name} to Lidarr!`);
-    
+
     if (addedArtist.id) {
       setExistingSimilar((prev) => ({ ...prev, [addedArtist.id]: true }));
     }
 
     setTimeout(async () => {
-        try {
+      try {
         const lookup = await lookupArtistInLidarr(mbid);
         if (lookup.exists && lookup.artist) {
           setLidarrArtist(lookup.artist);
           const albums = await getLidarrAlbums(lookup.artist.id);
           setLidarrAlbums(albums);
         }
-        } catch (err) {
+      } catch (err) {
         console.error("Failed to refresh Lidarr data", err);
-        }
+      }
     }, 1500);
   };
 
@@ -142,8 +163,8 @@ function ArtistDetailsPage() {
     setRequestingAlbum(albumId);
     try {
       const lidarrAlbum = lidarrAlbums.find(
-        (a) => a.foreignAlbumId === albumId,
-    );
+        (a) => a.foreignAlbumId === albumId
+      );
 
       if (!lidarrAlbum) {
         throw new Error("Album not found in Lidarr");
@@ -158,15 +179,91 @@ function ArtistDetailsPage() {
 
       setLidarrAlbums((prev) =>
         prev.map((a) =>
-          a.id === lidarrAlbum.id ? { ...a, monitored: true } : a,
-        ),
-    );
+          a.id === lidarrAlbum.id ? { ...a, monitored: true } : a
+        )
+      );
 
       showSuccess(`Requested album: ${title}`);
     } catch (err) {
       showError(`Failed to request album: ${err.message}`);
     } finally {
       setRequestingAlbum(null);
+    }
+  };
+
+  const handleUnmonitorAlbum = async (albumId, title) => {
+    setRequestingAlbum(albumId);
+    try {
+      const lidarrAlbum = lidarrAlbums.find(
+        (a) => a.foreignAlbumId === albumId
+      );
+
+      if (!lidarrAlbum) {
+        throw new Error("Album not found in Lidarr");
+      }
+
+      await updateLidarrAlbum(lidarrAlbum.id, {
+        ...lidarrAlbum,
+        monitored: false,
+      });
+
+      setLidarrAlbums((prev) =>
+        prev.map((a) =>
+          a.id === lidarrAlbum.id ? { ...a, monitored: false } : a
+        )
+      );
+
+      showSuccess(`Unmonitored album: ${title}`);
+    } catch (err) {
+      showError(`Failed to unmonitor album: ${err.message}`);
+    } finally {
+      setRequestingAlbum(null);
+    }
+  };
+
+  const handleBulkMonitor = async (shouldMonitor) => {
+    if (selectedAlbums.size === 0 || !lidarrArtist) return;
+
+    setBulkUpdating(true);
+    try {
+      // Get Lidarr album IDs from selected MusicBrainz IDs
+      const lidarrAlbumIds = [];
+      for (const mbAlbumId of selectedAlbums) {
+        const lidarrAlbum = lidarrAlbums.find(
+          (a) => a.foreignAlbumId === mbAlbumId
+        );
+        if (lidarrAlbum) {
+          lidarrAlbumIds.push(lidarrAlbum.id);
+        }
+      }
+
+      if (lidarrAlbumIds.length === 0) {
+        throw new Error("No matching albums found in Lidarr");
+      }
+
+      await bulkUpdateAlbumMonitoring(
+        lidarrArtist.id,
+        lidarrAlbumIds,
+        shouldMonitor,
+        shouldMonitor // searchAfter only if monitoring
+      );
+
+      // Update local state
+      setLidarrAlbums((prev) =>
+        prev.map((a) =>
+          lidarrAlbumIds.includes(a.id) ? { ...a, monitored: shouldMonitor } : a
+        )
+      );
+
+      showSuccess(
+        `${shouldMonitor ? "Monitored" : "Unmonitored"} ${lidarrAlbumIds.length} album${lidarrAlbumIds.length !== 1 ? "s" : ""}`
+      );
+      setSelectedAlbums(new Set());
+      setIsSelectionMode(false);
+    } catch (err) {
+      showError(`Failed to update albums: ${err.message}`);
+    } finally {
+      setBulkUpdating(false);
     }
   };
 
@@ -226,12 +323,91 @@ function ArtistDetailsPage() {
     return null;
   };
 
+  const handleToggleAlbum = (id) => {
+    const newSelection = new Set(selectedAlbums);
+    if (newSelection.has(id)) {
+      newSelection.delete(id);
+    } else {
+      newSelection.add(id);
+    }
+    setSelectedAlbums(newSelection);
+  };
+
+  const filteredReleaseGroups = useMemo(() => {
+    if (!artist?.["release-groups"]) return [];
+
+    let filtered = artist["release-groups"];
+
+    if (albumFilter !== "all") {
+      filtered = filtered.filter((rg) => rg["primary-type"] === albumFilter);
+    }
+
+    if (!showSecondaryTypes) {
+      filtered = filtered.filter(
+        (rg) => !rg["secondary-types"] || rg["secondary-types"].length === 0
+      );
+    }
+
+    if (showOnlyMonitored && existsInLidarr) {
+      filtered = filtered.filter((rg) => {
+        const status = getAlbumStatus(rg.id);
+        return status && status.status !== "unmonitored";
+      });
+    }
+
+    return filtered.sort((a, b) => {
+      const dateA = a["first-release-date"] || "";
+      const dateB = b["first-release-date"] || "";
+      return dateB.localeCompare(dateA);
+    });
+  }, [
+    artist,
+    albumFilter,
+    showSecondaryTypes,
+    showOnlyMonitored,
+    existsInLidarr,
+    lidarrAlbums,
+  ]);
+
+  const handleSelectAll = () => {
+    const newSelection = new Set(selectedAlbums);
+    filteredReleaseGroups.forEach((rg) => {
+      // Only select albums that are in Lidarr
+      const status = getAlbumStatus(rg.id);
+      if (status) {
+        newSelection.add(rg.id);
+      }
+    });
+    setSelectedAlbums(newSelection);
+  };
+
+  const handleDeselectAll = () => {
+    const newSelection = new Set(selectedAlbums);
+    filteredReleaseGroups.forEach((rg) => newSelection.delete(rg.id));
+    setSelectedAlbums(newSelection);
+  };
+
+  const getSelectionState = () => {
+    const visibleIds = new Set(
+      filteredReleaseGroups
+        .filter((rg) => getAlbumStatus(rg.id))
+        .map((rg) => rg.id)
+    );
+    const selectedVisible = [...selectedAlbums].filter((id) =>
+      visibleIds.has(id)
+    ).length;
+
+    if (selectedVisible === 0) return "none";
+    if (selectedVisible === visibleIds.size) return "all";
+    return "partial";
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center py-20">
         <Loader className="w-12 h-12 text-primary-600 animate-spin" />
-              </div>
-                );
+      </div>
+    );
   }
 
   if (error) {
@@ -249,8 +425,8 @@ function ArtistDetailsPage() {
           >
             Back to Search
           </button>
+        </div>
       </div>
-          </div>
     );
   }
 
@@ -260,6 +436,7 @@ function ArtistDetailsPage() {
 
   const coverImage = getCoverImage();
   const lifeSpan = formatLifeSpan(artist["life-span"]);
+  const selectionState = getSelectionState();
 
   return (
     <div className="animate-fade-in">
@@ -400,23 +577,191 @@ function ArtistDetailsPage() {
 
       {artist["release-groups"] && artist["release-groups"].length > 0 && (
         <div className="card">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">
-            Albums & Releases ({artist["release-groups"].length})
-          </h2>
-          <div className="space-y-3 max-h-96 overflow-y-auto">
-            {artist["release-groups"]
-              .sort((a, b) => {
-                const dateA = a["first-release-date"] || "";
-                const dateB = b["first-release-date"] || "";
-                return dateB.localeCompare(dateA);
-              })
-              .map((releaseGroup) => {
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              Albums & Releases ({artist["release-groups"].length})
+            </h2>
+
+            {existsInLidarr && (
+              <button
+                onClick={() => {
+                  setIsSelectionMode(!isSelectionMode);
+                  if (isSelectionMode) {
+                    setSelectedAlbums(new Set());
+                  }
+                }}
+                className={`btn ${isSelectionMode ? "btn-primary" : "btn-secondary"} btn-sm`}
+              >
+                {isSelectionMode ? (
+                  <>
+                    <X className="w-4 h-4 mr-1.5" />
+                    Cancel Selection
+                  </>
+                ) : (
+                  <>
+                    <CheckSquare className="w-4 h-4 mr-1.5" />
+                    Select Albums
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+
+          {/* Filter controls */}
+          <div className="flex flex-wrap items-center gap-3 pb-4 mb-4 border-b border-gray-200 dark:border-gray-800">
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-gray-500" />
+              <select
+                value={albumFilter}
+                onChange={(e) => setAlbumFilter(e.target.value)}
+                className="input text-sm py-1.5"
+              >
+                <option value="all">All Types</option>
+                {ALBUM_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}s
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+              <input
+                type="checkbox"
+                checked={showSecondaryTypes}
+                onChange={(e) => setShowSecondaryTypes(e.target.checked)}
+                className="w-4 h-4 text-primary-600 border-gray-300 dark:border-gray-600 dark:bg-gray-800 rounded focus:ring-primary-500"
+              />
+              Compilations/Live
+            </label>
+
+            {existsInLidarr && (
+              <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                <input
+                  type="checkbox"
+                  checked={showOnlyMonitored}
+                  onChange={(e) => setShowOnlyMonitored(e.target.checked)}
+                  className="w-4 h-4 text-primary-600 border-gray-300 dark:border-gray-600 dark:bg-gray-800 rounded focus:ring-primary-500"
+                />
+                Monitored Only
+              </label>
+            )}
+
+            {isSelectionMode && (
+              <>
+                <div className="flex-1" />
+                <button
+                  type="button"
+                  onClick={
+                    selectionState === "all"
+                      ? handleDeselectAll
+                      : handleSelectAll
+                  }
+                  className="btn btn-secondary btn-sm flex items-center gap-1.5"
+                >
+                  {selectionState === "none" && (
+                    <>
+                      <Square className="w-4 h-4" />
+                      Select All
+                    </>
+                  )}
+                  {selectionState === "partial" && (
+                    <>
+                      <MinusSquare className="w-4 h-4" />
+                      Select All
+                    </>
+                  )}
+                  {selectionState === "all" && (
+                    <>
+                      <CheckSquare className="w-4 h-4" />
+                      Deselect All
+                    </>
+                  )}
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Bulk action bar */}
+          {isSelectionMode && selectedAlbums.size > 0 && (
+            <div className="flex items-center gap-3 p-3 mb-4 bg-primary-50 dark:bg-primary-900/20 rounded-lg border border-primary-200 dark:border-primary-700">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {selectedAlbums.size} album
+                {selectedAlbums.size !== 1 ? "s" : ""} selected
+              </span>
+              <div className="flex-1" />
+              <button
+                onClick={() => handleBulkMonitor(true)}
+                disabled={bulkUpdating}
+                className="btn btn-primary btn-sm flex items-center gap-1.5"
+              >
+                {bulkUpdating ? (
+                  <Loader className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+                Monitor & Search
+              </button>
+              <button
+                onClick={() => handleBulkMonitor(false)}
+                disabled={bulkUpdating}
+                className="btn btn-secondary btn-sm flex items-center gap-1.5"
+              >
+                {bulkUpdating ? (
+                  <Loader className="w-4 h-4 animate-spin" />
+                ) : (
+                  <EyeOff className="w-4 h-4" />
+                )}
+                Unmonitor
+              </button>
+            </div>
+          )}
+
+          {/* Album list */}
+          <div className="space-y-3 max-h-[500px] overflow-y-auto">
+            {filteredReleaseGroups.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                <Music className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p>No albums match the current filter</p>
+              </div>
+            ) : (
+              filteredReleaseGroups.map((releaseGroup) => {
                 const status = getAlbumStatus(releaseGroup.id);
+                const isSelected = selectedAlbums.has(releaseGroup.id);
+                const canSelect = existsInLidarr && status;
+
                 return (
                   <div
                     key={releaseGroup.id}
-                    className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                    onClick={
+                      isSelectionMode && canSelect
+                        ? () => handleToggleAlbum(releaseGroup.id)
+                        : undefined
+                    }
+                    className={`flex items-center justify-between p-4 rounded-lg transition-colors ${
+                      isSelectionMode && canSelect
+                        ? "cursor-pointer"
+                        : "cursor-default"
+                    } ${
+                      isSelected
+                        ? "bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-700"
+                        : "bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 border border-transparent"
+                    }`}
                   >
+                    {isSelectionMode && (
+                      <div className="flex-shrink-0 mr-3">
+                        {canSelect ? (
+                          isSelected ? (
+                            <CheckSquare className="w-5 h-5 text-primary-600" />
+                          ) : (
+                            <Square className="w-5 h-5 text-gray-400" />
+                          )
+                        ) : (
+                          <Square className="w-5 h-5 text-gray-300 dark:text-gray-600" />
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex-1">
                       <h3 className="font-semibold text-gray-900 dark:text-gray-100">
                         {releaseGroup.title}
@@ -441,58 +786,83 @@ function ArtistDetailsPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      {status ? (
-                        status.status === "available" ? (
-                          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 cursor-default">
-                            <CheckCircle className="w-3.5 h-3.5" />
-                            Available
-                          </span>
-                        ) : status.status === "processing" ? (
-                          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 cursor-default">
-                            <Loader className="w-3.5 h-3.5 animate-spin" />
-                            Processing
+                    {!isSelectionMode && (
+                      <div className="flex items-center gap-2">
+                        {status ? (
+                          status.status === "available" ? (
+                            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 cursor-default">
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              Available
+                            </span>
+                          ) : status.status === "processing" ? (
+                            <div className="flex items-center gap-2">
+                              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 cursor-default">
+                                <Loader className="w-3.5 h-3.5 animate-spin" />
+                                Processing
+                              </span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUnmonitorAlbum(
+                                    releaseGroup.id,
+                                    releaseGroup.title
+                                  );
+                                }}
+                                disabled={requestingAlbum === releaseGroup.id}
+                                className="btn btn-secondary btn-sm"
+                                title="Unmonitor this album"
+                              >
+                                {requestingAlbum === releaseGroup.id ? (
+                                  <Loader className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <EyeOff className="w-4 h-4" />
+                                )}
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRequestAlbum(
+                                  releaseGroup.id,
+                                  releaseGroup.title
+                                );
+                              }}
+                              disabled={requestingAlbum === releaseGroup.id}
+                              className="btn btn-primary btn-sm"
+                            >
+                              {requestingAlbum === releaseGroup.id ? (
+                                <Loader className="w-4 h-4 animate-spin" />
+                              ) : (
+                                "Request"
+                              )}
+                            </button>
+                          )
+                        ) : existsInLidarr ? (
+                          <span className="text-xs text-gray-400 italic">
+                            Not in Lidarr
                           </span>
                         ) : (
-                          <button
-                            onClick={() =>
-                              handleRequestAlbum(
-                                releaseGroup.id,
-                                releaseGroup.title,
-                              )
-                            }
-                            disabled={requestingAlbum === releaseGroup.id}
-                            className="btn btn-primary btn-sm"
-                          >
-                            {requestingAlbum === releaseGroup.id ? (
-                              <Loader className="w-4 h-4 animate-spin" />
-                            ) : (
-                              "Request"
-                            )}
-                          </button>
-                        )
-                      ) : existsInLidarr ? (
-                        <span className="text-xs text-gray-400 italic">
-                          Not in Lidarr
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400 italic">
-                          Add Artist First
-                        </span>
-                      )}
+                          <span className="text-xs text-gray-400 italic">
+                            Add Artist First
+                          </span>
+                        )}
 
-                      <a
-                        href={`https://musicbrainz.org/release-group/${releaseGroup.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn btn-secondary btn-sm ml-2"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
-                    </div>
+                        <a
+                          href={`https://musicbrainz.org/release-group/${releaseGroup.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-secondary btn-sm ml-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                      </div>
+                    )}
                   </div>
                 );
-              })}
+              })
+            )}
           </div>
         </div>
       )}
@@ -605,4 +975,3 @@ function ArtistDetailsPage() {
 }
 
 export default ArtistDetailsPage;
-

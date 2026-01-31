@@ -873,6 +873,7 @@ app.post("/api/lidarr/artists", async (req, res) => {
       monitored,
       searchForMissingAlbums,
       albumFolders,
+      selectedAlbums, // Array of MusicBrainz release group IDs to monitor
     } = req.body;
 
     if (!foreignArtistId || !artistName) {
@@ -921,6 +922,11 @@ app.post("/api/lidarr/artists", async (req, res) => {
       metadataProfile = metadataProfiles[0].id;
     }
 
+    // If selectedAlbums is provided, use "none" as monitor option initially
+    // Then we'll update individual albums after
+    const hasGranularSelection = Array.isArray(selectedAlbums) && selectedAlbums.length > 0;
+    const monitorOption = hasGranularSelection ? "none" : (req.body.monitor || "all");
+
     const artistData = {
       foreignArtistId,
       artistName,
@@ -930,12 +936,47 @@ app.post("/api/lidarr/artists", async (req, res) => {
       monitored: isMonitored,
       albumFolder: useAlbumFolders,
       addOptions: {
-        searchForMissingAlbums: searchMissing,
-        monitor: req.body.monitor || "all", 
+        searchForMissingAlbums: hasGranularSelection ? false : searchMissing,
+        monitor: monitorOption,
       },
     };
 
     const result = await lidarrRequest("/artist", "POST", artistData);
+
+    // If granular album selection is requested, update individual albums
+    if (hasGranularSelection && result.id) {
+      // Wait for Lidarr to process the artist and create albums
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      try {
+        // Get all albums for this artist from Lidarr
+        const albums = await lidarrRequest(`/album?artistId=${result.id}`);
+        const selectedSet = new Set(selectedAlbums);
+        const albumsToSearch = [];
+
+        // Update each selected album to be monitored
+        for (const album of albums) {
+          if (selectedSet.has(album.foreignAlbumId)) {
+            await lidarrRequest(`/album/${album.id}`, "PUT", {
+              ...album,
+              monitored: true,
+            });
+            albumsToSearch.push(album.id);
+          }
+        }
+
+        // Trigger search for selected albums if requested
+        if (searchMissing && albumsToSearch.length > 0) {
+          await lidarrRequest("/command", "POST", {
+            name: "AlbumSearch",
+            albumIds: albumsToSearch,
+          });
+        }
+      } catch (albumError) {
+        console.error("Error updating album monitoring:", albumError.message);
+        // Continue - artist was added successfully, album updates may need manual retry
+      }
+    }
 
     const newRequest = {
       mbid: foreignArtistId,
@@ -1125,6 +1166,58 @@ app.post("/api/lidarr/command/albumsearch", async (req, res) => {
   } catch (error) {
     res.status(500).json({
       error: "Failed to trigger album search",
+      message: error.message,
+    });
+  }
+});
+
+// Bulk update album monitoring status
+app.post("/api/lidarr/albums/bulk-monitor", async (req, res) => {
+  try {
+    const { artistId, albumIds, monitored, searchAfter } = req.body;
+
+    if (!artistId) {
+      return res.status(400).json({ error: "artistId is required" });
+    }
+    if (!Array.isArray(albumIds)) {
+      return res.status(400).json({ error: "albumIds must be an array" });
+    }
+    if (typeof monitored !== "boolean") {
+      return res.status(400).json({ error: "monitored must be a boolean" });
+    }
+
+    // Get all albums for this artist
+    const albums = await lidarrRequest(`/album?artistId=${artistId}`);
+    const albumIdSet = new Set(albumIds);
+    const updatedAlbums = [];
+
+    // Update each specified album
+    for (const album of albums) {
+      if (albumIdSet.has(album.id)) {
+        const updatedAlbum = await lidarrRequest(`/album/${album.id}`, "PUT", {
+          ...album,
+          monitored,
+        });
+        updatedAlbums.push(updatedAlbum);
+      }
+    }
+
+    // Trigger search for newly monitored albums if requested
+    if (searchAfter && monitored && albumIds.length > 0) {
+      await lidarrRequest("/command", "POST", {
+        name: "AlbumSearch",
+        albumIds,
+      });
+    }
+
+    res.json({
+      success: true,
+      updated: updatedAlbums.length,
+      albums: updatedAlbums
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: "Failed to bulk update album monitoring",
       message: error.message,
     });
   }

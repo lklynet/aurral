@@ -135,6 +135,16 @@ export const searchLidarrAlbum = async (albumIds) => {
   return response.data;
 };
 
+export const bulkUpdateAlbumMonitoring = async (artistId, albumIds, monitored, searchAfter = false) => {
+  const response = await api.post("/lidarr/albums/bulk-monitor", {
+    artistId,
+    albumIds,
+    monitored,
+    searchAfter,
+  });
+  return response.data;
+};
+
 export const getRequests = async () => {
   const response = await api.get("/requests");
   return response.data;
