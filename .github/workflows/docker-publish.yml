@@ -17,9 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image: lklynet/aurral-backend
+          - image: aurral-backend
             context: ./backend
-          - image: lklynet/aurral-frontend
+          - image: aurral-frontend
             context: ./frontend
 
     permissions:
@@ -45,7 +45,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ matrix.image }}
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
