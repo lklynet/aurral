@@ -3,6 +3,7 @@ import {
   lastfmRequest,
   musicbrainzRequest,
 } from "../../../services/apiClients.js";
+import { libraryManager } from "../../../services/libraryManager.js";
 import { imagePrefetchService } from "../../../services/imagePrefetchService.js";
 import { dbOps } from "../../../config/db-helpers.js";
 import { cacheMiddleware } from "../../../middleware/cache.js";
@@ -17,6 +18,12 @@ const handleSearch = async (req, res) => {
 
     const limitInt = parseInt(limit) || 24;
     const offsetInt = parseInt(offset) || 0;
+
+    // Get local library artists for "Already in Library" checks
+    const localArtists = await libraryManager.getAllArtists();
+    const localArtistMbids = new Set(
+      localArtists.map((a) => a.mbid || a.foreignArtistId).filter((id) => id),
+    );
 
     if (getLastfmApiKey()) {
       try {
@@ -60,6 +67,7 @@ const handleSearch = async (req, res) => {
               image: img,
               imageUrl: img,
               listeners: a.listeners,
+              inLibrary: localArtistMbids.has(a.mbid),
             };
 
             const cachedImage = cachedImages[a.mbid];
@@ -122,6 +130,7 @@ const handleSearch = async (req, res) => {
           image: imageUrl,
           imageUrl,
           listeners: null,
+          inLibrary: localArtistMbids.has(a.id),
         };
       });
 

@@ -122,8 +122,6 @@ export default function registerDetails(router) {
 
       console.log(`[Artists Route] Fetching artist details for MBID: ${mbid}`);
 
-      const { lidarrClient } =
-        await import("../../../services/lidarrClient.js");
       const { libraryManager } =
         await import("../../../services/libraryManager.js");
 
@@ -135,23 +133,18 @@ export default function registerDetails(router) {
       let lidarrArtist = null;
       let lidarrAlbums = [];
 
-      if (lidarrClient.isConfigured()) {
-        try {
-          lidarrArtist = await lidarrClient.getArtistByMbid(mbid);
-          if (lidarrArtist) {
-            console.log(
-              `[Artists Route] Found artist in Lidarr: ${lidarrArtist.artistName}`,
-            );
-            const libraryArtist = await libraryManager.getArtist(mbid);
-            if (libraryArtist) {
-              lidarrAlbums = await libraryManager.getAlbums(libraryArtist.id);
-            }
-          }
-        } catch (error) {
-          console.warn(
-            `[Artists Route] Failed to fetch from Lidarr: ${error.message}`,
+      try {
+        lidarrArtist = await libraryManager.getArtist(mbid);
+        if (lidarrArtist) {
+          console.log(
+            `[Artists Route] Found artist in Lidarr: ${lidarrArtist.artistName}`,
           );
+          lidarrAlbums = await libraryManager.getAlbums(lidarrArtist.id);
         }
+      } catch (error) {
+        console.warn(
+          `[Artists Route] Failed to fetch from Lidarr: ${error.message}`,
+        );
       }
 
       if (lidarrArtist) {

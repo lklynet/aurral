@@ -70,9 +70,49 @@ db.exec(`
     updated_at INTEGER
   );
 
+  CREATE TABLE IF NOT EXISTS lidarr_artists (
+    id TEXT PRIMARY KEY,
+    foreign_artist_id TEXT,
+    artist_name TEXT,
+    data TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS lidarr_albums (
+    id TEXT PRIMARY KEY,
+    artist_id TEXT,
+    foreign_album_id TEXT,
+    album_name TEXT,
+    data TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS lidarr_tracks (
+    id TEXT PRIMARY KEY,
+    album_id TEXT,
+    artist_id TEXT,
+    foreign_track_id TEXT,
+    track_name TEXT,
+    track_number INTEGER,
+    data TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS lidarr_sync_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_weekly_flow_jobs_status ON weekly_flow_jobs(status);
   CREATE INDEX IF NOT EXISTS idx_weekly_flow_jobs_playlist_type ON weekly_flow_jobs(playlist_type);
   CREATE INDEX IF NOT EXISTS idx_images_cache_cache_age ON images_cache(cache_age);
+  CREATE INDEX IF NOT EXISTS idx_lidarr_artists_foreign_id ON lidarr_artists(foreign_artist_id);
+  CREATE INDEX IF NOT EXISTS idx_lidarr_artists_name ON lidarr_artists(artist_name);
+  CREATE INDEX IF NOT EXISTS idx_lidarr_albums_artist_id ON lidarr_albums(artist_id);
+  CREATE INDEX IF NOT EXISTS idx_lidarr_albums_foreign_id ON lidarr_albums(foreign_album_id);
+  CREATE INDEX IF NOT EXISTS idx_lidarr_albums_name ON lidarr_albums(album_name);
+  CREATE INDEX IF NOT EXISTS idx_lidarr_tracks_album_id ON lidarr_tracks(album_id);
+  CREATE INDEX IF NOT EXISTS idx_lidarr_tracks_foreign_id ON lidarr_tracks(foreign_track_id);
 `);
 
 export const dbHelpers = {

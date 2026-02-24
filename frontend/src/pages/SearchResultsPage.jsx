@@ -6,7 +6,6 @@ import {
   searchArtistsByTag,
   getDiscovery,
   checkHealth,
-  lookupArtistsInLibraryBatch,
 } from "../utils/api";
 import ArtistImage from "../components/ArtistImage";
 import PillToggle from "../components/PillToggle";
@@ -27,7 +26,6 @@ function SearchResultsPage() {
   const [hasMore, setHasMore] = useState(false);
   const [searchTotalCount, setSearchTotalCount] = useState(0);
   const [lastfmConfigured, setLastfmConfigured] = useState(null);
-  const [libraryLookup, setLibraryLookup] = useState({});
   const navigate = useNavigate();
 
   const trimmedQuery = useMemo(() => query.trim(), [query]);
@@ -80,7 +78,6 @@ function SearchResultsPage() {
 
   useEffect(() => {
     const performSearch = async () => {
-      setLibraryLookup({});
       if (type === "recommended" || type === "trending") {
         setLoading(true);
         setError(null);
@@ -171,39 +168,6 @@ function SearchResultsPage() {
 
     performSearch();
   }, [query, type, dedupe, trimmedQuery, isTagSearch, tagScope, getArtistId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const ids = results.map((artist) => getArtistId(artist)).filter(Boolean);
-    if (ids.length === 0) {
-      setLibraryLookup({});
-      return () => {
-        cancelled = true;
-      };
-    }
-    const missing = ids.filter((id) => libraryLookup[id] === undefined);
-    if (missing.length === 0) return () => {
-      cancelled = true;
-    };
-
-    const fetchLookup = async () => {
-      try {
-        const lookup = await lookupArtistsInLibraryBatch(missing);
-        if (!cancelled && lookup) {
-          setLibraryLookup((prev) => ({ ...prev, ...lookup }));
-        }
-      } catch {
-        if (!cancelled) {
-          setLibraryLookup((prev) => ({ ...prev }));
-        }
-      }
-    };
-
-    fetchLookup();
-    return () => {
-      cancelled = true;
-    };
-  }, [results, libraryLookup, getArtistId]);
 
   const loadMore = useCallback(async () => {
     if (type === "recommended" || type === "trending") {
@@ -487,7 +451,7 @@ function SearchResultsPage() {
                         >
                           {artist.name}
                         </h3>
-                        {libraryLookup[artistId] && (
+                        {artist.inLibrary && (
                           <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
                         )}
                       </div>

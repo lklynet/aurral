@@ -1,7 +1,17 @@
 import axios from "axios";
 import http from "http";
 import https from "https";
+import {
+  HubConnectionBuilder,
+  HttpTransportType,
+  LogLevel,
+} from "@microsoft/signalr";
+import WebSocket from "ws";
 import { dbOps } from "../config/db-helpers.js";
+
+if (!globalThis.WebSocket) {
+  globalThis.WebSocket = WebSocket;
+}
 
 const CIRCUIT_COOLDOWN_MS = 60000;
 const CIRCUIT_FAILURE_THRESHOLD = 3;
@@ -9,6 +19,8 @@ const LIDARR_MAX_CONCURRENT = 12;
 const LIDARR_LIST_CACHE_MS = 30000;
 const LIDARR_RETRY_ATTEMPTS = 2;
 const LIDARR_RETRY_DELAY_MS = 800;
+const SIGNALR_RECONNECT_MS = 15000;
+const SIGNALR_CONFIG_CHECK_MS = 60000;
 
 export class LidarrClient {
   constructor() {
@@ -803,3 +815,284 @@ export class LidarrClient {
 }
 
 export const lidarrClient = new LidarrClient();
+
+class LidarrSignalRService {
+  constructor() {
+    this.connection = null;
+    this.started = false;
+    this.lastConfig = null;
+    this.checkTimer = null;
+    this.reconnectTimer = null;
+  }
+
+  start() {
+    if (this.started) return;
+    this.started = true;
+    this.ensureConnection();
+    this.checkTimer = setInterval(
+      () => this.ensureConnection(),
+      SIGNALR_CONFIG_CHECK_MS,
+    );
+  }
+
+  async stop() {
+    this.started = false;
+    if (this.checkTimer) {
+      clearInterval(this.checkTimer);
+      this.checkTimer = null;
+    }
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    await this.stopConnection();
+  }
+
+  getSignalRUrl(config) {
+    const base = String(config.url || "").replace(/\/+$/, "");
+    const apiKey = String(config.apiKey || "");
+    if (!apiKey) return `${base}/signalr`;
+    return `${base}/signalr?apikey=${encodeURIComponent(apiKey)}`;
+  }
+
+  getConfigSignature(config) {
+    return `${config.url}|${config.apiKey}`;
+  }
+
+  async ensureConnection() {
+    if (!this.started) return;
+    lidarrClient.updateConfig();
+    const config = lidarrClient.getConfig();
+    if (!config.apiKey) {
+      await this.stopConnection();
+      this.lastConfig = null;
+      return;
+    }
+    if (process.env.LIDARR_SIGNALR_DISABLED === "true") {
+      await this.stopConnection();
+      this.lastConfig = null;
+      return;
+    }
+    const signature = this.getConfigSignature(config);
+    if (this.connection && this.lastConfig === signature) {
+      return;
+    }
+    await this.stopConnection();
+    await this.connect(config);
+  }
+
+  async connect(config) {
+    const url = this.getSignalRUrl(config);
+    const connection = new HubConnectionBuilder()
+      .withUrl(url, {
+        headers: {
+          "X-Api-Key": config.apiKey,
+        },
+        transport: HttpTransportType.WebSockets,
+        skipNegotiation: true,
+      })
+      .withAutomaticReconnect([0, 2000, 5000, 15000])
+      .configureLogging(LogLevel.Warning)
+      .build();
+
+    const handler = (payload) => {
+      this.handlePayload(payload);
+    };
+
+    connection.on("receiveNotification", handler);
+    connection.on("ReceiveNotification", handler);
+    connection.on("receiveMessage", handler);
+    connection.on("ReceiveMessage", handler);
+    connection.on("receiveEvent", handler);
+    connection.on("ReceiveEvent", handler);
+    connection.on("event", handler);
+    connection.on("Event", handler);
+    connection.on("notification", handler);
+    connection.on("Notification", handler);
+
+    connection.onclose(() => {
+      this.connection = null;
+      if (this.started) {
+        this.scheduleReconnect();
+      }
+    });
+
+    try {
+      await connection.start();
+      this.connection = connection;
+      this.lastConfig = this.getConfigSignature(config);
+      console.log("[Lidarr SignalR] Connected");
+    } catch (error) {
+      console.warn(
+        "[Lidarr SignalR] Connection failed:",
+        error?.message || error,
+      );
+      this.scheduleReconnect();
+    }
+  }
+
+  async stopConnection() {
+    if (!this.connection) return;
+    try {
+      await this.connection.stop();
+    } catch {}
+    this.connection = null;
+  }
+
+  scheduleReconnect() {
+    if (this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.ensureConnection();
+    }, SIGNALR_RECONNECT_MS);
+  }
+
+  async handlePayload(payload) {
+    const items = Array.isArray(payload) ? payload : [payload];
+    for (const item of items) {
+      await this.processEvent(item);
+    }
+  }
+
+  parseEvent(payload) {
+    const base = payload?.resource || payload?.data || payload?.item || payload;
+    const resourceType = String(
+      payload?.resourceType ||
+        base?.resourceType ||
+        payload?.type ||
+        base?.type ||
+        "",
+    ).toLowerCase();
+    const eventType = String(
+      payload?.eventType ||
+        payload?.name ||
+        payload?.event ||
+        payload?.type ||
+        base?.eventType ||
+        base?.event ||
+        base?.type ||
+        "",
+    ).toLowerCase();
+    const artistId =
+      base?.artistId ?? base?.artist?.id ?? payload?.artistId ?? null;
+    const artistMbid =
+      base?.foreignArtistId ||
+      base?.artist?.foreignArtistId ||
+      base?.artist?.mbid ||
+      payload?.artistMbid ||
+      payload?.foreignArtistId ||
+      null;
+    const albumId =
+      base?.albumId ??
+      base?.album?.id ??
+      payload?.albumId ??
+      (resourceType === "album" ? base?.id : null);
+    const albumMbid =
+      base?.foreignAlbumId ||
+      base?.album?.foreignAlbumId ||
+      payload?.albumMbid ||
+      payload?.foreignAlbumId ||
+      null;
+    return { resourceType, eventType, artistId, artistMbid, albumId, albumMbid };
+  }
+
+  async processEvent(payload) {
+    const parsed = this.parseEvent(payload);
+    const resourceType = parsed.resourceType;
+    const eventType = parsed.eventType;
+    let artistId = parsed.artistId;
+    let artistMbid = parsed.artistMbid;
+    let albumId = parsed.albumId;
+    let albumMbid = parsed.albumMbid;
+
+    if (!resourceType && !eventType && !artistId && !albumId && !albumMbid) {
+      return;
+    }
+
+    const isDelete =
+      eventType.includes("deleted") ||
+      eventType.includes("removed") ||
+      eventType.includes("delete");
+    const relatesToAlbum =
+      resourceType.includes("album") ||
+      eventType.includes("album") ||
+      albumId != null ||
+      albumMbid != null;
+    const relatesToArtist =
+      resourceType.includes("artist") ||
+      eventType.includes("artist") ||
+      artistId != null ||
+      artistMbid != null;
+    const relatesToTracks =
+      resourceType.includes("track") ||
+      eventType.includes("track") ||
+      eventType.includes("import");
+
+    const { libraryManager } = await import("./libraryManager.js");
+    const { websocketService } = await import("./websocketService.js");
+
+    if (isDelete) {
+      if (relatesToAlbum) {
+        if (albumId != null) {
+          libraryManager.removeAlbumCacheById(albumId);
+        } else if (albumMbid) {
+          libraryManager.removeAlbumCacheByMbid(albumMbid);
+        }
+      }
+      if (relatesToArtist) {
+        if (artistId != null) {
+          libraryManager.removeArtistCacheById(artistId);
+        } else if (artistMbid) {
+          libraryManager.removeArtistCacheByMbid(artistMbid);
+        }
+      }
+      websocketService.emitLibraryUpdate("lidarr_signalr", {
+        action: "delete",
+        resourceType,
+        eventType,
+        artistId,
+        artistMbid,
+        albumId,
+        albumMbid,
+      });
+      return;
+    }
+
+    if (relatesToAlbum || relatesToTracks) {
+      if (!albumId && albumMbid) {
+        const cached = await libraryManager.getAlbumByMbid(albumMbid);
+        albumId = cached?.id || null;
+        if (!artistId && cached?.artistId) artistId = cached.artistId;
+      }
+      if (albumId) {
+        await libraryManager.syncAlbumFromLidarr(albumId);
+        await libraryManager.syncAlbumTracksFromLidarr(albumId);
+        websocketService.emitLibraryUpdate("lidarr_signalr", {
+          action: "album_update",
+          resourceType,
+          eventType,
+          artistId,
+          artistMbid,
+          albumId,
+          albumMbid,
+        });
+        return;
+      }
+    }
+
+    if (relatesToArtist && (artistId || artistMbid)) {
+      const updated = await libraryManager.syncArtistFromLidarr(
+        artistId || artistMbid,
+      );
+      websocketService.emitLibraryUpdate("lidarr_signalr", {
+        action: "artist_update",
+        resourceType,
+        eventType,
+        artistId: updated?.id || artistId,
+        artistMbid: updated?.foreignArtistId || artistMbid,
+      });
+    }
+  }
+}
+
+export const lidarrSignalRService = new LidarrSignalRService();

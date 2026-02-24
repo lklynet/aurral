@@ -58,129 +58,121 @@ export default function registerStream(router) {
       const deezerArtistId = override?.deezerArtistId || null;
 
       try {
-        const { lidarrClient } =
-          await import("../../../services/lidarrClient.js");
         const { libraryManager } =
           await import("../../../services/libraryManager.js");
 
         let lidarrArtist = null;
         let lidarrAlbums = [];
 
-        if (lidarrClient.isConfigured()) {
-          try {
-            lidarrArtist = await lidarrClient.getArtistByMbid(mbid);
-            if (lidarrArtist) {
-              console.log(
-                `[Artists Stream] Found artist in Lidarr: ${lidarrArtist.artistName}`,
-              );
-              const libraryArtist = await libraryManager.getArtist(mbid);
-              if (libraryArtist) {
-                lidarrAlbums = await libraryManager.getAlbums(libraryArtist.id);
-              }
+        try {
+          lidarrArtist = await libraryManager.getArtist(mbid);
+          if (lidarrArtist) {
+            console.log(
+              `[Artists Stream] Found artist in Lidarr: ${lidarrArtist.artistName}`,
+            );
+            lidarrAlbums = await libraryManager.getAlbums(lidarrArtist.id);
 
-              const artistMbid =
-                override?.musicbrainzId || lidarrArtist.foreignArtistId || mbid;
-              let releaseGroups = [];
-              try {
-                releaseGroups =
-                  await musicbrainzGetArtistReleaseGroups(artistMbid);
-                await enrichReleaseGroupsWithDeezer(
+            const artistMbid =
+              override?.musicbrainzId || lidarrArtist.foreignArtistId || mbid;
+            let releaseGroups = [];
+            try {
+              releaseGroups = await musicbrainzGetArtistReleaseGroups(artistMbid);
+              await enrichReleaseGroupsWithDeezer(
+                releaseGroups,
+                lidarrArtist.artistName,
+                deezerArtistId,
+              );
+              if (getLastfmApiKey()) {
+                await enrichReleaseGroupsWithLastfm(
                   releaseGroups,
                   lidarrArtist.artistName,
-                  deezerArtistId,
-                );
-                if (getLastfmApiKey()) {
-                  await enrichReleaseGroupsWithLastfm(
-                    releaseGroups,
-                    lidarrArtist.artistName,
-                    artistMbid,
-                  );
-                }
-              } catch (e) {
-                releaseGroups = lidarrAlbums.map((album) => ({
-                  id: album.mbid,
-                  title: album.albumName,
-                  "first-release-date": album.releaseDate || null,
-                  "primary-type": "Album",
-                  "secondary-types": [],
-                }));
-              }
-              const mbidToType = new Map(
-                releaseGroups.map((rg) => [rg.id, rg["primary-type"]]),
-              );
-
-              const [bio, tagsData] = await Promise.all([
-                getArtistBio(
-                  lidarrArtist.artistName,
                   artistMbid,
-                  deezerArtistId,
-                ),
-                getLastfmApiKey()
-                  ? lastfmRequest("artist.getTopTags", { mbid: artistMbid })
-                  : null,
-              ]);
-              const tags = tagsData?.toptags?.tag
-                ? (Array.isArray(tagsData.toptags.tag)
-                    ? tagsData.toptags.tag
-                    : [tagsData.toptags.tag]
-                  ).map((t) => ({ name: t.name, count: t.count || 0 }))
-                : [];
-              artistData = {
-                id: artistMbid,
-                name: lidarrArtist.artistName,
-                "sort-name": lidarrArtist.artistName,
-                disambiguation: "",
-                "type-id": null,
-                type: null,
-                country: null,
-                "life-span": {
-                  begin: null,
-                  end: null,
-                  ended: false,
-                },
-                tags,
-                genres: [],
-                "release-groups": releaseGroups,
-                relations: [],
-                "release-group-count": releaseGroups.length,
-                "release-count": releaseGroups.length,
-                _lidarrData: {
-                  id: lidarrArtist.id,
-                  monitored: lidarrArtist.monitored,
-                  statistics: lidarrArtist.statistics,
-                },
-                ...(bio ? { bio } : {}),
-              };
-
-              sendSSE(res, "artist", artistData);
-
-              const libArtist = libraryManager.mapLidarrArtist(lidarrArtist);
-              sendSSE(res, "library", {
-                exists: true,
-                artist: {
-                  ...libArtist,
-                  foreignArtistId: libArtist.foreignArtistId || libArtist.mbid,
-                  added: libArtist.addedAt,
-                },
-                albums: lidarrAlbums.map((a) => ({
-                  ...a,
-                  foreignAlbumId: a.foreignAlbumId || a.mbid,
-                  title: a.albumName,
-                  albumType:
-                    mbidToType.get(a.mbid || a.foreignAlbumId) || "Album",
-                  statistics: a.statistics || {
-                    trackCount: 0,
-                    sizeOnDisk: 0,
-                    percentOfTracks: 0,
-                  },
-                })),
-              });
+                );
+              }
+            } catch (e) {
+              releaseGroups = lidarrAlbums.map((album) => ({
+                id: album.mbid,
+                title: album.albumName,
+                "first-release-date": album.releaseDate || null,
+                "primary-type": "Album",
+                "secondary-types": [],
+              }));
             }
-          } catch (error) {
-            console.warn(
-              `[Artists Stream] Failed to fetch from Lidarr: ${error.message}`,
+            const mbidToType = new Map(
+              releaseGroups.map((rg) => [rg.id, rg["primary-type"]]),
             );
+
+            const [bio, tagsData] = await Promise.all([
+              getArtistBio(
+                lidarrArtist.artistName,
+                artistMbid,
+                deezerArtistId,
+              ),
+              getLastfmApiKey()
+                ? lastfmRequest("artist.getTopTags", { mbid: artistMbid })
+                : null,
+            ]);
+            const tags = tagsData?.toptags?.tag
+              ? (Array.isArray(tagsData.toptags.tag)
+                  ? tagsData.toptags.tag
+                  : [tagsData.toptags.tag]
+                ).map((t) => ({ name: t.name, count: t.count || 0 }))
+              : [];
+            artistData = {
+              id: artistMbid,
+              name: lidarrArtist.artistName,
+              "sort-name": lidarrArtist.artistName,
+              disambiguation: "",
+              "type-id": null,
+              type: null,
+              country: null,
+              "life-span": {
+                begin: null,
+                end: null,
+                ended: false,
+              },
+              tags,
+              genres: [],
+              "release-groups": releaseGroups,
+              relations: [],
+              "release-group-count": releaseGroups.length,
+              "release-count": releaseGroups.length,
+              _lidarrData: {
+                id: lidarrArtist.id,
+                monitored: lidarrArtist.monitored,
+                statistics: lidarrArtist.statistics,
+              },
+              ...(bio ? { bio } : {}),
+            };
+
+            sendSSE(res, "artist", artistData);
+
+            const libArtist = lidarrArtist;
+            sendSSE(res, "library", {
+              exists: true,
+              artist: {
+                ...libArtist,
+                foreignArtistId: libArtist.foreignArtistId || libArtist.mbid,
+                added: libArtist.addedAt,
+              },
+              albums: lidarrAlbums.map((a) => ({
+                ...a,
+                foreignAlbumId: a.foreignAlbumId || a.mbid,
+                title: a.albumName,
+                albumType:
+                  mbidToType.get(a.mbid || a.foreignAlbumId) || "Album",
+                statistics: a.statistics || {
+                  trackCount: 0,
+                  sizeOnDisk: 0,
+                  percentOfTracks: 0,
+                },
+              })),
+            });
           }
+        } catch (error) {
+          console.warn(
+            `[Artists Stream] Failed to fetch from Lidarr: ${error.message}`,
+          );
         }
 
         if (!artistData) {

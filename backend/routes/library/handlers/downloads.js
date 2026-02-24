@@ -171,12 +171,15 @@ export default function registerDownloads(router) {
 
   router.get("/downloads", async (req, res) => {
     try {
+      const { libraryManager } =
+        await import("../../../services/libraryManager.js");
       const { lidarrClient } =
         await import("../../../services/lidarrClient.js");
-      if (!lidarrClient.isConfigured()) {
+
+      if (!lidarrClient || !lidarrClient.isConfigured()) {
         return res.json([]);
       }
-      const queue = await lidarrClient.getQueue();
+      const queue = await libraryManager.getQueue().catch(() => []);
       const queueItems = Array.isArray(queue) ? queue : queue.records || [];
       res.json(
         queueItems.map((item) => ({
@@ -217,12 +220,14 @@ export default function registerDownloads(router) {
 
       const { lidarrClient } =
         await import("../../../services/lidarrClient.js");
+      const { libraryManager } =
+        await import("../../../services/libraryManager.js");
 
       if (lidarrClient.isConfigured()) {
         try {
           const [queue, history, commands] = await Promise.all([
-            lidarrClient.getQueue(),
-            lidarrClient.getHistory(1, 200),
+            libraryManager.getQueue().catch(() => []),
+            libraryManager.getHistory().catch(() => ({ records: [] })),
             lidarrClient.request("/command").catch(() => []),
           ]);
           const queueItems = Array.isArray(queue) ? queue : queue.records || [];
@@ -404,14 +409,16 @@ export default function registerDownloads(router) {
     try {
       const { lidarrClient } =
         await import("../../../services/lidarrClient.js");
+      const { libraryManager } =
+        await import("../../../services/libraryManager.js");
       const allStatuses = {};
 
       if (lidarrClient.isConfigured()) {
         try {
           const [queue, history, albums, commands] = await Promise.all([
-            lidarrClient.getQueue(),
-            lidarrClient.getHistory(1, 200),
-            lidarrClient.request("/album"),
+            libraryManager.getQueue().catch(() => []),
+            libraryManager.getHistory().catch(() => ({ records: [] })),
+            libraryManager.getAllAlbums().catch(() => []),
             lidarrClient.request("/command").catch(() => []),
           ]);
 

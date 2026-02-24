@@ -12,7 +12,7 @@ process.on("uncaughtException", (err) => {
   if (err.code === "ERR_STREAM_DESTROYED") {
     console.warn(
       "[Process] Caught stream destroyed error (safe to ignore):",
-      err.message
+      err.message,
     );
     return;
   }
@@ -22,7 +22,7 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (reason, promise) => {
   if (reason?.code === "ERR_STREAM_DESTROYED") {
     console.warn(
-      "[Process] Caught stream destroyed rejection (safe to ignore)"
+      "[Process] Caught stream destroyed rejection (safe to ignore)",
     );
     return;
   }
@@ -30,10 +30,9 @@ process.on("unhandledRejection", (reason, promise) => {
 });
 
 import { createAuthMiddleware } from "./middleware/auth.js";
-import {
-  updateDiscoveryCache,
-  getDiscoveryCache,
-} from "./services/discoveryService.js";
+import { updateDiscoveryCache } from "./services/discoveryService.js";
+import { libraryManager } from "./services/libraryManager.js";
+import { lidarrSignalRService } from "./services/lidarrClient.js";
 import { websocketService } from "./services/websocketService.js";
 
 import settingsRouter from "./routes/settings.js";
@@ -51,6 +50,7 @@ const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const trustProxyValue =
   process.env.TRUST_PROXY === undefined
@@ -87,21 +87,63 @@ app.use("/api/requests", requestsRouter);
 app.use("/api/health", healthRouter);
 app.use("/api/weekly-flow", weeklyFlowRouter);
 
-setInterval(updateDiscoveryCache, 24 * 60 * 60 * 1000);
+setInterval(updateDiscoveryCache, DAY_MS);
+
+setInterval(() => {
+  libraryManager
+    .fullSyncFromLidarr()
+    .then((result) => {
+      if (result?.success) {
+        console.log(
+          `[LibrarySync] Full sync complete (${result.artists} artists, ${result.albums} albums)`,
+        );
+      } else if (result?.error && result.error !== "Lidarr is not configured") {
+        console.warn("[LibrarySync] Full sync failed:", result.error);
+      }
+    })
+    .catch((error) => {
+      console.warn("[LibrarySync] Full sync failed:", error?.message || error);
+    });
+}, DAY_MS);
 
 setTimeout(async () => {
   const { dbOps } = await import("./config/db-helpers.js");
   const discovery = dbOps.getDiscoveryCache();
   const lastUpdated = discovery?.lastUpdated;
-  const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+  const twentyFourHoursAgo = Date.now() - DAY_MS;
   if (!lastUpdated || new Date(lastUpdated).getTime() < twentyFourHoursAgo) {
     updateDiscoveryCache();
   } else {
     console.log(
-      `Discovery cache is fresh (last updated ${lastUpdated}). Skipping initial update.`
+      `Discovery cache is fresh (last updated ${lastUpdated}). Skipping initial update.`,
     );
   }
 }, 5000);
+
+setTimeout(async () => {
+  const lastSyncAt = libraryManager.getLastFullSyncAt();
+
+  libraryManager.getAllArtists().catch(() => {});
+  libraryManager.getAllAlbums().catch(() => {});
+
+  if (!lastSyncAt || Date.now() - lastSyncAt > DAY_MS) {
+    try {
+      const result = await libraryManager.fullSyncFromLidarr();
+      if (result?.success) {
+        console.log(
+          `[LibrarySync] Initial full sync complete (${result.artists} artists, ${result.albums} albums)`,
+        );
+      } else if (result?.error && result.error !== "Lidarr is not configured") {
+        console.warn("[LibrarySync] Initial full sync failed:", result.error);
+      }
+    } catch (error) {
+      console.warn(
+        "[LibrarySync] Initial full sync failed:",
+        error?.message || error,
+      );
+    }
+  }
+}, 8000);
 
 const httpServer = createServer(app);
 
@@ -110,4 +152,6 @@ websocketService.initialize(httpServer);
 httpServer.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`WebSocket available at ws://localhost:${PORT}/ws`);
+  lidarrSignalRService.start();
+  libraryManager.startActivityPolling();
 });
