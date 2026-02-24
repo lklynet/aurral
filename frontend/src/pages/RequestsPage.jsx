@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Loader,
@@ -7,8 +7,14 @@ import {
   AlertCircle,
   X,
   Music,
+  RefreshCw,
 } from "lucide-react";
-import { getRequests, deleteRequest, getAllDownloadStatus } from "../utils/api";
+import {
+  getRequests,
+  deleteRequest,
+  getDownloadStatus,
+  triggerAlbumSearch,
+} from "../utils/api";
 import ArtistImage from "../components/ArtistImage";
 import { useToast } from "../contexts/ToastContext";
 
@@ -17,10 +23,30 @@ function RequestsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [downloadStatuses, setDownloadStatuses] = useState({});
+  const [reSearchingAlbumId, setReSearchingAlbumId] = useState(null);
   const navigate = useNavigate();
-  const { showError } = useToast();
+  const { showError, showSuccess } = useToast();
+  const activeAlbumIdsRef = useRef([]);
 
-  const fetchRequests = async ({ silent = false } = {}) => {
+  const activeAlbumIds = useMemo(() => {
+    return requests
+      .filter(
+        (request) =>
+          request.albumId &&
+          (request.inQueue ||
+            (request.status &&
+              request.status !== "available" &&
+              request.status !== "failed")),
+      )
+      .map((request) => String(request.albumId));
+  }, [requests]);
+
+  const activeAlbumIdsKey = useMemo(() => {
+    if (!activeAlbumIds.length) return "";
+    return [...activeAlbumIds].sort().join(",");
+  }, [activeAlbumIds]);
+
+  const fetchRequests = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
       setLoading(true);
     }
@@ -36,30 +62,38 @@ function RequestsPage() {
         setLoading(false);
       }
     }
-  };
+  }, []);
+
+  const fetchActiveDownloadStatus = useCallback(async (albumIds) => {
+    const ids = Array.isArray(albumIds)
+      ? albumIds
+      : activeAlbumIdsRef.current;
+    if (!ids.length) {
+      setDownloadStatuses({});
+      return;
+    }
+    try {
+      const statuses = await getDownloadStatus(ids);
+      setDownloadStatuses(statuses || {});
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    activeAlbumIdsRef.current = activeAlbumIds;
+  }, [activeAlbumIds]);
 
   useEffect(() => {
     fetchRequests();
 
-    const pollDownloadStatus = async () => {
-      try {
-        const statuses = await getAllDownloadStatus();
-        setDownloadStatuses(statuses);
-      } catch {}
-    };
-
-    pollDownloadStatus();
-    const interval = setInterval(pollDownloadStatus, 15000);
-
     const handleFocus = () => {
       fetchRequests({ silent: true });
-      pollDownloadStatus();
+      fetchActiveDownloadStatus();
     };
 
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
         fetchRequests({ silent: true });
-        pollDownloadStatus();
+        fetchActiveDownloadStatus();
       }
     };
 
@@ -67,11 +101,35 @@ function RequestsPage() {
     document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
-      clearInterval(interval);
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, []);
+  }, [fetchRequests, fetchActiveDownloadStatus]);
+
+  useEffect(() => {
+    const albumIds = activeAlbumIdsKey ? activeAlbumIdsKey.split(",") : [];
+    if (!albumIds.length) {
+      setDownloadStatuses({});
+      return;
+    }
+
+    let cancelled = false;
+    const pollDownloadStatus = async () => {
+      try {
+        const statuses = await getDownloadStatus(albumIds);
+        if (!cancelled) {
+          setDownloadStatuses(statuses || {});
+        }
+      } catch {}
+    };
+
+    pollDownloadStatus();
+    const interval = setInterval(pollDownloadStatus, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeAlbumIdsKey]);
 
   useEffect(() => {
     const hasActive = requests.some(
@@ -84,7 +142,7 @@ function RequestsPage() {
       fetchRequests({ silent: true });
     }, intervalMs);
     return () => clearInterval(interval);
-  }, [requests]);
+  }, [requests, fetchRequests]);
 
   const handleStopDownload = async (request) => {
     if (!request.inQueue || !request.albumId) return;
@@ -95,6 +153,29 @@ function RequestsPage() {
       );
     } catch {
       showError("Failed to stop download");
+    }
+  };
+
+  const handleReSearchRequest = async (request) => {
+    if (!request?.albumId) return;
+    const albumId = String(request.albumId);
+    setReSearchingAlbumId(albumId);
+    try {
+      setDownloadStatuses((prev) => ({
+        ...prev,
+        [albumId]: { status: "searching" },
+      }));
+      await triggerAlbumSearch(request.albumId);
+      showSuccess("Search triggered for album");
+      fetchActiveDownloadStatus([albumId]);
+    } catch (err) {
+      showError(
+        `Failed to re-search album: ${
+          err.response?.data?.message || err.message
+        }`,
+      );
+    } finally {
+      setReSearchingAlbumId(null);
     }
   };
 
@@ -253,6 +334,14 @@ function RequestsPage() {
             const artistMbid = isAlbum ? request.artistMbid : request.mbid;
             const hasValidMbid =
               artistMbid && artistMbid !== "null" && artistMbid !== "undefined";
+            const albumStatus = request.albumId
+              ? downloadStatuses[String(request.albumId)]
+              : null;
+            const isFailed =
+              albumStatus?.status === "failed" || request.status === "failed";
+            const isReSearching =
+              request.albumId &&
+              String(request.albumId) === reSearchingAlbumId;
 
             return (
               <div
@@ -356,8 +445,24 @@ function RequestsPage() {
                     </div>
                   </div>
 
-                  <div className="flex-shrink-0 sm:ml-auto">
+                  <div className="flex items-center gap-2 flex-shrink-0 sm:ml-auto">
                     {getStatusBadge(request)}
+                    {isFailed && request.albumId && (
+                      <button
+                        type="button"
+                        onClick={() => handleReSearchRequest(request)}
+                        className="p-1.5 rounded hover:bg-white/10 transition-colors"
+                        title="Re-search"
+                        aria-label="Re-search"
+                        disabled={isReSearching}
+                      >
+                        {isReSearching ? (
+                          <Loader className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

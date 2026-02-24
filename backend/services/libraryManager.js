@@ -2,7 +2,10 @@ import fs from "fs/promises";
 import path from "path";
 import { dbOps } from "../config/db-helpers.js";
 import { dbHelpers, db } from "../config/db-sqlite.js";
-import { musicbrainzRequest } from "./apiClients.js";
+import {
+  musicbrainzRequest,
+  musicbrainzGetArtistReleaseGroups,
+} from "./apiClients.js";
 
 const LIDARR_RETRY_MS = 60000;
 const TRACKS_CACHE_TTL_MS = 120000;
@@ -288,21 +291,75 @@ export class LibraryManager {
 
   async fetchArtistAlbums(artistId, mbid) {
     try {
-      const artistData = await musicbrainzRequest(`/artist/${mbid}`, {
-        inc: "release-groups",
-      });
-
-      if (artistData["release-groups"]) {
-        const releaseGroups = artistData["release-groups"].slice(0, 50);
-
-        for (const rg of releaseGroups) {
-          const result = await this.addAlbum(artistId, rg.id, rg.title, {
-            releaseDate: rg["first-release-date"] || null,
-            triggerSearch: false,
-          });
-          if (result?.error) {
-            console.error(`Failed to add album ${rg.title}:`, result.error);
+      const lidarr = await getLidarrClient();
+      let allowedPrimaryTypes = null;
+      if (lidarr && lidarr.isConfigured()) {
+        try {
+          const lidarrArtist = await lidarr.getArtist(artistId);
+          const settings = getSettings();
+          const fallbackMetadataProfileId =
+            settings.integrations?.lidarr?.metadataProfileId;
+          const metadataProfileId =
+            lidarrArtist?.metadataProfileId ||
+            lidarrArtist?.metadataProfile?.id ||
+            fallbackMetadataProfileId;
+          if (metadataProfileId) {
+            const profiles = await lidarr.getMetadataProfiles();
+            const profile = Array.isArray(profiles)
+              ? profiles.find(
+                  (item) => String(item?.id) === String(metadataProfileId),
+                )
+              : null;
+            if (profile?.primaryAlbumTypes) {
+              const normalizeTypeName = (value) =>
+                String(value || "")
+                  .toLowerCase()
+                  .replace(/[^a-z0-9]/g, "");
+              const getTypeName = (item) => {
+                if (!item) return "";
+                if (typeof item === "string") return item;
+                if (typeof item.name === "string") return item.name;
+                if (typeof item.value === "string") return item.value;
+                if (typeof item.albumType?.name === "string")
+                  return item.albumType.name;
+                return "";
+              };
+              const allowed = new Set();
+              for (const item of profile.primaryAlbumTypes) {
+                const name = getTypeName(item);
+                if (!name) continue;
+                const isAllowed =
+                  typeof item === "string" ? true : item.allowed !== false;
+                if (!isAllowed) continue;
+                allowed.add(normalizeTypeName(name));
+              }
+              if (allowed.size > 0) {
+                allowedPrimaryTypes = allowed;
+              }
+            }
           }
+        } catch {}
+      }
+
+      let releaseGroups = await musicbrainzGetArtistReleaseGroups(mbid);
+      if (allowedPrimaryTypes) {
+        const normalizeTypeName = (value) =>
+          String(value || "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, "");
+        releaseGroups = releaseGroups.filter((rg) =>
+          allowedPrimaryTypes.has(normalizeTypeName(rg["primary-type"])),
+        );
+      }
+      const limitedReleaseGroups = releaseGroups.slice(0, 50);
+
+      for (const rg of limitedReleaseGroups) {
+        const result = await this.addAlbum(artistId, rg.id, rg.title, {
+          releaseDate: rg["first-release-date"] || null,
+          triggerSearch: false,
+        });
+        if (result?.error) {
+          console.error(`Failed to add album ${rg.title}:`, result.error);
         }
       }
     } catch (error) {

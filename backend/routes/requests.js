@@ -4,6 +4,10 @@ import { noCache } from "../middleware/cache.js";
 
 const router = express.Router();
 const dismissedAlbumIds = new Set();
+const REQUESTS_CACHE_MS = 15000;
+const STALE_GRABBED_MS = 15 * 60 * 1000;
+let lastRequestsResponse = null;
+let lastRequestsAt = 0;
 
 const toIso = (value) => {
   if (!value) return new Date().toISOString();
@@ -24,84 +28,33 @@ router.get("/", noCache, async (req, res) => {
       return res.json([]);
     }
 
-    const [queue, history, artists, albums] = await Promise.all([
+    const now = Date.now();
+    if (lastRequestsResponse && now - lastRequestsAt < REQUESTS_CACHE_MS) {
+      return res.json(lastRequestsResponse);
+    }
+
+    const [queue, history] = await Promise.all([
       libraryManager.getQueue().catch(() => []),
       libraryManager.getHistory().catch(() => ({ records: [] })),
-      libraryManager.getAllArtists().catch(() => []),
-      libraryManager.getAllAlbums().catch(() => []),
     ]);
-
-    const artistById = new Map(
-      (Array.isArray(artists) ? artists : []).map((a) => [
-        a.id,
-        {
-          id: a.id,
-          artistName: a.artistName,
-          foreignArtistId: a.foreignArtistId || a.mbid || null,
-        },
-      ]),
-    );
-
-    const albumById = new Map(
-      (Array.isArray(albums) ? albums : []).map((album) => [album.id, album]),
-    );
-
-    const normalizePercent = (value) => {
-      if (value === undefined || value === null) return 0;
-      const raw = Number(value);
-      if (Number.isNaN(raw)) return 0;
-      if (raw > 1 && raw <= 100) return Math.round(raw);
-      if (raw >= 0 && raw <= 1) return Math.round(raw * 100);
-      if (raw > 100) return Math.min(100, Math.round(raw / 10));
-      return 0;
-    };
-
-    const isAlbumAvailable = (album) => {
-      if (!album) return false;
-      const stats = album.statistics || {};
-      const percent = normalizePercent(stats.percentOfTracks);
-      const size = Number(stats.sizeOnDisk || 0);
-      return percent >= 100 || size > 0;
-    };
 
     const requestsByAlbumId = new Map();
 
     const queueItems = Array.isArray(queue) ? queue : queue?.records || [];
+    const queueByAlbumId = new Map();
+    for (const item of queueItems) {
+      const albumId = item?.albumId ?? item?.album?.id;
+      if (albumId == null) continue;
+      queueByAlbumId.set(String(albumId), item);
+    }
+
     for (const item of queueItems) {
       const albumId = item?.albumId ?? item?.album?.id;
       if (albumId == null) continue;
 
-      const artistId =
-        item?.artistId ?? item?.artist?.id ?? item?.album?.artistId;
-      const artistInfo = artistId != null ? artistById.get(artistId) : null;
-
       const albumName = item?.album?.title || item?.title || "Album";
-      const artistName =
-        item?.artist?.artistName || artistInfo?.artistName || "Artist";
-
-      let artistMbid = null;
-
-      if (artistId && artistById.has(artistId)) {
-        artistMbid = artistById.get(artistId).foreignArtistId || null;
-      }
-
-      if (!artistMbid) {
-        artistMbid = item?.artist?.foreignArtistId || null;
-      }
-
-      if (!artistMbid && artistInfo) {
-        artistMbid = artistInfo.foreignArtistId || null;
-      }
-
-      if (!artistMbid && artistId) {
-        try {
-          const libraryArtist = await libraryManager.getArtistById(artistId);
-          if (libraryArtist) {
-            artistMbid =
-              libraryArtist.foreignArtistId || libraryArtist.mbid || null;
-          }
-        } catch {}
-      }
+      const artistName = item?.artist?.artistName || "Artist";
+      let artistMbid = item?.artist?.foreignArtistId || null;
 
       const queueStatus = String(item.status || "").toLowerCase();
       const title = String(item.title || "").toLowerCase();
@@ -141,7 +94,7 @@ router.get("/", noCache, async (req, res) => {
         albumId: String(albumId),
         albumMbid: item?.album?.foreignAlbumId || null,
         albumName,
-        artistId: artistId != null ? String(artistId) : null,
+        artistId: item?.artist?.id != null ? String(item.artist.id) : null,
         artistMbid,
         artistName,
         status,
@@ -159,45 +112,29 @@ router.get("/", noCache, async (req, res) => {
         ? history
         : [];
 
+    const latestHistoryByAlbum = new Map();
     for (const record of historyRecords) {
       const albumId = record?.albumId;
       if (albumId == null) continue;
+      const recordTime = new Date(
+        record?.date || record?.eventDate || 0,
+      ).getTime();
+      const existing = latestHistoryByAlbum.get(String(albumId));
+      if (!existing || recordTime > existing.recordTime) {
+        latestHistoryByAlbum.set(String(albumId), {
+          record,
+          recordTime,
+        });
+      }
+    }
 
+    for (const [albumId, { record, recordTime }] of latestHistoryByAlbum) {
       const existing = requestsByAlbumId.get(String(albumId));
       if (existing) continue;
 
-      const artistId = record?.artistId;
-      const artistInfo = artistId != null ? artistById.get(artistId) : null;
-
       const albumName = record?.album?.title || record?.sourceTitle || "Album";
-      const artistName =
-        record?.artist?.artistName || artistInfo?.artistName || "Artist";
-
-      let artistMbid = null;
-
-      if (artistId && artistById.has(artistId)) {
-        artistMbid = artistById.get(artistId).foreignArtistId || null;
-      }
-
-      if (!artistMbid) {
-        artistMbid = record?.artist?.foreignArtistId || null;
-      }
-
-      if (!artistMbid && artistInfo) {
-        artistMbid = artistInfo.foreignArtistId || null;
-      }
-
-      if (!artistMbid && artistId) {
-        try {
-          const { libraryManager } =
-            await import("../services/libraryManager.js");
-          const libraryArtist = await libraryManager.getArtistById(artistId);
-          if (libraryArtist) {
-            artistMbid =
-              libraryArtist.foreignArtistId || libraryArtist.mbid || null;
-          }
-        } catch {}
-      }
+      const artistName = record?.artist?.artistName || "Artist";
+      let artistMbid = record?.artist?.foreignArtistId || null;
 
       const eventType = String(record?.eventType || "").toLowerCase();
       const data = record?.data || {};
@@ -209,6 +146,19 @@ router.get("/", noCache, async (req, res) => {
       const errorMessage = String(data?.errorMessage || "").toLowerCase();
       const sourceTitle = String(record?.sourceTitle || "").toLowerCase();
       const dataString = JSON.stringify(data).toLowerCase();
+      const hasQueue = queueByAlbumId.has(String(albumId));
+      const isGrabbed =
+        eventType.includes("grabbed") ||
+        sourceTitle.includes("grabbed") ||
+        dataString.includes("grabbed");
+      const isFailedDownload =
+        eventType.includes("fail") ||
+        statusMessages.includes("fail") ||
+        statusMessages.includes("error") ||
+        errorMessage.includes("fail") ||
+        errorMessage.includes("error") ||
+        sourceTitle.includes("fail") ||
+        dataString.includes("fail");
 
       const isFailedImport =
         eventType === "albumimportincomplete" ||
@@ -226,15 +176,17 @@ router.get("/", noCache, async (req, res) => {
         eventType.includes("import") &&
         !isFailedImport &&
         eventType !== "albumimportincomplete";
-      const lidarrAlbum = albumById.get(albumId);
-      const isCompleteInLibrary = isAlbumAvailable(lidarrAlbum);
-      const status = isCompleteInLibrary
-        ? "available"
+      const isStaleGrabbed =
+        isGrabbed && !hasQueue && Date.now() - recordTime > STALE_GRABBED_MS;
+      const status = hasQueue
+        ? "processing"
         : isSuccessfulImport
           ? "available"
-          : isFailedImport
+          : isFailedImport || isFailedDownload || isStaleGrabbed
             ? "failed"
-            : "processing";
+            : isGrabbed
+              ? "processing"
+              : "processing";
 
       requestsByAlbumId.set(String(albumId), {
         id: `lidarr-history-${record.id ?? albumId}`,
@@ -242,25 +194,16 @@ router.get("/", noCache, async (req, res) => {
         albumId: String(albumId),
         albumMbid: record?.album?.foreignAlbumId || null,
         albumName,
-        artistId: artistId != null ? String(artistId) : null,
+        artistId: record?.artistId != null ? String(record.artistId) : null,
         artistMbid,
         artistName,
         status,
-        requestedAt: toIso(record?.date),
+        requestedAt: toIso(record?.date || record?.eventDate),
         mbid: artistMbid,
         name: albumName,
         image: null,
         inQueue: false,
       });
-    }
-
-    for (const request of requestsByAlbumId.values()) {
-      if (request.inQueue) continue;
-      if (request.status === "available") continue;
-      const lidarrAlbum = albumById.get(parseInt(request.albumId, 10));
-      if (isAlbumAvailable(lidarrAlbum)) {
-        request.status = "available";
-      }
     }
 
     let sorted = [...requestsByAlbumId.values()].sort(
@@ -270,6 +213,110 @@ router.get("/", noCache, async (req, res) => {
       (r) => !r.albumId || !dismissedAlbumIds.has(String(r.albumId)),
     );
 
+    const isPlaceholder = (value, fallback) => {
+      if (!value) return true;
+      const normalized = String(value).trim().toLowerCase();
+      return normalized === String(fallback).trim().toLowerCase();
+    };
+
+    const missingAlbumIds = new Set();
+    const missingArtistIds = new Set();
+
+    for (const request of sorted) {
+      if (request.albumId) {
+        if (
+          !request.albumMbid ||
+          isPlaceholder(request.albumName, "Album") ||
+          !request.artistId
+        ) {
+          missingAlbumIds.add(String(request.albumId));
+        }
+      }
+      if (request.artistId) {
+        if (
+          !request.artistMbid ||
+          isPlaceholder(request.artistName, "Artist")
+        ) {
+          missingArtistIds.add(String(request.artistId));
+        }
+      }
+    }
+
+    const albumDetailsById = new Map();
+    const artistDetailsById = new Map();
+
+    if (missingAlbumIds.size > 0) {
+      const albumIds = Array.from(missingAlbumIds);
+      const albums = await Promise.all(
+        albumIds.map((id) => lidarrClient.getAlbum(id).catch(() => null)),
+      );
+      for (let i = 0; i < albumIds.length; i++) {
+        if (albums[i]) {
+          albumDetailsById.set(String(albumIds[i]), albums[i]);
+          if (albums[i]?.artistId != null) {
+            missingArtistIds.add(String(albums[i].artistId));
+          }
+        }
+      }
+    }
+
+    if (missingArtistIds.size > 0) {
+      const artistIds = Array.from(missingArtistIds);
+      const artists = await Promise.all(
+        artistIds.map((id) => lidarrClient.getArtist(id).catch(() => null)),
+      );
+      for (let i = 0; i < artistIds.length; i++) {
+        if (artists[i]) {
+          artistDetailsById.set(String(artistIds[i]), artists[i]);
+        }
+      }
+    }
+
+    if (albumDetailsById.size > 0 || artistDetailsById.size > 0) {
+      sorted = sorted.map((request) => {
+        const enriched = { ...request };
+        if (
+          enriched.albumId &&
+          albumDetailsById.has(String(enriched.albumId))
+        ) {
+          const album = albumDetailsById.get(String(enriched.albumId));
+          if (album) {
+            if (!enriched.albumMbid && album.foreignAlbumId) {
+              enriched.albumMbid = album.foreignAlbumId;
+            }
+            if (isPlaceholder(enriched.albumName, "Album") && album.title) {
+              enriched.albumName = album.title;
+              enriched.name = album.title;
+            }
+            if (!enriched.artistId && album.artistId != null) {
+              enriched.artistId = String(album.artistId);
+            }
+          }
+        }
+        if (
+          enriched.artistId &&
+          artistDetailsById.has(String(enriched.artistId))
+        ) {
+          const artist = artistDetailsById.get(String(enriched.artistId));
+          if (artist) {
+            if (
+              isPlaceholder(enriched.artistName, "Artist") &&
+              artist.artistName
+            ) {
+              enriched.artistName = artist.artistName;
+            }
+            if (!enriched.artistMbid && artist.foreignArtistId) {
+              enriched.artistMbid = artist.foreignArtistId;
+              enriched.mbid = artist.foreignArtistId;
+            }
+          }
+        }
+        return enriched;
+      });
+    }
+
+    lastRequestsResponse = sorted;
+    lastRequestsAt = Date.now();
     res.json(sorted);
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch requests" });
