@@ -17,6 +17,7 @@ import {
 } from "../utils/api";
 import ArtistImage from "../components/ArtistImage";
 import { useToast } from "../contexts/ToastContext";
+import { useWebSocketChannel } from "../hooks/useWebSocket";
 
 function RequestsPage() {
   const [requests, setRequests] = useState([]);
@@ -27,6 +28,10 @@ function RequestsPage() {
   const navigate = useNavigate();
   const { showError, showSuccess } = useToast();
   const activeAlbumIdsRef = useRef([]);
+  const requestsRef = useRef([]);
+  const downloadStatusesRef = useRef({});
+  const refreshTimerRef = useRef(null);
+  const cacheKeyRef = useRef("aurral:requestsCache:v1");
 
   const activeAlbumIds = useMemo(() => {
     return requests
@@ -46,6 +51,38 @@ function RequestsPage() {
     return [...activeAlbumIds].sort().join(",");
   }, [activeAlbumIds]);
 
+  const writeCache = useCallback((nextRequests, nextStatuses) => {
+    try {
+      localStorage.setItem(
+        cacheKeyRef.current,
+        JSON.stringify({
+          requests: Array.isArray(nextRequests) ? nextRequests : [],
+          downloadStatuses:
+            nextStatuses && typeof nextStatuses === "object"
+              ? nextStatuses
+              : {},
+          updatedAt: Date.now(),
+        }),
+      );
+    } catch {}
+  }, []);
+
+  const loadCache = useCallback(() => {
+    try {
+      const raw = localStorage.getItem(cacheKeyRef.current);
+      if (!raw) return;
+      const cached = JSON.parse(raw);
+      if (Array.isArray(cached?.requests)) {
+        setRequests(cached.requests);
+        setLoading(false);
+      }
+      if (cached?.downloadStatuses && typeof cached.downloadStatuses === "object") {
+        setDownloadStatuses(cached.downloadStatuses);
+        downloadStatusesRef.current = cached.downloadStatuses;
+      }
+    } catch {}
+  }, []);
+
   const fetchRequests = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
       setLoading(true);
@@ -54,6 +91,7 @@ function RequestsPage() {
     try {
       const data = await getRequests();
       setRequests(data);
+      writeCache(data, downloadStatusesRef.current);
       setError(null);
     } catch {
       setError("Failed to load requests history.");
@@ -62,7 +100,7 @@ function RequestsPage() {
         setLoading(false);
       }
     }
-  }, []);
+  }, [writeCache]);
 
   const fetchActiveDownloadStatus = useCallback(async (albumIds) => {
     const ids = Array.isArray(albumIds)
@@ -70,17 +108,68 @@ function RequestsPage() {
       : activeAlbumIdsRef.current;
     if (!ids.length) {
       setDownloadStatuses({});
+      downloadStatusesRef.current = {};
+      writeCache(requestsRef.current, {});
       return;
     }
     try {
       const statuses = await getDownloadStatus(ids);
-      setDownloadStatuses(statuses || {});
+      const nextStatuses = statuses || {};
+      setDownloadStatuses(nextStatuses);
+      downloadStatusesRef.current = nextStatuses;
+      writeCache(requestsRef.current, nextStatuses);
     } catch {}
-  }, []);
+  }, [writeCache]);
+
+  const scheduleRefresh = useCallback(
+    (refreshStatuses = false) => {
+      if (refreshTimerRef.current) return;
+      refreshTimerRef.current = setTimeout(() => {
+        refreshTimerRef.current = null;
+        fetchRequests({ silent: true });
+        if (refreshStatuses) {
+          fetchActiveDownloadStatus();
+        }
+      }, 500);
+    },
+    [fetchRequests, fetchActiveDownloadStatus],
+  );
 
   useEffect(() => {
     activeAlbumIdsRef.current = activeAlbumIds;
   }, [activeAlbumIds]);
+
+  useEffect(() => {
+    requestsRef.current = requests;
+  }, [requests]);
+
+  useEffect(() => {
+    loadCache();
+    return () => {
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
+  }, [loadCache]);
+
+  useWebSocketChannel("queue", (msg) => {
+    if (msg.type === "queue_update") {
+      scheduleRefresh(true);
+    }
+  });
+
+  useWebSocketChannel("library", (msg) => {
+    if (msg.type === "library_update") {
+      scheduleRefresh(true);
+    }
+  });
+
+  useWebSocketChannel("downloads", (msg) => {
+    if (msg.type && msg.type.startsWith("download_")) {
+      scheduleRefresh(true);
+    }
+  });
 
   useEffect(() => {
     fetchRequests();
@@ -124,7 +213,7 @@ function RequestsPage() {
     };
 
     pollDownloadStatus();
-    const interval = setInterval(pollDownloadStatus, 15000);
+    const interval = setInterval(pollDownloadStatus, 60000);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -137,7 +226,7 @@ function RequestsPage() {
         request.inQueue ||
         (request.status && request.status !== "available" && request.status !== "failed"),
     );
-    const intervalMs = hasActive ? 15000 : 60000;
+    const intervalMs = hasActive ? 60000 : 180000;
     const interval = setInterval(() => {
       fetchRequests({ silent: true });
     }, intervalMs);

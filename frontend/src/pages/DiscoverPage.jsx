@@ -14,7 +14,6 @@ import {
 import {
   getDiscovery,
   getRecentlyAdded,
-  getAllDownloadStatus,
   getRecentReleases,
   getReleaseGroupCover,
   getArtistCover,
@@ -274,7 +273,6 @@ function DiscoverPage() {
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
   const [error, setError] = useState(null);
-  const downloadStatusesRef = useRef({});
   const requestedReleaseCoversRef = useRef(new Set());
   const requestedArtistCoversRef = useRef(new Set());
   const navigate = useNavigate();
@@ -324,36 +322,6 @@ function DiscoverPage() {
       .then(setRecentReleases)
       .catch(() => {});
 
-    const pollDownloadStatus = async () => {
-      try {
-        const statuses = await getAllDownloadStatus();
-        const prev = downloadStatusesRef.current;
-        const prevKeys = Object.keys(prev).sort().join(",");
-        const newKeys = Object.keys(statuses).sort().join(",");
-
-        if (prevKeys !== newKeys) {
-          downloadStatusesRef.current = statuses;
-          return;
-        }
-
-        let hasChanges = false;
-        for (const key in statuses) {
-          if (prev[key] !== statuses[key]) {
-            hasChanges = true;
-            break;
-          }
-        }
-
-        if (hasChanges) {
-          downloadStatusesRef.current = statuses;
-        }
-      } catch {}
-    };
-
-    pollDownloadStatus();
-    const interval = setInterval(pollDownloadStatus, 15000);
-
-    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {

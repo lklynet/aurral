@@ -120,15 +120,9 @@ export default function registerMisc(router) {
 
   router.get("/recent-releases", async (req, res) => {
     try {
-      const { lidarrClient } =
-        await import("../../../services/lidarrClient.js");
-      if (!lidarrClient.isConfigured()) {
-        return res.json([]);
-      }
-
       const [artists, albums] = await Promise.all([
-        lidarrClient.request("/artist"),
-        lidarrClient.request("/album"),
+        libraryManager.getAllArtists(),
+        libraryManager.getAllAlbums(),
       ]);
 
       if (!Array.isArray(albums) || albums.length === 0) {

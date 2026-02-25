@@ -3,6 +3,7 @@ import http from "http";
 import https from "https";
 import {
   HubConnectionBuilder,
+  HubConnectionState,
   HttpTransportType,
   LogLevel,
 } from "@microsoft/signalr";
@@ -222,15 +223,16 @@ export class LidarrClient {
             },
             timeout: this.config.timeoutMs,
             httpAgent: this._httpAgent,
-            httpsAgent: isHttps && this.config.insecure
-              ? new https.Agent({
-                  rejectUnauthorized: false,
-                  keepAlive: true,
-                  maxSockets: LIDARR_MAX_CONCURRENT,
-                  maxFreeSockets: 2,
-                  timeout: 60000,
-                })
-              : this._httpsAgent,
+            httpsAgent:
+              isHttps && this.config.insecure
+                ? new https.Agent({
+                    rejectUnauthorized: false,
+                    keepAlive: true,
+                    maxSockets: LIDARR_MAX_CONCURRENT,
+                    maxFreeSockets: 2,
+                    timeout: 60000,
+                  })
+                : this._httpsAgent,
             validateStatus: function (status) {
               return status < 500;
             },
@@ -823,6 +825,7 @@ class LidarrSignalRService {
     this.lastConfig = null;
     this.checkTimer = null;
     this.reconnectTimer = null;
+    this.signalrDisabledSignature = null;
   }
 
   start() {
@@ -848,11 +851,18 @@ class LidarrSignalRService {
     await this.stopConnection();
   }
 
+  isConnected() {
+    return (
+      this.connection &&
+      this.connection.state === HubConnectionState.Connected
+    );
+  }
+
   getSignalRUrl(config) {
     const base = String(config.url || "").replace(/\/+$/, "");
     const apiKey = String(config.apiKey || "");
-    if (!apiKey) return `${base}/signalr`;
-    return `${base}/signalr?apikey=${encodeURIComponent(apiKey)}`;
+    if (!apiKey) return `${base}/signalr/messages`;
+    return `${base}/signalr/messages?apikey=${encodeURIComponent(apiKey)}`;
   }
 
   getConfigSignature(config) {
@@ -874,6 +884,11 @@ class LidarrSignalRService {
       return;
     }
     const signature = this.getConfigSignature(config);
+    if (this.signalrDisabledSignature === signature) {
+      await this.stopConnection();
+      this.lastConfig = null;
+      return;
+    }
     if (this.connection && this.lastConfig === signature) {
       return;
     }
@@ -888,8 +903,11 @@ class LidarrSignalRService {
         headers: {
           "X-Api-Key": config.apiKey,
         },
-        transport: HttpTransportType.WebSockets,
-        skipNegotiation: true,
+        accessTokenFactory: () => config.apiKey,
+        transport:
+          HttpTransportType.WebSockets |
+          HttpTransportType.ServerSentEvents |
+          HttpTransportType.LongPolling,
       })
       .withAutomaticReconnect([0, 2000, 5000, 15000])
       .configureLogging(LogLevel.Warning)
@@ -899,10 +917,10 @@ class LidarrSignalRService {
       this.handlePayload(payload);
     };
 
-    connection.on("receiveNotification", handler);
-    connection.on("ReceiveNotification", handler);
     connection.on("receiveMessage", handler);
     connection.on("ReceiveMessage", handler);
+    connection.on("receiveNotification", handler);
+    connection.on("ReceiveNotification", handler);
     connection.on("receiveEvent", handler);
     connection.on("ReceiveEvent", handler);
     connection.on("event", handler);
@@ -922,7 +940,16 @@ class LidarrSignalRService {
       this.connection = connection;
       this.lastConfig = this.getConfigSignature(config);
       console.log("[Lidarr SignalR] Connected");
+      try {
+        const { libraryManager } = await import("./libraryManager.js");
+        await libraryManager.refreshCommands(true);
+        await libraryManager.refreshActivityFromSignalR();
+      } catch {}
     } catch (error) {
+      const message = String(error?.message || error || "");
+      if (message.includes("405") || message.includes("Method Not Allowed")) {
+        this.signalrDisabledSignature = this.getConfigSignature(config);
+      }
       console.warn(
         "[Lidarr SignalR] Connection failed:",
         error?.message || error,
@@ -950,62 +977,115 @@ class LidarrSignalRService {
   async handlePayload(payload) {
     const items = Array.isArray(payload) ? payload : [payload];
     for (const item of items) {
+      if (item?.name && item?.body !== undefined) {
+        if (Array.isArray(item.body)) {
+          for (const bodyItem of item.body) {
+            await this.processEvent({
+              __messageName: item.name,
+              __messageBody: bodyItem,
+            });
+          }
+        } else {
+          await this.processEvent({
+            __messageName: item.name,
+            __messageBody: item.body,
+          });
+        }
+        continue;
+      }
       await this.processEvent(item);
     }
   }
 
   parseEvent(payload) {
-    const base = payload?.resource || payload?.data || payload?.item || payload;
+    const basePayload = payload?.__messageBody ?? payload;
+    const base =
+      basePayload?.resource ||
+      basePayload?.data ||
+      basePayload?.item ||
+      basePayload;
     const resourceType = String(
       payload?.resourceType ||
+        payload?.__messageName ||
         base?.resourceType ||
+        basePayload?.resourceType ||
         payload?.type ||
+        basePayload?.type ||
         base?.type ||
         "",
     ).toLowerCase();
     const eventType = String(
       payload?.eventType ||
+        payload?.__messageName ||
         payload?.name ||
         payload?.event ||
         payload?.type ||
+        basePayload?.eventType ||
+        basePayload?.event ||
+        basePayload?.type ||
         base?.eventType ||
         base?.event ||
         base?.type ||
         "",
     ).toLowerCase();
     const artistId =
-      base?.artistId ?? base?.artist?.id ?? payload?.artistId ?? null;
+      base?.artistId ??
+      base?.artist?.id ??
+      basePayload?.artistId ??
+      payload?.artistId ??
+      null;
     const artistMbid =
       base?.foreignArtistId ||
       base?.artist?.foreignArtistId ||
       base?.artist?.mbid ||
+      basePayload?.foreignArtistId ||
+      basePayload?.artistMbid ||
       payload?.artistMbid ||
       payload?.foreignArtistId ||
       null;
     const albumId =
       base?.albumId ??
       base?.album?.id ??
+      basePayload?.albumId ??
       payload?.albumId ??
       (resourceType === "album" ? base?.id : null);
     const albumMbid =
       base?.foreignAlbumId ||
       base?.album?.foreignAlbumId ||
+      basePayload?.foreignAlbumId ||
+      basePayload?.albumMbid ||
       payload?.albumMbid ||
       payload?.foreignAlbumId ||
       null;
-    return { resourceType, eventType, artistId, artistMbid, albumId, albumMbid };
+    return {
+      resourceType,
+      eventType,
+      messageName: String(payload?.__messageName || "").toLowerCase(),
+      artistId,
+      artistMbid,
+      albumId,
+      albumMbid,
+    };
   }
 
   async processEvent(payload) {
     const parsed = this.parseEvent(payload);
     const resourceType = parsed.resourceType;
     const eventType = parsed.eventType;
+    const messageName = parsed.messageName;
     let artistId = parsed.artistId;
     let artistMbid = parsed.artistMbid;
     let albumId = parsed.albumId;
     let albumMbid = parsed.albumMbid;
 
-    if (!resourceType && !eventType && !artistId && !albumId && !albumMbid) {
+    if (
+      !resourceType &&
+      !eventType &&
+      !messageName &&
+      !artistId &&
+      !albumId &&
+      !albumMbid
+    ) {
       return;
     }
 
@@ -1027,9 +1107,21 @@ class LidarrSignalRService {
       resourceType.includes("track") ||
       eventType.includes("track") ||
       eventType.includes("import");
+    const relatesToQueue =
+      resourceType.includes("queue") ||
+      eventType.includes("queue") ||
+      messageName.includes("queue") ||
+      messageName.includes("wanted") ||
+      messageName.includes("command");
+    const relatesToCommand =
+      resourceType.includes("command") || messageName.includes("command");
 
     const { libraryManager } = await import("./libraryManager.js");
     const { websocketService } = await import("./websocketService.js");
+
+    if (relatesToCommand) {
+      libraryManager.updateCommandCacheFromSignalR(payload?.__messageBody ?? payload);
+    }
 
     if (isDelete) {
       if (relatesToAlbum) {
@@ -1050,6 +1142,7 @@ class LidarrSignalRService {
         action: "delete",
         resourceType,
         eventType,
+        messageName,
         artistId,
         artistMbid,
         albumId,
@@ -1071,12 +1164,12 @@ class LidarrSignalRService {
           action: "album_update",
           resourceType,
           eventType,
+          messageName,
           artistId,
           artistMbid,
           albumId,
           albumMbid,
         });
-        return;
       }
     }
 
@@ -1088,9 +1181,14 @@ class LidarrSignalRService {
         action: "artist_update",
         resourceType,
         eventType,
+        messageName,
         artistId: updated?.id || artistId,
         artistMbid: updated?.foreignArtistId || artistMbid,
       });
+    }
+
+    if (relatesToQueue || relatesToAlbum || relatesToTracks) {
+      await libraryManager.refreshActivityFromSignalR();
     }
   }
 }

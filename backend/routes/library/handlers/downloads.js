@@ -230,7 +230,7 @@ export default function registerDownloads(router) {
           const [queue, history, commands] = await Promise.all([
             libraryManager.getQueue().catch(() => []),
             libraryManager.getHistory().catch(() => ({ records: [] })),
-            lidarrClient.request("/command").catch(() => []),
+            libraryManager.getCommands().catch(() => []),
           ]);
           const queueItems = Array.isArray(queue) ? queue : queue.records || [];
           const historyItems = Array.isArray(history)
@@ -455,7 +455,7 @@ export default function registerDownloads(router) {
             libraryManager.getQueue().catch(() => []),
             libraryManager.getHistory().catch(() => ({ records: [] })),
             libraryManager.getAllAlbums().catch(() => []),
-            lidarrClient.request("/command").catch(() => []),
+            libraryManager.getCommands().catch(() => []),
           ]);
 
           const queueItems = Array.isArray(queue) ? queue : queue.records || [];

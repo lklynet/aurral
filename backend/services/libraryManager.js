@@ -6,20 +6,28 @@ import {
   musicbrainzRequest,
   musicbrainzGetArtistReleaseGroups,
 } from "./apiClients.js";
+import { websocketService } from "./websocketService.js";
 
 const LIDARR_RETRY_MS = 60000;
 const TRACKS_CACHE_TTL_MS = 120000;
 const TRACKS_CACHE_MAX = 300;
-const ACTIVITY_POLL_INTERVAL_MS = 15000;
+const ACTIVITY_POLL_INTERVAL_MS = 60000;
+const COMMANDS_CACHE_MS = 60000;
+const SIGNALR_ACTIVITY_POLL_MS = 300000;
 
 let lidarrClient = null;
 let _cachedArtists = [];
 let _cachedAlbums = [];
 let _cachedQueue = null;
 let _cachedHistory = null;
+let _cachedCommands = null;
+let _lastCommandsAt = 0;
 let _lastLidarrFailureAt = 0;
 let _retryTimeoutId = null;
 let _activityPollIntervalId = null;
+let _lastQueueSignature = null;
+let _lastHistorySignature = null;
+let _lastSignalrActivityAt = 0;
 const _tracksCache = new Map();
 
 const selectAllArtistsStmt = db.prepare(
@@ -1178,18 +1186,79 @@ export class LibraryManager {
         lidarr.getHistory(1, 200).catch(() => ({ records: [] })),
       ]);
 
-      _cachedQueue = Array.isArray(queue) ? queue : queue?.records || [];
-      _cachedHistory = history || { records: [] };
-    } catch (error) {
-      // Silent fail for background polling
+      const nextQueue = Array.isArray(queue) ? queue : queue?.records || [];
+      const nextHistory = history || { records: [] };
+      const historyRecords = Array.isArray(nextHistory)
+        ? nextHistory
+        : nextHistory?.records || [];
+
+      const queueSignature = nextQueue
+        .map((item) =>
+          [
+            item?.id ?? item?.downloadId ?? "",
+            item?.status ?? "",
+            item?.trackedDownloadState ?? "",
+            item?.trackedDownloadStatus ?? "",
+            item?.size ?? "",
+            item?.sizeleft ?? "",
+          ].join("|"),
+        )
+        .sort()
+        .join("||");
+      const historySignature = historyRecords
+        .map((item) =>
+          [
+            item?.id ?? "",
+            item?.eventType ?? "",
+            item?.date ?? item?.eventDate ?? "",
+          ].join("|"),
+        )
+        .sort()
+        .join("||");
+
+      _cachedQueue = nextQueue;
+      _cachedHistory = nextHistory;
+
+      if (
+        queueSignature !== _lastQueueSignature ||
+        historySignature !== _lastHistorySignature
+      ) {
+        _lastQueueSignature = queueSignature;
+        _lastHistorySignature = historySignature;
+        websocketService.emitQueueUpdate({
+          queueCount: nextQueue.length,
+          historyCount: historyRecords.length,
+        });
+      }
+    } catch (error) {}
+  }
+
+  async refreshActivityFromSignalR() {
+    _lastSignalrActivityAt = Date.now();
+    await this.refreshActivity();
+  }
+
+  async refreshActivityIfNeeded() {
+    let signalrConnected = false;
+    try {
+      const { lidarrSignalRService } = await import("./lidarrClient.js");
+      signalrConnected = !!lidarrSignalRService?.isConnected?.();
+    } catch {}
+    if (signalrConnected) {
+      const now = Date.now();
+      if (_lastSignalrActivityAt && now - _lastSignalrActivityAt < SIGNALR_ACTIVITY_POLL_MS) {
+        return;
+      }
+      _lastSignalrActivityAt = now;
     }
+    await this.refreshActivity();
   }
 
   startActivityPolling() {
     if (_activityPollIntervalId) return;
     this.refreshActivity(); // Initial fetch
     _activityPollIntervalId = setInterval(() => {
-      this.refreshActivity();
+      this.refreshActivityIfNeeded();
     }, ACTIVITY_POLL_INTERVAL_MS);
     console.log("[LibraryManager] Started background activity polling");
   }
@@ -1213,6 +1282,67 @@ export class LibraryManager {
       await this.refreshActivity();
     }
     return _cachedHistory || { records: [] };
+  }
+
+  async refreshCommands(force = false) {
+    const lidarr = await getLidarrClient();
+    if (!lidarr || !lidarr.isConfigured()) return;
+    const now = Date.now();
+    if (
+      !force &&
+      _cachedCommands &&
+      now - _lastCommandsAt < COMMANDS_CACHE_MS
+    ) {
+      return;
+    }
+    try {
+      const commands = await lidarr.request("/command").catch(() => []);
+      _cachedCommands = Array.isArray(commands)
+        ? commands
+        : commands?.records || [];
+      _lastCommandsAt = now;
+    } catch (error) {}
+  }
+
+  updateCommandCacheFromSignalR(payload) {
+    if (!payload) return;
+    const command =
+      payload?.resource || payload?.data || payload?.item || payload;
+    if (!command) return;
+    const commandId = command?.id ?? command?.commandId ?? null;
+    if (_cachedCommands === null) {
+      _cachedCommands = [];
+    }
+    if (commandId != null) {
+      const index = _cachedCommands.findIndex(
+        (item) =>
+          item?.id === commandId ||
+          item?.commandId === commandId ||
+          item?.id === String(commandId),
+      );
+      if (index >= 0) {
+        _cachedCommands[index] = {
+          ..._cachedCommands[index],
+          ...command,
+        };
+      } else {
+        _cachedCommands.unshift(command);
+      }
+    } else {
+      _cachedCommands.unshift(command);
+    }
+    _lastCommandsAt = Date.now();
+  }
+
+  async getCommands({ force = false } = {}) {
+    if (_cachedCommands === null) {
+      await this.refreshCommands(true);
+    } else if (force) {
+      await this.refreshCommands(true);
+    } else {
+      await this.refreshCommands(false);
+    }
+    return _cachedCommands || [];
   }
 
   async syncArtistFromLidarr(idOrMbid) {

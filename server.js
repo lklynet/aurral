@@ -15,6 +15,8 @@ import {
   getDiscoveryCache,
 } from "./backend/services/discoveryService.js";
 import { websocketService } from "./backend/services/websocketService.js";
+import { lidarrSignalRService } from "./backend/services/lidarrClient.js";
+import { libraryManager } from "./backend/services/libraryManager.js";
 
 import settingsRouter from "./backend/routes/settings.js";
 import onboardingRouter from "./backend/routes/onboarding.js";
@@ -184,6 +186,9 @@ websocketService.initialize(httpServer);
 
 httpServer.listen(PORT, "0.0.0.0", async () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`WebSocket available at ws://localhost:${PORT}/ws`);
+  lidarrSignalRService.start();
+  libraryManager.startActivityPolling();
 });
 
 httpServer.on("error", (error) => {
