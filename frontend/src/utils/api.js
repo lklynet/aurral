@@ -28,6 +28,8 @@ const api = axios.create({
   },
 });
 
+const libraryLookupCache = new Map();
+
 api.interceptors.request.use(
   (config) => {
     const password = localStorage.getItem("auth_password");
@@ -197,9 +199,29 @@ export const lookupArtistInLibrary = async (mbid) => {
   return response.data;
 };
 
+export const readLibraryLookupCache = (mbids) => {
+  const result = {};
+  if (!Array.isArray(mbids)) return result;
+  mbids.forEach((id) => {
+    if (libraryLookupCache.has(id)) {
+      result[id] = libraryLookupCache.get(id);
+    }
+  });
+  return result;
+};
+
+export const writeLibraryLookupCache = (lookup) => {
+  if (!lookup || typeof lookup !== "object") return;
+  Object.entries(lookup).forEach(([id, value]) => {
+    libraryLookupCache.set(id, value);
+  });
+};
+
 export const lookupArtistsInLibraryBatch = async (mbids) => {
   const response = await api.post("/library/lookup/batch", { mbids });
-  return response.data;
+  const data = response.data;
+  writeLibraryLookupCache(data);
+  return data;
 };
 
 export const addArtistToLibrary = async (artistData) => {

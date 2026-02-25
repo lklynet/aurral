@@ -1,6 +1,14 @@
+import { useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
-import { Loader, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader, ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
 import ArtistImage from "../../../components/ArtistImage";
+import {
+  lookupArtistsInLibraryBatch,
+  readLibraryLookupCache,
+} from "../../../utils/api";
+
+const getArtistId = (artist) =>
+  artist?.id || artist?.mbid || artist?.foreignArtistId;
 
 export function ArtistDetailsSimilar({
   loadingSimilar,
@@ -8,6 +16,36 @@ export function ArtistDetailsSimilar({
   similarArtistsScrollRef,
   onArtistClick,
 }) {
+  const [libraryLookup, setLibraryLookup] = useState({});
+  const artistIds = useMemo(
+    () => similarArtists.map(getArtistId).filter(Boolean),
+    [similarArtists],
+  );
+
+  useEffect(() => {
+    const cached = readLibraryLookupCache(artistIds);
+    setLibraryLookup(cached);
+    const missing = artistIds.filter((id) => cached[id] === undefined);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    const fetchLookup = async () => {
+      try {
+        const lookup = await lookupArtistsInLibraryBatch(missing);
+        if (!cancelled && lookup) {
+          setLibraryLookup((prev) => ({ ...prev, ...lookup }));
+        }
+      } catch {
+        if (!cancelled) {
+          setLibraryLookup((prev) => ({ ...prev }));
+        }
+      }
+    };
+    fetchLookup();
+    return () => {
+      cancelled = true;
+    };
+  }, [artistIds]);
+
   if (!loadingSimilar && similarArtists.length === 0) return null;
 
   return (
@@ -59,40 +97,48 @@ export function ArtistDetailsSimilar({
               msOverflowStyle: "none",
             }}
           >
-            {similarArtists.map((similar) => (
-              <div
-                key={similar.id}
-                className="flex-shrink-0 w-40 group cursor-pointer"
-                onClick={() => onArtistClick(similar.id, similar.name)}
-              >
+            {similarArtists.map((similar) => {
+              const artistId = getArtistId(similar);
+              return (
                 <div
-                  className="relative aspect-square overflow-hidden  mb-2 shadow-sm group-hover:shadow-md transition-all"
-                  style={{ backgroundColor: "#211f27" }}
+                  key={similar.id}
+                  className="flex-shrink-0 w-40 group cursor-pointer"
+                  onClick={() => onArtistClick(similar.id, similar.name)}
                 >
-                  <ArtistImage
-                    src={similar.image}
-                    mbid={similar.id}
-                    artistName={similar.name}
-                    alt={similar.name}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                  />
+                  <div
+                    className="relative aspect-square overflow-hidden  mb-2 shadow-sm group-hover:shadow-md transition-all"
+                    style={{ backgroundColor: "#211f27" }}
+                  >
+                    <ArtistImage
+                      src={similar.image}
+                      mbid={similar.id}
+                      artistName={similar.name}
+                      alt={similar.name}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                    />
 
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"></div>
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"></div>
 
-                  {similar.match && (
-                    <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-sm text-white text-[10px] px-1.5 py-0.5 font-medium">
-                      {similar.match}% Match
-                    </div>
-                  )}
+                    {similar.match && (
+                      <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-sm text-white text-[10px] px-1.5 py-0.5 font-medium">
+                        {similar.match}% Match
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3
+                      className="font-medium text-sm truncate transition-colors min-w-0"
+                      style={{ color: "#fff" }}
+                    >
+                      {similar.name}
+                    </h3>
+                    {artistId && libraryLookup[artistId] && (
+                      <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                    )}
+                  </div>
                 </div>
-                <h3
-                  className="font-medium text-sm  truncate transition-colors"
-                  style={{ color: "#fff" }}
-                >
-                  {similar.name}
-                </h3>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <button
             onClick={() => {
