@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import { Loader, ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
 import ArtistImage from "../../../components/ArtistImage";
 import {
   lookupArtistsInLibraryBatch,
   readLibraryLookupCache,
+  writeLibraryLookupCache,
 } from "../../../utils/api";
+import { useWebSocketChannel } from "../../../hooks/useWebSocket";
 
 const getArtistId = (artist) =>
   artist?.id || artist?.mbid || artist?.foreignArtistId;
@@ -21,6 +23,11 @@ export function ArtistDetailsSimilar({
     () => similarArtists.map(getArtistId).filter(Boolean),
     [similarArtists],
   );
+  const applyLookupUpdate = useCallback((updates) => {
+    if (!updates || typeof updates !== "object") return;
+    writeLibraryLookupCache(updates);
+    setLibraryLookup((prev) => ({ ...prev, ...updates }));
+  }, []);
 
   useEffect(() => {
     const cached = readLibraryLookupCache(artistIds);
@@ -32,7 +39,7 @@ export function ArtistDetailsSimilar({
       try {
         const lookup = await lookupArtistsInLibraryBatch(missing);
         if (!cancelled && lookup) {
-          setLibraryLookup((prev) => ({ ...prev, ...lookup }));
+          applyLookupUpdate(lookup);
         }
       } catch {
         if (!cancelled) {
@@ -44,7 +51,18 @@ export function ArtistDetailsSimilar({
     return () => {
       cancelled = true;
     };
-  }, [artistIds]);
+  }, [artistIds, applyLookupUpdate]);
+
+  useWebSocketChannel("library", (msg) => {
+    if (msg?.type !== "library_update") return;
+    const { action, artistId, artistMbid } = msg;
+    if (!artistId && !artistMbid) return;
+    const exists = action !== "delete";
+    const updates = {};
+    if (artistId) updates[String(artistId)] = exists;
+    if (artistMbid) updates[String(artistMbid)] = exists;
+    applyLookupUpdate(updates);
+  });
 
   if (!loadingSimilar && similarArtists.length === 0) return null;
 
