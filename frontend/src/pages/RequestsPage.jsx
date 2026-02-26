@@ -428,6 +428,11 @@ function RequestsPage() {
               : null;
             const isFailed =
               albumStatus?.status === "failed" || request.status === "failed";
+            const isActiveDownload =
+              albumStatus &&
+              ["adding", "searching", "downloading", "moving", "processing"].includes(
+                albumStatus.status
+              );
             const isReSearching =
               request.albumId &&
               String(request.albumId) === reSearchingAlbumId;
@@ -536,7 +541,7 @@ function RequestsPage() {
 
                   <div className="flex items-center gap-2 flex-shrink-0 sm:ml-auto">
                     {getStatusBadge(request)}
-                    {isFailed && request.albumId && (
+                    {isFailed && request.albumId && !isActiveDownload && (
                       <button
                         type="button"
                         onClick={() => handleReSearchRequest(request)}
