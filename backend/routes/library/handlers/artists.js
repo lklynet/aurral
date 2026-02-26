@@ -161,11 +161,13 @@ export default function registerArtists(router) {
   router.get("/artists", cacheMiddleware(120), async (req, res) => {
     try {
       const artists = await libraryManager.getAllArtists();
-      const formatted = artists.map((artist) => ({
-        ...artist,
-        foreignArtistId: artist.foreignArtistId || artist.mbid,
-        added: artist.addedAt,
-      }));
+      const formatted = artists
+        .map((artist) => ({
+          ...artist,
+          foreignArtistId: artist.foreignArtistId || artist.mbid,
+          added: artist.addedAt,
+        }))
+        .filter((artist) => artist.foreignArtistId);
       res.json(formatted);
     } catch (error) {
       res.status(500).json({

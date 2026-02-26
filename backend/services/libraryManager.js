@@ -145,6 +145,49 @@ function loadCachedArtists() {
   return rows.map(parseRowData).filter(Boolean);
 }
 
+function selectPreferredArtist(existing, candidate) {
+  if (!existing) return candidate;
+  if (!candidate) return existing;
+  const existingAdded =
+    Date.parse(existing.addedAt || existing.added || "") || 0;
+  const candidateAdded =
+    Date.parse(candidate.addedAt || candidate.added || "") || 0;
+  if (existingAdded !== candidateAdded) {
+    return candidateAdded > existingAdded ? candidate : existing;
+  }
+  const existingMonitored = existing.monitored ? 1 : 0;
+  const candidateMonitored = candidate.monitored ? 1 : 0;
+  if (existingMonitored !== candidateMonitored) {
+    return candidateMonitored > existingMonitored ? candidate : existing;
+  }
+  const existingStats =
+    (existing.statistics?.albumCount || 0) +
+    (existing.statistics?.trackCount || 0);
+  const candidateStats =
+    (candidate.statistics?.albumCount || 0) +
+    (candidate.statistics?.trackCount || 0);
+  if (existingStats !== candidateStats) {
+    return candidateStats > existingStats ? candidate : existing;
+  }
+  const existingId = Number.parseInt(existing.id, 10);
+  const candidateId = Number.parseInt(candidate.id, 10);
+  if (Number.isFinite(existingId) && Number.isFinite(candidateId)) {
+    return candidateId > existingId ? candidate : existing;
+  }
+  return existing;
+}
+
+function dedupeArtists(artists) {
+  const byKey = new Map();
+  for (const artist of artists) {
+    const key = artist?.foreignArtistId || artist?.mbid || artist?.id;
+    if (!key) continue;
+    const current = byKey.get(String(key)) || null;
+    byKey.set(String(key), selectPreferredArtist(current, artist));
+  }
+  return Array.from(byKey.values());
+}
+
 function loadCachedAlbums() {
   const rows = selectAllAlbumsStmt.all();
   return rows.map(parseRowData).filter(Boolean);
@@ -522,13 +565,24 @@ export class LibraryManager {
 
   async getAllArtists() {
     try {
-      if (_cachedArtists.length > 0) return _cachedArtists;
+      if (_cachedArtists.length > 0) {
+        const deduped = dedupeArtists(_cachedArtists);
+        if (deduped.length !== _cachedArtists.length) {
+          replaceAllArtistsTx(deduped);
+          _cachedArtists = deduped;
+        }
+        return _cachedArtists;
+      }
 
       const lidarr = await getLidarrClient();
       const cachedFromDb = loadCachedArtists();
       if (cachedFromDb.length > 0) {
-        _cachedArtists = cachedFromDb;
-        return cachedFromDb;
+        const deduped = dedupeArtists(cachedFromDb);
+        _cachedArtists = deduped;
+        if (deduped.length !== cachedFromDb.length) {
+          replaceAllArtistsTx(deduped);
+        }
+        return deduped;
       }
       if (!lidarr || !lidarr.isConfigured()) return _cachedArtists;
       if (
@@ -787,6 +841,39 @@ export class LibraryManager {
       }
       return mapped;
     } catch (error) {
+      const is404 =
+        error?.response?.status === 404 ||
+        String(error?.message || "").includes("404") ||
+        String(error?.message || "").toLowerCase().includes("not found");
+      if (is404) {
+        const cachedArtist = loadCachedArtistById(artistId);
+        const mbid =
+          cachedArtist?.foreignArtistId || cachedArtist?.mbid || null;
+        if (mbid) {
+          try {
+            const resolved = await lidarr.getArtistByMbid(mbid);
+            if (resolved?.id != null) {
+              const mappedResolved = this.mapLidarrArtist(resolved);
+              upsertArtistCache(mappedResolved);
+              const newArtistId = String(resolved.id);
+              const allAlbums = await lidarr.request(
+                `/album?artistId=${encodeURIComponent(newArtistId)}`,
+              );
+              const artistAlbums = Array.isArray(allAlbums)
+                ? allAlbums.filter((a) => a.artistId === parseInt(newArtistId))
+                : [];
+              const mapped = artistAlbums.map((a) =>
+                this.mapLidarrAlbum(a, resolved),
+              );
+              for (const album of mapped) {
+                upsertAlbumCache(album);
+              }
+              return mapped;
+            }
+          } catch {}
+        }
+        this.removeArtistCacheById(artistId);
+      }
       console.error(
         `[LibraryManager] Failed to fetch albums from Lidarr: ${error.message}`,
       );

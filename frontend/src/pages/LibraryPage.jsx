@@ -79,7 +79,15 @@ function LibraryPage() {
   }, [onSentinel, loading, error]);
 
   const filteredArtists = useMemo(() => {
-    let filtered = artists;
+    const seen = new Set();
+    let filtered = artists.filter((artist) => {
+      const key = artist?.foreignArtistId || artist?.mbid || artist?.id;
+      if (!key) return false;
+      const normalized = String(key);
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    });
 
     if (searchTerm) {
       filtered = filtered.filter((artist) =>
