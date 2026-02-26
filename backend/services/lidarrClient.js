@@ -298,18 +298,6 @@ export class LidarrClient {
           const statusText = error.response.statusText;
           const responseData = error.response.data;
 
-          const isAlbum404 = status === 404 && endpoint.includes("/album/");
-          if (!isAlbum404) {
-            console.error(`Lidarr API error (${status}):`, {
-              url: `${this.config.url}${this.apiPath}${endpoint}`,
-              method: method,
-              status: status,
-              statusText: statusText,
-              responseData: responseData,
-              responseHeaders: error.response.headers,
-            });
-          }
-
           let errorMsg = statusText || "Unknown error";
           let errorDetails = "";
 
@@ -331,6 +319,26 @@ export class LidarrClient {
           const responseText =
             typeof responseData === "string" ? responseData : errorMsg;
           const responseTextLower = responseText?.toLowerCase?.();
+          const isAlbum404 = status === 404 && endpoint.includes("/album/");
+          const isArtist404 = status === 404 && endpoint.startsWith("/artist/");
+          const isMissingArtist =
+            isArtist404 &&
+            responseTextLower &&
+            responseTextLower.includes("artist with id") &&
+            responseTextLower.includes("does not exist");
+          const suppress404Log = isAlbum404 || isMissingArtist;
+
+          if (!suppress404Log) {
+            console.error(`Lidarr API error (${status}):`, {
+              url: `${this.config.url}${this.apiPath}${endpoint}`,
+              method: method,
+              status: status,
+              statusText: statusText,
+              responseData: responseData,
+              responseHeaders: error.response.headers,
+            });
+          }
+
           const isLidarrSkyhookRefused =
             status >= 500 &&
             responseTextLower &&
@@ -358,6 +366,9 @@ export class LidarrClient {
           if (status === 404) {
             const isAlbumEndpoint = endpoint.includes("/album/");
             if (isAlbumEndpoint) {
+              return null;
+            }
+            if (isMissingArtist) {
               return null;
             }
             throw new Error(

@@ -42,6 +42,7 @@ export function useArtistDetailsStream(mbid, artistNameFromNav) {
   const libraryUpdatedRef = useRef(false);
   const libraryRefreshInFlightRef = useRef(false);
   const lastLibraryRefreshAtRef = useRef(0);
+  const libraryLoadedRef = useRef(false);
 
   if (artistMbidRef.current !== mbid) {
     artistMbidRef.current = mbid;
@@ -49,6 +50,7 @@ export function useArtistDetailsStream(mbid, artistNameFromNav) {
     libraryUpdatedRef.current = false;
     libraryRefreshInFlightRef.current = false;
     lastLibraryRefreshAtRef.current = 0;
+    libraryLoadedRef.current = false;
   }
 
   const refreshLibrary = useCallback(
@@ -58,7 +60,9 @@ export function useArtistDetailsStream(mbid, artistNameFromNav) {
       if (!force && now - lastLibraryRefreshAtRef.current < 1000) return;
       if (libraryRefreshInFlightRef.current) return;
       libraryRefreshInFlightRef.current = true;
-      setLoadingLibrary(true);
+      if (!libraryLoadedRef.current) {
+        setLoadingLibrary(true);
+      }
       try {
         const lookup = await lookupArtistInLibrary(mbid);
         setExistsInLibrary(lookup.exists);
@@ -87,6 +91,7 @@ export function useArtistDetailsStream(mbid, artistNameFromNav) {
       } catch {}
       libraryRefreshInFlightRef.current = false;
       lastLibraryRefreshAtRef.current = Date.now();
+      libraryLoadedRef.current = true;
       setLoadingLibrary(false);
     },
     [mbid],
@@ -102,6 +107,7 @@ export function useArtistDetailsStream(mbid, artistNameFromNav) {
     setLibraryAlbums([]);
     setExistsInLibrary(false);
     setLoadingLibrary(true);
+    libraryLoadedRef.current = false;
 
     getAppSettings()
       .then(setAppSettings)
@@ -212,7 +218,7 @@ export function useArtistDetailsStream(mbid, artistNameFromNav) {
         console.error(
           "Error parsing release group cover data:",
           err,
-          event.data
+          event.data,
         );
       }
     });
@@ -228,6 +234,7 @@ export function useArtistDetailsStream(mbid, artistNameFromNav) {
           setLibraryAlbums(data.albums || []);
         }
         setLoadingLibrary(false);
+        libraryLoadedRef.current = true;
       } catch (err) {
         console.error("Error parsing library data:", err, event.data);
       }
@@ -250,7 +257,7 @@ export function useArtistDetailsStream(mbid, artistNameFromNav) {
         setError(
           errorData.message ||
             errorData.error ||
-            "Failed to fetch artist details"
+            "Failed to fetch artist details",
         );
         setLoading(false);
         eventSource.close();
@@ -289,7 +296,7 @@ export function useArtistDetailsStream(mbid, artistNameFromNav) {
                 err.response?.data?.message ||
                   err.response?.data?.error ||
                   err.message ||
-                  "Failed to fetch artist details"
+                  "Failed to fetch artist details",
               );
               setLoading(false);
             });
@@ -331,7 +338,7 @@ export function useArtistDetailsStream(mbid, artistNameFromNav) {
               err.response?.data?.message ||
                 err.response?.data?.error ||
                 err.message ||
-                "Failed to fetch artist details"
+                "Failed to fetch artist details",
             );
             setLoading(false);
           });
@@ -369,7 +376,7 @@ export function useArtistDetailsStream(mbid, artistNameFromNav) {
       .filter(Boolean);
     const needed = [...new Set([...releaseGroupIds, ...libraryMbids])];
     const missing = needed.filter(
-      (id) => !albumCovers[id] && !requestedAlbumCoversRef.current.has(id)
+      (id) => !albumCovers[id] && !requestedAlbumCoversRef.current.has(id),
     );
     missing.forEach((rgId) => {
       requestedAlbumCoversRef.current.add(rgId);

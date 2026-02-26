@@ -78,9 +78,9 @@ function LibraryPage() {
     return () => observer.disconnect();
   }, [onSentinel, loading, error]);
 
-  const filteredArtists = useMemo(() => {
+  const uniqueArtists = useMemo(() => {
     const seen = new Set();
-    let filtered = artists.filter((artist) => {
+    return artists.filter((artist) => {
       const key = artist?.foreignArtistId || artist?.mbid || artist?.id;
       if (!key) return false;
       const normalized = String(key);
@@ -88,6 +88,10 @@ function LibraryPage() {
       seen.add(normalized);
       return true;
     });
+  }, [artists]);
+
+  const filteredArtists = useMemo(() => {
+    let filtered = uniqueArtists;
 
     if (searchTerm) {
       filtered = filtered.filter((artist) =>
@@ -109,7 +113,7 @@ function LibraryPage() {
           return 0;
       }
     });
-  }, [artists, searchTerm, sortBy]);
+  }, [uniqueArtists, searchTerm, sortBy]);
 
   return (
     <div className="animate-fade-in">
@@ -122,8 +126,8 @@ function LibraryPage() {
             <p className="text-sm" style={{ color: "#c1c1c3" }}>
               {loading
                 ? "Loading..."
-                : `${artists.length} artist${
-                    artists.length !== 1 ? "s" : ""
+                : `${uniqueArtists.length} artist${
+                    uniqueArtists.length !== 1 ? "s" : ""
                   } in your collection`}
             </p>
           </div>
@@ -206,7 +210,7 @@ function LibraryPage() {
         <div className="animate-slide-up">
           {searchTerm && (
             <div className="mb-3 text-sm" style={{ color: "#c1c1c3" }}>
-              Showing {filteredArtists.length} of {artists.length} artists
+              Showing {filteredArtists.length} of {uniqueArtists.length} artists
             </div>
           )}
 

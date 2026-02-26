@@ -5,7 +5,7 @@ import {
 } from "../../../services/libraryManager.js";
 import { musicbrainzGetArtistReleaseGroups } from "../../../services/apiClients.js";
 import { dbOps } from "../../../config/db-helpers.js";
-import { cacheMiddleware } from "../../../middleware/cache.js";
+import { cacheMiddleware, noCache } from "../../../middleware/cache.js";
 import { websocketService } from "../../../services/websocketService.js";
 import {
   requireAuth,
@@ -158,7 +158,7 @@ const monitorArtistAlbums = async (artist, albums, lidarrClient) => {
 };
 
 export default function registerArtists(router) {
-  router.get("/artists", cacheMiddleware(120), async (req, res) => {
+  router.get("/artists", noCache, async (req, res) => {
     try {
       const artists = await libraryManager.getAllArtists();
       const formatted = artists

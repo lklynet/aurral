@@ -739,10 +739,8 @@ export class LibraryManager {
       console.log(
         `[LibraryManager] Deleted artist "${lidarrArtist.artistName}" from Lidarr`,
       );
-      deleteArtistByIdStmt.run(String(lidarrArtist.id));
-      deleteArtistByMbidStmt.run(mbid);
-      deleteAlbumsByArtistIdStmt.run(String(lidarrArtist.id));
-      deleteTracksByArtistIdStmt.run(String(lidarrArtist.id));
+      this.removeArtistCacheByMbid(mbid);
+      this.removeArtistCacheById(lidarrArtist.id);
       return { success: true };
     } catch (error) {
       console.error(
@@ -1238,18 +1236,36 @@ export class LibraryManager {
 
   removeArtistCacheById(id) {
     if (!id) return;
-    deleteArtistByIdStmt.run(String(id));
-    deleteAlbumsByArtistIdStmt.run(String(id));
-    deleteTracksByArtistIdStmt.run(String(id));
+    const normalized = String(id);
+    deleteArtistByIdStmt.run(normalized);
+    deleteAlbumsByArtistIdStmt.run(normalized);
+    deleteTracksByArtistIdStmt.run(normalized);
+    if (Array.isArray(_cachedArtists) && _cachedArtists.length > 0) {
+      _cachedArtists = _cachedArtists.filter(
+        (artist) => String(artist?.id) !== normalized,
+      );
+    }
+    if (Array.isArray(_cachedAlbums) && _cachedAlbums.length > 0) {
+      _cachedAlbums = _cachedAlbums.filter(
+        (album) => String(album?.artistId) !== normalized,
+      );
+    }
   }
 
   removeArtistCacheByMbid(mbid) {
     if (!mbid) return;
     const cached = loadCachedArtistByMbid(mbid);
-    deleteArtistByMbidStmt.run(String(mbid));
+    const normalized = String(mbid);
+    deleteArtistByMbidStmt.run(normalized);
     if (cached?.id) {
       deleteAlbumsByArtistIdStmt.run(String(cached.id));
       deleteTracksByArtistIdStmt.run(String(cached.id));
+    }
+    if (Array.isArray(_cachedArtists) && _cachedArtists.length > 0) {
+      _cachedArtists = _cachedArtists.filter((artist) => {
+        const artistMbid = artist?.foreignArtistId || artist?.mbid;
+        return String(artistMbid || "") !== normalized;
+      });
     }
   }
 
