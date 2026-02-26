@@ -248,7 +248,7 @@ router.get("/", noCache, async (req, res) => {
     if (missingAlbumIds.size > 0) {
       const albumIds = Array.from(missingAlbumIds);
       const albums = await Promise.all(
-        albumIds.map((id) => lidarrClient.getAlbum(id).catch(() => null)),
+        albumIds.map((id) => libraryManager.getAlbumById(id).catch(() => null)),
       );
       for (let i = 0; i < albumIds.length; i++) {
         if (albums[i]) {
@@ -263,7 +263,7 @@ router.get("/", noCache, async (req, res) => {
     if (missingArtistIds.size > 0) {
       const artistIds = Array.from(missingArtistIds);
       const artists = await Promise.all(
-        artistIds.map((id) => lidarrClient.getArtist(id).catch(() => null)),
+        artistIds.map((id) => libraryManager.getArtistById(id).catch(() => null)),
       );
       for (let i = 0; i < artistIds.length; i++) {
         if (artists[i]) {
@@ -281,12 +281,14 @@ router.get("/", noCache, async (req, res) => {
         ) {
           const album = albumDetailsById.get(String(enriched.albumId));
           if (album) {
-            if (!enriched.albumMbid && album.foreignAlbumId) {
-              enriched.albumMbid = album.foreignAlbumId;
+            const albumMbid = album.foreignAlbumId || album.mbid;
+            const albumTitle = album.title || album.albumName;
+            if (!enriched.albumMbid && albumMbid) {
+              enriched.albumMbid = albumMbid;
             }
-            if (isPlaceholder(enriched.albumName, "Album") && album.title) {
-              enriched.albumName = album.title;
-              enriched.name = album.title;
+            if (isPlaceholder(enriched.albumName, "Album") && albumTitle) {
+              enriched.albumName = albumTitle;
+              enriched.name = albumTitle;
             }
             if (!enriched.artistId && album.artistId != null) {
               enriched.artistId = String(album.artistId);
@@ -305,9 +307,10 @@ router.get("/", noCache, async (req, res) => {
             ) {
               enriched.artistName = artist.artistName;
             }
-            if (!enriched.artistMbid && artist.foreignArtistId) {
-              enriched.artistMbid = artist.foreignArtistId;
-              enriched.mbid = artist.foreignArtistId;
+            const artistMbid = artist.foreignArtistId || artist.mbid;
+            if (!enriched.artistMbid && artistMbid) {
+              enriched.artistMbid = artistMbid;
+              enriched.mbid = artistMbid;
             }
           }
         }

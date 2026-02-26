@@ -8,7 +8,14 @@ import {
   isProxyAuthEnabled,
 } from "../middleware/auth.js";
 import { getDiscoveryCache } from "../services/discoveryService.js";
-import { getCachedArtistCount } from "../services/libraryManager.js";
+import {
+  getCachedArtistCount,
+  getCachedAlbumCount,
+  getCachedTrackCount,
+  getTracksCacheSize,
+  getLastSignalrActivityAt,
+  getLastFullSyncAt,
+} from "../services/libraryManager.js";
 import { lidarrClient } from "../services/lidarrClient.js";
 import { dbOps } from "../config/db-helpers.js";
 import { userOps } from "../config/db-helpers.js";
@@ -45,6 +52,11 @@ router.get("/", noCache, async (req, res) => {
     const discoveryCache = getDiscoveryCache();
     const wsStats = websocketService.getStats();
     const artistCount = getCachedArtistCount();
+    const albumCount = getCachedAlbumCount();
+    const trackCount = getCachedTrackCount();
+    const tracksCacheSize = getTracksCacheSize();
+    const lastFullSyncAt = getLastFullSyncAt();
+    const lastSignalrActivityAt = getLastSignalrActivityAt();
 
     const currentUser = resolveRequestUser(req);
     const payload = {
@@ -58,6 +70,12 @@ router.get("/", noCache, async (req, res) => {
       ),
       library: {
         artistCount: typeof artistCount === "number" ? artistCount : 0,
+        albumCount: typeof albumCount === "number" ? albumCount : 0,
+        trackCount: typeof trackCount === "number" ? trackCount : 0,
+        tracksCacheSize:
+          typeof tracksCacheSize === "number" ? tracksCacheSize : 0,
+        lastFullSyncAt,
+        lastSignalrActivityAt,
         lastScan: null,
       },
       discovery: {

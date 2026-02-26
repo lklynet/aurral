@@ -1,7 +1,8 @@
-import { libraryManager } from "../../../services/libraryManager.js";
+import { libraryManager, getCacheStats } from "../../../services/libraryManager.js";
 import { playlistManager } from "../../../services/weeklyFlowPlaylistManager.js";
 import { dbOps } from "../../../config/db-helpers.js";
 import { cacheMiddleware } from "../../../middleware/cache.js";
+import { websocketService } from "../../../services/websocketService.js";
 import {
   requireAuth,
   requirePermission,
@@ -90,6 +91,12 @@ export default function registerAlbums(router) {
           title: album.albumName,
           albumType: "Album",
         };
+        websocketService.emitLibraryUpdate("album_add", {
+          albumId: album.id,
+          albumMbid: album.mbid,
+          albumName: album.albumName,
+          artistId: album.artistId,
+        });
         res.status(201).json(formatted);
       } catch (error) {
         res.status(500).json({
@@ -123,6 +130,13 @@ export default function registerAlbums(router) {
       if (album?.error) {
         return res.status(503).json({ error: album.error });
       }
+      websocketService.emitLibraryUpdate("album_update", {
+        albumId: album.id,
+        albumMbid: album.mbid,
+        albumName: album.albumName,
+        artistId: album.artistId,
+        cache: getCacheStats(),
+      });
       res.json(album);
     } catch (error) {
       res.status(500).json({
@@ -140,6 +154,7 @@ export default function registerAlbums(router) {
       try {
         const { id } = req.params;
         const { deleteFiles = false } = req.query;
+        const existingAlbum = await libraryManager.getAlbumById(id);
         const result = await libraryManager.deleteAlbum(
           id,
           deleteFiles === "true"
@@ -149,6 +164,13 @@ export default function registerAlbums(router) {
             .status(503)
             .json({ error: result?.error || "Failed to delete album" });
         }
+        websocketService.emitLibraryUpdate("album_delete", {
+          albumId: existingAlbum?.id || id,
+          albumMbid: existingAlbum?.mbid,
+          albumName: existingAlbum?.albumName,
+          artistId: existingAlbum?.artistId,
+          cache: getCacheStats(),
+        });
         res.json({ success: true, message: "Album deleted successfully" });
       } catch (error) {
         res.status(500).json({

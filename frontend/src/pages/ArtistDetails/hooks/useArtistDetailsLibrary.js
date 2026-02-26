@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   getLibraryAlbums,
   getLibraryTracks,
@@ -17,6 +17,7 @@ import {
 } from "../../../utils/api";
 import { deduplicateAlbums } from "../utils";
 import { matchesReleaseTypeFilter } from "../utils";
+import { useWebSocketChannel } from "../../../hooks/useWebSocket";
 
 export function useArtistDetailsLibrary({
   artist,
@@ -54,6 +55,7 @@ export function useArtistDetailsLibrary({
   const [reSearchOverrides, setReSearchOverrides] = useState({});
   const reSearchOverridesRef = useRef({});
   const unmonitoredAtRef = useRef({});
+  const lastWsAtRef = useRef(0);
 
   const handleRefreshArtist = async () => {
     if (!libraryArtist?.mbid && !libraryArtist?.foreignArtistId) return;
@@ -668,9 +670,32 @@ export function useArtistDetailsLibrary({
     };
   };
 
-  useEffect(() => {
-    if (!libraryAlbums.length || !libraryArtist) return;
-    const pollDownloadStatus = async () => {
+  const refreshAlbums = useCallback(
+    async (force = false) => {
+      if (!libraryArtist) return;
+      if (!force && Date.now() - lastWsAtRef.current < 120000) return;
+      try {
+        const refreshedAlbums = await getLibraryAlbums(libraryArtist.id);
+        const now = Date.now();
+        const cutoff = now - 120000;
+        const merged = refreshedAlbums.map((a) => {
+          const at = unmonitoredAtRef.current[a.id];
+          if (at != null && at >= cutoff && a.monitored)
+            return { ...a, monitored: false };
+          return a;
+        });
+        setLibraryAlbums(deduplicateAlbums(merged));
+      } catch (err) {
+        console.error("Failed to refresh albums:", err);
+      }
+    },
+    [libraryArtist, setLibraryAlbums],
+  );
+
+  const pollDownloadStatus = useCallback(
+    async (force = false) => {
+      if (!libraryAlbums.length || !libraryArtist) return;
+      if (!force && Date.now() - lastWsAtRef.current < 120000) return;
       try {
         const albumIds = libraryAlbums.map((a) => a.id).filter(Boolean);
         if (albumIds.length > 0) {
@@ -741,18 +766,7 @@ export function useArtistDetailsLibrary({
               setTimeout(
                 async () => {
                   try {
-                    const refreshedAlbums = await getLibraryAlbums(
-                      libraryArtist.id,
-                    );
-                    const now = Date.now();
-                    const cutoff = now - 120000;
-                    const merged = refreshedAlbums.map((a) => {
-                      const at = unmonitoredAtRef.current[a.id];
-                      if (at != null && at >= cutoff && a.monitored)
-                        return { ...a, monitored: false };
-                      return a;
-                    });
-                    setLibraryAlbums(deduplicateAlbums(merged));
+                    await refreshAlbums(true);
                   } catch (err) {
                     console.error("Failed to refresh albums:", err);
                   }
@@ -766,33 +780,36 @@ export function useArtistDetailsLibrary({
       } catch (error) {
         console.error("Failed to fetch download status:", error);
       }
-    };
-    pollDownloadStatus();
-    const interval = setInterval(pollDownloadStatus, 15000);
-    return () => clearInterval(interval);
-  }, [libraryAlbums, libraryArtist, requestingAlbum, setLibraryAlbums]);
+    },
+    [libraryAlbums, libraryArtist, refreshAlbums, requestingAlbum],
+  );
 
   useEffect(() => {
-    if (!libraryArtist) return;
-    const refreshAlbums = async () => {
-      try {
-        const refreshedAlbums = await getLibraryAlbums(libraryArtist.id);
-        const now = Date.now();
-        const cutoff = now - 120000;
-        const merged = refreshedAlbums.map((a) => {
-          const at = unmonitoredAtRef.current[a.id];
-          if (at != null && at >= cutoff && a.monitored)
-            return { ...a, monitored: false };
-          return a;
-        });
-        setLibraryAlbums(deduplicateAlbums(merged));
-      } catch (err) {
-        console.error("Failed to refresh albums:", err);
-      }
-    };
-    const interval = setInterval(refreshAlbums, 30000);
+    pollDownloadStatus(true);
+    const interval = setInterval(() => pollDownloadStatus(false), 30000);
     return () => clearInterval(interval);
-  }, [libraryArtist, setLibraryAlbums]);
+  }, [pollDownloadStatus]);
+
+  useEffect(() => {
+    refreshAlbums(true);
+    const interval = setInterval(() => refreshAlbums(false), 60000);
+    return () => clearInterval(interval);
+  }, [refreshAlbums]);
+
+  useWebSocketChannel("library", (msg) => {
+    if (msg.type === "library_update") {
+      lastWsAtRef.current = Date.now();
+      refreshAlbums(true);
+      pollDownloadStatus(true);
+    }
+  });
+
+  useWebSocketChannel("queue", (msg) => {
+    if (msg.type === "queue_update") {
+      lastWsAtRef.current = Date.now();
+      pollDownloadStatus(true);
+    }
+  });
 
   return {
     requestingAlbum,

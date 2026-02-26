@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Loader, Music, AlertCircle } from "lucide-react";
 import { getLibraryArtists } from "../utils/api";
 import ArtistImage from "../components/ArtistImage";
+import { useWebSocketChannel } from "../hooks/useWebSocket";
 
 const PAGE_SIZE = 48;
 
@@ -15,6 +16,7 @@ function LibraryPage() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [retryKey, setRetryKey] = useState(0);
   const sentinelRef = useRef(null);
+  const lastWsRefreshRef = useRef(0);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -42,6 +44,19 @@ function LibraryPage() {
     fetchArtists();
     return () => controller.abort();
   }, [retryKey]);
+
+  const scheduleRefresh = useCallback(() => {
+    const now = Date.now();
+    if (now - lastWsRefreshRef.current < 1000) return;
+    lastWsRefreshRef.current = now;
+    setRetryKey((key) => key + 1);
+  }, []);
+
+  useWebSocketChannel("library", (msg) => {
+    if (msg.type === "library_update") {
+      scheduleRefresh();
+    }
+  });
 
   // Reset visible count when filters change
   useEffect(() => {

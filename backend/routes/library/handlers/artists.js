@@ -1,8 +1,12 @@
 import { UUID_REGEX } from "../../../config/constants.js";
-import { libraryManager } from "../../../services/libraryManager.js";
+import {
+  libraryManager,
+  getCacheStats,
+} from "../../../services/libraryManager.js";
 import { musicbrainzGetArtistReleaseGroups } from "../../../services/apiClients.js";
 import { dbOps } from "../../../config/db-helpers.js";
 import { cacheMiddleware } from "../../../middleware/cache.js";
+import { websocketService } from "../../../services/websocketService.js";
 import {
   requireAuth,
   requirePermission,
@@ -255,6 +259,13 @@ export default function registerArtists(router) {
             }
             await monitorArtistAlbums(artist, albums, lidarrClient);
           }
+          const artistMbid = artist.foreignArtistId || artist.mbid || mbid;
+          websocketService.emitLibraryUpdate("artist_add", {
+            artistId: artist.id,
+            artistMbid,
+            artistName: artist.artistName,
+            cache: getCacheStats(),
+          });
         })();
       } catch (error) {
         res.status(500).json({
@@ -295,6 +306,13 @@ export default function registerArtists(router) {
             await monitorArtistAlbums(artist, albums, lidarrClient);
           }
         }
+        const artistMbid = artist.foreignArtistId || artist.mbid || mbid;
+        websocketService.emitLibraryUpdate("artist_update", {
+          artistId: artist.id,
+          artistMbid,
+          artistName: artist.artistName,
+          cache: getCacheStats(),
+        });
         res.json(artist);
       } catch (error) {
         res.status(500).json({
@@ -318,6 +336,7 @@ export default function registerArtists(router) {
           return res.status(400).json({ error: "Invalid MBID format" });
         }
 
+        const existingArtist = await libraryManager.getArtist(mbid);
         const result = await libraryManager.deleteArtist(
           mbid,
           deleteFiles === "true",
@@ -326,6 +345,12 @@ export default function registerArtists(router) {
           const message = result?.error || "Failed to delete artist";
           return res.status(503).json({ error: message, message });
         }
+        websocketService.emitLibraryUpdate("artist_delete", {
+          artistId: existingArtist?.id,
+          artistMbid: existingArtist?.foreignArtistId || existingArtist?.mbid || mbid,
+          artistName: existingArtist?.artistName,
+          cache: getCacheStats(),
+        });
         res.json({ success: true, message: "Artist deleted successfully" });
       } catch (error) {
         res.status(500).json({
@@ -377,6 +402,12 @@ export default function registerArtists(router) {
         }
       }
 
+      websocketService.emitLibraryUpdate("artist_refresh", {
+        artistId: artist.id,
+        artistMbid: artist.foreignArtistId || artist.mbid || mbid,
+        artistName: artist.artistName,
+        cache: getCacheStats(),
+      });
       res.json({
         success: true,
         message: "Artist refreshed successfully",

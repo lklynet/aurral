@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   getArtistDetails,
   getArtistCover,
@@ -10,6 +10,7 @@ import {
   getReleaseGroupCover,
 } from "../../../utils/api";
 import { emptyArtistShape } from "../constants";
+import { useWebSocketChannel } from "../../../hooks/useWebSocket";
 
 export function useArtistDetailsStream(mbid, artistNameFromNav) {
   const initialArtist =
@@ -38,11 +39,58 @@ export function useArtistDetailsStream(mbid, artistNameFromNav) {
   const [albumCovers, setAlbumCovers] = useState({});
   const requestedAlbumCoversRef = useRef(new Set());
   const artistMbidRef = useRef(mbid);
+  const libraryUpdatedRef = useRef(false);
+  const libraryRefreshInFlightRef = useRef(false);
+  const lastLibraryRefreshAtRef = useRef(0);
 
   if (artistMbidRef.current !== mbid) {
     artistMbidRef.current = mbid;
     requestedAlbumCoversRef.current = new Set();
+    libraryUpdatedRef.current = false;
+    libraryRefreshInFlightRef.current = false;
+    lastLibraryRefreshAtRef.current = 0;
   }
+
+  const refreshLibrary = useCallback(
+    async (force = false) => {
+      if (!mbid) return;
+      const now = Date.now();
+      if (!force && now - lastLibraryRefreshAtRef.current < 1000) return;
+      if (libraryRefreshInFlightRef.current) return;
+      libraryRefreshInFlightRef.current = true;
+      setLoadingLibrary(true);
+      try {
+        const lookup = await lookupArtistInLibrary(mbid);
+        setExistsInLibrary(lookup.exists);
+        if (lookup.exists && lookup.artist) {
+          const lookupMbid =
+            lookup.artist.mbid || lookup.artist.foreignArtistId || null;
+          const fullArtist = lookupMbid
+            ? await getLibraryArtist(lookupMbid).catch(() => lookup.artist)
+            : lookup.artist;
+          setLibraryArtist(fullArtist);
+          const artistId = fullArtist?.id || lookup.artist.id;
+          if (artistId) {
+            try {
+              const albums = await getLibraryAlbums(artistId);
+              setLibraryAlbums(albums);
+            } catch {
+              setTimeout(() => {
+                getLibraryAlbums(artistId)
+                  .then((albums) => setLibraryAlbums(albums))
+                  .catch(() => {});
+              }, 2000);
+            }
+          }
+          libraryUpdatedRef.current = true;
+        }
+      } catch {}
+      libraryRefreshInFlightRef.current = false;
+      lastLibraryRefreshAtRef.current = Date.now();
+      setLoadingLibrary(false);
+    },
+    [mbid],
+  );
 
   useEffect(() => {
     if (!mbid) return;
@@ -173,6 +221,7 @@ export function useArtistDetailsStream(mbid, artistNameFromNav) {
       try {
         const data = JSON.parse(event.data);
         libraryReceived = true;
+        libraryUpdatedRef.current = true;
         if (data.exists && data.artist) {
           setExistsInLibrary(true);
           setLibraryArtist(data.artist);
@@ -189,48 +238,10 @@ export function useArtistDetailsStream(mbid, artistNameFromNav) {
       clearTimeout(fallbackTimeout);
       eventSource.close();
 
-      if (libraryReceived) {
+      if (libraryReceived || libraryUpdatedRef.current) {
         return;
       }
-
-      setLoadingLibrary(true);
-      lookupArtistInLibrary(mbid)
-        .then((lookup) => {
-          setExistsInLibrary(lookup.exists);
-          if (lookup.exists && lookup.artist) {
-            return Promise.all([
-              getLibraryArtist(
-                lookup.artist.mbid || lookup.artist.foreignArtistId
-              ).catch((err) => {
-                console.error("Failed to fetch full artist details:", err);
-                return lookup.artist;
-              }),
-            ]).then(([fullArtist]) => {
-              setLibraryArtist(fullArtist);
-              return fullArtist.id || lookup.artist.id;
-            });
-          }
-          return null;
-        })
-        .then((artistId) => {
-          if (artistId) {
-            setTimeout(() => {
-              getLibraryAlbums(artistId)
-                .then((albums) => {
-                  setLibraryAlbums(albums);
-                })
-                .catch(() => {
-                  setTimeout(() => {
-                    getLibraryAlbums(artistId)
-                      .then((albums) => setLibraryAlbums(albums))
-                      .catch(() => {});
-                  }, 2000);
-                });
-            }, 1000);
-          }
-        })
-        .catch(() => {})
-        .finally(() => setLoadingLibrary(false));
+      refreshLibrary(true);
     });
 
     eventSource.addEventListener("error", (event) => {
@@ -331,7 +342,23 @@ export function useArtistDetailsStream(mbid, artistNameFromNav) {
       clearTimeout(fallbackTimeout);
       eventSource.close();
     };
-  }, [mbid, artistNameFromNav, artist?.name]);
+  }, [mbid, artistNameFromNav, artist?.name, refreshLibrary]);
+
+  useWebSocketChannel("library", (msg) => {
+    if (msg.type !== "library_update") return;
+    const artistId = libraryArtist?.id;
+    const matchMbid = msg.artistMbid && msg.artistMbid === mbid;
+    const matchArtistId =
+      artistId && msg.artistId && String(msg.artistId) === String(artistId);
+    const matchAlbum =
+      msg.albumId &&
+      (libraryAlbums || []).some(
+        (album) => String(album.id) === String(msg.albumId),
+      );
+    if (matchMbid || matchArtistId || matchAlbum) {
+      refreshLibrary(true);
+    }
+  });
 
   useEffect(() => {
     if (!mbid) return;

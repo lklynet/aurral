@@ -33,6 +33,9 @@ const _tracksCache = new Map();
 const selectAllArtistsStmt = db.prepare(
   "SELECT data FROM lidarr_artists ORDER BY artist_name COLLATE NOCASE",
 );
+const countArtistsStmt = db.prepare(
+  "SELECT COUNT(1) as count FROM lidarr_artists",
+);
 const selectArtistByMbidStmt = db.prepare(
   "SELECT data FROM lidarr_artists WHERE foreign_artist_id = ? LIMIT 1",
 );
@@ -58,6 +61,9 @@ const deleteAllArtistsStmt = db.prepare("DELETE FROM lidarr_artists");
 
 const selectAllAlbumsStmt = db.prepare(
   "SELECT data FROM lidarr_albums ORDER BY album_name COLLATE NOCASE",
+);
+const countAlbumsStmt = db.prepare(
+  "SELECT COUNT(1) as count FROM lidarr_albums",
 );
 const selectAlbumsByArtistIdStmt = db.prepare(
   "SELECT data FROM lidarr_albums WHERE artist_id = ? ORDER BY album_name COLLATE NOCASE",
@@ -89,6 +95,7 @@ const deleteAllAlbumsStmt = db.prepare("DELETE FROM lidarr_albums");
 const selectTracksByAlbumIdStmt = db.prepare(
   "SELECT data FROM lidarr_tracks WHERE album_id = ? ORDER BY track_number ASC, track_name COLLATE NOCASE",
 );
+const countTracksStmt = db.prepare("SELECT COUNT(1) as count FROM lidarr_tracks");
 const upsertTrackStmt = db.prepare(`
   INSERT INTO lidarr_tracks (id, album_id, artist_id, foreign_track_id, track_name, track_number, data, updated_at)
   VALUES (@id, @albumId, @artistId, @foreignTrackId, @trackName, @trackNumber, @data, @updatedAt)
@@ -257,7 +264,54 @@ function scheduleLidarrRetry(instance) {
 }
 
 export function getCachedArtistCount() {
-  return Array.isArray(_cachedArtists) ? _cachedArtists.length : 0;
+  if (Array.isArray(_cachedArtists) && _cachedArtists.length > 0) {
+    return _cachedArtists.length;
+  }
+  const row = countArtistsStmt.get();
+  return typeof row?.count === "number" ? row.count : 0;
+}
+
+export function getCachedAlbumCount() {
+  if (Array.isArray(_cachedAlbums) && _cachedAlbums.length > 0) {
+    return _cachedAlbums.length;
+  }
+  const row = countAlbumsStmt.get();
+  return typeof row?.count === "number" ? row.count : 0;
+}
+
+export function getCachedTrackCount() {
+  const row = countTracksStmt.get();
+  return typeof row?.count === "number" ? row.count : 0;
+}
+
+export function getTracksCacheSize() {
+  return _tracksCache.size;
+}
+
+export function getLastSignalrActivityAt() {
+  return _lastSignalrActivityAt || null;
+}
+
+function readLastFullSyncAt() {
+  const row = selectSyncMetaStmt.get("last_full_sync_at");
+  if (!row?.value) return null;
+  const parsed = Number(row.value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+export function getLastFullSyncAt() {
+  return readLastFullSyncAt();
+}
+
+export function getCacheStats() {
+  return {
+    artistCount: getCachedArtistCount(),
+    albumCount: getCachedAlbumCount(),
+    trackCount: getCachedTrackCount(),
+    tracksCacheSize: getTracksCacheSize(),
+    lastFullSyncAt: getLastFullSyncAt(),
+    lastSignalrActivityAt: getLastSignalrActivityAt(),
+  };
 }
 
 function getSettings() {
@@ -1128,10 +1182,7 @@ export class LibraryManager {
   }
 
   getLastFullSyncAt() {
-    const row = selectSyncMetaStmt.get("last_full_sync_at");
-    if (!row?.value) return null;
-    const parsed = Number(row.value);
-    return Number.isNaN(parsed) ? null : parsed;
+    return readLastFullSyncAt();
   }
 
   setLastFullSyncAt(timestamp) {

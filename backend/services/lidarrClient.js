@@ -1116,8 +1116,8 @@ class LidarrSignalRService {
     const relatesToCommand =
       resourceType.includes("command") || messageName.includes("command");
 
-    const { libraryManager } = await import("./libraryManager.js");
     const { websocketService } = await import("./websocketService.js");
+    const { libraryManager, getCacheStats } = await import("./libraryManager.js");
 
     if (relatesToCommand) {
       libraryManager.updateCommandCacheFromSignalR(payload?.__messageBody ?? payload);
@@ -1147,6 +1147,7 @@ class LidarrSignalRService {
         artistMbid,
         albumId,
         albumMbid,
+        cache: getCacheStats(),
       });
       return;
     }
@@ -1169,6 +1170,7 @@ class LidarrSignalRService {
           artistMbid,
           albumId,
           albumMbid,
+          cache: getCacheStats(),
         });
       }
     }
@@ -1184,6 +1186,7 @@ class LidarrSignalRService {
         messageName,
         artistId: updated?.id || artistId,
         artistMbid: updated?.foreignArtistId || artistMbid,
+        cache: getCacheStats(),
       });
     }
 
