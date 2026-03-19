@@ -1,17 +1,174 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Loader, Music, ArrowLeft, CheckCircle2 } from "lucide-react";
+import {
+  Loader,
+  Music,
+  ArrowLeft,
+  CheckCircle2,
+  MoreVertical,
+  Library,
+  Ban,
+  Loader2,
+} from "lucide-react";
 import {
   searchArtists,
   searchArtistsByTag,
   getDiscovery,
   checkHealth,
   lookupArtistsInLibraryBatch,
+  addArtistToLibrary,
+  getBlocklist,
+  updateBlocklist,
 } from "../utils/api";
 import ArtistImage from "../components/ArtistImage";
 import PillToggle from "../components/PillToggle";
+import { useToast } from "../contexts/ToastContext";
 
 const PAGE_SIZE = 24;
+const MBID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const normalizeBlocklistArtists = (artists) => {
+  const source = Array.isArray(artists) ? artists : [];
+  const seen = new Set();
+  const out = [];
+  for (const entry of source) {
+    if (!entry) continue;
+    const entryMbid =
+      typeof entry.mbid === "string" && MBID_REGEX.test(entry.mbid.trim())
+        ? entry.mbid.trim()
+        : null;
+    const entryName = String(entry.name || "").trim();
+    if (!entryMbid && !entryName) continue;
+    const key = entryMbid
+      ? `mbid:${entryMbid.toLowerCase()}`
+      : `name:${entryName.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ mbid: entryMbid, name: entryName || null });
+  }
+  return out;
+};
+
+const isArtistInEntries = (artist, entries) => {
+  const list = Array.isArray(entries) ? entries : [];
+  const artistMbid = String(artist?.id || artist?.mbid || artist?.foreignArtistId || "")
+    .trim()
+    .toLowerCase();
+  const artistName = String(artist?.name || artist?.artistName || "")
+    .trim()
+    .toLowerCase();
+  return list.some((entry) => {
+    const entryMbid = String(entry?.mbid || "")
+      .trim()
+      .toLowerCase();
+    const entryName = String(entry?.name || "")
+      .trim()
+      .toLowerCase();
+    if (artistMbid && entryMbid && artistMbid === entryMbid) return true;
+    if (artistName && entryName && artistName === entryName) return true;
+    return false;
+  });
+};
+
+function ArtistActionsMenu({
+  artist,
+  isInLibrary,
+  isBlocked,
+  onAddToLibrary,
+  onAddToBlocklist,
+}) {
+  const [showMenu, setShowMenu] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!showMenu) return;
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setShowMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showMenu]);
+
+  const handleAddToLibraryClick = async (event) => {
+    event.stopPropagation();
+    if (isInLibrary || pendingAction) return;
+    setPendingAction("library");
+    const added = await onAddToLibrary(artist);
+    if (added) setShowMenu(false);
+    setPendingAction(null);
+  };
+
+  const handleBlocklistClick = async (event) => {
+    event.stopPropagation();
+    if (isBlocked || pendingAction) return;
+    setPendingAction("blocklist");
+    const blocked = await onAddToBlocklist(artist);
+    if (blocked) setShowMenu(false);
+    setPendingAction(null);
+  };
+
+  return (
+    <div
+      ref={menuRef}
+      className="relative shrink-0 opacity-100"
+    >
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          setShowMenu((prev) => !prev);
+        }}
+        className="w-8 h-8 flex items-center justify-center hover:bg-white/10"
+        style={{ color: "#c1c1c3" }}
+        aria-label={`Artist options for ${artist.name}`}
+      >
+        <MoreVertical className="w-4 h-4" />
+      </button>
+      {showMenu && (
+        <div
+          className="absolute right-0 top-full mt-1 w-44 z-30 py-1 border border-white/10 shadow-xl"
+          style={{ backgroundColor: "#2a2830" }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={handleAddToLibraryClick}
+            disabled={isInLibrary || !!pendingAction}
+            className="w-full px-3 py-2 text-left text-sm transition-colors hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            style={{ color: "#fff" }}
+          >
+            {pendingAction === "library" ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Library className="w-4 h-4" />
+            )}
+            {isInLibrary ? "In Library" : "Add to Library"}
+          </button>
+          <button
+            type="button"
+            onClick={handleBlocklistClick}
+            disabled={isBlocked || !!pendingAction}
+            className="w-full px-3 py-2 text-left text-sm transition-colors hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            style={{ color: isBlocked ? "#c1c1c3" : "#fca5a5" }}
+          >
+            {pendingAction === "blocklist" ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Ban className="w-4 h-4" />
+            )}
+            {isBlocked ? "In Blocklist" : "Blocklist Artist"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function SearchResultsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -28,8 +185,10 @@ function SearchResultsPage() {
   const [searchTotalCount, setSearchTotalCount] = useState(0);
   const [lastfmConfigured, setLastfmConfigured] = useState(null);
   const [libraryLookup, setLibraryLookup] = useState({});
+  const [blockedArtists, setBlockedArtists] = useState([]);
   const sentinelRef = useRef(null);
   const navigate = useNavigate();
+  const { showSuccess, showError } = useToast();
 
   const trimmedQuery = useMemo(() => query.trim(), [query]);
   const isTagSearch = useMemo(
@@ -77,6 +236,22 @@ function SearchResultsPage() {
       }
     };
     fetchHealth();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadBlocklist = async () => {
+      try {
+        const data = await getBlocklist();
+        if (!cancelled) {
+          setBlockedArtists(normalizeBlocklistArtists(data?.artists));
+        }
+      } catch {}
+    };
+    loadBlocklist();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -282,6 +457,74 @@ function SearchResultsPage() {
     hasMore,
   ]);
 
+  const handleAddArtistToLibrary = useCallback(
+    async (artist) => {
+      const artistId = getArtistId(artist);
+      const artistName = String(artist?.name || artist?.artistName || "").trim();
+      if (!artistId || !artistName) {
+        showError("Artist information not available");
+        return false;
+      }
+      try {
+        const response = await addArtistToLibrary({
+          foreignArtistId: artistId,
+          artistName,
+        });
+        setLibraryLookup((prev) => ({ ...prev, [artistId]: true }));
+        if (response?.queued) {
+          showSuccess(`Adding ${artistName}...`);
+        } else {
+          showSuccess(`${artistName} added to library`);
+        }
+        return true;
+      } catch (err) {
+        showError(
+          err.response?.data?.message ||
+            err.response?.data?.error ||
+            "Failed to add artist to library",
+        );
+        return false;
+      }
+    },
+    [getArtistId, showError, showSuccess],
+  );
+
+  const handleAddArtistToBlocklist = useCallback(
+    async (artist) => {
+      const artistId = String(getArtistId(artist) || "").trim();
+      const artistName = String(artist?.name || artist?.artistName || "").trim();
+      if (!artistId && !artistName) {
+        showError("Artist information not available");
+        return false;
+      }
+      try {
+        const current = await getBlocklist();
+        const entries = normalizeBlocklistArtists(current?.artists);
+        if (isArtistInEntries(artist, entries)) {
+          setBlockedArtists(entries);
+          showSuccess("Artist already in blocklist");
+          return true;
+        }
+        const artistMbid = MBID_REGEX.test(artistId) ? artistId : null;
+        const nextArtists = [...entries, { mbid: artistMbid, name: artistName || null }];
+        const response = await updateBlocklist({
+          artists: nextArtists,
+          tags: current?.tags || [],
+        });
+        const savedArtists = normalizeBlocklistArtists(
+          response?.blocklist?.artists || nextArtists,
+        );
+        setBlockedArtists(savedArtists);
+        showSuccess("Artist added to blocklist");
+        return true;
+      } catch (err) {
+        showError(err.response?.data?.message || "Failed to update blocklist");
+        return false;
+      }
+    },
+    [getArtistId, showError, showSuccess],
+  );
+
   const onSentinel = useCallback(
     (entries) => {
       if (entries[0]?.isIntersecting) {
@@ -482,6 +725,8 @@ function SearchResultsPage() {
                   ]
                     .filter(Boolean)
                     .join(" • ");
+                  const isInLibrary = !!libraryLookup[artistId];
+                  const isBlocked = isArtistInEntries(artist, blockedArtists);
                   return (
                   <div
                     key={artistId || `artist-${index}`}
@@ -510,44 +755,53 @@ function SearchResultsPage() {
                       />
                     </div>
 
-                    <div className="flex flex-col min-w-0">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <h3
-                          onClick={() =>
-                            navigate(`/artist/${artistId}`, {
-                              state: { artistName: artist.name },
-                            })
-                          }
-                          className="font-semibold truncate hover:underline cursor-pointer"
-                          style={{ color: "#fff" }}
-                          title={artist.name}
-                        >
-                          {artist.name}
-                        </h3>
-                        {libraryLookup[artistId] && (
-                          <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-                        )}
-                      </div>
-
-                      <div
-                        className="flex flex-col min-w-0 text-sm"
-                        style={{ color: "#c1c1c3" }}
-                      >
-                        {artistMetaText && (
-                          <p className="truncate" title={artistMetaText}>
-                            {artistMetaText}
-                          </p>
-                        )}
-
-                        {artist.country && (
-                          <p
-                            className="truncate text-xs opacity-80"
-                            title={artist.country}
+                    <div className="flex items-start gap-2 min-w-0">
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <h3
+                            onClick={() =>
+                              navigate(`/artist/${artistId}`, {
+                                state: { artistName: artist.name },
+                              })
+                            }
+                            className="font-semibold truncate hover:underline cursor-pointer"
+                            style={{ color: "#fff" }}
+                            title={artist.name}
                           >
-                            {artist.country}
-                          </p>
-                        )}
+                            {artist.name}
+                          </h3>
+                          {isInLibrary && (
+                            <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                          )}
+                        </div>
+
+                        <div
+                          className="flex flex-col min-w-0 text-sm"
+                          style={{ color: "#c1c1c3" }}
+                        >
+                          {artistMetaText && (
+                            <p className="truncate" title={artistMetaText}>
+                              {artistMetaText}
+                            </p>
+                          )}
+
+                          {artist.country && (
+                            <p
+                              className="truncate text-xs opacity-80"
+                              title={artist.country}
+                            >
+                              {artist.country}
+                            </p>
+                          )}
+                        </div>
                       </div>
+                      <ArtistActionsMenu
+                        artist={artist}
+                        isInLibrary={isInLibrary}
+                        isBlocked={isBlocked}
+                        onAddToLibrary={handleAddArtistToLibrary}
+                        onAddToBlocklist={handleAddArtistToBlocklist}
+                      />
                     </div>
                   </div>
                   );

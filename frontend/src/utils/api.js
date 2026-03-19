@@ -476,6 +476,42 @@ export const getDiscovery = async (cacheBust = false) => {
   return response.data;
 };
 
+export const getBlocklist = async () => {
+  const response = await api.get("/discover/blocklist");
+  return response.data;
+};
+
+export const updateBlocklist = async ({ artists, tags }) => {
+  const response = await api.put("/discover/blocklist", {
+    artists,
+    tags,
+  });
+  return response.data;
+};
+
+export const addArtistToBlocklist = async ({ mbid = null, name = null } = {}) => {
+  const current = await getBlocklist();
+  const nextArtists = Array.isArray(current.artists) ? [...current.artists] : [];
+  nextArtists.push({ mbid, name });
+  const response = await api.put("/discover/blocklist", {
+    artists: nextArtists,
+    tags: current.tags || [],
+  });
+  return response.data;
+};
+
+export const addTagToBlocklist = async (tag) => {
+  const normalized = String(tag || "").trim();
+  if (!normalized) return null;
+  const current = await getBlocklist();
+  const nextTags = Array.isArray(current.tags) ? [...current.tags, normalized] : [normalized];
+  const response = await api.put("/discover/blocklist", {
+    artists: current.artists || [],
+    tags: nextTags,
+  });
+  return response.data;
+};
+
 export const getRelatedArtists = async (limit = 20) => {
   const response = await api.get("/discover/related", {
     params: { limit },

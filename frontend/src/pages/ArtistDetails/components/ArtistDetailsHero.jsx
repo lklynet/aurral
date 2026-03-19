@@ -13,6 +13,7 @@ import {
   Play,
   Pause,
   Pencil,
+  Ban,
 } from "lucide-react";
 import { getCoverImage, getTagColor, formatLifeSpan, getArtistType } from "../utils";
 import AddToLibraryButton from "../../../components/AddToLibraryButton";
@@ -46,6 +47,9 @@ export function ArtistDetailsHero({
   previewSnappingBack,
   handlePreviewPlay,
   onEditIds,
+  onToggleBlockArtist,
+  blockingArtist,
+  artistBlocked,
 }) {
   const coverImage = getCoverImage(coverImages);
   const lifeSpan = formatLifeSpan(artist["life-span"]);
@@ -97,20 +101,36 @@ export function ArtistDetailsHero({
             <h1 className="text-4xl font-bold mb-2" style={{ color: "#fff" }}>
               {artist.name}
             </h1>
-            {existsInLibrary && (
+            <div className="inline-flex items-center gap-2">
               <button
-                onClick={handleRefreshArtist}
-                disabled={refreshingArtist}
+                type="button"
+                onClick={onToggleBlockArtist}
+                disabled={blockingArtist}
                 className="btn btn-secondary btn-sm p-2 flex-shrink-0"
-                title="Refresh & Scan Artist"
+                title={artistBlocked ? "Remove from blocklist" : "Add to blocklist"}
+                aria-label={artistBlocked ? "Remove from blocklist" : "Add to blocklist"}
               >
-                {refreshingArtist ? (
+                {blockingArtist ? (
                   <Loader className="w-5 h-5 animate-spin" />
                 ) : (
-                  <RefreshCw className="w-5 h-5" />
+                  <Ban className="w-5 h-5" style={{ color: artistBlocked ? "#f87171" : undefined }} />
                 )}
               </button>
-            )}
+              {existsInLibrary && (
+                <button
+                  onClick={handleRefreshArtist}
+                  disabled={refreshingArtist}
+                  className="btn btn-secondary btn-sm p-2 flex-shrink-0"
+                  title="Refresh & Scan Artist"
+                >
+                  {refreshingArtist ? (
+                    <Loader className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-5 h-5" />
+                  )}
+                </button>
+              )}
+            </div>
           </div>
 
           {artist["sort-name"] && artist["sort-name"] !== artist.name && (
@@ -573,4 +593,7 @@ ArtistDetailsHero.propTypes = {
   previewSnappingBack: PropTypes.bool,
   handlePreviewPlay: PropTypes.func,
   onEditIds: PropTypes.func,
+  onToggleBlockArtist: PropTypes.func,
+  blockingArtist: PropTypes.bool,
+  artistBlocked: PropTypes.bool,
 };
