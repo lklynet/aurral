@@ -18,6 +18,7 @@ export const normalizeSettings = (savedSettings) => {
     integrations: {
       lidarr: {
         url: "",
+        externalUrl: "",
         apiKey: "",
         searchOnAdd: false,
         defaultMonitorOption: "none",

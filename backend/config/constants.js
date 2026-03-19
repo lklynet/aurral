@@ -174,6 +174,7 @@ export const defaultData = {
       soulseek: { username: "", password: "" },
       lidarr: {
         url: "",
+        externalUrl: "",
         apiKey: "",
         qualityProfileId: null,
         metadataProfileId: null,
