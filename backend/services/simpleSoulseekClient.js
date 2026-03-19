@@ -3,7 +3,7 @@ import { randomBytes } from "crypto";
 import { dbOps } from "../config/db-helpers.js";
 import path from "path";
 import fs from "fs/promises";
-import { createWriteStream } from "fs";
+import { Readable } from "stream";
 
 export class SimpleSoulseekClient {
   constructor() {
@@ -48,7 +48,6 @@ export class SimpleSoulseekClient {
   }
 
   isConfigured() {
-    this.ensureCredentials();
     this.updateConfig();
     return !!(this.config.username && this.config.password);
   }
@@ -155,6 +154,14 @@ export class SimpleSoulseekClient {
     return 420000;
   }
 
+  _getMatchScanLimit() {
+    const raw = Number(process.env.SOULSEEK_MATCH_SCAN_LIMIT);
+    if (Number.isFinite(raw) && raw >= 50) {
+      return Math.min(Math.floor(raw), 1000);
+    }
+    return 150;
+  }
+
   async search(artistName, trackName) {
     if (!this.isConnected()) {
       await this.connect();
@@ -188,7 +195,13 @@ export class SimpleSoulseekClient {
     if (!Array.isArray(results) || results.length === 0) {
       return [];
     }
-    const trackNameLower = String(trackName || "").toLowerCase().trim();
+    const max = Number.isFinite(Number(limit)) ? Math.max(1, Number(limit)) : 5;
+    const scanLimit = this._getMatchScanLimit();
+    const source =
+      results.length > scanLimit ? results.slice(0, scanLimit) : results;
+    const trackNameLower = String(trackName || "")
+      .toLowerCase()
+      .trim();
     const qualityOrder = { ".flac": 0, ".mp3": 1, ".m4a": 2, ".ogg": 3 };
     const score = (item) => {
       const file = String(item?.file || "").toLowerCase();
@@ -197,7 +210,8 @@ export class SimpleSoulseekClient {
       const hasTrack = trackNameLower ? file.includes(trackNameLower) : false;
       const hasSlots = item?.slots ? 0 : 1;
       const fileSize = Number(item?.size || 0);
-      const sizePenalty = fileSize > 0 ? Math.max(0, 500000 - fileSize) : 500000;
+      const sizePenalty =
+        fileSize > 0 ? Math.max(0, 500000 - fileSize) : 500000;
       return {
         hasTrack: hasTrack ? 0 : 1,
         quality,
@@ -205,20 +219,37 @@ export class SimpleSoulseekClient {
         sizePenalty,
       };
     };
-    const ranked = [...results].sort((a, b) => {
-      const sa = score(a);
-      const sb = score(b);
+    const compareScore = (sa, sb) => {
       if (sa.hasTrack !== sb.hasTrack) return sa.hasTrack - sb.hasTrack;
       if (sa.quality !== sb.quality) return sa.quality - sb.quality;
       if (sa.hasSlots !== sb.hasSlots) return sa.hasSlots - sb.hasSlots;
-      if (sa.sizePenalty !== sb.sizePenalty) return sa.sizePenalty - sb.sizePenalty;
+      if (sa.sizePenalty !== sb.sizePenalty)
+        return sa.sizePenalty - sb.sizePenalty;
       return 0;
-    });
-    const max = Number.isFinite(Number(limit)) ? Math.max(1, Number(limit)) : 5;
-    return ranked.slice(0, max);
+    };
+    const top = [];
+    const topScores = [];
+    for (const item of source) {
+      const itemScore = score(item);
+      let insertAt = top.length;
+      for (let i = 0; i < top.length; i += 1) {
+        if (compareScore(itemScore, topScores[i]) < 0) {
+          insertAt = i;
+          break;
+        }
+      }
+      if (insertAt >= max && top.length >= max) continue;
+      top.splice(insertAt, 0, item);
+      topScores.splice(insertAt, 0, itemScore);
+      if (top.length > max) {
+        top.pop();
+        topScores.pop();
+      }
+    }
+    return top;
   }
 
-  async download(result, destinationPath) {
+  async download(result, destinationPath, onProgress = null) {
     await this.connect();
 
     const absPath = path.resolve(destinationPath);
@@ -226,11 +257,48 @@ export class SimpleSoulseekClient {
     await fs.mkdir(dir, { recursive: true });
 
     const DOWNLOAD_TIMEOUT_MS = this._getDownloadTimeoutMs();
+    const expectedBytes = Number(result?.size || 0);
+    const progressEnabled =
+      typeof onProgress === "function" && expectedBytes > 0;
 
     try {
       const filePath = await new Promise((resolve, reject) => {
         let settled = false;
         let timeoutId = null;
+        let lastProgress = -1;
+        let downloadedBytes = 0;
+        let lastProgressEmitAt = 0;
+        const progressStream = progressEnabled
+          ? new Readable({
+              read() {},
+            })
+          : null;
+        const emitProgress = (value) => {
+          if (!progressEnabled) return;
+          const next = Math.max(
+            0,
+            Math.min(100, Math.floor(Number(value) || 0)),
+          );
+          if (next <= lastProgress) return;
+          lastProgress = next;
+          onProgress(next);
+        };
+        if (progressStream) {
+          progressStream.on("data", (chunk) => {
+            const size = Buffer.isBuffer(chunk)
+              ? chunk.length
+              : Number(chunk?.length || 0);
+            if (!Number.isFinite(size) || size <= 0) return;
+            downloadedBytes += size;
+            const now = Date.now();
+            const pct = Math.floor((downloadedBytes / expectedBytes) * 100);
+            const bounded = Math.max(0, Math.min(99, pct));
+            if (bounded > lastProgress && now - lastProgressEmitAt >= 750) {
+              lastProgressEmitAt = now;
+              emitProgress(bounded);
+            }
+          });
+        }
 
         const settle = (fn) => (val) => {
           if (settled) return;
@@ -249,26 +317,22 @@ export class SimpleSoulseekClient {
           }
         }, DOWNLOAD_TIMEOUT_MS);
 
-        this.client.downloadStream({ file: result }, (err, readStream) => {
-          if (err) {
-            settle(reject)(err);
-            return;
-          }
-
-          const writeStream = createWriteStream(absPath);
-
-          writeStream.on("error", (e) => {
-            if (e.code === "ERR_STREAM_DESTROYED" || settled) return;
-            settle(reject)(e);
-          });
-          readStream.on("error", (e) => {
-            if (e.code === "ERR_STREAM_DESTROYED" || settled) return;
-            settle(reject)(e);
-          });
-          writeStream.on("finish", () => settle(resolve)(absPath));
-
-          readStream.pipe(writeStream);
-        });
+        this.client.download(
+          { file: result, path: absPath },
+          (err, down) => {
+            if (err) {
+              settle(reject)(err);
+              return;
+            }
+            emitProgress(100);
+            const resolvedPath =
+              typeof down?.path === "string" && down.path.trim()
+                ? path.resolve(down.path)
+                : absPath;
+            settle(resolve)(resolvedPath);
+          },
+          progressStream || undefined,
+        );
       });
 
       return filePath;

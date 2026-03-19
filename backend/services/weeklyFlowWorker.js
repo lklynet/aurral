@@ -5,34 +5,37 @@ import { soulseekClient } from "./simpleSoulseekClient.js";
 import { playlistManager } from "./weeklyFlowPlaylistManager.js";
 import { flowPlaylistConfig } from "./weeklyFlowPlaylistConfig.js";
 
-const parsedConcurrency = Number(process.env.WEEKLY_FLOW_CONCURRENCY);
-const CONCURRENCY =
-  Number.isFinite(parsedConcurrency) && parsedConcurrency > 0
-    ? Math.min(Math.floor(parsedConcurrency), 4)
-    : 1;
+const CONCURRENCY = 1;
 const JOB_COOLDOWN_MS = 2000;
-const parsedSearchRounds = Number(process.env.WEEKLY_FLOW_SEARCH_ROUNDS);
-const SEARCH_ROUNDS =
-  Number.isFinite(parsedSearchRounds) && parsedSearchRounds > 0
-    ? Math.min(Math.floor(parsedSearchRounds), 4)
-    : 2;
-const parsedCandidateCount = Number(process.env.WEEKLY_FLOW_MATCH_CANDIDATES);
-const MAX_MATCH_CANDIDATES =
-  Number.isFinite(parsedCandidateCount) && parsedCandidateCount > 0
-    ? Math.min(Math.floor(parsedCandidateCount), 8)
-    : 4;
+const SEARCH_ROUNDS = 1;
+const MAX_MATCH_CANDIDATES = 3;
 const FALLBACK_MP3_REGEX = /^[^/\\]+-[a-f0-9]{8}\.mp3$/i;
+const ENABLE_METADATA_ALBUM_PARSE = false;
+const FALLBACK_SWEEP_INTERVAL_MS = 60000;
+const MAX_RETRIES_PER_JOB = 1;
 
 export class WeeklyFlowWorker {
-  constructor(weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER || "/app/downloads") {
+  constructor(
+    weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER || "/app/downloads",
+  ) {
     this.weeklyFlowRoot = path.isAbsolute(weeklyFlowRoot)
       ? weeklyFlowRoot
       : path.resolve(process.cwd(), weeklyFlowRoot);
     this.running = false;
     this.activeCount = 0;
+    this.lastFallbackSweepAt = 0;
+    this.processLoop = null;
+    this.processTimer = null;
+    this.retryAttempts = new Map();
+    this.currentJob = null;
   }
 
-  async moveFallbackMp3sToDir() {
+  async moveFallbackMp3sToDir(force = false) {
+    const now = Date.now();
+    if (!force && now - this.lastFallbackSweepAt < FALLBACK_SWEEP_INTERVAL_MS) {
+      return;
+    }
+    this.lastFallbackSweepAt = now;
     const cwd = process.cwd();
     if (path.resolve(cwd) === path.resolve(this.weeklyFlowRoot)) return;
     const fallbackDir = path.join(this.weeklyFlowRoot, "_fallback");
@@ -63,9 +66,9 @@ export class WeeklyFlowWorker {
 
     this.running = true;
     console.log("[WeeklyFlowWorker] Starting worker...");
-    await this.moveFallbackMp3sToDir();
+    await this.moveFallbackMp3sToDir(true);
 
-    const processLoop = () => {
+    this.processLoop = () => {
       if (!this.running) return;
 
       while (this.activeCount < CONCURRENCY) {
@@ -73,8 +76,23 @@ export class WeeklyFlowWorker {
         if (!job) break;
 
         this.activeCount++;
+        this.currentJob = {
+          id: job.id,
+          playlistType: job.playlistType,
+          artistName: job.artistName,
+          trackName: job.trackName,
+          progressPct: 0,
+          startedAt: Date.now(),
+        };
         this.processJob(job)
           .catch(async (error) => {
+            const attempts = Number(this.retryAttempts.get(job.id) || 0);
+            if (attempts < MAX_RETRIES_PER_JOB) {
+              this.retryAttempts.set(job.id, attempts + 1);
+              downloadTracker.setPending(job.id, error.message);
+              return;
+            }
+            this.retryAttempts.delete(job.id);
             console.error(
               `[WeeklyFlowWorker] Error processing job ${job.id}:`,
               error.message,
@@ -84,13 +102,21 @@ export class WeeklyFlowWorker {
           })
           .finally(() => {
             this.activeCount--;
-            this.moveFallbackMp3sToDir().catch(() => {});
-            if (this.running) setTimeout(processLoop, JOB_COOLDOWN_MS);
+            if (this.activeCount <= 0) {
+              this.currentJob = null;
+            }
+            this.moveFallbackMp3sToDir(false).catch(() => {});
+            if (this.running && !this.processTimer) {
+              this.processTimer = setTimeout(() => {
+                this.processTimer = null;
+                if (this.processLoop) this.processLoop();
+              }, JOB_COOLDOWN_MS);
+            }
           });
       }
     };
 
-    processLoop();
+    this.processLoop();
   }
 
   stop() {
@@ -99,13 +125,22 @@ export class WeeklyFlowWorker {
     }
 
     this.running = false;
+    if (this.processTimer) {
+      clearTimeout(this.processTimer);
+      this.processTimer = null;
+    }
+    this.processLoop = null;
+    this.retryAttempts.clear();
+    this.currentJob = null;
     downloadTracker.resetDownloadingToPending();
     soulseekClient.disconnect().catch(() => {});
     console.log("[WeeklyFlowWorker] Worker stopped");
   }
 
   _normalizeAlbumName(value) {
-    const text = String(value || "").replace(/\u0000/g, "").trim();
+    const text = String(value || "")
+      .replace(/\u0000/g, "")
+      .trim();
     return text || null;
   }
 
@@ -284,6 +319,7 @@ export class WeeklyFlowWorker {
 
       let selectedMatch = null;
       let selectedExt = ".mp3";
+      let downloadedSourcePath = null;
       let lastError = null;
 
       await new Promise((r) => setImmediate(r));
@@ -309,7 +345,14 @@ export class WeeklyFlowWorker {
               ? extFromSoulseek
               : ".mp3";
           try {
-            await soulseekClient.download(candidate, stagingFilePath);
+            downloadedSourcePath = await soulseekClient.download(
+              candidate,
+              stagingFilePath,
+              (progressPct) => {
+                if (!this.currentJob || this.currentJob.id !== job.id) return;
+                this.currentJob.progressPct = progressPct;
+              },
+            );
             selectedMatch = candidate;
             selectedExt = ext;
             lastError = null;
@@ -326,14 +369,14 @@ export class WeeklyFlowWorker {
         throw lastError || new Error("No suitable match found");
       }
 
-      const downloadedFiles = await fs.readdir(stagingDir);
-      if (downloadedFiles.length === 0) {
+      const sourcePath =
+        typeof downloadedSourcePath === "string" && downloadedSourcePath
+          ? downloadedSourcePath
+          : null;
+      if (!sourcePath) {
         throw new Error("Download completed but no file found");
       }
-
-      const downloadedFile = downloadedFiles[0];
-      const sourcePath = path.join(stagingDir, downloadedFile);
-      const downloadedExt = path.extname(downloadedFile).toLowerCase();
+      const downloadedExt = path.extname(sourcePath).toLowerCase();
       const finalExt =
         downloadedExt && /^\.(flac|mp3|m4a|ogg|wav)$/i.test(downloadedExt)
           ? downloadedExt
@@ -345,12 +388,13 @@ export class WeeklyFlowWorker {
 
       const artistDir = sanitize(job.artistName);
       const albumFromApi = this._normalizeAlbumName(job.albumName);
-      const albumFromMetadata = albumFromApi
-        ? null
-        : await this._readAlbumFromMetadata(sourcePath);
       const albumFromPath = this._parseAlbumFromPath(selectedMatch.file);
+      const albumFromMetadata =
+        !ENABLE_METADATA_ALBUM_PARSE || albumFromApi || albumFromPath
+          ? null
+          : await this._readAlbumFromMetadata(sourcePath);
       const resolvedAlbum =
-        albumFromApi || albumFromMetadata || albumFromPath || "Unknown Album";
+        albumFromApi || albumFromPath || albumFromMetadata || "Unknown Album";
       const albumDir = sanitize(resolvedAlbum);
       const finalDir = path.join(
         this.weeklyFlowRoot,
@@ -367,9 +411,8 @@ export class WeeklyFlowWorker {
 
       await fs.rm(stagingDir, { recursive: true, force: true });
 
-      playlistManager.updateConfig(false);
-
       downloadTracker.setDone(job.id, finalPath, resolvedAlbum);
+      this.retryAttempts.delete(job.id);
       console.log(`[WeeklyFlowWorker] Job ${job.id} completed: ${finalPath}`);
 
       await this.checkPlaylistComplete(job.playlistType);
@@ -386,11 +429,10 @@ export class WeeklyFlowWorker {
   }
 
   async checkPlaylistComplete(playlistType) {
-    const jobs = downloadTracker.getByPlaylistType(playlistType);
-    const allDone = jobs.every(
-      (j) => j.status === "done" || j.status === "failed",
-    );
-    const hasDone = jobs.some((j) => j.status === "done");
+    const stats = downloadTracker.getPlaylistTypeStats(playlistType);
+    const allDone =
+      stats.total > 0 && stats.pending === 0 && stats.downloading === 0;
+    const hasDone = stats.done > 0;
 
     if (allDone && hasDone) {
       console.log(
@@ -415,11 +457,9 @@ export class WeeklyFlowWorker {
           error.message,
         );
       }
-      const completed = jobs.filter((j) => j.status === "done").length;
-      const failed = jobs.filter((j) => j.status === "failed").length;
-      const { notifyWeeklyFlowDone } = await import(
-        "./notificationService.js"
-      );
+      const completed = stats.done;
+      const failed = stats.failed;
+      const { notifyWeeklyFlowDone } = await import("./notificationService.js");
       notifyWeeklyFlowDone(playlistType, { completed, failed }).catch((err) =>
         console.warn(
           "[WeeklyFlowWorker] Gotify notification failed:",
@@ -438,6 +478,7 @@ export class WeeklyFlowWorker {
       processing: this.activeCount > 0,
       activeCount: this.activeCount,
       stats: downloadTracker.getStats(),
+      currentJob: this.currentJob,
     };
   }
 }

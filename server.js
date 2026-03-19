@@ -258,8 +258,14 @@ websocketService.initialize(httpServer);
 
 const DOWNLOAD_STATUS_INTERVAL_MS = 10000;
 let lastDownloadStatusesPayload = null;
+const hasWsSubscribers = (channel) => {
+  const stats = websocketService.getStats();
+  const total = Number(stats?.channels?.[channel] || 0);
+  return total > 0;
+};
 const broadcastDownloadStatuses = async () => {
   try {
+    if (!hasWsSubscribers("downloads")) return;
     const statuses = await getAllDownloadStatuses();
     const payload = JSON.stringify(statuses);
     if (payload !== lastDownloadStatusesPayload) {
@@ -278,6 +284,7 @@ const WEEKLY_FLOW_STATUS_INTERVAL_MS = 4000;
 let lastWeeklyFlowStatusPayload = null;
 const broadcastWeeklyFlowStatus = async () => {
   try {
+    if (!hasWsSubscribers("weekly-flow")) return;
     const status = getWeeklyFlowStatusSnapshot();
     const payload = JSON.stringify(status);
     if (payload !== lastWeeklyFlowStatusPayload) {

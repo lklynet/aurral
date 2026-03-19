@@ -108,8 +108,14 @@ const queueFlowEnableRefresh = (flowId, mutationVersion) => {
         return;
       }
 
-      weeklyFlowWorker.stop();
-      playlistManager.updateConfig();
+      const flowStats = downloadTracker.getPlaylistTypeStats(flowId);
+      const shouldStopWorker =
+        weeklyFlowWorker.running &&
+        (flowStats.pending > 0 || flowStats.downloading > 0);
+      if (shouldStopWorker) {
+        weeklyFlowWorker.stop();
+      }
+      playlistManager.updateConfig(false);
       await playlistManager.weeklyReset([flowId]);
       downloadTracker.clearByPlaylistType(flowId);
 
@@ -117,6 +123,12 @@ const queueFlowEnableRefresh = (flowId, mutationVersion) => {
         flowEnableMutationVersion.get(flowId) !== mutationVersion ||
         !flowPlaylistConfig.isEnabled(flowId)
       ) {
+        if (shouldStopWorker) {
+          const stillPending = downloadTracker.getNextPending();
+          if (stillPending && !weeklyFlowWorker.running) {
+            await weeklyFlowWorker.start();
+          }
+        }
         return;
       }
 
@@ -131,7 +143,15 @@ const queueFlowEnableRefresh = (flowId, mutationVersion) => {
         return;
       }
 
-      if (tracks.length === 0) return;
+      if (tracks.length === 0) {
+        if (shouldStopWorker) {
+          const stillPending = downloadTracker.getNextPending();
+          if (stillPending && !weeklyFlowWorker.running) {
+            await weeklyFlowWorker.start();
+          }
+        }
+        return;
+      }
       downloadTracker.addJobs(tracks, flowId);
       if (!weeklyFlowWorker.running) {
         await weeklyFlowWorker.start();
@@ -152,8 +172,14 @@ const queueFlowDisableCleanup = (flowId, mutationVersion) => {
         return;
       }
 
-      weeklyFlowWorker.stop();
-      playlistManager.updateConfig();
+      const flowStats = downloadTracker.getPlaylistTypeStats(flowId);
+      const shouldStopWorker =
+        weeklyFlowWorker.running &&
+        (flowStats.pending > 0 || flowStats.downloading > 0);
+      if (shouldStopWorker) {
+        weeklyFlowWorker.stop();
+      }
+      playlistManager.updateConfig(false);
       await playlistManager.weeklyReset([flowId]);
       downloadTracker.clearByPlaylistType(flowId);
 
@@ -324,7 +350,7 @@ router.delete("/flows/:flowId", async (req, res) => {
           return false;
         }
         weeklyFlowWorker.stop();
-        playlistManager.updateConfig();
+        playlistManager.updateConfig(false);
         await playlistManager.weeklyReset([flowId]);
         downloadTracker.clearByPlaylistType(flowId);
         const didDelete = flowPlaylistConfig.deleteFlow(flowId);
@@ -461,7 +487,7 @@ router.post("/reset", async (req, res) => {
 
     await weeklyFlowOperationQueue.enqueue("reset:manual", async () => {
       weeklyFlowWorker.stop();
-      playlistManager.updateConfig();
+      playlistManager.updateConfig(false);
       await playlistManager.weeklyReset(types);
     });
 
@@ -479,7 +505,7 @@ router.post("/reset", async (req, res) => {
 
 router.post("/playlist/:playlistType/create", async (req, res) => {
   try {
-    playlistManager.updateConfig();
+    playlistManager.updateConfig(false);
     await playlistManager.ensureSmartPlaylists();
     res.json({
       success: true,

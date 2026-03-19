@@ -14,23 +14,34 @@ export class WeeklyFlowPlaylistManager {
       : path.resolve(process.cwd(), weeklyFlowRoot);
     this.libraryRoot = path.join(this.weeklyFlowRoot, "aurral-weekly-flow");
     this.navidromeClient = null;
+    this._navidromeConfigKey = "";
+    this._ensureInFlight = null;
     this.updateConfig();
   }
 
   updateConfig(triggerEnsurePlaylists = true) {
     const settings = dbOps.getSettings();
     const navidromeConfig = settings.integrations?.navidrome || {};
+    const nextConfigKey = JSON.stringify({
+      url: navidromeConfig.url || "",
+      username: navidromeConfig.username || "",
+      password: navidromeConfig.password || "",
+    });
+    const configChanged = this._navidromeConfigKey !== nextConfigKey;
+    this._navidromeConfigKey = nextConfigKey;
 
     if (
       navidromeConfig.url &&
       navidromeConfig.username &&
       navidromeConfig.password
     ) {
-      this.navidromeClient = new NavidromeClient(
-        navidromeConfig.url,
-        navidromeConfig.username,
-        navidromeConfig.password
-      );
+      if (!this.navidromeClient || configChanged) {
+        this.navidromeClient = new NavidromeClient(
+          navidromeConfig.url,
+          navidromeConfig.username,
+          navidromeConfig.password
+        );
+      }
     } else {
       this.navidromeClient = null;
     }
@@ -57,6 +68,18 @@ export class WeeklyFlowPlaylistManager {
   }
 
   async ensureSmartPlaylists() {
+    if (this._ensureInFlight) {
+      return this._ensureInFlight;
+    }
+    this._ensureInFlight = this._ensureSmartPlaylistsInternal();
+    try {
+      return await this._ensureInFlight;
+    } finally {
+      this._ensureInFlight = null;
+    }
+  }
+
+  async _ensureSmartPlaylistsInternal() {
     const flows = flowPlaylistConfig.getFlows();
     let libraryId = null;
     let playlists = null;

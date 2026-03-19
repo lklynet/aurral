@@ -2,6 +2,7 @@ class WeeklyFlowOperationQueue {
   constructor() {
     this.queue = [];
     this.processing = false;
+    this.currentLabel = null;
   }
 
   enqueue(label, operation) {
@@ -17,6 +18,7 @@ class WeeklyFlowOperationQueue {
     while (this.queue.length > 0) {
       const next = this.queue.shift();
       if (!next) continue;
+      this.currentLabel = next.label || null;
       try {
         const result = await next.operation();
         next.resolve(result);
@@ -24,6 +26,7 @@ class WeeklyFlowOperationQueue {
         next.reject(error);
       }
     }
+    this.currentLabel = null;
     this.processing = false;
   }
 
@@ -31,6 +34,7 @@ class WeeklyFlowOperationQueue {
     return {
       processing: this.processing,
       pending: this.queue.length,
+      currentLabel: this.currentLabel,
     };
   }
 }

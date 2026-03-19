@@ -705,27 +705,35 @@ export class WeeklyFlowPlaylistSource {
         : this._buildCounts(limit, flow?.mix);
     const perTypeLimit = totalTarget > 0 ? Math.max(totalTarget, 50) : 0;
     const blocklist = this._getBlocklist();
+    const sourceNeed = {
+      discover: Number(counts?.discover || 0) > 0,
+      mix: Number(counts?.mix || 0) > 0,
+      trending: Number(counts?.trending || 0) > 0,
+    };
 
-    const [discoverTracks, mixTracks, trendingTracks] =
-      perTypeLimit > 0
-        ? await Promise.all([
-            this.getDiscoverTracks(perTypeLimit, {
-              deepDive: flow?.deepDive === true,
-              reason: "From discovery recommendations",
-              blocklist,
-            }).catch(() => []),
-            this.getMixTracks(perTypeLimit, {
-              deepDive: flow?.deepDive === true,
-              reason: "From your library mix",
-              blocklist,
-            }).catch(() => []),
-            this.getTrendingTracks(perTypeLimit, {
-              deepDive: flow?.deepDive === true,
-              reason: "From trending artists",
-              blocklist,
-            }).catch(() => []),
-          ])
-        : [[], [], []];
+    const [discoverTracks, mixTracks, trendingTracks] = await Promise.all([
+      sourceNeed.discover && perTypeLimit > 0
+        ? this.getDiscoverTracks(perTypeLimit, {
+            deepDive: flow?.deepDive === true,
+            reason: "From discovery recommendations",
+            blocklist,
+          }).catch(() => [])
+        : [],
+      sourceNeed.mix && perTypeLimit > 0
+        ? this.getMixTracks(perTypeLimit, {
+            deepDive: flow?.deepDive === true,
+            reason: "From your library mix",
+            blocklist,
+          }).catch(() => [])
+        : [],
+      sourceNeed.trending && perTypeLimit > 0
+        ? this.getTrendingTracks(perTypeLimit, {
+            deepDive: flow?.deepDive === true,
+            reason: "From trending artists",
+            blocklist,
+          }).catch(() => [])
+        : [],
+    ]);
 
     const tagSources = await Promise.all(
       Object.entries(tags).map(async ([tag, count]) => ({

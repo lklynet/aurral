@@ -1,10 +1,10 @@
 import PropTypes from "prop-types";
 import "./PillToggle.css";
 
-function PillToggle({ checked, onChange, disabled, id }) {
+function PillToggle({ checked, onChange, disabled, id, className }) {
   const inputId = id || `pill-toggle-${Math.random().toString(36).slice(2)}`;
   return (
-    <div className="pill-toggle">
+    <div className={`pill-toggle ${className || ""}`.trim()}>
       <input
         type="checkbox"
         id={inputId}
@@ -22,6 +22,7 @@ PillToggle.propTypes = {
   onChange: PropTypes.func.isRequired,
   disabled: PropTypes.bool,
   id: PropTypes.string,
+  className: PropTypes.string,
 };
 
 export default PillToggle;

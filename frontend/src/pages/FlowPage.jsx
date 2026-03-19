@@ -500,13 +500,22 @@ function FlowPage() {
   }, [fetchStatus]);
 
   useEffect(() => {
-    if (!status?.worker?.running) return;
+    if (isFlowSocketConnected) {
+      fetchStatus();
+    }
+  }, [isFlowSocketConnected, fetchStatus]);
+
+  useEffect(() => {
+    const workerRunning = status?.worker?.running === true;
+    const hintPhase = status?.hint?.phase;
+    const inTransition = hintPhase === "preparing" || hintPhase === "downloading";
+    if (!workerRunning && !inTransition) return;
     const hasRecentWsUpdate =
       Date.now() - lastFlowWsMessageAtRef.current < 20000;
     if (isFlowSocketConnected && hasRecentWsUpdate) return;
     const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
-  }, [status?.worker?.running, isFlowSocketConnected, fetchStatus]);
+  }, [status?.worker?.running, status?.hint?.phase, isFlowSocketConnected, fetchStatus]);
 
   useEffect(() => {
     if (!status?.worker?.running || !status?.flows?.length) return;
@@ -919,14 +928,14 @@ function FlowPage() {
         isSocketConnected={isFlowSocketConnected}
       />
 
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-xs uppercase tracking-[0.35em] text-[#8b8b90]">
-          Playlists
-        </h2>
-        <div className="flex items-center gap-2">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-end gap-2">
+          <h2 className="text-base font-semibold text-white">Playlists</h2>
           <span className="text-xs text-[#c1c1c3]">
-            {effectiveFlowList.length} flows
+            {effectiveFlowList.length} total
           </span>
+        </div>
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleStartOrStopAll}
@@ -947,7 +956,7 @@ function FlowPage() {
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         {effectiveFlowList.length === 0 && (
           <FlowEmptyState onCreate={handleCreateInline} creating={creating} />
         )}
@@ -970,6 +979,7 @@ function FlowPage() {
               enabled={enabled}
               state={state}
               stats={stats}
+              currentJob={status?.worker?.currentJob}
               nextRun={nextRun}
               isEditing={isEditing}
               isTracksOpen={tracksExpandedId === flow.id}
