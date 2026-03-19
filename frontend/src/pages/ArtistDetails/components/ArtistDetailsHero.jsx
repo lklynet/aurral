@@ -55,7 +55,9 @@ export function ArtistDetailsHero({
     libraryArtist?.foreignArtistId ||
     libraryArtist?.mbid ||
     artist?._lidarrData?.foreignArtistId;
-  const lidarrUrl = appSettings?.integrations?.lidarr?.url;
+  const lidarrUrl =
+    appSettings?.integrations?.lidarr?.externalUrl ||
+    appSettings?.integrations?.lidarr?.url;
   const lidarrArtistLink =
     lidarrUrl && lidarrArtistId
       ? `${lidarrUrl.replace(/\/$/, "")}/${

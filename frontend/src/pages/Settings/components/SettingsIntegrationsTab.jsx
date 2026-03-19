@@ -250,6 +250,36 @@ export function SettingsIntegrationsTab({
                 className="block text-sm font-medium mb-1"
                 style={{ color: "#fff" }}
               >
+                External URL (Optional)
+              </label>
+              <input
+                type="url"
+                className="input"
+                placeholder="https://lidarr.example.com"
+                autoComplete="off"
+                value={settings.integrations?.lidarr?.externalUrl || ""}
+                onChange={(e) =>
+                  updateSettings({
+                    ...settings,
+                    integrations: {
+                      ...settings.integrations,
+                      lidarr: {
+                        ...(settings.integrations?.lidarr || {}),
+                        externalUrl: e.target.value,
+                      },
+                    },
+                  })
+                }
+              />
+              <p className="mt-1 text-xs" style={{ color: "#c1c1c3" }}>
+                Used only for View on Lidarr links in your browser.
+              </p>
+            </div>
+            <div>
+              <label
+                className="block text-sm font-medium mb-1"
+                style={{ color: "#fff" }}
+              >
                 API Key
               </label>
               <div className="flex gap-2">
