@@ -4,72 +4,74 @@ import { decryptIntegrations, encryptIntegrations } from "./encryption.js";
 
 const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
 const upsertSettingStmt = db.prepare(
-  "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)"
+  "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
 );
 
 const getDiscoveryCacheStmt = db.prepare(
-  "SELECT value, last_updated FROM discovery_cache WHERE key = ?"
+  "SELECT value, last_updated FROM discovery_cache WHERE key = ?",
 );
 const getDiscoveryCacheLastUpdatedStmt = db.prepare(
-  "SELECT last_updated FROM discovery_cache ORDER BY last_updated DESC LIMIT 1"
+  "SELECT last_updated FROM discovery_cache ORDER BY last_updated DESC LIMIT 1",
 );
 const upsertDiscoveryCacheStmt = db.prepare(
-  "INSERT OR REPLACE INTO discovery_cache (key, value, last_updated) VALUES (?, ?, ?)"
+  "INSERT OR REPLACE INTO discovery_cache (key, value, last_updated) VALUES (?, ?, ?)",
 );
 
 const getImageStmt = db.prepare("SELECT * FROM images_cache WHERE mbid = ?");
 const upsertImageStmt = db.prepare(
-  "INSERT OR REPLACE INTO images_cache (mbid, image_url, cache_age, created_at) VALUES (?, ?, ?, ?)"
+  "INSERT OR REPLACE INTO images_cache (mbid, image_url, cache_age, created_at) VALUES (?, ?, ?, ?)",
 );
 const getAllImagesStmt = db.prepare("SELECT * FROM images_cache");
-const countImagesStmt = db.prepare("SELECT COUNT(*) as count FROM images_cache");
+const countImagesStmt = db.prepare(
+  "SELECT COUNT(*) as count FROM images_cache",
+);
 const deleteImageStmt = db.prepare("DELETE FROM images_cache WHERE mbid = ?");
 const clearImagesStmt = db.prepare("DELETE FROM images_cache");
 const cleanOldImagesStmt = db.prepare(
-  "DELETE FROM images_cache WHERE cache_age < ?"
+  "DELETE FROM images_cache WHERE cache_age < ?",
 );
 
 // NOT_FOUND entries expire after 7 days so covers added later get picked up
 const NOT_FOUND_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const getDeezerMbidCacheStmt = db.prepare(
-  "SELECT mbid FROM deezer_mbid_cache WHERE cache_key = ?"
+  "SELECT mbid FROM deezer_mbid_cache WHERE cache_key = ?",
 );
 const setDeezerMbidCacheStmt = db.prepare(
-  "INSERT OR REPLACE INTO deezer_mbid_cache (cache_key, mbid) VALUES (?, ?)"
+  "INSERT OR REPLACE INTO deezer_mbid_cache (cache_key, mbid) VALUES (?, ?)",
 );
 const getMusicbrainzArtistMbidCacheStmt = db.prepare(
-  "SELECT mbid, updated_at FROM musicbrainz_artist_mbid_cache WHERE artist_name_key = ?"
+  "SELECT mbid, updated_at FROM musicbrainz_artist_mbid_cache WHERE artist_name_key = ?",
 );
 const setMusicbrainzArtistMbidCacheStmt = db.prepare(
-  "INSERT OR REPLACE INTO musicbrainz_artist_mbid_cache (artist_name_key, mbid, updated_at) VALUES (?, ?, ?)"
+  "INSERT OR REPLACE INTO musicbrainz_artist_mbid_cache (artist_name_key, mbid, updated_at) VALUES (?, ?, ?)",
 );
 const cleanOldMusicbrainzArtistMbidCacheStmt = db.prepare(
-  "DELETE FROM musicbrainz_artist_mbid_cache WHERE updated_at < ?"
+  "DELETE FROM musicbrainz_artist_mbid_cache WHERE updated_at < ?",
 );
 
 const getArtistOverrideStmt = db.prepare(
-  "SELECT * FROM artist_overrides WHERE mbid = ?"
+  "SELECT * FROM artist_overrides WHERE mbid = ?",
 );
 const upsertArtistOverrideStmt = db.prepare(
-  "INSERT OR REPLACE INTO artist_overrides (mbid, musicbrainz_id, deezer_artist_id, updated_at) VALUES (?, ?, ?, ?)"
+  "INSERT OR REPLACE INTO artist_overrides (mbid, musicbrainz_id, deezer_artist_id, updated_at) VALUES (?, ?, ?, ?)",
 );
 const deleteArtistOverrideStmt = db.prepare(
-  "DELETE FROM artist_overrides WHERE mbid = ?"
+  "DELETE FROM artist_overrides WHERE mbid = ?",
 );
 
 const getUserByUsernameStmt = db.prepare(
-  "SELECT * FROM users WHERE username = ?"
+  "SELECT * FROM users WHERE username = ?",
 );
 const getAllUsersStmt = db.prepare(
-  "SELECT id, username, role, permissions FROM users ORDER BY username"
+  "SELECT id, username, role, permissions FROM users ORDER BY username",
 );
 const getUserByIdStmt = db.prepare("SELECT * FROM users WHERE id = ?");
 const insertUserStmt = db.prepare(
-  "INSERT INTO users (username, password_hash, role, permissions) VALUES (?, ?, ?, ?)"
+  "INSERT INTO users (username, password_hash, role, permissions) VALUES (?, ?, ?, ?)",
 );
 const updateUserStmt = db.prepare(
-  "UPDATE users SET username = ?, password_hash = ?, role = ?, permissions = ? WHERE id = ?"
+  "UPDATE users SET username = ?, password_hash = ?, role = ?, permissions = ? WHERE id = ?",
 );
 const deleteUserStmt = db.prepare("DELETE FROM users WHERE id = ?");
 
@@ -87,7 +89,7 @@ export const userOps = {
   },
   getUserByUsername(username) {
     const row = getUserByUsernameStmt.get(
-      String(username).trim().toLowerCase()
+      String(username).trim().toLowerCase(),
     );
     if (!row) return null;
     return {
@@ -135,7 +137,7 @@ export const userOps = {
         un.toLowerCase(),
         passwordHash,
         role,
-        dbHelpers.stringifyJSON(perms)
+        dbHelpers.stringifyJSON(perms),
       );
       return {
         id: result.lastInsertRowid,
@@ -169,7 +171,7 @@ export const userOps = {
         passwordHash,
         role,
         dbHelpers.stringifyJSON(permissions),
-        parseInt(id, 10)
+        parseInt(id, 10),
       );
       return { id: parseInt(id, 10), username, role, permissions };
     } catch (e) {
@@ -208,22 +210,25 @@ export const dbOps = {
     }
 
     const integrations = dbHelpers.parseJSON(
-      getSettingStmt.get("integrations")?.value
+      getSettingStmt.get("integrations")?.value,
     );
     const encKey = getOrCreateEncryptionKey();
     const quality = getSettingStmt.get("quality")?.value;
     const queueCleaner = dbHelpers.parseJSON(
-      getSettingStmt.get("queueCleaner")?.value
+      getSettingStmt.get("queueCleaner")?.value,
     );
     const rootFolderPath = getSettingStmt.get("rootFolderPath")?.value;
     const releaseTypes = dbHelpers.parseJSON(
-      getSettingStmt.get("releaseTypes")?.value
+      getSettingStmt.get("releaseTypes")?.value,
     );
     const weeklyFlowPlaylists = dbHelpers.parseJSON(
-      getSettingStmt.get("weeklyFlowPlaylists")?.value
+      getSettingStmt.get("weeklyFlowPlaylists")?.value,
     );
     const weeklyFlows = dbHelpers.parseJSON(
-      getSettingStmt.get("weeklyFlows")?.value
+      getSettingStmt.get("weeklyFlows")?.value,
+    );
+    const blocklist = dbHelpers.parseJSON(
+      getSettingStmt.get("blocklist")?.value,
     );
     const onboardingComplete =
       getSettingStmt.get("onboardingComplete")?.value === "true";
@@ -253,6 +258,7 @@ export const dbOps = {
       releaseTypes: releaseTypes || [],
       weeklyFlowPlaylists: merged,
       weeklyFlows: weeklyFlows || null,
+      blocklist: blocklist || { artists: [], tags: [] },
       onboardingComplete: !!onboardingComplete,
     };
     settingsCache = result;
@@ -268,8 +274,8 @@ export const dbOps = {
         upsertSettingStmt.run(
           "integrations",
           dbHelpers.stringifyJSON(
-            encryptIntegrations(settings.integrations, encKey)
-          )
+            encryptIntegrations(settings.integrations, encKey),
+          ),
         );
       }
       if (settings.quality) {
@@ -278,7 +284,7 @@ export const dbOps = {
       if (settings.queueCleaner) {
         upsertSettingStmt.run(
           "queueCleaner",
-          dbHelpers.stringifyJSON(settings.queueCleaner)
+          dbHelpers.stringifyJSON(settings.queueCleaner),
         );
       }
       if (
@@ -290,25 +296,31 @@ export const dbOps = {
       if (settings.releaseTypes) {
         upsertSettingStmt.run(
           "releaseTypes",
-          dbHelpers.stringifyJSON(settings.releaseTypes)
+          dbHelpers.stringifyJSON(settings.releaseTypes),
         );
       }
       if (settings.weeklyFlowPlaylists !== undefined) {
         upsertSettingStmt.run(
           "weeklyFlowPlaylists",
-          dbHelpers.stringifyJSON(settings.weeklyFlowPlaylists)
+          dbHelpers.stringifyJSON(settings.weeklyFlowPlaylists),
         );
       }
       if (settings.weeklyFlows !== undefined) {
         upsertSettingStmt.run(
           "weeklyFlows",
-          dbHelpers.stringifyJSON(settings.weeklyFlows)
+          dbHelpers.stringifyJSON(settings.weeklyFlows),
+        );
+      }
+      if (settings.blocklist !== undefined) {
+        upsertSettingStmt.run(
+          "blocklist",
+          dbHelpers.stringifyJSON(settings.blocklist),
         );
       }
       if (settings.onboardingComplete !== undefined) {
         upsertSettingStmt.run(
           "onboardingComplete",
-          settings.onboardingComplete ? "true" : "false"
+          settings.onboardingComplete ? "true" : "false",
         );
       }
     });
@@ -317,19 +329,19 @@ export const dbOps = {
 
   getDiscoveryCache() {
     const recommendations = dbHelpers.parseJSON(
-      getDiscoveryCacheStmt.get("recommendations")?.value
+      getDiscoveryCacheStmt.get("recommendations")?.value,
     );
     const globalTop = dbHelpers.parseJSON(
-      getDiscoveryCacheStmt.get("globalTop")?.value
+      getDiscoveryCacheStmt.get("globalTop")?.value,
     );
     const basedOn = dbHelpers.parseJSON(
-      getDiscoveryCacheStmt.get("basedOn")?.value
+      getDiscoveryCacheStmt.get("basedOn")?.value,
     );
     const topTags = dbHelpers.parseJSON(
-      getDiscoveryCacheStmt.get("topTags")?.value
+      getDiscoveryCacheStmt.get("topTags")?.value,
     );
     const topGenres = dbHelpers.parseJSON(
-      getDiscoveryCacheStmt.get("topGenres")?.value
+      getDiscoveryCacheStmt.get("topGenres")?.value,
     );
     const lastUpdated = getDiscoveryCacheLastUpdatedStmt.get()?.last_updated;
 
@@ -350,35 +362,35 @@ export const dbOps = {
         upsertDiscoveryCacheStmt.run(
           "recommendations",
           dbHelpers.stringifyJSON(discovery.recommendations),
-          now
+          now,
         );
       }
       if (discovery.globalTop) {
         upsertDiscoveryCacheStmt.run(
           "globalTop",
           dbHelpers.stringifyJSON(discovery.globalTop),
-          now
+          now,
         );
       }
       if (discovery.basedOn) {
         upsertDiscoveryCacheStmt.run(
           "basedOn",
           dbHelpers.stringifyJSON(discovery.basedOn),
-          now
+          now,
         );
       }
       if (discovery.topTags) {
         upsertDiscoveryCacheStmt.run(
           "topTags",
           dbHelpers.stringifyJSON(discovery.topTags),
-          now
+          now,
         );
       }
       if (discovery.topGenres) {
         upsertDiscoveryCacheStmt.run(
           "topGenres",
           dbHelpers.stringifyJSON(discovery.topGenres),
-          now
+          now,
         );
       }
     });
@@ -406,7 +418,7 @@ export const dbOps = {
     if (!mbids || !mbids.length) return {};
     const placeholders = mbids.map(() => "?").join(",");
     const stmt = db.prepare(
-      `SELECT mbid, image_url, cache_age FROM images_cache WHERE mbid IN (${placeholders})`
+      `SELECT mbid, image_url, cache_age FROM images_cache WHERE mbid IN (${placeholders})`,
     );
     const rows = stmt.all(...mbids);
     const now = Date.now();
@@ -477,7 +489,11 @@ export const dbOps = {
   setMusicbrainzArtistMbidCache(artistNameKey, mbid) {
     if (!artistNameKey) return null;
     const updatedAt = Date.now();
-    setMusicbrainzArtistMbidCacheStmt.run(artistNameKey, mbid || null, updatedAt);
+    setMusicbrainzArtistMbidCacheStmt.run(
+      artistNameKey,
+      mbid || null,
+      updatedAt,
+    );
     return {
       artistNameKey,
       mbid: mbid || null,
@@ -502,14 +518,17 @@ export const dbOps = {
     };
   },
 
-  setArtistOverride(mbid, { musicbrainzId = null, deezerArtistId = null } = {}) {
+  setArtistOverride(
+    mbid,
+    { musicbrainzId = null, deezerArtistId = null } = {},
+  ) {
     if (!mbid) return null;
     const now = Date.now();
     upsertArtistOverrideStmt.run(
       mbid,
       musicbrainzId || null,
       deezerArtistId || null,
-      now
+      now,
     );
     return {
       mbid,

@@ -754,6 +754,7 @@ export function useArtistDetailsLibrary({
     );
     if (!album || String(album.id ?? "").startsWith("pending-")) return false;
     return (
+      album.monitored ||
       (album.statistics?.percentOfTracks ?? 0) > 0 ||
       (album.statistics?.sizeOnDisk ?? 0) > 0 ||
       !!downloadStatuses[album.id] ||
@@ -847,7 +848,7 @@ export function useArtistDetailsLibrary({
     if (album.monitored) {
       return {
         status: "monitored",
-        label: "Searching...",
+        label: "Monitored",
         libraryId: album.id,
         albumInfo: album,
       };

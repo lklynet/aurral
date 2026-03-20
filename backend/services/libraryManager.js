@@ -495,7 +495,37 @@ export class LibraryManager {
           msg.includes("artist with id")
         );
       };
+      const isAlbumAlreadyAddedError = (error) => {
+        const msg = String(error?.message || "").toLowerCase();
+        return (
+          msg.includes("this album has already been added") ||
+          msg.includes("albumexistsvalidator") ||
+          msg.includes("foreignalbumid")
+        );
+      };
       const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const settings = getSettings();
+      const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
+      const shouldTriggerSearch =
+        options.triggerSearch === true ||
+        (options.triggerSearch === undefined && searchOnAdd);
+      const mapExistingAlbum = async (existingAlbum, fallbackArtist = null) => {
+        if (!existingAlbum) return null;
+        if (!existingAlbum.monitored) {
+          await lidarr.monitorAlbum(existingAlbum.id, true);
+        }
+        if (shouldTriggerSearch) {
+          await lidarr.triggerAlbumSearch(existingAlbum.id);
+        }
+        const refreshedExisting = await lidarr
+          .getAlbum(existingAlbum.id)
+          .catch(() => existingAlbum);
+        const refreshedArtist = await lidarr
+          .getArtist(artistId)
+          .catch(() => fallbackArtist);
+        if (!refreshedArtist) return null;
+        return this.mapLidarrAlbum(refreshedExisting, refreshedArtist);
+      };
       let lidarrArtist = null;
       const artistResolveAttempts = 8;
       const artistResolveDelayMs = 1250;
@@ -526,23 +556,13 @@ export class LibraryManager {
       const sameArtistExisting =
         existing && existing.artistId === artistNumericId ? existing : null;
       if (sameArtistExisting) {
-        if (!sameArtistExisting.monitored) {
-          await lidarr.monitorAlbum(sameArtistExisting.id, true);
-        }
-        const settings = getSettings();
-        const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
-        const shouldTriggerSearch =
-          options.triggerSearch === true ||
-          (options.triggerSearch === undefined && searchOnAdd);
-        if (shouldTriggerSearch) {
-          await lidarr.triggerAlbumSearch(sameArtistExisting.id);
-        }
-        const refreshedExisting = await lidarr.getAlbum(sameArtistExisting.id);
-        const refreshedArtist = await lidarr.getArtist(artistId);
-        return this.mapLidarrAlbum(refreshedExisting, refreshedArtist);
+        const mappedExisting = await mapExistingAlbum(
+          sameArtistExisting,
+          lidarrArtist,
+        );
+        if (mappedExisting) return mappedExisting;
+        return { error: "Failed to resolve existing album in Lidarr" };
       }
-      const settings = getSettings();
-      const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
       let lidarrAlbum = null;
       const addAlbumAttempts = 4;
       const addAlbumDelayMs = 1500;
@@ -561,6 +581,23 @@ export class LibraryManager {
           );
           break;
         } catch (error) {
+          if (isAlbumAlreadyAddedError(error)) {
+            const existingAfterConflict = await lidarr
+              .getAlbumByMbid(releaseGroupMbid)
+              .catch(() => null);
+            const sameArtistAfterConflict =
+              existingAfterConflict &&
+              existingAfterConflict.artistId === artistNumericId
+                ? existingAfterConflict
+                : null;
+            if (sameArtistAfterConflict) {
+              const mappedConflictAlbum = await mapExistingAlbum(
+                sameArtistAfterConflict,
+                lidarrArtist,
+              );
+              if (mappedConflictAlbum) return mappedConflictAlbum;
+            }
+          }
           if (attempt < addAlbumAttempts && isArtistNotReadyError(error)) {
             await sleep(addAlbumDelayMs);
             continue;

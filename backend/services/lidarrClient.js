@@ -526,10 +526,11 @@ export class LidarrClient {
 
     const albumOnly = options.albumOnly === true;
     const monitorOption = options.monitorOption || options.monitor || "none";
-    const lidarrMonitorOption =
-      monitorOption === "all" ? "existing" : monitorOption;
+    const lidarrMonitorOption = monitorOption;
     const artistMonitored = albumOnly || monitorOption !== "none";
     const effectiveMonitor = albumOnly ? "missing" : lidarrMonitorOption;
+    const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
+    const monitorNewItems = monitorOption === "none" ? "none" : "all";
 
     const defaultQualityProfileId =
       settings.integrations?.lidarr?.qualityProfileId;
@@ -557,16 +558,31 @@ export class LidarrClient {
       metadataProfileId: metadataProfileId,
       monitored: artistMonitored,
       monitor: effectiveMonitor,
-      monitorNewItems: "none",
+      monitorNewItems: monitorNewItems,
       albumsToMonitor: [],
       addOptions: {
         monitor: effectiveMonitor,
-        searchForMissingAlbums: false,
+        searchForMissingAlbums: searchOnAdd,
       },
     };
 
-    const result = await this.request("/artist", "POST", lidarrArtist);
-    return result;
+    try {
+      const result = await this.request("/artist", "POST", lidarrArtist);
+      return result;
+    } catch (error) {
+      if (monitorOption !== "all") {
+        throw error;
+      }
+      const fallbackArtist = {
+        ...lidarrArtist,
+        monitor: "existing",
+        addOptions: {
+          ...lidarrArtist.addOptions,
+          monitor: "existing",
+        },
+      };
+      return this.request("/artist", "POST", fallbackArtist);
+    }
   }
 
   async getArtist(artistId) {
@@ -591,20 +607,36 @@ export class LidarrClient {
 
   async updateArtistMonitoring(artistId, monitorOption) {
     const artist = await this.getArtist(artistId);
-    const lidarrMonitorOption =
-      monitorOption === "all" ? "existing" : monitorOption;
+    const lidarrMonitorOption = monitorOption;
+    const monitorNewItems = monitorOption === "none" ? "none" : "all";
 
     const updated = {
       ...artist,
       monitored: monitorOption !== "none",
       monitor: lidarrMonitorOption,
+      monitorNewItems: monitorNewItems,
       addOptions: {
         ...(artist.addOptions || {}),
         monitor: lidarrMonitorOption,
       },
     };
 
-    return this.request(`/artist/${artistId}`, "PUT", updated);
+    try {
+      return await this.request(`/artist/${artistId}`, "PUT", updated);
+    } catch (error) {
+      if (monitorOption !== "all") {
+        throw error;
+      }
+      const fallbackUpdated = {
+        ...updated,
+        monitor: "existing",
+        addOptions: {
+          ...(updated.addOptions || {}),
+          monitor: "existing",
+        },
+      };
+      return this.request(`/artist/${artistId}`, "PUT", fallbackUpdated);
+    }
   }
 
   async addAlbum(artistId, albumMbid, albumName, options = {}) {

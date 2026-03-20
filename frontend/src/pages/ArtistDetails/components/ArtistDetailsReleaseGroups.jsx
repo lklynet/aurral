@@ -607,12 +607,48 @@ export function ArtistDetailsReleaseGroups({
                             )}
                           </div>
                         </>
+                      ) : status.status === "monitored" ? (
+                        <>
+                          <span
+                            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold uppercase cursor-default"
+                            style={{
+                              backgroundColor: itemBg,
+                              color: "#c1c1c3",
+                            }}
+                          >
+                            {status.label || "Monitored"}
+                          </span>
+                          <div className="relative overflow-visible">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAlbumDropdownOpen(
+                                  albumDropdownOpen === releaseGroup.id
+                                    ? null
+                                    : releaseGroup.id
+                                );
+                              }}
+                              className="btn btn-secondary btn-sm p-2"
+                              style={{
+                                backgroundColor: itemBg,
+                                borderColor: itemBg,
+                                color: "#c1c1c3",
+                              }}
+                              title="Options"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                            {albumDropdownOpen === releaseGroup.id && (
+                              <AlbumDropdown />
+                            )}
+                          </div>
+                        </>
                       ) : status.status === "processing" ||
                         status.status === "adding" ||
                         status.status === "searching" ||
                         status.status === "downloading" ||
-                        status.status === "moving" ||
-                        status.status === "monitored" ? (
+                        status.status === "moving" ? (
                         <>
                           <span
                             className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold uppercase cursor-default"

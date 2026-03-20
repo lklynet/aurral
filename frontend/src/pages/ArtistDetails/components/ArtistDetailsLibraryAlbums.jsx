@@ -342,8 +342,7 @@ export function ArtistDetailsLibraryAlbums({
                           color: "#c1c1c3",
                         }}
                       >
-                        <Loader className="w-3.5 h-3.5 animate-spin" />
-                        Searching...
+                        Monitored
                       </span>
                     ) : (
                       <span className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold uppercase bg-yellow-500/20 text-yellow-400 cursor-default">

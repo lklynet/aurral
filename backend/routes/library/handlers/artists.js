@@ -133,14 +133,18 @@ const monitorArtistAlbums = async (artist, albums, lidarrClient) => {
   }
 
   if (lidarrClient && lidarrClient.isConfigured()) {
+    const settings = dbOps.getSettings();
+    const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
     await Promise.allSettled(
       albumsToMonitor.map(async (album) => {
         try {
           await libraryManager.updateAlbum(album.id, { monitored: true });
-          await lidarrClient.request("/command", "POST", {
-            name: "AlbumSearch",
-            albumIds: [parseInt(album.id, 10)],
-          });
+          if (searchOnAdd) {
+            await lidarrClient.request("/command", "POST", {
+              name: "AlbumSearch",
+              albumIds: [parseInt(album.id, 10)],
+            });
+          }
         } catch (err) {
           console.error(
             `Failed to monitor/search album ${album.albumName}:`,
@@ -150,6 +154,19 @@ const monitorArtistAlbums = async (artist, albums, lidarrClient) => {
       }),
     );
   }
+};
+
+const waitForLidarrAlbums = async (artistId) => {
+  const attempts = 20;
+  const delayMs = 1500;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const albums = await libraryManager.getAlbums(artistId);
+    if (albums.length > 0) return albums;
+    if (attempt < attempts) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  return [];
 };
 
 export default function registerArtists(router) {
@@ -250,9 +267,10 @@ export default function registerArtists(router) {
         });
 
         (async () => {
+          const requestedMonitorOption = monitorOption ?? defaultMonitorOption;
           const artist = await libraryManager.addArtist(mbid, artistName, {
             quality: quality || settings.quality || "standard",
-            monitorOption: monitorOption ?? defaultMonitorOption,
+            monitorOption: requestedMonitorOption,
           });
           if (artist?.error) {
             console.error(
@@ -261,12 +279,8 @@ export default function registerArtists(router) {
             );
             return;
           }
-          if (artist.monitorOption && artist.monitorOption !== "none") {
-            let albums = await libraryManager.getAlbums(artist.id);
-            if (!albums.length) {
-              await libraryManager.fetchArtistAlbums(artist.id, mbid);
-              albums = await libraryManager.getAlbums(artist.id);
-            }
+          if (requestedMonitorOption && requestedMonitorOption !== "none") {
+            const albums = await waitForLidarrAlbums(artist.id);
             await monitorArtistAlbums(artist, albums, lidarrClient);
           }
         })();
@@ -300,12 +314,8 @@ export default function registerArtists(router) {
         const { lidarrClient } =
           await import("../../../services/lidarrClient.js");
         if (lidarrClient && lidarrClient.isConfigured()) {
-          let albums = await libraryManager.getAlbums(artist.id);
           if (artist.monitorOption && artist.monitorOption !== "none") {
-            if (!albums.length) {
-              await libraryManager.fetchArtistAlbums(artist.id, mbid);
-              albums = await libraryManager.getAlbums(artist.id);
-            }
+            const albums = await waitForLidarrAlbums(artist.id);
             await monitorArtistAlbums(artist, albums, lidarrClient);
           }
         }
@@ -356,44 +366,44 @@ export default function registerArtists(router) {
     requirePermission("changeMonitoring"),
     async (req, res) => {
       try {
-      const { mbid } = req.params;
-      if (!UUID_REGEX.test(mbid)) {
-        return res.status(400).json({ error: "Invalid MBID format" });
-      }
-
-      const artist = await libraryManager.getArtist(mbid);
-      if (!artist) {
-        return res.status(404).json({ error: "Artist not found" });
-      }
-
-      const { lidarrClient } =
-        await import("../../../services/lidarrClient.js");
-
-      const albums = await libraryManager.getAlbums(artist.id);
-
-      await Promise.allSettled(
-        albums.map((album) =>
-          libraryManager.updateAlbumStatistics(album.id).catch((err) => {
-            console.error(
-              `Failed to update statistics for album ${album.albumName}:`,
-              err.message,
-            );
-          }),
-        ),
-      );
-
-      await libraryManager.updateArtistStatistics(artist.id);
-
-      if (lidarrClient && lidarrClient.isConfigured()) {
-        const lidarrArtist = await lidarrClient.getArtist(artist.id);
-        if (
-          lidarrArtist &&
-          lidarrArtist.monitor !== "none" &&
-          lidarrArtist.monitored
-        ) {
-          await lidarrClient.triggerArtistSearch(artist.id);
+        const { mbid } = req.params;
+        if (!UUID_REGEX.test(mbid)) {
+          return res.status(400).json({ error: "Invalid MBID format" });
         }
-      }
+
+        const artist = await libraryManager.getArtist(mbid);
+        if (!artist) {
+          return res.status(404).json({ error: "Artist not found" });
+        }
+
+        const { lidarrClient } =
+          await import("../../../services/lidarrClient.js");
+
+        const albums = await libraryManager.getAlbums(artist.id);
+
+        await Promise.allSettled(
+          albums.map((album) =>
+            libraryManager.updateAlbumStatistics(album.id).catch((err) => {
+              console.error(
+                `Failed to update statistics for album ${album.albumName}:`,
+                err.message,
+              );
+            }),
+          ),
+        );
+
+        await libraryManager.updateArtistStatistics(artist.id);
+
+        if (lidarrClient && lidarrClient.isConfigured()) {
+          const lidarrArtist = await lidarrClient.getArtist(artist.id);
+          if (
+            lidarrArtist &&
+            lidarrArtist.monitor !== "none" &&
+            lidarrArtist.monitored
+          ) {
+            await lidarrClient.triggerArtistSearch(artist.id);
+          }
+        }
 
         res.json({
           success: true,

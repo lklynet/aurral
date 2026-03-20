@@ -31,6 +31,7 @@ const defaultSettings = {
     slskd: { url: "", apiKey: "" },
     lidarr: {
       url: "",
+      externalUrl: "",
       apiKey: "",
       qualityProfileId: null,
       metadataProfileId: null,
