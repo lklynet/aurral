@@ -79,6 +79,20 @@ export function decryptIntegrations(integrations, key) {
   return out;
 }
 
+export function mapIntegrations(integrations, key, decryptSecrets = false) {
+  if (!integrations || typeof integrations !== "object") return integrations;
+  const o = structuredClone(integrations);
+  for (const [section, field] of SENSITIVE_PATHS) {
+    const v = o[section]?.[field];
+    if (typeof v !== "string") continue;
+    o[section].secret_length = decryptWithKey(v, key).length;
+    if (decryptSecrets) {
+      o[section][field] = decryptWithKey(v, key);
+    }
+  }
+  return o;
+}
+
 export function encryptIntegrations(integrations, key) {
   if (!integrations || typeof integrations !== "object") return integrations;
   const out = JSON.parse(JSON.stringify(integrations));

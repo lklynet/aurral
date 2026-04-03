@@ -258,7 +258,7 @@ export function SettingsIntegrationsTab({
                   className="input flex-1"
                   placeholder="Enter Lidarr API Key"
                   autoComplete="off"
-                  value={settings.integrations?.lidarr?.apiKey || ""}
+                  value={settings.integrations?.lidarr?.secret_length ? "*".repeat(settings.integrations?.lidarr?.secret_length) : settings.integrations?.lidarr?.apiKey || ""}
                   onChange={(e) => {
                     setLidarrTestLatencyMs(null);
                     updateSettings({

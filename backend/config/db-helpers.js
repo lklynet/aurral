@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { db, dbHelpers } from "./db-sqlite.js";
-import { decryptIntegrations, encryptIntegrations } from "./encryption.js";
+import { encryptIntegrations, mapIntegrations } from "./encryption.js";
 
 const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
 const upsertSettingStmt = db.prepare(
@@ -259,7 +259,7 @@ export const dbOps = {
     delete merged.recommended;
 
     const result = {
-      integrations: decryptIntegrations(integrations, encKey) || {},
+      integrations: mapIntegrations(integrations, encKey) || {},
       quality: quality || "standard",
       queueCleaner: queueCleaner || {},
       rootFolderPath: rootFolderPath || null,
