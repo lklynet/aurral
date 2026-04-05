@@ -1,5 +1,5 @@
 import express from "express";
-import bcrypt from 'bcrypt';
+import bcrypt from "bcrypt";
 import { userOps } from "../config/db-helpers.js";
 import { requireAuth, requireAdmin } from "../middleware/requirePermission.js";
 import { requirePasswordStrength } from "../middleware/validation.js";

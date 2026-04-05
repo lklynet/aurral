@@ -1,5 +1,5 @@
 import express from "express";
-import bcrypt from 'bcrypt';
+import bcrypt from "bcrypt";
 import { userOps } from "../config/db-helpers.js";
 import { createSession, deleteSession, getSessionByToken } from "../config/session-helpers.js";
 import { requireAuth } from "../middleware/requirePermission.js";

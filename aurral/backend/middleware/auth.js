@@ -1,5 +1,5 @@
 import basicAuth from "express-basic-auth";
-import bcrypt from 'bcrypt';
+import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { dbOps, userOps } from "../config/db-helpers.js";
 import { getSessionByToken } from "../config/session-helpers.js";
