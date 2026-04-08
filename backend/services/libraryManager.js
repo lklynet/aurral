@@ -735,7 +735,7 @@ export class LibraryManager {
 
     if (percentOfTracks !== undefined) {
       if (percentOfTracks > 1 && percentOfTracks <= 100) {
-        percentOfTracks = percentOfTracks;
+        percentOfTracks = Math.round(percentOfTracks);
       } else if (percentOfTracks <= 1 && percentOfTracks >= 0) {
         percentOfTracks = Math.round(percentOfTracks * 100);
       } else if (percentOfTracks > 100) {
@@ -876,7 +876,7 @@ export class LibraryManager {
       let normalizedPercent = rawPercent;
 
       if (rawPercent > 1 && rawPercent <= 100) {
-        normalizedPercent = rawPercent;
+        normalizedPercent = Math.round(rawPercent);
       } else if (rawPercent <= 1 && rawPercent >= 0) {
         normalizedPercent = Math.round(rawPercent * 100);
       } else if (rawPercent > 100) {
