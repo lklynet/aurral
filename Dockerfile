@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:25-alpine AS builder
 
 WORKDIR /app/frontend
 
@@ -14,7 +14,7 @@ ENV VITE_GITHUB_REPO=$GITHUB_REPO
 ENV VITE_RELEASE_CHANNEL=$RELEASE_CHANNEL
 RUN npm run build
 
-FROM node:20-alpine
+FROM node:25-alpine
 ARG APP_VERSION=unknown
 ENV APP_VERSION=$APP_VERSION
 
