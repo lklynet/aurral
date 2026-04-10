@@ -1,6 +1,9 @@
 import express from "express";
 import { readFileSync } from "fs";
-import { getLastfmApiKey } from "../services/apiClients.js";
+import {
+  getLastfmApiKey,
+  getTicketmasterApiKey,
+} from "../services/apiClients.js";
 import {
   resolveRequestUser,
   getAuthUser,
@@ -65,6 +68,7 @@ router.get("/", noCache, async (req, res) => {
       payload.rootFolderConfigured = lidarrConfigured;
       payload.lidarrConfigured = lidarrConfigured;
       payload.lastfmConfigured = !!getLastfmApiKey();
+      payload.ticketmasterConfigured = !!getTicketmasterApiKey();
       payload.musicbrainzConfigured = !!(
         settings.integrations?.musicbrainz?.email || process.env.CONTACT_EMAIL
       );

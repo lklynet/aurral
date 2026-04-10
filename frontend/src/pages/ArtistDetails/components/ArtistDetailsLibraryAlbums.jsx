@@ -29,7 +29,9 @@ export function ArtistDetailsLibraryAlbums({
   albumDropdownOpen,
   setAlbumDropdownOpen,
   handleLibraryAlbumClick,
+  canDeleteAlbum,
   handleDeleteAlbumClick,
+  canReSearchAlbum,
   handleReSearchAlbum,
 }) {
   const [sortMode, setSortMode] = useState("date");
@@ -399,7 +401,7 @@ export function ArtistDetailsLibraryAlbums({
                               <ExternalLink className="w-4 h-4 mr-2" />
                               View on Last.fm
                             </a>
-                            {canReSearch && (
+                            {canReSearch && canReSearchAlbum && (
                               <>
                                 <div className="my-1 border-t border-white/10" />
                                 <button
@@ -427,21 +429,25 @@ export function ArtistDetailsLibraryAlbums({
                                 </button>
                               </>
                             )}
-                            <div className="my-1 border-t border-white/10" />
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteAlbumClick(
-                                  rgId,
-                                  libraryAlbum.albumName
-                                );
-                              }}
-                              className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500/20 transition-colors flex items-center"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete Album
-                            </button>
+                            {canDeleteAlbum && (
+                              <>
+                                <div className="my-1 border-t border-white/10" />
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteAlbumClick(
+                                      rgId,
+                                      libraryAlbum.albumName
+                                    );
+                                  }}
+                                  className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500/20 transition-colors flex items-center"
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Delete Album
+                                </button>
+                              </>
+                            )}
                           </div>
                         </>
                       )}
@@ -654,7 +660,9 @@ ArtistDetailsLibraryAlbums.propTypes = {
   albumDropdownOpen: PropTypes.string,
   setAlbumDropdownOpen: PropTypes.func,
   handleLibraryAlbumClick: PropTypes.func,
+  canDeleteAlbum: PropTypes.bool,
   handleDeleteAlbumClick: PropTypes.func,
+  canReSearchAlbum: PropTypes.bool,
   handleReSearchAlbum: PropTypes.func,
   reSearchingAlbum: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
 };

@@ -267,7 +267,10 @@ export default function registerArtists(router) {
         });
 
         (async () => {
-          const requestedMonitorOption = monitorOption ?? defaultMonitorOption;
+          const requestedMonitorOption =
+            monitorOption && monitorOption !== "none"
+              ? monitorOption
+              : defaultMonitorOption;
           const artist = await libraryManager.addArtist(mbid, artistName, {
             quality: quality || settings.quality || "standard",
             monitorOption: requestedMonitorOption,

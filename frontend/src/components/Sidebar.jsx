@@ -7,11 +7,14 @@ import {
   Sparkles,
   History,
   AudioWaveform,
+  Pin,
+  PinOff,
+  Ticket,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import LogoutButton from "./LogoutButton";
 
-function Sidebar({ isOpen, onClose, appVersion }) {
+function Sidebar({ isOpen, onClose, appVersion, mode, onSetMode }) {
   const location = useLocation();
   const { authRequired, logout, user } = useAuth();
   const resolvedVersion =
@@ -21,6 +24,33 @@ function Sidebar({ isOpen, onClose, appVersion }) {
   const hoverBubbleRef = useRef(null);
   const [hoveredIndex, setHoveredIndex] = useState(null);
   const linkRefs = useRef({});
+  const asideRef = useRef(null);
+  const [isDesktop, setIsDesktop] = useState(() =>
+    typeof window !== "undefined"
+      ? window.matchMedia("(min-width: 768px)").matches
+      : true
+  );
+
+  const prevModeRef = useRef(mode);
+  useEffect(() => {
+    if (mode !== "hidden") {
+      prevModeRef.current = mode;
+    }
+  }, [mode]);
+  const isIcons = (mode === "icons" || (mode === "hidden" && prevModeRef.current === "icons")) && isDesktop;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const mediaQuery = window.matchMedia("(min-width: 768px)");
+    const onChange = (event) => setIsDesktop(event.matches);
+    setIsDesktop(mediaQuery.matches);
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener("change", onChange);
+      return () => mediaQuery.removeEventListener("change", onChange);
+    }
+    mediaQuery.addListener(onChange);
+    return () => mediaQuery.removeListener(onChange);
+  }, []);
 
   const isActive = useCallback(
     (path) => {
@@ -34,6 +64,7 @@ function Sidebar({ isOpen, onClose, appVersion }) {
     const items = [
       { path: "/discover", label: "Discover", icon: Sparkles },
       { path: "/library", label: "Library", icon: Library },
+      { path: "/shows", label: "Shows", icon: Ticket },
       {
         path: "/flow",
         label: "Flow",
@@ -45,7 +76,6 @@ function Sidebar({ isOpen, onClose, appVersion }) {
         path: "/settings",
         label: "Settings",
         icon: Settings,
-        permission: "accessSettings",
       },
     ];
     return items.filter(
@@ -84,11 +114,19 @@ function Sidebar({ isOpen, onClose, appVersion }) {
 
     const timeoutId = setTimeout(updateBubblePosition, 10);
     window.addEventListener("resize", updateBubblePosition);
+
+    const aside = asideRef.current;
+    const onTransitionEnd = (e) => {
+      if (e.propertyName === "width") updateBubblePosition();
+    };
+    aside?.addEventListener("transitionend", onTransitionEnd);
+
     return () => {
       clearTimeout(timeoutId);
       window.removeEventListener("resize", updateBubblePosition);
+      aside?.removeEventListener("transitionend", onTransitionEnd);
     };
-  }, [location.pathname, navItems, isOpen, isActive]);
+  }, [location.pathname, navItems, isOpen, isActive, mode]);
 
   useEffect(() => {
     const updateHoverBubble = () => {
@@ -119,6 +157,12 @@ function Sidebar({ isOpen, onClose, appVersion }) {
     updateHoverBubble();
   }, [hoveredIndex]);
 
+  const translateClass = isOpen
+    ? "translate-x-0"
+    : mode === "hidden"
+      ? "-translate-x-full"
+      : "-translate-x-full md:translate-x-0";
+
   return (
     <>
       {isOpen && (
@@ -129,35 +173,63 @@ function Sidebar({ isOpen, onClose, appVersion }) {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-52 flex flex-col transition-transform duration-300 ease-in-out pl-safe pt-safe pb-safe ${
-          isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-        }`}
-        style={{ backgroundColor: "#18181c" }}
+        ref={asideRef}
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col transition-all duration-300 ease-in-out pl-safe pt-safe pb-safe ${translateClass}`}
+        style={{
+          backgroundColor: "#18181c",
+          width: isIcons ? "56px" : "208px",
+        }}
       >
-        <div className="h-16 flex items-center justify-center px-4">
+        <div className="h-16 relative flex items-center justify-center px-4">
           <Link to="/" className="flex items-center space-x-2 group">
             <img
               src="/arralogo.svg"
               alt="Aurral Logo"
-              className="w-7 h-7 transition-transform group-hover:scale-110"
+              className="w-7 h-7 transition-transform group-hover:scale-110 flex-shrink-0"
               style={{
                 filter:
                   "brightness(0) saturate(100%) invert(45%) sepia(8%) saturate(800%) hue-rotate(60deg) brightness(95%) contrast(85%)",
               }}
             />
-            <span
-              className="text-lg font-bold tracking-tight transition-colors"
-              style={{ color: "#fff" }}
-            >
-              Aurral
-            </span>
+            {!isIcons && (
+              <span
+                className="text-lg font-bold tracking-tight transition-colors"
+                style={{ color: "#fff" }}
+              >
+                Aurral
+              </span>
+            )}
           </Link>
+          {!isIcons && (
+            <button
+              onClick={() => onSetMode("icons")}
+              className="hidden md:flex absolute right-2 p-1.5 rounded-md transition-colors hover:bg-white/10"
+              style={{ color: "#c1c1c3" }}
+              aria-label="Collapse to icons"
+              title="Collapse to icons"
+            >
+              <Pin className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
+        {isIcons && (
+          <div className="hidden md:flex justify-center pb-2">
+            <button
+              onClick={() => onSetMode("full")}
+              className="p-1.5 rounded-md transition-colors hover:bg-white/10"
+              style={{ color: "#c1c1c3" }}
+              aria-label="Expand sidebar"
+              title="Expand sidebar"
+            >
+              <PinOff className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
-        <div className="flex-1 px-3 py-6 overflow-y-auto flex items-start justify-center">
+        <div className={`flex-1 ${isIcons ? "px-1" : "px-3"} py-6 overflow-y-auto flex items-start justify-center`}>
           <div
             ref={navRef}
-            className="relative p-3"
+            className={`relative ${isIcons ? "p-1.5" : "p-3"} w-full`}
             style={{ backgroundColor: "#0f0f12" }}
           >
             <div
@@ -190,14 +262,32 @@ function Sidebar({ isOpen, onClose, appVersion }) {
                     }}
                     to={item.path}
                     onMouseEnter={() => setHoveredIndex(index)}
-                    className="relative z-20 flex items-center space-x-3 px-4 py-3.5 font-medium transition-all duration-200 text-base"
+                    className={`group relative z-20 flex items-center ${
+                      isIcons
+                        ? "justify-center px-2 py-3"
+                        : "space-x-3 px-4 py-3.5"
+                    } font-medium transition-all duration-200 text-base`}
                     style={{ color: linkColor }}
                   >
                     <Icon
-                      className="w-5 h-5 transition-transform group-hover:scale-110 flex-shrink-0"
+                      className="w-5 h-5 flex-shrink-0"
                       style={{ color: linkColor }}
                     />
-                    <span className="truncate">{item.label}</span>
+                    {!isIcons && (
+                      <span className="truncate">{item.label}</span>
+                    )}
+                    {isIcons && (
+                      <span
+                        className="absolute left-full ml-2 px-2.5 py-1.5 text-xs font-medium rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-[100]"
+                        style={{
+                          backgroundColor: "#2a2a2e",
+                          color: "#fff",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+                        }}
+                      >
+                        {item.label}
+                      </span>
+                    )}
                   </Link>
                 );
               })}
@@ -205,14 +295,16 @@ function Sidebar({ isOpen, onClose, appVersion }) {
           </div>
         </div>
 
-        <div className="flex flex-col items-center gap-2 p-3 mt-auto border-t" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
+        <div className={`flex flex-col items-center gap-2 ${isIcons ? "p-1.5" : "p-3"} mt-auto border-t`} style={{ borderColor: "rgba(255,255,255,0.05)" }}>
           {authRequired && (
-            <LogoutButton onClick={logout} />
+            <LogoutButton onClick={logout} collapsed={isIcons} />
           )}
-          
-          <div className="text-[10px] font-mono opacity-30 select-none" style={{ color: "#c1c1c3" }}>
-            v{resolvedVersion}
-          </div>
+
+          {!isIcons && (
+            <div className="text-[10px] font-mono opacity-30 select-none" style={{ color: "#c1c1c3" }}>
+              v{resolvedVersion}
+            </div>
+          )}
         </div>
       </aside>
     </>
@@ -223,6 +315,8 @@ Sidebar.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
   appVersion: PropTypes.string,
+  mode: PropTypes.oneOf(["full", "icons", "hidden"]).isRequired,
+  onSetMode: PropTypes.func.isRequired,
 };
 
 export default Sidebar;

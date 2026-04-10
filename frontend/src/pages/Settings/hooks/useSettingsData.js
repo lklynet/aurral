@@ -29,8 +29,10 @@ const defaultSettings = {
       discoveryRecommendationsPerRefresh: 100,
     },
     slskd: { url: "", apiKey: "" },
+    ticketmaster: { apiKey: "", searchRadiusMiles: 50 },
     lidarr: {
       url: "",
+      externalUrl: "",
       apiKey: "",
       qualityProfileId: null,
       metadataProfileId: null,
@@ -42,6 +44,11 @@ const defaultSettings = {
     gotify: {
       url: "",
       token: "",
+      notifyDiscoveryUpdated: false,
+      notifyWeeklyFlowDone: false,
+    },
+    webhooks: [],
+    webhookEvents: {
       notifyDiscoveryUpdated: false,
       notifyWeeklyFlowDone: false,
     },
@@ -184,12 +191,13 @@ export function useSettingsData(showSuccess, showError, showInfo) {
   );
 
   const handleSaveSettings = useCallback(
-    async (e) => {
+    async (e, settingsOverride) => {
       e?.preventDefault();
+      const toSave = settingsOverride ?? settings;
       setSaving(true);
       try {
-        await updateAppSettings(settings);
-        setOriginalSettings(JSON.parse(JSON.stringify(settings)));
+        await updateAppSettings(toSave);
+        setOriginalSettings(JSON.parse(JSON.stringify(toSave)));
         setHasUnsavedChanges(false);
         showSuccess("Settings saved successfully!");
       } catch (err) {

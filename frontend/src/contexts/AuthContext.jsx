@@ -11,6 +11,21 @@ import {
 } from "../utils/api";
 
 const AuthContext = createContext(null);
+const AUTH_RECOVERY_RELOAD_KEY = "aurral:auth-recovery-reload";
+
+const resetClientCache = async () => {
+  const registrations = globalThis?.navigator?.serviceWorker
+    ? await globalThis.navigator.serviceWorker.getRegistrations()
+    : [];
+  const cacheKeys = globalThis?.caches ? await globalThis.caches.keys() : [];
+
+  await Promise.allSettled(registrations.map((registration) => registration.unregister()));
+  await Promise.allSettled(
+    cacheKeys.map((cacheKey) => globalThis.caches.delete(cacheKey)),
+  );
+
+  return registrations.length > 0 || cacheKeys.length > 0;
+};
 
 export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -81,6 +96,7 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       setIsAuthenticated(false);
     } finally {
+      globalThis?.sessionStorage?.removeItem(AUTH_RECOVERY_RELOAD_KEY);
       setIsLoading(false);
     }
   };
@@ -90,22 +106,42 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    const handleInvalidAuth = () => {
+    let cancelled = false;
+
+    const handleInvalidAuth = async () => {
       setIsAuthenticated(false);
       setUser(null);
-      setIsLoading(false);
+      setIsLoading(true);
+
+      const hadClientCache = await resetClientCache();
+      if (cancelled) return;
+
+      const hasReloaded =
+        globalThis?.sessionStorage?.getItem(AUTH_RECOVERY_RELOAD_KEY) === "1";
+
+      if (hadClientCache && !hasReloaded && typeof window !== "undefined") {
+        globalThis.sessionStorage?.setItem(AUTH_RECOVERY_RELOAD_KEY, "1");
+        window.location.reload();
+        return;
+      }
+
+      globalThis?.sessionStorage?.removeItem(AUTH_RECOVERY_RELOAD_KEY);
+      await checkAuthStatus();
     };
+
     window.addEventListener(AUTH_INVALID_EVENT, handleInvalidAuth);
     return () => {
+      cancelled = true;
       window.removeEventListener(AUTH_INVALID_EVENT, handleInvalidAuth);
     };
   }, []);
 
-  const login = async (password, username = "admin") => {
-    if (!password) return false;
+  const login = async (password, username) => {
+    const normalizedUsername = String(username || "").trim();
+    if (!normalizedUsername || !password) return false;
 
     try {
-      const result = await loginApi(username, password);
+      const result = await loginApi(normalizedUsername, password);
       if (!result?.token) return false;
       setStoredAuth({ token: result.token });
       setUser(result.user || null);

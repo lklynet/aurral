@@ -7,6 +7,7 @@ const CIRCUIT_COOLDOWN_MS = 60000;
 const CIRCUIT_FAILURE_THRESHOLD = 3;
 const LIDARR_MAX_CONCURRENT = 12;
 const LIDARR_LIST_CACHE_MS = 30000;
+const LIDARR_ARTIST_ALBUM_CACHE_MAX = 10;
 const LIDARR_RETRY_ATTEMPTS = 2;
 const LIDARR_RETRY_DELAY_MS = 800;
 const LIDARR_STATUS_CACHE_MS = 10000;
@@ -22,7 +23,7 @@ export class LidarrClient {
     this._concurrent = 0;
     this._waitQueue = [];
     this._artistListCache = null;
-    this._albumListCache = null;
+    this._albumCache = new Map();
     this._statusCache = new Map();
     this._httpAgent = new http.Agent({
       keepAlive: true,
@@ -128,7 +129,7 @@ export class LidarrClient {
     this.config = newConfig;
     if (didConfigChange) {
       this._artistListCache = null;
-      this._albumListCache = null;
+      this._albumCache = new Map();
       this._statusCache.clear();
     }
   }
@@ -179,11 +180,9 @@ export class LidarrClient {
       method === "GET" &&
       (endpoint === "/album" || endpoint.startsWith("/album?"))
     ) {
-      if (
-        this._albumListCache &&
-        now - this._albumListCache.at < LIDARR_LIST_CACHE_MS
-      ) {
-        return this._albumListCache.data;
+      const cached = this._albumCache.get(endpoint);
+      if (cached && now - cached.at < LIDARR_LIST_CACHE_MS) {
+        return cached.data;
       }
     }
 
@@ -225,7 +224,7 @@ export class LidarrClient {
         endpoint.startsWith("/album/"))
     ) {
       this._artistListCache = null;
-      this._albumListCache = null;
+      this._albumCache = new Map();
     }
     if (method !== "GET" && endpoint.startsWith("/command")) {
       this._statusCache.delete("/command");
@@ -283,7 +282,11 @@ export class LidarrClient {
             method === "GET" &&
             (endpoint === "/album" || endpoint.startsWith("/album?"))
           ) {
-            this._albumListCache = { data: response.data, at: Date.now() };
+            if (this._albumCache.size >= LIDARR_ARTIST_ALBUM_CACHE_MAX) {
+              const oldestKey = this._albumCache.keys().next().value;
+              this._albumCache.delete(oldestKey);
+            }
+            this._albumCache.set(endpoint, { data: response.data, at: Date.now() });
           }
           if (isStatusRequest) {
             this._statusCache.set(endpoint, {

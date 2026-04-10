@@ -16,3 +16,4 @@ backend/data/*
 weekly-flow/
 /*.mp3
 docs/
+.idea/

@@ -19,6 +19,80 @@ async function sendGotify(title, message, priority = 5) {
   }
 }
 
+function buildHeaders(headers) {
+  if (!Array.isArray(headers)) return {};
+  const result = {};
+  for (const { key, value } of headers) {
+    const k = (key || "").trim();
+    const v = (value || "").trim();
+    if (k && v) result[k] = v;
+  }
+  return result;
+}
+
+function escapeJsonString(value) {
+  return JSON.stringify(String(value ?? "")).slice(1, -1);
+}
+
+function interpolateBody(str, flowPath, flowName) {
+  return str
+    .replace(/\$flowPath/g, escapeJsonString(flowPath))
+    .replace(/\$flowName/g, escapeJsonString(flowName));
+}
+
+async function sendWebhooks(
+  { webhooks, webhookEvents = {} },
+  event,
+  flowPath = "",
+  flowName = "",
+) {
+  if (!webhookEvents[event]) return;
+  if (!Array.isArray(webhooks) || webhooks.length === 0) return;
+
+  for (const webhook of webhooks) {
+    const url = (webhook.url || "").trim();
+    if (!url) continue;
+    if (!/^https?:\/\//i.test(url)) {
+      console.warn(
+        `[NotificationService] Skipping webhook with non-http(s) URL: ${url}`,
+      );
+      continue;
+    }
+    const rawBody = (webhook.body || "").trim();
+    try {
+      if (rawBody) {
+        console.log(`[NotificationService] Webhook POST ${url}`);
+        const interpolated = interpolateBody(rawBody, flowPath, flowName);
+        let parsed;
+        try {
+          parsed = JSON.parse(interpolated);
+        } catch {
+          console.warn(
+            `[NotificationService] Webhook body is not valid JSON, sending as raw string: ${url}`,
+          );
+          parsed = interpolated;
+        }
+        const headers = {
+          ...buildHeaders(webhook.headers),
+          "Content-Type": "application/json",
+        };
+        await axios.post(url, parsed, { timeout: 30000, headers });
+      } else {
+        console.log(`[NotificationService] Webhook GET ${url}`);
+        await axios.get(url, {
+          timeout: 30000,
+          headers: buildHeaders(webhook.headers),
+        });
+      }
+    } catch (err) {
+      console.warn(
+        `[NotificationService] Webhook send failed (${url}):`,
+        err.message,
+      );
+    }
+  }
+}
+
 export async function sendGotifyTest(url, token) {
   const base = (url || "").trim().replace(/\/+$/, "");
   const t = (token || "").trim();
@@ -43,23 +117,46 @@ export async function sendGotifyTest(url, token) {
 export async function notifyDiscoveryUpdated() {
   const settings = dbOps.getSettings();
   const gotify = settings.integrations?.gotify || {};
-  if (!gotify.notifyDiscoveryUpdated) return;
-  await sendGotify(
-    "Aurral – Discover",
-    "Daily Discover recommendations have been updated.",
-    5,
-  );
+  await Promise.all([
+    gotify.notifyDiscoveryUpdated
+      ? sendGotify(
+          "Aurral – Discover",
+          "Daily Discover recommendations have been updated.",
+          5,
+        )
+      : Promise.resolve(),
+    sendWebhooks(
+      settings.integrations,
+      "notifyDiscoveryUpdated",
+      "",
+      "Aurral – Discover",
+    ),
+  ]);
 }
 
-export async function notifyWeeklyFlowDone(playlistType, stats = {}) {
+export async function notifyWeeklyFlowDone(
+  playlistType,
+  stats = {},
+  flowPath = "",
+  flowName = "",
+) {
   const settings = dbOps.getSettings();
   const gotify = settings.integrations?.gotify || {};
-  if (!gotify.notifyWeeklyFlowDone) return;
   const completed = stats.completed ?? 0;
   const failed = stats.failed ?? 0;
-  const parts = [`Weekly flow "${playlistType}" finished processing.`];
-  if (completed > 0 || failed > 0) {
-    parts.push(`Completed: ${completed}, Failed: ${failed}`);
-  }
-  await sendGotify("Aurral – Weekly Flow", parts.join(" "), 5);
+  await Promise.all([
+    gotify.notifyWeeklyFlowDone
+      ? sendGotify(
+          "Aurral – Weekly Flow",
+          `Weekly flow "${playlistType}" finished processing.${completed > 0 || failed > 0 ? ` Completed: ${completed}, Failed: ${failed}` : ""}`,
+          5,
+        )
+      : Promise.resolve(),
+    sendWebhooks(
+      settings.integrations,
+      "notifyWeeklyFlowDone",
+      flowPath,
+      flowName,
+    ),
+  ]);
 }

@@ -215,6 +215,24 @@ Most configuration is done in the web UI, but some settings are controlled by en
 
 ---
 
+## Notifications
+
+Aurral can send notifications via **Gotify** and/or **Webhooks** (Settings → Notifications).
+
+### Webhooks
+
+Configure one or more webhook URLs. For each webhook:
+
+- **No body** → `GET` request
+- **With body** → `POST` with `Content-Type: application/json`
+- **Headers** → Custom request headers can be added per webhook
+
+Body supports two variables: `$flowPath` (music directory, empty for discovery updates) and `$flowName` (flow name). Example: `{"src": "$flowPath", "playlist": "$flowName"}`.
+
+Event triggers (Discover updated, Weekly Flow done) apply to all configured webhooks at once and can be used to send notifications via different mediums or to automate library management (beets, Plex sync, etc.). Webhooks are invoked sequentially in the order in which they are defined.
+
+---
+
 ## Troubleshooting
 
 - Lidarr connection fails: confirm Lidarr URL is reachable and API key is correct (Settings → Integrations → Lidarr)

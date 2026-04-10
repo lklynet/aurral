@@ -3,7 +3,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { Lock } from "lucide-react";
 
 const Login = () => {
-  const [username, setUsername] = useState("admin");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const { login } = useAuth();
@@ -54,6 +54,7 @@ const Login = () => {
                 name="username"
                 type="text"
                 required
+                autoComplete="username"
                 className="appearance-none relative block w-full px-3 py-2 placeholder-gray-500 focus:outline-none focus:ring-2 focus:z-10 sm:text-sm"
                 style={{
                   focusRingColor: "#c1c1c3",
@@ -74,6 +75,7 @@ const Login = () => {
                 name="password"
                 type="password"
                 required
+                autoComplete="current-password"
                 className="appearance-none relative block w-full px-3 py-2 placeholder-gray-500 focus:outline-none focus:ring-2 focus:z-10 sm:text-sm"
                 style={{
                   focusRingColor: "#c1c1c3",

@@ -11,9 +11,13 @@ import {
   GripVertical,
   X,
   CheckCircle2,
+  MapPin,
+  Pencil,
+  Ticket,
 } from "lucide-react";
 import {
   getDiscovery,
+  getNearbyShows,
   getRecentlyAdded,
   getRecentReleases,
   getReleaseGroupCover,
@@ -64,12 +68,16 @@ const DISCOVER_LAYOUT_KEY = "discoverLayout";
 
 const DEFAULT_DISCOVER_SECTIONS = [
   { id: "recentlyAdded", label: "Recently Added", enabled: true },
+  { id: "recommendedShows", label: "Shows Near You", enabled: true },
   { id: "recentReleases", label: "Recent Releases", enabled: true },
   { id: "recommended", label: "Recommended for You", enabled: true },
   { id: "globalTop", label: "Global Trending", enabled: true },
   { id: "genreSections", label: "Because You Like", enabled: true },
   { id: "topTags", label: "Explore by Tag", enabled: true },
 ];
+
+const DISCOVER_NEARBY_MODE_KEY = "discoverNearbyMode";
+const DISCOVER_NEARBY_ZIP_KEY = "discoverNearbyZip";
 
 const getArtistId = (artist) =>
   artist?.id || artist?.mbid || artist?.foreignArtistId;
@@ -105,22 +113,44 @@ const formatReleaseStatus = (releaseDate) => {
   return `Releasing ${formattedDate}`;
 };
 
+const formatShowDate = (show) => {
+  if (!show?.date && !show?.dateTime) return null;
+  const raw = show.dateTime || show.date;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    return show.date || null;
+  }
+  const dateLabel = parsed.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  if (show.time) {
+    return `${dateLabel} at ${show.time}`;
+  }
+  return dateLabel;
+};
+
+const formatShowLocation = (show) =>
+  [show?.venueName, [show?.city, show?.region].filter(Boolean).join(", ")]
+    .filter(Boolean)
+    .join(" - ");
+
 const ArtistCard = memo(
-  ({ artist, status, isInLibrary, onNavigate }) => {
-    const navigateTo = artist.navigateTo || artist.id;
-    const hasValidMbid =
-      navigateTo && navigateTo !== "null" && navigateTo !== "undefined";
-    const artistTypeLabel = artist.type === "Person" ? "Artist" : artist.type;
-    const artistMetaText = [artistTypeLabel, artist.sourceArtist && `Similar to ${artist.sourceArtist}`]
-      .filter(Boolean)
-      .join(" • ");
-    const handleClick = useCallback(() => {
-      if (hasValidMbid) {
-        onNavigate(`/artist/${navigateTo}`, {
-          state: { artistName: artist.name },
-        });
-      }
-    }, [navigateTo, hasValidMbid, artist.name, onNavigate]);
+    ({ artist, status, isInLibrary, onNavigate }) => {
+      const navigateTo = artist.navigateTo || artist.id;
+      const hasValidMbid =
+        navigateTo && navigateTo !== "null" && navigateTo !== "undefined";
+      const artistMetaText = [artist.sourceArtist && `Similar to ${artist.sourceArtist}`]
+        .filter(Boolean)
+        .join(" • ");
+      const handleClick = useCallback(() => {
+        if (hasValidMbid) {
+          onNavigate(`/artist/${navigateTo}`, {
+            state: { artistName: artist.name },
+          });
+        }
+      }, [navigateTo, hasValidMbid, artist.name, onNavigate]);
 
     return (
       <div className="group relative flex flex-col w-full min-w-0">
@@ -324,6 +354,98 @@ AlbumCard.propTypes = {
   onNavigate: PropTypes.func.isRequired,
 };
 
+const ShowCard = memo(({ show }) => {
+  const showDate = formatShowDate(show);
+  const showLocation = formatShowLocation(show);
+  return (
+    <article
+      className="group flex flex-col overflow-hidden border border-white/10"
+      style={{ backgroundColor: "#191820" }}
+    >
+      <div className="relative aspect-[16/9] overflow-hidden" style={{ backgroundColor: "#211f27" }}>
+        {show.image ? (
+          <img
+            src={show.image}
+            alt={show.eventName || show.artistName}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            loading="lazy"
+            decoding="async"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <Music className="w-10 h-10" style={{ color: "#c1c1c3" }} />
+          </div>
+        )}
+        <div className="absolute left-3 top-3 flex gap-2">
+          {Number.isFinite(show.distance) && (
+            <span
+              className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide"
+              style={{ backgroundColor: "rgba(20,20,26,0.82)", color: "#fff" }}
+            >
+              {Math.round(show.distance)} mi
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="flex flex-1 flex-col gap-3 p-4">
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-[0.22em]" style={{ color: "#8a8a8f" }}>
+            {show.artistName}
+          </p>
+          <h3 className="mt-1 text-lg font-semibold leading-tight" style={{ color: "#fff" }}>
+            {show.eventName}
+          </h3>
+        </div>
+        <div className="space-y-2 text-sm" style={{ color: "#c1c1c3" }}>
+          {showDate && (
+            <p className="flex items-center gap-2">
+              <Clock className="w-4 h-4 shrink-0" />
+              <span>{showDate}</span>
+            </p>
+          )}
+          {showLocation && (
+            <p className="flex items-start gap-2">
+              <MapPin className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{showLocation}</span>
+            </p>
+          )}
+        </div>
+        <div className="mt-auto pt-2">
+          <a
+            href={show.url || "#"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors hover:opacity-90"
+            style={{ backgroundColor: "#707e61", color: "#0b0b0c" }}
+          >
+            <Ticket className="w-4 h-4" />
+            Tickets
+          </a>
+        </div>
+      </div>
+    </article>
+  );
+});
+
+ShowCard.displayName = "ShowCard";
+ShowCard.propTypes = {
+  show: PropTypes.shape({
+    id: PropTypes.string,
+    artistName: PropTypes.string,
+    matchType: PropTypes.string,
+    eventName: PropTypes.string,
+    image: PropTypes.string,
+    url: PropTypes.string,
+    date: PropTypes.string,
+    time: PropTypes.string,
+    dateTime: PropTypes.string,
+    venueName: PropTypes.string,
+    city: PropTypes.string,
+    region: PropTypes.string,
+    distance: PropTypes.number,
+  }).isRequired,
+};
+
 function DiscoverPage() {
   const [data, setData] = useState(null);
   const [recentlyAdded, setRecentlyAdded] = useState([]);
@@ -341,6 +463,13 @@ function DiscoverPage() {
   const [dragOverId, setDragOverId] = useState(null);
   const [error, setError] = useState(null);
   const [libraryLookup, setLibraryLookup] = useState({});
+  const [nearbyShowsData, setNearbyShowsData] = useState(null);
+  const [nearbyShowsLoading, setNearbyShowsLoading] = useState(false);
+  const [nearbyShowsError, setNearbyShowsError] = useState(null);
+  const [nearbyLocationMode, setNearbyLocationMode] = useState("ip");
+  const [appliedNearbyZip, setAppliedNearbyZip] = useState("");
+  const [showNearbyZipEditor, setShowNearbyZipEditor] = useState(false);
+  const [nearbyZipDraft, setNearbyZipDraft] = useState("");
   const requestedReleaseCoversRef = useRef(new Set());
   const requestedArtistCoversRef = useRef(new Set());
   const lastDiscoveryWsMessageAtRef = useRef(0);
@@ -448,6 +577,51 @@ function DiscoverPage() {
       .catch(() => {});
 
   }, []);
+
+  useEffect(() => {
+    try {
+      const storedMode = localStorage.getItem(DISCOVER_NEARBY_MODE_KEY);
+      const storedZip = localStorage.getItem(DISCOVER_NEARBY_ZIP_KEY) || "";
+      if (storedMode === "zip" || storedMode === "ip") {
+        setNearbyLocationMode(storedMode);
+      }
+      setAppliedNearbyZip(storedZip);
+      setNearbyZipDraft(storedZip);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    const shouldUseZip = nearbyLocationMode === "zip";
+    if (shouldUseZip && !appliedNearbyZip.trim()) {
+      setNearbyShowsData(null);
+      setNearbyShowsError(null);
+      setNearbyShowsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setNearbyShowsLoading(true);
+    setNearbyShowsError(null);
+    getNearbyShows(shouldUseZip ? appliedNearbyZip : "")
+      .then((response) => {
+        if (cancelled) return;
+        setNearbyShowsData(response);
+        setNearbyShowsError(null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setNearbyShowsError(
+          err.response?.data?.message || "Failed to load nearby shows",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setNearbyShowsLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [nearbyLocationMode, appliedNearbyZip]);
 
   useEffect(() => {
     try {
@@ -598,11 +772,18 @@ function DiscoverPage() {
     configured = true,
   } = data || {};
 
+  const nearbyShows = nearbyShowsData?.shows || [];
+  const nearbyLocationLabel =
+    nearbyShowsData?.location?.label ||
+    nearbyShowsData?.location?.postalCode ||
+    "your area";
+
   const sectionAvailability = useMemo(
     () => ({
       recentlyAdded: recentlyAdded.length > 0,
       recentReleases: recentReleases.length > 0,
       recommended: true,
+      recommendedShows: true,
       globalTop: globalTop.length > 0,
       genreSections: genreSections.length > 0,
       topTags: topTags.length > 0,
@@ -868,6 +1049,182 @@ function DiscoverPage() {
       );
     }
 
+    if (id === "recommendedShows") {
+      const zipModeActive = nearbyLocationMode === "zip";
+      return (
+        <section key="recommendedShows">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-bold text-white">Shows Near You</h2>
+              {nearbyShowsData?.configured !== false && (
+                <span className="hidden sm:inline-block px-2.5 py-1 text-xs font-medium rounded-full bg-white/5 text-white/60">
+                  {nearbyLocationLabel}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="inline-flex p-1 border border-white/10" style={{ backgroundColor: "#17161d" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNearbyLocationMode("ip");
+                    setShowNearbyZipEditor(false);
+                    try {
+                      localStorage.setItem(DISCOVER_NEARBY_MODE_KEY, "ip");
+                    } catch {}
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium transition-colors"
+                  style={{
+                    backgroundColor: !zipModeActive ? "#707e61" : "transparent",
+                    color: !zipModeActive ? "#0b0b0c" : "#c1c1c3",
+                  }}
+                >
+                  Your Area
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNearbyLocationMode("zip");
+                    try {
+                      localStorage.setItem(DISCOVER_NEARBY_MODE_KEY, "zip");
+                    } catch {}
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium transition-colors"
+                  style={{
+                    backgroundColor: zipModeActive ? "#707e61" : "transparent",
+                    color: zipModeActive ? "#0b0b0c" : "#c1c1c3",
+                  }}
+                >
+                  ZIP
+                </button>
+              </div>
+              {zipModeActive && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNearbyZipDraft(appliedNearbyZip);
+                      setShowNearbyZipEditor((value) => !value);
+                    }}
+                    className="inline-flex items-center justify-center w-8 h-8 border border-white/10 transition-colors"
+                    style={{ backgroundColor: "#17161d", color: "#c1c1c3" }}
+                    aria-label="Edit ZIP"
+                    title="Edit ZIP"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  {showNearbyZipEditor && (
+                    <div
+                      className="absolute right-0 top-10 z-20 w-52 p-2 border border-white/10"
+                      style={{ backgroundColor: "#17161d" }}
+                    >
+                      <input
+                        type="text"
+                        value={nearbyZipDraft}
+                        onChange={(event) => setNearbyZipDraft(event.target.value)}
+                        className="input w-full mb-2"
+                        placeholder="ZIP or postal code"
+                      />
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowNearbyZipEditor(false)}
+                          className="px-2 py-1 text-xs border border-white/10"
+                          style={{ color: "#c1c1c3" }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const sanitized = nearbyZipDraft.trim();
+                            if (!sanitized) return;
+                            setAppliedNearbyZip(sanitized);
+                            setNearbyLocationMode("zip");
+                            setShowNearbyZipEditor(false);
+                            try {
+                              localStorage.setItem(DISCOVER_NEARBY_MODE_KEY, "zip");
+                              localStorage.setItem(DISCOVER_NEARBY_ZIP_KEY, sanitized);
+                            } catch {}
+                          }}
+                          className="px-2 py-1 text-xs"
+                          style={{
+                            backgroundColor: "#707e61",
+                            color: "#0b0b0c",
+                            opacity: nearbyZipDraft.trim() ? 1 : 0.5,
+                          }}
+                          disabled={!nearbyZipDraft.trim()}
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {nearbyShowsData?.configured === false ? (
+            <div className="p-6 border border-white/10" style={{ backgroundColor: "#191820" }}>
+              <h3 className="text-lg font-semibold" style={{ color: "#fff" }}>
+                Ticketmaster not configured
+              </h3>
+              <p className="mt-2 text-sm max-w-2xl" style={{ color: "#c1c1c3" }}>
+                Add a Ticketmaster Consumer Key in Settings to enable local show
+                discovery on this page.
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate("/settings")}
+                className="btn btn-primary mt-4"
+              >
+                Open Settings
+              </button>
+            </div>
+          ) : nearbyShowsLoading ? (
+            <div className="flex items-center justify-center py-20" style={{ backgroundColor: "#191820" }}>
+              <Loader className="w-8 h-8 animate-spin" style={{ color: "#c1c1c3" }} />
+            </div>
+          ) : nearbyShowsError ? (
+            <div className="p-6 border border-white/10" style={{ backgroundColor: "#191820" }}>
+              <h3 className="text-lg font-semibold" style={{ color: "#fff" }}>
+                Unable to load nearby shows
+              </h3>
+              <p className="mt-2 text-sm" style={{ color: "#c1c1c3" }}>
+                {nearbyShowsError}
+              </p>
+            </div>
+          ) : zipModeActive && !appliedNearbyZip.trim() ? (
+            <div className="p-6 border border-white/10" style={{ backgroundColor: "#191820" }}>
+              <h3 className="text-lg font-semibold" style={{ color: "#fff" }}>
+                ZIP not set
+              </h3>
+              <p className="mt-2 text-sm max-w-2xl" style={{ color: "#c1c1c3" }}>
+                Set a ZIP code from the Shows page area settings to use ZIP mode here.
+              </p>
+            </div>
+          ) : nearbyShows.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5">
+              {nearbyShows.slice(0, 5).map((show) => (
+                <ShowCard key={`${show.id}-${show.artistName}`} show={show} />
+              ))}
+            </div>
+          ) : (
+            <div className="p-6 border border-white/10" style={{ backgroundColor: "#191820" }}>
+              <h3 className="text-lg font-semibold" style={{ color: "#fff" }}>
+                No upcoming nearby matches
+              </h3>
+              <p className="mt-2 text-sm max-w-2xl" style={{ color: "#c1c1c3" }}>
+                We could not find local Ticketmaster shows for artists from your
+                library around {nearbyLocationLabel}.
+              </p>
+            </div>
+          )}
+        </section>
+      );
+    }
+
     if (id === "globalTop") {
       if (!sectionAvailability.globalTop) return null;
       return (
@@ -908,7 +1265,7 @@ function DiscoverPage() {
         <div key="genreSections" className="space-y-10">
           {genreSections.map((section) => (
             <section key={section.genre}>
-              <div className="flex items-center justify-between mb-6 pb-2">
+              <div className="flex items-center justify-between mb-2 pb-2">
                 <h2
                   className="text-xl font-bold flex items-center"
                   style={{ color: "#fff" }}
@@ -1101,98 +1458,75 @@ function DiscoverPage() {
             "linear-gradient(90deg, rgba(33,31,39,0.5) 50%, transparent 100%), linear-gradient(90deg, rgba(33,31,39,0.2) 0%, transparent 100%)",
         }}
       >
-        <div className="relative p-8 md:p-12">
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-2 -ml-6 font-medium" style={{ color: "#fff" }}>
-              <span>Your Daily Mix</span>
+        <div className="relative p-6 md:p-8 flex flex-col gap-6">
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-3">
+                <h1 className="text-3xl md:text-4xl font-bold" style={{ color: "#fff" }}>
+                  Discover
+                </h1>
+                {lastUpdated && (
+                  <span className="flex items-center text-xs font-medium mt-1.5 px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(255,255,255,0.05)", color: "#8a8a8f" }}>
+                    <Clock className="w-3 h-3 mr-1.5" />
+                    Updated {new Date(lastUpdated).toLocaleDateString()}
+                    {isUpdating && <Loader className="w-3 h-3 ml-2 animate-spin" />}
+                  </span>
+                )}
+              </div>
+              <p className="max-w-xl text-base" style={{ color: "#c1c1c3" }}>
+                Your daily mix, curated from your library.
+              </p>
             </div>
+            
             <button
               type="button"
               onClick={openDiscoverModal}
-              className="flex items-center justify-center h-9 w-9 transition-colors"
-              style={{
-                color: "#c1c1c3",
-              }}
-              aria-label="Customize Discover layout"
+              className="flex items-center gap-2 px-3 py-2 mt-1.5 rounded-md transition-colors hover:bg-white/5 border border-white/10 shrink-0"
+              style={{ color: "#c1c1c3" }}
             >
               <LayoutTemplate className="w-4 h-4" />
+              <span className="text-sm font-medium">Customize</span>
             </button>
           </div>
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-8">
-            <div>
-              <h1
-                className="text-3xl md:text-5xl font-bold mb-4"
-                style={{ color: "#fff" }}
-              >
-                Music Discovery
-              </h1>
-              <p className="max-w-xl text-lg" style={{ color: "#c1c1c3" }}>
-                Curated recommendations updated daily based on your library.
-              </p>
-            </div>
 
-            <div className="flex flex-col items-end gap-2">
-              {lastUpdated && (
-                <div
-                  className="flex items-center text-sm"
-                  style={{ color: "#c1c1c3" }}
+          <div className="flex flex-col gap-3 pt-4 border-t border-white/5">
+            {topGenres.length > 0 && (
+              <div className="flex flex-col gap-2.5">
+                <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#8a8a8f" }}>
+                  Top Tags
+                </h3>
+                <div 
+                  className="flex flex-wrap gap-2 max-h-[4rem] overflow-hidden"
                 >
-                  <Clock className="w-3 h-3 mr-1.5" />
-                  Updated {new Date(lastUpdated).toLocaleDateString()}
-                  {isUpdating && (
-                    <Loader className="w-3 h-3 ml-2 animate-spin" />
-                  )}
+                  {topGenres.map((genre, i) => (
+                    <button
+                      key={i}
+                      onClick={() => navigate(`/search?q=${encodeURIComponent(`#${genre}`)}&type=tag`)}
+                      className="genre-tag-pill px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-90"
+                      style={{ backgroundColor: getTagColor(genre), color: "#fff" }}
+                    >
+                      #{genre}
+                    </button>
+                  ))}
                 </div>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <h3
-                className="text-sm font-semibold uppercase tracking-wider mb-3"
-                style={{ color: "#fff" }}
-              >
-                Your Top Tags
-              </h3>
-              <div className="flex flex-wrap gap-2 max-h-[5.5rem] overflow-hidden">
-                {topGenres.map((genre, i) => (
-                  <button
-                    key={i}
-                    onClick={() =>
-                      navigate(
-                        `/search?q=${encodeURIComponent(`#${genre}`)}&type=tag`,
-                      )
-                    }
-                    className="genre-tag-pill px-4 py-2 text-sm font-medium"
-                    style={{
-                      backgroundColor: getTagColor(genre),
-                      color: "#fff",
-                    }}
-                  >
-                    #{genre}
-                  </button>
-                ))}
               </div>
-            </div>
+            )}
 
             {heroBasedOn.length > 0 && (
-              <div className="pt-2">
-                <p className="text-xs" style={{ color: "#c1c1c3" }}>
-                  Based on{" "}
-                  {heroBasedOn.length === 1
-                    ? heroBasedOn[0].name
-                    : heroBasedOn.length === 2
-                      ? `${heroBasedOn[0].name} and ${heroBasedOn[1].name}`
-                      : heroBasedOn.length === 3
-                        ? `${heroBasedOn[0].name}, ${heroBasedOn[1].name} and ${heroBasedOn[2].name}`
-                        : heroBasedOn
-                            .slice(0, 2)
-                            .map((a) => a.name)
-                            .join(", ") +
-                          ` and ${heroBasedOn.length - 2} other artist${heroBasedOn.length - 2 === 1 ? "" : "s"}`}
-                </p>
-              </div>
+              <p className="text-xs" style={{ color: "#8a8a8f" }}>
+                Based on{" "}
+                {heroBasedOn.length === 1
+                  ? heroBasedOn[0].name
+                  : heroBasedOn.length === 2
+                    ? `${heroBasedOn[0].name} and ${heroBasedOn[1].name}`
+                    : heroBasedOn.length === 3
+                      ? `${heroBasedOn[0].name}, ${heroBasedOn[1].name} and ${heroBasedOn[2].name}`
+                      : heroBasedOn
+                          .slice(0, 2)
+                          .map((a) => a.name)
+                          .join(", ") +
+                        ` and ${heroBasedOn.length - 2} other artist${heroBasedOn.length - 2 === 1 ? "" : "s"}`}
+              </p>
             )}
           </div>
         </div>
@@ -1254,7 +1588,7 @@ function DiscoverPage() {
                     setDraggingId(null);
                     setDragOverId(null);
                   }}
-                  className={`flex items-center gap-4 px-4 py-3 border transition-transform transition-colors duration-200 ease-out cursor-grab select-none bg-[#1a191f] ${
+                  className={`flex items-center gap-4 px-4 py-3 border transition-all duration-200 ease-out cursor-grab select-none bg-[#1a191f] ${
                     item.enabled ? "text-white" : "text-[#8a8a8f] opacity-70"
                   } ${
                     draggingId === item.id

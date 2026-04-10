@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const UpdateBanner = ({ currentVersion }) => {
+const UpdateBanner = ({ currentVersion, visible = true }) => {
   const [updateInfo, setUpdateInfo] = useState(null);
   const updateNotifiedRef = useRef(null);
   const dismissedUpdateRef = useRef(null);
@@ -26,6 +26,10 @@ const UpdateBanner = ({ currentVersion }) => {
   );
 
   useEffect(() => {
+    if (!visible) {
+      setUpdateInfo(null);
+      return;
+    }
     const currentVersion = resolvedVersion;
     const formatSha = (value) => (value ? value.slice(0, 7) : "");
     const isSha = (value) => /^[0-9a-f]{7,40}$/i.test(value || "");
@@ -122,7 +126,7 @@ const UpdateBanner = ({ currentVersion }) => {
       active = false;
       clearInterval(intervalId);
     };
-  }, [checkMetaKey, dismissKey, releaseChannel, repo, resolvedVersion]);
+  }, [checkMetaKey, dismissKey, releaseChannel, repo, resolvedVersion, visible]);
 
   const dismissUpdate = () => {
     if (!updateInfo?.latestKey) {

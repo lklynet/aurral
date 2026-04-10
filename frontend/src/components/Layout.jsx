@@ -19,9 +19,24 @@ function normalizeArtistName(s) {
     .trim();
 }
 
+const VALID_SIDEBAR_MODES = ["full", "icons", "hidden"];
+
 function Layout({ children, appVersion }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [sidebarMode, setSidebarMode] = useState(() => {
+    try {
+      const stored = localStorage.getItem("sidebarMode");
+      return VALID_SIDEBAR_MODES.includes(stored) ? stored : "full";
+    } catch {
+      return "full";
+    }
+  });
+  const prevVisibleMode = useRef(
+    sidebarMode !== "hidden"
+      ? sidebarMode
+      : (() => { try { const s = localStorage.getItem("sidebarVisibleMode"); return s === "full" || s === "icons" ? s : "full"; } catch { return "full"; } })()
+  );
   const [suggestions, setSuggestions] = useState([]);
   const [suggestionMode, setSuggestionMode] = useState(null);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -30,6 +45,21 @@ function Layout({ children, appVersion }) {
   const debounceRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
+
+  const handleSetSidebarMode = useCallback((newMode) => {
+    if (newMode !== "hidden") {
+      prevVisibleMode.current = newMode;
+    }
+    setSidebarMode(newMode);
+    try {
+      localStorage.setItem("sidebarMode", newMode);
+      if (newMode !== "hidden") {
+        localStorage.setItem("sidebarVisibleMode", newMode);
+      }
+    } catch {
+      // localStorage unavailable
+    }
+  }, []);
 
   useEffect(() => {
     setIsSidebarOpen(false);
@@ -178,18 +208,35 @@ function Layout({ children, appVersion }) {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         appVersion={appVersion}
+        mode={sidebarMode}
+        onSetMode={handleSetSidebarMode}
       />
 
-      <div className="md:ml-52 flex flex-col min-h-screen transition-all duration-300 ease-in-out">
+      <div
+        className={`flex flex-col min-h-screen transition-all duration-300 ease-in-out ${
+          sidebarMode === "full"
+            ? "md:ml-[208px]"
+            : sidebarMode === "icons"
+              ? "md:ml-[56px]"
+              : ""
+        }`}
+      >
         <header
           className="sticky h-16 top-0 z-30 px-4 py-3 md:px-6 backdrop-blur-md flex items-center gap-4"
           style={{ backgroundColor: "rgba(5, 5, 5, 0.8)" }}
         >
           <button
-            onClick={() => setIsSidebarOpen(true)}
-            className="p-2 -ml-2 hover:bg-gray-900/50 md:hidden transition-colors"
+            onClick={() => {
+              const isDesktop = window.matchMedia("(min-width: 768px)").matches;
+              if (isDesktop) {
+                handleSetSidebarMode(sidebarMode === "hidden" ? prevVisibleMode.current : "hidden");
+              } else {
+                setIsSidebarOpen(true);
+              }
+            }}
+            className="p-2 -ml-2 hover:bg-gray-900/50 transition-colors"
             style={{ color: "#c1c1c3" }}
-            aria-label="Open navigation"
+            aria-label="Toggle navigation"
           >
             <Menu className="w-5 h-5" />
           </button>

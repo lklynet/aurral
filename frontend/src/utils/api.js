@@ -42,27 +42,24 @@ function readAuthFromStorage(storage) {
 }
 
 export const getStoredAuth = () => {
-  const sessionAuth = readAuthFromStorage(globalThis?.sessionStorage);
-  if (sessionAuth.token) return sessionAuth;
   const localAuth = readAuthFromStorage(globalThis?.localStorage);
-  if (localAuth.token && globalThis?.sessionStorage) {
-    globalThis.sessionStorage.setItem(AUTH_TOKEN_KEY, localAuth.token);
-    globalThis.localStorage?.removeItem(AUTH_TOKEN_KEY);
-    globalThis.localStorage?.removeItem(AUTH_USER_KEY);
-    globalThis.localStorage?.removeItem(AUTH_PASSWORD_KEY);
-    return localAuth;
+  if (localAuth.token) return localAuth;
+  const sessionAuth = readAuthFromStorage(globalThis?.sessionStorage);
+  if (sessionAuth.token && globalThis?.localStorage) {
+    globalThis.localStorage.setItem(AUTH_TOKEN_KEY, sessionAuth.token);
+    return sessionAuth;
   }
   return sessionAuth;
 };
 
 export const setStoredAuth = ({ token = "" } = {}) => {
-  if (!globalThis?.sessionStorage) return;
   if (!token) {
-    globalThis.sessionStorage.removeItem(AUTH_TOKEN_KEY);
+    globalThis?.sessionStorage?.removeItem(AUTH_TOKEN_KEY);
+    globalThis?.localStorage?.removeItem(AUTH_TOKEN_KEY);
     return;
   }
-  globalThis.sessionStorage.setItem(AUTH_TOKEN_KEY, token);
-  globalThis.localStorage?.removeItem(AUTH_TOKEN_KEY);
+  globalThis?.sessionStorage?.setItem(AUTH_TOKEN_KEY, token);
+  globalThis?.localStorage?.setItem(AUTH_TOKEN_KEY, token);
   globalThis.localStorage?.removeItem(AUTH_PASSWORD_KEY);
   globalThis.localStorage?.removeItem(AUTH_USER_KEY);
 };
@@ -269,11 +266,9 @@ export const buildStreamUrl = async (path) => {
 
 export const getFlowTrackStreamUrl = (jobId) => {
   const base = import.meta.env.VITE_API_URL || getDefaultApiBaseUrl();
-  const password = localStorage.getItem("auth_password");
-  const username = localStorage.getItem("auth_user") || "admin";
+  const { token } = getStoredAuth();
   let url = `${base}/weekly-flow/stream/${encodeURIComponent(jobId)}`;
-  if (password) {
-    const token = btoa(`${username}:${password}`);
+  if (token) {
     url += `?token=${encodeURIComponent(token)}`;
   }
   return url;
@@ -476,6 +471,18 @@ export const getDiscovery = async (cacheBust = false) => {
   return response.data;
 };
 
+export const getNearbyShows = async (zipCode = "", limit) => {
+  const params = { _: Date.now() };
+  if (typeof zipCode === "string" && zipCode.trim()) {
+    params.zip = zipCode.trim();
+  }
+  if (Number.isFinite(limit) && limit > 0) {
+    params.limit = Math.floor(limit);
+  }
+  const response = await api.get("/discover/nearby-shows", { params });
+  return response.data;
+};
+
 export const getRelatedArtists = async (limit = 20) => {
   const response = await api.get("/discover/related", {
     params: { limit },
@@ -513,7 +520,7 @@ export const searchArtistsByTag = async (
   return response.data;
 };
 
-export const verifyCredentials = async (password, username = "admin") => {
+export const verifyCredentials = async (password, username) => {
   try {
     const result = await loginApi(username, password);
     return !!result?.token;

@@ -1,0 +1,105 @@
+version: 2
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    groups:
+      root-production:
+        dependency-type: "production"
+      root-tooling:
+        dependency-type: "development"
+      root-transitive:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:15"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    groups:
+      backend-production:
+        dependency-type: "production"
+      backend-tooling:
+        dependency-type: "development"
+      backend-transitive:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:30"
+      timezone: "UTC"
+    open-pull-requests-limit: 4
+    groups:
+      frontend-production:
+        dependency-type: "production"
+      frontend-tooling:
+        dependency-type: "development"
+      frontend-transitive:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:45"
+      timezone: "UTC"
+    open-pull-requests-limit: 2
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "07:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 1
+    groups:
+      root-docker:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "docker"
+    directory: "/backend"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "07:15"
+      timezone: "UTC"
+    open-pull-requests-limit: 1
+    groups:
+      backend-docker:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "docker"
+    directory: "/frontend"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "07:30"
+      timezone: "UTC"
+    open-pull-requests-limit: 1
+    groups:
+      frontend-docker:
+        patterns:
+          - "*"

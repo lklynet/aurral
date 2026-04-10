@@ -1,6 +1,6 @@
 import { UserPlus, Lock, Pencil, Trash2, X } from "lucide-react";
 import { GRANULAR_PERMISSIONS, granularPerms } from "../constants";
-import { getStoredAuth, setStoredAuth } from "../../../utils/api";
+import { loginApi, setStoredAuth } from "../../../utils/api";
 
 export function SettingsUsersTab({
   authUser,
@@ -97,6 +97,10 @@ export function SettingsUsersTab({
               setChangingPassword(true);
               try {
                 await changeMyPassword(changePwCurrent, changePwNew);
+                const result = await loginApi(authUser?.username, changePwNew);
+                if (result?.token) {
+                  setStoredAuth({ token: result.token });
+                }
                 showSuccess("Password changed");
                 setChangePwCurrent("");
                 setChangePwNew("");
@@ -522,8 +526,10 @@ export function SettingsUsersTab({
                           currentPassword: editCurrentPassword,
                           password: editPassword,
                         });
-                        const { username } = getStoredAuth();
-                        setStoredAuth({ username, password: editPassword });
+                        const result = await loginApi(authUser?.username, editPassword);
+                        if (result?.token) {
+                          setStoredAuth({ token: result.token });
+                        }
                         showSuccess("Password changed");
                         setEditUser(null);
                       } catch (err) {

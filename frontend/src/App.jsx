@@ -19,6 +19,7 @@ import { useWebSocketChannel } from "./hooks/useWebSocket";
 
 const SearchResultsPage = lazy(() => import("./pages/SearchResultsPage"));
 const DiscoverPage = lazy(() => import("./pages/DiscoverPage"));
+const ShowsPage = lazy(() => import("./pages/ShowsPage"));
 const LibraryPage = lazy(() => import("./pages/LibraryPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const ArtistDetailsPage = lazy(() => import("./pages/ArtistDetailsPage"));
@@ -95,7 +96,7 @@ function AppContent() {
   const [rootFolderConfigured, setRootFolderConfigured] = useState(false);
   const [appVersion, setAppVersion] = useState(null);
   const discoveryToastShownRef = useRef(false);
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { showSuccess, showError } = useToast();
 
   useWebSocketChannel("discovery", (msg) => {
@@ -165,7 +166,10 @@ function AppContent() {
           rootFolderConfigured={rootFolderConfigured}
           appVersion={appVersion}
         >
-          <UpdateBanner currentVersion={appVersion} />
+          <UpdateBanner
+            currentVersion={appVersion}
+            visible={!user || user.role === "admin"}
+          />
           {isHealthy === false && (
             <div className="mb-6 bg-red-500/20 border border-red-500/30 p-4">
               <div className="flex items-center">
@@ -213,6 +217,7 @@ function AppContent() {
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/" element={<DiscoverPage />} />
+              <Route path="/shows" element={<ShowsPage />} />
               <Route path="/search" element={<SearchResultsPage />} />
               <Route path="/discover" element={<Navigate to="/" replace />} />
               <Route path="/library" element={<LibraryPage />} />

@@ -20,6 +20,8 @@ import {
   RefreshCw,
   Play,
   Pause,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import AddAlbumButton from "../../../components/AddAlbumButton";
 import { getPopularityScale, segmentsFromScale } from "../utils";
@@ -34,6 +36,7 @@ export function ArtistDetailsReleaseGroups({
   showFilterDropdown,
   setShowFilterDropdown,
   existsInLibrary,
+  canBulkAddAlbums,
   handleMonitorAll,
   processingBulk,
   albumCovers,
@@ -44,11 +47,16 @@ export function ArtistDetailsReleaseGroups({
   albumDropdownOpen,
   setAlbumDropdownOpen,
   handleReleaseGroupAlbumClick,
+  canAddAlbum,
   handleRequestAlbum,
+  canDeleteAlbum,
   handleDeleteAlbumClick,
   requestingAlbum,
   reSearchingAlbum,
+  canReSearchAlbum,
   handleReSearchAlbum,
+  previewVolume,
+  setPreviewVolume,
   isReleaseGroupDownloadedInLibrary,
 }) {
   const [sortMode, setSortMode] = useState("date");
@@ -77,6 +85,12 @@ export function ArtistDetailsReleaseGroups({
   };
 
   const activeFilters = hasActiveFilters(selectedReleaseTypes);
+
+  useEffect(() => {
+    const audio = previewAudioRef.current;
+    if (!audio) return;
+    audio.volume = previewVolume;
+  }, [previewVolume]);
 
   useEffect(() => {
     const audio = previewAudioRef.current;
@@ -176,6 +190,33 @@ export function ArtistDetailsReleaseGroups({
           </button>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 rounded px-2 py-1 bg-black/20">
+            {previewVolume <= 0 ? (
+              <VolumeX className="w-4 h-4 flex-shrink-0" style={{ color: "#c1c1c3" }} />
+            ) : (
+              <Volume2 className="w-4 h-4 flex-shrink-0" style={{ color: "#c1c1c3" }} />
+            )}
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={Math.round(previewVolume * 100)}
+              onChange={(e) =>
+                setPreviewVolume(
+                  Math.max(0, Math.min(1, Number(e.target.value) / 100)),
+                )
+              }
+              className="w-24 accent-[#707e61]"
+              aria-label="Preview volume"
+            />
+            <span
+              className="text-xs tabular-nums w-8 text-right"
+              style={{ color: "#c1c1c3" }}
+            >
+              {Math.round(previewVolume * 100)}
+            </span>
+          </div>
           <div className="flex items-center gap-2">
             {primaryReleaseTypes.map((type) => {
               const isSelected = selectedReleaseTypes.includes(type);
@@ -330,7 +371,7 @@ export function ArtistDetailsReleaseGroups({
             )}
           </div>
 
-          {existsInLibrary && (
+          {existsInLibrary && canBulkAddAlbums && (
             <button
               onClick={handleMonitorAll}
               disabled={processingBulk}
@@ -411,7 +452,7 @@ export function ArtistDetailsReleaseGroups({
                     <ExternalLink className="w-4 h-4 mr-2" />
                     View on Last.fm
                   </a>
-                  {canReSearch && (
+                  {canReSearch && canReSearchAlbum && (
                     <>
                       <div className="my-1 border-t border-white/10" />
                       <button
@@ -439,21 +480,25 @@ export function ArtistDetailsReleaseGroups({
                       </button>
                     </>
                   )}
-                  <div className="my-1 border-t border-white/10" />
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteAlbumClick(
-                        releaseGroup.id,
-                        releaseGroup.title
-                      );
-                    }}
-                    className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500/20 transition-colors flex items-center"
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete Album
-                  </button>
+                  {canDeleteAlbum && (
+                    <>
+                      <div className="my-1 border-t border-white/10" />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteAlbumClick(
+                            releaseGroup.id,
+                            releaseGroup.title
+                          );
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500/20 transition-colors flex items-center"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete Album
+                      </button>
+                    </>
+                  )}
                 </div>
               </>
             );
@@ -739,6 +784,26 @@ export function ArtistDetailsReleaseGroups({
                           </div>
                         </>
                       ) : (
+                        canAddAlbum ? (
+                          <AddAlbumButton
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRequestAlbum(
+                                releaseGroup.id,
+                                releaseGroup.title
+                              );
+                            }}
+                            isLoading={requestingAlbum === releaseGroup.id}
+                            disabled={requestingAlbum === releaseGroup.id}
+                            style={{
+                              backgroundColor: itemBg,
+                              borderColor: itemBg,
+                            }}
+                          />
+                        ) : null
+                      )
+                    ) : (
+                      canAddAlbum ? (
                         <AddAlbumButton
                           onClick={(e) => {
                             e.stopPropagation();
@@ -754,23 +819,7 @@ export function ArtistDetailsReleaseGroups({
                             borderColor: itemBg,
                           }}
                         />
-                      )
-                    ) : (
-                      <AddAlbumButton
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRequestAlbum(
-                            releaseGroup.id,
-                            releaseGroup.title
-                          );
-                        }}
-                        isLoading={requestingAlbum === releaseGroup.id}
-                        disabled={requestingAlbum === releaseGroup.id}
-                        style={{
-                          backgroundColor: itemBg,
-                          borderColor: itemBg,
-                        }}
-                      />
+                      ) : null
                     )}
                   </div>
                 </div>
@@ -925,6 +974,7 @@ ArtistDetailsReleaseGroups.propTypes = {
   showFilterDropdown: PropTypes.bool,
   setShowFilterDropdown: PropTypes.func,
   existsInLibrary: PropTypes.bool,
+  canBulkAddAlbums: PropTypes.bool,
   handleMonitorAll: PropTypes.func,
   processingBulk: PropTypes.bool,
   albumCovers: PropTypes.object,
@@ -935,10 +985,15 @@ ArtistDetailsReleaseGroups.propTypes = {
   albumDropdownOpen: PropTypes.string,
   setAlbumDropdownOpen: PropTypes.func,
   handleReleaseGroupAlbumClick: PropTypes.func,
+  canAddAlbum: PropTypes.bool,
   handleRequestAlbum: PropTypes.func,
+  canDeleteAlbum: PropTypes.bool,
   handleDeleteAlbumClick: PropTypes.func,
   requestingAlbum: PropTypes.string,
   reSearchingAlbum: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  canReSearchAlbum: PropTypes.bool,
   handleReSearchAlbum: PropTypes.func,
+  previewVolume: PropTypes.number,
+  setPreviewVolume: PropTypes.func,
   isReleaseGroupDownloadedInLibrary: PropTypes.func,
 };

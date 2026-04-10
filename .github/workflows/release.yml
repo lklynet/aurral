@@ -25,6 +25,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Clear test prerelease tags
+        if: github.ref_name == 'test'
+        run: |
+          git fetch --force --tags
+          for tag in $(git tag -l 'v*-test.*'); do
+            git tag -d "$tag"
+          done
+          for tag in $(git ls-remote --tags --refs origin 'v*-test.*' | awk '{print $2}' | sed 's#refs/tags/##'); do
+            git push origin ":refs/tags/$tag"
+          done
       - name: Semantic Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

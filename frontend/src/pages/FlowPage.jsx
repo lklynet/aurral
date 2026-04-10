@@ -471,6 +471,7 @@ const DEFAULT_WORKER_SETTINGS = {
   concurrency: 3,
   preferredFormat: "flac",
   preferredFormatStrict: false,
+  seedDownloads: true,
 };
 
 const buildFlowStatsFromJobs = (jobs) => {
@@ -505,6 +506,9 @@ function FlowPage() {
   const [confirmStopAll, setConfirmStopAll] = useState(false);
   const [isWorkerSettingsOpen, setIsWorkerSettingsOpen] = useState(false);
   const [workerSettingsDraft, setWorkerSettingsDraft] = useState(
+    DEFAULT_WORKER_SETTINGS,
+  );
+  const [workerSettingsBaseline, setWorkerSettingsBaseline] = useState(
     DEFAULT_WORKER_SETTINGS,
   );
   const [savingWorkerSettings, setSavingWorkerSettings] = useState(false);
@@ -919,15 +923,19 @@ function FlowPage() {
         ? "mp3"
         : "flac";
     const preferredFormatStrict = raw.preferredFormatStrict === true;
+    const seedDownloads = raw.seedDownloads !== false;
     return {
       concurrency,
       preferredFormat,
       preferredFormatStrict,
+      seedDownloads,
     };
   };
 
   const handleOpenWorkerSettings = () => {
-    setWorkerSettingsDraft(getCurrentWorkerSettings());
+    const current = getCurrentWorkerSettings();
+    setWorkerSettingsBaseline(current);
+    setWorkerSettingsDraft(current);
     setIsWorkerSettingsOpen(true);
   };
 
@@ -940,11 +948,13 @@ function FlowPage() {
       workerSettingsDraft.preferredFormat === "mp3" ? "mp3" : "flac";
     const safePreferredFormatStrict =
       workerSettingsDraft.preferredFormatStrict === true;
-    const current = getCurrentWorkerSettings();
+    const safeSeedDownloads = workerSettingsDraft.seedDownloads !== false;
+    const current = workerSettingsBaseline;
     const hasChanges =
       safeConcurrency !== current.concurrency ||
       safePreferredFormat !== current.preferredFormat ||
-      safePreferredFormatStrict !== current.preferredFormatStrict;
+      safePreferredFormatStrict !== current.preferredFormatStrict ||
+      safeSeedDownloads !== current.seedDownloads;
     if (!hasChanges || savingWorkerSettings) return;
     setSavingWorkerSettings(true);
     try {
@@ -952,6 +962,13 @@ function FlowPage() {
         concurrency: safeConcurrency,
         preferredFormat: safePreferredFormat,
         preferredFormatStrict: safePreferredFormatStrict,
+        seedDownloads: safeSeedDownloads,
+      });
+      setWorkerSettingsBaseline({
+        concurrency: safeConcurrency,
+        preferredFormat: safePreferredFormat,
+        preferredFormatStrict: safePreferredFormatStrict,
+        seedDownloads: safeSeedDownloads,
       });
       showSuccess("Flow worker settings updated");
       setIsWorkerSettingsOpen(false);
@@ -1050,13 +1067,15 @@ function FlowPage() {
       </div>
     );
   }
-  const currentWorkerSettings = getCurrentWorkerSettings();
+  const currentWorkerSettings = workerSettingsBaseline;
   const hasWorkerSettingsChanges =
     Number(workerSettingsDraft.concurrency) !== currentWorkerSettings.concurrency ||
     (workerSettingsDraft.preferredFormat === "mp3" ? "mp3" : "flac") !==
       currentWorkerSettings.preferredFormat ||
     (workerSettingsDraft.preferredFormatStrict === true) !==
-      currentWorkerSettings.preferredFormatStrict;
+      currentWorkerSettings.preferredFormatStrict ||
+    (workerSettingsDraft.seedDownloads !== false) !==
+      currentWorkerSettings.seedDownloads;
 
   return (
     <div className="flow-page max-w-6xl mx-auto px-4 pb-10">

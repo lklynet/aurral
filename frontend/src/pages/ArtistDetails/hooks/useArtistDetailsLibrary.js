@@ -321,14 +321,11 @@ export function useArtistDetailsLibrary({
     }
     setAddingToLibrary(true);
     try {
-      const defaultMonitorOption =
-        appSettings?.integrations?.lidarr?.defaultMonitorOption || "none";
       const result = await addArtistToLibrary({
         foreignArtistId: artist.id,
         artistName: artist.name,
         quality: appSettings?.quality || "standard",
         rootFolderPath: appSettings?.rootFolderPath,
-        monitorOption: defaultMonitorOption,
       });
       let fullArtist = await resolveArtistFromAddResponse(result, {
         refresh: true,
@@ -399,14 +396,11 @@ export function useArtistDetailsLibrary({
           showError("Artist information not available");
           return;
         }
-        const defaultMonitorOption =
-          appSettings?.integrations?.lidarr?.defaultMonitorOption || "none";
         const result = await addArtistToLibrary({
           foreignArtistId: artist.id,
           artistName: artist.name,
           quality: appSettings?.quality || "standard",
           rootFolderPath: appSettings?.rootFolderPath,
-          monitorOption: defaultMonitorOption,
         });
         let fullArtist = await resolveArtistFromAddResponse(result, {
           refresh: false,

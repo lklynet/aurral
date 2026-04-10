@@ -240,6 +240,7 @@ export const dbOps = {
         ? "mp3"
         : "flac";
     const preferredFormatStrict = weeklyFlowWorker?.preferredFormatStrict === true;
+    const seedDownloads = weeklyFlowWorker?.seedDownloads !== false;
 
     const defaultFlowPlaylists = {
       discover: { enabled: false, nextRunAt: null },
@@ -270,6 +271,7 @@ export const dbOps = {
         concurrency,
         preferredFormat,
         preferredFormatStrict,
+        seedDownloads,
       },
       onboardingComplete: !!onboardingComplete,
     };

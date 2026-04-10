@@ -31,6 +31,7 @@ export function SettingsIntegrationsTab({
   showInfo,
 }) {
   const [lidarrEditing, setLidarrEditing] = useState(false);
+  const [ticketmasterEditing, setTicketmasterEditing] = useState(false);
   const [navidromeEditing, setNavidromeEditing] = useState(false);
   const [lidarrTestLatencyMs, setLidarrTestLatencyMs] = useState(null);
   const safeLidarrProfiles = Array.isArray(lidarrProfiles)
@@ -300,6 +301,37 @@ export function SettingsIntegrationsTab({
                 className="block text-sm font-medium mb-1"
                 style={{ color: "#fff" }}
               >
+                External URL
+              </label>
+              <input
+                type="url"
+                className="input"
+                placeholder="https://lidarr.example.com"
+                autoComplete="off"
+                value={settings.integrations?.lidarr?.externalUrl || ""}
+                onChange={(e) =>
+                  updateSettings({
+                    ...settings,
+                    integrations: {
+                      ...settings.integrations,
+                      lidarr: {
+                        ...(settings.integrations?.lidarr || {}),
+                        externalUrl: e.target.value,
+                      },
+                    },
+                  })
+                }
+              />
+              <p className="mt-1 text-xs" style={{ color: "#c1c1c3" }}>
+                Optional. Used only for browser-facing &quot;View on Lidarr&quot;
+                links. Leave blank to use the server URL above.
+              </p>
+            </div>
+            <div>
+              <label
+                className="block text-sm font-medium mb-1"
+                style={{ color: "#fff" }}
+              >
                 Default Quality Profile
               </label>
               <div className="flex gap-2">
@@ -535,6 +567,136 @@ export function SettingsIntegrationsTab({
                 >
                   Read more
                 </a>
+              </p>
+            </div>
+          </fieldset>
+        </div>
+        <div
+          className="p-6 rounded-lg space-y-4"
+          style={{
+            backgroundColor: "#1a1a1e",
+            border: "1px solid #2a2a2e",
+          }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <h3
+              className="text-lg font-medium flex items-center"
+              style={{ color: "#fff" }}
+            >
+              Ticketmaster
+            </h3>
+            <div className="flex items-center gap-2">
+              {health?.ticketmasterConfigured && (
+                <span className="flex items-center text-sm text-green-400">
+                  <CheckCircle className="w-4 h-4 mr-1" />
+                  Configured
+                </span>
+              )}
+              <button
+                type="button"
+                className={`btn ${
+                  ticketmasterEditing ? "btn-primary" : "btn-secondary"
+                } px-2 py-1`}
+                onClick={() => setTicketmasterEditing((value) => !value)}
+                aria-label={
+                  ticketmasterEditing
+                    ? "Lock Ticketmaster settings"
+                    : "Edit Ticketmaster settings"
+                }
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          <fieldset
+            disabled={!ticketmasterEditing}
+            className={`space-y-4 ${ticketmasterEditing ? "" : "opacity-60"}`}
+          >
+            <div
+              className="rounded-lg p-4 space-y-2"
+              style={{ backgroundColor: "#141418", border: "1px solid #2a2a2e" }}
+            >
+              <p className="text-sm font-medium" style={{ color: "#fff" }}>
+                Get an API key
+              </p>
+              <p className="text-sm leading-6" style={{ color: "#c1c1c3" }}>
+                Register on the developers portal. After the registration, the
+                default application will be created. The application contains a
+                Consumer Key that is used for authentication.
+              </p>
+              <a
+                href="https://developer-acct.ticketmaster.com/user/login"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex text-sm font-medium underline"
+                style={{ color: "#60a5fa" }}
+              >
+                Open the Ticketmaster developer portal
+              </a>
+            </div>
+            <div>
+              <label
+                className="block text-sm font-medium mb-1"
+                style={{ color: "#fff" }}
+              >
+                Consumer Key
+              </label>
+              <input
+                type="password"
+                className="input"
+                placeholder="Enter Ticketmaster Consumer Key"
+                autoComplete="off"
+                value={settings.integrations?.ticketmaster?.apiKey || ""}
+                onChange={(e) =>
+                  updateSettings({
+                    ...settings,
+                    integrations: {
+                      ...settings.integrations,
+                      ticketmaster: {
+                        ...(settings.integrations?.ticketmaster || {}),
+                        apiKey: e.target.value,
+                      },
+                    },
+                  })
+                }
+              />
+              <p className="mt-1 text-xs" style={{ color: "#c1c1c3" }}>
+                Used for the Discover page&apos;s nearby shows section.
+              </p>
+            </div>
+            <div>
+              <label
+                className="block text-sm font-medium mb-1"
+                style={{ color: "#fff" }}
+              >
+                Search Radius (miles)
+              </label>
+              <input
+                type="number"
+                min={5}
+                max={250}
+                step={5}
+                className="input"
+                value={settings.integrations?.ticketmaster?.searchRadiusMiles ?? 50}
+                onChange={(e) => {
+                  const raw = Number(e.target.value);
+                  const value = Number.isFinite(raw)
+                    ? Math.max(5, Math.min(250, Math.floor(raw)))
+                    : 50;
+                  updateSettings({
+                    ...settings,
+                    integrations: {
+                      ...settings.integrations,
+                      ticketmaster: {
+                        ...(settings.integrations?.ticketmaster || {}),
+                        searchRadiusMiles: value,
+                      },
+                    },
+                  });
+                }}
+              />
+              <p className="mt-1 text-xs" style={{ color: "#c1c1c3" }}>
+                Controls how far from your selected area Ticketmaster events are searched.
               </p>
             </div>
           </fieldset>

@@ -26,6 +26,19 @@ router.post("/", async (req, res) => {
     const { quality, releaseTypes, integrations } = req.body;
 
     const currentSettings = dbOps.getSettings();
+    const lidarrExternalUrl = integrations?.lidarr?.externalUrl;
+    if (lidarrExternalUrl !== undefined) {
+      const trimmedExternalUrl = String(lidarrExternalUrl).trim();
+      if (trimmedExternalUrl) {
+        const urlValidation = validateExternalUrl(trimmedExternalUrl);
+        if (!urlValidation.valid) {
+          return res.status(400).json({ error: urlValidation.error });
+        }
+        integrations.lidarr.externalUrl = urlValidation.url;
+      } else {
+        integrations.lidarr.externalUrl = "";
+      }
+    }
 
     let mergedIntegrations =
       currentSettings.integrations || defaultData.settings.integrations || {};
@@ -57,6 +70,12 @@ router.post("/", async (req, res) => {
               ...integrations.lastfm,
             }
           : mergedIntegrations.lastfm,
+        ticketmaster: integrations.ticketmaster
+          ? {
+              ...(mergedIntegrations.ticketmaster || {}),
+              ...integrations.ticketmaster,
+            }
+          : mergedIntegrations.ticketmaster,
         musicbrainz: integrations.musicbrainz
           ? {
               ...(mergedIntegrations.musicbrainz || {}),
@@ -75,6 +94,15 @@ router.post("/", async (req, res) => {
               ...integrations.gotify,
             }
           : mergedIntegrations.gotify,
+        webhooks: integrations.webhooks !== undefined
+          ? integrations.webhooks
+          : mergedIntegrations.webhooks,
+        webhookEvents: integrations.webhookEvents
+          ? {
+              ...(mergedIntegrations.webhookEvents || {}),
+              ...integrations.webhookEvents,
+            }
+          : mergedIntegrations.webhookEvents,
       };
     }
 

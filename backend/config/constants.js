@@ -172,8 +172,10 @@ export const defaultData = {
       },
       slskd: { url: "", apiKey: "" },
       soulseek: { username: "", password: "" },
+      ticketmaster: { apiKey: "", searchRadiusMiles: 50 },
       lidarr: {
         url: "",
+        externalUrl: "",
         apiKey: "",
         qualityProfileId: null,
         metadataProfileId: null,
@@ -185,6 +187,11 @@ export const defaultData = {
       gotify: {
         url: "",
         token: "",
+        notifyDiscoveryUpdated: false,
+        notifyWeeklyFlowDone: false,
+      },
+      webhooks: [],
+      webhookEvents: {
         notifyDiscoveryUpdated: false,
         notifyWeeklyFlowDone: false,
       },
@@ -203,6 +210,7 @@ export const defaultData = {
       concurrency: 3,
       preferredFormat: "flac",
       preferredFormatStrict: false,
+      seedDownloads: true,
     },
   },
   blocklist: [],

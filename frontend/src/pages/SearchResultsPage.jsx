@@ -291,18 +291,6 @@ function SearchResultsPage() {
     [loadMore],
   );
 
-  const getArtistType = (artistType) => {
-    const types = {
-      Person: "Solo Artist",
-      Group: "Band",
-      Orchestra: "Orchestra",
-      Choir: "Choir",
-      Character: "Character",
-      Other: "Other",
-    };
-    return types[artistType] || artistType;
-  };
-
   const displayedArtists =
     type === "recommended" || type === "trending"
       ? results.slice(0, visibleCount)
@@ -471,11 +459,7 @@ function SearchResultsPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
                 {displayedArtists.map((artist, index) => {
                   const artistId = getArtistId(artist);
-                  const artistTypeText = artist.type
-                    ? getArtistType(artist.type)
-                    : null;
                   const artistMetaText = [
-                    artistTypeText,
                     type === "recommended" &&
                       artist.sourceArtist &&
                       `Similar to ${artist.sourceArtist}`,

@@ -6,6 +6,7 @@ import {
 import {
   lastfmRequest,
   getLastfmApiKey,
+  getTicketmasterApiKey,
   clearApiCaches,
 } from "../services/apiClients.js";
 import { libraryManager } from "../services/libraryManager.js";
@@ -13,6 +14,7 @@ import { dbOps } from "../config/db-helpers.js";
 import { imagePrefetchService } from "../services/imagePrefetchService.js";
 import { defaultDiscoveryPreferences } from "../config/constants.js";
 import { requireAuth, requireAdmin } from "../middleware/requirePermission.js";
+import { getNearbyShows } from "../services/nearbyShowsService.js";
 
 const router = express.Router();
 
@@ -432,6 +434,54 @@ router.get("/by-tag", async (req, res) => {
   }
 });
 
+router.get("/nearby-shows", requireAuth, async (req, res) => {
+  try {
+    const apiKey = getTicketmasterApiKey();
+    if (!apiKey) {
+      res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+      return res.json({
+        configured: false,
+        location: null,
+        shows: [],
+        total: 0,
+        counts: {
+          libraryArtists: 0,
+          matchedLibraryShows: 0,
+        },
+      });
+    }
+
+    const zipCode = String(req.query.zip || "").trim();
+    const limit = req.query.limit;
+    const settings = dbOps.getSettings();
+    const configuredRadius = Number(
+      settings.integrations?.ticketmaster?.searchRadiusMiles,
+    );
+    const radiusMiles = Number.isFinite(configuredRadius)
+      ? Math.max(5, Math.min(250, Math.floor(configuredRadius)))
+      : undefined;
+    const libraryArtists = await libraryManager.getAllArtists();
+    const nearbyShows = await getNearbyShows({
+      req,
+      zipCode,
+      libraryArtists,
+      limit,
+      radiusMiles,
+    });
+
+    res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+    return res.json({
+      configured: true,
+      ...nearbyShows,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Failed to load nearby shows",
+      message: error.message,
+    });
+  }
+});
+
 router.get("/preferences", requireAuth, (req, res) => {
   res.json(discoveryPreferences);
 });
@@ -533,25 +583,29 @@ router.post("/preferences/exclude-artist", requireAuth, (req, res) => {
   }
 });
 
-router.delete("/preferences/exclude-artist/:artistId", requireAuth, (req, res) => {
-  try {
-    const { artistId } = req.params;
-    discoveryPreferences.excludedArtists =
-      discoveryPreferences.excludedArtists.filter(
-        (a) => a.artistId !== artistId,
-      );
+router.delete(
+  "/preferences/exclude-artist/:artistId",
+  requireAuth,
+  (req, res) => {
+    try {
+      const { artistId } = req.params;
+      discoveryPreferences.excludedArtists =
+        discoveryPreferences.excludedArtists.filter(
+          (a) => a.artistId !== artistId,
+        );
 
-    res.json({
-      success: true,
-      excludedArtists: discoveryPreferences.excludedArtists,
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: "Failed to remove excluded artist",
-      message: error.message,
-    });
-  }
-});
+      res.json({
+        success: true,
+        excludedArtists: discoveryPreferences.excludedArtists,
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: "Failed to remove excluded artist",
+        message: error.message,
+      });
+    }
+  },
+);
 
 router.get("/filtered", async (req, res) => {
   try {

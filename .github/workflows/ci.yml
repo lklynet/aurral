@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ["main", "test"]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - run: npm ci
+
+      - run: npm ci
+        working-directory: backend
+
+      - run: npm ci
+        working-directory: frontend
+
+      - run: npm run lint
+        working-directory: frontend
+
+      - run: npm run build
+        working-directory: frontend
+
+      - run: npm run build
+
+      - name: Start app
+        run: |
+          npm start > /tmp/aurral.log 2>&1 &
+          echo $! > /tmp/aurral.pid
+
+      - name: Wait for health endpoint
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3001/api/health > /tmp/aurral-health.json; then
+              cat /tmp/aurral-health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/aurral.log
+          exit 1
+
+      - name: Print app log on failure
+        if: failure()
+        run: cat /tmp/aurral.log
+
+      - name: Stop app
+        if: always()
+        run: |
+          if [ -f /tmp/aurral.pid ]; then
+            kill "$(cat /tmp/aurral.pid)" || true
+          fi

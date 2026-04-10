@@ -2,6 +2,15 @@ import { useState, useEffect, useRef } from "react";
 import { getArtistPreview } from "../../../utils/api";
 
 const SNAP_BACK_MS = 320;
+const PREVIEW_VOLUME_KEY = "aurral.preview.volume";
+
+function getInitialPreviewVolume() {
+  if (typeof window === "undefined") return 0.7;
+  const stored = window.localStorage.getItem(PREVIEW_VOLUME_KEY);
+  const parsed = stored == null ? NaN : Number.parseFloat(stored);
+  if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 1) return parsed;
+  return 0.7;
+}
 
 export function usePreviewPlayer(mbid, artistNameFromNav, artist) {
   const [previewTracks, setPreviewTracks] = useState([]);
@@ -9,6 +18,7 @@ export function usePreviewPlayer(mbid, artistNameFromNav, artist) {
   const [playingPreviewId, setPlayingPreviewId] = useState(null);
   const [previewProgress, setPreviewProgress] = useState(0);
   const [previewSnappingBack, setPreviewSnappingBack] = useState(false);
+  const [previewVolume, setPreviewVolume] = useState(getInitialPreviewVolume);
   const previewAudioRef = useRef(null);
   const previewTickRef = useRef(null);
   const snapBackTimeoutRef = useRef(null);
@@ -86,6 +96,17 @@ export function usePreviewPlayer(mbid, artistNameFromNav, artist) {
   useEffect(() => {
     const audio = previewAudioRef.current;
     if (!audio) return;
+    audio.volume = previewVolume;
+  }, [previewVolume]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(PREVIEW_VOLUME_KEY, String(previewVolume));
+  }, [previewVolume]);
+
+  useEffect(() => {
+    const audio = previewAudioRef.current;
+    if (!audio) return;
     const PREVIEW_DURATION = 30;
     const updateProgress = () => {
       const t = audio.currentTime;
@@ -135,6 +156,8 @@ export function usePreviewPlayer(mbid, artistNameFromNav, artist) {
     playingPreviewId,
     previewProgress,
     previewSnappingBack,
+    previewVolume,
+    setPreviewVolume,
     previewAudioRef,
     handlePreviewPlay,
   };

@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Loader, Music, ArrowLeft, X } from "lucide-react";
 import { useToast } from "../../contexts/ToastContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { useArtistDetailsStream } from "./hooks/useArtistDetailsStream";
 import { useReleaseTypeFilter } from "./hooks/useReleaseTypeFilter";
 import { usePreviewPlayer } from "./hooks/usePreviewPlayer";
@@ -30,6 +31,7 @@ function ArtistDetailsPage() {
   const navigate = useNavigate();
   const artistNameFromNav = locationState?.artistName;
   const { showSuccess, showError } = useToast();
+  const { hasPermission } = useAuth();
   const similarArtistsScrollRef = useRef(null);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [showEditIdsModal, setShowEditIdsModal] = useState(false);
@@ -42,6 +44,12 @@ function ArtistDetailsPage() {
   });
 
   const stream = useArtistDetailsStream(mbid, artistNameFromNav);
+  const canAddArtist = hasPermission("addArtist");
+  const canAddAlbum = hasPermission("addAlbum");
+  const canChangeMonitoring = hasPermission("changeMonitoring");
+  const canDeleteArtist = hasPermission("deleteArtist");
+  const canDeleteAlbum = hasPermission("deleteAlbum");
+  const canBulkAddAlbums = canAddAlbum && canChangeMonitoring;
   const {
     artist,
     coverImages,
@@ -83,6 +91,8 @@ function ArtistDetailsPage() {
     playingPreviewId,
     previewProgress,
     previewSnappingBack,
+    previewVolume,
+    setPreviewVolume,
     previewAudioRef,
     handlePreviewPlay,
     setPreviewTracks,
@@ -241,11 +251,15 @@ function ArtistDetailsPage() {
         showMonitorOptionMenu={library.showMonitorOptionMenu}
         setShowMonitorOptionMenu={library.setShowMonitorOptionMenu}
         updatingMonitor={library.updatingMonitor}
+        canChangeMonitoring={canChangeMonitoring}
         getCurrentMonitorOption={library.getCurrentMonitorOption}
         handleUpdateMonitorOption={library.handleUpdateMonitorOption}
+        canDeleteArtist={canDeleteArtist}
         handleDeleteClick={library.handleDeleteClick}
+        canAddArtist={canAddArtist}
         handleAddToLibrary={library.handleAddToLibrary}
         addingToLibrary={library.addingToLibrary}
+        canRefreshArtist={canChangeMonitoring}
         handleRefreshArtist={library.handleRefreshArtist}
         refreshingArtist={library.refreshingArtist}
         onNavigate={(path) => navigate(path)}
@@ -255,6 +269,8 @@ function ArtistDetailsPage() {
         playingPreviewId={playingPreviewId}
         previewProgress={previewProgress}
         previewSnappingBack={previewSnappingBack}
+        previewVolume={previewVolume}
+        setPreviewVolume={setPreviewVolume}
         handlePreviewPlay={handlePreviewPlay}
         onEditIds={handleOpenEditIds}
       />
@@ -273,7 +289,9 @@ function ArtistDetailsPage() {
           albumDropdownOpen={library.albumDropdownOpen}
           setAlbumDropdownOpen={library.setAlbumDropdownOpen}
           handleLibraryAlbumClick={library.handleLibraryAlbumClick}
+          canDeleteAlbum={canDeleteAlbum}
           handleDeleteAlbumClick={library.handleDeleteAlbumClick}
+          canReSearchAlbum={canAddAlbum}
           handleReSearchAlbum={library.handleReSearchAlbum}
         />
       )}
@@ -288,6 +306,7 @@ function ArtistDetailsPage() {
           showFilterDropdown={showFilterDropdown}
           setShowFilterDropdown={setShowFilterDropdown}
           existsInLibrary={existsInLibrary}
+          canBulkAddAlbums={canBulkAddAlbums}
           handleMonitorAll={library.handleMonitorAll}
           processingBulk={library.processingBulk}
           albumCovers={albumCovers}
@@ -298,11 +317,16 @@ function ArtistDetailsPage() {
           albumDropdownOpen={library.albumDropdownOpen}
           setAlbumDropdownOpen={library.setAlbumDropdownOpen}
           handleReleaseGroupAlbumClick={library.handleReleaseGroupAlbumClick}
+          canAddAlbum={canAddAlbum}
           handleRequestAlbum={library.handleRequestAlbum}
+          canDeleteAlbum={canDeleteAlbum}
           handleDeleteAlbumClick={library.handleDeleteAlbumClick}
           requestingAlbum={library.requestingAlbum}
           reSearchingAlbum={library.reSearchingAlbum}
+          canReSearchAlbum={canAddAlbum}
           handleReSearchAlbum={library.handleReSearchAlbum}
+          previewVolume={previewVolume}
+          setPreviewVolume={setPreviewVolume}
           isReleaseGroupDownloadedInLibrary={
             library.isReleaseGroupDownloadedInLibrary
           }
