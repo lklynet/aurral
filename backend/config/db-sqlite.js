@@ -5,13 +5,22 @@ import fs from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DATA_DIR = path.join(__dirname, "..", "data");
+const DEFAULT_DATA_DIR = path.join(__dirname, "..", "data");
+const DATA_DIR = process.env.AURRAL_DATA_DIR
+  ? path.resolve(process.env.AURRAL_DATA_DIR)
+  : DEFAULT_DATA_DIR;
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-const DB_PATH = path.join(DATA_DIR, "aurral.db");
+const DB_PATH = process.env.AURRAL_DB_PATH
+  ? path.resolve(process.env.AURRAL_DB_PATH)
+  : path.join(DATA_DIR, "aurral.db");
+
+if (!fs.existsSync(path.dirname(DB_PATH))) {
+  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+}
 
 const db = new Database(DB_PATH);
 

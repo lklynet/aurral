@@ -109,8 +109,8 @@ api.interceptors.response.use(
   },
   (error) => {
     const status = error?.response?.status;
-    const message = error?.response?.data?.message;
-    if (status === 401 && message === "Authentication required") {
+    const code = error?.response?.data?.code;
+    if (status === 401 && code === "SESSION_INVALID") {
       clearAuthStorage();
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event(AUTH_INVALID_EVENT));
@@ -268,6 +268,16 @@ export const getFlowTrackStreamUrl = (jobId) => {
   const base = import.meta.env.VITE_API_URL || getDefaultApiBaseUrl();
   const { token } = getStoredAuth();
   let url = `${base}/weekly-flow/stream/${encodeURIComponent(jobId)}`;
+  if (token) {
+    url += `?token=${encodeURIComponent(token)}`;
+  }
+  return url;
+};
+
+export const getFlowArtworkUrl = (playlistId) => {
+  const base = import.meta.env.VITE_API_URL || getDefaultApiBaseUrl();
+  const { token } = getStoredAuth();
+  let url = `${base}/weekly-flow/artwork/${encodeURIComponent(playlistId)}`;
   if (token) {
     url += `?token=${encodeURIComponent(token)}`;
   }
@@ -660,10 +670,48 @@ export const deleteFlow = async (flowId) => {
   return response.data;
 };
 
+export const convertFlowToStaticPlaylist = async (flowId, payload = {}) => {
+  const response = await api.post(
+    `/weekly-flow/flows/${flowId}/static-playlist`,
+    payload,
+  );
+  return response.data;
+};
+
 export const setFlowEnabled = async (flowId, enabled) => {
   const response = await api.put(`/weekly-flow/flows/${flowId}/enabled`, {
     enabled,
   });
+  return response.data;
+};
+
+export const importSharedPlaylist = async (payload) => {
+  const response = await api.post(
+    "/weekly-flow/shared-playlists/import",
+    payload,
+  );
+  return response.data;
+};
+
+export const updateSharedPlaylist = async (playlistId, payload) => {
+  const response = await api.put(
+    `/weekly-flow/shared-playlists/${playlistId}`,
+    payload,
+  );
+  return response.data;
+};
+
+export const deleteSharedPlaylist = async (playlistId) => {
+  const response = await api.delete(
+    `/weekly-flow/shared-playlists/${playlistId}`,
+  );
+  return response.data;
+};
+
+export const deleteSharedPlaylistTrack = async (playlistId, jobId) => {
+  const response = await api.delete(
+    `/weekly-flow/shared-playlists/${playlistId}/tracks/${jobId}`,
+  );
   return response.data;
 };
 
@@ -693,6 +741,14 @@ export const stopFlowWorker = async () => {
 
 export const updateFlowWorkerSettings = async (settings) => {
   const response = await api.put("/weekly-flow/worker/settings", settings);
+  return response.data;
+};
+
+export const setPlaylistRetryCyclePaused = async (playlistId, paused) => {
+  const response = await api.put(
+    `/weekly-flow/playlists/${playlistId}/retry-cycle`,
+    { paused },
+  );
   return response.data;
 };
 

@@ -13,7 +13,4 @@ backend/data/*
 *.swp
 *.swo
 *~
-weekly-flow/
 /*.mp3
-docs/
-.idea/

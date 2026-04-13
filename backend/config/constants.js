@@ -210,7 +210,7 @@ export const defaultData = {
       concurrency: 3,
       preferredFormat: "flac",
       preferredFormatStrict: false,
-      seedDownloads: true,
+      retryCycleMinutes: 15,
     },
   },
   blocklist: [],

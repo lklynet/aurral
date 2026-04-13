@@ -119,6 +119,34 @@ const getBearerToken = (req) => {
   return token || null;
 };
 
+export function getUnauthorizedDetails(req) {
+  if (getBearerToken(req)) {
+    return {
+      code: "SESSION_INVALID",
+      message: "Session expired or invalid",
+    };
+  }
+  return {
+    code: "AUTH_REQUIRED",
+    message: "Authentication required",
+  };
+}
+
+export function sendUnauthorizedResponse(
+  req,
+  res,
+  { challenge = false, ...overrides } = {},
+) {
+  if (challenge) {
+    res.setHeader("WWW-Authenticate", 'Basic realm="Aurral"');
+  }
+  return res.status(401).json({
+    error: "Unauthorized",
+    ...getUnauthorizedDetails(req),
+    ...overrides,
+  });
+}
+
 const resolveSessionUserFromToken = (token) => {
   if (!token) return null;
   return toSessionUser(getSessionByToken(token));
@@ -305,7 +333,9 @@ export const createAuthMiddleware = () => {
     }
     if (
       /^\/api\/library\/stream\/[^/]+$/.test(req.path) ||
-      /^\/api\/artists\/[a-f0-9-]{36}\/stream$/i.test(req.path)
+      /^\/api\/artists\/[a-f0-9-]{36}\/stream$/i.test(req.path) ||
+      /^\/api\/weekly-flow\/stream\/[^/]+$/i.test(req.path) ||
+      /^\/api\/weekly-flow\/artwork\/[^/]+$/i.test(req.path)
     ) {
       return next();
     }
@@ -327,10 +357,7 @@ export const createAuthMiddleware = () => {
       return next();
     }
 
-    res.setHeader("WWW-Authenticate", 'Basic realm="Aurral"');
-    return res
-      .status(401)
-      .json({ error: "Unauthorized", message: "Authentication required" });
+    return sendUnauthorizedResponse(req, res);
   };
 };
 

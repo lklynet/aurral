@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aurral | Exportify to JSON</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="https://raw.githubusercontent.com/lklynet/aurral/refs/heads/main/frontend/public/arralogo.svg"
+    />
+  </head>
+  <body>
+    <nav>
+      <a href="/" class="logo">
+        <img
+          src="https://raw.githubusercontent.com/lklynet/aurral/refs/heads/main/frontend/public/arralogo.svg"
+          alt="Aurral Logo"
+          style="
+            filter: brightness(0) saturate(100%) invert(45%) sepia(8%)
+              saturate(800%) hue-rotate(60deg) brightness(95%) contrast(85%);
+          "
+        />
+        Aurral
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="flows-and-playlists.html">Flows & Playlists</a>
+        <a href="aurral-convert.html">Spotify Import</a>
+        <a
+          href="https://github.com/lklynet/aurral"
+          target="_blank"
+          class="btn btn-outline github-btn"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              d="M15 22v-4a4.8 4.8 0 0 0-1-3.02c3.1-.34 6.2-1.53 6.2-6.74a5.34 5.34 0 0 0-1.5-3.8 5.33 5.33 0 0 0-.1-3.8s-1.2-.4-3.9 1.4a13.38 13.38 0 0 0-7 0c-2.7-1.8-3.9-1.4-3.9-1.4a5.33 5.33 0 0 0-.1 3.8 5.34 5.34 0 0 0-1.5 3.8c0 5.2 3.1 6.4 6.2 6.74a4.8 4.8 0 0 0-1 3.02v4"
+            />
+            <path d="M9 20c-4.2 1.4-5.6-1.5-5.6-1.5" />
+          </svg>
+          GitHub
+          <span class="github-stars-badge">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <polygon
+                points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+              />
+            </svg>
+            <span class="github-stars-count">...</span>
+          </span>
+        </a>
+      </div>
+    </nav>
+
+    <main class="wrap">
+      <div class="header">
+        <h1>Exportify ➜ Aurral</h1>
+      </div>
+
+      <div
+        class="callout"
+        style="
+          margin-bottom: 32px;
+          text-align: left;
+          max-width: 600px;
+          padding: 20px;
+        "
+      >
+        <ol
+          style="
+            margin-bottom: 0;
+            color: var(--muted);
+            line-height: 1.2;
+            padding-left: 20px;
+          "
+        >
+          <li style="margin-bottom: 12px">
+            Log in to
+            <a
+              href="https://exportify.net/"
+              target="_blank"
+              style="text-decoration: underline"
+              >Exportify.net</a
+            >
+            with your Spotify account.
+          </li>
+          <li style="margin-bottom: 12px">
+            Click <strong>Export</strong> next to the playlist you want to bring
+            to Aurral.
+          </li>
+          <li style="margin-bottom: 12px">
+            Drop the downloaded <code>.csv</code> file into the box below and
+            click Convert.
+          </li>
+          <li>
+            Open your Aurral web UI, go to the
+            <strong>Playlist Import</strong> modal, and upload the generated
+            JSON!
+          </li>
+        </ol>
+      </div>
+
+      <section class="card convert-card">
+        <div class="stack">
+          <div class="dropzone" id="dropzone">
+            <label>Select or drag CSV File</label>
+            <span class="hint">Supports Exportify .csv exports</span>
+            <input id="csvFile" type="file" accept=".csv,text/csv" />
+            <div id="fileName" class="file-name-display"></div>
+          </div>
+
+          <div class="actions">
+            <button id="convertBtn" type="button" disabled>
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Convert CSV
+            </button>
+            <button id="downloadBtn" type="button" disabled>
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Download JSON
+            </button>
+          </div>
+
+          <div id="status" class="status">Ready to convert</div>
+
+          <div class="preview-container" id="previewContainer">
+            <div class="preview-label">Preview</div>
+            <pre id="preview" aria-live="polite"></pre>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>Aurral is open source software released under the MIT License.</p>
+      <div
+        style="
+          margin-top: 16px;
+          display: flex;
+          justify-content: center;
+          gap: 16px;
+        "
+      >
+        <a href="https://github.com/lklynet/aurral" target="_blank">GitHub</a>
+        <a href="https://discord.gg/cpPYfgVURJ" target="_blank">Discord</a>
+      </div>
+    </footer>
+
+    <script src="main.js"></script>
+    <script>
+      const fileInput = document.getElementById("csvFile");
+      const dropzone = document.getElementById("dropzone");
+      const fileNameEl = document.getElementById("fileName");
+      const convertBtn = document.getElementById("convertBtn");
+      const downloadBtn = document.getElementById("downloadBtn");
+      const statusEl = document.getElementById("status");
+      const previewContainer = document.getElementById("previewContainer");
+      const previewEl = document.getElementById("preview");
+
+      let outputJson = null;
+      let outputName = "playlist";
+
+      function setStatus(message, type = "") {
+        statusEl.textContent = message;
+        statusEl.className = "status " + type;
+      }
+
+      // Drag and drop handling
+      ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
+        dropzone.addEventListener(eventName, preventDefaults, false);
+      });
+
+      function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
+      ["dragenter", "dragover"].forEach((eventName) => {
+        dropzone.addEventListener(
+          eventName,
+          () => dropzone.classList.add("dragover"),
+          false,
+        );
+      });
+
+      ["dragleave", "drop"].forEach((eventName) => {
+        dropzone.addEventListener(
+          eventName,
+          () => dropzone.classList.remove("dragover"),
+          false,
+        );
+      });
+
+      dropzone.addEventListener("drop", (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        if (files && files.length) {
+          fileInput.files = files;
+          updateFileDisplay();
+        }
+      });
+
+      fileInput.addEventListener("change", updateFileDisplay);
+
+      function updateFileDisplay() {
+        const file = fileInput.files[0];
+        if (file) {
+          fileNameEl.textContent = file.name;
+          convertBtn.disabled = false;
+          setStatus("Ready to convert: " + file.name);
+        } else {
+          fileNameEl.textContent = "";
+          convertBtn.disabled = true;
+          setStatus("Ready to convert");
+        }
+      }
+
+      function parseCsvLine(line) {
+        const values = [];
+        let current = "";
+        let inQuotes = false;
+
+        for (let i = 0; i < line.length; i += 1) {
+          const char = line[i];
+          const next = line[i + 1];
+
+          if (char === '"' && inQuotes && next === '"') {
+            current += '"';
+            i += 1;
+            continue;
+          }
+
+          if (char === '"') {
+            inQuotes = !inQuotes;
+            continue;
+          }
+
+          if (char === "," && !inQuotes) {
+            values.push(current);
+            current = "";
+            continue;
+          }
+
+          current += char;
+        }
+
+        values.push(current);
+        return values;
+      }
+
+      function csvToPlaylistJson(csvText, filename) {
+        const rows = csvText
+          .split(/\r?\n/)
+          .map((r) => r.trim())
+          .filter(Boolean);
+
+        if (rows.length < 2) {
+          throw new Error("The CSV appears empty or missing track rows.");
+        }
+
+        const headers = parseCsvLine(rows[0]);
+        const trackNameIndex = headers.indexOf("Track Name");
+        const albumNameIndex = headers.indexOf("Album Name");
+        const artistNameIndex = headers.indexOf("Artist Name(s)");
+
+        if (
+          trackNameIndex === -1 ||
+          albumNameIndex === -1 ||
+          artistNameIndex === -1
+        ) {
+          throw new Error(
+            "CSV is missing required columns: Track Name, Album Name, Artist Name(s).",
+          );
+        }
+
+        const tracks = rows
+          .slice(1)
+          .map((row) => {
+            const cols = parseCsvLine(row);
+            return {
+              artistName: cols[artistNameIndex] || "",
+              albumName: cols[albumNameIndex] || "",
+              trackName: cols[trackNameIndex] || "",
+            };
+          })
+          .filter(
+            (track) => track.artistName || track.albumName || track.trackName,
+          );
+
+        if (tracks.length === 0) {
+          throw new Error("No tracks were found after parsing the CSV.");
+        }
+
+        const baseName = filename
+          .replace(/\.csv$/i, "")
+          .replace(/[_-]+/g, " ")
+          .trim();
+        const playlistName = baseName || "My Playlist";
+
+        return {
+          name: playlistName,
+          tracks,
+        };
+      }
+
+      convertBtn.addEventListener("click", async () => {
+        const file = fileInput.files[0];
+
+        if (!file) {
+          setStatus("Choose a CSV file first.", "error");
+          return;
+        }
+
+        try {
+          const text = await file.text();
+          outputJson = csvToPlaylistJson(text, file.name);
+          outputName = file.name.replace(/\.csv$/i, "");
+          previewEl.textContent = JSON.stringify(outputJson, null, 2);
+          previewContainer.classList.add("visible");
+          downloadBtn.disabled = false;
+          setStatus(
+            `Converted ${outputJson.tracks.length} tracks from "${file.name}".`,
+            "ok",
+          );
+        } catch (error) {
+          outputJson = null;
+          downloadBtn.disabled = true;
+          previewEl.textContent = "";
+          previewContainer.classList.remove("visible");
+          setStatus(
+            error.message || "Conversion failed. Check your CSV file.",
+            "error",
+          );
+        }
+      });
+
+      downloadBtn.addEventListener("click", () => {
+        if (!outputJson) {
+          setStatus("Nothing to download yet.", "error");
+          return;
+        }
+
+        const blob = new Blob([JSON.stringify(outputJson, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${outputName}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      });
+    </script>
+  </body>
+</html>

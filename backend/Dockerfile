@@ -2,7 +2,7 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache su-exec python3 make g++ && ln -sf /usr/bin/python3 /usr/bin/python
+RUN apk add --no-cache su-exec python3 make g++ fontconfig ttf-dejavu && ln -sf /usr/bin/python3 /usr/bin/python
 
 COPY package*.json ./
 

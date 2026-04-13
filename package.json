@@ -1,12 +1,13 @@
 {
   "name": "aurral",
-  "version": "1.44.0",
+  "version": "1.45.0",
   "description": "Aurral artist request manager",
   "main": "server.js",
   "type": "module",
   "scripts": {
     "build": "cd frontend && npm run build",
     "start": "node server.js",
+    "test": "node --test --test-concurrency=1 $(find .tests -name '*.test.js' -print)",
     "dev": "concurrently --kill-others-on-fail \"npm run dev:backend\" \"npm run wait-and-dev:frontend\"",
     "wait-and-dev:frontend": "wait-on -t 15000 http://localhost:3001/api/health && cd frontend && npm run dev",
     "dev:backend": "nodemon server.js",
@@ -36,6 +37,7 @@
     "express-basic-auth": "^1.2.1",
     "express-rate-limit": "^7.5.1",
     "helmet": "^8.1.0",
+    "sharp": "^0.34.5",
     "ws": "^8.18.0"
   },
   "devDependencies": {
@@ -50,7 +52,7 @@
     "husky": "^9.1.7",
     "nodemon": "^3.1.14",
     "semantic-release": "^25.0.3",
-    "wait-on": "^9.0.4"
+    "wait-on": "^9.0.5"
   },
   "nodemonConfig": {
     "watch": [

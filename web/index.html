@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aurral | Music Discovery & Request Management</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="https://raw.githubusercontent.com/lklynet/aurral/refs/heads/main/frontend/public/arralogo.svg"
+    />
+  </head>
+  <body>
+    <nav>
+      <a href="/" class="logo">
+        <img
+          src="https://raw.githubusercontent.com/lklynet/aurral/refs/heads/main/frontend/public/arralogo.svg"
+          alt="Aurral Logo"
+        />
+        Aurral
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="flows-and-playlists.html">Flows & Playlists</a>
+        <a href="aurral-convert.html">Spotify Import</a>
+        <a
+          href="https://github.com/lklynet/aurral"
+          target="_blank"
+          class="btn btn-outline github-btn"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              d="M15 22v-4a4.8 4.8 0 0 0-1-3.02c3.1-.34 6.2-1.53 6.2-6.74a5.34 5.34 0 0 0-1.5-3.8 5.33 5.33 0 0 0-.1-3.8s-1.2-.4-3.9 1.4a13.38 13.38 0 0 0-7 0c-2.7-1.8-3.9-1.4-3.9-1.4a5.33 5.33 0 0 0-.1 3.8 5.34 5.34 0 0 0-1.5 3.8c0 5.2 3.1 6.4 6.2 6.74a4.8 4.8 0 0 0-1 3.02v4"
+            />
+            <path d="M9 20c-4.2 1.4-5.6-1.5-5.6-1.5" />
+          </svg>
+          GitHub
+          <span class="github-stars-badge">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <polygon
+                points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+              />
+            </svg>
+            <span class="github-stars-count">...</span>
+          </span>
+        </a>
+      </div>
+    </nav>
+
+    <header class="hero">
+      <h1>Your Music.<br />Your Server.</h1>
+      <p>
+        Self-hosted music discovery and request management for Lidarr with
+        library-aware recommendations and optional Weekly Flow playlists powered
+        by Soulseek + Navidrome.
+      </p>
+      <div class="hero-actions">
+        <a href="#setup" class="btn">Get Started</a>
+        <a href="aurral-convert.html" class="btn btn-outline"
+          >Import Spotify Playlists</a
+        >
+      </div>
+    </header>
+
+    <main class="container">
+      <section id="features">
+        <h2>Features</h2>
+        <div class="grid">
+          <div class="card feature-card">
+            <h3>Lidarr Management</h3>
+            <ul class="feature-list">
+              <li>Search artists via MusicBrainz</li>
+              <li>
+                Monitor options (None / All / Future / Missing / Latest / First)
+              </li>
+              <li>Add specific albums from release groups</li>
+              <li>Track requests and download/import progress</li>
+            </ul>
+          </div>
+          <div class="card feature-card">
+            <h3>Discovery</h3>
+            <ul class="feature-list">
+              <li>Browse your existing library in a clean UI</li>
+              <li>
+                Daily Discover recommendations based on your library, tags, and
+                trends
+              </li>
+              <li>Last.fm integration (optional)</li>
+              <li>Library-aware so you don't request what you already have</li>
+            </ul>
+          </div>
+          <div class="card feature-card">
+            <h3>Weekly Flow</h3>
+            <ul class="feature-list">
+              <li>Generates playlists from your library & listening context</li>
+              <li>Downloads tracks via built-in Soulseek client</li>
+              <li>Multiple flows with adjustable mix</li>
+              <li>Navidrome smart playlists integration</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="screenshots">
+        <h2>Interface</h2>
+        <img
+          src="https://raw.githubusercontent.com/lklynet/aurral/refs/heads/main/frontend/images/discover.webp"
+          alt="Aurral UI Discovery"
+          class="screenshot"
+        />
+        <div class="screenshot-grid">
+          <img
+            src="https://raw.githubusercontent.com/lklynet/aurral/refs/heads/main/frontend/images/recommended.webp"
+            alt="Aurral Recommendations"
+            class="screenshot"
+          />
+          <img
+            src="https://raw.githubusercontent.com/lklynet/aurral/refs/heads/main/frontend/images/artist.webp"
+            alt="Aurral Artist Details"
+            class="screenshot"
+          />
+        </div>
+      </section>
+
+      <section id="import">
+        <h2>Import Spotify Playlists</h2>
+        <div class="callout">
+          <h3>Bring Your Music Over</h3>
+          <p>
+            Aurral supports importing static playlists via JSON. We built a
+            dedicated converter to easily migrate your Spotify playlists using
+            Exportify.
+          </p>
+
+          <div
+            style="
+              text-align: left;
+              margin-bottom: 24px;
+              max-width: 600px;
+              margin-left: auto;
+              margin-right: auto;
+              color: var(--muted);
+            "
+          >
+            <ol>
+              <li style="margin-bottom: 12px">
+                Export your Spotify playlist as a CSV using
+                <a href="https://exportify.net/" target="_blank">Exportify</a>.
+              </li>
+              <li style="margin-bottom: 12px">
+                Use our web converter to transform that CSV into an
+                Aurral-compatible JSON file.
+              </li>
+              <li>
+                Open the <strong>Playlist Import</strong> modal in your
+                self-hosted Aurral UI and upload the JSON!
+              </li>
+            </ol>
+          </div>
+
+          <a href="aurral-convert.html" class="btn"
+            >Open CSV to JSON Converter</a
+          >
+        </div>
+      </section>
+
+      <section id="setup">
+        <h2>Quick Start (Docker Compose)</h2>
+        <p style="color: var(--muted); margin-bottom: 16px">
+          Aurral is designed to be safe for your collection: it does not write
+          into your main music library directly. Library changes go through
+          Lidarr's API, and Weekly Flow writes into its own dedicated directory.
+        </p>
+        <pre><code>services:
+  aurral:
+    image: ghcr.io/lklynet/aurral:latest
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - DOWNLOAD_FOLDER=${DL_FOLDER:-./data/downloads}
+    volumes:
+      - ${DL_FOLDER:-./data/downloads}:/app/downloads
+      - ${STORAGE:-./data}:/app/backend/data</code></pre>
+        <p style="color: var(--muted)">
+          Start it up: <code>docker compose up -d</code><br />
+          Then open: <code>http://localhost:3001</code>
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <p>Aurral is open source software released under the MIT License.</p>
+      <div
+        style="
+          margin-top: 16px;
+          display: flex;
+          justify-content: center;
+          gap: 16px;
+        "
+      >
+        <a href="https://github.com/lklynet/aurral" target="_blank">GitHub</a>
+        <a href="https://discord.gg/cpPYfgVURJ" target="_blank">Discord</a>
+      </div>
+    </footer>
+    <script src="main.js"></script>
+  </body>
+</html>

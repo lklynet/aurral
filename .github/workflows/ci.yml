@@ -35,10 +35,11 @@ jobs:
       - run: npm run lint
         working-directory: frontend
 
-      - run: npm run build
-        working-directory: frontend
+      - name: Run test suite
+        run: npm test
 
-      - run: npm run build
+      - name: Build app
+        run: npm run build
 
       - name: Start app
         run: |
@@ -54,12 +55,21 @@ jobs:
             fi
             sleep 2
           done
-          cat /tmp/aurral.log
+          if [ -f /tmp/aurral.log ]; then
+            cat /tmp/aurral.log
+          else
+            echo "App log not found at /tmp/aurral.log"
+          fi
           exit 1
 
       - name: Print app log on failure
         if: failure()
-        run: cat /tmp/aurral.log
+        run: |
+          if [ -f /tmp/aurral.log ]; then
+            cat /tmp/aurral.log
+          else
+            echo "App log not found at /tmp/aurral.log"
+          fi
 
       - name: Stop app
         if: always()

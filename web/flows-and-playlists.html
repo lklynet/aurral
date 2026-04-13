@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aurral | Flows and Playlists</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="https://raw.githubusercontent.com/lklynet/aurral/refs/heads/main/frontend/public/arralogo.svg"
+    />
+  </head>
+  <body>
+    <nav>
+      <a href="/" class="logo">
+        <img
+          src="https://raw.githubusercontent.com/lklynet/aurral/refs/heads/main/frontend/public/arralogo.svg"
+          alt="Aurral Logo"
+          style="
+            filter: brightness(0) saturate(100%) invert(45%) sepia(8%)
+              saturate(800%) hue-rotate(60deg) brightness(95%) contrast(85%);
+          "
+        />
+        Aurral
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="flows-and-playlists.html">Flows & Playlists</a>
+        <a href="aurral-convert.html">Spotify Import</a>
+        <a
+          href="https://github.com/lklynet/aurral"
+          target="_blank"
+          class="btn btn-outline github-btn"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              d="M15 22v-4a4.8 4.8 0 0 0-1-3.02c3.1-.34 6.2-1.53 6.2-6.74a5.34 5.34 0 0 0-1.5-3.8 5.33 5.33 0 0 0-.1-3.8s-1.2-.4-3.9 1.4a13.38 13.38 0 0 0-7 0c-2.7-1.8-3.9-1.4-3.9-1.4a5.33 5.33 0 0 0-.1 3.8 5.34 5.34 0 0 0-1.5 3.8c0 5.2 3.1 6.4 6.2 6.74a4.8 4.8 0 0 0-1 3.02v4"
+            />
+            <path d="M9 20c-4.2 1.4-5.6-1.5-5.6-1.5" />
+          </svg>
+          GitHub
+          <span class="github-stars-badge">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <polygon
+                points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+              />
+            </svg>
+            <span class="github-stars-count">...</span>
+          </span>
+        </a>
+      </div>
+    </nav>
+
+    <main class="content-container">
+      <header class="header">
+        <h1>Flows & Playlists</h1>
+        <p
+          style="
+            max-width: 600px;
+            margin: 0 auto;
+            color: var(--muted);
+            font-size: 1.1rem;
+            line-height: 1.6;
+          "
+        >
+          Aurral supports both dynamic, weekly refreshing music discovery
+          (Flows) and static, imported sets of music (Playlists). Here is how
+          they differ and how to use them.
+        </p>
+      </header>
+
+      <div class="comparison-grid">
+        <div class="comparison-card">
+          <h3>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+              <path d="M16 16h5v5" />
+            </svg>
+            Flows
+          </h3>
+          <p style="margin-top: 16px">
+            Dynamic, recommended playlists that refresh automatically every week
+            based on your listening context.
+          </p>
+          <ul style="margin-bottom: 0">
+            <li>Generated automatically</li>
+            <li>Replaced entirely on refresh</li>
+            <li>Can generate replacement tracks if initial downloads fail</li>
+          </ul>
+        </div>
+        <div class="comparison-card">
+          <h3>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="8" y1="6" x2="21" y2="6"></line>
+              <line x1="8" y1="12" x2="21" y2="12"></line>
+              <line x1="8" y1="18" x2="21" y2="18"></line>
+              <line x1="3" y1="6" x2="3.01" y2="6"></line>
+              <line x1="3" y1="12" x2="3.01" y2="12"></line>
+              <line x1="3" y1="18" x2="3.01" y2="18"></line>
+            </svg>
+            Playlists
+          </h3>
+          <p style="margin-top: 16px">
+            Static tracklists imported from JSON files (like converted Spotify
+            playlists).
+          </p>
+          <ul style="margin-bottom: 0">
+            <li>Imported manually</li>
+            <li>Kept separate from flow refreshes</li>
+            <li>Will retry exact tracks forever, never replacing them</li>
+          </ul>
+        </div>
+      </div>
+
+      <section class="content-section">
+        <h2>Playlist Imports</h2>
+        <p>
+          Aurral accepts imported playlists via JSON files. You can convert your
+          existing Spotify playlists into this format using our
+          <a href="aurral-convert.html">CSV to JSON converter</a>.
+        </p>
+
+        <h3>Required Fields</h3>
+        <p>
+          Each track in your JSON must include the artist name and track name.
+          We accept a variety of aliases to make importing easier:
+        </p>
+        <ul>
+          <li>
+            <strong>Artist:</strong> <code>artistName</code>,
+            <code>artist</code>, <code>artist_name</code>,
+            <code>Artist Name(s)</code>
+          </li>
+          <li>
+            <strong>Track:</strong> <code>trackName</code>, <code>title</code>,
+            <code>name</code>, <code>track</code>, <code>Track Name</code>
+          </li>
+          <li>
+            <strong>Album (Optional):</strong> <code>albumName</code>,
+            <code>album</code>, <code>Album Name</code>
+          </li>
+          <li>
+            <strong>Artist ID (Optional):</strong> <code>artistMbid</code>,
+            <code>artistId</code>, <code>mbid</code>
+          </li>
+        </ul>
+
+        <div
+          class="callout"
+          style="text-align: left; padding: 24px; margin: 32px 0"
+        >
+          <h3 style="margin-top: 0; color: var(--primary)">Download Retries</h3>
+          <p style="margin-bottom: 12px">
+            When a playlist track fails to download, Aurral behaves differently
+            than it does for Flows:
+          </p>
+          <ul style="margin-bottom: 0">
+            <li>
+              Retryable failures get an immediate retry with a backoff delay.
+            </li>
+            <li>
+              If a playlist is incomplete and has no active jobs, failed tracks
+              are requeued every ~15 minutes.
+            </li>
+            <li>
+              Imported playlists will <strong>always</strong> retry the exact
+              tracks you imported; they will never generate replacement tracks
+              like Flows do.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="content-section">
+        <h2>JSON Formats</h2>
+        <p>
+          The importer is flexible and accepts several JSON shapes. If you are
+          writing your own scripts or modifying files by hand, you can use any
+          of these formats.
+        </p>
+
+        <div class="json-example">
+          <h3>1. Single Playlist Object</h3>
+          <pre><code>{
+  "name": "My Playlist",
+  "tracks": [
+    { "artistName": "Massive Attack", "trackName": "Teardrop" },
+    { "artistName": "Portishead", "trackName": "Roads" }
+  ]
+}</code></pre>
+        </div>
+
+        <div class="json-example">
+          <h3>2. Raw Array of Tracks</h3>
+          <p>
+            A top-level array of track objects is treated as one single
+            playlist. (This is what our CSV converter generates).
+          </p>
+          <pre><code>[
+  { "artistName": "Burial", "trackName": "Archangel" },
+  { "artistName": "Air", "trackName": "La Femme d'Argent" }
+]</code></pre>
+        </div>
+
+        <div class="json-example">
+          <h3>3. Multi-Playlist Bundle</h3>
+          <p>
+            You can import multiple playlists at once by providing an array of
+            playlist objects.
+          </p>
+          <pre><code>{
+  "playlists": [
+    {
+      "name": "Warm",
+      "tracks": [
+        { "artistName": "Bonobo", "trackName": "Kiara" }
+      ]
+    },
+    {
+      "name": "Dark",
+      "tracks": [
+        { "artistName": "Burial", "trackName": "Near Dark" }
+      ]
+    }
+  ]
+}</code></pre>
+        </div>
+
+        <div class="json-example">
+          <h3>4. Aurral Export Format</h3>
+          <p>Aurral can also re-import the exact files it exports.</p>
+          <pre><code>{
+  "type": "aurral-static-tracklist",
+  "version": 1,
+  "name": "Late Night Finds",
+  "tracks": [
+    {
+      "artistName": "Burial",
+      "trackName": "Archangel",
+      "albumName": "Untrue"
+    }
+  ]
+}</code></pre>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>Aurral is open source software released under the MIT License.</p>
+      <div
+        style="
+          margin-top: 16px;
+          display: flex;
+          justify-content: center;
+          gap: 16px;
+        "
+      >
+        <a href="https://github.com/lklynet/aurral" target="_blank">GitHub</a>
+        <a href="https://discord.gg/cpPYfgVURJ" target="_blank">Discord</a>
+      </div>
+    </footer>
+    <script src="main.js"></script>
+  </body>
+</html>

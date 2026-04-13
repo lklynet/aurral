@@ -9,10 +9,11 @@ import { dbOps } from "../config/db-helpers.js";
 
 const DEFAULT_CONCURRENCY = 3;
 const MIN_CONCURRENCY = 1;
-const MAX_CONCURRENCY = 5;
+const MAX_CONCURRENCY = 3;
 const DEFAULT_PREFERRED_FORMAT = "flac";
 const DEFAULT_PREFERRED_FORMAT_STRICT = false;
-const DEFAULT_SEED_DOWNLOADS = true;
+const FLOW_WORKER_RETRY_CYCLE_OPTIONS_MINUTES = [15, 30, 60, 360, 720, 1440];
+const DEFAULT_RETRY_CYCLE_MINUTES = 15;
 const JOB_COOLDOWN_MS = 750;
 const RETRY_BASE_DELAY_MS = 5000;
 const RETRY_MAX_DELAY_MS = 120000;
@@ -25,6 +26,10 @@ const RETRY_MATCH_CANDIDATES = 10;
 const MAX_RETRY_MATCH_CANDIDATES = 20;
 const STRICT_FORMAT_MATCH_CANDIDATES = 30;
 const STRICT_RETRY_MATCH_CANDIDATES = 20;
+const MAX_DOWNLOAD_ATTEMPTS_PER_JOB = 4;
+const MAX_DOWNLOAD_ATTEMPTS_PER_RETRY = 6;
+const QUEUED_TIMEOUT_FIRST_ATTEMPT_MS = 4500;
+const QUEUED_TIMEOUT_RETRY_ATTEMPT_MS = 3000;
 const FALLBACK_MP3_REGEX = /^[^/\\]+-[a-f0-9]{8}\.mp3$/i;
 const FALLBACK_SWEEP_INTERVAL_MS = 10 * 60 * 1000;
 const MAX_RETRIES_PER_JOB = 1;
@@ -37,6 +42,8 @@ const NON_RETRYABLE_ERRORS = new Set([
   "User offline",
 ]);
 const SUPPORTED_PREFERRED_FORMATS = new Set(["flac", "mp3"]);
+const WORKER_STOPPED_CODE = "WORKER_STOPPED";
+const PLAYLIST_MUTATION_CODE = "PLAYLIST_MUTATION_IN_PROGRESS";
 
 export class WeeklyFlowWorker {
   constructor(
@@ -56,11 +63,15 @@ export class WeeklyFlowWorker {
     this.backupRefillRounds = new Map();
     this.currentJob = null;
     this.pausedUntil = 0;
+    this.lastDequeuedPlaylistType = null;
     this.fallbackSweepInFlight = null;
     this.fallbackSweepTimer = null;
     this.lastJobMetrics = null;
-    this.prefetchedSearches = new Map();
     this.sanitizeCache = new Map();
+    this.incompleteRetryTimers = new Map();
+    this.activeJobs = new Map();
+    this.blockedPlaylistTypes = new Set();
+    this.runGeneration = 0;
   }
 
   _scheduleProcessIn(delayMs = JOB_COOLDOWN_MS) {
@@ -73,6 +84,195 @@ export class WeeklyFlowWorker {
       this.processTimer = null;
       if (this.processLoop) this.processLoop();
     }, waitMs);
+  }
+
+  wake(delayMs = 0) {
+    if (!this.running) return;
+    if (this.processTimer) {
+      clearTimeout(this.processTimer);
+      this.processTimer = null;
+    }
+    this._scheduleProcessIn(delayMs);
+  }
+
+  _createControlFlowError(code, message) {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+  }
+
+  _isControlFlowError(error) {
+    const code = String(error?.code || "");
+    return code === WORKER_STOPPED_CODE || code === PLAYLIST_MUTATION_CODE;
+  }
+
+  _isPlaylistBlocked(playlistType) {
+    return this.blockedPlaylistTypes.has(String(playlistType || ""));
+  }
+
+  _assertJobCanContinue(job, runGeneration) {
+    if (runGeneration !== this.runGeneration) {
+      throw this._createControlFlowError(WORKER_STOPPED_CODE, "Worker stopped");
+    }
+    if (this._isPlaylistBlocked(job?.playlistType)) {
+      throw this._createControlFlowError(
+        PLAYLIST_MUTATION_CODE,
+        "Playlist mutation in progress",
+      );
+    }
+  }
+
+  blockPlaylist(playlistType) {
+    const id = String(playlistType || "").trim();
+    if (!id) return false;
+    this.blockedPlaylistTypes.add(id);
+    return true;
+  }
+
+  unblockPlaylist(playlistType) {
+    const id = String(playlistType || "").trim();
+    if (!id) return false;
+    const removed = this.blockedPlaylistTypes.delete(id);
+    if (removed && this.running) {
+      this.wake();
+    }
+    return removed;
+  }
+
+  async waitForPlaylistIdle(playlistType) {
+    const id = String(playlistType || "").trim();
+    if (!id) return;
+    while (true) {
+      const active = [];
+      for (const entry of this.activeJobs.values()) {
+        if (entry?.playlistType === id && entry?.promise) {
+          active.push(entry.promise);
+        }
+      }
+      if (active.length === 0) {
+        return;
+      }
+      await Promise.allSettled(active);
+    }
+  }
+
+  async waitForIdle() {
+    while (true) {
+      const active = [...this.activeJobs.values()]
+        .map((entry) => entry?.promise)
+        .filter(Boolean);
+      if (active.length === 0) {
+        return;
+      }
+      await Promise.allSettled(active);
+    }
+  }
+
+  pruneOrphanedJobState() {
+    for (const jobId of [...this.retryAttempts.keys()]) {
+      if (!downloadTracker.getJob(jobId)) {
+        this.retryAttempts.delete(jobId);
+      }
+    }
+    for (const jobId of [...this.retryNotBefore.keys()]) {
+      if (!downloadTracker.getJob(jobId)) {
+        this.retryNotBefore.delete(jobId);
+      }
+    }
+  }
+
+  clearIncompleteRetry(playlistType) {
+    const timer = this.incompleteRetryTimers.get(playlistType);
+    if (timer) {
+      clearTimeout(timer);
+      this.incompleteRetryTimers.delete(playlistType);
+    }
+  }
+
+  _rescheduleIncompleteRetries(
+    delayMs = this._getIncompleteRetryDelayMs(),
+  ) {
+    const playlistTypes = [...this.incompleteRetryTimers.keys()];
+    if (playlistTypes.length === 0) return 0;
+    for (const playlistType of playlistTypes) {
+      this.clearIncompleteRetry(playlistType);
+    }
+    for (const playlistType of playlistTypes) {
+      this._scheduleIncompleteRetry(playlistType, delayMs);
+    }
+    return playlistTypes.length;
+  }
+
+  _normalizeRetryPausedPlaylistIds(value) {
+    if (!Array.isArray(value)) return [];
+    const out = new Set();
+    for (const entry of value) {
+      const id = String(entry || "").trim();
+      if (!id) continue;
+      out.add(id);
+    }
+    return [...out];
+  }
+
+  _getRetryPausedPlaylistIds() {
+    const settings = dbOps.getSettings();
+    const raw = settings?.weeklyFlowWorker || {};
+    return this._normalizeRetryPausedPlaylistIds(raw.retryPausedPlaylistIds);
+  }
+
+  _isRetryCyclePaused(playlistType) {
+    if (!playlistType) return false;
+    const paused = this._getRetryPausedPlaylistIds();
+    return paused.includes(String(playlistType));
+  }
+
+  setRetryCyclePaused(playlistType, paused) {
+    const id = String(playlistType || "").trim();
+    if (!id) return false;
+    const current = dbOps.getSettings();
+    const worker = current?.weeklyFlowWorker || {};
+    const pausedIds = new Set(
+      this._normalizeRetryPausedPlaylistIds(worker.retryPausedPlaylistIds),
+    );
+    if (paused) {
+      pausedIds.add(id);
+      this.clearIncompleteRetry(id);
+    } else {
+      pausedIds.delete(id);
+    }
+    dbOps.updateSettings({
+      ...current,
+      weeklyFlowWorker: {
+        ...worker,
+        retryPausedPlaylistIds: [...pausedIds],
+      },
+    });
+    if (!paused && this.running) {
+      this.wake();
+    }
+    return true;
+  }
+
+  getRetryCyclePausedMap(playlistIds = []) {
+    const paused = new Set(this._getRetryPausedPlaylistIds());
+    const out = {};
+    for (const id of Array.isArray(playlistIds) ? playlistIds : []) {
+      const key = String(id || "").trim();
+      if (!key) continue;
+      out[key] = paused.has(key);
+    }
+    return out;
+  }
+
+  getIncompleteRetryMap(playlistIds = []) {
+    const scheduled = new Set(this.incompleteRetryTimers.keys());
+    const out = {};
+    for (const id of Array.isArray(playlistIds) ? playlistIds : []) {
+      const key = String(id || "").trim();
+      if (!key) continue;
+      out[key] = scheduled.has(key);
+    }
+    return out;
   }
 
   _isAuthFailure(message) {
@@ -156,10 +356,20 @@ export class WeeklyFlowWorker {
     return value === true ? true : DEFAULT_PREFERRED_FORMAT_STRICT;
   }
 
-  _normalizeSeedDownloads(value) {
-    return value === false ? false : DEFAULT_SEED_DOWNLOADS;
+  _normalizeRetryCycleMinutes(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return DEFAULT_RETRY_CYCLE_MINUTES;
+    const normalized = Math.floor(parsed);
+    if (FLOW_WORKER_RETRY_CYCLE_OPTIONS_MINUTES.includes(normalized)) {
+      return normalized;
+    }
+    return DEFAULT_RETRY_CYCLE_MINUTES;
   }
 
+  _getIncompleteRetryDelayMs() {
+    const { retryCycleMinutes } = this.getWorkerSettings();
+    return Math.max(1000, retryCycleMinutes * 60 * 1000);
+  }
   _getAdaptiveMatchLimit(preferredFormatStrict, retryAttempt) {
     if (preferredFormatStrict) {
       if (retryAttempt >= 2) return STRICT_FORMAT_MATCH_CANDIDATES;
@@ -180,7 +390,12 @@ export class WeeklyFlowWorker {
       preferredFormatStrict: this._normalizePreferredFormatStrict(
         raw.preferredFormatStrict,
       ),
-      seedDownloads: this._normalizeSeedDownloads(raw.seedDownloads),
+      retryCycleMinutes: this._normalizeRetryCycleMinutes(
+        raw.retryCycleMinutes,
+      ),
+      retryPausedPlaylistIds: this._normalizeRetryPausedPlaylistIds(
+        raw.retryPausedPlaylistIds,
+      ),
     };
   }
 
@@ -202,21 +417,30 @@ export class WeeklyFlowWorker {
           : this._normalizePreferredFormatStrict(
               nextSettings.preferredFormatStrict,
             ),
-      seedDownloads:
-        nextSettings.seedDownloads === undefined
-          ? base.seedDownloads
-          : this._normalizeSeedDownloads(nextSettings.seedDownloads),
+      retryCycleMinutes:
+        nextSettings.retryCycleMinutes === undefined
+          ? base.retryCycleMinutes
+          : this._normalizeRetryCycleMinutes(nextSettings.retryCycleMinutes),
+      retryPausedPlaylistIds: this._normalizeRetryPausedPlaylistIds(
+        base.retryPausedPlaylistIds,
+      ),
     };
     dbOps.updateSettings({
       ...current,
       weeklyFlowWorker: normalized,
     });
+    if (normalized.retryCycleMinutes !== base.retryCycleMinutes) {
+      this._rescheduleIncompleteRetries(
+        Math.max(1000, normalized.retryCycleMinutes * 60 * 1000),
+      );
+    }
     return normalized;
   }
 
   _getPlaylistTargetCount(playlistType) {
     const flow = flowPlaylistConfig.getFlow(playlistType);
-    const raw = Number(flow?.size || 0);
+    const sharedPlaylist = flowPlaylistConfig.getSharedPlaylist(playlistType);
+    const raw = Number(flow?.size || sharedPlaylist?.trackCount || 0);
     if (!Number.isFinite(raw) || raw <= 0) return null;
     return Math.max(1, Math.floor(raw));
   }
@@ -263,6 +487,119 @@ export class WeeklyFlowWorker {
       }
     }
     return removed;
+  }
+
+  _requeueFailedJobs(playlistType, reason = null) {
+    if (this._isRetryCyclePaused(playlistType)) return 0;
+    const jobs = downloadTracker.getByPlaylistType(playlistType);
+    let requeued = 0;
+    for (const job of jobs) {
+      if (job.status !== "failed") continue;
+      this.retryAttempts.delete(job.id);
+      this.retryNotBefore.delete(job.id);
+      const priorError = String(job?.error || "").trim();
+      const retryReason = [String(reason || "").trim(), priorError]
+        .filter(Boolean)
+        .join(" • ");
+      if (
+        downloadTracker.setPending(job.id, retryReason || null, {
+          asRetryCycle: true,
+        })
+      ) {
+        requeued += 1;
+      }
+    }
+    return requeued;
+  }
+
+  _scheduleIncompleteRetry(
+    playlistType,
+    delayMs = this._getIncompleteRetryDelayMs(),
+  ) {
+    if (!playlistType) return;
+    if (this._isRetryCyclePaused(playlistType)) {
+      this.clearIncompleteRetry(playlistType);
+      return;
+    }
+    if (
+      !flowPlaylistConfig.getFlow(playlistType) &&
+      !flowPlaylistConfig.getSharedPlaylist(playlistType)
+    ) {
+      this.clearIncompleteRetry(playlistType);
+      return;
+    }
+    if (this.incompleteRetryTimers.has(playlistType)) return;
+    const waitMs = Math.max(
+      1000,
+      Math.floor(Number(delayMs) || this._getIncompleteRetryDelayMs()),
+    );
+    const timer = setTimeout(() => {
+      this.incompleteRetryTimers.delete(playlistType);
+      this.retryIncompletePlaylist(playlistType).catch((error) => {
+        console.error(
+          `[WeeklyFlowWorker] Failed incomplete retry for ${playlistType}:`,
+          error.message,
+        );
+        this._scheduleIncompleteRetry(playlistType);
+      });
+    }, waitMs);
+    this.incompleteRetryTimers.set(playlistType, timer);
+  }
+
+  async retryIncompletePlaylist(playlistType) {
+    if (this._isRetryCyclePaused(playlistType)) {
+      this.clearIncompleteRetry(playlistType);
+      return 0;
+    }
+    const flow = flowPlaylistConfig.getFlow(playlistType);
+    const sharedPlaylist = flowPlaylistConfig.getSharedPlaylist(playlistType);
+    if (!flow && !sharedPlaylist) {
+      this.clearIncompleteRetry(playlistType);
+      return 0;
+    }
+    if (flow && flow.enabled !== true) {
+      this.clearIncompleteRetry(playlistType);
+      return 0;
+    }
+
+    const stats = downloadTracker.getPlaylistTypeStats(playlistType);
+    const target = this._getPlaylistTargetCount(playlistType);
+    if (!target || stats.done >= target) {
+      this.clearIncompleteRetry(playlistType);
+      return 0;
+    }
+    if (stats.pending > 0 || stats.downloading > 0) {
+      if (this.running) {
+        this.wake();
+      } else {
+        await this.start();
+      }
+      return 0;
+    }
+
+    let changed = 0;
+    if (flow) {
+      const shortfall = Math.max(0, target - Number(stats.done || 0));
+      if (shortfall > 0) {
+        changed += await this._enqueueBackupJobs(playlistType, shortfall);
+      }
+    }
+    changed += this._requeueFailedJobs(
+      playlistType,
+      "Retrying incomplete playlist",
+    );
+
+    if (changed > 0) {
+      if (this.running) {
+        this.wake();
+      } else {
+        await this.start();
+      }
+      return changed;
+    }
+
+    this._scheduleIncompleteRetry(playlistType);
+    return 0;
   }
 
   async _enqueueBackupJobs(playlistType, shortfall) {
@@ -334,6 +671,7 @@ export class WeeklyFlowWorker {
       return;
     }
 
+    this.runGeneration += 1;
     this.running = true;
     console.log("[WeeklyFlowWorker] Starting worker...");
     await this.moveFallbackMp3sToDir(true);
@@ -351,8 +689,11 @@ export class WeeklyFlowWorker {
       }
       const { concurrency } = this.getWorkerSettings();
       while (this.activeCount < concurrency) {
-        const job = downloadTracker.getNextPending();
+        const job = downloadTracker.getNextPending(
+          this.lastDequeuedPlaylistType,
+        );
         if (!job) break;
+        this.lastDequeuedPlaylistType = job.playlistType;
         if (this._hasReachedPlaylistTarget(job.playlistType)) {
           downloadTracker.removeJob(job.id);
           continue;
@@ -362,6 +703,17 @@ export class WeeklyFlowWorker {
         if (notBefore > loopNow) {
           const waitMs = Math.max(1000, notBefore - loopNow);
           this._scheduleProcessIn(waitMs);
+          break;
+        }
+        if (this._isPlaylistBlocked(job.playlistType)) {
+          downloadTracker.deferPendingToBack(
+            job.id,
+            "Playlist mutation in progress",
+            {
+              keepRetryTier: true,
+            },
+          );
+          this._scheduleProcessIn(JOB_COOLDOWN_MS);
           break;
         }
 
@@ -374,8 +726,18 @@ export class WeeklyFlowWorker {
           progressPct: 0,
           startedAt: Date.now(),
         };
-        this.processJob(job)
+        const jobRunGeneration = this.runGeneration;
+        const jobPromise = this.processJob(job, jobRunGeneration)
           .catch(async (error) => {
+            if (
+              jobRunGeneration !== this.runGeneration ||
+              this._isPlaylistBlocked(job.playlistType) ||
+              this._isControlFlowError(error)
+            ) {
+              this.retryAttempts.delete(job.id);
+              this.retryNotBefore.delete(job.id);
+              return;
+            }
             const attempts = Number(this.retryAttempts.get(job.id) || 0);
             const message = String(error?.message || "");
             const retryable = !this._isNonRetryableError(message);
@@ -394,6 +756,9 @@ export class WeeklyFlowWorker {
               downloadTracker.setPending(
                 job.id,
                 `${message} (retry ${retryAttempt}/${retryLimit} in ${Math.ceil(retryDelayMs / 1000)}s)`,
+                {
+                  asRetryCycle: true,
+                },
               );
               return;
             }
@@ -408,26 +773,29 @@ export class WeeklyFlowWorker {
             await this.checkPlaylistComplete(job.playlistType);
           })
           .finally(() => {
+            this.activeJobs.delete(job.id);
             this.activeCount--;
-            this.prefetchedSearches.delete(job.id);
             if (this.activeCount <= 0) {
               this.currentJob = null;
             }
-            this._scheduleProcessIn(JOB_COOLDOWN_MS);
+            this.wake(0);
           });
-        this._prefetchUpcomingSearches();
+        this.activeJobs.set(job.id, {
+          playlistType: job.playlistType,
+          promise: jobPromise,
+        });
       }
     };
 
     this.processLoop();
   }
 
-  stop() {
+  _requestStop() {
     if (!this.running) {
-      return;
+      return false;
     }
-
     this.running = false;
+    this.runGeneration += 1;
     if (this.processTimer) {
       clearTimeout(this.processTimer);
       this.processTimer = null;
@@ -442,12 +810,28 @@ export class WeeklyFlowWorker {
     this.retryableFailureStreak = 0;
     this.backupRefillRounds.clear();
     this.pausedUntil = 0;
+    this.lastDequeuedPlaylistType = null;
     this.currentJob = null;
-    this.prefetchedSearches.clear();
     this.sanitizeCache.clear();
-    downloadTracker.resetDownloadingToPending();
     soulseekClient.disconnect().catch(() => {});
     console.log("[WeeklyFlowWorker] Worker stopped");
+    return true;
+  }
+
+  stop() {
+    const stopped = this._requestStop();
+    if (!stopped) {
+      return;
+    }
+    downloadTracker.resetDownloadingToPending();
+    this.pruneOrphanedJobState();
+  }
+
+  async stopAndDrain() {
+    this._requestStop();
+    await this.waitForIdle();
+    downloadTracker.resetDownloadingToPending();
+    this.pruneOrphanedJobState();
   }
 
   _normalizeAlbumName(value) {
@@ -477,21 +861,7 @@ export class WeeklyFlowWorker {
     return sanitized;
   }
 
-  _prefetchUpcomingSearches() {
-    const { concurrency } = this.getWorkerSettings();
-    const upcoming = downloadTracker.peekPending(concurrency * 3);
-    for (const upcomingJob of upcoming) {
-      if (!upcomingJob || this.prefetchedSearches.has(upcomingJob.id)) {
-        continue;
-      }
-      const promise = soulseekClient
-        .search(upcomingJob.artistName, upcomingJob.trackName)
-        .catch(() => null);
-      this.prefetchedSearches.set(upcomingJob.id, promise);
-    }
-  }
-
-  async processJob(job) {
+  async processJob(job, runGeneration = this.runGeneration) {
     console.log(
       `[WeeklyFlowWorker] Processing job ${job.id}: ${job.artistName} - ${job.trackName} (${job.playlistType})`,
     );
@@ -513,23 +883,17 @@ export class WeeklyFlowWorker {
     let stagingPrepared = false;
 
     downloadTracker.setDownloading(job.id, stagingPath);
+    this._assertJobCanContinue(job, runGeneration);
 
     try {
       let phaseStart = process.hrtime.bigint();
       const retryAttempt = Number(this.retryAttempts.get(job.id) || 0);
-      const lastErrorMessage = String(job?.error || "").toLowerCase();
-      const shouldForceFreshSearch =
-        retryAttempt > 0 &&
-        (lastErrorMessage.includes("user not exist") ||
-          lastErrorMessage.includes("user offline"));
-      const prefetched = this.prefetchedSearches.get(job.id) || null;
-      this.prefetchedSearches.delete(job.id);
-      const initialResults =
-        prefetched && !shouldForceFreshSearch
-          ? await prefetched
-          : await soulseekClient.search(job.artistName, job.trackName, {
-              forceFresh: shouldForceFreshSearch,
-            });
+      const initialResults = await soulseekClient.search(
+        job.artistName,
+        job.trackName,
+        { forceFresh: true },
+      );
+      this._assertJobCanContinue(job, runGeneration);
       timingsMs.search += Number(process.hrtime.bigint() - phaseStart) / 1e6;
       if (!initialResults || initialResults.length === 0) {
         throw new Error("No search results found");
@@ -543,6 +907,7 @@ export class WeeklyFlowWorker {
       await new Promise((r) => setImmediate(r));
       await fs.mkdir(stagingDir, { recursive: true });
       stagingPrepared = true;
+      this._assertJobCanContinue(job, runGeneration);
       const stagingFile = `${job.artistName} - ${job.trackName}`;
       const stagingFilePath = path.join(stagingDir, stagingFile);
 
@@ -609,12 +974,26 @@ export class WeeklyFlowWorker {
         const orderedCandidates = preferredFormatStrict
           ? rankedCandidates.filter((entry) => entry.ext === preferredExt)
           : rankedCandidates;
+        const maxDownloadAttempts =
+          retryAttempt > 0
+            ? MAX_DOWNLOAD_ATTEMPTS_PER_RETRY
+            : MAX_DOWNLOAD_ATTEMPTS_PER_JOB;
+        const attemptCandidates = orderedCandidates.slice(
+          0,
+          maxDownloadAttempts,
+        );
         if (orderedCandidates.length === 0) {
           lastError = new Error(
             `No ${preferredFormat.toUpperCase()} candidate files returned`,
           );
         }
-        for (const candidate of orderedCandidates) {
+        for (
+          let attemptIndex = 0;
+          attemptIndex < attemptCandidates.length;
+          attemptIndex += 1
+        ) {
+          this._assertJobCanContinue(job, runGeneration);
+          const candidate = attemptCandidates[attemptIndex];
           const extFromSoulseek = path.extname(candidate.candidate.file || "");
           const ext =
             extFromSoulseek &&
@@ -633,7 +1012,14 @@ export class WeeklyFlowWorker {
                   Math.min(100, Number(progressPct) || 0),
                 );
               },
+              {
+                queuedTimeoutMs:
+                  attemptIndex === 0
+                    ? QUEUED_TIMEOUT_FIRST_ATTEMPT_MS
+                    : QUEUED_TIMEOUT_RETRY_ATTEMPT_MS,
+              },
             );
+            this._assertJobCanContinue(job, runGeneration);
             timingsMs.download +=
               Number(process.hrtime.bigint() - downloadStart) / 1e6;
             if (this.currentJob && this.currentJob.id === job.id) {
@@ -682,9 +1068,11 @@ export class WeeklyFlowWorker {
       const finalPath = path.join(finalDir, finalFileName);
 
       phaseStart = process.hrtime.bigint();
+      this._assertJobCanContinue(job, runGeneration);
       await fs.mkdir(finalDir, { recursive: true });
       await fs.rename(sourcePath, finalPath);
       await fs.rm(stagingDir, { recursive: true, force: true });
+      this._assertJobCanContinue(job, runGeneration);
 
       downloadTracker.setDone(job.id, finalPath, resolvedAlbum);
       this._resetFailureStreak();
@@ -696,6 +1084,7 @@ export class WeeklyFlowWorker {
       timingsMs.finalize += Number(process.hrtime.bigint() - phaseStart) / 1e6;
 
       phaseStart = process.hrtime.bigint();
+      this._assertJobCanContinue(job, runGeneration);
       await this.checkPlaylistComplete(job.playlistType);
       timingsMs.completionCheck +=
         Number(process.hrtime.bigint() - phaseStart) / 1e6;
@@ -755,24 +1144,30 @@ export class WeeklyFlowWorker {
   async checkPlaylistComplete(playlistType) {
     const stats = downloadTracker.getPlaylistTypeStats(playlistType);
     const { total, pending, downloading, done, failed } = stats;
-    const allDone = total > 0 && pending === 0 && downloading === 0;
+    const allSettled = total > 0 && pending === 0 && downloading === 0;
     const hasDone = done > 0;
 
     const target = this._getPlaylistTargetCount(playlistType);
-    if (allDone && hasDone && target && done < target) {
+    if (allSettled && target && done < target) {
       const shortfall = target - done;
       const rounds = Number(this.backupRefillRounds.get(playlistType) || 0);
       if (rounds < MAX_BACKUP_REFILL_ROUNDS) {
         const enqueued = await this._enqueueBackupJobs(playlistType, shortfall);
         this.backupRefillRounds.set(playlistType, rounds + 1);
         if (enqueued > 0) {
+          this.wake();
           return;
         }
+      }
+      if (failed > 0 || flowPlaylistConfig.getFlow(playlistType)) {
+        this._scheduleIncompleteRetry(playlistType);
+        return;
       }
       this.backupRefillRounds.delete(playlistType);
     }
 
-    if (allDone && hasDone) {
+    if (allSettled && hasDone) {
+      this.clearIncompleteRetry(playlistType);
       this.backupRefillRounds.delete(playlistType);
       console.log(
         `[WeeklyFlowWorker] All jobs complete for ${playlistType}, ensuring smart playlists...`,
@@ -800,9 +1195,10 @@ export class WeeklyFlowWorker {
       const flow = flowPlaylistConfig.getFlow(playlistType);
       const completed = done;
       const { notifyWeeklyFlowDone } = await import("./notificationService.js");
-      notifyWeeklyFlowDone(playlistType, { completed, failed }, path.join(
-        playlistManager.libraryRoot,
-        playlistType),
+      notifyWeeklyFlowDone(
+        playlistType,
+        { completed, failed },
+        path.join(playlistManager.libraryRoot, playlistType),
         flow ? flow.name : playlistType,
       ).catch((err) =>
         console.warn(

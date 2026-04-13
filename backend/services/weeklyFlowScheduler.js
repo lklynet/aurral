@@ -25,6 +25,7 @@ export async function runScheduledRefresh() {
           if (shouldStopWorker) {
             weeklyFlowWorker.stop();
           }
+          weeklyFlowWorker.clearIncompleteRetry(flow.id);
           playlistManager.updateConfig(false);
           await playlistManager.weeklyReset([flow.id]);
           downloadTracker.clearByPlaylistType(flow.id);
@@ -46,6 +47,8 @@ export async function runScheduledRefresh() {
           downloadTracker.addJobs(tracks, flow.id);
           if (!weeklyFlowWorker.running) {
             await weeklyFlowWorker.start();
+          } else {
+            weeklyFlowWorker.wake();
           }
           flowPlaylistConfig.scheduleNextRun(flow.id);
           console.log(
@@ -62,14 +65,25 @@ export async function runScheduledRefresh() {
   }
 }
 
-export function startWorkerIfPending() {
+export async function startWorkerIfPending() {
   const pending = downloadTracker.getNextPending();
-  if (pending && !weeklyFlowWorker.running) {
-    weeklyFlowWorker.start().catch((err) => {
-      console.error(
-        "[WeeklyFlowScheduler] Failed to start worker:",
-        err.message,
-      );
-    });
+  if (pending) {
+    if (weeklyFlowWorker.running) {
+      weeklyFlowWorker.wake();
+      return;
+    }
+    await weeklyFlowWorker.start();
+    return;
+  }
+  const flowIds = flowPlaylistConfig
+    .getFlows()
+    .filter((flow) => flow?.enabled === true)
+    .map((flow) => flow.id);
+  const sharedIds = flowPlaylistConfig
+    .getSharedPlaylists()
+    .map((playlist) => playlist.id);
+  const playlistIds = [...new Set([...flowIds, ...sharedIds])];
+  for (const playlistId of playlistIds) {
+    await weeklyFlowWorker.retryIncompletePlaylist(playlistId);
   }
 }

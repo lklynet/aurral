@@ -5,7 +5,10 @@ import { downloadTracker } from "./weeklyFlowDownloadTracker.js";
 const LEGACY_TYPES = ["discover", "mix", "trending"];
 const DEFAULT_MIX = { discover: 34, mix: 33, trending: 33 };
 const DEFAULT_SIZE = 30;
+const DEFAULT_SCHEDULE_TIME = "00:00";
 const DAY_MS = 24 * 60 * 60 * 1000;
+let cachedFlows = null;
+let cachedSharedPlaylists = null;
 
 const titleCase = (value) =>
   String(value || "")
@@ -93,19 +96,46 @@ const normalizeScheduleDays = (value) => {
 const getDefaultScheduleDay = (timeMs = Date.now()) =>
   new Date(timeMs).getDay();
 
-const computeNextRunAt = (scheduleDays, fromTimeMs = Date.now()) => {
+const normalizeScheduleTime = (value) => {
+  const text = String(value ?? "").trim();
+  const match = /^(\d{1,2}):(\d{2})$/.exec(text);
+  if (!match) return DEFAULT_SCHEDULE_TIME;
+  const hours = Number(match[1]);
+  if (
+    !Number.isInteger(hours) ||
+    hours < 0 ||
+    hours > 23
+  ) {
+    return DEFAULT_SCHEDULE_TIME;
+  }
+  return `${String(hours).padStart(2, "0")}:00`;
+};
+
+const buildScheduledTime = (baseTimeMs, scheduleTime) => {
+  const [hoursText, minutesText] = normalizeScheduleTime(scheduleTime).split(":");
+  const candidate = new Date(baseTimeMs);
+  candidate.setHours(Number(hoursText), Number(minutesText), 0, 0);
+  return candidate.getTime();
+};
+
+const computeNextRunAt = (
+  scheduleDays,
+  scheduleTime = DEFAULT_SCHEDULE_TIME,
+  fromTimeMs = Date.now(),
+) => {
   const normalized = normalizeScheduleDays(scheduleDays);
   if (normalized.length === 0) {
-    return fromTimeMs + 7 * DAY_MS;
+    return buildScheduledTime(fromTimeMs + 7 * DAY_MS, scheduleTime);
   }
-  const currentDay = new Date(fromTimeMs).getDay();
-  for (let offset = 1; offset <= 7; offset += 1) {
-    const candidateDay = (currentDay + offset) % 7;
-    if (normalized.includes(candidateDay)) {
-      return fromTimeMs + offset * DAY_MS;
+  for (let offset = 0; offset <= 7; offset += 1) {
+    const candidateBase = fromTimeMs + offset * DAY_MS;
+    const candidateTime = buildScheduledTime(candidateBase, scheduleTime);
+    const candidateDay = new Date(candidateTime).getDay();
+    if (normalized.includes(candidateDay) && candidateTime > fromTimeMs) {
+      return candidateTime;
     }
   }
-  return fromTimeMs + 7 * DAY_MS;
+  return buildScheduledTime(fromTimeMs + 7 * DAY_MS, scheduleTime);
 };
 
 const distributeCount = (total, values) => {
@@ -270,6 +300,7 @@ const normalizeFlow = (flow) => {
     name: name || "Flow",
     enabled: flow?.enabled === true,
     scheduleDays: normalizeScheduleDays(flow?.scheduleDays),
+    scheduleTime: normalizeScheduleTime(flow?.scheduleTime),
     deepDive: flow?.deepDive === true || blocksData?.deepDive === true,
     nextRunAt:
       flow?.nextRunAt != null && Number.isFinite(Number(flow.nextRunAt))
@@ -284,6 +315,64 @@ const normalizeFlow = (flow) => {
       flow?.createdAt != null && Number.isFinite(Number(flow.createdAt))
         ? Number(flow.createdAt)
         : Date.now(),
+  };
+};
+
+const normalizeSharedTrack = (track) => {
+  if (!track || typeof track !== "object" || Array.isArray(track)) return null;
+  const artistName = String(
+    track.artistName ??
+      track.artist ??
+      track.artist_name ??
+      track["Artist Name(s)"] ??
+      "",
+  ).trim();
+  const trackName = String(
+    track.trackName ??
+      track.title ??
+      track.name ??
+      track.track ??
+      track["Track Name"] ??
+      "",
+  ).trim();
+  if (!artistName || !trackName) return null;
+  const albumName = String(
+    track.albumName ?? track.album ?? track["Album Name"] ?? "",
+  ).trim();
+  const artistMbid = String(
+    track.artistMbid ?? track.artistId ?? track.mbid ?? "",
+  ).trim();
+  const reason = String(track.reason ?? "").trim();
+  return {
+    artistName,
+    trackName,
+    albumName: albumName || null,
+    artistMbid: artistMbid || null,
+    reason: reason || null,
+  };
+};
+
+const normalizeSharedPlaylist = (playlist) => {
+  const name = String(playlist?.name || "").trim();
+  const tracks = Array.isArray(playlist?.tracks)
+    ? playlist.tracks.map(normalizeSharedTrack).filter(Boolean)
+    : [];
+  return {
+    id: playlist?.id || randomUUID(),
+    name: name || "Shared Playlist",
+    sourceName: String(playlist?.sourceName || "").trim() || null,
+    sourceFlowId: String(playlist?.sourceFlowId || "").trim() || null,
+    importedAt:
+      playlist?.importedAt != null &&
+      Number.isFinite(Number(playlist.importedAt))
+        ? Number(playlist.importedAt)
+        : Date.now(),
+    createdAt:
+      playlist?.createdAt != null && Number.isFinite(Number(playlist.createdAt))
+        ? Number(playlist.createdAt)
+        : Date.now(),
+    tracks,
+    trackCount: tracks.length,
   };
 };
 
@@ -312,6 +401,9 @@ const buildLegacyFlows = (settings) => {
 };
 
 const getStoredFlows = () => {
+  if (cachedFlows) {
+    return cachedFlows;
+  }
   const settings = dbOps.getSettings();
   const stored = settings.weeklyFlows;
   if (Array.isArray(stored) && stored.length > 0) {
@@ -327,6 +419,9 @@ const getStoredFlows = () => {
       }
       if (flow?.blocks) needsSave = true;
       if (!Array.isArray(flow?.scheduleDays)) needsSave = true;
+      if (normalizeScheduleTime(flow?.scheduleTime) !== flow?.scheduleTime) {
+        needsSave = true;
+      }
       return normalizeFlow(flow);
     });
     if (idMap.size > 0 || needsSave) {
@@ -336,19 +431,23 @@ const getStoredFlows = () => {
       });
       downloadTracker.migratePlaylistTypes(idMap);
     }
-    return nextFlows;
+    cachedFlows = nextFlows;
+    return cachedFlows;
   }
   if (Array.isArray(stored)) {
-    return [];
+    cachedFlows = [];
+    return cachedFlows;
   }
   dbOps.updateSettings({
     ...settings,
     weeklyFlows: [],
   });
-  return [];
+  cachedFlows = [];
+  return cachedFlows;
 };
 
 const setFlows = (flows) => {
+  cachedFlows = flows;
   const current = dbOps.getSettings();
   dbOps.updateSettings({
     ...current,
@@ -356,11 +455,60 @@ const setFlows = (flows) => {
   });
 };
 
-const normalizeNameKey = (value) => String(value || "").trim().toLowerCase();
+const getStoredSharedPlaylists = () => {
+  if (cachedSharedPlaylists) {
+    return cachedSharedPlaylists;
+  }
+  const settings = dbOps.getSettings();
+  const stored = settings.sharedFlowPlaylists;
+  if (Array.isArray(stored)) {
+    const next = stored.map(normalizeSharedPlaylist);
+    const needsSave =
+      next.length !== stored.length ||
+      next.some(
+        (playlist, index) =>
+          JSON.stringify(playlist) !== JSON.stringify(stored[index]),
+      );
+    if (needsSave) {
+      dbOps.updateSettings({
+        ...settings,
+        sharedFlowPlaylists: next,
+      });
+    }
+    cachedSharedPlaylists = next;
+    return cachedSharedPlaylists;
+  }
+  dbOps.updateSettings({
+    ...settings,
+    sharedFlowPlaylists: [],
+  });
+  cachedSharedPlaylists = [];
+  return cachedSharedPlaylists;
+};
+
+const setSharedPlaylists = (playlists) => {
+  cachedSharedPlaylists = playlists;
+  const current = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...current,
+    sharedFlowPlaylists: playlists,
+  });
+};
+
+const normalizeNameKey = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 
 const createNameConflictError = (name) => {
   const error = new Error(`Flow name "${name}" already exists`);
   error.code = "FLOW_NAME_CONFLICT";
+  return error;
+};
+
+const createSharedPlaylistNameConflictError = (name) => {
+  const error = new Error(`Shared playlist "${name}" already exists`);
+  error.code = "SHARED_PLAYLIST_NAME_CONFLICT";
   return error;
 };
 
@@ -374,6 +522,23 @@ const assertUniqueFlowName = (flows, nextName, exceptFlowId = null) => {
   });
   if (hasConflict) {
     throw createNameConflictError(String(nextName || "").trim());
+  }
+};
+
+const assertUniqueSharedPlaylistName = (
+  playlists,
+  nextName,
+  exceptPlaylistId = null,
+) => {
+  const key = normalizeNameKey(nextName);
+  if (!key) return;
+  const hasConflict = playlists.some((playlist) => {
+    if (!playlist) return false;
+    if (exceptPlaylistId && playlist.id === exceptPlaylistId) return false;
+    return normalizeNameKey(playlist.name) === key;
+  });
+  if (hasConflict) {
+    throw createSharedPlaylistNameConflictError(String(nextName || "").trim());
   }
 };
 
@@ -400,6 +565,7 @@ export const flowPlaylistConfig = {
     tags,
     relatedArtists,
     scheduleDays,
+    scheduleTime,
   }) {
     const flows = getStoredFlows();
     assertUniqueFlowName(flows, name);
@@ -413,6 +579,7 @@ export const flowPlaylistConfig = {
       tags,
       relatedArtists,
       scheduleDays,
+      scheduleTime,
       enabled: false,
       nextRunAt: null,
     });
@@ -429,6 +596,7 @@ export const flowPlaylistConfig = {
     const nextName = updates?.name ?? current.name;
     assertUniqueFlowName(flows, nextName, flowId);
     const currentSchedule = normalizeScheduleDays(current.scheduleDays);
+    const currentScheduleTime = normalizeScheduleTime(current.scheduleTime);
     const next = normalizeFlow({
       ...current,
       name: nextName,
@@ -438,6 +606,7 @@ export const flowPlaylistConfig = {
       tags: updates?.tags ?? current.tags,
       relatedArtists: updates?.relatedArtists ?? current.relatedArtists,
       scheduleDays: updates?.scheduleDays ?? current.scheduleDays,
+      scheduleTime: updates?.scheduleTime ?? current.scheduleTime,
       deepDive:
         typeof updates?.deepDive === "boolean"
           ? updates.deepDive
@@ -447,15 +616,21 @@ export const flowPlaylistConfig = {
       createdAt: current.createdAt,
     });
     const nextSchedule = normalizeScheduleDays(next.scheduleDays);
+    const nextScheduleTime = normalizeScheduleTime(next.scheduleTime);
     const scheduleChanged =
       currentSchedule.length !== nextSchedule.length ||
-      currentSchedule.some((day, idx) => day !== nextSchedule[idx]);
+      currentSchedule.some((day, idx) => day !== nextSchedule[idx]) ||
+      currentScheduleTime !== nextScheduleTime;
     if (current.enabled && (scheduleChanged || next.nextRunAt == null)) {
       const now = Date.now();
       const effectiveSchedule =
         nextSchedule.length > 0 ? nextSchedule : [getDefaultScheduleDay(now)];
       next.scheduleDays = effectiveSchedule;
-      next.nextRunAt = computeNextRunAt(effectiveSchedule, now);
+      next.nextRunAt = computeNextRunAt(
+        effectiveSchedule,
+        nextScheduleTime,
+        now,
+      );
     }
     flows[index] = next;
     setFlows(flows);
@@ -508,7 +683,8 @@ export const flowPlaylistConfig = {
       normalizedSchedule.length > 0
         ? normalizedSchedule
         : [getDefaultScheduleDay(now)];
-    flow.nextRunAt = computeNextRunAt(flow.scheduleDays, now);
+    flow.scheduleTime = normalizeScheduleTime(flow.scheduleTime);
+    flow.nextRunAt = computeNextRunAt(flow.scheduleDays, flow.scheduleTime, now);
     flows[index] = flow;
     setFlows(flows);
     return flow;
@@ -522,5 +698,75 @@ export const flowPlaylistConfig = {
         flow.nextRunAt != null &&
         flow.nextRunAt <= now,
     );
+  },
+
+  getSharedPlaylists() {
+    return getStoredSharedPlaylists();
+  },
+
+  getSharedPlaylistSummaries() {
+    return getStoredSharedPlaylists().map((playlist) => ({
+      id: playlist.id,
+      name: playlist.name,
+      sourceName: playlist.sourceName,
+      sourceFlowId: playlist.sourceFlowId,
+      importedAt: playlist.importedAt,
+      createdAt: playlist.createdAt,
+      trackCount: playlist.trackCount,
+    }));
+  },
+
+  getSharedPlaylist(playlistId) {
+    return (
+      getStoredSharedPlaylists().find(
+        (playlist) => playlist.id === playlistId,
+      ) || null
+    );
+  },
+
+  createSharedPlaylist({ name, sourceName, sourceFlowId, tracks }) {
+    const playlists = getStoredSharedPlaylists();
+    assertUniqueSharedPlaylistName(playlists, name);
+    const playlist = normalizeSharedPlaylist({
+      id: randomUUID(),
+      name,
+      sourceName,
+      sourceFlowId,
+      tracks,
+      importedAt: Date.now(),
+      createdAt: Date.now(),
+    });
+    playlists.push(playlist);
+    setSharedPlaylists(playlists);
+    return playlist;
+  },
+
+  updateSharedPlaylist(playlistId, updates) {
+    const playlists = getStoredSharedPlaylists();
+    const index = playlists.findIndex((playlist) => playlist.id === playlistId);
+    if (index === -1) return null;
+    const current = playlists[index];
+    const nextName = updates?.name ?? current.name;
+    assertUniqueSharedPlaylistName(playlists, nextName, playlistId);
+    const next = normalizeSharedPlaylist({
+      ...current,
+      name: nextName,
+      sourceName: updates?.sourceName ?? current.sourceName,
+      sourceFlowId: updates?.sourceFlowId ?? current.sourceFlowId,
+      tracks: Array.isArray(updates?.tracks) ? updates.tracks : current.tracks,
+      importedAt: current.importedAt,
+      createdAt: current.createdAt,
+    });
+    playlists[index] = next;
+    setSharedPlaylists(playlists);
+    return next;
+  },
+
+  deleteSharedPlaylist(playlistId) {
+    const playlists = getStoredSharedPlaylists();
+    const next = playlists.filter((playlist) => playlist.id !== playlistId);
+    if (next.length === playlists.length) return false;
+    setSharedPlaylists(next);
+    return true;
   },
 };

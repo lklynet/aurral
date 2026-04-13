@@ -1,10 +1,11 @@
-import { hasPermission } from "./auth.js";
+import {
+  hasPermission,
+  sendUnauthorizedResponse,
+} from "./auth.js";
 
 export function requireAuth(req, res, next) {
   if (!req.user) {
-    return res
-      .status(401)
-      .json({ error: "Unauthorized", message: "Authentication required" });
+    return sendUnauthorizedResponse(req, res);
   }
   next();
 }
@@ -21,9 +22,7 @@ export function requireAdmin(req, res, next) {
 export function requirePermission(permission) {
   return (req, res, next) => {
     if (!req.user) {
-      return res
-        .status(401)
-        .json({ error: "Unauthorized", message: "Authentication required" });
+      return sendUnauthorizedResponse(req, res);
     }
     if (!hasPermission(req.user, permission)) {
       return res

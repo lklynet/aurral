@@ -20,7 +20,7 @@ ENV APP_VERSION=$APP_VERSION
 
 WORKDIR /app
 
-RUN apk add --no-cache su-exec && \
+RUN apk add --no-cache su-exec fontconfig ttf-dejavu && \
     addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001 && \
     mkdir -p /app/backend/data && \

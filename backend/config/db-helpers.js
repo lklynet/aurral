@@ -225,6 +225,9 @@ export const dbOps = {
     const weeklyFlows = dbHelpers.parseJSON(
       getSettingStmt.get("weeklyFlows")?.value
     );
+    const sharedFlowPlaylists = dbHelpers.parseJSON(
+      getSettingStmt.get("sharedFlowPlaylists")?.value
+    );
     const weeklyFlowWorker = dbHelpers.parseJSON(
       getSettingStmt.get("weeklyFlowWorker")?.value
     );
@@ -233,14 +236,30 @@ export const dbOps = {
     const parsedConcurrency = Number(weeklyFlowWorker?.concurrency);
     const concurrency =
       Number.isFinite(parsedConcurrency) && parsedConcurrency >= 1
-        ? Math.min(5, Math.floor(parsedConcurrency))
+        ? Math.min(3, Math.floor(parsedConcurrency))
         : 3;
     const preferredFormat =
       String(weeklyFlowWorker?.preferredFormat || "").toLowerCase() === "mp3"
         ? "mp3"
         : "flac";
     const preferredFormatStrict = weeklyFlowWorker?.preferredFormatStrict === true;
-    const seedDownloads = weeklyFlowWorker?.seedDownloads !== false;
+    const parsedRetryCycleMinutes = Number(weeklyFlowWorker?.retryCycleMinutes);
+    const retryCycleMinutes =
+      Number.isFinite(parsedRetryCycleMinutes) &&
+      [15, 30, 60, 360, 720, 1440].includes(
+        Math.floor(parsedRetryCycleMinutes),
+      )
+        ? Math.floor(parsedRetryCycleMinutes)
+        : 15;
+    const retryPausedPlaylistIds = Array.isArray(
+      weeklyFlowWorker?.retryPausedPlaylistIds,
+    )
+      ? [...new Set(
+          weeklyFlowWorker.retryPausedPlaylistIds
+            .map((entry) => String(entry || "").trim())
+            .filter(Boolean),
+        )]
+      : [];
 
     const defaultFlowPlaylists = {
       discover: { enabled: false, nextRunAt: null },
@@ -267,11 +286,13 @@ export const dbOps = {
       releaseTypes: releaseTypes || [],
       weeklyFlowPlaylists: merged,
       weeklyFlows: weeklyFlows || null,
+      sharedFlowPlaylists: sharedFlowPlaylists || null,
       weeklyFlowWorker: {
         concurrency,
         preferredFormat,
         preferredFormatStrict,
-        seedDownloads,
+        retryCycleMinutes,
+        retryPausedPlaylistIds,
       },
       onboardingComplete: !!onboardingComplete,
     };
@@ -323,6 +344,12 @@ export const dbOps = {
         upsertSettingStmt.run(
           "weeklyFlows",
           dbHelpers.stringifyJSON(settings.weeklyFlows)
+        );
+      }
+      if (settings.sharedFlowPlaylists !== undefined) {
+        upsertSettingStmt.run(
+          "sharedFlowPlaylists",
+          dbHelpers.stringifyJSON(settings.sharedFlowPlaylists)
         );
       }
       if (settings.weeklyFlowWorker !== undefined) {

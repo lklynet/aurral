@@ -7,23 +7,30 @@
 [![Docker](https://img.shields.io/badge/docker-ghcr.io%2Flklynet%2Faurral-blue?logo=docker&logoColor=white)](https://ghcr.io/lklynet/aurral) ![GitHub Release](https://img.shields.io/github/v/release/lklynet/aurral) ![GitHub License](https://img.shields.io/github/license/lklynet/aurral)
 [![Build](https://img.shields.io/github/actions/workflow/status/lklynet/aurral/release.yml?branch=main)](https://github.com/lklynet/aurral/actions/workflows/release.yml) ![Discord](https://img.shields.io/discord/1457052417580339285?style=flat) [![Discussions](https://img.shields.io/github/discussions/lklynet/aurral)](https://github.com/lklynet/aurral/discussions) ![GitHub Sponsors](https://img.shields.io/github/sponsors/lklynet)
 
-Self-hosted music discovery and request management for Lidarr with library-aware recommendations, granular monitoring controls, and optional Weekly Flow playlists powered by Soulseek + Navidrome.
+Self-hosted music discovery, request management, flows, and playlist importing for Lidarr with library-aware recommendations and Navidrome integration.
+
+## Quick Links
+
+- [Docker image](https://ghcr.io/lklynet/aurral)
+- [Flows and Playlists guide](flows-and-playlists.md)
+- [Spotify import helper](https://aurral.org/aurral-convert)
+- [Discord community](https://discord.gg/cpPYfgVURJ)
 
 ---
 
-## What is Aurral?
+## What Aurral Does
 
-- Search for artists via MusicBrainz and add them to Lidarr with the monitoring behavior you want
-- Browse your existing library in a clean UI
-- Discover new artists using recommendations derived from your library and (optionally) Last.fm
-- Track requests and download/import progress
-- Generate weekly playlists and download the tracks into a separate “Weekly Flow” library
+- Search for artists via MusicBrainz and add them to Lidarr with granular monitoring behavior
+- Browse your library in a clean UI and jump into artist details quickly
+- Discover artists using your library, tags, trends, and Last.fm data
+- Track requests plus queue, download, and import progress
+- Build scheduled flows and static playlists without writing directly into your main library
 
-Aurral is designed to be safe for your collection: it does not write into your main music library directly. Library changes go through Lidarr’s API, and Weekly Flow writes into its own directory.
+Aurral is designed to be safe for your collection. Main library changes go through Lidarr's API, while flows and imported playlists write into their own separate downloads area.
 
 ---
 
-## Quick Start (Docker Compose)
+## Quick Start
 
 Create a `docker-compose.yml`:
 
@@ -49,17 +56,65 @@ Start it:
 docker compose up -d
 ```
 
-Open: http://localhost:3001
+Open `http://localhost:3001` and complete onboarding.
 
 ---
 
-## Requirements & Recommended Stack
+## Flows And Playlists
+
+Flows are dynamic playlists that refresh on a schedule. Playlists are static tracklists imported from JSON or saved from an existing flow.
+
+- Create multiple flows with custom size, source mix, focus filters, and scheduled update days/hours
+- Export a generated flow to JSON, then re-import it later as a static playlist, or convert it directly in-app
+- Import shared or hand-built JSON playlists
+- Edit imported playlist names and tracklists directly inside the app
+- Use Navidrome to expose the dedicated Aurral flow library and smart playlists
+- Use the built-in Spotify import button or the [Spotify import helper](https://aurral.org/aurral-convert) to convert existing Spotify playlists into an Aurral-friendly JSON playlist
+
+Relevant links:
+
+- [Flows and Playlists guide](flows-and-playlists.md)
+- [Spotify import helper](https://aurral.org/aurral-convert)
+- [Exportify](https://exportify.net/)
+
+---
+
+## Feature Overview
+
+### Discovery
+
+- Daily Discover recommendations based on your library, tags, and trends
+
+### Lidarr Management
+
+- Add artists with granular monitor options: None, All, Future, Missing, Latest, First
+- Add specific albums from release groups
+- Review request history and queue state from the UI
+
+### Flows
+
+- Multiple scheduled flows with adjustable Discover, Mix, and Trending balance
+- Weekly or custom-day refresh scheduling with per-flow timing
+- Dedicated download output separate from your main music library
+- Optional Navidrome smart playlists in the `Aurral Weekly Flow` library
+
+### Imported Playlists
+
+- Import exported Aurral playlists, single playlist objects, raw track arrays, or multi-playlist bundles
+- Retry the exact imported tracks on failures instead of replacing them
+- Pause or resume retry cycles for incomplete imported playlists
+- Export static playlists back to JSON for sharing
+
+---
+
+<details>
+<summary><strong>Requirements And Recommended Stack</strong></summary>
 
 ### Required
 
-- Lidarr (reachable from Aurral)
-- Last.fm API key (api key required, username needed for scrobbling)
-- A MusicBrainz contact email (used for the MusicBrainz User-Agent policy)
+- Lidarr reachable from Aurral
+- Last.fm API key, with username if you want scrobbling-based discovery
+- MusicBrainz contact email for the required User-Agent policy
 
 ### Recommended stack for new users
 
@@ -68,37 +123,15 @@ Open: http://localhost:3001
 - slskd
 - Navidrome
 
-### For Weekly Flow
+### For flows and playlists
 
-- Navidrome (optional but recommended if you want playlist/library integration)
-- A downloads directory mounted into the container (for the Weekly Flow library)
+- A downloads directory mounted into the container
+- Navidrome if you want library and smart playlist integration
 
----
+</details>
 
-## Features
-
-### Discovery
-
-- Daily Discover recommendations based on your library, tags, and trends
-
-### Lidarr Management
-
-- Add artists with granular monitor options (None / All / Future / Missing / Latest / First)
-- Add specific albums from release groups
-- Library view with quick navigation into artist details
-- Request tracking with queue/history awareness
-
-### Weekly Flow (Optional)
-
-Weekly Flow generates playlists from your library and listening context, then downloads tracks via a built-in Soulseek client into a dedicated folder.
-
-- Multiple flows with adjustable mix (Discover / Mix / Trending) and size
-- Automatic weekly refresh scheduling
-- Optional Navidrome smart playlists and a dedicated “Aurral Weekly Flow” library
-
----
-
-## Screenshots
+<details>
+<summary><strong>Screenshots</strong></summary>
 
 <p align="center">
   <img src="frontend/images/discover.webp" width="900" alt="Aurral UI" />
@@ -109,28 +142,31 @@ Weekly Flow generates playlists from your library and listening context, then do
   <img src="frontend/images/artist.webp" width="440" alt="Artist details" />
 </p>
 
----
+</details>
 
-## Data, Volumes, and Safety
+<details>
+<summary><strong>Data, Volumes, And Safety</strong></summary>
 
-### Downloads and Weekly Flow library
+### Downloads and flow library
 
-Mount a downloads folder for Weekly Flow and optional Navidrome integration:
+Mount a downloads folder for flows, imported playlists, and optional Navidrome integration.
 
 - Container path: `/app/downloads`
-- Weekly Flow output: `/app/downloads/aurral-weekly-flow/<flow-id>/<artist>/<album>/<track>`
+- Flow output root: `/app/downloads/aurral-weekly-flow`
+- Typical flow track path: `/app/downloads/aurral-weekly-flow/<flow-id>/<artist>/<album>/<track>`
 
-### A note on your main library
+### Main library safety
 
-Aurral does not write to your root music folder directly. Changes to your main collection happen via Lidarr (add/monitor/request/import).
+Aurral does not write to your root music folder directly. Main collection changes happen through Lidarr add, monitor, request, and import actions.
 
----
+</details>
 
-## Weekly Flow + Navidrome Setup (Optional)
+<details>
+<summary><strong>Navidrome Setup</strong></summary>
 
-If you want Weekly Flow to appear as a separate library inside Navidrome:
+If you want flows to appear as a separate library inside Navidrome:
 
-1. In Aurral: Settings → Integrations → Navidrome (URL, username, password)
+1. In Aurral, go to `Settings -> Integrations -> Navidrome`
 2. Ensure your compose config maps a host folder into `/app/downloads`
 3. Set `DL_FOLDER` once and use it for both `DOWNLOAD_FOLDER` and the `/app/downloads` volume
 
@@ -143,29 +179,31 @@ Example:
 Aurral will:
 
 - Create a Navidrome library pointing to `<DOWNLOAD_FOLDER>/aurral-weekly-flow`
-- Write smart playlist files (`.nsp`) into the Weekly Flow library folder
+- Write smart playlist files (`.nsp`) into the weekly flow library folder
 
-Navidrome should be configured to purge missing tracks so Weekly Flow rotations don’t leave stale entries:
+Navidrome should be configured to purge missing tracks so flow rotations do not leave stale entries:
 
-- `ND_SCANNER_PURGEMISSING=always` (or `full`)
+- `ND_SCANNER_PURGEMISSING=always`
+- `ND_SCANNER_PURGEMISSING=full`
 
----
+</details>
 
-## Authentication & Reverse Proxy
+<details>
+<summary><strong>Authentication And Reverse Proxy</strong></summary>
 
-### Local users (default)
+### Local users
 
-Aurral uses local user accounts created in onboarding. Authentication is HTTP Basic Auth at the API layer. Use HTTPS when exposing it publicly.
+Aurral uses local user accounts created during onboarding. Authentication is HTTP Basic Auth at the API layer, so use HTTPS if you expose it publicly.
 
-### Reset forgotten admin password (terminal)
+### Reset forgotten admin password
 
-If you forget your admin password, you can reset it from the terminal:
+Set a specific password:
 
 ```bash
 npm run auth:reset-admin-password -- --password "new-password"
 ```
 
-Or generate a random password:
+Generate a random password:
 
 ```bash
 npm run auth:reset-admin-password -- --generate
@@ -173,11 +211,9 @@ npm run auth:reset-admin-password -- --generate
 
 The `--` after `npm run auth:reset-admin-password` tells npm to pass the remaining flags to the reset script.
 
-### Reverse-proxy auth (OAuth2/OIDC)
+### Reverse-proxy auth
 
 If you want SSO, place Aurral behind an auth-aware reverse proxy and forward the authenticated username in a header.
-
-Environment variables:
 
 ```bash
 AUTH_PROXY_ENABLED=true
@@ -188,70 +224,82 @@ AUTH_PROXY_ROLE_HEADER=X-Forwarded-Role
 AUTH_PROXY_DEFAULT_ROLE=user
 ```
 
-### Proxy headers (trust proxy)
+### Trust proxy
 
-If you are behind a reverse proxy, set `TRUST_PROXY` so Aurral interprets `X-Forwarded-*` correctly:
+If you are behind a reverse proxy, set:
 
 ```bash
 TRUST_PROXY=true
 ```
 
----
+</details>
 
-## Configuration Reference (Environment Variables)
+<details>
+<summary><strong>Environment Variables</strong></summary>
 
-Most configuration is done in the web UI, but some settings are controlled by environment variables.
+Most configuration is handled in the web UI, but these environment variables are still important.
 
 | Variable | Purpose | Default |
 |---|---|---|
 | `PORT` | HTTP port | `3001` |
-| `TRUST_PROXY` | Express trust proxy setting (`true`/`false`/number) | `1` |
-| `DOWNLOAD_FOLDER` | Weekly Flow root folder path used for Navidrome library creation | `${DL_FOLDER:-./data/downloads}` (in compose example) |
-| `PUID` / `PGID` | Run container as this UID/GID (when starting as root) | `1001/1001` |
-| `LIDARR_INSECURE` | Allow invalid TLS certificates (`true`/`1`) | unset |
+| `TRUST_PROXY` | Express trust proxy setting (`true`, `false`, or number) | `1` |
+| `DOWNLOAD_FOLDER` | Flow root folder path used for Navidrome library creation | `${DL_FOLDER:-./data/downloads}` in the compose example |
+| `PUID` / `PGID` | Run container as this UID and GID when starting as root | `1001` / `1001` |
+| `LIDARR_INSECURE` | Allow invalid TLS certificates | unset |
 | `LIDARR_TIMEOUT_MS` | Lidarr request timeout | `8000` |
-| `SOULSEEK_USERNAME` / `SOULSEEK_PASSWORD` | Optional fixed Soulseek creds | autogenerated if missing |
-| `AUTH_PROXY_*` | Reverse-proxy auth options (above) | unset |
+| `SOULSEEK_USERNAME` / `SOULSEEK_PASSWORD` | Optional fixed Soulseek credentials | autogenerated if missing |
+| `AUTH_PROXY_*` | Reverse-proxy auth options | unset |
 
----
+</details>
 
-## Notifications
+<details>
+<summary><strong>Notifications</strong></summary>
 
-Aurral can send notifications via **Gotify** and/or **Webhooks** (Settings → Notifications).
+Aurral can send notifications via **Gotify** and **Webhooks** from `Settings -> Notifications`.
 
 ### Webhooks
 
-Configure one or more webhook URLs. For each webhook:
+For each webhook:
 
-- **No body** → `GET` request
-- **With body** → `POST` with `Content-Type: application/json`
-- **Headers** → Custom request headers can be added per webhook
+- No body sends a `GET` request
+- A body sends a `POST` request with `Content-Type: application/json`
+- Custom headers can be added per webhook
 
-Body supports two variables: `$flowPath` (music directory, empty for discovery updates) and `$flowName` (flow name). Example: `{"src": "$flowPath", "playlist": "$flowName"}`.
+Body templates support two variables:
 
-Event triggers (Discover updated, Weekly Flow done) apply to all configured webhooks at once and can be used to send notifications via different mediums or to automate library management (beets, Plex sync, etc.). Webhooks are invoked sequentially in the order in which they are defined.
+- `$flowPath` for the music directory, empty for discovery updates
+- `$flowName` for the flow or playlist name
 
----
+Example:
 
-## Troubleshooting
+```json
+{"src": "$flowPath", "playlist": "$flowName"}
+```
 
-- Lidarr connection fails: confirm Lidarr URL is reachable and API key is correct (Settings → Integrations → Lidarr)
-- Discovery looks empty: add some artists to Lidarr and/or configure Last.fm; initial discovery refresh can take a bit
-- MusicBrainz is slow: MusicBrainz is rate-limited; Aurral respects it and may take longer on first runs
-- Weekly Flow does not show in Navidrome: verify `DOWNLOAD_FOLDER` matches your host path mapping and Navidrome purge settings
-- Permission errors writing `./data`: set `PUID`/`PGID` to match your host directory ownership
+Event triggers such as Discover updated and Weekly Flow done apply to all configured webhooks and are invoked sequentially in the order they are defined.
+
+</details>
+
+<details>
+<summary><strong>Troubleshooting</strong></summary>
+
+- Lidarr connection fails: confirm the Lidarr URL is reachable and the API key is correct in `Settings -> Integrations -> Lidarr`
+- Discovery looks empty: add artists to Lidarr and configure Last.fm, then give the first recommendation refresh a little time
+- MusicBrainz is slow: MusicBrainz is rate-limited and first runs can take longer
+- Flows do not show in Navidrome: verify `DOWNLOAD_FOLDER` matches your host path mapping and Navidrome purge settings
+- Permission errors writing `./data`: set `PUID` and `PGID` to match your host directory ownership
+
+</details>
 
 ---
 
 ## Support
 
-- Community + questions: https://discord.gg/cpPYfgVURJ
-- Troubleshooting + help: https://github.com/lklynet/aurral/discussions
-- Bugs + feature requests: https://github.com/lklynet/aurral/issues
+- Community and questions: [Discord](https://discord.gg/cpPYfgVURJ)
+- Bugs and feature requests: [GitHub Issues](https://github.com/lklynet/aurral/issues)
 
----
-
-## Star History
+<details>
+<summary><strong>Star History</strong></summary>
 
 <a href="https://www.star-history.com/?repos=lklynet%2Faurral&type=timeline&legend=bottom-right">
  <picture>
@@ -260,3 +308,5 @@ Event triggers (Discover updated, Weekly Flow done) apply to all configured webh
    <img alt="Star History Chart" src="https://api.star-history.com/image?repos=lklynet/aurral&type=timeline&legend=top-left" />
  </picture>
 </a>
+
+</details>

@@ -28,7 +28,6 @@ export function useWebSocketChannel(channel, onMessage) {
   onMessageRef.current = onMessage;
 
   useEffect(() => {
-    const url = getWsUrl();
     let ws = null;
     let reconnectTimer = null;
     let reconnectAttempts = 0;
@@ -57,7 +56,7 @@ export function useWebSocketChannel(channel, onMessage) {
     };
 
     const connect = () => {
-      ws = new WebSocket(url);
+      ws = new WebSocket(getWsUrl());
       wsRef.current = ws;
 
       ws.onopen = () => {
