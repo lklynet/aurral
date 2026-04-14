@@ -43,16 +43,15 @@ export function SettingsIntegrationsTab({
 
   const handleTestLidarr = async () => {
     const url = settings.integrations?.lidarr?.url;
-    const apiKey = settings.integrations?.lidarr?.apiKey;
-    if (!url || !apiKey) {
-      showError("Please enter both URL and API key");
+    if (!url) {
+      showError("Please enter Lidarr URL");
       return;
     }
     setTestingLidarr(true);
     setLidarrTestLatencyMs(null);
     const startTime = performance.now();
     try {
-      const result = await testLidarrConnection(url, apiKey);
+      const result = await testLidarrConnection(url);
       setLidarrTestLatencyMs(Math.round(performance.now() - startTime));
       if (result.success) {
         showSuccess(
@@ -62,8 +61,8 @@ export function SettingsIntegrationsTab({
         setLoadingLidarrMetadataProfiles(true);
         try {
           const [profiles, metadataProfiles] = await Promise.all([
-            getLidarrProfiles(url, apiKey),
-            getLidarrMetadataProfiles(url, apiKey),
+            getLidarrProfiles(url),
+            getLidarrMetadataProfiles(url),
           ]);
           const nextProfiles = Array.isArray(profiles) ? profiles : [];
           const nextMetadataProfiles = Array.isArray(metadataProfiles)
@@ -103,14 +102,17 @@ export function SettingsIntegrationsTab({
 
   const handleRefreshProfiles = async () => {
     const url = settings.integrations?.lidarr?.url;
-    const apiKey = settings.integrations?.lidarr?.apiKey;
-    if (!url || !apiKey) {
-      showError("Please enter Lidarr URL and API key first");
+    if (!url) {
+      showError("Please enter Lidarr URL first");
+      return;
+    }
+    if (!settings.integrations?.lidarr?.secretIsSet) {
+      showError("Please set Lidarr API key first");
       return;
     }
     setLoadingLidarrProfiles(true);
     try {
-      const profiles = await getLidarrProfiles(url, apiKey);
+      const profiles = await getLidarrProfiles(url);
       const nextProfiles = Array.isArray(profiles) ? profiles : [];
       setLidarrProfiles(nextProfiles);
       if (nextProfiles.length > 0) {
@@ -131,14 +133,17 @@ export function SettingsIntegrationsTab({
 
   const handleRefreshMetadataProfiles = async () => {
     const url = settings.integrations?.lidarr?.url;
-    const apiKey = settings.integrations?.lidarr?.apiKey;
-    if (!url || !apiKey) {
-      showError("Please enter Lidarr URL and API key first");
+    if (!url) {
+      showError("Please set Lidarr URL first");
+      return;
+    }
+    if (!settings.integrations?.lidarr?.secretIsSet) {
+      showError("Please set Lidarr API key first");
       return;
     }
     setLoadingLidarrMetadataProfiles(true);
     try {
-      const profiles = await getLidarrMetadataProfiles(url, apiKey);
+      const profiles = await getLidarrMetadataProfiles(url);
       const nextProfiles = Array.isArray(profiles) ? profiles : [];
       setLidarrMetadataProfiles(nextProfiles);
       if (nextProfiles.length > 0) {
@@ -257,9 +262,9 @@ export function SettingsIntegrationsTab({
                 <input
                   type="password"
                   className="input flex-1"
-                  placeholder="Enter Lidarr API Key"
+                  placeholder={settings.integrations?.lidarr?.secretIsSet ? "API Key has been set, enter to change" : "Enter Lidarr API Key"}
                   autoComplete="off"
-                  value={settings.integrations?.lidarr?.secret_length ? "*".repeat(settings.integrations?.lidarr?.secret_length) : settings.integrations?.lidarr?.apiKey || ""}
+                  value={""}
                   onChange={(e) => {
                     setLidarrTestLatencyMs(null);
                     updateSettings({
@@ -280,7 +285,7 @@ export function SettingsIntegrationsTab({
                   disabled={
                     testingLidarr ||
                     !settings.integrations?.lidarr?.url ||
-                    !settings.integrations?.lidarr?.apiKey
+                    !settings.integrations?.lidarr?.secretIsSet
                   }
                   className="btn btn-secondary"
                 >
@@ -377,7 +382,7 @@ export function SettingsIntegrationsTab({
                   disabled={
                     loadingLidarrProfiles ||
                     !settings.integrations?.lidarr?.url ||
-                    !settings.integrations?.lidarr?.apiKey
+                    !settings.integrations?.lidarr?.secretIsSet
                   }
                   className="btn btn-secondary"
                 >
@@ -442,7 +447,7 @@ export function SettingsIntegrationsTab({
                   disabled={
                     loadingLidarrMetadataProfiles ||
                     !settings.integrations?.lidarr?.url ||
-                    !settings.integrations?.lidarr?.apiKey
+                    !settings.integrations?.lidarr?.secretIsSet
                   }
                   className="btn btn-secondary"
                 >
@@ -537,7 +542,7 @@ export function SettingsIntegrationsTab({
                 onClick={() => {
                   if (
                     !settings.integrations?.lidarr?.url ||
-                    !settings.integrations?.lidarr?.apiKey
+                    !settings.integrations?.lidarr?.secretIsSet
                   ) {
                     showError(
                       "Please configure Lidarr URL and API key first"

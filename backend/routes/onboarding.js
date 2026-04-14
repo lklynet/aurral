@@ -4,6 +4,7 @@ import { dbOps, userOps } from "../config/db-helpers.js";
 import { defaultData } from "../config/constants.js";
 import { validateExternalUrl } from "../middleware/urlValidator.js";
 import { requirePasswordStrength } from "../middleware/validation.js";
+import { getRawLidarrApiKey } from "../services/apiClients.js";
 
 const router = express.Router();
 
@@ -22,7 +23,11 @@ router.get("/lidarr/test", async (req, res) => {
   try {
     const { lidarrClient } = await import("../services/lidarrClient.js");
     let url = (req.query.url || "").trim().replace(/\/+$/, "");
-    const apiKey = (req.query.apiKey || "").trim();
+    const apiKey = getRawLidarrApiKey();
+
+    if (!apiKey) {
+      return res.status(400).json({ error: "Lidarr API key is not configured" });
+    }
     if (!url || !apiKey) {
       return res.status(400).json({ error: "URL and API key are required" });
     }

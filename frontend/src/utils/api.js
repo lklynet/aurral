@@ -145,10 +145,9 @@ export const completeOnboarding = async (payload) => {
   return response.data;
 };
 
-export const testLidarrOnboarding = async (url, apiKey) => {
+export const testLidarrOnboarding = async (url) => {
   const params = new URLSearchParams();
   if (url) params.append("url", url.replace(/\/+$/, ""));
-  if (apiKey) params.append("apiKey", apiKey);
   const response = await api.get(
     `/onboarding/lidarr/test${params.toString() ? `?${params.toString()}` : ""}`,
   );
@@ -573,10 +572,9 @@ export const updateAppSettings = async (settings) => {
   return response.data;
 };
 
-export const getLidarrProfiles = async (url, apiKey) => {
+export const getLidarrProfiles = async (url) => {
   const params = new URLSearchParams();
   if (url) params.append("url", url);
-  if (apiKey) params.append("apiKey", apiKey);
   const queryString = params.toString();
   const endpoint = `/settings/lidarr/profiles${
     queryString ? `?${queryString}` : ""
@@ -585,10 +583,9 @@ export const getLidarrProfiles = async (url, apiKey) => {
   return response.data;
 };
 
-export const getLidarrMetadataProfiles = async (url, apiKey) => {
+export const getLidarrMetadataProfiles = async (url) => {
   const params = new URLSearchParams();
   if (url) params.append("url", url);
-  if (apiKey) params.append("apiKey", apiKey);
   const queryString = params.toString();
   const endpoint = `/settings/lidarr/metadata-profiles${
     queryString ? `?${queryString}` : ""
@@ -597,10 +594,9 @@ export const getLidarrMetadataProfiles = async (url, apiKey) => {
   return response.data;
 };
 
-export const testLidarrConnection = async (url, apiKey) => {
+export const testLidarrConnection = async (url) => {
   const params = new URLSearchParams();
   if (url) params.append("url", url);
-  if (apiKey) params.append("apiKey", apiKey);
   const queryString = params.toString();
   const endpoint = `/settings/lidarr/test${
     queryString ? `?${queryString}` : ""

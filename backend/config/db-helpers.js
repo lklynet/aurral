@@ -186,7 +186,7 @@ export const userOps = {
   },
 };
 
-function getOrCreateEncryptionKey() {
+export function getOrCreateEncryptionKey() {
   const row = getSettingStmt.get("_encryptionKey");
   if (row?.value) {
     return Buffer.from(row.value, "base64");

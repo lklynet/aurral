@@ -47,6 +47,7 @@ const SENSITIVE_PATHS = [
   ["lidarr", "apiKey"],
   ["slskd", "apiKey"],
   ["gotify", "token"],
+  ["lastfm", "apiKey"],
 ];
 
 function getAt(obj, path) {
@@ -85,7 +86,8 @@ export function mapIntegrations(integrations, key, decryptSecrets = false) {
   for (const [section, field] of SENSITIVE_PATHS) {
     const v = o[section]?.[field];
     if (typeof v !== "string") continue;
-    o[section].secret_length = decryptWithKey(v, key).length;
+    o[section].secretIsSet = !!v;
+    delete o[section]?.[field];
     if (decryptSecrets) {
       o[section][field] = decryptWithKey(v, key);
     }

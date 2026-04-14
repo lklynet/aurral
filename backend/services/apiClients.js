@@ -1,13 +1,14 @@
 import axios from "axios";
 import Bottleneck from "bottleneck";
 import NodeCache from "node-cache";
-import { dbOps } from "../config/db-helpers.js";
+import { dbOps, getOrCreateEncryptionKey } from "../config/db-helpers.js";
 import {
   MUSICBRAINZ_API,
   LASTFM_API,
   APP_NAME,
   APP_VERSION,
 } from "../config/constants.js";
+import { decryptIntegrations } from "../config/encryption.js";
 
 const mbCache = new NodeCache({ stdTTL: 300, checkperiod: 60, maxKeys: 500 });
 const lastfmCache = new NodeCache({
@@ -24,6 +25,12 @@ const deezerArtistCache = new NodeCache({
 export const getLastfmApiKey = () => {
   const settings = dbOps.getSettings();
   return settings.integrations?.lastfm?.apiKey || process.env.LASTFM_API_KEY;
+};
+
+export const getRawLidarrApiKey = () => {
+  const encKey = getOrCreateEncryptionKey();
+  const settings = dbOps.getSettings();
+  return decryptIntegrations(settings.integrations, encKey).lidarr?.apiKey;
 };
 
 export const getTicketmasterApiKey = () => {

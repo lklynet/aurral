@@ -4,6 +4,9 @@ import { defaultData } from "../config/constants.js";
 import { noCache } from "../middleware/cache.js";
 import { requireAuth, requireAdmin } from "../middleware/requirePermission.js";
 import { validateExternalUrl } from "../middleware/urlValidator.js";
+import { decryptIntegrations } from "../config/encryption.js";
+import { getOrCreateEncryptionKey } from "../config/db-helpers.js";
+import { getRawLidarrApiKey } from "../services/apiClients.js";
 
 const router = express.Router();
 router.use(requireAuth);
@@ -166,7 +169,7 @@ router.get("/lidarr/profiles", async (req, res) => {
     const { lidarrClient } = await import("../services/lidarrClient.js");
 
     const testUrl = req.query.url;
-    const testApiKey = req.query.apiKey;
+    const testApiKey = getRawLidarrApiKey();
 
     let url, apiKey;
     if (testUrl && testApiKey) {
@@ -223,7 +226,7 @@ router.get("/lidarr/metadata-profiles", async (req, res) => {
     const { lidarrClient } = await import("../services/lidarrClient.js");
 
     const testUrl = req.query.url;
-    const testApiKey = req.query.apiKey;
+    const testApiKey = getRawLidarrApiKey();
 
     let url, apiKey;
     if (testUrl && testApiKey) {
@@ -283,7 +286,7 @@ router.get("/lidarr/test", async (req, res) => {
     const { lidarrClient } = await import("../services/lidarrClient.js");
 
     const testUrl = req.query.url;
-    const testApiKey = req.query.apiKey;
+    const testApiKey = getRawLidarrApiKey();
 
     let url, apiKey;
     if (testUrl && testApiKey) {
@@ -299,8 +302,7 @@ router.get("/lidarr/test", async (req, res) => {
     console.log("[Settings] Testing Lidarr connection...", {
       url: url,
       hasApiKey: !!apiKey,
-      apiKeyLength: apiKey?.length || 0,
-      usingProvided: !!(testUrl && testApiKey),
+      usingProvided: !!(testUrl && apiKey),
     });
 
     if (!url || !apiKey) {

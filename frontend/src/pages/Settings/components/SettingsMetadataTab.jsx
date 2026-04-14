@@ -155,9 +155,9 @@ export function SettingsMetadataTab({
               <input
                 type="password"
                 className="input"
-                placeholder="Last.fm API Key"
+                placeholder={settings.integrations?.lastfm?.secretIsSet ? "API Key has been set, enter to change" : "Enter Last.fm API Key"}
                 autoComplete="off"
-                value={settings.integrations?.lastfm?.apiKey || ""}
+                value={""}
                 onChange={(e) =>
                   updateSettings({
                     ...settings,

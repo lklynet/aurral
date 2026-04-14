@@ -137,13 +137,13 @@ export function useSettingsData(showSuccess, showError, showInfo) {
       }, 600);
 
       const lidarr = updatedSettings.integrations?.lidarr || {};
-      if (lidarr.url && lidarr.apiKey) {
+      if (lidarr.url && lidarr.secretIsSet) {
         setLoadingLidarrProfiles(true);
         setLoadingLidarrMetadataProfiles(true);
         try {
           const [profiles, metadataProfiles] = await Promise.all([
-            getLidarrProfiles(lidarr.url, lidarr.apiKey),
-            getLidarrMetadataProfiles(lidarr.url, lidarr.apiKey),
+            getLidarrProfiles(lidarr.url),
+            getLidarrMetadataProfiles(lidarr.url),
           ]);
           setLidarrProfiles(profiles);
           setLidarrMetadataProfiles(metadataProfiles);
@@ -267,10 +267,9 @@ export function useSettingsData(showSuccess, showError, showInfo) {
 
       if (result.results?.qualityProfile) {
         const url = settings.integrations?.lidarr?.url;
-        const apiKey = settings.integrations?.lidarr?.apiKey;
         setLoadingLidarrProfiles(true);
         try {
-          const profiles = await getLidarrProfiles(url, apiKey);
+          const profiles = await getLidarrProfiles(url);
           setLidarrProfiles(profiles);
           if (result.results.qualityProfile.id) {
             updateSettings({
@@ -294,10 +293,9 @@ export function useSettingsData(showSuccess, showError, showInfo) {
       }
       if (result.results?.metadataProfile) {
         const url = settings.integrations?.lidarr?.url;
-        const apiKey = settings.integrations?.lidarr?.apiKey;
         setLoadingLidarrMetadataProfiles(true);
         try {
-          const profiles = await getLidarrMetadataProfiles(url, apiKey);
+          const profiles = await getLidarrMetadataProfiles(url);
           setLidarrMetadataProfiles(profiles);
           if (result.results.metadataProfile.id) {
             updateSettings({
