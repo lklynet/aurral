@@ -75,6 +75,30 @@ export function useSettingsData(showSuccess, showError, showInfo) {
   const [showCommunityGuideModal, setShowCommunityGuideModal] = useState(false);
   const comparisonEnabledRef = useRef(false);
 
+  const loadLidarrProfilesIfConfigured = useCallback(
+    async (updatedSettings) => {
+      const lidarr = updatedSettings.integrations?.lidarr || {};
+      if (!lidarr.url || !lidarr.secretIsSet) return;
+      setLoadingLidarrProfiles(true);
+      setLoadingLidarrMetadataProfiles(true);
+      try {
+        const [profiles, metadataProfiles] = await Promise.all([
+          getLidarrProfiles(lidarr.url),
+          getLidarrMetadataProfiles(lidarr.url),
+        ]);
+        setLidarrProfiles(Array.isArray(profiles) ? profiles : []);
+        setLidarrMetadataProfiles(
+          Array.isArray(metadataProfiles) ? metadataProfiles : [],
+        );
+      } catch {
+      } finally {
+        setLoadingLidarrProfiles(false);
+        setLoadingLidarrMetadataProfiles(false);
+      }
+    },
+    [],
+  );
+
   const applyHealthUpdate = useCallback((healthData) => {
     setHealth(healthData);
     if (healthData?.discovery?.isUpdating) {
@@ -136,25 +160,9 @@ export function useSettingsData(showSuccess, showError, showInfo) {
         comparisonEnabledRef.current = true;
       }, 600);
 
-      const lidarr = updatedSettings.integrations?.lidarr || {};
-      if (lidarr.url && lidarr.secretIsSet) {
-        setLoadingLidarrProfiles(true);
-        setLoadingLidarrMetadataProfiles(true);
-        try {
-          const [profiles, metadataProfiles] = await Promise.all([
-            getLidarrProfiles(lidarr.url),
-            getLidarrMetadataProfiles(lidarr.url),
-          ]);
-          setLidarrProfiles(profiles);
-          setLidarrMetadataProfiles(metadataProfiles);
-        } catch {
-        } finally {
-          setLoadingLidarrProfiles(false);
-          setLoadingLidarrMetadataProfiles(false);
-        }
-      }
+      await loadLidarrProfilesIfConfigured(updatedSettings);
     } catch {}
-  }, [applyHealthUpdate]);
+  }, [applyHealthUpdate, loadLidarrProfilesIfConfigured]);
 
   useEffect(() => {
     fetchSettings();
@@ -195,18 +203,26 @@ export function useSettingsData(showSuccess, showError, showInfo) {
       e?.preventDefault();
       const toSave = settingsOverride ?? settings;
       setSaving(true);
+      comparisonEnabledRef.current = false;
       try {
         await updateAppSettings(toSave);
-        setOriginalSettings(JSON.parse(JSON.stringify(toSave)));
+        const saved = await getAppSettings();
+        const normalized = normalizeSettings(saved);
+        setSettingsState(normalized);
+        setOriginalSettings(JSON.parse(JSON.stringify(normalized)));
         setHasUnsavedChanges(false);
         showSuccess("Settings saved successfully!");
+        setTimeout(() => {
+          comparisonEnabledRef.current = true;
+        }, 600);
+        await loadLidarrProfilesIfConfigured(normalized);
       } catch (err) {
         showError("Failed to save settings: " + err.message);
       } finally {
         setSaving(false);
       }
     },
-    [settings, showSuccess, showError],
+    [settings, showSuccess, showError, loadLidarrProfilesIfConfigured],
   );
 
   const handleRefreshDiscovery = useCallback(async () => {
