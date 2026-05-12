@@ -79,6 +79,48 @@ function normalizeTrackLookupText(value) {
     .replace(/\s+/g, " ");
 }
 
+function buildLidarrTrackHydrationKeys(track) {
+  const keys = [];
+  const mbid = String(track?.foreignRecordingId || track?.foreignTrackId || "").trim();
+  if (mbid) {
+    keys.push(`mbid:${mbid}`);
+  }
+  const id = String(track?.id || "").trim();
+  if (id) {
+    keys.push(`id:${id}`);
+  }
+  const title = normalizeTrackLookupText(track?.title || track?.trackTitle || "");
+  const trackNumber = String(track?.trackNumber || track?.absoluteTrackNumber || "").trim();
+  if (title && trackNumber) {
+    keys.push(`title:${title}|track:${trackNumber}`);
+  }
+  if (title) {
+    keys.push(`title:${title}`);
+  }
+  return keys;
+}
+
+function buildMappedTrackHydrationKeys(track) {
+  const keys = [];
+  const mbid = String(track?.mbid || "").trim();
+  if (mbid) {
+    keys.push(`mbid:${mbid}`);
+  }
+  const id = String(track?.id || "").trim();
+  if (id) {
+    keys.push(`id:${id}`);
+  }
+  const title = normalizeTrackLookupText(track?.trackName || "");
+  const trackNumber = String(track?.trackNumber || "").trim();
+  if (title && trackNumber) {
+    keys.push(`title:${title}|track:${trackNumber}`);
+  }
+  if (title) {
+    keys.push(`title:${title}`);
+  }
+  return keys;
+}
+
 function parseReleaseYear(value) {
   const match = /^(\d{4})/.exec(String(value || "").trim());
   return match ? match[1] : null;
@@ -1272,6 +1314,52 @@ export class LibraryManager {
             this.mapLidarrTrack(t, lidarrAlbum, index + 1, isAlbumComplete),
           );
         }
+      }
+
+      const needsTrackFileHydration = result.some(
+        (track) =>
+          track?.hasFile === true &&
+          (!track?.path || !String(track.path).trim()),
+      );
+      if (needsTrackFileHydration) {
+        const rawTracks = await lidarr.getTracksByAlbumId(albumId);
+        const trackFiles = await lidarr.getTrackFilesByAlbumId(albumId);
+        const trackFileIdsByKey = new Map();
+        for (const rawTrack of Array.isArray(rawTracks) ? rawTracks : []) {
+          const trackFileId = rawTrack?.trackFileId;
+          if (trackFileId == null) continue;
+          for (const key of buildLidarrTrackHydrationKeys(rawTrack)) {
+            if (!trackFileIdsByKey.has(key)) {
+              trackFileIdsByKey.set(key, String(trackFileId));
+            }
+          }
+        }
+        const trackFilesById = new Map(
+          (Array.isArray(trackFiles) ? trackFiles : [])
+            .filter((entry) => entry?.id != null)
+            .map((entry) => [String(entry.id), entry]),
+        );
+        result = result.map((track) => {
+          const trackFileId =
+            buildMappedTrackHydrationKeys(track)
+              .map((key) => trackFileIdsByKey.get(key))
+              .find(Boolean) || null;
+          if (trackFileId == null) return track;
+          const trackFile = trackFilesById.get(String(trackFileId));
+          if (!trackFile?.path) return track;
+          return {
+            ...track,
+            path: String(trackFile.path).trim() || track.path,
+            size:
+              trackFile?.size != null && Number.isFinite(Number(trackFile.size))
+                ? Number(trackFile.size)
+                : track.size,
+            quality:
+              trackFile?.mediaInfo?.audioCodec ||
+              trackFile?.quality?.quality?.name ||
+              track.quality,
+          };
+        });
       }
 
       if (_tracksCache.size >= TRACKS_CACHE_MAX) {

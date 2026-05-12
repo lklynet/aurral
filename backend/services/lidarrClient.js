@@ -1053,6 +1053,19 @@ export class LidarrClient {
     }
   }
 
+  async getTrackFilesByAlbumId(albumId) {
+    try {
+      const result = await this.request(`/trackfile?albumId=${albumId}`);
+      if (Array.isArray(result)) return result;
+      if (result?.records && Array.isArray(result.records)) {
+        return result.records;
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  }
+
   async getAlbumByMbid(albumMbid) {
     const albums = await this.request("/album");
     return albums.find((a) => a.foreignAlbumId === albumMbid);

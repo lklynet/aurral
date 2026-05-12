@@ -58,6 +58,24 @@ const reserveUniquePlaylistName = (playlists, baseName = "Playlist") => {
   return `${normalizedBase} ${Date.now()}`;
 };
 
+const formatPlaylistSaveSuccess = (
+  actionLabel,
+  playlistName,
+  { tracksReused = 0, tracksQueued = 0 } = {},
+) => {
+  const base = `${actionLabel} ${playlistName || "playlist"}`;
+  if (tracksReused > 0 && tracksQueued > 0) {
+    return `${base} (${tracksReused} reused from Lidarr, ${tracksQueued} queued for download)`;
+  }
+  if (tracksReused > 0) {
+    return `${base} (${tracksReused} reused from Lidarr library)`;
+  }
+  if (tracksQueued > 0) {
+    return `${base} (${tracksQueued} queued for download)`;
+  }
+  return base;
+};
+
 function ArtistDetailsPage() {
   const { mbid } = useParams();
   const { state: locationState } = useLocation();
@@ -463,17 +481,25 @@ function ArtistDetailsPage() {
           tracks: payload.tracks,
         });
         showSuccess(
-          `Track saved to ${response?.playlist?.name || payload.name}`,
+          formatPlaylistSaveSuccess(
+            "Track saved to",
+            response?.playlist?.name || payload.name,
+            response,
+          ),
         );
       } else {
         const targetPlaylist = sharedPlaylists.find(
           (playlist) => playlist.id === payload?.playlistId,
         );
-        await addSharedPlaylistTracks(payload.playlistId, {
+        const response = await addSharedPlaylistTracks(payload.playlistId, {
           tracks: payload.tracks,
         });
         showSuccess(
-          `Track added to ${targetPlaylist?.name || "playlist"}`,
+          formatPlaylistSaveSuccess(
+            "Track added to",
+            targetPlaylist?.name || "playlist",
+            response,
+          ),
         );
       }
       setPlaylistTrackModal(null);
