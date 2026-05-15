@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import {
   addArtistToLibrary,
+  addDiscoveryFeedback,
   getBlocklist,
   getDiscovery,
   getBootstrapStatus,
@@ -158,6 +159,8 @@ function SearchResultsPage() {
   const tagScope = searchParams.get("scope") || "recommended";
   const albumSort = searchParams.get("sort") || DEFAULT_ALBUM_SORT;
   const showAllTagResults = isTagSearch && tagScope === "all";
+  const supportsDiscoveryFeedback =
+    normalizedType === "recommended" || (isTagSearch && !showAllTagResults);
   const canAddArtist = hasPermission("addArtist");
   const canAddAlbum = hasPermission("addAlbum");
   const hasActiveReleaseTypeFilters = useMemo(() => {
@@ -741,6 +744,58 @@ function SearchResultsPage() {
     [showError, showSuccess],
   );
 
+  const handleArtistFeedback = useCallback(
+    async (artist, action) => {
+      try {
+        await addDiscoveryFeedback({
+          artistId: getArtistId(artist),
+          artistName: artist.name || null,
+          action,
+          sourceContext: artist.sourceType || artist.discoveryTier || null,
+          tagContext: artist.matchedTags || artist.tags || [],
+          seedContext: Array.isArray(artist.supportingSeeds)
+            ? artist.supportingSeeds.map((seed) => seed?.artistName).filter(Boolean)
+            : artist.sourceArtists || [],
+        });
+        if (action === "hide_for_now") {
+          setResults((prev) =>
+            prev.filter((entry) => !matchesBlockedArtist(entry, artist)),
+          );
+          setFullList((prev) =>
+            Array.isArray(prev) ? prev.filter((entry) => !matchesBlockedArtist(entry, artist)) : prev,
+          );
+          setSearchTotalCount((prev) => Math.max(0, prev - 1));
+          setHasMore((prev) => {
+            if (!prev) return false;
+            if (normalizedType === "recommended" || normalizedType === "trending") {
+              const nextFullListLength = Array.isArray(fullList)
+                ? fullList.filter((entry) => !matchesBlockedArtist(entry, artist)).length
+                : 0;
+              return nextFullListLength > visibleCount;
+            }
+            return true;
+          });
+        }
+        showSuccess(
+          action === "more_like_this"
+            ? "We’ll bias future picks toward this taste"
+            : action === "less_like_this"
+              ? "We’ll show less like this"
+              : action === "already_known"
+                ? "We’ll avoid obvious repeats like this"
+                : "Hidden from recommendations for now",
+        );
+        return true;
+      } catch (err) {
+        showError(
+          err.response?.data?.message || "Failed to save discovery feedback",
+        );
+        return false;
+      }
+    },
+    [fullList, normalizedType, showError, showSuccess, visibleCount],
+  );
+
   const displayedResults =
     normalizedType === "recommended" || normalizedType === "trending"
       ? results.slice(0, visibleCount)
@@ -1120,6 +1175,9 @@ function SearchResultsPage() {
                   blockedArtists={blockedArtists}
                   onAddArtistToLibrary={handleArtistAction}
                   onAddArtistToBlocklist={handleAddArtistToBlocklist}
+                  onArtistFeedback={
+                    supportsDiscoveryFeedback ? handleArtistFeedback : undefined
+                  }
                 />
               )}
 

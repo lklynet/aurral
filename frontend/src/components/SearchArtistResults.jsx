@@ -3,9 +3,12 @@ import PropTypes from "prop-types";
 import {
   Ban,
   CheckCircle2,
+  EyeOff,
   Library,
   Loader2,
   MoreVertical,
+  ThumbsDown,
+  ThumbsUp,
 } from "lucide-react";
 import ArtistImage from "./ArtistImage";
 
@@ -16,6 +19,7 @@ function ArtistActionsMenu({
   canAddArtist,
   onAddToLibrary,
   onAddToBlocklist,
+  onFeedback,
 }) {
   const [showMenu, setShowMenu] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
@@ -95,6 +99,66 @@ function ArtistActionsMenu({
             )}
             {isBlocked ? "In Blocklist" : "Blocklist Artist"}
           </button>
+          {onFeedback && (
+            <>
+              <button
+                type="button"
+                onClick={(event) =>
+                  handleAction(event, "more_like_this", (nextArtist) =>
+                    onFeedback(nextArtist, "more_like_this"),
+                  )
+                }
+                disabled={!!pendingAction}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ color: "#fff" }}
+              >
+                <ThumbsUp className="h-4 w-4" />
+                More like this
+              </button>
+              <button
+                type="button"
+                onClick={(event) =>
+                  handleAction(event, "less_like_this", (nextArtist) =>
+                    onFeedback(nextArtist, "less_like_this"),
+                  )
+                }
+                disabled={!!pendingAction}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ color: "#fff" }}
+              >
+                <ThumbsDown className="h-4 w-4" />
+                Less like this
+              </button>
+              <button
+                type="button"
+                onClick={(event) =>
+                  handleAction(event, "already_known", (nextArtist) =>
+                    onFeedback(nextArtist, "already_known"),
+                  )
+                }
+                disabled={!!pendingAction}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ color: "#fff" }}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Already know this
+              </button>
+              <button
+                type="button"
+                onClick={(event) =>
+                  handleAction(event, "hide_for_now", (nextArtist) =>
+                    onFeedback(nextArtist, "hide_for_now"),
+                  )
+                }
+                disabled={!!pendingAction}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ color: "#fca5a5" }}
+              >
+                <EyeOff className="h-4 w-4" />
+                Hide for now
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -111,6 +175,7 @@ function SearchArtistResults({
   blockedArtists,
   onAddArtistToLibrary,
   onAddArtistToBlocklist,
+  onArtistFeedback,
 }) {
   const getArtistId = (artist) =>
     artist?.id || artist?.mbid || artist?.foreignArtistId;
@@ -268,7 +333,7 @@ function SearchArtistResults({
                 </div>
               </div>
 
-              {(canAddArtist || onAddArtistToBlocklist) && (
+              {(canAddArtist || onAddArtistToBlocklist || onArtistFeedback) && (
                 <ArtistActionsMenu
                   artist={artist}
                   isInLibrary={!!libraryLookup[artistId]}
@@ -276,6 +341,7 @@ function SearchArtistResults({
                   canAddArtist={canAddArtist}
                   onAddToLibrary={onAddArtistToLibrary}
                   onAddToBlocklist={onAddArtistToBlocklist}
+                  onFeedback={onArtistFeedback}
                 />
               )}
             </div>
@@ -296,6 +362,7 @@ SearchArtistResults.propTypes = {
   blockedArtists: PropTypes.arrayOf(PropTypes.object),
   onAddArtistToLibrary: PropTypes.func,
   onAddArtistToBlocklist: PropTypes.func,
+  onArtistFeedback: PropTypes.func,
 };
 
 ArtistActionsMenu.propTypes = {
@@ -305,6 +372,7 @@ ArtistActionsMenu.propTypes = {
   canAddArtist: PropTypes.bool,
   onAddToLibrary: PropTypes.func,
   onAddToBlocklist: PropTypes.func,
+  onFeedback: PropTypes.func,
 };
 
 export default SearchArtistResults;

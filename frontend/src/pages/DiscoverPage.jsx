@@ -262,6 +262,22 @@ const matchesBlockedArtist = (target, artist) => {
     (targetName && artistName && targetName === artistName);
 };
 
+const filterDiscoveryDataByBlockedArtists = (value, blockedArtists) => {
+  const normalized = normalizeDiscoveryData(value);
+  if (!normalized) return normalized;
+  const entries = Array.isArray(blockedArtists) ? blockedArtists : [];
+  if (entries.length === 0) return normalized;
+  return {
+    ...normalized,
+    recommendations: normalized.recommendations.filter(
+      (artist) => !isArtistInEntries(artist, entries),
+    ),
+    globalTop: normalized.globalTop.filter(
+      (artist) => !isArtistInEntries(artist, entries),
+    ),
+  };
+};
+
 const parseCalendarDate = (value) => {
   if (!value) return null;
   const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -1098,6 +1114,7 @@ function DiscoverPage() {
   const requestedReleaseCoversRef = useRef(new Set());
   const requestedArtistCoversRef = useRef(new Set());
   const lastDiscoveryWsMessageAtRef = useRef(0);
+  const blockedArtistsRef = useRef([]);
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const canAddArtist = hasPermission("addArtist");
@@ -1123,8 +1140,12 @@ function DiscoverPage() {
               : "balanced",
           configured: true,
         };
-        setData(nextData);
-        writeStoredDiscoveryData(nextData, authUser?.id);
+        const filteredData = filterDiscoveryDataByBlockedArtists(
+          nextData,
+          blockedArtistsRef.current,
+        );
+        setData(filteredData);
+        writeStoredDiscoveryData(filteredData, authUser?.id);
       }
     },
   );
@@ -1134,8 +1155,12 @@ function DiscoverPage() {
     if (!data?.isUpdating && !data?.stale) return;
     getDiscovery()
       .then((discoveryData) => {
-        setData(discoveryData);
-        writeStoredDiscoveryData(discoveryData, authUser?.id);
+        const filteredData = filterDiscoveryDataByBlockedArtists(
+          discoveryData,
+          blockedArtistsRef.current,
+        );
+        setData(filteredData);
+        writeStoredDiscoveryData(filteredData, authUser?.id);
         setError(null);
       })
       .catch(() => {});
@@ -1149,8 +1174,12 @@ function DiscoverPage() {
     const pollDiscovery = () => {
       getDiscovery(true)
         .then((next) => {
-          setData(next);
-          writeStoredDiscoveryData(next, authUser?.id);
+          const filteredData = filterDiscoveryDataByBlockedArtists(
+            next,
+            blockedArtistsRef.current,
+          );
+          setData(filteredData);
+          writeStoredDiscoveryData(filteredData, authUser?.id);
           setError(null);
         })
         .catch(() => {});
@@ -1166,8 +1195,12 @@ function DiscoverPage() {
     const id = setTimeout(() => {
       getDiscovery(true)
         .then((next) => {
-          setData(next);
-          writeStoredDiscoveryData(next, authUser?.id);
+          const filteredData = filterDiscoveryDataByBlockedArtists(
+            next,
+            blockedArtistsRef.current,
+          );
+          setData(filteredData);
+          writeStoredDiscoveryData(filteredData, authUser?.id);
           setError(null);
         })
         .catch(() => {});
@@ -1185,8 +1218,12 @@ function DiscoverPage() {
   useEffect(() => {
     getDiscovery()
       .then((discoveryData) => {
-        setData(discoveryData);
-        writeStoredDiscoveryData(discoveryData, authUser?.id);
+        const filteredData = filterDiscoveryDataByBlockedArtists(
+          discoveryData,
+          blockedArtistsRef.current,
+        );
+        setData(filteredData);
+        writeStoredDiscoveryData(filteredData, authUser?.id);
         setError(null);
       })
       .catch((err) => {
@@ -1223,7 +1260,12 @@ function DiscoverPage() {
       try {
         const data = await getBlocklist();
         if (!cancelled) {
-          setBlockedArtists(normalizeBlocklistArtists(data?.artists));
+          const nextBlockedArtists = normalizeBlocklistArtists(data?.artists);
+          blockedArtistsRef.current = nextBlockedArtists;
+          setBlockedArtists(nextBlockedArtists);
+          setData((prev) =>
+            filterDiscoveryDataByBlockedArtists(prev, nextBlockedArtists),
+          );
         }
       } catch {}
     };
@@ -1671,9 +1713,11 @@ function DiscoverPage() {
           artists: nextArtists,
           tags: current?.tags || [],
         });
-        setBlockedArtists(
-          normalizeBlocklistArtists(response?.blocklist?.artists || nextArtists),
+        const savedBlockedArtists = normalizeBlocklistArtists(
+          response?.blocklist?.artists || nextArtists,
         );
+        blockedArtistsRef.current = savedBlockedArtists;
+        setBlockedArtists(savedBlockedArtists);
         setData((prev) =>
           prev
             ? {
