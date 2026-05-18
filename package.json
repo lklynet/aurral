@@ -27,17 +27,17 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "axios": "^1.16.0",
-    "better-sqlite3": "^12.9.0",
+    "axios": "^1.16.1",
+    "better-sqlite3": "^12.10.0",
     "bottleneck": "^2.19.5",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-basic-auth": "^1.2.1",
-    "express-rate-limit": "^8.5.1",
+    "express-rate-limit": "^8.5.2",
     "helmet": "^8.1.0",
     "sharp": "^0.34.5",
-    "ws": "^8.20.0"
+    "ws": "^8.20.1"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
