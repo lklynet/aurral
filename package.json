@@ -42,7 +42,7 @@
   "devDependencies": {
     "concurrently": "^9.1.2",
     "nodemon": "^3.1.14",
-    "wait-on": "^9.0.6"
+    "wait-on": "^9.0.10"
   },
   "nodemonConfig": {
     "watch": [
