@@ -105,6 +105,15 @@ export const getTicketmasterApiKey = () => {
   return String(process.env.TICKETMASTER_API_KEY || "").trim();
 };
 
+export const getSongkickApiKey = () => {
+  const settings = dbOps.getSettings();
+  const configuredValue = settings.integrations?.songkick?.apiKey;
+  if (configuredValue !== undefined && configuredValue !== null) {
+    return String(configuredValue).trim();
+  }
+  return String(process.env.SONGKICK_API_KEY || "").trim();
+};
+
 export const getMusicBrainzContact = () => {
   const settings = dbOps.getSettings();
   return (

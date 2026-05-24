@@ -408,10 +408,10 @@ function ShowsPage() {
       {showsData?.configured === false ? (
         <div className="p-6 border border-white/10" style={{ backgroundColor: "#191820" }}>
           <h2 className="text-lg font-semibold" style={{ color: "#fff" }}>
-            Ticketmaster not configured
+            No show sources configured
           </h2>
           <p className="mt-2 text-sm max-w-2xl" style={{ color: "#c1c1c3" }}>
-            Add a Ticketmaster Consumer Key in Settings to enable local show discovery.
+            Add a Ticketmaster or Songkick API key in Settings to enable local show discovery.
           </p>
           <button
             type="button"
@@ -498,10 +498,10 @@ function ShowsPage() {
           </h2>
           <p className="mt-2 text-sm max-w-2xl" style={{ color: "#c1c1c3" }}>
             {showFilter === "library"
-              ? `We could not find local Ticketmaster shows for artists from your library around ${locationLabel}.`
+              ? `We could not find nearby shows for artists from your library around ${locationLabel}.`
               : showFilter === "discover"
-                ? `We could not find local Ticketmaster shows tied to your Discover recommendations around ${locationLabel}.`
-                : `We could not find local Ticketmaster shows for artists from your library or Discover around ${locationLabel}.`}
+                ? `We could not find nearby shows tied to your Discover recommendations around ${locationLabel}.`
+                : `We could not find nearby shows for artists from your library or Discover around ${locationLabel}.`}
           </p>
         </div>
       )}

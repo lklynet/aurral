@@ -16,6 +16,7 @@ import {
   lastfmRequest,
   getLastfmApiKey,
   getTicketmasterApiKey,
+  getSongkickApiKey,
   clearApiCaches,
 } from "../services/apiClients.js";
 import { libraryManager } from "../services/libraryManager.js";
@@ -663,8 +664,9 @@ router.post("/blocklist/reset", requireAuth, (req, res) => {
 
 router.get("/nearby-shows", requireAuth, async (req, res) => {
   try {
-    const apiKey = getTicketmasterApiKey();
-    if (!apiKey) {
+    const ticketmasterApiKey = getTicketmasterApiKey();
+    const songkickApiKey = getSongkickApiKey();
+    if (!ticketmasterApiKey && !songkickApiKey) {
       res.set("Cache-Control", "no-cache, no-store, must-revalidate");
       return res.json({
         configured: false,

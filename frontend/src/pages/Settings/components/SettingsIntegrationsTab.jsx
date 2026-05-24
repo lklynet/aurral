@@ -37,12 +37,14 @@ export function SettingsIntegrationsTab({
 }) {
   const [lidarrEditing, setLidarrEditing] = useState(false);
   const [ticketmasterEditing, setTicketmasterEditing] = useState(false);
+  const [songkickEditing, setSongkickEditing] = useState(false);
   const [navidromeEditing, setNavidromeEditing] = useState(false);
   const [lastfmEditing, setLastfmEditing] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState({
     lidarr: false,
     lastfm: true,
     ticketmaster: true,
+    songkick: true,
     navidrome: true,
   });
   const [lidarrTestLatencyMs, setLidarrTestLatencyMs] = useState(null);
@@ -1011,6 +1013,116 @@ export function SettingsIntegrationsTab({
                 }
               />
             </label>
+          </fieldset>
+          )}
+        </div>
+        <div
+          className="p-6 rounded-lg space-y-4"
+          style={{
+            backgroundColor: "#1a1a1e",
+            border: "1px solid #2a2a2e",
+          }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <h3
+              className="text-lg font-medium flex items-center"
+              style={{ color: "#fff" }}
+            >
+              <button
+                type="button"
+                onClick={() => toggleSection("songkick")}
+                className="flex items-center gap-2 text-left"
+                style={{ color: "#fff" }}
+                aria-expanded={!collapsedSections.songkick}
+              >
+                <ChevronDown
+                  className={`w-4 h-4 transition-transform ${
+                    collapsedSections.songkick ? "-rotate-90" : ""
+                  }`}
+                />
+                <span>Songkick</span>
+              </button>
+            </h3>
+            <div className="flex items-center gap-2">
+              {health?.songkickConfigured && (
+                <span className="flex items-center text-sm text-green-400">
+                  <CheckCircle className="w-4 h-4 mr-1" />
+                  Configured
+                </span>
+              )}
+              <button
+                type="button"
+                className={`btn ${
+                  songkickEditing ? "btn-primary" : "btn-secondary"
+                } px-2 py-1`}
+                onClick={() => setSongkickEditing((value) => !value)}
+                aria-label={
+                  songkickEditing
+                    ? "Lock Songkick settings"
+                    : "Edit Songkick settings"
+                }
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          {!collapsedSections.songkick && (
+          <fieldset
+            disabled={!songkickEditing}
+            className={`space-y-4 ${songkickEditing ? "" : "opacity-60"}`}
+          >
+            <div
+              className="rounded-lg p-4 space-y-2"
+              style={{ backgroundColor: "#141418", border: "1px solid #2a2a2e" }}
+            >
+              <p className="text-sm font-medium" style={{ color: "#fff" }}>
+                Get an API key
+              </p>
+              <p className="text-sm leading-6" style={{ color: "#c1c1c3" }}>
+                Register for a Songkick API key. Songkick covers independent
+                venues and international shows that may not appear on
+                Ticketmaster.
+              </p>
+              <a
+                href="https://www.songkick.com/api_key_requests/new"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex text-sm font-medium underline"
+                style={{ color: "#60a5fa" }}
+              >
+                Request a Songkick API key
+              </a>
+            </div>
+            <div>
+              <label
+                className="block text-sm font-medium mb-1"
+                style={{ color: "#fff" }}
+              >
+                API Key
+              </label>
+              <input
+                type="password"
+                className="input"
+                placeholder="Enter Songkick API Key"
+                autoComplete="off"
+                value={settings.integrations?.songkick?.apiKey || ""}
+                onChange={(e) =>
+                  updateSettings({
+                    ...settings,
+                    integrations: {
+                      ...settings.integrations,
+                      songkick: {
+                        ...(settings.integrations?.songkick || {}),
+                        apiKey: e.target.value,
+                      },
+                    },
+                  })
+                }
+              />
+              <p className="mt-1 text-xs" style={{ color: "#c1c1c3" }}>
+                Used alongside Ticketmaster to expand nearby show coverage. Uses the same search radius configured above.
+              </p>
+            </div>
           </fieldset>
           )}
         </div>
