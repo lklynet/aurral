@@ -188,9 +188,6 @@ export const defaultData = {
         localDiscoveryIncludeRecommendations: true,
         localDiscoveryIncludeTrending: true,
       },
-      songkick: {
-        apiKey: "",
-      },
       lidarr: {
         url: "",
         externalUrl: "",

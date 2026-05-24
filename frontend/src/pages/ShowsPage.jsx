@@ -411,7 +411,7 @@ function ShowsPage() {
             No show sources configured
           </h2>
           <p className="mt-2 text-sm max-w-2xl" style={{ color: "#c1c1c3" }}>
-            Add a Ticketmaster or Songkick API key in Settings to enable local show discovery.
+            Add a Ticketmaster API key in Settings to enable local show discovery.
           </p>
           <button
             type="button"

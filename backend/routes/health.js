@@ -2,7 +2,6 @@ import express from "express";
 import {
   getLastfmApiKey,
   getTicketmasterApiKey,
-  getSongkickApiKey,
   getMetadataProviderHealthSnapshot,
 } from "../services/apiClients.js";
 import { APP_VERSION } from "../config/constants.js";
@@ -44,7 +43,6 @@ function buildBootstrapPayload(req) {
     lidarrConfigured,
     lastfmConfigured: !!getLastfmApiKey(),
     ticketmasterConfigured: !!getTicketmasterApiKey(),
-    songkickConfigured: !!getSongkickApiKey(),
     musicbrainzConfigured: !!settings.integrations?.metadata?.baseUrl,
     metadataConfigured: !!settings.integrations?.metadata?.baseUrl,
     metadataProviders: getMetadataProviderHealthSnapshot(),

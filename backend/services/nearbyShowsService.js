@@ -1,15 +1,9 @@
 import axios from "axios";
 import NodeCache from "node-cache";
-import { getTicketmasterApiKey, getSongkickApiKey } from "./apiClients.js";
+import { getTicketmasterApiKey } from "./apiClients.js";
 import { getShowSourcePlugins } from "./showSourcePlugins.js";
 
 const ticketmasterEventCache = new NodeCache({
-  stdTTL: 15 * 60,
-  checkperiod: 60,
-  maxKeys: 200,
-});
-
-const songkickEventCache = new NodeCache({
   stdTTL: 15 * 60,
   checkperiod: 60,
   maxKeys: 200,
@@ -32,8 +26,6 @@ const MAX_EVENT_RESULTS = 200;
 const DEFAULT_SHOW_LIMIT = 18;
 const MAX_SHOW_LIMIT = 60;
 const TICKETMASTER_BASE_URL = "https://app.ticketmaster.com/discovery/v2";
-const SONGKICK_BASE_URL = "https://api.songkick.com/api/3.0";
-const MILES_TO_KM = 1.60934;
 
 const normalizeArtistKey = (value) =>
   String(value || "")
@@ -368,99 +360,6 @@ const fetchTicketmasterEvents = async ({ location, radiusMiles }) => {
   return events;
 };
 
-const fetchSongkickEvents = async ({ location, radiusMiles }) => {
-  const apiKey = getSongkickApiKey();
-  if (!apiKey) return [];
-  const latitude = Number(location.latitude);
-  const longitude = Number(location.longitude);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return [];
-  const cacheKey = JSON.stringify({
-    source: "songkick",
-    latitude,
-    longitude,
-    radiusMiles,
-  });
-  const cached = songkickEventCache.get(cacheKey);
-  if (cached) return cached;
-  const { startDateTime, endDateTime } = buildDateRange();
-  const minDate = startDateTime.slice(0, 10);
-  const maxDate = endDateTime.slice(0, 10);
-  const radiusKm = Math.round(radiusMiles * MILES_TO_KM);
-  try {
-    const allEvents = [];
-    for (let page = 1; page <= 4; page++) {
-      const response = await axios.get(`${SONGKICK_BASE_URL}/events.json`, {
-        params: {
-          apikey: apiKey,
-          location: `geo:${latitude},${longitude}`,
-          radius: radiusKm,
-          min_date: minDate,
-          max_date: maxDate,
-          per_page: 50,
-          page,
-        },
-        timeout: 10000,
-      });
-      const resultsPage = response.data?.resultsPage;
-      if (resultsPage?.status === "error") break;
-      const events = resultsPage?.results?.event;
-      if (!Array.isArray(events) || events.length === 0) break;
-      allEvents.push(...events);
-      const totalEntries = resultsPage?.totalEntries || 0;
-      if (allEvents.length >= MAX_EVENT_RESULTS || page * 50 >= totalEntries) break;
-    }
-    songkickEventCache.set(cacheKey, allEvents);
-    return allEvents;
-  } catch {
-    return [];
-  }
-};
-
-const extractSongkickArtists = (event) => {
-  const performances = Array.isArray(event?.performance) ? event.performance : [];
-  const unique = new Map();
-  for (const perf of performances) {
-    const name = String(perf?.artist?.displayName || perf?.displayName || "").trim();
-    if (!name) continue;
-    const key = normalizeArtistKey(name);
-    if (!key || unique.has(key)) continue;
-    unique.set(key, {
-      name,
-      key,
-      image: null,
-      url: perf?.artist?.uri || null,
-    });
-  }
-  return [...unique.values()];
-};
-
-const buildSongkickShowRecord = (event, artist, matchType) => {
-  const venue = event?.venue || {};
-  const metroArea = venue?.metroArea || {};
-  const start = event?.start || {};
-  return {
-    id: `sk-${event.id}`,
-    artistName: artist.name,
-    matchType,
-    sourceType: artist.sourceType || matchType,
-    eventName: event.displayName || artist.name,
-    ticketmasterAttractionId: null,
-    ticketmasterEventId: null,
-    image: artist.image || null,
-    url: event.uri || artist.url || null,
-    date: start.date || null,
-    time: start.time || null,
-    dateTime: start.datetime || null,
-    venueName: venue.displayName || null,
-    city: metroArea.displayName || null,
-    region: null,
-    countryCode: metroArea.country?.displayName || null,
-    postalCode: null,
-    distance: null,
-    priceRange: null,
-  };
-};
-
 const buildPluginShowRecord = (event, artist, matchType) => ({
   id: event.id,
   artistName: artist.name,
@@ -589,10 +488,7 @@ export const getNearbyShows = async ({
     location = await resolveIpLocation(getForwardedIp(req));
   }
 
-  const [tmEventsInitial, skEvents] = await Promise.all([
-    fetchTicketmasterEvents({ location, radiusMiles }),
-    fetchSongkickEvents({ location, radiusMiles }),
-  ]);
+  const tmEventsInitial = await fetchTicketmasterEvents({ location, radiusMiles });
 
   let tmEvents = tmEventsInitial;
   if (tmEvents.length === 0 && sanitizedZipCode) {
@@ -625,33 +521,6 @@ export const getNearbyShows = async ({
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
       const show = buildShowRecord(event, {
-        ...artist,
-        name: match.name || artist.name,
-        sourceType: match.sourceType,
-      }, libraryMatch ? "library" : "recommended");
-      if (libraryMatch) {
-        libraryShows.push(show);
-      } else {
-        recommendedShows.push(show);
-      }
-    }
-  }
-
-  for (const event of skEvents) {
-    const artists = extractSongkickArtists(event);
-    if (artists.length === 0) continue;
-    const venueName = event?.venue?.displayName || "";
-    const date = event?.start?.date || "";
-    for (const artist of artists) {
-      const libraryMatch = findBestArtistMatch(artist.key, libraryArtistMap);
-      const recommendedMatch = findBestArtistMatch(artist.key, recommendedArtistMap);
-      const trendingMatch = findBestArtistMatch(artist.key, trendingArtistMap);
-      const match = libraryMatch || recommendedMatch || trendingMatch;
-      if (!match) continue;
-      const dedupeKey = `${artist.key}:${normalizeArtistKey(venueName)}:${date}`;
-      if (seen.has(dedupeKey)) continue;
-      seen.add(dedupeKey);
-      const show = buildSongkickShowRecord(event, {
         ...artist,
         name: match.name || artist.name,
         sourceType: match.sourceType,
