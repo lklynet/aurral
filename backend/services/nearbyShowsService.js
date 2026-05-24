@@ -1,6 +1,7 @@
 import axios from "axios";
 import NodeCache from "node-cache";
 import { getTicketmasterApiKey, getSongkickApiKey } from "./apiClients.js";
+import { getShowSourcePlugins } from "./showSourcePlugins.js";
 
 const ticketmasterEventCache = new NodeCache({
   stdTTL: 15 * 60,
@@ -460,6 +461,28 @@ const buildSongkickShowRecord = (event, artist, matchType) => {
   };
 };
 
+const buildPluginShowRecord = (event, artist, matchType) => ({
+  id: event.id,
+  artistName: artist.name,
+  matchType,
+  sourceType: artist.sourceType || matchType,
+  eventName: event.eventName || artist.name,
+  ticketmasterAttractionId: null,
+  ticketmasterEventId: null,
+  image: event.image || null,
+  url: event.url || null,
+  date: event.date || null,
+  time: event.time || null,
+  dateTime: event.dateTime || null,
+  venueName: event.venueName || null,
+  city: event.city || null,
+  region: event.region || null,
+  countryCode: event.countryCode || null,
+  postalCode: event.postalCode || null,
+  distance: event.distance || null,
+  priceRange: event.priceRange || null,
+});
+
 const buildShowRecord = (event, artist, matchType) => {
   const venue = parseVenueLocation(event);
   const eventImage = selectImage(event.images);
@@ -638,6 +661,56 @@ export const getNearbyShows = async ({
       } else {
         recommendedShows.push(show);
       }
+    }
+  }
+
+  const activePlugins = getShowSourcePlugins().filter(
+    (p) => !p.isRelevantForLocation || p.isRelevantForLocation(location),
+  );
+
+  for (const plugin of activePlugins) {
+    try {
+      const pluginEvents = await plugin.fetchEvents({ location, radiusMiles });
+      const pluginMatches = [];
+
+      for (const event of pluginEvents) {
+        for (const artistName of (Array.isArray(event.artistNames) ? event.artistNames : [])) {
+          const artistKey = normalizeArtistKey(artistName);
+          const libraryMatch = findBestArtistMatch(artistKey, libraryArtistMap);
+          const recommendedMatch = findBestArtistMatch(artistKey, recommendedArtistMap);
+          const trendingMatch = findBestArtistMatch(artistKey, trendingArtistMap);
+          const match = libraryMatch || recommendedMatch || trendingMatch;
+          if (!match) continue;
+          const prelimKey = `plugin:${event.id}:${match.name}`;
+          if (seen.has(prelimKey)) continue;
+          seen.add(prelimKey);
+          pluginMatches.push({ event, match, libraryMatch });
+          break;
+        }
+      }
+
+      if (pluginMatches.length > 0) {
+        const enrichFn = typeof plugin.enrichEvent === "function"
+          ? (e) => plugin.enrichEvent(e).catch(() => e)
+          : (e) => e;
+        const enriched = await Promise.all(pluginMatches.map(({ event }) => enrichFn(event)));
+
+        for (let i = 0; i < pluginMatches.length; i++) {
+          const { match, libraryMatch } = pluginMatches[i];
+          const event = enriched[i];
+          const dedupeKey = `${normalizeArtistKey(match.name)}:${normalizeArtistKey(event.venueName || "")}:${event.date || ""}`;
+          if (seen.has(dedupeKey)) continue;
+          seen.add(dedupeKey);
+          const show = buildPluginShowRecord(event, {
+            name: match.name,
+            sourceType: match.sourceType,
+          }, libraryMatch ? "library" : "recommended");
+          if (libraryMatch) libraryShows.push(show);
+          else recommendedShows.push(show);
+        }
+      }
+    } catch (err) {
+      console.warn(`[plugins] Error from plugin ${plugin.id}:`, err.message);
     }
   }
 

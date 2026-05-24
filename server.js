@@ -20,6 +20,7 @@ import { websocketService } from "./backend/services/websocketService.js";
 import { getAllDownloadStatuses } from "./backend/routes/library/handlers/downloads.js";
 import { getWeeklyFlowStatusSnapshot } from "./backend/services/weeklyFlowStatusSnapshot.js";
 import { dbOps } from "./backend/config/db-helpers.js";
+import { loadShowSourcePluginsFromDir } from "./backend/services/showSourcePlugins.js";
 
 import settingsRouter from "./backend/routes/settings.js";
 import onboardingRouter from "./backend/routes/onboarding.js";
@@ -331,6 +332,10 @@ broadcastDownloadStatuses();
 setInterval(broadcastDownloadStatuses, DOWNLOAD_STATUS_INTERVAL_MS);
 broadcastWeeklyFlowStatus();
 setInterval(broadcastWeeklyFlowStatus, WEEKLY_FLOW_STATUS_INTERVAL_MS);
+
+const pluginsDir = process.env.AURRAL_PLUGINS_DIR
+  ?? new URL("./plugins", import.meta.url).pathname;
+loadShowSourcePluginsFromDir(pluginsDir);
 
 httpServer.listen(PORT, "0.0.0.0", async () => {
   console.log(`Server running on port ${PORT}`);
