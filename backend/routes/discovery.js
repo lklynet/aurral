@@ -20,6 +20,7 @@ import {
 } from "../services/apiClients.js";
 import { libraryManager } from "../services/libraryManager.js";
 import { dbOps, userOps } from "../config/db-helpers.js";
+import { getShowSourcePlugins } from "../services/showSourcePlugins.js";
 import { imagePrefetchService } from "../services/imagePrefetchService.js";
 import { hydrateArtistImages } from "../services/artistImageHydration.js";
 import {
@@ -664,7 +665,7 @@ router.post("/blocklist/reset", requireAuth, (req, res) => {
 router.get("/nearby-shows", requireAuth, async (req, res) => {
   try {
     const ticketmasterApiKey = getTicketmasterApiKey();
-    if (!ticketmasterApiKey) {
+    if (!ticketmasterApiKey && getShowSourcePlugins().length === 0) {
       res.set("Cache-Control", "no-cache, no-store, must-revalidate");
       return res.json({
         configured: false,

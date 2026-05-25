@@ -20,7 +20,7 @@ import { websocketService } from "./backend/services/websocketService.js";
 import { getAllDownloadStatuses } from "./backend/routes/library/handlers/downloads.js";
 import { getWeeklyFlowStatusSnapshot } from "./backend/services/weeklyFlowStatusSnapshot.js";
 import { dbOps } from "./backend/config/db-helpers.js";
-import { loadShowSourcePluginsFromDir } from "./backend/services/showSourcePlugins.js";
+import { loadShowSourcePluginsFromDir, getShowSourcePlugins } from "./backend/services/showSourcePlugins.js";
 
 import settingsRouter from "./backend/routes/settings.js";
 import onboardingRouter from "./backend/routes/onboarding.js";
@@ -79,6 +79,13 @@ const trustProxyValue =
           : Number(process.env.TRUST_PROXY);
 app.set("trust proxy", trustProxyValue);
 
+const pluginsDir = process.env.AURRAL_PLUGINS_DIR
+  ?? new URL("./plugins", import.meta.url).pathname;
+await loadShowSourcePluginsFromDir(pluginsDir);
+
+const pluginImageDomains = getShowSourcePlugins()
+  .flatMap((p) => (Array.isArray(p.imageDomains) ? p.imageDomains : []));
+
 app.use(cors(corsOptions));
 app.use(
   helmet({
@@ -102,8 +109,7 @@ app.use(
           "https://*.archive.org",
           "https://*.last.fm",
           "https://lastfm.freetls.fastly.net",
-          "https://first-avenue.com",
-          "https://*.first-avenue.com",
+          ...pluginImageDomains,
         ],
         connectSrc: ["'self'", "ws:", "wss:", "https://api.github.com"],
         mediaSrc: ["'self'", "https://*.dzcdn.net", "https://*.deezer.com"],
@@ -334,10 +340,6 @@ broadcastDownloadStatuses();
 setInterval(broadcastDownloadStatuses, DOWNLOAD_STATUS_INTERVAL_MS);
 broadcastWeeklyFlowStatus();
 setInterval(broadcastWeeklyFlowStatus, WEEKLY_FLOW_STATUS_INTERVAL_MS);
-
-const pluginsDir = process.env.AURRAL_PLUGINS_DIR
-  ?? new URL("./plugins", import.meta.url).pathname;
-loadShowSourcePluginsFromDir(pluginsDir);
 
 httpServer.listen(PORT, "0.0.0.0", async () => {
   console.log(`Server running on port ${PORT}`);
