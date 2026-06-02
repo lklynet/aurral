@@ -373,11 +373,13 @@ export class WeeklyFlowPlaylistManager {
   }
 
   /**
-   * One-shot Plex sync for an existing flow: ensure the library exists,
-   * trigger a scan, wait (bounded) for Plex to index the files, then build
-   * the playlists. Returns a summary for the UI.
+   * Manual Plex sync for an existing flow. Returns quickly: ensures the
+   * library, triggers a scan, builds playlists from whatever Plex has already
+   * indexed, and reports status. Because Plex's music scan (with online
+   * metadata matching) can take minutes, we don't block on it here — instead a
+   * background catch-up rebuilds the playlists as tracks get indexed.
    */
-  async syncPlexNow({ waitMs = 30000, intervalMs = 3000 } = {}) {
+  async syncPlexNow() {
     if (!this.plexClient?.isConfigured()) {
       return { configured: false };
     }
@@ -387,29 +389,57 @@ export class WeeklyFlowPlaylistManager {
     }
     await this.plexClient.scanLibrary(sectionId);
 
-    // Poll until Plex has indexed at least one track, or we time out.
-    const deadline = Date.now() + waitMs;
-    let tracks = await this.plexClient.getTracks(sectionId);
-    while (tracks.length === 0 && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, intervalMs));
-      tracks = await this.plexClient.getTracks(sectionId);
-    }
-
     const flows = flowPlaylistConfig.getFlows();
     const sharedPlaylists = flowPlaylistConfig.getSharedPlaylists();
     await this._syncPlexPlaylists(flows, sharedPlaylists);
 
+    const tracks = await this.plexClient.getTracks(sectionId);
     const playlists = await this.plexClient.getPlaylists();
+
+    // Kick off a non-blocking catch-up so playlists fill in once Plex finishes
+    // indexing, without the user needing to click sync again.
+    this._schedulePlexCatchup(sectionId);
+
     return {
       configured: true,
       sectionId,
       indexedTracks: tracks.length,
+      scanInProgress: tracks.length === 0,
       playlists: playlists
         .filter(
           (p) => p.title?.startsWith("[A] ") || p.title?.startsWith("[AS] "),
         )
         .map((p) => ({ title: p.title, count: p.leafCount ?? null })),
     };
+  }
+
+  /**
+   * Rebuild Plex playlists a few times over the next several minutes so they
+   * populate as a freshly-triggered scan indexes tracks. Only one catch-up
+   * runs at a time.
+   */
+  _schedulePlexCatchup(sectionId, delaysMs = [30000, 90000, 180000]) {
+    if (this._plexCatchupRunning) return;
+    this._plexCatchupRunning = true;
+    const run = async () => {
+      try {
+        for (const delay of delaysMs) {
+          await new Promise((r) => setTimeout(r, delay));
+          if (!this.plexClient?.isConfigured()) break;
+          const flows = flowPlaylistConfig.getFlows();
+          const sharedPlaylists = flowPlaylistConfig.getSharedPlaylists();
+          await this._syncPlexPlaylists(flows, sharedPlaylists);
+        }
+      } catch (err) {
+        console.warn(
+          "[WeeklyFlowPlaylistManager] Plex catch-up failed:",
+          err?.message,
+        );
+      } finally {
+        this._plexCatchupRunning = false;
+      }
+    };
+    run();
   }
 
   async scanLibrary() {

@@ -199,9 +199,9 @@ export function SettingsIntegrationsTab({
     try {
       const result = await syncPlexNow();
       const built = (result.playlists || []).length;
-      if (result.indexedTracks === 0) {
+      if (result.scanInProgress) {
         showInfo(
-          "Library created and a Plex scan was triggered, but no tracks are indexed yet. Give Plex a minute to scan, then sync again."
+          "Library ready and a Plex scan is running. Playlists will fill in automatically over the next few minutes as Plex indexes the tracks — no need to click again."
         );
       } else {
         showSuccess(
