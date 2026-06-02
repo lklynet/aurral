@@ -176,6 +176,7 @@ export const defaultData = {
     ],
     integrations: {
       navidrome: { url: "", username: "", password: "" },
+      plex: { url: "", token: "", clientId: "", machineIdentifier: "" },
       lastfm: {
         apiKey: "",
         username: "",

@@ -6,6 +6,11 @@ import {
   getLidarrProfiles,
   getLidarrTags,
   testLidarrConnection,
+  startPlexAuth,
+  checkPlexAuth,
+  getPlexResources,
+  testPlexConnection,
+  syncPlexNow,
 } from "../../../utils/api";
 
 export function SettingsIntegrationsTab({
@@ -40,8 +45,13 @@ export function SettingsIntegrationsTab({
     lastfm: true,
     ticketmaster: true,
     navidrome: true,
+    plex: true,
   });
   const [lidarrTestLatencyMs, setLidarrTestLatencyMs] = useState(null);
+  const [plexConnecting, setPlexConnecting] = useState(false);
+  const [testingPlex, setTestingPlex] = useState(false);
+  const [syncingPlex, setSyncingPlex] = useState(false);
+  const [plexServers, setPlexServers] = useState([]);
   const safeLidarrProfiles = Array.isArray(lidarrProfiles)
     ? lidarrProfiles
     : [];
@@ -59,6 +69,152 @@ export function SettingsIntegrationsTab({
       ...current,
       [section]: !current[section],
     }));
+  };
+
+  const updatePlex = (patch) =>
+    updateSettings({
+      ...settings,
+      integrations: {
+        ...settings.integrations,
+        plex: { ...(settings.integrations?.plex || {}), ...patch },
+      },
+    });
+
+  const loadPlexServers = async (token) => {
+    try {
+      const { servers } = await getPlexResources(token);
+      setPlexServers(Array.isArray(servers) ? servers : []);
+      return servers;
+    } catch {
+      setPlexServers([]);
+      return [];
+    }
+  };
+
+  const handleConnectPlex = async () => {
+    setPlexConnecting(true);
+    try {
+      // No forwardUrl: we poll for the token and close the popup ourselves.
+      const { pinId, code, authUrl } = await startPlexAuth();
+      const popup = window.open(
+        authUrl,
+        "plex-auth",
+        "width=600,height=700"
+      );
+      // Poll the PIN until the user authorizes (or we time out ~3 min).
+      const deadline = Date.now() + 3 * 60 * 1000;
+      let token = null;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          const res = await checkPlexAuth(pinId, code);
+          if (res.token) {
+            token = res.token;
+            break;
+          }
+        } catch {
+          // transient; keep polling
+        }
+      }
+      if (popup && !popup.closed) popup.close();
+      if (!token) {
+        showError("Plex authentication timed out. Please try again.");
+        return;
+      }
+      updatePlex({ token });
+      showSuccess("Signed in to Plex. Select your server below.");
+      const servers = await loadPlexServers(token);
+      // Auto-select the only owned server, preferring a local connection.
+      const owned = (servers || []).filter((s) => s.owned);
+      if (owned.length === 1) {
+        handleSelectPlexServer(owned[0], token);
+      }
+    } catch (err) {
+      const errorMsg =
+        err.response?.data?.message || err.response?.data?.error || err.message;
+      showError(`Plex sign-in failed: ${errorMsg}`);
+    } finally {
+      setPlexConnecting(false);
+    }
+  };
+
+  const handleSelectPlexServer = (server, tokenOverride) => {
+    const conns = server.connections || [];
+    const best =
+      conns.find((c) => c.local) || conns.find((c) => c.uri) || conns[0];
+    if (!best?.uri) {
+      showError("Selected Plex server has no usable connection.");
+      return;
+    }
+    updateSettings({
+      ...settings,
+      integrations: {
+        ...settings.integrations,
+        plex: {
+          ...(settings.integrations?.plex || {}),
+          ...(tokenOverride ? { token: tokenOverride } : {}),
+          url: best.uri,
+          machineIdentifier: server.clientIdentifier,
+        },
+      },
+    });
+    showInfo(`Selected "${server.name}". Remember to Save settings.`);
+  };
+
+  const handleTestPlex = async () => {
+    const url = settings.integrations?.plex?.url;
+    const token = settings.integrations?.plex?.token;
+    if (!url || !token) {
+      showError("Connect to Plex and select a server first");
+      return;
+    }
+    setTestingPlex(true);
+    try {
+      const result = await testPlexConnection(url, token);
+      if (result.success) {
+        showSuccess(
+          `Plex connection successful!${result.version ? ` (v${result.version})` : ""}`
+        );
+        if (result.machineIdentifier) {
+          updatePlex({ machineIdentifier: result.machineIdentifier });
+        }
+      } else {
+        showError(`Connection failed: ${result.message || result.error}`);
+      }
+    } catch (err) {
+      const errorMsg =
+        err.response?.data?.message || err.response?.data?.error || err.message;
+      showError(`Connection failed: ${errorMsg}`);
+    } finally {
+      setTestingPlex(false);
+    }
+  };
+
+  const handleSyncPlex = async () => {
+    if (hasUnsavedChanges) {
+      showError("Save settings first, then sync to Plex.");
+      return;
+    }
+    setSyncingPlex(true);
+    try {
+      const result = await syncPlexNow();
+      const built = (result.playlists || []).length;
+      if (result.indexedTracks === 0) {
+        showInfo(
+          "Library created and a Plex scan was triggered, but no tracks are indexed yet. Give Plex a minute to scan, then sync again."
+        );
+      } else {
+        showSuccess(
+          `Synced to Plex: ${built} playlist(s) from ${result.indexedTracks} indexed track(s).`
+        );
+      }
+    } catch (err) {
+      const errorMsg =
+        err.response?.data?.message || err.response?.data?.error || err.message;
+      showError(`Plex sync failed: ${errorMsg}`);
+    } finally {
+      setSyncingPlex(false);
+    }
   };
 
   const handleTestLidarr = async () => {
@@ -1085,6 +1241,176 @@ export function SettingsIntegrationsTab({
               <code>full</code> (e.g.{" "}
               <code>ND_SCANNER_PURGEMISSING=always</code>) so turning off a flow
               removes those tracks from the library.
+            </p>
+          </fieldset>
+          )}
+        </div>
+        <div
+          className="p-6 rounded-lg space-y-4"
+          style={{
+            backgroundColor: "#1a1a1e",
+            border: "1px solid #2a2a2e",
+          }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <h3
+              className="text-lg font-medium flex items-center"
+              style={{ color: "#fff" }}
+            >
+              <button
+                type="button"
+                onClick={() => toggleSection("plex")}
+                className="flex items-center gap-2 text-left"
+                style={{ color: "#fff" }}
+                aria-expanded={!collapsedSections.plex}
+              >
+                <ChevronDown
+                  className={`w-4 h-4 transition-transform ${
+                    collapsedSections.plex ? "-rotate-90" : ""
+                  }`}
+                />
+                <span>Plex</span>
+              </button>
+            </h3>
+            <div className="flex items-center gap-2">
+              {settings.integrations?.plex?.token &&
+                settings.integrations?.plex?.url && (
+                  <span className="flex items-center text-sm text-green-400">
+                    <CheckCircle className="w-4 h-4 mr-1" />
+                    Configured
+                  </span>
+                )}
+            </div>
+          </div>
+          {!collapsedSections.plex && (
+          <fieldset className="space-y-4">
+            <p className="text-xs" style={{ color: "#8a8a8e" }}>
+              Sign in with your Plex account to let Aurral create a dedicated
+              music library pointed at your Weekly Flow downloads and build a
+              playlist for each flow. Playlists appear in Plex and Plexamp.
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleConnectPlex}
+                disabled={plexConnecting}
+              >
+                {plexConnecting ? (
+                  <span className="flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Waiting for Plex…
+                  </span>
+                ) : settings.integrations?.plex?.token ? (
+                  "Reconnect Plex account"
+                ) : (
+                  "Connect Plex account"
+                )}
+              </button>
+              {settings.integrations?.plex?.token && (
+                <span className="flex items-center text-sm text-green-400">
+                  <CheckCircle className="w-4 h-4 mr-1" />
+                  Signed in
+                </span>
+              )}
+            </div>
+
+            {plexServers.length > 0 && (
+              <div>
+                <label
+                  className="block text-sm font-medium mb-1"
+                  style={{ color: "#fff" }}
+                >
+                  Plex server
+                </label>
+                <select
+                  className="input"
+                  value={settings.integrations?.plex?.machineIdentifier || ""}
+                  onChange={(e) => {
+                    const server = plexServers.find(
+                      (s) => s.clientIdentifier === e.target.value
+                    );
+                    if (server) handleSelectPlexServer(server);
+                  }}
+                >
+                  <option value="" disabled>
+                    Select a server…
+                  </option>
+                  {plexServers.map((s) => (
+                    <option key={s.clientIdentifier} value={s.clientIdentifier}>
+                      {s.name}
+                      {s.owned ? "" : " (shared)"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label
+                className="block text-sm font-medium mb-1"
+                style={{ color: "#fff" }}
+              >
+                Server URL
+              </label>
+              <input
+                type="url"
+                className="input"
+                placeholder="http://localhost:32400"
+                autoComplete="off"
+                value={settings.integrations?.plex?.url || ""}
+                onChange={(e) => updatePlex({ url: e.target.value })}
+              />
+              <p className="mt-1 text-xs" style={{ color: "#8a8a8e" }}>
+                Auto-filled when you select a server, or enter it manually.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleTestPlex}
+                disabled={
+                  testingPlex ||
+                  !settings.integrations?.plex?.url ||
+                  !settings.integrations?.plex?.token
+                }
+              >
+                {testingPlex ? (
+                  <span className="flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Testing…
+                  </span>
+                ) : (
+                  "Test connection"
+                )}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSyncPlex}
+                disabled={
+                  syncingPlex ||
+                  !settings.integrations?.plex?.url ||
+                  !settings.integrations?.plex?.token
+                }
+              >
+                {syncingPlex ? (
+                  <span className="flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Syncing…
+                  </span>
+                ) : (
+                  "Sync to Plex now"
+                )}
+              </button>
+            </div>
+            <p className="text-xs" style={{ color: "#8a8a8e" }}>
+              Creates an &quot;Aurral Flow&quot; music library pointed at your
+              downloads, scans it, and builds a playlist per flow. The Plex
+              server must be able to read the same downloads path Aurral writes
+              to. Save settings before syncing.
             </p>
           </fieldset>
           )}

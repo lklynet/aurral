@@ -241,6 +241,34 @@ export const testNavidromeOnboarding = async (url, username, password) => {
   return response.data;
 };
 
+export const startPlexAuth = async (forwardUrl) => {
+  const response = await api.post("/settings/plex/auth/pin", { forwardUrl });
+  return response.data;
+};
+
+export const checkPlexAuth = async (pinId, code) => {
+  const response = await api.post("/settings/plex/auth/check", { pinId, code });
+  return response.data;
+};
+
+export const getPlexResources = async (token) => {
+  const response = await api.post("/settings/plex/resources", { token });
+  return response.data;
+};
+
+export const testPlexConnection = async (url, token) => {
+  const response = await api.post("/settings/plex/test", {
+    url: url?.replace(/\/+$/, ""),
+    token,
+  });
+  return response.data;
+};
+
+export const syncPlexNow = async () => {
+  const response = await api.post("/settings/plex/sync");
+  return response.data;
+};
+
 export const getAuthConfig = async () => {
   const response = await api.get("/auth/config");
   return response.data;

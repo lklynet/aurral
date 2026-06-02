@@ -128,6 +128,12 @@ router.post("/", async (req, res) => {
               ...integrations.navidrome,
             }
           : mergedIntegrations.navidrome,
+        plex: integrations.plex
+          ? {
+              ...(mergedIntegrations.plex || {}),
+              ...integrations.plex,
+            }
+          : mergedIntegrations.plex,
         slskd: integrations.slskd
           ? {
               ...(mergedIntegrations.slskd || {}),
@@ -1112,6 +1118,147 @@ router.post("/lidarr/apply-community-guide", async (req, res) => {
     res.status(500).json({
       error: "Failed to apply community guide settings",
       message: error.message,
+    });
+  }
+});
+
+// --- Plex integration ------------------------------------------------------
+
+function getPlexConfig() {
+  return dbOps.getSettings()?.integrations?.plex || {};
+}
+
+// Start the PIN OAuth flow: returns the PIN id + the app.plex.tv URL to visit.
+router.post("/plex/auth/pin", async (req, res) => {
+  try {
+    const { PlexClient } = await import("../services/plex.js");
+    const settings = dbOps.getSettings();
+    const plex = settings.integrations?.plex || {};
+    let clientId = plex.clientId;
+    if (!clientId) {
+      clientId = PlexClient.generateClientId();
+      dbOps.updateSettings({
+        ...settings,
+        integrations: {
+          ...settings.integrations,
+          plex: { ...plex, clientId },
+        },
+      });
+    }
+    const { id, code } = await PlexClient.generatePin(clientId);
+    const forwardUrl = req.body?.forwardUrl;
+    res.json({
+      pinId: id,
+      code,
+      clientId,
+      authUrl: PlexClient.buildAuthUrl(clientId, code, forwardUrl),
+    });
+  } catch (error) {
+    console.error("[Settings] Plex PIN generation failed:", error.message);
+    res.status(500).json({
+      error: "Failed to start Plex authentication",
+      message: error.message,
+    });
+  }
+});
+
+// Poll a PIN. Returns { token } once the user authorizes, else { pending: true }.
+router.post("/plex/auth/check", async (req, res) => {
+  try {
+    const { PlexClient } = await import("../services/plex.js");
+    const { pinId, code } = req.body || {};
+    if (!pinId || !code) {
+      return res.status(400).json({ error: "pinId and code are required" });
+    }
+    const clientId = getPlexConfig().clientId;
+    if (!clientId) {
+      return res.status(400).json({ error: "Plex client not initialized" });
+    }
+    const token = await PlexClient.checkPin(pinId, code, clientId);
+    if (!token) return res.json({ pending: true });
+    res.json({ token });
+  } catch (error) {
+    console.error("[Settings] Plex PIN check failed:", error.message);
+    res.status(500).json({
+      error: "Failed to check Plex authentication",
+      message: error.message,
+    });
+  }
+});
+
+// List Plex servers available to the authenticated account.
+router.post("/plex/resources", async (req, res) => {
+  try {
+    const { PlexClient } = await import("../services/plex.js");
+    const clientId = getPlexConfig().clientId;
+    const token = req.body?.token || getPlexConfig().token;
+    if (!token || !clientId) {
+      return res.status(400).json({ error: "Plex authentication required" });
+    }
+    const servers = await PlexClient.getResources(token, clientId);
+    res.json({ servers });
+  } catch (error) {
+    console.error("[Settings] Plex resources failed:", error.message);
+    res.status(500).json({
+      error: "Failed to list Plex servers",
+      message: error.message,
+    });
+  }
+});
+
+// Test connectivity to a Plex Media Server and capture its machineIdentifier.
+router.post("/plex/test", async (req, res) => {
+  try {
+    const { PlexClient } = await import("../services/plex.js");
+    const stored = getPlexConfig();
+    let url = (req.body?.url || stored.url || "").trim().replace(/\/+$/, "");
+    const token = req.body?.token || stored.token;
+    const clientId = stored.clientId;
+    if (!url || !token) {
+      return res.status(400).json({ error: "Server URL and token are required" });
+    }
+    const urlValidation = validateExternalUrl(url);
+    if (!urlValidation.valid) {
+      return res.status(400).json({ error: urlValidation.error });
+    }
+    url = urlValidation.url;
+    const client = new PlexClient(url, token, clientId);
+    const identity = await client.ping();
+    res.json({
+      success: true,
+      message: "Connection successful",
+      machineIdentifier: identity.machineIdentifier,
+      version: identity.version,
+    });
+  } catch (error) {
+    res.status(400).json({
+      error: "Connection failed",
+      message: error.response?.data || error.message,
+    });
+  }
+});
+
+// Build the Aurral library + flow playlists on the configured Plex server now.
+router.post("/plex/sync", async (req, res) => {
+  try {
+    const plex = getPlexConfig();
+    if (!plex.url || !plex.token) {
+      return res.status(400).json({
+        error: "Plex not configured",
+        message: "Connect Plex and save settings before syncing",
+      });
+    }
+    const { playlistManager } = await import(
+      "../services/weeklyFlowPlaylistManager.js"
+    );
+    playlistManager.updateConfig(false);
+    const result = await playlistManager.syncPlexNow();
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error("[Settings] Plex sync failed:", error.message);
+    res.status(500).json({
+      error: "Plex sync failed",
+      message: error.response?.data || error.message,
     });
   }
 });

@@ -42,6 +42,7 @@ function decryptWithKey(text, key) {
 
 const SENSITIVE_PATHS = [
   ["navidrome", "password"],
+  ["plex", "token"],
   ["soulseek", "password"],
   ["general", "authPassword"],
   ["lidarr", "apiKey"],

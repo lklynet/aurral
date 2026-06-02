@@ -54,6 +54,13 @@ export const normalizeSettings = (savedSettings) => {
         password: "",
         ...(savedSettings.integrations?.navidrome || {}),
       },
+      plex: {
+        url: "",
+        token: "",
+        clientId: "",
+        machineIdentifier: "",
+        ...(savedSettings.integrations?.plex || {}),
+      },
       lastfm: {
         apiKey: "",
         username: "",
