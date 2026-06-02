@@ -170,17 +170,21 @@ export class PlexClient {
   async ensureWeeklyFlowLibrary(libraryPath) {
     if (!this.isConfigured()) return null;
     const name = "Aurral Flow";
-    try {
-      const libs = await this.getLibraries();
-      const existing = libs.find(
+    const findExisting = (libs) =>
+      libs.find(
         (lib) =>
           lib.title === name ||
           (lib.Location || []).some((loc) => loc.path === libraryPath),
       );
-      if (existing) return existing;
 
-      // POST /library/sections creates the library; returns the new section.
-      const data = await this.request("/library/sections", {
+    const existing = findExisting(await this.getLibraries());
+    if (existing) return existing;
+
+    // POST /library/sections creates the library. Plex's response shape here
+    // is inconsistent across versions, so we create then re-read the section
+    // list to resolve the new library (and its `key`) reliably.
+    try {
+      await this.request("/library/sections", {
         method: "POST",
         params: {
           name,
@@ -191,14 +195,23 @@ export class PlexClient {
           location: libraryPath,
         },
       });
-      return data?.MediaContainer?.Directory?.[0] || null;
     } catch (err) {
-      console.warn(
-        "[Plex] ensureWeeklyFlowLibrary failed:",
-        err?.response?.data || err.message,
+      const detail = err?.response?.data || err.message;
+      const status = err?.response?.status;
+      throw new Error(
+        `Plex rejected library creation (${status || "no status"}) for path "${libraryPath}": ${
+          typeof detail === "string" ? detail : JSON.stringify(detail)
+        }`,
       );
-      return null;
     }
+
+    const created = findExisting(await this.getLibraries());
+    if (!created) {
+      throw new Error(
+        `Plex accepted the request but no "Aurral Flow" library appeared. Verify the Plex server can access the path "${libraryPath}".`,
+      );
+    }
+    return created;
   }
 
   async scanLibrary(sectionId) {
