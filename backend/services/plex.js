@@ -191,7 +191,7 @@ export class PlexClient {
           type: MUSIC_SECTION_TYPE,
           agent: MUSIC_AGENT,
           scanner: MUSIC_SCANNER,
-          language: "en",
+          language: "en-US",
           location: libraryPath,
         },
       });
