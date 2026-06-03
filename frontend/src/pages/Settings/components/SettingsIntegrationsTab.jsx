@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CheckCircle, ChevronDown, RefreshCw } from "lucide-react";
 import FlipSaveButton from "../../../components/FlipSaveButton";
 import {
@@ -87,22 +87,24 @@ export function SettingsIntegrationsTab({
     return list;
   };
 
-  const handleChoosePlexServer = async () => {
-    try {
-      const servers = await loadPlexServers(settings.integrations?.plex?.token);
-      if (servers.length === 0) {
-        showError(
-          "Plex returned no servers for this account. Make sure your server is signed in to the same Plex account."
-        );
-      } else {
-        showInfo(`Found ${servers.length} Plex server(s).`);
-      }
-    } catch (err) {
-      const msg =
-        err.response?.data?.message || err.response?.data?.error || err.message;
-      showError(`Failed to load Plex servers: ${msg}`);
+  // Auto-load the account's servers whenever we have a token, so the dropdown
+  // is always populated (e.g. on page load) without a manual "choose" step.
+  const plexToken = settings.integrations?.plex?.token;
+  useEffect(() => {
+    if (!plexToken) {
+      setPlexServers([]);
+      return;
     }
-  };
+    let cancelled = false;
+    getPlexResources(plexToken)
+      .then(({ servers }) => {
+        if (!cancelled) setPlexServers(Array.isArray(servers) ? servers : []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [plexToken]);
 
   const handleConnectPlex = async () => {
     setPlexConnecting(true);
@@ -1323,23 +1325,14 @@ export function SettingsIntegrationsTab({
                 )}
               </button>
               {settings.integrations?.plex?.token && (
-                <>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={handleChoosePlexServer}
-                  >
-                    Choose server
-                  </button>
-                  <span className="flex items-center text-sm text-green-400">
-                    <CheckCircle className="w-4 h-4 mr-1" />
-                    Signed in
-                  </span>
-                </>
+                <span className="flex items-center text-sm text-green-400">
+                  <CheckCircle className="w-4 h-4 mr-1" />
+                  Signed in
+                </span>
               )}
             </div>
 
-            {plexServers.length > 0 && (
+            {settings.integrations?.plex?.token && (
               <div>
                 <label
                   className="block text-sm font-medium mb-1"
@@ -1358,7 +1351,7 @@ export function SettingsIntegrationsTab({
                   }}
                 >
                   <option value="" disabled>
-                    Select a server…
+                    {plexServers.length ? "Select a server…" : "Loading servers…"}
                   </option>
                   {plexServers.map((s) => (
                     <option key={s.clientIdentifier} value={s.clientIdentifier}>
