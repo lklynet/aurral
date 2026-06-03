@@ -105,20 +105,34 @@ export class PlexClient {
       params: { includeHttps: 1, includeRelay: 1 },
       headers: PlexClient.plexHeaders(clientId, { token }),
     });
-    const list = Array.isArray(data) ? data : [];
-    return list
-      .filter((r) => r.provides && r.provides.includes("server"))
-      .map((r) => ({
-        name: r.name,
-        clientIdentifier: r.clientIdentifier,
-        owned: !!r.owned,
-        connections: (r.connections || []).map((c) => ({
-          uri: c.uri,
-          local: !!c.local,
-          address: c.address,
-          port: c.port,
-        })),
-      }));
+    // v2 returns a JSON array; tolerate XML-shaped responses too.
+    let list = [];
+    if (Array.isArray(data)) list = data;
+    else if (Array.isArray(data?.MediaContainer?.Device))
+      list = data.MediaContainer.Device;
+    else if (data?.MediaContainer?.Device) list = [data.MediaContainer.Device];
+
+    const servers = list
+      .filter((r) => String(r.provides || "").includes("server"))
+      .map((r) => {
+        const rawConns = r.connections || r.Connection || [];
+        const conns = Array.isArray(rawConns) ? rawConns : [rawConns];
+        return {
+          name: r.name,
+          clientIdentifier: r.clientIdentifier,
+          owned: r.owned === true || r.owned === "1" || r.owned === 1,
+          connections: conns.map((c) => ({
+            uri: c.uri,
+            local: c.local === true || c.local === "1" || c.local === 1,
+            address: c.address,
+            port: c.port,
+          })),
+        };
+      });
+    console.log(
+      `[Plex] getResources: ${list.length} device(s) returned, ${servers.length} provide "server"`,
+    );
+    return { servers, total: list.length };
   }
 
   // --- Plex Media Server requests -----------------------------------------

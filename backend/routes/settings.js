@@ -132,6 +132,16 @@ router.post("/", async (req, res) => {
           ? {
               ...(mergedIntegrations.plex || {}),
               ...integrations.plex,
+              // Never let a blank token/clientId from the client wipe the
+              // stored credentials (the UI doesn't always carry them).
+              token:
+                integrations.plex.token ||
+                mergedIntegrations.plex?.token ||
+                "",
+              clientId:
+                integrations.plex.clientId ||
+                mergedIntegrations.plex?.clientId ||
+                "",
             }
           : mergedIntegrations.plex,
         slskd: integrations.slskd
@@ -1190,18 +1200,29 @@ router.post("/plex/auth/check", async (req, res) => {
 router.post("/plex/resources", async (req, res) => {
   try {
     const { PlexClient } = await import("../services/plex.js");
-    const clientId = getPlexConfig().clientId;
-    const token = req.body?.token || getPlexConfig().token;
+    const stored = getPlexConfig();
+    // Use the freshest token the client has (e.g. just-minted during connect),
+    // falling back to the persisted one. The clientId MUST be the stored one
+    // the token was minted under — Plex ties the token to that identifier.
+    const token = req.body?.token || stored.token;
+    const clientId = stored.clientId;
     if (!token || !clientId) {
       return res.status(400).json({ error: "Plex authentication required" });
     }
-    const servers = await PlexClient.getResources(token, clientId);
-    res.json({ servers });
+    const { servers, total } = await PlexClient.getResources(token, clientId);
+    res.json({ servers, total });
   } catch (error) {
-    console.error("[Settings] Plex resources failed:", error.message);
-    res.status(500).json({
+    const status = error.response?.status;
+    console.error(
+      "[Settings] Plex resources failed:",
+      status ? `${status} ${JSON.stringify(error.response?.data)}` : error.message,
+    );
+    res.status(status === 401 ? 401 : 500).json({
       error: "Failed to list Plex servers",
-      message: error.message,
+      message:
+        status === 401
+          ? "Plex rejected the token (401). Reconnect your Plex account."
+          : error.message,
     });
   }
 });
