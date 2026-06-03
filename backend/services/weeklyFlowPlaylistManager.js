@@ -57,9 +57,11 @@ export class WeeklyFlowPlaylistManager {
       url: plexConfig.url || "",
       token: plexConfig.token || "",
       clientId: plexConfig.clientId || "",
+      downloadsPath: plexConfig.downloadsPath || "",
     });
     const plexChanged = this._plexConfigKey !== nextPlexKey;
     this._plexConfigKey = nextPlexKey;
+    this._plexDownloadsPath = plexConfig.downloadsPath || "";
     if (plexConfig.url && plexConfig.token) {
       if (!this.plexClient || plexChanged) {
         this.plexClient = new PlexClient(
@@ -298,10 +300,23 @@ export class WeeklyFlowPlaylistManager {
     }
   }
 
+  // The library location must be the path the *Plex server* uses to reach the
+  // downloads, which can differ from Aurral's host path when Plex runs in its
+  // own container. Prefer the user-provided override; fall back to the host
+  // path when unset.
+  _getPlexLibraryPath() {
+    const override = String(this._plexDownloadsPath || "").trim();
+    if (override) {
+      const base = override.replace(/\\/g, "/").replace(/\/+$/, "");
+      return `${base}/aurral-weekly-flow`;
+    }
+    return this._getWeeklyFlowLibraryHostPath();
+  }
+
   async _ensurePlexSectionId() {
     if (this._plexSectionId != null) return this._plexSectionId;
-    const hostPath = this._getWeeklyFlowLibraryHostPath();
-    const library = await this.plexClient.ensureWeeklyFlowLibrary(hostPath);
+    const libraryPath = this._getPlexLibraryPath();
+    const library = await this.plexClient.ensureWeeklyFlowLibrary(libraryPath);
     // Plex section objects expose the section id as `key`.
     const id = library?.key ?? null;
     this._plexSectionId = id;

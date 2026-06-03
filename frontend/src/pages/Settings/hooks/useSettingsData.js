@@ -26,7 +26,13 @@ const defaultSettings = {
   releaseTypes: allReleaseTypes,
   integrations: {
     navidrome: { url: "", username: "", password: "" },
-    plex: { url: "", token: "", clientId: "", machineIdentifier: "" },
+    plex: {
+      url: "",
+      token: "",
+      clientId: "",
+      machineIdentifier: "",
+      downloadsPath: "",
+    },
     lastfm: {
       apiKey: "",
       username: "",

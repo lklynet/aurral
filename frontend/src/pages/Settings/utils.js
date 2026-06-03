@@ -59,6 +59,7 @@ export const normalizeSettings = (savedSettings) => {
         token: "",
         clientId: "",
         machineIdentifier: "",
+        downloadsPath: "",
         ...(savedSettings.integrations?.plex || {}),
       },
       lastfm: {

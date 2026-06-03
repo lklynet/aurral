@@ -269,6 +269,13 @@ export const syncPlexNow = async () => {
   return response.data;
 };
 
+export const browsePaths = async (path) => {
+  const response = await api.get("/settings/browse", {
+    params: path ? { path } : {},
+  });
+  return response.data;
+};
+
 export const getAuthConfig = async () => {
   const response = await api.get("/auth/config");
   return response.data;
