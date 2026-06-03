@@ -10,13 +10,6 @@ const MUSIC_AGENT = "tv.plex.agents.music";
 const MUSIC_SCANNER = "Plex Music";
 const TRACK_TYPE = 10; // Plex metadata type for audio tracks
 
-/**
- * Client for the Plex Media Server + plex.tv APIs.
- *
- * Authentication uses the PIN-based OAuth flow (see the static auth helpers).
- * Once a token is obtained it is used as `X-Plex-Token` against the user's
- * local Plex Media Server for library and playlist management.
- */
 export class PlexClient {
   constructor(url, token, clientId) {
     this.url = url ? url.replace(/\/+$/, "") : null;
@@ -29,8 +22,6 @@ export class PlexClient {
     return !!(this.url && this.token);
   }
 
-  // --- plex.tv OAuth (PIN) flow -------------------------------------------
-
   static plexHeaders(clientId, { token } = {}) {
     const headers = {
       Accept: "application/json",
@@ -41,15 +32,10 @@ export class PlexClient {
     return headers;
   }
 
-  /** Generate a fresh, stable client identifier for this Aurral install. */
   static generateClientId() {
     return crypto.randomUUID();
   }
 
-  /**
-   * Request a strong PIN from plex.tv. Returns { id, code }.
-   * The user authorizes the PIN at the URL from `buildAuthUrl`.
-   */
   static async generatePin(clientId) {
     const { data } = await axios.post(
       `${PLEX_TV}/api/v2/pins`,
@@ -62,7 +48,6 @@ export class PlexClient {
     return { id: data.id, code: data.code };
   }
 
-  /** Build the app.plex.tv URL the user visits to authorize the PIN. */
   static buildAuthUrl(clientId, code, forwardUrl) {
     const params = new URLSearchParams({
       clientID: clientId,
@@ -73,9 +58,6 @@ export class PlexClient {
     return `${PLEX_AUTH_APP}/auth#?${params.toString()}`;
   }
 
-  /**
-   * Poll a PIN. Returns the authToken once the user authorizes, else null.
-   */
   static async checkPin(pinId, code, clientId) {
     const { data } = await axios.get(`${PLEX_TV}/api/v2/pins/${pinId}`, {
       params: { code },
@@ -84,7 +66,6 @@ export class PlexClient {
     return data.authToken || null;
   }
 
-  /** Validate a token against plex.tv. Returns the account object or null. */
   static async validateToken(token, clientId) {
     try {
       const { data } = await axios.get(`${PLEX_TV}/api/v2/user`, {
@@ -96,10 +77,6 @@ export class PlexClient {
     }
   }
 
-  /**
-   * Discover Plex servers owned by / shared with the account.
-   * Returns [{ name, clientIdentifier, owned, connections: [{ uri, local }] }].
-   */
   static async getResources(token, clientId) {
     const { data } = await axios.get(`${PLEX_TV}/api/v2/resources`, {
       params: { includeHttps: 1, includeRelay: 1 },
@@ -135,8 +112,6 @@ export class PlexClient {
     return { servers, total: list.length };
   }
 
-  // --- Plex Media Server requests -----------------------------------------
-
   async request(path, { params = {}, method = "GET", data = null } = {}) {
     if (!this.isConfigured()) throw new Error("Plex not configured");
     try {
@@ -158,7 +133,6 @@ export class PlexClient {
     }
   }
 
-  /** Test connectivity + capture the server's machineIdentifier. */
   async ping() {
     const data = await this.request("/identity");
     const mc = data?.MediaContainer || {};
@@ -177,10 +151,6 @@ export class PlexClient {
     return data?.MediaContainer?.Directory || [];
   }
 
-  /**
-   * Find (or create) the Aurral music library pointed at `libraryPath`.
-   * Mirrors NavidromeClient.ensureWeeklyFlowLibrary.
-   */
   async ensureWeeklyFlowLibrary(libraryPath) {
     if (!this.isConfigured()) return null;
     const name = "Aurral Flow";
@@ -273,10 +243,6 @@ export class PlexClient {
     });
   }
 
-  /**
-   * Fetch all tracks in a library section with their on-disk file paths.
-   * Returns [{ ratingKey, title, artist, file }].
-   */
   async getTracks(sectionId) {
     const data = await this.request(`/library/sections/${sectionId}/all`, {
       params: { type: TRACK_TYPE },
@@ -297,7 +263,6 @@ export class PlexClient {
     return data?.MediaContainer?.Metadata || [];
   }
 
-  /** Return the track ratingKeys currently in a playlist. */
   async getPlaylistItems(playlistRatingKey) {
     const data = await this.request(`/playlists/${playlistRatingKey}/items`);
     const items = data?.MediaContainer?.Metadata || [];
@@ -311,10 +276,6 @@ export class PlexClient {
     return `server://${machineId}/com.plexapp.plugins.library/library/metadata/${keys}`;
   }
 
-  /**
-   * Create (or replace) an audio playlist from a list of track ratingKeys.
-   * Mirrors NavidromeClient.createPlaylist.
-   */
   async createPlaylist(title, ratingKeys, replace = false) {
     const machineId = await this.getMachineIdentifier();
     if (!machineId) throw new Error("Could not resolve Plex machineIdentifier");
@@ -324,9 +285,7 @@ export class PlexClient {
     );
 
     if (existing && replace) {
-      // Skip the delete+recreate churn when the playlist already holds exactly
-      // the desired tracks (order-insensitive) — keeps the playlist's identity
-      // and history intact.
+      // Skip delete+recreate when the track set already matches (order-insensitive).
       const current = await this.getPlaylistItems(existing.ratingKey);
       const desiredSet = new Set((ratingKeys || []).map(String));
       const currentSet = new Set(current.map(String));

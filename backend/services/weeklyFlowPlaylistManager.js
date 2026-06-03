@@ -22,8 +22,8 @@ export class WeeklyFlowPlaylistManager {
     this.plexClient = null;
     this._plexConfigKey = "";
     this._plexSectionId = null;
-    // playlist title -> fingerprint of the track set we last pushed to Plex,
-    // so unchanged playlists skip the getPlaylistItems round-trip.
+    // playlist title -> fingerprint last pushed, so unchanged playlists skip
+    // the getPlaylistItems round-trip.
     this._plexSyncHashes = new Map();
     this._ensureInFlight = null;
     this.updateConfig(triggerEnsureOnInit);
@@ -306,10 +306,8 @@ export class WeeklyFlowPlaylistManager {
     }
   }
 
-  // The library location must be the path the Plex server uses to reach the
-  // downloads, which can differ from Aurral's host path when Plex runs in its
-  // own container. Prefer the user-provided override; fall back to the host
-  // path when unset.
+  // The location must be the path the Plex server uses, which differs from
+  // Aurral's host path when Plex runs in its own container.
   _getPlexLibraryPath() {
     const override = String(this._plexDownloadsPath || "").trim();
     if (override) {
@@ -334,13 +332,8 @@ export class WeeklyFlowPlaylistManager {
     return id;
   }
 
-  /**
-   * Plex has no equivalent of Navidrome's .nsp smart playlists, so we build
-   * regular audio playlists from the tracks Plex has indexed: group indexed
-   * tracks by their weekly-flow subfolder and create/replace one playlist per
-   * enabled flow / shared playlist. New downloads are picked up on the next
-   * sync once Plex has scanned them.
-   */
+  // Plex has no equivalent of Navidrome's .nsp smart playlists, so we build
+  // regular playlists from indexed tracks, grouped by their weekly-flow subfolder.
   async _syncPlexPlaylists(flows, sharedPlaylists) {
     const sectionId = await this._ensurePlexSectionId();
     if (sectionId == null) return;
@@ -371,8 +364,6 @@ export class WeeklyFlowPlaylistManager {
       }
     };
 
-    // Build/refresh a playlist only when its desired track set changed since
-    // the last sync — skips the getPlaylistItems round-trip on no-op runs.
     const buildIfChanged = async (desired, ratingKeys) => {
       const hash = this._hashKeys(ratingKeys);
       if (this._plexSyncHashes.get(desired) === hash) return;
@@ -380,9 +371,7 @@ export class WeeklyFlowPlaylistManager {
       this._plexSyncHashes.set(desired, hash);
     };
 
-    // Plex playlists use the flow/playlist name directly (no "[A]"/"[AS]"
-    // prefix). Any previously-created prefixed names are treated as stale and
-    // removed so renames are clean.
+    // Plex uses the bare flow name; remove any old "[A]"/"[AS]" prefixed names.
     for (const flow of flows) {
       const desired = String(flow.name || "").trim();
       const { current, legacy } = this._getFlowPlaylistNames(flow.name);
@@ -417,13 +406,9 @@ export class WeeklyFlowPlaylistManager {
     }
   }
 
-  /**
-   * Manual Plex sync for an existing flow. Returns quickly: ensures the
-   * library, triggers a scan, builds playlists from whatever Plex has already
-   * indexed, and reports status. Because Plex's music scan (with online
-   * metadata matching) can take minutes, we don't block on it here — instead a
-   * background catch-up rebuilds the playlists as tracks get indexed.
-   */
+  // Returns quickly rather than blocking: Plex's music scan (with online
+  // metadata matching) can take minutes, so a background catch-up rebuilds the
+  // playlists as tracks get indexed.
   async syncPlexNow() {
     if (!this.plexClient?.isConfigured()) {
       return { configured: false };
@@ -445,8 +430,6 @@ export class WeeklyFlowPlaylistManager {
     const tracks = await this.plexClient.getTracks(sectionId);
     const playlists = await this.plexClient.getPlaylists();
 
-    // Kick off a non-blocking catch-up so playlists fill in once Plex finishes
-    // indexing, without the user needing to click sync again.
     this._schedulePlexCatchup(sectionId);
 
     const managedNames = new Set(
@@ -467,11 +450,8 @@ export class WeeklyFlowPlaylistManager {
     };
   }
 
-  /**
-   * Rebuild Plex playlists a few times over the next several minutes so they
-   * populate as a freshly-triggered scan indexes tracks. Only one catch-up
-   * runs at a time.
-   */
+  // Rebuilds playlists over the next few minutes as a scan indexes tracks;
+  // only one catch-up runs at a time.
   _schedulePlexCatchup(sectionId, delaysMs = [30000, 90000, 180000]) {
     if (this._plexCatchupRunning) return;
     this._plexCatchupRunning = true;

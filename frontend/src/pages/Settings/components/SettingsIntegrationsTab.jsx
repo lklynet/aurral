@@ -87,8 +87,7 @@ export function SettingsIntegrationsTab({
     return list;
   };
 
-  // Auto-load the account's servers whenever we have a token, so the dropdown
-  // is always populated (e.g. on page load) without a manual "choose" step.
+  // Auto-load servers when we have a token so the dropdown is always populated.
   const plexToken = settings.integrations?.plex?.token;
   useEffect(() => {
     if (!plexToken) {
@@ -116,7 +115,6 @@ export function SettingsIntegrationsTab({
         "plex-auth",
         "width=600,height=700"
       );
-      // Poll the PIN until the user authorizes (or we time out ~3 min).
       const deadline = Date.now() + 3 * 60 * 1000;
       let token = null;
       while (Date.now() < deadline) {
