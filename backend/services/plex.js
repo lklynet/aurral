@@ -178,7 +178,28 @@ export class PlexClient {
       );
 
     const existing = findExisting(await this.getLibraries());
-    if (existing) return existing;
+    if (existing) {
+      // The library already exists. Reconcile its folder(s) to the desired
+      // path so changing the downloads-path setting actually takes effect
+      // (Plex keeps the original location otherwise).
+      const currentLocations = (existing.Location || [])
+        .map((loc) => loc.path)
+        .filter(Boolean);
+      const alreadyCorrect =
+        currentLocations.length === 1 && currentLocations[0] === libraryPath;
+      if (!alreadyCorrect) {
+        try {
+          await this.setLibraryLocations(existing.key, [libraryPath]);
+          return findExisting(await this.getLibraries()) || existing;
+        } catch (err) {
+          console.warn(
+            "[Plex] Could not update Aurral library location:",
+            err?.response?.data || err.message,
+          );
+        }
+      }
+      return existing;
+    }
 
     // POST /library/sections creates the library. Plex's response shape here
     // is inconsistent across versions, so we create then re-read the section
@@ -225,6 +246,20 @@ export class PlexClient {
   }
 
   /**
+   * Replace a library section's folder locations. Plex expects repeated
+   * `location=` query params (no array brackets), so the query is built by
+   * hand. The Plex server must be able to browse each path.
+   */
+  async setLibraryLocations(sectionId, locations) {
+    const qs = new URLSearchParams();
+    qs.set("agent", MUSIC_AGENT);
+    for (const loc of locations) qs.append("location", loc);
+    return this.request(`/library/sections/${sectionId}?${qs.toString()}`, {
+      method: "PUT",
+    });
+  }
+
+  /**
    * Fetch all tracks in a library section with their on-disk file paths.
    * Returns [{ ratingKey, title, artist, file }].
    */
@@ -248,6 +283,13 @@ export class PlexClient {
     return data?.MediaContainer?.Metadata || [];
   }
 
+  /** Return the track ratingKeys currently in a playlist. */
+  async getPlaylistItems(playlistRatingKey) {
+    const data = await this.request(`/playlists/${playlistRatingKey}/items`);
+    const items = data?.MediaContainer?.Metadata || [];
+    return items.map((i) => i.ratingKey).filter(Boolean);
+  }
+
   _metadataUri(machineId, ratingKeys) {
     const keys = (Array.isArray(ratingKeys) ? ratingKeys : [ratingKeys]).join(
       ",",
@@ -268,6 +310,16 @@ export class PlexClient {
     );
 
     if (existing && replace) {
+      // Skip the delete+recreate churn when the playlist already holds exactly
+      // the desired tracks (order-insensitive) — keeps the playlist's identity
+      // and history intact.
+      const current = await this.getPlaylistItems(existing.ratingKey);
+      const desiredSet = new Set((ratingKeys || []).map(String));
+      const currentSet = new Set(current.map(String));
+      const unchanged =
+        desiredSet.size === currentSet.size &&
+        [...desiredSet].every((k) => currentSet.has(k));
+      if (unchanged) return existing;
       await this.deletePlaylist(existing.ratingKey);
     } else if (existing && !replace) {
       if (ratingKeys?.length) {

@@ -1,5 +1,6 @@
 import path from "path";
 import fs from "fs/promises";
+import crypto from "crypto";
 import { dbOps } from "../config/db-helpers.js";
 import { NavidromeClient } from "./navidrome.js";
 import { PlexClient } from "./plex.js";
@@ -21,6 +22,9 @@ export class WeeklyFlowPlaylistManager {
     this.plexClient = null;
     this._plexConfigKey = "";
     this._plexSectionId = null;
+    // playlist title -> fingerprint of the track set we last pushed to Plex,
+    // so unchanged playlists skip the getPlaylistItems round-trip.
+    this._plexSyncHashes = new Map();
     this._ensureInFlight = null;
     this.updateConfig(triggerEnsureOnInit);
   }
@@ -70,10 +74,12 @@ export class WeeklyFlowPlaylistManager {
           plexConfig.clientId,
         );
         this._plexSectionId = null;
+        this._plexSyncHashes.clear();
       }
     } else {
       this.plexClient = null;
       this._plexSectionId = null;
+      this._plexSyncHashes.clear();
     }
 
     if (triggerEnsurePlaylists) {
@@ -300,7 +306,7 @@ export class WeeklyFlowPlaylistManager {
     }
   }
 
-  // The library location must be the path the *Plex server* uses to reach the
+  // The library location must be the path the Plex server uses to reach the
   // downloads, which can differ from Aurral's host path when Plex runs in its
   // own container. Prefer the user-provided override; fall back to the host
   // path when unset.
@@ -311,6 +317,11 @@ export class WeeklyFlowPlaylistManager {
       return `${base}/aurral-weekly-flow`;
     }
     return this._getWeeklyFlowLibraryHostPath();
+  }
+
+  _hashKeys(ratingKeys) {
+    const sorted = (ratingKeys || []).map(String).sort();
+    return crypto.createHash("sha1").update(sorted.join(",")).digest("hex");
   }
 
   async _ensurePlexSectionId() {
@@ -360,30 +371,49 @@ export class WeeklyFlowPlaylistManager {
       }
     };
 
+    // Build/refresh a playlist only when its desired track set changed since
+    // the last sync — skips the getPlaylistItems round-trip on no-op runs.
+    const buildIfChanged = async (desired, ratingKeys) => {
+      const hash = this._hashKeys(ratingKeys);
+      if (this._plexSyncHashes.get(desired) === hash) return;
+      await this.plexClient.createPlaylist(desired, ratingKeys, true);
+      this._plexSyncHashes.set(desired, hash);
+    };
+
+    // Plex playlists use the flow/playlist name directly (no "[A]"/"[AS]"
+    // prefix). Any previously-created prefixed names are treated as stale and
+    // removed so renames are clean.
     for (const flow of flows) {
+      const desired = String(flow.name || "").trim();
       const { current, legacy } = this._getFlowPlaylistNames(flow.name);
+      const stale = [current, ...legacy].filter((name) => name !== desired);
       if (flow.enabled) {
         const ratingKeys = ratingKeysFor(flow.id);
         if (ratingKeys.length) {
-          await this.plexClient.createPlaylist(current, ratingKeys, true);
+          await buildIfChanged(desired, ratingKeys);
         } else {
-          await deletePlexPlaylistsByNames([current]);
+          await deletePlexPlaylistsByNames([desired]);
+          this._plexSyncHashes.delete(desired);
         }
-        await deletePlexPlaylistsByNames(legacy);
+        await deletePlexPlaylistsByNames(stale);
       } else {
-        await deletePlexPlaylistsByNames([current, ...legacy]);
+        await deletePlexPlaylistsByNames([desired, ...stale]);
+        this._plexSyncHashes.delete(desired);
       }
     }
 
     for (const playlist of sharedPlaylists) {
+      const desired = String(playlist.name || "").trim();
       const { current, legacy } = this._getSharedPlaylistNames(playlist.name);
+      const stale = [current, ...legacy].filter((name) => name !== desired);
       const ratingKeys = ratingKeysFor(playlist.id);
       if (ratingKeys.length) {
-        await this.plexClient.createPlaylist(current, ratingKeys, true);
+        await buildIfChanged(desired, ratingKeys);
       } else {
-        await deletePlexPlaylistsByNames([current]);
+        await deletePlexPlaylistsByNames([desired]);
+        this._plexSyncHashes.delete(desired);
       }
-      await deletePlexPlaylistsByNames(legacy);
+      await deletePlexPlaylistsByNames(stale);
     }
   }
 
@@ -404,6 +434,10 @@ export class WeeklyFlowPlaylistManager {
     }
     await this.plexClient.scanLibrary(sectionId);
 
+    // Manual sync is authoritative: drop cached fingerprints so we reconcile
+    // against Plex's real state (catches manual edits made in Plex).
+    this._plexSyncHashes.clear();
+
     const flows = flowPlaylistConfig.getFlows();
     const sharedPlaylists = flowPlaylistConfig.getSharedPlaylists();
     await this._syncPlexPlaylists(flows, sharedPlaylists);
@@ -415,15 +449,20 @@ export class WeeklyFlowPlaylistManager {
     // indexing, without the user needing to click sync again.
     this._schedulePlexCatchup(sectionId);
 
+    const managedNames = new Set(
+      [
+        ...flows.map((f) => String(f.name || "").trim()),
+        ...sharedPlaylists.map((p) => String(p.name || "").trim()),
+      ].filter(Boolean),
+    );
+
     return {
       configured: true,
       sectionId,
       indexedTracks: tracks.length,
       scanInProgress: tracks.length === 0,
       playlists: playlists
-        .filter(
-          (p) => p.title?.startsWith("[A] ") || p.title?.startsWith("[AS] "),
-        )
+        .filter((p) => managedNames.has(p.title))
         .map((p) => ({ title: p.title, count: p.leafCount ?? null })),
     };
   }

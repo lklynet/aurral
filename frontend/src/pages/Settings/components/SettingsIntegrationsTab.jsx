@@ -1,11 +1,5 @@
 import { useState } from "react";
-import {
-  CheckCircle,
-  ChevronDown,
-  RefreshCw,
-  Folder,
-  CornerLeftUp,
-} from "lucide-react";
+import { CheckCircle, ChevronDown, RefreshCw } from "lucide-react";
 import FlipSaveButton from "../../../components/FlipSaveButton";
 import {
   getLidarrMetadataProfiles,
@@ -17,7 +11,6 @@ import {
   getPlexResources,
   testPlexConnection,
   syncPlexNow,
-  browsePaths,
 } from "../../../utils/api";
 
 export function SettingsIntegrationsTab({
@@ -59,13 +52,6 @@ export function SettingsIntegrationsTab({
   const [testingPlex, setTestingPlex] = useState(false);
   const [syncingPlex, setSyncingPlex] = useState(false);
   const [plexServers, setPlexServers] = useState([]);
-  const [browseOpen, setBrowseOpen] = useState(false);
-  const [browseLoading, setBrowseLoading] = useState(false);
-  const [browseState, setBrowseState] = useState({
-    path: "/",
-    parent: null,
-    directories: [],
-  });
   const safeLidarrProfiles = Array.isArray(lidarrProfiles)
     ? lidarrProfiles
     : [];
@@ -102,6 +88,13 @@ export function SettingsIntegrationsTab({
     } catch {
       setPlexServers([]);
       return [];
+    }
+  };
+
+  const handleChoosePlexServer = async () => {
+    const servers = await loadPlexServers(settings.integrations?.plex?.token);
+    if (!servers || servers.length === 0) {
+      showError("No Plex servers found for this account.");
     }
   };
 
@@ -229,34 +222,6 @@ export function SettingsIntegrationsTab({
     } finally {
       setSyncingPlex(false);
     }
-  };
-
-  const loadBrowse = async (path) => {
-    setBrowseLoading(true);
-    try {
-      const result = await browsePaths(path);
-      setBrowseState(result);
-    } catch (err) {
-      const errorMsg =
-        err.response?.data?.message || err.response?.data?.error || err.message;
-      showError(`Cannot read path: ${errorMsg}`);
-    } finally {
-      setBrowseLoading(false);
-    }
-  };
-
-  const handleToggleBrowse = () => {
-    if (browseOpen) {
-      setBrowseOpen(false);
-      return;
-    }
-    setBrowseOpen(true);
-    loadBrowse(settings.integrations?.plex?.downloadsPath || "/");
-  };
-
-  const handleUseBrowsedFolder = () => {
-    updatePlex({ downloadsPath: browseState.path });
-    setBrowseOpen(false);
   };
 
   const handleTestLidarr = async () => {
@@ -1350,10 +1315,19 @@ export function SettingsIntegrationsTab({
                 )}
               </button>
               {settings.integrations?.plex?.token && (
-                <span className="flex items-center text-sm text-green-400">
-                  <CheckCircle className="w-4 h-4 mr-1" />
-                  Signed in
-                </span>
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={handleChoosePlexServer}
+                  >
+                    Choose server
+                  </button>
+                  <span className="flex items-center text-sm text-green-400">
+                    <CheckCircle className="w-4 h-4 mr-1" />
+                    Signed in
+                  </span>
+                </>
               )}
             </div>
 
@@ -1415,110 +1389,21 @@ export function SettingsIntegrationsTab({
               >
                 Plex downloads path (optional)
               </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  className="input flex-1"
-                  placeholder="/data/aurral_downloads"
-                  autoComplete="off"
-                  value={settings.integrations?.plex?.downloadsPath || ""}
-                  onChange={(e) => updatePlex({ downloadsPath: e.target.value })}
-                />
-                <button
-                  type="button"
-                  className="btn btn-secondary whitespace-nowrap"
-                  onClick={handleToggleBrowse}
-                >
-                  <span className="flex items-center gap-2">
-                    <Folder className="w-4 h-4" />
-                    {browseOpen ? "Close" : "Browse"}
-                  </span>
-                </button>
-              </div>
+              <input
+                type="text"
+                className="input"
+                placeholder="/data/aurral_downloads"
+                autoComplete="off"
+                value={settings.integrations?.plex?.downloadsPath || ""}
+                onChange={(e) => updatePlex({ downloadsPath: e.target.value })}
+              />
               <p className="mt-1 text-xs" style={{ color: "#8a8a8e" }}>
                 Only needed if Plex runs in a different container/host than
                 Aurral. Enter the downloads folder path as the{" "}
                 <strong>Plex server</strong> sees it — Aurral appends{" "}
                 <code>/aurral-weekly-flow</code>. Leave blank to use Aurral&apos;s
-                own download path. Browse shows the filesystem as Aurral sees
-                it; type manually if Plex&apos;s mount path differs.
+                own download path.
               </p>
-
-              {browseOpen && (
-                <div
-                  className="mt-2 rounded-lg p-3"
-                  style={{
-                    backgroundColor: "#0f0f12",
-                    border: "1px solid #2a2a2e",
-                  }}
-                >
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <code
-                      className="text-xs truncate"
-                      style={{ color: "#cfcfd4" }}
-                      title={browseState.path}
-                    >
-                      {browseState.path}
-                    </code>
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-sm whitespace-nowrap"
-                      onClick={handleUseBrowsedFolder}
-                    >
-                      Use this folder
-                    </button>
-                  </div>
-                  <div
-                    className="max-h-56 overflow-y-auto rounded"
-                    style={{ border: "1px solid #2a2a2e" }}
-                  >
-                    {browseLoading ? (
-                      <div
-                        className="flex items-center gap-2 p-3 text-sm"
-                        style={{ color: "#8a8a8e" }}
-                      >
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        Loading…
-                      </div>
-                    ) : (
-                      <ul className="text-sm" style={{ color: "#e5e5e9" }}>
-                        {browseState.parent && (
-                          <li>
-                            <button
-                              type="button"
-                              className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-white/5"
-                              onClick={() => loadBrowse(browseState.parent)}
-                            >
-                              <CornerLeftUp className="w-4 h-4" />
-                              <span>..</span>
-                            </button>
-                          </li>
-                        )}
-                        {browseState.directories.length === 0 && (
-                          <li
-                            className="px-3 py-2 text-xs"
-                            style={{ color: "#8a8a8e" }}
-                          >
-                            No subfolders here.
-                          </li>
-                        )}
-                        {browseState.directories.map((dir) => (
-                          <li key={dir.path}>
-                            <button
-                              type="button"
-                              className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-white/5"
-                              onClick={() => loadBrowse(dir.path)}
-                            >
-                              <Folder className="w-4 h-4" />
-                              <span className="truncate">{dir.name}</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="flex items-center gap-3">
