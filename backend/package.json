@@ -23,7 +23,7 @@
     ]
   },
   "dependencies": {
-    "axios": "^1.16.1",
+    "axios": "^1.17.0",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.10.0",
     "bottleneck": "^2.19.5",
@@ -33,7 +33,7 @@
     "express-basic-auth": "^1.2.1",
     "express-rate-limit": "^8.5.2",
     "helmet": "^8.2.0",
-    "music-metadata": "^11.12.3",
+    "music-metadata": "^11.13.0",
     "node-cache": "^5.1.2",
     "sharp": "^0.34.5",
     "slsk-client": "^1.1.0",
