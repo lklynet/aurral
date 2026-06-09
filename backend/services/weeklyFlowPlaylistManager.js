@@ -339,10 +339,15 @@ export class WeeklyFlowPlaylistManager {
     if (sectionId == null) return;
 
     const tracks = await this.plexClient.getTracks(sectionId);
+    // A track shared across flows is one Plex track with several version files;
+    // match if any of its paths is under this flow's folder so it lands in
+    // every playlist it belongs to.
     const ratingKeysFor = (playlistType) => {
       const needle = `/${playlistType}/`;
       return tracks
-        .filter((t) => t.file && t.file.replace(/\\/g, "/").includes(needle))
+        .filter((t) =>
+          t.files.some((f) => f.replace(/\\/g, "/").includes(needle)),
+        )
         .map((t) => t.ratingKey)
         .filter(Boolean);
     };

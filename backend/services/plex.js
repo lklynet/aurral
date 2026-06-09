@@ -244,16 +244,38 @@ export class PlexClient {
   }
 
   async getTracks(sectionId) {
-    const data = await this.request(`/library/sections/${sectionId}/all`, {
-      params: { type: TRACK_TYPE },
-    });
-    const items = data?.MediaContainer?.Metadata || [];
-    return items.map((t) => ({
-      ratingKey: t.ratingKey,
-      title: t.title,
-      artist: t.grandparentTitle || t.originalTitle,
-      file: t.Media?.[0]?.Part?.[0]?.file || null,
-    }));
+    const pageSize = 200;
+    const out = [];
+    let start = 0;
+    for (;;) {
+      const data = await this.request(`/library/sections/${sectionId}/all`, {
+        params: {
+          type: TRACK_TYPE,
+          "X-Plex-Container-Start": start,
+          "X-Plex-Container-Size": pageSize,
+        },
+      });
+      const mc = data?.MediaContainer || {};
+      const items = mc.Metadata || [];
+      for (const t of items) {
+        // A track can have several versions (one Media/Part per file), e.g. the
+        // same song downloaded into more than one flow folder. Capture every
+        // path so a track matches all flows it actually lives in.
+        const files = (t.Media || [])
+          .flatMap((m) => (m.Part || []).map((p) => p.file))
+          .filter(Boolean);
+        out.push({
+          ratingKey: t.ratingKey,
+          title: t.title,
+          artist: t.grandparentTitle || t.originalTitle,
+          files,
+        });
+      }
+      const total = Number(mc.totalSize ?? mc.size ?? items.length);
+      start += items.length;
+      if (items.length === 0 || start >= total) break;
+    }
+    return out;
   }
 
   async getPlaylists() {
