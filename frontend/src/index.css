@@ -6128,6 +6128,13 @@ textarea {
   border-radius: var(--aurral-radius);
 }
 
+/* Space out stacked fields/hints/buttons inside a section's fieldset, which is
+   otherwise a plain block with no gap. */
+.settings-page__section fieldset {
+  display: grid;
+  gap: 1rem;
+}
+
 .settings-page__section--narrow {
   max-width: 28rem;
 }
