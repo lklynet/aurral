@@ -1446,7 +1446,7 @@ export function SettingsIntegrationsTab({
               </button>
             </div>
             <p className="text-xs" style={{ color: "#8a8a8e" }}>
-              Creates an &quot;Aurral Flow&quot; music library pointed at your
+              Creates an &quot;Aurral&quot; music library pointed at your
               downloads, scans it, and builds a playlist per flow. The Plex
               server must be able to read the same downloads path Aurral writes
               to. Save settings before syncing.

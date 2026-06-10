@@ -153,31 +153,34 @@ export class PlexClient {
 
   async ensureWeeklyFlowLibrary(libraryPath) {
     if (!this.isConfigured()) return null;
-    const name = "Aurral Flow";
+    const name = "Aurral";
+    // Also match the legacy "Aurral Flow" name so existing libraries are reused
+    // and renamed rather than duplicated.
     const findExisting = (libs) =>
       libs.find(
         (lib) =>
           lib.title === name ||
+          lib.title === "Aurral Flow" ||
           (lib.Location || []).some((loc) => loc.path === libraryPath),
       );
 
     const existing = findExisting(await this.getLibraries());
     if (existing) {
-      // The library already exists. Reconcile its folder(s) to the desired
-      // path so changing the downloads-path setting actually takes effect
-      // (Plex keeps the original location otherwise).
+      // Reconcile name + folder so a rename or a changed downloads-path setting
+      // actually takes effect (Plex keeps the originals otherwise).
       const currentLocations = (existing.Location || [])
         .map((loc) => loc.path)
         .filter(Boolean);
-      const alreadyCorrect =
+      const locationOk =
         currentLocations.length === 1 && currentLocations[0] === libraryPath;
-      if (!alreadyCorrect) {
+      const nameOk = existing.title === name;
+      if (!locationOk || !nameOk) {
         try {
-          await this.setLibraryLocations(existing.key, [libraryPath]);
+          await this.editLibrary(existing.key, { name, locations: [libraryPath] });
           return findExisting(await this.getLibraries()) || existing;
         } catch (err) {
           console.warn(
-            "[Plex] Could not update Aurral library location:",
+            "[Plex] Could not update Aurral library:",
             err?.response?.data || err.message,
           );
         }
@@ -213,7 +216,7 @@ export class PlexClient {
     const created = findExisting(await this.getLibraries());
     if (!created) {
       throw new Error(
-        `Plex accepted the request but no "Aurral Flow" library appeared. Verify the Plex server can access the path "${libraryPath}".`,
+        `Plex accepted the request but no "Aurral" library appeared. Verify the Plex server can access the path "${libraryPath}".`,
       );
     }
     return created;
@@ -230,14 +233,15 @@ export class PlexClient {
   }
 
   /**
-   * Replace a library section's folder locations. Plex expects repeated
-   * `location=` query params (no array brackets), so the query is built by
-   * hand. The Plex server must be able to browse each path.
+   * Rename a library section and/or replace its folder locations. Plex expects
+   * repeated `location=` query params (no array brackets), so the query is
+   * built by hand. The Plex server must be able to browse each path.
    */
-  async setLibraryLocations(sectionId, locations) {
+  async editLibrary(sectionId, { name, locations } = {}) {
     const qs = new URLSearchParams();
     qs.set("agent", MUSIC_AGENT);
-    for (const loc of locations) qs.append("location", loc);
+    if (name) qs.set("name", name);
+    for (const loc of locations || []) qs.append("location", loc);
     return this.request(`/library/sections/${sectionId}?${qs.toString()}`, {
       method: "PUT",
     });
