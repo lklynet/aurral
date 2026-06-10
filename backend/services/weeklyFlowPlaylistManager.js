@@ -339,18 +339,50 @@ export class WeeklyFlowPlaylistManager {
     if (sectionId == null) return;
 
     const tracks = await this.plexClient.getTracks(sectionId);
-    // A track shared across flows is one Plex track with several version files;
-    // match if any of its paths is under this flow's folder so it lands in
-    // every playlist it belongs to.
-    const ratingKeysFor = (playlistType) => {
-      const needle = `/${playlistType}/`;
-      return tracks
-        .filter((t) =>
-          t.files.some((f) => f.replace(/\\/g, "/").includes(needle)),
-        )
-        .map((t) => t.ratingKey)
-        .filter(Boolean);
+    // Plex de-duplicates the same song across flow folders inconsistently:
+    // sometimes one track with one path, sometimes two separate tracks sharing
+    // a relative path. So resolve membership per relative file (Artist/Album/
+    // Title.ext) from disk, picking ONE representative track per file — the
+    // copy whose own path is in this flow when available. This puts shared
+    // songs in every flow that holds the file without duplicating a track.
+    const relativeOf = (file) => {
+      const parts = (file || "").replace(/\\/g, "/").split("/aurral-weekly-flow/");
+      if (parts.length < 2) return null;
+      const segs = parts[1].split("/");
+      segs.shift(); // drop the flow-id segment
+      return segs.join("/") || null;
     };
+    const byRelative = new Map();
+    for (const t of tracks) {
+      const rel = relativeOf(t.files[0]);
+      if (!rel) continue;
+      if (!byRelative.has(rel)) byRelative.set(rel, []);
+      byRelative.get(rel).push(t);
+    }
+    const playlistIds = [
+      ...new Set([
+        ...flows.map((f) => f.id),
+        ...sharedPlaylists.map((p) => p.id),
+      ]),
+    ];
+    const membership = new Map(playlistIds.map((id) => [id, []]));
+    for (const id of playlistIds) {
+      for (const [rel, group] of byRelative) {
+        const ownsPath = (t) =>
+          t.files.some((f) => f.replace(/\\/g, "/").includes(`/${id}/`));
+        let present = group.some(ownsPath);
+        if (!present) {
+          try {
+            await fs.access(path.join(this.libraryRoot, id, rel));
+            present = true;
+          } catch {}
+        }
+        if (!present) continue;
+        const best = group.find(ownsPath) || group[0];
+        if (best?.ratingKey) membership.get(id).push(best.ratingKey);
+      }
+    }
+    const ratingKeysFor = (playlistType) => membership.get(playlistType) || [];
 
     const deletePlexPlaylistsByNames = async (names) => {
       const playlists = await this.plexClient.getPlaylists();

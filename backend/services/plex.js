@@ -244,11 +244,8 @@ export class PlexClient {
   }
 
   async getTracks(sectionId) {
-    // The section listing only returns each track's PRIMARY version, so a song
-    // duplicated across flow folders looks like it has one path. Fetch full
-    // metadata (which includes every version/part) to get all file paths.
     const pageSize = 200;
-    const keys = [];
+    const out = [];
     let start = 0;
     for (;;) {
       const data = await this.request(`/library/sections/${sectionId}/all`, {
@@ -260,18 +257,6 @@ export class PlexClient {
       });
       const mc = data?.MediaContainer || {};
       const items = mc.Metadata || [];
-      for (const t of items) if (t.ratingKey) keys.push(t.ratingKey);
-      const total = Number(mc.totalSize ?? mc.size ?? items.length);
-      start += items.length;
-      if (items.length === 0 || start >= total) break;
-    }
-
-    const out = [];
-    const chunkSize = 150;
-    for (let i = 0; i < keys.length; i += chunkSize) {
-      const chunk = keys.slice(i, i + chunkSize);
-      const data = await this.request(`/library/metadata/${chunk.join(",")}`);
-      const items = data?.MediaContainer?.Metadata || [];
       for (const t of items) {
         const files = (t.Media || [])
           .flatMap((m) => (m.Part || []).map((p) => p.file))
@@ -283,6 +268,9 @@ export class PlexClient {
           files,
         });
       }
+      const total = Number(mc.totalSize ?? mc.size ?? items.length);
+      start += items.length;
+      if (items.length === 0 || start >= total) break;
     }
     return out;
   }
