@@ -22,6 +22,21 @@ export const sendSSE = (res, event, data) => {
 export const pendingCoverRequests = new Map();
 export const pendingArtistRequests = new Map();
 
+export const buildArtistRequestKey = ({
+  mbid,
+  mode = "full",
+  selectedReleaseTypes = null,
+  appearsOnLimit = null,
+}) => {
+  const releaseTypesKey = Array.isArray(selectedReleaseTypes)
+    ? [...selectedReleaseTypes].filter(Boolean).sort().join(",")
+    : "";
+  const limitValue = Number.parseInt(appearsOnLimit, 10);
+  const limitKey =
+    Number.isFinite(limitValue) && limitValue > 0 ? String(limitValue) : "";
+  return [String(mbid || "").trim(), mode, releaseTypesKey, limitKey].join(":");
+};
+
 export const fetchCoverInBackground = async (mbid, artistName = null) => {
   if (pendingCoverRequests.has(mbid)) return;
 

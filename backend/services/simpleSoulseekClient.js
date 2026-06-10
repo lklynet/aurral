@@ -658,32 +658,6 @@ export class SimpleSoulseekClient {
     return 30000;
   }
 
-  _getQueuedTimeoutMs() {
-    const raw = Number(process.env.SOULSEEK_QUEUED_TIMEOUT_MS);
-    if (Number.isFinite(raw) && raw >= 3000) return Math.floor(raw);
-    return 12000;
-  }
-
-  getQueuedFirstTimeoutMs() {
-    const raw = Number(process.env.SOULSEEK_QUEUED_TIMEOUT_FIRST_MS);
-    if (Number.isFinite(raw) && raw >= 2500) return Math.floor(raw);
-    return this._getQueuedTimeoutMs();
-  }
-
-  getQueuedRetryTimeoutMs() {
-    const raw = Number(process.env.SOULSEEK_QUEUED_TIMEOUT_RETRY_MS);
-    if (Number.isFinite(raw) && raw >= 2500) return Math.floor(raw);
-    return 8000;
-  }
-
-  getQueuedTimeoutForAttempt(attemptIndex) {
-    const index = Number.isFinite(Number(attemptIndex))
-      ? Math.max(0, Math.floor(Number(attemptIndex)))
-      : 0;
-    if (index <= 0) return this.getQueuedFirstTimeoutMs();
-    return this.getQueuedRetryTimeoutMs();
-  }
-
   _getCachedSearch(query) {
     const key = String(query || "")
       .trim()
@@ -874,10 +848,12 @@ export class SimpleSoulseekClient {
     return this._getUserQueuePenalty(user);
   }
 
-  _isQueuedError(message) {
-    return String(message || "")
-      .toLowerCase()
-      .includes("download queued");
+  _isSlowSourceError(message) {
+    const text = String(message || "").toLowerCase();
+    return (
+      text.includes("download queued") ||
+      text.includes("download stalled (no bytes received)")
+    );
   }
 
   _disconnectOnTransferFailure() {
@@ -1073,9 +1049,7 @@ export class SimpleSoulseekClient {
       const candidate = candidates[attemptIndex];
       await fs.rm(absPath, { force: true }).catch(() => {});
       try {
-        return await this.download(candidate, absPath, onProgress, {
-          queuedTimeoutMs: this.getQueuedTimeoutForAttempt(attemptIndex),
-        });
+        return await this.download(candidate, absPath, onProgress);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : String(error || "");
@@ -1150,7 +1124,7 @@ export class SimpleSoulseekClient {
     return { successes, failures };
   }
 
-  async download(result, destinationPath, onProgress = null, options = {}) {
+  async download(result, destinationPath, onProgress = null) {
     this.metrics.downloadStarts += 1;
     await this.acquireConnection();
 
@@ -1161,9 +1135,6 @@ export class SimpleSoulseekClient {
     const DOWNLOAD_TIMEOUT_MS = this._getDownloadTimeoutMs();
     const DOWNLOAD_STARTUP_TIMEOUT_MS = this._getDownloadStartupTimeoutMs();
     const DOWNLOAD_STALL_TIMEOUT_MS = this._getDownloadStallTimeoutMs();
-    const QUEUED_TIMEOUT_MS = Number.isFinite(Number(options?.queuedTimeoutMs))
-      ? Math.max(2500, Math.floor(Number(options.queuedTimeoutMs)))
-      : this._getQueuedTimeoutMs();
     const expectedBytes = Number(result?.size || 0);
     const progressEnabled =
       typeof onProgress === "function" && expectedBytes > 0;
@@ -1175,7 +1146,6 @@ export class SimpleSoulseekClient {
         let timeoutId = null;
         let startupTimeoutId = null;
         let stallTimeoutId = null;
-        let queuedTimeoutId = null;
         let lastProgress = -1;
         let downloadedBytes = 0;
         let lastProgressEmitAt = 0;
@@ -1213,10 +1183,6 @@ export class SimpleSoulseekClient {
                 clearTimeout(startupTimeoutId);
                 startupTimeoutId = null;
               }
-              if (queuedTimeoutId) {
-                clearTimeout(queuedTimeoutId);
-                queuedTimeoutId = null;
-              }
             }
             armStallTimer();
             downloadedBytes += size;
@@ -1248,7 +1214,6 @@ export class SimpleSoulseekClient {
           if (timeoutId) clearTimeout(timeoutId);
           if (startupTimeoutId) clearTimeout(startupTimeoutId);
           if (stallTimeoutId) clearTimeout(stallTimeoutId);
-          if (queuedTimeoutId) clearTimeout(queuedTimeoutId);
           cleanup();
           fn(val);
         };
@@ -1264,12 +1229,6 @@ export class SimpleSoulseekClient {
             this._disconnectOnTransferFailure();
             settle(reject)(new Error("Download stalled (no bytes received)"));
           }, DOWNLOAD_STARTUP_TIMEOUT_MS);
-          queuedTimeoutId = setTimeout(() => {
-            if (settled || sawFirstByte) return;
-            settle(reject)(
-              new Error("Download queued (skipping to next source)"),
-            );
-          }, QUEUED_TIMEOUT_MS);
         }
 
         this.client.download(
@@ -1314,7 +1273,7 @@ export class SimpleSoulseekClient {
       return filePath;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err || "");
-      if (this._isQueuedError(message)) {
+      if (this._isSlowSourceError(message)) {
         this._recordUserQueued(result?.user);
         this.metrics.queuedFailures += 1;
       } else if (this._isUserOfflineError(message)) {

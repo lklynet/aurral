@@ -12,33 +12,29 @@ export function DeleteAlbumModal({
 }) {
   if (!show) return null;
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div
-        className=" shadow-xl max-w-md w-full p-6"
-        style={{ backgroundColor: "#211f27" }}
-      >
-        <h3 className="text-xl font-bold  mb-4" style={{ color: "#fff" }}>
+    <div className="artist-modal-backdrop">
+      <div className="artist-modal">
+        <h3 className="artist-modal__title">
           Delete Album from Library
         </h3>
-        <p className=" mb-6" style={{ color: "#fff" }}>
+        <p className="artist-modal__copy">
           Are you sure you want to delete{" "}
-          <span className="font-semibold">{title}</span> from library?
+          <strong>{title}</strong> from library?
         </p>
 
-        <div className="mb-6">
-          <label className="flex items-start space-x-3 cursor-pointer">
+        <div>
+          <label className="artist-checkbox-label">
             <input
               type="checkbox"
               checked={deleteFiles}
               onChange={(e) => onDeleteFilesChange(e.target.checked)}
-              className="mt-1 form-checkbox h-5 w-5"
-              style={{ color: "#c1c1c3" }}
+              className="artist-checkbox"
             />
-            <div className="flex-1">
-              <span className=" font-medium" style={{ color: "#fff" }}>
+            <div>
+              <span className="artist-card-title">
                 Delete album folder and files
               </span>
-              <p className="text-sm  mt-1" style={{ color: "#c1c1c3" }}>
+              <p className="artist-modal__subcopy">
                 This will permanently delete the album&apos;s folder and all
                 music files from your disk. This action cannot be undone.
               </p>
@@ -46,7 +42,7 @@ export function DeleteAlbumModal({
           </label>
         </div>
 
-        <div className="flex gap-3 justify-end">
+        <div className="artist-modal__actions">
           <button
             onClick={onCancel}
             disabled={!!removing}
@@ -61,7 +57,7 @@ export function DeleteAlbumModal({
           >
             {removing ? (
               <>
-                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                <Loader className="artist-icon-sm animate-spin" />
                 Deleting...
               </>
             ) : (

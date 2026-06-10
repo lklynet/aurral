@@ -1,6 +1,7 @@
 import { CheckCircle } from "lucide-react";
 import FlipSaveButton from "../../../components/FlipSaveButton";
 import { DEFAULT_METADATA_BASE_URL } from "../utils";
+import { SettingsInput } from "./SettingsField";
 
 export function SettingsMetadataTab({
   settings,
@@ -11,14 +12,9 @@ export function SettingsMetadataTab({
   handleSaveSettings,
 }) {
   return (
-    <div className="card animate-fade-in">
-      <div className="flex items-center justify-between mb-6">
-        <h2
-          className="text-2xl font-bold flex items-center"
-          style={{ color: "#fff" }}
-        >
-          Metadata Services
-        </h2>
+    <div className="settings-page__panel">
+      <div className="settings-page__panel-header">
+        <h2 className="settings-page__panel-title">Metadata Services</h2>
         <FlipSaveButton
           saving={saving}
           disabled={!hasUnsavedChanges}
@@ -27,41 +23,27 @@ export function SettingsMetadataTab({
       </div>
       <form
         onSubmit={handleSaveSettings}
-        className="space-y-6"
+        className="settings-page__form"
         autoComplete="off"
       >
-        <div
-          className="p-6 rounded-lg space-y-4"
-          style={{
-            backgroundColor: "#1a1a1e",
-            border: "1px solid #2a2a2e",
-          }}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <h3
-              className="text-lg font-medium flex items-center"
-              style={{ color: "#fff" }}
-            >
-              Metadata Server
-            </h3>
+        <div className="settings-page__section">
+          <div className="settings-page__section-header">
+            <h3 className="settings-page__section-title">Metadata Server</h3>
             {health?.metadataConfigured && (
-              <span className="flex items-center text-sm text-green-400">
-                <CheckCircle className="w-4 h-4 mr-1" />
+              <span className="settings-page__status">
+                <CheckCircle className="settings-page__status-icon" />
                 Configured
               </span>
             )}
           </div>
-          <div className="space-y-4">
-            <div>
-              <label
-                className="block text-sm font-medium mb-1"
-                style={{ color: "#fff" }}
-              >
+          <div className="settings-page__fields">
+            <div className="settings-page__field">
+              <label className="artist-field-label" htmlFor="metadata-base-url">
                 Base URL
               </label>
-              <input
+              <SettingsInput
+                id="metadata-base-url"
                 type="url"
-                className="input"
                 placeholder={DEFAULT_METADATA_BASE_URL}
                 autoComplete="off"
                 value={settings.integrations?.metadata?.baseUrl || ""}

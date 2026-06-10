@@ -25,6 +25,9 @@ const {
   normalizeExistingFileMode,
   reuseTrackForPlaylist,
   createPlaylistFileEntry,
+  repairCompletedTrackLink,
+  repairReusableTrackLinks,
+  pathsShareDevice,
 } = reuseModule;
 
 const weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER;
@@ -114,4 +117,172 @@ test("reuseTrackForPlaylist does not inspect sources when reuse is disabled", as
 
   assert.equal(result.reused, false);
   assert.equal(downloadTracker.getAll().length, 0);
+});
+
+test("repairCompletedTrackLink replaces a standalone copy with a hardlink", async () => {
+  const track = {
+    artistName: "Radiohead",
+    trackName: "Creep",
+    albumName: "Pablo Honey",
+  };
+  const lidarrPath = path.join(weeklyFlowRoot, "lidarr-library", "Creep.flac");
+  const playlistPath = path.join(
+    weeklyFlowRoot,
+    "aurral-weekly-flow",
+    "flow-playlist",
+    "Radiohead",
+    "Pablo Honey",
+    "Creep.flac",
+  );
+  await fs.mkdir(path.dirname(lidarrPath), { recursive: true });
+  await fs.mkdir(path.dirname(playlistPath), { recursive: true });
+  await fs.writeFile(lidarrPath, "lidarr-audio");
+  await fs.writeFile(playlistPath, "downloaded-audio");
+  const jobId = downloadTracker.addJob(track, "flow-playlist");
+  downloadTracker.setDone(jobId, playlistPath, track.albumName);
+
+  const result = await repairCompletedTrackLink(
+    downloadTracker.getJob(jobId),
+    {
+      existingFileMode: "hardlink",
+      weeklyFlowRoot,
+      resolveSource: async () => ({
+        source: {
+          sourceType: "lidarr",
+          sourcePath: lidarrPath,
+          albumName: track.albumName,
+        },
+        reason: null,
+      }),
+    },
+  );
+
+  assert.equal(result.repaired, true);
+  assert.equal(result.sourceType, "lidarr");
+  assert.equal(result.linkType, "hardlink");
+  assert.equal(await fs.readFile(playlistPath, "utf8"), "lidarr-audio");
+  const lidarrStat = await fs.stat(lidarrPath);
+  const playlistStat = await fs.stat(playlistPath);
+  assert.equal(playlistStat.ino, lidarrStat.ino);
+});
+
+test("repairCompletedTrackLink skips tracks already linked to the reusable source", async () => {
+  const track = {
+    artistName: "Bjork",
+    trackName: "Hyperballad",
+    albumName: "Post",
+  };
+  const sourcePath = path.join(weeklyFlowRoot, "library", "Hyperballad.flac");
+  const playlistPath = path.join(
+    weeklyFlowRoot,
+    "aurral-weekly-flow",
+    "flow-playlist",
+    "Bjork",
+    "Post",
+    "Hyperballad.flac",
+  );
+  await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+  await fs.mkdir(path.dirname(playlistPath), { recursive: true });
+  await fs.writeFile(sourcePath, "shared-audio");
+  await fs.link(sourcePath, playlistPath);
+  const jobId = downloadTracker.addJob(track, "flow-playlist");
+  downloadTracker.setDone(jobId, playlistPath, track.albumName);
+
+  const result = await repairCompletedTrackLink(
+    downloadTracker.getJob(jobId),
+    {
+      existingFileMode: "hardlink",
+      weeklyFlowRoot,
+      resolveSource: async () => ({
+        source: {
+          sourceType: "lidarr",
+          sourcePath,
+          albumName: track.albumName,
+        },
+        reason: null,
+      }),
+    },
+  );
+
+  assert.equal(result.repaired, false);
+  assert.equal(result.reason, "Already linked to reusable source");
+});
+
+test("pathsShareDevice returns true for files in the same directory", async () => {
+  const root = path.join(weeklyFlowRoot, "shared-device");
+  const left = path.join(root, "source.flac");
+  const right = path.join(root, "target.flac");
+  await fs.mkdir(root, { recursive: true });
+  await fs.writeFile(left, "audio");
+
+  assert.equal(await pathsShareDevice(left, right), true);
+});
+
+test("repairCompletedTrackLink skips hardlink repair across filesystems", async () => {
+  const track = {
+    artistName: "Artist",
+    trackName: "Song",
+    albumName: "Album",
+  };
+  const sourcePath = path.join(weeklyFlowRoot, "lidarr", "Song.flac");
+  const playlistPath = path.join(
+    weeklyFlowRoot,
+    "aurral-weekly-flow",
+    "flow-playlist",
+    "Song.flac",
+  );
+  await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+  await fs.mkdir(path.dirname(playlistPath), { recursive: true });
+  await fs.writeFile(sourcePath, "source-audio");
+  await fs.writeFile(playlistPath, "playlist-audio");
+  const jobId = downloadTracker.addJob(track, "flow-playlist");
+  downloadTracker.setDone(jobId, playlistPath, track.albumName);
+
+  const result = await repairCompletedTrackLink(
+    downloadTracker.getJob(jobId),
+    {
+      existingFileMode: "hardlink",
+      weeklyFlowRoot,
+      deviceCheck: async () => false,
+      resolveSource: async () => ({
+        source: {
+          sourceType: "lidarr",
+          sourcePath,
+          albumName: track.albumName,
+        },
+        reason: null,
+      }),
+    },
+  );
+
+  assert.equal(result.repaired, false);
+  assert.equal(result.reason, "Hardlink unavailable across filesystems");
+  assert.equal(await fs.readFile(playlistPath, "utf8"), "playlist-audio");
+});
+
+test("repairReusableTrackLinks does nothing when reuse is disabled", async () => {
+  const track = {
+    artistName: "Artist",
+    trackName: "Song",
+    albumName: "Album",
+  };
+  const playlistPath = path.join(
+    weeklyFlowRoot,
+    "aurral-weekly-flow",
+    "flow-playlist",
+    "Song.flac",
+  );
+  await fs.mkdir(path.dirname(playlistPath), { recursive: true });
+  await fs.writeFile(playlistPath, "audio");
+  const jobId = downloadTracker.addJob(track, "flow-playlist");
+  downloadTracker.setDone(jobId, playlistPath, track.albumName);
+
+  const result = await repairReusableTrackLinks({
+    existingFileMode: "download",
+    weeklyFlowRoot,
+  });
+
+  assert.equal(result.scanned, 0);
+  assert.equal(result.repaired, 0);
+  assert.equal(await fs.readFile(playlistPath, "utf8"), "audio");
 });

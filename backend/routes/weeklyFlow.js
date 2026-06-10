@@ -19,6 +19,10 @@ import {
   normalizeExistingFileMode,
   reuseTrackForPlaylist,
 } from "../services/weeklyFlowFileReuse.js";
+import {
+  remapLegacyWeeklyFlowPath,
+  resolveExistingWeeklyFlowTrackPath,
+} from "../services/weeklyFlowPaths.js";
 import { noCache } from "../middleware/cache.js";
 import { hasPermission, verifyTokenAuth } from "../middleware/auth.js";
 import {
@@ -281,11 +285,17 @@ router.get("/stream/:jobId", noCache, async (req, res) => {
   if (job.status !== "done" || !job.finalPath) {
     return res.status(400).json({ error: "Track is not ready to stream" });
   }
-  const safeRoot = path.resolve(weeklyFlowWorker.weeklyFlowRoot);
-  const safePath = path.resolve(job.finalPath);
-  if (!safePath.startsWith(safeRoot)) {
-    return res.status(403).json({ error: "Invalid track path" });
+  const resolved = await resolveExistingWeeklyFlowTrackPath(
+    job.finalPath,
+    weeklyFlowWorker.weeklyFlowRoot,
+  );
+  if (!resolved) {
+    return res.status(404).json({ error: "Track file missing" });
   }
+  if (resolved.migratedFrom) {
+    downloadTracker.setDone(job.id, resolved.path, job.albumName || null);
+  }
+  const safePath = resolved.path;
   let stat;
   try {
     stat = await fsp.stat(safePath);
@@ -344,29 +354,21 @@ router.get("/artwork/:playlistId", noCache, async (req, res) => {
   if (!canAccessPlaylistType(req.user, playlistId)) {
     return res.status(404).json({ error: "Playlist artwork not found" });
   }
-  const playlistName = playlistManager.getPlaylistName(playlistId);
-  if (!playlistName) {
+  const artwork = await playlistManager.resolveArtworkFile(playlistId);
+  if (!artwork) {
     return res.status(404).json({ error: "Playlist artwork not found" });
   }
 
-  const fileName = `${playlistManager._getPlaylistBaseName(playlistName)}.png`;
-  const safeRoot = path.resolve(playlistManager.libraryRoot);
-  const safePath = path.resolve(safeRoot, fileName);
-  if (path.dirname(safePath) !== safeRoot) {
-    return res.status(403).json({ error: "Invalid artwork path" });
-  }
+  res.type(artwork.extension === ".webp" ? "webp" : "png");
+  res.sendFile(artwork.safePath);
+});
 
-  try {
-    const stat = await fsp.stat(safePath);
-    if (!stat.isFile()) {
-      return res.status(404).json({ error: "Playlist artwork not found" });
-    }
-  } catch {
-    return res.status(404).json({ error: "Playlist artwork not found" });
-  }
-
-  res.type("png");
-  res.sendFile(safePath);
+const artworkUploadParser = express.raw({
+  limit: "8mb",
+  type: (req) => {
+    const contentType = String(req.headers["content-type"] || "").toLowerCase();
+    return contentType.startsWith("image/");
+  },
 });
 
 router.use(requireAuth);
@@ -454,6 +456,60 @@ const canAccessPlaylistType = (user, playlistType) => {
   }
   return false;
 };
+
+router.put("/artwork/:playlistId", artworkUploadParser, async (req, res) => {
+  const { playlistId } = req.params;
+  if (!canAccessPlaylistType(req.user, playlistId)) {
+    return res.status(404).json({ error: "Playlist not found" });
+  }
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+    return res.status(400).json({
+      error: "Bad Request",
+      message: "Image body is required",
+    });
+  }
+  try {
+    await playlistManager.saveArtworkUpload(playlistId, req.body);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(400).json({
+      error: "Bad Request",
+      message: error?.message || "Failed to save artwork",
+    });
+  }
+});
+
+router.delete("/artwork/:playlistId", async (req, res) => {
+  const { playlistId } = req.params;
+  if (!canAccessPlaylistType(req.user, playlistId)) {
+    return res.status(404).json({ error: "Playlist not found" });
+  }
+  try {
+    await playlistManager.removeArtwork(playlistId);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(400).json({
+      error: "Bad Request",
+      message: error?.message || "Failed to remove artwork",
+    });
+  }
+});
+
+router.post("/artwork/:playlistId/generate", async (req, res) => {
+  const { playlistId } = req.params;
+  if (!canAccessPlaylistType(req.user, playlistId)) {
+    return res.status(404).json({ error: "Playlist not found" });
+  }
+  try {
+    await playlistManager.generateArtwork(playlistId);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(400).json({
+      error: "Bad Request",
+      message: error?.message || "Failed to generate artwork",
+    });
+  }
+});
 
 const filterJobsForUser = (user, jobs) =>
   (Array.isArray(jobs) ? jobs : []).filter((job) =>
@@ -660,7 +716,7 @@ router.post("/start/:flowId", async (req, res) => {
   }
 });
 
-router.get("/status", (req, res) => {
+router.get("/status", noCache, (req, res) => {
   const includeJobs =
     req.query.includeJobs === "1" || req.query.includeJobs === "true";
   const flowId = req.query.flowId ? String(req.query.flowId) : null;
@@ -959,7 +1015,10 @@ router.post("/flows/:flowId/static-playlist", async (req, res) => {
     const staticPlaylistLinkMode =
       existingFileMode === "download" ? "hardlink" : existingFileMode;
     for (const job of uniqueCompletedJobs) {
-      const safeSourcePath = path.resolve(job.finalPath);
+      const safeSourcePath = remapLegacyWeeklyFlowPath(
+        job.finalPath,
+        weeklyFlowWorker.weeklyFlowRoot,
+      );
       if (!isPathInsideRoot(safeSourcePath, sourceRoot)) {
         throw new Error(
           `Track path is outside the flow library: ${job.finalPath}`,
@@ -1327,7 +1386,10 @@ router.put("/shared-playlists/:playlistId", async (req, res) => {
         for (const job of existingJobs) {
           if (matchedJobIds.has(job.id)) continue;
           if (job.status === "done" && typeof job.finalPath === "string") {
-            const safeFinalPath = path.resolve(job.finalPath);
+            const safeFinalPath = remapLegacyWeeklyFlowPath(
+              job.finalPath,
+              weeklyFlowWorker.weeklyFlowRoot,
+            );
             if (isPathInsideRoot(safeFinalPath, playlistRoot)) {
               await fsp.rm(safeFinalPath, { force: true });
             }
@@ -1402,7 +1464,10 @@ router.delete(
         "aurral-weekly-flow",
         playlistId,
       );
-      const safeFinalPath = path.resolve(job.finalPath);
+      const safeFinalPath = remapLegacyWeeklyFlowPath(
+        job.finalPath,
+        weeklyFlowWorker.weeklyFlowRoot,
+      );
       if (!isPathInsideRoot(safeFinalPath, playlistRoot)) {
         return res.status(400).json({
           error: "Track path is outside the playlist library",
@@ -1476,7 +1541,10 @@ router.post(
 
       if (job.status === "done" && typeof job.finalPath === "string") {
         const playlistRoot = getPlaylistLibraryRoot(playlistId);
-        const safeFinalPath = path.resolve(job.finalPath);
+        const safeFinalPath = remapLegacyWeeklyFlowPath(
+          job.finalPath,
+          weeklyFlowWorker.weeklyFlowRoot,
+        );
         if (!isPathInsideRoot(safeFinalPath, playlistRoot)) {
           return res.status(400).json({
             error: "Track path is outside the playlist library",

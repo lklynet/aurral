@@ -55,40 +55,36 @@ const LastfmBanner = () => {
   }
 
   return (
-    <div className="mb-6 bg-[#211f27] px-5 py-4">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="space-y-1">
-          <p className="text-sm uppercase tracking-wide">
-            Personalize your discovery
-          </p>
-          <p className="text-xs text-[#c1c1c3]">
-            Discover can use ListenBrainz fallback trends without setup.
-            Connect Last.fm for personalized recommendations, related artists,
-            full tag search, and flows.
-          </p>
-        </div>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-          <button
-            type="button"
-            className="btn btn-secondary bg-gray-700/50 hover:bg-gray-700/70 btn-sm w-full sm:w-auto"
-            onClick={() => navigate("/settings")}
-          >
-            Connect History
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm hover:bg-gray-700/50 w-full sm:w-auto"
-            onClick={() => {
-              setDismissed(true);
-              try {
-                localStorage.setItem(getDismissKey(user), "1");
-                sessionStorage.removeItem(LEGACY_DISMISS_KEY);
-              } catch {}
-            }}
-          >
-            Dismiss
-          </button>
-        </div>
+    <div className="app-banner">
+      <div className="app-banner__content">
+        <p className="app-banner__title">Personalize your discovery</p>
+        <p className="app-banner__text">
+          Discover can use ListenBrainz fallback trends without setup. Connect
+          Last.fm for personalized recommendations, related artists, full tag
+          search, and flows.
+        </p>
+      </div>
+      <div className="app-banner__actions">
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => navigate("/profile")}
+        >
+          Connect History
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => {
+            setDismissed(true);
+            try {
+              localStorage.setItem(getDismissKey(user), "1");
+              sessionStorage.removeItem(LEGACY_DISMISS_KEY);
+            } catch {}
+          }}
+        >
+          Dismiss
+        </button>
       </div>
     </div>
   );

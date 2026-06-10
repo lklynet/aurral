@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { CheckCircle, Plus, Trash2, GripVertical } from "lucide-react";
 import FlipSaveButton from "../../../components/FlipSaveButton";
+import { SettingsInput, SettingsTextarea } from "./SettingsField";
 import PillToggle from "../../../components/PillToggle";
 import { testGotifyConnection } from "../../../utils/api";
 
@@ -36,8 +37,6 @@ export function SettingsNotificationsTab({
       setTestingGotify(false);
     }
   };
-
-  const codeInputStyle = { background: "#171515", color: "#c1c1c3", borderColor: "#2a2a2e" };
 
   const webhooks = settings.integrations?.webhooks || [];
 
@@ -124,12 +123,10 @@ export function SettingsNotificationsTab({
   };
 
   return (
-    <div className="card animate-fade-in">
-      <div className="flex items-center justify-between mb-6">
+    <div className="settings-page__panel">
+      <div className="settings-page__panel-header">
         <h2
-          className="text-2xl font-bold flex items-center"
-          style={{ color: "#fff" }}
-        >
+          className="settings-page__panel-title">
           Notifications
         </h2>
         <FlipSaveButton
@@ -140,44 +137,36 @@ export function SettingsNotificationsTab({
       </div>
       <form
         onSubmit={handleSave}
-        className="space-y-6"
+        className="settings-page__form"
         autoComplete="off"
       >
         <div
-          className="p-6 rounded-lg space-y-4"
-          style={{
-            backgroundColor: "#1a1a1e",
-            border: "1px solid #2a2a2e",
-          }}
+          className="settings-page__section"
         >
-          <div className="flex items-center justify-between mb-2">
+          <div className="settings-page__section-header">
             <h3
-              className="text-lg font-medium flex items-center"
-              style={{ color: "#fff" }}
-            >
+              className="settings-page__section-title">
               Gotify
             </h3>
-            <div className="flex items-center gap-2">
+            <div className="settings-page__inline-row">
               {settings.integrations?.gotify?.url &&
                 settings.integrations?.gotify?.token && (
-                  <span className="flex items-center text-sm text-green-400">
-                    <CheckCircle className="w-4 h-4 mr-1" />
+                  <span className="settings-page__status">
+                    <CheckCircle className="settings-page__status-icon" />
                     Configured
                   </span>
                 )}
             </div>
           </div>
-          <fieldset className="grid grid-cols-1 gap-4">
+          <fieldset className="settings-page__fields">
             <div>
               <label
-                className="block text-sm font-medium mb-1"
-                style={{ color: "#fff" }}
+                className="artist-field-label"
               >
                 Server URL
               </label>
-              <input
-                type="url"
-                className="input"
+              <SettingsInput type="url"
+
                 placeholder="https://gotify.example.com"
                 autoComplete="off"
                 value={settings.integrations?.gotify?.url || ""}
@@ -197,15 +186,14 @@ export function SettingsNotificationsTab({
             </div>
             <div>
               <label
-                className="block text-sm font-medium mb-1"
-                style={{ color: "#fff" }}
+                className="artist-field-label"
               >
                 Application Token
               </label>
-              <div className="flex gap-2">
-                <input
+                <div className="settings-page__field-row">
+                <SettingsInput
+                  wrapperClassName="settings-page__field-grow"
                   type="password"
-                  className="input flex-1"
                   placeholder="Gotify app token"
                   autoComplete="off"
                   value={settings.integrations?.gotify?.token || ""}
@@ -235,19 +223,14 @@ export function SettingsNotificationsTab({
                   {testingGotify ? "Sending..." : "Test"}
                 </button>
               </div>
-              <p className="mt-1 text-xs" style={{ color: "#c1c1c3" }}>
+              <p className="settings-page__hint">
                 Create an application in Gotify to get a token.
               </p>
             </div>
-            <div
-              className="pt-4 border-t space-y-4"
-              style={{ borderColor: "#2a2a2e" }}
-            >
-              <div className="flex items-center justify-between">
+            <div className="settings-page__split settings-page__fields">
+              <div className="settings-page__inline-row settings-page__inline-row--between">
                 <span
-                  className="text-sm font-medium"
-                  style={{ color: "#fff" }}
-                >
+                  className="artist-field-label">
                   Notify when daily Discover is updated
                 </span>
                 <PillToggle
@@ -269,11 +252,9 @@ export function SettingsNotificationsTab({
                   }
                 />
               </div>
-              <div className="flex items-center justify-between">
+              <div className="settings-page__inline-row settings-page__inline-row--between">
                 <span
-                  className="text-sm font-medium"
-                  style={{ color: "#fff" }}
-                >
+                  className="artist-field-label">
                   Notify when weekly flow finishes
                 </span>
                 <PillToggle
@@ -299,37 +280,31 @@ export function SettingsNotificationsTab({
         </div>
 
         <div
-          className="p-6 rounded-lg space-y-4"
-          style={{
-            backgroundColor: "#1a1a1e",
-            border: "1px solid #2a2a2e",
-          }}
+          className="settings-page__section"
         >
-          <div className="flex items-center justify-between mb-2">
+          <div className="settings-page__section-header">
             <h3
-              className="text-lg font-medium"
-              style={{ color: "#fff" }}
-            >
+              className="settings-page__section-title">
               Webhooks
             </h3>
             <button
               type="button"
-              className="btn btn-secondary flex items-center gap-1 px-3 py-1"
+              className="btn btn-secondary btn-sm"
               onClick={addWebhook}
               disabled={webhooks.length >= 5}
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="artist-icon-xs" />
               Add Webhook
             </button>
           </div>
 
           {!webhooks.length && (
-            <p className="text-sm" style={{ color: "#c1c1c3" }}>
+            <p className="settings-page__muted-copy">
               No webhooks configured. Click &ldquo;Add Webhook&rdquo; to create one.
             </p>
           )}
 
-          <div className="space-y-4">
+          <div className="settings-page__fields">
             {webhooks.map((wh, index) => (
               <div
                 key={index}
@@ -349,53 +324,43 @@ export function SettingsNotificationsTab({
                   setDragIdx(null);
                   allowDragRef.current = null;
                 }}
-                className="p-4 rounded-lg space-y-3"
-                style={{
-                  backgroundColor: "rgba(255,255,255,0.03)",
-                  border: `1px solid ${dragIdx === index ? "#555" : "#2a2a2e"}`,
-                  opacity: dragIdx === index ? 0.5 : 1,
-                }}
+                className={`settings-page__webhook-card${dragIdx === index ? " is-dragging" : ""}`}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+                <div className="settings-page__webhook-header">
+                  <div className="settings-page__webhook-title">
                     <GripVertical
-                      className="w-4 h-4 flex-shrink-0"
-                      style={{ color: "#555", cursor: "grab" }}
+                      className="settings-page__drag-handle artist-icon-xs"
                       onMouseDown={() => { allowDragRef.current = index; }}
                       onMouseUp={() => { allowDragRef.current = null; }}
                     />
-                    <span className="text-sm font-medium" style={{ color: "#c1c1c3" }}>
-                      Webhook #{index + 1}
-                    </span>
+                    <span>Webhook #{index + 1}</span>
                   </div>
                   <button
                     type="button"
-                    className="btn btn-secondary px-2 py-1 text-red-400 hover:text-red-300"
+                    className="btn btn-sm btn-ghost-danger"
                     onClick={() => removeWebhook(index)}
                     aria-label="Remove webhook"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="artist-icon-xs" />
                   </button>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1" style={{ color: "#fff" }}>
+                  <label className="artist-field-label">
                     URL
                   </label>
-                  <input
-                    type="url"
-                    className="input w-full"
+                  <SettingsInput type="url"
+
                     placeholder="https://example.com/webhook"
                     value={wh.url || ""}
                     onChange={(e) => updateWebhook(index, { url: e.target.value })}
-                    style={codeInputStyle}
                   />
                 </div>
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-medium" style={{ color: "#fff" }}>
+                  <div className="settings-page__section-header">
+                    <label className="artist-field-label">
                       Body
                       {wh.body !== null && (
-                        <span className="ml-2 font-normal text-xs" style={{ color: "#c1c1c3" }}>
+                        <span className="settings-page__hint-inline">
                           POST — variables: <code>$flowPath</code>, <code>$flowName</code>
                         </span>
                       )}
@@ -403,16 +368,16 @@ export function SettingsNotificationsTab({
                     {wh.body === null ? (
                       <button
                         type="button"
-                        className="btn btn-secondary flex items-center gap-1 px-2 py-0.5 text-xs"
+                        className="btn btn-secondary settings-page__btn--compact"
                         onClick={() => updateWebhook(index, { body: "" })}
                       >
-                        <Plus className="w-3 h-3" />
+                        <Plus />
                         Add Body
                       </button>
                     ) : (
                       <button
                         type="button"
-                        className="btn btn-secondary px-2 py-0.5 text-xs text-red-400"
+                        className="btn btn-sm btn-ghost-danger"
                         onClick={() => updateWebhook(index, { body: null })}
                       >
                         Remove
@@ -420,8 +385,7 @@ export function SettingsNotificationsTab({
                     )}
                   </div>
                   {wh.body !== null && (
-                    <textarea
-                      className="input w-full font-mono text-sm"
+                    <SettingsTextarea
                       rows={3}
                       maxLength={1000}
                       value={wh.body || ""}
@@ -430,52 +394,51 @@ export function SettingsNotificationsTab({
                       autoComplete="off"
                       autoCorrect="off"
                       autoCapitalize="off"
-                      style={{ ...codeInputStyle, resize: "vertical" }}
                     />
                   )}
                 </div>
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-medium" style={{ color: "#fff" }}>
+                  <div className="settings-page__section-header">
+                    <label className="artist-field-label">
                       Headers
                     </label>
                     <button
                       type="button"
-                      className="btn btn-secondary flex items-center gap-1 px-2 py-0.5 text-xs"
+                      className="btn btn-secondary settings-page__btn--compact"
                       onClick={() => addHeader(index)}
                       disabled={(wh.headers || []).length >= 10}
                     >
-                      <Plus className="w-3 h-3" />
+                      <Plus />
                       Add Header
                     </button>
                   </div>
                   {(wh.headers || []).length > 0 && (
-                    <div className="space-y-2">
+                    <div className="settings-page__field-stack--md">
                       {(wh.headers || []).map((header, hIndex) => (
-                        <div key={hIndex} className="flex gap-2 items-center">
-                          <input
-                            className="input flex-1 text-sm font-mono"
+                        <div key={hIndex} className="settings-page__header-fields-row">
+                          <SettingsInput
+                            wrapperClassName="settings-page__field-grow"
+                            className="settings-page__mono-input"
                             placeholder="Header-Name"
                             spellCheck={false}
                             value={header.key || ""}
                             onChange={(e) => updateHeader(index, hIndex, { key: e.target.value })}
-                            style={codeInputStyle}
                           />
-                          <input
-                            className="input flex-1 text-sm font-mono"
+                          <SettingsInput
+                            wrapperClassName="settings-page__field-grow"
+                            className="settings-page__mono-input"
                             placeholder="value"
                             spellCheck={false}
                             value={header.value || ""}
                             onChange={(e) => updateHeader(index, hIndex, { value: e.target.value })}
-                            style={codeInputStyle}
                           />
                           <button
                             type="button"
-                            className="btn btn-secondary px-2 py-1 text-red-400"
+                            className="btn btn-sm btn-ghost-danger"
                             onClick={() => removeHeader(index, hIndex)}
                             aria-label="Remove header"
                           >
-                            <Trash2 className="w-3 h-3" />
+                            <Trash2 className="artist-icon-xs" />
                           </button>
                         </div>
                       ))}
@@ -486,12 +449,9 @@ export function SettingsNotificationsTab({
             ))}
           </div>
 
-          <div
-            className="pt-4 border-t space-y-3"
-            style={{ borderColor: "#2a2a2e" }}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium" style={{ color: "#fff" }}>
+          <div className="settings-page__split settings-page__fields">
+            <div className="settings-page__inline-row settings-page__inline-row--between">
+              <span className="artist-field-label">
                 Notify when daily Discover is updated
               </span>
               <PillToggle
@@ -499,8 +459,8 @@ export function SettingsNotificationsTab({
                 onChange={(e) => updateWebhookEvents({ notifyDiscoveryUpdated: e.target.checked })}
               />
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium" style={{ color: "#fff" }}>
+            <div className="settings-page__inline-row settings-page__inline-row--between">
+              <span className="artist-field-label">
                 Notify when weekly flow finishes
               </span>
               <PillToggle

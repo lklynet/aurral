@@ -1,14 +1,10 @@
-import { useState, useEffect, memo } from "react";
-import PropTypes from "prop-types";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Loader,
-  Music,
-  Clock,
-  MapPin,
-  Pencil,
-} from "lucide-react";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { Loader, Music, MapPin, AlertCircle } from "lucide-react";
 import { getNearbyShows } from "../utils/api";
+import NearbyLocationControl from "../components/NearbyLocationControl";
+import ShowCard from "../components/ShowCard";
 
 const NEARBY_MODE_KEY = "discoverNearbyMode";
 const NEARBY_ZIP_KEY = "discoverNearbyZip";
@@ -19,197 +15,8 @@ const SHOW_FILTER_OPTIONS = [
   { id: "discover", label: "Discover" },
 ];
 
-const formatShowDate = (show) => {
-  if (!show?.date && !show?.dateTime) return null;
-  const raw = show.dateTime || show.date;
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) {
-    return show.date || null;
-  }
-  const dateLabel = parsed.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-  if (show.time) {
-    return `${dateLabel} at ${show.time}`;
-  }
-  return dateLabel;
-};
-
-const formatShowLocation = (show) =>
-  [show?.venueName, [show?.city, show?.region].filter(Boolean).join(", ")]
-    .filter(Boolean)
-    .join(" - ");
-
-const ShowCard = memo(({ show }) => {
-  const showDate = formatShowDate(show);
-  const showLocation = formatShowLocation(show);
-
-  return (
-    <>
-      <article
-        className="group overflow-hidden rounded-2xl border border-white/10 md:hidden"
-        style={{ backgroundColor: "#191820" }}
-      >
-        <div className="flex min-h-[120px]">
-          <a
-            href={show.url || "#"}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="relative block w-[112px] shrink-0 overflow-hidden"
-            style={{ backgroundColor: "#211f27" }}
-          >
-            {show.image ? (
-              <img
-                src={show.image}
-                alt={show.eventName || show.artistName}
-                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                loading="lazy"
-                decoding="async"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                <Music className="w-8 h-8" style={{ color: "#c1c1c3" }} />
-              </div>
-            )}
-            {Number.isFinite(show.distance) && (
-              <div className="absolute left-2 top-2">
-                <span
-                  className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide"
-                  style={{ backgroundColor: "rgba(20,20,26,0.82)", color: "#fff" }}
-                >
-                  {Math.round(show.distance)} mi
-                </span>
-              </div>
-            )}
-          </a>
-          <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
-            <div className="min-w-0">
-              <p className="truncate text-[11px] uppercase tracking-[0.22em]" style={{ color: "#8a8a8f" }}>
-                {show.artistName}
-              </p>
-              <h3 className="mt-1 line-clamp-2 text-base font-semibold leading-tight">
-                <a
-                  href={show.url || "#"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="transition-opacity hover:opacity-80"
-                  style={{ color: "#fff" }}
-                >
-                  {show.eventName}
-                </a>
-              </h3>
-            </div>
-            <div className="space-y-1.5 text-xs" style={{ color: "#c1c1c3" }}>
-              {showDate && (
-                <p className="flex items-center gap-2">
-                  <Clock className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{showDate}</span>
-                </p>
-              )}
-              {showLocation && (
-                <p className="flex items-start gap-2">
-                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span className="line-clamp-2">{showLocation}</span>
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      </article>
-
-      <article
-        className="group hidden flex-col overflow-hidden border border-white/10 md:flex"
-        style={{ backgroundColor: "#191820" }}
-      >
-        <a href={show.url || "#"} target="_blank" rel="noopener noreferrer">
-          <div
-            className="relative aspect-[16/9] overflow-hidden"
-            style={{ backgroundColor: "#211f27" }}
-          >
-            {show.image ? (
-              <img
-                src={show.image}
-                alt={show.eventName || show.artistName}
-                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                loading="lazy"
-                decoding="async"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                <Music className="w-10 h-10" style={{ color: "#c1c1c3" }} />
-              </div>
-            )}
-            <div className="absolute left-3 top-3 flex gap-2">
-              {Number.isFinite(show.distance) && (
-                <span
-                  className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide"
-                  style={{ backgroundColor: "rgba(20,20,26,0.82)", color: "#fff" }}
-                >
-                  {Math.round(show.distance)} mi
-                </span>
-              )}
-            </div>
-          </div>
-        </a>
-        <div className="flex flex-1 flex-col gap-3 p-4">
-          <div className="min-w-0">
-            <p className="text-xs uppercase tracking-[0.22em]" style={{ color: "#8a8a8f" }}>
-              {show.artistName}
-            </p>
-            <h3 className="mt-1 text-lg font-semibold leading-tight">
-              <a
-                href={show.url || "#"}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="transition-opacity hover:opacity-80"
-                style={{ color: "#fff" }}
-              >
-                {show.eventName}
-              </a>
-            </h3>
-          </div>
-          <div className="space-y-2 text-sm" style={{ color: "#c1c1c3" }}>
-            {showDate && (
-              <p className="flex items-center gap-2">
-                <Clock className="w-4 h-4 shrink-0" />
-                <span>{showDate}</span>
-              </p>
-            )}
-            {showLocation && (
-              <p className="flex items-start gap-2">
-                <MapPin className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{showLocation}</span>
-              </p>
-            )}
-          </div>
-        </div>
-      </article>
-    </>
-  );
-});
-
-ShowCard.displayName = "ShowCard";
-
-ShowCard.propTypes = {
-  show: PropTypes.shape({
-    id: PropTypes.string,
-    artistName: PropTypes.string,
-    eventName: PropTypes.string,
-    image: PropTypes.string,
-    url: PropTypes.string,
-    date: PropTypes.string,
-    time: PropTypes.string,
-    dateTime: PropTypes.string,
-    venueName: PropTypes.string,
-    city: PropTypes.string,
-    region: PropTypes.string,
-    distance: PropTypes.number,
-  }).isRequired,
-};
-
 function ShowsPage() {
+  useDocumentTitle("Shows");
   const navigate = useNavigate();
   const [showsData, setShowsData] = useState(null);
   const [showsLoading, setShowsLoading] = useState(false);
@@ -217,8 +24,7 @@ function ShowsPage() {
   const [showFilter, setShowFilter] = useState("all");
   const [locationMode, setLocationMode] = useState("ip");
   const [appliedZip, setAppliedZip] = useState("");
-  const [showZipEditor, setShowZipEditor] = useState(false);
-  const [zipDraft, setZipDraft] = useState("");
+  const zipModeActive = locationMode === "zip";
 
   useEffect(() => {
     try {
@@ -228,7 +34,6 @@ function ShowsPage() {
         setLocationMode(storedMode);
       }
       setAppliedZip(storedZip);
-      setZipDraft(storedZip);
     } catch {}
   }, []);
 
@@ -279,230 +84,149 @@ function ShowsPage() {
         : allShows;
   const locationLabel =
     showsData?.location?.label || showsData?.location?.postalCode || "your area";
-  const zipModeActive = locationMode === "zip";
+  const pageSubtitle = showsLoading
+    ? "Finding Ticketmaster events matched to your library and recommendations."
+    : `Upcoming concerts around ${locationLabel}, matched to artists in your library and Discover.`;
+
+  const emptyMessage =
+    showFilter === "library"
+      ? `We could not find local Ticketmaster shows for artists from your library around ${locationLabel}.`
+      : showFilter === "discover"
+        ? `We could not find local Ticketmaster shows tied to your Discover recommendations around ${locationLabel}.`
+        : `We could not find local Ticketmaster shows for artists from your library or Discover around ${locationLabel}.`;
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-2">
-          <h1 className="text-4xl font-bold tracking-tight" style={{ color: "#fff" }}>
-            Shows Near You
-          </h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="inline-flex p-1 border border-white/10" style={{ backgroundColor: "#17161d" }}>
-            <button
-              type="button"
-              onClick={() => {
-                setLocationMode("ip");
-                setShowZipEditor(false);
-                try {
-                  localStorage.setItem(NEARBY_MODE_KEY, "ip");
-                } catch {}
-              }}
-              className="px-3 py-1.5 text-xs font-medium transition-colors"
-              style={{
-                backgroundColor: !zipModeActive ? "#5a5a5f" : "transparent",
-                color: !zipModeActive ? "#0b0b0c" : "#c1c1c3",
-              }}
-            >
-              Your Area
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setLocationMode("zip");
-                try {
-                  localStorage.setItem(NEARBY_MODE_KEY, "zip");
-                } catch {}
-              }}
-              className="px-3 py-1.5 text-xs font-medium transition-colors"
-              style={{
-                backgroundColor: zipModeActive ? "#5a5a5f" : "transparent",
-                color: zipModeActive ? "#0b0b0c" : "#c1c1c3",
-              }}
-            >
-              ZIP
-            </button>
+    <div className="shows-page">
+      <header className="shows-page__header">
+        <div className="shows-page__title-row">
+          <div className="shows-page__title-wrap">
+            <h1 className="shows-page__title">Shows Near You</h1>
+            <p className="shows-page__subtitle">{pageSubtitle}</p>
           </div>
-          {zipModeActive && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => {
-                  setZipDraft(appliedZip);
-                  setShowZipEditor((value) => !value);
-                }}
-                className="inline-flex items-center justify-center w-8 h-8 border border-white/10 transition-colors"
-                style={{ backgroundColor: "#17161d", color: "#c1c1c3" }}
-                aria-label="Edit ZIP"
-                title="Edit ZIP"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-              </button>
-              {showZipEditor && (
-                <div
-                  className="absolute right-0 top-10 z-20 w-52 p-2 border border-white/10"
-                  style={{ backgroundColor: "#17161d" }}
-                >
-                  <input
-                    type="text"
-                    value={zipDraft}
-                    onChange={(event) => setZipDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter") return;
-                      event.preventDefault();
-                      const sanitized = zipDraft.trim();
-                      if (!sanitized) return;
-                      setAppliedZip(sanitized);
-                      setLocationMode("zip");
-                      setShowZipEditor(false);
-                      try {
-                        localStorage.setItem(NEARBY_MODE_KEY, "zip");
-                        localStorage.setItem(NEARBY_ZIP_KEY, sanitized);
-                      } catch {}
-                    }}
-                    className="input w-full mb-2"
-                    placeholder="ZIP or postal code"
-                  />
-                  <div className="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowZipEditor(false)}
-                      className="px-2 py-1 text-xs border border-white/10"
-                      style={{ color: "#c1c1c3" }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const sanitized = zipDraft.trim();
-                        if (!sanitized) return;
-                        setAppliedZip(sanitized);
-                        setLocationMode("zip");
-                        setShowZipEditor(false);
-                        try {
-                          localStorage.setItem(NEARBY_MODE_KEY, "zip");
-                          localStorage.setItem(NEARBY_ZIP_KEY, sanitized);
-                        } catch {}
-                      }}
-                      className="px-2 py-1 text-xs"
-                      style={{
-                        backgroundColor: "#707e61",
-                        color: "#0b0b0c",
-                        opacity: zipDraft.trim() ? 1 : 0.5,
-                      }}
-                      disabled={!zipDraft.trim()}
-                    >
-                      Save
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          <NearbyLocationControl
+            locationMode={locationMode}
+            appliedZip={appliedZip}
+            location={showsData?.location}
+            onSelectYourLocation={() => {
+              setLocationMode("ip");
+              try {
+                localStorage.setItem(NEARBY_MODE_KEY, "ip");
+              } catch {}
+            }}
+            onStartCustomLocation={() => {
+              setLocationMode("zip");
+              try {
+                localStorage.setItem(NEARBY_MODE_KEY, "zip");
+              } catch {}
+            }}
+            onApplyZip={(sanitized) => {
+              setAppliedZip(sanitized);
+              setLocationMode("zip");
+              try {
+                localStorage.setItem(NEARBY_MODE_KEY, "zip");
+                localStorage.setItem(NEARBY_ZIP_KEY, sanitized);
+              } catch {}
+            }}
+          />
         </div>
-      </div>
+      </header>
 
       {showsData?.configured === false ? (
-        <div className="p-6 border border-white/10" style={{ backgroundColor: "#191820" }}>
-          <h2 className="text-lg font-semibold" style={{ color: "#fff" }}>
+        <div className="search-empty-panel">
+          <div className="search-empty-panel__icon" aria-hidden="true">
+            <MapPin className="artist-icon-lg" />
+          </div>
+          <h2 className="search-empty-panel__title">
             Ticketmaster not configured
           </h2>
-          <p className="mt-2 text-sm max-w-2xl" style={{ color: "#c1c1c3" }}>
-            Add a Ticketmaster Consumer Key in Settings to enable local show discovery.
+          <p className="search-empty-panel__message">
+            Add a Ticketmaster Consumer Key in Settings to enable local show
+            discovery.
           </p>
           <button
             type="button"
             onClick={() => navigate("/settings")}
-            className="btn btn-primary mt-4"
+            className="btn btn-primary btn--bold btn-min-h shows-page__panel-action"
           >
             Open Settings
           </button>
         </div>
       ) : showsLoading ? (
-        <div className="flex items-center justify-center py-24" style={{ backgroundColor: "#191820" }}>
-          <Loader className="w-8 h-8 animate-spin" style={{ color: "#c1c1c3" }} />
+        <div className="artist-loading">
+          <Loader className="artist-spinner artist-spinner--large animate-spin" />
         </div>
       ) : showsError ? (
-        <div className="p-6 border border-white/10" style={{ backgroundColor: "#191820" }}>
-          <h2 className="text-lg font-semibold" style={{ color: "#fff" }}>
-            Unable to load nearby shows
-          </h2>
-          <p className="mt-2 text-sm" style={{ color: "#c1c1c3" }}>
-            {showsError}
-          </p>
+        <div className="artist-error-panel" role="alert">
+          <AlertCircle className="artist-error-icon" aria-hidden="true" />
+          <h2 className="artist-error-title">Unable to load nearby shows</h2>
+          <p className="artist-error-copy">{showsError}</p>
         </div>
       ) : zipModeActive && !appliedZip.trim() ? (
-        <div className="p-6 border border-white/10" style={{ backgroundColor: "#191820" }}>
-          <h2 className="text-lg font-semibold" style={{ color: "#fff" }}>
+        <div className="search-empty-panel">
+          <div className="search-empty-panel__icon" aria-hidden="true">
+            <MapPin className="artist-icon-lg" />
+          </div>
+          <h2 className="search-empty-panel__title">
             Enter a ZIP or postal code
           </h2>
-          <p className="mt-2 text-sm" style={{ color: "#c1c1c3" }}>
-            Use a postal code to browse library shows in another area.
+          <p className="search-empty-panel__message">
+            Open the location menu above and enter a ZIP or postal code.
           </p>
         </div>
       ) : shows.length > 0 ? (
-        <div className="space-y-5">
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div className="space-y-3">
-              <p className="text-sm" style={{ color: "#8a8a8f" }}>
+        <section className="shows-page__content">
+          <div className="shows-page__toolbar">
+            <div className="shows-page__toolbar-copy">
+              <p className="artist-count shows-page__result-count">
                 Showing {shows.length}
                 {showFilter === "all" && showsData?.total > shows.length
                   ? ` of ${showsData.total}`
-                  : ""}
-                {" "}upcoming matches around {locationLabel}
+                  : ""}{" "}
+                upcoming matches
               </p>
-              <div
-                className="inline-flex border border-white/10 p-1"
-                style={{ backgroundColor: "#17161d" }}
-              >
-                {SHOW_FILTER_OPTIONS.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => setShowFilter(option.id)}
-                    className="px-3 py-1.5 text-xs font-medium transition-colors"
-                    style={{
-                      backgroundColor:
-                        showFilter === option.id ? "#5a5a5f" : "transparent",
-                      color:
-                        showFilter === option.id ? "#0b0b0c" : "#c1c1c3",
-                    }}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
+              {showFilter === "all" && showsData?.total > shows.length && (
+                <p className="shows-page__hint">
+                  Refine the area to narrow the list
+                </p>
+              )}
             </div>
-            {showFilter === "all" && showsData?.total > shows.length && (
-              <p className="text-xs uppercase tracking-wide" style={{ color: "#8a8a8f" }}>
-                Refine the area to narrow the list
-              </p>
-            )}
+            <div
+              className="artist-segmented shows-page__filters"
+              role="group"
+              aria-label="Show filters"
+            >
+              {SHOW_FILTER_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => setShowFilter(option.id)}
+                  className={`artist-segmented-button${showFilter === option.id ? " is-active" : ""}`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          <div className="shows-page__grid">
             {shows.map((show) => (
-              <ShowCard
+              <div
                 key={`${show.id}-${show.artistName}-${show.sourceType || show.matchType || "show"}`}
-                show={show}
-              />
+                className="shows-page__grid-item"
+              >
+                <ShowCard show={show} />
+              </div>
             ))}
           </div>
-        </div>
+        </section>
       ) : (
-        <div className="p-6 border border-white/10" style={{ backgroundColor: "#191820" }}>
-          <h2 className="text-lg font-semibold" style={{ color: "#fff" }}>
+        <div className="search-empty-panel">
+          <div className="search-empty-panel__icon" aria-hidden="true">
+            <Music className="artist-icon-lg" />
+          </div>
+          <h2 className="search-empty-panel__title">
             No upcoming nearby matches
           </h2>
-          <p className="mt-2 text-sm max-w-2xl" style={{ color: "#c1c1c3" }}>
-            {showFilter === "library"
-              ? `We could not find local Ticketmaster shows for artists from your library around ${locationLabel}.`
-              : showFilter === "discover"
-                ? `We could not find local Ticketmaster shows tied to your Discover recommendations around ${locationLabel}.`
-                : `We could not find local Ticketmaster shows for artists from your library or Discover around ${locationLabel}.`}
-          </p>
+          <p className="search-empty-panel__message">{emptyMessage}</p>
         </div>
       )}
     </div>

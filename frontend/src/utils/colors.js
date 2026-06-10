@@ -1,9 +1,10 @@
 export const colors = {
-  card: "#211f27",
+  card: "#121212",
   text: "#fff",
-  subText: "#c1c1c3",
-  sidebar: "#18181c",
-  backgroundTop: "#050505",
-  backgroundBottom: "#18181c",
-  brand: "#707e61",
+  subText: "#b3b3b3",
+  sidebar: "#121212",
+  backgroundTop: "#000000",
+  backgroundBottom: "#000000",
+  brand: "#84cc16",
+  midGray: "#535353",
 };

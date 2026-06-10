@@ -1,1072 +1,134 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import PropTypes from "prop-types";
+import { MapPin } from "lucide-react";
 import {
-  Loader,
-  Music,
-  CheckCircle,
-  RefreshCw,
-  ChevronDown,
-  SlidersHorizontal,
-  Calendar,
-  MapPin,
-  Trash2,
-  Play,
-  Pause,
-  Pencil,
-  Ban,
-  MoreHorizontal,
-  Volume2,
-  VolumeX,
-  ChevronUp,
-} from "lucide-react";
-import { getCoverImage, getTagColor, formatLifeSpan } from "../utils";
-import AddToLibraryButton from "../../../components/AddToLibraryButton";
-import lidarrLogo from "../../../../images/logos/lidarr.svg?raw";
-import lastFmLogo from "../../../../images/logos/last-fm.svg?raw";
-import musicBrainzLogo from "../../../../images/logos/musicbrainz.svg?raw";
-import listenBrainzLogo from "../../../../images/logos/listenbrainz.svg?raw";
-
-const toCurrentColorSvg = (svg) =>
-  svg
-    .replace(/fill:#fff/gi, "fill:currentColor")
-    .replace(/fill="#fff"/gi, 'fill="currentColor"')
-    .replace(/fill:#ffffff/gi, "fill:currentColor")
-    .replace(/fill="#ffffff"/gi, 'fill="currentColor"');
-
-const normalizeExternalHref = (value) => {
-  const href = String(value || "").trim();
-  if (!href) return null;
-  try {
-    return new URL(href).toString();
-  } catch {
-    return null;
-  }
-};
-
-const hostnameLabel = (href) => {
-  try {
-    return new URL(href).hostname.replace(/^www\./, "");
-  } catch {
-    return href;
-  }
-};
+  formatLifeSpan,
+  getArtistHeroImage,
+  getArtistType,
+  getTagColor,
+} from "../utils";
 
 const normalizeTagName = (value) => String(value || "").trim();
 
-const buildRelationLinks = (artist) => {
-  const directLinks = Array.isArray(artist?.links)
-    ? artist.links
-    : [];
-  if (directLinks.length > 0) {
-    return directLinks
-      .map((link, index) => {
-        const href = normalizeExternalHref(link?.target || link?.url);
-        if (!href) return null;
-        return {
-          key: `brainzmash-link-${index}`,
-          label: link?.type || hostnameLabel(href),
-          href,
-        };
-      })
-      .filter(Boolean);
+const buildTags = (artist) => {
+  const seen = new Set();
+  const tags = [];
+  const source = [
+    ...(Array.isArray(artist?.genres) ? artist.genres : []),
+    ...(Array.isArray(artist?.tags) ? artist.tags : []),
+  ];
+  for (const item of source) {
+    const name = normalizeTagName(typeof item === "string" ? item : item?.name);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tags.push({ key, name });
   }
-
-  return Array.isArray(artist?.relations)
-    ? artist.relations
-        .map((relation, index) => {
-          const href = normalizeExternalHref(relation?.url?.resource);
-          if (!href) return null;
-          return {
-            key: `relation-link-${index}`,
-            label: relation?.type || hostnameLabel(href),
-            href,
-          };
-        })
-        .filter(Boolean)
-    : [];
+  return tags;
 };
 
 export function ArtistDetailsHero({
   artist,
-  libraryArtist,
-  appSettings,
   coverImages,
-  loadingCover,
-  loadingLibrary,
   existsInLibrary,
-  showRemoveDropdown,
-  setShowRemoveDropdown,
-  showMonitorOptionMenu,
-  setShowMonitorOptionMenu,
-  updatingMonitor,
-  canChangeMonitoring,
-  getCurrentMonitorOption,
-  handleUpdateMonitorOption,
-  canDeleteArtist,
-  handleDeleteClick,
-  canAddArtist,
-  handleAddToLibrary,
-  handleOpenAddCustomizeModal,
-  addingToLibrary,
-  canRefreshArtist,
-  handleRefreshArtist,
-  refreshingArtist,
+  loadingLibrary,
   onCoverError,
   onNavigate,
-  loadingPreview,
-  previewTracks,
-  previewAudioRef,
-  playingPreviewId,
-  previewProgress,
-  previewSnappingBack,
-  previewVolume,
-  setPreviewVolume,
-  handlePreviewPlay,
-  onEditIds,
-  onToggleBlockArtist,
-  blockingArtist,
-  artistBlocked,
 }) {
-  const coverImage = getCoverImage(coverImages);
-  const lifeSpan = formatLifeSpan(artist["life-span"]);
-  const [showHeroMenu, setShowHeroMenu] = useState(false);
-  const [coverFailed, setCoverFailed] = useState(false);
-  const [showAllTags, setShowAllTags] = useState(false);
-  const [showAllSecondaryLinks, setShowAllSecondaryLinks] = useState(false);
-  const [collapsedTagCount, setCollapsedTagCount] = useState(8);
-  const [collapsedSecondaryLinkCount, setCollapsedSecondaryLinkCount] = useState(6);
-  const tagsRowRef = useRef(null);
-  const tagsMeasureRef = useRef(null);
-  const tagsToggleMeasureRef = useRef(null);
-  const secondaryLinksRowRef = useRef(null);
-  const secondaryLinksMeasureRef = useRef(null);
-  const secondaryLinksToggleMeasureRef = useRef(null);
-  const lidarrArtistId =
-    artist?.id ||
-    libraryArtist?.foreignArtistId ||
-    libraryArtist?.mbid ||
-    artist?._lidarrData?.foreignArtistId;
-  const lidarrUrl =
-    appSettings?.integrations?.lidarr?.externalUrl ||
-    appSettings?.integrations?.lidarr?.url;
-  const lidarrArtistLink =
-    lidarrUrl && lidarrArtistId
-      ? `${lidarrUrl.replace(/\/$/, "")}/${
-          existsInLibrary
-            ? `artist/${lidarrArtistId}`
-            : `add/search?term=lidarr:${encodeURIComponent(lidarrArtistId)}`
-        }`
-      : null;
-  const hasPreview = loadingPreview || (previewTracks && previewTracks.length > 0);
-  useEffect(() => {
-    setCoverFailed(false);
-  }, [coverImage]);
-  useEffect(() => {
-    setShowAllTags(false);
-    setShowAllSecondaryLinks(false);
-  }, [artist?.id]);
-  const metadataItems = [
-    lifeSpan
-      ? {
-          key: "active",
-          icon: Calendar,
-          label: "Active",
-          value: lifeSpan,
-        }
-      : null,
-    artist.country
-      ? {
-          key: "country",
-          icon: MapPin,
-          label: "Country",
-          value: artist.country,
-        }
-      : null,
-    artist.area?.name
-      ? {
-          key: "area",
-          icon: MapPin,
-          label: "Area",
-          value: artist.area.name,
-        }
-      : null,
-  ].filter(Boolean);
-  const tags = useMemo(
-    () => {
-      const dedupedTags = [];
-      const seenTagNames = new Set();
-      const allTags = [
-        ...(Array.isArray(artist.genres) ? artist.genres : []),
-        ...(Array.isArray(artist.tags) ? artist.tags : []),
-      ];
+  const heroImage = getArtistHeroImage(coverImages);
+  const [imageFailed, setImageFailed] = useState(false);
+  const tags = useMemo(() => buildTags(artist), [artist]);
+  const visibleTags = tags.slice(0, 8);
+  const artistType = getArtistType(artist?.type);
+  const lifeSpan = formatLifeSpan(artist?.["life-span"]);
+  const releaseCount = Number(artist?.["release-group-count"] || 0);
+  const location = artist?.area?.name || artist?.country || "";
+  const showImage = heroImage && !imageFailed;
 
-      for (const item of allTags) {
-        const name = normalizeTagName(
-          typeof item === "string" ? item : item?.name,
-        );
-        if (!name) continue;
-
-        const normalizedName = name.toLowerCase();
-        if (seenTagNames.has(normalizedName)) continue;
-        seenTagNames.add(normalizedName);
-
-        dedupedTags.push({
-          key: `tag-${normalizedName}`,
-          name,
-        });
-      }
-
-      return dedupedTags;
-    },
-    [artist.genres, artist.tags],
-  );
-  const visibleTags = showAllTags ? tags : tags.slice(0, collapsedTagCount);
-  const primaryExternalLinks = useMemo(
-    () =>
-      [
-        lidarrArtistLink
-          ? {
-              key: "lidarr",
-              label: "Lidarr",
-              href: lidarrArtistLink,
-              logo: toCurrentColorSvg(lidarrLogo),
-              color: "#009252",
-            }
-          : null,
-        {
-          key: "lastfm",
-          label: "Last.fm",
-          href: `https://www.last.fm/music/${encodeURIComponent(artist.name)}`,
-          logo: toCurrentColorSvg(lastFmLogo),
-          color: "#D1170D",
-        },
-        artist.id &&
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-          artist.id
-        )
-          ? {
-              key: "musicbrainz",
-              label: "MusicBrainz",
-              href: `https://musicbrainz.org/artist/${artist.id}`,
-              logo: toCurrentColorSvg(musicBrainzLogo),
-              color: "#BA478F",
-            }
-          : null,
-        artist.id &&
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-          artist.id
-        )
-          ? {
-              key: "listenbrainz",
-              label: "ListenBrainz",
-              href: `https://listenbrainz.org/artist/${encodeURIComponent(artist.id)}/`,
-              logo: toCurrentColorSvg(listenBrainzLogo),
-              color: "#353070",
-            }
-          : null,
-      ].filter(Boolean),
-    [artist.id, artist.name, lidarrArtistLink],
-  );
-  const secondaryExternalLinks = useMemo(
-    () =>
-      buildRelationLinks(artist).map((link) => ({
-        ...link,
-        color: "#a8acb8",
-      })),
-    [artist],
-  );
-  const { uniquePrimaryExternalLinks, uniqueSecondaryExternalLinks } = useMemo(() => {
-    const nextPrimaryExternalLinks = [];
-    const nextSecondaryExternalLinks = [];
-    const seenExternalHrefs = new Set();
-    for (const link of primaryExternalLinks) {
-      const href = normalizeExternalHref(link?.href);
-      if (!href || seenExternalHrefs.has(href)) continue;
-      seenExternalHrefs.add(href);
-      nextPrimaryExternalLinks.push({ ...link, href });
-    }
-    for (const link of secondaryExternalLinks) {
-      const href = normalizeExternalHref(link?.href);
-      if (!href || seenExternalHrefs.has(href)) continue;
-      seenExternalHrefs.add(href);
-      nextSecondaryExternalLinks.push({ ...link, href });
-    }
-    return {
-      uniquePrimaryExternalLinks: nextPrimaryExternalLinks,
-      uniqueSecondaryExternalLinks: nextSecondaryExternalLinks,
-    };
-  }, [primaryExternalLinks, secondaryExternalLinks]);
-  const visibleSecondaryLinks = showAllSecondaryLinks
-    ? uniqueSecondaryExternalLinks
-    : uniqueSecondaryExternalLinks.slice(0, collapsedSecondaryLinkCount);
-
-  useEffect(() => {
-    const GAP = 8;
-
-    const measureFitCount = ({
-      rowRef,
-      itemsRef,
-      toggleRef,
-      itemCount,
-      setCount,
-      fallbackCount,
-    }) => {
-      const row = rowRef.current;
-      const items = itemsRef.current?.children
-        ? Array.from(itemsRef.current.children)
-        : [];
-      const toggle = toggleRef.current;
-      if (!row || items.length === 0) {
-        setCount(fallbackCount);
-        return;
-      }
-      const rowWidth = row.clientWidth;
-      const toggleWidth = itemCount > 0 && toggle ? toggle.offsetWidth + GAP : 0;
-      const available = Math.max(0, rowWidth - toggleWidth);
-      let used = 0;
-      let count = 0;
-      for (const item of items) {
-        const width = item.offsetWidth;
-        const next = count === 0 ? width : used + GAP + width;
-        if (next > available) break;
-        used = next;
-        count += 1;
-      }
-      setCount(Math.max(1, count || fallbackCount));
-    };
-
-    const runMeasurements = () => {
-      measureFitCount({
-        rowRef: tagsRowRef,
-        itemsRef: tagsMeasureRef,
-        toggleRef: tagsToggleMeasureRef,
-        itemCount: tags.length,
-        setCount: setCollapsedTagCount,
-        fallbackCount: Math.min(8, Math.max(1, tags.length)),
-      });
-      measureFitCount({
-        rowRef: secondaryLinksRowRef,
-        itemsRef: secondaryLinksMeasureRef,
-        toggleRef: secondaryLinksToggleMeasureRef,
-        itemCount: uniqueSecondaryExternalLinks.length,
-        setCount: setCollapsedSecondaryLinkCount,
-        fallbackCount: Math.min(6, Math.max(1, uniqueSecondaryExternalLinks.length)),
-      });
-    };
-
-    runMeasurements();
-    const observer = new ResizeObserver(() => {
-      runMeasurements();
-    });
-    if (tagsRowRef.current) observer.observe(tagsRowRef.current);
-    if (secondaryLinksRowRef.current) observer.observe(secondaryLinksRowRef.current);
-    return () => observer.disconnect();
-  }, [tags, uniqueSecondaryExternalLinks, artist?.id]);
-
-  const renderLibraryAction = () => {
-    if (loadingLibrary) {
-      return (
-        <div className="btn btn-secondary inline-flex items-center">
-          <Loader className="w-5 h-5 mr-2 animate-spin" />
-          {existsInLibrary ? "Loading Library..." : "Checking Lidarr..."}
-        </div>
-      );
-    }
-
-    if (existsInLibrary) {
-      if (canChangeMonitoring || canDeleteArtist) {
-        return (
-          <div className="relative inline-flex">
-            <button
-              type="button"
-              onClick={() => setShowRemoveDropdown(!showRemoveDropdown)}
-              className="btn btn-success inline-flex items-center"
-            >
-              <CheckCircle className="w-5 h-5 mr-2" />
-              In Your Library
-              <ChevronDown
-                className={`w-4 h-4 ml-2 transition-transform ${
-                  showRemoveDropdown ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-            {showRemoveDropdown && (
-              <>
-                <div
-                  className="fixed inset-0 z-10"
-                  onClick={() => setShowRemoveDropdown(false)}
-                />
-                <div
-                  className="absolute left-0 top-full mt-2 w-56 z-20 py-1 rounded shadow-lg border border-white/10"
-                  style={{ backgroundColor: "#2a2830" }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {canChangeMonitoring && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowMonitorOptionMenu(!showMonitorOptionMenu);
-                      }}
-                      disabled={updatingMonitor}
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-900/50 transition-colors flex items-center justify-between"
-                      style={{ color: "#fff" }}
-                    >
-                      <span>Change Monitor Option</span>
-                      <ChevronDown
-                        className={`w-4 h-4 transition-transform ${
-                          showMonitorOptionMenu ? "rotate-180" : ""
-                        }`}
-                      />
-                    </button>
-                  )}
-
-                  {canChangeMonitoring && showMonitorOptionMenu && (
-                    <>
-                      <div className="my-1" />
-                      {[
-                        { value: "none", label: "None (Artist Only)" },
-                        { value: "existing", label: "Existing Albums" },
-                        { value: "all", label: "All Albums" },
-                        { value: "future", label: "Future Albums" },
-                        { value: "missing", label: "Missing Albums" },
-                        { value: "latest", label: "Latest Album" },
-                        { value: "first", label: "First Album" },
-                      ].map((option) => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleUpdateMonitorOption(option.value);
-                            setShowMonitorOptionMenu(false);
-                            setShowRemoveDropdown(false);
-                          }}
-                          disabled={updatingMonitor}
-                          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-900/50 transition-colors"
-                          style={
-                            getCurrentMonitorOption() === option.value
-                              ? {
-                                  backgroundColor: "#211f27",
-                                  color: "#fff",
-                                  fontWeight: "500",
-                                }
-                              : { color: "#fff" }
-                          }
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </>
-                  )}
-
-                  {canDeleteArtist && (
-                    <>
-                      <div className="my-1" />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleDeleteClick();
-                          setShowRemoveDropdown(false);
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500/20 transition-colors flex items-center"
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Remove from Library
-                      </button>
-                    </>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        );
-      }
-
-      return (
-        <div className="btn btn-success inline-flex items-center cursor-default">
-          <CheckCircle className="w-5 h-5 mr-2" />
-          In Your Library
-        </div>
-      );
-    }
-
-    if (!canAddArtist) return null;
-
-    return (
-      <div className="add-to-library-button-group">
-        <AddToLibraryButton
-          onClick={handleAddToLibrary}
-          isLoading={addingToLibrary}
-          className="add-to-library-button--split"
-        />
-        <button
-          type="button"
-          onClick={handleOpenAddCustomizeModal}
-          disabled={addingToLibrary}
-          className="add-to-library-button-split-trigger"
-          aria-label="Customize add options"
-          title="Customize add options"
-        >
-          <SlidersHorizontal className="w-4 h-4" />
-        </button>
-      </div>
-    );
-  };
-
-  const hasHeroMenuActions =
-    Boolean(onEditIds) || Boolean(onToggleBlockArtist) || (existsInLibrary && canRefreshArtist);
-
-  const renderHeroMenu = () => {
-    if (!hasHeroMenuActions) return null;
-
-    return (
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setShowHeroMenu((value) => !value)}
-          className="btn btn-sm p-2 inline-flex items-center hover:bg-white/5"
-          style={{ backgroundColor: "transparent", color: "#fff" }}
-          aria-label="More artist actions"
-          title="More artist actions"
-        >
-          <MoreHorizontal className="w-5 h-5" />
-        </button>
-        {showHeroMenu && (
+  return (
+    <section className="artist-hero">
+      <div className="artist-hero__inner">
+        {showImage ? (
           <>
-            <div
-              className="fixed inset-0 z-10"
-              onClick={() => setShowHeroMenu(false)}
-            />
-            <div
-              className="absolute right-0 top-full mt-2 w-56 z-20 rounded-md border border-white/10 py-1 shadow-xl"
-              style={{
-                backgroundColor: "#2d2b35",
-                boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+            <img
+              src={heroImage}
+              alt=""
+              className="artist-hero__image"
+              loading="eager"
+              decoding="async"
+              onError={() => {
+                setImageFailed(true);
+                onCoverError?.();
               }}
-            >
-              {onEditIds && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onEditIds();
-                    setShowHeroMenu(false);
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-white/10 transition-colors flex items-center"
-                  style={{ color: "#fff" }}
-                >
-                  <Pencil className="w-4 h-4 mr-2" />
-                  Edit IDs
-                </button>
-              )}
-              {onToggleBlockArtist && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onToggleBlockArtist();
-                    setShowHeroMenu(false);
-                  }}
-                  disabled={blockingArtist}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-white/10 transition-colors flex items-center disabled:opacity-60"
-                  style={{ color: artistBlocked ? "#fca5a5" : "#fff" }}
-                >
-                  {blockingArtist ? (
-                    <Loader className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Ban className="w-4 h-4 mr-2" />
-                  )}
-                  {artistBlocked ? "Remove from Blocklist" : "Add to Blocklist"}
-                </button>
-              )}
-              {existsInLibrary && canRefreshArtist && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleRefreshArtist();
-                    setShowHeroMenu(false);
-                  }}
-                  disabled={refreshingArtist}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-white/10 transition-colors flex items-center disabled:opacity-60"
-                  style={{ color: "#fff" }}
-                >
-                  {refreshingArtist ? (
-                    <Loader className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                  )}
-                  Refresh & Scan Artist
-                </button>
-              )}
-            </div>
+            />
+            <div className="artist-hero__wash" />
           </>
+        ) : (
+          <div className="artist-hero__fallback" />
         )}
-      </div>
-    );
-  };
 
-  const renderPreviewPanel = () => {
-    if (!hasPreview) return null;
+        <div className="artist-hero__content">
+          <h1 className="artist-hero__title">
+            {artist.name}
+          </h1>
 
-    return (
-      <div
-        className="w-full xl:w-[320px] xl:max-w-[320px] rounded-[22px] border border-white/10 p-4"
-        style={{ boxShadow: "0 16px 40px rgba(0,0,0,0.24)" }}
-      >
-        <div className="flex items-center justify-between">
-          <div />
-        </div>
-        {!loadingPreview && previewTracks.length > 0 && <audio ref={previewAudioRef} />}
-        <div className="mt-4">
-          <div className="mb-3 hidden md:flex">
-            <div className="flex w-full items-center gap-3 rounded-full border border-white/10 bg-black/20 px-3 py-2">
-              {previewVolume <= 0 ? (
-                <VolumeX className="w-4 h-4 flex-shrink-0" style={{ color: "#c1c1c3" }} />
-              ) : (
-                <Volume2 className="w-4 h-4 flex-shrink-0" style={{ color: "#c1c1c3" }} />
-              )}
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value={Math.round(previewVolume * 100)}
-                onChange={(e) =>
-                  setPreviewVolume(
-                    Math.max(0, Math.min(1, Number(e.target.value) / 100))
-                  )
-                }
-                className="volume-slider min-w-0 flex-1"
-                aria-label="Preview volume"
-              />
-              <span
-                className="w-8 text-right text-xs tabular-nums"
-                style={{ color: "#c1c1c3" }}
-              >
-                {Math.round(previewVolume * 100)}
+          <div className="artist-meta-line">
+            {artistType && <span>{artistType}</span>}
+            {location && (
+              <span className="artist-meta-line__item">
+                <MapPin className="artist-meta-line__icon" />
+                {location}
               </span>
-            </div>
+            )}
+            {lifeSpan && <span>{lifeSpan}</span>}
+            {releaseCount > 0 && (
+              <span>
+                {releaseCount.toLocaleString()} release
+                {releaseCount === 1 ? "" : "s"}
+              </span>
+            )}
+            <span>
+              {loadingLibrary
+                ? "Checking library"
+                : existsInLibrary
+                  ? "In your library"
+                  : "Not in library"}
+            </span>
           </div>
-          {loadingPreview ? (
-            <div className="flex items-center justify-center py-10">
-              <Loader className="w-6 h-6 animate-spin" style={{ color: "#c1c1c3" }} />
-            </div>
-          ) : (
-            <ul className="space-y-2">
-              {previewTracks.map((track) => (
-                <li
-                  key={track.id}
-                  className="relative overflow-hidden rounded-2xl border border-white/5 bg-white/[0.03] transition-colors hover:bg-white/[0.06]"
+
+          {visibleTags.length > 0 && (
+            <div className="artist-tag-list">
+              {visibleTags.map((tag) => (
+                <button
+                  key={tag.key}
+                  type="button"
+                  onClick={() =>
+                    onNavigate?.(
+                      `/search?q=${encodeURIComponent(`#${tag.name}`)}&type=tag`,
+                    )
+                  }
+                  className="artist-tag"
+                  style={{ backgroundColor: getTagColor(tag.name) }}
+                  title={`View artists with tag: ${tag.name}`}
                 >
-                  {playingPreviewId === track.id && (
-                    <div
-                      className="absolute inset-y-0 left-0 pointer-events-none"
-                      style={{
-                        width: `${previewProgress * 100}%`,
-                        background:
-                          "linear-gradient(90deg, rgba(112,126,97,0.42) 0%, rgba(112,126,97,0.12) 100%)",
-                        transition: previewSnappingBack
-                          ? "width 0.28s cubic-bezier(0.34, 1.56, 0.64, 1)"
-                          : "width 0.1s linear",
-                      }}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    className="relative z-10 flex w-full items-center gap-3 px-3 py-3 text-left"
-                    onClick={() => handlePreviewPlay(track)}
-                  >
-                    <span
-                      className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/25"
-                      style={{ color: "#fff" }}
-                    >
-                      {playingPreviewId === track.id && !previewSnappingBack ? (
-                        <Pause className="w-4 h-4" />
-                      ) : (
-                        <Play className="w-4 h-4 ml-0.5" />
-                      )}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium" style={{ color: "#fff" }}>
-                        {track.title}
-                      </span>
-                      <span className="block truncate text-xs" style={{ color: "#c1c1c3" }}>
-                        {track.album || "Preview available"}
-                      </span>
-                    </span>
-                    <span className="text-xs tabular-nums" style={{ color: "#c1c1c3" }}>
-                      {track.duration_ms > 0 ? "0:30" : ""}
-                    </span>
-                  </button>
-                </li>
+                  #{tag.name}
+                </button>
               ))}
-            </ul>
+            </div>
           )}
         </div>
       </div>
-    );
-  };
-
-  return (
-    <div
-      className="card mb-8 relative overflow-hidden p-0"
-      style={{
-        background:
-          "linear-gradient(180deg, rgba(33,31,39,0.98) 0%, rgba(29,28,35,0.98) 100%)",
-      }}
-    >
-      {coverImage && !coverFailed && (
-        <>
-          <div
-            className="absolute inset-0 opacity-30"
-            style={{
-              backgroundImage: `url(${coverImage})`,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-              filter: "blur(10px)",
-              transform: "scale(1.08)",
-            }}
-          />
-          <div
-            className="absolute inset-0"
-            style={{
-              background:
-                "radial-gradient(circle at top left, rgba(112,126,97,0.2) 0%, rgba(33,31,39,0) 36%), linear-gradient(135deg, rgba(7,8,11,0.18) 0%, rgba(7,8,11,0.58) 46%, rgba(16,17,22,0.9) 100%)",
-            }}
-          />
-        </>
-      )}
-
-      <div className="relative px-4 py-5 md:px-6 md:py-6">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-stretch">
-          <div className="min-w-0 flex-1 rounded-[26px] border border-white/10 p-4 md:p-6">
-            <div className="flex flex-col items-center gap-5 lg:flex-row lg:items-end lg:justify-start">
-              <div
-                className="relative h-40 w-40 flex-shrink-0 overflow-hidden rounded-[22px] border border-white/10 bg-[#211f27] shadow-2xl sm:h-48 sm:w-48"
-                style={{ boxShadow: "0 18px 42px rgba(0,0,0,0.35)" }}
-              >
-                {loadingCover ? (
-                  <div className="flex h-full w-full items-center justify-center">
-                    <Loader className="w-10 h-10 animate-spin" style={{ color: "#c1c1c3" }} />
-                  </div>
-                ) : coverImage && !coverFailed ? (
-                  <img
-                    src={coverImage}
-                    alt={artist.name}
-                    className="h-full w-full object-cover"
-                    loading="eager"
-                    decoding="async"
-                    onError={() => {
-                      setCoverFailed(true);
-                      onCoverError?.();
-                    }}
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center">
-                    <Music className="w-16 h-16" style={{ color: "#c1c1c3" }} />
-                  </div>
-                )}
-              </div>
-
-              <div className="min-w-0 flex-1 self-stretch">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex items-start gap-2">
-                      <h1
-                        className="min-w-0 text-4xl font-bold leading-none sm:text-5xl"
-                        style={{ color: "#fff" }}
-                      >
-                        {artist.name}
-                      </h1>
-                    </div>
-                  </div>
-
-                  {renderHeroMenu()}
-                </div>
-
-                {artist.bio && (
-                  <p
-                    className="mt-4 max-w-3xl text-sm leading-7 text-white/80 line-clamp-4"
-                    title={artist.bio}
-                  >
-                    {artist.bio}
-                  </p>
-                )}
-
-                {metadataItems.length > 0 && (
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    {metadataItems.map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <div
-                          key={item.key}
-                          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/15 px-3 py-2 text-sm"
-                          style={{ color: "#fff" }}
-                        >
-                          <Icon className="w-4 h-4 flex-shrink-0" style={{ color: "#c1c1c3" }} />
-                          <span className="font-medium" style={{ color: "#c1c1c3" }}>
-                            {item.label}
-                          </span>
-                          <span>{item.value}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <div className="mt-5 flex flex-wrap items-center gap-3">
-                  {renderLibraryAction()}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 flex items-start gap-2">
-              <div className="absolute -left-[9999px] top-auto invisible pointer-events-none whitespace-nowrap">
-                <div ref={tagsMeasureRef} className="flex gap-2">
-                  {tags.map((tag) => (
-                    <span
-                      key={`measure-${tag.key}`}
-                      className="badge genre-tag-pill shrink-0 px-3 py-1.5 text-sm"
-                    >
-                      #{tag.name}
-                    </span>
-                  ))}
-                </div>
-                <button
-                  ref={tagsToggleMeasureRef}
-                  type="button"
-                  className="inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-sm"
-                >
-                  <ChevronDown className="h-4 w-4" />
-                </button>
-              </div>
-              <div
-                ref={tagsRowRef}
-                className={`min-w-0 flex-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
-                  showAllTags
-                    ? "overflow-visible whitespace-normal"
-                    : "overflow-x-auto whitespace-nowrap"
-                }`}
-              >
-                <div className={`flex gap-2 ${showAllTags ? "flex-wrap" : ""}`}>
-                  {tags.length > 0 ? (
-                    visibleTags.map((tag) => (
-                      <button
-                        key={tag.key}
-                        onClick={() =>
-                          onNavigate(`/search?q=${encodeURIComponent(`#${tag.name}`)}&type=tag`)
-                        }
-                        className="badge genre-tag-pill shrink-0 px-3 py-1.5 text-sm cursor-pointer"
-                        style={{
-                          backgroundColor: getTagColor(tag.name),
-                          color: "#fff",
-                        }}
-                        title={`View artists with tag: ${tag.name}`}
-                      >
-                        #{tag.name}
-                      </button>
-                    ))
-                  ) : (
-                    <span className="text-sm" style={{ color: "#c1c1c3" }}>
-                      No tags
-                    </span>
-                  )}
-                </div>
-              </div>
-              {tags.length > visibleTags.length ? (
-                <button
-                  type="button"
-                  onClick={() => setShowAllTags(true)}
-                  className="inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-sm transition-colors hover:bg-white/[0.08]"
-                  style={{ color: "#c1c1c3" }}
-                  aria-label="Show all tags"
-                  title="Show all tags"
-                >
-                  <ChevronDown className="h-4 w-4" />
-                </button>
-              ) : null}
-              {showAllTags && tags.length > collapsedTagCount ? (
-                <button
-                  type="button"
-                  onClick={() => setShowAllTags(false)}
-                  className="inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-sm transition-colors hover:bg-white/[0.08]"
-                  style={{ color: "#c1c1c3" }}
-                  aria-label="Collapse tags"
-                  title="Collapse tags"
-                >
-                  <ChevronUp className="h-4 w-4" />
-                </button>
-              ) : null}
-            </div>
-
-            {uniquePrimaryExternalLinks.length > 0 && (
-              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-                {uniquePrimaryExternalLinks.map((link) => (
-                  <a
-                    key={link.key}
-                    href={link.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-sm transition-opacity hover:opacity-100"
-                    style={{ color: "#d5d6db", opacity: 0.92 }}
-                  >
-                    {link.logo ? (
-                      <span
-                        className="flex h-4 w-4 flex-shrink-0 items-center justify-center [&_svg]:h-full [&_svg]:w-full"
-                        style={{ color: link.color }}
-                        aria-hidden="true"
-                        dangerouslySetInnerHTML={{ __html: link.logo }}
-                      />
-                    ) : link.icon ? (
-                      <span
-                        className="flex h-4 w-4 flex-shrink-0 items-center justify-center"
-                        style={{ color: link.color }}
-                        aria-hidden="true"
-                      >
-                        <link.icon className="h-4 w-4" />
-                      </span>
-                    ) : null}
-                    <span>{link.label}</span>
-                  </a>
-                ))}
-              </div>
-            )}
-
-            {uniqueSecondaryExternalLinks.length > 0 && (
-              <div className="mt-2 flex items-start gap-2">
-                <div className="absolute -left-[9999px] top-auto invisible pointer-events-none whitespace-nowrap">
-                  <div ref={secondaryLinksMeasureRef} className="flex gap-x-3 gap-y-1.5">
-                    {uniqueSecondaryExternalLinks.map((link) => (
-                      <span
-                        key={`measure-${link.key}`}
-                        className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs"
-                      >
-                        {link.label}
-                      </span>
-                    ))}
-                  </div>
-                  <button
-                    ref={secondaryLinksToggleMeasureRef}
-                    type="button"
-                    className="inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-xs"
-                  >
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                <div
-                  ref={secondaryLinksRowRef}
-                  className={`min-w-0 flex-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
-                    showAllSecondaryLinks
-                      ? "overflow-visible whitespace-normal"
-                      : "overflow-x-auto whitespace-nowrap"
-                  }`}
-                >
-                  <div
-                    className={`flex gap-x-3 gap-y-1.5 ${
-                      showAllSecondaryLinks ? "flex-wrap whitespace-normal" : "whitespace-nowrap"
-                    }`}
-                  >
-                    {visibleSecondaryLinks.map((link) => (
-                      <a
-                        key={link.key}
-                        href={link.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs transition-colors hover:bg-white/[0.08]"
-                        style={{ color: "#a8acb8", opacity: 0.9 }}
-                      >
-                        <span>{link.label}</span>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-                {uniqueSecondaryExternalLinks.length > visibleSecondaryLinks.length ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowAllSecondaryLinks(true)}
-                    className="inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-xs transition-colors hover:bg-white/[0.08]"
-                    style={{ color: "#a8acb8" }}
-                    aria-label="Show all links"
-                    title="Show all links"
-                  >
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
-                ) : null}
-                {showAllSecondaryLinks && uniqueSecondaryExternalLinks.length > collapsedSecondaryLinkCount ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowAllSecondaryLinks(false)}
-                    className="inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-xs transition-colors hover:bg-white/[0.08]"
-                    style={{ color: "#a8acb8" }}
-                    aria-label="Collapse links"
-                    title="Collapse links"
-                  >
-                    <ChevronUp className="h-3.5 w-3.5" />
-                  </button>
-                ) : null}
-              </div>
-            )}
-          </div>
-
-          {renderPreviewPanel()}
-        </div>
-      </div>
-    </div>
+    </section>
   );
 }
 
 ArtistDetailsHero.propTypes = {
   artist: PropTypes.object.isRequired,
-  libraryArtist: PropTypes.object,
-  appSettings: PropTypes.object,
-  coverImages: PropTypes.arrayOf(
-    PropTypes.shape({
-      front: PropTypes.bool,
-      image: PropTypes.string,
-    })
-  ),
+  coverImages: PropTypes.array,
   loadingCover: PropTypes.bool,
-  loadingLibrary: PropTypes.bool,
   existsInLibrary: PropTypes.bool,
-  showRemoveDropdown: PropTypes.bool,
-  setShowRemoveDropdown: PropTypes.func,
-  showMonitorOptionMenu: PropTypes.bool,
-  setShowMonitorOptionMenu: PropTypes.func,
-  updatingMonitor: PropTypes.bool,
-  canChangeMonitoring: PropTypes.bool,
-  getCurrentMonitorOption: PropTypes.func,
-  handleUpdateMonitorOption: PropTypes.func,
-  canDeleteArtist: PropTypes.bool,
-  handleDeleteClick: PropTypes.func,
-  canAddArtist: PropTypes.bool,
-  handleAddToLibrary: PropTypes.func,
-  handleOpenAddCustomizeModal: PropTypes.func,
-  addingToLibrary: PropTypes.bool,
-  canRefreshArtist: PropTypes.bool,
-  handleRefreshArtist: PropTypes.func,
-  refreshingArtist: PropTypes.bool,
+  loadingLibrary: PropTypes.bool,
   onCoverError: PropTypes.func,
   onNavigate: PropTypes.func,
-  loadingPreview: PropTypes.bool,
-  previewTracks: PropTypes.arrayOf(
-    PropTypes.shape({
-      id: PropTypes.string.isRequired,
-      title: PropTypes.string.isRequired,
-      album: PropTypes.string,
-      duration_ms: PropTypes.number,
-    })
-  ),
-  previewAudioRef: PropTypes.oneOfType([
-    PropTypes.func,
-    PropTypes.shape({ current: PropTypes.instanceOf(Element) }),
-  ]),
-  playingPreviewId: PropTypes.string,
-  previewProgress: PropTypes.number,
-  previewSnappingBack: PropTypes.bool,
-  previewVolume: PropTypes.number,
-  setPreviewVolume: PropTypes.func,
-  handlePreviewPlay: PropTypes.func,
-  onEditIds: PropTypes.func,
-  onToggleBlockArtist: PropTypes.func,
-  blockingArtist: PropTypes.bool,
-  artistBlocked: PropTypes.bool,
 };

@@ -336,13 +336,24 @@ const buildArtworkSvg = ({ playlistName, kind }) => {
 </svg>`.trim();
 };
 
+export const PLAYLIST_ARTWORK_WEBP_QUALITY = 70;
+
+export async function writePlaylistArtworkWebpFromBuffer(buffer, outputPath) {
+  await sharp(buffer, { animated: false })
+    .rotate()
+    .resize(ARTWORK_SIZE, ARTWORK_SIZE, { fit: "cover" })
+    .webp({ quality: PLAYLIST_ARTWORK_WEBP_QUALITY })
+    .toFile(outputPath);
+}
+
 export async function writePlaylistArtworkSidecar({
   playlistName,
   kind,
   outputPath,
 }) {
   const svg = buildArtworkSvg({ playlistName, kind });
+  const webpPath = outputPath.replace(/\.(png|webp)$/i, ".webp");
   await sharp(Buffer.from(svg))
-    .png({ compressionLevel: 9, adaptiveFiltering: true })
-    .toFile(outputPath);
+    .webp({ quality: PLAYLIST_ARTWORK_WEBP_QUALITY })
+    .toFile(webpPath);
 }

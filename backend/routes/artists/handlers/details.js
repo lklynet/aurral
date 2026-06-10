@@ -2,13 +2,14 @@ import { UUID_REGEX } from "../../../config/constants.js";
 import {
   getLastfmApiKey,
   lastfmRequest,
+  musicbrainzGetArtistAppearsOnReleaseGroups,
   musicbrainzGetArtistReleaseGroups,
   musicbrainzGetArtistNameByMbid,
 } from "../../../services/apiClients.js";
 import { dbOps } from "../../../config/db-helpers.js";
 import { cacheMiddleware } from "../../../middleware/cache.js";
 import { requireAuth } from "../../../middleware/requirePermission.js";
-import { pendingArtistRequests } from "../utils.js";
+import { buildArtistRequestKey, pendingArtistRequests } from "../utils.js";
 import { getArtistByMbid } from "../../../services/metadataProvider.js";
 
 export default function registerDetails(router) {
@@ -67,6 +68,11 @@ export default function registerDetails(router) {
           .map((entry) => entry.trim())
           .filter(Boolean)
       : null;
+
+  const parseAppearsOnLimit = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
 
   router.get("/", async (req, res) => {
     res.status(404).json({
@@ -156,6 +162,13 @@ export default function registerDetails(router) {
       const selectedReleaseTypes = parseSelectedReleaseTypes(
         req.query.releaseTypes,
       );
+      const appearsOnLimit = parseAppearsOnLimit(req.query.appearsOnLimit);
+      const requestKey = buildArtistRequestKey({
+        mbid,
+        mode: responseMode,
+        selectedReleaseTypes,
+        appearsOnLimit,
+      });
 
       if (!UUID_REGEX.test(mbid)) {
         console.log(`[Artists Route] Invalid MBID format: ${mbid}`);
@@ -165,12 +178,12 @@ export default function registerDetails(router) {
         });
       }
 
-      if (pendingArtistRequests.has(mbid)) {
+      if (pendingArtistRequests.has(requestKey)) {
         console.log(
-          `[Artists Route] Request for ${mbid} already in progress, waiting...`,
+          `[Artists Route] Request for ${requestKey} already in progress, waiting...`,
         );
         try {
-          const data = await pendingArtistRequests.get(mbid);
+          const data = await pendingArtistRequests.get(requestKey);
           res.setHeader("Content-Type", "application/json");
           return res.json(data);
         } catch (error) {
@@ -224,6 +237,13 @@ export default function registerDetails(router) {
           ? null
           : await getArtistByMbid(artistMbid).catch(() => null);
         const releaseGroups = await musicbrainzGetArtistReleaseGroups(artistMbid, selectedReleaseTypes);
+        const appearsOnReleaseGroups = coreOnly
+          ? []
+          : await musicbrainzGetArtistAppearsOnReleaseGroups(
+              artistMbid,
+              releaseGroups,
+              { limit: appearsOnLimit },
+            );
         const tagPayload = coreOnly
           ? { tags: [], genres: [] }
           : await getArtistTagPayload(
@@ -249,7 +269,9 @@ export default function registerDetails(router) {
           genres: tagPayload.genres,
           links: Array.isArray(metadataArtist?.links) ? metadataArtist.links : [],
           "release-groups": releaseGroups,
+          "appears-on-release-groups": appearsOnReleaseGroups,
           relations: toLegacyRelations(metadataArtist),
+          rating: metadataArtist?.rating || null,
           "release-group-count": releaseGroups.length,
           "release-count": releaseGroups.length,
           _lidarrData: {
@@ -282,6 +304,13 @@ export default function registerDetails(router) {
             resolvedMbid,
             selectedReleaseTypes,
           );
+        const appearsOnReleaseGroups = coreOnly
+          ? []
+          : await musicbrainzGetArtistAppearsOnReleaseGroups(
+              resolvedMbid,
+              releaseGroups,
+              { limit: appearsOnLimit },
+            );
         return {
           id: resolvedMbid,
           name,
@@ -295,14 +324,16 @@ export default function registerDetails(router) {
           genres: tagPayload.genres,
           links: Array.isArray(metadataArtist?.links) ? metadataArtist.links : [],
           "release-groups": releaseGroups,
+          "appears-on-release-groups": appearsOnReleaseGroups,
           relations: toLegacyRelations(metadataArtist),
+          rating: metadataArtist?.rating || null,
           "release-group-count": releaseGroups.length,
           "release-count": releaseGroups.length,
           bio: metadataArtist?.overview || undefined,
         };
       })();
 
-      pendingArtistRequests.set(mbid, fetchPromise);
+      pendingArtistRequests.set(requestKey, fetchPromise);
 
       try {
         data = await fetchPromise;
@@ -323,6 +354,7 @@ export default function registerDetails(router) {
           genres: [],
           links: [],
           "release-groups": [],
+          "appears-on-release-groups": [],
           relations: [],
           "release-group-count": 0,
           "release-count": 0,
@@ -330,7 +362,7 @@ export default function registerDetails(router) {
         res.setHeader("Content-Type", "application/json");
         res.json(fallback);
       } finally {
-        pendingArtistRequests.delete(mbid);
+        pendingArtistRequests.delete(requestKey);
       }
     } catch (error) {
       console.error(

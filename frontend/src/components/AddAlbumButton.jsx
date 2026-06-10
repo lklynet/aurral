@@ -1,25 +1,31 @@
-import PropTypes from 'prop-types';
-import { Plus, Loader } from 'lucide-react';
-import './AddAlbumButton.css';
+import PropTypes from "prop-types";
+import { Plus, Loader } from "lucide-react";
 
-const AddAlbumButton = ({ onClick, isLoading, disabled, className, style }) => {
+const AddAlbumButton = ({
+  onClick,
+  isLoading,
+  disabled,
+  className,
+  style,
+  label = "Add to Lidarr",
+}) => {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled || isLoading}
-      className={`add-album-btn ${className || ''}`}
+      className={`btn btn-add-album${className ? ` ${className}` : ""}`}
       style={style}
-      title="Add to Lidarr"
+      title={label}
     >
-      <div className="icon-container">
+      <div className="btn-add-album__icon">
         {isLoading ? (
-          <Loader className="w-4 h-4 animate-spin" />
+          <Loader className="animate-spin" aria-hidden="true" />
         ) : (
-          <Plus className="w-4 h-4" />
+          <Plus aria-hidden="true" />
         )}
       </div>
-      <span className="label">Add to Lidarr</span>
+      <span className="btn-add-album__label">{label}</span>
     </button>
   );
 };
@@ -30,6 +36,7 @@ AddAlbumButton.propTypes = {
   disabled: PropTypes.bool,
   className: PropTypes.string,
   style: PropTypes.object,
+  label: PropTypes.string,
 };
 
 export default AddAlbumButton;

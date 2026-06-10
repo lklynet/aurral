@@ -1,20 +1,20 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {
-  ArrowUpDown,
-  ChevronDown,
-  Disc,
-  Disc3,
-  Filter,
-  FileMusic,
+  Grid3X3,
+  List,
   Loader,
   Music,
+  SlidersHorizontal,
   X,
   Star,
 } from "lucide-react";
 import {
   addArtistToLibrary,
   addDiscoveryFeedback,
+  getDiscoveryFeedback,
+  removeDiscoveryFeedback,
   getBlocklist,
   getDiscovery,
   getBootstrapStatus,
@@ -30,7 +30,12 @@ import SearchAlbumResults from "../components/SearchAlbumResults";
 import SearchArtistResults from "../components/SearchArtistResults";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
-import { useReleaseTypeFilter } from "./ArtistDetails/hooks/useReleaseTypeFilter";
+import { allReleaseTypes } from "./ArtistDetails/constants";
+import {
+  applyArtistDiscoveryFeedback,
+  buildArtistFeedbackLookup,
+  normalizeDiscoveryFeedbackList,
+} from "../utils/discoveryFeedback";
 
 const PAGE_SIZE = 20;
 const DEFAULT_ALBUM_SORT = "relevance";
@@ -44,11 +49,31 @@ const ALBUM_SORT_OPTIONS = [
 const MBID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function getReleaseTypeIcon(type) {
-  if (type === "Album") return <Disc className="h-4 w-4" />;
-  if (type === "EP") return <Disc3 className="h-4 w-4" />;
-  if (type === "Single") return <FileMusic className="h-4 w-4" />;
-  return <Music className="h-4 w-4" />;
+const ALBUM_RELEASE_TABS = [
+  { value: "all", label: "All" },
+  { value: "albums", label: "Albums" },
+  { value: "singles", label: "EP & Singles" },
+  { value: "compilations", label: "Compilations" },
+];
+
+function isAlbumCompilation(album) {
+  return (
+    album?.primaryType === "Compilation" ||
+    (album?.secondaryTypes || []).includes("Compilation")
+  );
+}
+
+function isAlbumSingleOrEp(album) {
+  return album?.primaryType === "Single" || album?.primaryType === "EP";
+}
+
+function matchesAlbumReleaseTab(album, tab) {
+  if (tab === "all") return true;
+  if (tab === "compilations") return isAlbumCompilation(album);
+  if (tab === "singles") {
+    return isAlbumSingleOrEp(album) && !isAlbumCompilation(album);
+  }
+  return album?.primaryType === "Album" && !isAlbumCompilation(album);
 }
 
 function getArtistId(artist) {
@@ -134,20 +159,17 @@ function SearchResultsPage() {
   const [libraryLookup, setLibraryLookup] = useState({});
   const [albumLibraryLookup, setAlbumLibraryLookup] = useState({});
   const [blockedArtists, setBlockedArtists] = useState([]);
+  const [discoveryFeedback, setDiscoveryFeedback] = useState([]);
   const [pendingAlbumIds, setPendingAlbumIds] = useState({});
-  const [showReleaseTypeDropdown, setShowReleaseTypeDropdown] = useState(false);
+  const [albumOptionsOpen, setAlbumOptionsOpen] = useState(false);
+  const [albumViewMode, setAlbumViewMode] = useState("grid");
+  const [albumReleaseTab, setAlbumReleaseTab] = useState("all");
   const [dismissedTagBanner, setDismissedTagBanner] = useState(false);
   const sentinelRef = useRef(null);
+  const albumOptionsMenuRef = useRef(null);
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
   const { showSuccess, showError } = useToast();
-  const {
-    selectedReleaseTypes,
-    setSelectedReleaseTypes,
-    primaryReleaseTypes,
-    secondaryReleaseTypes,
-    allReleaseTypes,
-  } = useReleaseTypeFilter();
 
   const trimmedQuery = useMemo(() => query.trim(), [query]);
   const normalizedType = useMemo(() => {
@@ -158,25 +180,28 @@ function SearchResultsPage() {
   }, [type, trimmedQuery]);
   const isTagSearch = normalizedType === "tag";
   const isAlbumSearch = normalizedType === "album";
+  const pageTitle = useMemo(() => {
+    if (normalizedType === "recommended") return "Recommended for You";
+    if (normalizedType === "trending") return "Global Trending";
+    if (isTagSearch && trimmedQuery) {
+      return trimmedQuery.startsWith("#")
+        ? trimmedQuery
+        : `#${trimmedQuery.replace(/^#/, "")}`;
+    }
+    if (isAlbumSearch) return trimmedQuery || "Album Results";
+    return trimmedQuery || "Search Results";
+  }, [normalizedType, isTagSearch, trimmedQuery, isAlbumSearch]);
+  useDocumentTitle(pageTitle);
   const albumSort = searchParams.get("sort") || DEFAULT_ALBUM_SORT;
   const showTagBanner = isTagSearch && lastfmConfigured === false && !dismissedTagBanner;
   const supportsDiscoveryFeedback =
     normalizedType === "recommended" || isTagSearch;
+  const artistFeedbackLookup = useMemo(
+    () => buildArtistFeedbackLookup(discoveryFeedback),
+    [discoveryFeedback],
+  );
   const canAddArtist = hasPermission("addArtist");
   const canAddAlbum = hasPermission("addAlbum");
-  const hasActiveReleaseTypeFilters = useMemo(() => {
-    if (selectedReleaseTypes.length !== allReleaseTypes.length) return true;
-    return !allReleaseTypes.every((typeName) =>
-      selectedReleaseTypes.includes(typeName),
-    );
-  }, [allReleaseTypes, selectedReleaseTypes]);
-  const inactiveReleaseTypeCount = useMemo(
-    () =>
-      allReleaseTypes.filter(
-        (typeName) => !selectedReleaseTypes.includes(typeName),
-      ).length,
-    [allReleaseTypes, selectedReleaseTypes],
-  );
 
   const updateAlbumSort = useCallback(
     (nextSort) => {
@@ -204,6 +229,11 @@ function SearchResultsPage() {
   }, []);
 
   useEffect(() => {
+    if (!isAlbumSearch) return;
+    setAlbumReleaseTab("all");
+  }, [trimmedQuery, isAlbumSearch]);
+
+  useEffect(() => {
     if (!isTagSearch) return;
     try {
       setDismissedTagBanner(localStorage.getItem(LASTFM_TAG_BANNER_KEY) === "1");
@@ -227,6 +257,26 @@ function SearchResultsPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!supportsDiscoveryFeedback) {
+      setDiscoveryFeedback([]);
+      return;
+    }
+    let cancelled = false;
+    const loadFeedback = async () => {
+      try {
+        const payload = await getDiscoveryFeedback();
+        if (!cancelled) {
+          setDiscoveryFeedback(normalizeDiscoveryFeedbackList(payload));
+        }
+      } catch {}
+    };
+    loadFeedback();
+    return () => {
+      cancelled = true;
+    };
+  }, [supportsDiscoveryFeedback]);
 
   useEffect(() => {
     const performSearch = async () => {
@@ -288,7 +338,8 @@ function SearchResultsPage() {
         const data = await searchCatalog(searchQuery, normalizedType, {
           limit: PAGE_SIZE,
           offset: 0,
-          releaseTypes: isAlbumSearch ? selectedReleaseTypes : [],
+          releaseTypes: isAlbumSearch ? allReleaseTypes : [],
+          sort: isAlbumSearch ? albumSort : undefined,
         });
         const nextResults = isAlbumSearch
           ? dedupeAlbums(data.items || [])
@@ -331,7 +382,7 @@ function SearchResultsPage() {
     normalizedType,
     isAlbumSearch,
     isTagSearch,
-    selectedReleaseTypes,
+    albumSort,
   ]);
 
   useEffect(() => {
@@ -573,7 +624,8 @@ function SearchResultsPage() {
       const data = await searchCatalog(searchQuery, normalizedType, {
         limit: PAGE_SIZE,
         offset: results.length,
-        releaseTypes: isAlbumSearch ? selectedReleaseTypes : [],
+        releaseTypes: isAlbumSearch ? allReleaseTypes : [],
+        sort: isAlbumSearch ? albumSort : undefined,
       });
       const newItems = data.items || [];
       setSearchTotalCount(data?.count ?? searchTotalCount);
@@ -608,9 +660,9 @@ function SearchResultsPage() {
     normalizedType,
     results,
     searchTotalCount,
-    selectedReleaseTypes,
     trimmedQuery,
     visibleCount,
+    albumSort,
   ]);
 
   const onSentinel = useCallback(
@@ -738,9 +790,9 @@ function SearchResultsPage() {
   );
 
   const handleArtistFeedback = useCallback(
-    async (artist, action) => {
+    async (artist, action, { isSelected = false } = {}) => {
       try {
-        await addDiscoveryFeedback({
+        const payload = {
           artistId: getArtistId(artist),
           artistName: artist.name || null,
           action,
@@ -749,8 +801,18 @@ function SearchResultsPage() {
           seedContext: Array.isArray(artist.supportingSeeds)
             ? artist.supportingSeeds.map((seed) => seed?.artistName).filter(Boolean)
             : artist.sourceArtists || [],
+        };
+        const { feedbackList } = await applyArtistDiscoveryFeedback({
+          feedbackList: discoveryFeedback,
+          artist,
+          action,
+          isSelected,
+          payload,
+          addDiscoveryFeedback,
+          removeDiscoveryFeedback,
         });
-        if (action === "hide_for_now") {
+        setDiscoveryFeedback(feedbackList);
+        if (action === "hide_for_now" && !isSelected) {
           setResults((prev) =>
             prev.filter((entry) => !matchesBlockedArtist(entry, artist)),
           );
@@ -769,15 +831,17 @@ function SearchResultsPage() {
             return true;
           });
         }
-        showSuccess(
-          action === "more_like_this"
-            ? "We’ll bias future picks toward this taste"
-            : action === "less_like_this"
-              ? "We’ll show less like this"
-              : action === "already_known"
-                ? "We’ll avoid obvious repeats like this"
-                : "Hidden from recommendations for now",
-        );
+        if (!isSelected) {
+          showSuccess(
+            action === "more_like_this"
+              ? "We’ll bias future picks toward this taste"
+              : action === "less_like_this"
+                ? "We’ll show less like this"
+                : action === "already_known"
+                  ? "We’ll avoid obvious repeats like this"
+                  : "Hidden from recommendations for now",
+          );
+        }
         return true;
       } catch (err) {
         showError(
@@ -786,13 +850,20 @@ function SearchResultsPage() {
         return false;
       }
     },
-    [fullList, normalizedType, showError, showSuccess, visibleCount],
+    [discoveryFeedback, fullList, normalizedType, showError, showSuccess, visibleCount],
   );
+
+  const albumResultsForTab = useMemo(() => {
+    if (!isAlbumSearch) return results;
+    return results.filter((album) => matchesAlbumReleaseTab(album, albumReleaseTab));
+  }, [albumReleaseTab, isAlbumSearch, results]);
 
   const displayedResults =
     normalizedType === "recommended" || normalizedType === "trending"
       ? results.slice(0, visibleCount)
-      : results;
+      : isAlbumSearch
+        ? albumResultsForTab
+        : results;
 
   const showContent =
     !loading && (query || normalizedType === "recommended" || normalizedType === "trending");
@@ -802,6 +873,16 @@ function SearchResultsPage() {
     (normalizedType === "recommended" || normalizedType === "trending"
       ? results.length > PAGE_SIZE
       : displayedResults.length >= PAGE_SIZE);
+
+  useEffect(() => {
+    if (!albumOptionsOpen) return undefined;
+    const handlePointerDown = (event) => {
+      if (albumOptionsMenuRef.current?.contains(event.target)) return;
+      setAlbumOptionsOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [albumOptionsOpen]);
 
   useEffect(() => {
     const element = sentinelRef.current;
@@ -822,30 +903,39 @@ function SearchResultsPage() {
           ? `We couldn't find any artists for tag "${trimmedQuery.replace(/^#/, "")}"`
           : `We couldn't find any artists matching "${trimmedQuery}"`;
 
+  const pageSubtitle =
+    normalizedType === "recommended"
+      ? `${results.length} artist${results.length !== 1 ? "s" : ""} we think you'll like`
+      : normalizedType === "trending"
+        ? "Trending artists right now"
+        : isTagSearch && trimmedQuery
+          ? `Artists for tag "${trimmedQuery.replace(/^#/, "")}"`
+          : isAlbumSearch && trimmedQuery
+            ? null
+            : trimmedQuery
+              ? `${displayedResults.length} artist${displayedResults.length !== 1 ? "s" : ""}`
+              : null;
+
   return (
-    <div className="animate-fade-in">
-      <div className="mb-6">
+    <div className="search-page">
+      <header className="search-page__header">
         {showTagBanner && (
-          <div
-            className="mb-4 flex items-start justify-between gap-4 border border-white/10 px-4 py-3"
-            style={{ backgroundColor: "#191820" }}
-          >
-            <p className="text-sm" style={{ color: "#c1c1c3" }}>
+          <div className="search-banner">
+            <p className="search-banner__copy">
               Tag results are limited to the hydrated discovery cache. Add a free
               Last.fm API key in Settings for broader top-artist matches.
             </p>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="search-banner__actions">
               <button
                 type="button"
-                className="btn btn-secondary btn-sm"
+                className="btn btn-secondary btn--bold btn-min-h"
                 onClick={() => navigate("/settings")}
               >
                 Open Settings
               </button>
               <button
                 type="button"
-                className="inline-flex h-8 w-8 items-center justify-center border border-white/10 text-[#c1c1c3] transition-colors hover:bg-white/5"
-                style={{ backgroundColor: "#15141a" }}
+                className="btn btn-surface btn-icon-square"
                 aria-label="Dismiss Last.fm reminder"
                 onClick={() => {
                   setDismissedTagBanner(true);
@@ -854,278 +944,134 @@ function SearchResultsPage() {
                   } catch {}
                 }}
               >
-                <X className="h-4 w-4" />
+                <X className="artist-icon-sm" />
               </button>
             </div>
           </div>
         )}
-        <div className="flex flex-wrap items-center gap-4">
-          <h1 className="text-2xl font-bold" style={{ color: "#fff" }}>
-            {normalizedType === "recommended"
-              ? "Recommended for You"
-              : normalizedType === "trending"
-                ? "Global Trending"
-                : isTagSearch
-                  ? "Tag Results"
-                  : isAlbumSearch
-                    ? trimmedQuery
-                      ? `Showing ${displayedResults.length} albums for "${trimmedQuery}"`
-                      : "Album Results"
-                    : trimmedQuery
-                      ? `Showing ${displayedResults.length} artists for "${trimmedQuery}"`
-                      : "Search Results"}
-          </h1>
 
+        <div className="search-page__title-row">
+          <h1 className="search-page__title">{pageTitle}</h1>
         </div>
 
-        {normalizedType === "recommended" && (
-          <p style={{ color: "#c1c1c3" }}>
-            {results.length} artist{results.length !== 1 ? "s" : ""} we think
-            you&apos;ll like
-          </p>
-        )}
-        {normalizedType === "trending" && (
-          <p style={{ color: "#c1c1c3" }}>Trending artists right now</p>
-        )}
-        {isTagSearch && trimmedQuery && (
-          <div
-            className="flex flex-wrap items-center gap-x-3 gap-y-2"
-            style={{ color: "#c1c1c3" }}
-          >
-            <p>{`Artists for tag "${trimmedQuery.replace(/^#/, "")}"`}</p>
-            {lastfmConfigured !== false && (
-              <div className="ml-auto flex items-center gap-1.5 text-sm">
-                <Star
-                  className="h-3.5 w-3.5"
-                  style={{ color: "#f4c430", fill: "#f4c430" }}
-                />
-                <span>= recommended</span>
-              </div>
+        {(pageSubtitle || (isTagSearch && lastfmConfigured !== false)) && (
+          <div className="search-page__subtitle-row">
+            {pageSubtitle && (
+              <p className="search-page__subtitle">{pageSubtitle}</p>
+            )}
+            {isTagSearch && lastfmConfigured !== false && (
+              <span className="search-page__tag-legend">
+                <Star className="search-page__tag-legend-icon" />
+                <span>recommended</span>
+              </span>
             )}
           </div>
         )}
+
         {isAlbumSearch && trimmedQuery && (
-          <div className="space-y-3">
-            <p className="max-w-3xl text-sm" style={{ color: "#c1c1c3" }}>
+          <>
+            <p className="search-page__subtitle">
               Search results include compilations, soundtracks, and releases
               from Various Artists.
             </p>
 
-            <div
-              className="grid gap-2 border border-white/6 p-2 sm:flex sm:flex-wrap sm:items-center"
-              style={{ backgroundColor: "rgba(20,19,24,0.72)" }}
-            >
-              <div className="flex flex-wrap items-center gap-2 sm:flex-1">
-                {primaryReleaseTypes.map((typeName) => {
-                  const isSelected = selectedReleaseTypes.includes(typeName);
-                  return (
+            <div className="artist-heading-row">
+              <div className="artist-min-0">
+                <div className="artist-tabs">
+                  {ALBUM_RELEASE_TABS.map((tab) => (
                     <button
-                      key={typeName}
+                      key={tab.value}
                       type="button"
-                      onClick={() => {
-                        if (isSelected) {
-                          setSelectedReleaseTypes(
-                            selectedReleaseTypes.filter((value) => value !== typeName),
-                          );
-                        } else {
-                          setSelectedReleaseTypes([
-                            ...selectedReleaseTypes,
-                            typeName,
-                          ]);
-                        }
-                      }}
-                      className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium transition-all"
-                      style={{
-                        backgroundColor: isSelected ? "#4a4a4a" : "#18171d",
-                        color: isSelected ? "#fff" : "#cfcfd3",
-                      }}
+                      onClick={() => setAlbumReleaseTab(tab.value)}
+                      className={`artist-tab${albumReleaseTab === tab.value ? " is-active" : ""}`}
                     >
-                      {getReleaseTypeIcon(typeName)}
-                      <span>{typeName}</span>
+                      {tab.label}
                     </button>
-                  );
-                })}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 sm:flex sm:contents">
-              <div className="relative min-w-0">
-                <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
-                  <ArrowUpDown className="h-4 w-4" style={{ color: "#c1c1c3" }} />
-                </div>
-                <select
-                  value={albumSort}
-                  onChange={(event) => updateAlbumSort(event.target.value)}
-                  className="input input-sm w-full min-w-0 appearance-none pr-9 pl-9"
-                  style={{ backgroundColor: "#18171d" }}
-                  aria-label="Sort album results"
-                >
-                  {ALBUM_SORT_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
                   ))}
-                </select>
-                <ChevronDown
-                  className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2"
-                  style={{ color: "#c1c1c3" }}
-                />
+                </div>
               </div>
 
-              <div className="relative min-w-0">
+              <div className="artist-options" ref={albumOptionsMenuRef}>
                 <button
                   type="button"
-                  onClick={() =>
-                    setShowReleaseTypeDropdown((current) => !current)
-                  }
-                  className="btn btn-secondary btn-sm flex w-full items-center justify-between gap-2 px-3 py-2 sm:w-auto sm:justify-start"
+                  onClick={() => setAlbumOptionsOpen((current) => !current)}
+                  className="btn btn-surface btn-icon-square"
+                  aria-label="Album search options"
+                  title="Album search options"
+                  aria-expanded={albumOptionsOpen}
                 >
-                  <Filter className="h-4 w-4" />
-                  <span className="text-sm">More</span>
-                  {hasActiveReleaseTypeFilters && (
-                    <span
-                      className="flex h-[18px] min-w-[18px] items-center justify-center px-1.5 text-xs text-white"
-                      style={{ backgroundColor: "#0f0f12" }}
-                    >
-                      {inactiveReleaseTypeCount}
-                    </span>
-                  )}
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform ${
-                      showReleaseTypeDropdown ? "rotate-180" : ""
-                    }`}
-                  />
+                  <SlidersHorizontal className="artist-icon-sm" />
                 </button>
-
-                {showReleaseTypeDropdown && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-10"
-                      onClick={() => setShowReleaseTypeDropdown(false)}
-                    />
-                    <div
-                      className="absolute right-0 top-full z-20 mt-2 min-w-[280px] p-4 shadow-xl"
-                      style={{ backgroundColor: "#211f27" }}
-                    >
-                      <div className="space-y-4">
-                        <div>
-                          <h3
-                            className="mb-2 text-sm font-semibold"
-                            style={{ color: "#fff" }}
-                          >
-                            Secondary Types
-                          </h3>
-                          <div className="space-y-2">
-                            {secondaryReleaseTypes.map((typeName) => (
-                              <label
-                                key={typeName}
-                                className="flex cursor-pointer items-center space-x-2 px-2 py-1.5 transition-colors hover:bg-gray-900/50"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={selectedReleaseTypes.includes(typeName)}
-                                  onChange={(event) => {
-                                    if (event.target.checked) {
-                                      setSelectedReleaseTypes([
-                                        ...selectedReleaseTypes,
-                                        typeName,
-                                      ]);
-                                    } else {
-                                      setSelectedReleaseTypes(
-                                        selectedReleaseTypes.filter(
-                                          (value) => value !== typeName,
-                                        ),
-                                      );
-                                    }
-                                  }}
-                                  className="form-checkbox h-4 w-4"
-                                  style={{ color: "#c1c1c3" }}
-                                />
-                                <span
-                                  className="text-sm"
-                                  style={{ color: "#fff" }}
-                                >
-                                  {typeName}
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="pt-3">
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const currentPrimary = selectedReleaseTypes.filter(
-                                  (value) => primaryReleaseTypes.includes(value),
-                                );
-                                setSelectedReleaseTypes([
-                                  ...currentPrimary,
-                                  ...secondaryReleaseTypes,
-                                ]);
-                              }}
-                              className="text-xs hover:underline"
-                              style={{ color: "#c1c1c3" }}
-                            >
-                              Select All
-                            </button>
-                            <span style={{ color: "#c1c1c3" }}>|</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const currentPrimary = selectedReleaseTypes.filter(
-                                  (value) => primaryReleaseTypes.includes(value),
-                                );
-                                setSelectedReleaseTypes(currentPrimary);
-                              }}
-                              className="text-xs hover:underline"
-                              style={{ color: "#c1c1c3" }}
-                            >
-                              Clear All
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+                {albumOptionsOpen && (
+                  <div className="artist-options-menu">
+                    {ALBUM_SORT_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          updateAlbumSort(option.value);
+                          setAlbumOptionsOpen(false);
+                        }}
+                        className={`artist-menu-item${albumSort === option.value ? " is-active" : ""}`}
+                      >
+                        <span>{option.label}</span>
+                      </button>
+                    ))}
+                    <div className="artist-menu-section" />
+                    <div className="artist-options-view-grid">
+                      <button
+                        type="button"
+                        onClick={() => setAlbumViewMode("grid")}
+                        className={`btn btn-icon-square btn-surface${albumViewMode === "grid" ? " btn-neutral-active" : ""}`}
+                        aria-label="Grid view"
+                        title="Grid view"
+                      >
+                        <Grid3X3 className="artist-icon-sm" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAlbumViewMode("list")}
+                        className={`btn btn-icon-square btn-surface${albumViewMode === "list" ? " btn-neutral-active" : ""}`}
+                        aria-label="List view"
+                        title="List view"
+                      >
+                        <List className="artist-icon-sm" />
+                      </button>
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
-              </div>
             </div>
-          </div>
+
+            <div className="artist-count">
+              {displayedResults.length.toLocaleString()} release
+              {displayedResults.length === 1 ? "" : "s"}
+            </div>
+          </>
         )}
-      </div>
+      </header>
 
       {error && (
-        <div className="mb-6 bg-red-500/20 p-4">
-          <p className="text-red-400">{error}</p>
+        <div className="artist-error-panel" role="alert">
+          <p className="artist-error-text">{error}</p>
         </div>
       )}
 
       {loading && (
-        <div className="flex items-center justify-center py-20">
-          <Loader
-            className="h-12 w-12 animate-spin"
-            style={{ color: "#c1c1c3" }}
-          />
+        <div className="artist-loading">
+          <Loader className="artist-spinner artist-spinner--large animate-spin" />
         </div>
       )}
 
       {showContent && (
-        <div className="animate-slide-up">
+        <>
           {isEmpty ? (
-            <div className="card py-12 text-center">
-              <Music
-                className="mx-auto mb-4 h-16 w-16"
-                style={{ color: "#c1c1c3" }}
-              />
-              <h3
-                className="mb-2 text-xl font-semibold"
-                style={{ color: "#fff" }}
-              >
-                No Results Found
-              </h3>
-              <p style={{ color: "#c1c1c3" }}>{emptyMessage}</p>
+            <div className="search-empty-panel">
+              <div className="search-empty-panel__icon" aria-hidden="true">
+                <Music className="artist-icon-lg" />
+              </div>
+              <h2 className="search-empty-panel__title">No Results Found</h2>
+              <p className="search-empty-panel__message">{emptyMessage}</p>
             </div>
           ) : (
             <>
@@ -1137,6 +1083,7 @@ function SearchResultsPage() {
                   pendingAlbumIds={pendingAlbumIds}
                   onAlbumAction={handleAlbumAction}
                   navigate={navigate}
+                  viewMode={albumViewMode}
                 />
               ) : (
                 <SearchArtistResults
@@ -1152,25 +1099,23 @@ function SearchResultsPage() {
                   onArtistFeedback={
                     supportsDiscoveryFeedback ? handleArtistFeedback : undefined
                   }
+                  artistFeedbackLookup={
+                    supportsDiscoveryFeedback ? artistFeedbackLookup : undefined
+                  }
                 />
               )}
 
               {showLoadMore && (
-                <div ref={sentinelRef} className="mt-8 flex justify-center">
-                  <div
-                    className="rounded-lg px-6 py-3 font-medium"
-                    style={{ color: "#c1c1c3" }}
-                  >
-                    <span className="flex items-center gap-2">
-                      <Loader className="h-5 w-5 animate-spin" />
-                      Loading...
-                    </span>
-                  </div>
+                <div ref={sentinelRef} className="search-load-more">
+                  <span className="search-load-more__inner">
+                    <Loader className="artist-spinner animate-spin" />
+                    Loading...
+                  </span>
                 </div>
               )}
             </>
           )}
-        </div>
+        </>
       )}
     </div>
   );

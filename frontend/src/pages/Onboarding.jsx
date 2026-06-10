@@ -3,18 +3,13 @@ import { ChevronRight, ChevronLeft, CheckCircle2 } from "lucide-react";
 import {
   completeOnboarding,
   testLidarrOnboarding,
+  testLidarrLibraryAccessOnboarding,
   testNavidromeOnboarding,
 } from "../utils/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
-
-const inputClass =
-  "block w-full px-3 py-2.5 rounded sm:text-sm focus:outline-none focus:ring-2 focus:ring-offset-0";
-const inputStyle = {
-  backgroundColor: "#2a2a30",
-  color: "#fff",
-  border: "1px solid #4a4a52",
-};
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { LidarrLibraryAccessCheck } from "./Settings/components/LidarrLibraryAccessCheck";
 
 const getApiErrorMessage = (error, fallback) =>
   error?.response?.data?.message ||
@@ -32,6 +27,7 @@ const STEPS = [
 ];
 
 function Onboarding() {
+  useDocumentTitle("Setup");
   const [step, setStep] = useState(0);
   const [authUser, setAuthUser] = useState("admin");
   const [authPassword, setAuthPassword] = useState("");
@@ -45,6 +41,10 @@ function Onboarding() {
   const [lastfmApiKey, setLastfmApiKey] = useState("");
   const [lidarrTestSuccess, setLidarrTestSuccess] = useState(false);
   const [testingLidarr, setTestingLidarr] = useState(false);
+  const [testingLidarrLibraryAccess, setTestingLidarrLibraryAccess] =
+    useState(false);
+  const [lidarrLibraryAccessResult, setLidarrLibraryAccessResult] =
+    useState(null);
   const [navidromeTestSuccess, setNavidromeTestSuccess] = useState(false);
   const [testingNavidrome, setTestingNavidrome] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -151,6 +151,30 @@ function Onboarding() {
     }
   };
 
+  const handleTestLidarrLibraryAccess = async () => {
+    if (!lidarrUrl.trim() || !lidarrApiKey.trim()) {
+      setError("Enter Lidarr URL and API key first");
+      return;
+    }
+    setTestingLidarrLibraryAccess(true);
+    setLidarrLibraryAccessResult(null);
+    setError("");
+    try {
+      const result = await testLidarrLibraryAccessOnboarding(
+        lidarrUrl.trim(),
+        lidarrApiKey.trim(),
+      );
+      setLidarrLibraryAccessResult(result);
+      if (!result.ok) {
+        setError("Library access check failed. See the results below.");
+      }
+    } catch (e) {
+      setError(getApiErrorMessage(e, "Library access check failed"));
+    } finally {
+      setTestingLidarrLibraryAccess(false);
+    }
+  };
+
   const handleFinish = async () => {
     setSubmitting(true);
     setError("");
@@ -191,69 +215,63 @@ function Onboarding() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-8">
+    <div className="onboarding-page">
       <form
         autoComplete="off"
         onSubmit={(e) => e.preventDefault()}
-        className="max-w-lg w-full space-y-6 p-8 shadow-lg"
-        style={{ backgroundColor: "#211f27" }}
+        className="onboarding-card"
       >
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex gap-1">
+        <div className="onboarding-progress">
+          <div className="onboarding-progress__dots">
             {STEPS.slice(0, -1).map((s, i) => (
               <div
                 key={s}
-                className="w-2 h-2 rounded-full"
+                className="onboarding-progress__dot"
                 style={{
-                  backgroundColor: i <= step ? "#707e61" : "#3d3d44",
+                  backgroundColor: i <= step ? "var(--aurral-green)" : "var(--aurral-gray)",
                 }}
               />
             ))}
           </div>
-          <span className="text-xs" style={{ color: "#c1c1c3" }}>
+          <span className="onboarding-progress__count">
             {step + 1} / {STEPS.length}
           </span>
         </div>
 
         {currentStep === "welcome" && (
-          <>
-            <div className="text-center">
-              <img
-                src="/arralogo.svg"
-                alt="Aurral Logo"
-                className="mx-auto w-14 h-14 mb-4 transition-transform"
-                style={{
-                  filter:
-                    "brightness(0) saturate(100%) invert(45%) sepia(8%) saturate(800%) hue-rotate(60deg) brightness(95%) contrast(85%)",
-                }}
-              />
-              <h2 className="text-2xl font-bold mb-2" style={{ color: "#fff" }}>
-                Welcome to Aurral
-              </h2>
-              <p className="text-sm" style={{ color: "#c1c1c3" }}>
-                Set up your admin account and connect Lidarr. Navidrome and
-                Last.fm are optional but recommended.
-              </p>
-            </div>
-          </>
+          <div className="onboarding-step-center">
+            <img
+              src="/arralogo.svg"
+              alt="Aurral Logo"
+              className="onboarding-logo"
+              style={{
+                filter:
+                  "brightness(0) saturate(100%) invert(45%) sepia(8%) saturate(800%) hue-rotate(60deg) brightness(95%) contrast(85%)",
+              }}
+            />
+            <h2 className="onboarding-title onboarding-title--hero">
+              Welcome to Aurral
+            </h2>
+            <p className="onboarding-copy onboarding-copy--center">
+              Set up your admin account and connect Lidarr. Navidrome and
+              Last.fm are optional but recommended.
+            </p>
+          </div>
         )}
 
         {currentStep === "admin" && (
           <>
-            <div className="flex items-center gap-2 mb-4">
-              <h2 className="text-xl font-bold" style={{ color: "#fff" }}>
-                Admin account
-              </h2>
+            <div className="onboarding-title-row">
+              <h2 className="onboarding-title">Admin account</h2>
             </div>
-            <p className="text-sm mb-4" style={{ color: "#c1c1c3" }}>
+            <p className="onboarding-copy">
               Create a local account to sign in to Aurral.
             </p>
-            <div className="space-y-3">
+            <div className="onboarding-fields">
               <input
                 type="text"
                 autoComplete="off"
-                className={inputClass}
-                style={inputStyle}
+                className="onboarding-input"
                 placeholder="Username"
                 value={authUser}
                 onChange={(e) => setAuthUser(e.target.value)}
@@ -261,8 +279,7 @@ function Onboarding() {
               <input
                 type="password"
                 autoComplete="new-password"
-                className={inputClass}
-                style={inputStyle}
+                className="onboarding-input"
                 placeholder="Password"
                 value={authPassword}
                 onChange={(e) => setAuthPassword(e.target.value)}
@@ -270,13 +287,12 @@ function Onboarding() {
               <input
                 type="password"
                 autoComplete="new-password"
-                className={inputClass}
-                style={inputStyle}
+                className="onboarding-input"
                 placeholder="Confirm password"
                 value={authPasswordConfirm}
                 onChange={(e) => setAuthPasswordConfirm(e.target.value)}
               />
-              <p className="text-xs" style={{ color: "#c1c1c3" }}>
+              <p className="onboarding-copy onboarding-copy--xs">
                 Password must be at least 8 characters long.
               </p>
             </div>
@@ -285,60 +301,71 @@ function Onboarding() {
 
         {currentStep === "lidarr" && (
           <>
-            <div className="flex items-center gap-2 mb-4">
-              <h2 className="text-xl font-bold" style={{ color: "#fff" }}>
-                Connect Lidarr
-              </h2>
+            <div className="onboarding-title-row">
+              <h2 className="onboarding-title">Connect Lidarr</h2>
             </div>
-            <p className="text-sm mb-4" style={{ color: "#c1c1c3" }}>
+            <p className="onboarding-copy">
               Aurral uses Lidarr to manage your music library and downloads.
             </p>
-            <div className="space-y-3">
+            <div className="onboarding-fields">
               <input
                 type="url"
                 autoComplete="off"
-                className={inputClass}
-                style={inputStyle}
+                className="onboarding-input"
                 placeholder="Lidarr URL (e.g. http://localhost:8686)"
                 value={lidarrUrl}
                 onChange={(e) => {
                   setLidarrUrl(e.target.value);
                   setLidarrTestSuccess(false);
+                  setLidarrLibraryAccessResult(null);
                 }}
               />
               <input
                 type="password"
                 autoComplete="off"
-                className={inputClass}
-                style={inputStyle}
+                className="onboarding-input"
                 placeholder="API key"
                 value={lidarrApiKey}
                 onChange={(e) => {
                   setLidarrApiKey(e.target.value);
                   setLidarrTestSuccess(false);
+                  setLidarrLibraryAccessResult(null);
                 }}
               />
+              <button
+                type="button"
+                className="btn btn-secondary onboarding-library-access-btn"
+                onClick={handleTestLidarrLibraryAccess}
+                disabled={
+                  testingLidarrLibraryAccess ||
+                  testingLidarr ||
+                  !lidarrUrl.trim() ||
+                  !lidarrApiKey.trim()
+                }
+              >
+                {testingLidarrLibraryAccess
+                  ? "Checking library access..."
+                  : "Test library access (optional)"}
+              </button>
+              <LidarrLibraryAccessCheck result={lidarrLibraryAccessResult} />
             </div>
           </>
         )}
 
         {currentStep === "navidrome" && (
           <>
-            <div className="flex items-center gap-2 mb-4">
-              <h2 className="text-xl font-bold" style={{ color: "#fff" }}>
-                Navidrome (optional)
-              </h2>
+            <div className="onboarding-title-row">
+              <h2 className="onboarding-title">Navidrome (optional)</h2>
             </div>
-            <p className="text-sm mb-4" style={{ color: "#c1c1c3" }}>
+            <p className="onboarding-copy">
               Recommended for streaming and playlists. Leave blank to skip and
               add later in settings.
             </p>
-            <div className="space-y-3">
+            <div className="onboarding-fields">
               <input
                 type="url"
                 autoComplete="off"
-                className={inputClass}
-                style={inputStyle}
+                className="onboarding-input"
                 placeholder="Navidrome URL"
                 value={navidromeUrl}
                 onChange={(e) => {
@@ -349,8 +376,7 @@ function Onboarding() {
               <input
                 type="text"
                 autoComplete="off"
-                className={inputClass}
-                style={inputStyle}
+                className="onboarding-input"
                 placeholder="Username"
                 value={navidromeUsername}
                 onChange={(e) => {
@@ -361,8 +387,7 @@ function Onboarding() {
               <input
                 type="password"
                 autoComplete="off"
-                className={inputClass}
-                style={inputStyle}
+                className="onboarding-input"
                 placeholder="Password"
                 value={navidromePassword}
                 onChange={(e) => {
@@ -376,22 +401,19 @@ function Onboarding() {
 
         {currentStep === "lastfm" && (
           <>
-            <div className="flex items-center gap-2 mb-4">
-              <h2 className="text-xl font-bold" style={{ color: "#fff" }}>
-                Last.fm (optional)
-              </h2>
+            <div className="onboarding-title-row">
+              <h2 className="onboarding-title">Last.fm (optional)</h2>
             </div>
-            <p className="text-sm mb-4" style={{ color: "#c1c1c3" }}>
+            <p className="onboarding-copy">
               Recommended for personalized discovery, related artists, full tag
               search, and flows. If you skip it, Discover will use ListenBrainz
               trending artists and default genre shelves.
             </p>
-            <div className="space-y-3">
+            <div className="onboarding-fields">
               <input
                 type="text"
                 autoComplete="off"
-                className={inputClass}
-                style={inputStyle}
+                className="onboarding-input"
                 placeholder="Last.fm username"
                 value={lastfmUsername}
                 onChange={(e) => setLastfmUsername(e.target.value)}
@@ -399,8 +421,7 @@ function Onboarding() {
               <input
                 type="password"
                 autoComplete="off"
-                className={inputClass}
-                style={inputStyle}
+                className="onboarding-input"
                 placeholder="Last.fm API key"
                 value={lastfmApiKey}
                 onChange={(e) => setLastfmApiKey(e.target.value)}
@@ -410,39 +431,25 @@ function Onboarding() {
         )}
 
         {currentStep === "done" && (
-          <div className="text-center py-4">
-            <CheckCircle2
-              className="mx-auto h-12 w-12 mb-4"
-              style={{ color: "#707e61" }}
-            />
-            <h2 className="text-xl font-bold mb-2" style={{ color: "#fff" }}>
-              You&apos;re all set
-            </h2>
-            <p className="text-sm" style={{ color: "#c1c1c3" }}>
+          <div className="onboarding-step-center">
+            <CheckCircle2 className="onboarding-success-icon" />
+            <h2 className="onboarding-title">You&apos;re all set</h2>
+            <p className="onboarding-copy onboarding-copy--center">
               Sign in with your admin account to start using Aurral.
             </p>
           </div>
         )}
 
-        {error && (
-          <p className="text-sm text-center" style={{ color: "#ff6b6b" }}>
-            {error}
-          </p>
-        )}
+        {error && <p className="onboarding-error">{error}</p>}
 
-        <div className="flex gap-3 pt-4">
+        <div className="onboarding-actions">
           {step > 0 && currentStep !== "done" && (
             <button
               type="button"
               onClick={handleBack}
-              className="flex items-center gap-1 py-2 px-4 text-sm border rounded transition-colors"
-              style={{
-                ...inputStyle,
-                borderColor: "#3d3d44",
-                color: "#c1c1c3",
-              }}
+              className="btn btn-secondary btn-sm btn--bold"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="artist-icon-xs" />
               Back
             </button>
           )}
@@ -458,11 +465,7 @@ function Onboarding() {
                     : handleNext
             }
             disabled={isPrimaryDisabled}
-            className="flex-1 flex items-center justify-center gap-1 py-2 px-4 text-sm font-medium rounded transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-            style={{
-              backgroundColor: isPrimaryDisabled ? "#3d3d44" : "#707e61",
-              color: "#fff",
-            }}
+            className={`btn btn-sm btn--bold btn--grow${isPrimaryDisabled ? " btn-secondary" : " btn-primary"}`}
           >
             {currentStep === "done" ? (
               submitting ? (
@@ -474,7 +477,7 @@ function Onboarding() {
               lidarrTestSuccess ? (
                 <>
                   Next
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="artist-icon-xs" />
                 </>
               ) : testingLidarr ? (
                 "Testing…"
@@ -487,7 +490,7 @@ function Onboarding() {
               ) : navidromeTestSuccess ? (
                 <>
                   Next
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="artist-icon-xs" />
                 </>
               ) : testingNavidrome ? (
                 "Testing…"
@@ -498,7 +501,7 @@ function Onboarding() {
               hasLastfm ? (
                 <>
                   Next
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="artist-icon-xs" />
                 </>
               ) : (
                 "Skip"
@@ -508,7 +511,7 @@ function Onboarding() {
             ) : (
               <>
                 Next
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="artist-icon-xs" />
               </>
             )}
           </button>

@@ -271,50 +271,28 @@ function GlobalSearch() {
     <form
       ref={searchContainerRef}
       onSubmit={handleSubmit}
-      className="relative flex-1"
+      className="global-search"
     >
-      <div
-        className="relative flex items-stretch overflow-visible rounded-xl border shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_12px_32px_rgba(0,0,0,0.24)]"
-        style={{
-          background:
-            "linear-gradient(180deg, rgba(26,26,31,0.96), rgba(20,20,24,0.96))",
-          borderColor: "rgba(193,193,195,0.18)",
-        }}
-      >
-        <div className="relative shrink-0">
+      <div className="global-search__box">
+        <div className="global-search__scope-wrap">
           <button
             type="button"
             onClick={() => setScopeMenuOpen((open) => !open)}
-            className="flex h-full min-w-[96px] items-center gap-2 px-3 text-sm font-medium transition-colors hover:bg-white/[0.035] focus:outline-none sm:min-w-[132px] sm:px-4"
-            style={{
-              color: "#f3f3f4",
-              backgroundColor: scopeMenuOpen
-                ? "rgba(255,255,255,0.04)"
-                : "rgba(255,255,255,0.02)",
-            }}
+            className={`global-search__scope-button${scopeMenuOpen ? " is-open" : ""}`}
             aria-haspopup="listbox"
             aria-expanded={scopeMenuOpen}
             aria-label="Search scope"
           >
-            <span className="sm:hidden">{selectedScope.shortLabel}</span>
-            <span className="hidden sm:inline">{selectedScope.label}</span>
+            <span className="global-search__scope-label--short">{selectedScope.shortLabel}</span>
+            <span className="global-search__scope-label--full">{selectedScope.label}</span>
             <ChevronDown
-              className={`h-4 w-4 transition-transform ${
-                scopeMenuOpen ? "rotate-180" : ""
-              }`}
-              style={{ color: "#9f9fa5" }}
+              className={`artist-icon-sm${scopeMenuOpen ? " artist-chevron--open" : ""}`}
             />
           </button>
 
           {scopeMenuOpen && (
-            <div
-              className="absolute left-0 top-[calc(100%+8px)] z-[70] min-w-[152px] overflow-hidden rounded-xl border shadow-[0_18px_48px_rgba(0,0,0,0.45)] sm:min-w-[180px]"
-              style={{
-                backgroundColor: "#17171c",
-                borderColor: "rgba(193,193,195,0.14)",
-              }}
-            >
-              <ul className="py-1">
+            <div className="global-search__scope-menu">
+              <ul className="global-search__scope-list">
                 {availableScopes.map((scope) => {
                   const selected = scope.value === searchScope;
                   return (
@@ -325,18 +303,14 @@ function GlobalSearch() {
                           setSearchScope(scope.value);
                           setScopeMenuOpen(false);
                         }}
-                        className="flex w-full items-center justify-between px-4 py-3 text-left text-sm transition-colors hover:bg-white/[0.05] focus:bg-white/[0.05] focus:outline-none"
-                        style={{ color: selected ? "#fff" : "#d0d0d4" }}
+                        className={`global-search__menu-button${selected ? " is-selected" : ""}`}
                         role="option"
                         aria-selected={selected}
                       >
-                        <span className="sm:hidden">{scope.shortLabel}</span>
-                        <span className="hidden sm:inline">{scope.label}</span>
+                        <span className="global-search__scope-label--short">{scope.shortLabel}</span>
+                        <span className="global-search__scope-label--full">{scope.label}</span>
                         {selected && (
-                          <span
-                            className="h-2 w-2 rounded-full"
-                            style={{ backgroundColor: "#c1c1c3" }}
-                          />
+                          <span className="global-search__selected-dot" />
                         )}
                       </button>
                     </li>
@@ -347,15 +321,10 @@ function GlobalSearch() {
           )}
         </div>
 
-        <div
-          className="my-2 w-px shrink-0"
-          style={{ backgroundColor: "rgba(193,193,195,0.14)" }}
-        />
+        <div className="global-search__divider" />
 
-        <div className="relative min-w-0 flex-1">
-          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-            <Search className="h-5 w-5" style={{ color: "#a7a7ad" }} />
-          </div>
+        <div className="global-search__input-wrap">
+          <Search className="global-search__icon" />
           <input
             ref={inputRef}
             type="text"
@@ -363,66 +332,36 @@ function GlobalSearch() {
             onChange={(event) => setSearchQuery(event.target.value)}
             onKeyDown={handleKeyDown}
             placeholder=""
-            className="block w-full bg-transparent py-3 pl-11 pr-4 text-sm focus:outline-none sm:pr-10"
-            style={{
-              color: "#fff",
-            }}
+            className="global-search__input"
             autoComplete="off"
           />
           {!searchQuery && (
-            <div
-              className="pointer-events-none absolute inset-y-0 left-0 flex items-center gap-2 pl-11 pr-4 text-[15px]"
-              style={{ color: "#92929a" }}
-            >
-              <span className="sm:hidden">Search...</span>
-              <span className="hidden sm:inline">Type</span>
-              <span
-                className="hidden sm:inline-flex h-6 min-w-6 items-center justify-center rounded-md border px-1.5 text-[13px] font-medium"
-                style={{
-                  borderColor: "rgba(193,193,195,0.28)",
-                  backgroundColor: "rgba(255,255,255,0.03)",
-                  color: "#e6e6e8",
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
-                }}
-              >
+            <div className="global-search__placeholder">
+              <span className="global-search__scope-label--short">Search...</span>
+              <span className="global-search__scope-label--full">Type</span>
+              <span className="global-search__key">
                 /
               </span>
-              <span className="hidden sm:inline">to search</span>
+              <span className="global-search__scope-label--full">to search</span>
             </div>
           )}
           {loadingSuggestions && (
-            <div
-              className="pointer-events-none absolute inset-y-0 right-3 flex items-center"
-              style={{ color: "#c1c1c3" }}
-            >
-              <Loader2 className="h-5 w-5 animate-spin" />
+            <div className="global-search__loader">
+              <Loader2 className="artist-icon-md animate-spin" />
             </div>
           )}
         </div>
       </div>
 
       {!loadingSuggestions && suggestions.length > 0 && (
-        <ul
-          className="absolute left-0 right-0 top-full z-50 mt-2 max-h-64 overflow-x-hidden overflow-y-auto rounded-xl border py-1 shadow-[0_18px_48px_rgba(0,0,0,0.45)]"
-          style={{
-            backgroundColor: "#17171c",
-            borderColor: "rgba(193,193,195,0.14)",
-          }}
-        >
+        <ul className="global-search__suggestions">
           {suggestionMode === "tag"
             ? suggestions.map((tagName, index) => (
                 <li key={tagName}>
                   <button
                     type="button"
                     onClick={() => handleSuggestionSelect(tagName)}
-                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 focus:bg-white/10 focus:outline-none"
-                    style={{
-                      color: "#fff",
-                      backgroundColor:
-                        index === suggestionIndex
-                          ? "rgba(255,255,255,0.1)"
-                          : undefined,
-                    }}
+                    className={`global-search__suggestion${index === suggestionIndex ? " is-highlighted" : ""}`}
                   >
                     #{tagName}
                   </button>
@@ -433,14 +372,7 @@ function GlobalSearch() {
                   <button
                     type="button"
                     onClick={() => handleSuggestionSelect(artist)}
-                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 focus:bg-white/10 focus:outline-none"
-                    style={{
-                      color: "#fff",
-                      backgroundColor:
-                        index === suggestionIndex
-                          ? "rgba(255,255,255,0.1)"
-                          : undefined,
-                    }}
+                    className={`global-search__suggestion${index === suggestionIndex ? " is-highlighted" : ""}`}
                   >
                     {artist.name}
                   </button>

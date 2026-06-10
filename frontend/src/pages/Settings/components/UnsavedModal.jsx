@@ -3,38 +3,33 @@ import { AlertTriangle } from "lucide-react";
 export function UnsavedModal({ show, onCancel, onConfirm }) {
   if (!show) return null;
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: "rgba(0, 0, 0, 0.75)" }}
-      onClick={onCancel}
-    >
+    <div className="artist-modal-backdrop" onClick={onCancel}>
       <div
-        className="card max-w-md w-full mx-4"
+        className="settings-page__modal"
+        role="dialog"
+        aria-labelledby="unsaved-modal-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start mb-4">
-          <AlertTriangle className="w-6 h-6 text-yellow-500 mr-3 flex-shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <h3
-              className="text-xl font-bold mb-2"
-              style={{ color: "#fff" }}
-            >
+        <div className="settings-page__modal-alert">
+          <AlertTriangle className="settings-page__modal-alert-icon" />
+          <div>
+            <h3 id="unsaved-modal-title" className="settings-page__modal-title">
               Unsaved Changes
             </h3>
-            <p style={{ color: "#c1c1c3" }}>
+            <p className="settings-page__modal-copy">
               You have unsaved changes. Are you sure you want to leave? Your
               changes will be lost.
             </p>
           </div>
         </div>
-        <div className="flex gap-3 justify-end mt-6">
-          <button onClick={onCancel} className="btn btn-secondary">
+        <div className="settings-page__modal-actions">
+          <button type="button" onClick={onCancel} className="btn btn-secondary">
             Cancel
           </button>
           <button
+            type="button"
             onClick={onConfirm}
-            className="btn btn-primary"
-            style={{ backgroundColor: "#ef4444" }}
+            className="btn btn-danger"
           >
             Leave Without Saving
           </button>

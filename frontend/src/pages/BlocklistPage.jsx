@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Ban,
-  Loader2,
+  Loader,
   Search,
   Tag,
   UserX,
@@ -14,6 +14,8 @@ import {
   getTagSuggestions,
 } from "../utils/api";
 import { useToast } from "../contexts/ToastContext";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { getTagColor } from "./ArtistDetails/utils";
 
 const AUTOCOMPLETE_DEBOUNCE_MS = 250;
 const AUTOCOMPLETE_LIMIT = 6;
@@ -68,6 +70,7 @@ const isArtistBlocked = (artist, blockedArtists) => {
 };
 
 function BlocklistPage() {
+  useDocumentTitle("Blocklist");
   const [searchInput, setSearchInput] = useState("");
   const [blocklist, setBlocklist] = useState({ artists: [], tags: [] });
   const [suggestions, setSuggestions] = useState([]);
@@ -285,79 +288,55 @@ function BlocklistPage() {
   const blockedTagCount = useMemo(() => blocklist.tags.length, [blocklist.tags]);
 
   return (
-    <div className="animate-fade-in max-w-4xl mx-auto pb-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2" style={{ color: "#fff" }}>
-          Blocklist
-        </h1>
-        <p style={{ color: "#c1c1c3" }}>
+    <div className="blocklist-page">
+      <header className="blocklist-page__header">
+        <h1 className="blocklist-page__title">Blocklist</h1>
+        <p className="blocklist-page__subtitle">
           Search artists or use #tags to block recommendations from Discover and Flow.
         </p>
-      </div>
+      </header>
 
-      <div
-        className="p-6 mb-6"
-        style={{
-          backgroundColor: "#1a1a1e",
-          border: "1px solid #2a2a2e",
-        }}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2" style={{ color: "#fff" }}>
-            <Ban className="w-5 h-5" />
-            <span className="text-lg font-semibold">Add to Blocklist</span>
-          </div>
+      <section className="blocklist-page__add-panel artist-panel">
+        <div className="blocklist-page__panel-heading">
+          <Ban className="artist-icon-sm" aria-hidden="true" />
+          <h2 className="blocklist-page__panel-title">Add to Blocklist</h2>
         </div>
         {loading ? (
-          <div className="flex items-center gap-2 py-6" style={{ color: "#c1c1c3" }}>
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Loading blocklist...</span>
+          <div className="blocklist-page__loading">
+            <Loader className="artist-spinner animate-spin" />
+            <span className="artist-count">Loading blocklist...</span>
           </div>
         ) : (
-          <div ref={searchRef} className="relative">
+          <div ref={searchRef} className="blocklist-page__search global-search">
             <form onSubmit={handleSubmit}>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-                  <Search className="w-4 h-4" style={{ color: "#c1c1c3" }} />
+              <div className="global-search__box">
+                <div className="global-search__input-wrap">
+                  <Search className="global-search__icon" aria-hidden="true" />
+                  <input
+                    type="text"
+                    value={searchInput}
+                    onChange={(event) => setSearchInput(event.target.value)}
+                    onKeyDown={handleInputKeyDown}
+                    placeholder="Search artist or #tag"
+                    className="global-search__input"
+                    autoComplete="off"
+                    aria-label="Search artist or tag to block"
+                  />
+                  {loadingSuggestions && (
+                    <Loader className="global-search__loader artist-icon-sm animate-spin" />
+                  )}
                 </div>
-                <input
-                  type="text"
-                  value={searchInput}
-                  onChange={(event) => setSearchInput(event.target.value)}
-                  onKeyDown={handleInputKeyDown}
-                  placeholder="Search artist or #tag"
-                  className="w-full pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2"
-                  style={{
-                    backgroundColor: "#0f0f12",
-                    border: "1px solid #2a2a2e",
-                    color: "#fff",
-                  }}
-                  autoComplete="off"
-                />
-                {loadingSuggestions && (
-                  <div className="absolute inset-y-0 right-3 flex items-center">
-                    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#c1c1c3" }} />
-                  </div>
-                )}
               </div>
             </form>
             {suggestions.length > 0 && (
-              <ul
-                className="absolute left-0 right-0 top-full mt-1 py-1 shadow-lg z-30 max-h-64 overflow-y-auto"
-                style={{ backgroundColor: "#211f27", border: "1px solid #2a2a2e" }}
-              >
+              <ul className="global-search__suggestions blocklist-page__suggestions">
                 {suggestionMode === "tag"
                   ? suggestions.map((tag, index) => (
                       <li key={tag}>
                         <button
                           type="button"
                           onClick={() => selectSuggestion(tag)}
-                          className="w-full text-left px-4 py-2 text-sm hover:bg-white/10"
-                          style={{
-                            color: "#fff",
-                            backgroundColor:
-                              index === suggestionIndex ? "rgba(255,255,255,0.1)" : undefined,
-                          }}
+                          className={`global-search__suggestion${index === suggestionIndex ? " is-highlighted" : ""}`}
                         >
                           #{tag}
                         </button>
@@ -368,104 +347,90 @@ function BlocklistPage() {
                         <button
                           type="button"
                           onClick={() => selectSuggestion(artist)}
-                          className="w-full text-left px-4 py-2 text-sm hover:bg-white/10"
-                          style={{
-                            color: "#fff",
-                            backgroundColor:
-                              index === suggestionIndex ? "rgba(255,255,255,0.1)" : undefined,
-                          }}
+                          className={`global-search__suggestion${index === suggestionIndex ? " is-highlighted" : ""}`}
                         >
                           <span>{artist.name}</span>
                           {isArtistBlocked(artist, blocklist.artists) && (
-                            <span className="ml-2 text-xs" style={{ color: "#8b8b90" }}>
-                              blocked
-                            </span>
+                            <span className="artist-count">blocked</span>
                           )}
                         </button>
                       </li>
                     ))}
               </ul>
             )}
-            <p className="text-xs mt-2" style={{ color: "#8b8b90" }}>
+            <p className="blocklist-page__hint">
               Press Enter to add. If no suggestion is selected, typed text is used.
             </p>
             {saving && (
-              <div className="text-xs mt-2 flex items-center gap-2" style={{ color: "#c1c1c3" }}>
-                <Loader2 className="w-3 h-3 animate-spin" />
+              <p className="blocklist-page__saving">
+                <Loader className="artist-icon-xs animate-spin" />
                 Saving...
-              </div>
+              </p>
             )}
           </div>
         )}
-      </div>
+      </section>
 
       {!loading && (
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="p-4" style={{ backgroundColor: "#1a1a1e", border: "1px solid #2a2a2e" }}>
-            <div className="text-sm font-medium mb-3 flex items-center gap-2" style={{ color: "#fff" }}>
-              <UserX className="w-4 h-4" />
+        <div className="blocklist-page__lists">
+          <section className="blocklist-page__list-panel artist-panel">
+            <h2 className="blocklist-page__list-heading">
+              <UserX className="artist-icon-sm" aria-hidden="true" />
               Blocked Artists ({blockedArtistCount})
-            </div>
-            <div className="flex flex-wrap gap-2">
+            </h2>
+            <div className="blocklist-page__chips">
               {blocklist.artists.length ? (
                 blocklist.artists.map((artist) => {
                   const key = artist.mbid || artist.name;
                   return (
-                    <span
-                      key={key}
-                      className="inline-flex items-center gap-2 px-2 py-1 text-xs"
-                      style={{ backgroundColor: "#0f0f12", color: "#c1c1c3" }}
-                    >
+                    <span key={key} className="blocklist-page__chip">
                       {artist.name || artist.mbid}
                       <button
                         type="button"
                         onClick={() => removeArtist(artist)}
-                        className="opacity-70 hover:opacity-100"
+                        className="blocklist-page__chip-remove"
                         aria-label={`Remove ${artist.name || artist.mbid} from blocklist`}
                       >
-                        <X className="w-3 h-3" />
+                        <X className="artist-icon-xs" />
                       </button>
                     </span>
                   );
                 })
               ) : (
-                <span className="text-sm" style={{ color: "#8b8b90" }}>
-                  No blocked artists yet.
-                </span>
+                <p className="blocklist-page__empty-copy">No blocked artists yet.</p>
               )}
             </div>
-          </div>
-          <div className="p-4" style={{ backgroundColor: "#1a1a1e", border: "1px solid #2a2a2e" }}>
-            <div className="text-sm font-medium mb-3 flex items-center gap-2" style={{ color: "#fff" }}>
-              <Tag className="w-4 h-4" />
+          </section>
+
+          <section className="blocklist-page__list-panel artist-panel">
+            <h2 className="blocklist-page__list-heading">
+              <Tag className="artist-icon-sm" aria-hidden="true" />
               Blocked Genres/Tags ({blockedTagCount})
-            </div>
-            <div className="flex flex-wrap gap-2">
+            </h2>
+            <div className="blocklist-page__chips">
               {blocklist.tags.length ? (
                 blocklist.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="inline-flex items-center gap-2 px-2 py-1 text-xs"
-                    style={{ backgroundColor: "#0f0f12", color: "#c1c1c3" }}
+                    className="blocklist-page__chip blocklist-page__chip--tag"
+                    style={{ backgroundColor: getTagColor(tag) }}
                   >
                     #{tag}
                     <button
                       type="button"
                       onClick={() => removeTag(tag)}
-                      className="opacity-70 hover:opacity-100"
+                      className="blocklist-page__chip-remove"
                       aria-label={`Remove tag ${tag} from blocklist`}
                     >
-                      <X className="w-3 h-3" />
+                      <X className="artist-icon-xs" />
                     </button>
                   </span>
                 ))
               ) : (
-                <span className="text-sm" style={{ color: "#8b8b90" }}>
-                  No blocked tags yet.
-                </span>
+                <p className="blocklist-page__empty-copy">No blocked tags yet.</p>
               )}
             </div>
-          </div>
+          </section>
         </div>
       )}
     </div>

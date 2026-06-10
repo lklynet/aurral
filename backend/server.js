@@ -104,7 +104,11 @@ app.use(
         ],
         connectSrc: ["'self'", "ws:", "wss:", "https://api.github.com"],
         mediaSrc: ["'self'", "https://*.dzcdn.net", "https://*.deezer.com"],
-        frameSrc: ["'none'"],
+        frameSrc: [
+          "'self'",
+          "https://www.youtube-nocookie.com",
+          "https://www.youtube.com",
+        ],
         frameAncestors: null,
         upgradeInsecureRequests: null,
       },
@@ -160,6 +164,44 @@ setTimeout(() => {
       console.error("Weekly flow startup check error:", err.message),
     );
 }, 5000);
+
+const REUSE_REPAIR_INTERVAL_MS = 30 * 60 * 1000;
+setInterval(() => {
+  import("./services/weeklyFlowWorker.js")
+    .then((m) => m.weeklyFlowWorker.scheduleReuseLinkRepair(false))
+    .catch((err) =>
+      console.error("Weekly flow reuse repair error:", err.message),
+    );
+}, REUSE_REPAIR_INTERVAL_MS);
+
+setTimeout(() => {
+  import("./services/weeklyFlowWorker.js")
+    .then((m) => m.weeklyFlowWorker.scheduleReuseLinkRepair(true))
+    .catch((err) =>
+      console.error("Weekly flow reuse repair startup error:", err.message),
+    );
+}, 15000);
+
+setTimeout(async () => {
+  try {
+    const [{ migrateLegacyWeeklyFlowPaths, resolveWeeklyFlowRoot }, trackerModule] =
+      await Promise.all([
+        import("./services/weeklyFlowPaths.js"),
+        import("./services/weeklyFlowDownloadTracker.js"),
+      ]);
+    const result = await migrateLegacyWeeklyFlowPaths(
+      resolveWeeklyFlowRoot(),
+      trackerModule.downloadTracker,
+    );
+    if (result.migrated > 0) {
+      console.log(
+        `[WeeklyFlow] Migrated ${result.migrated} legacy track paths to ${resolveWeeklyFlowRoot()}`,
+      );
+    }
+  } catch (err) {
+    console.error("Weekly flow path migration error:", err.message);
+  }
+}, 3000);
 
 const frontendDist = path.join(__dirname, "..", "frontend", "dist");
 const frontendFallbackRoute = /.*/;

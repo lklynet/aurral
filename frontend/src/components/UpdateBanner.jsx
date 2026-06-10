@@ -139,35 +139,35 @@ const UpdateBanner = ({ currentVersion, visible = true }) => {
   }
 
   return (
-    <div className="mb-6 bg-[#211f27] px-5 py-4">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="space-y-1">
-          <p className="text-sm uppercase tracking-wide">
-            Update available: <span className="text-[#c1c1c3]">{updateInfo.current}</span> → <span className="text-[#90a47a]">{updateInfo.latest}</span>
-          </p>
-          <p className="text-xs text-[#c1c1c3]">
-            {updateInfo.channel === "test"
-              ? "A newer test build is ready. Update when convenient."
-              : "A newer stable build is ready. Update when convenient."}
-          </p>
-        </div>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-          <a
-            href={updateInfo.url}
-            target="_blank"
-            rel="noreferrer"
-            className="btn btn-secondary bg-gray-700/50 hover:bg-gray-700/70 btn-sm w-full sm:w-auto"
-          >
-            {updateInfo.channel === "test" ? "View tags" : "View release"}
-          </a>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm hover:bg-gray-700/50 w-full sm:w-auto"
-            onClick={dismissUpdate}
-          >
-            Hide until next update
-          </button>
-        </div>
+    <div className="app-banner">
+      <div className="app-banner__content">
+        <p className="app-banner__title">Update available</p>
+        <p className="app-banner__text">
+          <span className="app-banner__meta">{updateInfo.current}</span>
+          {" → "}
+          <span className="app-banner__highlight">{updateInfo.latest}</span>
+          {". "}
+          {updateInfo.channel === "test"
+            ? "A newer test build is ready. Update when convenient."
+            : "A newer stable build is ready. Update when convenient."}
+        </p>
+      </div>
+      <div className="app-banner__actions">
+        <a
+          href={updateInfo.url}
+          target="_blank"
+          rel="noreferrer"
+          className="btn btn-secondary btn-sm"
+        >
+          {updateInfo.channel === "test" ? "View tags" : "View release"}
+        </a>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={dismissUpdate}
+        >
+          Hide until next update
+        </button>
       </div>
     </div>
   );

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { Plus, Check, Loader } from "lucide-react";
-import "./AddToLibraryButton.css";
 
 const AddToLibraryButton = ({ onClick, className, isLoading }) => {
   const [isSuccess, setIsSuccess] = useState(false);
@@ -26,19 +25,19 @@ const AddToLibraryButton = ({ onClick, className, isLoading }) => {
 
   return (
     <button
-      className={`add-to-library-button ${isSuccess ? "success" : ""} ${className || ""}`}
+      type="button"
+      className={`btn btn-add-library${isSuccess ? " is-success" : ""}${className ? ` ${className}` : ""}`}
       onClick={handleClick}
       disabled={isLoading}
-      type="button"
     >
       <span>Add to Library</span>
-      <div className="icon">
+      <div className="btn-add-library__icon">
         {isLoading ? (
-          <Loader className="animate-spin" />
+          <Loader className="animate-spin" aria-hidden="true" />
         ) : (
           <>
-            <Plus className="plus-icon" />
-            <Check className="check-icon" />
+            <Plus className="plus-icon" aria-hidden="true" />
+            <Check className="check-icon" aria-hidden="true" />
           </>
         )}
       </div>

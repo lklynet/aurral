@@ -139,7 +139,7 @@ function uniqueQueries(values) {
     seen.add(key);
     queries.push(query);
   }
-  return queries.slice(0, 8);
+  return queries.slice(0, 12);
 }
 
 function stripParenthetical(value) {
@@ -209,6 +209,20 @@ export function buildFlowSearchQueries(context) {
   if (artistName && trackVariants.length > 0) {
     for (const trackVariant of trackVariants) {
       queries.push(`${artistName} ${trackVariant}`);
+    }
+  }
+  if (albumName && trackVariants.length > 0) {
+    for (const trackVariant of trackVariants.slice(0, 2)) {
+      queries.push(`${trackVariant} ${albumName}`);
+      if (releaseYear) {
+        queries.push(`${trackVariant} ${albumName} ${releaseYear}`);
+      }
+      if (
+        normalizedAlbum &&
+        normalizedAlbum !== normalizeTitle(albumName)
+      ) {
+        queries.push(`${trackVariant} ${normalizedAlbum}`);
+      }
     }
   }
   for (const alias of aliases) {
@@ -381,7 +395,10 @@ function isStrongEnoughCandidate({
   if (titleScore < 58) {
     return { valid: false, reason: "weak-title-match" };
   }
-  if (artistScore < 45) {
+  if (
+    artistScore < 45 &&
+    !(titleScore >= 72 && albumScore >= 35)
+  ) {
     return { valid: false, reason: "weak-artist-match" };
   }
   if (titleScore < 72 && artistScore < 58) {
@@ -530,7 +547,7 @@ function buildGroupCandidate(group, context, options = {}) {
       preDownloadRejectReason: preDownloadCheck.reason,
       isLikelyMatch:
         titleScore >= 75 &&
-        artistScore >= 55 &&
+        (artistScore >= 55 || (albumScore >= 35 && titleScore >= 82)) &&
         (!context?.albumName || albumScore >= 35 || trackCountScore >= 18),
       breakdown: {
         artistScore,

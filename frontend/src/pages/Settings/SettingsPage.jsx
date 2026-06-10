@@ -1,7 +1,8 @@
-import { useEffect } from "react";
-import { ChevronDown } from "lucide-react";
+import { useEffect, useMemo } from "react";
+import { Navigate } from "react-router-dom";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
+import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { useSettingsData } from "./hooks/useSettingsData";
 import { useUnsavedGuard } from "./hooks/useUnsavedGuard";
 import { useSettingsTabs } from "./hooks/useSettingsTabs";
@@ -12,29 +13,37 @@ import { SettingsIntegrationsTab } from "./components/SettingsIntegrationsTab";
 import { SettingsDiscoverTab } from "./components/SettingsDiscoverTab";
 import { SettingsNotificationsTab } from "./components/SettingsNotificationsTab";
 import { SettingsUsersTab } from "./components/SettingsUsersTab";
-import { SettingsAccountTab } from "./components/SettingsAccountTab";
-import { useAccountSettings } from "./hooks/useAccountSettings";
+import { SettingsTabsNav } from "./components/SettingsTabsNav";
+import { SettingsSelect } from "./components/SettingsField";
 
 function SettingsPage() {
   const { showSuccess, showError, showInfo } = useToast();
   const { user: authUser } = useAuth();
 
   const data = useSettingsData(showSuccess, showError, showInfo);
-  const account = useAccountSettings(authUser, showSuccess, showError);
-  const guard = useUnsavedGuard(data.hasUnsavedChanges, data.setHasUnsavedChanges);
+  const guard = useUnsavedGuard(
+    data.hasUnsavedChanges,
+    data.setHasUnsavedChanges,
+  );
   const tabs = useSettingsTabs(authUser);
   const users = useSettingsUsers(
     authUser,
     showSuccess,
     showError,
-    tabs.activeTab
+    tabs.activeTab,
   );
+
+  const settingsTitle = useMemo(() => {
+    const activeTab = tabs.tabs.find((tab) => tab.id === tabs.activeTab);
+    return activeTab ? `${activeTab.label} - Settings` : "Settings";
+  }, [tabs.activeTab, tabs.tabs]);
+  useDocumentTitle(settingsTitle);
 
   useEffect(() => {
     if (tabs.activeTab === "discover") {
       data.refreshHealth();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- only run when switching to discover tab
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only run when switching to discover tab
   }, [tabs.activeTab]);
 
   const renderTabContent = () => {
@@ -102,26 +111,6 @@ function SettingsPage() {
             showError={showError}
           />
         );
-      case "account":
-        return (
-          <SettingsAccountTab
-            listenHistoryProvider={account.listenHistoryProvider}
-            setListenHistoryProvider={account.setListenHistoryProvider}
-            listenHistoryUsername={account.listenHistoryUsername}
-            setListenHistoryUsername={account.setListenHistoryUsername}
-            lidarrConfigured={account.lidarrConfigured}
-            lidarrRootFolders={account.lidarrRootFolders}
-            lidarrQualityProfiles={account.lidarrQualityProfiles}
-            lidarrRootFolderPath={account.lidarrRootFolderPath}
-            setLidarrRootFolderPath={account.setLidarrRootFolderPath}
-            lidarrQualityProfileId={account.lidarrQualityProfileId}
-            setLidarrQualityProfileId={account.setLidarrQualityProfileId}
-            hasUnsavedChanges={account.hasUnsavedChanges}
-            loading={account.loading}
-            saving={account.saving}
-            handleSave={account.handleSave}
-          />
-        );
       case "users":
         return (
           <SettingsUsersTab
@@ -179,6 +168,10 @@ function SettingsPage() {
     }
   };
 
+  if (tabs.tabs.length === 0) {
+    return <Navigate to="/profile" replace />;
+  }
+
   return (
     <>
       <UnsavedModal
@@ -193,84 +186,44 @@ function SettingsPage() {
         onApply={data.handleApplyCommunityGuide}
       />
 
-      <div className="animate-fade-in max-w-4xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold mb-2" style={{ color: "#fff" }}>
-            Settings
-          </h1>
-          <p style={{ color: "#c1c1c3" }}>
+      <div className="settings-page">
+        <header className="settings-page__header">
+          <h1 className="settings-page__title">Settings</h1>
+          <p className="settings-page__subtitle">
             Configure application preferences and integrations
           </p>
-        </div>
+        </header>
 
-        <div className="mb-5 sm:hidden">
+        <div className="settings-page__mobile-nav">
           <label
             htmlFor="settings-tab-select"
-            className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[#8b8b90]"
+            className="settings-page__mobile-label"
           >
             Section
           </label>
-          <div className="relative">
-            <select
-              id="settings-tab-select"
-              value={tabs.activeTab}
-              onChange={(event) => tabs.setActiveTab(event.target.value)}
-              className="input h-11 w-full appearance-none bg-[#141419] pr-14 text-sm text-white"
-            >
-              {tabs.tabs.map((tab) => (
-                <option key={tab.id} value={tab.id}>
-                  {tab.label}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#b9bac1]" />
-          </div>
+          <SettingsSelect
+            id="settings-tab-select"
+            value={tabs.activeTab}
+            onChange={(event) => tabs.setActiveTab(event.target.value)}
+          >
+            {tabs.tabs.map((tab) => (
+              <option key={tab.id} value={tab.id}>
+                {tab.label}
+              </option>
+            ))}
+          </SettingsSelect>
         </div>
 
-        <div className="mb-8 hidden w-full overflow-x-auto sm:block">
-          <div
-            ref={tabs.tabsRef}
-            className="relative p-1.5 inline-flex"
-            style={{ backgroundColor: "#0f0f12" }}
-          >
-            <div
-              ref={tabs.activeBubbleRef}
-              className="absolute transition-all duration-300 ease-out z-10 opacity-0"
-              style={{ backgroundColor: "#211f27" }}
-            />
-            <div
-              ref={tabs.hoverBubbleRef}
-              className="absolute transition-all duration-200 ease-out z-0"
-              style={{ backgroundColor: "#1a1a1e" }}
-            />
-            <div
-              className="relative flex gap-1"
-              onMouseLeave={() => tabs.setHoveredTabIndex(null)}
-            >
-              {tabs.tabs.map((tab, index) => {
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    ref={(el) => {
-                      if (el) tabs.tabRefs.current[index] = el;
-                    }}
-                    onClick={() => tabs.setActiveTab(tab.id)}
-                    onMouseEnter={() => tabs.setHoveredTabIndex(index)}
-                    className="relative z-20 flex items-center space-x-2 px-4 py-2.5 font-medium transition-all duration-200 text-sm"
-                    style={{ color: "#fff" }}
-                  >
-                    <Icon
-                      className="w-4 h-4 transition-transform flex-shrink-0"
-                      style={{ color: "#fff" }}
-                    />
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+        <SettingsTabsNav
+          tabs={tabs.tabs}
+          activeTab={tabs.activeTab}
+          setActiveTab={tabs.setActiveTab}
+          navRef={tabs.navRef}
+          activeBubbleRef={tabs.activeBubbleRef}
+          hoverBubbleRef={tabs.hoverBubbleRef}
+          linkRefs={tabs.linkRefs}
+          setHoveredTabIndex={tabs.setHoveredTabIndex}
+        />
 
         <div>{renderTabContent()}</div>
       </div>

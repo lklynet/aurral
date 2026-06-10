@@ -37,7 +37,7 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("writes PNG sidecar artwork for flow and playlist smart playlists", async () => {
+test("writes WebP sidecar artwork for flow and playlist smart playlists", async () => {
   const flow = flowPlaylistConfig.createFlow({
     name: "Late Night",
     enabled: false,
@@ -55,25 +55,27 @@ test("writes PNG sidecar artwork for flow and playlist smart playlists", async (
   const flowName = manager._getFlowPlaylistNames("Late Night").current;
   const flowBase = manager._sanitize(flowName);
   const flowNsp = path.join(manager.libraryRoot, `${flowBase}.nsp`);
-  const flowPng = path.join(manager.libraryRoot, `${flowBase}.png`);
+  const flowWebp = path.join(manager.libraryRoot, `${flowBase}.webp`);
 
   const playlistName = manager._getSharedPlaylistNames("Road Trip").current;
   const playlistBase = manager._sanitize(playlistName);
   const playlistNsp = path.join(manager.libraryRoot, `${playlistBase}.nsp`);
-  const playlistPng = path.join(manager.libraryRoot, `${playlistBase}.png`);
+  const playlistWebp = path.join(manager.libraryRoot, `${playlistBase}.webp`);
 
   await assert.doesNotReject(() => fs.access(flowNsp));
-  await assert.doesNotReject(() => fs.access(flowPng));
+  await assert.doesNotReject(() => fs.access(flowWebp));
   await assert.doesNotReject(() => fs.access(playlistNsp));
-  await assert.doesNotReject(() => fs.access(playlistPng));
+  await assert.doesNotReject(() => fs.access(playlistWebp));
 
-  const flowMeta = await sharp(flowPng).metadata();
+  const flowMeta = await sharp(flowWebp).metadata();
   assert.equal(flowMeta.width, 1000);
   assert.equal(flowMeta.height, 1000);
+  assert.equal(flowMeta.format, "webp");
 
-  const playlistMeta = await sharp(playlistPng).metadata();
+  const playlistMeta = await sharp(playlistWebp).metadata();
   assert.equal(playlistMeta.width, 1000);
   assert.equal(playlistMeta.height, 1000);
+  assert.equal(playlistMeta.format, "webp");
 });
 
 test("removes old sidecar artwork when a flow is renamed", async () => {
@@ -89,9 +91,9 @@ test("removes old sidecar artwork when a flow is renamed", async () => {
   const oldName = manager._getFlowPlaylistNames("Old Name").current;
   const oldBase = manager._sanitize(oldName);
   const oldNsp = path.join(manager.libraryRoot, `${oldBase}.nsp`);
-  const oldPng = path.join(manager.libraryRoot, `${oldBase}.png`);
+  const oldWebp = path.join(manager.libraryRoot, `${oldBase}.webp`);
   await assert.doesNotReject(() => fs.access(oldNsp));
-  await assert.doesNotReject(() => fs.access(oldPng));
+  await assert.doesNotReject(() => fs.access(oldWebp));
 
   flowPlaylistConfig.updateFlow(flow.id, { name: "New Name" });
   await manager.ensureSmartPlaylists();
@@ -99,11 +101,37 @@ test("removes old sidecar artwork when a flow is renamed", async () => {
   const newName = manager._getFlowPlaylistNames("New Name").current;
   const newBase = manager._sanitize(newName);
   const newNsp = path.join(manager.libraryRoot, `${newBase}.nsp`);
-  const newPng = path.join(manager.libraryRoot, `${newBase}.png`);
+  const newWebp = path.join(manager.libraryRoot, `${newBase}.webp`);
   await assert.doesNotReject(() => fs.access(newNsp));
-  await assert.doesNotReject(() => fs.access(newPng));
+  await assert.doesNotReject(() => fs.access(newWebp));
 
   await assert.rejects(() => fs.access(oldNsp));
-  await assert.rejects(() => fs.access(oldPng));
+  await assert.rejects(() => fs.access(oldWebp));
+});
+
+test("does not regenerate artwork after explicit remove until generate", async () => {
+  const flow = flowPlaylistConfig.createFlow({
+    name: "No Regen",
+    enabled: false,
+  });
+  flowPlaylistConfig.setEnabled(flow.id, true);
+
+  const manager = new WeeklyFlowPlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
+  await manager.ensureSmartPlaylists();
+
+  const flowWebp = path.join(
+    manager.libraryRoot,
+    `${manager._sanitize(manager._getFlowPlaylistNames("No Regen").current)}.webp`,
+  );
+  await assert.doesNotReject(() => fs.access(flowWebp));
+
+  await manager.removeArtwork(flow.id);
+  await assert.rejects(() => fs.access(flowWebp));
+
+  await manager.ensureSmartPlaylists();
+  await assert.rejects(() => fs.access(flowWebp));
+
+  await manager.generateArtwork(flow.id);
+  await assert.doesNotReject(() => fs.access(flowWebp));
 });
 

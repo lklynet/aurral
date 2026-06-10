@@ -26,11 +26,11 @@ function FlipSaveButton({
       >
         <div className="btn-flip-inner">
           <span className="btn-flip-front">
-            <Save className="w-4 h-4" />
+            <Save aria-hidden="true" />
             {label}
           </span>
           <span className="btn-flip-back">
-            <Save className="w-4 h-4" />
+            <Save aria-hidden="true" />
             {savedLabel}
           </span>
         </div>

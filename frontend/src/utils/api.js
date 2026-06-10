@@ -288,11 +288,17 @@ export const searchCatalog = async (
     limit = 24,
     offset = 0,
     releaseTypes = [],
+    sort,
   } = {},
 ) => {
   const params = { q: query, scope, limit, offset };
-  if (scope === "album" && Array.isArray(releaseTypes) && releaseTypes.length) {
-    params.releaseTypes = releaseTypes.join(",");
+  if (scope === "album") {
+    if (Array.isArray(releaseTypes) && releaseTypes.length) {
+      params.releaseTypes = releaseTypes.join(",");
+    }
+    if (sort) {
+      params.sort = sort;
+    }
   }
   const key = `search:${JSON.stringify(params)}`;
   return fetchInflightOnce(searchInflightRequests, key, async () => {
@@ -304,7 +310,7 @@ export const searchCatalog = async (
 export const getArtistDetails = async (
   mbid,
   artistName,
-  { mode = "", releaseTypes = [] } = {},
+  { mode = "", releaseTypes = [], appearsOnLimit = null } = {},
 ) => {
   const params = {};
   if (artistName) {
@@ -315,6 +321,9 @@ export const getArtistDetails = async (
   }
   if (Array.isArray(releaseTypes) && releaseTypes.length > 0) {
     params.releaseTypes = releaseTypes.join(",");
+  }
+  if (Number.isFinite(Number(appearsOnLimit)) && Number(appearsOnLimit) > 0) {
+    params.appearsOnLimit = Number.parseInt(appearsOnLimit, 10);
   }
   const response = await api.get(`/artists/${mbid}`, {
     params,
@@ -360,10 +369,23 @@ export const getArtistCover = async (mbid, artistName, refresh = false) => {
 
 export const getReleaseGroupCover = async (
   mbid,
-  { artistName = "", albumTitle = "" } = {},
+  { artistName = "", albumTitle = "", bypassCache = false } = {},
 ) => {
-  const cacheKey = `release-group:${mbid}`;
-  return fetchCoverWithMemo(cacheKey, async () => {
+  const normalizedArtistName =
+    typeof artistName === "string" ? artistName.trim().toLowerCase() : "";
+  const normalizedAlbumTitle =
+    typeof albumTitle === "string" ? albumTitle.trim().toLowerCase() : "";
+  const cacheKey = `release-group:${mbid}:${normalizedArtistName}:${normalizedAlbumTitle}`;
+  if (!bypassCache) {
+    const cached = getCoverCacheEntry(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+  if (coverInflightRequests.has(cacheKey)) {
+    return coverInflightRequests.get(cacheKey);
+  }
+  const request = (async () => {
     const params = {};
     if (typeof artistName === "string" && artistName.trim()) {
       params.artistName = artistName.trim();
@@ -374,8 +396,15 @@ export const getReleaseGroupCover = async (
     const response = await api.get(`/artists/release-group/${mbid}/cover`, {
       params,
     });
+    if (!response.data?.transientError) {
+      setCoverCacheEntry(cacheKey, response.data);
+    }
     return response.data;
+  })().finally(() => {
+    coverInflightRequests.delete(cacheKey);
   });
+  coverInflightRequests.set(cacheKey, request);
+  return request;
 };
 
 export const getSimilarArtistsForArtist = async (
@@ -397,6 +426,19 @@ export const getSimilarArtistsForArtist = async (
 export const getArtistPreview = async (mbid, artistName) => {
   const response = await api.get(`/artists/${mbid}/preview`, {
     params: artistName ? { artistName } : {},
+  });
+  return response.data;
+};
+
+export const getArtistTopSongVideo = async (
+  mbid,
+  artistName,
+  trackTitle,
+  options = {},
+) => {
+  const response = await api.get(`/artists/${mbid}/video`, {
+    params: { artistName, trackTitle },
+    signal: options.signal,
   });
   return response.data;
 };
@@ -449,14 +491,49 @@ export const getFlowTrackStreamUrl = (jobId) => {
   return url;
 };
 
-export const getFlowArtworkUrl = (playlistId) => {
+export const getFlowArtworkUrl = (playlistId, version) => {
   const base = import.meta.env.VITE_API_URL || getDefaultApiBaseUrl();
   const { token } = getStoredAuth();
-  let url = `${base}/weekly-flow/artwork/${encodeURIComponent(playlistId)}`;
+  const params = new URLSearchParams();
   if (token) {
-    url += `?token=${encodeURIComponent(token)}`;
+    params.set("token", token);
+  }
+  if (version != null && version !== "") {
+    params.set("v", String(version));
+  }
+  const query = params.toString();
+  let url = `${base}/weekly-flow/artwork/${encodeURIComponent(playlistId)}`;
+  if (query) {
+    url += `?${query}`;
   }
   return url;
+};
+
+export const uploadFlowArtwork = async (playlistId, file) => {
+  const response = await api.put(
+    `/weekly-flow/artwork/${encodeURIComponent(playlistId)}`,
+    file,
+    {
+      headers: {
+        "Content-Type": file.type || "application/octet-stream",
+      },
+    },
+  );
+  return response.data;
+};
+
+export const deleteFlowArtwork = async (playlistId) => {
+  const response = await api.delete(
+    `/weekly-flow/artwork/${encodeURIComponent(playlistId)}`,
+  );
+  return response.data;
+};
+
+export const generateFlowArtwork = async (playlistId) => {
+  const response = await api.post(
+    `/weekly-flow/artwork/${encodeURIComponent(playlistId)}/generate`,
+  );
+  return response.data;
 };
 
 export const getLibraryArtists = async () => {
@@ -572,13 +649,46 @@ export const requestAlbumFromSearch = async (payload) => {
   return response.data;
 };
 
-export const getLibraryTracks = async (albumId, releaseGroupMbid = null) => {
+export const getLibraryPlaybackQueue = async () => {
+  const response = await api.get("/library/playback-queue");
+  const tracks = Array.isArray(response.data) ? response.data : [];
+  return Promise.all(
+    tracks.map(async (track) => ({
+      ...track,
+      preview_url: track.streamPath
+        ? await buildStreamUrl(track.streamPath)
+        : track.preview_url || null,
+      previewProvider: "lidarr",
+    })),
+  );
+};
+
+export const getLibraryTracks = async (
+  albumId,
+  releaseGroupMbid = null,
+  context = {},
+) => {
   const params = { albumId };
   if (releaseGroupMbid) {
     params.releaseGroupMbid = releaseGroupMbid;
   }
+  if (context.artistName) params.artistName = context.artistName;
+  if (context.albumTitle) params.albumTitle = context.albumTitle;
+  if (context.releaseType) params.releaseType = context.releaseType;
+  if (context.releaseDate) params.releaseDate = context.releaseDate;
+  if (context.deezerAlbumId) params.deezerAlbumId = context.deezerAlbumId;
   const response = await api.get("/library/tracks", { params });
-  return response.data;
+  const tracks = Array.isArray(response.data) ? response.data : [];
+  return Promise.all(
+    tracks.map(async (track) => {
+      if (!track?.streamPath) return track;
+      return {
+        ...track,
+        preview_url: await buildStreamUrl(track.streamPath),
+        previewProvider: "lidarr",
+      };
+    }),
+  );
 };
 
 export const updateLibraryAlbum = async (id, data) => {
@@ -666,9 +776,26 @@ export const getDiscovery = async (cacheBust = false) => {
   return response.data;
 };
 
+let blocklistInflight = null;
+let blocklistCache = null;
+
+const invalidateBlocklistCache = () => {
+  blocklistCache = null;
+};
+
 export const getBlocklist = async () => {
-  const response = await api.get("/discover/blocklist");
-  return response.data;
+  if (blocklistCache) return blocklistCache;
+  if (blocklistInflight) return blocklistInflight;
+  blocklistInflight = api
+    .get("/discover/blocklist")
+    .then((response) => {
+      blocklistCache = response.data;
+      return blocklistCache;
+    })
+    .finally(() => {
+      blocklistInflight = null;
+    });
+  return blocklistInflight;
 };
 
 export const updateBlocklist = async ({ artists, tags }) => {
@@ -676,10 +803,12 @@ export const updateBlocklist = async ({ artists, tags }) => {
     artists,
     tags,
   });
+  blocklistCache = response.data;
   return response.data;
 };
 
 export const addArtistToBlocklist = async ({ mbid = null, name = null } = {}) => {
+  invalidateBlocklistCache();
   const current = await getBlocklist();
   const nextArtists = Array.isArray(current.artists) ? [...current.artists] : [];
   nextArtists.push({ mbid, name });
@@ -687,18 +816,21 @@ export const addArtistToBlocklist = async ({ mbid = null, name = null } = {}) =>
     artists: nextArtists,
     tags: current.tags || [],
   });
+  blocklistCache = response.data;
   return response.data;
 };
 
 export const addTagToBlocklist = async (tag) => {
   const normalized = String(tag || "").trim();
   if (!normalized) return null;
+  invalidateBlocklistCache();
   const current = await getBlocklist();
   const nextTags = Array.isArray(current.tags) ? [...current.tags, normalized] : [normalized];
   const response = await api.put("/discover/blocklist", {
     artists: current.artists || [],
     tags: nextTags,
   });
+  blocklistCache = response.data;
   return response.data;
 };
 
@@ -898,6 +1030,30 @@ export const testLidarrConnection = async (url, apiKey) => {
   if (apiKey) params.append("apiKey", apiKey);
   const queryString = params.toString();
   const endpoint = `/settings/lidarr/test${
+    queryString ? `?${queryString}` : ""
+  }`;
+  const response = await api.get(endpoint);
+  return response.data;
+};
+
+export const testLidarrLibraryAccess = async (url, apiKey) => {
+  const params = new URLSearchParams();
+  if (url) params.append("url", url);
+  if (apiKey) params.append("apiKey", apiKey);
+  const queryString = params.toString();
+  const endpoint = `/settings/lidarr/test-library-access${
+    queryString ? `?${queryString}` : ""
+  }`;
+  const response = await api.get(endpoint);
+  return response.data;
+};
+
+export const testLidarrLibraryAccessOnboarding = async (url, apiKey) => {
+  const params = new URLSearchParams();
+  if (url) params.append("url", url);
+  if (apiKey) params.append("apiKey", apiKey);
+  const queryString = params.toString();
+  const endpoint = `/onboarding/lidarr/test-library-access${
     queryString ? `?${queryString}` : ""
   }`;
   const response = await api.get(endpoint);

@@ -3,22 +3,25 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import PropTypes from "prop-types";
 import {
   Library,
-  Settings,
   Sparkles,
   History,
   AudioWaveform,
-  Pin,
-  PinOff,
+  Download,
   Ticket,
   Ban,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
-import LogoutButton from "./LogoutButton";
 import { getBootstrapStatus } from "../utils/api";
+import { useFlowWorkerActivity } from "../pages/flows/useFlowWorkerActivity";
 
-function Sidebar({ isOpen, onClose, appVersion, mode, onSetMode }) {
+function Sidebar({ appVersion, mode }) {
   const location = useLocation();
-  const { authRequired, logout, user } = useAuth();
+  const { user } = useAuth();
+  const hasFlowAccess =
+    user?.role === "admin" || !!user?.permissions?.accessFlow;
+  const { hasActivity: hasDownloadActivity } = useFlowWorkerActivity({
+    enabled: hasFlowAccess,
+  });
   const resolvedVersion =
     appVersion || import.meta.env.VITE_APP_VERSION || "unknown";
   const navRef = useRef(null);
@@ -30,17 +33,21 @@ function Sidebar({ isOpen, onClose, appVersion, mode, onSetMode }) {
   const [isDesktop, setIsDesktop] = useState(() =>
     typeof window !== "undefined"
       ? window.matchMedia("(min-width: 768px)").matches
-      : true
+      : true,
   );
   const [ticketmasterConfigured, setTicketmasterConfigured] = useState(true);
 
-  const prevModeRef = useRef(mode);
-  useEffect(() => {
-    if (mode !== "hidden") {
-      prevModeRef.current = mode;
-    }
-  }, [mode]);
-  const isIcons = (mode === "icons" || (mode === "hidden" && prevModeRef.current === "icons")) && isDesktop;
+  const isIcons = mode === "icons" && isDesktop;
+
+  const positionSidebarTooltip = useCallback((event) => {
+    const link = event.currentTarget;
+    const rect = link.getBoundingClientRect();
+    link.style.setProperty(
+      "--sidebar-tooltip-top",
+      `${rect.top + rect.height / 2}px`,
+    );
+    link.style.setProperty("--sidebar-tooltip-left", `${rect.right + 8}px`);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -80,7 +87,7 @@ function Sidebar({ isOpen, onClose, appVersion, mode, onSetMode }) {
       if (path === "/discover" && location.pathname === "/") return true;
       return location.pathname === path;
     },
-    [location.pathname]
+    [location.pathname],
   );
 
   const navItems = useMemo(() => {
@@ -91,24 +98,25 @@ function Sidebar({ isOpen, onClose, appVersion, mode, onSetMode }) {
         ? [{ path: "/shows", label: "Shows", icon: Ticket }]
         : []),
       {
-        path: "/flow",
-        label: "Flow",
+        path: "/playlists",
+        label: "Playlists",
         icon: AudioWaveform,
+        permission: "accessFlow",
+      },
+      {
+        path: "/downloads",
+        label: "Downloads",
+        icon: Download,
         permission: "accessFlow",
       },
       { path: "/blocklist", label: "Blocklist", icon: Ban },
       { path: "/requests", label: "Requests", icon: History },
-      {
-        path: "/settings",
-        label: "Settings",
-        icon: Settings,
-      },
     ];
     return items.filter(
       (item) =>
         !item.permission ||
         user?.role === "admin" ||
-        !!user?.permissions?.[item.permission]
+        !!user?.permissions?.[item.permission],
     );
   }, [ticketmasterConfigured, user]);
 
@@ -152,7 +160,7 @@ function Sidebar({ isOpen, onClose, appVersion, mode, onSetMode }) {
       window.removeEventListener("resize", updateBubblePosition);
       aside?.removeEventListener("transitionend", onTransitionEnd);
     };
-  }, [location.pathname, navItems, isOpen, isActive, mode]);
+  }, [location.pathname, navItems, isActive, mode]);
 
   useEffect(() => {
     const updateHoverBubble = () => {
@@ -183,102 +191,53 @@ function Sidebar({ isOpen, onClose, appVersion, mode, onSetMode }) {
     updateHoverBubble();
   }, [hoveredIndex]);
 
-  const translateClass = isOpen
-    ? "translate-x-0"
-    : mode === "hidden"
-      ? "-translate-x-full"
-      : "-translate-x-full md:translate-x-0";
+  const translateClass =
+    mode === "hidden" ? "-translate-x-full" : "translate-x-0";
 
   return (
     <>
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
-          onClick={onClose}
-        />
-      )}
-
       <aside
         ref={asideRef}
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col transition-all duration-300 ease-in-out pl-safe pt-safe pb-safe ${translateClass}`}
+        className={`sidebar-shell ${translateClass}`}
         style={{
-          backgroundColor: "#18181c",
           width: isIcons ? "56px" : "208px",
         }}
       >
-        <div className="h-16 relative flex items-center justify-center px-4">
-          <Link to="/" className="flex items-center space-x-2 group">
+        <div className="sidebar-logo-row">
+          <Link to="/" className="sidebar-logo-link">
             <img
               src="/arralogo.svg"
               alt="Aurral Logo"
-              className="w-7 h-7 transition-transform group-hover:scale-110 flex-shrink-0"
-              style={{
-                filter:
-                  "brightness(0) saturate(100%) invert(45%) sepia(8%) saturate(800%) hue-rotate(60deg) brightness(95%) contrast(85%)",
-              }}
+              className="sidebar-logo"
             />
-            {!isIcons && (
-              <span
-                className="text-lg font-bold tracking-tight transition-colors"
-                style={{ color: "#fff" }}
-              >
-                Aurral
-              </span>
-            )}
+            {!isIcons && <span className="sidebar-title">Aurral</span>}
           </Link>
-          {!isIcons && (
-            <button
-              onClick={() => onSetMode("icons")}
-              className="hidden md:flex absolute right-2 p-1.5 rounded-md transition-colors hover:bg-white/10"
-              style={{ color: "#c1c1c3" }}
-              aria-label="Collapse to icons"
-              title="Collapse to icons"
-            >
-              <Pin className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
-        {isIcons && (
-          <div className="hidden md:flex justify-center pb-2">
-            <button
-              onClick={() => onSetMode("full")}
-              className="p-1.5 rounded-md transition-colors hover:bg-white/10"
-              style={{ color: "#c1c1c3" }}
-              aria-label="Expand sidebar"
-              title="Expand sidebar"
-            >
-              <PinOff className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
 
-        <div className={`flex-1 ${isIcons ? "px-1" : "px-3"} py-6 overflow-y-auto flex items-start justify-center`}>
+        <div className={`sidebar-body${isIcons ? " sidebar-body--icons" : ""}`}>
           <div
             ref={navRef}
-            className={`relative ${isIcons ? "p-1.5" : "p-3"} w-full`}
-            style={{ backgroundColor: "#0f0f12" }}
+            className={`sidebar-nav-wrap${isIcons ? " sidebar-nav-wrap--icons" : ""}`}
           >
             <div
               ref={activeBubbleRef}
-              className="absolute transition-all duration-300 ease-out z-10 opacity-0"
-              style={{ backgroundColor: "#707e61", opacity: "0.2" }}
+              className="sidebar-bubble sidebar-bubble--active"
             />
 
             <div
               ref={hoverBubbleRef}
-              className="absolute transition-all duration-200 ease-out z-0"
-              style={{ backgroundColor: "#1a1a1e" }}
+              className="sidebar-bubble sidebar-bubble--hover"
             />
 
             <nav
-              className="relative flex flex-col space-y-2"
+              className="sidebar-nav"
               onMouseLeave={() => setHoveredIndex(null)}
             >
               {navItems.map((item, index) => {
                 const Icon = item.icon;
                 const active = isActive(item.path);
-                const highlighted = active || hoveredIndex === index;
-                const linkColor = highlighted ? "#fff" : "#c1c1c3";
+                const showActivityDot =
+                  item.path === "/downloads" && hasDownloadActivity;
 
                 return (
                   <Link
@@ -287,32 +246,37 @@ function Sidebar({ isOpen, onClose, appVersion, mode, onSetMode }) {
                       if (el) linkRefs.current[index] = el;
                     }}
                     to={item.path}
-                    onMouseEnter={() => setHoveredIndex(index)}
-                    className={`group relative z-20 flex items-center ${
+                    onMouseEnter={(event) => {
+                      if (isIcons) positionSidebarTooltip(event);
+                      setHoveredIndex(index);
+                    }}
+                    className={`sidebar-link ${
+                      isIcons ? "sidebar-link--icons" : "sidebar-link--full"
+                    }${active ? " is-active" : ""}`}
+                    aria-label={
                       isIcons
-                        ? "justify-center px-2 py-3"
-                        : "space-x-3 px-4 py-3.5"
-                    } font-medium transition-all duration-200 text-base`}
-                    style={{ color: linkColor }}
+                        ? showActivityDot
+                          ? `${item.label} (active)`
+                          : item.label
+                        : undefined
+                    }
                   >
-                    <Icon
-                      className="w-5 h-5 flex-shrink-0"
-                      style={{ color: linkColor }}
-                    />
+                    <span className="sidebar-link__icon-wrap">
+                      <Icon className="sidebar-link__icon" aria-hidden="true" />
+                      {showActivityDot ? (
+                        <span className="sidebar-link__activity" aria-hidden="true" />
+                      ) : null}
+                    </span>
                     {!isIcons && (
-                      <span className="truncate">{item.label}</span>
+                      <span className="sidebar-link__label">
+                        {item.label}
+                        {showActivityDot ? (
+                          <span className="sr-only"> (active)</span>
+                        ) : null}
+                      </span>
                     )}
                     {isIcons && (
-                      <span
-                        className="absolute left-full ml-2 px-2.5 py-1.5 text-xs font-medium rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-[100]"
-                        style={{
-                          backgroundColor: "#2a2a2e",
-                          color: "#fff",
-                          boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
-                        }}
-                      >
-                        {item.label}
-                      </span>
+                      <span className="sidebar-tooltip">{item.label}</span>
                     )}
                   </Link>
                 );
@@ -321,28 +285,19 @@ function Sidebar({ isOpen, onClose, appVersion, mode, onSetMode }) {
           </div>
         </div>
 
-        <div className={`flex flex-col items-center gap-2 ${isIcons ? "p-1.5" : "p-3"} mt-auto border-t`} style={{ borderColor: "rgba(255,255,255,0.05)" }}>
-          {authRequired && (
-            <LogoutButton onClick={logout} collapsed={isIcons} />
-          )}
-
-          {!isIcons && (
-            <div className="text-[10px] font-mono opacity-30 select-none" style={{ color: "#c1c1c3" }}>
-              v{resolvedVersion}
-            </div>
-          )}
-        </div>
+        {!isIcons && (
+          <div className="sidebar-footer">
+            <div className="sidebar-version">v{resolvedVersion}</div>
+          </div>
+        )}
       </aside>
     </>
   );
 }
 
 Sidebar.propTypes = {
-  isOpen: PropTypes.bool.isRequired,
-  onClose: PropTypes.func.isRequired,
   appVersion: PropTypes.string,
   mode: PropTypes.oneOf(["full", "icons", "hidden"]).isRequired,
-  onSetMode: PropTypes.func.isRequired,
 };
 
 export default Sidebar;

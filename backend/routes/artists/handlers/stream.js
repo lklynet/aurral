@@ -2,13 +2,18 @@ import { UUID_REGEX } from "../../../config/constants.js";
 import {
   getLastfmApiKey,
   lastfmRequest,
+  musicbrainzGetArtistAppearsOnReleaseGroups,
   musicbrainzGetArtistReleaseGroups,
   musicbrainzGetArtistNameByMbid,
 } from "../../../services/apiClients.js";
 import { dbOps } from "../../../config/db-helpers.js";
 import { noCache } from "../../../middleware/cache.js";
 import { verifyTokenAuth } from "../../../middleware/auth.js";
-import { sendSSE, pendingArtistRequests } from "../utils.js";
+import {
+  buildArtistRequestKey,
+  sendSSE,
+  pendingArtistRequests,
+} from "../utils.js";
 import { getArtistImage } from "../../../services/imageService.js";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
 import { getArtistByMbid } from "../../../services/metadataProvider.js";
@@ -25,6 +30,11 @@ export default function registerStream(router) {
               .split(",")
               .map((value) => value.trim())
               .filter(Boolean)
+          : null;
+      const parsedAppearsOnLimit = Number.parseInt(req.query.appearsOnLimit, 10);
+      const appearsOnLimit =
+        Number.isFinite(parsedAppearsOnLimit) && parsedAppearsOnLimit > 0
+          ? parsedAppearsOnLimit
           : null;
 
       if (!UUID_REGEX.test(mbid)) {
@@ -58,6 +68,12 @@ export default function registerStream(router) {
 
       const override = dbOps.getArtistOverride(mbid);
       const resolvedMbid = override?.musicbrainzId || mbid;
+      const requestKey = buildArtistRequestKey({
+        mbid,
+        mode: "full",
+        selectedReleaseTypes,
+        appearsOnLimit,
+      });
       const toLegacyRelations = (metadataArtist) =>
         Array.isArray(metadataArtist?.links)
           ? metadataArtist.links
@@ -122,6 +138,7 @@ export default function registerStream(router) {
         genres: Array.isArray(metadataArtist?.genres) ? metadataArtist.genres : [],
         links: Array.isArray(metadataArtist?.links) ? metadataArtist.links : [],
         relations: toLegacyRelations(metadataArtist),
+        rating: metadataArtist?.rating || null,
         ...(metadataArtist?.overview ? { bio: metadataArtist.overview } : {}),
       });
       const sendArtist = (payload) => {
@@ -141,8 +158,8 @@ export default function registerStream(router) {
       try {
         const tasks = [];
         let fullArtistPromise = null;
-        const pendingPromise = pendingArtistRequests.has(mbid)
-          ? pendingArtistRequests.get(mbid)
+        const pendingPromise = pendingArtistRequests.has(requestKey)
+          ? pendingArtistRequests.get(requestKey)
           : null;
         const metadataArtistPromise = getArtistByMbid(resolvedMbid).catch(() => null);
         const namePromise = pendingPromise
@@ -263,7 +280,7 @@ export default function registerStream(router) {
 
         if (pendingPromise) {
           console.log(
-            `[Artists Stream] Request for ${mbid} already in progress, waiting...`,
+            `[Artists Stream] Request for ${requestKey} already in progress, waiting...`,
           );
           pendingPromise
             .then((data) => {
@@ -288,6 +305,12 @@ export default function registerStream(router) {
             namePromise,
             releaseGroupsPromise,
           ]).then(async ([metadataArtist, name, releaseGroups]) => {
+            const appearsOnReleaseGroups =
+              await musicbrainzGetArtistAppearsOnReleaseGroups(
+                resolvedMbid,
+                releaseGroups,
+                { limit: appearsOnLimit },
+              ).catch(() => []);
             const tagPayload = await getArtistTagPayload(
               resolvedMbid,
               name,
@@ -298,6 +321,7 @@ export default function registerStream(router) {
               tags: tagPayload.tags,
               genres: tagPayload.genres,
               "release-groups": releaseGroups,
+              "appears-on-release-groups": appearsOnReleaseGroups,
               "release-group-count": releaseGroups.length,
               "release-count": releaseGroups.length,
             };
@@ -314,9 +338,9 @@ export default function registerStream(router) {
             .then((artistPayload) => artistPayload)
             .catch(() => null);
 
-          pendingArtistRequests.set(mbid, fullArtistPromise);
+          pendingArtistRequests.set(requestKey, fullArtistPromise);
           fullArtistPromise.finally(() => {
-            pendingArtistRequests.delete(mbid);
+            pendingArtistRequests.delete(requestKey);
           });
 
         }
@@ -329,14 +353,21 @@ export default function registerStream(router) {
               cachedImage.imageUrl &&
               cachedImage.imageUrl !== "NOT_FOUND"
             ) {
+              const artistName =
+                (await namePromise.catch(() => null)) || streamArtistName || null;
+              const cachedCover = await getArtistImage(mbid, {
+                artistName,
+              }).catch(() => null);
               sendSSE(res, "cover", {
-                images: [
-                  {
-                    image: cachedImage.imageUrl,
-                    front: true,
-                    types: ["Front"],
-                  },
-                ],
+                images: cachedCover?.images?.length
+                  ? cachedCover.images
+                  : [
+                      {
+                        image: cachedImage.imageUrl,
+                        front: true,
+                        types: ["Front"],
+                      },
+                    ],
               });
               return;
             }

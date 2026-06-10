@@ -1,13 +1,20 @@
-import { createContext, useContext, useState, useCallback } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
 import { ToastContainer } from "../components/Toast";
 
 const ToastContext = createContext();
 
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
+  const nextToastIdRef = useRef(0);
 
   const addToast = useCallback((message, type = "info", duration = 3000) => {
-    const id = Date.now().toString();
+    const id = `${Date.now()}-${nextToastIdRef.current++}`;
     setToasts((prev) => [...prev, { id, message, type, duration }]);
     return id;
   }, []);

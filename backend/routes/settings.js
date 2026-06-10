@@ -461,6 +461,40 @@ router.get("/lidarr/tags", async (req, res) => {
   }
 });
 
+router.get("/lidarr/test-library-access", async (req, res) => {
+  try {
+    const { lidarrClient } = await import("../services/lidarrClient.js");
+    const { resolveLidarrTestCredentials, validateLidarrTestCredentials, withTemporaryLidarrClient } =
+      await import("../services/lidarrTestSession.js");
+    const { runLidarrLibraryAccessTest } =
+      await import("../services/lidarrLibraryAccessTest.js");
+
+    const { url, apiKey } = resolveLidarrTestCredentials(req.query, lidarrClient);
+    const validation = validateLidarrTestCredentials(url, apiKey);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.error });
+    }
+
+    const result = await withTemporaryLidarrClient(validation.url, apiKey, (client) =>
+      runLidarrLibraryAccessTest(client),
+    );
+
+    res.json({
+      success: result.ok,
+      ok: result.ok,
+      partial: !!result.partial,
+      steps: result.steps,
+      sample: result.sample,
+    });
+  } catch (error) {
+    console.error("[Settings] Lidarr library access test error:", error);
+    res.status(500).json({
+      error: "Library access check failed",
+      message: error.message,
+    });
+  }
+});
+
 router.get("/lidarr/test", async (req, res) => {
   try {
     const { lidarrClient } = await import("../services/lidarrClient.js");

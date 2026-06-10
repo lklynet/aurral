@@ -1113,6 +1113,11 @@ const deezerPreviewMatchCache = new NodeCache({
   checkperiod: 600,
   maxKeys: 2000,
 });
+const youtubeVideoCache = new NodeCache({
+  stdTTL: 24 * 3600,
+  checkperiod: 600,
+  maxKeys: 2000,
+});
 
 function normalizeTitle(title) {
   return String(title || "")
@@ -1431,6 +1436,154 @@ export async function musicbrainzGetArtistReleaseGroups(
           ]
         : [],
     }));
+    musicbrainzReleaseGroupsCache.set(cacheKey, mapped);
+    return mapped;
+  } catch {
+    return [];
+  }
+}
+
+const artistCreditIncludesMbid = (artistCredit, mbid) => {
+  const normalizedMbid = String(mbid || "").trim().toLowerCase();
+  if (!normalizedMbid || !Array.isArray(artistCredit)) return false;
+  return artistCredit.some(
+    (credit) =>
+      String(credit?.artist?.id || "").trim().toLowerCase() === normalizedMbid,
+  );
+};
+
+const getReleaseGroupArtistId = (releaseGroup) => {
+  const artistCredit = Array.isArray(releaseGroup?.["artist-credit"])
+    ? releaseGroup["artist-credit"]
+    : [];
+  return String(artistCredit[0]?.artist?.id || "").trim() || null;
+};
+
+const officialMusicbrainzRecordingSearch = async (
+  mbid,
+  { limit = 100, offset = 0 } = {},
+) => {
+  const contact =
+    (getMusicBrainzContact() || "").trim() || "https://github.com/aurral";
+  const userAgent = `${APP_NAME}/${APP_VERSION} ( ${contact} )`;
+  const safeLimit = Math.min(
+    100,
+    Math.max(1, Number.parseInt(limit, 10) || 100),
+  );
+  const safeOffset = Math.max(0, Number.parseInt(offset, 10) || 0);
+  return mbLimiter.schedule(async () => {
+    const response = await axios.get(`${MUSICBRAINZ_API}/recording`, {
+      params: {
+        fmt: "json",
+        query: `arid:${mbid}`,
+        inc: "artist-credits+releases",
+        limit: safeLimit,
+        offset: safeOffset,
+      },
+      headers: { "User-Agent": userAgent },
+      timeout: 8000,
+    });
+    return response.data;
+  });
+};
+
+const mapAppearsOnReleaseGroup = (releaseGroup, release, recording, mbid) => {
+  const artistCredit = Array.isArray(releaseGroup?.["artist-credit"])
+    ? releaseGroup["artist-credit"]
+    : Array.isArray(release?.["artist-credit"])
+      ? release["artist-credit"]
+      : [];
+  return {
+    id: releaseGroup?.id,
+    title: releaseGroup?.title || release?.title || "Untitled release",
+    "first-release-date":
+      releaseGroup?.["first-release-date"] || release?.date || null,
+    "primary-type": releaseGroup?.["primary-type"] || "Album",
+    "secondary-types": Array.isArray(releaseGroup?.["secondary-types"])
+      ? releaseGroup["secondary-types"]
+      : [],
+    rating: null,
+    "artist-credit": artistCredit,
+    _appearsOn: true,
+    _appearsOnTrack: recording?.title || null,
+    _appearsOnArtistMbid: mbid,
+    releases: release?.id
+      ? [
+          {
+            id: release.id,
+            status: release.status || null,
+            date: release.date || null,
+            title: release.title || releaseGroup?.title || "Untitled release",
+          },
+        ]
+      : [],
+  };
+};
+
+export async function musicbrainzGetArtistAppearsOnReleaseGroups(
+  mbid,
+  directReleaseGroups = [],
+  { limit = 24 } = {},
+) {
+  if (!mbid) return [];
+  const safeLimit = Math.min(
+    250,
+    Math.max(1, Number.parseInt(limit, 10) || 24),
+  );
+  const cacheKey = `appears-on:${mbid}:${safeLimit}`;
+  const cached = musicbrainzReleaseGroupsCache.get(cacheKey);
+  if (cached) return cached;
+
+  const directIds = new Set(
+    (Array.isArray(directReleaseGroups) ? directReleaseGroups : [])
+      .map((item) => String(item?.id || "").trim())
+      .filter(Boolean),
+  );
+
+  try {
+    const byReleaseGroupId = new Map();
+    const pageSize = 100;
+    const maxRecordingCount = Math.min(1000, Math.max(pageSize, safeLimit * 4));
+
+    for (let offset = 0; offset < maxRecordingCount; offset += pageSize) {
+      const data = await officialMusicbrainzRecordingSearch(mbid, {
+        limit: pageSize,
+        offset,
+      });
+      const recordings = Array.isArray(data?.recordings) ? data.recordings : [];
+
+      for (const recording of recordings) {
+        if (!artistCreditIncludesMbid(recording?.["artist-credit"], mbid)) {
+          continue;
+        }
+        for (const release of Array.isArray(recording?.releases)
+          ? recording.releases
+          : []) {
+          const releaseGroup = release?.["release-group"];
+          const releaseGroupId = String(releaseGroup?.id || "").trim();
+          if (!releaseGroupId || directIds.has(releaseGroupId)) continue;
+          if (getReleaseGroupArtistId(releaseGroup) === mbid) continue;
+          if (!byReleaseGroupId.has(releaseGroupId)) {
+            byReleaseGroupId.set(
+              releaseGroupId,
+              mapAppearsOnReleaseGroup(releaseGroup, release, recording, mbid),
+            );
+          }
+        }
+      }
+
+      if (byReleaseGroupId.size >= safeLimit || recordings.length < pageSize) {
+        break;
+      }
+    }
+
+    const mapped = [...byReleaseGroupId.values()]
+      .sort((left, right) =>
+        String(right["first-release-date"] || "").localeCompare(
+          String(left["first-release-date"] || ""),
+        ),
+      )
+      .slice(0, safeLimit);
     musicbrainzReleaseGroupsCache.set(cacheKey, mapped);
     return mapped;
   } catch {
@@ -1762,6 +1915,45 @@ export async function resolveDeezerAlbumToMbid(
   }
 }
 
+export async function youtubeFindTopSongVideo(artistName, trackTitle) {
+  const artist = String(artistName || "").trim();
+  const title = String(trackTitle || "").trim();
+  if (!artist || !title) return null;
+
+  const cacheKey = `${artist.toLowerCase()}\0${title.toLowerCase()}`;
+  const cached = youtubeVideoCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  try {
+    const query = `${artist} ${title} official video`;
+    const response = await axios.get("https://www.youtube.com/results", {
+      params: { search_query: query },
+      timeout: 5000,
+      headers: {
+        "Accept-Language": "en-US,en;q=0.9",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+      },
+    });
+    const matches = [
+      ...String(response.data || "").matchAll(/"videoId":"([a-zA-Z0-9_-]{11})"/g),
+    ];
+    const videoId = [...new Set(matches.map((match) => match[1]))][0] || null;
+    const result = videoId
+      ? {
+          videoId,
+          embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}`,
+          query,
+        }
+      : null;
+    youtubeVideoCache.set(cacheKey, result);
+    return result;
+  } catch (e) {
+    youtubeVideoCache.set(cacheKey, null, 300);
+    return null;
+  }
+}
+
 export function clearApiCaches() {
   mbCache.flushAll();
   lastfmCache.flushAll();
@@ -1771,4 +1963,5 @@ export function clearApiCaches() {
   musicbrainzReleaseGroupsCache.flushAll();
   deezerAlbumCache.flushAll();
   deezerBioCache.flushAll();
+  youtubeVideoCache.flushAll();
 }

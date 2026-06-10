@@ -1,17 +1,151 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import PropTypes from "prop-types";
-import { Check, ListMusic, Loader, Plus } from "lucide-react";
+import { Check, ChevronRight, Loader, Plus } from "lucide-react";
 
-export function TrackPlaylistMenu({
+function useAvailablePlaylists(playlists, excludedPlaylistIds) {
+  return useMemo(() => {
+    const excluded = new Set(
+      (Array.isArray(excludedPlaylistIds) ? excludedPlaylistIds : [])
+        .map((entry) => String(entry || "").trim())
+        .filter(Boolean),
+    );
+    return (Array.isArray(playlists) ? playlists : []).filter(
+      (playlist) => !excluded.has(String(playlist?.id || "").trim()),
+    );
+  }, [excludedPlaylistIds, playlists]);
+}
+
+export function TrackPlaylistPickerContent({
   playlists = [],
   loading = false,
   saving = false,
   error = "",
   defaultNewPlaylistName = "Playlist",
-  onLoadPlaylists,
+  excludedPlaylistIds = [],
   onSelect,
-  onOpenChange,
 }) {
+  const availablePlaylists = useAvailablePlaylists(playlists, excludedPlaylistIds);
+
+  if (loading) {
+    return (
+      <div className="artist-menu-item">
+        <Loader className="artist-icon-sm animate-spin" />
+        Loading playlists
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="artist-menu-item"
+        onClick={() =>
+          onSelect?.({
+            mode: "new",
+            name: defaultNewPlaylistName,
+          })
+        }
+        disabled={saving}
+      >
+        <Plus className="artist-icon-sm" />
+        <span className="artist-track-title">New playlist</span>
+      </button>
+      {availablePlaylists.length > 0 ? (
+        <div className="artist-playlist-menu__scroll">
+          {availablePlaylists.map((playlist) => (
+            <button
+              key={playlist.id}
+              type="button"
+              className="artist-menu-item"
+              onClick={() =>
+                onSelect?.({
+                  mode: "existing",
+                  playlistId: playlist.id,
+                })
+              }
+              disabled={saving}
+            >
+              <span className="artist-track-title">{playlist.name}</span>
+              <Check className="artist-icon-sm" aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {error ? <div className="artist-error-text">{error}</div> : null}
+    </>
+  );
+}
+
+export function TrackPlaylistSubmenu({
+  label,
+  icon: Icon = Plus,
+  playlists = [],
+  loading = false,
+  saving = false,
+  error = "",
+  defaultNewPlaylistName = "Playlist",
+  excludedPlaylistIds = [],
+  onSelect,
+  onClose,
+}) {
+  const handleSelect = async (target) => {
+    await onSelect?.(target);
+    onClose?.();
+  };
+
+  return (
+    <div className="artist-menu-submenu">
+      <div
+        className="artist-menu-item artist-menu-submenu__trigger"
+        role="menuitem"
+        tabIndex={0}
+      >
+        <span className="artist-menu-item__main">
+          <Icon className="artist-icon-sm" />
+          {label}
+        </span>
+        <ChevronRight className="artist-icon-sm" aria-hidden="true" />
+      </div>
+      <div className="artist-menu-submenu__panel">
+        <TrackPlaylistPickerContent
+          playlists={playlists}
+          loading={loading}
+          saving={saving}
+          error={error}
+          defaultNewPlaylistName={defaultNewPlaylistName}
+          excludedPlaylistIds={excludedPlaylistIds}
+          onSelect={handleSelect}
+        />
+      </div>
+    </div>
+  );
+}
+
+export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
+  {
+    playlists = [],
+    loading = false,
+    saving = false,
+    error = "",
+    defaultNewPlaylistName = "Playlist",
+    excludedPlaylistIds = [],
+    triggerLabel = "Add to playlist",
+    triggerVariant = "expand",
+    onLoadPlaylists,
+    onSelect,
+    onOpenChange,
+    menuVariant,
+  },
+  ref,
+) {
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
   const menuRef = useRef(null);
@@ -38,148 +172,138 @@ export function TrackPlaylistMenu({
     };
   }, [onOpenChange, open]);
 
-  const handleOpen = async (event) => {
-    event.stopPropagation();
-    const rect = buttonRef.current?.getBoundingClientRect();
-    if (rect) {
-      const menuWidth = 256;
-      setMenuPosition({
-        top: rect.bottom + 8,
-        left: Math.max(
-          12,
-          Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 12),
-        ),
-      });
-    }
-    const nextOpen = !open;
-    setOpen(nextOpen);
-    onOpenChange?.(nextOpen);
-    if (!open) {
-      await onLoadPlaylists?.();
-    }
+  const positionMenuFromAnchor = (anchorEl) => {
+    const rect = anchorEl?.getBoundingClientRect?.();
+    if (!rect) return;
+    const menuWidth = 256;
+    setMenuPosition({
+      top: rect.bottom + 8,
+      left: Math.max(
+        12,
+        Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 12),
+      ),
+    });
   };
 
-  const handleSelect = async (target) => {
-    await onSelect?.(target);
+  const openMenu = async (anchorEl) => {
+    positionMenuFromAnchor(anchorEl || buttonRef.current);
+    setOpen(true);
+    onOpenChange?.(true);
+    await onLoadPlaylists?.();
+  };
+
+  const closeMenu = () => {
     setOpen(false);
     onOpenChange?.(false);
   };
 
+  useImperativeHandle(ref, () => ({
+    open: openMenu,
+    close: closeMenu,
+  }));
+
+  const handleOpen = async (event) => {
+    event.stopPropagation();
+    if (open) {
+      closeMenu();
+      return;
+    }
+    await openMenu(buttonRef.current);
+  };
+
+  const handleSelect = async (target) => {
+    await onSelect?.(target);
+    closeMenu();
+  };
+
+  const showTrigger = triggerVariant !== "hidden";
+  const triggerClassName =
+    triggerVariant === "compact"
+      ? `btn btn-secondary btn-icon btn-xs${open ? " btn-neutral-active" : ""}`
+      : `artist-playlist-trigger${open ? " is-open" : ""}`;
+
   return (
-    <div className="relative flex-shrink-0" ref={menuRef}>
-      <button
-        ref={buttonRef}
-        type="button"
-        className={`group inline-flex h-7 flex-shrink-0 items-center overflow-hidden rounded-full transition-all duration-200 ease-out hover:w-[118px] ${
-          open ? "w-[118px]" : "w-7"
-        }`}
-        style={{
-          backgroundColor: "rgba(255,255,255,0.06)",
-          color: "#fff",
-        }}
-        onClick={handleOpen}
-        title="Add to playlist"
-        aria-label="Add to playlist"
-        aria-expanded={open}
-        disabled={saving}
-      >
-        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center">
-          {saving ? (
-            <Loader className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Plus className="h-3.5 w-3.5" />
-          )}
-        </span>
-        <span
-          className={`pr-3 text-xs font-medium whitespace-nowrap transition-all duration-150 ease-out ${
-            open
-              ? "translate-x-0 opacity-100"
-              : "-translate-x-2 opacity-0 group-hover:translate-x-0 group-hover:opacity-100"
-          }`}
+    <div className="artist-relative" ref={menuRef}>
+      {showTrigger ? (
+        <button
+          ref={buttonRef}
+          type="button"
+          className={triggerClassName}
+          onClick={handleOpen}
+          title={triggerLabel}
+          aria-label={triggerLabel}
+          aria-expanded={open}
+          disabled={saving}
         >
-          Add to playlist
-        </span>
-      </button>
+          {triggerVariant === "compact" ? (
+            saving ? (
+              <Loader className="artist-icon-xs animate-spin" />
+            ) : (
+              <Plus className="artist-icon-xs" />
+            )
+          ) : (
+            <>
+              <span className="artist-playlist-trigger__icon">
+                {saving ? (
+                  <Loader className="artist-icon-xs animate-spin" />
+                ) : (
+                  <Plus className="artist-icon-xs" />
+                )}
+              </span>
+              <span className="artist-playlist-trigger__label">
+                {triggerLabel}
+              </span>
+            </>
+          )}
+        </button>
+      ) : null}
 
       {open ? (
         <div
-          className="fixed z-50 w-64 overflow-hidden rounded-xl border border-white/10 bg-[#15151a] py-1 shadow-xl"
+          className={`artist-playlist-menu${menuVariant === "preview-tracks" ? " artist-playlist-menu--preview-tracks" : ""}`}
           style={{
             top: menuPosition.top,
             left: menuPosition.left,
           }}
           onClick={(event) => event.stopPropagation()}
         >
-          <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs font-medium uppercase tracking-[0.14em] text-[#9ea0a8]">
-            <ListMusic className="h-3.5 w-3.5" />
-            Playlists
-          </div>
-          {loading ? (
-            <div className="flex items-center gap-2 px-3 py-3 text-sm text-[#c1c1c3]">
-              <Loader className="h-4 w-4 animate-spin" />
-              Loading playlists
-            </div>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm text-white transition-colors hover:bg-white/5"
-                onClick={() =>
-                  handleSelect({
-                    mode: "new",
-                    name: defaultNewPlaylistName,
-                  })
-                }
-                disabled={saving}
-              >
-                <Plus className="h-4 w-4 flex-shrink-0 text-[#dfe8d2]" />
-                <span className="min-w-0">
-                  <span className="block truncate font-medium">New playlist</span>
-                  <span className="block truncate text-xs text-[#aeb0b7]">
-                    {defaultNewPlaylistName}
-                  </span>
-                </span>
-              </button>
-              {Array.isArray(playlists) && playlists.length > 0 ? (
-                <div className="max-h-64 overflow-y-auto border-t border-white/10 py-1">
-                  {playlists.map((playlist) => (
-                    <button
-                      key={playlist.id}
-                      type="button"
-                      className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm text-white transition-colors hover:bg-white/5"
-                      onClick={() =>
-                        handleSelect({
-                          mode: "existing",
-                          playlistId: playlist.id,
-                        })
-                      }
-                      disabled={saving}
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium">
-                          {playlist.name}
-                        </span>
-                        <span className="block text-xs text-[#aeb0b7]">
-                          {playlist.trackCount || 0} tracks
-                        </span>
-                      </span>
-                      <Check className="h-4 w-4 flex-shrink-0 opacity-0" />
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              {error ? (
-                <div className="border-t border-white/10 px-3 py-2 text-xs text-red-400">
-                  {error}
-                </div>
-              ) : null}
-            </>
-          )}
+          <TrackPlaylistPickerContent
+            playlists={playlists}
+            loading={loading}
+            saving={saving}
+            error={error}
+            defaultNewPlaylistName={defaultNewPlaylistName}
+            excludedPlaylistIds={excludedPlaylistIds}
+            onSelect={handleSelect}
+          />
         </div>
       ) : null}
     </div>
   );
-}
+});
+
+TrackPlaylistPickerContent.propTypes = {
+  playlists: PropTypes.array,
+  loading: PropTypes.bool,
+  saving: PropTypes.bool,
+  error: PropTypes.string,
+  defaultNewPlaylistName: PropTypes.string,
+  excludedPlaylistIds: PropTypes.array,
+  onSelect: PropTypes.func,
+};
+
+TrackPlaylistSubmenu.propTypes = {
+  label: PropTypes.string.isRequired,
+  icon: PropTypes.elementType,
+  playlists: PropTypes.array,
+  loading: PropTypes.bool,
+  saving: PropTypes.bool,
+  error: PropTypes.string,
+  defaultNewPlaylistName: PropTypes.string,
+  excludedPlaylistIds: PropTypes.array,
+  onSelect: PropTypes.func,
+  onClose: PropTypes.func,
+};
 
 TrackPlaylistMenu.propTypes = {
   playlists: PropTypes.array,
@@ -187,7 +311,11 @@ TrackPlaylistMenu.propTypes = {
   saving: PropTypes.bool,
   error: PropTypes.string,
   defaultNewPlaylistName: PropTypes.string,
+  excludedPlaylistIds: PropTypes.array,
+  triggerLabel: PropTypes.string,
+  triggerVariant: PropTypes.oneOf(["expand", "compact", "hidden"]),
   onLoadPlaylists: PropTypes.func,
   onSelect: PropTypes.func,
   onOpenChange: PropTypes.func,
+  menuVariant: PropTypes.oneOf(["preview-tracks"]),
 };

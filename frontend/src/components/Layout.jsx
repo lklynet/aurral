@@ -3,58 +3,96 @@ import PropTypes from "prop-types";
 import { Link, useLocation } from "react-router-dom";
 import {
   Menu,
-  Heart,
   Sparkles,
   Library,
   History,
   Ellipsis,
   Ticket,
   AudioWaveform,
+  Download,
   Ban,
   Settings,
   LogOut,
+  User,
 } from "lucide-react";
 import Sidebar from "./Sidebar";
 import GlobalSearch from "./GlobalSearch";
+import GlobalPlayerBar from "./GlobalPlayerBar";
+import UserProfileMenu from "./UserProfileMenu";
 import { useAuth } from "../contexts/AuthContext";
+import { useAudioQueue } from "../hooks/useAudioQueue";
 
 const VALID_SIDEBAR_MODES = ["full", "icons", "hidden"];
 
-function GitHubIcon({ className = "" }) {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-    >
-      <path d="M12 .5C5.649.5.5 5.649.5 12c0 5.084 3.292 9.398 7.861 10.919.575.106.786-.25.786-.556 0-.274-.01-1-.016-1.962-3.197.695-3.872-1.541-3.872-1.541-.523-1.328-1.277-1.682-1.277-1.682-1.044-.714.079-.699.079-.699 1.154.081 1.761 1.185 1.761 1.185 1.026 1.758 2.692 1.25 3.348.956.104-.743.402-1.251.731-1.539-2.552-.291-5.236-1.276-5.236-5.681 0-1.255.449-2.282 1.184-3.086-.119-.291-.513-1.462.112-3.048 0 0 .966-.309 3.165 1.179A10.98 10.98 0 0 1 12 6.033c.973.004 1.954.132 2.87.388 2.197-1.488 3.162-1.179 3.162-1.179.627 1.586.233 2.757.114 3.048.737.804 1.182 1.831 1.182 3.086 0 4.416-2.688 5.387-5.249 5.673.413.355.781 1.055.781 2.126 0 1.535-.014 2.772-.014 3.149 0 .309.207.668.792.555C20.211 21.394 23.5 17.082 23.5 12 23.5 5.649 18.351.5 12 .5Z" />
-    </svg>
-  );
-}
-
-GitHubIcon.propTypes = {
-  className: PropTypes.string,
-};
-
 function Layout({ children, appVersion }) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [scrollbar, setScrollbar] = useState({
+    visible: false,
+    active: false,
+    top: 0,
+    height: 0,
+  });
+  const mainScrollRef = useRef(null);
+  const scrollbarFadeTimeoutRef = useRef(null);
   const [sidebarMode, setSidebarMode] = useState(() => {
     try {
       const stored = localStorage.getItem("sidebarMode");
+      if (stored === "hidden") {
+        const visible = localStorage.getItem("sidebarVisibleMode");
+        return visible === "full" || visible === "icons" ? visible : "icons";
+      }
       return VALID_SIDEBAR_MODES.includes(stored) ? stored : "full";
     } catch {
       return "full";
     }
   });
-  const prevVisibleMode = useRef(
-    sidebarMode !== "hidden"
-      ? sidebarMode
-      : (() => { try { const s = localStorage.getItem("sidebarVisibleMode"); return s === "full" || s === "icons" ? s : "full"; } catch { return "full"; } })()
-  );
   const location = useLocation();
   const { authRequired, logout, user } = useAuth();
+  const { isActive: isPlayerActive } = useAudioQueue();
+  const isArtistDetailsRoute = /^\/artist\/[^/]+$/.test(location.pathname);
+
+  const updateMainScrollbar = useCallback(() => {
+    const node = mainScrollRef.current;
+    if (!node) return;
+    const { scrollTop, scrollHeight, clientHeight } = node;
+    const scrollable = scrollHeight > clientHeight + 1;
+    if (!scrollable) {
+      setScrollbar((current) =>
+        current.visible
+          ? { visible: false, active: false, top: 0, height: 0 }
+          : current,
+      );
+      return;
+    }
+    const minThumbHeight = 48;
+    const thumbHeight = Math.max(
+      minThumbHeight,
+      (clientHeight / scrollHeight) * clientHeight,
+    );
+    const maxTop = Math.max(clientHeight - thumbHeight, 0);
+    const top =
+      scrollHeight === clientHeight
+        ? 0
+        : (scrollTop / (scrollHeight - clientHeight)) * maxTop;
+    setScrollbar((current) => ({
+      visible: true,
+      active: current.active,
+      top,
+      height: thumbHeight,
+    }));
+  }, []);
+
+  const showScrollbarTemporarily = useCallback(() => {
+    setScrollbar((current) =>
+      current.visible ? { ...current, active: true } : current,
+    );
+    if (scrollbarFadeTimeoutRef.current) {
+      clearTimeout(scrollbarFadeTimeoutRef.current);
+    }
+    scrollbarFadeTimeoutRef.current = window.setTimeout(() => {
+      setScrollbar((current) => ({ ...current, active: false }));
+    }, 900);
+  }, []);
 
   const isActive = useCallback(
     (path) => {
@@ -77,13 +115,25 @@ function Layout({ children, appVersion }) {
     const items = [
       { path: "/shows", label: "Shows", icon: Ticket },
       {
-        path: "/flow",
-        label: "Flow",
+        path: "/playlists",
+        label: "Playlists",
         icon: AudioWaveform,
         permission: "accessFlow",
       },
+      {
+        path: "/downloads",
+        label: "Downloads",
+        icon: Download,
+        permission: "accessFlow",
+      },
       { path: "/blocklist", label: "Blocklist", icon: Ban },
-      { path: "/settings", label: "Settings", icon: Settings },
+      { path: "/profile", label: "Profile", icon: User },
+      {
+        path: "/settings",
+        label: "Settings",
+        icon: Settings,
+        permission: "accessSettings",
+      },
     ];
     return items.filter(
       (item) =>
@@ -94,111 +144,129 @@ function Layout({ children, appVersion }) {
   }, [user]);
 
   const handleSetSidebarMode = useCallback((newMode) => {
-    if (newMode !== "hidden") {
-      prevVisibleMode.current = newMode;
-    }
     setSidebarMode(newMode);
     try {
       localStorage.setItem("sidebarMode", newMode);
-      if (newMode !== "hidden") {
-        localStorage.setItem("sidebarVisibleMode", newMode);
-      }
-    } catch {
-      // localStorage unavailable
-    }
+      localStorage.setItem("sidebarVisibleMode", newMode);
+    } catch {}
   }, []);
 
+  const toggleSidebarPin = useCallback(() => {
+    handleSetSidebarMode(sidebarMode === "icons" ? "full" : "icons");
+  }, [handleSetSidebarMode, sidebarMode]);
+
   useEffect(() => {
-    setIsSidebarOpen(false);
     setIsMobileMenuOpen(false);
   }, [location.pathname]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  }, [location.pathname, location.search]);
+    mainScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    window.requestAnimationFrame(updateMainScrollbar);
+  }, [location.pathname, location.search, updateMainScrollbar]);
+
+  useEffect(() => {
+    const update = () => updateMainScrollbar();
+    update();
+    window.addEventListener("resize", update);
+    const node = mainScrollRef.current;
+    const observer =
+      typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
+    if (node && observer) {
+      observer.observe(node);
+      if (node.firstElementChild) {
+        observer.observe(node.firstElementChild);
+      }
+    }
+    return () => {
+      window.removeEventListener("resize", update);
+      observer?.disconnect();
+    };
+  }, [children, updateMainScrollbar]);
+
+  useEffect(
+    () => () => {
+      if (scrollbarFadeTimeoutRef.current) {
+        clearTimeout(scrollbarFadeTimeoutRef.current);
+      }
+    },
+    [],
+  );
 
   return (
-    <div className="min-h-screen font-sans antialiased transition-colors duration-200">
-      <Sidebar
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-        appVersion={appVersion}
-        mode={sidebarMode}
-        onSetMode={handleSetSidebarMode}
-      />
+    <div className="app-shell">
+      <Sidebar appVersion={appVersion} mode={sidebarMode} />
 
       <div
-        className={`flex flex-col min-h-screen transition-all duration-300 ease-in-out ${
+        className={`app-content${
           sidebarMode === "full"
-            ? "md:ml-[208px]"
+            ? " app-content--sidebar-full"
             : sidebarMode === "icons"
-              ? "md:ml-[56px]"
+              ? " app-content--sidebar-icons"
               : ""
-        }`}
+        }${isPlayerActive ? " app-content--player-active" : ""}`}
       >
-        <header
-          className="sticky top-0 z-30 flex h-16 items-center gap-4 px-4 py-3 backdrop-blur-md md:px-6"
-          style={{ backgroundColor: "rgba(5, 5, 5, 0.8)" }}
-        >
+        <header className="app-topbar">
           <button
-            onClick={() => {
-              const isDesktop = window.matchMedia("(min-width: 768px)").matches;
-              if (isDesktop) {
-                handleSetSidebarMode(sidebarMode === "hidden" ? prevVisibleMode.current : "hidden");
-              } else {
-                setIsMobileMenuOpen((open) => !open);
-              }
-            }}
-            className="hidden p-2 -ml-2 transition-colors hover:bg-gray-900/50 md:inline-flex"
-            style={{ color: "#c1c1c3" }}
-            aria-label="Toggle navigation"
+            type="button"
+            onClick={toggleSidebarPin}
+            className="app-nav-toggle"
+            aria-label={
+              sidebarMode === "icons" ? "Expand sidebar" : "Collapse to icons"
+            }
+            title={
+              sidebarMode === "icons" ? "Expand sidebar" : "Collapse to icons"
+            }
           >
-            <Menu className="w-5 h-5" />
+            <Menu aria-hidden="true" />
           </button>
 
           <GlobalSearch />
 
-          <div className="hidden items-center space-x-2 md:flex">
-            <a
-              href="https://github.com/lklynet/aurral"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-2 transition-colors rounded-md hover:bg-white/5 group"
-              style={{ color: "#c1c1c3" }}
-              aria-label="GitHub Repository"
-            >
-              <GitHubIcon className="w-5 h-5 transition-colors group-hover:text-white" />
-            </a>
-            <a
-              href="https://github.com/sponsors/lklynet/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-2 transition-colors rounded-md hover:bg-white/5 group"
-              style={{ color: "#c1c1c3" }}
-              aria-label="GitHub Sponsors"
-            >
-              <Heart className="w-5 h-5 transition-colors group-hover:text-pink-500" />
-            </a>
+          <div className="app-header-actions">
+            <UserProfileMenu />
           </div>
         </header>
 
-        <main className="mx-auto flex-1 w-full max-w-[1600px] p-4 pb-24 md:p-8 md:pb-8 lg:p-10">
-          <div className="animate-fade-in">{children}</div>
-        </main>
+        <div className="app-main-wrap">
+          <main
+            className={`app-main${isArtistDetailsRoute ? " app-main--artist-details" : ""}`}
+            ref={mainScrollRef}
+            onScroll={() => {
+              updateMainScrollbar();
+              showScrollbarTemporarily();
+            }}
+          >
+            <div className="app-main__content">{children}</div>
+          </main>
+          <div
+            className={`app-main-scrollbar${scrollbar.visible ? " is-visible" : ""}${
+              scrollbar.active ? " is-active" : ""
+            }`}
+            aria-hidden="true"
+          >
+            <div
+              className="app-main-scrollbar__thumb"
+              style={{
+                height: `${scrollbar.height}px`,
+                transform: `translateY(${scrollbar.top}px)`,
+              }}
+            />
+          </div>
+        </div>
+
+        <GlobalPlayerBar />
 
         {isMobileMenuOpen && (
           <>
             <button
               type="button"
-              className="fixed inset-0 z-40 bg-black/50 md:hidden"
+              className="app-mobile-backdrop app-mobile-only"
               onClick={() => setIsMobileMenuOpen(false)}
               aria-label="Close navigation menu"
             />
-            <div
-              className="fixed inset-x-0 bottom-20 z-50 mx-4 border border-white/10 p-2 shadow-2xl md:hidden"
-              style={{ backgroundColor: "#14141a" }}
-            >
-              <nav className="flex flex-col">
+            <div className="app-mobile-menu app-mobile-only">
+              <nav className="app-mobile-menu__nav">
                 {mobileOverflowItems.map((item) => {
                   const Icon = item.icon;
                   const active = isActive(item.path);
@@ -206,10 +274,9 @@ function Layout({ children, appVersion }) {
                     <Link
                       key={item.path}
                       to={item.path}
-                      className="flex items-center gap-3 px-3 py-3 text-sm font-medium transition-colors"
-                      style={{ color: active ? "#fff" : "#c1c1c3" }}
+                      className={`app-mobile-menu__item${active ? " is-active" : ""}`}
                     >
-                      <Icon className="h-4 w-4" />
+                      <Icon aria-hidden="true" />
                       <span>{item.label}</span>
                     </Link>
                   );
@@ -221,10 +288,9 @@ function Layout({ children, appVersion }) {
                       setIsMobileMenuOpen(false);
                       logout();
                     }}
-                    className="flex items-center gap-3 px-3 py-3 text-left text-sm font-medium"
-                    style={{ color: "#c1c1c3" }}
+                    className="app-mobile-menu__item"
                   >
-                    <LogOut className="h-4 w-4" />
+                    <LogOut aria-hidden="true" />
                     <span>Log out</span>
                   </button>
                 )}
@@ -234,10 +300,10 @@ function Layout({ children, appVersion }) {
         )}
 
         <nav
-          className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0f0f12] md:hidden"
+          className="app-mobile-nav app-mobile-only"
           aria-label="Mobile navigation"
         >
-          <div className="grid min-h-[88px] grid-cols-4">
+          <div className="app-mobile-nav__grid">
             {mobilePrimaryItems.map((item) => {
               const Icon = item.icon;
               const active = isActive(item.path);
@@ -245,10 +311,9 @@ function Layout({ children, appVersion }) {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className="flex flex-col items-center justify-start gap-1.5 px-2 pt-3 pb-4 text-xs font-medium"
-                  style={{ color: active ? "#fff" : "#8f9097" }}
+                  className={`app-mobile-nav__item${active ? " is-active" : ""}`}
                 >
-                  <Icon className="h-6 w-6" />
+                  <Icon aria-hidden="true" />
                   <span>{item.label}</span>
                 </Link>
               );
@@ -256,18 +321,16 @@ function Layout({ children, appVersion }) {
             <button
               type="button"
               onClick={() => setIsMobileMenuOpen((open) => !open)}
-              className="flex flex-col items-center justify-start gap-1.5 px-2 pt-3 pb-4 text-xs font-medium"
-              style={{
-                color:
-                  isMobileMenuOpen ||
-                  mobileOverflowItems.some((item) => isActive(item.path))
-                    ? "#fff"
-                    : "#8f9097",
-              }}
+              className={`app-mobile-nav__item${
+                isMobileMenuOpen ||
+                mobileOverflowItems.some((item) => isActive(item.path))
+                  ? " is-active"
+                  : ""
+              }`}
               aria-label="More navigation options"
               aria-expanded={isMobileMenuOpen}
             >
-              <Ellipsis className="h-6 w-6" />
+              <Ellipsis aria-hidden="true" />
               <span>More</span>
             </button>
           </div>

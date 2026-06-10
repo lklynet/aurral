@@ -21,7 +21,7 @@ export const GRANULAR_PERMISSIONS = {
 };
 
 export const granularPerms = [
-  { key: "accessFlow", label: "Access flows and playlists" },
+  { key: "accessFlow", label: "Access playlists and downloads" },
   { key: "addArtist", label: "Add artist" },
   { key: "addAlbum", label: "Add album" },
   { key: "changeMonitoring", label: "Change artist monitoring" },

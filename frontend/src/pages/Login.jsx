@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import { Lock } from "lucide-react";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 const Login = () => {
+  useDocumentTitle("Sign in");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -20,32 +21,23 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div
-        className="max-w-md w-full space-y-8 backdrop-blur-sm p-8 shadow-lg"
-        style={{ backgroundColor: "#211f27" }}
-      >
-        <div className="text-center">
-          <div
-            className="mx-auto h-12 w-12 flex items-center justify-center mb-4"
-            style={{ backgroundColor: "#211f27" }}
-          >
-            <Lock className="h-6 w-6" style={{ color: "#707e61" }} />
-          </div>
-          <h2
-            className="mt-2 text-3xl font-extrabold"
-            style={{ color: "#fff" }}
-          >
-            Login Required
-          </h2>
-          <p className="mt-2 text-sm" style={{ color: "#c1c1c3" }}>
-            Please enter your credentials to access Aurral
+    <div className="login-page">
+      <div className="login-card">
+        <div className="login-header">
+          <img
+            src="/arralogo.svg"
+            alt="Aurral"
+            className="login-logo"
+          />
+          <h1 className="login-title">Sign in</h1>
+          <p className="login-subtitle">
+            Enter your credentials to access Aurral
           </p>
         </div>
 
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="space-y-4">
-            <div>
+        <form className="login-form" onSubmit={handleSubmit}>
+          <div className="login-fields">
+            <div className="login-field">
               <label htmlFor="username" className="sr-only">
                 Username
               </label>
@@ -55,18 +47,13 @@ const Login = () => {
                 type="text"
                 required
                 autoComplete="username"
-                className="appearance-none relative block w-full px-3 py-2 placeholder-gray-500 focus:outline-none focus:ring-2 focus:z-10 sm:text-sm"
-                style={{
-                  focusRingColor: "#c1c1c3",
-                  backgroundColor: "#211f27",
-                  color: "#fff",
-                }}
+                className="login-input"
                 placeholder="Username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
               />
             </div>
-            <div>
+            <div className="login-field">
               <label htmlFor="password" className="sr-only">
                 Password
               </label>
@@ -76,12 +63,7 @@ const Login = () => {
                 type="password"
                 required
                 autoComplete="current-password"
-                className="appearance-none relative block w-full px-3 py-2 placeholder-gray-500 focus:outline-none focus:ring-2 focus:z-10 sm:text-sm"
-                style={{
-                  focusRingColor: "#c1c1c3",
-                  backgroundColor: "#211f27",
-                  color: "#fff",
-                }}
+                className="login-input"
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -89,21 +71,11 @@ const Login = () => {
             </div>
           </div>
 
-          {error && (
-            <div className="text-sm text-center" style={{ color: "#ff6b6b" }}>
-              {error}
-            </div>
-          )}
+          {error && <p className="login-error">{error}</p>}
 
-          <div>
-            <button
-              type="submit"
-              className="group relative w-full flex justify-center py-2 px-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200"
-              style={{ backgroundColor: "#707e61", color: "#fff" }}
-            >
-              Sign in
-            </button>
-          </div>
+          <button type="submit" className="btn btn-primary btn--full btn--bold login-submit">
+            Sign in
+          </button>
         </form>
       </div>
     </div>

@@ -2,12 +2,14 @@ import { useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
+import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { useSettingsData } from "./hooks/useSettingsData";
 import { useUnsavedGuard } from "./hooks/useUnsavedGuard";
 import { UnsavedModal } from "./components/UnsavedModal";
 import { SettingsMetadataTab } from "./components/SettingsMetadataTab";
 
 function MetadataProvidersPage() {
+  useDocumentTitle("Metadata Providers");
   const { showSuccess, showError, showInfo } = useToast();
   const { user: authUser } = useAuth();
   const data = useSettingsData(showSuccess, showError, showInfo);
@@ -33,16 +35,14 @@ function MetadataProvidersPage() {
         onConfirm={guard.handleConfirmLeave}
       />
 
-      <div className="animate-fade-in max-w-4xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold mb-2" style={{ color: "#fff" }}>
-            Metadata Providers
-          </h1>
-          <p style={{ color: "#c1c1c3" }}>
+      <div className="settings-page">
+        <header className="settings-page__header">
+          <h1 className="settings-page__title">Metadata Providers</h1>
+          <p className="settings-page__subtitle">
             Configure the BrainzMash-native metadata backend used for local
             testing.
           </p>
-        </div>
+        </header>
 
         <SettingsMetadataTab
           settings={data.settings}

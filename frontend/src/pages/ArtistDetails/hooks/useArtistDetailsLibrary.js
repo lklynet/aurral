@@ -849,7 +849,14 @@ export function useArtistDetailsLibrary({
     if (!albumTracks[trackKey]) {
       setLoadingTracks((prev) => ({ ...prev, [trackKey]: true }));
       try {
-        const tracks = await getLibraryTracks(libraryAlbumId, releaseGroupId);
+        const libraryAlbum = libraryAlbums.find(
+          (album) => String(album.id) === String(libraryAlbumId),
+        );
+        const tracks = await getLibraryTracks(libraryAlbumId, releaseGroupId, {
+          artistName: artist?.name || libraryAlbum?.artistName || "",
+          albumTitle: libraryAlbum?.albumName || "",
+          releaseDate: libraryAlbum?.releaseDate || "",
+        });
         setAlbumTracks((prev) => ({ ...prev, [trackKey]: tracks }));
       } catch (err) {
         console.error("Failed to fetch tracks:", err);
@@ -880,7 +887,13 @@ export function useArtistDetailsLibrary({
       setLoadingTracks((prev) => ({ ...prev, [trackKey]: true }));
       try {
         if (libraryAlbumId) {
-          const tracks = await getLibraryTracks(libraryAlbumId, releaseGroupId);
+          const tracks = await getLibraryTracks(libraryAlbumId, releaseGroupId, {
+            artistName: artist?.name || "",
+            albumTitle: releaseGroup?.title || "",
+            releaseType: releaseGroup?.["primary-type"] || "",
+            releaseDate: releaseGroup?.["first-release-date"] || "",
+            deezerAlbumId: releaseGroup?._deezerAlbumId || "",
+          });
           setAlbumTracks((prev) => ({ ...prev, [trackKey]: tracks }));
         } else {
           const tracks = await getReleaseGroupTracks(releaseGroupId, {

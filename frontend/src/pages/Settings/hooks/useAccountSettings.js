@@ -53,7 +53,8 @@ export function useAccountSettings(authUser, showSuccess, showError) {
           ? lidarrData.qualityProfiles
           : [],
       );
-      const nextRootFolderPath = lidarrData?.savedDefaults?.rootFolderPath || "";
+      const nextRootFolderPath =
+        lidarrData?.savedDefaults?.rootFolderPath || "";
       const nextQualityProfileId =
         lidarrData?.savedDefaults?.qualityProfileId != null
           ? String(lidarrData.savedDefaults.qualityProfileId)
@@ -103,7 +104,8 @@ export function useAccountSettings(authUser, showSuccess, showError) {
           ? lidarrData.qualityProfiles
           : [],
       );
-      const nextRootFolderPath = lidarrData?.savedDefaults?.rootFolderPath || "";
+      const nextRootFolderPath =
+        lidarrData?.savedDefaults?.rootFolderPath || "";
       const nextQualityProfileId =
         lidarrData?.savedDefaults?.qualityProfileId != null
           ? String(lidarrData.savedDefaults.qualityProfileId)
@@ -112,7 +114,7 @@ export function useAccountSettings(authUser, showSuccess, showError) {
       setSavedLidarrRootFolderPath(nextRootFolderPath);
       setLidarrQualityProfileId(nextQualityProfileId);
       setSavedLidarrQualityProfileId(nextQualityProfileId);
-      showSuccess("Account settings saved");
+      showSuccess("Profile saved");
     } catch {
       showError("Failed to save account settings");
     } finally {

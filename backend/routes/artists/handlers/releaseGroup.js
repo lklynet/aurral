@@ -1,17 +1,12 @@
 import { UUID_REGEX } from "../../../config/constants.js";
 import { dbOps } from "../../../config/db-helpers.js";
 import { cacheMiddleware } from "../../../middleware/cache.js";
-import { warmImageProxy } from "../../../services/imageProxyService.js";
-import { selectBestAlbumImage } from "../../../services/imageService.js";
+import { fetchReleaseGroupCoverUrl } from "../../../services/imageService.js";
 import { enrichTracksWithDeezerPreviews } from "../../../services/apiClients.js";
 import {
-  getAlbumByMbid,
   getArtistByMbid,
   getAlbumTracksByAlbumMbid,
 } from "../../../services/metadataProvider.js";
-
-const LEGACY_COVER_HOST_PATTERN =
-  /https?:\/\/(?:caa\.lkly\.net|coverartarchive\.org|archive\.org|[\w-]+\.ca\.archive\.org)\//i;
 
 function extractDeezerArtistIdFromLinks(links = []) {
   if (!Array.isArray(links)) return null;
@@ -26,7 +21,7 @@ function extractDeezerArtistIdFromLinks(links = []) {
 }
 
 export default function registerReleaseGroup(router) {
-  router.get("/release-group/:mbid/cover", cacheMiddleware(86400), async (req, res) => {
+  router.get("/release-group/:mbid/cover", async (req, res) => {
     try {
       const { mbid } = req.params;
       const artistName =
@@ -41,76 +36,37 @@ export default function registerReleaseGroup(router) {
       if (!UUID_REGEX.test(mbid)) {
         return res.status(400).json({ error: "Invalid MBID format", images: [] });
       }
-
-      const cacheKey = `rg:${mbid}`;
-      const cachedImage = dbOps.getImage(cacheKey);
-
-      if (
-        cachedImage &&
-        cachedImage.imageUrl &&
-        cachedImage.imageUrl !== "NOT_FOUND" &&
-        !LEGACY_COVER_HOST_PATTERN.test(cachedImage.imageUrl)
-      ) {
-        warmImageProxy(cachedImage.imageUrl).catch(() => {
-          dbOps.deleteImage(cacheKey);
-        });
+      const cover = await fetchReleaseGroupCoverUrl(mbid, {
+        artistName,
+        albumTitle: albumTitleFromQuery,
+      });
+      if (cover?.imageUrl) {
         res.set("Cache-Control", "public, max-age=31536000, immutable");
         return res.json({
           images: [
             {
-              image: cachedImage.imageUrl,
+              image: cover.imageUrl,
               front: true,
-              types: ["Front"],
+              types: cover.types || ["Front"],
             },
           ],
+          notFound: false,
+          transientError: false,
         });
       }
-
-      if (
-        cachedImage &&
-        cachedImage.imageUrl &&
-        cachedImage.imageUrl !== "NOT_FOUND" &&
-        LEGACY_COVER_HOST_PATTERN.test(cachedImage.imageUrl)
-      ) {
-        dbOps.deleteImage(cacheKey);
-      }
-
-      if (cachedImage && cachedImage.imageUrl === "NOT_FOUND") {
+      if (cover?.notFound) {
         res.set("Cache-Control", "public, max-age=3600");
-        return res.json({ images: [] });
+        return res.json({ images: [], notFound: true, transientError: false });
       }
-
-      try {
-        const album = await getAlbumByMbid(mbid);
-        const image = selectBestAlbumImage(album?.images);
-        if (image?.url) {
-          const cachedImage = await warmImageProxy(image.url);
-          dbOps.setImage(cacheKey, cachedImage.localUrl);
-          res.set("Cache-Control", "public, max-age=31536000, immutable");
-          return res.json({
-            images: [
-              {
-                image: cachedImage.localUrl,
-                front: true,
-                types: [image.kind || "Front"],
-              },
-            ],
-          });
-        }
-        dbOps.setImage(cacheKey, "NOT_FOUND");
-        res.set("Cache-Control", "public, max-age=3600");
-        return res.json({ images: [] });
-      } catch (e) {}
-
       res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
-      res.json({ images: [] });
+      res.json({ images: [], notFound: false, transientError: true });
     } catch (error) {
       console.error(
         `Error in release-group cover route for ${req.params.mbid}:`,
         error.message
       );
       res.set("Cache-Control", "public, max-age=60");
-      res.json({ images: [] });
+      res.json({ images: [], notFound: false, transientError: true });
     }
   });
 

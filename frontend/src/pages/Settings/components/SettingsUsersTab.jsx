@@ -1,6 +1,7 @@
 import { UserPlus, Lock, Trash2, X } from "lucide-react";
 import { GRANULAR_PERMISSIONS, granularPerms } from "../constants";
 import { loginApi, setStoredAuth } from "../../../utils/api";
+import { SettingsInput } from "./SettingsField";
 
 function getLocalBypassStatus(status) {
   if (!status) {
@@ -127,18 +128,13 @@ export function SettingsUsersTab({
     settings?.security?.localNetworkBypass?.enabled === true;
 
   return (
-    <div className="card animate-fade-in space-y-6">
-      <div className="flex items-center justify-between">
-        <h2
-          className="text-2xl font-bold flex items-center"
-          style={{ color: "#fff" }}
-        >
-          Users
-        </h2>
+    <div className="settings-page__panel">
+      <div className="settings-page__panel-header">
+        <h2 className="settings-page__panel-title">Users</h2>
         {authUser?.role === "admin" && (
           <button
             type="button"
-            className="btn btn-primary flex items-center gap-2"
+            className="btn btn-primary"
             onClick={() => {
               setNewUserUsername("");
               setNewUserPassword("");
@@ -146,7 +142,7 @@ export function SettingsUsersTab({
               setShowAddUserModal(true);
             }}
           >
-            <UserPlus className="w-4 h-4" />
+            <UserPlus className="artist-icon-xs" />
             Add user
           </button>
         )}
@@ -154,18 +150,14 @@ export function SettingsUsersTab({
 
       {authUser?.role !== "admin" ? (
         <div
-          className="p-6 rounded-lg space-y-5 max-w-md"
-          style={{
-            backgroundColor: "#1a1a1e",
-            boxShadow: "0 0 0 1px #2a2a2e",
-          }}
+          className="settings-page__section settings-page__section--narrow"
         >
-          <h3 className="text-lg font-medium flex items-center gap-2 text-main">
-            <Lock className="w-5 h-5 text-[#707e61]" />
+          <h3 className="settings-page__section-title">
+            <Lock className="settings-page__panel-title-icon" />
             Change my password
           </h3>
           <form
-            className="space-y-4"
+            className="settings-page__fields"
             onSubmit={async (e) => {
               e.preventDefault();
               if (changePwNew !== changePwConfirm) {
@@ -194,14 +186,13 @@ export function SettingsUsersTab({
               }
             }}
           >
-            <div className="space-y-1">
+            <div className="settings-page__field-stack">
               <label htmlFor="change-pw-current" className="label">
                 Current password
               </label>
-              <input
-                id="change-pw-current"
+              <SettingsInput id="change-pw-current"
                 type="password"
-                className="input w-full"
+
                 placeholder="Current password"
                 autoComplete="current-password"
                 value={changePwCurrent}
@@ -209,14 +200,13 @@ export function SettingsUsersTab({
                 required
               />
             </div>
-            <div className="space-y-1">
+            <div className="settings-page__field-stack">
               <label htmlFor="change-pw-new" className="label">
                 New password
               </label>
-              <input
-                id="change-pw-new"
+              <SettingsInput id="change-pw-new"
                 type="password"
-                className="input w-full"
+
                 placeholder="New password"
                 autoComplete="new-password"
                 value={changePwNew}
@@ -224,14 +214,13 @@ export function SettingsUsersTab({
                 required
               />
             </div>
-            <div className="space-y-1">
+            <div className="settings-page__field-stack">
               <label htmlFor="change-pw-confirm" className="label">
                 Confirm new password
               </label>
-              <input
-                id="change-pw-confirm"
+              <SettingsInput id="change-pw-confirm"
                 type="password"
-                className="input w-full"
+
                 placeholder="Confirm new password"
                 autoComplete="new-password"
                 value={changePwConfirm}
@@ -256,28 +245,24 @@ export function SettingsUsersTab({
       ) : (
         <>
           <div
-            className="p-5 rounded-lg space-y-4"
-            style={{
-              backgroundColor: "#1a1a1e",
-              boxShadow: "0 0 0 1px #2a2a2e",
-            }}
+            className="settings-page__section"
           >
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-1">
-                <h3 className="text-lg font-medium text-main">
+            <div className="settings-page__toggle-row">
+              <div className="settings-page__toggle-copy">
+                <h3 className="settings-page__section-title">
                   Auto-login from local network
                 </h3>
-                <p className="text-sm" style={{ color: "#c1c1c3" }}>
+                <p className="settings-page__hint">
                   {localBypassStatus.title}
                 </p>
               </div>
-              <label className="inline-flex items-center gap-3">
-                <span className="text-sm text-sub">
+              <label className="artist-checkbox-label">
+                <span className="settings-page__hint">
                   {localBypassEnabled ? "On" : "Off"}
                 </span>
                 <input
                   type="checkbox"
-                  className="h-5 w-5 rounded border-gray-600 text-[#707e61] focus:ring-[#707e61]"
+                  className="artist-checkbox"
                   checked={localBypassEnabled}
                   disabled={!localBypassStatus.canToggle}
                   onChange={async (e) => {
@@ -300,47 +285,31 @@ export function SettingsUsersTab({
                 />
               </label>
             </div>
-            <p className="text-sm" style={{ color: "#8a8a8f" }}>
+            <p className="settings-page__toggle-detail">
               {localBypassStatus.detail}
             </p>
           </div>
 
-          <div className="rounded-lg overflow-hidden">
+          <div className="settings-page__users-list">
             {loadingUsers ? (
-              <div className="p-8 text-center">
-                <p className="text-sub">Loading…</p>
-              </div>
+              <div className="settings-page__loading">Loading…</div>
             ) : (
               <ul>
-                {usersList.map((u, i) => (
+                {usersList.map((u) => (
                   <li
                     key={u.id}
-                    className={`flex items-center justify-between gap-4 px-5 py-4 ${
-                      i % 2 === 1 ? "bg-[#1a1a1e]" : ""
-                    }`}
+                    className="settings-page__user-row"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="font-medium text-main truncate">
+                    <div className="settings-page__user-main">
+                      <span className="settings-page__user-name">
                         {u.username}
                       </span>
-                      <span
-                        className={`badge shrink-0 ${
-                          u.role === "admin"
-                            ? "badge-primary"
-                            : "badge-neutral"
-                        }`}
-                        style={{
-                          backgroundColor:
-                            u.role === "admin" ? "#2a2a2e" : undefined,
-                          color: "#c1c1c3",
-                        }}
-                      >
+                      <span className="badge badge-primary settings-page__role-badge">
                         {u.role}
                       </span>
                       {u.listenHistoryUsername && (
                         <span
-                          className="text-xs truncate"
-                          style={{ color: "#8a8a8f" }}
+                          className="settings-page__user-meta"
                           title={`${
                             u.listenHistoryProvider === "listenbrainz"
                               ? "ListenBrainz"
@@ -354,10 +323,10 @@ export function SettingsUsersTab({
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="settings-page__user-actions">
                       <button
                         type="button"
-                        className="btn btn-sm btn-ghost gap-1.5"
+                        className="btn btn-sm btn-ghost"
                         onClick={() => {
                           setEditUser(u);
                           setEditPassword("");
@@ -372,22 +341,18 @@ export function SettingsUsersTab({
                           );
                         }}
                       >
-                        <Lock className="w-4 h-4" />
+                        <Lock className="artist-icon-sm" />
                         Manage
                       </button>
                       <button
                         type="button"
-                        className="btn btn-sm gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                        style={{
-                          backgroundColor: "transparent",
-                          color: "#ef4444",
-                        }}
+                        className="btn btn-sm btn-ghost-danger"
                         disabled={u.role === "admin"}
                         onClick={() =>
                           u.role !== "admin" && setDeleteUserTarget(u)
                         }
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="artist-icon-sm" />
                         Delete
                       </button>
                     </div>
@@ -399,40 +364,38 @@ export function SettingsUsersTab({
 
           {deleteUserTarget && (
             <div
-              className="fixed inset-0 z-50 flex items-center justify-center p-4"
-              style={{ backgroundColor: "rgba(0,0,0,0.75)" }}
+              className="artist-modal-backdrop"
               onClick={() => !deletingUser && setDeleteUserTarget(null)}
             >
               <div
-                className="card max-w-md w-full shadow-xl"
+                className="settings-page__modal"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-bold text-main">
+                <div className="settings-page__modal-header">
+                  <h3 className="settings-page__modal-title">
                     Delete user
                   </h3>
                   <button
                     type="button"
-                    className="p-2 rounded transition-colors hover:bg-[#2a2a2e] text-sub disabled:opacity-50"
+                    className="btn btn-ghost btn-icon-square"
                     onClick={() =>
                       !deletingUser && setDeleteUserTarget(null)
                     }
                     aria-label="Close"
                     disabled={deletingUser}
                   >
-                    <X className="w-5 h-5" />
+                    <X className="artist-icon-md" />
                   </button>
                 </div>
-                <p className="text-sub mb-6">
+                <p className="settings-page__modal-copy">
                   Are you sure you want to delete{" "}
-                  <span className="font-medium text-main">
+                  <span className="settings-page__meta-value">
                     {deleteUserTarget.username}
                   </span>
                   ? This cannot be undone.
                 </p>
                 <div
-                  className="flex gap-3 justify-end pt-4"
-                  style={{ boxShadow: "inset 0 1px 0 #2a2a2e" }}
+                  className="settings-page__modal-actions"
                 >
                   <button
                     type="button"
@@ -474,29 +437,28 @@ export function SettingsUsersTab({
 
           {showAddUserModal && (
             <div
-              className="fixed inset-0 z-50 flex items-center justify-center p-4"
-              style={{ backgroundColor: "rgba(0,0,0,0.75)" }}
+              className="artist-modal-backdrop"
               onClick={() => setShowAddUserModal(false)}
             >
               <div
-                className="card max-w-md w-full max-h-[90vh] overflow-y-auto shadow-xl"
+                className="settings-page__modal settings-page__modal--wide"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-bold text-main">
+                <div className="settings-page__panel-header">
+                  <h3 className="settings-page__modal-title">
                     Add user
                   </h3>
                   <button
                     type="button"
-                    className="p-2 rounded transition-colors hover:bg-[#2a2a2e] text-sub"
+                    className="btn btn-ghost btn-icon-square"
                     onClick={() => setShowAddUserModal(false)}
                     aria-label="Close"
                   >
-                    <X className="w-5 h-5" />
+                    <X className="artist-icon-md" />
                   </button>
                 </div>
                 <form
-                  className="space-y-6"
+                  className="settings-page__form"
                   onSubmit={async (e) => {
                     e.preventDefault();
                     if (!newUserUsername.trim() || !newUserPassword) {
@@ -536,22 +498,21 @@ export function SettingsUsersTab({
                     }
                   }}
                 >
-                  <div className="space-y-4">
-                    <label className="label text-sub font-normal text-xs uppercase tracking-wider">
+                  <div className="settings-page__fields">
+                    <label className="settings-page__section-label">
                       Account
                     </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1">
+                    <div className="settings-page__two-col-grid">
+                      <div className="settings-page__field-stack">
                         <label
                           htmlFor="add-user-username"
-                          className="label text-sm normal-case tracking-normal"
+                          className="artist-field-label"
                         >
                           Username
                         </label>
-                        <input
-                          id="add-user-username"
+                        <SettingsInput id="add-user-username"
                           type="text"
-                          className="input"
+
                           placeholder="Username"
                           autoComplete="off"
                           value={newUserUsername}
@@ -560,17 +521,16 @@ export function SettingsUsersTab({
                           }
                         />
                       </div>
-                      <div className="space-y-1">
+                      <div className="settings-page__field-stack">
                         <label
                           htmlFor="add-user-password"
-                          className="label text-sm normal-case tracking-normal"
+                          className="artist-field-label"
                         >
                           Password
                         </label>
-                        <input
-                          id="add-user-password"
+                        <SettingsInput id="add-user-password"
                           type="password"
-                          className="input"
+
                           placeholder="Password"
                           autoComplete="new-password"
                           value={newUserPassword}
@@ -581,25 +541,21 @@ export function SettingsUsersTab({
                       </div>
                     </div>
                   </div>
-                  <div className="space-y-3">
-                    <label className="label text-sub font-normal text-xs uppercase tracking-wider">
+                  <div className="settings-page__field-stack--md">
+                    <label className="settings-page__section-label">
                       Permissions
                     </label>
                     <div
-                      className="p-4 rounded-lg space-y-3"
-                      style={{
-                        backgroundColor: "#1a1a1e",
-                        boxShadow: "0 0 0 1px #2a2a2e",
-                      }}
+                      className="settings-page__permissions"
                     >
                       {granularPerms.map(({ key, label }) => (
                         <label
                           key={key}
-                          className="flex items-center gap-3 cursor-pointer text-sub hover:text-main transition-colors"
+                          className="artist-checkbox-label"
                         >
                           <input
                             type="checkbox"
-                            className="rounded border-gray-600 text-[#707e61] focus:ring-[#707e61]"
+                            className="artist-checkbox"
                             checked={!!newUserPermissions[key]}
                             onChange={(e) =>
                               setNewUserPermissions((p) => ({
@@ -608,14 +564,13 @@ export function SettingsUsersTab({
                               }))
                             }
                           />
-                          <span className="text-sm">{label}</span>
+                          <span className="settings-page__muted-copy">{label}</span>
                         </label>
                       ))}
                     </div>
                   </div>
                   <div
-                    className="flex gap-3 justify-end pt-4 mt-4"
-                    style={{ boxShadow: "inset 0 1px 0 #2a2a2e" }}
+                    className="settings-page__modal-actions"
                   >
                     <button
                       type="button"
@@ -639,29 +594,28 @@ export function SettingsUsersTab({
 
           {editUser && (
             <div
-              className="fixed inset-0 z-50 flex items-center justify-center p-4"
-              style={{ backgroundColor: "rgba(0,0,0,0.75)" }}
+              className="artist-modal-backdrop"
               onClick={() => setEditUser(null)}
             >
               <div
-                className="card max-w-md w-full max-h-[90vh] overflow-y-auto shadow-xl"
+                className="settings-page__modal settings-page__modal--wide"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-bold text-main">
+                <div className="settings-page__panel-header">
+                  <h3 className="settings-page__modal-title">
                     Manage {editUser.username}
                   </h3>
                   <button
                     type="button"
-                    className="p-2 rounded transition-colors hover:bg-[#2a2a2e] text-sub"
+                    className="btn btn-ghost btn-icon-square"
                     onClick={() => setEditUser(null)}
                     aria-label="Close"
                   >
-                    <X className="w-5 h-5" />
+                    <X className="artist-icon-md" />
                   </button>
                 </div>
                 <form
-                  className="space-y-6"
+                  className="settings-page__form"
                   onSubmit={async (e) => {
                     e.preventDefault();
                     if (isSelfEdit) {
@@ -719,25 +673,24 @@ export function SettingsUsersTab({
                     }
                   }}
                 >
-                  <div className="space-y-4">
-                    <label className="label text-sub font-normal text-xs uppercase tracking-wider">
+                  <div className="settings-page__fields">
+                    <label className="settings-page__section-label">
                       {isSelfEdit
                         ? "Change password"
                         : "Password (optional)"}
                     </label>
                     {isSelfEdit ? (
-                      <div className="space-y-3">
-                        <div className="space-y-1">
+                      <div className="settings-page__field-stack--md">
+                        <div className="settings-page__field-stack">
                           <label
                             htmlFor="edit-current-password"
-                            className="label text-sm normal-case tracking-normal"
+                            className="artist-field-label"
                           >
                             Current password
                           </label>
-                          <input
-                            id="edit-current-password"
+                          <SettingsInput id="edit-current-password"
                             type="password"
-                            className="input w-full"
+
                             placeholder="Current password"
                             autoComplete="current-password"
                             value={editCurrentPassword}
@@ -746,17 +699,16 @@ export function SettingsUsersTab({
                             }
                           />
                         </div>
-                        <div className="space-y-1">
+                        <div className="settings-page__field-stack">
                           <label
                             htmlFor="edit-new-password"
-                            className="label text-sm normal-case tracking-normal"
+                            className="artist-field-label"
                           >
                             New password
                           </label>
-                          <input
-                            id="edit-new-password"
+                          <SettingsInput id="edit-new-password"
                             type="password"
-                            className="input w-full"
+
                             placeholder="New password"
                             autoComplete="new-password"
                             value={editPassword}
@@ -767,9 +719,8 @@ export function SettingsUsersTab({
                         </div>
                       </div>
                     ) : (
-                      <input
-                        type="password"
-                        className="input w-full"
+                      <SettingsInput type="password"
+
                         placeholder="Leave blank to keep current password"
                         autoComplete="new-password"
                         value={editPassword}
@@ -778,25 +729,21 @@ export function SettingsUsersTab({
                     )}
                   </div>
                   {!isSelfEdit && (
-                    <div className="space-y-3">
-                      <label className="label text-sub font-normal text-xs uppercase tracking-wider">
+                    <div className="settings-page__field-stack--md">
+                      <label className="settings-page__section-label">
                         Permissions
                       </label>
                       <div
-                        className="p-4 rounded-lg space-y-3"
-                        style={{
-                          backgroundColor: "#1a1a1e",
-                          boxShadow: "0 0 0 1px #2a2a2e",
-                        }}
+                        className="settings-page__permissions"
                       >
                         {granularPerms.map(({ key, label }) => (
                           <label
                             key={key}
-                            className="flex items-center gap-3 cursor-pointer text-sub hover:text-main transition-colors"
+                            className="artist-checkbox-label"
                           >
                             <input
                               type="checkbox"
-                              className="rounded border-gray-600 text-[#707e61] focus:ring-[#707e61]"
+                              className="artist-checkbox"
                               checked={!!editPermissions[key]}
                               onChange={(e) =>
                                 setEditPermissions((p) => ({
@@ -805,15 +752,14 @@ export function SettingsUsersTab({
                                 }))
                               }
                             />
-                            <span className="text-sm">{label}</span>
+                            <span className="settings-page__muted-copy">{label}</span>
                           </label>
                         ))}
                       </div>
                     </div>
                   )}
                   <div
-                    className="flex gap-3 justify-end pt-4 mt-4"
-                    style={{ boxShadow: "inset 0 1px 0 #2a2a2e" }}
+                    className="settings-page__modal-actions"
                   >
                     <button
                       type="button"

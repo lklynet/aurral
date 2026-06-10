@@ -213,12 +213,18 @@ const subscribeToStatus = (listener) => {
   };
 };
 
-export function useWebSocketChannel(channel, onMessage) {
+export function useWebSocketChannel(channel, onMessage, options = {}) {
+  const { enabled = true } = options;
   const onMessageRef = useRef(onMessage);
   const [isConnected, setIsConnected] = useState(socket?.readyState === OPEN);
   onMessageRef.current = onMessage;
 
   useEffect(() => {
+    if (!enabled) {
+      setIsConnected(false);
+      return undefined;
+    }
+
     const unsubscribeStatus = subscribeToStatus(setIsConnected);
     const unsubscribeChannel = subscribeToChannel(channel, (message) => {
       onMessageRef.current?.(message);
@@ -228,7 +234,7 @@ export function useWebSocketChannel(channel, onMessage) {
       unsubscribeChannel();
       unsubscribeStatus();
     };
-  }, [channel]);
+  }, [channel, enabled]);
 
   return { isConnected };
 }

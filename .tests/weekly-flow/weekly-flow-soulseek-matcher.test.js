@@ -25,6 +25,21 @@ test("buildFlowSearchQueries generates album-first and fallback track searches",
   assert.ok(queries.includes("Massive Attk Teardrop"));
 });
 
+test("buildFlowSearchQueries adds artist-free track plus album fallbacks", () => {
+  const queries = buildFlowSearchQueries({
+    artistName: "Gorillaz",
+    trackName: "Feel Good Inc.",
+    albumName: "Demon Days",
+    releaseYear: "2005",
+    artistAliases: [],
+  });
+
+  assert.ok(queries.includes("Feel Good Inc. Demon Days"));
+  assert.ok(queries.includes("Feel Good Inc. Demon Days 2005"));
+  assert.ok(queries.includes("Gorillaz Demon Days"));
+  assert.ok(queries.includes("Gorillaz Feel Good Inc."));
+});
+
 test("buildFlowSearchQueries adds simplified variants for parenthetical and slash-heavy titles", () => {
   const queries = buildFlowSearchQueries({
     artistName: "Bully",
@@ -178,6 +193,37 @@ test("rankFlowSearchResults penalizes live variants when the requested track is 
 
   assert.ok(ranked.length > 0);
   assert.match(ranked[0].raw.file, /Correct Track\.mp3$/);
+});
+
+test("rankFlowSearchResults accepts strong title and album matches without artist in path", () => {
+  const ranked = rankFlowSearchResults(
+    [
+      {
+        user: "albumUser",
+        file: "Misc\\Demon Days\\03 - Feel Good Inc..flac",
+        size: 100,
+        slots: true,
+        bitrate: 900,
+        speed: 900000,
+      },
+    ],
+    {
+      artistName: "Gorillaz",
+      trackName: "Feel Good Inc.",
+      albumName: "Demon Days",
+      releaseYear: "2005",
+      artistAliases: [],
+      albumTrackCount: 15,
+    },
+    {
+      preferredFormat: "flac",
+      strictFormat: false,
+    },
+  );
+
+  assert.ok(ranked.length > 0);
+  assert.equal(ranked[0].preDownloadValid, true);
+  assert.equal(ranked[0].isLikelyMatch, true);
 });
 
 test("rankFlowSearchResults skips blacklisted users and penalizes queued users", () => {

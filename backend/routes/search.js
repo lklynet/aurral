@@ -16,6 +16,7 @@ router.get("/", noCache, async (req, res) => {
       limit = 24,
       offset = 0,
       releaseTypes = "",
+      sort = "relevance",
     } = req.query;
 
     if (!String(q || "").trim()) {
@@ -23,7 +24,7 @@ router.get("/", noCache, async (req, res) => {
     }
 
     if (scope === "album") {
-      return res.json(await searchAlbums(q, limit, offset, releaseTypes));
+      return res.json(await searchAlbums(q, limit, offset, releaseTypes, sort));
     }
 
     if (scope === "tag") {

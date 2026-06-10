@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 import {
   Ban,
@@ -12,6 +13,15 @@ import {
   ThumbsUp,
 } from "lucide-react";
 import ArtistImage from "./ArtistImage";
+import {
+  getArtistFeedbackFlags,
+  getDiscoveryFeedbackLabel,
+} from "../utils/discoveryFeedback";
+
+const MAIN_CONTENT_PORTAL_SELECTOR = ".app-main-wrap";
+
+const getMainContentPortalRoot = () =>
+  document.querySelector(MAIN_CONTENT_PORTAL_SELECTOR);
 
 function ArtistActionsMenu({
   artist,
@@ -21,23 +31,77 @@ function ArtistActionsMenu({
   onAddToLibrary,
   onAddToBlocklist,
   onFeedback,
+  feedbackUsed = {},
 }) {
   const [showMenu, setShowMenu] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
+  const [menuPosition, setMenuPosition] = useState(null);
+  const menuButtonRef = useRef(null);
   const menuRef = useRef(null);
 
-  useEffect(() => {
-    if (!showMenu) return;
-    const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setShowMenu(false);
+  const estimateMenuHeight = useCallback(() => {
+    let items = 1;
+    if (canAddArtist) items += 1;
+    if (onFeedback) items += 4;
+    return items * 42 + 8;
+  }, [canAddArtist, onFeedback]);
+
+  const updateMenuPosition = useCallback(() => {
+    const button = menuButtonRef.current;
+    const portalRoot = getMainContentPortalRoot();
+    if (!button || !portalRoot) return;
+    const wrapRect = portalRoot.getBoundingClientRect();
+    const rect = button.getBoundingClientRect();
+    const gap = 8;
+    const menuHeight =
+      menuRef.current?.offsetHeight || estimateMenuHeight();
+    const spaceAbove = rect.top - wrapRect.top - gap;
+    const spaceBelow = wrapRect.bottom - rect.bottom - gap;
+    let placement = "above";
+    if (spaceAbove < menuHeight && spaceBelow >= menuHeight) {
+      placement = "below";
+    } else if (spaceAbove < menuHeight && spaceBelow < menuHeight) {
+      placement = spaceBelow > spaceAbove ? "below" : "above";
+    }
+    const top =
+      placement === "below"
+        ? rect.bottom - wrapRect.top + gap
+        : rect.top - wrapRect.top - gap;
+    const left = Math.max(rect.right - wrapRect.left - 176, 12);
+    setMenuPosition((prev) => {
+      if (
+        prev &&
+        prev.top === top &&
+        prev.left === left &&
+        prev.placement === placement
+      ) {
+        return prev;
       }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
+      return { top, left, placement };
+    });
+  }, [estimateMenuHeight]);
+
+  useEffect(() => {
+    if (!showMenu) {
+      setMenuPosition(null);
+      return;
+    }
+    updateMenuPosition();
+    const scrollRoot = document.querySelector(".app-main");
+    window.addEventListener("resize", updateMenuPosition);
+    scrollRoot?.addEventListener("scroll", updateMenuPosition, { passive: true });
+    window.addEventListener("scroll", updateMenuPosition, true);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("resize", updateMenuPosition);
+      scrollRoot?.removeEventListener("scroll", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
     };
-  }, [showMenu]);
+  }, [showMenu, updateMenuPosition]);
+
+  useLayoutEffect(() => {
+    if (!showMenu) return;
+    updateMenuPosition();
+  }, [showMenu, updateMenuPosition]);
 
   const handleAction = async (event, type, fn) => {
     event.stopPropagation();
@@ -48,121 +112,148 @@ function ArtistActionsMenu({
     setPendingAction(null);
   };
 
+  const handleFeedbackClick = async (event, action) => {
+    event.stopPropagation();
+    if (!onFeedback || pendingAction) return;
+    setPendingAction(action);
+    await onFeedback(artist, action, {
+      isSelected: !!feedbackUsed[action],
+    });
+    setPendingAction(null);
+  };
+
   return (
-    <div ref={menuRef} className="relative shrink-0">
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          setShowMenu((prev) => !prev);
-        }}
-        className="flex h-8 w-8 items-center justify-center hover:bg-white/10"
-        style={{ color: "#c1c1c3" }}
-        aria-label={`Artist options for ${artist.name}`}
-      >
-        <MoreVertical className="h-4 w-4" />
-      </button>
-      {showMenu && (
-        <div
-          className="absolute right-0 top-full z-30 mt-1 w-44 border border-white/10 py-1 shadow-xl"
-          style={{ backgroundColor: "#2a2830" }}
-          onClick={(event) => event.stopPropagation()}
-        >
-          {canAddArtist && (
+  <div style={{ position: "relative", flexShrink: 0 }}>
+    <button
+      ref={menuButtonRef}
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        setShowMenu((prev) => !prev);
+      }}
+      className="btn btn-surface btn-icon-square"
+      aria-label={`Artist options for ${artist.name}`}
+    >
+      <MoreVertical className="artist-icon-sm" />
+    </button>
+    {showMenu && menuPosition && getMainContentPortalRoot()
+      ? createPortal(
+          <div
+            ref={menuRef}
+            className={`artist-options-menu--discover${menuPosition.placement === "below" ? " is-below" : ""}`}
+            style={{
+              top: menuPosition.top,
+              left: menuPosition.left,
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {canAddArtist && (
+              <button
+                type="button"
+                onClick={(event) => handleAction(event, "library", onAddToLibrary)}
+                disabled={isInLibrary || !!pendingAction}
+                className="artist-menu-item--discover"
+              >
+                <div className="artist-menu-item__main--discover">
+                  {pendingAction === "library" ? (
+                    <Loader2 className="artist-icon-sm animate-spin" />
+                  ) : (
+                    <Library className="artist-icon-sm" />
+                  )}
+                  {isInLibrary ? "In Library" : "Add to Library"}
+                </div>
+              </button>
+            )}
             <button
               type="button"
-              onClick={(event) => handleAction(event, "library", onAddToLibrary)}
-              disabled={isInLibrary || !!pendingAction}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-              style={{ color: "#fff" }}
+              onClick={(event) =>
+                handleAction(event, "blocklist", onAddToBlocklist)
+              }
+              disabled={isBlocked || !!pendingAction}
+              className={`artist-menu-item--discover ${isBlocked ? "" : "artist-menu-item--danger"}`}
             >
-              {pendingAction === "library" ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Library className="h-4 w-4" />
-              )}
-              {isInLibrary ? "In Library" : "Add to Library"}
+              <div className="artist-menu-item__main--discover">
+                {pendingAction === "blocklist" ? (
+                  <Loader2 className="artist-icon-sm animate-spin" />
+                ) : (
+                  <Ban className="artist-icon-sm" />
+                )}
+                {isBlocked ? "In Blocklist" : "Blocklist Artist"}
+              </div>
             </button>
-          )}
-          <button
-            type="button"
-            onClick={(event) =>
-              handleAction(event, "blocklist", onAddToBlocklist)
-            }
-            disabled={isBlocked || !!pendingAction}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-            style={{ color: isBlocked ? "#c1c1c3" : "#fca5a5" }}
-          >
-            {pendingAction === "blocklist" ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Ban className="h-4 w-4" />
+            {onFeedback && (
+              <>
+                <button
+                  type="button"
+                  onClick={(event) =>
+                    handleFeedbackClick(event, "more_like_this")
+                  }
+                  disabled={!!pendingAction}
+                  className={`artist-menu-item--discover${feedbackUsed.more_like_this ? " is-selected" : ""}`}
+                >
+                  <div className="artist-menu-item__main--discover">
+                    {pendingAction === "more_like_this" ? (
+                      <Loader2 className="artist-icon-sm animate-spin" />
+                    ) : (
+                      <ThumbsUp className="artist-icon-sm" />
+                    )}
+                    {getDiscoveryFeedbackLabel("more_like_this")}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) =>
+                    handleFeedbackClick(event, "less_like_this")
+                  }
+                  disabled={!!pendingAction}
+                  className={`artist-menu-item--discover${feedbackUsed.less_like_this ? " is-selected" : ""}`}
+                >
+                  <div className="artist-menu-item__main--discover">
+                    {pendingAction === "less_like_this" ? (
+                      <Loader2 className="artist-icon-sm animate-spin" />
+                    ) : (
+                      <ThumbsDown className="artist-icon-sm" />
+                    )}
+                    {getDiscoveryFeedbackLabel("less_like_this")}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) =>
+                    handleFeedbackClick(event, "already_known")
+                  }
+                  disabled={!!pendingAction}
+                  className={`artist-menu-item--discover${feedbackUsed.already_known ? " is-selected" : ""}`}
+                >
+                  <div className="artist-menu-item__main--discover">
+                    {pendingAction === "already_known" ? (
+                      <Loader2 className="artist-icon-sm animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="artist-icon-sm" />
+                    )}
+                    {getDiscoveryFeedbackLabel("already_known")}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) =>
+                    handleFeedbackClick(event, "hide_for_now")
+                  }
+                  disabled={!!pendingAction}
+                  className="artist-menu-item--discover artist-menu-item--danger"
+                >
+                  <div className="artist-menu-item__main--discover">
+                    <EyeOff className="artist-icon-sm" />
+                    Hide for now
+                  </div>
+                </button>
+              </>
             )}
-            {isBlocked ? "In Blocklist" : "Blocklist Artist"}
-          </button>
-          {onFeedback && (
-            <>
-              <button
-                type="button"
-                onClick={(event) =>
-                  handleAction(event, "more_like_this", (nextArtist) =>
-                    onFeedback(nextArtist, "more_like_this"),
-                  )
-                }
-                disabled={!!pendingAction}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-                style={{ color: "#fff" }}
-              >
-                <ThumbsUp className="h-4 w-4" />
-                More like this
-              </button>
-              <button
-                type="button"
-                onClick={(event) =>
-                  handleAction(event, "less_like_this", (nextArtist) =>
-                    onFeedback(nextArtist, "less_like_this"),
-                  )
-                }
-                disabled={!!pendingAction}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-                style={{ color: "#fff" }}
-              >
-                <ThumbsDown className="h-4 w-4" />
-                Less like this
-              </button>
-              <button
-                type="button"
-                onClick={(event) =>
-                  handleAction(event, "already_known", (nextArtist) =>
-                    onFeedback(nextArtist, "already_known"),
-                  )
-                }
-                disabled={!!pendingAction}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-                style={{ color: "#fff" }}
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Already know this
-              </button>
-              <button
-                type="button"
-                onClick={(event) =>
-                  handleAction(event, "hide_for_now", (nextArtist) =>
-                    onFeedback(nextArtist, "hide_for_now"),
-                  )
-                }
-                disabled={!!pendingAction}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-                style={{ color: "#fca5a5" }}
-              >
-                <EyeOff className="h-4 w-4" />
-                Hide for now
-              </button>
-            </>
-          )}
-        </div>
-      )}
-    </div>
+          </div>,
+          getMainContentPortalRoot(),
+        )
+      : null}
+  </div>
   );
 }
 
@@ -177,6 +268,7 @@ function SearchArtistResults({
   onAddArtistToLibrary,
   onAddArtistToBlocklist,
   onArtistFeedback,
+  artistFeedbackLookup,
 }) {
   const getArtistId = (artist) =>
     artist?.id || artist?.mbid || artist?.foreignArtistId;
@@ -232,8 +324,20 @@ function SearchArtistResults({
     });
   };
 
+  const openArtist = (artist) => {
+    const artistId = getArtistId(artist);
+    navigate(`/artist/${artistId}`, {
+      state: {
+        artistName: artist.name,
+        ...(typeof libraryLookup[artistId] === "boolean"
+          ? { inLibrary: libraryLookup[artistId] }
+          : {}),
+      },
+    });
+  };
+
   return (
-    <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+    <div className="artist-release-grid">
       {artists.map((artist, index) => {
         const artistId = getArtistId(artist);
         const isRecommendedTagResult =
@@ -266,95 +370,60 @@ function SearchArtistResults({
             : onArtistFeedback;
 
         return (
-          <div
+          <article
             key={artistId || `artist-${index}`}
-            className="group relative flex min-w-0 flex-col"
+            className="artist-discover-card"
           >
             <div
-              onClick={() =>
-                navigate(`/artist/${artistId}`, {
-                  state: {
-                    artistName: artist.name,
-                    ...(typeof libraryLookup[artistId] === "boolean"
-                      ? { inLibrary: libraryLookup[artistId] }
-                      : {}),
-                  },
-                })
-              }
-              className="relative mb-3 aspect-square cursor-pointer overflow-hidden shadow-sm transition-all group-hover:shadow-md"
-              style={{ backgroundColor: "#211f27" }}
+              onClick={() => openArtist(artist)}
+              className="artist-discover-card__cover"
             >
               <ArtistImage
                 src={artistImages[artistId] || artist.image || artist.imageUrl}
                 mbid={artistId}
                 artistName={artist.name}
                 alt={artist.name}
-                className="h-full w-full transition-transform duration-300 group-hover:scale-105"
+                className="artist-discover-card__image"
                 showLoading={false}
                 enableBackendFallback={false}
               />
               {isRecommendedTagResult && (
-                <div className="pointer-events-none absolute right-2 top-2">
-                  <div
-                    className="flex h-5 w-5 items-center justify-center rounded-full"
-                    style={{
-                      backgroundColor: "rgba(20, 19, 24, 0.72)",
-                      boxShadow: "0 3px 10px rgba(0, 0, 0, 0.22)",
-                      backdropFilter: "blur(6px)",
-                    }}
-                  >
-                    <Star
-                      className="h-3 w-3"
-                      style={{ color: "#f4c430", fill: "#f4c430" }}
-                    />
-                  </div>
-                </div>
+                <span className="search-tag-badge" aria-hidden="true">
+                  <Star className="search-tag-badge__icon" />
+                </span>
               )}
             </div>
 
-            <div className="flex min-w-0 items-start gap-2">
-              <div className="flex min-w-0 flex-1 flex-col">
-                <div className="flex min-w-0 items-center gap-2">
+            <div className="artist-discover-card__content">
+              <div className="artist-discover-card__text">
+                <div className="artist-card-title-row--discover">
                   <h3
-                    onClick={() =>
-                    navigate(`/artist/${artistId}`, {
-                      state: {
-                        artistName: artist.name,
-                        ...(typeof libraryLookup[artistId] === "boolean"
-                          ? { inLibrary: libraryLookup[artistId] }
-                          : {}),
-                      },
-                    })
-                  }
-                    className="truncate cursor-pointer font-semibold hover:underline"
-                    style={{ color: "#fff" }}
+                    onClick={() => openArtist(artist)}
+                    className="artist-card-title--discover"
                     title={artist.name}
                   >
                     {artist.name}
                   </h3>
                   {libraryLookup[artistId] && (
-                    <CheckCircle2 className="h-4 w-4 shrink-0 text-green-400" />
+                    <CheckCircle2 className="artist-library-check--discover" />
                   )}
                 </div>
-
-                <div
-                  className="flex min-w-0 flex-col text-sm"
-                  style={{ color: "#c1c1c3" }}
-                >
-                  {artistMetaText && (
-                    <p className="truncate" title={artistMetaText}>
-                      {artistMetaText}
-                    </p>
-                  )}
-                  {disambiguationLine && (
-                    <p
-                      className="truncate text-xs opacity-80"
-                      title={disambiguationLine}
-                    >
-                      {disambiguationLine}
-                    </p>
-                  )}
-                </div>
+                {artistMetaText ? (
+                  <p
+                    className="artist-card-meta--discover"
+                    title={artistMetaText}
+                  >
+                    {artistMetaText}
+                  </p>
+                ) : null}
+                {disambiguationLine ? (
+                  <p
+                    className="artist-card-meta--discover"
+                    title={disambiguationLine}
+                  >
+                    {disambiguationLine}
+                  </p>
+                ) : null}
               </div>
 
               {(canAddArtist || onAddArtistToBlocklist || onArtistFeedback) && (
@@ -366,10 +435,15 @@ function SearchArtistResults({
                   onAddToLibrary={onAddArtistToLibrary}
                   onAddToBlocklist={onAddArtistToBlocklist}
                   onFeedback={feedbackHandler}
+                  feedbackUsed={
+                    artistFeedbackLookup
+                      ? getArtistFeedbackFlags(artistFeedbackLookup, artist)
+                      : undefined
+                  }
                 />
               )}
             </div>
-          </div>
+          </article>
         );
       })}
     </div>
@@ -387,6 +461,7 @@ SearchArtistResults.propTypes = {
   onAddArtistToLibrary: PropTypes.func,
   onAddArtistToBlocklist: PropTypes.func,
   onArtistFeedback: PropTypes.func,
+  artistFeedbackLookup: PropTypes.instanceOf(Map),
 };
 
 ArtistActionsMenu.propTypes = {
@@ -397,6 +472,11 @@ ArtistActionsMenu.propTypes = {
   onAddToLibrary: PropTypes.func,
   onAddToBlocklist: PropTypes.func,
   onFeedback: PropTypes.func,
+  feedbackUsed: PropTypes.shape({
+    more_like_this: PropTypes.bool,
+    less_like_this: PropTypes.bool,
+    already_known: PropTypes.bool,
+  }),
 };
 
 export default SearchArtistResults;

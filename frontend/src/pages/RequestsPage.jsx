@@ -18,8 +18,112 @@ import {
 import ArtistImage from "../components/ArtistImage";
 import { useToast } from "../contexts/ToastContext";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
+
+function RequestStatusBadge({ request, downloadStatuses }) {
+  const albumStatus = request.albumId
+    ? downloadStatuses[String(request.albumId)]
+    : null;
+  const artistDownloadStatuses = Object.values(downloadStatuses).filter(
+    (status) =>
+      status &&
+      (status.status === "adding" ||
+        status.status === "searching" ||
+        status.status === "downloading" ||
+        status.status === "moving"),
+  );
+  const hasActiveDownloads = artistDownloadStatuses.length > 0;
+
+  if (albumStatus?.status === "adding") {
+    return (
+      <span className="requests-page__badge requests-page__badge--active">
+        <Loader className="artist-icon-xs animate-spin" />
+        Adding...
+      </span>
+    );
+  }
+
+  if (albumStatus?.status === "downloading") {
+    return (
+      <span className="requests-page__badge requests-page__badge--active">
+        <Loader className="artist-icon-xs animate-spin" />
+        Downloading...
+      </span>
+    );
+  }
+
+  if (albumStatus?.status === "searching") {
+    return (
+      <span className="requests-page__badge requests-page__badge--active">
+        <Loader className="artist-icon-xs animate-spin" />
+        Searching...
+      </span>
+    );
+  }
+
+  if (albumStatus?.status === "moving") {
+    return (
+      <span className="requests-page__badge requests-page__badge--active">
+        <Loader className="artist-icon-xs animate-spin" />
+        Moving files...
+      </span>
+    );
+  }
+
+  if (albumStatus?.status === "processing") {
+    return (
+      <span className="requests-page__badge requests-page__badge--active">
+        <Loader className="artist-icon-xs animate-spin" />
+        Processing
+      </span>
+    );
+  }
+
+  if (albumStatus?.status === "added") {
+    return (
+      <span className="requests-page__badge requests-page__badge--success">
+        <CheckCircle2 className="artist-icon-xs" />
+        Completed
+      </span>
+    );
+  }
+
+  if (request.status === "available") {
+    return (
+      <span className="requests-page__badge requests-page__badge--success">
+        <CheckCircle2 className="artist-icon-xs" />
+        Available
+      </span>
+    );
+  }
+
+  if (albumStatus?.status === "failed" || request.status === "failed") {
+    return (
+      <span className="requests-page__badge requests-page__badge--failed">
+        <AlertCircle className="artist-icon-xs" />
+        Failed
+      </span>
+    );
+  }
+
+  if (request.status === "processing" || hasActiveDownloads) {
+    return (
+      <span className="requests-page__badge requests-page__badge--active">
+        <Loader className="artist-icon-xs animate-spin" />
+        {hasActiveDownloads ? "Downloading..." : "Processing"}
+      </span>
+    );
+  }
+
+  return (
+    <span className="requests-page__badge requests-page__badge--pending">
+      Requested
+    </span>
+  );
+}
 
 function RequestsPage() {
+  useDocumentTitle("Requests");
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -197,7 +301,7 @@ function RequestsPage() {
     try {
       await deleteRequest(request.albumId);
       setRequests((prev) =>
-        prev.filter((r) => String(r.albumId) !== String(request.albumId))
+        prev.filter((r) => String(r.albumId) !== String(request.albumId)),
       );
     } catch {
       showError("Failed to stop download");
@@ -234,338 +338,205 @@ function RequestsPage() {
     }
   };
 
-  const getStatusBadge = (request) => {
-    const albumStatus = request.albumId
-      ? downloadStatuses[String(request.albumId)]
-      : null;
-    const artistDownloadStatuses = Object.values(downloadStatuses).filter(
-      (status) => {
-        return (
-          status &&
-          (status.status === "adding" ||
-            status.status === "searching" ||
-            status.status === "downloading" ||
-            status.status === "moving")
-        );
-      }
-    );
-
-    const hasActiveDownloads = artistDownloadStatuses.length > 0;
-
-    if (albumStatus?.status === "adding") {
-      return (
-        <span
-          className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase rounded"
-          style={{ backgroundColor: "#211f27", color: "#c1c1c3" }}
-        >
-          <Loader className="w-3 h-3 animate-spin" />
-          Adding...
-        </span>
-      );
+  const navigateToArtist = (request, isAlbum, artistMbid, artistName, displayName) => {
+    if (!artistMbid || artistMbid === "null" || artistMbid === "undefined") {
+      return;
     }
-
-    if (albumStatus?.status === "downloading") {
-      return (
-        <span
-          className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase rounded"
-          style={{ backgroundColor: "#211f27", color: "#c1c1c3" }}
-        >
-          <Loader className="w-3 h-3 animate-spin" />
-          Downloading...
-        </span>
-      );
-    }
-
-    if (albumStatus?.status === "searching") {
-      return (
-        <span
-          className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase rounded"
-          style={{ backgroundColor: "#211f27", color: "#c1c1c3" }}
-        >
-          <Loader className="w-3 h-3 animate-spin" />
-          Searching...
-        </span>
-      );
-    }
-
-    if (albumStatus?.status === "moving") {
-      return (
-        <span
-          className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase rounded"
-          style={{ backgroundColor: "#211f27", color: "#c1c1c3" }}
-        >
-          <Loader className="w-3 h-3 animate-spin" />
-          Moving files...
-        </span>
-      );
-    }
-
-    if (albumStatus?.status === "processing") {
-      return (
-        <span
-          className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase rounded"
-          style={{ backgroundColor: "#211f27", color: "#c1c1c3" }}
-        >
-          <Loader className="w-3 h-3 animate-spin" />
-          Processing
-        </span>
-      );
-    }
-
-    if (albumStatus?.status === "added") {
-      return (
-        <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase bg-green-500/20 text-green-400 rounded">
-          <CheckCircle2 className="w-3 h-3" />
-          Completed
-        </span>
-      );
-    }
-
-    if (request.status === "available") {
-      return (
-        <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase bg-green-500/20 text-green-400 rounded">
-          <CheckCircle2 className="w-3 h-3" />
-          Available
-        </span>
-      );
-    }
-
-    if (albumStatus?.status === "failed" || request.status === "failed") {
-      return (
-        <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase bg-red-500/20 text-red-400 rounded">
-          <AlertCircle className="w-3 h-3" />
-          Failed
-        </span>
-      );
-    }
-
-    if (request.status === "processing" || hasActiveDownloads) {
-      return (
-        <span
-          className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase rounded"
-          style={{ backgroundColor: "#211f27", color: "#c1c1c3" }}
-        >
-          <Loader className="w-3 h-3 animate-spin" />
-          {hasActiveDownloads ? "Downloading..." : "Processing"}
-        </span>
-      );
-    }
-
-    return (
-      <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold uppercase bg-yellow-500/20 text-yellow-400 rounded">
-        Requested
-      </span>
-    );
+    navigate(isAlbum ? `/artist/${artistMbid}` : `/artist/${request.mbid}`, {
+      state: {
+        artistName: isAlbum ? artistName : displayName,
+      },
+    });
   };
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-32">
-        <Loader
-          className="w-12 h-12 animate-spin mb-4"
-          style={{ color: "#c1c1c3" }}
-        />
-        <h2 className="text-xl font-semibold" style={{ color: "#fff" }}>
-          Loading your requests...
-        </h2>
+      <div className="requests-page">
+        <header className="requests-page__header">
+          <h1 className="requests-page__title">Requests</h1>
+          <p className="requests-page__subtitle">
+            Track your album requests and their availability
+          </p>
+        </header>
+        <div className="artist-loading">
+          <Loader className="artist-spinner artist-spinner--large animate-spin" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="animate-fade-in pb-12">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-        <div className="flex items-center gap-4">
-          <div>
-            <h1
-              className="text-2xl font-bold flex items-center"
-              style={{ color: "#fff" }}
-            >
-              Requests
-            </h1>
-            <p className="text-sm" style={{ color: "#c1c1c3" }}>
-              Track your album requests and their availability
-            </p>
-          </div>
-        </div>
-      </div>
+    <div className="requests-page">
+      <header className="requests-page__header">
+        <h1 className="requests-page__title">Requests</h1>
+        <p className="requests-page__subtitle">
+          Track your album requests and their availability
+        </p>
+      </header>
 
       {error && (
-        <div className="bg-red-500/20 ">
-          <AlertCircle className="w-5 h-5 text-red-400" />
-          <p className="text-red-400">{error}</p>
+        <div className="artist-error-panel requests-page__error" role="alert">
+          <AlertCircle className="artist-error-icon" aria-hidden="true" />
+          <h2 className="artist-error-title">Unable to load requests</h2>
+          <p className="artist-error-copy">{error}</p>
+          <button
+            type="button"
+            onClick={() => fetchRequests()}
+            className="btn btn-secondary btn--bold btn-min-h requests-page__retry-button"
+          >
+            Try Again
+          </button>
         </div>
       )}
 
-      {requests.length === 0 ? (
-        <div className="card text-center py-20">
-          <Music
-            className="w-16 h-16 mx-auto mb-4"
-            style={{ color: "#c1c1c3" }}
-          />
-          <h3 className="text-xl font-semibold mb-2" style={{ color: "#fff" }}>
-            No Requests Found
-          </h3>
-          <p className="mb-6" style={{ color: "#c1c1c3" }}>
+      {!error && requests.length === 0 ? (
+        <div className="search-empty-panel">
+          <div className="search-empty-panel__icon" aria-hidden="true">
+            <Music className="artist-icon-lg" />
+          </div>
+          <h2 className="search-empty-panel__title">No Requests Found</h2>
+          <p className="search-empty-panel__message">
             You haven&apos;t requested any albums yet.
           </p>
-          <button onClick={() => navigate("/")} className="btn btn-primary">
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            className="btn btn-primary btn--bold btn-min-h requests-page__empty-action"
+          >
             Start Discovering
           </button>
         </div>
       ) : (
-        <div className="grid gap-2">
-          {requests.map((request) => {
-            const isAlbum = request.type === "album";
-            const displayName = isAlbum ? request.albumName : request.name;
-            const artistName = isAlbum ? request.artistName : null;
-            const artistMbid = isAlbum ? request.artistMbid : request.mbid;
-            const hasValidMbid =
-              artistMbid && artistMbid !== "null" && artistMbid !== "undefined";
-            const albumStatus = request.albumId
-              ? downloadStatuses[String(request.albumId)]
-              : null;
-            const statusValue = albumStatus?.status;
-            const isFailed =
-              statusValue === "failed" ||
-              (!statusValue && request.status === "failed");
-            const isReSearching =
-              request.albumId &&
-              !!reSearchingAlbumIds[String(request.albumId)];
+        !error && (
+          <div className="requests-page__list">
+            {requests.map((request) => {
+              const isAlbum = request.type === "album";
+              const displayName = isAlbum ? request.albumName : request.name;
+              const artistName = isAlbum ? request.artistName : null;
+              const artistMbid = isAlbum ? request.artistMbid : request.mbid;
+              const hasValidMbid =
+                artistMbid && artistMbid !== "null" && artistMbid !== "undefined";
+              const albumStatus = request.albumId
+                ? downloadStatuses[String(request.albumId)]
+                : null;
+              const statusValue = albumStatus?.status;
+              const isFailed =
+                statusValue === "failed" ||
+                (!statusValue && request.status === "failed");
+              const isReSearching =
+                request.albumId &&
+                !!reSearchingAlbumIds[String(request.albumId)];
 
-            return (
-              <div
-                key={request.id || request.mbid}
-                className="card group relative overflow-hidden p-3 pr-12 transition-all hover:shadow-md"
-              >
-                <div className="absolute right-1.5 top-1.5 z-10 flex items-center gap-1">
-                  {isFailed && request.albumId && (
-                    <button
-                      type="button"
-                      onClick={() => handleReSearchRequest(request)}
-                      className="rounded p-1.5 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-                      style={{ color: "#fff" }}
-                      title="Re-search"
-                      aria-label="Re-search"
-                      disabled={isReSearching}
-                    >
-                      {isReSearching ? (
-                        <Loader className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-3.5 w-3.5" />
-                      )}
-                    </button>
-                  )}
-                  {request.inQueue && request.albumId && (
-                    <button
-                      type="button"
-                      onClick={() => handleStopDownload(request)}
-                      className="rounded p-1.5 transition-all hover:bg-red-500/20 hover:text-red-400"
-                      style={{ color: "#fff" }}
-                      title="Stop download"
-                      aria-label="Stop download"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid min-w-0 grid-cols-[84px,minmax(0,1fr)] gap-3 sm:flex sm:flex-row sm:items-center">
+              return (
+                <article
+                  key={request.id || request.mbid}
+                  className="requests-page__row"
+                >
                   <div
-                    className={`h-full min-h-[112px] w-[84px] flex-shrink-0 overflow-hidden rounded-lg sm:h-16 sm:min-h-0 sm:w-16 ${
-                      hasValidMbid
-                        ? "cursor-pointer"
-                        : "cursor-not-allowed opacity-50"
-                    }`}
-                    style={{ backgroundColor: "#211f27" }}
-                    onClick={() => {
-                      if (hasValidMbid) {
-                        navigate(
-                          isAlbum
-                            ? `/artist/${artistMbid}`
-                            : `/artist/${request.mbid}`,
-                          {
-                            state: {
-                              artistName: isAlbum ? artistName : displayName,
-                            },
-                          }
-                        );
-                      }
-                    }}
+                    className={`artist-media-cell artist-list-cover requests-page__cover${hasValidMbid ? " is-clickable" : " is-disabled"}`}
+                    onClick={() =>
+                      navigateToArtist(
+                        request,
+                        isAlbum,
+                        artistMbid,
+                        artistName,
+                        displayName,
+                      )
+                    }
                   >
                     <ArtistImage
                       src={request.image}
                       mbid={artistMbid}
                       artistName={isAlbum ? artistName : displayName}
                       alt={displayName}
-                      className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                      className="artist-image-fill"
                     />
                   </div>
 
-                  <div className="flex min-w-0 w-full flex-col justify-between text-left sm:flex-1">
-                    <div className="min-w-0">
+                  <div className="requests-page__body">
+                    <div className="requests-page__details">
                       <h3
-                        className={`w-full max-w-full text-base font-semibold leading-tight sm:truncate ${
-                          hasValidMbid
-                            ? "hover:underline cursor-pointer"
-                            : "cursor-not-allowed opacity-75"
-                        }`}
-                        style={{ color: "#fff" }}
-                        onClick={() => {
-                          if (hasValidMbid) {
-                            navigate(
-                              isAlbum
-                                ? `/artist/${artistMbid}`
-                                : `/artist/${request.mbid}`,
-                              {
-                                state: {
-                                  artistName: isAlbum
-                                    ? artistName
-                                    : displayName,
-                                },
-                              }
-                            );
-                          }
-                        }}
+                        className={`requests-page__item-title${hasValidMbid ? " is-clickable" : " is-disabled"}`}
+                        onClick={() =>
+                          navigateToArtist(
+                            request,
+                            isAlbum,
+                            artistMbid,
+                            artistName,
+                            displayName,
+                          )
+                        }
                       >
                         {displayName}
                       </h3>
 
-                      <div
-                        className="mt-2 flex flex-col gap-1.5 text-xs sm:flex-wrap sm:flex-row sm:items-center sm:gap-3"
-                        style={{ color: "#c1c1c3" }}
-                      >
+                      <div className="requests-page__meta">
                         {isAlbum && artistName && (
-                          <span className="flex max-w-full items-center gap-1 truncate">
-                            <Music className="h-3 w-3 shrink-0" />
-                            <span className="truncate">{artistName}</span>
+                          <span className="requests-page__meta-line">
+                            <Music className="artist-icon-xs" />
+                            <span className="artist-truncate">{artistName}</span>
                           </span>
                         )}
-                        <span className="flex max-w-full items-center gap-1 truncate">
-                          <Clock className="h-3 w-3 shrink-0" />
-                          {new Date(request.requestedAt).toLocaleDateString(
-                            undefined,
-                            {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            }
-                          )}
+                        <span className="requests-page__meta-line">
+                          <Clock className="artist-icon-xs" />
+                          <span className="artist-truncate">
+                            {new Date(request.requestedAt).toLocaleDateString(
+                              undefined,
+                              {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              },
+                            )}
+                          </span>
                         </span>
                       </div>
                     </div>
 
-                    <div className="mt-3 flex items-center gap-2 sm:mt-0 sm:ml-auto sm:flex-shrink-0">
-                      {getStatusBadge(request)}
+                    <div className="requests-page__status">
+                      <RequestStatusBadge
+                        request={request}
+                        downloadStatuses={downloadStatuses}
+                      />
+                      {(isFailed || request.inQueue) && request.albumId && (
+                        <div className="requests-page__actions">
+                          {isFailed && (
+                            <button
+                              type="button"
+                              onClick={() => handleReSearchRequest(request)}
+                              className="btn btn-surface btn-icon-square requests-page__action"
+                              title="Re-search"
+                              aria-label="Re-search"
+                              disabled={isReSearching}
+                            >
+                              {isReSearching ? (
+                                <Loader className="artist-icon-xs animate-spin" />
+                              ) : (
+                                <RefreshCw className="artist-icon-xs" />
+                              )}
+                            </button>
+                          )}
+                          {request.inQueue && (
+                            <button
+                              type="button"
+                              onClick={() => handleStopDownload(request)}
+                              className="btn btn-surface btn-icon-square requests-page__action btn--danger-text"
+                              title="Stop download"
+                              aria-label="Stop download"
+                            >
+                              <X className="artist-icon-xs" />
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                </article>
+              );
+            })}
+          </div>
+        )
       )}
-
     </div>
   );
 }

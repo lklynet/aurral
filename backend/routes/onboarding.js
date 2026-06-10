@@ -27,6 +27,41 @@ router.use((req, res, next) => {
   next();
 });
 
+router.get("/lidarr/test-library-access", async (req, res) => {
+  try {
+    const { lidarrClient } = await import("../services/lidarrClient.js");
+    const { validateLidarrTestCredentials, withTemporaryLidarrClient } =
+      await import("../services/lidarrTestSession.js");
+    const { runLidarrLibraryAccessTest } =
+      await import("../services/lidarrLibraryAccessTest.js");
+
+    let url = (req.query.url || "").trim().replace(/\/+$/, "");
+    const apiKey = (req.query.apiKey || "").trim();
+    const validation = validateLidarrTestCredentials(url, apiKey);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.error });
+    }
+    url = validation.url;
+
+    const result = await withTemporaryLidarrClient(url, apiKey, (client) =>
+      runLidarrLibraryAccessTest(client),
+    );
+
+    res.json({
+      success: result.ok,
+      ok: result.ok,
+      partial: !!result.partial,
+      steps: result.steps,
+      sample: result.sample,
+    });
+  } catch (error) {
+    res.status(400).json({
+      error: "Library access check failed",
+      message: error.message,
+    });
+  }
+});
+
 router.get("/lidarr/test", async (req, res) => {
   try {
     const { lidarrClient } = await import("../services/lidarrClient.js");

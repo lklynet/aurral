@@ -49,14 +49,20 @@ export default function registerCover(router) {
           fetchCoverInBackground(mbid, artistNameFromQuery).catch(() => {});
         });
 
+        const cachedResult = await getArtistImage(mbid, {
+          artistName: artistNameFromQuery,
+        }).catch(() => null);
+
         return res.json({
-          images: [
-            {
-              image: cachedImage.imageUrl,
-              front: true,
-              types: ["Front"],
-            },
-          ],
+          images: cachedResult?.images?.length
+            ? cachedResult.images
+            : [
+                {
+                  image: cachedImage.imageUrl,
+                  front: true,
+                  types: ["Front"],
+                },
+              ],
         });
       }
 

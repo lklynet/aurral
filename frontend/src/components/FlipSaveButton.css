@@ -49,24 +49,23 @@
   gap: 0.5rem;
   padding: 0 1rem;
   white-space: nowrap;
+  border-radius: var(--aurral-radius-round);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
 
 .btn-flip-front {
-  background-color: #707e61;
-  color: #fff;
-  border-radius: 2px;
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  background-color: var(--aurral-green);
+  color: var(--aurral-black);
 }
 
-.btn-flip:focus-visible {
+.btn-flip:focus {
   outline: none;
 }
 
 .btn-flip:focus-visible .btn-flip-front {
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05), 0 0 0 2px #18181c,
-    0 0 0 4px #c1c1c3;
+  outline: 2px solid var(--aurral-focus);
+  outline-offset: 2px;
 }
 
 .btn-flip-front:hover {
@@ -74,9 +73,8 @@
 }
 
 .btn-flip-back {
-  background-color: #323237;
-  color: #a0a0a4;
-  border-radius: 2px;
+  background-color: var(--aurral-gray);
+  color: var(--aurral-gray-light);
   transform: rotateX(180deg);
 }
 
@@ -86,4 +84,11 @@
 
 .btn-flip:not(:disabled) .btn-flip-front:hover {
   opacity: 0.9;
+}
+
+.btn-flip-front svg,
+.btn-flip-back svg {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
 }

@@ -16,8 +16,10 @@ import {
 } from "./weeklyFlowSoulseekMatcher.js";
 import {
   normalizeExistingFileMode,
+  repairReusableTrackLinks,
   reuseTrackForPlaylist,
 } from "./weeklyFlowFileReuse.js";
+import { resolveWeeklyFlowRoot } from "./weeklyFlowPaths.js";
 
 const DEFAULT_CONCURRENCY = 3;
 const MIN_CONCURRENCY = 1;
@@ -42,6 +44,7 @@ const MAX_DOWNLOAD_ATTEMPTS_PER_JOB = 7;
 const MAX_DOWNLOAD_ATTEMPTS_PER_RETRY = 9;
 const FALLBACK_MP3_REGEX = /^[^/\\]+-[a-f0-9]{8}\.mp3$/i;
 const FALLBACK_SWEEP_INTERVAL_MS = 10 * 60 * 1000;
+const REUSE_REPAIR_INTERVAL_MS = 30 * 60 * 1000;
 const MAX_RETRIES_PER_JOB = 1;
 const MAX_RETRIES_FOR_TIMEOUT_LOGIN = 1;
 const MAX_RETRIES_FOR_QUEUED_DOWNLOAD = 2;
@@ -59,14 +62,14 @@ const PLAYLIST_MUTATION_CODE = "PLAYLIST_MUTATION_IN_PROGRESS";
 
 export class WeeklyFlowWorker {
   constructor(
-    weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER || "/app/downloads",
+    weeklyFlowRoot = resolveWeeklyFlowRoot(),
   ) {
-    this.weeklyFlowRoot = path.isAbsolute(weeklyFlowRoot)
-      ? weeklyFlowRoot
-      : path.resolve(process.cwd(), weeklyFlowRoot);
+    this.weeklyFlowRoot = resolveWeeklyFlowRoot(weeklyFlowRoot);
     this.running = false;
     this.activeCount = 0;
     this.lastFallbackSweepAt = 0;
+    this.lastReuseRepairAt = 0;
+    this.reuseRepairCursor = 0;
     this.processLoop = null;
     this.processTimer = null;
     this.retryAttempts = new Map();
@@ -78,6 +81,7 @@ export class WeeklyFlowWorker {
     this.lastDequeuedPlaylistType = null;
     this.fallbackSweepInFlight = null;
     this.fallbackSweepTimer = null;
+    this.reuseRepairInFlight = null;
     this.lastJobMetrics = null;
     this.sanitizeCache = new Map();
     this.incompleteRetryTimers = new Map();
@@ -101,7 +105,7 @@ export class WeeklyFlowWorker {
   }
 
   _recordFailureMetric(message) {
-    if (this._isQueuedError(message)) {
+    if (this._isSlowSourceError(message)) {
       this.downloadMetrics.queuedFailures += 1;
       return;
     }
@@ -347,10 +351,12 @@ export class WeeklyFlowWorker {
     );
   }
 
-  _isQueuedError(message) {
-    return String(message || "")
-      .toLowerCase()
-      .includes("download queued");
+  _isSlowSourceError(message) {
+    const text = String(message || "").toLowerCase();
+    return (
+      text.includes("download queued") ||
+      text.includes("download stalled (no bytes received)")
+    );
   }
 
   _isOfflineSourceError(message) {
@@ -366,14 +372,14 @@ export class WeeklyFlowWorker {
   }
 
   _getRetryLimitForError(message) {
-    if (this._isQueuedError(message)) return MAX_RETRIES_FOR_QUEUED_DOWNLOAD;
+    if (this._isSlowSourceError(message)) return MAX_RETRIES_FOR_QUEUED_DOWNLOAD;
     if (this._isOfflineSourceError(message)) return MAX_RETRIES_FOR_OFFLINE_SOURCE;
     if (this._isAuthFailure(message)) return MAX_RETRIES_FOR_TIMEOUT_LOGIN;
     return MAX_RETRIES_PER_JOB;
   }
 
   _getRetryDelayMs(attempt, message) {
-    if (this._isQueuedError(message)) {
+    if (this._isSlowSourceError(message)) {
       return Number(attempt) <= 1
         ? QUEUED_RETRY_BASE_DELAY_MS
         : QUEUED_RETRY_MAX_DELAY_MS;
@@ -583,7 +589,7 @@ export class WeeklyFlowWorker {
       .trim()
       .toLowerCase();
     if (user) {
-      if (this._isQueuedError(text)) {
+      if (this._isSlowSourceError(text)) {
         state.queuedUsers.add(user);
       }
       if (this._isOfflineSourceError(text)) {
@@ -1027,6 +1033,40 @@ export class WeeklyFlowWorker {
       });
   }
 
+  async repairReusableLinks(force = false) {
+    const now = Date.now();
+    if (!force && now - this.lastReuseRepairAt < REUSE_REPAIR_INTERVAL_MS) {
+      return null;
+    }
+    this.lastReuseRepairAt = now;
+    const { existingFileMode } = this.getWorkerSettings();
+    if (normalizeExistingFileMode(existingFileMode) === "download") {
+      return null;
+    }
+    const result = await repairReusableTrackLinks({
+      existingFileMode,
+      weeklyFlowRoot: this.weeklyFlowRoot,
+      cursor: this.reuseRepairCursor,
+    });
+    if (Number.isFinite(result?.nextCursor)) {
+      this.reuseRepairCursor = result.nextCursor;
+    }
+    return result;
+  }
+
+  scheduleReuseLinkRepair(force = false) {
+    if (this.reuseRepairInFlight) return;
+    this.reuseRepairInFlight = this.repairReusableLinks(force)
+      .catch((error) => {
+        console.warn(
+          `[WeeklyFlowWorker] Reuse link repair failed: ${error?.message || error}`,
+        );
+      })
+      .finally(() => {
+        this.reuseRepairInFlight = null;
+      });
+  }
+
   async start() {
     if (this.running) {
       return;
@@ -1036,9 +1076,11 @@ export class WeeklyFlowWorker {
     this.running = true;
     console.log("[WeeklyFlowWorker] Starting worker...");
     await this.moveFallbackMp3sToDir(true);
+    this.scheduleReuseLinkRepair(true);
     this.fallbackSweepTimer = setInterval(() => {
       if (!this.running) return;
       this.scheduleFallbackSweep(false);
+      this.scheduleReuseLinkRepair(false);
     }, FALLBACK_SWEEP_INTERVAL_MS);
 
     this.processLoop = () => {
@@ -1105,8 +1147,8 @@ export class WeeklyFlowWorker {
             if (retryable && attempts < retryLimit) {
               const retryAttempt = attempts + 1;
               this.retryAttempts.set(job.id, retryAttempt);
-              const queuedError = this._isQueuedError(message);
-              if (!queuedError) {
+              const slowSourceError = this._isSlowSourceError(message);
+              if (!slowSourceError) {
                 this._recordRetryableFailure();
               }
               const retryDelayMs = this._getRetryDelayMs(retryAttempt, message);
@@ -1116,13 +1158,13 @@ export class WeeklyFlowWorker {
               );
               if (this._isAuthFailure(message)) {
                 this._pauseWorker(AUTH_FAILURE_PAUSE_MS);
-              } else if (!queuedError && this._isConnectivityFailure(message)) {
+              } else if (!slowSourceError && this._isConnectivityFailure(message)) {
                 this._pauseWorker(CONNECTIVITY_FAILURE_PAUSE_MS);
               }
               downloadTracker.setPending(
                 job.id,
-                queuedError
-                  ? `Remote queue full; retrying in ${Math.ceil(retryDelayMs / 1000)}s (attempt ${retryAttempt}/${retryLimit})`
+                slowSourceError
+                  ? `Remote source slow; retrying in ${Math.ceil(retryDelayMs / 1000)}s (attempt ${retryAttempt}/${retryLimit})`
                   : `${message} (retry ${retryAttempt}/${retryLimit} in ${Math.ceil(retryDelayMs / 1000)}s)`,
                 {
                   asRetryCycle: true,
@@ -1535,10 +1577,6 @@ export class WeeklyFlowWorker {
                   0,
                   Math.min(100, Number(progressPct) || 0),
                 );
-              },
-              {
-                queuedTimeoutMs:
-                  soulseekClient.getQueuedTimeoutForAttempt(attemptIndex),
               },
             );
             this._assertJobCanContinue(job, runGeneration);
