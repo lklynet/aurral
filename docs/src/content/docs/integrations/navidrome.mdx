@@ -1,0 +1,64 @@
+---
+title: Navidrome
+description: Stream generated playlists and flow libraries.
+---
+
+Navidrome is optional, but it is the cleanest way to play generated flows and imported playlists. Aurral can create a separate **aurral-weekly-flow** library and write generated M3U playlists for your flows and static playlists.
+
+![Aurral in-app playback](../../../assets/screenshots/playback.webp)
+
+## Setup
+
+1. Follow [Shared storage](/getting-started/storage/) so Navidrome can scan the same `DOWNLOAD_FOLDER` tree Aurral writes.
+2. Connect Navidrome in **Settings → Integrations → Subsonic / Navidrome**.
+3. Let Aurral create or update its generated library and playlist files under `aurral-weekly-flow`.
+
+## Mixed Windows and Docker Navidrome
+
+Aurral writes M3U playlists under `aurral-weekly-flow` with one track path per line. Navidrome must be able to open those paths on **its** filesystem.
+
+| Navidrome deployment | Playlist path mode | Setting |
+| --- | --- | --- |
+| Docker, same mounts as Aurral (for example `/data` or `/music`) | **local** (default) | Leave **Use host paths in playlist files** off |
+| Native Windows while Aurral is in Docker | **remote** | Enable the Navidrome setting or set `M3U_PATH_MODE=remote` |
+
+### What remote mode does
+
+With path mappings, Aurral translates Lidarr's Windows paths into container paths so it can read files—for example `N:\ServerFolders\Music\Music\Artist\track.mp3` becomes `/music/Music/Artist/track.mp3` inside Docker.
+
+By default, generated M3U files use those **container paths**. Native Windows Navidrome cannot resolve `/music/...`, so playlists may appear but tracks fail to play.
+
+**Use host paths in playlist files** (or `M3U_PATH_MODE=remote`) reverses paths **only when writing M3U files**:
+
+- Reused Lidarr tracks: Aurral writes the original Lidarr path it received
+- Downloaded tracks under `/music/Aurral/...`: Aurral inverts `PATH_MAPPINGS` (for example `/music/...` → `N:\ServerFolders\Music\...`)
+
+Aurral still uses container paths internally for file checks, reuse, and repairs. Only the `.m3u` output changes.
+
+### Example compose (Aurral in Docker, Navidrome on Windows)
+
+```yaml
+services:
+  aurral:
+    environment:
+      - DOWNLOAD_FOLDER=/music/Aurral
+      - PATH_MAPPINGS=N:/ServerFolders/Music|/music
+      - M3U_PATH_MODE=remote
+    volumes:
+      - N:/ServerFolders/Music:/music
+      - ./config/aurral:/config
+```
+
+After enabling remote mode, refresh affected playlists (re-run a flow, edit a shared playlist, or use **Ensure playlists** from the Playlists page) so M3U files are rewritten.
+
+See also [Shared storage — Windows and mixed Docker setups](/getting-started/storage/#windows-and-mixed-docker-setups) for mounts and path mappings.
+
+## Recommended Navidrome setting
+
+```bash
+ND_SCANNER_PURGEMISSING=always
+```
+
+Purging missing tracks helps Navidrome clean up old flow entries after a flow rotates.
+
+For Plex and Plexamp instead, see [Plex](/integrations/plex/).

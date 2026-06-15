@@ -345,7 +345,7 @@ export async function resolveAlbumByArtistAndTitle({
 
 export async function listArtistAlbums(
   artistMbid,
-  { releaseTypes = [], includeTrackCounts = false } = {},
+  { releaseTypes = [], includeTrackCounts = false, hydrateLimit = 30 } = {},
 ) {
   const rawArtist = await request(`/artist/${artistMbid}`);
   const artist = toNormalizedArtist(rawArtist);
@@ -364,17 +364,27 @@ export async function listArtistAlbums(
     return String(left.title || "").localeCompare(String(right.title || ""));
   });
 
-  if (includeTrackCounts) {
-    await Promise.all(
-      albums.slice(0, 30).map(async (album) => {
-        try {
-          const hydrated = await getAlbumByMbid(album.id);
+  const safeHydrateLimit =
+    Number.isFinite(Number(hydrateLimit)) && Number(hydrateLimit) > 0
+      ? Math.min(100, Math.floor(Number(hydrateLimit)))
+      : 30;
+  await Promise.all(
+    albums.slice(0, safeHydrateLimit).map(async (album) => {
+      try {
+        const needsDate = !album.firstReleaseDate;
+        const needsRating = includeTrackCounts;
+        if (!needsDate && !needsRating) return;
+
+        const hydrated = await getAlbumByMbid(album.id);
+        if (needsDate) {
           album.firstReleaseDate = hydrated.releaseDate || album.firstReleaseDate;
+        }
+        if (needsRating) {
           album.rating = hydrated.rating || null;
-        } catch {}
-      }),
-    );
-  }
+        }
+      } catch {}
+    }),
+  );
 
   return albums.map((album) => ({
     ...album,

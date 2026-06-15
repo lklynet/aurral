@@ -3,11 +3,18 @@ import {
   musicbrainzResolveArtistMbidByName,
 } from "./apiClients.js";
 import {
+  isRemoteSearchConfigured,
+  searchRemoteCatalog,
+} from "./aurralSearchClient.js";
+import {
   getArtistByMbid,
   getAlbumByMbid,
   listArtistAlbums,
   resolveAlbumByArtistAndTitle,
 } from "./metadataProvider.js";
+
+const CATALOG_RESOLVE_LIMIT = 8;
+const CATALOG_MIN_SCORE = 65;
 
 const artistAliasCache = new Map();
 const releaseGroupSearchCache = new Map();
@@ -55,6 +62,152 @@ function scoreTextMatch(left, right) {
   const ratio =
     (2 * overlap) / Math.max(1, leftWords.size + rightWords.size);
   return Math.round(ratio * 100);
+}
+
+function pickBestCatalogArtist(artists, artistName) {
+  const list = Array.isArray(artists) ? artists : [];
+  if (!list.length || !artistName) return null;
+  return (
+    [...list]
+      .map((artist) => ({
+        artist,
+        score: scoreTextMatch(artist.name, artistName) + (artist.score || 0) * 0.1,
+      }))
+      .filter((entry) => entry.score >= CATALOG_MIN_SCORE)
+      .sort((left, right) => right.score - left.score)[0]?.artist || null
+  );
+}
+
+function pickBestCatalogAlbum(albums, albumName, artistName, artistMbid) {
+  const list = Array.isArray(albums) ? albums : [];
+  if (!list.length || !albumName) return null;
+  return (
+    [...list]
+      .map((album) => {
+        let score = scoreTextMatch(album.title, albumName);
+        if (artistName) {
+          score = Math.round(
+            score * 0.65 + scoreTextMatch(album.artistName, artistName) * 0.35,
+          );
+        }
+        if (artistMbid && album.artistMbid === artistMbid) {
+          score += 12;
+        } else if (artistMbid && album.artistMbid && album.artistMbid !== artistMbid) {
+          score -= 25;
+        }
+        return { album, score: score + (album.score || 0) * 0.1 };
+      })
+      .filter((entry) => entry.score >= CATALOG_MIN_SCORE)
+      .sort((left, right) => right.score - left.score)[0]?.album || null
+  );
+}
+
+function pickBestCatalogTrack(
+  tracks,
+  { trackName, artistName, albumName, artistMbid, albumMbid },
+) {
+  const list = Array.isArray(tracks) ? tracks : [];
+  if (!list.length || !trackName) return null;
+  return (
+    [...list]
+      .map((track) => {
+        let score = scoreTextMatch(track.title, trackName);
+        if (artistName) {
+          score = Math.round(
+            score * 0.7 + scoreTextMatch(track.artistName, artistName) * 0.3,
+          );
+        }
+        if (albumName && track.albumTitle) {
+          score = Math.round(
+            score * 0.8 + scoreTextMatch(track.albumTitle, albumName) * 0.2,
+          );
+        }
+        if (artistMbid && track.artistMbid === artistMbid) {
+          score += 12;
+        } else if (artistMbid && track.artistMbid && track.artistMbid !== artistMbid) {
+          score -= 25;
+        }
+        if (albumMbid && track.albumMbid === albumMbid) {
+          score += 12;
+        }
+        return { track, score: score + (track.score || 0) * 0.1 };
+      })
+      .filter((entry) => entry.score >= CATALOG_MIN_SCORE)
+      .sort((left, right) => right.score - left.score)[0]?.track || null
+  );
+}
+
+async function resolveArtistMbidFromCatalog(artistName) {
+  const safeArtist = String(artistName || "").trim();
+  if (!safeArtist || !isRemoteSearchConfigured()) return null;
+  try {
+    const catalog = await searchRemoteCatalog(safeArtist, {
+      mode: "suggest",
+      limit: CATALOG_RESOLVE_LIMIT,
+    });
+    const match = pickBestCatalogArtist(catalog?.artists, safeArtist);
+    return match?.id ? String(match.id) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveReleaseGroupFromCatalog(
+  artistName,
+  artistMbid,
+  albumName,
+) {
+  const safeAlbum = String(albumName || "").trim();
+  const safeArtist = String(artistName || "").trim();
+  const safeMbid = String(artistMbid || "").trim();
+  if (!safeAlbum || !isRemoteSearchConfigured()) return null;
+  try {
+    const catalog = await searchRemoteCatalog(
+      [safeArtist, safeAlbum].filter(Boolean).join(" "),
+      { mode: "suggest", limit: CATALOG_RESOLVE_LIMIT },
+    );
+    const match = pickBestCatalogAlbum(
+      catalog?.albums,
+      safeAlbum,
+      safeArtist,
+      safeMbid,
+    );
+    if (!match?.id) return null;
+    return {
+      id: String(match.id),
+      title: String(match.title || safeAlbum).trim() || safeAlbum,
+      releaseYear: null,
+      artistMbid: match.artistMbid ? String(match.artistMbid) : safeMbid || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function resolveTrackMbidFromCatalog({
+  artistName,
+  trackName,
+  albumName,
+  artistMbid,
+  albumMbid,
+}) {
+  const safeTrack = String(trackName || "").trim();
+  if (!safeTrack || !isRemoteSearchConfigured()) return null;
+  try {
+    const catalog = await searchRemoteCatalog(
+      [artistName, safeTrack, albumName].filter(Boolean).join(" "),
+      { mode: "suggest", limit: CATALOG_RESOLVE_LIMIT },
+    );
+    return pickBestCatalogTrack(catalog?.tracks, {
+      trackName: safeTrack,
+      artistName,
+      albumName,
+      artistMbid,
+      albumMbid,
+    });
+  } catch {
+    return null;
+  }
 }
 
 function pickBestCandidate(candidates, expectedTitle, expectedYear = null) {
@@ -123,6 +276,20 @@ async function resolveReleaseGroup(artistName, artistMbid, albumName, releaseYea
     return releaseGroupSearchCache.get(cacheKey);
   }
   const promise = (async () => {
+    const catalogMatch = await resolveReleaseGroupFromCatalog(
+      safeArtist,
+      safeMbid,
+      safeAlbum,
+    );
+    if (catalogMatch?.id) {
+      const album = await getAlbumByMbid(catalogMatch.id).catch(() => null);
+      return {
+        id: catalogMatch.id,
+        title: String(album?.title || catalogMatch.title || safeAlbum).trim() || safeAlbum,
+        releaseYear: getYear(album?.releaseDate),
+        artistMbid: catalogMatch.artistMbid || safeMbid || null,
+      };
+    }
     try {
       const resolvedId = await resolveAlbumByArtistAndTitle({
         artistName: safeArtist,
@@ -266,6 +433,12 @@ async function fetchLastfmTrackInfo(track) {
   }
 }
 
+export {
+  pickBestCatalogAlbum,
+  pickBestCatalogArtist,
+  pickBestCatalogTrack,
+};
+
 export async function resolveWeeklyFlowTrackContext(track) {
   const base = {
     ...track,
@@ -313,6 +486,9 @@ export async function resolveWeeklyFlowTrackContext(track) {
   }
 
   if (!base.artistMbid) {
+    base.artistMbid = await resolveArtistMbidFromCatalog(base.artistName);
+  }
+  if (!base.artistMbid) {
     base.artistMbid = await musicbrainzResolveArtistMbidByName(base.artistName);
   }
 
@@ -330,6 +506,9 @@ export async function resolveWeeklyFlowTrackContext(track) {
     );
     if (releaseGroup?.id) {
       base.albumMbid = releaseGroup.id;
+      if (!base.artistMbid && releaseGroup.artistMbid) {
+        base.artistMbid = releaseGroup.artistMbid;
+      }
       if (!base.releaseYear && releaseGroup.releaseYear) {
         base.releaseYear = releaseGroup.releaseYear;
       }
@@ -366,6 +545,28 @@ export async function resolveWeeklyFlowTrackContext(track) {
     base.albumTrackCount = null;
     base.albumTrackTitles = [];
     base.trackNumber = null;
+  }
+
+  if (!base.trackMbid) {
+    const catalogTrack = await resolveTrackMbidFromCatalog({
+      artistName: base.artistName,
+      trackName: base.trackName,
+      albumName: base.albumName,
+      artistMbid: base.artistMbid,
+      albumMbid: base.albumMbid,
+    });
+    if (catalogTrack?.id) {
+      base.trackMbid = String(catalogTrack.id);
+    }
+    if (!base.albumMbid && catalogTrack?.albumMbid) {
+      base.albumMbid = String(catalogTrack.albumMbid);
+    }
+    if (!base.albumName && catalogTrack?.albumTitle) {
+      base.albumName = String(catalogTrack.albumTitle).trim();
+    }
+    if (!base.artistMbid && catalogTrack?.artistMbid) {
+      base.artistMbid = String(catalogTrack.artistMbid);
+    }
   }
 
   return base;

@@ -266,29 +266,6 @@ const artistKeys = (artist) => [
   normalizeKey(artist?.artistName),
 ].filter(Boolean);
 
-const buildBlockSets = (blocklist = {}) => ({
-  artistMbids: new Set(
-    (Array.isArray(blocklist.artists) ? blocklist.artists : [])
-      .map((entry) => normalizeKey(entry?.mbid))
-      .filter(Boolean),
-  ),
-  artistNames: new Set(
-    (Array.isArray(blocklist.artists) ? blocklist.artists : [])
-      .map((entry) => normalizeKey(entry?.name))
-      .filter(Boolean),
-  ),
-  tags: new Set(
-    (Array.isArray(blocklist.tags) ? blocklist.tags : [])
-      .map(normalizeKey)
-      .filter(Boolean),
-  ),
-});
-
-const isBlockedArtist = (artist, blockSets) =>
-  artistKeys(artist).some(
-    (key) => blockSets.artistMbids.has(key) || blockSets.artistNames.has(key),
-  );
-
 const isExistingArtist = (artist, existingArtistKeys) =>
   artistKeys(artist).some((key) => existingArtistKeys?.has(key));
 
@@ -539,9 +516,7 @@ const getListenbrainzEnrichedGenrePool = async ({
 const buildFallbackGenrePoolsFromArtists = ({
   artists = [],
   existingArtistKeys = new Set(),
-  blocklist = {},
 } = {}) => {
-  const blockSets = buildBlockSets(blocklist);
   const buckets = Object.fromEntries(
     DEFAULT_DISCOVERY_GENRE_SECTIONS.map((section) => [section.name, []]),
   );
@@ -549,7 +524,6 @@ const buildFallbackGenrePoolsFromArtists = ({
     const section = classifyArtistToFallbackGenre(artist);
     if (!section?.name) continue;
     if (isExistingArtist(artist, existingArtistKeys)) continue;
-    if (isBlockedArtist(artist, blockSets)) continue;
     buckets[section.name].push({
       ...artist,
       source: artist.source || "listenbrainz",
@@ -569,7 +543,6 @@ const buildFallbackGenrePoolsFromArtists = ({
 
 export const buildListenbrainzFallbackGenrePools = async ({
   existingArtistKeys = new Set(),
-  blocklist = {},
   limit = LISTENBRAINZ_SITEWIDE_POOL_LIMIT,
   range = "all_time",
 } = {}) => {
@@ -580,7 +553,6 @@ export const buildListenbrainzFallbackGenrePools = async ({
   return buildFallbackGenrePoolsFromArtists({
     artists: enrichedPool,
     existingArtistKeys,
-    blocklist,
   });
 };
 
@@ -612,21 +584,15 @@ const buildFallbackGenreSectionsFromPools = async (
 
 const buildGenreSection = async (
   genre,
-  { existingArtistKeys = new Set(), blocklist = {}, hydrate = true } = {},
+  { existingArtistKeys = new Set(), hydrate = true } = {},
 ) => {
-  const blockSets = buildBlockSets(blocklist);
-  if (blockSets.tags.has(normalizeKey(genre.name))) return null;
   const artists = (
     await Promise.all(
       genre.artists.map((artist) => normalizeCuratedArtist(artist, genre)),
     )
   )
     .filter(Boolean)
-    .filter(
-      (artist) =>
-        !isExistingArtist(artist, existingArtistKeys) &&
-        !isBlockedArtist(artist, blockSets),
-    );
+    .filter((artist) => !isExistingArtist(artist, existingArtistKeys));
   if (hydrate && artists.length > 0) {
     await hydrateArtistImages(artists, {
       limit: artists.length,
@@ -644,14 +610,12 @@ const buildGenreSection = async (
 
 export const buildDefaultGenreSections = async ({
   existingArtistKeys = new Set(),
-  blocklist = {},
   hydrate = true,
 } = {}) => {
   const sections = [];
   for (const genre of DEFAULT_DISCOVERY_GENRE_SECTIONS) {
     const section = await buildGenreSection(genre, {
       existingArtistKeys,
-      blocklist,
       hydrate,
     });
     if (section) sections.push(section);
@@ -664,7 +628,6 @@ export const searchFallbackGenreArtists = async ({
   limit = 24,
   offset = 0,
   existingArtistKeys = new Set(),
-  blocklist = {},
   precomputedGenrePools = null,
 } = {}) => {
   const aliases = getFallbackGenreAliases(tag);
@@ -675,7 +638,6 @@ export const searchFallbackGenreArtists = async ({
     precomputedGenrePools ||
     (await buildListenbrainzFallbackGenrePools({
       existingArtistKeys,
-      blocklist,
       limit: LISTENBRAINZ_SITEWIDE_POOL_LIMIT,
       range: "all_time",
     }));
@@ -706,7 +668,6 @@ export const searchFallbackGenreArtists = async ({
   if (!section) return null;
   const resolved = await buildGenreSection(section, {
     existingArtistKeys,
-    blocklist,
     hydrate: true,
   });
   const artists = Array.isArray(resolved?.artists) ? resolved.artists : [];
@@ -756,10 +717,8 @@ export const getFlowCapabilities = (hasLastfmKey = !!getLastfmApiKey()) => {
 
 export const buildListenbrainzFallbackDiscovery = async ({
   existingArtistKeys = new Set(),
-  blocklist = {},
   onProgress = null,
 } = {}) => {
-  const blockSets = buildBlockSets(blocklist);
   onProgress?.({
     phase: "warming_genre_pool",
     progress: 28,
@@ -767,7 +726,6 @@ export const buildListenbrainzFallbackDiscovery = async ({
   });
   const fallbackGenrePools = await buildListenbrainzFallbackGenrePools({
     existingArtistKeys,
-    blocklist,
     limit: LISTENBRAINZ_SITEWIDE_POOL_LIMIT,
     range: "all_time",
   });
@@ -795,7 +753,6 @@ export const buildListenbrainzFallbackDiscovery = async ({
     const key = normalizeKey(mbid);
     if (seen.has(key)) continue;
     if (isExistingArtist(entry, existingArtistKeys)) continue;
-    if (isBlockedArtist(entry, blockSets)) continue;
     seen.add(key);
     globalTop.push(entry);
     if (globalTop.length >= 32) break;
@@ -818,7 +775,6 @@ export const buildListenbrainzFallbackDiscovery = async ({
   if (fallbackGenres.length === 0) {
     fallbackGenres = await buildDefaultGenreSections({
       existingArtistKeys,
-      blocklist,
       hydrate: true,
     });
   }

@@ -18,7 +18,12 @@
     "dev:frontend": "npm run dev --workspace frontend",
     "auth:reset-admin-password": "npm run auth:reset-admin-password --workspace backend",
     "docker:build": "docker build -t aurral .",
-    "docker:run": "docker run -p 3001:3001 -v $(pwd)/backend/data:/app/backend/data aurral"
+    "docker:run": "docker run -p 3001:3001 -v $(pwd)/backend/data:/app/backend/data aurral",
+    "desktop:dev": "npm run dev --prefix desktop",
+    "desktop:build": "npm run build --prefix desktop",
+    "desktop:sync-version": "npm run sync-version --prefix desktop",
+    "docs:dev": "npm run dev --prefix docs",
+    "docs:build": "npm run build --prefix docs"
   },
   "keywords": [
     "lidarr",
@@ -29,8 +34,11 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "bcrypt": "^6.0.0",
+    "better-sqlite3": "^12.10.0",
     "concurrently": "^10.0.1",
     "nodemon": "^3.1.14",
+    "sharp": "^0.34.5",
     "wait-on": "^9.0.10"
   },
   "nodemonConfig": {

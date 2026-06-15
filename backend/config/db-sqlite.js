@@ -1,18 +1,11 @@
 import Database from "better-sqlite3";
 import path from "path";
-import { fileURLToPath } from "url";
 import fs from "fs";
+import { initializeSchemaOnStartup } from "./schema-migration-v2.js";
+import { syncDownloadFolderPath } from "../services/downloadFolderConfig.js";
+import { ensureDataDir } from "./data-dir.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DEFAULT_DATA_DIR = path.join(__dirname, "..", "data");
-const DATA_DIR = process.env.AURRAL_DATA_DIR
-  ? path.resolve(process.env.AURRAL_DATA_DIR)
-  : DEFAULT_DATA_DIR;
-
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
+const DATA_DIR = ensureDataDir();
 
 const DB_PATH = process.env.AURRAL_DB_PATH
   ? path.resolve(process.env.AURRAL_DB_PATH)
@@ -30,7 +23,11 @@ function tryAddColumn(sql) {
   try {
     db.exec(sql);
   } catch (error) {
-    if (!String(error?.message || "").toLowerCase().includes("duplicate column name")) {
+    if (
+      !String(error?.message || "")
+        .toLowerCase()
+        .includes("duplicate column name")
+    ) {
       throw error;
     }
   }
@@ -75,7 +72,7 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
-  CREATE TABLE IF NOT EXISTS weekly_flow_jobs (
+  CREATE TABLE IF NOT EXISTS playlist_download_jobs (
     id TEXT PRIMARY KEY,
     artist_name TEXT NOT NULL,
     track_name TEXT NOT NULL,
@@ -86,15 +83,23 @@ db.exec(`
     track_mbid TEXT,
     release_year TEXT,
     duration_ms INTEGER,
+    track_number INTEGER,
+    album_track_count INTEGER,
+    album_track_titles TEXT,
     artist_aliases TEXT,
-    playlist_type TEXT NOT NULL,
+    playlist_id TEXT NOT NULL,
+    playlist_type TEXT,
     status TEXT NOT NULL,
     staging_path TEXT,
     final_path TEXT,
     error TEXT,
     started_at INTEGER,
     completed_at INTEGER,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    slskd_search_id TEXT,
+    slskd_batch_id TEXT,
+    remote_username TEXT,
+    remote_filename TEXT
   );
 
   CREATE TABLE IF NOT EXISTS deezer_mbid_cache (
@@ -115,43 +120,113 @@ db.exec(`
     updated_at INTEGER
   );
 
-  CREATE INDEX IF NOT EXISTS idx_weekly_flow_jobs_status ON weekly_flow_jobs(status);
-  CREATE INDEX IF NOT EXISTS idx_weekly_flow_jobs_playlist_type ON weekly_flow_jobs(playlist_type);
+  CREATE TABLE IF NOT EXISTS aurral_history (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    subtitle TEXT,
+    status TEXT NOT NULL,
+    status_label TEXT,
+    href TEXT,
+    metadata TEXT,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS slskd_transfer_history (
+    id TEXT PRIMARY KEY,
+    job_id TEXT,
+    username TEXT NOT NULL,
+    remote_filename TEXT,
+    transfer_id TEXT,
+    search_id TEXT,
+    batch_id TEXT,
+    status TEXT NOT NULL,
+    reason TEXT,
+    score REAL,
+    artist_name TEXT,
+    track_name TEXT,
+    album_name TEXT,
+    source_path TEXT,
+    final_path TEXT,
+    actual_duration_ms INTEGER,
+    created_at INTEGER NOT NULL,
+    cleaned_at INTEGER
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_playlist_download_jobs_status ON playlist_download_jobs(status);
+  CREATE INDEX IF NOT EXISTS idx_playlist_download_jobs_playlist_id ON playlist_download_jobs(playlist_id);
   CREATE INDEX IF NOT EXISTS idx_images_cache_cache_age ON images_cache(cache_age);
   CREATE INDEX IF NOT EXISTS idx_musicbrainz_artist_mbid_cache_updated_at ON musicbrainz_artist_mbid_cache(updated_at);
   CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
   CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+  CREATE INDEX IF NOT EXISTS idx_aurral_history_created_at ON aurral_history(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_slskd_transfer_history_username ON slskd_transfer_history(username, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_slskd_transfer_history_status ON slskd_transfer_history(status, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_slskd_transfer_history_cleanup ON slskd_transfer_history(cleaned_at, created_at DESC);
 `);
 
 const tableColumns = db
-  .prepare("PRAGMA table_info(weekly_flow_jobs)")
+  .prepare("PRAGMA table_info(playlist_download_jobs)")
   .all()
   .map((column) => column.name);
 
 if (!tableColumns.includes("album_name")) {
-  tryAddColumn("ALTER TABLE weekly_flow_jobs ADD COLUMN album_name TEXT");
+  tryAddColumn("ALTER TABLE playlist_download_jobs ADD COLUMN album_name TEXT");
 }
 if (!tableColumns.includes("reason")) {
-  tryAddColumn("ALTER TABLE weekly_flow_jobs ADD COLUMN reason TEXT");
+  tryAddColumn("ALTER TABLE playlist_download_jobs ADD COLUMN reason TEXT");
 }
 if (!tableColumns.includes("artist_mbid")) {
-  tryAddColumn("ALTER TABLE weekly_flow_jobs ADD COLUMN artist_mbid TEXT");
+  tryAddColumn(
+    "ALTER TABLE playlist_download_jobs ADD COLUMN artist_mbid TEXT",
+  );
 }
 if (!tableColumns.includes("album_mbid")) {
-  tryAddColumn("ALTER TABLE weekly_flow_jobs ADD COLUMN album_mbid TEXT");
+  tryAddColumn("ALTER TABLE playlist_download_jobs ADD COLUMN album_mbid TEXT");
 }
 if (!tableColumns.includes("track_mbid")) {
-  tryAddColumn("ALTER TABLE weekly_flow_jobs ADD COLUMN track_mbid TEXT");
+  tryAddColumn("ALTER TABLE playlist_download_jobs ADD COLUMN track_mbid TEXT");
 }
 if (!tableColumns.includes("release_year")) {
-  tryAddColumn("ALTER TABLE weekly_flow_jobs ADD COLUMN release_year TEXT");
+  tryAddColumn(
+    "ALTER TABLE playlist_download_jobs ADD COLUMN release_year TEXT",
+  );
 }
 if (!tableColumns.includes("duration_ms")) {
-  tryAddColumn("ALTER TABLE weekly_flow_jobs ADD COLUMN duration_ms INTEGER");
+  tryAddColumn(
+    "ALTER TABLE playlist_download_jobs ADD COLUMN duration_ms INTEGER",
+  );
+}
+if (!tableColumns.includes("track_number")) {
+  tryAddColumn(
+    "ALTER TABLE playlist_download_jobs ADD COLUMN track_number INTEGER",
+  );
+}
+if (!tableColumns.includes("album_track_count")) {
+  tryAddColumn(
+    "ALTER TABLE playlist_download_jobs ADD COLUMN album_track_count INTEGER",
+  );
+}
+if (!tableColumns.includes("album_track_titles")) {
+  tryAddColumn(
+    "ALTER TABLE playlist_download_jobs ADD COLUMN album_track_titles TEXT",
+  );
 }
 if (!tableColumns.includes("artist_aliases")) {
-  tryAddColumn("ALTER TABLE weekly_flow_jobs ADD COLUMN artist_aliases TEXT");
+  tryAddColumn(
+    "ALTER TABLE playlist_download_jobs ADD COLUMN artist_aliases TEXT",
+  );
+}
+if (!tableColumns.includes("playlist_type")) {
+  tryAddColumn(
+    "ALTER TABLE playlist_download_jobs ADD COLUMN playlist_type TEXT",
+  );
+}
+if (!tableColumns.includes("external_path")) {
+  tryAddColumn(
+    "ALTER TABLE playlist_download_jobs ADD COLUMN external_path TEXT",
+  );
 }
 
 const userColumns = db
@@ -172,10 +247,15 @@ if (!userColumns.includes("lidarr_root_folder_path")) {
   tryAddColumn("ALTER TABLE users ADD COLUMN lidarr_root_folder_path TEXT");
 }
 if (!userColumns.includes("lidarr_quality_profile_id")) {
-  tryAddColumn("ALTER TABLE users ADD COLUMN lidarr_quality_profile_id INTEGER");
+  tryAddColumn(
+    "ALTER TABLE users ADD COLUMN lidarr_quality_profile_id INTEGER",
+  );
 }
 if (!userColumns.includes("discover_layout")) {
   tryAddColumn("ALTER TABLE users ADD COLUMN discover_layout TEXT");
+}
+if (!userColumns.includes("listen_history_url")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN listen_history_url TEXT");
 }
 
 db.exec(`
@@ -213,5 +293,12 @@ export const dbHelpers = {
     }
   },
 };
+
+initializeSchemaOnStartup(db, dbHelpers);
+
+const existingDownloadFolder = db
+  .prepare("SELECT value FROM settings WHERE key = ?")
+  .get("downloadFolderPath");
+syncDownloadFolderPath(existingDownloadFolder?.value || null);
 
 export { db };

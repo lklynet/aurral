@@ -1,14 +1,11 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import PropTypes from "prop-types";
-import { ArrowRight, CheckCircle, Music, Star } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { ArrowRight, Loader, Music, Star } from "lucide-react";
+import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import AddAlbumButton from "../../../components/AddAlbumButton";
-import {
-  getArtistReleaseGridColumnCount,
-  getExpandedReleaseRenderAfterIndex,
-  getReleaseMetric,
-  getReleaseYear,
-} from "../utils";
-import { ArtistDetailsReleaseTrackList } from "./ArtistDetailsReleaseTrackList";
+import { navigateToReleaseGroup } from "../../../utils/searchNavigation";
+import { getReleaseMetric, getReleaseYear } from "../utils";
 
 const sortLatest = (items) =>
   [...items].sort((a, b) =>
@@ -19,31 +16,18 @@ const sortLatest = (items) =>
 
 export function ArtistDetailsAppearsOn({
   artist,
+  loadingAppearsOn = false,
   albumCovers,
   artistCoverImage,
-  expandedReleaseGroup,
-  albumTracks,
-  loadingTracks,
   getAlbumStatus,
-  handleReleaseGroupAlbumClick,
   canAddAlbum,
   handleRequestAlbum,
   requestingAlbum,
-  playbackSource,
   artistName,
-  onAddTrackToPlaylist,
-  playlists,
-  playlistsLoading,
-  playlistSavingKey,
-  playlistError,
-  getDefaultPlaylistName,
-  onLoadPlaylists,
   onVisibleCoverIdsChange,
   onViewAll,
 }) {
-  const [gridColumnCount, setGridColumnCount] = useState(
-    getArtistReleaseGridColumnCount,
-  );
+  const navigate = useNavigate();
   const releaseGroups = useMemo(
     () => artist["appears-on-release-groups"] || [],
     [artist],
@@ -57,39 +41,24 @@ export function ArtistDetailsAppearsOn({
     onVisibleCoverIdsChange?.(visibleReleaseGroups.map((item) => item.id).filter(Boolean));
   }, [onVisibleCoverIdsChange, visibleReleaseGroups]);
 
-  useEffect(() => {
-    const updateGridColumnCount = () =>
-      setGridColumnCount(getArtistReleaseGridColumnCount());
-    updateGridColumnCount();
-    window.addEventListener("resize", updateGridColumnCount);
-    return () => window.removeEventListener("resize", updateGridColumnCount);
-  }, []);
+  const openRelease = (releaseGroup) => {
+    navigateToReleaseGroup(navigate, releaseGroup, {
+      artistMbid: artist?.id,
+      artistName: artistName || artist?.name || "",
+      coverUrl: albumCovers[releaseGroup.id] || artistCoverImage || "",
+    });
+  };
 
-  const expandedRelease = visibleReleaseGroups.find(
-    (releaseGroup) => releaseGroup.id === expandedReleaseGroup,
-  );
-  const expandedStatus = expandedRelease ? getAlbumStatus(expandedRelease.id) : null;
-  const expandedTrackKey = expandedStatus?.libraryId || expandedRelease?.id;
-  const expandedTracks = expandedTrackKey ? albumTracks[expandedTrackKey] : null;
-  const expandedLoading = expandedTrackKey ? loadingTracks[expandedTrackKey] : false;
-  const expandedReleaseIndex = expandedRelease
-    ? visibleReleaseGroups.findIndex(
-        (releaseGroup) => releaseGroup.id === expandedRelease.id,
-      )
-    : -1;
-  const expandedRenderAfterIndex = getExpandedReleaseRenderAfterIndex(
-    expandedReleaseIndex,
-    visibleReleaseGroups.length,
-    gridColumnCount,
-  );
-
-  if (releaseGroups.length === 0) return null;
+  if (releaseGroups.length === 0 && !loadingAppearsOn) return null;
 
   return (
     <section className="artist-section">
       <div className="artist-heading-row">
         <div className="artist-min-0">
-          <h2 className="artist-section-title">Appears On</h2>
+          <div className="artist-controls-row">
+            <h2 className="artist-section-title">Appears On</h2>
+            {loadingAppearsOn && <Loader className="artist-icon-sm animate-spin" />}
+          </div>
         </div>
         {onViewAll ? (
           <button
@@ -104,15 +73,15 @@ export function ArtistDetailsAppearsOn({
       </div>
 
       <div className="artist-release-grid">
-        {visibleReleaseGroups.map((releaseGroup, index) => {
+        {visibleReleaseGroups.map((releaseGroup) => {
           const status = getAlbumStatus(releaseGroup.id);
           const metric = getReleaseMetric(releaseGroup);
           const artistCredit = releaseGroup["artist-credit"]?.[0]?.name || "";
           return (
-            <Fragment key={releaseGroup.id}>
             <article
+              key={releaseGroup.id}
               className="artist-release-card"
-              onClick={() => handleReleaseGroupAlbumClick(releaseGroup, status?.libraryId)}
+              onClick={() => openRelease(releaseGroup)}
             >
               <div className="artist-release-card__cover">
                 {albumCovers[releaseGroup.id] || artistCoverImage ? (
@@ -130,7 +99,7 @@ export function ArtistDetailsAppearsOn({
                 <div className="artist-release-card__action">
                   {status?.status === "available" || status?.status === "added" ? (
                     <span className="artist-release-card__status" title="Complete">
-                      <CheckCircle className="artist-icon-sm" />
+                      <SearchLibraryCheck size="overlay" />
                       <span className="sr-only">Complete</span>
                     </span>
                   ) : canAddAlbum ? (
@@ -167,26 +136,6 @@ export function ArtistDetailsAppearsOn({
                 </p>
               )}
             </article>
-            {expandedRelease && expandedRenderAfterIndex === index ? (
-              <div className="artist-grid-full">
-                <ArtistDetailsReleaseTrackList
-                  release={expandedRelease}
-                  trackKey={expandedTrackKey}
-                  tracks={expandedTracks}
-                  loading={expandedLoading}
-                  playbackSource={playbackSource}
-                  artistName={artistName}
-                  onAddTrackToPlaylist={onAddTrackToPlaylist}
-                  playlists={playlists}
-                  playlistsLoading={playlistsLoading}
-                  playlistSavingKey={playlistSavingKey}
-                  playlistError={playlistError}
-                  getDefaultPlaylistName={getDefaultPlaylistName}
-                  onLoadPlaylists={onLoadPlaylists}
-                />
-              </div>
-            ) : null}
-            </Fragment>
           );
         })}
       </div>
@@ -196,29 +145,14 @@ export function ArtistDetailsAppearsOn({
 
 ArtistDetailsAppearsOn.propTypes = {
   artist: PropTypes.object.isRequired,
+  loadingAppearsOn: PropTypes.bool,
   albumCovers: PropTypes.object,
   artistCoverImage: PropTypes.string,
-  expandedReleaseGroup: PropTypes.string,
-  albumTracks: PropTypes.object,
-  loadingTracks: PropTypes.object,
   getAlbumStatus: PropTypes.func.isRequired,
-  handleReleaseGroupAlbumClick: PropTypes.func.isRequired,
   canAddAlbum: PropTypes.bool,
   handleRequestAlbum: PropTypes.func.isRequired,
   requestingAlbum: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-  playbackSource: PropTypes.shape({
-    type: PropTypes.string,
-    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    label: PropTypes.string,
-  }),
   artistName: PropTypes.string,
-  onAddTrackToPlaylist: PropTypes.func,
-  playlists: PropTypes.array,
-  playlistsLoading: PropTypes.bool,
-  playlistSavingKey: PropTypes.string,
-  playlistError: PropTypes.string,
-  getDefaultPlaylistName: PropTypes.func,
-  onLoadPlaylists: PropTypes.func,
   onVisibleCoverIdsChange: PropTypes.func,
   onViewAll: PropTypes.func,
 };

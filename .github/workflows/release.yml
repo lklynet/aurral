@@ -2,13 +2,14 @@ name: Release
 
 on:
   push:
-    branches: ["main", "test"]
+    branches: ["main", "test", "dev"]
     paths-ignore:
       - "*.md"
       - ".github/*.md"
       - "CONTRIBUTING.md"
       - "LICENSE"
       - "README.md"
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
@@ -117,6 +118,7 @@ jobs:
             type=raw,value=${{ needs.compute-release.outputs.version }}
             type=raw,value=latest,enable=${{ needs.compute-release.outputs.channel == 'stable' }}
             type=raw,value=test,enable=${{ needs.compute-release.outputs.channel == 'test' }}
+            type=raw,value=dev,enable=${{ needs.compute-release.outputs.channel == 'dev' }}
 
       - name: Build and push
         uses: docker/build-push-action@v7
@@ -183,3 +185,61 @@ jobs:
             --verify-tag \
             --generate-notes \
             --latest
+
+  build-desktop:
+    needs: [compute-release, guard-head, publish-github-release]
+    if: needs.guard-head.outputs.is_current_head == 'true' && needs.compute-release.outputs.channel == 'stable'
+    runs-on: macos-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.88.0
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Sync desktop version
+        run: npm run sync-version --prefix desktop
+
+      - name: Ensure desktop icons
+        working-directory: desktop
+        run: |
+          if [ ! -f src-tauri/icons/icon.icns ]; then
+            npm run icons
+          fi
+
+      - name: Pin brotli-decompressor for reproducible builds
+        working-directory: desktop/src-tauri
+        run: cargo update -p brotli-decompressor --precise 5.0.1
+
+      - name: Build macOS desktop app
+        working-directory: desktop
+        run: npm run build
+
+      - name: Upload desktop release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.compute-release.outputs.tag }}
+        run: |
+          DMG_PATH="$(find desktop/src-tauri/target/release/bundle/dmg -name '*.dmg' -print -quit)"
+          if [ -z "${DMG_PATH}" ]; then
+            echo "No .dmg artifact found."
+            exit 1
+          fi
+          gh release upload "${RELEASE_TAG}" "${DMG_PATH}" --clobber

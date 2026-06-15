@@ -1,0 +1,16 @@
+{
+  "name": "aurral-desktop",
+  "private": true,
+  "version": "1.76.0",
+  "type": "module",
+  "scripts": {
+    "sync-version": "node scripts/sync-version.mjs",
+    "icons": "tauri icon ../frontend/public/icons/aurral-icon-iOS-Default-1024x1024@1x.png",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1"
+  }
+}

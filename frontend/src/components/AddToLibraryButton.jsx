@@ -2,7 +2,13 @@ import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { Plus, Check, Loader } from "lucide-react";
 
-const AddToLibraryButton = ({ onClick, className, isLoading }) => {
+const AddToLibraryButton = ({
+  onClick,
+  className,
+  disabled = false,
+  isLoading,
+  label = "Add to Library",
+}) => {
   const [isSuccess, setIsSuccess] = useState(false);
   const isMounted = useRef(true);
 
@@ -14,7 +20,7 @@ const AddToLibraryButton = ({ onClick, className, isLoading }) => {
 
   const handleClick = async (e) => {
     e.preventDefault();
-    if (isLoading) return;
+    if (disabled || isLoading) return;
     if (onClick) {
       const success = await onClick();
       if (isMounted.current && success !== false) {
@@ -28,9 +34,9 @@ const AddToLibraryButton = ({ onClick, className, isLoading }) => {
       type="button"
       className={`btn btn-add-library${isSuccess ? " is-success" : ""}${className ? ` ${className}` : ""}`}
       onClick={handleClick}
-      disabled={isLoading}
+      disabled={disabled || isLoading}
     >
-      <span>Add to Library</span>
+      <span>{label}</span>
       <div className="btn-add-library__icon">
         {isLoading ? (
           <Loader className="animate-spin" aria-hidden="true" />
@@ -48,7 +54,9 @@ const AddToLibraryButton = ({ onClick, className, isLoading }) => {
 AddToLibraryButton.propTypes = {
   onClick: PropTypes.func,
   className: PropTypes.string,
+  disabled: PropTypes.bool,
   isLoading: PropTypes.bool,
+  label: PropTypes.string,
 };
 
 export default AddToLibraryButton;

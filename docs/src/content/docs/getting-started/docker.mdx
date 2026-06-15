@@ -1,0 +1,52 @@
+---
+title: Docker setup
+description: Run Aurral with Docker and complete onboarding.
+---
+
+Aurral is Docker-first. A minimal install needs two mounts: app data at `/config` and your shared media tree at `/data`.
+
+## Minimal compose file
+
+```yaml
+services:
+  aurral:
+    image: ghcr.io/lklynet/aurral:latest
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+    volumes:
+      - /srv/media:/data
+      - ./config/aurral:/config
+```
+
+Change `/srv/media` to the host path you use for media. `./config/aurral` stores Aurral's database, settings, and encrypted integration secrets.
+
+## Start Aurral
+
+```bash
+docker compose up -d
+```
+
+Open `http://localhost:3001` and follow onboarding.
+
+## What the mounts do
+
+| Mount | Container path | Purpose |
+| --- | --- | --- |
+| Host media root | `/data` | Shared library, downloads, and generated playlists |
+| Host config folder | `/config` | Aurral database, settings, users, and jobs |
+
+`DOWNLOAD_FOLDER` is configured during onboarding or in Settings. It must live inside the `/data` mount, for example `/data/downloads/aurral`.
+
+:::note
+`/config` replaces the older `/app/backend/data` path from Aurral v1. Existing databases in either location are detected automatically on startup.
+:::
+
+## Full stack example
+
+For Lidarr, slskd, and Navidrome together, start from [`docker-compose.example.yml`](https://github.com/lklynet/aurral/blob/main/docker-compose.example.yml) in the repository.
+
+Next: [Shared storage](/getting-started/storage/)

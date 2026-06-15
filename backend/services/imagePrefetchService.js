@@ -1,74 +1,53 @@
 import { dbOps } from "../config/db-helpers.js";
-import { getArtistImage } from "./imageService.js";
+import { enqueueImagePrefetchJob } from "./honkerDb.js";
+
+const BATCH_SIZE = 10;
+
+function enqueueUncachedMbids(mbids) {
+  const unique = [
+    ...new Set(
+      (Array.isArray(mbids) ? mbids : [])
+        .map((mbid) => String(mbid || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (unique.length === 0) return;
+
+  const cachedImages = dbOps.getImages(unique);
+  const uncached = unique.filter((mbid) => {
+    const cached = cachedImages[mbid];
+    return !cached || cached.imageUrl === "NOT_FOUND";
+  });
+  for (let index = 0; index < uncached.length; index += BATCH_SIZE) {
+    enqueueImagePrefetchJob({
+      mbids: uncached.slice(index, index + BATCH_SIZE),
+      requestedAt: Date.now(),
+    });
+  }
+}
 
 class ImagePrefetchService {
-  constructor() {
-    this.queue = [];
-    this.processing = false;
-    this.batchSize = 10;
-    this.delayBetweenBatches = 50;
-  }
-
   enqueue(mbids) {
-    if (!Array.isArray(mbids)) return;
-
-    const uniqueMbids = [...new Set(mbids)].filter(Boolean);
-    if (uniqueMbids.length === 0) return;
-
-    const cachedImages = dbOps.getImages(uniqueMbids);
-    const uncached = uniqueMbids.filter((mbid) => {
-      const cached = cachedImages[mbid];
-      return !cached || cached.imageUrl === "NOT_FOUND";
-    });
-
-    this.queue.push(...uncached);
-    this.processQueue();
-  }
-
-  async processQueue() {
-    if (this.processing || this.queue.length === 0) return;
-
-    this.processing = true;
-
-    while (this.queue.length > 0) {
-      const batch = this.queue.splice(0, this.batchSize);
-
-      await Promise.allSettled(
-        batch.map((mbid) =>
-          getArtistImage(mbid).catch((err) => {
-            return null;
-          })
-        )
-      );
-
-      if (this.queue.length > 0) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, this.delayBetweenBatches)
-        );
-      }
-    }
-
-    this.processing = false;
+    enqueueUncachedMbids(mbids);
   }
 
   async prefetchDiscoveryImages(discoveryData) {
     const mbids = [];
-
     if (discoveryData?.recommendations) {
       mbids.push(
-        ...discoveryData.recommendations.map((a) => a.id).filter(Boolean)
+        ...discoveryData.recommendations.map((artist) => artist.id).filter(Boolean),
       );
     }
-
     if (discoveryData?.globalTop) {
-      mbids.push(...discoveryData.globalTop.map((a) => a.id).filter(Boolean));
+      mbids.push(
+        ...discoveryData.globalTop.map((artist) => artist.id).filter(Boolean),
+      );
     }
-
     this.enqueue(mbids);
   }
 
   async prefetchSearchResults(artists) {
-    const mbids = artists.map((a) => a.id || a.mbid).filter(Boolean);
+    const mbids = artists.map((artist) => artist.id || artist.mbid).filter(Boolean);
     this.enqueue(mbids);
   }
 }

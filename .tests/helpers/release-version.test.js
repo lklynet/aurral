@@ -35,10 +35,23 @@ test("compareReleaseVersions orders stable and test semver values", () => {
   assert.equal(compareReleaseVersions("1.50.0", "1.50.0-test.7"), 1);
 });
 
-test("selectLatestReleaseForChannel separates stable and test tags", () => {
+test("parseReleaseVersion identifies dev channel tags", () => {
+  assert.deepEqual(parseReleaseVersion("1.51.0-dev.2"), {
+    raw: "1.51.0-dev.2",
+    label: "1.51.0-dev.2",
+    major: 1,
+    minor: 51,
+    patch: 0,
+    prerelease: 2,
+    channel: "dev",
+  });
+});
+
+test("selectLatestReleaseForChannel separates stable, test, and dev tags", () => {
   const refs = [
     { ref: "refs/tags/v1.50.0" },
     { ref: "refs/tags/v1.51.0-test.1" },
+    { ref: "refs/tags/v1.51.0-dev.2" },
     { ref: "refs/tags/v1.50.0-test.1" },
     { ref: "refs/tags/v1.49.0" },
   ];
@@ -47,5 +60,9 @@ test("selectLatestReleaseForChannel separates stable and test tags", () => {
   assert.equal(
     selectLatestReleaseForChannel(refs, "test")?.tagName,
     "v1.51.0-test.1",
+  );
+  assert.equal(
+    selectLatestReleaseForChannel(refs, "dev")?.tagName,
+    "v1.51.0-dev.2",
   );
 });

@@ -27,12 +27,13 @@ export function usePreviewPlayer(
     isPlaying,
     isLoading,
     currentTrack,
+    isShuffleEnabled,
   } = useAudioQueue();
 
   const artistName = artistNameFromNav || artist?.name || "";
   const releaseGroups = artist?.["release-groups"] || [];
   const artistSource = mbid
-    ? { type: "artist", id: mbid, label: artistName }
+    ? { type: "artist-all", id: mbid, label: artistName }
     : null;
   const isArtistQueue = matchesSource(artistSource);
   const playingPreviewId =
@@ -96,7 +97,11 @@ export function usePreviewPlayer(
         releaseGroups,
       });
       if (tracks.length === 0) return;
-      playQueue(tracks, { source: artistSource, shuffle: true });
+      playQueue(tracks, {
+        source: artistSource,
+        shuffle: isShuffleEnabled,
+        updateShufflePreference: false,
+      });
     } finally {
       setBuildingQueue(false);
     }

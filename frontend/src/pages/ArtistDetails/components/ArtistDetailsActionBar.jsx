@@ -1,8 +1,6 @@
 import { useState } from "react";
 import PropTypes from "prop-types";
 import {
-  Ban,
-  CheckCircle,
   ChevronDown,
   Loader,
   MoreHorizontal,
@@ -11,9 +9,13 @@ import {
   Play,
   RefreshCw,
   SlidersHorizontal,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
 } from "lucide-react";
 import AddToLibraryButton from "../../../components/AddToLibraryButton";
+import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
+import { getDiscoveryFeedbackLabel } from "../../../utils/discoveryFeedback";
 
 const MONITOR_OPTIONS = [
   { value: "none", label: "None (Artist Only)" },
@@ -49,9 +51,9 @@ export function ArtistDetailsActionBar({
   isArtistPlaybackActive,
   handlePreviewPlayAll,
   onEditIds,
-  onToggleBlockArtist,
-  blockingArtist,
-  artistBlocked,
+  onTasteFeedback,
+  tasteFeedbackUsed = {},
+  tasteActionPending = null,
 }) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const currentMonitorOption = getCurrentMonitorOption?.();
@@ -75,7 +77,7 @@ export function ArtistDetailsActionBar({
             onClick={() => setShowRemoveDropdown(!showRemoveDropdown)}
             className="btn btn-neutral-active btn--bold btn-min-h"
           >
-            <CheckCircle className="artist-icon-sm" />
+            <SearchLibraryCheck size="sm" />
             In Library
             {(canChangeMonitoring || canDeleteArtist) && (
               <ChevronDown
@@ -234,6 +236,46 @@ export function ArtistDetailsActionBar({
                   aria-label="Close artist actions"
                 />
                 <div className="artist-dropdown artist-dropdown--right">
+                  {onTasteFeedback && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onTasteFeedback("more_like_this");
+                          setShowMoreMenu(false);
+                        }}
+                        disabled={!!tasteActionPending}
+                        className={`artist-menu-item${tasteFeedbackUsed.more_like_this ? " is-active" : ""}`}
+                      >
+                        <span className="artist-menu-item__main">
+                          {tasteActionPending === "more_like_this" ? (
+                            <Loader className="artist-icon-sm animate-spin" />
+                          ) : (
+                            <ThumbsUp className="artist-icon-sm" />
+                          )}
+                          {getDiscoveryFeedbackLabel("more_like_this")}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onTasteFeedback("less_like_this");
+                          setShowMoreMenu(false);
+                        }}
+                        disabled={!!tasteActionPending}
+                        className={`artist-menu-item${tasteFeedbackUsed.less_like_this ? " is-active" : ""}`}
+                      >
+                        <span className="artist-menu-item__main">
+                          {tasteActionPending === "less_like_this" ? (
+                            <Loader className="artist-icon-sm animate-spin" />
+                          ) : (
+                            <ThumbsDown className="artist-icon-sm" />
+                          )}
+                          {getDiscoveryFeedbackLabel("less_like_this")}
+                        </span>
+                      </button>
+                    </>
+                  )}
                   {onEditIds && (
                     <button
                       type="button"
@@ -246,26 +288,6 @@ export function ArtistDetailsActionBar({
                       <span className="artist-menu-item__main">
                         <Pencil className="artist-icon-sm" />
                         Edit IDs
-                      </span>
-                    </button>
-                  )}
-                  {onToggleBlockArtist && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onToggleBlockArtist();
-                        setShowMoreMenu(false);
-                      }}
-                      disabled={blockingArtist}
-                      className={`artist-menu-item${artistBlocked ? " artist-menu-item--danger" : ""}`}
-                    >
-                      <span className="artist-menu-item__main">
-                        {blockingArtist ? (
-                          <Loader className="artist-icon-sm animate-spin" />
-                        ) : (
-                          <Ban className="artist-icon-sm" />
-                        )}
-                        {artistBlocked ? "Remove from Blocklist" : "Add to Blocklist"}
                       </span>
                     </button>
                   )}
@@ -303,7 +325,10 @@ ArtistDetailsActionBar.propTypes = {
   isArtistPlaybackActive: PropTypes.bool,
   handlePreviewPlayAll: PropTypes.func.isRequired,
   onEditIds: PropTypes.func,
-  onToggleBlockArtist: PropTypes.func,
-  blockingArtist: PropTypes.bool,
-  artistBlocked: PropTypes.bool,
+  onTasteFeedback: PropTypes.func,
+  tasteFeedbackUsed: PropTypes.shape({
+    more_like_this: PropTypes.bool,
+    less_like_this: PropTypes.bool,
+  }),
+  tasteActionPending: PropTypes.string,
 };

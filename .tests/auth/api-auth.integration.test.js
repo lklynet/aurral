@@ -3,24 +3,13 @@ import assert from "node:assert/strict";
 
 import {
   createIsolatedStateDir,
-  applyIsolatedBackendEnv,
   cleanupIsolatedState,
-  importFromRepo,
-  resetDatabase,
-  startServerProcess,
+  prepareIntegrationTestServer,
+  ensureServerProcess,
   buildApiUrl,
 } from "../helpers/backendTestHarness.js";
 
 const isolatedState = await createIsolatedStateDir("auth-api");
-applyIsolatedBackendEnv(isolatedState);
-
-const [{ db }, { userOps, dbOps }, bcryptModule] = await Promise.all([
-  importFromRepo("backend/config/db-sqlite.js"),
-  importFromRepo("backend/config/db-helpers.js"),
-  import("bcrypt"),
-]);
-
-const bcrypt = bcryptModule.default;
 
 let server = null;
 let authToken = "";
@@ -41,13 +30,14 @@ async function loginAsAdmin() {
 }
 
 test.before(async () => {
-  resetDatabase(db);
-  dbOps.updateSettings({
-    integrations: {},
+  server = await prepareIntegrationTestServer(isolatedState, {
+    admin: true,
     onboardingComplete: true,
   });
-  userOps.createUser("admin", bcrypt.hashSync("password123", 4), "admin");
-  server = await startServerProcess();
+});
+
+test.beforeEach(async () => {
+  server = await ensureServerProcess(server);
 });
 
 test.after(async () => {
@@ -69,7 +59,6 @@ test("login, session-backed me, and logout all work together", async () => {
   authToken = await loginAsAdmin();
   const loginPayload = { token: authToken, user: { username: "admin" } };
   authToken = loginPayload.token;
-
 
   const meResponse = await fetch(buildApiUrl(server.port, "/api/auth/me"), {
     headers: {
@@ -149,11 +138,10 @@ test("weekly flow worker settings reject concurrency above 3 and accept 3", asyn
 
 test("weekly flow worker settings default to concurrency 2", async () => {
   await server?.stop();
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    weeklyFlowWorker: null,
+  server = await prepareIntegrationTestServer(isolatedState, {
+    admin: true,
+    onboardingComplete: true,
   });
-  server = await startServerProcess();
   const settingsToken = await loginAsAdmin();
   const response = await fetch(
     buildApiUrl(server.port, "/api/weekly-flow/worker/settings"),

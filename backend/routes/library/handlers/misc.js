@@ -2,7 +2,7 @@ import { UUID_REGEX } from "../../../config/constants.js";
 import { dbOps } from "../../../config/db-helpers.js";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
 import { fetchReleaseGroupCoverUrl } from "../../../services/imageService.js";
-import { libraryManager } from "../../../services/libraryManager.js";
+import { libraryManager, getCachedArtists } from "../../../services/libraryManager.js";
 import { qualityManager } from "../../../services/qualityManager.js";
 
 export default function registerMisc(router) {
@@ -87,7 +87,7 @@ export default function registerMisc(router) {
         return res.status(400).json({ error: "mbids must be an array" });
       }
 
-      const libraryArtists = await libraryManager.getAllArtists();
+      const libraryArtists = getCachedArtists();
       const existingArtistIds = new Set(
         libraryArtists.map((artist) => artist.mbid).filter(Boolean),
       );
@@ -134,6 +134,9 @@ export default function registerMisc(router) {
           album?.statistics?.percentOfTracks,
         );
         const sizeOnDisk = Number(album?.statistics?.sizeOnDisk || 0);
+        const trackCount = Number(album?.statistics?.trackCount || 0);
+        const trackFileCount = Number(album?.statistics?.trackFileCount || 0);
+        const hasFiles = sizeOnDisk > 0 || trackFileCount > 0;
 
         results[foreignAlbumId] = {
           inLibrary: true,
@@ -143,8 +146,14 @@ export default function registerMisc(router) {
             album.artistId !== undefined && album.artistId !== null
               ? String(album.artistId)
               : null,
-          status:
-            percentOfTracks >= 100 || sizeOnDisk > 0 ? "available" : "inLibrary",
+          status: hasFiles ? "available" : "inLibrary",
+          monitored: Boolean(album?.monitored),
+          percentOfTracks,
+          sizeOnDisk,
+          trackCount,
+          trackFileCount,
+          albumName: String(album?.title || "").trim(),
+          releaseDate: String(album?.releaseDate || "").trim(),
         };
       }
 
@@ -183,60 +192,10 @@ export default function registerMisc(router) {
 
   router.get("/recent-releases", async (req, res) => {
     try {
-      const { lidarrClient } =
-        await import("../../../services/lidarrClient.js");
-      if (!lidarrClient.isConfigured()) {
-        return res.json([]);
-      }
-
-      const [artists, albums] = await Promise.all([
-        lidarrClient.request("/artist"),
-        lidarrClient.request("/album"),
-      ]);
-
-      if (!Array.isArray(albums) || albums.length === 0) {
-        return res.json([]);
-      }
-
-      const artistsById = new Map();
-      if (Array.isArray(artists)) {
-        artists.forEach((artist) => {
-          if (artist?.id != null) {
-            artistsById.set(artist.id, artist);
-          }
-        });
-      }
-
-      const now = Date.now();
-      const recentCutoff = now - 90 * 24 * 60 * 60 * 1000;
-
-      const recentMissing = albums
-        .map((album) => {
-          const artist = artistsById.get(album.artistId);
-          if (!artist) return null;
-          const mapped = libraryManager.mapLidarrAlbum(album, artist);
-          const releaseDate = mapped.releaseDate || album.releaseDate || null;
-          if (!releaseDate) return null;
-          const releaseTime = new Date(releaseDate).getTime();
-          if (!releaseTime || releaseTime < recentCutoff) return null;
-          const percent = mapped.statistics?.percentOfTracks || 0;
-          const size = mapped.statistics?.sizeOnDisk || 0;
-          if (percent > 0 || size > 0) return null;
-          return {
-            ...mapped,
-            artistName:
-              mapped.artistName || artist.artistName || artist.name || null,
-            artistMbid: artist.foreignArtistId || artist.mbid || null,
-            foreignArtistId: artist.foreignArtistId || artist.mbid || null,
-          };
-        })
-        .filter(Boolean)
-        .sort((a, b) => {
-          const dateA = a.releaseDate || "";
-          const dateB = b.releaseDate || "";
-          return dateB.localeCompare(dateA);
-        })
-        .slice(0, 24);
+      const { getRecentMissingReleases } = await import(
+        "../../../services/recentReleasesService.js"
+      );
+      const recentMissing = await getRecentMissingReleases(24);
 
       const cachedCovers = dbOps.getImages(
         recentMissing

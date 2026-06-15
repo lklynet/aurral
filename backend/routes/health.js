@@ -4,6 +4,7 @@ import {
   getTicketmasterApiKey,
   getMetadataProviderHealthSnapshot,
 } from "../services/apiClients.js";
+import { getSearchBaseUrl } from "../services/aurralSearchClient.js";
 import { APP_VERSION } from "../config/constants.js";
 import {
   resolveRequestUser,
@@ -12,7 +13,10 @@ import {
   issueStreamToken,
   getLocalNetworkBypassStatus,
 } from "../middleware/auth.js";
-import { getDiscoveryCache } from "../services/discoveryService.js";
+import {
+  getDiscoveryCache,
+  getDiscoveryUpdateStatus,
+} from "../services/discoveryService.js";
 import { getCachedArtistCount } from "../services/libraryManager.js";
 import { lidarrClient } from "../services/lidarrClient.js";
 import { dbOps } from "../config/db-helpers.js";
@@ -51,6 +55,7 @@ function buildBootstrapPayload(req) {
     ticketmasterConfigured: !!getTicketmasterApiKey(),
     musicbrainzConfigured: !!settings.integrations?.metadata?.baseUrl,
     metadataConfigured: !!settings.integrations?.metadata?.baseUrl,
+    searchConfigured: !!getSearchBaseUrl(),
     metadataProviders: getMetadataProviderHealthSnapshot(),
     localNetworkBypass,
   };
@@ -106,6 +111,7 @@ router.get("/", noCache, async (req, res) => {
         artistCount: typeof artistCount === "number" ? artistCount : 0,
         lastScan: null,
       };
+      const discoveryUpdateStatus = getDiscoveryUpdateStatus();
       payload.discovery = {
         provider: getLastfmApiKey()
           ? DISCOVERY_PROVIDER_LASTFM
@@ -113,6 +119,7 @@ router.get("/", noCache, async (req, res) => {
         capabilities: getDiscoveryCapabilities(!!getLastfmApiKey()),
         lastUpdated: discoveryCache?.lastUpdated || null,
         isUpdating: !!discoveryCache?.isUpdating,
+        ...discoveryUpdateStatus,
         recommendationsCount: discoveryCache?.recommendations?.length || 0,
         globalTopCount: discoveryCache?.globalTop?.length || 0,
         cachedImagesCount: dbOps.countImages(),

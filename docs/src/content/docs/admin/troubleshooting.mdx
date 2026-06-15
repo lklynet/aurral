@@ -1,0 +1,79 @@
+---
+title: Troubleshooting
+description: Common setup and runtime issues.
+---
+
+## Lidarr will not connect
+
+- Use the URL Aurral can reach, not necessarily the URL your browser uses.
+- In Docker, that is often `http://lidarr:8686` when both containers share a network.
+- Confirm the API key in Lidarr.
+
+## Discover is empty
+
+- Make sure Lidarr is connected and has artists.
+- Add a Last.fm API key for better discovery.
+- Set your listening-history provider in **Profile** (Last.fm or ListenBrainz username, or Koito instance URL).
+- Run a manual refresh from **Settings → Discover**.
+
+## Playlists are not downloading
+
+- Check playlist worker settings in **Settings → Playlists**.
+- Confirm slskd is configured and connected to Soulseek.
+- Try disabling strict format matching.
+- Try MP3 if FLAC matches are scarce.
+- Check job states on the Playlists page.
+
+## Files do not appear in Navidrome
+
+- Confirm the shared root containing `DOWNLOAD_FOLDER` is mounted into Aurral, Navidrome, and slskd.
+- Confirm `DOWNLOAD_FOLDER` points to the mounted path Aurral writes, for example `/data/downloads/aurral`.
+- Confirm Navidrome can read the same folder and scans `aurral-weekly-flow`.
+- Enable missing-track purging in Navidrome.
+
+## Library reuse or slskd handoff fails on Windows
+
+Symptoms include logs such as `Lidarr track exists but file is not accessible from Aurral`, completed slskd files not moving, or **Test library access** failing while Lidarr itself works.
+
+- Mount the parent host folder into Aurral, not separate mounts for library and downloads. Example: `N:/ServerFolders/Music:/music`.
+- Set **Settings → Playlists → Path** to a folder under that mount, for example `/music/Aurral`, or set `DOWNLOAD_FOLDER=/music/Aurral` in compose.
+- After changing compose `volumes` or `environment`, recreate the container with `docker compose up -d --force-recreate`. A simple restart does not remount volumes or reload env vars.
+- Run **Settings → Integrations → Lidarr → Test library access** so Aurral can auto-detect path mappings.
+- If needed, set `PATH_MAPPINGS=N:/ServerFolders/Music|/music` in compose, or add mappings under **Settings → Playlists → Path mappings**. Compose `PATH_MAPPINGS` work at runtime but are not shown in the UI.
+- If Navidrome runs outside Docker, enable **Settings → Integrations → Navidrome → Use host paths in playlist files** or set `M3U_PATH_MODE=remote`.
+
+See [Shared storage — Windows and mixed Docker setups](/getting-started/storage/#windows-and-mixed-docker-setups).
+
+## Navidrome playlists show but tracks won't play
+
+Symptoms: flows or shared playlists appear in Navidrome after a scan, but playback fails or tracks are missing. Common on Windows when Aurral runs in Docker with path mappings and Navidrome runs natively.
+
+- Confirm **Test library access** passes in Lidarr settings (path mappings let Aurral read files).
+- Enable **Settings → Integrations → Navidrome → Use host paths in playlist files**, or set `M3U_PATH_MODE=remote` in compose and recreate the Aurral container.
+- Refresh playlists so `.m3u` files are rewritten (disable/re-enable a flow, edit a shared playlist, or trigger playlist ensure from the Playlists page).
+- Open a generated `.m3u` under `aurral-weekly-flow` and confirm track lines use paths Navidrome can open (for example `N:/ServerFolders/Music/...` on Windows, not `/music/...`).
+
+Leave **Use host paths in playlist files** off when Navidrome is in Docker with the same mounts as Aurral.
+
+See [Navidrome — Mixed Windows and Docker](/integrations/navidrome/#mixed-windows-and-docker-navidrome).
+
+## Plex playlists are empty or tracks are missing
+
+Symptoms: **Sync to Plex now** succeeds but playlists have no tracks, or the **Aurral** library in Plex stays empty after a scan.
+
+- Confirm Plex can read the flow download tree. From inside the Plex container or host, the path should exist: `<downloads>/aurral-weekly-flow/<flow-id>/...`.
+- If Plex and Aurral use different mounts, set **Settings → Integrations → Plex → Plex downloads path** to the folder Plex sees (without `/aurral-weekly-flow`). Leave it blank when both services share the same path prefix.
+- Save settings, then run **Sync to Plex now** again. Initial music scans can take several minutes; Aurral runs background catch-up syncs while Plex indexes files.
+- Confirm flows have finished downloading tracks under `aurral-weekly-flow` before expecting Plex playlists to populate.
+- **Use host paths in playlist files** under Navidrome does not apply to Plex.
+
+See [Plex integration](/integrations/plex/).
+
+## Permission errors
+
+- Make sure mounted folders are writable by the container user.
+- Set `PUID` and `PGID` to match your host folder owner.
+
+## Need more logs
+
+Set `AURRAL_VERBOSE_LOGS=true`, restart Aurral, then check container logs.

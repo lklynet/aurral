@@ -1,59 +1,33 @@
 import { downloadTracker } from "./weeklyFlowDownloadTracker.js";
 import { weeklyFlowWorker } from "./weeklyFlowWorker.js";
-import { playlistManager } from "./weeklyFlowPlaylistManager.js";
 import { flowPlaylistConfig } from "./weeklyFlowPlaylistConfig.js";
-import { soulseekClient } from "./simpleSoulseekClient.js";
+import { slskdClient } from "./slskdClient.js";
 import { weeklyFlowOperationQueue } from "./weeklyFlowOperationQueue.js";
+import {
+  createWeeklyFlowOperationToken,
+  markLatestWeeklyFlowOperationToken,
+} from "./weeklyFlowOperations.js";
 
 export async function runScheduledRefresh() {
-  if (!soulseekClient.isConfigured()) return;
+  if (!slskdClient.isConfigured()) return;
 
   const due = flowPlaylistConfig.getDueForRefresh();
   if (due.length === 0) return;
 
   for (const flow of due) {
     try {
-      await weeklyFlowOperationQueue.enqueue(
-        `scheduled:${flow.id}`,
-        async () => {
-          if (!flowPlaylistConfig.isEnabled(flow.id)) return;
-          const flowStats = downloadTracker.getPlaylistTypeStats(flow.id);
-          const shouldStopWorker =
-            weeklyFlowWorker.running &&
-            (flowStats.pending > 0 || flowStats.downloading > 0);
-          if (shouldStopWorker) {
-            weeklyFlowWorker.stop();
-          }
-          weeklyFlowWorker.clearIncompleteRetry(flow.id);
-          weeklyFlowWorker.clearPlaylistRunState(flow.id);
-          playlistManager.updateConfig(false);
-          await playlistManager.weeklyReset([flow.id]);
-          downloadTracker.clearByPlaylistType(flow.id);
-
-          const latestFlow = flowPlaylistConfig.getFlow(flow.id);
-          if (!latestFlow || !latestFlow.enabled) return;
-          const seeded = await weeklyFlowWorker.seedFlowRun(flow.id, latestFlow);
-          if (Number(seeded?.tracksQueued || 0) === 0) {
-            flowPlaylistConfig.scheduleNextRun(flow.id);
-            if (shouldStopWorker) {
-              const stillPending = downloadTracker.getNextPending();
-              if (stillPending && !weeklyFlowWorker.running) {
-                await weeklyFlowWorker.start();
-              }
-            }
-            return;
-          }
-
-          if (!weeklyFlowWorker.running) {
-            await weeklyFlowWorker.start();
-          } else {
-            weeklyFlowWorker.wake();
-          }
-          flowPlaylistConfig.scheduleNextRun(flow.id);
-          console.log(
-            `[WeeklyFlowScheduler] Refreshed ${flow.id} (${Number(seeded?.tracksQueued || 0)} tracks, ${Number(seeded?.reserveTracks || 0)} reserve)`,
-          );
+      const token = createWeeklyFlowOperationToken();
+      const tokenScope = `flow:${flow.id}:scheduled`;
+      markLatestWeeklyFlowOperationToken(tokenScope, token);
+      await weeklyFlowOperationQueue.enqueuePayload(
+        {
+          kind: "scheduled-flow-refresh",
+          label: `scheduled:${flow.id}`,
+          flowId: flow.id,
+          tokenScope,
+          token,
         },
+        { waitForCompletion: false },
       );
     } catch (error) {
       console.error(

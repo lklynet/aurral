@@ -1,0 +1,29 @@
+---
+title: Environment variables
+description: Deployment variables most users touch outside the web UI.
+---
+
+Most setup happens in the web UI. These environment variables matter for Docker deployments.
+
+| Variable | Purpose |
+| --- | --- |
+| `PUID` / `PGID` | Run the container as the user that owns mounted folders |
+| `AURRAL_DATA_DIR` | Override app data directory (default `/config`) |
+| `DOWNLOAD_FOLDER` | Path inside `/data` for generated playlists (can also be set in UI) |
+| `PATH_MAPPINGS` | Optional path translations for mixed Windows/Docker setups, for example `N:/ServerFolders/Music|/music`. Applied at runtime; not shown in **Settings → Playlists → Path mappings** |
+| `M3U_PATH_MODE` | Playlist file path style: `local` (default, container paths in `.m3u` files) or `remote` (host paths for Navidrome outside Docker). Can also be set under **Settings → Integrations → Navidrome → Use host paths in playlist files**. Requires `PATH_MAPPINGS` (or equivalent UI mappings) for downloaded tracks; Lidarr-reused tracks use the original Lidarr path when available |
+| `TRUST_PROXY` | Set when Aurral is behind a reverse proxy |
+| `AUTH_PROXY_*` | Reverse-proxy authentication headers |
+| `AURRAL_VERBOSE_LOGS` | Fuller server logs while troubleshooting |
+
+Example:
+
+```yaml
+environment:
+  - PUID=1000
+  - PGID=1000
+  - DOWNLOAD_FOLDER=/music/Aurral
+  - PATH_MAPPINGS=N:/ServerFolders/Music|/music
+  - M3U_PATH_MODE=remote
+  - TRUST_PROXY=true
+```

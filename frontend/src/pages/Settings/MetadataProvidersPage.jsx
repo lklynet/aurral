@@ -7,6 +7,7 @@ import { useSettingsData } from "./hooks/useSettingsData";
 import { useUnsavedGuard } from "./hooks/useUnsavedGuard";
 import { UnsavedModal } from "./components/UnsavedModal";
 import { SettingsMetadataTab } from "./components/SettingsMetadataTab";
+import SettingsMetadataSponsorSection from "../../components/SettingsMetadataSponsorSection";
 
 function MetadataProvidersPage() {
   useDocumentTitle("Metadata Providers");
@@ -39,10 +40,11 @@ function MetadataProvidersPage() {
         <header className="settings-page__header">
           <h1 className="settings-page__title">Metadata Providers</h1>
           <p className="settings-page__subtitle">
-            Configure the BrainzMash-native metadata backend used for local
-            testing.
+            Configure metadata hydration and the Aurral Search catalog backend.
           </p>
         </header>
+
+        <SettingsMetadataSponsorSection />
 
         <SettingsMetadataTab
           settings={data.settings}

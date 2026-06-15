@@ -15,19 +15,25 @@ export function useFlowStatus() {
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const lastFlowWsMessageAtRef = useRef(0);
 
-  const fetchStatus = useCallback(async () => {
+  const fetchStatus = useCallback(async (options = {}) => {
     try {
-      const data = await getFlowStatus();
+      const data = await getFlowStatus({ signal: options.signal });
+      if (options.signal?.aborted) return;
       setStatus(data);
     } catch {
+      if (options.signal?.aborted) return;
       setStatus(null);
     } finally {
-      setLoading(false);
+      if (!options.signal?.aborted) {
+        setLoading(false);
+      }
     }
   }, []);
 
   const handleFlowStatusMessage = useCallback((msg) => {
-    if (msg?.type !== "weekly_flow_status") return;
+    if (msg?.type !== "playlist_status") {
+      return;
+    }
     if (!msg?.status || typeof msg.status !== "object") return;
     lastFlowWsMessageAtRef.current = Date.now();
     setStatus(msg.status);
@@ -35,12 +41,15 @@ export function useFlowStatus() {
   }, []);
 
   const { isConnected: isFlowSocketConnected } = useWebSocketChannel(
-    "weekly-flow",
+    "playlists",
     handleFlowStatusMessage,
   );
+  useWebSocketChannel("weekly-flow", handleFlowStatusMessage);
 
   useEffect(() => {
-    fetchStatus();
+    const controller = new AbortController();
+    fetchStatus({ signal: controller.signal });
+    return () => controller.abort();
   }, [fetchStatus]);
 
   useEffect(() => {
@@ -103,18 +112,20 @@ export function useFlowStatus() {
     const activeFlowIds = activeFlowIdsKey.split("|").filter(Boolean);
     if (!activeFlowIds.length) return;
 
-    let cancelled = false;
+    const controller = new AbortController();
     const fetchIncrementalJobs = async () => {
       try {
         const results = await Promise.all(
           activeFlowIds.map((flowId) =>
-            getFlowJobs(flowId).then((jobs) => ({
-              flowId,
-              stats: buildFlowStatsFromJobs(jobs),
-            })),
+            getFlowJobs(flowId, 200, { signal: controller.signal }).then(
+              (jobs) => ({
+                flowId,
+                stats: buildFlowStatsFromJobs(jobs),
+              }),
+            ),
           ),
         );
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setFlowStatsById((prev) => {
           const next = { ...prev };
           for (const result of results) {
@@ -128,7 +139,7 @@ export function useFlowStatus() {
     fetchIncrementalJobs();
     const interval = setInterval(fetchIncrementalJobs, 15000);
     return () => {
-      cancelled = true;
+      controller.abort();
       clearInterval(interval);
     };
   }, [activeFlowIdsKey]);

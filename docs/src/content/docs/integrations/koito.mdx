@@ -1,0 +1,30 @@
+---
+title: Koito
+description: Self-hosted listening history for personalized discovery.
+---
+
+[Koito](https://koito.io/) is optional. It is a self-hosted, ListenBrainz-compatible scrobbler that stores and visualizes your listening history. When you run your own Koito instance, Aurral can use it for personalized discovery without relying on Last.fm or public ListenBrainz.
+
+## Per-user setup
+
+Each user sets their Koito instance URL in **Profile** under **Listening history**. Choose **Koito** as the provider and enter the base URL Aurral should reach, for example `https://koito.example.com:4110`.
+
+![Aurral profile listening history](../../../assets/screenshots/profile-listening.webp)
+
+Aurral reads your top artists from Koito's chart API to shape recommendations and discover playlists. Koito must be reachable from the Aurral server, not only from your browser.
+
+## Requirements
+
+- A running Koito instance with scrobbles
+- Enough listening history for meaningful top-artist charts
+- Artists in Koito should have MusicBrainz IDs so Aurral can match them to your library
+
+## Compared to Last.fm and ListenBrainz
+
+| Provider | Admin setup | User setup |
+| --- | --- | --- |
+| Last.fm | API key in **Settings → Integrations** | Username in **Profile** |
+| ListenBrainz | None | Username in **Profile** |
+| Koito | None | Instance URL in **Profile** |
+
+Last.fm still powers tags and similar-artist discovery when an API key is configured. Koito supplies listening-history context only.

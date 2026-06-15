@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import crypto from "crypto";
 import os from "os";
 import { dbOps, userOps } from "../config/db-helpers.js";
+import { getDefaultListenHistoryProfile } from "../services/listeningHistory.js";
 import { getSessionByToken } from "../config/session-helpers.js";
 
 const DEFAULT_PROXY_HEADER = "x-forwarded-user";
@@ -439,7 +440,11 @@ function migrateLegacyAdmin() {
   const authPassword = settings.integrations?.general?.authPassword;
   if (!onboardingComplete || !authPassword) return;
   const hash = bcrypt.hashSync(authPassword, 10);
-  userOps.createUser(authUser, hash, "admin", null);
+  const created = userOps.createUser(authUser, hash, "admin", null);
+  const initialListenHistory = getDefaultListenHistoryProfile(settings);
+  if (created && initialListenHistory) {
+    userOps.updateUser(created.id, initialListenHistory);
+  }
 }
 
 function resolveUser(username, password) {
@@ -565,6 +570,8 @@ export const createAuthMiddleware = () => {
       req.path === "/api/health" ||
       req.path === "/api/health/live" ||
       req.path === "/api/health/bootstrap" ||
+      req.path === "/api/filesystem/browse" ||
+      req.path === "/api/filesystem/ensure" ||
       req.path === "/api/image-proxy" ||
       req.path.startsWith("/api/image-proxy/")
     ) {
@@ -575,8 +582,13 @@ export const createAuthMiddleware = () => {
       /^\/api\/library\/file-stream\/[^/]+\/[^/]+$/i.test(req.path) ||
       /^\/api\/artists\/[a-f0-9-]{36}\/stream$/i.test(req.path) ||
       /^\/api\/weekly-flow\/stream\/[^/]+$/i.test(req.path) ||
+      /^\/api\/playlists\/stream\/[^/]+$/i.test(req.path) ||
       (req.method === "GET" &&
-        /^\/api\/weekly-flow\/artwork\/[^/]+$/i.test(req.path))
+        /^\/api\/weekly-flow\/artwork\/[^/]+$/i.test(req.path)) ||
+      (req.method === "GET" &&
+        /^\/api\/playlists\/artwork\/[^/]+$/i.test(req.path)) ||
+      (req.method === "GET" &&
+        /^\/api\/discover\/artwork\/[^/]+$/i.test(req.path))
     ) {
       return next();
     }

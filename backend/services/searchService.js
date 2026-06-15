@@ -244,22 +244,6 @@ export async function searchArtists(query, limit = 24, offset = 0) {
   };
 }
 
-export async function searchArtistsLegacy(query, limit = 24, offset = 0) {
-  const result = await searchArtists(query, limit, offset);
-  return {
-    artists: result.items.map((artist) => ({
-      id: artist.id,
-      name: artist.name,
-      "sort-name": artist.sortName,
-      image: artist.imageUrl,
-      imageUrl: artist.imageUrl,
-      listeners: null,
-    })),
-    count: result.count,
-    offset: result.offset,
-  };
-}
-
 export async function searchAlbums(
   query,
   limit = 24,

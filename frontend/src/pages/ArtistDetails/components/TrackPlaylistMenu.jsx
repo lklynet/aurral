@@ -7,7 +7,9 @@ import {
   useState,
 } from "react";
 import PropTypes from "prop-types";
-import { Check, ChevronRight, Loader, Plus } from "lucide-react";
+import { ChevronRight, Loader, Plus } from "lucide-react";
+import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
+import { playlistContainsTrack } from "../../../utils/sharedTrackIdentity";
 
 function useAvailablePlaylists(playlists, excludedPlaylistIds) {
   return useMemo(() => {
@@ -23,6 +25,7 @@ function useAvailablePlaylists(playlists, excludedPlaylistIds) {
 }
 
 export function TrackPlaylistPickerContent({
+  track = null,
   playlists = [],
   loading = false,
   saving = false,
@@ -60,23 +63,37 @@ export function TrackPlaylistPickerContent({
       </button>
       {availablePlaylists.length > 0 ? (
         <div className="artist-playlist-menu__scroll">
-          {availablePlaylists.map((playlist) => (
-            <button
-              key={playlist.id}
-              type="button"
-              className="artist-menu-item"
-              onClick={() =>
-                onSelect?.({
-                  mode: "existing",
-                  playlistId: playlist.id,
-                })
-              }
-              disabled={saving}
-            >
-              <span className="artist-track-title">{playlist.name}</span>
-              <Check className="artist-icon-sm" aria-hidden="true" />
-            </button>
-          ))}
+          {availablePlaylists.map((playlist) => {
+            const alreadyAdded = playlistContainsTrack(playlist, track);
+            return (
+              <button
+                key={playlist.id}
+                type="button"
+                className="artist-menu-item"
+                onClick={() =>
+                  onSelect?.({
+                    mode: "existing",
+                    playlistId: playlist.id,
+                  })
+                }
+                disabled={saving || alreadyAdded}
+                title={alreadyAdded ? `Already in ${playlist.name}` : undefined}
+                aria-label={
+                  alreadyAdded
+                    ? `${playlist.name}, already added`
+                    : `Add to ${playlist.name}`
+                }
+              >
+                <span className="artist-track-title">{playlist.name}</span>
+                {alreadyAdded ? (
+                  <SearchLibraryCheck
+                    size="sm"
+                    className="artist-playlist-menu__check"
+                  />
+                ) : null}
+              </button>
+            );
+          })}
         </div>
       ) : null}
       {error ? <div className="artist-error-text">{error}</div> : null}
@@ -87,6 +104,7 @@ export function TrackPlaylistPickerContent({
 export function TrackPlaylistSubmenu({
   label,
   icon: Icon = Plus,
+  track = null,
   playlists = [],
   loading = false,
   saving = false,
@@ -95,27 +113,46 @@ export function TrackPlaylistSubmenu({
   excludedPlaylistIds = [],
   onSelect,
   onClose,
+  toggleOnClick = false,
+  isOpen = false,
+  onToggle,
 }) {
   const handleSelect = async (target) => {
     await onSelect?.(target);
     onClose?.();
   };
 
+  const handleTriggerClick = (event) => {
+    event.stopPropagation();
+    if (toggleOnClick) {
+      onToggle?.();
+    }
+  };
+
   return (
-    <div className="artist-menu-submenu">
-      <div
+    <div
+      className={`artist-menu-submenu${toggleOnClick && isOpen ? " is-open" : ""}`}
+    >
+      <button
+        type="button"
         className="artist-menu-item artist-menu-submenu__trigger"
         role="menuitem"
-        tabIndex={0}
+        tabIndex={toggleOnClick ? undefined : 0}
+        aria-expanded={toggleOnClick ? isOpen : undefined}
+        onClick={toggleOnClick ? handleTriggerClick : undefined}
       >
         <span className="artist-menu-item__main">
           <Icon className="artist-icon-sm" />
           {label}
         </span>
-        <ChevronRight className="artist-icon-sm" aria-hidden="true" />
-      </div>
+        <ChevronRight
+          className={`artist-icon-sm${toggleOnClick && isOpen ? " artist-chevron--open" : ""}`}
+          aria-hidden="true"
+        />
+      </button>
       <div className="artist-menu-submenu__panel">
         <TrackPlaylistPickerContent
+          track={track}
           playlists={playlists}
           loading={loading}
           saving={saving}
@@ -131,6 +168,7 @@ export function TrackPlaylistSubmenu({
 
 export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
   {
+    track = null,
     playlists = [],
     loading = false,
     saving = false,
@@ -221,6 +259,15 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
     triggerVariant === "compact"
       ? `btn btn-secondary btn-icon btn-xs${open ? " btn-neutral-active" : ""}`
       : `artist-playlist-trigger${open ? " is-open" : ""}`;
+  const menuClassName = [
+    "artist-playlist-menu",
+    menuVariant === "preview-tracks" ? "artist-playlist-menu--preview-tracks" : "",
+    menuVariant === "search-suggestion"
+      ? "artist-playlist-menu--search-suggestion"
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div className="artist-relative" ref={menuRef}>
@@ -230,7 +277,7 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
           type="button"
           className={triggerClassName}
           onClick={handleOpen}
-          title={triggerLabel}
+          title={triggerVariant === "compact" ? triggerLabel : undefined}
           aria-label={triggerLabel}
           aria-expanded={open}
           disabled={saving}
@@ -260,7 +307,7 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
 
       {open ? (
         <div
-          className={`artist-playlist-menu${menuVariant === "preview-tracks" ? " artist-playlist-menu--preview-tracks" : ""}`}
+          className={menuClassName}
           style={{
             top: menuPosition.top,
             left: menuPosition.left,
@@ -268,6 +315,7 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
           onClick={(event) => event.stopPropagation()}
         >
           <TrackPlaylistPickerContent
+            track={track}
             playlists={playlists}
             loading={loading}
             saving={saving}
@@ -283,6 +331,7 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
 });
 
 TrackPlaylistPickerContent.propTypes = {
+  track: PropTypes.object,
   playlists: PropTypes.array,
   loading: PropTypes.bool,
   saving: PropTypes.bool,
@@ -295,6 +344,7 @@ TrackPlaylistPickerContent.propTypes = {
 TrackPlaylistSubmenu.propTypes = {
   label: PropTypes.string.isRequired,
   icon: PropTypes.elementType,
+  track: PropTypes.object,
   playlists: PropTypes.array,
   loading: PropTypes.bool,
   saving: PropTypes.bool,
@@ -303,9 +353,13 @@ TrackPlaylistSubmenu.propTypes = {
   excludedPlaylistIds: PropTypes.array,
   onSelect: PropTypes.func,
   onClose: PropTypes.func,
+  toggleOnClick: PropTypes.bool,
+  isOpen: PropTypes.bool,
+  onToggle: PropTypes.func,
 };
 
 TrackPlaylistMenu.propTypes = {
+  track: PropTypes.object,
   playlists: PropTypes.array,
   loading: PropTypes.bool,
   saving: PropTypes.bool,
@@ -317,5 +371,5 @@ TrackPlaylistMenu.propTypes = {
   onLoadPlaylists: PropTypes.func,
   onSelect: PropTypes.func,
   onOpenChange: PropTypes.func,
-  menuVariant: PropTypes.oneOf(["preview-tracks"]),
+  menuVariant: PropTypes.oneOf(["preview-tracks", "search-suggestion"]),
 };

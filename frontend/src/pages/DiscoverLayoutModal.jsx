@@ -56,7 +56,7 @@ function SortableSectionRow({ item, onToggle, showUnavailable }) {
         isDragging
           ? "artist-customize-section-row--dragging"
           : ""
-      } ${!item.available ? "artist-customize-section-row--unavailable" : ""}`}
+      } ${showUnavailable ? "artist-customize-section-row--unavailable" : ""}`}
     >
       <button
         type="button"

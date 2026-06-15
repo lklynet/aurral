@@ -14,6 +14,7 @@ logs/
 frontend/node_modules
 frontend/dist
 data/
+dumps/
 backend/data/db.json
 backend/data/*
 !backend/data/.gitkeep
@@ -36,3 +37,6 @@ coverage/
 *.tmp
 *.temp
 /*.mp3
+aurral-search/*
+desktop/node_modules/
+desktop/src-tauri/target/

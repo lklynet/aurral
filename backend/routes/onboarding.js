@@ -1,6 +1,7 @@
 import express from "express";
 import bcrypt from "bcrypt";
 import { dbOps, userOps } from "../config/db-helpers.js";
+import { getDefaultListenHistoryProfile } from "../services/listeningHistory.js";
 import {
   DEFAULT_METADATA_BASE_URL,
   LEGACY_METADATA_BASE_URL,
@@ -8,6 +9,10 @@ import {
 } from "../config/constants.js";
 import { validateExternalUrl } from "../middleware/urlValidator.js";
 import { requirePasswordStrength } from "../middleware/validation.js";
+import {
+  getSuggestedDownloadFolderPath,
+  validateDownloadFolderPath,
+} from "../services/downloadFolderConfig.js";
 
 const router = express.Router();
 
@@ -44,7 +49,7 @@ router.get("/lidarr/test-library-access", async (req, res) => {
     url = validation.url;
 
     const result = await withTemporaryLidarrClient(url, apiKey, (client) =>
-      runLidarrLibraryAccessTest(client),
+      runLidarrLibraryAccessTest(client, { autoApplyMappings: true }),
     );
 
     res.json({
@@ -53,10 +58,64 @@ router.get("/lidarr/test-library-access", async (req, res) => {
       partial: !!result.partial,
       steps: result.steps,
       sample: result.sample,
+      appliedMappings: result.appliedMappings || [],
+      suggestedMappings: result.suggestedMappings || [],
     });
   } catch (error) {
     res.status(400).json({
       error: "Library access check failed",
+      message: error.message,
+    });
+  }
+});
+
+router.get("/lidarr/profiles", async (req, res) => {
+  try {
+    const { validateLidarrTestCredentials, withTemporaryLidarrClient } =
+      await import("../services/lidarrTestSession.js");
+
+    let url = (req.query.url || "").trim().replace(/\/+$/, "");
+    const apiKey = (req.query.apiKey || "").trim();
+    const validation = validateLidarrTestCredentials(url, apiKey);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.error });
+    }
+    url = validation.url;
+
+    const profiles = await withTemporaryLidarrClient(url, apiKey, (client) =>
+      client.getQualityProfiles(true),
+    );
+
+    res.json(profiles);
+  } catch (error) {
+    res.status(400).json({
+      error: "Failed to fetch Lidarr quality profiles",
+      message: error.message,
+    });
+  }
+});
+
+router.get("/lidarr/metadata-profiles", async (req, res) => {
+  try {
+    const { validateLidarrTestCredentials, withTemporaryLidarrClient } =
+      await import("../services/lidarrTestSession.js");
+
+    let url = (req.query.url || "").trim().replace(/\/+$/, "");
+    const apiKey = (req.query.apiKey || "").trim();
+    const validation = validateLidarrTestCredentials(url, apiKey);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.error });
+    }
+    url = validation.url;
+
+    const profiles = await withTemporaryLidarrClient(url, apiKey, (client) =>
+      client.getMetadataProfiles(true),
+    );
+
+    res.json(profiles);
+  } catch (error) {
+    res.status(400).json({
+      error: "Failed to fetch Lidarr metadata profiles",
       message: error.message,
     });
   }
@@ -125,10 +184,79 @@ router.post("/navidrome/test", async (req, res) => {
   }
 });
 
+router.post("/lidarr/apply-community-guide", async (req, res) => {
+  try {
+    const { applyLidarrCommunityGuide } =
+      await import("../services/lidarrCommunityGuide.js");
+    const { validateLidarrTestCredentials, withTemporaryLidarrClient } =
+      await import("../services/lidarrTestSession.js");
+
+    let url = (req.body?.url || "").trim().replace(/\/+$/, "");
+    const apiKey = (req.body?.apiKey || "").trim();
+    const validation = validateLidarrTestCredentials(url, apiKey);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.error });
+    }
+    url = validation.url;
+
+    const results = await withTemporaryLidarrClient(url, apiKey, (client) =>
+      applyLidarrCommunityGuide(client),
+    );
+
+    res.json({
+      success: true,
+      message: "Community guide settings applied successfully",
+      results,
+    });
+  } catch (error) {
+    console.error("Onboarding community guide error:", error);
+    res.status(500).json({
+      error: "Failed to apply community guide settings",
+      message: error.message,
+      details: error.response?.data,
+    });
+  }
+});
+
+router.post("/slskd/test", async (req, res) => {
+  try {
+    const { testSlskdWithCredentials } =
+      await import("../services/slskdClient.js");
+    const url = (req.body?.url || "").trim();
+    const apiKey = (req.body?.apiKey || "").trim();
+    const result = await testSlskdWithCredentials(url, apiKey);
+    if (!result.configured) {
+      return res.status(400).json(result);
+    }
+    if (!result.ok) {
+      return res.status(502).json(result);
+    }
+    return res.json({
+      success: true,
+      warning: result.warning === true,
+      ...result,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "slskd test failed",
+      message: error.message,
+    });
+  }
+});
+
 router.post("/complete", async (req, res) => {
   try {
-    const { authUser, authPassword, lidarr, metadata, navidrome, lastfm } =
-      req.body;
+    const {
+      authUser,
+      authPassword,
+      lidarr,
+      metadata,
+      navidrome,
+      lastfm,
+      slskd,
+      ticketmaster,
+      downloadFolderPath,
+    } = req.body;
     if (authPassword != null && String(authPassword).length > 0) {
       const passwordValidation = requirePasswordStrength(authPassword);
       if (!passwordValidation.valid) {
@@ -152,7 +280,23 @@ router.post("/complete", async (req, res) => {
       },
       lidarr:
         lidarr && (lidarr.url || lidarr.apiKey)
-          ? { ...(current.integrations?.lidarr || {}), ...lidarr }
+          ? {
+              ...(current.integrations?.lidarr || {}),
+              ...lidarr,
+              qualityProfileId:
+                lidarr.qualityProfileId != null
+                  ? parseInt(lidarr.qualityProfileId, 10) || null
+                  : current.integrations?.lidarr?.qualityProfileId ?? null,
+              metadataProfileId:
+                lidarr.metadataProfileId != null
+                  ? parseInt(lidarr.metadataProfileId, 10) || null
+                  : current.integrations?.lidarr?.metadataProfileId ?? null,
+              defaultMonitorOption:
+                lidarr.defaultMonitorOption != null
+                  ? String(lidarr.defaultMonitorOption)
+                  : current.integrations?.lidarr?.defaultMonitorOption || "none",
+              searchOnAdd: lidarr.searchOnAdd === true,
+            }
           : current.integrations?.lidarr,
       metadata:
         metadata && (metadata.baseUrl || metadata.userAgentSuffix)
@@ -191,31 +335,88 @@ router.post("/complete", async (req, res) => {
                   : current.integrations?.lastfm?.username ?? "",
             }
           : current.integrations?.lastfm,
+      slskd:
+        slskd && (slskd.url || slskd.apiKey)
+          ? { ...(current.integrations?.slskd || {}), ...slskd }
+          : current.integrations?.slskd,
+      ticketmaster:
+        ticketmaster && ticketmaster.apiKey
+          ? {
+              ...(current.integrations?.ticketmaster || {}),
+              apiKey:
+                ticketmaster.apiKey != null
+                  ? String(ticketmaster.apiKey).trim()
+                  : current.integrations?.ticketmaster?.apiKey ?? "",
+              searchRadiusMiles:
+                ticketmaster.searchRadiusMiles != null
+                  ? Math.max(
+                      5,
+                      Math.min(
+                        250,
+                        Math.floor(Number(ticketmaster.searchRadiusMiles)),
+                      ),
+                    )
+                  : current.integrations?.ticketmaster?.searchRadiusMiles ?? 250,
+            }
+          : current.integrations?.ticketmaster,
     };
 
-    dbOps.updateSettings({
+    const nextSettings = {
       ...current,
       integrations,
       onboardingComplete: true,
-    });
+    };
+    if (downloadFolderPath !== undefined) {
+      const validation = validateDownloadFolderPath(downloadFolderPath, undefined, {
+        create: true,
+      });
+      if (!validation.valid) {
+        return res.status(400).json({
+          error: validation.error,
+          message: validation.error,
+        });
+      }
+      nextSettings.downloadFolderPath = validation.path;
+    } else if (!current.downloadFolderPath) {
+      const validation = validateDownloadFolderPath(
+        getSuggestedDownloadFolderPath(),
+        undefined,
+        { create: true },
+      );
+      if (!validation.valid) {
+        return res.status(400).json({
+          error: "download_folder_required",
+          message:
+            "Choose a downloads folder before completing onboarding.",
+        });
+      }
+      nextSettings.downloadFolderPath = validation.path;
+    }
+    dbOps.updateSettings(nextSettings);
+    const { refreshPlaylistRuntimeRoots } = await import(
+      "../services/playlistRuntime.js"
+    );
+    await refreshPlaylistRuntimeRoots();
 
     const authUserFinal = integrations?.general?.authUser || "admin";
     const authPasswordFinal = integrations?.general?.authPassword || "";
     if (authPasswordFinal && userOps.getAllUsers().length === 0) {
       const hash = bcrypt.hashSync(authPasswordFinal, 10);
-      userOps.createUser(authUserFinal, hash, "admin", null);
+      const created = userOps.createUser(authUserFinal, hash, "admin", null);
+      const initialListenHistory = getDefaultListenHistoryProfile(nextSettings);
+      if (created && initialListenHistory) {
+        userOps.updateUser(created.id, initialListenHistory);
+      }
     }
 
     const hasLastfm =
       integrations?.lastfm?.apiKey && integrations?.lastfm?.username;
     const hasLidarr = !!integrations?.lidarr?.apiKey;
     if (hasLastfm || hasLidarr) {
-      const { updateDiscoveryCache } = await import(
-        "../services/discoveryService.js"
+      const { requestDiscoveryRefresh } = await import(
+        "../services/discoveryRefreshScheduler.js"
       );
-      updateDiscoveryCache().catch((err) => {
-        console.error("[Onboarding] Discovery refresh failed:", err.message);
-      });
+      requestDiscoveryRefresh({ reason: "onboarding" });
     }
 
     res.json({ success: true });

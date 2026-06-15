@@ -1,0 +1,34 @@
+---
+title: Playlists overview
+description: Flows, static imports, and how they differ.
+---
+
+The **Playlists** page is where flows and imported playlists live. Both download into Aurral's own folder under `aurral-weekly-flow` and do not write directly into your main music library.
+
+![Aurral playlists](../../../assets/screenshots/playlists.webp)
+
+## Flows vs static playlists
+
+| | Flows | Static playlists |
+| --- | --- | --- |
+| Tracklist | Regenerates on a schedule | Fixed from import or export |
+| Downloads | Can generate replacement picks | Retries the exact tracks forever |
+| Controls | Schedule, source mix, focus, deep dive | None of the flow controls |
+| Worker | Shared download worker | Shared download worker |
+
+Flows are dynamic playlists that refresh automatically based on your listening context and flow recipe. Static playlists come from imported JSON or exported flow tracklists.
+
+## Where files go
+
+Generated playlists are written inside your `DOWNLOAD_FOLDER`, typically:
+
+```text
+/data/downloads/aurral/aurral-weekly-flow/<playlist-id>/
+```
+
+Navidrome can scan the same tree and play `.m3u` playlists. Plex can index the track folders and receive API-synced playlists for Plexamp. See [Navidrome](/integrations/navidrome/), [Plex](/integrations/plex/), and [Shared storage](/getting-started/storage/).
+
+## Next steps
+
+- [Flows](/using/flows/) — schedule, source mix, focus, and generation behavior
+- [Playlist imports](/using/playlist-imports/) — JSON formats, Spotify import, retries, and file reuse

@@ -19,8 +19,8 @@ const [{ db }, trackerModule] = await Promise.all([
 
 const { WeeklyFlowDownloadTracker } = trackerModule;
 
-test.beforeEach(() => {
-  resetDatabase(db);
+test.beforeEach(async () => {
+  await resetDatabase(db);
 });
 
 test.after(async () => {
@@ -45,4 +45,29 @@ test("getNextPendingMatching skips future-dated retry jobs and returns ready wor
   );
 
   assert.equal(ready?.id, secondId);
+});
+
+test("persists enriched album context for slskd matching", () => {
+  const tracker = new WeeklyFlowDownloadTracker();
+  const jobId = tracker.addJob(
+    {
+      artistName: "Artist",
+      trackName: "Song",
+      albumName: "Album",
+    },
+    "discover",
+  );
+
+  tracker.updateMetadata(jobId, {
+    trackNumber: 3,
+    albumTrackCount: 10,
+    albumTrackTitles: ["Intro", "Other Song", "Song"],
+  });
+
+  const reloaded = new WeeklyFlowDownloadTracker();
+  const job = reloaded.getJob(jobId);
+
+  assert.equal(job.trackNumber, 3);
+  assert.equal(job.albumTrackCount, 10);
+  assert.deepEqual(job.albumTrackTitles, ["Intro", "Other Song", "Song"]);
 });

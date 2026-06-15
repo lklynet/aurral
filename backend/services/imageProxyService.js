@@ -1,18 +1,12 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
 import axios from "axios";
 import sharp from "sharp";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { resolveAurralDataDir } from "../config/data-dir.js";
 
 const IMAGE_PROXY_ROUTE = "/api/image-proxy";
-const DEFAULT_DATA_DIR = path.join(__dirname, "..", "data");
-const DATA_DIR = process.env.AURRAL_DATA_DIR
-  ? path.resolve(process.env.AURRAL_DATA_DIR)
-  : DEFAULT_DATA_DIR;
+const DATA_DIR = resolveAurralDataDir();
 const IMAGE_PROXY_DIR = path.join(DATA_DIR, "image-proxy");
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 25000;
@@ -73,7 +67,10 @@ const initializeCacheIndex = () => {
       continue;
     }
     if (!meta?.extension) continue;
-    const imagePath = path.join(IMAGE_PROXY_DIR, `${cacheKey}.${meta.extension}`);
+    const imagePath = path.join(
+      IMAGE_PROXY_DIR,
+      `${cacheKey}.${meta.extension}`,
+    );
     if (!fs.existsSync(imagePath)) continue;
     const sourceUrl = normalizeKnownImageUrl(meta.sourceUrl);
     const entry = {
@@ -123,7 +120,9 @@ export const getImageProxyCacheSizeBytes = () => {
 };
 
 const isPrivateHostname = (hostname) => {
-  const normalized = String(hostname || "").trim().toLowerCase();
+  const normalized = String(hostname || "")
+    .trim()
+    .toLowerCase();
   if (!normalized) return true;
   if (normalized.endsWith(".local")) return true;
   if (PRIVATE_172_RANGE.test(normalized)) return true;
@@ -171,7 +170,9 @@ const buildLocalImageUrl = (cacheKey, extension) =>
 
 const getCacheKeyFromLocalUrl = (value) => {
   const normalized = String(value || "").trim();
-  const match = normalized.match(/\/api\/image-proxy\/([a-f0-9]{64})(?:\.[a-z0-9]+)?$/i);
+  const match = normalized.match(
+    /\/api\/image-proxy\/([a-f0-9]{64})(?:\.[a-z0-9]+)?$/i,
+  );
   return match?.[1]?.toLowerCase() || null;
 };
 
@@ -201,7 +202,8 @@ const getCachedEntry = (sourceUrl) => {
   if (!normalizedSourceUrl) return null;
   initializeCacheIndex();
   const cacheKey =
-    cacheKeysBySourceUrl.get(normalizedSourceUrl) || hashValue(normalizedSourceUrl);
+    cacheKeysBySourceUrl.get(normalizedSourceUrl) ||
+    hashValue(normalizedSourceUrl);
   return getCachedEntryFromKey(cacheKey);
 };
 
@@ -263,7 +265,10 @@ const optimizeImageBuffer = async (buffer, contentType) => {
     };
   }
 
-  const largestDimension = Math.max(metadata?.width || 0, metadata?.height || 0);
+  const largestDimension = Math.max(
+    metadata?.width || 0,
+    metadata?.height || 0,
+  );
   const dimensionSteps = FALLBACK_MAX_DIMENSIONS.filter(
     (dimension) => dimension === null || largestDimension > dimension,
   );
@@ -348,7 +353,9 @@ const normalizeCachedEntryIfNeeded = async (entry) => {
     entry.cacheKey,
     optimized.buffer,
     optimized.contentType,
-    normalizeKnownImageUrl(entry.meta.sourceUrl) || entry.meta.sourceUrl || null,
+    normalizeKnownImageUrl(entry.meta.sourceUrl) ||
+      entry.meta.sourceUrl ||
+      null,
   );
 };
 
@@ -371,7 +378,8 @@ const fetchAndCacheImage = async (sourceUrl) => {
     timeout: FETCH_TIMEOUT_MS,
     maxRedirects: 10,
     headers: {
-      Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      Accept:
+        "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
       "User-Agent": "Aurral Local Image Cache",
     },
   });
@@ -449,7 +457,8 @@ export const buildImageProxyUrl = (sourceUrl) => {
   }
 
   const cached = getCachedEntry(normalized);
-  return cached?.localUrl || null;
+  if (cached?.localUrl) return cached.localUrl;
+  return `${IMAGE_PROXY_ROUTE}?src=${encodeURIComponent(normalized)}`;
 };
 
 export const handleImageProxyRequest = async (req, res) => {
@@ -466,7 +475,10 @@ export const handleImageProxyRequest = async (req, res) => {
   }
 
   res.set("Content-Type", cached.meta.contentType || "image/jpeg");
-  res.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+  res.set(
+    "Cache-Control",
+    "public, max-age=86400, stale-while-revalidate=604800",
+  );
   return res.sendFile(cached.imagePath);
 };
 

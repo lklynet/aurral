@@ -1,3 +1,23 @@
+export const RELEASE_RADAR_PRESET_ID = "release-radar";
+
+export const isReleaseRadarFlow = (flow) =>
+  String(flow?.discoverPresetId || "").trim() === RELEASE_RADAR_PRESET_ID;
+
+export const getFlowDisplayTrackCount = (flow, stats, trackListLength = 0) => {
+  if (isReleaseRadarFlow(flow)) {
+    const actual = Math.max(
+      Number(trackListLength || 0),
+      Number(stats?.total || 0),
+    );
+    return actual > 0 ? actual : Number(flow?.size || 0);
+  }
+  return Math.max(
+    Number(flow?.size || 0),
+    Number(trackListLength || 0),
+    Number(stats?.total || 0),
+  );
+};
+
 export const EMPTY_FLOW_STATS = {
   total: 0,
   done: 0,

@@ -245,6 +245,9 @@ export class LidarrClient {
   }
 
   updateConfig() {
+    if (this._holdConfig) {
+      return;
+    }
     const previousConfig = this.config;
     const settings = dbOps.getSettings();
     const dbConfig = settings.integrations?.lidarr || {};

@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import {
   getLibraryAlbums,
-  getLibraryTracks,
-  getReleaseGroupTracks,
   updateLibraryAlbum,
   deleteArtistFromLibrary,
   deleteAlbumFromLibrary,
@@ -16,8 +14,11 @@ import {
   lookupArtistInLibrary,
   getMyLidarrPreferences,
 } from "../../../utils/api";
-import { deduplicateAlbums } from "../utils";
-import { matchesReleaseTypeFilter } from "../utils";
+import {
+  deduplicateAlbums,
+  isVisibleLibraryAlbum,
+  matchesReleaseTypeFilter,
+} from "../utils";
 import { useWebSocketChannel } from "../../../hooks/useWebSocket";
 
 const DELETE_FILES_PREFERENCE_KEY = "aurral:library-delete-files";
@@ -57,10 +58,6 @@ export function useArtistDetailsLibrary({
     readDeleteFilesPreference(),
   );
   const [processingBulk, setProcessingBulk] = useState(false);
-  const [expandedLibraryAlbum, setExpandedLibraryAlbum] = useState(null);
-  const [expandedReleaseGroup, setExpandedReleaseGroup] = useState(null);
-  const [albumTracks, setAlbumTracks] = useState({});
-  const [loadingTracks, setLoadingTracks] = useState({});
   const [showRemoveDropdown, setShowRemoveDropdown] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteFiles, setDeleteFilesState] = useState(() =>
@@ -133,23 +130,7 @@ export function useArtistDetailsLibrary({
         setRequestingAlbum(null);
       }
     }
-    setDownloadStatuses((prev) => {
-      const prevKeys = Object.keys(prev);
-      const nextKeys = Object.keys(next);
-      if (prevKeys.length !== nextKeys.length) return next;
-      for (const key of nextKeys) {
-        const prevStatus = prev[key];
-        const nextStatus = next[key];
-        if (
-          prevStatus?.status !== nextStatus?.status ||
-          prevStatus?.progress !== nextStatus?.progress ||
-          prevStatus?.updatedAt !== nextStatus?.updatedAt
-        ) {
-          return next;
-        }
-      }
-      return prev;
-    });
+    setDownloadStatuses((prev) => ({ ...prev, ...next }));
   });
 
   const handleRefreshArtist = async () => {
@@ -838,83 +819,6 @@ export function useArtistDetailsLibrary({
     }
   };
 
-  const handleLibraryAlbumClick = async (releaseGroupId, libraryAlbumId) => {
-    if (expandedLibraryAlbum === releaseGroupId) {
-      setExpandedLibraryAlbum(null);
-      return;
-    }
-    setExpandedLibraryAlbum(releaseGroupId);
-    setExpandedReleaseGroup(null);
-    const trackKey = libraryAlbumId || releaseGroupId;
-    if (!albumTracks[trackKey]) {
-      setLoadingTracks((prev) => ({ ...prev, [trackKey]: true }));
-      try {
-        const libraryAlbum = libraryAlbums.find(
-          (album) => String(album.id) === String(libraryAlbumId),
-        );
-        const tracks = await getLibraryTracks(libraryAlbumId, releaseGroupId, {
-          artistName: artist?.name || libraryAlbum?.artistName || "",
-          albumTitle: libraryAlbum?.albumName || "",
-          releaseDate: libraryAlbum?.releaseDate || "",
-        });
-        setAlbumTracks((prev) => ({ ...prev, [trackKey]: tracks }));
-      } catch (err) {
-        console.error("Failed to fetch tracks:", err);
-        showError("Failed to fetch track list");
-      } finally {
-        setLoadingTracks((prev) => ({ ...prev, [trackKey]: false }));
-      }
-    }
-  };
-
-  const handleReleaseGroupAlbumClick = async (releaseGroupOrId, libraryAlbumId) => {
-    const releaseGroup =
-      releaseGroupOrId && typeof releaseGroupOrId === "object"
-        ? releaseGroupOrId
-        : artist?.["release-groups"]?.find((rg) => rg.id === releaseGroupOrId);
-    const releaseGroupId =
-      typeof releaseGroupOrId === "string" ? releaseGroupOrId : releaseGroup?.id;
-    if (!releaseGroupId) return;
-
-    if (expandedReleaseGroup === releaseGroupId) {
-      setExpandedReleaseGroup(null);
-      return;
-    }
-    setExpandedReleaseGroup(releaseGroupId);
-    setExpandedLibraryAlbum(null);
-    const trackKey = libraryAlbumId || releaseGroupId;
-    if (!albumTracks[trackKey]) {
-      setLoadingTracks((prev) => ({ ...prev, [trackKey]: true }));
-      try {
-        if (libraryAlbumId) {
-          const tracks = await getLibraryTracks(libraryAlbumId, releaseGroupId, {
-            artistName: artist?.name || "",
-            albumTitle: releaseGroup?.title || "",
-            releaseType: releaseGroup?.["primary-type"] || "",
-            releaseDate: releaseGroup?.["first-release-date"] || "",
-            deezerAlbumId: releaseGroup?._deezerAlbumId || "",
-          });
-          setAlbumTracks((prev) => ({ ...prev, [trackKey]: tracks }));
-        } else {
-          const tracks = await getReleaseGroupTracks(releaseGroupId, {
-            artistMbid: artist?.id || "",
-            artistName: artist?.name || "",
-            albumTitle: releaseGroup?.title || "",
-            releaseType: releaseGroup?.["primary-type"] || "",
-            releaseDate: releaseGroup?.["first-release-date"] || "",
-            deezerAlbumId: releaseGroup?._deezerAlbumId || "",
-          });
-          setAlbumTracks((prev) => ({ ...prev, [trackKey]: tracks }));
-        }
-      } catch (err) {
-        console.error("Failed to fetch tracks:", err);
-        showError("Failed to fetch track list");
-      } finally {
-        setLoadingTracks((prev) => ({ ...prev, [trackKey]: false }));
-      }
-    }
-  };
-
   const handleDeleteAlbumClick = (albumId, title) => {
     setShowDeleteAlbumModal({ id: albumId, title });
     setAlbumDropdownOpen(null);
@@ -967,15 +871,7 @@ export function useArtistDetailsLibrary({
       (a) => a.mbid === releaseGroupId || a.foreignAlbumId === releaseGroupId,
     );
     if (!album || String(album.id ?? "").startsWith("pending-")) return false;
-    return (
-      album.monitored ||
-      (album.statistics?.percentOfTracks ?? 0) > 0 ||
-      (album.statistics?.sizeOnDisk ?? 0) > 0 ||
-      !!downloadStatuses[album.id] ||
-      (requestingAlbum &&
-        (album.mbid === requestingAlbum ||
-          album.foreignAlbumId === requestingAlbum))
-    );
+    return isVisibleLibraryAlbum(album, { requestingAlbum });
   };
 
   const handleMonitorAll = async () => {
@@ -1076,13 +972,13 @@ export function useArtistDetailsLibrary({
   };
 
   useEffect(() => {
-    if (!libraryAlbums.length || !libraryArtist) return;
+    if (!libraryArtist) return;
     const viewedArtistId = artist?.id || null;
     const libraryArtistId = libraryArtist.id;
     const refreshTimeouts = libraryRefreshTimeoutsRef.current;
     const pollDownloadStatus = async () => {
       try {
-        const albumIds = libraryAlbums.map((a) => a.id).filter(Boolean);
+        const albumIds = libraryAlbumIdsRef.current;
         if (albumIds.length > 0) {
           const statuses = await getDownloadStatus(albumIds);
           if (requestingAlbum) {
@@ -1135,6 +1031,7 @@ export function useArtistDetailsLibrary({
           }
 
           setDownloadStatuses((prevStatuses) => {
+            const mergedStatuses = { ...prevStatuses, ...nextStatuses };
             const hasNewlyAdded = Object.keys(nextStatuses).some((albumId) => {
               const currentStatus = nextStatuses[albumId]?.status;
               const previousStatus = prevStatuses[albumId]?.status;
@@ -1181,7 +1078,7 @@ export function useArtistDetailsLibrary({
               }, hasNewlyAdded ? 2000 : 5000);
               refreshTimeouts.add(timeoutId);
             }
-            return nextStatuses;
+            return mergedStatuses;
           });
         }
       } catch (error) {
@@ -1197,7 +1094,7 @@ export function useArtistDetailsLibrary({
       }
       refreshTimeouts.clear();
     };
-  }, [artist?.id, libraryAlbums, libraryArtist, requestingAlbum, setLibraryAlbums]);
+  }, [artist?.id, libraryArtist, libraryAlbums, requestingAlbum, setLibraryAlbums]);
 
   useEffect(() => {
     if (!libraryArtist) return;
@@ -1238,12 +1135,6 @@ export function useArtistDetailsLibrary({
     deleteAlbumFiles,
     setDeleteAlbumFiles: updateDeleteFilesPreference,
     processingBulk,
-    expandedLibraryAlbum,
-    setExpandedLibraryAlbum,
-    expandedReleaseGroup,
-    setExpandedReleaseGroup,
-    albumTracks,
-    loadingTracks,
     showRemoveDropdown,
     setShowRemoveDropdown,
     showDeleteModal,
@@ -1280,8 +1171,6 @@ export function useArtistDetailsLibrary({
     handleRequestAlbum,
     handleReSearchAlbum,
     handleReSearchMissingDownloads,
-    handleLibraryAlbumClick,
-    handleReleaseGroupAlbumClick,
     handleDeleteAlbumClick,
     handleDeleteAlbumCancel,
     handleDeleteAlbumConfirm,

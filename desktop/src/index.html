@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aurral</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="main.js" defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      <div class="card">
+        <img src="assets/arralogo.svg" alt="" class="logo" width="72" height="72" />
+        <h1>Connect to Aurral</h1>
+        <p class="lede">Enter the URL of your self-hosted Aurral server.</p>
+        <form id="connect-form" class="form">
+          <label class="field">
+            <span class="label">Server URL</span>
+            <input
+              id="server-url"
+              name="serverUrl"
+              type="url"
+              inputmode="url"
+              autocomplete="url"
+              placeholder="https://aurral.example.com"
+              required
+            />
+          </label>
+          <p id="error" class="error" hidden></p>
+          <button type="submit" id="connect-button">Connect</button>
+        </form>
+      </div>
+    </main>
+  </body>
+</html>

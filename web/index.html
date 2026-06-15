@@ -3,7 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Aurral | The best in open-source music discovery.</title>
+    <title>Aurral | Self-hosted music discovery for the Lidarr stack</title>
+    <meta
+      name="description"
+      content="Aurral is self-hosted music discovery for Lidarr stacks — recommendations, flows, playlist imports, slskd downloads, and Navidrome playback."
+    />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -28,11 +32,11 @@
       </a>
 
       <div class="nav-links">
-        <a href="self-hosting-music.html">Guide</a>
-        <a href="docs.html">Docs</a>
-        <a href="flows-and-playlists.html">Flows</a>
+        <a href="https://docs.aurral.org/guides/self-hosting/">Guide</a>
+        <a href="https://docs.aurral.org/">Docs</a>
+        <a href="https://docs.aurral.org/using/playlists/">Playlists</a>
         <a href="aurral-convert.html">Spotify Import</a>
-        <a href="#setup">Docker Setup</a>
+        <a href="https://docs.aurral.org/getting-started/docker/">Docker Setup</a>
         <a
           href="https://github.com/lklynet/aurral"
           target="_blank"
@@ -114,14 +118,14 @@
       </div>
 
       <div class="hero-inner">
-        <h1>The best in open-source music discovery.</h1>
+        <h1>The go-to app for self-hosted music discovery.</h1>
         <p>
-          Personalized recommendations, Spotify playlist imports, and custom
-          weekly playlists for the Lidarr-based music stacks.
+          Personalized recommendations, discover playlists, Spotify imports, and
+          scheduled flows — built for Lidarr, slskd, and Navidrome.
         </p>
 
         <div class="hero-actions">
-          <a href="#setup" class="btn">
+          <a href="https://docs.aurral.org/getting-started/docker/" class="btn">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="15"
@@ -134,6 +138,9 @@
               <path d="m14.94 4.94 1.41 1.41-9.9 9.9H5.04v-1.41z" />
             </svg>
             Start with Docker
+          </a>
+          <a href="https://docs.aurral.org/" class="btn btn-outline">
+            Read the docs
           </a>
           <a
             href="https://github.com/lklynet/aurral"
@@ -174,18 +181,24 @@
         <div class="section-head">
           <h2>Multiple ways to listen.</h2>
           <p>
-            Monitor artists and full albums, build static playlists for single
-            tracks, or run multiple flows shaped by your library and listening
-            history.
+            Monitor artists and albums in Lidarr, import fixed playlists, run
+            scheduled flows, and adopt discover playlists like Release Radar.
           </p>
         </div>
 
-        <div class="feature-columns">
+        <div class="feature-columns feature-columns--quad">
           <article>
-            <h3>Artists & albums</h3>
+            <h3>Discover</h3>
             <p>
-              Use Lidarr to monitor artists, track releases, and pull full
-              albums into your library.
+              Library-aware recommendations, trends, tags, and discover playlists.
+              <a href="https://docs.aurral.org/using/discover/">Learn more</a>.
+            </p>
+          </article>
+          <article>
+            <h3>Artists &amp; albums</h3>
+            <p>
+              Search, preview tracks, and add to Lidarr with your defaults.
+              <a href="https://docs.aurral.org/integrations/lidarr/">Lidarr integration</a>.
             </p>
           </article>
           <article>
@@ -193,6 +206,7 @@
             <p>
               Create or import fixed playlists when you want exact tracks, not
               rotating picks.
+              <a href="https://docs.aurral.org/using/playlist-imports/">Learn about imports</a>.
             </p>
           </article>
           <article>
@@ -200,6 +214,7 @@
             <p>
               Spin up multiple automated flows built from your own library and
               listening history.
+              <a href="https://docs.aurral.org/using/flows/">Learn about flows</a>.
             </p>
           </article>
         </div>
@@ -231,17 +246,17 @@
           </a>
 
           <a
-            href="https://slsknet.org/"
+            href="https://github.com/slskd/slskd"
             target="_blank"
             rel="noopener noreferrer"
             class="integration-card"
           >
             <div class="integration-mark">
-              <img src="icons/soulseek.svg" alt="" />
+              <img src="icons/slskd.svg" alt="" />
             </div>
             <div class="integration-copy">
-              <h3>Soulseek</h3>
-              <p>Turns flows and playlists into real downloads.</p>
+              <h3>slskd</h3>
+              <p>Handles Soulseek-backed downloads for flows and playlists.</p>
               <code>Acquisition layer</code>
             </div>
           </a>
@@ -257,7 +272,7 @@
             </div>
             <div class="integration-copy">
               <h3>Navidrome</h3>
-              <p>Delivers finished flow output to playback.</p>
+              <p>Delivers generated playlists and flows to playback.</p>
               <code>Playback destination</code>
             </div>
           </a>
@@ -299,7 +314,7 @@
                 <span class="workflow-step-index">02</span>
                 <div>
                   <strong>Download</strong>
-                  <p>Queue tracks through Soulseek with retry logic for playlist and flow behavior.</p>
+                  <p>Queue tracks through slskd with retry logic for playlist and flow behavior.</p>
                 </div>
               </div>
               <div class="workflow-step">
@@ -323,9 +338,9 @@
 
           <ul class="feature-list">
             <li>See library state before you request.</li>
-            <li>Track requests, downloads, and imports in one place.</li>
+            <li>Track Lidarr requests, slskd downloads, and playlist jobs in <strong>History</strong>.</li>
             <li>Run weekly flows and static playlists side by side.</li>
-            <li>Import Spotify playlists with the built-in converter.</li>
+            <li>Import Spotify playlists with the <a href="aurral-convert.html">converter</a> or <a href="https://docs.aurral.org/using/playlist-imports/">import guide</a>.</li>
           </ul>
         </div>
       </section>
@@ -351,7 +366,7 @@
               <div><span class="prompt">$</span> docker compose up -d</div>
               <div class="dim">Starting aurral ... done</div>
               <div><span class="prompt">$</span> open http://localhost:3001</div>
-              <div class="dim">Connect Lidarr, Last.fm, and your download path.</div>
+              <div class="dim">Complete onboarding: Lidarr, download path, integrations.</div>
               <div><span class="prompt">$</span> import your first playlist</div>
               <div class="cursor-line">Aurral is ready<span class="caret"></span></div>
             </div>
@@ -371,8 +386,8 @@
               <div class="stat-label">GitHub stars</div>
             </div>
             <div class="stat-card">
-              <div class="stat-value">Flows + playlists</div>
-              <div class="stat-label">Two discovery modes</div>
+              <div class="stat-value">History</div>
+              <div class="stat-label">Unified activity timeline</div>
             </div>
           </div>
         </div>
@@ -392,11 +407,20 @@
     ports:
       - "3001:3001"
     environment:
-      - DOWNLOAD_FOLDER=${DL_FOLDER:-./data/downloads}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
     volumes:
-      - ${DL_FOLDER:-./data/downloads}:/app/downloads
-      - ${STORAGE:-./data}:/app/backend/data</code></pre>
+      - ${MEDIA_ROOT:-/srv/media}:/data
+      - ${CONFIG:-./config}:/config</code></pre>
         </div>
+
+        <p class="setup-docs-link">
+          Full setup details:
+          <a href="https://docs.aurral.org/getting-started/docker/">Docker setup</a>,
+          <a href="https://docs.aurral.org/getting-started/storage/">shared storage</a>,
+          and the
+          <a href="https://docs.aurral.org/guides/self-hosting/">self-hosting guide</a>.
+        </p>
 
         <div class="setup-links">
           <a
@@ -446,6 +470,27 @@
             Fork the repo
           </a>
           <a
+            href="https://docs.aurral.org/"
+            class="btn btn-outline"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 7v14"></path>
+              <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"></path>
+            </svg>
+            Read the docs
+          </a>
+          <a
             href="https://github.com/lklynet/aurral/blob/main/CONTRIBUTING.md"
             target="_blank"
             rel="noopener noreferrer"
@@ -483,10 +528,10 @@
           <a href="https://github.com/lklynet/aurral" target="_blank" rel="noopener noreferrer" class="btn"
             >View on GitHub</a
           >
-          <a href="flows-and-playlists.html" class="btn btn-outline"
-            >Learn About Flows &amp; Playlists</a
+          <a href="https://docs.aurral.org/using/playlists/" class="btn btn-outline"
+            >Playlists &amp; flows</a
           >
-          <a href="self-hosting-music.html" class="btn btn-outline"
+          <a href="https://docs.aurral.org/guides/self-hosting/" class="btn btn-outline"
             >Self-Hosting Guide</a
           >
         </div>
@@ -496,9 +541,9 @@
     <footer>
       <p>Aurral is open source software released under the MIT License.</p>
       <div class="footer-links">
-        <a href="self-hosting-music.html">Guide</a>
-        <a href="docs.html">Docs</a>
-        <a href="flows-and-playlists.html">Flows</a>
+        <a href="https://docs.aurral.org/guides/self-hosting/">Guide</a>
+        <a href="https://docs.aurral.org/">Docs</a>
+        <a href="https://docs.aurral.org/using/playlists/">Playlists</a>
         <a href="aurral-convert.html">Spotify Import</a>
         <a href="https://github.com/lklynet/aurral" target="_blank" rel="noopener noreferrer">GitHub</a>
         <a href="https://discord.gg/cpPYfgVURJ" target="_blank" rel="noopener noreferrer">Discord</a>

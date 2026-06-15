@@ -5,6 +5,7 @@ const SOURCE_BASE_WEIGHTS = {
   library: 1,
   lastfm: 1.2,
   listenbrainz: 1.3,
+  koito: 1.3,
 };
 
 const DISCOVERY_MODE_MULTIPLIERS = {
@@ -479,9 +480,6 @@ const feedbackBoostForCandidate = (candidate, feedbackList = []) => {
     const contextualMatch = tagOverlap > 0 || seedOverlap > 0;
 
     switch (feedback.action) {
-      case "hide_for_now":
-        if (exactMatch) hidden = true;
-        break;
       case "more_like_this":
         if (exactMatch) adjustment += 16;
         else if (contextualMatch) adjustment += 10 + tagOverlap * 2;
@@ -489,10 +487,6 @@ const feedbackBoostForCandidate = (candidate, feedbackList = []) => {
       case "less_like_this":
         if (exactMatch) adjustment -= 20;
         else if (contextualMatch) adjustment -= 10 + tagOverlap * 2;
-        break;
-      case "already_known":
-        if (exactMatch) adjustment -= 14;
-        else if (contextualMatch) adjustment -= 6 + seedOverlap * 2;
         break;
       default:
         break;

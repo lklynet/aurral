@@ -126,7 +126,7 @@ test("mergeResolvedRecommendations collapses name and mbid variants of the same 
   );
 });
 
-test("rerankRecommendations can hide items and favor deeper mode diversification", () => {
+test("rerankRecommendations can deprioritize feedback and favor deeper mode diversification", () => {
   const recommendations = [
     {
       id: "55555555-5555-5555-5555-555555555555",
@@ -158,18 +158,18 @@ test("rerankRecommendations can hide items and favor deeper mode diversification
     },
   ];
 
-  const hidden = rerankRecommendations(recommendations, 10, {
+  const deprioritized = rerankRecommendations(recommendations, 10, {
     discoveryMode: "balanced",
     feedback: [
       {
-        id: "hide-safe",
+        id: "less-safe",
         artistId: "55555555-5555-5555-5555-555555555555",
-        action: "hide_for_now",
+        action: "less_like_this",
       },
     ],
   });
-  assert.equal(hidden.length, 1);
-  assert.equal(hidden[0].name, "Deeper Pick");
+  assert.equal(deprioritized.length, 2);
+  assert.equal(deprioritized[0].name, "Deeper Pick");
 
   const deeper = rerankRecommendations(recommendations, 2, {
     discoveryMode: "deeper",

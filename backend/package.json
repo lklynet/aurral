@@ -22,7 +22,14 @@
       "data/db.json"
     ]
   },
+  "optionalDependencies": {
+    "@russellthehippo/honker-node-darwin-arm64": "0.3.3",
+    "@russellthehippo/honker-node-darwin-x64": "0.3.3",
+    "@russellthehippo/honker-node-linux-arm64-gnu": "0.3.3",
+    "@russellthehippo/honker-node-linux-x64-gnu": "0.3.3"
+  },
   "dependencies": {
+    "@russellthehippo/honker-node": "^0.3.3",
     "axios": "^1.16.1",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.10.0",
@@ -36,7 +43,6 @@
     "music-metadata": "^11.12.3",
     "node-cache": "^5.1.2",
     "sharp": "^0.34.5",
-    "slsk-client": "^1.1.0",
     "ws": "^8.21.0"
   }
 }

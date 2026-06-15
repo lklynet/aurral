@@ -9,10 +9,12 @@ import {
 export function useAccountSettings(authUser, showSuccess, showError) {
   const [listenHistoryProvider, setListenHistoryProvider] = useState("lastfm");
   const [listenHistoryUsername, setListenHistoryUsername] = useState("");
+  const [listenHistoryUrl, setListenHistoryUrl] = useState("");
   const [savedListenHistoryProvider, setSavedListenHistoryProvider] =
     useState("lastfm");
   const [savedListenHistoryUsername, setSavedListenHistoryUsername] =
     useState("");
+  const [savedListenHistoryUrl, setSavedListenHistoryUrl] = useState("");
   const [lidarrConfigured, setLidarrConfigured] = useState(false);
   const [lidarrRootFolders, setLidarrRootFolders] = useState([]);
   const [lidarrQualityProfiles, setLidarrQualityProfiles] = useState([]);
@@ -28,6 +30,7 @@ export function useAccountSettings(authUser, showSuccess, showError) {
   const hasUnsavedChanges =
     listenHistoryProvider !== savedListenHistoryProvider ||
     listenHistoryUsername !== savedListenHistoryUsername ||
+    listenHistoryUrl !== savedListenHistoryUrl ||
     lidarrRootFolderPath !== savedLidarrRootFolderPath ||
     lidarrQualityProfileId !== savedLidarrQualityProfileId;
 
@@ -40,10 +43,13 @@ export function useAccountSettings(authUser, showSuccess, showError) {
       ]);
       const provider = historyData.listenHistoryProvider || "lastfm";
       const username = historyData.listenHistoryUsername || "";
+      const url = historyData.listenHistoryUrl || "";
       setListenHistoryProvider(provider);
       setListenHistoryUsername(username);
+      setListenHistoryUrl(url);
       setSavedListenHistoryProvider(provider);
       setSavedListenHistoryUsername(username);
+      setSavedListenHistoryUrl(url);
       setLidarrConfigured(lidarrData?.configured === true);
       setLidarrRootFolders(
         Array.isArray(lidarrData?.rootFolders) ? lidarrData.rootFolders : [],
@@ -79,12 +85,15 @@ export function useAccountSettings(authUser, showSuccess, showError) {
     try {
       setSaving(true);
       const trimmedUsername = listenHistoryUsername.trim();
+      const trimmedUrl = listenHistoryUrl.trim().replace(/\/+$/, "");
       const lidarrData = await Promise.all([
-        updateMyListeningHistory(
-          authUser.id,
+        updateMyListeningHistory(authUser.id, {
           listenHistoryProvider,
-          trimmedUsername || null,
-        ),
+          listenHistoryUsername:
+            listenHistoryProvider === "koito" ? null : trimmedUsername || null,
+          listenHistoryUrl:
+            listenHistoryProvider === "koito" ? trimmedUrl || null : null,
+        }),
         updateMyLidarrPreferences({
           rootFolderPath: lidarrRootFolderPath || null,
           qualityProfileId: lidarrQualityProfileId
@@ -94,7 +103,9 @@ export function useAccountSettings(authUser, showSuccess, showError) {
       ]).then(([, lidarrResponse]) => lidarrResponse);
       setSavedListenHistoryProvider(listenHistoryProvider);
       setSavedListenHistoryUsername(trimmedUsername);
+      setSavedListenHistoryUrl(trimmedUrl);
       setListenHistoryUsername(trimmedUsername);
+      setListenHistoryUrl(trimmedUrl);
       setLidarrConfigured(lidarrData?.configured === true);
       setLidarrRootFolders(
         Array.isArray(lidarrData?.rootFolders) ? lidarrData.rootFolders : [],
@@ -124,6 +135,7 @@ export function useAccountSettings(authUser, showSuccess, showError) {
     authUser?.id,
     listenHistoryProvider,
     listenHistoryUsername,
+    listenHistoryUrl,
     lidarrRootFolderPath,
     lidarrQualityProfileId,
     showSuccess,
@@ -135,6 +147,8 @@ export function useAccountSettings(authUser, showSuccess, showError) {
     setListenHistoryProvider,
     listenHistoryUsername,
     setListenHistoryUsername,
+    listenHistoryUrl,
+    setListenHistoryUrl,
     lidarrConfigured,
     lidarrRootFolders,
     lidarrQualityProfiles,

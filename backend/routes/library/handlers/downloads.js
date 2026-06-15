@@ -6,6 +6,10 @@ import {
   requirePermission,
 } from "../../../middleware/requirePermission.js";
 import { hasPermission } from "../../../middleware/auth.js";
+import {
+  parseLidarrSearchContext,
+  resolveAlbumSearchOutcome,
+} from "../../../services/albumSearchState.js";
 
 const STALE_GRABBED_MS = 15 * 60 * 1000;
 const DOWNLOAD_STATUS_CACHE_MS = 5000;
@@ -33,36 +37,12 @@ export const getDownloadStatusesForAlbumIds = async (albumIdArrayInput) => {
       const historyItems = Array.isArray(history)
         ? history
         : history.records || [];
-      const commandItems = Array.isArray(commands)
-        ? commands
-        : commands?.records || [];
-      const searchingAlbumIds = new Set();
-      for (const command of commandItems) {
-        const name = String(command?.name || command?.commandName || "")
-          .toLowerCase()
-          .trim();
-        if (!name.includes("albumsearch")) continue;
-        const status = String(command?.status || "")
-          .toLowerCase()
-          .trim();
-        if (
-          status === "completed" ||
-          status === "failed" ||
-          status === "aborted" ||
-          status === "canceled" ||
-          status === "cancelled"
-        ) {
-          continue;
-        }
-        const albumIds = Array.isArray(command?.body?.albumIds)
-          ? command.body.albumIds
-          : Array.isArray(command?.albumIds)
-            ? command.albumIds
-            : [];
-        for (const id of albumIds) {
-          if (id != null) searchingAlbumIds.add(id);
-        }
-      }
+      const searchContext = parseLidarrSearchContext({
+        queue,
+        history,
+        commands,
+      });
+      const { searchingAlbumIds } = searchContext;
 
       const latestHistoryByAlbumId = new Map();
       for (const h of historyItems) {
@@ -210,6 +190,22 @@ export const getDownloadStatusesForAlbumIds = async (albumIdArrayInput) => {
             updatedAt: new Date().toISOString(),
           };
           continue;
+        }
+
+        const searchOutcome = resolveAlbumSearchOutcome(
+          lidarrAlbumId,
+          searchContext,
+        );
+        if (searchOutcome?.status === "failed") {
+          statuses[albumId] = {
+            status: "failed",
+            updatedAt: new Date().toISOString(),
+          };
+        } else if (searchOutcome?.status === "searching") {
+          statuses[albumId] = {
+            status: "searching",
+            updatedAt: new Date().toISOString(),
+          };
         }
       }
     } catch (error) {
@@ -549,6 +545,17 @@ export default function registerDownloads(router) {
           }
           invalidateAllDownloadStatusesCache();
 
+          const { recordAlbumRequested } = await import(
+            "../../../services/aurralHistoryService.js"
+          );
+          recordAlbumRequested({
+            albumId,
+            albumName: album.albumName,
+            artistName: artist?.artistName || album.artistName,
+            artistMbid: artist?.mbid || artist?.foreignArtistId,
+            searching: searchOnAdd,
+          });
+
           res.json({
             success: true,
             message: searchOnAdd
@@ -624,6 +631,16 @@ export default function registerDownloads(router) {
           );
         }
         invalidateAllDownloadStatusesCache();
+
+        const { recordAlbumSearchStarted } = await import(
+          "../../../services/aurralHistoryService.js"
+        );
+        recordAlbumSearchStarted({
+          albumId,
+          albumName: album.albumName,
+          artistName: artist?.artistName || album.artistName,
+          artistMbid: artist?.mbid || artist?.foreignArtistId,
+        });
 
         res.json({
           success: true,

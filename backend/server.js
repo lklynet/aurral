@@ -10,16 +10,9 @@ import { createServer } from "http";
 import { fileURLToPath } from "url";
 
 import { createAuthMiddleware } from "./middleware/auth.js";
-import { cleanExpiredSessions } from "./config/session-helpers.js";
-import {
-  updateDiscoveryCache,
-  getDiscoveryCache,
-  getDiscoveryAutoRefreshHours,
-} from "./services/discoveryService.js";
 import { websocketService } from "./services/websocketService.js";
 import { getAllDownloadStatuses } from "./routes/library/handlers/downloads.js";
 import { getWeeklyFlowStatusSnapshot } from "./services/weeklyFlowStatusSnapshot.js";
-import { dbOps } from "./config/db-helpers.js";
 
 import settingsRouter from "./routes/settings.js";
 import onboardingRouter from "./routes/onboarding.js";
@@ -30,7 +23,14 @@ import libraryRouter from "./routes/library.js";
 import discoveryRouter from "./routes/discovery.js";
 import requestsRouter from "./routes/requests.js";
 import healthRouter from "./routes/health.js";
+import filesystemRouter from "./routes/filesystem.js";
 import weeklyFlowRouter from "./routes/weeklyFlow.js";
+import { bootstrapHonkerSchedules } from "./services/honkerDb.js";
+import { initializeAppRuntime } from "./services/appRuntime.js";
+import {
+  registerHonkerShutdownHandler,
+  shutdownHonkerInfrastructure,
+} from "./services/honkerWorkerRuntime.js";
 import authRouter from "./routes/auth.js";
 import imageProxyRouter from "./routes/imageProxy.js";
 
@@ -142,66 +142,11 @@ app.use("/api/library", libraryRouter);
 app.use("/api/discover", discoveryRouter);
 app.use("/api/requests", requestsRouter);
 app.use("/api/health", healthRouter);
+app.use("/api/filesystem", filesystemRouter);
+app.use("/api/playlists", weeklyFlowRouter);
 app.use("/api/weekly-flow", weeklyFlowRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/image-proxy", imageProxyRouter);
-
-const HOUR_MS = 60 * 60 * 1000;
-setInterval(() => {
-  import("./services/weeklyFlowScheduler.js")
-    .then((m) => m.runScheduledRefresh())
-    .catch((err) => console.error("Weekly flow scheduler error:", err.message));
-}, HOUR_MS);
-
-setInterval(() => {
-  cleanExpiredSessions();
-}, HOUR_MS);
-
-setTimeout(() => {
-  import("./services/weeklyFlowScheduler.js")
-    .then((m) => m.startWorkerIfPending())
-    .catch((err) =>
-      console.error("Weekly flow startup check error:", err.message),
-    );
-}, 5000);
-
-const REUSE_REPAIR_INTERVAL_MS = 30 * 60 * 1000;
-setInterval(() => {
-  import("./services/weeklyFlowWorker.js")
-    .then((m) => m.weeklyFlowWorker.scheduleReuseLinkRepair(false))
-    .catch((err) =>
-      console.error("Weekly flow reuse repair error:", err.message),
-    );
-}, REUSE_REPAIR_INTERVAL_MS);
-
-setTimeout(() => {
-  import("./services/weeklyFlowWorker.js")
-    .then((m) => m.weeklyFlowWorker.scheduleReuseLinkRepair(true))
-    .catch((err) =>
-      console.error("Weekly flow reuse repair startup error:", err.message),
-    );
-}, 15000);
-
-setTimeout(async () => {
-  try {
-    const [{ migrateLegacyWeeklyFlowPaths, resolveWeeklyFlowRoot }, trackerModule] =
-      await Promise.all([
-        import("./services/weeklyFlowPaths.js"),
-        import("./services/weeklyFlowDownloadTracker.js"),
-      ]);
-    const result = await migrateLegacyWeeklyFlowPaths(
-      resolveWeeklyFlowRoot(),
-      trackerModule.downloadTracker,
-    );
-    if (result.migrated > 0) {
-      console.log(
-        `[WeeklyFlow] Migrated ${result.migrated} legacy track paths to ${resolveWeeklyFlowRoot()}`,
-      );
-    }
-  } catch (err) {
-    console.error("Weekly flow path migration error:", err.message);
-  }
-}, 3000);
 
 const frontendDist = path.join(__dirname, "..", "frontend", "dist");
 const frontendFallbackRoute = /.*/;
@@ -236,82 +181,6 @@ app.use((err, req, res, next) => {
   return res.status(500).json({ error: "Internal server error" });
 });
 
-setInterval(
-  () => {
-    const discoveryCache = getDiscoveryCache();
-    const lastUpdated = discoveryCache?.lastUpdated;
-    const refreshHours = getDiscoveryAutoRefreshHours();
-    const refreshIntervalMs = refreshHours * 60 * 60 * 1000;
-    const parsedLastUpdated = lastUpdated ? new Date(lastUpdated).getTime() : 0;
-    const needsUpdate =
-      !Number.isFinite(parsedLastUpdated) ||
-      parsedLastUpdated <= 0 ||
-      Date.now() - parsedLastUpdated >= refreshIntervalMs;
-
-    if (!needsUpdate) return;
-
-    updateDiscoveryCache().catch((err) => {
-      console.error("Error in scheduled discovery update:", err.message);
-    });
-  },
-  15 * 60 * 1000,
-);
-
-setTimeout(async () => {
-  const { getLastfmApiKey } = await import("./services/apiClients.js");
-  const { libraryManager } =
-    await import("./services/libraryManager.js");
-
-  const hasLastfm = !!getLastfmApiKey();
-  const libraryArtists = await libraryManager.getAllArtists();
-  const hasArtists = libraryArtists.length > 0;
-
-  if (!hasLastfm && !hasArtists) {
-    console.log(
-      "Discovery not configured (no Last.fm key and no artists). Clearing cache.",
-    );
-    try {
-      dbOps.updateDiscoveryCache({
-        recommendations: [],
-        globalTop: [],
-        basedOn: [],
-        topTags: [],
-        topGenres: [],
-        lastUpdated: null,
-      });
-    } catch (error) {
-      console.error("Failed to clear discovery cache:", error.message);
-    }
-    return;
-  }
-
-  const discoveryCache = dbOps.getDiscoveryCache();
-  const lastUpdated = discoveryCache?.lastUpdated;
-  const hasRecommendations =
-    discoveryCache.recommendations && discoveryCache.recommendations.length > 0;
-  const hasGenres =
-    discoveryCache.topGenres && discoveryCache.topGenres.length > 0;
-
-  const refreshHours = getDiscoveryAutoRefreshHours();
-  const staleCutoff = Date.now() - refreshHours * 60 * 60 * 1000;
-  const needsUpdate =
-    !lastUpdated ||
-    new Date(lastUpdated).getTime() < staleCutoff ||
-    !hasRecommendations ||
-    !hasGenres;
-
-  if (needsUpdate) {
-    console.log("Discovery cache needs update. Starting...");
-    updateDiscoveryCache().catch((err) => {
-      console.error("Error in initial discovery update:", err.message);
-    });
-  } else {
-    console.log(
-      `Discovery cache is fresh (last updated ${lastUpdated}). Skipping initial update.`,
-    );
-  }
-}, 15000);
-
 const httpServer = createServer(app);
 websocketService.initialize(httpServer);
 
@@ -343,8 +212,10 @@ const WEEKLY_FLOW_STATUS_INTERVAL_MS = 4000;
 const lastWeeklyFlowStatusPayloadByUser = new Map();
 const broadcastWeeklyFlowStatus = async () => {
   try {
-    if (!hasWsSubscribers("weekly-flow")) return;
-    websocketService.broadcastPerClient("weekly-flow", (client) => {
+    if (!hasWsSubscribers("weekly-flow") && !hasWsSubscribers("playlists")) {
+      return;
+    }
+    const buildPayload = (client) => {
       const status = getWeeklyFlowStatusSnapshot({
         user: client?.user || null,
       });
@@ -360,22 +231,59 @@ const broadcastWeeklyFlowStatus = async () => {
       }
       lastWeeklyFlowStatusPayloadByUser.set(cacheKey, payload);
       return {
-        type: "weekly_flow_status",
+        type: "playlist_status",
         status,
       };
-    });
+    };
+    websocketService.broadcastPerClient("weekly-flow", buildPayload);
+    websocketService.broadcastPerClient("playlists", buildPayload);
   } catch (error) {
     console.warn("Failed to broadcast weekly flow status:", error.message);
   }
 };
 
+const broadcastIntervals = [];
+
 broadcastDownloadStatuses();
-setInterval(broadcastDownloadStatuses, DOWNLOAD_STATUS_INTERVAL_MS);
+broadcastIntervals.push(
+  setInterval(broadcastDownloadStatuses, DOWNLOAD_STATUS_INTERVAL_MS),
+);
 broadcastWeeklyFlowStatus();
-setInterval(broadcastWeeklyFlowStatus, WEEKLY_FLOW_STATUS_INTERVAL_MS);
+broadcastIntervals.push(
+  setInterval(broadcastWeeklyFlowStatus, WEEKLY_FLOW_STATUS_INTERVAL_MS),
+);
+
+let shuttingDown = false;
+
+const gracefulShutdown = async (signal) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Received ${signal}, shutting down...`);
+  for (const interval of broadcastIntervals) {
+    clearInterval(interval);
+  }
+  await shutdownHonkerInfrastructure({ timeoutMs: 30000 });
+  await new Promise((resolve) => {
+    httpServer.close(() => resolve());
+  });
+  process.exit(0);
+};
+
+registerHonkerShutdownHandler(async () => {
+  websocketService.close?.();
+});
+
+process.once("SIGTERM", () => {
+  void gracefulShutdown("SIGTERM");
+});
+process.once("SIGINT", () => {
+  void gracefulShutdown("SIGINT");
+});
 
 httpServer.listen(PORT, "0.0.0.0", async () => {
   console.log(`Server running on port ${PORT}`);
+  bootstrapHonkerSchedules();
+  initializeAppRuntime({ logger: console });
 });
 
 httpServer.on("error", (error) => {

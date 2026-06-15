@@ -84,10 +84,14 @@ export default function registerCover(router) {
 
       console.log(`[Cover Route] Fetching cover for ${mbid}`);
 
+      const shouldForceRefresh =
+        !!refresh ||
+        (cachedImage?.imageUrl === "NOT_FOUND" && !!artistNameFromQuery);
+
       const fetchPromise = (async () => {
         try {
           const result = await getArtistImage(mbid, {
-            forceRefresh: !!refresh,
+            forceRefresh: shouldForceRefresh,
             artistName: artistNameFromQuery,
           });
           return {

@@ -307,19 +307,28 @@ export function SettingsUsersTab({
                       <span className="badge badge-primary settings-page__role-badge">
                         {u.role}
                       </span>
-                      {u.listenHistoryUsername && (
+                      {(u.listenHistoryUsername || u.listenHistoryUrl) && (
                         <span
                           className="settings-page__user-meta"
-                          title={`${
-                            u.listenHistoryProvider === "listenbrainz"
-                              ? "ListenBrainz"
-                              : "Last.fm"
-                          }: ${u.listenHistoryUsername}`}
+                          title={
+                            u.listenHistoryProvider === "koito"
+                              ? `Koito: ${u.listenHistoryUrl}`
+                              : `${
+                                  u.listenHistoryProvider === "listenbrainz"
+                                    ? "ListenBrainz"
+                                    : "Last.fm"
+                                }: ${u.listenHistoryUsername}`
+                          }
                         >
-                          {u.listenHistoryProvider === "listenbrainz"
-                            ? "ListenBrainz"
-                            : "Last.fm"}
-                          : {u.listenHistoryUsername}
+                          {u.listenHistoryProvider === "koito"
+                            ? "Koito"
+                            : u.listenHistoryProvider === "listenbrainz"
+                              ? "ListenBrainz"
+                              : "Last.fm"}
+                          :{" "}
+                          {u.listenHistoryProvider === "koito"
+                            ? u.listenHistoryUrl
+                            : u.listenHistoryUsername}
                         </span>
                       )}
                     </div>

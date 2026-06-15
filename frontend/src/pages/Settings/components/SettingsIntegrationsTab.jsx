@@ -8,12 +8,14 @@ import {
   getLidarrProfiles,
   getLidarrTags,
   testLidarrConnection,
+  testLidarrLibraryAccess,
+  testSlskdConnection,
   startPlexAuth,
   checkPlexAuth,
   getPlexResources,
   testPlexConnection,
   syncPlexNow,
-  testLidarrLibraryAccess,
+  browsePaths,
 } from "../../../utils/api";
 
 export function SettingsIntegrationsTab({
@@ -39,6 +41,7 @@ export function SettingsIntegrationsTab({
   hasUnsavedChanges,
   saving,
   handleSaveSettings,
+  fetchSettings,
   showSuccess,
   showError,
   showInfo,
@@ -48,17 +51,26 @@ export function SettingsIntegrationsTab({
     lastfm: true,
     ticketmaster: true,
     navidrome: true,
+    slskd: false,
     plex: true,
   });
+  const [testingSlskd, setTestingSlskd] = useState(false);
   const [lidarrTestLatencyMs, setLidarrTestLatencyMs] = useState(null);
-  const [plexConnecting, setPlexConnecting] = useState(false);
-  const [testingPlex, setTestingPlex] = useState(false);
-  const [syncingPlex, setSyncingPlex] = useState(false);
-  const [plexServers, setPlexServers] = useState([]);
   const [testingLidarrLibraryAccess, setTestingLidarrLibraryAccess] =
     useState(false);
   const [lidarrLibraryAccessResult, setLidarrLibraryAccessResult] =
     useState(null);
+  const [plexConnecting, setPlexConnecting] = useState(false);
+  const [testingPlex, setTestingPlex] = useState(false);
+  const [syncingPlex, setSyncingPlex] = useState(false);
+  const [plexServers, setPlexServers] = useState([]);
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const [browseLoading, setBrowseLoading] = useState(false);
+  const [browseState, setBrowseState] = useState({
+    path: "/",
+    parent: null,
+    directories: [],
+  });
   const safeLidarrProfiles = Array.isArray(lidarrProfiles)
     ? lidarrProfiles
     : [];
@@ -77,6 +89,49 @@ export function SettingsIntegrationsTab({
       ...current,
       [section]: !current[section],
     }));
+  };
+
+  const handleTestLidarrLibraryAccess = async () => {
+    const url = settings.integrations?.lidarr?.url;
+    const apiKey = settings.integrations?.lidarr?.apiKey;
+    if (!url || !apiKey) {
+      showError("Please enter both URL and API key");
+      return;
+    }
+    setTestingLidarrLibraryAccess(true);
+    setLidarrLibraryAccessResult(null);
+    try {
+      const result = await testLidarrLibraryAccess(url, apiKey);
+      setLidarrLibraryAccessResult(result);
+      if (result.appliedMappings?.length && fetchSettings) {
+        await fetchSettings();
+        showInfo(
+          `Applied path mapping: ${result.appliedMappings
+            .map((entry) => `${entry.remote} -> ${entry.local}`)
+            .join(", ")}`,
+        );
+      }
+      if (result.ok) {
+        if (result.partial) {
+          showInfo(
+            "Folders are reachable, but no downloaded tracks were found to verify yet.",
+          );
+        } else {
+          showSuccess("Library access looks good.");
+        }
+      } else {
+        showError("Library access check failed. See the results below.");
+      }
+    } catch (error) {
+      const message =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Library access check failed";
+      showError(message);
+    } finally {
+      setTestingLidarrLibraryAccess(false);
+    }
   };
 
   const updatePlex = (patch) =>
@@ -113,15 +168,42 @@ export function SettingsIntegrationsTab({
     };
   }, [plexToken]);
 
+  const loadBrowse = async (path) => {
+    setBrowseLoading(true);
+    try {
+      const result = await browsePaths(path);
+      setBrowseState(result);
+    } catch (err) {
+      const errorMsg =
+        err.response?.data?.message || err.response?.data?.error || err.message;
+      showError(`Cannot read path: ${errorMsg}`);
+    } finally {
+      setBrowseLoading(false);
+    }
+  };
+
+  const handleToggleBrowse = () => {
+    if (browseOpen) {
+      setBrowseOpen(false);
+      return;
+    }
+    setBrowseOpen(true);
+    loadBrowse(settings.integrations?.plex?.downloadsPath || "/");
+  };
+
+  const handleUseBrowsedFolder = () => {
+    updatePlex({ downloadsPath: browseState.path });
+    setBrowseOpen(false);
+  };
+
   const handleConnectPlex = async () => {
     setPlexConnecting(true);
     try {
-      // No forwardUrl: we poll for the token and close the popup ourselves.
       const { pinId, code, authUrl, clientId } = await startPlexAuth();
       const popup = window.open(
         authUrl,
         "plex-auth",
-        "width=600,height=700"
+        "width=600,height=700",
       );
       const deadline = Date.now() + 3 * 60 * 1000;
       let token = null;
@@ -133,9 +215,7 @@ export function SettingsIntegrationsTab({
             token = res.token;
             break;
           }
-        } catch {
-          // transient; keep polling
-        }
+        } catch {}
       }
       if (popup && !popup.closed) popup.close();
       if (!token) {
@@ -143,8 +223,6 @@ export function SettingsIntegrationsTab({
         return;
       }
       const servers = await loadPlexServers(token);
-      // Build a single atomic update (avoids stale-closure overwrites that
-      // could drop the token/clientId we just obtained).
       const owned = (servers || []).filter((s) => s.owned);
       const patch = { token, ...(clientId ? { clientId } : {}) };
       if (owned.length === 1) {
@@ -196,7 +274,7 @@ export function SettingsIntegrationsTab({
       const result = await testPlexConnection(url, token);
       if (result.success) {
         showSuccess(
-          `Plex connection successful!${result.version ? ` (v${result.version})` : ""}`
+          `Plex connection successful!${result.version ? ` (v${result.version})` : ""}`,
         );
         if (result.machineIdentifier) {
           updatePlex({ machineIdentifier: result.machineIdentifier });
@@ -224,11 +302,11 @@ export function SettingsIntegrationsTab({
       const built = (result.playlists || []).length;
       if (result.scanInProgress) {
         showInfo(
-          "Library ready and a Plex scan is running. Playlists will fill in automatically over the next few minutes as Plex indexes the tracks — no need to click again."
+          "Library ready and a Plex scan is running. Playlists will fill in automatically over the next few minutes as Plex indexes the tracks — no need to click again.",
         );
       } else {
         showSuccess(
-          `Synced to Plex: ${built} playlist(s) from ${result.indexedTracks} indexed track(s).`
+          `Synced to Plex: ${built} playlist(s) from ${result.indexedTracks} indexed track(s).`,
         );
       }
     } catch (err) {
@@ -237,41 +315,6 @@ export function SettingsIntegrationsTab({
       showError(`Plex sync failed: ${errorMsg}`);
     } finally {
       setSyncingPlex(false);
-    }
-  };
-
-  const handleTestLidarrLibraryAccess = async () => {
-    const url = settings.integrations?.lidarr?.url;
-    const apiKey = settings.integrations?.lidarr?.apiKey;
-    if (!url || !apiKey) {
-      showError("Please enter both URL and API key");
-      return;
-    }
-    setTestingLidarrLibraryAccess(true);
-    setLidarrLibraryAccessResult(null);
-    try {
-      const result = await testLidarrLibraryAccess(url, apiKey);
-      setLidarrLibraryAccessResult(result);
-      if (result.ok) {
-        if (result.partial) {
-          showInfo(
-            "Folders are reachable, but no downloaded tracks were found to verify yet.",
-          );
-        } else {
-          showSuccess("Library access looks good.");
-        }
-      } else {
-        showError("Library access check failed. See the results below.");
-      }
-    } catch (error) {
-      const message =
-        error.response?.data?.message ||
-        error.response?.data?.error ||
-        error.message ||
-        "Library access check failed";
-      showError(message);
-    } finally {
-      setTestingLidarrLibraryAccess(false);
     }
   };
 
@@ -966,7 +1009,7 @@ export function SettingsIntegrationsTab({
                 />
                 <p className="settings-page__hint">
                   Used as the app-wide fallback for users who have not set their
-                  own Last.fm or ListenBrainz account in Profile.
+                  own Last.fm, ListenBrainz, or Koito account in Profile.
                 </p>
               </div>
             </fieldset>
@@ -1058,13 +1101,13 @@ export function SettingsIntegrationsTab({
                   step={5}
 
                   value={
-                    settings.integrations?.ticketmaster?.searchRadiusMiles ?? 50
+                    settings.integrations?.ticketmaster?.searchRadiusMiles ?? 250
                   }
                   onChange={(e) => {
                     const raw = Number(e.target.value);
                     const value = Number.isFinite(raw)
                       ? Math.max(5, Math.min(250, Math.floor(raw)))
-                      : 50;
+                      : 250;
                     updateSettings({
                       ...settings,
                       integrations: {
@@ -1130,6 +1173,199 @@ export function SettingsIntegrationsTab({
             </fieldset>
           )}
         </div>
+        <div className="settings-page__section">
+          <div className="settings-page__section-header">
+            <button
+              type="button"
+              onClick={() => toggleSection("slskd")}
+              className="settings-page__section-toggle"
+              aria-expanded={!collapsedSections.slskd}
+            >
+              <ChevronDown
+                className={`settings-page__section-toggle-icon${collapsedSections.slskd ? " is-collapsed" : ""}`}
+              />
+              <span>slskd</span>
+            </button>
+            <div className="settings-page__inline-row">
+              {settings.integrations?.slskd?.url &&
+                settings.integrations?.slskd?.apiKey && (
+                  <span className="settings-page__status">
+                    <CheckCircle className="settings-page__status-icon" />
+                    Configured
+                  </span>
+                )}
+            </div>
+          </div>
+          {!collapsedSections.slskd && (
+            <fieldset className="settings-page__fields">
+              <div>
+                <label className="artist-field-label">Server URL</label>
+                <SettingsInput
+                  type="url"
+                  placeholder="http://localhost:5030"
+                  autoComplete="off"
+                  value={settings.integrations?.slskd?.url || ""}
+                  onChange={(e) =>
+                    updateSettings({
+                      ...settings,
+                      integrations: {
+                        ...settings.integrations,
+                        slskd: {
+                          ...(settings.integrations?.slskd || {}),
+                          url: e.target.value,
+                        },
+                      },
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className="artist-field-label">API key</label>
+                <div className="settings-page__field-row">
+                  <SettingsInput
+                    wrapperClassName="settings-page__field-grow"
+                    type="password"
+                    autoComplete="off"
+                    value={settings.integrations?.slskd?.apiKey || ""}
+                    onChange={(e) =>
+                      updateSettings({
+                        ...settings,
+                        integrations: {
+                          ...settings.integrations,
+                          slskd: {
+                            ...(settings.integrations?.slskd || {}),
+                            apiKey: e.target.value,
+                          },
+                        },
+                      })
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={testingSlskd}
+                    onClick={async () => {
+                      if (
+                        !settings.integrations?.slskd?.url ||
+                        !settings.integrations?.slskd?.apiKey
+                      ) {
+                        showError("Enter slskd URL and API key first");
+                        return;
+                      }
+                      setTestingSlskd(true);
+                      try {
+                        await handleSaveSettings();
+                        const result = await testSlskdConnection();
+                        if (result.success || result.ok) {
+                          if (result.warning || result.soulseekConnected === false) {
+                            showInfo(
+                              result.message ||
+                                "slskd API is reachable, but Soulseek is not connected",
+                            );
+                          } else {
+                            showSuccess(result.message || "slskd connection OK");
+                          }
+                        } else {
+                          showError(result.message || "slskd connection failed");
+                        }
+                      } catch (error) {
+                        showError(
+                          error.response?.data?.message ||
+                            error.response?.data?.error ||
+                            error.message ||
+                            "slskd connection failed",
+                        );
+                      } finally {
+                        setTestingSlskd(false);
+                      }
+                    }}
+                  >
+                    <RefreshCw
+                      className={`artist-icon-sm${testingSlskd ? " animate-spin" : ""}`}
+                    />
+                    {testingSlskd ? "Testing..." : "Test connection"}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="artist-field-label">Preferred format</label>
+                <SettingsSelect
+                  value={settings.integrations?.slskd?.preferredFormat || "flac"}
+                  onChange={(e) =>
+                    updateSettings({
+                      ...settings,
+                      integrations: {
+                        ...settings.integrations,
+                        slskd: {
+                          ...(settings.integrations?.slskd || {}),
+                          preferredFormat: e.target.value,
+                        },
+                      },
+                    })
+                  }
+                >
+                  <option value="flac">FLAC</option>
+                  <option value="mp3">MP3</option>
+                </SettingsSelect>
+              </div>
+              <div>
+                <label className="artist-checkbox-label">
+                  <input
+                    type="checkbox"
+                    className="artist-checkbox"
+                    checked={
+                      settings.integrations?.slskd?.preferredFormatStrict === true
+                    }
+                    onChange={(e) =>
+                      updateSettings({
+                        ...settings,
+                        integrations: {
+                          ...settings.integrations,
+                          slskd: {
+                            ...(settings.integrations?.slskd || {}),
+                            preferredFormatStrict: e.target.checked,
+                          },
+                        },
+                      })
+                    }
+                  />
+                  <span className="artist-field-label">Strict format only</span>
+                </label>
+                <p className="settings-page__hint settings-page__hint--indented">
+                  Used when ranking slskd search results for flows and playlists.
+                </p>
+              </div>
+              <div>
+                <label className="artist-checkbox-label">
+                  <input
+                    type="checkbox"
+                    className="artist-checkbox"
+                    checked={
+                      settings.integrations?.slskd?.cleanupAfterRuns === true
+                    }
+                    onChange={(e) =>
+                      updateSettings({
+                        ...settings,
+                        integrations: {
+                          ...settings.integrations,
+                          slskd: {
+                            ...(settings.integrations?.slskd || {}),
+                            cleanupAfterRuns: e.target.checked,
+                          },
+                        },
+                      })
+                    }
+                  />
+                  <span className="artist-field-label">Clean up after runs</span>
+                </label>
+                <p className="settings-page__hint settings-page__hint--indented">
+                  Clear completed searches and downloads from slskd when a flow or
+                  playlist run finishes.
+                </p>
+              </div>
+            </fieldset>
+          )}
+        </div>
         <div
           className="settings-page__section"
         >
@@ -1155,7 +1391,7 @@ export function SettingsIntegrationsTab({
             </div>
           </div>
           {!collapsedSections.navidrome && (
-            <fieldset>
+            <fieldset className="settings-page__fields">
               <div>
                 <label
                   className="artist-field-label"
@@ -1181,17 +1417,54 @@ export function SettingsIntegrationsTab({
                   }
                 />
               </div>
-              <div className="settings-page__two-col-grid">
-                <div>
-                  <label
-                    className="artist-field-label"
-                  >
-                    Username
-                  </label>
-                  <SettingsInput type="text"
-
-                    autoComplete="off"
-                    value={settings.integrations?.navidrome?.username || ""}
+              <div>
+                <label className="artist-field-label">Username</label>
+                <SettingsInput
+                  type="text"
+                  autoComplete="off"
+                  value={settings.integrations?.navidrome?.username || ""}
+                  onChange={(e) =>
+                    updateSettings({
+                      ...settings,
+                      integrations: {
+                        ...settings.integrations,
+                        navidrome: {
+                          ...(settings.integrations?.navidrome || {}),
+                          username: e.target.value,
+                        },
+                      },
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className="artist-field-label">Password</label>
+                <SettingsInput
+                  type="password"
+                  autoComplete="off"
+                  value={settings.integrations?.navidrome?.password || ""}
+                  onChange={(e) =>
+                    updateSettings({
+                      ...settings,
+                      integrations: {
+                        ...settings.integrations,
+                        navidrome: {
+                          ...(settings.integrations?.navidrome || {}),
+                          password: e.target.value,
+                        },
+                      },
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className="artist-checkbox-label">
+                  <input
+                    type="checkbox"
+                    className="artist-checkbox"
+                    checked={
+                      settings.integrations?.navidrome?.m3uPathMode === "remote"
+                    }
                     onChange={(e) =>
                       updateSettings({
                         ...settings,
@@ -1199,37 +1472,21 @@ export function SettingsIntegrationsTab({
                           ...settings.integrations,
                           navidrome: {
                             ...(settings.integrations?.navidrome || {}),
-                            username: e.target.value,
+                            m3uPathMode: e.target.checked ? "remote" : "local",
                           },
                         },
                       })
                     }
                   />
-                </div>
-                <div>
-                  <label
-                    className="artist-field-label"
-                  >
-                    Password
-                  </label>
-                  <SettingsInput type="password"
-
-                    autoComplete="off"
-                    value={settings.integrations?.navidrome?.password || ""}
-                    onChange={(e) =>
-                      updateSettings({
-                        ...settings,
-                        integrations: {
-                          ...settings.integrations,
-                          navidrome: {
-                            ...(settings.integrations?.navidrome || {}),
-                            password: e.target.value,
-                          },
-                        },
-                      })
-                    }
-                  />
-                </div>
+                  <span className="artist-field-label">
+                    Use host paths in playlist files
+                  </span>
+                </label>
+                <p className="settings-page__hint settings-page__hint--indented">
+                  Enable when Navidrome runs outside Docker but Aurral uses
+                  path mappings. Playlist M3U files will reference host paths
+                  such as <code>N:\Music\...</code> instead of container paths.
+                </p>
               </div>
               <p className="settings-page__hint">
                 When using Weekly Flow: set Navidrome&apos;s{" "}
@@ -1265,10 +1522,10 @@ export function SettingsIntegrationsTab({
             </div>
           </div>
           {!collapsedSections.plex && (
-            <fieldset>
+            <fieldset className="settings-page__fields">
               <p className="settings-page__hint">
                 Sign in with your Plex account to let Aurral create a dedicated
-                music library pointed at your Weekly Flow downloads and build a
+                music library pointed at your flow downloads and build a
                 playlist for each flow. Playlists appear in Plex and Plexamp.
               </p>
               <div className="settings-page__inline-row">
@@ -1340,20 +1597,93 @@ export function SettingsIntegrationsTab({
                 <label className="artist-field-label">
                   Plex downloads path (optional)
                 </label>
-                <SettingsInput
-                  type="text"
-                  placeholder="/data/aurral_downloads"
-                  autoComplete="off"
-                  value={settings.integrations?.plex?.downloadsPath || ""}
-                  onChange={(e) => updatePlex({ downloadsPath: e.target.value })}
-                />
+                <div className="settings-page__field-row">
+                  <SettingsInput
+                    wrapperClassName="settings-page__field-grow"
+                    type="text"
+                    placeholder="/data/aurral_downloads"
+                    autoComplete="off"
+                    value={settings.integrations?.plex?.downloadsPath || ""}
+                    onChange={(e) =>
+                      updatePlex({ downloadsPath: e.target.value })
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={handleToggleBrowse}
+                  >
+                    {browseOpen ? "Close" : "Browse"}
+                  </button>
+                </div>
                 <p className="settings-page__hint">
                   Only needed if Plex runs in a different container/host than
                   Aurral. Enter the downloads folder path as the{" "}
                   <strong>Plex server</strong> sees it — Aurral appends{" "}
                   <code>/aurral-weekly-flow</code>. Leave blank to use
-                  Aurral&apos;s own download path.
+                  Aurral&apos;s own download path. Browse shows the filesystem
+                  as Aurral sees it; type manually if Plex&apos;s mount path
+                  differs.
                 </p>
+
+                {browseOpen && (
+                  <div
+                    className="settings-page__section"
+                    style={{ marginTop: "0.75rem" }}
+                  >
+                    <div className="settings-page__inline-row">
+                      <code className="settings-page__hint">{browseState.path}</code>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={handleUseBrowsedFolder}
+                      >
+                        Use this folder
+                      </button>
+                    </div>
+                    <div
+                      style={{
+                        maxHeight: "14rem",
+                        overflowY: "auto",
+                        marginTop: "0.5rem",
+                      }}
+                    >
+                      {browseLoading ? (
+                        <p className="settings-page__hint">Loading…</p>
+                      ) : (
+                        <ul className="settings-page__fields">
+                          {browseState.parent && (
+                            <li>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => loadBrowse(browseState.parent)}
+                              >
+                                ..
+                              </button>
+                            </li>
+                          )}
+                          {browseState.directories.length === 0 && (
+                            <li className="settings-page__hint">
+                              No subfolders here.
+                            </li>
+                          )}
+                          {browseState.directories.map((dir) => (
+                            <li key={dir.path}>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => loadBrowse(dir.path)}
+                              >
+                                {dir.name}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="settings-page__inline-row">

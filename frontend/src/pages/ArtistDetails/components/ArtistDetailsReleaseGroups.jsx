@@ -1,20 +1,20 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
+import { useNavigate } from "react-router-dom";
 import {
   ArrowRight,
-  CheckCircle,
   Loader,
   Music,
   Star,
 } from "lucide-react";
+import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import AddAlbumButton from "../../../components/AddAlbumButton";
+import { navigateToReleaseGroup } from "../../../utils/searchNavigation";
 import {
-  getArtistReleaseGridColumnCount,
-  getExpandedReleaseRenderAfterIndex,
+  getPopularReleaseGroups,
   getReleaseMetric,
   getReleaseYear,
 } from "../utils";
-import { ArtistDetailsReleaseTrackList } from "./ArtistDetailsReleaseTrackList";
 
 const viewModes = [
   { value: "popular", label: "Popular Releases" },
@@ -40,9 +40,7 @@ const sortLatest = (items) =>
 
 const getVisibleReleases = (releaseGroups, viewMode) => {
   if (viewMode === "popular") {
-    return [...releaseGroups]
-      .sort((a, b) => getReleaseMetric(b).sortValue - getReleaseMetric(a).sortValue)
-      .slice(0, 6);
+    return getPopularReleaseGroups(releaseGroups);
   }
   if (viewMode === "albums") {
     return sortLatest(
@@ -68,30 +66,16 @@ export function ArtistDetailsReleaseGroups({
   loadingReleases,
   albumCovers,
   artistCoverImage,
-  expandedReleaseGroup,
-  albumTracks,
-  loadingTracks,
   getAlbumStatus,
-  handleReleaseGroupAlbumClick,
   canAddAlbum,
   handleRequestAlbum,
   requestingAlbum,
-  playbackSource,
   artistName,
-  onAddTrackToPlaylist,
-  playlists,
-  playlistsLoading,
-  playlistSavingKey,
-  playlistError,
-  getDefaultPlaylistName,
-  onLoadPlaylists,
   onVisibleCoverIdsChange,
   onViewAll,
 }) {
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState("popular");
-  const [gridColumnCount, setGridColumnCount] = useState(
-    getArtistReleaseGridColumnCount,
-  );
   const releaseGroups = useMemo(
     () => artist["release-groups"] || [],
     [artist],
@@ -105,33 +89,15 @@ export function ArtistDetailsReleaseGroups({
     onVisibleCoverIdsChange?.(visibleReleaseGroups.map((item) => item.id).filter(Boolean));
   }, [onVisibleCoverIdsChange, visibleReleaseGroups]);
 
-  useEffect(() => {
-    const updateGridColumnCount = () =>
-      setGridColumnCount(getArtistReleaseGridColumnCount());
-    updateGridColumnCount();
-    window.addEventListener("resize", updateGridColumnCount);
-    return () => window.removeEventListener("resize", updateGridColumnCount);
-  }, []);
+  const openRelease = (releaseGroup) => {
+    navigateToReleaseGroup(navigate, releaseGroup, {
+      artistMbid: artist?.id,
+      artistName: artistName || artist?.name || "",
+      coverUrl: albumCovers[releaseGroup.id] || artistCoverImage || "",
+    });
+  };
 
-  const expandedRelease = visibleReleaseGroups.find(
-    (releaseGroup) => releaseGroup.id === expandedReleaseGroup,
-  );
-  const expandedStatus = expandedRelease ? getAlbumStatus(expandedRelease.id) : null;
-  const expandedTrackKey = expandedStatus?.libraryId || expandedRelease?.id;
-  const expandedTracks = expandedTrackKey ? albumTracks[expandedTrackKey] : null;
-  const expandedLoading = expandedTrackKey ? loadingTracks[expandedTrackKey] : false;
-  const expandedReleaseIndex = expandedRelease
-    ? visibleReleaseGroups.findIndex(
-        (releaseGroup) => releaseGroup.id === expandedRelease.id,
-      )
-    : -1;
-  const expandedRenderAfterIndex = getExpandedReleaseRenderAfterIndex(
-    expandedReleaseIndex,
-    visibleReleaseGroups.length,
-    gridColumnCount,
-  );
-
-  if (releaseGroups.length === 0) return null;
+  if (releaseGroups.length === 0 && !loadingReleases) return null;
 
   return (
     <section className="artist-section">
@@ -165,14 +131,14 @@ export function ArtistDetailsReleaseGroups({
       </div>
 
       <div className="artist-release-grid">
-        {visibleReleaseGroups.map((releaseGroup, index) => {
+        {visibleReleaseGroups.map((releaseGroup) => {
           const status = getAlbumStatus(releaseGroup.id);
           const metric = getReleaseMetric(releaseGroup);
           return (
-            <Fragment key={releaseGroup.id}>
             <article
+              key={releaseGroup.id}
               className="artist-release-card"
-              onClick={() => handleReleaseGroupAlbumClick(releaseGroup, status?.libraryId)}
+              onClick={() => openRelease(releaseGroup)}
             >
               <div className="artist-release-card__cover">
                 {albumCovers[releaseGroup.id] || artistCoverImage ? (
@@ -193,7 +159,7 @@ export function ArtistDetailsReleaseGroups({
                       className="artist-release-card__status"
                       title="Complete"
                     >
-                      <CheckCircle className="artist-icon-sm" />
+                      <SearchLibraryCheck size="overlay" />
                       <span className="sr-only">Complete</span>
                     </span>
                   ) : canAddAlbum ? (
@@ -225,26 +191,6 @@ export function ArtistDetailsReleaseGroups({
                 </p>
               )}
             </article>
-            {expandedRelease && expandedRenderAfterIndex === index ? (
-              <div className="artist-grid-full">
-                <ArtistDetailsReleaseTrackList
-                  release={expandedRelease}
-                  trackKey={expandedTrackKey}
-                  tracks={expandedTracks}
-                  loading={expandedLoading}
-                  playbackSource={playbackSource}
-                  artistName={artistName}
-                  onAddTrackToPlaylist={onAddTrackToPlaylist}
-                  playlists={playlists}
-                  playlistsLoading={playlistsLoading}
-                  playlistSavingKey={playlistSavingKey}
-                  playlistError={playlistError}
-                  getDefaultPlaylistName={getDefaultPlaylistName}
-                  onLoadPlaylists={onLoadPlaylists}
-                />
-              </div>
-            ) : null}
-            </Fragment>
           );
         })}
       </div>
@@ -257,27 +203,11 @@ ArtistDetailsReleaseGroups.propTypes = {
   loadingReleases: PropTypes.bool,
   albumCovers: PropTypes.object,
   artistCoverImage: PropTypes.string,
-  expandedReleaseGroup: PropTypes.string,
-  albumTracks: PropTypes.object,
-  loadingTracks: PropTypes.object,
   getAlbumStatus: PropTypes.func.isRequired,
-  handleReleaseGroupAlbumClick: PropTypes.func.isRequired,
   canAddAlbum: PropTypes.bool,
   handleRequestAlbum: PropTypes.func.isRequired,
   requestingAlbum: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-  playbackSource: PropTypes.shape({
-    type: PropTypes.string,
-    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    label: PropTypes.string,
-  }),
   artistName: PropTypes.string,
-  onAddTrackToPlaylist: PropTypes.func,
-  playlists: PropTypes.array,
-  playlistsLoading: PropTypes.bool,
-  playlistSavingKey: PropTypes.string,
-  playlistError: PropTypes.string,
-  getDefaultPlaylistName: PropTypes.func,
-  onLoadPlaylists: PropTypes.func,
   onVisibleCoverIdsChange: PropTypes.func,
   onViewAll: PropTypes.func.isRequired,
 };

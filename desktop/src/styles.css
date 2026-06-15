@@ -1,0 +1,132 @@
+:root {
+  color-scheme: light dark;
+  --aurral-black: #000000;
+  --aurral-surface: #121212;
+  --aurral-surface-mid: #212121;
+  --aurral-overlay: #2d2d2d;
+  --aurral-gray-light: #b3b3b3;
+  --aurral-white: #ffffff;
+  --aurral-green: #84cc16;
+  --aurral-danger: #f87171;
+  --bg: #f5f5f7;
+  --card: #ffffff;
+  --text: #111111;
+  --muted: #6b7280;
+  --border: rgba(0, 0, 0, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: var(--aurral-black);
+    --card: var(--aurral-surface);
+    --text: var(--aurral-white);
+    --muted: var(--aurral-gray-light);
+    --border: rgba(255, 255, 255, 0.08);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+}
+
+.card {
+  width: min(100%, 420px);
+  padding: 40px 32px;
+  border-radius: 20px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.12);
+  text-align: center;
+}
+
+.logo {
+  display: block;
+  margin: 0 auto 20px;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.lede {
+  margin: 0 0 28px;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.form {
+  display: grid;
+  gap: 16px;
+  text-align: left;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+}
+
+input:focus {
+  outline: 2px solid color-mix(in srgb, var(--aurral-green) 55%, transparent);
+  outline-offset: 1px;
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 18px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--aurral-black);
+  background: var(--aurral-green);
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.error {
+  margin: 0;
+  color: var(--aurral-danger);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}

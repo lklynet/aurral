@@ -346,14 +346,19 @@ export async function writePlaylistArtworkWebpFromBuffer(buffer, outputPath) {
     .toFile(outputPath);
 }
 
+export async function buildPlaylistArtworkWebpBuffer({ playlistName, kind }) {
+  const svg = buildArtworkSvg({ playlistName, kind });
+  return sharp(Buffer.from(svg))
+    .webp({ quality: PLAYLIST_ARTWORK_WEBP_QUALITY })
+    .toBuffer();
+}
+
 export async function writePlaylistArtworkSidecar({
   playlistName,
   kind,
   outputPath,
 }) {
-  const svg = buildArtworkSvg({ playlistName, kind });
   const webpPath = outputPath.replace(/\.(png|webp)$/i, ".webp");
-  await sharp(Buffer.from(svg))
-    .webp({ quality: PLAYLIST_ARTWORK_WEBP_QUALITY })
-    .toFile(webpPath);
+  const buffer = await buildPlaylistArtworkWebpBuffer({ playlistName, kind });
+  await sharp(buffer).toFile(webpPath);
 }

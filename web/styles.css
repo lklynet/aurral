@@ -363,6 +363,27 @@ main,
   border-right: 1px solid var(--line);
 }
 
+.feature-columns--quad {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.feature-columns--quad article:nth-child(2n) {
+  border-right: 0;
+}
+
+.feature-columns--quad article:nth-child(n + 3) {
+  border-top: 1px solid var(--line);
+}
+
+.feature-columns article a {
+  color: var(--primary-strong);
+  font-weight: 600;
+}
+
+.feature-columns article a:hover {
+  color: var(--text);
+}
+
 .feature-columns article:last-child {
   border-right: 0;
 }
@@ -556,6 +577,17 @@ main,
   justify-content: center;
   flex-wrap: wrap;
   margin: 0 0 28px;
+}
+
+.setup-docs-link {
+  margin: 0 0 28px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.98rem;
+}
+
+.setup-docs-link a {
+  color: var(--primary-strong);
 }
 
 .terminal-card {

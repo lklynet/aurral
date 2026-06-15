@@ -30,7 +30,9 @@ export async function withTemporaryLidarrClient(url, apiKey, fn) {
   const { lidarrClient } = await import("./lidarrClient.js");
   const originalConfig = { ...lidarrClient.config };
   const originalApiPath = lidarrClient.apiPath;
+  const originalHoldConfig = lidarrClient._holdConfig;
 
+  lidarrClient._holdConfig = true;
   lidarrClient.config = {
     url: url.replace(/\/+$/, ""),
     apiKey: apiKey.trim(),
@@ -43,6 +45,7 @@ export async function withTemporaryLidarrClient(url, apiKey, fn) {
   try {
     return await fn(lidarrClient);
   } finally {
+    lidarrClient._holdConfig = originalHoldConfig;
     lidarrClient.config = originalConfig;
     lidarrClient.apiPath = originalApiPath;
     lidarrClient.updateConfig();

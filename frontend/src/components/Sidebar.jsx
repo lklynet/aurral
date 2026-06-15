@@ -6,9 +6,7 @@ import {
   Sparkles,
   History,
   AudioWaveform,
-  Download,
   Ticket,
-  Ban,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { getBootstrapStatus } from "../utils/api";
@@ -19,7 +17,7 @@ function Sidebar({ appVersion, mode }) {
   const { user } = useAuth();
   const hasFlowAccess =
     user?.role === "admin" || !!user?.permissions?.accessFlow;
-  const { hasActivity: hasDownloadActivity } = useFlowWorkerActivity({
+  const { hasActivity: hasRequestActivity } = useFlowWorkerActivity({
     enabled: hasFlowAccess,
   });
   const resolvedVersion =
@@ -103,14 +101,7 @@ function Sidebar({ appVersion, mode }) {
         icon: AudioWaveform,
         permission: "accessFlow",
       },
-      {
-        path: "/downloads",
-        label: "Downloads",
-        icon: Download,
-        permission: "accessFlow",
-      },
-      { path: "/blocklist", label: "Blocklist", icon: Ban },
-      { path: "/requests", label: "Requests", icon: History },
+      { path: "/history", label: "History", icon: History },
     ];
     return items.filter(
       (item) =>
@@ -237,7 +228,7 @@ function Sidebar({ appVersion, mode }) {
                 const Icon = item.icon;
                 const active = isActive(item.path);
                 const showActivityDot =
-                  item.path === "/downloads" && hasDownloadActivity;
+                  item.path === "/history" && hasRequestActivity;
 
                 return (
                   <Link

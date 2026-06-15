@@ -1,5 +1,5 @@
 const RELEASE_VERSION_RE =
-  /^v?(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:-test\.(?<prerelease>\d+))?$/i;
+  /^v?(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:-(?<prereleaseChannel>test|dev)\.(?<prerelease>\d+))?$/i;
 
 export function normalizeReleaseVersion(value) {
   return String(value || "").trim().replace(/^v/, "");
@@ -15,6 +15,9 @@ export function parseReleaseVersion(value) {
   const major = Number(match.groups.major);
   const minor = Number(match.groups.minor);
   const patch = Number(match.groups.patch);
+  const prereleaseChannel = match.groups.prereleaseChannel
+    ? String(match.groups.prereleaseChannel).toLowerCase()
+    : null;
   const prerelease =
     match.groups.prerelease == null ? null : Number(match.groups.prerelease);
 
@@ -25,7 +28,7 @@ export function parseReleaseVersion(value) {
     minor,
     patch,
     prerelease,
-    channel: prerelease == null ? "stable" : "test",
+    channel: prereleaseChannel || "stable",
   };
 }
 
@@ -63,7 +66,8 @@ export function extractTagNameFromRef(ref) {
 }
 
 export function selectLatestReleaseForChannel(refs, channel) {
-  const expectedChannel = channel === "test" ? "test" : "stable";
+  const expectedChannel =
+    channel === "test" || channel === "dev" ? channel : "stable";
   const candidates = (Array.isArray(refs) ? refs : [])
     .map((ref) => {
       const tagName =

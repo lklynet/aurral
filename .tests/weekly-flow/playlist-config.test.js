@@ -12,19 +12,20 @@ import {
 const isolatedState = await createIsolatedStateDir("playlist-config");
 applyIsolatedBackendEnv(isolatedState);
 
-const [{ db }, { dbOps }, { flowPlaylistConfig }] = await Promise.all([
+const [{ db }, { dbOps }, playlistConfigModule] = await Promise.all([
   importFromRepo("backend/config/db-sqlite.js"),
   importFromRepo("backend/config/db-helpers.js"),
   importFromRepo("backend/services/weeklyFlowPlaylistConfig.js"),
 ]);
+const { flowPlaylistConfig, tracksShareMembership } = playlistConfigModule;
 
 test.beforeEach(() => {
   resetDatabase(db);
   dbOps.updateSettings({
     integrations: {},
     onboardingComplete: true,
-    weeklyFlows: [],
-    sharedFlowPlaylists: [],
+    flows: [],
+    sharedPlaylists: [],
   });
 });
 
@@ -181,4 +182,23 @@ test("preserves rich track metadata when shared playlists are updated", () => {
     artistAliases: ["Alias B"],
     reason: null,
   });
+});
+
+test("tracksShareMembership matches artist and song across album differences", () => {
+  assert.equal(
+    tracksShareMembership(
+      {
+        artistName: "Zao",
+        trackName: "Lies Of Serpents, A River Of Tears",
+        albumName: "Where Blood And Fire Bring Rest",
+      },
+      {
+        artistName: "Zao",
+        trackName: "Lies Of Serpents, A River Of Tears",
+        albumName: "Where Blood and Fir...",
+        trackMbid: "different-source-id",
+      },
+    ),
+    true,
+  );
 });

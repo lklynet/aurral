@@ -1,6 +1,22 @@
 import axios from "axios";
 import crypto from "crypto";
 
+const LEGACY_LIBRARY_DIR = "aurral-weekly-flow";
+const PLAYLIST_LIBRARY_NAME = "Aurral Playlists";
+const LEGACY_LIBRARY_NAMES = new Set(["Aurral Weekly Flow"]);
+
+function normalizeLibraryPath(value) {
+  return String(value || "").trim().replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function isLegacyPlaylistLibraryPath(value) {
+  const libraryPath = normalizeLibraryPath(value);
+  return (
+    libraryPath.endsWith(`/${LEGACY_LIBRARY_DIR}`) ||
+    libraryPath === LEGACY_LIBRARY_DIR
+  );
+}
+
 export class NavidromeClient {
   constructor(url, user, password) {
     this.url = url ? url.replace(/\/+$/, "") : null;
@@ -211,6 +227,8 @@ export class NavidromeClient {
       response = await axios.get(url, { headers });
     } else if (method === "POST") {
       response = await axios.post(url, body, { headers });
+    } else if (method === "PUT") {
+      response = await axios.put(url, body, { headers });
     } else {
       throw new Error(`Unsupported method: ${method}`);
     }
@@ -227,6 +245,10 @@ export class NavidromeClient {
     return this._nativeRequest("POST", "/api/library", { name, path });
   }
 
+  async updateLibrary(id, payload) {
+    return this._nativeRequest("PUT", `/api/library/${id}`, payload);
+  }
+
   async scanLibrary() {
     if (!this.isConfigured()) return null;
     try {
@@ -239,18 +261,49 @@ export class NavidromeClient {
 
   async ensureWeeklyFlowLibrary(libraryPath) {
     if (!this.isConfigured()) return null;
-    const name = "Aurral Weekly Flow";
+    const name = PLAYLIST_LIBRARY_NAME;
+    const normalizedPath = normalizeLibraryPath(libraryPath);
     try {
       const libs = await this.getLibraries();
       const list = Array.isArray(libs) ? libs : [];
-      const exists = list.some(
-        (lib) =>
-          (lib.path && lib.path === libraryPath) ||
-          (lib.name && lib.name === name),
+      const byPath = list.find(
+        (lib) => normalizeLibraryPath(lib.path) === normalizedPath,
       );
-      if (exists) return list.find((l) => l.path === libraryPath || l.name === name);
-      const created = await this.createLibrary(name, libraryPath);
-      return created;
+      if (byPath) {
+        if (byPath.name !== name) {
+          return this.updateLibrary(byPath.id, {
+            ...byPath,
+            name,
+            path: normalizedPath,
+          });
+        }
+        return byPath;
+      }
+
+      const byName = list.find(
+        (lib) => lib.name === name || LEGACY_LIBRARY_NAMES.has(lib.name),
+      );
+      if (byName) {
+        if (normalizeLibraryPath(byName.path) !== normalizedPath) {
+          return this.updateLibrary(byName.id, {
+            ...byName,
+            name,
+            path: normalizedPath,
+          });
+        }
+        return byName;
+      }
+
+      const legacy = list.find((lib) => isLegacyPlaylistLibraryPath(lib.path));
+      if (legacy) {
+        return this.updateLibrary(legacy.id, {
+          ...legacy,
+          name,
+          path: normalizedPath,
+        });
+      }
+
+      return this.createLibrary(name, normalizedPath);
     } catch (err) {
       console.warn(
         "[Navidrome] ensureWeeklyFlowLibrary failed:",

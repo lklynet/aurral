@@ -32,7 +32,7 @@ const readDismissed = (user) => {
 const LastfmBanner = () => {
   const { user } = useAuth();
   const [dismissed, setDismissed] = useState(() => readDismissed(user));
-  const [listenHistoryUsername, setListenHistoryUsername] = useState(null);
+  const [listenHistoryConfigured, setListenHistoryConfigured] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -42,15 +42,17 @@ const LastfmBanner = () => {
   useEffect(() => {
     if (dismissed) return;
     getMyListeningHistory()
-      .then((d) => setListenHistoryUsername(d.listenHistoryUsername || ""))
+      .then((d) => {
+        const configured =
+          d.listenHistoryProvider === "koito"
+            ? !!String(d.listenHistoryUrl || "").trim()
+            : !!String(d.listenHistoryUsername || "").trim();
+        setListenHistoryConfigured(configured);
+      })
       .catch(() => {});
   }, [dismissed]);
 
-  if (
-    dismissed ||
-    listenHistoryUsername === null ||
-    listenHistoryUsername !== ""
-  ) {
+  if (dismissed || listenHistoryConfigured === null || listenHistoryConfigured) {
     return null;
   }
 

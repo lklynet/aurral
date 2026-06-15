@@ -2,6 +2,7 @@ import { allReleaseTypes } from "./constants";
 
 export const LEGACY_METADATA_BASE_URL = "https://brainzmash.kell.ly";
 export const DEFAULT_METADATA_BASE_URL = "https://lidarrapi.brainzmash.cc";
+export const DEFAULT_SEARCH_URL = "https://search.aurral.org";
 
 export const normalizeMetadataBaseUrl = (baseUrl) => {
   const trimmed = String(baseUrl || "").trim().replace(/\/+$/, "");
@@ -13,14 +14,41 @@ export const normalizeSettings = (savedSettings) => {
   const lastfm = savedSettings.integrations?.lastfm || {};
   const legacyMusicbrainz = savedSettings.integrations?.musicbrainz || {};
   const metadata = savedSettings.integrations?.metadata || {};
+  const search = savedSettings.integrations?.search || {};
   const parsedAutoRefreshHours = parseInt(lastfm.discoveryAutoRefreshHours, 10);
   const normalizedAutoRefreshHours = [24, 168, 720].includes(
     parsedAutoRefreshHours,
   )
     ? parsedAutoRefreshHours
     : 168;
+  const parsedRecommendationsPerRefresh = parseInt(
+    lastfm.discoveryRecommendationsPerRefresh,
+    10,
+  );
+  const normalizedRecommendationsPerRefresh = Number.isFinite(
+    parsedRecommendationsPerRefresh,
+  )
+    ? Math.min(500, Math.max(50, parsedRecommendationsPerRefresh))
+    : 200;
+  const parsedFlowsPerRefresh = parseInt(lastfm.discoveryFlowsPerRefresh, 10);
+  const normalizedFlowsPerRefresh = Number.isFinite(parsedFlowsPerRefresh)
+    ? Math.min(32, Math.max(5, parsedFlowsPerRefresh))
+    : 9;
+  const playlistArtwork = savedSettings.playlistArtwork || {};
+  const playlistArtworkStyle =
+    playlistArtwork.style === "aurral" || lastfm.discoverFlowArtworkStyle === "aurral"
+      ? "aurral"
+      : "photo";
   return {
     ...savedSettings,
+    downloadFolderPath: String(savedSettings.downloadFolderPath || "").trim(),
+    pathMappings: Array.isArray(savedSettings.pathMappings)
+      ? savedSettings.pathMappings
+      : [],
+    playlistArtwork: {
+      ...playlistArtwork,
+      style: playlistArtworkStyle,
+    },
     releaseTypes: savedSettings.releaseTypes || allReleaseTypes,
     quality: savedSettings.quality || "standard",
     security: {
@@ -53,6 +81,10 @@ export const normalizeSettings = (savedSettings) => {
         username: "",
         password: "",
         ...(savedSettings.integrations?.navidrome || {}),
+        m3uPathMode:
+          savedSettings.integrations?.navidrome?.m3uPathMode === "remote"
+            ? "remote"
+            : "local",
       },
       plex: {
         url: "",
@@ -67,7 +99,8 @@ export const normalizeSettings = (savedSettings) => {
         username: "",
         discoveryPeriod: "1month",
         discoveryAutoRefreshHours: normalizedAutoRefreshHours,
-        discoveryRecommendationsPerRefresh: 200,
+        discoveryRecommendationsPerRefresh: normalizedRecommendationsPerRefresh,
+        discoveryFlowsPerRefresh: normalizedFlowsPerRefresh,
         discoveryMode:
           lastfm.discoveryMode === "safer" || lastfm.discoveryMode === "deeper"
             ? lastfm.discoveryMode
@@ -77,11 +110,14 @@ export const normalizeSettings = (savedSettings) => {
       slskd: {
         url: "",
         apiKey: "",
+        preferredFormat: "flac",
+        preferredFormatStrict: false,
+        cleanupAfterRuns: false,
         ...(savedSettings.integrations?.slskd || {}),
       },
       ticketmaster: {
         apiKey: "",
-        searchRadiusMiles: 50,
+        searchRadiusMiles: 250,
         localDiscoveryIncludeRecommendations: true,
         localDiscoveryIncludeTrending: true,
         ...(savedSettings.integrations?.ticketmaster || {}),
@@ -98,6 +134,11 @@ export const normalizeSettings = (savedSettings) => {
         userAgentSuffix: "",
         enableNarrowFallbacks: true,
         ...metadata,
+      },
+      search: {
+        ...search,
+        url: search.url ?? DEFAULT_SEARCH_URL,
+        apiKey: search.apiKey || "",
       },
       general: {
         authUser: "",

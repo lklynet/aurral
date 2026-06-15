@@ -363,6 +363,7 @@ const normalizeFlow = (flow) => {
     mix,
     tags,
     relatedArtists,
+    discoverPresetId: String(flow?.discoverPresetId || "").trim() || null,
     createdAt:
       flow?.createdAt != null && Number.isFinite(Number(flow.createdAt))
         ? Number(flow.createdAt)
@@ -436,6 +437,22 @@ export const buildSharedTrackIdentity = (track) =>
     String(track?.releaseYear || "").trim(),
   ].join("\u0001");
 
+export const buildCoreTrackIdentity = (track) => {
+  const artistName = String(track?.artistName || "").trim().toLocaleLowerCase();
+  const trackName = String(track?.trackName || "").trim().toLocaleLowerCase();
+  if (!artistName || !trackName) return "";
+  return `${artistName}\u0001${trackName}`;
+};
+
+export const tracksShareMembership = (left, right) => {
+  if (buildSharedTrackIdentity(left) === buildSharedTrackIdentity(right)) {
+    return true;
+  }
+  const leftCore = buildCoreTrackIdentity(left);
+  const rightCore = buildCoreTrackIdentity(right);
+  return Boolean(leftCore) && leftCore === rightCore;
+};
+
 export const dedupeSharedTracks = (tracks) => {
   const seen = new Set();
   const uniqueTracks = [];
@@ -481,6 +498,7 @@ const normalizeSharedPlaylist = (playlist) => {
         : null,
     sourceName: String(playlist?.sourceName || "").trim() || null,
     sourceFlowId: String(playlist?.sourceFlowId || "").trim() || null,
+    discoverPresetId: String(playlist?.discoverPresetId || "").trim() || null,
     importedAt:
       playlist?.importedAt != null &&
       Number.isFinite(Number(playlist.importedAt))
@@ -495,36 +513,12 @@ const normalizeSharedPlaylist = (playlist) => {
   };
 };
 
-const buildLegacyFlows = (settings) => {
-  const playlists = settings.weeklyFlowPlaylists || {};
-  return LEGACY_TYPES.map((type) => {
-    const legacy = playlists[type] || {};
-    const mix =
-      type === "mix"
-        ? { discover: 0, mix: 100, trending: 0 }
-        : type === "trending"
-          ? { discover: 0, mix: 0, trending: 100 }
-          : { discover: 100, mix: 0, trending: 0, focus: 0 };
-    return normalizeFlow({
-      id: randomUUID(),
-      name: titleCase(type),
-      enabled: legacy.enabled === true,
-      nextRunAt: legacy.nextRunAt ?? null,
-      size: DEFAULT_SIZE,
-      mix,
-      deepDive: false,
-      tags: {},
-      relatedArtists: {},
-    });
-  });
-};
-
 const getStoredFlows = () => {
   if (cachedFlows) {
     return cachedFlows;
   }
   const settings = dbOps.getSettings();
-  const stored = settings.weeklyFlows;
+  const stored = settings.flows;
   if (Array.isArray(stored) && stored.length > 0) {
     const idMap = new Map();
     let needsSave = false;
@@ -546,7 +540,7 @@ const getStoredFlows = () => {
     if (idMap.size > 0 || needsSave) {
       dbOps.updateSettings({
         ...settings,
-        weeklyFlows: nextFlows,
+        flows: nextFlows,
       });
       downloadTracker.migratePlaylistTypes(idMap);
     }
@@ -559,7 +553,7 @@ const getStoredFlows = () => {
   }
   dbOps.updateSettings({
     ...settings,
-    weeklyFlows: [],
+    flows: [],
   });
   cachedFlows = [];
   return cachedFlows;
@@ -570,7 +564,7 @@ const setFlows = (flows) => {
   const current = dbOps.getSettings();
   dbOps.updateSettings({
     ...current,
-    weeklyFlows: flows,
+    flows,
   });
 };
 
@@ -579,7 +573,7 @@ const getStoredSharedPlaylists = () => {
     return cachedSharedPlaylists;
   }
   const settings = dbOps.getSettings();
-  const stored = settings.sharedFlowPlaylists;
+  const stored = settings.sharedPlaylists;
   if (Array.isArray(stored)) {
     const next = stored.map(normalizeSharedPlaylist);
     const needsSave =
@@ -591,7 +585,7 @@ const getStoredSharedPlaylists = () => {
     if (needsSave) {
       dbOps.updateSettings({
         ...settings,
-        sharedFlowPlaylists: next,
+        sharedPlaylists: next,
       });
     }
     cachedSharedPlaylists = next;
@@ -599,7 +593,7 @@ const getStoredSharedPlaylists = () => {
   }
   dbOps.updateSettings({
     ...settings,
-    sharedFlowPlaylists: [],
+    sharedPlaylists: [],
   });
   cachedSharedPlaylists = [];
   return cachedSharedPlaylists;
@@ -610,7 +604,7 @@ const setSharedPlaylists = (playlists) => {
   const current = dbOps.getSettings();
   dbOps.updateSettings({
     ...current,
-    sharedFlowPlaylists: playlists,
+    sharedPlaylists: playlists,
   });
 };
 
@@ -709,6 +703,7 @@ export const flowPlaylistConfig = {
     scheduleDays,
     scheduleTime,
     ownerUserId = null,
+    discoverPresetId = null,
   }) {
     const flows = getStoredFlows();
     assertUniqueFlowName(flows, name);
@@ -721,6 +716,7 @@ export const flowPlaylistConfig = {
       recipe,
       tags,
       relatedArtists,
+      discoverPresetId,
       scheduleDays,
       scheduleTime,
       ownerUserId,
@@ -897,20 +893,23 @@ export const flowPlaylistConfig = {
   },
 
   createSharedPlaylist({
+    id = null,
     name,
     sourceName,
     sourceFlowId,
+    discoverPresetId = null,
     tracks = [],
     ownerUserId = null,
   }) {
     const playlists = getStoredSharedPlaylists();
     assertUniqueSharedPlaylistName(playlists, name);
     const playlist = normalizeSharedPlaylist({
-      id: randomUUID(),
+      id: String(id || "").trim() || randomUUID(),
       name,
       ownerUserId,
       sourceName,
       sourceFlowId,
+      discoverPresetId,
       tracks,
       importedAt: Date.now(),
       createdAt: Date.now(),
@@ -949,6 +948,7 @@ export const flowPlaylistConfig = {
       name: nextName,
       sourceName: updates?.sourceName ?? current.sourceName,
       sourceFlowId: updates?.sourceFlowId ?? current.sourceFlowId,
+      discoverPresetId: updates?.discoverPresetId ?? current.discoverPresetId,
       tracks: Array.isArray(updates?.tracks) ? updates.tracks : current.tracks,
       importedAt: current.importedAt,
       createdAt: current.createdAt,

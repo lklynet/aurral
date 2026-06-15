@@ -1,0 +1,89 @@
+:root {
+  --sl-font: "DM Sans", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --sl-font-mono: "JetBrains Mono", SFMono-Regular, Menlo, Monaco, Consolas,
+    monospace;
+  --sl-color-white: #f7f8f6;
+  --sl-color-gray-1: #cbd2ce;
+  --sl-color-gray-2: #aab3ae;
+  --sl-color-gray-3: #6b736f;
+  --sl-color-gray-4: #3a3f3c;
+  --sl-color-gray-5: #1a1c1a;
+  --sl-color-gray-6: #111111;
+  --sl-color-black: #090909;
+  --sl-color-accent: #9fba6d;
+  --sl-color-accent-high: #bfd889;
+  --sl-color-accent-low: #243018;
+  --sl-color-text: var(--sl-color-white);
+  --sl-color-text-accent: var(--sl-color-accent-high);
+  --sl-color-hairline: rgba(255, 255, 255, 0.08);
+  --sl-color-hairline-shade: rgba(255, 255, 255, 0.04);
+  --sl-nav-bg-color: rgba(7, 9, 9, 0.88);
+  --sl-nav-border-color: rgba(255, 255, 255, 0.08);
+  --sl-sidebar-width: 18.5rem;
+  --sl-content-width: 48rem;
+  --sl-text-base: 1rem;
+  --sl-text-lg: 1.125rem;
+  --sl-line-height: 1.65;
+  --sl-border-radius: 12px;
+}
+
+:root[data-theme="light"],
+[data-theme="light"] {
+  --sl-color-white: #090909;
+  --sl-color-gray-1: #1a1c1a;
+  --sl-color-gray-2: #3a3f3c;
+  --sl-color-gray-3: #6b736f;
+  --sl-color-gray-4: #aab3ae;
+  --sl-color-gray-5: #e8ece9;
+  --sl-color-gray-6: #f4f6f4;
+  --sl-color-black: #f7f8f6;
+  --sl-color-accent: #6f8f3f;
+  --sl-color-accent-high: #4f6d28;
+  --sl-color-accent-low: #e8efd9;
+  --sl-nav-bg-color: rgba(247, 248, 246, 0.92);
+  --sl-nav-border-color: rgba(9, 9, 9, 0.08);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.site-title {
+  letter-spacing: -0.03em;
+}
+
+.header {
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.sidebar-content a[href="https://aurral.org"] {
+  color: var(--sl-color-accent-high);
+  font-weight: 600;
+}
+
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--sl-color-accent-high);
+}
+
+.sl-markdown-content a:not(:where(.not-content *)):hover {
+  color: var(--sl-color-white);
+}
+
+.sl-markdown-content img:not(:where(.not-content *)) {
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: var(--sl-border-radius);
+  display: block;
+  margin-block: 1.25rem;
+  width: 100%;
+}
+
+.expressive-code {
+  --ec-frm-frameBoxShadowColor: rgba(0, 0, 0, 0.35);
+  --ec-brdRad: 12px;
+}

@@ -20,7 +20,7 @@ const zipLocationCache = new NodeCache({
   maxKeys: 1000,
 });
 
-const DEFAULT_RADIUS_MILES = 50;
+const DEFAULT_RADIUS_MILES = 250;
 const MAX_EVENT_RESULTS = 200;
 const DEFAULT_SHOW_LIMIT = 18;
 const MAX_SHOW_LIMIT = 60;

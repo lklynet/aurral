@@ -9,8 +9,6 @@ import {
   Ellipsis,
   Ticket,
   AudioWaveform,
-  Download,
-  Ban,
   Settings,
   LogOut,
   User,
@@ -49,7 +47,10 @@ function Layout({ children, appVersion }) {
   const location = useLocation();
   const { authRequired, logout, user } = useAuth();
   const { isActive: isPlayerActive } = useAudioQueue();
-  const isArtistDetailsRoute = /^\/artist\/[^/]+$/.test(location.pathname);
+  const isArtistDetailsRoute =
+    /^\/artist\/[^/]+(\/(albums|appears-on|release\/[^/]+))?$/.test(
+      location.pathname,
+    );
 
   const updateMainScrollbar = useCallback(() => {
     const node = mainScrollRef.current;
@@ -102,31 +103,29 @@ function Layout({ children, appVersion }) {
     [location.pathname],
   );
 
-  const mobilePrimaryItems = useMemo(
-    () => [
+  const mobilePrimaryItems = useMemo(() => {
+    const items = [
       { path: "/discover", label: "Discover", icon: Sparkles },
       { path: "/library", label: "Library", icon: Library },
-      { path: "/requests", label: "Requests", icon: History },
-    ],
-    [],
-  );
-
-  const mobileOverflowItems = useMemo(() => {
-    const items = [
-      { path: "/shows", label: "Shows", icon: Ticket },
       {
         path: "/playlists",
         label: "Playlists",
         icon: AudioWaveform,
         permission: "accessFlow",
       },
-      {
-        path: "/downloads",
-        label: "Downloads",
-        icon: Download,
-        permission: "accessFlow",
-      },
-      { path: "/blocklist", label: "Blocklist", icon: Ban },
+    ];
+    return items.filter(
+      (item) =>
+        !item.permission ||
+        user?.role === "admin" ||
+        !!user?.permissions?.[item.permission],
+    );
+  }, [user]);
+
+  const mobileOverflowItems = useMemo(() => {
+    const items = [
+      { path: "/shows", label: "Shows", icon: Ticket },
+      { path: "/history", label: "History", icon: History },
       { path: "/profile", label: "Profile", icon: User },
       {
         path: "/settings",
@@ -230,7 +229,7 @@ function Layout({ children, appVersion }) {
 
         <div className="app-main-wrap">
           <main
-            className={`app-main${isArtistDetailsRoute ? " app-main--artist-details" : ""}`}
+            className={`app-main${isArtistDetailsRoute ? " app-main--artist-details" : ""}${isPlayerActive ? " app-main--player-active" : ""}`}
             ref={mainScrollRef}
             onScroll={() => {
               updateMainScrollbar();

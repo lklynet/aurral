@@ -1,0 +1,45 @@
+services:
+  aurral:
+    image: ghcr.io/lklynet/aurral:latest
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+    volumes:
+      - ${MEDIA_ROOT:-/srv/media}:/data
+      - ${CONFIG:-./config}:/config
+
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    restart: unless-stopped
+    ports:
+      - "8686:8686"
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+    volumes:
+      - ${MEDIA_ROOT:-/srv/media}:/data
+      - ${LIDARR_CONFIG:-./config/lidarr}:/config
+
+  slskd:
+    image: slskd/slskd:latest
+    restart: unless-stopped
+    ports:
+      - "5030:5030"
+    volumes:
+      - ${MEDIA_ROOT:-/srv/media}:/data
+      - ${SLSKD_CONFIG:-./config/slskd}:/app
+
+  navidrome:
+    image: deluan/navidrome:latest
+    restart: unless-stopped
+    ports:
+      - "4533:4533"
+    environment:
+      - ND_SCANNER_PURGEMISSING=always
+      - ND_DATA=/config
+    volumes:
+      - ${MEDIA_ROOT:-/srv/media}:/data:ro
+      - ${NAVIDROME_DATA:-./data/navidrome}:/config

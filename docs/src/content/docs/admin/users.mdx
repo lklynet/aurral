@@ -1,0 +1,38 @@
+---
+title: Users & authentication
+description: Local users, permissions, LAN auto-login, and reverse-proxy auth.
+---
+
+Aurral supports multiple local users with granular permissions.
+
+![Aurral user settings](../../../assets/screenshots/settings-user.webp)
+
+## Permissions
+
+Admins can control whether users may:
+
+- Access playlists and flows
+- Add artists or albums
+- Change monitoring
+- Delete artists or albums
+- Access settings
+
+## Authentication options
+
+- Local username and password accounts
+- Optional local-network auto-login for single-admin home setups
+- Reverse-proxy authentication for SSO setups
+
+## Reset admin password
+
+From the repository root:
+
+```bash
+npm run auth:reset-admin-password -- --password "new-password"
+```
+
+Generate a random password:
+
+```bash
+npm run auth:reset-admin-password -- --generate
+```

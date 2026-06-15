@@ -43,7 +43,7 @@ export const fetchCoverInBackground = async (mbid, artistName = null) => {
   const fetchPromise = (async () => {
     try {
       await getArtistImage(mbid, {
-        forceRefresh: false,
+        forceRefresh: true,
         artistName,
       });
     } catch (e) {}

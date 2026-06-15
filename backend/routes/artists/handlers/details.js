@@ -236,7 +236,11 @@ export default function registerDetails(router) {
         const metadataArtist = coreOnly
           ? null
           : await getArtistByMbid(artistMbid).catch(() => null);
-        const releaseGroups = await musicbrainzGetArtistReleaseGroups(artistMbid, selectedReleaseTypes);
+        const releaseGroups = await musicbrainzGetArtistReleaseGroups(
+          artistMbid,
+          selectedReleaseTypes,
+          { includeTrackCounts: !appearsOnLimit },
+        );
         const appearsOnReleaseGroups = coreOnly
           ? []
           : await musicbrainzGetArtistAppearsOnReleaseGroups(
@@ -299,11 +303,11 @@ export default function registerDetails(router) {
         const tagPayload = coreOnly
           ? { tags: [], genres: [] }
           : await getArtistTagPayload(resolvedMbid, name, metadataArtist);
-        const releaseGroups =
-          await musicbrainzGetArtistReleaseGroups(
-            resolvedMbid,
-            selectedReleaseTypes,
-          );
+        const releaseGroups = await musicbrainzGetArtistReleaseGroups(
+          resolvedMbid,
+          selectedReleaseTypes,
+          { includeTrackCounts: !appearsOnLimit },
+        );
         const appearsOnReleaseGroups = coreOnly
           ? []
           : await musicbrainzGetArtistAppearsOnReleaseGroups(

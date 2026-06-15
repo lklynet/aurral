@@ -1,0 +1,62 @@
+---
+title: Aurral
+description: Documentation for self-hosted music discovery on the Lidarr stack.
+template: splash
+hero:
+  tagline: The go-to discovery layer for self-hosted music stacks.
+  image:
+    file: ../../assets/logo.svg
+  actions:
+    - text: Docker setup
+      link: /getting-started/docker/
+      icon: right-arrow
+    - text: Self-hosting guide
+      link: /guides/self-hosting/
+      icon: open-book
+    - text: aurral.org
+      link: https://aurral.org
+      icon: external
+      attrs:
+        rel: noopener
+        target: _blank
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+## What Aurral does
+
+Aurral connects recommendation, requests, downloads, and playback for Lidarr-based stacks — without writing generated playlists into your main library.
+
+<CardGrid>
+  <Card title="Discover" icon="rocket">
+    Recommendations, trends, tags, discover playlists, recent releases, and nearby shows.
+  </Card>
+  <Card title="Playlists" icon="list-format">
+    Scheduled flows, static imports, Release Radar-style discover playlists, and Navidrome or Plex playback.
+  </Card>
+  <Card title="History" icon="document">
+    One timeline for Lidarr requests, slskd downloads, and Aurral playlist jobs.
+  </Card>
+  <Card title="Integrations" icon="setting">
+    Lidarr, Last.fm, ListenBrainz, Koito, slskd, Navidrome, Plex, Ticketmaster, Gotify, and webhooks.
+  </Card>
+</CardGrid>
+
+## Recommended stack
+
+| Service | Role | Required |
+| --- | --- | --- |
+| Lidarr | Library management, artist and album requests, queue status | Yes |
+| Last.fm | Personalized discovery, tags, similar artists | Recommended |
+| ListenBrainz | Optional per-user listening history | No |
+| Koito | Self-hosted per-user listening history | No |
+| slskd | Soulseek-backed downloads for flows and playlists | For downloads |
+| Navidrome | Streaming generated playlists (M3U) | No |
+| Plex | Flow playlists in Plexamp | No |
+| Ticketmaster | Local concert recommendations | No |
+
+## Where to start
+
+1. [Docker setup](/getting-started/docker/) — install Aurral and complete onboarding
+2. [Shared storage](/getting-started/storage/) — align mounts with Lidarr, slskd, and Navidrome
+3. [Self-hosting guide](/guides/self-hosting/) — discovery-first workflow for your whole stack

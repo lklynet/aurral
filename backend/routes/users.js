@@ -11,7 +11,80 @@ import {
   getListenHistoryProfile,
   hasListenHistoryProfile,
   listenHistoryProfilesEqual,
+  normalizeListenHistoryProvider,
+  normalizeListenHistoryUrl,
+  normalizeListenHistoryUsername,
+  resolveListenHistorySettings,
 } from "../services/listeningHistory.js";
+import { validateExternalUrl } from "../middleware/urlValidator.js";
+import { normalizeKoitoBaseUrl } from "../services/koitoClient.js";
+
+const buildListenHistoryUpdates = (body, existing) => {
+  const hasLegacyLastfmUpdate = Object.hasOwn(body, "lastfmUsername");
+  const hasListenHistoryProviderUpdate = Object.hasOwn(
+    body,
+    "listenHistoryProvider",
+  );
+  const hasListenHistoryUsernameUpdate = Object.hasOwn(
+    body,
+    "listenHistoryUsername",
+  );
+  const hasListenHistoryUrlUpdate = Object.hasOwn(body, "listenHistoryUrl");
+  if (
+    !hasListenHistoryProviderUpdate &&
+    !hasListenHistoryUsernameUpdate &&
+    !hasListenHistoryUrlUpdate &&
+    !hasLegacyLastfmUpdate
+  ) {
+    return null;
+  }
+
+  const provider = normalizeListenHistoryProvider(
+    hasListenHistoryProviderUpdate
+      ? body.listenHistoryProvider
+      : hasLegacyLastfmUpdate
+        ? "lastfm"
+        : existing.listenHistoryProvider,
+  );
+
+  if (provider === "koito") {
+    const rawUrl = hasListenHistoryUrlUpdate
+      ? body.listenHistoryUrl
+      : existing.listenHistoryUrl;
+    const trimmedUrl = normalizeListenHistoryUrl(rawUrl);
+    if (!trimmedUrl) {
+      return {
+        listenHistoryProvider: "koito",
+        listenHistoryUrl: null,
+        listenHistoryUsername: null,
+      };
+    }
+    const urlValidation = validateExternalUrl(trimmedUrl);
+    if (!urlValidation.valid) {
+      const error = new Error(urlValidation.error || "Invalid Koito URL");
+      error.statusCode = 400;
+      throw error;
+    }
+    return {
+      listenHistoryProvider: "koito",
+      listenHistoryUrl: normalizeKoitoBaseUrl(urlValidation.url),
+      listenHistoryUsername: null,
+    };
+  }
+
+  const username = normalizeListenHistoryUsername(
+    hasListenHistoryUsernameUpdate
+      ? body.listenHistoryUsername
+      : hasLegacyLastfmUpdate
+        ? body.lastfmUsername
+        : existing.listenHistoryUsername,
+  );
+  return {
+    listenHistoryProvider: provider,
+    listenHistoryUsername: username,
+    listenHistoryUrl: null,
+  };
+};
 
 const router = express.Router();
 
@@ -41,12 +114,12 @@ const normalizeQualityProfileId = (value) => {
 
 const DEFAULT_DISCOVER_LAYOUT = [
   { id: "recentlyAdded", enabled: true },
+  { id: "playlists", enabled: true },
   { id: "recommendedShows", enabled: true },
   { id: "recentReleases", enabled: true },
   { id: "recommended", enabled: true },
   { id: "globalTop", enabled: true },
   { id: "genreSections", enabled: true },
-  { id: "topTags", enabled: true },
 ];
 
 const FALLBACK_GENRE_SECTION_PREFIX = "fallbackGenre:";
@@ -169,27 +242,18 @@ router.patch("/:id", requireAuth, (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
     const { password, permissions, role } = req.body;
-    const hasLegacyLastfmUpdate = Object.hasOwn(req.body, "lastfmUsername");
-    const hasListenHistoryProviderUpdate = Object.hasOwn(
-      req.body,
-      "listenHistoryProvider",
-    );
-    const hasListenHistoryUsernameUpdate = Object.hasOwn(
-      req.body,
-      "listenHistoryUsername",
-    );
     const existingProfile = getListenHistoryProfile(existing);
+    let listenHistoryUpdates = null;
+    try {
+      listenHistoryUpdates = buildListenHistoryUpdates(req.body, existing);
+    } catch (error) {
+      return res.status(error.statusCode || 400).json({
+        error: error.message || "Invalid listening history settings",
+      });
+    }
     const requestedProfile = getListenHistoryProfile({
-      listenHistoryProvider: hasListenHistoryProviderUpdate
-        ? req.body.listenHistoryProvider
-        : hasLegacyLastfmUpdate
-          ? "lastfm"
-          : existing.listenHistoryProvider,
-      listenHistoryUsername: hasListenHistoryUsernameUpdate
-        ? req.body.listenHistoryUsername
-        : hasLegacyLastfmUpdate
-          ? req.body.lastfmUsername
-          : existing.listenHistoryUsername,
+      ...existing,
+      ...(listenHistoryUpdates || {}),
     });
     clearOrphanedDiscoveryCache(id, existingProfile, requestedProfile);
     if (isSelf && !isAdmin) {
@@ -197,11 +261,8 @@ router.patch("/:id", requireAuth, (req, res) => {
         return res.status(403).json({ error: "Forbidden" });
       }
       const updates = {};
-      if (hasListenHistoryProviderUpdate || hasListenHistoryUsernameUpdate) {
-        updates.listenHistoryProvider = req.body.listenHistoryProvider;
-        updates.listenHistoryUsername = req.body.listenHistoryUsername;
-      } else if (hasLegacyLastfmUpdate) {
-        updates.lastfmUsername = req.body.lastfmUsername;
+      if (listenHistoryUpdates) {
+        Object.assign(updates, listenHistoryUpdates);
       }
       if (password) {
         const { currentPassword } = req.body;
@@ -226,6 +287,7 @@ router.patch("/:id", requireAuth, (req, res) => {
           role: existing.role,
           listenHistoryProvider: existing.listenHistoryProvider,
           listenHistoryUsername: existing.listenHistoryUsername,
+          listenHistoryUrl: existing.listenHistoryUrl,
           lastfmUsername: existing.lastfmUsername,
           lidarrRootFolderPath: existing.lidarrRootFolderPath,
           lidarrQualityProfileId: existing.lidarrQualityProfileId,
@@ -248,15 +310,8 @@ router.patch("/:id", requireAuth, (req, res) => {
     }
     if (permissions !== undefined) updates.permissions = permissions;
     if (role !== undefined) updates.role = role;
-    if (hasListenHistoryProviderUpdate || hasListenHistoryUsernameUpdate) {
-      if (hasListenHistoryProviderUpdate) {
-        updates.listenHistoryProvider = req.body.listenHistoryProvider;
-      }
-      if (hasListenHistoryUsernameUpdate) {
-        updates.listenHistoryUsername = req.body.listenHistoryUsername;
-      }
-    } else if (hasLegacyLastfmUpdate) {
-      updates.lastfmUsername = req.body.lastfmUsername;
+    if (listenHistoryUpdates) {
+      Object.assign(updates, listenHistoryUpdates);
     }
     if (Object.keys(updates).length === 0) {
       return res.json({
@@ -266,6 +321,7 @@ router.patch("/:id", requireAuth, (req, res) => {
         permissions: existing.permissions,
         listenHistoryProvider: existing.listenHistoryProvider,
         listenHistoryUsername: existing.listenHistoryUsername,
+        listenHistoryUrl: existing.listenHistoryUrl,
         lastfmUsername: existing.lastfmUsername,
         lidarrRootFolderPath: existing.lidarrRootFolderPath,
         lidarrQualityProfileId: existing.lidarrQualityProfileId,
@@ -288,11 +344,8 @@ const sendListenHistorySettings = (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-    res.json({
-      listenHistoryProvider: user.listenHistoryProvider,
-      listenHistoryUsername: user.listenHistoryUsername,
-      lastfmUsername: user.lastfmUsername,
-    });
+    const settings = dbOps.getSettings();
+    res.json(resolveListenHistorySettings(user, settings));
   } catch (e) {
     res.status(500).json({
       error: "Failed to get listening history settings",

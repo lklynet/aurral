@@ -1,8 +1,27 @@
 import {
+  RELEASE_LIST_VIEW_MODE_KEY,
   TAG_COLORS,
   allReleaseTypes,
   secondaryReleaseTypes,
 } from "./constants";
+
+export const readReleaseListViewMode = () => {
+  if (typeof window === "undefined") return "grid";
+  try {
+    const value = window.localStorage.getItem(RELEASE_LIST_VIEW_MODE_KEY);
+    return value === "list" ? "list" : "grid";
+  } catch {
+    return "grid";
+  }
+};
+
+export const writeReleaseListViewMode = (mode) => {
+  if (typeof window === "undefined") return;
+  if (mode !== "grid" && mode !== "list") return;
+  try {
+    window.localStorage.setItem(RELEASE_LIST_VIEW_MODE_KEY, mode);
+  } catch {}
+};
 
 export const getTagColor = (name) => {
   if (!name) return "#121212";
@@ -37,6 +56,19 @@ export const segmentsFromScale = (count, pivot, totalSegments = 10) => {
   const scaled = 1 / (1 + Math.exp(-slope * logRatio));
   const clamped = Math.min(1, Math.max(0, scaled));
   return Math.round(clamped * totalSegments);
+};
+
+export const isVisibleLibraryAlbum = (
+  album,
+  { requestingAlbum = null } = {},
+) => {
+  if (!album || String(album.id ?? "").startsWith("pending-")) return false;
+  if (album.monitored) return true;
+  return (
+    !!requestingAlbum &&
+    (album.mbid === requestingAlbum ||
+      album.foreignAlbumId === requestingAlbum)
+  );
 };
 
 export const deduplicateAlbums = (albums) => {
@@ -144,6 +176,116 @@ export const getReleaseYear = (releaseGroupOrAlbum) => {
   return /^\d{4}$/.test(year) ? year : "";
 };
 
+export const formatReleaseDate = (releaseGroupOrAlbum) => {
+  const value =
+    releaseGroupOrAlbum?.["first-release-date"] ||
+    releaseGroupOrAlbum?.releaseDate ||
+    releaseGroupOrAlbum?.firstReleaseDate ||
+    "";
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^\d{4}$/.test(raw)) return raw;
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) {
+    const [, year, month, day] = match;
+    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+    if (!Number.isNaN(date.getTime())) {
+      return date.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+      });
+    }
+  }
+  return getReleaseYear(releaseGroupOrAlbum) || raw;
+};
+
+export const sumTrackDurationMs = (tracks = []) =>
+  (Array.isArray(tracks) ? tracks : []).reduce((total, track) => {
+    const length = Number(track?.length || track?.duration_ms || 0);
+    return Number.isFinite(length) && length > 0 ? total + length : total;
+  }, 0);
+
+export const formatAlbumDuration = (durationMs) => {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return "";
+  const totalSeconds = Math.floor(durationMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (hours > 0) return `${hours} hr ${minutes} min`;
+  return `${minutes} min`;
+};
+
+export const resolveReleaseLibraryDisplay = (libraryInfo, downloadStatus) => {
+  if (!libraryInfo?.inLibrary) {
+    return {
+      kind: "missing",
+      label: null,
+      isComplete: false,
+      isInLibrary: false,
+    };
+  }
+
+  const percent = Number(libraryInfo.percentOfTracks || 0);
+  const sizeOnDisk = Number(libraryInfo.sizeOnDisk || 0);
+  const trackFileCount = Number(libraryInfo.trackFileCount || 0);
+  const hasFiles = sizeOnDisk > 0 || trackFileCount > 0;
+  const isComplete = hasFiles;
+
+  if (isComplete) {
+    return {
+      kind: "complete",
+      label: "In library",
+      isComplete: true,
+      isInLibrary: true,
+    };
+  }
+
+  const activeStatus = String(downloadStatus?.status || "").trim();
+  if (activeStatus) {
+    const labels = {
+      adding: "Adding...",
+      searching: "Searching...",
+      downloading: "Downloading...",
+      moving: "Moving files...",
+      added: "Added",
+      processing: "Searching...",
+      failed: "Failed",
+    };
+    return {
+      kind: activeStatus === "failed" ? "failed" : "active",
+      label: labels[activeStatus] || activeStatus,
+      isComplete: false,
+      isInLibrary: true,
+    };
+  }
+
+  if (percent > 0) {
+    return {
+      kind: "incomplete",
+      label: `Incomplete · ${percent}%`,
+      isComplete: false,
+      isInLibrary: true,
+    };
+  }
+
+  if (libraryInfo.monitored) {
+    return {
+      kind: "monitored",
+      label: "Monitored",
+      isComplete: false,
+      isInLibrary: true,
+    };
+  }
+
+  return {
+    kind: "unmonitored",
+    label: null,
+    isComplete: false,
+    isInLibrary: true,
+  };
+};
+
 export const getReleaseMetric = (releaseGroup) => {
   const ratingValue =
     releaseGroup?.rating?.value != null &&
@@ -168,129 +310,43 @@ export const getReleaseMetric = (releaseGroup) => {
   };
 };
 
-const getLibraryAlbumReleaseGroupId = (album) =>
-  album?.mbid || album?.foreignAlbumId || "";
-
-const getLibraryAlbumStatusWeight = (album, downloadStatus) => {
-  const status = String(downloadStatus?.status || "").toLowerCase();
-  if (status === "failed") return 0;
-  if (
-    ["adding", "searching", "downloading", "moving", "processing"].includes(
-      status,
-    )
-  ) {
-    return 1;
-  }
-  if (album?.monitored) return 2;
-  return 3;
-};
-
-export const buildDownloadTargets = ({
-  artist,
-  libraryAlbums = [],
-  downloadStatuses = {},
-  releaseGroups = [],
-} = {}) => {
-  const allReleaseGroups =
-    releaseGroups.length > 0 ? releaseGroups : artist?.["release-groups"] || [];
-  const releaseById = new Map(
-    allReleaseGroups.filter((rg) => rg?.id).map((rg) => [rg.id, rg]),
+export const sortReleaseGroupsByPopularity = (releaseGroups = []) =>
+  [...releaseGroups].sort(
+    (a, b) => getReleaseMetric(b).sortValue - getReleaseMetric(a).sortValue,
   );
-  const seen = new Set();
-  const targets = [];
 
-  for (const album of Array.isArray(libraryAlbums) ? libraryAlbums : []) {
-    if (!album) continue;
-    const releaseGroupId = getLibraryAlbumReleaseGroupId(album);
-    const targetKey = releaseGroupId || `library:${album.id}`;
-    if (!targetKey || seen.has(targetKey)) continue;
-    seen.add(targetKey);
+export const getPopularReleaseGroups = (releaseGroups = [], limit = 6) =>
+  sortReleaseGroupsByPopularity(releaseGroups).slice(0, limit);
 
-    const percentOfTracks = Number(album.statistics?.percentOfTracks ?? 0);
-    const sizeOnDisk = Number(album.statistics?.sizeOnDisk ?? 0);
-    const isComplete = percentOfTracks >= 100 || sizeOnDisk > 0;
-    const downloadStatus = downloadStatuses?.[album.id];
-    const hasActionableState =
-      album.monitored ||
-      downloadStatus ||
-      String(album.id ?? "").startsWith("pending-");
-    if (isComplete || !hasActionableState) continue;
-
-    const releaseGroup = releaseById.get(releaseGroupId);
-    const metric = getReleaseMetric(releaseGroup);
-    const status = String(downloadStatus?.status || "").toLowerCase();
-    const statusLabel =
-      {
-        adding: "Adding",
-        searching: "Searching",
-        downloading: "Downloading",
-        moving: "Moving",
-        processing: "Searching",
-        failed: "Failed",
-      }[status] || (album.monitored ? "Monitored" : "Missing");
-
-    targets.push({
-      id: targetKey,
-      source: "library",
-      releaseGroupId,
-      title: album.albumName || releaseGroup?.title || "Untitled release",
-      year: getReleaseYear(album) || getReleaseYear(releaseGroup),
-      type: album.albumType || releaseGroup?.["primary-type"] || "Album",
-      releaseGroup,
-      libraryAlbum: album,
-      downloadStatus,
-      status,
-      statusLabel,
-      reason:
-        status === "failed" ? "Failed download" : "Incomplete library album",
-      sortBucket: getLibraryAlbumStatusWeight(album, downloadStatus),
-      metric,
-    });
-  }
-
-  for (const releaseGroup of allReleaseGroups) {
-    if (!releaseGroup?.id || seen.has(releaseGroup.id)) continue;
-    seen.add(releaseGroup.id);
-    const metric = getReleaseMetric(releaseGroup);
-    targets.push({
-      id: releaseGroup.id,
-      source: "release",
-      releaseGroupId: releaseGroup.id,
-      title: releaseGroup.title || "Untitled release",
-      year: getReleaseYear(releaseGroup),
-      type: releaseGroup["primary-type"] || "Release",
-      releaseGroup,
-      libraryAlbum: null,
-      downloadStatus: null,
-      status: "missing",
-      statusLabel: "Missing",
-      reason:
-        metric.sortValue > 0 ? "Popular missing release" : "Newest missing release",
-      sortBucket: 4,
-      metric,
-    });
-  }
-
-  return targets
-    .sort((a, b) => {
-      if (a.sortBucket !== b.sortBucket) return a.sortBucket - b.sortBucket;
-      const metricDiff = (b.metric?.sortValue || 0) - (a.metric?.sortValue || 0);
-      if (metricDiff !== 0) return metricDiff;
-      return String(b.year || "").localeCompare(String(a.year || ""));
-    })
-    .slice(0, 5);
+export const isOwnedReleaseGroup = (getAlbumStatus, releaseGroupId) => {
+  const status = getAlbumStatus?.(releaseGroupId);
+  return status?.status === "available" || status?.status === "added";
 };
 
-export const buildAurralPick = (downloadTargets = []) => {
-  const target = Array.isArray(downloadTargets) ? downloadTargets[0] : null;
-  if (!target) return null;
+export const buildAurralPick = ({
+  releaseGroups = [],
+  getAlbumStatus,
+} = {}) => {
+  const releaseGroup = sortReleaseGroupsByPopularity(releaseGroups).find(
+    (item) => item?.id && !isOwnedReleaseGroup(getAlbumStatus, item.id),
+  );
+  if (!releaseGroup) return null;
+  const metric = getReleaseMetric(releaseGroup);
   return {
-    ...target,
-    reasonLabel:
-      target.reason ||
-      (target.source === "library"
-        ? "Incomplete library album"
-        : "Newest missing release"),
+    id: releaseGroup.id,
+    source: "release",
+    releaseGroupId: releaseGroup.id,
+    title: releaseGroup.title || "Untitled release",
+    year: getReleaseYear(releaseGroup),
+    type: releaseGroup["primary-type"] || "Release",
+    releaseGroup,
+    libraryAlbum: null,
+    downloadStatus: null,
+    status: "missing",
+    statusLabel: "Missing",
+    reason: "Popular missing release",
+    metric,
+    reasonLabel: "Popular missing release",
   };
 };
 
@@ -310,19 +366,6 @@ export const getArtistReleaseGridColumnCount = () => {
   if (window.matchMedia("(min-width: 1024px)").matches) return 6;
   if (window.matchMedia("(min-width: 640px)").matches) return 3;
   return 2;
-};
-
-export const getExpandedReleaseRenderAfterIndex = (
-  expandedReleaseIndex,
-  itemCount,
-  gridColumnCount,
-) => {
-  if (expandedReleaseIndex < 0) return -1;
-  return Math.min(
-    expandedReleaseIndex +
-      (gridColumnCount - 1 - (expandedReleaseIndex % gridColumnCount)),
-    itemCount - 1,
-  );
 };
 
 export const isLibraryPlaybackTrack = (track) =>

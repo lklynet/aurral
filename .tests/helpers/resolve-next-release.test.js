@@ -89,6 +89,43 @@ test("resolveNextRelease reuses an existing head tag on reruns", () => {
   });
 });
 
+test("resolveNextRelease computes first dev prerelease from latest stable tag", () => {
+  const result = resolveNextRelease({
+    branch: "dev",
+    allTags: ["v1.76.0", "v1.75.0"],
+  });
+
+  assert.deepEqual(result, {
+    tag: "v1.76.1-dev.1",
+    version: "1.76.1-dev.1",
+    channel: "dev",
+    isPrerelease: true,
+    makeLatest: false,
+    reusedExistingTag: false,
+  });
+});
+
+test("resolveNextRelease increments existing dev prereleases independently of test", () => {
+  const result = resolveNextRelease({
+    branch: "dev",
+    allTags: [
+      "v1.76.0",
+      "v1.76.1-test.1",
+      "v1.76.1-test.2",
+      "v1.76.1-dev.1",
+    ],
+  });
+
+  assert.deepEqual(result, {
+    tag: "v1.76.1-dev.2",
+    version: "1.76.1-dev.2",
+    channel: "dev",
+    isPrerelease: true,
+    makeLatest: false,
+    reusedExistingTag: false,
+  });
+});
+
 test("resolveNextRelease ignores malformed tags and can bootstrap", () => {
   const result = resolveNextRelease({
     branch: "main",

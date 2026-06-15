@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import { Loader, Music, Star } from "lucide-react";
 import AddAlbumButton from "../../../components/AddAlbumButton";
+import { useImageGradientColors } from "../../../hooks/useImageGradientColors";
 import { getReleaseGroupTracks } from "../../../utils/api";
 import { buildAurralPick, getReleaseMetric } from "../utils";
 import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
@@ -43,8 +44,11 @@ const formatDuration = (track) => {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 };
 
+const TRACK_PREVIEW_LIMIT = 6;
+
 export function ArtistDetailsDownloadTargets({
-  targets,
+  releaseGroups = [],
+  getAlbumStatus,
   artist,
   albumCovers,
   artistCoverImage,
@@ -54,6 +58,7 @@ export function ArtistDetailsDownloadTargets({
   artistName = "",
   playbackSource = null,
   onAddTrackToPlaylist,
+  resolveMembershipTrack,
   playlists,
   playlistsLoading,
   playlistSavingKey,
@@ -61,11 +66,18 @@ export function ArtistDetailsDownloadTargets({
   getDefaultPlaylistName,
   onLoadPlaylists,
 }) {
-  const missingReleasePick =
-    targets.find((target) => target.source === "release") ||
-    buildAurralPick(targets);
+  const missingReleasePick = useMemo(
+    () => buildAurralPick({ releaseGroups, getAlbumStatus }),
+    [releaseGroups, getAlbumStatus],
+  );
+  const coverSrc =
+    (missingReleasePick &&
+      (albumCovers?.[missingReleasePick.releaseGroupId] || artistCoverImage)) ||
+    "";
+  const gradientColors = useImageGradientColors(coverSrc);
   const [tracks, setTracks] = useState([]);
   const [loadingTracks, setLoadingTracks] = useState(false);
+  const [showAllTracks, setShowAllTracks] = useState(false);
   useEffect(() => {
     const releaseGroupId = missingReleasePick?.releaseGroupId;
     const releaseGroup = missingReleasePick?.releaseGroup;
@@ -107,6 +119,16 @@ export function ArtistDetailsDownloadTargets({
     missingReleasePick?.title,
     missingReleasePick?.type,
   ]);
+
+  useEffect(() => {
+    setShowAllTracks(false);
+  }, [missingReleasePick?.releaseGroupId]);
+
+  const visibleTracks =
+    showAllTracks || tracks.length <= TRACK_PREVIEW_LIMIT
+      ? tracks
+      : tracks.slice(0, TRACK_PREVIEW_LIMIT);
+  const hasHiddenTracks = tracks.length > TRACK_PREVIEW_LIMIT;
 
   const normalizeTrack = useCallback(
     (track, index) =>
@@ -161,7 +183,25 @@ export function ArtistDetailsDownloadTargets({
 
   return (
     <section className="artist-section">
-      <div className="artist-pick-panel">
+      <div
+        className={`artist-pick-panel${
+          gradientColors ? " artist-pick-panel--gradient" : ""
+        }`}
+        style={
+          gradientColors
+            ? {
+                "--artist-pick-gradient-top": gradientColors.top,
+                "--artist-pick-gradient-bottom": gradientColors.bottom,
+              }
+            : undefined
+        }
+      >
+        {gradientColors ? (
+          <span className="artist-pick-panel__backdrop" aria-hidden="true">
+            <span className="artist-pick-panel__backdrop-gradient" />
+            <span className="artist-pick-panel__backdrop-wash" />
+          </span>
+        ) : null}
         <div className="artist-pick-panel__grid">
           <div className="artist-media-cell">
             <PickCover
@@ -221,11 +261,9 @@ export function ArtistDetailsDownloadTargets({
                   onShufflePlay={handleShufflePlay}
                 />
                 <div className="artist-pick-panel__track-grid">
-                {tracks.map((track, index) => {
+                {visibleTracks.map((track, index) => {
                   const currentTrackId = String(
-                    track.id ??
-                      track.mbid ??
-                      `${missingReleasePick.releaseGroupId}-${index}`,
+                    track.id ?? track.mbid ?? `pick-${index}`,
                   );
                   const isPlaying = isTrackPlaying(currentTrackId);
                   const isLoadingPreview = isTrackLoading(currentTrackId);
@@ -254,6 +292,14 @@ export function ArtistDetailsDownloadTargets({
                       </span>
                       {onAddTrackToPlaylist ? (
                         <TrackPlaylistMenu
+                          track={
+                            resolveMembershipTrack
+                              ? resolveMembershipTrack(
+                                  track,
+                                  missingReleasePick.releaseGroup,
+                                )
+                              : track
+                          }
                           playlists={playlists}
                           loading={playlistsLoading}
                           saving={playlistSavingKey === currentTrackId}
@@ -279,6 +325,17 @@ export function ArtistDetailsDownloadTargets({
                   );
                 })}
                 </div>
+                {hasHiddenTracks ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm artist-pick-panel__show-all"
+                    onClick={() => setShowAllTracks((current) => !current)}
+                  >
+                    {showAllTracks
+                      ? "Show fewer tracks"
+                      : `Show all ${tracks.length} tracks`}
+                  </button>
+                ) : null}
               </>
             ) : null}
           </div>
@@ -289,7 +346,8 @@ export function ArtistDetailsDownloadTargets({
 }
 
 ArtistDetailsDownloadTargets.propTypes = {
-  targets: PropTypes.arrayOf(PropTypes.object).isRequired,
+  releaseGroups: PropTypes.arrayOf(PropTypes.object),
+  getAlbumStatus: PropTypes.func.isRequired,
   artist: PropTypes.object,
   albumCovers: PropTypes.object,
   artistCoverImage: PropTypes.string,

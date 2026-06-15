@@ -31,6 +31,12 @@ jobs:
       - name: Build app
         run: npm run build
 
+      - name: Build docs
+        run: |
+          npm ci
+          npm run build
+        working-directory: docs
+
       - name: Start app
         run: |
           npm start > /tmp/aurral.log 2>&1 &

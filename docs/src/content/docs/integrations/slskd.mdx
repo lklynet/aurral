@@ -1,0 +1,22 @@
+---
+title: slskd
+description: Soulseek-backed downloads for flows and playlists.
+---
+
+slskd handles acquisition for flow and playlist tracks.
+
+![Aurral history with slskd downloads](../../../assets/screenshots/history.webp)
+
+## Setup
+
+1. Run slskd with the same `/data` mount as Aurral.
+2. Set slskd's download directory to `/data/downloads/slskd/complete`.
+3. Connect slskd in Aurral onboarding or **Settings → Integrations → slskd**.
+
+Aurral picks up completed files from slskd's download path and moves them into your `DOWNLOAD_FOLDER`.
+
+If slskd runs on Windows and reports host paths such as `N:\...`, mount the parent folder into Aurral and configure path mappings under **Settings → Playlists**, or run **Test library access** from Lidarr settings to auto-detect them. See [Shared storage](/getting-started/storage/#windows-and-mixed-docker-setups).
+
+## Worker settings
+
+Configure format matching, reuse behavior, and cleanup options in **Settings → Playlists**.

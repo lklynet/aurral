@@ -33,11 +33,17 @@ import {
   CreatePlaylistModal,
   RenamePlaylistModal,
 } from "../components/PlaylistModals";
+import PillToggle from "../components/PillToggle";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useFlowStatus } from "./flows/useFlowStatus";
-import { formatTrackCountLabel } from "./flows/flowStats";
+import {
+  formatTrackCountLabel,
+  getFlowDisplayTrackCount,
+  isReleaseRadarFlow,
+} from "./flows/flowStats";
+import { getPlaylistRunActivity } from "./flows/flowRunActivity";
 import {
   PlaylistLibraryItem,
   PlaylistDetailHero,
@@ -47,10 +53,12 @@ import {
 } from "./flows/FlowPlaylistUI";
 import {
   FlowEmptyState,
+  FlowDetailPlaceholder,
   ConfirmDeleteModal,
   ConfirmDisableModal,
   FlowImportReviewModal,
   FlowFormFields,
+  ReleaseRadarRecipeFields,
   FlowTracksPanel,
   MoreMenu,
 } from "./FlowPageComponents";
@@ -389,6 +397,39 @@ const isFlowDirty = (flow, draft) => {
   return JSON.stringify(base) !== JSON.stringify(next);
 };
 
+const normalizeScheduleDraftForCompare = (draft) => ({
+  size: Number(draft?.size ?? 0),
+  scheduleDays: normalizeScheduleDays(draft?.scheduleDays),
+  scheduleTime: normalizeScheduleTime(draft?.scheduleTime),
+});
+
+const isReleaseRadarFlowDirty = (flow, draft) => {
+  const base = normalizeScheduleDraftForCompare(flowToForm(flow));
+  const next = normalizeScheduleDraftForCompare(draft);
+  return JSON.stringify(base) !== JSON.stringify(next);
+};
+
+const buildReleaseRadarFlowFromForm = (flow, draft) => {
+  const sizeValue = Number(draft?.size);
+  if (!Number.isFinite(sizeValue) || sizeValue <= 0) {
+    throw new Error("Max tracks must be a positive number");
+  }
+  const scheduleDays = normalizeScheduleDays(draft?.scheduleDays);
+  if (scheduleDays.length === 0) {
+    throw new Error("Select at least one day for this flow schedule");
+  }
+  return {
+    name: String(flow?.name ?? "").trim(),
+    size: Math.round(sizeValue),
+    mix: flow?.mix || DEFAULT_MIX,
+    tags: normalizeFlowEntryList(flow?.tags),
+    relatedArtists: normalizeFlowEntryList(flow?.relatedArtists),
+    deepDive: flow?.deepDive === true,
+    scheduleDays,
+    scheduleTime: normalizeScheduleTime(draft?.scheduleTime),
+  };
+};
+
 const normalizeSharedTrackEntry = (track) => {
   if (!track || typeof track !== "object" || Array.isArray(track)) return null;
   const artistName = String(
@@ -588,10 +629,37 @@ const LIBRARY_SIDEBAR_COLLAPSED_KEY = "aurral.playlists.sidebarCollapsed";
 
 function readLibrarySidebarCollapsed() {
   try {
-    return localStorage.getItem(LIBRARY_SIDEBAR_COLLAPSED_KEY) === "1";
+    return (
+      globalThis.localStorage?.getItem(LIBRARY_SIDEBAR_COLLAPSED_KEY) === "1"
+    );
   } catch {
     return false;
   }
+}
+
+const FLOW_MOBILE_LAYOUT_QUERY = "(max-width: 767px)";
+
+function useFlowMobileLayout() {
+  const [isMobileLayout, setIsMobileLayout] = useState(() =>
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia(FLOW_MOBILE_LAYOUT_QUERY).matches
+      : false,
+  );
+
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
+      return undefined;
+    }
+    const mediaQuery = window.matchMedia(FLOW_MOBILE_LAYOUT_QUERY);
+    const handleChange = (event) => setIsMobileLayout(event.matches);
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
+
+  return isMobileLayout;
 }
 
 function FlowPage() {
@@ -617,11 +685,13 @@ function FlowPage() {
   );
   const [detailTab, setDetailTab] = useState("tracks");
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
+  const isMobileLayout = useFlowMobileLayout();
   const [optimisticEnabled, setOptimisticEnabled] = useState({});
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [convertingId, setConvertingId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
+  const [togglingToEnabled, setTogglingToEnabled] = useState(null);
   const [rerunningId, setRerunningId] = useState(null);
   const [renameModal, setRenameModal] = useState(null);
   const [artworkRevisionById, setArtworkRevisionById] = useState({});
@@ -635,6 +705,7 @@ function FlowPage() {
   const [applyingFlowNameId, setApplyingFlowNameId] = useState(null);
   const [applyingSharedPlaylistNameId, setApplyingSharedPlaylistNameId] = useState(null);
   const [reSearchingTrackIds, setReSearchingTrackIds] = useState({});
+  const [savingToPlaylistId, setSavingToPlaylistId] = useState(null);
   const [deletingTrackId, setDeletingTrackId] = useState(null);
   const [tracksLoadingByFlowId, setTracksLoadingByFlowId] = useState({});
   const [tracksErrorByFlowId, setTracksErrorByFlowId] = useState({});
@@ -708,14 +779,18 @@ function FlowPage() {
     });
     try {
       const draft = simpleDrafts[flow.id] || flowToForm(flow);
-      const sourceError = getUnavailableFlowSourceMessage(
-        draft,
-        disabledFlowSources,
-      );
-      if (sourceError) {
-        throw new Error(sourceError);
+      if (!isReleaseRadarFlow(flow)) {
+        const sourceError = getUnavailableFlowSourceMessage(
+          draft,
+          disabledFlowSources,
+        );
+        if (sourceError) {
+          throw new Error(sourceError);
+        }
       }
-      const payload = buildFlowFromForm(draft);
+      const payload = isReleaseRadarFlow(flow)
+        ? buildReleaseRadarFlowFromForm(flow, draft)
+        : buildFlowFromForm(draft);
       const response = await updateFlow(flow.id, payload);
       const updatedFlow = response?.flow || {
         ...flow,
@@ -748,21 +823,28 @@ function FlowPage() {
     });
     try {
       const currentDraft = simpleDrafts[flow.id] ?? flowToForm(flow);
-      const sourceError = getUnavailableFlowSourceMessage(
-        currentDraft,
-        disabledFlowSources,
-      );
-      if (sourceError) {
-        throw new Error(sourceError);
+      if (!isReleaseRadarFlow(flow)) {
+        const sourceError = getUnavailableFlowSourceMessage(
+          currentDraft,
+          disabledFlowSources,
+        );
+        if (sourceError) {
+          throw new Error(sourceError);
+        }
       }
       const nextName =
         nameOverride !== undefined
           ? String(nameOverride).trim()
           : String(currentDraft?.name ?? flow.name ?? "").trim();
-      const payload = buildFlowFromForm({
-        ...flowToForm(flow),
-        name: nextName,
-      });
+      const payload = isReleaseRadarFlow(flow)
+        ? {
+            ...buildReleaseRadarFlowFromForm(flow, currentDraft),
+            name: nextName,
+          }
+        : buildFlowFromForm({
+            ...flowToForm(flow),
+            name: nextName,
+          });
       const response = await updateFlow(flow.id, payload);
       const updatedFlow = response?.flow || {
         ...flow,
@@ -890,16 +972,16 @@ function FlowPage() {
   };
 
   const fetchFlowTracks = useCallback(
-    async (flowId, { showSpinner = true, includeFailed = false } = {}) => {
+    async (flowId, { showSpinner = true, signal } = {}) => {
       if (!flowId) return;
       if (showSpinner) {
         setTracksLoadingByFlowId((prev) => ({ ...prev, [flowId]: true }));
       }
       setTracksErrorByFlowId((prev) => ({ ...prev, [flowId]: "" }));
       try {
-        const jobs = await getFlowJobs(flowId, 500);
+        const jobs = await getFlowJobs(flowId, 500, { signal });
+        if (signal?.aborted) return;
         const normalized = (Array.isArray(jobs) ? jobs : [])
-          .filter((job) => includeFailed || job?.status !== "failed")
           .map((job) => ({
             ...job,
             albumName: job?.albumName || null,
@@ -914,12 +996,13 @@ function FlowPage() {
           [flowId]: normalized,
         }));
       } catch (err) {
+        if (signal?.aborted) return;
         const message =
           err.response?.data?.message || err.message || "Failed to load tracks";
         setTracksErrorByFlowId((prev) => ({ ...prev, [flowId]: message }));
         showError(message);
       } finally {
-        if (showSpinner) {
+        if (showSpinner && !signal?.aborted) {
           setTracksLoadingByFlowId((prev) => ({ ...prev, [flowId]: false }));
         }
       }
@@ -929,6 +1012,7 @@ function FlowPage() {
 
   const handleToggleEnabled = async (flow, nextEnabled) => {
     setTogglingId(flow.id);
+    setTogglingToEnabled(nextEnabled);
     try {
       await setFlowEnabled(flow.id, nextEnabled);
       showSuccess(nextEnabled ? "Flow enabled" : "Flow disabled");
@@ -944,6 +1028,7 @@ function FlowPage() {
         return next;
       });
       setTogglingId(null);
+      setTogglingToEnabled(null);
     }
   };
 
@@ -960,10 +1045,7 @@ function FlowPage() {
       );
       await fetchStatus();
       if (selectedId === flow.id) {
-        await fetchFlowTracks(flow.id, {
-          showSpinner: false,
-          includeFailed: true,
-        });
+        await fetchFlowTracks(flow.id, { showSpinner: false });
       }
     } catch (err) {
       showError(
@@ -1050,7 +1132,19 @@ function FlowPage() {
       }
     }
     if (!filteredCollection.length) {
-      if (!navPlaylistId && selectedId) setSelectedId(null);
+      if (!navPlaylistId && selectedId) {
+        setSelectedId(null);
+        setMobileShowDetail(false);
+      }
+      return;
+    }
+    if (
+      isMobileLayout &&
+      selectedId &&
+      !filteredCollection.some((entry) => entry.id === selectedId)
+    ) {
+      setSelectedId(null);
+      setMobileShowDetail(false);
       return;
     }
     if (
@@ -1064,30 +1158,42 @@ function FlowPage() {
       return;
     }
     if (
-      !selectedId ||
-      !filteredCollection.some((entry) => entry.id === selectedId)
+      !isMobileLayout &&
+      (!selectedId ||
+        !filteredCollection.some((entry) => entry.id === selectedId))
     ) {
       setSelectedId(filteredCollection[0].id);
     }
   }, [
     collection,
     filteredCollection,
+    isMobileLayout,
     location.pathname,
     location.state?.selectedPlaylistId,
     navigate,
     selectedId,
   ]);
 
-  const selectedIncludeFailed = selectedEntry?.kind === "shared";
-
   useEffect(() => {
     if (!selectedId) return;
-    fetchFlowTracks(selectedId, { includeFailed: selectedIncludeFailed });
-  }, [selectedId, selectedIncludeFailed, fetchFlowTracks]);
+    const controller = new AbortController();
+    fetchFlowTracks(selectedId, { signal: controller.signal });
+    return () => controller.abort();
+  }, [selectedId, fetchFlowTracks]);
 
   const selectPlaylist = (entry) => {
+    if (
+      isMobileLayout &&
+      selectedId === entry.id &&
+      mobileShowDetail
+    ) {
+      setMobileShowDetail(false);
+      return;
+    }
     setSelectedId(entry.id);
-    setMobileShowDetail(true);
+    if (isMobileLayout) {
+      setMobileShowDetail(true);
+    }
     setDetailTab("tracks");
     setRenameModal(null);
   };
@@ -1334,7 +1440,7 @@ function FlowPage() {
     }
   };
 
-  const loadPlaylistsForMenu = async () => {
+  const loadPlaylistsForMenu = useCallback(async () => {
     setPlaylistsLoading(true);
     setPlaylistMenuError("");
     try {
@@ -1350,7 +1456,7 @@ function FlowPage() {
     } finally {
       setPlaylistsLoading(false);
     }
-  };
+  }, [fetchStatus, showError]);
 
   const getDefaultTrackPlaylistName = (track) =>
     getNextPlaylistName(`${track?.artistName || "Artist"} Picks`);
@@ -1367,6 +1473,13 @@ function FlowPage() {
     }
     setPlaylistMenuError("");
     setPlaylistMenuSavingKey(String(track?.id ?? ""));
+    const targetPlaylistId =
+      target?.mode === "new"
+        ? null
+        : String(target?.playlistId || "").trim() || null;
+    if (targetPlaylistId) {
+      setSavingToPlaylistId(targetPlaylistId);
+    }
     const sourceTrackJobId = track?.id || null;
     try {
       if (target?.mode === "new") {
@@ -1407,10 +1520,7 @@ function FlowPage() {
       }
       await fetchStatus();
       if (selectedId) {
-        await fetchFlowTracks(selectedId, {
-          showSpinner: false,
-          includeFailed: true,
-        });
+        await fetchFlowTracks(selectedId, { showSpinner: false });
       }
     } catch (err) {
       const message =
@@ -1422,6 +1532,7 @@ function FlowPage() {
       showError(message);
     } finally {
       setPlaylistMenuSavingKey("");
+      setSavingToPlaylistId(null);
     }
   };
 
@@ -1563,10 +1674,7 @@ function FlowPage() {
       await deleteSharedPlaylistTrack(playlistId, jobId);
       showSuccess(`Removed ${track.trackName || "track"}`);
       await fetchStatus();
-      await fetchFlowTracks(playlistId, {
-        showSpinner: false,
-        includeFailed: true,
-      });
+      await fetchFlowTracks(playlistId, { showSpinner: false });
     } catch (err) {
       showError(
         err.response?.data?.message ||
@@ -1606,10 +1714,7 @@ function FlowPage() {
       await reSearchSharedPlaylistTrack(playlistId, jobId);
       showSuccess(`Re-searching ${track.trackName}`);
       await fetchStatus();
-      await fetchFlowTracks(playlistId, {
-        showSpinner: false,
-        includeFailed: true,
-      });
+      await fetchFlowTracks(playlistId, { showSpinner: false });
     } catch (err) {
       const message =
         err.response?.data?.message ||
@@ -1617,10 +1722,7 @@ function FlowPage() {
         err.message ||
         "Failed to re-search track";
       showError(message);
-      await fetchFlowTracks(playlistId, {
-        showSpinner: false,
-        includeFailed: true,
-      });
+      await fetchFlowTracks(playlistId, { showSpinner: false });
     } finally {
       setReSearchingTrackIds((prev) => {
         const next = { ...prev };
@@ -1683,12 +1785,15 @@ function FlowPage() {
     selectedEntry?.ownerUsername || user?.username || null;
   const selectedEntryTotalTracks = (() => {
     if (!selectedEntry) return 0;
-    const fromEntry =
-      selectedEntry.kind === "flow"
-        ? Number(selectedFlow?.size || 0)
-        : Number(selectedPlaylist?.trackCount || 0);
+    if (selectedEntry.kind === "flow") {
+      return getFlowDisplayTrackCount(
+        selectedFlow,
+        selectedStats,
+        selectedTracks.length,
+      );
+    }
     return Math.max(
-      fromEntry,
+      Number(selectedPlaylist?.trackCount || 0),
       selectedTracks.length,
       Number(selectedStats?.total || 0),
     );
@@ -1735,12 +1840,46 @@ function FlowPage() {
   const simpleError = selectedFlow ? simpleErrors[selectedFlow.id] : null;
   const flowHasChanges =
     selectedFlow && simpleDraft
-      ? isFlowDirty(selectedFlow, simpleDraft)
+      ? isReleaseRadarFlow(selectedFlow)
+        ? isReleaseRadarFlowDirty(selectedFlow, simpleDraft)
+        : isFlowDirty(selectedFlow, simpleDraft)
       : false;
   const flowCanExport = Number(selectedStats?.total || 0) > 0;
   const flowCanConvert = Number(selectedStats?.done || 0) > 0;
+  const countReSearchingForPlaylist = (playlistId) => {
+    if (!playlistId) return 0;
+    const tracks = tracksByFlowId[playlistId];
+    if (!Array.isArray(tracks) || tracks.length === 0) return 0;
+    let count = 0;
+    for (const track of tracks) {
+      if (track?.id && reSearchingTrackIds[track.id]) count += 1;
+    }
+    return count;
+  };
+  const getEntryActivityMessage = (entry) => {
+    if (!entry?.id) return null;
+    const isFlow = entry.kind === "flow";
+    const activity = getPlaylistRunActivity({
+      playlistId: entry.id,
+      kind: isFlow ? "flow" : "playlist",
+      enabled: isFlow ? entry.enabled === true : true,
+      status,
+      stats: getPlaylistStats(entry.id),
+      rerunning: rerunningId === entry.id,
+      togglingToEnabled:
+        togglingId === entry.id ? togglingToEnabled : null,
+      addingTrack: savingToPlaylistId === entry.id,
+      reSearchingCount: countReSearchingForPlaylist(entry.id),
+    });
+    return activity?.message || null;
+  };
+  const selectedActivityMessage = selectedEntry
+    ? getEntryActivityMessage(selectedEntry)
+    : null;
   const flowCanRunNow =
-    selectedFlow?.enabled === true && rerunningId !== selectedFlow?.id;
+    selectedFlow?.enabled === true &&
+    rerunningId !== selectedFlow?.id &&
+    !selectedActivityMessage;
   const renameModalSaving =
     renameModal?.kind === "flow"
       ? applyingFlowNameId === renameModal.id
@@ -1754,6 +1893,259 @@ function FlowPage() {
         ? sharedPlaylistErrors[renameModal.id] || ""
         : "";
 
+  const selectedDetailMoreMenu = (
+    <MoreMenu activeButtonClass="btn-neutral-active">
+      {selectedIsFlow && selectedFlow ? (
+        <>
+          <button
+            type="button"
+            className="artist-menu-item"
+            onClick={() => handleRunNow(selectedFlow)}
+            disabled={!flowCanRunNow}
+          >
+            <span className="artist-menu-item__main">
+              {rerunningId === selectedFlow.id ? (
+                <Loader2 className="artist-icon-sm animate-spin" />
+              ) : (
+                <Play className="artist-icon-sm" />
+              )}
+              Run now
+            </span>
+          </button>
+          <button
+            type="button"
+            className="artist-menu-item"
+            onClick={() => handleConvertFlowToStatic(selectedFlow)}
+            disabled={!flowCanConvert || convertingId === selectedFlow.id}
+          >
+            <span className="artist-menu-item__main">
+              <FilePlus2 className="artist-icon-sm" />
+              Convert to static
+            </span>
+          </button>
+          <button
+            type="button"
+            className="artist-menu-item"
+            onClick={() => handleExportFlow(selectedFlow)}
+            disabled={!flowCanExport}
+          >
+            <span className="artist-menu-item__main">
+              <Download className="artist-icon-sm" />
+              Export JSON
+            </span>
+          </button>
+          <div className="flow-page__menu-divider" />
+          <button
+            type="button"
+            className="artist-menu-item artist-menu-item--danger"
+            onClick={() => handleDelete(selectedFlow)}
+            disabled={deletingId === selectedFlow.id}
+          >
+            <span className="artist-menu-item__main">
+              <Trash2 className="artist-icon-sm" />
+              Delete flow
+            </span>
+          </button>
+        </>
+      ) : selectedPlaylist ? (
+        <>
+          <button
+            type="button"
+            className="artist-menu-item"
+            onClick={() => handleExportFlow(selectedPlaylist)}
+          >
+            <span className="artist-menu-item__main">
+              <Download className="artist-icon-sm" />
+              Export JSON
+            </span>
+          </button>
+          <div className="flow-page__menu-divider" />
+          <button
+            type="button"
+            className="artist-menu-item artist-menu-item--danger"
+            onClick={() => handleDeleteSharedPlaylist(selectedPlaylist)}
+            disabled={deletingId === selectedPlaylist.id}
+          >
+            <span className="artist-menu-item__main">
+              <Trash2 className="artist-icon-sm" />
+              Delete playlist
+            </span>
+          </button>
+        </>
+      ) : null}
+    </MoreMenu>
+  );
+
+  const selectedDetailBody = selectedEntry ? (
+    <>
+      {selectedIsFlow ? (
+        <FlowDetailTabs activeTab={detailTab} onChange={setDetailTab} />
+      ) : null}
+      <div className="flow-page__detail-panel">
+        {!selectedIsFlow || detailTab === "tracks" ? (
+          selectedIsFlow ? (
+            <FlowTracksPanel
+              tracks={selectedTracks}
+              loading={selectedTracksLoading}
+              error={selectedTracksError}
+              playbackSource={playbackSource}
+              activityHint={selectedActivityMessage}
+              emptyMessage={
+                flowEnabled
+                  ? "No tracks generated for this flow yet."
+                  : "Enable this flow to generate tracks."
+              }
+              playlists={sharedPlaylists}
+              playlistsLoading={playlistsLoading}
+              playlistSavingKey={playlistMenuSavingKey}
+              playlistMenuError={playlistMenuError}
+              getDefaultPlaylistName={getDefaultTrackPlaylistName}
+              onLoadPlaylists={loadPlaylistsForMenu}
+              onAddTrackToPlaylist={handleAddTrackToPlaylist}
+              onNavigateArtist={handleNavigateArtist}
+            />
+          ) : selectedPlaylist ? (
+            <FlowTracksPanel
+              tracks={selectedTracks}
+              loading={selectedTracksLoading}
+              error={selectedTracksError}
+              playbackSource={playbackSource}
+              activityHint={selectedActivityMessage}
+              emptyMessage="No tracks in this playlist yet."
+              useTrackContextMenu
+              playlists={sharedPlaylists}
+              playlistsLoading={playlistsLoading}
+              playlistSavingKey={playlistMenuSavingKey}
+              playlistMenuError={playlistMenuError}
+              excludedPlaylistIds={[selectedPlaylist.id]}
+              getDefaultPlaylistName={getDefaultTrackPlaylistName}
+              onLoadPlaylists={loadPlaylistsForMenu}
+              reSearchingTrackIds={reSearchingTrackIds}
+              deletingTrackId={deletingTrackId}
+              onReSearchTrack={(track) =>
+                handleReSearchSharedPlaylistTrack(selectedPlaylist.id, track)
+              }
+              onDeleteTrack={(track) =>
+                handleDeleteSharedPlaylistTrack(selectedPlaylist.id, track)
+              }
+              onAddTrackToPlaylist={handleAddTrackToPlaylist}
+              onMoveTrackToPlaylist={(track, target) =>
+                handleMoveTrackToPlaylist(track, target, selectedPlaylist.id)
+              }
+              onNavigateArtist={handleNavigateArtist}
+            />
+          ) : null
+        ) : null}
+        {detailTab === "recipe" && selectedIsFlow && simpleDraft ? (
+          <div className="flow-page__form flow-page__detail-recipe">
+            {isReleaseRadarFlow(selectedFlow) ? (
+              <ReleaseRadarRecipeFields
+                draft={simpleDraft}
+                inputClassName="flow-page__field-control"
+                errorMessage={simpleError}
+                onDraftChange={(updater) =>
+                  setSimpleDrafts((prev) => {
+                    const base =
+                      prev[selectedFlow.id] ?? flowToForm(selectedFlow);
+                    return {
+                      ...prev,
+                      [selectedFlow.id]: updater(base),
+                    };
+                  })
+                }
+                onClearError={() => {
+                  if (simpleErrors[selectedFlow.id]) {
+                    setSimpleErrors((prev) => {
+                      const next = { ...prev };
+                      delete next[selectedFlow.id];
+                      return next;
+                    });
+                  }
+                }}
+              />
+            ) : (
+              <FlowFormFields
+                draft={simpleDraft}
+                remaining={Number(simpleDraft.size || 0)}
+                inputClassName="flow-page__field-control"
+                errorMessage={simpleError}
+                onDraftChange={(updater) =>
+                  setSimpleDrafts((prev) => {
+                    const base =
+                      prev[selectedFlow.id] ?? flowToForm(selectedFlow);
+                    return {
+                      ...prev,
+                      [selectedFlow.id]: updater(base),
+                    };
+                  })
+                }
+                onClearError={() => {
+                  if (simpleErrors[selectedFlow.id]) {
+                    setSimpleErrors((prev) => {
+                      const next = { ...prev };
+                      delete next[selectedFlow.id];
+                      return next;
+                    });
+                  }
+                }}
+                normalizeMixPercent={normalizeMixPercent}
+                disabledSources={disabledFlowSources}
+              />
+            )}
+            <div className="flow-page__recipe-actions">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={applyingFlowId === selectedFlow.id}
+                onClick={() => handleCancelSimple(selectedFlow)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm${flowHasChanges ? " btn-primary" : " btn-secondary"}`}
+                disabled={
+                  !flowHasChanges ||
+                  Boolean(simpleError) ||
+                  applyingFlowId === selectedFlow.id
+                }
+                onClick={() => handleApplySimple(selectedFlow)}
+              >
+                {applyingFlowId === selectedFlow.id ? (
+                  <Loader2 className="artist-icon-sm animate-spin" />
+                ) : (
+                  <Check className="artist-icon-sm" />
+                )}
+                {flowHasChanges ? "Save recipe" : "Saved"}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </>
+  ) : null;
+
+  const selectedDetailContent = selectedEntry ? (
+    <>
+      <PlaylistDetailHero
+        entry={selectedEntry}
+        artworkUrl={artworkUrlFor(selectedEntry.id)}
+        metaLine={detailMetaLine}
+        flowMeta={detailFlowMeta}
+        activityHint={selectedActivityMessage}
+        enabled={flowEnabled}
+        togglingId={togglingId}
+        onToggleEnabled={(checked) =>
+          selectedFlow && handleToggleRequest(selectedFlow, checked)
+        }
+        onRenameTitle={() => handleOpenEditModal()}
+        onArtworkClick={() => handleOpenEditModal()}
+        moreMenu={selectedDetailMoreMenu}
+      />
+      {selectedDetailBody}
+    </>
+  ) : null;
+
   return (
     <div className="flow-page">
       <input
@@ -1764,10 +2156,10 @@ function FlowPage() {
         onChange={handleImportFileChange}
       />
       <div
-        className={`flow-page__shell${mobileShowDetail ? " flow-page--detail-open" : ""}${libraryCollapsed ? " flow-page__shell--library-collapsed" : ""}`}
+        className={`flow-page__shell${!isMobileLayout && libraryCollapsed ? " flow-page__shell--library-collapsed" : ""}`}
       >
         <aside
-          className={`flow-page__library${mobileShowDetail ? " flow-page__library--hidden" : ""}${libraryCollapsed ? " flow-page__library--collapsed" : ""}`}
+          className={`flow-page__library${!isMobileLayout && libraryCollapsed ? " flow-page__library--collapsed" : ""}`}
         >
           <div className="flow-page__library-head">
             <button
@@ -1777,7 +2169,7 @@ function FlowPage() {
                 setLibraryCollapsed((prev) => {
                   const next = !prev;
                   try {
-                    localStorage.setItem(
+                    globalThis.localStorage?.setItem(
                       LIBRARY_SIDEBAR_COLLAPSED_KEY,
                       next ? "1" : "0",
                     );
@@ -1838,264 +2230,101 @@ function FlowPage() {
               <FlowEmptyState
                 canCreate={canCreateGeneratedFlow}
                 libraryFilter={libraryFilter}
+                variant={isMobileLayout ? "full" : "compact"}
+                onImport={handleOpenImportPicker}
+                onNewPlaylist={handleOpenCreatePlaylist}
+                onNewFlow={handleCreateInline}
+                creatingPlaylist={creatingPlaylist}
+                creatingFlow={creating}
               />
             ) : (
               filteredCollection.map((entry) => {
                 const stats = getPlaylistStats(entry.id);
+                const isExpanded =
+                  isMobileLayout &&
+                  mobileShowDetail &&
+                  selectedId === entry.id;
                 return (
-                  <PlaylistLibraryItem
+                  <div
                     key={entry.id}
-                    entry={entry}
-                    artworkUrl={artworkUrlFor(entry.id)}
-                    isActive={selectedId === entry.id}
-                    stats={stats}
-                    collapsed={libraryCollapsed}
-                    onSelect={selectPlaylist}
-                  />
+                    className={`flow-page__library-row${isExpanded ? " is-expanded" : ""}`}
+                  >
+                    <PlaylistLibraryItem
+                      entry={entry}
+                      artworkUrl={artworkUrlFor(entry.id)}
+                      isActive={
+                        isMobileLayout
+                          ? isExpanded
+                          : selectedId === entry.id
+                      }
+                      expanded={isExpanded}
+                      stats={stats}
+                      activityHint={getEntryActivityMessage(entry)}
+                      collapsed={!isMobileLayout && libraryCollapsed}
+                      onSelect={selectPlaylist}
+                      trailing={
+                        isExpanded ? (
+                          <>
+                            {entry.kind === "flow" ? (
+                              <div
+                                className="flow-page__toggle-wrap"
+                                data-no-card-toggle="true"
+                              >
+                                <PillToggle
+                                  checked={flowEnabled}
+                                  className={`pill-toggle--flow-compact${flowEnabled ? "" : " is-off"}`}
+                                  onChange={(event) =>
+                                    selectedFlow &&
+                                    handleToggleRequest(
+                                      selectedFlow,
+                                      event.target.checked,
+                                    )
+                                  }
+                                  disabled={togglingId === entry.id}
+                                />
+                              </div>
+                            ) : null}
+                            {selectedDetailMoreMenu}
+                          </>
+                        ) : null
+                      }
+                    />
+                    {isExpanded ? (
+                      <div className="flow-page__library-inline-detail">
+                        {selectedDetailBody}
+                      </div>
+                    ) : null}
+                  </div>
                 );
               })
             )}
           </div>
         </aside>
 
-        <section
-          className={`flow-page__detail${!mobileShowDetail ? " flow-page__detail--hidden-mobile" : ""}${!selectedEntry ? " flow-page__detail--empty" : ""}`}
-        >
-          {!selectedEntry ? (
-            <div className="artist-empty-panel flow-page__detail-empty">
-              <p className="artist-empty-message">
-                Select a playlist or flow to view tracks and settings.
-              </p>
-            </div>
-          ) : (
-            <>
-              <PlaylistDetailHero
-                entry={selectedEntry}
-                artworkUrl={artworkUrlFor(selectedEntry.id)}
-                metaLine={detailMetaLine}
-                flowMeta={detailFlowMeta}
-                enabled={flowEnabled}
-                togglingId={togglingId}
-                onToggleEnabled={(checked) =>
-                  selectedFlow && handleToggleRequest(selectedFlow, checked)
-                }
-                showBack={mobileShowDetail}
-                onBack={() => setMobileShowDetail(false)}
-                onRenameTitle={() => handleOpenEditModal()}
-                onArtworkClick={() => handleOpenEditModal()}
-                moreMenu={
-                  <MoreMenu activeButtonClass="btn-neutral-active">
-                    {selectedIsFlow && selectedFlow ? (
-                      <>
-                        <button
-                          type="button"
-                          className="artist-menu-item"
-                          onClick={() => handleRunNow(selectedFlow)}
-                          disabled={!flowCanRunNow}
-                        >
-                          <span className="artist-menu-item__main">
-                            <Play className="artist-icon-sm" />
-                            Run now
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          className="artist-menu-item"
-                          onClick={() => handleConvertFlowToStatic(selectedFlow)}
-                          disabled={
-                            !flowCanConvert || convertingId === selectedFlow.id
-                          }
-                        >
-                          <span className="artist-menu-item__main">
-                            <FilePlus2 className="artist-icon-sm" />
-                            Convert to static
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          className="artist-menu-item"
-                          onClick={() => handleExportFlow(selectedFlow)}
-                          disabled={!flowCanExport}
-                        >
-                          <span className="artist-menu-item__main">
-                            <Download className="artist-icon-sm" />
-                            Export JSON
-                          </span>
-                        </button>
-                        <div className="flow-page__menu-divider" />
-                        <button
-                          type="button"
-                          className="artist-menu-item artist-menu-item--danger"
-                          onClick={() => handleDelete(selectedFlow)}
-                          disabled={deletingId === selectedFlow.id}
-                        >
-                          <span className="artist-menu-item__main">
-                            <Trash2 className="artist-icon-sm" />
-                            Delete flow
-                          </span>
-                        </button>
-                      </>
-                    ) : selectedPlaylist ? (
-                      <>
-                        <button
-                          type="button"
-                          className="artist-menu-item"
-                          onClick={() => handleExportFlow(selectedPlaylist)}
-                        >
-                          <span className="artist-menu-item__main">
-                            <Download className="artist-icon-sm" />
-                            Export JSON
-                          </span>
-                        </button>
-                        <div className="flow-page__menu-divider" />
-                        <button
-                          type="button"
-                          className="artist-menu-item artist-menu-item--danger"
-                          onClick={() => handleDeleteSharedPlaylist(selectedPlaylist)}
-                          disabled={deletingId === selectedPlaylist.id}
-                        >
-                          <span className="artist-menu-item__main">
-                            <Trash2 className="artist-icon-sm" />
-                            Delete playlist
-                          </span>
-                        </button>
-                      </>
-                    ) : null}
-                  </MoreMenu>
-                }
-              />
-              {selectedIsFlow ? (
-                <FlowDetailTabs
-                  activeTab={detailTab}
-                  onChange={setDetailTab}
+        {!isMobileLayout ? (
+          <section
+            className={`flow-page__detail${!selectedEntry ? " flow-page__detail--empty" : ""}`}
+          >
+            {!selectedEntry ? (
+              filteredCollection.length === 0 ? (
+                <FlowEmptyState
+                  canCreate={canCreateGeneratedFlow}
+                  libraryFilter={libraryFilter}
+                  variant="full"
+                  onImport={handleOpenImportPicker}
+                  onNewPlaylist={handleOpenCreatePlaylist}
+                  onNewFlow={handleCreateInline}
+                  creatingPlaylist={creatingPlaylist}
+                  creatingFlow={creating}
                 />
-              ) : null}
-              <div className="flow-page__detail-panel">
-                {!selectedIsFlow || detailTab === "tracks" ? (
-                  selectedIsFlow ? (
-                    <FlowTracksPanel
-                      tracks={selectedTracks}
-                      loading={selectedTracksLoading}
-                      error={selectedTracksError}
-                      playbackSource={playbackSource}
-                      emptyMessage={
-                        flowEnabled
-                          ? "No tracks generated for this flow yet."
-                          : "Enable this flow to generate tracks."
-                      }
-                      playlists={sharedPlaylists}
-                      playlistsLoading={playlistsLoading}
-                      playlistSavingKey={playlistMenuSavingKey}
-                      playlistMenuError={playlistMenuError}
-                      getDefaultPlaylistName={getDefaultTrackPlaylistName}
-                      onLoadPlaylists={loadPlaylistsForMenu}
-                      onAddTrackToPlaylist={handleAddTrackToPlaylist}
-                      onNavigateArtist={handleNavigateArtist}
-                    />
-                  ) : selectedPlaylist ? (
-                    <FlowTracksPanel
-                      tracks={selectedTracks}
-                      loading={selectedTracksLoading}
-                      error={selectedTracksError}
-                      playbackSource={playbackSource}
-                      emptyMessage="No tracks in this playlist yet."
-                      hideFailedTracks
-                      useTrackContextMenu
-                      playlists={sharedPlaylists}
-                      playlistsLoading={playlistsLoading}
-                      playlistSavingKey={playlistMenuSavingKey}
-                      playlistMenuError={playlistMenuError}
-                      excludedPlaylistIds={[selectedPlaylist.id]}
-                      getDefaultPlaylistName={getDefaultTrackPlaylistName}
-                      onLoadPlaylists={loadPlaylistsForMenu}
-                      reSearchingTrackIds={reSearchingTrackIds}
-                      deletingTrackId={deletingTrackId}
-                      onReSearchTrack={(track) =>
-                        handleReSearchSharedPlaylistTrack(
-                          selectedPlaylist.id,
-                          track,
-                        )
-                      }
-                      onDeleteTrack={(track) =>
-                        handleDeleteSharedPlaylistTrack(
-                          selectedPlaylist.id,
-                          track,
-                        )
-                      }
-                      onAddTrackToPlaylist={handleAddTrackToPlaylist}
-                      onMoveTrackToPlaylist={(track, target) =>
-                        handleMoveTrackToPlaylist(
-                          track,
-                          target,
-                          selectedPlaylist.id,
-                        )
-                      }
-                      onNavigateArtist={handleNavigateArtist}
-                    />
-                  ) : null
-                ) : null}
-                {detailTab === "recipe" && selectedIsFlow && simpleDraft ? (
-                  <div className="flow-page__form flow-page__detail-recipe">
-                    <FlowFormFields
-                      draft={simpleDraft}
-                      remaining={Number(simpleDraft.size || 0)}
-                      inputClassName="flow-page__field-control"
-                      errorMessage={simpleError}
-                      onDraftChange={(updater) =>
-                        setSimpleDrafts((prev) => {
-                          const base =
-                            prev[selectedFlow.id] ?? flowToForm(selectedFlow);
-                          return {
-                            ...prev,
-                            [selectedFlow.id]: updater(base),
-                          };
-                        })
-                      }
-                      onClearError={() => {
-                        if (simpleErrors[selectedFlow.id]) {
-                          setSimpleErrors((prev) => {
-                            const next = { ...prev };
-                            delete next[selectedFlow.id];
-                            return next;
-                          });
-                        }
-                      }}
-                      normalizeMixPercent={normalizeMixPercent}
-                      disabledSources={disabledFlowSources}
-                    />
-                    <div className="flow-page__recipe-actions">
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        disabled={applyingFlowId === selectedFlow.id}
-                        onClick={() => handleCancelSimple(selectedFlow)}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn btn-sm${flowHasChanges ? " btn-primary" : " btn-secondary"}`}
-                        disabled={
-                          !flowHasChanges ||
-                          Boolean(simpleError) ||
-                          applyingFlowId === selectedFlow.id
-                        }
-                        onClick={() => handleApplySimple(selectedFlow)}
-                      >
-                        {applyingFlowId === selectedFlow.id ? (
-                          <Loader2 className="artist-icon-sm animate-spin" />
-                        ) : (
-                          <Check className="artist-icon-sm" />
-                        )}
-                        {flowHasChanges ? "Save recipe" : "Saved"}
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </>
-          )}
-        </section>
+              ) : (
+                <FlowDetailPlaceholder />
+              )
+            ) : (
+              selectedDetailContent
+            )}
+          </section>
+        ) : null}
       </div>
 
       <ConfirmDeleteModal

@@ -24,6 +24,8 @@ const bcrypt = bcryptModule.default;
 const {
   getListenHistoryProfile,
   getListenHistoryCacheNamespace,
+  getDefaultListenHistoryProfile,
+  resolveListenHistorySettings,
 } = listeningHistoryModule;
 
 test.beforeEach(() => {
@@ -40,6 +42,7 @@ test("normalizes legacy and explicit listening history profiles", () => {
     {
       listenHistoryProvider: "lastfm",
       listenHistoryUsername: "alice",
+      listenHistoryUrl: null,
       lastfmUsername: "alice",
     },
   );
@@ -52,6 +55,7 @@ test("normalizes legacy and explicit listening history profiles", () => {
     {
       listenHistoryProvider: "listenbrainz",
       listenHistoryUsername: "roofuskit",
+      listenHistoryUrl: null,
       lastfmUsername: null,
     },
   );
@@ -72,6 +76,14 @@ test("builds provider-specific discovery cache namespaces", () => {
       listenHistoryUsername: "alice",
     }),
     "lb:alice",
+  );
+
+  assert.equal(
+    getListenHistoryCacheNamespace({
+      listenHistoryProvider: "koito",
+      listenHistoryUrl: "https://koito.example.com",
+    }),
+    "koito:https://koito.example.com",
   );
 });
 
@@ -106,4 +118,44 @@ test("legacy lastfm_username still resolves as a lastfm profile", () => {
   assert.equal(stored?.listenHistoryProvider, "lastfm");
   assert.equal(stored?.listenHistoryUsername, "legacybob");
   assert.equal(stored?.lastfmUsername, "legacybob");
+});
+
+test("resolveListenHistorySettings falls back to integrations default username", () => {
+  const settings = {
+    integrations: {
+      lastfm: {
+        username: "leefamous",
+        apiKey: "test",
+      },
+    },
+  };
+  assert.deepEqual(resolveListenHistorySettings({}, settings), {
+    listenHistoryProvider: "lastfm",
+    listenHistoryUsername: "leefamous",
+    listenHistoryUrl: null,
+    lastfmUsername: "leefamous",
+  });
+});
+
+test("resolveListenHistorySettings keeps explicit user profile over default", () => {
+  const settings = {
+    integrations: {
+      lastfm: { username: "leefamous" },
+    },
+  };
+  assert.deepEqual(
+    resolveListenHistorySettings(
+      {
+        listenHistoryProvider: "lastfm",
+        listenHistoryUsername: "otheruser",
+      },
+      settings,
+    ),
+    {
+      listenHistoryProvider: "lastfm",
+      listenHistoryUsername: "otheruser",
+      listenHistoryUrl: null,
+      lastfmUsername: "otheruser",
+    },
+  );
 });

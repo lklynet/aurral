@@ -190,7 +190,14 @@ export function toNormalizedArtistAlbum(raw) {
     releaseStatuses: normalizeArray(raw?.ReleaseStatuses || raw?.releaseStatuses)
       .map((value) => normalizeString(value))
       .filter(Boolean),
-    firstReleaseDate: normalizeString(raw?.FirstReleaseDate || raw?.firstReleaseDate) || null,
+    firstReleaseDate:
+      normalizeString(
+        raw?.FirstReleaseDate ||
+          raw?.firstReleaseDate ||
+          raw?.ReleaseDate ||
+          raw?.releaseDate ||
+          raw?.releasedate,
+      ) || null,
     coverImages: normalizeArray(raw?.images).map(toNormalizedArtistImage).filter(Boolean),
     rating: null,
   };

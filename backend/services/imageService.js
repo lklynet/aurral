@@ -4,11 +4,8 @@ import {
   musicbrainzGetArtistReleaseGroupsPreview,
 } from "./apiClients.js";
 import { warmImageProxy } from "./imageProxyService.js";
-import {
-  getAlbumByMbid,
-  getArtistByMbid,
-  resolveAlbumByArtistAndTitle,
-} from "./metadataProvider.js";
+import { getArtistByMbid } from "./metadataProvider.js";
+import { fetchReleaseGroupCoverUrl } from "./releaseGroupCoverService.js";
 
 const MAX_NEGATIVE_CACHE = 1000;
 const MAX_PENDING_REQUESTS = 100;
@@ -185,74 +182,59 @@ const getCachedUrl = (cacheKey) => {
   return undefined;
 };
 
-const buildReleaseGroupCoverResult = async (cacheKey, album) => {
-  const image = selectBestAlbumImage(album?.images);
-  const imageUrl = getImageUrl(image);
-  if (!imageUrl) {
-    return { imageUrl: null, types: [], notFound: true, transientError: false };
-  }
-  const cachedImage = await warmImageProxy(imageUrl);
-  dbOps.setImage(cacheKey, cachedImage.localUrl);
-  return {
-    imageUrl: cachedImage.localUrl,
-    types: [image?.kind || image?.CoverType || "Front"],
-    notFound: false,
-    transientError: false,
-  };
-};
-
-export const fetchReleaseGroupCoverUrl = async (
-  releaseGroupMbid,
-  { artistName = "", albumTitle = "" } = {},
-) => {
-  const cacheKey = `rg:${releaseGroupMbid}`;
-  const cached = getCachedUrl(cacheKey);
-  if (cached !== undefined) {
-    return { imageUrl: cached, notFound: cached === null, transientError: false };
-  }
-  const normalizedArtistName =
-    typeof artistName === "string" ? artistName.trim() : "";
-  const normalizedAlbumTitle =
-    typeof albumTitle === "string" ? albumTitle.trim() : "";
-  let sawTransientError = false;
-  try {
-    const album = await getAlbumByMbid(releaseGroupMbid);
-    const result = await buildReleaseGroupCoverResult(cacheKey, album);
-    if (result.imageUrl) {
-      return result;
-    }
-  } catch {
-    sawTransientError = true;
-  }
-  if (normalizedAlbumTitle) {
-    try {
-      const resolvedAlbumMbid = await resolveAlbumByArtistAndTitle({
-        artistName: normalizedArtistName,
-        albumTitle: normalizedAlbumTitle,
-      });
-      if (resolvedAlbumMbid && resolvedAlbumMbid !== releaseGroupMbid) {
-        const resolvedAlbum = await getAlbumByMbid(resolvedAlbumMbid);
-        const result = await buildReleaseGroupCoverResult(cacheKey, resolvedAlbum);
-        if (result.imageUrl) {
-          return result;
-        }
-      }
-    } catch {
-      sawTransientError = true;
-    }
-  }
-  if (sawTransientError) {
-    return { imageUrl: null, types: [], notFound: false, transientError: true };
-  }
-  dbOps.setImage(cacheKey, "NOT_FOUND");
-  return { imageUrl: null, types: [], notFound: true, transientError: false };
-};
+export { fetchReleaseGroupCoverUrl };
 
 const typeRank = (primaryType) => {
   if (primaryType === "Album") return 0;
   if (primaryType === "EP") return 1;
   if (primaryType === "Single") return 2;
   return 3;
+};
+
+const buildArtistCoverFromUrl = (imageUrl, types = ["Front"]) => ({
+  url: imageUrl,
+  images: [
+    {
+      image: imageUrl,
+      front: true,
+      types,
+    },
+  ],
+});
+
+const recoverArtistCoverFromCachedReleaseGroups = async (resolvedMbid) => {
+  const rgCacheKey = `artist_rg:${resolvedMbid}`;
+  const cachedRgId = dbOps.getDeezerMbidCache(rgCacheKey);
+  if (cachedRgId && cachedRgId !== "NOT_FOUND") {
+    const cachedUrl = getCachedUrl(`rg:${cachedRgId}`);
+    if (cachedUrl) {
+      return buildArtistCoverFromUrl(cachedUrl);
+    }
+  }
+
+  const releaseGroups = await musicbrainzGetArtistReleaseGroupsPreview(
+    resolvedMbid,
+    30,
+  ).catch(() => []);
+  const ordered = releaseGroups
+    .filter((rg) => rg?.id)
+    .sort((a, b) => {
+      const rankDiff = typeRank(a["primary-type"]) - typeRank(b["primary-type"]);
+      if (rankDiff !== 0) return rankDiff;
+      const dateA = a["first-release-date"] || "";
+      const dateB = b["first-release-date"] || "";
+      return dateB.localeCompare(dateA);
+    });
+
+  for (const rg of ordered) {
+    const cachedUrl = getCachedUrl(`rg:${rg.id}`);
+    if (cachedUrl) {
+      dbOps.setDeezerMbidCache(rgCacheKey, rg.id);
+      return buildArtistCoverFromUrl(cachedUrl);
+    }
+  }
+
+  return null;
 };
 
 const normalizeGetArtistImageOptions = (forceRefreshOrOptions, artistNameHint) => {
@@ -316,6 +298,14 @@ export const getArtistImage = async (
     ((cachedImage && cachedImage.imageUrl === "NOT_FOUND") ||
       hasFreshNegativeCache(mbid))
   ) {
+    const override = dbOps.getArtistOverride(mbid);
+    const resolvedMbid = override?.musicbrainzId || mbid;
+    const recovered = await recoverArtistCoverFromCachedReleaseGroups(resolvedMbid);
+    if (recovered?.url) {
+      negativeImageCache.delete(mbid);
+      dbOps.setImage(mbid, recovered.url);
+      return recovered;
+    }
     return { url: null, images: [], notFound: true };
   }
 

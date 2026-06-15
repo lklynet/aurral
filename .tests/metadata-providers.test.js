@@ -1,25 +1,32 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-
-import { dbOps } from "../backend/config/db-helpers.js";
+import {
+  createIsolatedStateDir,
+  applyIsolatedBackendEnv,
+  cleanupIsolatedState,
+  importFromRepo,
+} from "./helpers/backendTestHarness.js";
 import {
   defaultData,
   DEFAULT_METADATA_BASE_URL,
 } from "../backend/config/constants.js";
-import {
+
+const isolatedState = await createIsolatedStateDir("metadata-providers");
+applyIsolatedBackendEnv(isolatedState);
+
+const { dbOps } = await importFromRepo("backend/config/db-helpers.js");
+const {
   __setMetadataProviderHealthStateForTests,
   getMetadataProviderHealthSnapshot,
   getCoverArtArchiveApiBaseUrls,
   getCoverArtArchiveApiBaseUrl,
   getMusicbrainzApiBaseUrls,
   getMusicbrainzApiBaseUrl,
-} from "../backend/services/apiClients.js";
+} = await importFromRepo("backend/services/apiClients.js");
 
-const originalSettings = dbOps.getSettings();
-
-test.after(() => {
-  dbOps.updateSettings(originalSettings);
+test.after(async () => {
   __setMetadataProviderHealthStateForTests("musicbrainz");
+  await cleanupIsolatedState(isolatedState);
 });
 
 test("default settings use BrainzMash metadata and the official Cover Art Archive endpoint", () => {
@@ -37,9 +44,9 @@ test("default settings use BrainzMash metadata and the official Cover Art Archiv
 
 test("backend metadata provider defaults to BrainzMash when unset", () => {
   dbOps.updateSettings({
-    ...originalSettings,
+    ...dbOps.getSettings(),
     integrations: {
-      ...(originalSettings.integrations || {}),
+      ...(dbOps.getSettings().integrations || {}),
       metadata: {
         provider: "brainzmash",
         baseUrl: "",
@@ -55,9 +62,9 @@ test("backend metadata provider defaults to BrainzMash when unset", () => {
 
 test("custom BrainzMash base URL is respected end to end", () => {
   dbOps.updateSettings({
-    ...originalSettings,
+    ...dbOps.getSettings(),
     integrations: {
-      ...(originalSettings.integrations || {}),
+      ...(dbOps.getSettings().integrations || {}),
       metadata: {
         provider: "brainzmash",
         baseUrl: "https://brainzmash.example.net",

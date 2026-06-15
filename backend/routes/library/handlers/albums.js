@@ -85,6 +85,16 @@ export default function registerAlbums(router) {
             .removeDiscoverSymlinksForAlbum(album.artistName, album.albumName)
             .catch(() => {});
         }
+        const { recordAlbumRequested } = await import(
+          "../../../services/aurralHistoryService.js"
+        );
+        recordAlbumRequested({
+          albumId: album.id,
+          albumName: album.albumName || albumName,
+          artistName: album.artistName,
+          artistMbid: album.mbid || album.foreignAlbumId,
+          searching: searchOnAdd,
+        });
         const formatted = {
           ...album,
           foreignAlbumId: album.mbid,
@@ -118,10 +128,27 @@ export default function registerAlbums(router) {
         const result = await libraryManager.requestAlbumFromSearch({
           albumMbid,
           albumName,
-          artistMbid,
           artistName,
+          artistMbid,
           triggerSearch,
           user: req.user,
+        });
+
+        const settings = dbOps.getSettings();
+        const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
+        const searching =
+          triggerSearch === true ||
+          searchOnAdd ||
+          result?.status === "searching";
+        const { recordAlbumRequested } = await import(
+          "../../../services/aurralHistoryService.js"
+        );
+        recordAlbumRequested({
+          albumId: result?.id,
+          albumName: result?.albumName || albumName,
+          artistName: result?.artistName || artistName,
+          artistMbid: result?.mbid || artistMbid,
+          searching,
         });
 
         res.json(result);

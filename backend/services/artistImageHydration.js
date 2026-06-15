@@ -1,4 +1,5 @@
 import { dbOps } from "../config/db-helpers.js";
+import { enqueueImagePrefetchJob } from "./honkerDb.js";
 import { getArtistImage } from "./imageService.js";
 import { buildImageProxyUrl } from "./imageProxyService.js";
 
@@ -36,7 +37,9 @@ const applyCachedImages = (artists = []) => {
     if (artist.image || artist.imageUrl) return withProxiedImageFields(artist);
 
     const cachedImage = cachedImages[getArtistId(artist)]?.imageUrl;
-    if (!cachedImage || cachedImage === "NOT_FOUND") return artist;
+    if (!cachedImage || cachedImage === "NOT_FOUND") {
+      return artist;
+    }
     return withProxiedImageFields({
       ...artist,
       image: cachedImage,
@@ -66,8 +69,10 @@ export const hydrateArtistImages = async (
     await Promise.all(
       batch.map(async ({ artist, id }) => {
         try {
+          const cached = dbOps.getImage(id);
           const cover = await getArtistImage(id, {
             artistName: artist.name || artist.sortName || null,
+            forceRefresh: cached?.imageUrl === "NOT_FOUND",
           });
           if (!cover?.url) return;
           const proxiedImage = buildImageProxyUrl(cover.url) || cover.url;
@@ -86,26 +91,41 @@ export const hydrateArtistImages = async (
 };
 
 export const primeArtistImageCache = (artists = []) => {
-  return Promise.allSettled(
-    (Array.isArray(artists) ? artists : [])
-      .map((artist) => ({
-        id: getArtistId(artist),
-        artistName:
-          typeof artist?.name === "string" && artist.name.trim()
-            ? artist.name.trim()
-            : typeof artist?.sortName === "string" && artist.sortName.trim()
-              ? artist.sortName.trim()
-              : null,
-      }))
-      .filter((artist) => artist.id)
-      .filter(
-        (artist, index, list) =>
-          list.findIndex((entry) => entry.id === artist.id) === index,
-      )
-      .map(({ id, artistName }) =>
-        getArtistImage(id, {
-          artistName,
-        }),
-      ),
-  ).then(() => {});
+  const entries = (Array.isArray(artists) ? artists : [])
+    .map((artist) => ({
+      id: getArtistId(artist),
+      artistName:
+        typeof artist?.name === "string" && artist.name.trim()
+          ? artist.name.trim()
+          : typeof artist?.sortName === "string" && artist.sortName.trim()
+            ? artist.sortName.trim()
+            : null,
+    }))
+    .filter((artist) => artist.id)
+    .filter(
+      (artist, index, list) =>
+        list.findIndex((entry) => entry.id === artist.id) === index,
+    );
+  if (entries.length === 0) return Promise.resolve();
+
+  const ids = entries.map((entry) => entry.id);
+  const cachedImages = dbOps.getImages(ids);
+  const uncached = entries.filter((entry) => {
+    const cached = cachedImages[entry.id];
+    return !cached || cached.imageUrl === "NOT_FOUND";
+  });
+  const artistNames = Object.fromEntries(
+    uncached
+      .filter((entry) => entry.artistName)
+      .map((entry) => [entry.id, entry.artistName]),
+  );
+  for (let index = 0; index < uncached.length; index += DEFAULT_BATCH_SIZE) {
+    const batch = uncached.slice(index, index + DEFAULT_BATCH_SIZE);
+    enqueueImagePrefetchJob({
+      mbids: batch.map((entry) => entry.id),
+      artistNames,
+      requestedAt: Date.now(),
+    });
+  }
+  return Promise.resolve();
 };

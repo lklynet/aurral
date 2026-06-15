@@ -1,261 +1,53 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
-import {
-  Ban,
-  CheckCircle2,
-  EyeOff,
-  Library,
-  Loader2,
-  MoreVertical,
-  Star,
-  ThumbsDown,
-  ThumbsUp,
-} from "lucide-react";
 import ArtistImage from "./ArtistImage";
-import {
-  getArtistFeedbackFlags,
-  getDiscoveryFeedbackLabel,
-} from "../utils/discoveryFeedback";
+import SearchLibraryCheck from "./SearchLibraryCheck";
+import { ArtistContextMenu } from "./ArtistContextMenu";
+import { useImageGradientColors } from "../hooks/useImageGradientColors";
+import { getArtistFeedbackFlags } from "../utils/discoveryFeedback";
+import { getArtistRecordId } from "../utils/artistTaste";
 
-const MAIN_CONTENT_PORTAL_SELECTOR = ".app-main-wrap";
-
-const getMainContentPortalRoot = () =>
-  document.querySelector(MAIN_CONTENT_PORTAL_SELECTOR);
-
-function ArtistActionsMenu({
+function TagRecommendedArtistCover({
   artist,
-  isInLibrary,
-  isBlocked,
-  canAddArtist,
-  onAddToLibrary,
-  onAddToBlocklist,
-  onFeedback,
-  feedbackUsed = {},
+  artistId,
+  artistImages,
+  onClick,
 }) {
-  const [showMenu, setShowMenu] = useState(false);
-  const [pendingAction, setPendingAction] = useState(null);
-  const [menuPosition, setMenuPosition] = useState(null);
-  const menuButtonRef = useRef(null);
-  const menuRef = useRef(null);
-
-  const estimateMenuHeight = useCallback(() => {
-    let items = 1;
-    if (canAddArtist) items += 1;
-    if (onFeedback) items += 4;
-    return items * 42 + 8;
-  }, [canAddArtist, onFeedback]);
-
-  const updateMenuPosition = useCallback(() => {
-    const button = menuButtonRef.current;
-    const portalRoot = getMainContentPortalRoot();
-    if (!button || !portalRoot) return;
-    const wrapRect = portalRoot.getBoundingClientRect();
-    const rect = button.getBoundingClientRect();
-    const gap = 8;
-    const menuHeight =
-      menuRef.current?.offsetHeight || estimateMenuHeight();
-    const spaceAbove = rect.top - wrapRect.top - gap;
-    const spaceBelow = wrapRect.bottom - rect.bottom - gap;
-    let placement = "above";
-    if (spaceAbove < menuHeight && spaceBelow >= menuHeight) {
-      placement = "below";
-    } else if (spaceAbove < menuHeight && spaceBelow < menuHeight) {
-      placement = spaceBelow > spaceAbove ? "below" : "above";
-    }
-    const top =
-      placement === "below"
-        ? rect.bottom - wrapRect.top + gap
-        : rect.top - wrapRect.top - gap;
-    const left = Math.max(rect.right - wrapRect.left - 176, 12);
-    setMenuPosition((prev) => {
-      if (
-        prev &&
-        prev.top === top &&
-        prev.left === left &&
-        prev.placement === placement
-      ) {
-        return prev;
-      }
-      return { top, left, placement };
-    });
-  }, [estimateMenuHeight]);
-
-  useEffect(() => {
-    if (!showMenu) {
-      setMenuPosition(null);
-      return;
-    }
-    updateMenuPosition();
-    const scrollRoot = document.querySelector(".app-main");
-    window.addEventListener("resize", updateMenuPosition);
-    scrollRoot?.addEventListener("scroll", updateMenuPosition, { passive: true });
-    window.addEventListener("scroll", updateMenuPosition, true);
-    return () => {
-      window.removeEventListener("resize", updateMenuPosition);
-      scrollRoot?.removeEventListener("scroll", updateMenuPosition);
-      window.removeEventListener("scroll", updateMenuPosition, true);
-    };
-  }, [showMenu, updateMenuPosition]);
-
-  useLayoutEffect(() => {
-    if (!showMenu) return;
-    updateMenuPosition();
-  }, [showMenu, updateMenuPosition]);
-
-  const handleAction = async (event, type, fn) => {
-    event.stopPropagation();
-    if (!fn || pendingAction) return;
-    setPendingAction(type);
-    const success = await fn(artist);
-    if (success) setShowMenu(false);
-    setPendingAction(null);
-  };
-
-  const handleFeedbackClick = async (event, action) => {
-    event.stopPropagation();
-    if (!onFeedback || pendingAction) return;
-    setPendingAction(action);
-    await onFeedback(artist, action, {
-      isSelected: !!feedbackUsed[action],
-    });
-    setPendingAction(null);
-  };
+  const coverSrc =
+    artistImages[artistId] || artist.image || artist.imageUrl || "";
+  const gradientColors = useImageGradientColors(coverSrc);
 
   return (
-  <div style={{ position: "relative", flexShrink: 0 }}>
-    <button
-      ref={menuButtonRef}
-      type="button"
-      onClick={(event) => {
-        event.stopPropagation();
-        setShowMenu((prev) => !prev);
-      }}
-      className="btn btn-surface btn-icon-square"
-      aria-label={`Artist options for ${artist.name}`}
+    <div
+      onClick={onClick}
+      className="artist-discover-card__cover artist-discover-card__cover--recommended"
+      style={
+        gradientColors
+          ? {
+              "--recommended-gradient-top": gradientColors.top,
+              "--recommended-gradient-bottom": gradientColors.bottom,
+            }
+          : undefined
+      }
     >
-      <MoreVertical className="artist-icon-sm" />
-    </button>
-    {showMenu && menuPosition && getMainContentPortalRoot()
-      ? createPortal(
-          <div
-            ref={menuRef}
-            className={`artist-options-menu--discover${menuPosition.placement === "below" ? " is-below" : ""}`}
-            style={{
-              top: menuPosition.top,
-              left: menuPosition.left,
-            }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            {canAddArtist && (
-              <button
-                type="button"
-                onClick={(event) => handleAction(event, "library", onAddToLibrary)}
-                disabled={isInLibrary || !!pendingAction}
-                className="artist-menu-item--discover"
-              >
-                <div className="artist-menu-item__main--discover">
-                  {pendingAction === "library" ? (
-                    <Loader2 className="artist-icon-sm animate-spin" />
-                  ) : (
-                    <Library className="artist-icon-sm" />
-                  )}
-                  {isInLibrary ? "In Library" : "Add to Library"}
-                </div>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={(event) =>
-                handleAction(event, "blocklist", onAddToBlocklist)
-              }
-              disabled={isBlocked || !!pendingAction}
-              className={`artist-menu-item--discover ${isBlocked ? "" : "artist-menu-item--danger"}`}
-            >
-              <div className="artist-menu-item__main--discover">
-                {pendingAction === "blocklist" ? (
-                  <Loader2 className="artist-icon-sm animate-spin" />
-                ) : (
-                  <Ban className="artist-icon-sm" />
-                )}
-                {isBlocked ? "In Blocklist" : "Blocklist Artist"}
-              </div>
-            </button>
-            {onFeedback && (
-              <>
-                <button
-                  type="button"
-                  onClick={(event) =>
-                    handleFeedbackClick(event, "more_like_this")
-                  }
-                  disabled={!!pendingAction}
-                  className={`artist-menu-item--discover${feedbackUsed.more_like_this ? " is-selected" : ""}`}
-                >
-                  <div className="artist-menu-item__main--discover">
-                    {pendingAction === "more_like_this" ? (
-                      <Loader2 className="artist-icon-sm animate-spin" />
-                    ) : (
-                      <ThumbsUp className="artist-icon-sm" />
-                    )}
-                    {getDiscoveryFeedbackLabel("more_like_this")}
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={(event) =>
-                    handleFeedbackClick(event, "less_like_this")
-                  }
-                  disabled={!!pendingAction}
-                  className={`artist-menu-item--discover${feedbackUsed.less_like_this ? " is-selected" : ""}`}
-                >
-                  <div className="artist-menu-item__main--discover">
-                    {pendingAction === "less_like_this" ? (
-                      <Loader2 className="artist-icon-sm animate-spin" />
-                    ) : (
-                      <ThumbsDown className="artist-icon-sm" />
-                    )}
-                    {getDiscoveryFeedbackLabel("less_like_this")}
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={(event) =>
-                    handleFeedbackClick(event, "already_known")
-                  }
-                  disabled={!!pendingAction}
-                  className={`artist-menu-item--discover${feedbackUsed.already_known ? " is-selected" : ""}`}
-                >
-                  <div className="artist-menu-item__main--discover">
-                    {pendingAction === "already_known" ? (
-                      <Loader2 className="artist-icon-sm animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="artist-icon-sm" />
-                    )}
-                    {getDiscoveryFeedbackLabel("already_known")}
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={(event) =>
-                    handleFeedbackClick(event, "hide_for_now")
-                  }
-                  disabled={!!pendingAction}
-                  className="artist-menu-item--discover artist-menu-item--danger"
-                >
-                  <div className="artist-menu-item__main--discover">
-                    <EyeOff className="artist-icon-sm" />
-                    Hide for now
-                  </div>
-                </button>
-              </>
-            )}
-          </div>,
-          getMainContentPortalRoot(),
-        )
-      : null}
-  </div>
+      <ArtistImage
+        src={coverSrc}
+        mbid={artistId}
+        artistName={artist.name}
+        alt={artist.name}
+        className="artist-discover-card__image"
+        showLoading={false}
+        enableBackendFallback={false}
+      />
+    </div>
   );
 }
+
+TagRecommendedArtistCover.propTypes = {
+  artist: PropTypes.object.isRequired,
+  artistId: PropTypes.string,
+  artistImages: PropTypes.object.isRequired,
+  onClick: PropTypes.func.isRequired,
+};
 
 function SearchArtistResults({
   artists,
@@ -264,15 +56,11 @@ function SearchArtistResults({
   libraryLookup,
   navigate,
   canAddArtist,
-  blockedArtists,
   onAddArtistToLibrary,
-  onAddArtistToBlocklist,
   onArtistFeedback,
   artistFeedbackLookup,
+  variant = "square",
 }) {
-  const getArtistId = (artist) =>
-    artist?.id || artist?.mbid || artist?.foreignArtistId;
-
   const formatLifeSpan = (artist) => {
     const begin =
       artist?.begin || artist?.["life-span"]?.begin || artist?.lifeSpan?.begin;
@@ -312,20 +100,8 @@ function SearchArtistResults({
     return String(value).trim() || null;
   };
 
-  const isArtistBlocked = (artist) => {
-    const artistId = String(getArtistId(artist) || "").trim().toLowerCase();
-    const artistName = String(artist?.name || "").trim().toLowerCase();
-    return (blockedArtists || []).some((entry) => {
-      const entryMbid = String(entry?.mbid || "").trim().toLowerCase();
-      const entryName = String(entry?.name || "").trim().toLowerCase();
-      if (artistId && entryMbid && artistId === entryMbid) return true;
-      if (artistName && entryName && artistName === entryName) return true;
-      return false;
-    });
-  };
-
   const openArtist = (artist) => {
-    const artistId = getArtistId(artist);
+    const artistId = getArtistRecordId(artist);
     navigate(`/artist/${artistId}`, {
       state: {
         artistName: artist.name,
@@ -336,10 +112,15 @@ function SearchArtistResults({
     });
   };
 
+  const gridClassName =
+    variant === "round"
+      ? "artist-release-grid search-artist-grid--round"
+      : "artist-release-grid";
+
   return (
-    <div className="artist-release-grid">
+    <div className={gridClassName}>
       {artists.map((artist, index) => {
-        const artistId = getArtistId(artist);
+        const artistId = getArtistRecordId(artist);
         const isRecommendedTagResult =
           type === "tag" && artist.tagResultSource === "recommended";
         const artistTypeLabel = normalizeArtistType(artist);
@@ -364,35 +145,37 @@ function SearchArtistResults({
         ]
           .filter(Boolean)
           .join(" • ");
-        const feedbackHandler =
-          type === "tag" && artist.tagResultSource !== "recommended"
-            ? undefined
-            : onArtistFeedback;
 
         return (
           <article
             key={artistId || `artist-${index}`}
-            className="artist-discover-card"
+            className={`artist-discover-card artist-discover-card--artist${
+              isRecommendedTagResult ? " artist-discover-card--recommended" : ""
+            }`}
           >
-            <div
-              onClick={() => openArtist(artist)}
-              className="artist-discover-card__cover"
-            >
-              <ArtistImage
-                src={artistImages[artistId] || artist.image || artist.imageUrl}
-                mbid={artistId}
-                artistName={artist.name}
-                alt={artist.name}
-                className="artist-discover-card__image"
-                showLoading={false}
-                enableBackendFallback={false}
+            {isRecommendedTagResult ? (
+              <TagRecommendedArtistCover
+                artist={artist}
+                artistId={artistId}
+                artistImages={artistImages}
+                onClick={() => openArtist(artist)}
               />
-              {isRecommendedTagResult && (
-                <span className="search-tag-badge" aria-hidden="true">
-                  <Star className="search-tag-badge__icon" />
-                </span>
-              )}
-            </div>
+            ) : (
+              <div
+                onClick={() => openArtist(artist)}
+                className="artist-discover-card__cover"
+              >
+                <ArtistImage
+                  src={artistImages[artistId] || artist.image || artist.imageUrl}
+                  mbid={artistId}
+                  artistName={artist.name}
+                  alt={artist.name}
+                  className="artist-discover-card__image"
+                  showLoading={false}
+                  enableBackendFallback={false}
+                />
+              </div>
+            )}
 
             <div className="artist-discover-card__content">
               <div className="artist-discover-card__text">
@@ -404,9 +187,7 @@ function SearchArtistResults({
                   >
                     {artist.name}
                   </h3>
-                  {libraryLookup[artistId] && (
-                    <CheckCircle2 className="artist-library-check--discover" />
-                  )}
+                  {libraryLookup[artistId] && <SearchLibraryCheck />}
                 </div>
                 {artistMetaText ? (
                   <p
@@ -416,7 +197,7 @@ function SearchArtistResults({
                     {artistMetaText}
                   </p>
                 ) : null}
-                {disambiguationLine ? (
+                {variant !== "round" && disambiguationLine ? (
                   <p
                     className="artist-card-meta--discover"
                     title={disambiguationLine}
@@ -426,22 +207,18 @@ function SearchArtistResults({
                 ) : null}
               </div>
 
-              {(canAddArtist || onAddArtistToBlocklist || onArtistFeedback) && (
-                <ArtistActionsMenu
-                  artist={artist}
-                  isInLibrary={!!libraryLookup[artistId]}
-                  isBlocked={isArtistBlocked(artist)}
-                  canAddArtist={canAddArtist}
-                  onAddToLibrary={onAddArtistToLibrary}
-                  onAddToBlocklist={onAddArtistToBlocklist}
-                  onFeedback={feedbackHandler}
-                  feedbackUsed={
-                    artistFeedbackLookup
-                      ? getArtistFeedbackFlags(artistFeedbackLookup, artist)
-                      : undefined
-                  }
-                />
-              )}
+              <ArtistContextMenu
+                artist={artist}
+                isInLibrary={!!libraryLookup[artistId]}
+                canAddArtist={canAddArtist}
+                onAddToLibrary={onAddArtistToLibrary}
+                onFeedback={onArtistFeedback}
+                feedbackUsed={
+                  artistFeedbackLookup
+                    ? getArtistFeedbackFlags(artistFeedbackLookup, artist)
+                    : undefined
+                }
+              />
             </div>
           </article>
         );
@@ -457,26 +234,10 @@ SearchArtistResults.propTypes = {
   libraryLookup: PropTypes.object.isRequired,
   navigate: PropTypes.func.isRequired,
   canAddArtist: PropTypes.bool,
-  blockedArtists: PropTypes.arrayOf(PropTypes.object),
   onAddArtistToLibrary: PropTypes.func,
-  onAddArtistToBlocklist: PropTypes.func,
   onArtistFeedback: PropTypes.func,
   artistFeedbackLookup: PropTypes.instanceOf(Map),
-};
-
-ArtistActionsMenu.propTypes = {
-  artist: PropTypes.object.isRequired,
-  isInLibrary: PropTypes.bool,
-  isBlocked: PropTypes.bool,
-  canAddArtist: PropTypes.bool,
-  onAddToLibrary: PropTypes.func,
-  onAddToBlocklist: PropTypes.func,
-  onFeedback: PropTypes.func,
-  feedbackUsed: PropTypes.shape({
-    more_like_this: PropTypes.bool,
-    less_like_this: PropTypes.bool,
-    already_known: PropTypes.bool,
-  }),
+  variant: PropTypes.oneOf(["square", "round"]),
 };
 
 export default SearchArtistResults;

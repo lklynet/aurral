@@ -71,16 +71,23 @@ const ArtistImage = ({
       try {
         setHasError(false);
 
-        const data = await scheduleFetch(
-          () =>
-            Promise.race([
-              getArtistCover(mbidToFetch, nameForCover, refresh),
-              new Promise((_, reject) =>
-                setTimeout(() => reject(new Error("Timeout")), 5000),
-              ),
-            ]),
-          signal,
-        );
+        const requestCover = (forceRefresh = false) =>
+          scheduleFetch(
+            () =>
+              Promise.race([
+                getArtistCover(mbidToFetch, nameForCover, forceRefresh),
+                new Promise((_, reject) =>
+                  setTimeout(() => reject(new Error("Timeout")), 5000),
+                ),
+              ]),
+            signal,
+          );
+
+        let data = await requestCover(refresh);
+        if (signal?.aborted) return;
+        if ((!data?.images || data.images.length === 0) && !refresh) {
+          data = await requestCover(true);
+        }
         if (signal?.aborted) return;
         if (data?.images && data.images.length > 0) {
           const front = data.images.find((img) => img.front) || data.images[0];
@@ -153,7 +160,11 @@ const ArtistImage = ({
             setHasError(false);
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          if (!cancelled) {
+            setIsLoading(false);
+          }
+        });
     }
 
     return () => {
@@ -231,7 +242,7 @@ const ArtistImage = ({
           src={currentSrc}
           alt={alt || "Artist cover"}
           className={`artist-image-media ${
-            isLoading ? "is-loading" : "is-loaded"
+            showLoading && isLoading ? "is-loading" : "is-loaded"
           }`}
           onLoad={handleLoad}
           onError={handleError}

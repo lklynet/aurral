@@ -23,7 +23,9 @@ export function useFlowWorkerActivity({ enabled = true } = {}) {
   const handleFlowStatusMessage = useCallback(
     (msg) => {
       if (!enabled) return;
-      if (msg?.type !== "weekly_flow_status") return;
+      if (msg?.type !== "playlist_status") {
+        return;
+      }
       if (!msg?.status || typeof msg.status !== "object") return;
       lastFlowWsMessageAtRef.current = Date.now();
       setStatus(msg.status);
@@ -32,10 +34,11 @@ export function useFlowWorkerActivity({ enabled = true } = {}) {
   );
 
   const { isConnected: isFlowSocketConnected } = useWebSocketChannel(
-    "weekly-flow",
+    "playlists",
     handleFlowStatusMessage,
     { enabled },
   );
+  useWebSocketChannel("weekly-flow", handleFlowStatusMessage, { enabled });
 
   useEffect(() => {
     if (!enabled) {

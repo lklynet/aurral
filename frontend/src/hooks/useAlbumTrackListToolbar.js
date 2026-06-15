@@ -8,6 +8,7 @@ export function useAlbumTrackListToolbar({ getQueueTracks, playbackSource }) {
     isShuffleEnabled,
     matchesSource,
     isPlaying,
+    isLoading,
     currentTrack,
   } = useAudioQueue();
 
@@ -22,7 +23,8 @@ export function useAlbumTrackListToolbar({ getQueueTracks, playbackSource }) {
       ),
     [currentTrack, queueTracks],
   );
-  const isListPlaying = isSourceActive && isPlaying && isCurrentListTrack;
+  const isListPlaying =
+    isSourceActive && isCurrentListTrack && (isPlaying || isLoading);
 
   const handlePlayAll = useCallback(() => {
     if (queueTracks.length === 0) return;
@@ -33,6 +35,7 @@ export function useAlbumTrackListToolbar({ getQueueTracks, playbackSource }) {
     playQueue(queueTracks, {
       source: playbackSource,
       shuffle: false,
+      updateShufflePreference: false,
     });
   }, [
     isCurrentListTrack,
@@ -48,6 +51,7 @@ export function useAlbumTrackListToolbar({ getQueueTracks, playbackSource }) {
     playQueue(queueTracks, {
       source: playbackSource,
       shuffle: true,
+      updateShufflePreference: true,
     });
   }, [playbackSource, playQueue, queueTracks]);
 

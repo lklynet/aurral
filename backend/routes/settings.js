@@ -2,6 +2,7 @@ import express from "express";
 import { dbOps } from "../config/db-helpers.js";
 import {
   DEFAULT_METADATA_BASE_URL,
+  DEFAULT_SEARCH_URL,
   LEGACY_METADATA_BASE_URL,
   defaultData,
 } from "../config/constants.js";
@@ -10,6 +11,8 @@ import { noCache } from "../middleware/cache.js";
 import { requireAuth, requireAdmin } from "../middleware/requirePermission.js";
 import { validateExternalUrl } from "../middleware/urlValidator.js";
 import { websocketService } from "../services/websocketService.js";
+import { resolvePlaylistRoot } from "../services/playlistPaths.js";
+import { normalizePathMappings } from "../services/pathMappings.js";
 
 const router = express.Router();
 router.use(requireAuth);
@@ -28,6 +31,17 @@ router.get("/", noCache, (req, res) => {
     }
     if (settings?.integrations?.musicbrainz) {
       delete settings.integrations.musicbrainz;
+    }
+    if (!settings?.integrations?.search) {
+      settings.integrations.search = {
+        url: DEFAULT_SEARCH_URL,
+        apiKey: "",
+      };
+    } else {
+      settings.integrations.search = {
+        url: settings.integrations.search.url || DEFAULT_SEARCH_URL,
+        apiKey: settings.integrations.search.apiKey || "",
+      };
     }
     if (!settings?.integrations?.metadata) {
       const legacyMusicbrainz = dbOps.getSettings()?.integrations?.musicbrainz || {};
@@ -54,7 +68,11 @@ router.get("/", noCache, (req, res) => {
         enabled: settings?.security?.localNetworkBypass?.enabled === true,
       },
     };
-    res.json(settings);
+    res.json({
+      ...settings,
+      downloadFolderPath:
+        settings.downloadFolderPath || resolvePlaylistRoot(),
+    });
   } catch (error) {
     console.error("Settings GET error:", error);
     res
@@ -63,10 +81,41 @@ router.get("/", noCache, (req, res) => {
   }
 });
 
+router.post("/slskd/test", async (req, res) => {
+  try {
+    const { slskdClient } = await import("../services/slskdClient.js");
+    const result = await slskdClient.testConnection({ force: true });
+    if (!result.configured) {
+      return res.status(400).json(result);
+    }
+    if (!result.ok) {
+      return res.status(502).json(result);
+    }
+    return res.json({
+      success: true,
+      warning: result.warning === true,
+      ...result,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "slskd test failed",
+      message: error.message,
+    });
+  }
+});
+
 router.post("/", async (req, res) => {
   try {
-    const { quality, releaseTypes, integrations, rootFolderPath, security } =
-      req.body;
+    const {
+      quality,
+      releaseTypes,
+      integrations,
+      rootFolderPath,
+      downloadFolderPath,
+      pathMappings,
+      security,
+      playlistArtwork,
+    } = req.body;
 
     const currentSettings = dbOps.getSettings();
     const localBypassWasEnabled =
@@ -85,6 +134,27 @@ router.post("/", async (req, res) => {
       }
     }
 
+    if (integrations?.search) {
+      const nextSearch = {
+        ...(currentSettings.integrations?.search || {}),
+        ...integrations.search,
+      };
+      const trimmedSearchUrl = String(nextSearch.url || "").trim();
+      if (trimmedSearchUrl) {
+        const urlValidation = validateExternalUrl(trimmedSearchUrl);
+        if (!urlValidation.valid) {
+          return res.status(400).json({
+            error: `Invalid search URL: ${urlValidation.error}`,
+          });
+        }
+        nextSearch.url = urlValidation.url.replace(/\/+$/, "");
+      } else {
+        nextSearch.url = "";
+      }
+      nextSearch.apiKey =
+        typeof nextSearch.apiKey === "string" ? nextSearch.apiKey.trim() : "";
+      integrations.search = nextSearch;
+    }
     if (integrations?.metadata) {
       const nextMetadata = {
         ...(currentSettings.integrations?.metadata || {}),
@@ -168,6 +238,12 @@ router.post("/", async (req, res) => {
               ...integrations.metadata,
             }
           : mergedIntegrations.metadata,
+        search: integrations.search
+          ? {
+              ...(mergedIntegrations.search || {}),
+              ...integrations.search,
+            }
+          : mergedIntegrations.search,
         general: integrations.general
           ? {
               ...(mergedIntegrations.general || {}),
@@ -204,6 +280,14 @@ router.post("/", async (req, res) => {
         rootFolderPath !== undefined
           ? rootFolderPath
           : currentSettings.rootFolderPath || null,
+      downloadFolderPath:
+        downloadFolderPath !== undefined
+          ? downloadFolderPath
+          : currentSettings.downloadFolderPath || null,
+      pathMappings:
+        pathMappings !== undefined
+          ? normalizePathMappings(pathMappings)
+          : currentSettings.pathMappings || [],
       releaseTypes:
         releaseTypes !== undefined
           ? releaseTypes
@@ -227,6 +311,15 @@ router.post("/", async (req, res) => {
                   defaultData.settings.security.localNetworkBypass,
             }
           : currentSettings.security || defaultData.settings.security,
+      playlistArtwork:
+        playlistArtwork !== undefined
+          ? {
+              ...(currentSettings.playlistArtwork ||
+                defaultData.settings.playlistArtwork),
+              ...playlistArtwork,
+            }
+          : currentSettings.playlistArtwork ||
+            defaultData.settings.playlistArtwork,
     };
 
     if (updatedSettings?.integrations?.coverArtArchive) {
@@ -237,6 +330,12 @@ router.post("/", async (req, res) => {
     }
 
     dbOps.updateSettings(updatedSettings);
+    if (downloadFolderPath !== undefined) {
+      const { refreshPlaylistRuntimeRoots } = await import(
+        "../services/playlistRuntime.js"
+      );
+      await refreshPlaylistRuntimeRoots();
+    }
     const reconciled = reconcileLocalNetworkBypassSetting().settings;
     if (
       localBypassWasEnabled &&
@@ -461,6 +560,48 @@ router.get("/lidarr/tags", async (req, res) => {
   }
 });
 
+router.post("/path-mappings/detect", async (req, res) => {
+  try {
+    const { lidarrClient } = await import("../services/lidarrClient.js");
+    const { slskdClient } = await import("../services/slskdClient.js");
+    const { detectPathMappings } = await import("../services/pathMappings.js");
+
+    const externalPaths = [];
+    const samplePaths = [];
+
+    try {
+      lidarrClient.updateConfig();
+      const rootFolders = await lidarrClient.getRootFolders();
+      for (const folder of Array.isArray(rootFolders) ? rootFolders : []) {
+        const rootPath = String(folder?.path || "").trim();
+        if (rootPath) externalPaths.push(rootPath);
+      }
+    } catch {}
+
+    try {
+      const slskdRoot = await slskdClient.getDownloadDirectory();
+      if (slskdRoot) externalPaths.push(slskdRoot);
+    } catch {}
+
+    const detection = await detectPathMappings({
+      externalPaths,
+      samplePaths,
+    });
+
+    res.json({
+      success: true,
+      mappings: detection.mappings,
+      verified: detection.verified === true,
+      sampleLocalPath: detection.sampleLocalPath || null,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: "Path mapping detection failed",
+      message: error.message,
+    });
+  }
+});
+
 router.get("/lidarr/test-library-access", async (req, res) => {
   try {
     const { lidarrClient } = await import("../services/lidarrClient.js");
@@ -476,7 +617,7 @@ router.get("/lidarr/test-library-access", async (req, res) => {
     }
 
     const result = await withTemporaryLidarrClient(validation.url, apiKey, (client) =>
-      runLidarrLibraryAccessTest(client),
+      runLidarrLibraryAccessTest(client, { autoApplyMappings: true }),
     );
 
     res.json({
@@ -485,6 +626,8 @@ router.get("/lidarr/test-library-access", async (req, res) => {
       partial: !!result.partial,
       steps: result.steps,
       sample: result.sample,
+      appliedMappings: result.appliedMappings || [],
+      suggestedMappings: result.suggestedMappings || [],
     });
   } catch (error) {
     console.error("[Settings] Lidarr library access test error:", error);
@@ -617,6 +760,8 @@ router.post("/gotify/test", async (req, res) => {
 router.post("/lidarr/apply-community-guide", async (req, res) => {
   try {
     const { lidarrClient } = await import("../services/lidarrClient.js");
+    const { applyLidarrCommunityGuide } =
+      await import("../services/lidarrCommunityGuide.js");
 
     lidarrClient.updateConfig();
     const config = lidarrClient.getConfig();
@@ -628,507 +773,8 @@ router.post("/lidarr/apply-community-guide", async (req, res) => {
       });
     }
 
-    const results = {
-      qualityDefinitions: [],
-      customFormats: [],
-      releaseProfile: null,
-      metadataProfile: null,
-      namingConfig: null,
-      qualityProfile: null,
-      errors: [],
-    };
-
     try {
-      const qualityDefs = await lidarrClient.getQualityDefinitions();
-
-      const flacDef = qualityDefs.find(
-        (q) => q.quality?.name === "FLAC" || q.title === "FLAC",
-      );
-      const flac24Def = qualityDefs.find(
-        (q) => q.quality?.name === "FLAC 24bit" || q.title === "FLAC 24bit",
-      );
-
-      if (flacDef) {
-        const updated = await lidarrClient.updateQualityDefinition(flacDef.id, {
-          ...flacDef,
-          minSize: 0,
-          maxSize: 1400,
-          preferredSize: 895,
-        });
-        results.qualityDefinitions.push({
-          name: "FLAC",
-          updated: { min: 0, max: 1400, preferred: 895 },
-        });
-      }
-
-      if (flac24Def) {
-        const updated = await lidarrClient.updateQualityDefinition(
-          flac24Def.id,
-          {
-            ...flac24Def,
-            minSize: 0,
-            maxSize: 1495,
-            preferredSize: 895,
-          },
-        );
-        results.qualityDefinitions.push({
-          name: "FLAC 24bit",
-          updated: { min: 0, max: 1495, preferred: 895 },
-        });
-      }
-
-      const customFormats = [
-        {
-          name: "Preferred Groups",
-          includeCustomFormatWhenRenaming: false,
-          specifications: [
-            {
-              name: "DeVOiD",
-              implementation: "ReleaseGroupSpecification",
-              negate: false,
-              required: false,
-              fields: { value: "\\bDeVOiD\\b" },
-            },
-            {
-              name: "PERFECT",
-              implementation: "ReleaseGroupSpecification",
-              negate: false,
-              required: false,
-              fields: { value: "\\bPERFECT\\b" },
-            },
-            {
-              name: "ENRiCH",
-              implementation: "ReleaseGroupSpecification",
-              negate: false,
-              required: false,
-              fields: { value: "\\bENRiCH\\b" },
-            },
-          ],
-        },
-        {
-          name: "CD",
-          includeCustomFormatWhenRenaming: false,
-          specifications: [
-            {
-              name: "CD",
-              implementation: "ReleaseTitleSpecification",
-              negate: false,
-              required: false,
-              fields: { value: "\\bCD\\b" },
-            },
-          ],
-        },
-        {
-          name: "WEB",
-          includeCustomFormatWhenRenaming: false,
-          specifications: [
-            {
-              name: "WEB",
-              implementation: "ReleaseTitleSpecification",
-              negate: false,
-              required: false,
-              fields: { value: "\\bWEB\\b" },
-            },
-          ],
-        },
-        {
-          name: "Lossless",
-          includeCustomFormatWhenRenaming: false,
-          specifications: [
-            {
-              name: "Flac",
-              implementation: "ReleaseTitleSpecification",
-              negate: false,
-              required: false,
-              fields: { value: "\\blossless\\b" },
-            },
-          ],
-        },
-        {
-          name: "Vinyl",
-          includeCustomFormatWhenRenaming: false,
-          specifications: [
-            {
-              name: "Vinyl",
-              implementation: "ReleaseTitleSpecification",
-              negate: false,
-              required: false,
-              fields: { value: "\\bVinyl\\b" },
-            },
-          ],
-        },
-      ];
-
-      const toFieldArray = (fields) => {
-        if (!fields || typeof fields !== "object" || Array.isArray(fields)) {
-          return fields;
-        }
-        return Object.entries(fields)
-          .filter(([, value]) => value !== undefined && value !== null)
-          .map(([name, value]) => ({ name, value }));
-      };
-
-      const flattenFields = (fields) => {
-        if (!fields || typeof fields !== "object" || Array.isArray(fields)) {
-          return {};
-        }
-        return Object.fromEntries(
-          Object.entries(fields).filter(
-            ([, value]) => value !== undefined && value !== null,
-          ),
-        );
-      };
-
-      const buildCustomFormatPayloadVariants = (format) => {
-        const base = JSON.parse(JSON.stringify(format));
-        const variants = [base];
-
-        const withFieldArray = {
-          ...base,
-          specifications: Array.isArray(base.specifications)
-            ? base.specifications.map((spec) => ({
-                ...spec,
-                fields: toFieldArray(spec?.fields),
-              }))
-            : base.specifications,
-        };
-        variants.push(withFieldArray);
-
-        const withFlattenedFields = {
-          ...base,
-          specifications: Array.isArray(base.specifications)
-            ? base.specifications.map((spec) => {
-                const fields = flattenFields(spec?.fields);
-                const normalizedSpec = { ...spec, ...fields };
-                delete normalizedSpec.fields;
-                return normalizedSpec;
-              })
-            : base.specifications,
-        };
-        variants.push(withFlattenedFields);
-
-        const seen = new Set();
-        return variants.filter((variant) => {
-          const key = JSON.stringify(variant);
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-      };
-
-      const createCustomFormatWithFallback = async (format) => {
-        const payloads = buildCustomFormatPayloadVariants(format);
-        let lastError = null;
-
-        for (const payload of payloads) {
-          try {
-            return await lidarrClient.createCustomFormat(payload);
-          } catch (err) {
-            lastError = err;
-            const message = String(err?.message || "");
-            const isBadRequest =
-              message.includes("400 Bad Request") ||
-              message.includes("Lidarr API error: 400");
-            if (!isBadRequest) {
-              throw err;
-            }
-          }
-        }
-
-        throw lastError || new Error("Failed to create custom format");
-      };
-
-      const existingFormats = await lidarrClient.getCustomFormats();
-      for (const format of customFormats) {
-        const existing = existingFormats.find((f) => f.name === format.name);
-        if (!existing) {
-          try {
-            const created = await createCustomFormatWithFallback(format);
-            results.customFormats.push(created);
-          } catch (err) {
-            results.errors.push(
-              `Failed to create custom format "${format.name}": ${err.message}`,
-            );
-          }
-        } else {
-          results.customFormats.push(existing);
-        }
-      }
-
-      const releaseProfilePayload = {
-        name: "Aurral - Single Track Rip Filter",
-        enabled: true,
-        required: [],
-        ignored: ["CUE", "FLAC/CUE"],
-        preferred: [],
-        tags: [],
-      };
-
-      const existingReleaseProfiles = await lidarrClient.getReleaseProfiles();
-      const normalizeReleaseName = (value) =>
-        String(value || "")
-          .trim()
-          .toLowerCase();
-      const hasIgnoredMatch = (profile, value) =>
-        Array.isArray(profile?.ignored) &&
-        profile.ignored
-          .map((item) => String(item || "").toLowerCase())
-          .includes(String(value || "").toLowerCase());
-      const existingReleaseProfile = existingReleaseProfiles.find((profile) => {
-        if (!profile) return false;
-        if (
-          normalizeReleaseName(profile.name) ===
-          normalizeReleaseName(releaseProfilePayload.name)
-        ) {
-          return true;
-        }
-        return (
-          hasIgnoredMatch(profile, "CUE") &&
-          hasIgnoredMatch(profile, "FLAC/CUE")
-        );
-      });
-
-      if (existingReleaseProfile) {
-        const updatedReleaseProfile = await lidarrClient.updateReleaseProfile(
-          existingReleaseProfile.id,
-          {
-            ...releaseProfilePayload,
-            id: existingReleaseProfile.id,
-          },
-        );
-        results.releaseProfile = {
-          id: updatedReleaseProfile.id,
-          name: updatedReleaseProfile.name,
-          updated: true,
-        };
-      } else {
-        const createdReleaseProfile = await lidarrClient.createReleaseProfile(
-          releaseProfilePayload,
-        );
-        results.releaseProfile = {
-          id: createdReleaseProfile.id,
-          name: createdReleaseProfile.name,
-        };
-      }
-
-      const metadataProfiles = await lidarrClient.getMetadataProfiles();
-      const aurralMetadataProfile = metadataProfiles.find(
-        (profile) => profile.name === "Aurral - Standard",
-      );
-      const standardProfile = metadataProfiles.find(
-        (profile) => profile.name === "Standard",
-      );
-      const baseMetadataProfile =
-        aurralMetadataProfile || standardProfile || metadataProfiles[0];
-
-      if (!baseMetadataProfile) {
-        throw new Error("No metadata profiles available in Lidarr");
-      }
-
-      const desiredPrimaryTypes = ["Album", "EP", "Single"];
-      const desiredSecondaryTypes = [
-        "Studio",
-        "Soundtrack",
-        "Remix",
-        "DJ-mix",
-        "Compilation",
-      ];
-
-      const normalizeTypeName = (value) =>
-        String(value || "")
-          .toLowerCase()
-          .replace(/[^a-z0-9]/g, "");
-
-      const getTypeName = (item) => {
-        if (!item) return "";
-        if (typeof item === "string") return item;
-        if (typeof item.name === "string") return item.name;
-        if (typeof item.value === "string") return item.value;
-        if (typeof item.albumType?.name === "string")
-          return item.albumType.name;
-        return "";
-      };
-
-      const applyTypeSelection = (available, desired) => {
-        if (!Array.isArray(available) || available.length === 0) {
-          return desired.map((name) => ({ name, allowed: true }));
-        }
-        const desiredSet = new Set(
-          desired.map((name) => normalizeTypeName(name)),
-        );
-        return available.map((item) => {
-          const itemName = getTypeName(item);
-          const allowed = desiredSet.has(normalizeTypeName(itemName));
-          if (typeof item === "string") {
-            return { name: item, allowed };
-          }
-          return { ...item, allowed };
-        });
-      };
-
-      const metadataProfilePayload = {
-        ...baseMetadataProfile,
-        name: "Aurral - Standard",
-        primaryAlbumTypes: applyTypeSelection(
-          baseMetadataProfile.primaryAlbumTypes,
-          desiredPrimaryTypes,
-        ),
-        secondaryAlbumTypes: applyTypeSelection(
-          baseMetadataProfile.secondaryAlbumTypes,
-          desiredSecondaryTypes,
-        ),
-      };
-
-      if (aurralMetadataProfile) {
-        const updatedMetadataProfile = await lidarrClient.updateMetadataProfile(
-          aurralMetadataProfile.id,
-          metadataProfilePayload,
-        );
-        results.metadataProfile = {
-          id: updatedMetadataProfile.id,
-          name: updatedMetadataProfile.name,
-          updated: true,
-        };
-      } else {
-        const { id, ...createPayload } = metadataProfilePayload;
-        const createdMetadataProfile =
-          await lidarrClient.createMetadataProfile(createPayload);
-        results.metadataProfile = {
-          id: createdMetadataProfile.id,
-          name: createdMetadataProfile.name,
-        };
-      }
-
-      const namingConfig = await lidarrClient.getNamingConfig();
-      const updatedNamingConfig = {
-        ...namingConfig,
-        renameTracks: true,
-        replaceIllegalCharacters: true,
-        standardTrackFormat:
-          "{Album Title} {(Album Disambiguation)}/{Artist Name}_{Album Title}_{track:00}_{Track Title}",
-        multiDiscTrackFormat:
-          "{Album Title} {(Album Disambiguation)}/{Artist Name}_{Album Title}_{medium:00}-{track:00}_{Track Title}",
-        artistFolderFormat: "{Artist Name}",
-      };
-
-      await lidarrClient.updateNamingConfig(updatedNamingConfig);
-      results.namingConfig = updatedNamingConfig;
-
-      const existingProfiles = await lidarrClient.getQualityProfiles();
-      let aurralProfile = existingProfiles.find(
-        (profile) => profile.name === "Aurral - HQ",
-      );
-      const baseProfile = aurralProfile || existingProfiles[0];
-
-      if (!baseProfile) {
-        throw new Error("No quality profiles available in Lidarr");
-      }
-
-      const selectedQualityNames = ["MP3-320", "FLAC"];
-      const baseItems = JSON.parse(JSON.stringify(baseProfile.items || []));
-      const qualityItemMap = new Map();
-
-      const collectQualityItems = (items) => {
-        for (const item of items) {
-          if (item?.quality?.name) {
-            qualityItemMap.set(item.quality.name, item);
-          }
-          if (Array.isArray(item.items)) {
-            collectQualityItems(item.items);
-          }
-        }
-      };
-
-      collectQualityItems(baseItems);
-
-      const qualityDefItems = (qualityDefs || []).map((definition) => ({
-        id: definition.id,
-        name: definition.title || definition.quality?.name,
-        quality: {
-          id: definition.quality?.id,
-          name: definition.quality?.name || definition.title,
-        },
-        allowed: false,
-        items: [],
-      }));
-
-      for (const defItem of qualityDefItems) {
-        if (
-          defItem.quality?.name &&
-          !qualityItemMap.has(defItem.quality.name)
-        ) {
-          qualityItemMap.set(defItem.quality.name, defItem);
-        }
-      }
-
-      const normalizeQualityItem = (item, allowed) => ({
-        ...item,
-        allowed,
-        items: [],
-      });
-
-      const selectedItems = selectedQualityNames
-        .map((name) => qualityItemMap.get(name))
-        .filter(Boolean)
-        .map((item) => normalizeQualityItem(item, true));
-
-      const otherItems = Array.from(qualityItemMap.entries())
-        .filter(([name]) => !selectedQualityNames.includes(name))
-        .map(([, item]) => normalizeQualityItem(item, false));
-
-      const profileItems = [...otherItems, ...selectedItems];
-      const flacQualityId = qualityItemMap.get("FLAC")?.quality?.id;
-
-      const formatItems = results.customFormats.map((cf) => {
-        const scores = {
-          "Preferred Groups": 10,
-          CD: 2,
-          WEB: 1,
-          Lossless: 1,
-          Vinyl: -5,
-        };
-        return {
-          format: cf.id,
-          name: cf.name,
-          score: scores[cf.name] || 0,
-        };
-      });
-
-      if (formatItems.length === 0) {
-        results.errors.push(
-          "No custom formats were created; quality profile minFormatScore set to 0.",
-        );
-      }
-
-      const profileData = {
-        ...baseProfile,
-        name: "Aurral - HQ",
-        upgradeAllowed: true,
-        cutoff: flacQualityId ?? baseProfile.cutoff,
-        items: profileItems,
-        minFormatScore: formatItems.length > 0 ? 1 : 0,
-        cutoffFormatScore: 0,
-        formatItems,
-      };
-
-      if (!aurralProfile) {
-        const { id, ...createPayload } = profileData;
-        aurralProfile = await lidarrClient.createQualityProfile(createPayload);
-        results.qualityProfile = {
-          id: aurralProfile.id,
-          name: aurralProfile.name,
-        };
-      } else {
-        const updatedProfile = await lidarrClient.updateQualityProfile(
-          aurralProfile.id,
-          profileData,
-        );
-        results.qualityProfile = {
-          id: updatedProfile.id,
-          name: updatedProfile.name,
-          updated: true,
-        };
-      }
+      const results = await applyLidarrCommunityGuide(lidarrClient);
 
       const currentSettings = dbOps.getSettings();
       dbOps.updateSettings({
@@ -1137,7 +783,7 @@ router.post("/lidarr/apply-community-guide", async (req, res) => {
           ...currentSettings.integrations,
           lidarr: {
             ...(currentSettings.integrations?.lidarr || {}),
-            qualityProfileId: aurralProfile.id,
+            qualityProfileId: results.qualityProfile?.id || null,
             metadataProfileId: results.metadataProfile?.id || null,
           },
         },
@@ -1154,7 +800,7 @@ router.post("/lidarr/apply-community-guide", async (req, res) => {
         error: "Failed to apply community guide settings",
         message: error.message,
         details: error.response?.data,
-        partialResults: results,
+        partialResults: error.partialResults,
       });
     }
   } catch (error) {
@@ -1163,6 +809,41 @@ router.post("/lidarr/apply-community-guide", async (req, res) => {
       error: "Failed to apply community guide settings",
       message: error.message,
     });
+  }
+});
+
+router.get("/browse", async (req, res) => {
+  try {
+    const fs = await import("fs/promises");
+    const path = await import("path");
+    const target = path.resolve(req.query.path ? String(req.query.path) : "/");
+    const dirents = await fs.readdir(target, { withFileTypes: true });
+    const directories = (
+      await Promise.all(
+        dirents.map(async (d) => {
+          let isDir = d.isDirectory();
+          if (!isDir && d.isSymbolicLink()) {
+            try {
+              isDir = (await fs.stat(path.join(target, d.name))).isDirectory();
+            } catch {
+              isDir = false;
+            }
+          }
+          return isDir ? { name: d.name, path: path.join(target, d.name) } : null;
+        }),
+      )
+    )
+      .filter(Boolean)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    res.json({
+      path: target,
+      parent: target === "/" ? null : path.dirname(target),
+      directories,
+    });
+  } catch (error) {
+    res
+      .status(400)
+      .json({ error: "Cannot read path", message: error.message });
   }
 });
 

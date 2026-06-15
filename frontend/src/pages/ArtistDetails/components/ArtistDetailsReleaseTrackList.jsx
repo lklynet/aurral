@@ -1,8 +1,7 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { Loader } from "lucide-react";
 import { TrackPlayButton } from "./TrackPlayButton";
-import { getReleaseYear } from "../utils";
 import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
 import { ArtistTrackListToolbar } from "./ArtistTrackListToolbar";
 import { useAlbumTrackListToolbar } from "../../../hooks/useAlbumTrackListToolbar";
@@ -17,13 +16,16 @@ export function ArtistDetailsReleaseTrackList({
   artistName = "",
   playbackSource = null,
   onAddTrackToPlaylist,
+  resolveMembershipTrack,
   playlists,
   playlistsLoading,
   playlistSavingKey,
   playlistError,
   getDefaultPlaylistName,
   onLoadPlaylists,
+  highlightTrackId = null,
 }) {
+  const rowRefs = useRef({});
   const normalizeTrack = useCallback(
     (track, index) =>
       normalizePreviewTrack(
@@ -70,21 +72,32 @@ export function ArtistDetailsReleaseTrackList({
     handlePlay(track, { source: playbackSource, queue }, index);
   };
 
+  useEffect(() => {
+    if (!highlightTrackId || loading || !tracks?.length) return;
+    const normalizedHighlight = String(highlightTrackId);
+    const matchIndex = tracks.findIndex((track, index) => {
+      const trackId = String(track.id ?? track.mbid ?? `${trackKey}-${index}`);
+      return trackId === normalizedHighlight;
+    });
+    if (matchIndex < 0) return;
+    const track = tracks[matchIndex];
+    const trackId = String(
+      track.id ?? track.mbid ?? `${trackKey}-${matchIndex}`,
+    );
+    const row = rowRefs.current[trackId];
+    if (!row) return;
+    row.classList.add("is-search-focused");
+    row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const timeout = window.setTimeout(() => {
+      row.classList.remove("is-search-focused");
+    }, 2400);
+    return () => window.clearTimeout(timeout);
+  }, [highlightTrackId, loading, trackKey, tracks]);
+
   if (!release) return null;
 
   return (
-    <div className="artist-expanded-panel">
-      <div className="artist-expanded-panel__header">
-        <div className="artist-min-0">
-          <h3 className="artist-card-title artist-truncate">{release.title}</h3>
-          <p className="artist-card-meta">
-            {[getReleaseYear(release), release["primary-type"]]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
-        </div>
-      </div>
-
+    <div className="artist-release-track-list">
       {loading ? (
         <div className="artist-loading">
           <Loader className="artist-spinner animate-spin" />
@@ -115,6 +128,9 @@ export function ArtistDetailsReleaseTrackList({
             return (
               <div
                 key={currentTrackId}
+                ref={(node) => {
+                  if (node) rowRefs.current[currentTrackId] = node;
+                }}
                 className="artist-track-row"
               >
                 <span className="artist-track-number">
@@ -137,6 +153,11 @@ export function ArtistDetailsReleaseTrackList({
                 </span>
                 {onAddTrackToPlaylist ? (
                   <TrackPlaylistMenu
+                    track={
+                      resolveMembershipTrack
+                        ? resolveMembershipTrack(track, release)
+                        : track
+                    }
                     playlists={playlists}
                     loading={playlistsLoading}
                     saving={playlistSavingKey === currentTrackId}
@@ -184,4 +205,5 @@ ArtistDetailsReleaseTrackList.propTypes = {
   playlistError: PropTypes.string,
   getDefaultPlaylistName: PropTypes.func,
   onLoadPlaylists: PropTypes.func,
+  highlightTrackId: PropTypes.string,
 };

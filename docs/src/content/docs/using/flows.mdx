@@ -1,0 +1,131 @@
+---
+title: Flows
+description: Schedule, source mix, focus, and flow generation behavior.
+---
+
+Flows are dynamic playlists. They regenerate on their schedule, download into Aurral's own folder, and can be exposed to Navidrome or Plex.
+
+![Aurral flow editor](../../../assets/screenshots/flow-editor.webp)
+
+## How a flow works
+
+Think of a flow as three layers:
+
+1. **Schedule** — when the flow runs
+2. **Source mix** — where tracks come from
+3. **Focus inputs** — what the Focus source should try to match
+
+The flow first decides **when** to run, then **where tracks should come from**, then **what the dedicated Focus source should try to match**.
+
+## Schedule
+
+- **Tracks** sets the playlist size.
+- **Update days** chooses which days the flow may run.
+- **Update hour** chooses the hour for those runs.
+- A flow only starts generating when it is enabled.
+- A disabled flow is a draft. Its settings are saved, but it will not run until enabled.
+
+## Source mix
+
+Source mix controls where tracks come from.
+
+| Source | Behavior |
+| --- | --- |
+| Discover | Aurral's recommendation pool; always excludes library artists |
+| Library | Artists from your library; the only source allowed to use library artists |
+| Trending | Broader trending pools; always excludes library artists |
+| Focus | Non-library artists that best match your genre tags and related artists |
+
+The mix slider is one shared slider:
+
+- With all four sources on, it behaves like a four-way mix.
+- With two sources on, it collapses into a two-way split.
+- With one source on, that source takes 100%.
+
+The counts shown inside the slider are the current track targets for each source based on the flow size.
+
+### Source toggles
+
+- Turning a source **off** removes it from the mix entirely.
+- Turning a source **on** adds it back into the shared slider.
+
+### Library behavior
+
+- **Library** is the only source allowed to use library artists.
+- **Discover**, **Trending**, and **Focus** always exclude library artists.
+- Turning **Library** off does not disable your saved focus inputs. It only removes the library-only source from the mix.
+
+## Deep dive
+
+Deep dive changes how far Aurral looks when pulling candidates for a source.
+
+- **Off** keeps source pulls narrower.
+- **On** lets Aurral reach further and pull from a broader slice of each source.
+
+It does not change the schedule or source percentages. It changes the breadth of candidate selection inside the active sources.
+
+## Focus
+
+Focus is a dedicated fourth source. It does not bend Discover, Library, or Trending.
+
+- **Genre tags** tell Focus which genres to target.
+- **Related artists** tell Focus which similarity seeds to target.
+- If **Focus** is enabled in source mix, at least one genre tag or related artist is required.
+- If **Focus** is disabled, your tags and related artists can stay saved, but they are inactive.
+
+### Focus matching behavior
+
+When both genre tags and related artists are present, Focus broadens in this order:
+
+1. Artists related to all entered related artists and matching all tags
+2. Artists related to all entered related artists and matching at least one tag
+3. Artists related to any entered related artist and matching all tags
+4. Artists related to any entered related artist and matching at least one tag
+5. Artists related to all entered related artists only
+6. Artists related to any entered related artist only
+7. Tag-only artists matching all tags
+8. Tag-only artists matching at least one tag
+
+### Multiple tags or related artists
+
+- Multiple tags prefer overlap first. `acoustic, sad` tries artists matching both before broadening to one-tag matches.
+- Multiple related artists prefer shared similarity first. Two seeds prefer artists similar to both before broadening to artists similar to only one.
+
+### Focus input behavior
+
+- Enter multiple tags or artists separated by commas.
+- Entries tokenize when separated by a comma or when the field loses focus.
+- Duplicate entries are ignored when they become tokens.
+
+## Fallback behavior
+
+Aurral always tries the most specific matches first, then relaxes if it runs out of valid candidates.
+
+The general order is:
+
+1. Fill each enabled source with its own quota
+2. For Focus, match the focus request as closely as possible before broadening
+3. Keep strict one-song-per-artist diversity across the whole run
+4. Redistribute source shortfalls across the other enabled sources
+5. Use reserve/replacement candidates if the run still comes up short
+
+That means:
+
+- Focus does not secretly steer the other sources
+- You can make highly targeted playlists by weighting Focus heavily or using Focus alone
+- Fallback still stays inside the enabled sources whenever possible
+
+## Flow generation behavior
+
+When a flow runs, Aurral:
+
+1. Calculates the track count target
+2. Calculates source counts from the current source mix
+3. Harvests oversized candidate pools inside each enabled source
+4. Builds a dedicated Focus pool if Focus is enabled
+5. Picks the primary playlist with a strict one-song-per-artist rule
+6. Redistributes any source shortfalls across the other enabled sources
+7. Builds a reserve pool from the same run for fast replacements
+8. Sends the primary playlist into the download worker
+
+Only flows may generate replacement tracks when downloads fail. See [Playlist imports](/using/playlist-imports/) for static playlist retry behavior.

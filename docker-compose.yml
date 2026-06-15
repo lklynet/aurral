@@ -4,8 +4,5 @@ services:
     restart: unless-stopped
     ports:
       - "3001:3001"
-    environment:
-      - DOWNLOAD_FOLDER=${DL_FOLDER:-./data/downloads}
     volumes:
-      - ${DL_FOLDER:-./data/downloads}:/app/downloads
-      - ${STORAGE:-./data}:/app/backend/data
+      - ./config:/config

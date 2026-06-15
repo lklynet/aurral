@@ -13,6 +13,7 @@ export function ArtistDetailsPreviewTracks({
   isArtistPlaybackActive,
   handlePreviewPlay,
   onAddTrackToPlaylist,
+  resolveMembershipTrack,
   playlists,
   playlistsLoading,
   playlistSavingKey,
@@ -124,6 +125,11 @@ export function ArtistDetailsPreviewTracks({
                   {onAddTrackToPlaylist ? (
                     <div className="artist-relative">
                       <TrackPlaylistMenu
+                        track={
+                          resolveMembershipTrack
+                            ? resolveMembershipTrack(track)
+                            : track
+                        }
                         menuVariant="preview-tracks"
                         playlists={playlists}
                         loading={playlistsLoading}

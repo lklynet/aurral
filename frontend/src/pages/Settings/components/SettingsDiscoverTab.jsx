@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { RefreshCw, Trash2, Compass, X } from "lucide-react";
+import { RefreshCw, Trash2, X } from "lucide-react";
 import FlipSaveButton from "../../../components/FlipSaveButton";
-import { SettingsSelect } from "./SettingsField";
+import { SettingsInput, SettingsSelect } from "./SettingsField";
 
 const AUTO_REFRESH_OPTIONS = [
   { value: 24, label: "Daily" },
@@ -47,6 +47,7 @@ export function SettingsDiscoverTab({
   saving,
   handleSaveSettings,
   refreshingDiscovery,
+  discoveryProgress,
   discoveryProgressMessage,
   clearingCache,
   handleRefreshDiscovery,
@@ -59,6 +60,15 @@ export function SettingsDiscoverTab({
     settings.integrations?.lastfm?.discoveryAutoRefreshHours || 168;
   const discoveryMode =
     settings.integrations?.lastfm?.discoveryMode || "balanced";
+  const discoveryRecommendationsPerRefresh =
+    settings.integrations?.lastfm?.discoveryRecommendationsPerRefresh ?? 200;
+  const discoveryFlowsPerRefresh =
+    settings.integrations?.lastfm?.discoveryFlowsPerRefresh ?? 9;
+  const baseDiscoverFlowCount = 5;
+  const focusFlowCount = Math.max(
+    0,
+    discoveryFlowsPerRefresh - baseDiscoverFlowCount,
+  );
   const discoveryProvider =
     health?.discovery?.provider === "listenbrainz-fallback"
       ? "ListenBrainz fallback"
@@ -71,10 +81,7 @@ export function SettingsDiscoverTab({
   return (
     <div className="settings-page__panel">
       <div className="settings-page__panel-header">
-        <h2 className="settings-page__panel-title">
-          <Compass className="settings-page__panel-title-icon" />
-          Discover
-        </h2>
+        <h2 className="settings-page__panel-title">Discover</h2>
         <FlipSaveButton
           saving={saving}
           disabled={!hasUnsavedChanges}
@@ -94,9 +101,9 @@ export function SettingsDiscoverTab({
                 Optional Last.fm upgrade
               </p>
               <p className="settings-page__banner-text">
-                Add a free Last.fm API key in Integrations to unlock personalized
-                recommendations, similar artists, tag and genre search, and custom
-                weekly flows.
+                Add a free Last.fm API key in Integrations to unlock
+                personalized recommendations, similar artists, tag and genre
+                search, and custom weekly flows.
               </p>
             </div>
             <button
@@ -132,10 +139,7 @@ export function SettingsDiscoverTab({
                       ...settings.integrations,
                       lastfm: {
                         ...(settings.integrations?.lastfm || {}),
-                        discoveryAutoRefreshHours: parseInt(
-                          e.target.value,
-                          10,
-                        ),
+                        discoveryAutoRefreshHours: parseInt(e.target.value, 10),
                       },
                     },
                   })
@@ -149,47 +153,122 @@ export function SettingsDiscoverTab({
               </SettingsSelect>
             </div>
             {!isListenBrainzFallback && (
-              <div className="settings-page__field">
-                <label className="artist-field-label" htmlFor="discover-mode">
-                  Discovery mode
-                </label>
-                <SettingsSelect
-                  id="discover-mode"
-                  value={discoveryMode}
-                  onChange={(e) =>
-                    updateSettings({
-                      ...settings,
-                      integrations: {
-                        ...settings.integrations,
-                        lastfm: {
-                          ...(settings.integrations?.lastfm || {}),
-                          discoveryMode: e.target.value,
+              <>
+                <div className="settings-page__field">
+                  <label
+                    className="artist-field-label"
+                    htmlFor="discover-recommendations"
+                  >
+                    Recommended artists per refresh
+                  </label>
+                  <SettingsInput
+                    id="discover-recommendations"
+                    type="number"
+                    min={50}
+                    max={500}
+                    step={10}
+                    value={discoveryRecommendationsPerRefresh}
+                    onChange={(e) => {
+                      const raw = Number(e.target.value);
+                      const value = Number.isFinite(raw)
+                        ? Math.max(50, Math.min(500, Math.floor(raw)))
+                        : 200;
+                      updateSettings({
+                        ...settings,
+                        integrations: {
+                          ...settings.integrations,
+                          lastfm: {
+                            ...(settings.integrations?.lastfm || {}),
+                            discoveryRecommendationsPerRefresh: value,
+                          },
                         },
-                      },
-                    })
-                  }
-                >
-                  {DISCOVERY_MODE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </SettingsSelect>
-                <div className="settings-page__hint-list">
-                  <p>
-                    <strong>Safer:</strong> favors more obvious,
-                    high-confidence recommendations.
-                  </p>
-                  <p>
-                    <strong>Balanced:</strong> mixes familiar artists with some
-                    exploration.
-                  </p>
-                  <p>
-                    <strong>Deeper:</strong> pushes further beyond the most obvious
-                    similar artists.
+                      });
+                    }}
+                  />
+                  <p className="settings-page__hint">
+                    How many artist recommendations to generate on each
+                    discovery refresh.
                   </p>
                 </div>
-              </div>
+                <div className="settings-page__field">
+                  <label
+                    className="artist-field-label"
+                    htmlFor="discover-flows"
+                  >
+                    Generated flows per refresh
+                  </label>
+                  <SettingsInput
+                    id="discover-flows"
+                    type="number"
+                    min={5}
+                    max={32}
+                    step={1}
+                    value={discoveryFlowsPerRefresh}
+                    onChange={(e) => {
+                      const raw = Number(e.target.value);
+                      const value = Number.isFinite(raw)
+                        ? Math.max(5, Math.min(32, Math.floor(raw)))
+                        : 9;
+                      updateSettings({
+                        ...settings,
+                        integrations: {
+                          ...settings.integrations,
+                          lastfm: {
+                            ...(settings.integrations?.lastfm || {}),
+                            discoveryFlowsPerRefresh: value,
+                          },
+                        },
+                      });
+                    }}
+                  />
+                  <p className="settings-page__hint">
+                    Includes Discover Weekly, Trending Mix, Library Blend,
+                    Listening History, and Release Radar, plus {focusFlowCount}{" "}
+                    auto-generated focus playlists.
+                  </p>
+                </div>
+                <div className="settings-page__field">
+                  <label className="artist-field-label" htmlFor="discover-mode">
+                    Discovery mode
+                  </label>
+                  <SettingsSelect
+                    id="discover-mode"
+                    value={discoveryMode}
+                    onChange={(e) =>
+                      updateSettings({
+                        ...settings,
+                        integrations: {
+                          ...settings.integrations,
+                          lastfm: {
+                            ...(settings.integrations?.lastfm || {}),
+                            discoveryMode: e.target.value,
+                          },
+                        },
+                      })
+                    }
+                  >
+                    {DISCOVERY_MODE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </SettingsSelect>
+                  <div className="settings-page__hint-list">
+                    <p>
+                      <strong>Safer:</strong> favors more obvious,
+                      high-confidence recommendations.
+                    </p>
+                    <p>
+                      <strong>Balanced:</strong> mixes familiar artists with
+                      some exploration.
+                    </p>
+                    <p>
+                      <strong>Deeper:</strong> pushes further beyond the most
+                      obvious similar artists.
+                    </p>
+                  </div>
+                </div>
+              </>
             )}
           </fieldset>
         </div>
@@ -201,7 +280,9 @@ export function SettingsDiscoverTab({
               <dl className="settings-page__meta-grid settings-page__meta-grid--two-col">
                 <div className="settings-page__meta-item">
                   <dt className="settings-page__meta-term">Provider</dt>
-                  <dd className="settings-page__meta-value">{discoveryProvider}</dd>
+                  <dd className="settings-page__meta-value">
+                    {discoveryProvider}
+                  </dd>
                 </div>
                 <div className="settings-page__meta-item">
                   <dt className="settings-page__meta-term">Last updated</dt>
@@ -225,10 +306,36 @@ export function SettingsDiscoverTab({
                 </div>
               </dl>
               {(health?.discovery?.isUpdating || refreshingDiscovery) && (
-                <p className="settings-page__progress-line">
-                  <RefreshCw className="artist-icon-xs animate-spin" />
-                  {discoveryProgressMessage || "Refreshing discovery"}
-                </p>
+                <div className="settings-page__discovery-progress">
+                  <p className="settings-page__progress-line">
+                    <RefreshCw className="artist-icon-xs animate-spin" />
+                    <span className="settings-page__progress-text">
+                      {discoveryProgressMessage ||
+                        health?.discovery?.updateProgressMessage ||
+                        "Refreshing discovery"}
+                    </span>
+                    {typeof (
+                      discoveryProgress ?? health?.discovery?.updateProgress
+                    ) === "number" && (
+                      <span className="settings-page__progress-pct">
+                        {discoveryProgress ?? health?.discovery?.updateProgress}
+                        %
+                      </span>
+                    )}
+                  </p>
+                  {typeof (
+                    discoveryProgress ?? health?.discovery?.updateProgress
+                  ) === "number" && (
+                    <div className="settings-page__progress-bar">
+                      <div
+                        className="settings-page__progress-fill"
+                        style={{
+                          width: `${discoveryProgress ?? health?.discovery?.updateProgress}%`,
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
               )}
               {!refreshingDiscovery &&
                 !health?.discovery?.isUpdating &&
@@ -240,7 +347,9 @@ export function SettingsDiscoverTab({
             </div>
             <div className="settings-page__cache-actions">
               <div className="settings-page__action-card">
-                <p className="settings-page__action-card-label">Discovery data</p>
+                <p className="settings-page__action-card-label">
+                  Discovery data
+                </p>
                 <button
                   type="button"
                   onClick={handleRefreshDiscovery}

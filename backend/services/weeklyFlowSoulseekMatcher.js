@@ -32,6 +32,9 @@ const MIX_VARIANT_PATTERNS = [
   { value: "remix", pattern: /\b(?:remix|mix|rework|bootleg|vip|mashup)\b/ },
 ];
 
+const LIVE_VARIANT_PATTERN =
+  /\((?:live\b|live at[^)]*)\)|\[(?:live\b|live at[^\]]*)\]|\b(?:live at|live from|live version|live recording)\b|(?: - | – )\s*live\b/i;
+
 function normalizeText(value) {
   return String(value || "")
     .toLowerCase()
@@ -63,11 +66,12 @@ function normalizeTitle(value) {
 }
 
 function extractVariantProfile(value) {
+  const rawText = String(value || "").toLowerCase();
   const text = normalizeVariantText(value);
   const mixVariant =
     MIX_VARIANT_PATTERNS.find((entry) => entry.pattern.test(text))?.value || null;
   return {
-    live: /\blive\b/.test(text),
+    live: LIVE_VARIANT_PATTERN.test(rawText),
     acoustic: /\bacoustic\b/.test(text),
     demo: /\bdemo\b/.test(text),
     instrumental: /\binstrumental\b/.test(text),
@@ -128,7 +132,7 @@ function getDistinctiveAlbumPhrase(albumName) {
     .join(" ");
 }
 
-function uniqueQueries(values) {
+function uniqueQueries(values, limit = 12) {
   const seen = new Set();
   const queries = [];
   for (const value of values) {
@@ -139,7 +143,29 @@ function uniqueQueries(values) {
     seen.add(key);
     queries.push(query);
   }
-  return queries.slice(0, 12);
+  return queries.slice(0, limit);
+}
+
+export function bypassBannedArtistTerm(name) {
+  const trimmed = String(name || "").trim();
+  if (!trimmed || trimmed.startsWith("*") || trimmed.length < 2) {
+    return trimmed;
+  }
+  return `*${trimmed.slice(1)}`;
+}
+
+function uniqueArtistTerms(values) {
+  const seen = new Set();
+  const terms = [];
+  for (const value of values) {
+    const term = String(value || "").trim();
+    if (!term) continue;
+    const key = term.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    terms.push(term);
+  }
+  return terms;
 }
 
 function stripParenthetical(value) {
@@ -171,7 +197,7 @@ function buildTrackQueryVariants(trackName) {
   return uniqueQueries(variants);
 }
 
-export function buildFlowSearchQueries(context) {
+function readFlowSearchContext(context) {
   const artistName = String(context?.artistName || "").trim();
   const trackName = String(context?.trackName || "").trim();
   const albumName = String(context?.albumName || "").trim();
@@ -189,26 +215,66 @@ export function buildFlowSearchQueries(context) {
     artistName && albumName
       ? scoreTextMatch(artistName, albumName) >= 92
       : false;
+  return {
+    artistName,
+    trackName,
+    albumName,
+    releaseYear,
+    aliases,
+    normalizedAlbum,
+    distinctiveAlbum,
+    trackVariants,
+    isSelfTitled,
+  };
+}
 
+function buildFlowAlbumSearchQueriesForArtistTerms(context, artistTerms) {
+  const {
+    albumName,
+    releaseYear,
+    normalizedAlbum,
+    distinctiveAlbum,
+    isSelfTitled,
+  } = readFlowSearchContext(context);
   const queries = [];
-  if (artistName && albumName) {
+  for (const artist of artistTerms) {
+    if (!artist || !albumName) continue;
     if (isSelfTitled && releaseYear) {
-      queries.push(`${artistName} ${releaseYear}`);
+      queries.push(`${artist} ${releaseYear}`);
     }
-    queries.push(`${artistName} ${albumName}`);
+    queries.push(`${artist} ${albumName}`);
     if (releaseYear) {
-      queries.push(`${artistName} ${albumName} ${releaseYear}`);
+      queries.push(`${artist} ${albumName} ${releaseYear}`);
     }
     if (normalizedAlbum && normalizedAlbum !== normalizeTitle(albumName)) {
-      queries.push(`${artistName} ${normalizedAlbum}`);
+      queries.push(`${artist} ${normalizedAlbum}`);
     }
-    if (distinctiveAlbum && normalizeText(distinctiveAlbum) !== normalizeText(albumName)) {
-      queries.push(`${artistName} ${distinctiveAlbum}`);
+    if (
+      distinctiveAlbum &&
+      normalizeText(distinctiveAlbum) !== normalizeText(albumName)
+    ) {
+      queries.push(`${artist} ${distinctiveAlbum}`);
     }
   }
-  if (artistName && trackVariants.length > 0) {
+  return uniqueQueries(queries);
+}
+
+function buildFlowTrackFallbackSearchQueriesForArtistTerms(
+  context,
+  artistTerms,
+) {
+  const {
+    albumName,
+    releaseYear,
+    aliases,
+    normalizedAlbum,
+    trackVariants,
+  } = readFlowSearchContext(context);
+  const queries = [];
+  for (const artist of artistTerms) {
+    if (!artist) continue;
     for (const trackVariant of trackVariants) {
-      queries.push(`${artistName} ${trackVariant}`);
+      queries.push(`${artist} ${trackVariant}`);
     }
   }
   if (albumName && trackVariants.length > 0) {
@@ -217,16 +283,15 @@ export function buildFlowSearchQueries(context) {
       if (releaseYear) {
         queries.push(`${trackVariant} ${albumName} ${releaseYear}`);
       }
-      if (
-        normalizedAlbum &&
-        normalizedAlbum !== normalizeTitle(albumName)
-      ) {
+      if (normalizedAlbum && normalizedAlbum !== normalizeTitle(albumName)) {
         queries.push(`${trackVariant} ${normalizedAlbum}`);
       }
     }
   }
   for (const alias of aliases) {
-    if (albumName) queries.push(`${alias} ${albumName}`);
+    if (artistTerms.some((term) => term.toLowerCase() === alias.toLowerCase())) {
+      continue;
+    }
     for (const trackVariant of trackVariants) {
       queries.push(`${alias} ${trackVariant}`);
     }
@@ -234,11 +299,316 @@ export function buildFlowSearchQueries(context) {
   return uniqueQueries(queries);
 }
 
+function readFlowArtistTerms(context, wildcard = false) {
+  const { artistName, aliases } = readFlowSearchContext(context);
+  const terms = wildcard
+    ? [artistName, ...aliases].map(bypassBannedArtistTerm)
+    : [artistName, ...aliases];
+  return uniqueArtistTerms(terms);
+}
+
+export function buildFlowAlbumSearchQueries(context) {
+  return buildFlowAlbumSearchQueriesForArtistTerms(
+    context,
+    readFlowArtistTerms(context, false),
+  );
+}
+
+export function buildFlowWildcardAlbumSearchQueries(context) {
+  return buildFlowAlbumSearchQueriesForArtistTerms(
+    context,
+    readFlowArtistTerms(context, true),
+  );
+}
+
+export function buildFlowTrackFallbackSearchQueries(context) {
+  return buildFlowTrackFallbackSearchQueriesForArtistTerms(
+    context,
+    readFlowArtistTerms(context, false),
+  );
+}
+
+export function buildFlowWildcardTrackFallbackSearchQueries(context) {
+  return buildFlowTrackFallbackSearchQueriesForArtistTerms(
+    context,
+    readFlowArtistTerms(context, true),
+  );
+}
+
+export function buildFlowArtistOnlySearchQueries(context) {
+  return uniqueQueries(readFlowArtistTerms(context, true), 6);
+}
+
+export function buildFlowSearchQueries(context) {
+  return uniqueQueries(
+    buildFlowSearchTiers(context).flatMap((tier) => tier.queries),
+    32,
+  );
+}
+
+export function removeSearchAccents(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+}
+
+export function stripSearchPunctuation(value) {
+  return String(value || "")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function buildTrimmedBypassText(value) {
+  return String(value || "")
+    .trim()
+    .split(/\s+/)
+    .map((word) => (word.length >= 4 ? word.slice(0, -1) : word))
+    .join(" ");
+}
+
+function toVolumeDigit(token) {
+  const raw = String(token || "").trim();
+  if (/^\d+$/.test(raw)) return raw;
+  const romanMap = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
+  const mapped = romanMap[raw.toLowerCase()];
+  return mapped != null ? String(mapped) : raw;
+}
+
+export function buildVolumeVariationTexts(value) {
+  const text = String(value || "").trim();
+  if (!text) return [];
+  const match = text.match(/\b(?:vol\.?|volume)\s*([ivx\d]+)\b/i);
+  if (!match) return [];
+  const digit = toVolumeDigit(match[1]);
+  const prefix = text.slice(0, match.index).trim();
+  const suffix = text.slice(match.index + match[0].length).trim();
+  const forms = [
+    `Vol. ${digit}`,
+    `Vol ${digit}`,
+    `Volume ${digit}`,
+    `Volume ${match[1].toUpperCase()}`,
+  ];
+  return uniqueQueries(
+    forms.map((form) => [prefix, form, suffix].filter(Boolean).join(" ")),
+    6,
+  );
+}
+
+export function buildHalfAlbumTitle(albumName) {
+  const words = String(albumName || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length < 5) return "";
+  return words.slice(0, Math.ceil(words.length / 2)).join(" ");
+}
+
+function joinSearchParts(...parts) {
+  return parts
+    .map((entry) => String(entry || "").trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+function buildPrimaryTrackTierQueries(ctx) {
+  const queries = [];
+  const primaryTrack = ctx.trackVariants[0] || ctx.trackName;
+  if (!ctx.artistName || !primaryTrack) return queries;
+  queries.push(joinSearchParts(ctx.artistName, primaryTrack));
+  if (ctx.releaseYear) {
+    queries.push(joinSearchParts(ctx.artistName, primaryTrack, ctx.releaseYear));
+  }
+  return uniqueQueries(queries, 4);
+}
+
+function buildBaseAlbumTierQueries(ctx) {
+  const queries = [];
+  if (!ctx.artistName || !ctx.albumName) return queries;
+  if (ctx.isSelfTitled && ctx.releaseYear) {
+    queries.push(joinSearchParts(ctx.artistName, ctx.releaseYear));
+  }
+  queries.push(joinSearchParts(ctx.artistName, ctx.albumName));
+  if (ctx.releaseYear) {
+    queries.push(joinSearchParts(ctx.artistName, ctx.albumName, ctx.releaseYear));
+  }
+  return uniqueQueries(queries, 4);
+}
+
+function buildVariationTierQueries(ctx) {
+  const queries = [];
+  const primaryTrack = ctx.trackVariants[0] || ctx.trackName;
+  const artistForms = uniqueQueries(
+    [ctx.artistName, removeSearchAccents(ctx.artistName), stripSearchPunctuation(ctx.artistName)].filter(Boolean),
+    3,
+  );
+  const trackForms = uniqueQueries(
+    [
+      primaryTrack,
+      removeSearchAccents(primaryTrack),
+      stripSearchPunctuation(primaryTrack),
+      ...ctx.trackVariants.slice(1, 2),
+    ].filter(Boolean),
+    4,
+  );
+  const albumForms = uniqueQueries(
+    [
+      ctx.albumName,
+      removeSearchAccents(ctx.albumName),
+      stripSearchPunctuation(ctx.albumName),
+      ctx.normalizedAlbum,
+    ].filter(Boolean),
+    4,
+  );
+  for (const artist of artistForms) {
+    for (const track of trackForms) {
+      queries.push(joinSearchParts(artist, track));
+    }
+    for (const album of albumForms) {
+      queries.push(joinSearchParts(artist, album));
+      for (const volumeText of buildVolumeVariationTexts(album)) {
+        queries.push(joinSearchParts(artist, volumeText));
+      }
+      if (ctx.releaseYear) {
+        queries.push(joinSearchParts(artist, album, ctx.releaseYear));
+      }
+    }
+  }
+  return uniqueQueries(queries, 10);
+}
+
+function buildTrimmedTierQueries(ctx) {
+  const queries = [];
+  const primaryTrack = ctx.trackVariants[0] || ctx.trackName;
+  const trimmedArtist = buildTrimmedBypassText(ctx.artistName);
+  const trimmedTrack = buildTrimmedBypassText(primaryTrack);
+  const trimmedAlbum = buildTrimmedBypassText(ctx.albumName);
+  if (trimmedArtist && trimmedTrack) {
+    queries.push(joinSearchParts(trimmedArtist, trimmedTrack));
+  }
+  if (trimmedArtist && trimmedAlbum) {
+    queries.push(joinSearchParts(trimmedArtist, trimmedAlbum));
+    if (ctx.releaseYear) {
+      queries.push(joinSearchParts(trimmedArtist, trimmedAlbum, ctx.releaseYear));
+    }
+  }
+  if (ctx.artistName && primaryTrack) {
+    queries.push(joinSearchParts(bypassBannedArtistTerm(ctx.artistName), primaryTrack));
+  }
+  if (ctx.artistName && ctx.albumName) {
+    queries.push(joinSearchParts(bypassBannedArtistTerm(ctx.artistName), ctx.albumName));
+  }
+  return uniqueQueries(queries, 6);
+}
+
+function buildSpecialCaseTierQueries(ctx) {
+  const queries = [];
+  const primaryTrack = ctx.trackVariants[0] || ctx.trackName;
+  for (const alias of ctx.aliases) {
+    if (!alias) continue;
+    if (primaryTrack) {
+      queries.push(joinSearchParts(alias, primaryTrack));
+    }
+    if (ctx.albumName) {
+      queries.push(joinSearchParts(alias, ctx.albumName));
+      if (ctx.releaseYear) {
+        queries.push(joinSearchParts(alias, ctx.albumName, ctx.releaseYear));
+      }
+    }
+    queries.push(bypassBannedArtistTerm(alias));
+  }
+  const halfAlbum = buildHalfAlbumTitle(ctx.albumName);
+  if (ctx.artistName && halfAlbum) {
+    queries.push(joinSearchParts(ctx.artistName, halfAlbum));
+  }
+  if (ctx.artistName) {
+    queries.push(bypassBannedArtistTerm(ctx.artistName));
+  }
+  if (ctx.albumName) {
+    queries.push(ctx.albumName);
+    if (ctx.distinctiveAlbum && ctx.distinctiveAlbum !== ctx.albumName) {
+      queries.push(ctx.distinctiveAlbum);
+    }
+  }
+  return uniqueQueries(queries, 10);
+}
+
+function buildTrackFallbackTierQueries(ctx) {
+  const queries = [];
+  const trackVariants = uniqueQueries(ctx.trackVariants, 6);
+  for (const trackVariant of trackVariants) {
+    if (ctx.artistName) {
+      queries.push(joinSearchParts(ctx.artistName, trackVariant));
+      queries.push(joinSearchParts(bypassBannedArtistTerm(ctx.artistName), trackVariant));
+    }
+    if (ctx.albumName) {
+      queries.push(joinSearchParts(trackVariant, ctx.albumName));
+      if (ctx.releaseYear) {
+        queries.push(joinSearchParts(trackVariant, ctx.albumName, ctx.releaseYear));
+      }
+    }
+  }
+  for (const alias of ctx.aliases) {
+    for (const trackVariant of trackVariants.slice(0, 2)) {
+      queries.push(joinSearchParts(alias, trackVariant));
+    }
+  }
+  return uniqueQueries(queries, 8);
+}
+
+export function buildFlowSearchTiers(context) {
+  const ctx = readFlowSearchContext(context);
+  const tiers = [];
+  const primaryTrack = buildPrimaryTrackTierQueries(ctx);
+  if (primaryTrack.length > 0) {
+    tiers.push({ tier: 0, name: "primary_track", queries: primaryTrack });
+  }
+  const baseAlbum = buildBaseAlbumTierQueries(ctx);
+  if (baseAlbum.length > 0) {
+    tiers.push({ tier: 1, name: "base_album", queries: baseAlbum });
+  }
+  const variations = buildVariationTierQueries(ctx);
+  if (variations.length > 0) {
+    tiers.push({ tier: 2, name: "variations", queries: variations });
+  }
+  const trimmed = buildTrimmedTierQueries(ctx);
+  if (trimmed.length > 0) {
+    tiers.push({ tier: 3, name: "trimmed", queries: trimmed });
+  }
+  const special = buildSpecialCaseTierQueries(ctx);
+  if (special.length > 0) {
+    tiers.push({ tier: 4, name: "special", queries: special });
+  }
+  const trackFallback = buildTrackFallbackTierQueries(ctx);
+  if (trackFallback.length > 0) {
+    tiers.push({ tier: 5, name: "track_fallback", queries: trackFallback });
+  }
+  return tiers;
+}
+
 function getPathParts(filePath) {
   return String(filePath || "")
     .split(/[\\/]+/)
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function getFileName(filePath) {
+  const parts = getPathParts(filePath);
+  return parts.length > 0 ? parts[parts.length - 1] : "";
+}
+
+function getFileExtension(filePath) {
+  const fileName = getFileName(filePath);
+  const dot = fileName.lastIndexOf(".");
+  if (dot <= 0) return "";
+  return fileName.slice(dot).toLowerCase();
+}
+
+function getFileBaseName(filePath) {
+  const fileName = getFileName(filePath);
+  const ext = getFileExtension(filePath);
+  return ext ? fileName.slice(0, -ext.length) : fileName;
 }
 
 function getDirectoryKey(item) {
@@ -264,6 +634,10 @@ function countAudioFiles(files) {
   return files.filter((item) => AUDIO_EXTENSIONS.has(path.extname(String(item?.file || "")).toLowerCase())).length;
 }
 
+function isLockedSearchResult(item) {
+  return item?.locked === true || item?.isLocked === true;
+}
+
 function scoreTrackCount(expected, actual) {
   if (!expected || !actual) return 0;
   if (actual === expected) return 30;
@@ -271,6 +645,46 @@ function scoreTrackCount(expected, actual) {
   if (diff === 1) return 18;
   if (diff === 2) return 6;
   return -Math.min(20, diff * 5);
+}
+
+function scoreTracklistMatch(audioFiles, context) {
+  const titles = Array.isArray(context?.albumTrackTitles)
+    ? context.albumTrackTitles
+    : [];
+  if (titles.length === 0) {
+    return { score: 0, matchedCount: 0, ratio: 0 };
+  }
+  const fileNames = (audioFiles || []).map((item) =>
+    getFileBaseName(String(item?.file || "")),
+  );
+  if (fileNames.length === 0) {
+    return { score: 0, matchedCount: 0, ratio: 0 };
+  }
+  const usedFiles = new Set();
+  let matchedCount = 0;
+  for (const title of titles) {
+    let bestScore = 0;
+    let bestIndex = -1;
+    for (let index = 0; index < fileNames.length; index += 1) {
+      if (usedFiles.has(index)) continue;
+      const matchScore = scoreTextMatch(fileNames[index], title);
+      if (matchScore >= 75 && matchScore > bestScore) {
+        bestScore = matchScore;
+        bestIndex = index;
+      }
+    }
+    if (bestIndex >= 0) {
+      matchedCount += 1;
+      usedFiles.add(bestIndex);
+    }
+  }
+  const ratio = matchedCount / titles.length;
+  let score = 0;
+  if (ratio >= 0.85) score = 40;
+  else if (ratio >= 0.65) score = 28;
+  else if (ratio >= 0.45) score = 14;
+  else if (ratio >= 0.25) score = 4;
+  return { score, matchedCount, ratio };
 }
 
 function scoreYearMatch(directoryText, releaseYear) {
@@ -430,19 +844,25 @@ function pickBestArtistScore(context, text) {
   );
 }
 
-function buildGroupCandidate(group, context, options = {}) {
-  const preferredFormat = options?.preferredFormat === "mp3" ? "mp3" : "flac";
-  const strictFormat = options?.strictFormat === true;
-  const isUserBlacklisted =
-    typeof options?.isUserBlacklisted === "function"
-      ? options.isUserBlacklisted
-      : () => false;
-  const getUserQueuePenalty =
-    typeof options?.getUserQueuePenalty === "function"
-      ? options.getUserQueuePenalty
-      : () => 0;
+function readMatcherOptions(options = {}) {
+  return {
+    preferredFormat: options?.preferredFormat === "mp3" ? "mp3" : "flac",
+    strictFormat: options?.strictFormat === true,
+    isUserBlacklisted:
+      typeof options?.isUserBlacklisted === "function"
+        ? options.isUserBlacklisted
+        : () => false,
+    getUserQueuePenalty:
+      typeof options?.getUserQueuePenalty === "function"
+        ? options.getUserQueuePenalty
+        : () => 0,
+  };
+}
+
+function scoreReleaseFolder(group, context, options = {}) {
+  const { isUserBlacklisted, getUserQueuePenalty } = readMatcherOptions(options);
   if (isUserBlacklisted(group.user)) {
-    return [];
+    return { blacklisted: true };
   }
   const directoryText = normalizeText(group.directoryPath);
   const albumDir = group.parts.at(-2) || "";
@@ -458,20 +878,151 @@ function buildGroupCandidate(group, context, options = {}) {
       )
     : 0;
   const yearScore = scoreYearMatch(directoryText, context?.releaseYear);
-  const audioFiles = group.audioFiles;
-  const trackCountScore = scoreTrackCount(context?.albumTrackCount, audioFiles.length);
+  const audioFiles = group.audioFiles || [];
+  const trackCountScore = scoreTrackCount(
+    context?.albumTrackCount,
+    audioFiles.length,
+  );
+  const tracklistMatch = scoreTracklistMatch(audioFiles, context);
+  const tracklistScore = tracklistMatch.score;
   const availabilityScore = audioFiles.some((item) => item?.slots) ? 8 : 0;
   const speedScore = Math.min(
     12,
     Math.round(
-      audioFiles.reduce((best, item) => Math.max(best, Number(item?.speed || 0)), 0) /
-        250000,
+      audioFiles.reduce(
+        (best, item) => Math.max(best, Number(item?.speed || 0)),
+        0,
+      ) / 250000,
     ),
   );
   const userQueuePenaltyScore = -Math.min(
     120,
     Math.round(Number(getUserQueuePenalty(group.user) || 0) / 2),
   );
+  return {
+    blacklisted: false,
+    score:
+      artistScore +
+      albumScore +
+      yearScore +
+      trackCountScore +
+      tracklistScore +
+      availabilityScore +
+      speedScore +
+      userQueuePenaltyScore,
+    artistScore,
+    albumScore,
+    yearScore,
+    trackCountScore,
+    tracklistScore,
+    tracklistMatchedCount: tracklistMatch.matchedCount,
+    tracklistMatchRatio: tracklistMatch.ratio,
+    availabilityScore,
+    speedScore,
+    userQueuePenaltyScore,
+  };
+}
+
+function isReleaseFolderFitting(group, context, folderScores) {
+  const albumName = String(context?.albumName || "").trim();
+  if (!albumName) return true;
+  const { artistScore, albumScore, trackCountScore, tracklistScore } =
+    folderScores;
+  const expectedCount = Number(context?.albumTrackCount);
+  const actualCount = group.audioFiles?.length || 0;
+  const expectedTitles = Array.isArray(context?.albumTrackTitles)
+    ? context.albumTrackTitles.length
+    : 0;
+  if (
+    albumScore < 18 &&
+    trackCountScore < 18 &&
+    tracklistScore < 14
+  ) {
+    return false;
+  }
+  if (albumScore < 18 && artistScore < 45 && tracklistScore < 14) {
+    return false;
+  }
+  if (
+    Number.isFinite(expectedCount) &&
+    expectedCount > 0 &&
+    actualCount > 0
+  ) {
+    const diff = Math.abs(actualCount - expectedCount);
+    if (diff > 5) return false;
+    if (diff > 3 && albumScore < 35 && tracklistScore < 14) return false;
+  }
+  if (
+    expectedTitles >= 4 &&
+    tracklistScore < 4 &&
+    albumScore < 35 &&
+    trackCountScore < 18
+  ) {
+    return false;
+  }
+  if (artistScore < 35 && albumScore < 50 && tracklistScore < 14) {
+    return false;
+  }
+  return true;
+}
+
+function groupFlowSearchResults(results) {
+  const groups = new Map();
+  for (const item of Array.isArray(results) ? results : []) {
+    const key = getDirectoryKey(item);
+    if (!key) continue;
+    const existing = groups.get(key) || {
+      key,
+      user: String(item?.user || "").trim(),
+      directoryPath: getPathParts(item?.file).slice(0, -1).join("/"),
+      parts: getPathParts(item?.file),
+      files: [],
+    };
+    existing.files.push(item);
+    groups.set(key, existing);
+  }
+  const grouped = [];
+  for (const group of groups.values()) {
+    group.audioFiles = group.files.filter(
+      (item) =>
+        !isLockedSearchResult(item) &&
+        AUDIO_EXTENSIONS.has(
+          path.extname(String(item?.file || "")).toLowerCase(),
+        ),
+    );
+    if (group.audioFiles.length === 0) continue;
+    group.audioFileCount = countAudioFiles(group.files);
+    grouped.push(group);
+  }
+  return grouped;
+}
+
+function pickBestTrackCandidate(trackCandidates) {
+  return (
+    trackCandidates.find((entry) => entry.preDownloadValid) ||
+    trackCandidates.find((entry) => entry.isLikelyMatch) ||
+    trackCandidates[0] ||
+    null
+  );
+}
+
+function buildGroupCandidate(group, context, options = {}) {
+  const { preferredFormat, strictFormat } = readMatcherOptions(options);
+  const folderScores = scoreReleaseFolder(group, context, options);
+  if (folderScores.blacklisted) {
+    return [];
+  }
+  const {
+    artistScore,
+    albumScore,
+    yearScore,
+    trackCountScore,
+    availabilityScore,
+    speedScore,
+    userQueuePenaltyScore,
+  } = folderScores;
+  const albumDir = group.parts.at(-2) || "";
+  const audioFiles = group.audioFiles;
 
   const files = strictFormat
     ? audioFiles.filter(
@@ -480,11 +1031,11 @@ function buildGroupCandidate(group, context, options = {}) {
     : audioFiles;
   const candidates = [];
   for (const item of files) {
-    const ext = path.extname(String(item?.file || "")).toLowerCase();
-    const baseName = path.basename(String(item?.file || ""), ext);
+    const ext = getFileExtension(String(item?.file || ""));
+    const baseName = getFileBaseName(String(item?.file || ""));
     const titleScore = Math.max(
       scoreTextMatch(baseName, context?.trackName),
-      scoreTextMatch(path.basename(String(item?.file || "")), context?.trackName),
+      scoreTextMatch(getFileName(String(item?.file || "")), context?.trackName),
     );
     const variantMatch = scoreVariantCompatibility(
       context?.trackName,
@@ -520,8 +1071,9 @@ function buildGroupCandidate(group, context, options = {}) {
     });
     const formatScore =
       ext === `.${preferredFormat}` ? 18 : ext === ".flac" || ext === ".mp3" ? 9 : 0;
-    const bitrateScore = Number.isFinite(Number(item?.bitrate))
-      ? Math.min(8, Math.round(Number(item.bitrate) / 64))
+    const bitRate = Number(item?.bitrate ?? item?.bitRate ?? 0);
+    const bitrateScore = Number.isFinite(bitRate)
+      ? Math.min(8, Math.round(bitRate / 64))
       : 0;
     const totalScore =
       artistScore +
@@ -579,33 +1131,65 @@ function buildGroupCandidate(group, context, options = {}) {
   });
 }
 
-export function rankFlowSearchResults(results, context, options = {}) {
-  const groups = new Map();
-  for (const item of Array.isArray(results) ? results : []) {
-    const key = getDirectoryKey(item);
-    if (!key) continue;
-    const existing = groups.get(key) || {
-      key,
-      user: String(item?.user || "").trim(),
-      directoryPath: getPathParts(item?.file).slice(0, -1).join("/"),
-      parts: getPathParts(item?.file),
-      files: [],
-    };
-    existing.files.push(item);
-    groups.set(key, existing);
-  }
-
+function rankFlowSearchResultsFlat(results, context, options = {}) {
   const ranked = [];
-  for (const group of groups.values()) {
-    group.audioFiles = group.files.filter((item) =>
-      AUDIO_EXTENSIONS.has(path.extname(String(item?.file || "")).toLowerCase()),
-    );
-    if (group.audioFiles.length === 0) continue;
-    group.audioFileCount = countAudioFiles(group.files);
+  for (const group of groupFlowSearchResults(results)) {
     ranked.push(...buildGroupCandidate(group, context, options));
   }
-
   return ranked.sort((left, right) => right.score - left.score);
+}
+
+export function rankFlowSearchResults(results, context, options = {}) {
+  const albumName = String(context?.albumName || "").trim();
+  const groups = groupFlowSearchResults(results);
+  if (!albumName) {
+    return rankFlowSearchResultsFlat(results, context, options);
+  }
+
+  const folderEntries = [];
+  for (const group of groups) {
+    const folderScores = scoreReleaseFolder(group, context, options);
+    if (folderScores.blacklisted) continue;
+    const trackCandidates = buildGroupCandidate(group, context, options);
+    if (trackCandidates.length === 0) continue;
+    folderEntries.push({
+      group,
+      folderScores,
+      fitting: isReleaseFolderFitting(group, context, folderScores),
+      trackCandidates,
+    });
+  }
+
+  const fittingFolders = folderEntries
+    .filter(
+      (entry) =>
+        entry.fitting &&
+        entry.trackCandidates.some((track) => track.preDownloadValid),
+    )
+    .sort((left, right) => {
+      const scoreDiff = right.folderScores.score - left.folderScores.score;
+      if (scoreDiff !== 0) return scoreDiff;
+      const leftTrack = pickBestTrackCandidate(left.trackCandidates);
+      const rightTrack = pickBestTrackCandidate(right.trackCandidates);
+      return Number(rightTrack?.score || 0) - Number(leftTrack?.score || 0);
+    });
+
+  const ranked = [];
+  for (const entry of fittingFolders) {
+    const best = pickBestTrackCandidate(entry.trackCandidates);
+    if (best) {
+      ranked.push({
+        ...best,
+        releaseFolderFit: true,
+        folderScore: entry.folderScores.score,
+      });
+    }
+  }
+  if (ranked.length > 0) {
+    return ranked;
+  }
+
+  return rankFlowSearchResultsFlat(results, context, options);
 }
 
 export function selectRankedMatchAttempts(matches, limit = 5) {
@@ -661,8 +1245,24 @@ function bestArtistTag(common) {
   return values.filter(Boolean).join(" ");
 }
 
+function readDownloadDurationValidation(parsed, expectedDuration) {
+  const durationSeconds = Number(parsed?.format?.duration || 0);
+  const actualDurationMs =
+    durationSeconds > 0 ? Math.round(durationSeconds * 1000) : null;
+  const durationDiffMs =
+    expectedDuration > 0 && actualDurationMs != null
+      ? Math.abs(actualDurationMs - expectedDuration)
+      : null;
+  const durationValid =
+    durationDiffMs == null ||
+    durationDiffMs <= 25000 ||
+    durationDiffMs <= Math.max(12000, expectedDuration * 0.18);
+  return { actualDurationMs, durationValid };
+}
+
 export async function validateDownloadedTrack(filePath, candidate, context) {
   const remoteFilename = getRemoteFilename(candidate);
+  const remoteBaseName = getFileBaseName(remoteFilename);
   const expectedDuration = Number(context?.durationMs || 0);
   let metadata = null;
   let parsed = null;
@@ -690,53 +1290,59 @@ export async function validateDownloadedTrack(filePath, candidate, context) {
     : 0;
   const variantMatch = scoreVariantCompatibility(
     context?.trackName,
-    titleFromTags || remoteFilename,
+    remoteBaseName,
   );
+  const filenameTrackNumber = extractTrackNumber(remoteBaseName);
   const actualTrackNumber =
-    parsed?.common?.track?.no != null &&
-    Number.isFinite(Number(parsed.common.track.no))
-      ? Number(parsed.common.track.no)
-      : extractTrackNumber(path.basename(remoteFilename));
-  const trackNumberValid =
-    !Number.isFinite(Number(context?.trackNumber)) ||
-    !Number.isFinite(Number(actualTrackNumber)) ||
-    Number(context.trackNumber) <= 0 ||
-    Number(actualTrackNumber) <= 0 ||
-    Number(context.trackNumber) === Number(actualTrackNumber);
-  const durationSeconds = Number(parsed?.format?.duration || 0);
-  const actualDurationMs =
-    durationSeconds > 0 ? Math.round(durationSeconds * 1000) : null;
-  const durationDiffMs =
-    expectedDuration > 0 && actualDurationMs != null
-      ? Math.abs(actualDurationMs - expectedDuration)
-      : null;
-  const durationValid =
-    durationDiffMs == null ||
-    durationDiffMs <= 25000 ||
-    durationDiffMs <= Math.max(12000, expectedDuration * 0.18);
-
-  const valid =
-    titleScore >= 82 &&
-    artistScore >= 60 &&
-    durationValid &&
-    !variantMatch.hardMismatch &&
-    (trackNumberValid || (titleScore >= 98 && artistScore >= 90)) &&
-    (!context?.albumName ||
-      albumScore >= 28 ||
-      (titleScore >= 90 && artistScore >= 90));
+    filenameTrackNumber != null
+      ? filenameTrackNumber
+      : parsed?.common?.track?.no != null &&
+          Number.isFinite(Number(parsed.common.track.no))
+        ? Number(parsed.common.track.no)
+        : null;
+  const trackNumberMismatch =
+    Number.isFinite(Number(context?.trackNumber)) &&
+    Number(context?.trackNumber) > 0 &&
+    Number.isFinite(Number(actualTrackNumber)) &&
+    Number(actualTrackNumber) > 0 &&
+    Number(context?.trackNumber) !== Number(actualTrackNumber);
+  const siblingTrackPenalty = scoreSiblingTrackConflict(
+    remoteBaseName,
+    context,
+    titleScore,
+  );
+  const matchCheck = isStrongEnoughCandidate({
+    titleScore,
+    artistScore,
+    albumScore,
+    variantMatch,
+    trackCountScore: 18,
+    trackNumberMismatch,
+    siblingTrackPenalty,
+    context,
+  });
+  const { actualDurationMs, durationValid } = readDownloadDurationValidation(
+    parsed,
+    expectedDuration,
+  );
+  const valid = matchCheck.valid && durationValid;
 
   return {
     valid,
     reason: valid
       ? null
-      : `title=${titleScore}, artist=${artistScore}, album=${albumScore}, durationValid=${durationValid}, variantScore=${variantMatch.score}, trackNumberValid=${trackNumberValid}`,
+      : !matchCheck.valid
+        ? `${matchCheck.reason}: title=${titleScore}, artist=${artistScore}, album=${albumScore}, variantScore=${variantMatch.score}, trackNumberMismatch=${trackNumberMismatch}`
+        : `duration-mismatch: title=${titleScore}, artist=${artistScore}, album=${albumScore}, durationValid=${durationValid}`,
     scores: {
       title: titleScore,
       artist: artistScore,
       album: albumScore,
       durationValid,
       variant: variantMatch.score,
-      trackNumberValid,
+      trackNumberMismatch,
+      matchReason: matchCheck.reason,
+      preDownloadValid: candidate?.preDownloadValid === true,
     },
     actualDurationMs,
     remoteFilename,

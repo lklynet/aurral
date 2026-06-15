@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
+import { useNavigate } from "react-router-dom";
 import {
   Loader,
   Music,
@@ -10,13 +11,8 @@ import {
   Trash2,
   RefreshCw,
 } from "lucide-react";
-import { getPopularityScale } from "../utils";
-import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
-import { TrackPlayButton } from "./TrackPlayButton";
-import { ArtistTrackListToolbar } from "./ArtistTrackListToolbar";
-import { useAlbumTrackListToolbar } from "../../../hooks/useAlbumTrackListToolbar";
-import { useGlobalTrackPlayback } from "../../../hooks/useGlobalTrackPlayback";
-import { normalizePreviewTrack } from "../../../utils/audioQueue";
+import { navigateToLibraryAlbum } from "../../../utils/searchNavigation";
+import { getPopularityScale, isVisibleLibraryAlbum } from "../utils";
 
 export function ArtistDetailsLibraryAlbums({
   artist,
@@ -27,52 +23,31 @@ export function ArtistDetailsLibraryAlbums({
   reSearchingMissingAlbums,
   albumCovers,
   artistCoverImage,
-  expandedLibraryAlbum,
-  albumTracks,
-  loadingTracks,
   albumDropdownOpen,
   setAlbumDropdownOpen,
-  handleLibraryAlbumClick,
   canDeleteAlbum,
   handleDeleteAlbumClick,
   canReSearchAlbum,
   handleReSearchAlbum,
   handleReSearchMissingDownloads,
-  onAddTrackToPlaylist,
-  playlists,
-  playlistsLoading,
-  playlistSavingKey,
-  playlistError,
-  getDefaultPlaylistName,
-  onLoadPlaylists,
   onVisibleCoverIdsChange,
-  playbackSource = null,
   artistName = "",
 }) {
+  const navigate = useNavigate();
   const railRef = useRef(null);
   const visibleCoverIdsRef = useRef(new Set());
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [completionFilter, setCompletionFilter] = useState("all");
-  const [activePlaylistTrackKey, setActivePlaylistTrackKey] = useState(null);
   const [dropdownPosition, setDropdownPosition] = useState(null);
-  const downloadedAlbums = libraryAlbums.filter((album) => {
-    if (String(album.id ?? "").startsWith("pending-")) return false;
-    return (
-      album.monitored ||
-      album.statistics?.percentOfTracks > 0 ||
-      album.statistics?.sizeOnDisk > 0 ||
-      downloadStatuses[album.id] ||
-      (requestingAlbum &&
-        (album.mbid === requestingAlbum ||
-          album.foreignAlbumId === requestingAlbum))
-    );
-  });
+  const downloadedAlbums = libraryAlbums.filter((album) =>
+    isVisibleLibraryAlbum(album, { requestingAlbum }),
+  );
 
   const releaseGroups = artist?.["release-groups"] || [];
   getPopularityScale(releaseGroups);
   const popularityById = new Map(
-    releaseGroups.map((rg) => [rg.id, typeof rg?.fans === "number" ? rg.fans : 0])
+    releaseGroups.map((rg) => [rg.id, typeof rg?.fans === "number" ? rg.fans : 0]),
   );
   const getAlbumFans = (album) => {
     const rgId = album.mbid || album.foreignAlbumId;
@@ -93,7 +68,7 @@ export function ArtistDetailsLibraryAlbums({
     const isActiveSearch =
       downloadStatus &&
       ["adding", "searching", "downloading", "moving", "processing"].includes(
-        downloadStatus.status
+        downloadStatus.status,
       );
     const canReSearch =
       !isComplete &&
@@ -113,7 +88,7 @@ export function ArtistDetailsLibraryAlbums({
     .filter(Boolean)
     .join(",");
   const incompleteAlbumCount = sortedAlbums.filter(
-    (album) => !getAlbumState(album).isComplete
+    (album) => !getAlbumState(album).isComplete,
   ).length;
   const filterTitle =
     completionFilter === "all"
@@ -129,12 +104,8 @@ export function ArtistDetailsLibraryAlbums({
       title: "Show all library albums",
       renderIcon: () => (
         <span className="artist-status-icon-pair">
-          <span
-            className="artist-status-dot artist-status-dot--complete"
-          />
-          <span
-            className="artist-status-dot artist-status-dot--incomplete"
-          />
+          <span className="artist-status-dot artist-status-dot--complete" />
+          <span className="artist-status-dot artist-status-dot--incomplete" />
         </span>
       ),
     },
@@ -144,12 +115,8 @@ export function ArtistDetailsLibraryAlbums({
       title: "Show incomplete downloads",
       renderIcon: () => (
         <span className="artist-status-icon-pair">
-          <span
-            className="artist-status-dot artist-status-dot--incomplete"
-          />
-          <span
-            className="artist-status-dot"
-          />
+          <span className="artist-status-dot artist-status-dot--incomplete" />
+          <span className="artist-status-dot" />
         </span>
       ),
     },
@@ -159,12 +126,8 @@ export function ArtistDetailsLibraryAlbums({
       title: "Show completed downloads",
       renderIcon: () => (
         <span className="artist-status-icon-pair">
-          <span
-            className="artist-status-dot artist-status-dot--complete"
-          />
-          <span
-            className="artist-status-dot"
-          />
+          <span className="artist-status-dot artist-status-dot--complete" />
+          <span className="artist-status-dot" />
         </span>
       ),
     },
@@ -188,75 +151,14 @@ export function ArtistDetailsLibraryAlbums({
     });
   }, []);
 
-  const normalizeTrack = useCallback(
-    (track, albumTitle, index) =>
-      normalizePreviewTrack(
-        {
-          id: track?.id ?? track?.mbid ?? `library-${index}`,
-          title: track?.title || track?.trackName,
-          preview_url: track?.preview_url,
-        },
-        artistName || artist?.name || "",
-        { album: albumTitle || "" },
-      ),
-    [artist?.name, artistName],
-  );
-
-  const { isTrackPlaying, isTrackLoading, handlePlay } = useGlobalTrackPlayback(
-    normalizeTrack,
-  );
-
-  const handleTrackPreviewPlay = (
-    track,
-    albumTitle,
-    index,
-    albumTrackList,
-    event,
-  ) => {
-    event.stopPropagation();
-    if (!track?.preview_url) return;
-    const queue = (albumTrackList || [])
-      .filter((entry) => entry?.preview_url)
-      .map((entry, entryIndex) => normalizeTrack(entry, albumTitle, entryIndex));
-    handlePlay(track, { source: playbackSource, queue }, albumTitle, index);
+  const openLibraryAlbum = (libraryAlbum) => {
+    const rgId = libraryAlbum.mbid || libraryAlbum.foreignAlbumId;
+    navigateToLibraryAlbum(navigate, libraryAlbum, {
+      artistMbid: artist?.id,
+      artistName: artistName || artist?.name || "",
+      coverUrl: albumCovers[rgId] || albumCovers[libraryAlbum.id] || artistCoverImage || "",
+    });
   };
-
-  const expandedAlbumPanel = useMemo(() => {
-    if (!expandedLibraryAlbum) return null;
-    const libraryAlbum = libraryAlbums.find(
-      (album) => (album.mbid || album.foreignAlbumId) === expandedLibraryAlbum,
-    );
-    if (!libraryAlbum) return null;
-    return {
-      libraryAlbum,
-      tracks: albumTracks[libraryAlbum.id] || [],
-      isLoadingTracks: loadingTracks[libraryAlbum.id] || false,
-    };
-  }, [
-    albumTracks,
-    expandedLibraryAlbum,
-    libraryAlbums,
-    loadingTracks,
-  ]);
-
-  const getExpandedQueueTracks = useCallback(() => {
-    if (!expandedAlbumPanel) return [];
-    const albumTitle = expandedAlbumPanel.libraryAlbum.albumName || "";
-    return (expandedAlbumPanel.tracks || [])
-      .filter((entry) => entry?.preview_url)
-      .map((entry, entryIndex) => normalizeTrack(entry, albumTitle, entryIndex));
-  }, [expandedAlbumPanel, normalizeTrack]);
-
-  const {
-    disabled: toolbarDisabled,
-    isListPlaying,
-    isShuffleEnabled,
-    handlePlayAll,
-    handleShufflePlay,
-  } = useAlbumTrackListToolbar({
-    getQueueTracks: getExpandedQueueTracks,
-    playbackSource,
-  });
 
   useEffect(() => {
     const node = railRef.current;
@@ -393,13 +295,9 @@ export function ArtistDetailsLibraryAlbums({
         </div>
       </div>
 
-      <div
-        ref={railRef}
-        className="artist-library-rail"
-      >
+      <div ref={railRef} className="artist-library-rail">
         {visibleAlbums.map((libraryAlbum) => {
           const rgId = libraryAlbum.mbid || libraryAlbum.foreignAlbumId;
-          const isExpanded = expandedLibraryAlbum === rgId;
           const { downloadStatus, isComplete, canReSearch } =
             getAlbumState(libraryAlbum);
           const coverUrl = albumCovers[rgId] || artistCoverImage;
@@ -422,9 +320,9 @@ export function ArtistDetailsLibraryAlbums({
           return (
             <article
               key={libraryAlbum.id}
-              className={`artist-library-card${isExpanded ? " is-expanded" : ""}`}
+              className="artist-library-card"
               data-cover-id={rgId}
-              onClick={() => handleLibraryAlbumClick(rgId, libraryAlbum.id)}
+              onClick={() => openLibraryAlbum(libraryAlbum)}
             >
               <div className="artist-release-card__cover">
                 {coverUrl ? (
@@ -504,7 +402,7 @@ export function ArtistDetailsLibraryAlbums({
                         >
                           <a
                             href={`https://www.last.fm/music/${encodeURIComponent(
-                              artist.name
+                              artist.name,
                             )}/${encodeURIComponent(libraryAlbum.albumName)}`}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -570,14 +468,7 @@ export function ArtistDetailsLibraryAlbums({
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleLibraryAlbumClick(rgId, libraryAlbum.id);
-                }}
-                className="artist-card-button"
-              >
+              <div className="artist-card-button">
                 <span className="artist-card-title-row">
                   <span className="artist-release-card__title artist-clamp-2">
                     {libraryAlbum.albumName}
@@ -588,7 +479,7 @@ export function ArtistDetailsLibraryAlbums({
                     {metaItems.join(" · ")}
                   </span>
                 )}
-              </button>
+              </div>
             </article>
           );
         })}
@@ -603,142 +494,6 @@ export function ArtistDetailsLibraryAlbums({
               : "No library albums match this filter."}
         </div>
       )}
-
-      {visibleAlbums.map((libraryAlbum) => {
-        const rgId = libraryAlbum.mbid || libraryAlbum.foreignAlbumId;
-        if (expandedLibraryAlbum !== rgId) return null;
-        const trackKey = libraryAlbum.id;
-        const tracks = albumTracks[trackKey] || null;
-        const isLoadingTracks = loadingTracks[trackKey] || false;
-        const statistics = libraryAlbum.statistics;
-        const detailItems = [
-          statistics?.trackCount ? `${statistics.trackCount} tracks` : null,
-          statistics?.sizeOnDisk
-            ? `${(statistics.sizeOnDisk / 1024 / 1024).toFixed(2)} MB`
-            : null,
-          statistics?.percentOfTracks != null
-            ? `${statistics.percentOfTracks}% complete`
-            : null,
-        ].filter(Boolean);
-
-        return (
-          <div
-            key={`expanded-${libraryAlbum.id}`}
-            className="artist-expanded-panel"
-          >
-            <div className="artist-expanded-panel__header">
-              <h3 className="artist-card-title artist-truncate">
-                {libraryAlbum.albumName}
-              </h3>
-              {detailItems.length > 0 && (
-                <p className="artist-card-meta">
-                  {detailItems.join(" · ")}
-                </p>
-              )}
-            </div>
-
-            {isLoadingTracks ? (
-              <div className="artist-loading">
-                <Loader className="artist-spinner animate-spin" />
-              </div>
-            ) : tracks && tracks.length > 0 ? (
-              <>
-                <ArtistTrackListToolbar
-                  disabled={toolbarDisabled}
-                  isPlaying={isListPlaying}
-                  isShuffleEnabled={isShuffleEnabled}
-                  onPlayAll={handlePlayAll}
-                  onShufflePlay={handleShufflePlay}
-                />
-                <div className="artist-track-list__rows">
-                {tracks.map((track, idx) => {
-                  const trackMenuKey = String(
-                    track.id ?? track.mbid ?? `library-${idx}`,
-                  );
-                  const isPlaylistMenuOpen =
-                    activePlaylistTrackKey === trackMenuKey;
-                  const isPlaying = isTrackPlaying(trackMenuKey);
-                  const isLoadingPreview = isTrackLoading(trackMenuKey);
-                  const durationLabel = track.length
-                    ? `${Math.floor(track.length / 60000)}:${Math.floor(
-                        (track.length % 60000) / 1000
-                      )
-                        .toString()
-                        .padStart(2, "0")}`
-                    : "";
-                  return (
-                    <div
-                      key={trackMenuKey}
-                      className={`artist-track-row${isPlaylistMenuOpen ? " is-active" : ""}`}
-                      >
-                      <span className="artist-track-number">
-                        {track.trackNumber || track.position || idx + 1}
-                      </span>
-                      {track.preview_url ? (
-                        <TrackPlayButton
-                          track={track}
-                          isPlaying={isPlaying}
-                          isLoading={isLoadingPreview}
-                          onClick={(event) =>
-                            handleTrackPreviewPlay(
-                              track,
-                              libraryAlbum.albumName,
-                              idx,
-                              tracks,
-                              event,
-                            )
-                          }
-                        />
-                      ) : (
-                        <span />
-                      )}
-                      <span className="artist-track-title">
-                        {track.title || track.trackName || "Unknown Track"}
-                      </span>
-                      {onAddTrackToPlaylist ? (
-                        <TrackPlaylistMenu
-                          playlists={playlists}
-                          loading={playlistsLoading}
-                          saving={
-                            playlistSavingKey === trackMenuKey
-                          }
-                          error={playlistError}
-                          defaultNewPlaylistName={getDefaultPlaylistName?.(
-                            track,
-                            libraryAlbum,
-                          )}
-                          onLoadPlaylists={onLoadPlaylists}
-                          onSelect={(target) =>
-                            onAddTrackToPlaylist(
-                              track,
-                              libraryAlbum,
-                              rgId,
-                              target,
-                            )
-                          }
-                          onOpenChange={(open) =>
-                            setActivePlaylistTrackKey(
-                              open ? trackMenuKey : null,
-                            )
-                          }
-                        />
-                      ) : null}
-                      <span className="artist-track-duration">
-                        {durationLabel}
-                      </span>
-                    </div>
-                  );
-                })}
-                </div>
-              </>
-            ) : (
-              <p className="artist-empty-message">
-                No tracks available
-              </p>
-            )}
-          </div>
-        );
-      })}
     </section>
   );
 }
@@ -752,29 +507,13 @@ ArtistDetailsLibraryAlbums.propTypes = {
   reSearchingMissingAlbums: PropTypes.bool,
   albumCovers: PropTypes.object,
   artistCoverImage: PropTypes.string,
-  expandedLibraryAlbum: PropTypes.string,
-  albumTracks: PropTypes.object,
-  loadingTracks: PropTypes.object,
   albumDropdownOpen: PropTypes.string,
   setAlbumDropdownOpen: PropTypes.func,
-  handleLibraryAlbumClick: PropTypes.func,
   canDeleteAlbum: PropTypes.bool,
   handleDeleteAlbumClick: PropTypes.func,
   canReSearchAlbum: PropTypes.bool,
   handleReSearchAlbum: PropTypes.func,
   handleReSearchMissingDownloads: PropTypes.func,
-  onAddTrackToPlaylist: PropTypes.func,
-  playlists: PropTypes.array,
-  playlistsLoading: PropTypes.bool,
-  playlistSavingKey: PropTypes.string,
-  playlistError: PropTypes.string,
-  getDefaultPlaylistName: PropTypes.func,
-  onLoadPlaylists: PropTypes.func,
   onVisibleCoverIdsChange: PropTypes.func,
   artistName: PropTypes.string,
-  playbackSource: PropTypes.shape({
-    type: PropTypes.string,
-    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    label: PropTypes.string,
-  }),
 };

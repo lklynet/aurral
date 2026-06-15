@@ -1,0 +1,14 @@
+{
+  "mixed-1": { "elapsedMs": 43599, "primary": 30, "reserve": 23 },
+  "mixed-2": { "elapsedMs": 31058, "primary": 30, "reserve": 23 },
+  "focus": { "elapsedMs": 74126, "primary": 30, "reserve": 23 },
+  "mixed-defer-reserve": { "elapsedMs": 23560, "primary": 30, "reserve": 0 },
+  "mixed-full-plan": { "elapsedMs": 25629, "primary": 30, "reserve": 23 },
+  "summary": {
+    "baselineAvgMixedMs": 78977,
+    "optimizedAvgFullPlanMs": 33429,
+    "optimizedDeferPrimaryMs": 23560,
+    "improvementFullPlanPct": 58,
+    "improvementDeferPrimaryPct": 70
+  }
+}

@@ -55,6 +55,22 @@ async function startFakeLidarr() {
       return json(res, 200, { version: "1.0.0-test", instanceName: "Lidarr" });
     }
 
+    if (
+      req.method === "GET" &&
+      (url.pathname === "/api/v1/qualityprofile" ||
+        url.pathname === "/api/qualityprofile")
+    ) {
+      return json(res, 200, [{ id: 1, name: "Aurral - HQ" }]);
+    }
+
+    if (
+      req.method === "GET" &&
+      (url.pathname === "/api/v1/metadataprofile" ||
+        url.pathname === "/api/metadataprofile")
+    ) {
+      return json(res, 200, [{ id: 2, name: "Aurral - Standard" }]);
+    }
+
     return json(res, 404, { message: "Not found" });
   });
 
@@ -110,4 +126,58 @@ test("GET /api/onboarding/lidarr/test uses supplied credentials before onboardin
   });
   assert.equal(fakeLidarr.requests.length > 0, true);
   assert.equal(fakeLidarr.requests[0].apiKey, "fake-key");
+});
+
+test("GET /api/onboarding/lidarr/test-library-access keeps supplied credentials through root folder lookup", async () => {
+  const params = new URLSearchParams({
+    url: fakeLidarr.url,
+    apiKey: "fake-key",
+  });
+  const response = await fetch(
+    buildApiUrl(
+      server.port,
+      `/api/onboarding/lidarr/test-library-access?${params.toString()}`,
+    ),
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200, JSON.stringify(payload));
+  const rootStep = payload.steps?.find((step) => step.id === "root");
+  assert.notEqual(rootStep?.detail, "Lidarr API key not configured");
+  assert.equal(rootStep?.status, "pass");
+  assert.match(String(rootStep?.detail || ""), /\/music\/main/);
+});
+
+test("GET /api/onboarding/lidarr/profiles uses supplied credentials before onboarding is complete", async () => {
+  const params = new URLSearchParams({
+    url: fakeLidarr.url,
+    apiKey: "fake-key",
+  });
+  const response = await fetch(
+    buildApiUrl(
+      server.port,
+      `/api/onboarding/lidarr/profiles?${params.toString()}`,
+    ),
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200, JSON.stringify(payload));
+  assert.deepEqual(payload, [{ id: 1, name: "Aurral - HQ" }]);
+});
+
+test("GET /api/onboarding/lidarr/metadata-profiles uses supplied credentials before onboarding is complete", async () => {
+  const params = new URLSearchParams({
+    url: fakeLidarr.url,
+    apiKey: "fake-key",
+  });
+  const response = await fetch(
+    buildApiUrl(
+      server.port,
+      `/api/onboarding/lidarr/metadata-profiles?${params.toString()}`,
+    ),
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200, JSON.stringify(payload));
+  assert.deepEqual(payload, [{ id: 2, name: "Aurral - Standard" }]);
 });

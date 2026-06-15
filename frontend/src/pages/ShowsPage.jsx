@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { Loader, Music, MapPin, AlertCircle } from "lucide-react";
@@ -15,6 +15,62 @@ const SHOW_FILTER_OPTIONS = [
   { id: "discover", label: "Discover" },
 ];
 
+const DEFAULT_LOCATION_STATE = {
+  locationMode: "ip",
+  appliedZip: "",
+};
+
+const readStoredLocationState = () => {
+  try {
+    const storedMode = globalThis.localStorage?.getItem(NEARBY_MODE_KEY);
+    const storedZip = globalThis.localStorage?.getItem(NEARBY_ZIP_KEY) || "";
+    return {
+      locationMode:
+        storedMode === "zip" || storedMode === "ip"
+          ? storedMode
+          : DEFAULT_LOCATION_STATE.locationMode,
+      appliedZip: storedZip,
+    };
+  } catch {
+    return DEFAULT_LOCATION_STATE;
+  }
+};
+
+const writeStoredLocationMode = (mode) => {
+  try {
+    globalThis.localStorage?.setItem(NEARBY_MODE_KEY, mode);
+  } catch {}
+};
+
+const writeStoredZip = (zipCode) => {
+  try {
+    globalThis.localStorage?.setItem(NEARBY_ZIP_KEY, zipCode);
+  } catch {}
+};
+
+const getShowGroups = (showsData) => ({
+  all: Array.isArray(showsData?.shows) ? showsData.shows : [],
+  library: Array.isArray(showsData?.libraryShows) ? showsData.libraryShows : [],
+  discover: Array.isArray(showsData?.recommendedShows)
+    ? showsData.recommendedShows
+    : [],
+});
+
+const getSafeCount = (value, fallback) => {
+  if (value == null || value === "") return fallback;
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : fallback;
+};
+
+const getShowKey = (show, index) =>
+  [
+    show?.id || `show-${index}`,
+    show?.artistName,
+    show?.sourceType || show?.matchType || "show",
+  ]
+    .filter(Boolean)
+    .join("-");
+
 function ShowsPage() {
   useDocumentTitle("Shows");
   const navigate = useNavigate();
@@ -22,71 +78,75 @@ function ShowsPage() {
   const [showsLoading, setShowsLoading] = useState(false);
   const [showsError, setShowsError] = useState(null);
   const [showFilter, setShowFilter] = useState("all");
-  const [locationMode, setLocationMode] = useState("ip");
-  const [appliedZip, setAppliedZip] = useState("");
+  const [{ locationMode, appliedZip }, setLocationState] = useState(
+    readStoredLocationState,
+  );
   const zipModeActive = locationMode === "zip";
 
   useEffect(() => {
-    try {
-      const storedMode = localStorage.getItem(NEARBY_MODE_KEY);
-      const storedZip = localStorage.getItem(NEARBY_ZIP_KEY) || "";
-      if (storedMode === "zip" || storedMode === "ip") {
-        setLocationMode(storedMode);
-      }
-      setAppliedZip(storedZip);
-    } catch {}
-  }, []);
-
-  useEffect(() => {
     const shouldUseZip = locationMode === "zip";
-    if (shouldUseZip && !appliedZip.trim()) {
+    const trimmedZip = appliedZip.trim();
+    if (shouldUseZip && !trimmedZip) {
       setShowsData(null);
       setShowsError(null);
       setShowsLoading(false);
       return;
     }
 
-    let cancelled = false;
+    const controller = new AbortController();
     setShowsLoading(true);
     setShowsError(null);
+    setShowsData(null);
 
-    getNearbyShows(shouldUseZip ? appliedZip : "", SHOWS_PAGE_LIMIT)
+    getNearbyShows(shouldUseZip ? trimmedZip : "", SHOWS_PAGE_LIMIT, {
+      signal: controller.signal,
+    })
       .then((response) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setShowsData(response);
         setShowsError(null);
       })
       .catch((error) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setShowsError(
           error.response?.data?.message || "Failed to load nearby shows",
         );
       })
       .finally(() => {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setShowsLoading(false);
         }
       });
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [locationMode, appliedZip]);
 
-  const allShows = showsData?.shows || [];
-  const libraryShows = showsData?.libraryShows || [];
-  const discoverShows = showsData?.recommendedShows || [];
-  const shows =
-    showFilter === "library"
-      ? libraryShows
-      : showFilter === "discover"
-        ? discoverShows
-        : allShows;
+  const showGroups = useMemo(() => getShowGroups(showsData), [showsData]);
+  const allTotal = getSafeCount(showsData?.total, showGroups.all.length);
+  const groupTotals = {
+    all: allTotal,
+    library: getSafeCount(
+      showsData?.counts?.matchedLibraryShows,
+      showGroups.library.length,
+    ),
+    discover: getSafeCount(
+      showsData?.counts?.matchedRecommendedShows,
+      showGroups.discover.length,
+    ),
+  };
+  const shows = showGroups[showFilter] || showGroups.all;
+  const hasAnyShows = Object.values(showGroups).some(
+    (group) => group.length > 0,
+  );
   const locationLabel =
-    showsData?.location?.label || showsData?.location?.postalCode || "your area";
+    showsData?.location?.label ||
+    showsData?.location?.postalCode ||
+    "your area";
   const pageSubtitle = showsLoading
     ? "Finding Ticketmaster events matched to your library and recommendations."
-    : `Upcoming concerts around ${locationLabel}, matched to artists in your library and Discover.`;
+    : `Upcoming concerts around ${locationLabel}.`;
 
   const emptyMessage =
     showFilter === "library"
@@ -108,24 +168,27 @@ function ShowsPage() {
             appliedZip={appliedZip}
             location={showsData?.location}
             onSelectYourLocation={() => {
-              setLocationMode("ip");
-              try {
-                localStorage.setItem(NEARBY_MODE_KEY, "ip");
-              } catch {}
+              setLocationState((current) => ({
+                ...current,
+                locationMode: "ip",
+              }));
+              writeStoredLocationMode("ip");
             }}
             onStartCustomLocation={() => {
-              setLocationMode("zip");
-              try {
-                localStorage.setItem(NEARBY_MODE_KEY, "zip");
-              } catch {}
+              setLocationState((current) => ({
+                ...current,
+                locationMode: "zip",
+              }));
+              writeStoredLocationMode("zip");
             }}
             onApplyZip={(sanitized) => {
-              setAppliedZip(sanitized);
-              setLocationMode("zip");
-              try {
-                localStorage.setItem(NEARBY_MODE_KEY, "zip");
-                localStorage.setItem(NEARBY_ZIP_KEY, sanitized);
-              } catch {}
+              const nextZip = sanitized.trim();
+              setLocationState({
+                locationMode: "zip",
+                appliedZip: nextZip,
+              });
+              writeStoredLocationMode("zip");
+              writeStoredZip(nextZip);
             }}
           />
         </div>
@@ -173,23 +236,9 @@ function ShowsPage() {
             Open the location menu above and enter a ZIP or postal code.
           </p>
         </div>
-      ) : shows.length > 0 ? (
+      ) : hasAnyShows ? (
         <section className="shows-page__content">
           <div className="shows-page__toolbar">
-            <div className="shows-page__toolbar-copy">
-              <p className="artist-count shows-page__result-count">
-                Showing {shows.length}
-                {showFilter === "all" && showsData?.total > shows.length
-                  ? ` of ${showsData.total}`
-                  : ""}{" "}
-                upcoming matches
-              </p>
-              {showFilter === "all" && showsData?.total > shows.length && (
-                <p className="shows-page__hint">
-                  Refine the area to narrow the list
-                </p>
-              )}
-            </div>
             <div
               className="artist-segmented shows-page__filters"
               role="group"
@@ -201,22 +250,38 @@ function ShowsPage() {
                   type="button"
                   onClick={() => setShowFilter(option.id)}
                   className={`artist-segmented-button${showFilter === option.id ? " is-active" : ""}`}
+                  aria-pressed={showFilter === option.id}
                 >
-                  {option.label}
+                  <span>{option.label}</span>
+                  <span className="shows-page__filter-count">
+                    {groupTotals[option.id] ?? 0}
+                  </span>
                 </button>
               ))}
             </div>
           </div>
-          <div className="shows-page__grid">
-            {shows.map((show) => (
-              <div
-                key={`${show.id}-${show.artistName}-${show.sourceType || show.matchType || "show"}`}
-                className="shows-page__grid-item"
-              >
-                <ShowCard show={show} />
+          {shows.length > 0 ? (
+            <div className="shows-page__grid">
+              {shows.map((show, index) => (
+                <div
+                  key={getShowKey(show, index)}
+                  className="shows-page__grid-item"
+                >
+                  <ShowCard show={show} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="search-empty-panel shows-page__empty">
+              <div className="search-empty-panel__icon" aria-hidden="true">
+                <Music className="artist-icon-lg" />
               </div>
-            ))}
-          </div>
+              <h2 className="search-empty-panel__title">
+                No matches in this filter
+              </h2>
+              <p className="search-empty-panel__message">{emptyMessage}</p>
+            </div>
+          )}
         </section>
       ) : (
         <div className="search-empty-panel">

@@ -1,0 +1,69 @@
+name: Desktop
+
+on:
+  pull_request:
+    branches: ["main", "test"]
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop.yml"
+  push:
+    branches: ["main", "test", "dev"]
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop.yml"
+
+concurrency:
+  group: desktop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.88.0
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Sync desktop version
+        run: npm run sync-version --prefix desktop
+
+      - name: Ensure desktop icons
+        working-directory: desktop
+        run: |
+          if [ ! -f src-tauri/icons/icon.icns ]; then
+            npm run icons
+          fi
+
+      - name: Pin brotli-decompressor for reproducible builds
+        working-directory: desktop/src-tauri
+        run: cargo update -p brotli-decompressor --precise 5.0.1
+
+      - name: Build macOS app bundle
+        working-directory: desktop
+        run: npm run build
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: aurral-desktop-macos-${{ github.sha }}
+          path: |
+            desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            desktop/src-tauri/target/release/bundle/macos/*.app
+          if-no-files-found: error

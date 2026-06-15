@@ -1,0 +1,47 @@
+---
+title: macOS app
+description: Install the Aurral desktop client and connect it to your server.
+---
+
+The macOS app is a thin client: it opens your self-hosted Aurral server in a native window with a Dock icon. It does not run Aurral itself — you still need [Docker setup](/getting-started/docker/) (or another host) for the backend.
+
+Stable builds are attached to [GitHub Releases](https://github.com/lklynet/aurral/releases) as `Aurral_<version>_aarch64.dmg`. Apple Silicon Macs only for now.
+
+## Install
+
+1. Download the `.dmg` from the latest stable release.
+2. Open the disk image and drag **Aurral** into **Applications**.
+3. Launch Aurral from Applications or the Dock.
+4. Enter your server URL on the connect screen, for example `https://aurral.example.com` or `http://localhost:3001`.
+
+Aurral remembers that URL. Use **Aurral → Change Server…** in the menu bar to point at a different instance.
+
+## macOS security prompt
+
+Release builds are not notarized yet. The first time you open Aurral, macOS may say the app cannot be opened because it is from an unidentified developer.
+
+**Option A — menu (easiest)**
+
+1. Open **Applications** in Finder.
+2. Control-click **Aurral** and choose **Open**.
+3. Confirm **Open** in the dialog. You only need to do this once.
+
+**Option B — remove the download quarantine flag**
+
+If macOS still blocks the app after download, run this in Terminal (adjust the path if you installed elsewhere):
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Aurral.app
+```
+
+Then open Aurral normally.
+
+:::caution
+Only run that command on Aurral.app if you downloaded it from the official [GitHub Releases](https://github.com/lklynet/aurral/releases) page. Do not disable Gatekeeper system-wide.
+:::
+
+## Browser or app?
+
+The app shows the same Aurral UI as your browser. Updates to your server appear in the app after a refresh, the same as on the web. The app is optional — bookmarks, **Add to Dock** in Safari, or installing Aurral as a web app from your browser are fine alternatives.
+
+Next: [First run](/getting-started/first-run/)

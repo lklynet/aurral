@@ -239,19 +239,6 @@ export default function registerArtists(router) {
 
         const albums = await libraryManager.getAlbums(artist.id);
 
-        await Promise.allSettled(
-          albums.map((album) =>
-            libraryManager.updateAlbumStatistics(album.id).catch((err) => {
-              console.error(
-                `Failed to update statistics for album ${album.albumName}:`,
-                err.message,
-              );
-            }),
-          ),
-        );
-
-        await libraryManager.updateArtistStatistics(artist.id);
-
         if (lidarrClient && lidarrClient.isConfigured()) {
           const lidarrArtist = await lidarrClient.getArtist(artist.id);
           if (

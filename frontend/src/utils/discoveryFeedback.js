@@ -1,13 +1,8 @@
-const RATING_FEEDBACK_ACTIONS = new Set([
-  "more_like_this",
-  "less_like_this",
-  "already_known",
-]);
+const RATING_FEEDBACK_ACTIONS = new Set(["more_like_this", "less_like_this"]);
 
 export const DISCOVERY_FEEDBACK_LABELS = {
   more_like_this: "More like this",
   less_like_this: "Less like this",
-  already_known: "Already know this",
 };
 
 export const normalizeDiscoveryFeedbackList = (value) => {
@@ -85,7 +80,6 @@ export const getArtistFeedbackFlags = (lookup, artist) => {
   return {
     more_like_this: actions.has("more_like_this"),
     less_like_this: actions.has("less_like_this"),
-    already_known: actions.has("already_known"),
   };
 };
 

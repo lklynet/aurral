@@ -44,15 +44,25 @@ test("enrichLidarrTrackWithFiles attaches trackFile from trackFileId", () => {
   assert.equal(enriched.trackFile.path, "/data/music/Actual Water/Call 4 Fun/track.mp3");
 });
 
-test("buildPlaybackQueueFromLidarrData joins trackIds from track files", () => {
+test("buildPlaybackQueueFromLidarrData joins tracks to track files by trackFileId", () => {
   const queue = buildPlaybackQueueFromLidarrData({
     artists: [{ id: 100, artistName: "Artist" }],
     rawAlbums: [{ id: 603, artistId: 100, title: "Album" }],
-    rawTracks: [{ id: 7, albumId: 603, title: "Track", trackNumber: 1 }],
+    rawTracks: [
+      {
+        id: 7,
+        albumId: 603,
+        title: "Track",
+        trackNumber: 1,
+        hasFile: true,
+        trackFileId: 10915,
+      },
+    ],
     rawTrackFiles: [
       {
+        id: 10915,
         albumId: 603,
-        trackIds: [7],
+        artistId: 100,
         path: "/data/music/Artist/Album/track.mp3",
       },
     ],

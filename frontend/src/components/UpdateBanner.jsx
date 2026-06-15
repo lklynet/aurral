@@ -12,14 +12,20 @@ const UpdateBanner = ({ currentVersion, visible = true }) => {
   const repo = import.meta.env.VITE_GITHUB_REPO || "lklynet/aurral";
   const inferredChannel = resolvedVersion?.includes("-test.")
     ? "test"
-    : "stable";
-  const releaseChannel =
-    (
-      import.meta.env.VITE_RELEASE_CHANNEL ||
-      inferredChannel
-    ).toLowerCase() === "test"
-      ? "test"
+    : resolvedVersion?.includes("-dev.")
+      ? "dev"
       : "stable";
+  const releaseChannel = (() => {
+    const channel = (
+      import.meta.env.VITE_RELEASE_CHANNEL || inferredChannel
+    ).toLowerCase();
+    if (channel === "test" || channel === "dev") {
+      return channel;
+    }
+    return "stable";
+  })();
+  const isPrereleaseChannel =
+    releaseChannel === "test" || releaseChannel === "dev";
   const dismissKey = useMemo(
     () => `aurral:updateDismissed:${repo}:${releaseChannel}`,
     [releaseChannel, repo],
@@ -79,10 +85,9 @@ const UpdateBanner = ({ currentVersion, visible = true }) => {
           return;
         }
         const latestLabel = latestRelease.parsed.label;
-        const releaseUrl =
-          releaseChannel === "test"
-            ? `https://github.com/${repo}/tags`
-            : `https://github.com/${repo}/releases/tag/${latestRelease.tagName}`;
+        const releaseUrl = isPrereleaseChannel
+          ? `https://github.com/${repo}/tags`
+          : `https://github.com/${repo}/releases/tag/${latestRelease.tagName}`;
         const latestKey = latestLabel;
         if (!latestKey) {
           return;
@@ -123,7 +128,15 @@ const UpdateBanner = ({ currentVersion, visible = true }) => {
       active = false;
       clearInterval(intervalId);
     };
-  }, [checkMetaKey, dismissKey, releaseChannel, repo, resolvedVersion, visible]);
+  }, [
+    checkMetaKey,
+    dismissKey,
+    isPrereleaseChannel,
+    releaseChannel,
+    repo,
+    resolvedVersion,
+    visible,
+  ]);
 
   const dismissUpdate = () => {
     if (!updateInfo?.latestKey) {
@@ -147,8 +160,8 @@ const UpdateBanner = ({ currentVersion, visible = true }) => {
           {" → "}
           <span className="app-banner__highlight">{updateInfo.latest}</span>
           {". "}
-          {updateInfo.channel === "test"
-            ? "A newer test build is ready. Update when convenient."
+          {isPrereleaseChannel
+            ? `A newer ${updateInfo.channel} build is ready. Update when convenient.`
             : "A newer stable build is ready. Update when convenient."}
         </p>
       </div>
@@ -159,7 +172,7 @@ const UpdateBanner = ({ currentVersion, visible = true }) => {
           rel="noreferrer"
           className="btn btn-secondary btn-sm"
         >
-          {updateInfo.channel === "test" ? "View tags" : "View release"}
+          {isPrereleaseChannel ? "View tags" : "View release"}
         </a>
         <button
           type="button"

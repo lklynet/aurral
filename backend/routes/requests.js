@@ -83,7 +83,22 @@ const refreshRequestsCache = async (lidarrClient) => {
   return pendingRequestsRefresh;
 };
 
-const buildRequestsResponse = async (lidarrClient) => {
+const filterRedundantAurralRequests = (aurralRequests, lidarrRequests) => {
+  const lidarrAlbumIds = new Set(
+    lidarrRequests
+      .map((request) => request.albumId)
+      .filter(Boolean)
+      .map((albumId) => String(albumId)),
+  );
+  if (!lidarrAlbumIds.size) return aurralRequests;
+  return aurralRequests.filter((request) => {
+    if (request.kind !== "album_requested") return true;
+    if (!request.albumId) return true;
+    return !lidarrAlbumIds.has(String(request.albumId));
+  });
+};
+
+const buildLidarrRequests = async (lidarrClient) => {
   const [queue, history] = await Promise.all([
     lidarrClient.getQueue().catch(() => []),
     lidarrClient.getHistory(1, 200).catch(() => ({ records: [] })),
@@ -144,6 +159,7 @@ const buildRequestsResponse = async (lidarrClient) => {
 
     requestsByAlbumId.set(String(albumId), {
       id: `lidarr-queue-${item.id ?? albumId}`,
+      source: "lidarr",
       type: "album",
       albumId: String(albumId),
       albumMbid: item?.album?.foreignAlbumId || null,
@@ -152,11 +168,13 @@ const buildRequestsResponse = async (lidarrClient) => {
       artistMbid,
       artistName,
       status,
+      statusLabel: isFailed ? "Failed" : "Downloading",
       requestedAt: toIso(item?.added),
       mbid: artistMbid,
       name: albumName,
       image: null,
       inQueue: true,
+      canReSearch: isFailed,
     });
   }
 
@@ -244,9 +262,18 @@ const buildRequestsResponse = async (lidarrClient) => {
           : isGrabbed
             ? "processing"
             : "processing";
+    const statusLabel =
+      status === "available"
+        ? "Complete"
+        : status === "failed"
+          ? "Failed"
+          : isGrabbed
+            ? "Downloading"
+            : "In progress";
 
     requestsByAlbumId.set(String(albumId), {
       id: `lidarr-history-${record.id ?? albumId}`,
+      source: "lidarr",
       type: "album",
       albumId: String(albumId),
       albumMbid: record?.album?.foreignAlbumId || null,
@@ -255,11 +282,13 @@ const buildRequestsResponse = async (lidarrClient) => {
       artistMbid,
       artistName,
       status,
+      statusLabel,
       requestedAt: toIso(record?.date || record?.eventDate),
       mbid: artistMbid,
       name: albumName,
       image: null,
       inQueue: false,
+      canReSearch: status === "failed",
     });
   }
 
@@ -372,15 +401,39 @@ const buildRequestsResponse = async (lidarrClient) => {
   return filterDismissedRequests(sorted);
 };
 
+const buildAurralRequests = async (lidarrClient = null) => {
+  const { getAurralHistoryRequests } = await import(
+    "../services/aurralHistoryService.js"
+  );
+  return getAurralHistoryRequests(lidarrClient);
+};
+
+const buildRequestsResponse = async (lidarrClient) => {
+  const [lidarrRequests, aurralRequests] = await Promise.all([
+    lidarrClient?.isConfigured()
+      ? buildLidarrRequests(lidarrClient)
+      : Promise.resolve([]),
+    buildAurralRequests(lidarrClient),
+  ]);
+  const filteredAurral = filterRedundantAurralRequests(
+    aurralRequests,
+    lidarrRequests,
+  );
+  return [...lidarrRequests, ...filteredAurral].sort(
+    (a, b) => new Date(b.requestedAt) - new Date(a.requestedAt),
+  );
+};
+
 router.get("/", requireAuth, noCache, async (req, res) => {
   try {
     pruneDismissedAlbumIds();
     const { lidarrClient } = await import("../services/lidarrClient.js");
 
     if (!lidarrClient?.isConfigured()) {
-      lastRequestsResponse = null;
-      lastRequestsAt = 0;
-      return res.json([]);
+      const aurralOnly = await buildAurralRequests();
+      lastRequestsResponse = aurralOnly;
+      lastRequestsAt = Date.now();
+      return res.json(aurralOnly);
     }
 
     const now = Date.now();

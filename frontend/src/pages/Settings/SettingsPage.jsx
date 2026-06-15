@@ -10,11 +10,13 @@ import { useSettingsUsers } from "./hooks/useSettingsUsers";
 import { UnsavedModal } from "./components/UnsavedModal";
 import { CommunityGuideModal } from "./components/CommunityGuideModal";
 import { SettingsIntegrationsTab } from "./components/SettingsIntegrationsTab";
+import { SettingsPlaylistsTab } from "./components/SettingsPlaylistsTab";
 import { SettingsDiscoverTab } from "./components/SettingsDiscoverTab";
 import { SettingsNotificationsTab } from "./components/SettingsNotificationsTab";
 import { SettingsUsersTab } from "./components/SettingsUsersTab";
 import { SettingsTabsNav } from "./components/SettingsTabsNav";
 import { SettingsSelect } from "./components/SettingsField";
+import SettingsSponsorBanner from "../../components/SettingsSponsorBanner";
 
 function SettingsPage() {
   const { showSuccess, showError, showInfo } = useToast();
@@ -76,6 +78,20 @@ function SettingsPage() {
             hasUnsavedChanges={data.hasUnsavedChanges}
             saving={data.saving}
             handleSaveSettings={data.handleSaveSettings}
+            fetchSettings={data.fetchSettings}
+            showSuccess={showSuccess}
+            showError={showError}
+            showInfo={showInfo}
+          />
+        );
+      case "playlists":
+        return (
+          <SettingsPlaylistsTab
+            settings={data.settings}
+            updateSettings={data.updateSettings}
+            hasUnsavedChanges={data.hasUnsavedChanges}
+            saving={data.saving}
+            handleSaveSettings={data.handleSaveSettings}
             showSuccess={showSuccess}
             showError={showError}
             showInfo={showInfo}
@@ -91,6 +107,7 @@ function SettingsPage() {
             saving={data.saving}
             handleSaveSettings={data.handleSaveSettings}
             refreshingDiscovery={data.refreshingDiscovery}
+            discoveryProgress={data.discoveryProgress}
             discoveryProgressMessage={data.discoveryProgressMessage}
             clearingCache={data.clearingCache}
             handleRefreshDiscovery={data.handleRefreshDiscovery}
@@ -193,6 +210,8 @@ function SettingsPage() {
             Configure application preferences and integrations
           </p>
         </header>
+
+        <SettingsSponsorBanner />
 
         <div className="settings-page__mobile-nav">
           <label

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Server, Compass, Bell, Users } from "lucide-react";
+import { Server, ListMusic, Compass, Bell, Users } from "lucide-react";
 
 export function useSettingsTabs(authUser) {
   const [activeTab, setActiveTab] = useState("integrations");
@@ -15,6 +15,7 @@ export function useSettingsTabs(authUser) {
     }
     return [
       { id: "integrations", label: "Integrations", icon: Server },
+      { id: "playlists", label: "Playlists", icon: ListMusic },
       { id: "discover", label: "Discover", icon: Compass },
       { id: "notifications", label: "Notifications", icon: Bell },
       { id: "users", label: "Users", icon: Users },

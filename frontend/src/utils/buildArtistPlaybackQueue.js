@@ -7,6 +7,10 @@ import {
 
 const RELEASE_GROUP_FETCH_BATCH = 8;
 
+function isLibraryStreamTrack(track) {
+  return track?.previewProvider === "lidarr" || !!track?.streamPath;
+}
+
 function getRecordingKey(track) {
   const key =
     track?.mbid ||
@@ -127,11 +131,11 @@ export async function buildArtistPlaybackQueue({
         localCache[cacheKey] = tracks;
       }
       for (const track of tracks) {
-        if (!track?.preview_url) continue;
+        if (!track?.preview_url || !isLibraryStreamTrack(track)) continue;
         pushTrack(
           normalizeQueueTrack({
-            id: `lib-${album.id}-${track.id}`,
-            title: track.title,
+            id: track.id ?? track.mbid ?? `lib-${album.id}-${track.trackNumber}`,
+            title: track.title || track.trackName,
             artist: artistName,
             album: album.title,
             src: track.preview_url,
@@ -141,6 +145,10 @@ export async function buildArtistPlaybackQueue({
           track,
         );
       }
+    }
+
+    if (queue.length > 0) {
+      return queue;
     }
   }
 

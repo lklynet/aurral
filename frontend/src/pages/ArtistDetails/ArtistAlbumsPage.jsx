@@ -1,9 +1,8 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowDown,
   ArrowUp,
-  CheckCircle,
   CornerUpLeft,
   Grid3X3,
   List,
@@ -13,19 +12,16 @@ import {
   Star,
 } from "lucide-react";
 import AddAlbumButton from "../../components/AddAlbumButton";
+import SearchLibraryCheck from "../../components/SearchLibraryCheck";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { useArtistDetailsStream } from "./hooks/useArtistDetailsStream";
 import { useArtistDetailsLibrary } from "./hooks/useArtistDetailsLibrary";
+import { useArtistSearchFocus } from "./hooks/useArtistSearchFocus";
 import { allReleaseTypes } from "./constants";
-import { ArtistDetailsReleaseTrackList } from "./components/ArtistDetailsReleaseTrackList";
-import {
-  addSharedPlaylistTracks,
-  createSharedPlaylist,
-  getFlowStatus,
-} from "../../utils/api";
-import { getArtistPosterImage, getReleaseMetric, getReleaseYear } from "./utils";
+import { navigateToReleaseGroup } from "../../utils/searchNavigation";
+import { getArtistPosterImage, getReleaseMetric, getReleaseYear, readReleaseListViewMode, writeReleaseListViewMode } from "./utils";
 
 const sortOptions = [
   { value: "date", label: "Date", defaultDirection: "desc" },
@@ -39,32 +35,6 @@ const releaseTabs = [
   { value: "singles", label: "EP & Singles" },
   { value: "compilations", label: "Compilations" },
 ];
-
-const normalizePlaylistNameKey = (value) =>
-  String(value || "")
-    .trim()
-    .toLowerCase();
-
-const reserveUniquePlaylistName = (playlists, baseName = "Playlist") => {
-  const normalizedBase = String(baseName || "").trim() || "Playlist";
-  const existing = new Set(
-    (Array.isArray(playlists) ? playlists : [])
-      .map((playlist) => normalizePlaylistNameKey(playlist?.name))
-      .filter(Boolean),
-  );
-  if (!existing.has(normalizedBase.toLowerCase())) {
-    return normalizedBase;
-  }
-  let index = 2;
-  while (index < 10000) {
-    const candidate = `${normalizedBase} ${index}`;
-    if (!existing.has(candidate.toLowerCase())) {
-      return candidate;
-    }
-    index += 1;
-  }
-  return `${normalizedBase} ${Date.now()}`;
-};
 
 const isCompilation = (releaseGroup) =>
   releaseGroup?.["primary-type"] === "Compilation" ||
@@ -109,30 +79,18 @@ const sortReleaseGroups = (items, sortKey, sortDirection) =>
     return String(a?.title || "").localeCompare(String(b?.title || ""));
   });
 
-const getGridColumnCount = () => {
-  if (typeof window === "undefined") return 2;
-  if (window.matchMedia("(min-width: 1280px)").matches) return 6;
-  if (window.matchMedia("(min-width: 1024px)").matches) return 6;
-  if (window.matchMedia("(min-width: 640px)").matches) return 3;
-  return 2;
-};
-
 function ArtistAlbumsPage() {
   const { mbid } = useParams();
   const { state } = useLocation();
+  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const { hasPermission } = useAuth();
   const [selectedTab, setSelectedTab] = useState("all");
   const [sortKey, setSortKey] = useState("date");
   const [sortDirection, setSortDirection] = useState("desc");
-  const [viewMode, setViewMode] = useState("grid");
+  const [viewMode, setViewMode] = useState(() => readReleaseListViewMode());
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [gridColumnCount, setGridColumnCount] = useState(getGridColumnCount);
   const [visibleCoverIds, setVisibleCoverIds] = useState([]);
-  const [sharedPlaylists, setSharedPlaylists] = useState([]);
-  const [playlistModalLoading, setPlaylistModalLoading] = useState(false);
-  const [playlistModalError, setPlaylistModalError] = useState("");
-  const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
   const optionsMenuRef = useRef(null);
   const artistNameFromNav = state?.artistName || "";
   const canAddAlbum = hasPermission("addAlbum");
@@ -198,16 +156,15 @@ function ArtistAlbumsPage() {
     [releaseGroups, selectedTab, sortDirection, sortKey],
   );
 
+  useArtistSearchFocus({
+    navigate,
+    mbid,
+    locationState: state,
+  });
+
   useEffect(() => {
     setVisibleCoverIds(filteredReleaseGroups.map((item) => item.id).filter(Boolean));
   }, [filteredReleaseGroups]);
-
-  useEffect(() => {
-    const updateGridColumnCount = () => setGridColumnCount(getGridColumnCount());
-    updateGridColumnCount();
-    window.addEventListener("resize", updateGridColumnCount);
-    return () => window.removeEventListener("resize", updateGridColumnCount);
-  }, []);
 
   useEffect(() => {
     if (!optionsOpen) return undefined;
@@ -219,6 +176,11 @@ function ArtistAlbumsPage() {
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [optionsOpen]);
 
+  const handleViewModeChange = (mode) => {
+    setViewMode(mode);
+    writeReleaseListViewMode(mode);
+  };
+
   const handleSortOptionClick = (option) => {
     if (sortKey === option.value) {
       setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
@@ -227,104 +189,17 @@ function ArtistAlbumsPage() {
     setSortKey(option.value);
   };
 
-  const loadSharedPlaylists = async () => {
-    setPlaylistModalLoading(true);
-    try {
-      const data = await getFlowStatus();
-      const playlists = Array.isArray(data?.sharedPlaylists)
-        ? data.sharedPlaylists
-        : [];
-      setSharedPlaylists(playlists);
-      return playlists;
-    } catch (err) {
-      const message =
-        err.response?.data?.message ||
-        err.response?.data?.error ||
-        err.message ||
-        "Failed to load playlists";
-      setPlaylistModalError(message);
-      showError(message);
-      return null;
-    } finally {
-      setPlaylistModalLoading(false);
-    }
-  };
-
-  const getDefaultTrackPlaylistName = (track) =>
-    reserveUniquePlaylistName(
-      sharedPlaylists,
-      `${artist?.name || artistNameFromNav || track?.artistName || "Artist"} Picks`,
-    );
-
-  const buildReleaseTrackPayload = (track, releaseGroup) => {
-    const year = String(releaseGroup?.["first-release-date"] || "").slice(0, 4);
-    return {
-      artistName: artist?.name || artistNameFromNav || "",
-      trackName: track?.trackName || track?.title || "",
-      albumName: releaseGroup?.title || "",
-      artistMbid: mbid || "",
-      albumMbid: releaseGroup?.id || "",
-      trackMbid: track?.mbid || track?.id || "",
-      releaseYear: year || null,
-      durationMs:
-        track?.length != null && Number.isFinite(Number(track.length))
-          ? Number(track.length)
-          : null,
-      reason: null,
-      artistAliases: [],
-    };
-  };
-
-  const saveTrackToPlaylist = async (trackPayload, target, savingKey) => {
-    if (!trackPayload?.artistName || !trackPayload?.trackName) {
-      showError("Track details are incomplete");
-      return;
-    }
-    setPlaylistModalError("");
-    setPlaylistMenuSavingKey(String(savingKey || ""));
-    try {
-      if (target?.mode === "new") {
-        const name =
-          String(target?.name || "").trim() ||
-          reserveUniquePlaylistName(
-            sharedPlaylists,
-            `${trackPayload.artistName} Picks`,
-          );
-        const response = await createSharedPlaylist({
-          name,
-          tracks: [trackPayload],
-        });
-        showSuccess(`Track saved to ${response?.playlist?.name || name}`);
-      } else {
-        const targetPlaylist = sharedPlaylists.find(
-          (playlist) => playlist.id === target?.playlistId,
-        );
-        await addSharedPlaylistTracks(target.playlistId, {
-          tracks: [trackPayload],
-        });
-        showSuccess(`Track added to ${targetPlaylist?.name || "playlist"}`);
-      }
-      const nextPlaylists = await loadSharedPlaylists();
-      if (nextPlaylists) {
-        setSharedPlaylists(nextPlaylists);
-      }
-    } catch (err) {
-      const message =
-        err.response?.data?.message ||
-        err.response?.data?.error ||
-        err.message ||
-        "Failed to save track to playlist";
-      setPlaylistModalError(message);
-      showError(message);
-    } finally {
-      setPlaylistMenuSavingKey("");
-    }
-  };
-
-  const handleReleaseTrackAdd = (track, releaseGroup, target) => {
-    const payload = buildReleaseTrackPayload(track, releaseGroup);
-    const savingKey = String(track?.id ?? track?.mbid ?? "");
-    return saveTrackToPlaylist(payload, target, savingKey);
+  const openRelease = (releaseGroup) => {
+    navigateToReleaseGroup(navigate, releaseGroup, {
+      artistMbid: mbid,
+      artistName: artistDisplayName,
+      coverUrl:
+        albumCovers[releaseGroup.id] ||
+        releaseGroup.coverUrl ||
+        releaseGroup._coverUrl ||
+        artistCoverImage ||
+        "",
+    });
   };
 
   if (loading) {
@@ -346,7 +221,11 @@ function ArtistAlbumsPage() {
   const renderReleaseCard = (releaseGroup) => {
     const status = library.getAlbumStatus(releaseGroup.id);
     const metric = getReleaseMetric(releaseGroup);
-    const cover = albumCovers[releaseGroup.id] || artistCoverImage;
+    const cover =
+      albumCovers[releaseGroup.id] ||
+      releaseGroup.coverUrl ||
+      releaseGroup._coverUrl ||
+      artistCoverImage;
     const isComplete = status?.status === "available" || status?.status === "added";
     const releaseTypeLabel = getReleaseTypeLabel(releaseGroup);
 
@@ -355,9 +234,7 @@ function ArtistAlbumsPage() {
         <div
           key={releaseGroup.id}
           className="artist-release-list-item"
-          onClick={() =>
-            library.handleReleaseGroupAlbumClick(releaseGroup, status?.libraryId)
-          }
+          onClick={() => openRelease(releaseGroup)}
         >
           <div className="artist-media-cell artist-list-cover">
             {cover ? (
@@ -388,7 +265,7 @@ function ArtistAlbumsPage() {
                 className="artist-release-card__status"
                 title="Complete"
               >
-                <CheckCircle className="artist-icon-sm" />
+                <SearchLibraryCheck size="overlay" />
                 <span className="sr-only">Complete</span>
               </span>
             ) : canAddAlbum ? (
@@ -412,9 +289,7 @@ function ArtistAlbumsPage() {
       <article
         key={releaseGroup.id}
         className="artist-release-card"
-        onClick={() =>
-          library.handleReleaseGroupAlbumClick(releaseGroup, status?.libraryId)
-        }
+        onClick={() => openRelease(releaseGroup)}
       >
         <div className="artist-release-card__cover">
           {cover ? (
@@ -435,7 +310,7 @@ function ArtistAlbumsPage() {
                 className="artist-release-card__status"
                 title="Complete"
               >
-                <CheckCircle className="artist-icon-sm" />
+                <SearchLibraryCheck size="overlay" />
                 <span className="sr-only">Complete</span>
               </span>
             ) : canAddAlbum ? (
@@ -452,7 +327,10 @@ function ArtistAlbumsPage() {
             ) : null}
           </div>
         </div>
-        <h2 className="artist-release-card__title artist-clamp-2">
+        <h2
+          className="artist-release-card__title artist-truncate"
+          title={releaseGroup.title}
+        >
           {releaseGroup.title}
         </h2>
         <p className="artist-release-card__meta artist-truncate">
@@ -469,33 +347,6 @@ function ArtistAlbumsPage() {
       </article>
     );
   };
-
-  const expandedRelease = filteredReleaseGroups.find(
-    (releaseGroup) => releaseGroup.id === library.expandedReleaseGroup,
-  );
-  const expandedStatus = expandedRelease
-    ? library.getAlbumStatus(expandedRelease.id)
-    : null;
-  const expandedTrackKey = expandedStatus?.libraryId || expandedRelease?.id;
-  const expandedTracks = expandedTrackKey ? library.albumTracks[expandedTrackKey] : null;
-  const expandedLoading = expandedTrackKey
-    ? library.loadingTracks[expandedTrackKey]
-    : false;
-  const expandedReleaseIndex = expandedRelease
-    ? filteredReleaseGroups.findIndex(
-        (releaseGroup) => releaseGroup.id === expandedRelease.id,
-      )
-    : -1;
-  const expandedRenderAfterIndex =
-    expandedReleaseIndex < 0
-      ? -1
-      : viewMode === "grid"
-        ? Math.min(
-            expandedReleaseIndex +
-              (gridColumnCount - 1 - (expandedReleaseIndex % gridColumnCount)),
-            filteredReleaseGroups.length - 1,
-          )
-        : expandedReleaseIndex;
 
   return (
     <div className="artist-details-page">
@@ -571,19 +422,21 @@ function ArtistAlbumsPage() {
               <div className="artist-options-view-grid">
                 <button
                   type="button"
-                  onClick={() => setViewMode("grid")}
-                  className={`btn btn-icon-square btn-surface${viewMode === "grid" ? " btn-neutral-active" : ""}`}
+                  onClick={() => handleViewModeChange("grid")}
+                  className={`btn btn-icon-square btn-surface${viewMode === "grid" ? " is-active" : ""}`}
                   aria-label="Grid view"
                   title="Grid view"
+                  aria-pressed={viewMode === "grid"}
                 >
                   <Grid3X3 className="artist-icon-sm" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => setViewMode("list")}
-                  className={`btn btn-icon-square btn-surface${viewMode === "list" ? " btn-neutral-active" : ""}`}
+                  onClick={() => handleViewModeChange("list")}
+                  className={`btn btn-icon-square btn-surface${viewMode === "list" ? " is-active" : ""}`}
                   aria-label="List view"
                   title="List view"
+                  aria-pressed={viewMode === "list"}
                 >
                   <List className="artist-icon-sm" />
                 </button>
@@ -605,34 +458,9 @@ function ArtistAlbumsPage() {
             : "artist-release-list"
         }
       >
-        {filteredReleaseGroups.map((releaseGroup, index) => (
-          <Fragment key={releaseGroup.id}>
-            {renderReleaseCard(releaseGroup)}
-            {expandedRelease && expandedRenderAfterIndex === index && (
-              <div className={viewMode === "grid" ? "artist-grid-full" : ""}>
-                <ArtistDetailsReleaseTrackList
-                  release={expandedRelease}
-                  trackKey={expandedTrackKey}
-                  tracks={expandedTracks}
-                  loading={expandedLoading}
-                  playbackSource={{
-                    type: "artist",
-                    id: mbid,
-                    label: artistDisplayName,
-                  }}
-                  artistName={artistDisplayName}
-                  onAddTrackToPlaylist={handleReleaseTrackAdd}
-                  playlists={sharedPlaylists}
-                  playlistsLoading={playlistModalLoading}
-                  playlistSavingKey={playlistMenuSavingKey}
-                  playlistError={playlistModalError}
-                  getDefaultPlaylistName={getDefaultTrackPlaylistName}
-                  onLoadPlaylists={loadSharedPlaylists}
-                />
-              </div>
-            )}
-          </Fragment>
-        ))}
+        {filteredReleaseGroups.map((releaseGroup) =>
+          renderReleaseCard(releaseGroup),
+        )}
       </div>
     </div>
   );

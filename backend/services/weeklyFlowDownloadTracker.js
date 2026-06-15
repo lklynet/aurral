@@ -1,5 +1,10 @@
 import { randomUUID } from "crypto";
 import { db } from "../config/db-sqlite.js";
+import { enqueuePipelineJob } from "./honkerDb.js";
+import { slskdClient } from "./slskdClient.js";
+import { buildPlaylistDestination } from "./playlistPaths.js";
+
+const JOBS_TABLE = "playlist_download_jobs";
 
 function parseArtistAliases(value) {
   if (!value) return [];
@@ -21,6 +26,32 @@ function stringifyArtistAliases(value) {
   return normalized.length > 0 ? JSON.stringify(normalized) : null;
 }
 
+function parseAlbumTrackTitles(value) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.map((entry) => String(entry || "").trim()).filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function stringifyAlbumTrackTitles(value) {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const normalized = value
+    .map((entry) => String(entry || "").trim())
+    .filter(Boolean);
+  return normalized.length > 0 ? JSON.stringify(normalized) : null;
+}
+
+function normalizePositiveInteger(value) {
+  if (value == null || !Number.isFinite(Number(value))) return null;
+  const normalized = Math.floor(Number(value));
+  return normalized > 0 ? normalized : null;
+}
+
 function rowToJob(row) {
   return {
     id: row.id,
@@ -36,21 +67,30 @@ function rowToJob(row) {
       row.duration_ms != null && Number.isFinite(Number(row.duration_ms))
         ? Number(row.duration_ms)
         : null,
+    trackNumber: normalizePositiveInteger(row.track_number),
+    albumTrackCount: normalizePositiveInteger(row.album_track_count),
+    albumTrackTitles: parseAlbumTrackTitles(row.album_track_titles),
     artistAliases: parseArtistAliases(row.artist_aliases),
-    playlistType: row.playlist_type,
+    playlistId: row.playlist_id || row.playlist_type,
+    playlistType: row.playlist_type || row.playlist_id,
     status: row.status,
     startedAt: row.started_at,
     completedAt: row.completed_at,
     stagingPath: row.staging_path,
     finalPath: row.final_path,
+    externalPath: row.external_path || null,
     error: row.error,
     createdAt: row.created_at,
+    slskdSearchId: row.slskd_search_id || null,
+    slskdBatchId: row.slskd_batch_id || null,
+    remoteUsername: row.remote_username || null,
+    remoteFilename: row.remote_filename || null,
     retryCycle: false,
   };
 }
 
 const insertStmt = db.prepare(`
-  INSERT INTO weekly_flow_jobs (
+  INSERT INTO ${JOBS_TABLE} (
     id,
     artist_name,
     track_name,
@@ -61,24 +101,30 @@ const insertStmt = db.prepare(`
     track_mbid,
     release_year,
     duration_ms,
+    track_number,
+    album_track_count,
+    album_track_titles,
     artist_aliases,
+    playlist_id,
     playlist_type,
     status,
     staging_path,
     final_path,
+    external_path,
     error,
     started_at,
     completed_at,
     created_at
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const updateStmt = db.prepare(`
-  UPDATE weekly_flow_jobs
+  UPDATE ${JOBS_TABLE}
   SET status = ?,
       staging_path = ?,
       final_path = ?,
+      external_path = ?,
       error = ?,
       started_at = ?,
       completed_at = ?,
@@ -89,18 +135,29 @@ const updateStmt = db.prepare(`
       track_mbid = ?,
       release_year = ?,
       duration_ms = ?,
+      track_number = ?,
+      album_track_count = ?,
+      album_track_titles = ?,
       artist_aliases = ?
   WHERE id = ?
 `);
 
-const deleteStmt = db.prepare("DELETE FROM weekly_flow_jobs WHERE id = ?");
-const deleteAllStmt = db.prepare("DELETE FROM weekly_flow_jobs");
+const deleteStmt = db.prepare(`DELETE FROM ${JOBS_TABLE} WHERE id = ?`);
+const deleteAllStmt = db.prepare(`DELETE FROM ${JOBS_TABLE}`);
 const selectAllStmt = db.prepare(
-  "SELECT * FROM weekly_flow_jobs ORDER BY created_at ASC, id ASC",
+  `SELECT * FROM ${JOBS_TABLE} ORDER BY created_at ASC, id ASC`,
 );
 const updatePlaylistTypeStmt = db.prepare(
-  "UPDATE weekly_flow_jobs SET playlist_type = ? WHERE playlist_type = ?",
+  `UPDATE ${JOBS_TABLE} SET playlist_type = ?, playlist_id = ? WHERE playlist_type = ?`,
 );
+const clearSlskdMetaStmt = db.prepare(`
+  UPDATE ${JOBS_TABLE}
+  SET slskd_search_id = NULL,
+      slskd_batch_id = NULL,
+      remote_username = NULL,
+      remote_filename = NULL
+  WHERE id = ?
+`);
 
 const sortByCreatedAt = (jobs) =>
   jobs.sort((a, b) => {
@@ -109,6 +166,40 @@ const sortByCreatedAt = (jobs) =>
     if (aCreated !== bCreated) return aCreated - bCreated;
     return String(a?.id || "").localeCompare(String(b?.id || ""));
   });
+
+function sanitizePathPart(value, fallback = "Unknown") {
+  const text = String(value || "")
+    .replace(/[<>:"/\\|?*]/g, "_")
+    .trim();
+  return text || fallback;
+}
+
+function buildPipelinePayload(job) {
+  const playlistId = job.playlistId || job.playlistType;
+  const artistDir = sanitizePathPart(job.artistName, "Unknown Artist");
+  const albumDir = sanitizePathPart(job.albumName, "Unknown Album");
+  return {
+    phase: "search",
+    jobId: job.id,
+    playlistId,
+    track: {
+      artistName: job.artistName,
+      trackName: job.trackName,
+      albumName: job.albumName,
+      artistMbid: job.artistMbid,
+      albumMbid: job.albumMbid,
+      trackMbid: job.trackMbid,
+      releaseYear: job.releaseYear,
+      durationMs: job.durationMs,
+      trackNumber: job.trackNumber,
+      albumTrackCount: job.albumTrackCount,
+      albumTrackTitles: job.albumTrackTitles || [],
+      artistAliases: job.artistAliases || [],
+    },
+    attempt: 0,
+    destination: buildPlaylistDestination(playlistId, artistDir, albumDir),
+  };
+}
 
 export class WeeklyFlowDownloadTracker {
   constructor() {
@@ -119,7 +210,47 @@ export class WeeklyFlowDownloadTracker {
     this.pendingRetryQueue = [];
     this.pendingSet = new Set();
     this.pendingRetrySet = new Set();
+    this.slskdDispatched = new Set();
     this._load();
+  }
+
+  isSlskdDispatched(id) {
+    const job = this.jobs.get(id);
+    return (
+      this.slskdDispatched.has(id) ||
+      !!job?.slskdBatchId ||
+      !!job?.slskdSearchId
+    );
+  }
+
+  markSlskdDispatched(id) {
+    this.slskdDispatched.add(id);
+  }
+
+  clearSlskdDispatched(id) {
+    this.slskdDispatched.delete(id);
+  }
+
+  clearSlskdPipelineState(id) {
+    this.clearSlskdDispatched(id);
+    const job = this.jobs.get(id);
+    if (job) {
+      job.slskdSearchId = null;
+      job.slskdBatchId = null;
+      job.remoteUsername = null;
+      job.remoteFilename = null;
+    }
+    clearSlskdMetaStmt.run(id);
+  }
+
+  enqueueSlskdPipeline(jobId) {
+    if (!slskdClient.isConfigured()) return false;
+    const job = this.jobs.get(jobId);
+    if (!job || job.status !== "pending") return false;
+    if (this.isSlskdDispatched(jobId)) return false;
+    enqueuePipelineJob(buildPipelinePayload(job));
+    this.markSlskdDispatched(jobId);
+    return true;
   }
 
   _emptyStats() {
@@ -212,6 +343,7 @@ export class WeeklyFlowDownloadTracker {
           job.status,
           job.stagingPath,
           job.finalPath,
+          job.externalPath ?? null,
           job.error,
           job.startedAt,
           job.completedAt,
@@ -222,10 +354,13 @@ export class WeeklyFlowDownloadTracker {
           job.trackMbid ?? null,
           job.releaseYear ?? null,
           job.durationMs ?? null,
+          job.trackNumber ?? null,
+          job.albumTrackCount ?? null,
+          stringifyAlbumTrackTitles(job.albumTrackTitles),
           stringifyArtistAliases(job.artistAliases),
           job.id,
         );
-        updatePlaylistTypeStmt.run("discover", "recommended");
+        updatePlaylistTypeStmt.run("discover", "discover", "recommended");
       }
       if (job.status === "downloading") {
         job.status = "pending";
@@ -235,6 +370,7 @@ export class WeeklyFlowDownloadTracker {
           job.status,
           job.stagingPath,
           job.finalPath,
+          job.externalPath ?? null,
           job.error,
           job.startedAt,
           job.completedAt,
@@ -245,6 +381,9 @@ export class WeeklyFlowDownloadTracker {
           job.trackMbid ?? null,
           job.releaseYear ?? null,
           job.durationMs ?? null,
+          job.trackNumber ?? null,
+          job.albumTrackCount ?? null,
+          stringifyAlbumTrackTitles(job.albumTrackTitles),
           stringifyArtistAliases(job.artistAliases),
           job.id,
         );
@@ -268,11 +407,16 @@ export class WeeklyFlowDownloadTracker {
       job.trackMbid ?? null,
       job.releaseYear ?? null,
       job.durationMs ?? null,
+      job.trackNumber ?? null,
+      job.albumTrackCount ?? null,
+      stringifyAlbumTrackTitles(job.albumTrackTitles),
       stringifyArtistAliases(job.artistAliases),
-      job.playlistType,
+      job.playlistId || job.playlistType,
+      job.playlistType || job.playlistId,
       job.status,
       job.stagingPath ?? null,
       job.finalPath ?? null,
+      job.externalPath ?? null,
       job.error ?? null,
       job.startedAt ?? null,
       job.completedAt ?? null,
@@ -285,6 +429,7 @@ export class WeeklyFlowDownloadTracker {
       job.status,
       job.stagingPath ?? null,
       job.finalPath ?? null,
+      job.externalPath ?? null,
       job.error ?? null,
       job.startedAt ?? null,
       job.completedAt ?? null,
@@ -295,6 +440,9 @@ export class WeeklyFlowDownloadTracker {
       job.trackMbid ?? null,
       job.releaseYear ?? null,
       job.durationMs ?? null,
+      job.trackNumber ?? null,
+      job.albumTrackCount ?? null,
+      stringifyAlbumTrackTitles(job.albumTrackTitles),
       stringifyArtistAliases(job.artistAliases),
       job.id,
     );
@@ -321,17 +469,26 @@ export class WeeklyFlowDownloadTracker {
         track?.durationMs != null && Number.isFinite(Number(track.durationMs))
           ? Math.max(0, Math.round(Number(track.durationMs)))
           : null,
+      trackNumber: normalizePositiveInteger(track?.trackNumber),
+      albumTrackCount: normalizePositiveInteger(track?.albumTrackCount),
+      albumTrackTitles: Array.isArray(track?.albumTrackTitles)
+        ? track.albumTrackTitles
+            .map((entry) => String(entry || "").trim())
+            .filter(Boolean)
+        : [],
       artistAliases: Array.isArray(track?.artistAliases)
         ? track.artistAliases
             .map((entry) => String(entry || "").trim())
             .filter(Boolean)
         : [],
+      playlistId: playlistType,
       playlistType,
       status: "pending",
       startedAt: null,
       completedAt: null,
       stagingPath: null,
       finalPath: null,
+      externalPath: null,
       error: null,
       createdAt: Date.now(),
       retryCycle: false,
@@ -400,6 +557,33 @@ export class WeeklyFlowDownloadTracker {
         changed = true;
       }
     }
+    if ("trackNumber" in metadata) {
+      const nextTrackNumber = normalizePositiveInteger(metadata.trackNumber);
+      if (job.trackNumber !== nextTrackNumber) {
+        job.trackNumber = nextTrackNumber;
+        changed = true;
+      }
+    }
+    if ("albumTrackCount" in metadata) {
+      const nextTrackCount = normalizePositiveInteger(metadata.albumTrackCount);
+      if (job.albumTrackCount !== nextTrackCount) {
+        job.albumTrackCount = nextTrackCount;
+        changed = true;
+      }
+    }
+    if ("albumTrackTitles" in metadata) {
+      const nextTitles = Array.isArray(metadata.albumTrackTitles)
+        ? metadata.albumTrackTitles
+            .map((entry) => String(entry || "").trim())
+            .filter(Boolean)
+        : [];
+      const previousSerialized = JSON.stringify(job.albumTrackTitles || []);
+      const nextSerialized = JSON.stringify(nextTitles);
+      if (previousSerialized !== nextSerialized) {
+        job.albumTrackTitles = nextTitles;
+        changed = true;
+      }
+    }
     if (changed) {
       this._update(job);
     }
@@ -413,6 +597,7 @@ export class WeeklyFlowDownloadTracker {
   removeJob(id) {
     const job = this.jobs.get(id);
     if (!job) return false;
+    this.clearSlskdPipelineState(id);
     this.jobs.delete(id);
     this.pendingSet.delete(id);
     this.pendingRetrySet.delete(id);
@@ -464,32 +649,41 @@ export class WeeklyFlowDownloadTracker {
     return this.getNextPendingMatching(() => true, lastPlaylistType);
   }
 
+  _shouldSkipForWorker(job) {
+    return job?.status === "pending" && this.isSlskdDispatched(job.id);
+  }
+
   getNextPendingMatching(predicate = null, lastPlaylistType = null) {
     const accepts = typeof predicate === "function" ? predicate : () => true;
+    const canProcess = (job) =>
+      job &&
+      job.status === "pending" &&
+      !this._shouldSkipForWorker(job) &&
+      accepts(job);
     this.pendingFreshQueue = this._compactPendingQueue(this.pendingFreshQueue);
     const nextFresh = this._pickPendingFromQueue(
       this.pendingFreshQueue,
       lastPlaylistType,
     );
-    if (nextFresh && accepts(nextFresh)) return nextFresh;
+    if (canProcess(nextFresh)) return nextFresh;
     for (const id of this.pendingFreshQueue) {
       const job = this.jobs.get(id);
-      if (job && job.status === "pending" && accepts(job)) return job;
+      if (canProcess(job)) return job;
     }
     this.pendingRetryQueue = this._compactPendingQueue(this.pendingRetryQueue);
     const nextRetry = this._pickPendingFromQueue(
       this.pendingRetryQueue,
       lastPlaylistType,
     );
-    if (nextRetry && accepts(nextRetry)) return nextRetry;
+    if (canProcess(nextRetry)) return nextRetry;
     for (const id of this.pendingRetryQueue) {
       const job = this.jobs.get(id);
-      if (job && job.status === "pending" && accepts(job)) return job;
+      if (canProcess(job)) return job;
     }
     if (this.pendingSet.size > 0) {
       for (const id of this.pendingSet) {
         const job = this.jobs.get(id);
-        if (job && job.status === "pending" && accepts(job)) return job;
+        if (canProcess(job)) return job;
       }
     }
     return null;
@@ -544,6 +738,7 @@ export class WeeklyFlowDownloadTracker {
     if (!job) return false;
     const previousStatus = job.status;
     const asRetryCycle = options?.asRetryCycle === true;
+    this.clearSlskdPipelineState(id);
     job.status = "pending";
     job.startedAt = null;
     job.completedAt = null;
@@ -587,10 +782,11 @@ export class WeeklyFlowDownloadTracker {
     return true;
   }
 
-  setDone(id, finalPath, albumName = null) {
+  setDone(id, finalPath, albumName = null, externalPath = null) {
     const job = this.jobs.get(id);
     if (!job) return false;
     const previousStatus = job.status;
+    this.clearSlskdPipelineState(id);
     this.pendingSet.delete(id);
     this.pendingRetrySet.delete(id);
     this._removeFromPendingQueues(id);
@@ -598,6 +794,7 @@ export class WeeklyFlowDownloadTracker {
     job.retryCycle = false;
     job.completedAt = Date.now();
     job.finalPath = finalPath;
+    job.externalPath = externalPath ?? null;
     const safeAlbum = String(albumName || "").trim();
     if (safeAlbum) {
       job.albumName = safeAlbum;
@@ -613,6 +810,7 @@ export class WeeklyFlowDownloadTracker {
     const job = this.jobs.get(id);
     if (!job) return false;
     const previousStatus = job.status;
+    this.clearSlskdPipelineState(id);
     this.pendingSet.delete(id);
     this.pendingRetrySet.delete(id);
     this._removeFromPendingQueues(id);
@@ -660,7 +858,7 @@ export class WeeklyFlowDownloadTracker {
     if (!idMap || idMap.size === 0) return 0;
     let count = 0;
     for (const [fromId, toId] of idMap.entries()) {
-      updatePlaylistTypeStmt.run(toId, fromId);
+      updatePlaylistTypeStmt.run(toId, toId, fromId);
       for (const job of this.jobs.values()) {
         if (job.playlistType === fromId) {
           job.playlistType = toId;
@@ -677,6 +875,7 @@ export class WeeklyFlowDownloadTracker {
     for (const job of this.jobs.values()) {
       if (job.status === "downloading") {
         const previousStatus = job.status;
+        this.clearSlskdPipelineState(job.id);
         job.status = "pending";
         job.startedAt = null;
         job.stagingPath = null;
@@ -713,6 +912,7 @@ export class WeeklyFlowDownloadTracker {
       if (job.playlistType !== playlistType) continue;
       if (job.status !== "pending" && job.status !== "downloading") continue;
       const previousStatus = job.status;
+      this.clearSlskdPipelineState(job.id);
       this.pendingSet.delete(job.id);
       this.pendingRetrySet.delete(job.id);
       this._removeFromPendingQueues(job.id);

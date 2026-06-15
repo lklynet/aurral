@@ -8,24 +8,26 @@ import {
 import { createPortal } from "react-dom";
 import {
   ArrowRight,
-  ChevronLeft,
   Clock,
   ExternalLink,
   ListMusic,
+  Loader2,
   Plus,
   Sparkles,
   Upload,
 } from "lucide-react";
 import PillToggle from "../../components/PillToggle";
 import { PlaylistArtworkThumb } from "../FlowPageComponents";
-import { formatTrackCountLabel } from "./flowStats";
+import { formatTrackCountLabel, getFlowDisplayTrackCount } from "./flowStats";
 
 const MAIN_CONTENT_PORTAL_SELECTOR = ".app-main-wrap";
 const LIBRARY_CREATE_MENU_WIDTH = 296;
 const LIBRARY_CREATE_MENU_GAP = 10;
 
 const getMainContentPortalRoot = () =>
-  document.querySelector(MAIN_CONTENT_PORTAL_SELECTOR);
+  typeof document === "undefined"
+    ? null
+    : document.querySelector(MAIN_CONTENT_PORTAL_SELECTOR);
 
 export function LibrarySidebarToggleIcon({ collapsed = false }) {
   return (
@@ -106,6 +108,7 @@ export function FlowLibraryCreateMenu({
   }, []);
 
   useEffect(() => {
+    if (!isOpen || typeof document === "undefined") return undefined;
     const handleClickOutside = (event) => {
       if (
         buttonRef.current?.contains(event.target) ||
@@ -115,10 +118,17 @@ export function FlowLibraryCreateMenu({
       }
       setIsOpen(false);
     };
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("pointerdown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -232,7 +242,7 @@ export function FlowLibraryCreateMenu({
         <a
           href={spotifyImportHref}
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
           role="menuitem"
           className="flow-page__library-create-secondary-item"
           onClick={close}
@@ -280,14 +290,16 @@ export function PlaylistLibraryItem({
   entry,
   artworkUrl,
   isActive,
+  expanded = false,
   stats,
+  activityHint = null,
   collapsed = false,
   onSelect,
-  onArtworkClick,
+  trailing = null,
 }) {
   const trackCount =
     entry.kind === "flow"
-      ? Number(entry.size || 0)
+      ? getFlowDisplayTrackCount(entry, stats)
       : Number(entry.trackCount || 0);
   const trackLabel = formatTrackCountLabel(trackCount, stats);
   const typeLabel =
@@ -299,44 +311,52 @@ export function PlaylistLibraryItem({
 
   return (
     <div
-      className={`flow-page__library-item${isActive ? " is-active" : ""}`}
-      role="button"
-      tabIndex={0}
-      aria-current={isActive ? "true" : undefined}
-      aria-label={collapsed ? entry.name : undefined}
-      title={collapsed ? entry.name : undefined}
-      onClick={() => onSelect?.(entry)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onSelect?.(entry);
-        }
-      }}
+      className={`flow-page__library-item${isActive ? " is-active" : ""}${expanded ? " is-expanded" : ""}`}
     >
-      <PlaylistArtworkThumb
-        artworkUrl={artworkUrl}
-        name={entry.name}
-        className="flow-page__library-item-artwork"
-        onClick={
-          onArtworkClick
-            ? (event) => {
-                event.stopPropagation();
-                onArtworkClick(entry);
-              }
-            : undefined
-        }
-      />
-      <div className="flow-page__library-item-body">
-        <div className="flow-page__library-item-top">
-          <span className="flow-page__library-item-type">{typeLabel}</span>
+      <button
+        type="button"
+        className="flow-page__library-item-main"
+        aria-current={isActive ? "true" : undefined}
+        aria-expanded={expanded ? "true" : undefined}
+        aria-label={collapsed ? entry.name : undefined}
+        title={collapsed ? entry.name : undefined}
+        onClick={() => onSelect?.(entry)}
+      >
+        <PlaylistArtworkThumb
+          artworkUrl={artworkUrl}
+          name={entry.name}
+          className="flow-page__library-item-artwork"
+        />
+        <div
+          className="flow-page__library-item-body"
+          title={collapsed && activityHint ? activityHint : undefined}
+        >
+          <div className="flow-page__library-item-top">
+            <span className="flow-page__library-item-type">{typeLabel}</span>
+            {activityHint ? (
+              <span
+                className="flow-page__library-item-activity"
+                title={activityHint}
+                aria-label={activityHint}
+              >
+                <Loader2
+                  className="artist-icon-xs animate-spin"
+                  aria-hidden="true"
+                />
+              </span>
+            ) : null}
+          </div>
+          <span className="flow-page__library-item-title" title={entry.name}>
+            {entry.name}
+          </span>
+          <span className="flow-page__library-item-meta" title={trackLabel}>
+            {trackLabel}
+          </span>
         </div>
-        <span className="flow-page__library-item-title" title={entry.name}>
-          {entry.name}
-        </span>
-        <span className="flow-page__library-item-meta" title={trackLabel}>
-          {trackLabel}
-        </span>
-      </div>
+      </button>
+      {trailing ? (
+        <div className="flow-page__library-item-trailing">{trailing}</div>
+      ) : null}
     </div>
   );
 }
@@ -401,11 +421,10 @@ export function PlaylistDetailHero({
   artworkUrl,
   metaLine,
   flowMeta = null,
+  activityHint = null,
   enabled,
   togglingId,
   onToggleEnabled,
-  onBack,
-  showBack,
   onRenameTitle,
   onArtworkClick,
   primaryActions,
@@ -420,17 +439,6 @@ export function PlaylistDetailHero({
 
   return (
     <div className="flow-page__detail-hero">
-      {showBack ? (
-        <button
-          type="button"
-          className="flow-page__detail-back btn btn-secondary btn-sm"
-          onClick={onBack}
-          aria-label="Back to library"
-        >
-          <ChevronLeft className="artist-icon-sm" />
-          Library
-        </button>
-      ) : null}
       <div className="flow-page__detail-hero-main">
         <div className="flow-page__detail-hero-copy">
           <PlaylistArtworkThumb
@@ -455,6 +463,15 @@ export function PlaylistDetailHero({
               <FlowDetailMeta meta={flowMeta} />
             ) : metaLine ? (
               <p className="flow-page__detail-meta">{metaLine}</p>
+            ) : null}
+            {activityHint ? (
+              <p className="flow-page__detail-meta flow-page__detail-activity">
+                <Loader2
+                  className="artist-icon-xs animate-spin"
+                  aria-hidden="true"
+                />
+                <span>{activityHint}</span>
+              </p>
             ) : null}
           </div>
         </div>
