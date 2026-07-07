@@ -122,11 +122,15 @@ export const getImageProxyCacheSizeBytes = () => {
   return total;
 };
 
-const isPrivateHostname = (hostname) => {
-  const normalized = String(hostname || "").trim().toLowerCase();
+export const isPrivateHostname = (hostname) => {
+  let normalized = String(hostname || "").trim().toLowerCase();
+  if (normalized.startsWith("[") && normalized.endsWith("]")) {
+    normalized = normalized.slice(1, -1);
+  }
   if (!normalized) return true;
   if (normalized.endsWith(".local")) return true;
   if (PRIVATE_172_RANGE.test(normalized)) return true;
+  if (/^127\./.test(normalized)) return true;
   return PRIVATE_HOST_PATTERNS.some((pattern) => pattern.test(normalized));
 };
 

@@ -50,6 +50,7 @@ test("album image selection prefers cover art over disc art", () => {
   assert.equal(selected?.url, "https://example.test/cover.jpg");
 });
 
+
 test("album image selection accepts raw BrainzMash image casing", () => {
   const selected = selectBestAlbumImage([
     { CoverType: "Disc", Url: "https://example.test/disc.png" },
@@ -58,3 +59,18 @@ test("album image selection accepts raw BrainzMash image casing", () => {
 
   assert.equal(selected?.Url, "https://example.test/cover.jpg");
 });
+
+import { isPrivateHostname } from "../backend/services/imageProxyService.js";
+
+test("isPrivateHostname blocks local and loopback addresses", () => {
+  assert.equal(isPrivateHostname("localhost"), true);
+  assert.equal(isPrivateHostname("127.0.0.1"), true);
+  assert.equal(isPrivateHostname("127.255.0.1"), true);
+  assert.equal(isPrivateHostname("10.0.0.1"), true);
+  assert.equal(isPrivateHostname("192.168.1.5"), true);
+  assert.equal(isPrivateHostname("[::1]"), true);
+  assert.equal(isPrivateHostname("example.local"), true);
+  assert.equal(isPrivateHostname("example.com"), false);
+  assert.equal(isPrivateHostname("127a.com"), false);
+});
+
