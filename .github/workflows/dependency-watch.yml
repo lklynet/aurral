@@ -1,0 +1,36 @@
+name: Dependency Watch
+
+on:
+  schedule:
+    - cron: "30 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  yt-dlp:
+    name: Check yt-dlp release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Compare bundled and latest releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current="$(sed -nE 's#.*yt-dlp/releases/download/([^/]+)/yt-dlp.*#\1#p' Dockerfile)"
+          latest="$(gh api repos/yt-dlp/yt-dlp/releases/latest --jq '.tag_name')"
+
+          if [ -z "$current" ]; then
+            echo "::error::Could not determine the bundled yt-dlp version from Dockerfile."
+            exit 1
+          fi
+
+          if [ "$current" != "$latest" ]; then
+            echo "::error::yt-dlp $latest is available; Dockerfile bundles $current."
+            echo "Review https://github.com/yt-dlp/yt-dlp/releases/tag/$latest and update both the URL and checksum."
+            exit 1
+          fi
+
+          echo "Dockerfile bundles the latest yt-dlp release ($current)."

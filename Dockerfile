@@ -1,4 +1,4 @@
-FROM node:26.5.0-bookworm-slim@sha256:793dcf7e4fd720d5752b2d63e120e24e64571fafc4cfec87962a2fdb71e0cf30 AS node-base
+FROM node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS node-base
 
 FROM node-base AS builder
 
@@ -55,8 +55,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && mkdir -p /app/backend/data /config \
     && chown -R nodejs:nodejs /app/backend/data /config
 
-ADD --chmod=755 --checksum=sha256:e5d57466682cfa9d61e9cf7c8a4f09b00f4a62af37d3bbdc4bcffdf63615feac \
-    https://github.com/yt-dlp/yt-dlp/releases/download/2026.06.09/yt-dlp \
+ADD --chmod=755 --checksum=sha256:495be29ff4d9d4e9be7eabdfef225221e5d5282e77f2f505abc6dca80349f3fd \
+    https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp \
     /usr/local/bin/yt-dlp
 RUN yt-dlp --version
 
