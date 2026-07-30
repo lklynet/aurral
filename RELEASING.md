@@ -7,7 +7,7 @@ This document is the maintainer procedure for developing, testing, and releasing
 | Branch | Purpose |
 | --- | --- |
 | `main` | Protected stable source. Every published stable version comes from this branch. |
-| `feat/*`, `fix/*`, `hotfix/*`, `chore/*`, `refactor/*` | Temporary working branches created from `main`. |
+| `feat/*`, `fix/*`, `hotfix/*`, `docs/*`, `ci/*`, `chore/*`, `refactor/*` | Temporary working branches created from `main`. |
 | `dev` | Disposable pointer used to build the internal development container. |
 | `test` | Disposable pointer used to build the user-testing container. |
 

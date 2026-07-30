@@ -2,10 +2,6 @@
 
 <!-- What changed, and why? -->
 
-## Intended version
-
-<!-- Stable target such as 2.1.0, or "none" for a non-release change. -->
-
 ## Validation
 
 - [ ] CI passes
