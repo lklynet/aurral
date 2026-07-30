@@ -9,8 +9,8 @@
     "test": "node --test src/scripts/*.test.js"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.34.3",
-    "astro": "^5.7.10"
+    "@astrojs/starlight": "^0.41.5",
+    "astro": "^7.1.6"
   },
   "engines": {
     "node": ">=20"
