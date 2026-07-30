@@ -34,7 +34,7 @@ jobs:
             sudo apt-get install -y ffmpeg fontconfig fonts-dejavu-core
           else
             echo "ffmpeg and fontconfig are required for validation."
-            echo "Install ffmpeg, fontconfig, and fonts-dejavu-core on the self-hosted runner."
+            echo "Install ffmpeg, fontconfig, and fonts-dejavu-core on the runner."
             exit 1
           fi
 
