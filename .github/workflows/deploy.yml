@@ -64,12 +64,10 @@ jobs:
         id: release
         run: |
           git fetch --force --tags
-          PACKAGE_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
           TAGS="$(git tag --list | tr '\n' ',')"
           HEAD_TAGS="$(git tag --points-at HEAD | tr '\n' ',')"
           node scripts/resolve-next-release.js \
             --branch "${GITHUB_REF_NAME}" \
-            --target-version "${PACKAGE_VERSION}" \
             --tags "${TAGS}" \
             --head-tags "${HEAD_TAGS}" \
             --github-output true
