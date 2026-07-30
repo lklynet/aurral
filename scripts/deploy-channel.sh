@@ -53,21 +53,6 @@ if ! source_sha="$(git rev-parse --verify "${source_ref}^{commit}" 2>/dev/null)"
   exit 1
 fi
 
-package_json="$(git show "${source_sha}:package.json")"
-target_version="$(printf '%s' "$package_json" | node -e '
-  let input = "";
-  process.stdin.setEncoding("utf8");
-  process.stdin.on("data", (chunk) => { input += chunk; });
-  process.stdin.on("end", () => {
-    const version = JSON.parse(input).version || "";
-    if (!/^\d+\.\d+\.\d+$/.test(version)) process.exit(1);
-    process.stdout.write(version);
-  });
-')" || {
-  echo "origin/${source_branch} does not contain a valid stable package.json version." >&2
-  exit 1
-}
-
 if [ "$channel" = "test" ]; then
   if ! dev_sha="$(git rev-parse --verify "refs/remotes/origin/dev^{commit}" 2>/dev/null)"; then
     echo "origin/dev does not exist. Deploy this commit to dev first." >&2
@@ -88,7 +73,7 @@ if ! channel_sha="$(git rev-parse --verify "${channel_ref}^{commit}" 2>/dev/null
 fi
 
 cat <<EOF
-Deploy Aurral ${target_version} to ${channel}
+Deploy Aurral to ${channel}
 
 Source:  origin/${source_branch}
 Commit:  ${source_sha}

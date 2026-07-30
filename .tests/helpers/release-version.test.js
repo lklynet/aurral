@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   compareReleaseVersions,
+  nextPatchVersion,
   parseReleaseVersion,
   selectLatestReleaseForChannel,
 } from "../../lib/release-version.js";
@@ -65,4 +66,8 @@ test("selectLatestReleaseForChannel separates stable, test, and dev tags", () =>
     selectLatestReleaseForChannel(refs, "dev")?.tagName,
     "v2.1.0-dev.2",
   );
+});
+
+test("nextPatchVersion advances the latest stable release", () => {
+  assert.equal(nextPatchVersion(["v2.0.0", "v2.1.0-dev.3", "v2.0.1"]), "2.0.2");
 });

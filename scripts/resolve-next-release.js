@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 
-import { readFile } from "node:fs/promises";
-
-import { resolveNextRelease } from "../lib/release-version.js";
+import { nextPatchVersion, resolveNextRelease } from "../lib/release-version.js";
 
 function parseArgs(argv) {
   const args = {};
@@ -32,13 +30,10 @@ function splitCsv(value) {
 
 const args = parseArgs(process.argv.slice(2));
 const branch = args.branch || process.env.GITHUB_REF_NAME || "";
-const packageJson = JSON.parse(
-  await readFile(new URL("../package.json", import.meta.url), "utf8"),
-);
-const targetVersion =
-  args["target-version"] || process.env.TARGET_RELEASE_VERSION || packageJson.version || "";
 const allTags = splitCsv(args.tags || process.env.RELEASE_TAGS);
 const headTags = splitCsv(args["head-tags"] || process.env.HEAD_RELEASE_TAGS);
+const targetVersion =
+  args["target-version"] || process.env.TARGET_RELEASE_VERSION || nextPatchVersion(allTags);
 const githubOutputPath = args["github-output"] === "true" ? process.env.GITHUB_OUTPUT : "";
 
 if (!branch) {
