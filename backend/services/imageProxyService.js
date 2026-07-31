@@ -662,6 +662,25 @@ export const warmImageProxy = async (sourceUrl) => {
   return request;
 };
 
+export const warmPublicImageUrl = async (sourceUrl) => {
+  const normalized = String(sourceUrl || "").trim();
+  if (!normalized || normalized === "NOT_FOUND") return null;
+  if (isImageProxyLocalUrl(normalized)) {
+    return resolveImageProxyLocalUrl(normalized) || null;
+  }
+  const srcMatch = normalized.match(/\/api\/image-proxy\?src=([^&]+)/i);
+  const remote = srcMatch ? decodeURIComponent(srcMatch[1]) : normalized;
+  if (!remote || remote.startsWith("/") || remote.startsWith("data:") || remote.startsWith("blob:")) {
+    return remote || null;
+  }
+  try {
+    const entry = await warmImageProxy(remote);
+    return entry?.localUrl || null;
+  } catch {
+    return null;
+  }
+};
+
 export const buildImageProxyUrl = (sourceUrl) => {
   const normalized = normalizeKnownImageUrl(sourceUrl);
   if (!normalized) return null;

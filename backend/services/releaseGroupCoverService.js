@@ -1,9 +1,14 @@
 import { dbOps } from "../db/helpers/index.js";
 import {
-  buildImageProxyUrl,
   isImageProxyLocalUrl,
   resolveImageProxyLocalUrl,
+  warmPublicImageUrl,
 } from "./imageProxyService.js";
+import {
+  getDeezerArtist,
+  getDeezerArtistById,
+  resolveDeezerAlbumForPreview,
+} from "./apiClients/deezer.js";
 import { getAlbumByMbid, resolveAlbumByArtistAndTitle } from "./providers/brainzmashProvider.js";
 
 export const LEGACY_COVER_HOST_PATTERN =
@@ -27,15 +32,20 @@ const pickAlbumCoverUrl = (images = []) => {
   return (preferred || ranked[0])?.url || null;
 };
 
+const coverArtArchiveFrontUrl = (releaseGroupMbid) =>
+  `https://coverartarchive.org/release-group/${releaseGroupMbid}/front`;
+
+export { warmPublicImageUrl };
+
 const toPublicCoverUrl = (imageUrl) => {
   if (!imageUrl || imageUrl === "NOT_FOUND") return null;
   if (isImageProxyLocalUrl(imageUrl)) {
-    return resolveImageProxyLocalUrl(imageUrl) || buildImageProxyUrl(imageUrl);
+    return resolveImageProxyLocalUrl(imageUrl) || null;
   }
-  return buildImageProxyUrl(imageUrl) || imageUrl;
+  return null;
 };
 
-const getCachedUrl = (cacheKey) => {
+const getCachedUrl = async (cacheKey) => {
   const cached = dbOps.getImage(cacheKey);
   if (
     cached?.imageUrl &&
@@ -50,7 +60,13 @@ const getCachedUrl = (cacheKey) => {
       dbOps.deleteImage(cacheKey);
       return undefined;
     }
-    return cached.imageUrl;
+    const warmed = await warmPublicImageUrl(cached.imageUrl);
+    if (warmed) {
+      if (warmed !== cached.imageUrl) dbOps.setImage(cacheKey, warmed);
+      return warmed;
+    }
+    dbOps.deleteImage(cacheKey);
+    return undefined;
   }
   if (cached?.imageUrl === "NOT_FOUND") {
     return null;
@@ -62,15 +78,9 @@ const persistCover = (cacheKey, proxiedUrl) => {
   dbOps.setImage(cacheKey, proxiedUrl);
 };
 
-const buildReleaseGroupCoverResult = (cacheKey, album) => {
-  const imageUrl = pickAlbumCoverUrl(album?.images);
-  if (!imageUrl) {
-    return { imageUrl: null, types: [], notFound: true, transientError: false };
-  }
-  const proxiedUrl = toPublicCoverUrl(imageUrl);
-  if (!proxiedUrl) {
-    return { imageUrl: null, types: [], notFound: true, transientError: false };
-  }
+const acceptCoverUrl = async (cacheKey, imageUrl) => {
+  const proxiedUrl = await warmPublicImageUrl(imageUrl);
+  if (!proxiedUrl) return null;
   persistCover(cacheKey, proxiedUrl);
   return {
     imageUrl: proxiedUrl,
@@ -80,16 +90,63 @@ const buildReleaseGroupCoverResult = (cacheKey, album) => {
   };
 };
 
+const buildReleaseGroupCoverResult = async (cacheKey, album) => {
+  const imageUrl = pickAlbumCoverUrl(album?.images);
+  if (!imageUrl) {
+    return { imageUrl: null, types: [], notFound: true, transientError: false };
+  }
+  return (
+    (await acceptCoverUrl(cacheKey, imageUrl)) || {
+      imageUrl: null,
+      types: [],
+      notFound: true,
+      transientError: false,
+    }
+  );
+};
+
+const fetchCoverArtArchiveCover = async (cacheKey, releaseGroupMbid) => {
+  if (!releaseGroupMbid) return null;
+  return acceptCoverUrl(cacheKey, coverArtArchiveFrontUrl(releaseGroupMbid));
+};
+
+const fetchDeezerAlbumCover = async (cacheKey, { artistName = "", albumTitle = "" } = {}) => {
+  if (!albumTitle) return null;
+  try {
+    const album = await resolveDeezerAlbumForPreview({ artistName, albumTitle });
+    if (!album?._coverUrl) return null;
+    return acceptCoverUrl(cacheKey, album._coverUrl);
+  } catch {
+    return null;
+  }
+};
+
+export const fetchDeezerArtistImageUrl = async ({
+  artistName = "",
+  deezerArtistId = null,
+} = {}) => {
+  try {
+    const artist = deezerArtistId
+      ? await getDeezerArtistById(deezerArtistId)
+      : artistName
+        ? await getDeezerArtist(artistName)
+        : null;
+    if (!artist?.imageUrl) return null;
+    return warmPublicImageUrl(artist.imageUrl);
+  } catch {
+    return null;
+  }
+};
+
 export const fetchReleaseGroupCoverUrl = async (
   releaseGroupMbid,
   { artistName = "", albumTitle = "" } = {},
 ) => {
   const cacheKey = `${RG_CACHE_PREFIX}${releaseGroupMbid}`;
-  const cached = getCachedUrl(cacheKey);
+  const cached = await getCachedUrl(cacheKey);
   if (cached !== undefined) {
-    const imageUrl = cached === null ? null : toPublicCoverUrl(cached);
     return {
-      imageUrl,
+      imageUrl: cached,
       notFound: cached === null,
       transientError: false,
     };
@@ -99,7 +156,7 @@ export const fetchReleaseGroupCoverUrl = async (
   let sawTransientError = false;
   try {
     const album = await getAlbumByMbid(releaseGroupMbid);
-    const result = buildReleaseGroupCoverResult(cacheKey, album);
+    const result = await buildReleaseGroupCoverResult(cacheKey, album);
     if (result.imageUrl) {
       return result;
     }
@@ -114,7 +171,7 @@ export const fetchReleaseGroupCoverUrl = async (
       });
       if (resolvedAlbumMbid && resolvedAlbumMbid !== releaseGroupMbid) {
         const resolvedAlbum = await getAlbumByMbid(resolvedAlbumMbid);
-        const result = buildReleaseGroupCoverResult(cacheKey, resolvedAlbum);
+        const result = await buildReleaseGroupCoverResult(cacheKey, resolvedAlbum);
         if (result.imageUrl) {
           return result;
         }
@@ -123,6 +180,13 @@ export const fetchReleaseGroupCoverUrl = async (
       sawTransientError = true;
     }
   }
+  const caaCover = await fetchCoverArtArchiveCover(cacheKey, releaseGroupMbid);
+  if (caaCover?.imageUrl) return caaCover;
+  const deezerCover = await fetchDeezerAlbumCover(cacheKey, {
+    artistName: normalizedArtistName,
+    albumTitle: normalizedAlbumTitle,
+  });
+  if (deezerCover?.imageUrl) return deezerCover;
   if (sawTransientError) {
     return { imageUrl: null, types: [], notFound: false, transientError: true };
   }
@@ -197,6 +261,8 @@ export const resolveReleaseGroupCoversBatch = async (
         covers[item.mbid] = { image: imageUrl, notFound: false };
         continue;
       }
+      missing.push(item);
+      continue;
     }
     if (cached?.imageUrl === "NOT_FOUND") {
       covers[item.mbid] = { image: null, notFound: true };
