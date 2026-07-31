@@ -23,6 +23,8 @@ There are no long-lived deployment branches. Channels are container tags produce
 
 Preview and nightly builds create no Git tags. Their identity is the commit they were built from, which is what the update check compares.
 
+Preview images are `linux/amd64` only, because emulating arm64 roughly doubles a build that runs on every push to every open PR. Nightly and stable images are built for both architectures.
+
 ## Version source
 
 A version number is written down only where a human has already decided to publish, which is the **Release** dispatch. Nothing infers or guesses a future version anywhere else.
