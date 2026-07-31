@@ -13,6 +13,7 @@ export default defineConfig({
       },
       favicon: "/favicon.svg",
       customCss: ["./src/styles/custom.css"],
+      expressiveCode: { themes: ["starlight-dark"] },
       editLink: {
         baseUrl: "https://github.com/lklynet/aurral/edit/main/docs/",
       },
@@ -31,6 +32,7 @@ export default defineConfig({
       components: {
         Head: "./src/components/Head.astro",
         ThemeSelect: "./src/components/Hidden.astro",
+        ThemeProvider: "./src/components/Hidden.astro",
       },
       sidebar: [
         { label: "Aurral Docs", slug: "index" },
