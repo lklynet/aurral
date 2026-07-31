@@ -14,7 +14,7 @@ function GitHubIcon({ className = "" }) {
 function UserProfileMenu() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
-  const { authRequired, logout } = useAuth();
+  const { authRequired, canLogOut, logout } = useAuth();
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -95,7 +95,7 @@ function UserProfileMenu() {
                 <ExternalLink className="app-profile-menu__item-external" />
               </a>
             </li>
-            {authRequired && (
+            {authRequired && canLogOut && (
               <li role="none">
                 <button
                   type="button"

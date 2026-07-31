@@ -1,17 +1,8 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { useState, useEffect, Suspense, lazy, useRef } from "react";
 import Layout from "./components/Layout";
-import { forceProxyReauthNavigation, getStoredAuth } from "./utils/api/core.js";
 import { checkHealthLive, getBootstrapStatus } from "./utils/api/endpoints/auth.js";
 import { getAppBasePath } from "./utils/basePath.js";
-import {
-  PROXY_RELOAD_TS_KEY,
-  clearAuthRecoveryFlags,
-  hardNavigateHome,
-  isProxyAuthActive,
-  registerReauthAttempt,
-  resetClientCache,
-} from "./utils/authRecovery.js";
 import { DISCOVERY_MANUAL_REFRESH_KEY } from "./utils/discoverRecentNavigation.js";
 import { AudioPlayerProvider } from "react-use-audio-player";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
@@ -112,8 +103,6 @@ function AppContent() {
   const { isAuthenticated, user, bootstrap, refreshAuth } = useAuth();
   const { showSuccess, showError } = useToast();
 
-  const RELOAD_COOLDOWN_MS = 10000;
-
   const { isConnected: appSocketConnected } = useWebSocketChannel("discovery", (msg) => {
     if (msg.type !== "discovery_update") return;
 
@@ -158,15 +147,7 @@ function AppContent() {
       if (healthCheckInFlightRef.current) return;
       healthCheckInFlightRef.current = true;
       try {
-        const bootstrap = await getBootstrapStatus();
-
-        if (bootstrap?.proxyAuthEnabled && bootstrap?.authRequired && !bootstrap?.user) {
-          healthCheckInFlightRef.current = false;
-          forceProxyReauthNavigation();
-          return;
-        }
-
-        applyBootstrapHealth(bootstrap);
+        applyBootstrapHealth(await getBootstrapStatus());
       } catch {
         try {
           await checkHealthLive();
@@ -205,27 +186,6 @@ function AppContent() {
       window.removeEventListener("focus", handleFocus);
     };
   }, [appSocketConnected, isAuthenticated, refreshAuth]);
-
-  useEffect(() => {
-    if (isHealthy === null) return;
-    if (isHealthy !== false || healthIssue === "degraded") {
-      if (isHealthy === true) clearAuthRecoveryFlags();
-      return;
-    }
-
-    const hasStoredToken = !!getStoredAuth().token;
-    const proxyAuthRequired = bootstrap?.proxyAuthEnabled && bootstrap?.authRequired && !bootstrap?.user;
-
-    if (!isAuthenticated && !isProxyAuthActive() && !proxyAuthRequired && !hasStoredToken) return;
-
-    const lastReload = Number(globalThis?.sessionStorage?.getItem(PROXY_RELOAD_TS_KEY) || 0);
-    if (Date.now() - lastReload < RELOAD_COOLDOWN_MS) return;
-
-    if (!registerReauthAttempt()) return;
-
-    globalThis?.sessionStorage?.setItem(PROXY_RELOAD_TS_KEY, String(Date.now()));
-    void resetClientCache().then(() => hardNavigateHome(basePath));
-  }, [basePath, healthIssue, isHealthy, isAuthenticated, bootstrap]);
 
   return (
     <Router basename={basePath}>

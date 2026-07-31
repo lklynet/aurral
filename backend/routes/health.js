@@ -12,6 +12,7 @@ import {
   resolveRequestUser,
   isAuthRequiredByConfig,
   isProxyAuthEnabled,
+  issueProxySession,
   issueStreamToken,
   getLocalNetworkBypassStatus,
 } from "../middleware/auth.js";
@@ -280,6 +281,8 @@ function buildBootstrapPayload(req) {
     payload.metadataProviders = getMetadataProviderHealthSnapshot();
     payload.localNetworkBypass = getLocalNetworkBypassStatus(req);
     payload.proxyLogoutUrl = process.env.AUTH_PROXY_LOGOUT_URL || null;
+    const proxySession = issueProxySession(req);
+    if (proxySession) payload.token = proxySession.token;
   }
 
   return payload;

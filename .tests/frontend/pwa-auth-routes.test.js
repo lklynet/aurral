@@ -8,7 +8,7 @@ const isHandledByAurralShell = (pathname) =>
 
 test("PWA navigation fallback does not claim reverse-proxy auth routes", () => {
   assert.equal(isHandledByAurralShell("/discover"), true);
-  assert.equal(isHandledByAurralShell("/api/auth/reauth"), false);
+  assert.equal(isHandledByAurralShell("/api/auth/logout"), false);
   assert.equal(isHandledByAurralShell("/outpost.goauthentik.io/start"), false);
   assert.equal(isHandledByAurralShell("/outpost.goauthentik.io/sign_out"), false);
 });

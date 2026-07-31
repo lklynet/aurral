@@ -89,13 +89,13 @@ See [Navidrome: Mixed Windows and Docker](/integrations/navidrome/#mixed-windows
 
 See [Plex integration](/integrations/plex/).
 
-## Page reloads or stays blank behind a reverse proxy
+## Sign-in page or blank page behind a reverse proxy
 
 - Make sure that `AUTH_PROXY_TRUSTED_IPS` matches the source address of your reverse proxy.
 - This value is different from `TRUST_PROXY`. Use the proxy access logs to find its source address.
 - If you enable proxy authentication, set `AUTH_PROXY_TRUSTED_IPS` before you expose the app.
+- Reload the page. Aurral shows its sign-in page when the browser holds no valid session, and a reload lets your proxy authenticate again.
 - For Authelia or forwardAuth, set `AUTH_PROXY_DOMAIN` to your authentication origin.
-- Without this value, the browser can block the login redirect and reauthentication.
 - For Authentik, `curl -i https://your-aurral-host/outpost.goauthentik.io/ping` must return `204`.
 - If it returns Aurral HTML, route `/outpost.goauthentik.io` directly to the Authentik outpost.
 - Use the same correction if it returns another authentication redirect.
@@ -103,8 +103,8 @@ See [Plex integration](/integrations/plex/).
 - If Authentik logout returns to Aurral's login page, check the logout variable.
 - Use the exact variable name `AUTH_PROXY_LOGOUT_URL`.
 - Set its value to `https://your-aurral-host/outpost.goauthentik.io/sign_out`.
+- If the **Log out** control is missing, that variable is unset. Aurral hides the control when it cannot end the proxy session.
 - This problem affects only proxy-auth setups that use `AUTH_PROXY_ENABLED` or `AUTH_PROXY_HEADER`. It does not affect local password login.
-- The reload must stop automatically after a few attempts. Check the browser console for a message that gives the cause.
 
 ## Docker memory looks high after you view cover art
 

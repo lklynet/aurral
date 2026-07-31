@@ -45,8 +45,6 @@ router.post("/login", async (req, res) => {
   }
 });
 
-router.get("/reauth", (_req, res) => res.redirect(302, "/"));
-
 router.post("/logout", requireAuth, (req, res) => {
   const token = getBearerToken(req);
   if (token) {

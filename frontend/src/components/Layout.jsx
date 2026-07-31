@@ -61,7 +61,7 @@ function Layout({ children }) {
   });
   const [isResizing, setIsResizing] = useState(false);
   const location = useLocation();
-  const { authRequired, logout, user } = useAuth();
+  const { authRequired, canLogOut, logout, user } = useAuth();
   const { isActive: isPlayerActive } = useAudioQueue();
   const isArtistDetailsRoute = /^\/artist\/[^/]+(\/(albums|appears-on|release\/[^/]+))?$/.test(
     location.pathname,
@@ -483,7 +483,7 @@ function Layout({ children }) {
                     </Link>
                   );
                 })}
-                {authRequired && (
+                {authRequired && canLogOut && (
                   <button
                     type="button"
                     onClick={() => {

@@ -7,14 +7,16 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { userOps }, authModule] = await setupIsolatedBackend(
+const [isolatedState, { db }, { userOps }, authModule, sessionModule] = await setupIsolatedBackend(
   "proxy-auth",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
   "backend/middleware/auth.js",
+  "backend/config/session-helpers.js",
 );
 
-const { resolveProxyUser } = authModule;
+const { issueProxySession, resolveProxyUser, resolveRequestUser } = authModule;
+const { getSessionByToken } = sessionModule;
 
 function proxyRequest(headers = {}, remoteAddress = "127.0.0.1") {
   return {
@@ -129,6 +131,28 @@ test("proxy auth does not grant admin for a literal 'admin' group unless configu
 
   assert.ok(resolved);
   assert.equal(resolved.role, "user");
+});
+
+test("proxy auth issues one Aurral session that outlives the identity header", () => {
+  const issued = issueProxySession(proxyRequest({ "x-forwarded-user": "erin" }));
+
+  assert.ok(issued?.token);
+  assert.equal(getSessionByToken(issued.token)?.user?.username, "erin");
+
+  const headerlessRequest = proxyRequest({ authorization: `Bearer ${issued.token}` });
+  assert.equal(resolveRequestUser(headerlessRequest)?.username, "erin");
+
+  assert.equal(issueProxySession(headerlessRequest), null);
+});
+
+test("proxy auth issues no session without a trusted identity header", () => {
+  assert.equal(issueProxySession(proxyRequest()), null);
+
+  process.env.AUTH_PROXY_TRUSTED_IPS = "10.0.0.1";
+  assert.equal(
+    issueProxySession(proxyRequest({ "x-forwarded-user": "mallory" }, "192.168.1.10")),
+    null,
+  );
 });
 
 test("proxy auth re-syncs role on every request instead of only at creation", () => {

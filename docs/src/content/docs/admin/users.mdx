@@ -39,7 +39,9 @@ You do not have to edit the account in Aurral.
 
 Set `AUTH_PROXY_TRUSTED_IPS` to your reverse proxy's address. Without it, Aurral accepts identity headers from any client that can reach Aurral.
 
-For Authelia or similar forwardAuth, set `AUTH_PROXY_DOMAIN` to the login origin. When a session expires, Aurral navigates to `/api/auth/reauth` so the proxy can show its login page, then returns the user to Aurral's home page.
+On the first request that your proxy authenticates, Aurral issues its own session and the browser uses it for later API calls. The open page keeps working when the identity provider's session ends, and the next full page load goes back through the proxy for a new one. Use `SESSION_EXPIRY_HOURS` to change how long an Aurral session lasts.
+
+When an Aurral session ends and the proxy no longer authenticates the browser, Aurral shows its sign-in page. Reload the page to authenticate through the proxy again.
 
 For Authentik, route `/outpost.goauthentik.io` directly to the Authentik outpost.
 
@@ -52,6 +54,8 @@ curl -i https://aurral.example.com/outpost.goauthentik.io/ping
 The response must be `204`.
 
 Set `AUTH_PROXY_LOGOUT_URL=https://aurral.example.com/outpost.goauthentik.io/sign_out` to end the Authentik session when you log out.
+
+Aurral hides its **Log out** control while proxy authentication is on and this variable is unset, because clearing an Aurral session cannot end the proxy session. Set the variable to get the control back.
 
 Proxy-created users cannot use local password login until an admin sets a password. After creation, admins can manage the account from **Settings > Users**.
 
