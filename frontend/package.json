@@ -17,7 +17,8 @@
     "lucide-react": "^1.17.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-router-dom": "^7.16.0",
+    "react-router": "8.3.0",
+    "react-router-dom": "^7.18.2",
     "react-use-audio-player": "^4.0.2"
   },
   "devDependencies": {
