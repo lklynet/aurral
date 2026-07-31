@@ -7,6 +7,8 @@ import { createPortal } from "react-dom";
 import { Lock, Trash2, UserPlus, X } from "lucide-react";
 import { GRANULAR_PERMISSIONS, granularPerms } from "../constants";
 import { useModalDialog } from "../../../hooks/useModalDialog.js";
+import { AdminPlexLinkField } from "./AdminPlexLinkField";
+import { PlexSelfLinkSection } from "./PlexSelfLinkSection";
 function getLocalBypassStatus(status) {
   if (!status) {
     return {
@@ -83,6 +85,25 @@ function formatListenHistory(user) {
   }
   const provider = user.listenHistoryProvider === "listenbrainz" ? "ListenBrainz" : "Last.fm";
   return `${provider}: ${user.listenHistoryUsername}`;
+}
+
+function formatPlexLink(user) {
+  const plexLink = user.plexLink;
+  if (plexLink?.connected) {
+    const label = plexLink.linkType === "managed" ? "Managed" : "Self";
+    const summary = `${label}: ${plexLink.plexUsername || "unknown"}`;
+    return plexLink.lastError ? `${summary} (reconnect needed)` : summary;
+  }
+  if (user.role === "admin") {
+    const globalAccount = user.plexGlobalAccount;
+    const ownsGlobalAccount =
+      globalAccount?.configuredByUserId == null ||
+      Number(globalAccount.configuredByUserId) === Number(user.id);
+    if (globalAccount?.configured && ownsGlobalAccount) {
+      return `Global: ${globalAccount.plexUsername || "unknown"}`;
+    }
+  }
+  return "—";
 }
 
 function PermissionChecklist({ permissions, onChange }) {
@@ -312,6 +333,7 @@ export function SettingsUsersTab({
                     <th scope="col">Username</th>
                     <th scope="col">Role</th>
                     <th scope="col">Listening history</th>
+                    <th scope="col">Plex</th>
                     <th scope="col" className="arr-table__actions-head">
                       <span className="sr-only">Actions</span>
                     </th>
@@ -320,11 +342,11 @@ export function SettingsUsersTab({
                 <tbody>
                   {loadingUsers ? (
                     <tr className="arr-table__empty-row">
-                      <td colSpan={4}>Loading users…</td>
+                      <td colSpan={5}>Loading users…</td>
                     </tr>
                   ) : usersList.length === 0 ? (
                     <tr className="arr-table__empty-row">
-                      <td colSpan={4}>No users configured.</td>
+                      <td colSpan={5}>No users configured.</td>
                     </tr>
                   ) : (
                     usersList.map((user) => (
@@ -341,6 +363,9 @@ export function SettingsUsersTab({
                         </td>
                         <td>
                           <span className="arr-table__path">{formatListenHistory(user)}</span>
+                        </td>
+                        <td>
+                          <span className="arr-table__path">{formatPlexLink(user)}</span>
                         </td>
                         <td className="arr-table__actions">
                           <div className="arr-table__actions-inner">
@@ -677,6 +702,7 @@ export function SettingsUsersTab({
                                   onChange={(event) => setEditPassword(event.target.value)}
                                 />
                               </SettingsArrFormGroup>
+                              <PlexSelfLinkSection showSuccess={showSuccess} showError={showError} />
                             </>
                           ) : (
                             <>
@@ -698,6 +724,21 @@ export function SettingsUsersTab({
                                 <PermissionChecklist
                                   permissions={editPermissions}
                                   onChange={setEditPermissions}
+                                />
+                              </SettingsArrFormGroup>
+                              <SettingsArrFormGroup
+                                label="Plex Account"
+                                help="Link this user to a Plex Home managed user so their flow and playlists are created under that Plex account."
+                              >
+                                <AdminPlexLinkField
+                                  user={editUser}
+                                  showSuccess={showSuccess}
+                                  showError={showError}
+                                  onChanged={async () => {
+                                    const nextUsers = await refreshUsers();
+                                    const updated = nextUsers.find((u) => u.id === editUser.id);
+                                    if (updated) setEditUser(updated);
+                                  }}
                                 />
                               </SettingsArrFormGroup>
                             </>

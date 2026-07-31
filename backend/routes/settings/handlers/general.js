@@ -288,9 +288,22 @@ export function registerGeneral(router) {
         currentSettings.integrations || defaultData.settings.integrations || {};
       if (integrations) {
         mergedIntegrations = mergeIntegrations(mergedIntegrations, integrations, INTEGRATION_KEYS);
+        // mergeIntegrations()'s top-level spread already clobbered .plex down to
+        // whatever partial fields the client sent (it isn't in INTEGRATION_KEYS,
+        // which is why "plex" gets its own encryption-aware merge) - merge
+        // against the true pre-request value, not that already-corrupted one.
         mergedIntegrations.plex = integrations.plex
-          ? mergePlexIntegration(mergedIntegrations.plex, integrations.plex)
+          ? mergePlexIntegration(currentSettings.integrations?.plex, integrations.plex)
           : mergedIntegrations.plex;
+        if (
+          integrations.plex?.token &&
+          integrations.plex.token !== currentSettings.integrations?.plex?.token
+        ) {
+          mergedIntegrations.plex = {
+            ...mergedIntegrations.plex,
+            configuredByUserId: req.user.id,
+          };
+        }
         mergedIntegrations.webhooks = integrations.webhooks !== undefined
           ? integrations.webhooks
           : mergedIntegrations.webhooks;

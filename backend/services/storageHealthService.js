@@ -1040,7 +1040,7 @@ async function checkPlexSection() {
     steps.push(
       healthStep("aurral-library", "warn", "Plex scans the Aurral playlist folder", {
         detail: expectedPath,
-        fix: "Confirm Plex downloads path is the path the Plex server uses for Aurral's downloads, save settings, then run Sync to Plex so Aurral can create or repair its library.",
+        fix: "Confirm Plex Aurral Library path is the path the Plex server uses for Aurral's downloads, save settings, then run Sync to Plex so Aurral can create or repair its library.",
       }),
     );
   }
