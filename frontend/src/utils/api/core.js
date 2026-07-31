@@ -67,14 +67,19 @@ async function request(config) {
   }
   const timeoutMs = Number(config.timeout ?? 30000);
   const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
-  const headers = { "Content-Type": "application/json", ...config.headers };
+  const isBinaryData = config.data instanceof Blob || config.data instanceof FormData;
+  const headers = { ...(isBinaryData ? {} : { "Content-Type": "application/json" }), ...config.headers };
   const token = getRequestToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
   try {
     const init = { method, headers, signal: controller.signal, redirect: "manual" };
     if (config.data != null && method !== "GET" && method !== "HEAD") {
-      init.body = typeof config.data === "string" ? config.data : JSON.stringify(config.data);
+      if (typeof config.data === "string" || isBinaryData) {
+        init.body = config.data;
+      } else {
+        init.body = JSON.stringify(config.data);
+      }
     }
     const res = await fetch(url, init);
 
