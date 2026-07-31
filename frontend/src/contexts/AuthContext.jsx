@@ -11,7 +11,12 @@ import {
   loginApi,
   logoutApi,
 } from "../utils/api/endpoints/auth.js";
-import { isProxyAuthActive, syncProxyAuthFromBootstrap } from "../utils/authRecovery.js";
+import {
+  beginLogoutNavigation,
+  endLogoutNavigation,
+  isProxyAuthActive,
+  syncProxyAuthFromBootstrap,
+} from "../utils/authRecovery.js";
 
 const AuthContext = createContext(null);
 
@@ -118,6 +123,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const logout = useCallback(async () => {
+    beginLogoutNavigation();
     try {
       await logoutApi();
     } catch {}
@@ -135,6 +141,7 @@ export const AuthProvider = ({ children }) => {
       window.location.href = proxyLogoutUrl;
       return;
     }
+    endLogoutNavigation();
     setIsAuthenticated(false);
     setUser(null);
   }, [bootstrap]);

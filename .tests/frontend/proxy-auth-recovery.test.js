@@ -81,6 +81,56 @@ test("proxy-auth API 401 navigates through a fixed reauth route", async (t) => {
   }
 });
 
+test("a pending proxy logout navigation is not clobbered by auth recovery", async (t) => {
+  const originalGlobals = {
+    fetch: globalThis.fetch,
+    localStorage: globalThis.localStorage,
+    sessionStorage: globalThis.sessionStorage,
+    window: globalThis.window,
+  };
+  const vite = await createServer({
+    root: "frontend",
+    server: { middlewareMode: true },
+    appType: "custom",
+    optimizeDeps: { noDiscovery: true },
+  });
+
+  t.after(async () => {
+    await vite.close();
+    Object.assign(globalThis, originalGlobals);
+  });
+
+  const logoutUrl = "https://aurral.example.com/outpost.goauthentik.io/sign_out";
+  globalThis.sessionStorage = createStorage({ "aurral:proxy-auth": "1" });
+  globalThis.localStorage = createStorage();
+  globalThis.window = {
+    location: {
+      origin: "https://aurral.example.com",
+      pathname: "/outpost.goauthentik.io/sign_out",
+      search: "",
+      href: logoutUrl,
+    },
+  };
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    });
+
+  const { beginLogoutNavigation, endLogoutNavigation } = await vite.ssrLoadModule(
+    "/src/utils/authRecovery.js",
+  );
+  const { default: api } = await vite.ssrLoadModule("/src/utils/api/core.js");
+
+  beginLogoutNavigation();
+  await assert.rejects(api.get("/health/bootstrap"), /status code 401/);
+  assert.equal(globalThis.window.location.href, logoutUrl);
+
+  endLogoutNavigation();
+  await assert.rejects(api.get("/health/bootstrap"), /status code 401/);
+  assert.equal(globalThis.window.location.href, "/api/auth/reauth");
+});
+
 test("proxy-auth WebSocket closure probes ambiguous failures before navigating", async (t) => {
   const originalGlobals = {
     fetch: globalThis.fetch,

@@ -221,13 +221,7 @@ function AppContent() {
     const lastReload = Number(globalThis?.sessionStorage?.getItem(PROXY_RELOAD_TS_KEY) || 0);
     if (Date.now() - lastReload < RELOAD_COOLDOWN_MS) return;
 
-    if (!registerReauthAttempt()) {
-      console.error(
-        "[Aurral] Repeated unhealthy-backend reload attempts detected in a short window; " +
-          "stopping to avoid a loop.",
-      );
-      return;
-    }
+    if (!registerReauthAttempt()) return;
 
     globalThis?.sessionStorage?.setItem(PROXY_RELOAD_TS_KEY, String(Date.now()));
     void resetClientCache().then(() => hardNavigateHome(basePath));

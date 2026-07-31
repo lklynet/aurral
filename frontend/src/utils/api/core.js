@@ -29,25 +29,14 @@ function appendParams(url, params) {
 
 export const forceProxyReauthNavigation = () => {
   if (typeof window === "undefined") return;
-  if (!registerReauthAttempt()) {
-    console.error(
-      "[Aurral] Repeated auth-redirect recovery attempts detected in a short window; " +
-        "stopping to avoid a reload loop. Check the reverse proxy / forwardAuth configuration.",
-    );
-    return;
-  }
+  if (!registerReauthAttempt()) return;
   clearAuthStorage();
   window.location.href = `${API_BASE_URL}/auth/reauth`;
 };
 
 const forceReloadForLogin = () => {
   if (typeof window === "undefined") return;
-  if (!registerReauthAttempt()) {
-    console.error(
-      "[Aurral] Repeated auth-recovery reload attempts detected in a short window; stopping to avoid a reload loop.",
-    );
-    return;
-  }
+  if (!registerReauthAttempt()) return;
   clearAuthStorage();
   const separator = window.location.pathname.includes("?") ? "&" : "?";
   window.location.href =

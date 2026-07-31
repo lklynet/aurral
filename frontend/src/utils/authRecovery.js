@@ -18,7 +18,18 @@ export const syncProxyAuthFromBootstrap = (bootstrap) => {
   }
 };
 
+let logoutNavigationPending = false;
+
+export const beginLogoutNavigation = () => {
+  logoutNavigationPending = true;
+};
+
+export const endLogoutNavigation = () => {
+  logoutNavigationPending = false;
+};
+
 export const registerReauthAttempt = () => {
+  if (logoutNavigationPending) return false;
   const storage = globalThis?.sessionStorage;
   if (!storage) return true;
   let state;
@@ -33,7 +44,14 @@ export const registerReauthAttempt = () => {
   }
   state.count += 1;
   storage.setItem(REAUTH_ATTEMPT_KEY, JSON.stringify(state));
-  return state.count <= REAUTH_MAX_ATTEMPTS;
+  if (state.count > REAUTH_MAX_ATTEMPTS) {
+    console.error(
+      "[Aurral] Repeated auth-recovery navigations in a short window; stopping to avoid a loop. " +
+        "Check the reverse proxy / forwardAuth configuration.",
+    );
+    return false;
+  }
+  return true;
 };
 
 export const resetClientCache = async () => {
