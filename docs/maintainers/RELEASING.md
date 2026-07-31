@@ -116,6 +116,8 @@ Create `hotfix/short-description` from `main`, use a `fix:` PR title, test the p
 
 Redeploy the previous exact stable container, such as `ghcr.io/lklynet/aurral:2.0.0`. Do not move `latest` by hand and do not change an existing Git tag. Prepare a new patch release containing the correction.
 
-## Legacy tags
+## Tags
 
-The repository still holds `-dev.N` and `-test.N` tags from the retired `dev` and `test` branch channels. They stay as history. Nothing renames or deletes them, and the release tooling ignores them because only `MAJOR.MINOR.PATCH` tags parse as releases.
+Every Git tag in this repository is a stable release. Retiring the `dev` and `test` branch channels removed their 376 `-dev.N` and `-test.N` tags and the 449 matching container versions, including the moving `:dev` and `:test` image tags, which now return a 404. The 211 release tags and their images are untouched.
+
+Only `MAJOR.MINOR.PATCH` parses as a release, so a stray prerelease tag would be ignored rather than mistaken for one.
