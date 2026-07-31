@@ -1,8 +1,6 @@
 changelog:
   exclude:
     labels:
-      - released
-      - "released on @test"
       - skip-changelog
   categories:
     - title: Features

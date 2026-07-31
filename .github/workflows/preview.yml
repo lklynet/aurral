@@ -1,0 +1,96 @@
+name: Preview
+
+on:
+  pull_request:
+    branches: ["main"]
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-${{ github.event.number }}
+  cancel-in-progress: true
+
+jobs:
+  publish-image:
+    if: >-
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Resolve build version
+        id: version
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: echo "value=pr.${{ github.event.number }}+${HEAD_SHA:0:7}" >> "${GITHUB_OUTPUT}"
+
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Log into ghcr.io
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push preview image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ghcr.io/${{ github.repository }}:pr-${{ github.event.number }}
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.value }}
+            GITHUB_REPO=${{ github.repository }}
+            RELEASE_CHANNEL=preview
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summarize preview image
+        run: |
+          {
+            echo "### Preview image"
+            echo
+            echo '```bash'
+            echo "docker pull ghcr.io/${GITHUB_REPOSITORY}:pr-${{ github.event.number }}"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  delete-image:
+    if: >-
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Delete preview image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_TAG: pr-${{ github.event.number }}
+        run: |
+          OWNER="${GITHUB_REPOSITORY%/*}"
+          PACKAGE="${GITHUB_REPOSITORY#*/}"
+          for scope in users orgs; do
+            VERSION_ID="$(gh api --paginate "/${scope}/${OWNER}/packages/container/${PACKAGE}/versions" \
+              -q ".[] | select(.metadata.container.tags[]? == \"${IMAGE_TAG}\") | .id" 2>/dev/null | head -n1)"
+            if [ -n "${VERSION_ID}" ]; then
+              gh api -X DELETE "/${scope}/${OWNER}/packages/container/${PACKAGE}/versions/${VERSION_ID}"
+              echo "Deleted ${IMAGE_TAG}."
+              exit 0
+            fi
+          done
+          echo "No preview image tagged ${IMAGE_TAG}."
