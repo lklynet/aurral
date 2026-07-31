@@ -1,18 +1,18 @@
-name: Stable Release
+name: Release
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version to publish (for example 2.0.0)
-        required: true
+        description: Version to publish (for example 2.1.0). Leave blank to use the version suggested by Conventional Commit titles since the last release.
+        required: false
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: stable-release
+  group: release
   cancel-in-progress: false
 
 jobs:
@@ -30,10 +30,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify main and requested version
+      - name: Verify main is the release source
         run: |
           if [ "${GITHUB_REF_NAME}" != "main" ]; then
-            echo "Stable releases must be run from main, not ${GITHUB_REF_NAME}."
+            echo "Releases must be run from main, not ${GITHUB_REF_NAME}."
             exit 1
           fi
 
@@ -53,7 +53,6 @@ jobs:
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       version: ${{ steps.release.outputs.version }}
-      channel: ${{ steps.release.outputs.channel }}
       major: ${{ steps.release.outputs.major }}
       minor: ${{ steps.release.outputs.minor }}
     steps:
@@ -65,23 +64,13 @@ jobs:
         with:
           node-version: 22.23.2
 
-      - name: Compute stable release
+      - name: Compute release version
         id: release
         env:
           REQUESTED_VERSION: ${{ inputs.version }}
         run: |
           git fetch --force --tags
-          REQUESTED_VERSION="${REQUESTED_VERSION#v}"
-          TAGS="$(git tag --list | tr '\n' ',')"
-          HEAD_TAGS="$(git tag --points-at HEAD | tr '\n' ',')"
-          node scripts/resolve-next-release.js \
-            --branch main \
-            --target-version "${REQUESTED_VERSION}" \
-            --tags "${TAGS}" \
-            --head-tags "${HEAD_TAGS}" \
-            --github-output true
-          echo "major=${REQUESTED_VERSION%%.*}" >> "${GITHUB_OUTPUT}"
-          echo "minor=${REQUESTED_VERSION%.*}" >> "${GITHUB_OUTPUT}"
+          node scripts/resolve-next-release.js
 
   publish-image:
     needs: compute-release

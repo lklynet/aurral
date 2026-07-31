@@ -26,6 +26,20 @@ services:
 
 Point `/data:/data` at the host path that Lidarr mounts. `./config` holds Aurral's database, settings, and encrypted secrets.
 
+## Which image tag to use
+
+| Tag | Contents | Use it when |
+| --- | --- | --- |
+| `latest` | The newest stable release | You want a tested release. This is the default. |
+| `2.1.0`, `2.1`, `2` | An exact version, or the newest release in that line | You pin versions or need to roll back to a known build |
+| `nightly` | Every change merged since the last release | You want fixes and features early and can report bugs |
+
+Aurral checks for a newer build in your channel and shows a banner when one exists.
+
+:::caution
+`nightly` is untested by users until you run it. Back up `./config` before switching to it, and report anything broken.
+:::
+
 ## Start Aurral
 
 ```bash

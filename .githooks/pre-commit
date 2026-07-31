@@ -2,15 +2,13 @@
 
 branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 
-case "$branch" in
-  main|test|dev)
-    cat >&2 <<EOF
-Direct commits to '$branch' are blocked.
+if [ "$branch" = "main" ]; then
+  cat >&2 <<EOF
+Direct commits to 'main' are blocked.
 
-Create a feature branch or use release/v2 for release work.
+Create a short-lived branch from main and open a pull request.
 EOF
-    exit 1
-    ;;
-esac
+  exit 1
+fi
 
 exit 0

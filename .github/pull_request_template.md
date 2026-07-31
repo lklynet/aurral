@@ -5,8 +5,7 @@
 ## Validation
 
 - [ ] CI passes
-- [ ] Tested using the `dev` container, or not required
-- [ ] Tested using the `test` container, or not required
+- [ ] Tested using the `ghcr.io/lklynet/aurral:pr-<number>` preview image, or not required
 - [ ] Upgrade, migration, and rollback notes are updated where applicable
 
 ## Release impact
