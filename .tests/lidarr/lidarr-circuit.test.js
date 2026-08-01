@@ -70,7 +70,7 @@ test("getAlbumByMbid selects the matching album from filtered results", async (t
     response.end(
       JSON.stringify([
         { id: 1, foreignAlbumId: "other-album" },
-        { id: 2, foreignAlbumId: "target-album" },
+        { id: 2, foreignAlbumId: "TARGET-ALBUM" },
       ]),
     );
   });
@@ -93,6 +93,7 @@ test("getAlbumByMbid selects the matching album from filtered results", async (t
   const album = await client.getAlbumByMbid("target-album");
 
   assert.equal(album?.id, 2);
+  assert.equal(album?.foreignAlbumId, "TARGET-ALBUM");
   client._httpAgent.destroy();
   client._httpsAgent.destroy();
   client._httpsInsecureAgent.destroy();

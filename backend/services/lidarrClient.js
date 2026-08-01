@@ -1171,6 +1171,7 @@ export class LidarrClient {
   async getAlbumByMbid(albumMbid, options = {}) {
     const normalizedMbid = String(albumMbid || "").trim();
     if (!normalizedMbid) return undefined;
+    const normalizedMbidKey = normalizedMbid.toLowerCase();
 
     const albums = await this.request(
       `/album?foreignAlbumId=${encodeURIComponent(normalizedMbid)}`,
@@ -1181,7 +1182,8 @@ export class LidarrClient {
     );
     return Array.isArray(albums)
       ? albums.find(
-          (album) => String(album?.foreignAlbumId ?? "").trim() === normalizedMbid,
+          (album) =>
+            String(album?.foreignAlbumId ?? "").trim().toLowerCase() === normalizedMbidKey,
         )
       : undefined;
   }
