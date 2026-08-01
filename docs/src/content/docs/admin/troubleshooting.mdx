@@ -55,6 +55,16 @@ Completed slskd or Usenet files can also remain in their source folders. **Test 
 
 See [Match Lidarr: Windows and mixed Docker setups](/getting-started/storage/#windows-and-mixed-docker-setups).
 
+## Library access fails on a folder that is not your root folder
+
+**Test library access** and **Storage health** can fail on a sample track whose path sits outside every Lidarr root folder, even though the root folder itself passes.
+
+Lidarr keeps each artist's own folder when you change or rename a root folder, so artists stay at the old location.
+
+- Compare the failing path with **Root folder in Lidarr** in the same check.
+- If the failing path is outside it, open that artist in Lidarr, select **Edit**, and move the files into the current root folder.
+- Otherwise, add the old location as a Lidarr root folder and mount it into Aurral.
+
 ## Navidrome playlists show but tracks will not play
 
 Flows or shared playlists can appear in Navidrome, but the tracks do not play.
