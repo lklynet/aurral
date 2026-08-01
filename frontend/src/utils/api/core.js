@@ -26,6 +26,27 @@ function appendParams(url, params) {
   return `${url}${url.includes("?") ? "&" : "?"}${query}`;
 }
 
+const REAUTH_COOLDOWN_MS = 30000;
+const REAUTH_AT_KEY = "aurral:reauth-at";
+let reauthStarted = false;
+
+const dropServiceWorker = async () => {
+  const registrations = (await globalThis?.navigator?.serviceWorker?.getRegistrations?.()) || [];
+  const cacheKeys = (await globalThis?.caches?.keys?.()) || [];
+  await Promise.allSettled(registrations.map((registration) => registration.unregister()));
+  await Promise.allSettled(cacheKeys.map((cacheKey) => globalThis.caches.delete(cacheKey)));
+};
+
+const reauthenticateThroughProxy = () => {
+  if (reauthStarted || typeof window === "undefined") return;
+  const lastAt = Number(globalThis?.sessionStorage?.getItem(REAUTH_AT_KEY) || 0);
+  if (Date.now() - lastAt < REAUTH_COOLDOWN_MS) return;
+  reauthStarted = true;
+  globalThis?.sessionStorage?.setItem(REAUTH_AT_KEY, String(Date.now()));
+  clearAuthStorage();
+  void dropServiceWorker().then(() => window.location.reload());
+};
+
 async function request(config) {
   const method = String(config.method || "GET").toUpperCase();
   let url = appendParams(joinUrl(API_BASE_URL, config.url || ""), config.params);
@@ -43,6 +64,8 @@ async function request(config) {
   const headers = { ...(isBinaryData ? {} : { "Content-Type": "application/json" }), ...config.headers };
   const token = getRequestToken();
   if (token) headers.Authorization = `Bearer ${token}`;
+  const urlPath = String(config.url || "");
+  const isAuthEndpoint = urlPath.includes("/auth/login") || urlPath.includes("/auth/logout");
 
   try {
     const init = { method, headers, signal: controller.signal, redirect: "manual" };
@@ -54,6 +77,11 @@ async function request(config) {
       }
     }
     const res = await fetch(url, init);
+
+    if (res.type === "opaqueredirect") {
+      if (!isAuthEndpoint) reauthenticateThroughProxy();
+      throw new Error("Request was redirected to an authentication provider");
+    }
 
     const contentType = res.headers.get("content-type") || "";
     let data;
@@ -70,9 +98,10 @@ async function request(config) {
     if (!res.ok) {
       const error = new Error(`Request failed with status code ${res.status}`);
       error.response = response;
-      const urlPath = String(config.url || "");
-      const isAuthEndpoint = urlPath.includes("/auth/login") || urlPath.includes("/auth/logout");
-      if (res.status === 401 && !isAuthEndpoint) clearAuthStorage();
+      if (res.status === 401 && !isAuthEndpoint) {
+        clearAuthStorage();
+        if (!data?.error) reauthenticateThroughProxy();
+      }
       throw error;
     }
     return response;

@@ -39,9 +39,13 @@ You do not have to edit the account in Aurral.
 
 Set `AUTH_PROXY_TRUSTED_IPS` to your reverse proxy's address. Without it, Aurral accepts identity headers from any client that can reach Aurral.
 
-On the first request that your proxy authenticates, Aurral issues its own session and the browser uses it for later API calls. The open page keeps working when the identity provider's session ends, and the next full page load goes back through the proxy for a new one. Use `SESSION_EXPIRY_HOURS` to change how long an Aurral session lasts.
+On the first request that your proxy authenticates, Aurral issues its own session and the browser uses it for later API calls. Use `SESSION_EXPIRY_HOURS` to change how long an Aurral session lasts.
 
-When an Aurral session ends and the proxy no longer authenticates the browser, Aurral shows its sign-in page. Reload the page to authenticate through the proxy again.
+Most setups also protect `/api` with the proxy, so the proxy still decides every request. When the identity-provider session ends, Aurral sees the proxy's redirect, discards its cached app shell, and reloads so the proxy can authenticate you again.
+
+That reload is what returns you to your identity provider. Aurral repeats it at most once every 30 seconds, so a misconfigured proxy cannot put the browser into a redirect loop.
+
+When the proxy protects only page loads and leaves `/api` to Aurral's own session, the open page keeps working after the identity-provider session ends, until the Aurral session expires.
 
 For Authentik, route `/outpost.goauthentik.io` directly to the Authentik outpost.
 
