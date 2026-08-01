@@ -35,6 +35,9 @@ let _lastFullArtistFetchAt = 0;
 const _tracksCache = new Map();
 let _playbackQueueCache = null;
 const _artistMonitoringRepairs = new Map();
+const _albumAddInflight = new Map();
+const ALBUM_OWNED_BY_DIFFERENT_ARTIST_ERROR =
+  "Album already exists in Lidarr under a different artist";
 
 function buildTrackFileIndex(trackFiles) {
   const index = new Map();
@@ -948,6 +951,37 @@ export class LibraryManager {
   }
 
   async addAlbum(artistId, releaseGroupMbid, albumName, options = {}) {
+    const albumKey = String(releaseGroupMbid || "")
+      .trim()
+      .toLowerCase();
+    if (!albumKey) {
+      return this._addAlbum(artistId, releaseGroupMbid, albumName, options);
+    }
+
+    const existingRequest = _albumAddInflight.get(albumKey);
+    if (existingRequest) {
+      const result = await existingRequest;
+      if (result?.artistId != null && String(result.artistId) !== String(artistId)) {
+        return {
+          error: ALBUM_OWNED_BY_DIFFERENT_ARTIST_ERROR,
+          statusCode: 409,
+        };
+      }
+      return result;
+    }
+
+    const request = this._addAlbum(artistId, releaseGroupMbid, albumName, options).finally(
+      () => {
+        if (_albumAddInflight.get(albumKey) === request) {
+          _albumAddInflight.delete(albumKey);
+        }
+      },
+    );
+    _albumAddInflight.set(albumKey, request);
+    return request;
+  }
+
+  async _addAlbum(artistId, releaseGroupMbid, albumName, options = {}) {
     const lidarr = await getLidarrClient();
     if (!lidarr || !lidarr.isConfigured()) {
       return { error: "Lidarr is not configured" };
@@ -1011,10 +1045,18 @@ export class LibraryManager {
           lidarrArtist.monitor || lidarrArtist.addOptions?.monitor || "none",
         );
       }
-      const existing = await lidarr.getAlbumByMbid(releaseGroupMbid);
+      const existing = await lidarr.getAlbumByMbid(releaseGroupMbid, {
+        forceRefresh: true,
+      });
       const artistNumericId = parseInt(artistId, 10);
       const sameArtistExisting =
         existing && String(existing.artistId) === String(artistNumericId) ? existing : null;
+      if (existing?.artistId != null && !sameArtistExisting) {
+        return {
+          error: ALBUM_OWNED_BY_DIFFERENT_ARTIST_ERROR,
+          statusCode: 409,
+        };
+      }
       if (sameArtistExisting) {
         const mappedExisting = await mapExistingAlbum(sameArtistExisting, lidarrArtist);
         if (mappedExisting) return mappedExisting;
@@ -1037,7 +1079,10 @@ export class LibraryManager {
             const existingAfterConflict =
               (await this.waitForAlbumByMbidForArtist(releaseGroupMbid, artistNumericId, {
                 delaysMs: [500, 1000, 2000, 4000],
-              })) || (await lidarr.getAlbumByMbid(releaseGroupMbid).catch(() => null));
+              })) ||
+              (await lidarr
+                .getAlbumByMbid(releaseGroupMbid, { forceRefresh: true })
+                .catch(() => null));
             const sameArtistAfterConflict =
               existingAfterConflict &&
               String(existingAfterConflict.artistId) === String(artistNumericId)
@@ -1049,6 +1094,12 @@ export class LibraryManager {
                 lidarrArtist,
               );
               if (mappedConflictAlbum) return mappedConflictAlbum;
+            }
+            if (existingAfterConflict?.artistId != null) {
+              return {
+                error: ALBUM_OWNED_BY_DIFFERENT_ARTIST_ERROR,
+                statusCode: 409,
+              };
             }
           }
           if (attempt < addAlbumAttempts && isArtistNotReadyError(error)) {
@@ -1148,13 +1199,15 @@ export class LibraryManager {
 
     artist = await this.ensureArtistMonitored(artist);
 
-    let existingAlbum = await lidarr.getAlbumByMbid(normalizedAlbumMbid);
+    let existingAlbum = await lidarr.getAlbumByMbid(normalizedAlbumMbid, {
+      forceRefresh: true,
+    });
     if (
       existingAlbum &&
       existingAlbum.artistId != null &&
       String(existingAlbum.artistId) !== String(artist.id)
     ) {
-      const error = new Error("Album already exists in Lidarr under a different artist");
+      const error = new Error(ALBUM_OWNED_BY_DIFFERENT_ARTIST_ERROR);
       error.statusCode = 409;
       throw error;
     }
@@ -1168,7 +1221,10 @@ export class LibraryManager {
 
     if (album?.error) {
       const error = new Error(album.error);
-      error.statusCode = 503;
+      error.statusCode =
+        Number.isInteger(album.statusCode) && album.statusCode >= 400
+          ? album.statusCode
+          : 503;
       throw error;
     }
 
