@@ -549,18 +549,11 @@ async function checkLidarrSection() {
   }
 
   const result = await runLidarrLibraryAccessTest(lidarrClient);
-  const rootStep = (result.steps || []).find((entry) => entry.id === "root");
-  const rootPaths = rootStep?.detail
-    ? String(rootStep.detail)
-        .split(",")
-        .map((entry) => entry.trim())
-        .filter(Boolean)
-    : [];
 
   return {
     section: buildSection("lidarr", "Lidarr library", result.steps || []),
     sample: result.sample || null,
-    rootPaths,
+    rootPaths: result.rootPaths || [],
   };
 }
 
