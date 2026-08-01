@@ -488,6 +488,7 @@ export function resolveProxyUser(req) {
 }
 
 export function issueProxySession(req) {
+  if (!isAuthRequiredByConfig()) return null;
   if (resolveSessionUserFromToken(getBearerToken(req))) return null;
   const proxyUser = resolveProxyUser(req);
   if (!proxyUser?.id || proxyUser.id < 0) return null;

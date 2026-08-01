@@ -7,7 +7,7 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { userOps }, authModule, sessionModule] = await setupIsolatedBackend(
+const [isolatedState, { db }, dbHelpers, authModule, sessionModule] = await setupIsolatedBackend(
   "proxy-auth",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
@@ -15,8 +15,11 @@ const [isolatedState, { db }, { userOps }, authModule, sessionModule] = await se
   "backend/config/session-helpers.js",
 );
 
+const { dbOps, userOps } = dbHelpers;
 const { issueProxySession, resolveProxyUser, resolveRequestUser } = authModule;
 const { getSessionByToken } = sessionModule;
+
+const completeOnboarding = () => dbOps.updateSettings({ onboardingComplete: true });
 
 function proxyRequest(headers = {}, remoteAddress = "127.0.0.1") {
   return {
@@ -41,6 +44,7 @@ function resetProxyEnv() {
 test.beforeEach(() => {
   resetDatabase(db);
   resetProxyEnv();
+  dbOps.updateSettings({ onboardingComplete: false });
 });
 
 test.after(async () => {
@@ -134,6 +138,7 @@ test("proxy auth does not grant admin for a literal 'admin' group unless configu
 });
 
 test("proxy auth issues one Aurral session that outlives the identity header", () => {
+  completeOnboarding();
   const issued = issueProxySession(proxyRequest({ "x-forwarded-user": "erin" }));
 
   assert.ok(issued?.token);
@@ -146,6 +151,7 @@ test("proxy auth issues one Aurral session that outlives the identity header", (
 });
 
 test("proxy auth issues no session without a trusted identity header", () => {
+  completeOnboarding();
   assert.equal(issueProxySession(proxyRequest()), null);
 
   process.env.AUTH_PROXY_TRUSTED_IPS = "10.0.0.1";
@@ -153,6 +159,13 @@ test("proxy auth issues no session without a trusted identity header", () => {
     issueProxySession(proxyRequest({ "x-forwarded-user": "mallory" }, "192.168.1.10")),
     null,
   );
+});
+
+test("proxy auth issues no session while onboarding leaves authentication off", () => {
+  assert.equal(issueProxySession(proxyRequest({ "x-forwarded-user": "frank" })), null);
+
+  completeOnboarding();
+  assert.ok(issueProxySession(proxyRequest({ "x-forwarded-user": "frank" }))?.token);
 });
 
 test("proxy auth re-syncs role on every request instead of only at creation", () => {

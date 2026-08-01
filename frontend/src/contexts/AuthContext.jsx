@@ -26,6 +26,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const bootstrap = await getBootstrapStatus();
       setBootstrap(bootstrap);
+      if (bootstrap.token) setStoredAuth({ token: bootstrap.token });
       const isOnboarding = !!bootstrap.onboardingRequired;
       setOnboardingRequired(isOnboarding);
 
@@ -40,7 +41,6 @@ export const AuthProvider = ({ children }) => {
       setAuthRequired(isRequired);
 
       if (isRequired && bootstrap.user) {
-        if (bootstrap.token) setStoredAuth({ token: bootstrap.token });
         setUser(bootstrap.user);
         setIsAuthenticated(true);
         setIsLoading(false);
