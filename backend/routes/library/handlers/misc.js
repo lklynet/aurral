@@ -90,12 +90,18 @@ export function registerMisc(router) {
         return res.json({});
       }
 
-      const index = await lidarrClient.getAlbumMbidIndex();
-      const wanted = new Set(mbids.map((mbid) => String(mbid || "").trim()).filter(Boolean));
+      const wanted = [...new Set(mbids.map((mbid) => String(mbid || "").trim()).filter(Boolean))];
       const results = {};
+      const albums = await Promise.allSettled(
+        wanted.map((foreignAlbumId) =>
+          lidarrClient.getAlbumByMbid(foreignAlbumId, { forceRefresh: true }),
+        ),
+      );
 
-      for (const foreignAlbumId of wanted) {
-        const album = index.get(foreignAlbumId);
+      for (let index = 0; index < wanted.length; index += 1) {
+        const foreignAlbumId = wanted[index];
+        const result = albums[index];
+        const album = result.status === "fulfilled" ? result.value : null;
         if (!album) continue;
 
         const percentOfTracks = normalizePercentOfTracks(album?.statistics?.percentOfTracks);

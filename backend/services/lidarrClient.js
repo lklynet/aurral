@@ -940,12 +940,18 @@ export class LidarrClient {
       tags: tags,
       addOptions: {
         monitor: monitoring.monitor,
-        searchForMissingAlbums: albumOnly ? false : searchOnAdd,
+        searchForMissingAlbums: albumOnly ? options.triggerSearch === true : searchOnAdd,
         ...(albumsToMonitor.length > 0 ? { albumsToMonitor } : {}),
       },
     };
 
     const ensureArtistMonitored = async (artist) => {
+      if (albumOnly && options.triggerSearch === true) {
+        logger.info("library", "Queued Lidarr album search with artist add", {
+          artistId: artist?.id ?? null,
+          albumMbid,
+        });
+      }
       if (!artist?.id || artist.monitored === true) {
         return artist;
       }
@@ -1204,10 +1210,16 @@ export class LidarrClient {
   }
 
   async triggerAlbumSearch(albumId) {
-    return this.request("/command", "POST", {
+    const command = await this.request("/command", "POST", {
       name: "AlbumSearch",
       albumIds: [albumId],
     });
+    logger.info("library", "Triggered Lidarr album search", {
+      albumId,
+      commandId: command?.id ?? null,
+      commandStatus: command?.status ?? null,
+    });
+    return command;
   }
 
   async triggerArtistSearch(artistId) {

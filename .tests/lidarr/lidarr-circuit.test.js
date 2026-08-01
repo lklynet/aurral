@@ -99,6 +99,39 @@ test("getAlbumByMbid selects the matching album from filtered results", async (t
   client._httpsInsecureAgent.destroy();
 });
 
+test("album-only artist add queues a search for the selected album", async (t) => {
+  const client = new LidarrClient();
+  t.after(() => {
+    client._httpAgent.destroy();
+    client._httpsAgent.destroy();
+    client._httpsInsecureAgent.destroy();
+  });
+
+  let postedArtist;
+  client.resolveArtistAddConfiguration = async () => ({
+    resolved: {
+      rootFolderPath: "/music",
+      qualityProfileId: 1,
+    },
+  });
+  client.request = async (endpoint, method, payload) => {
+    assert.equal(endpoint, "/artist");
+    assert.equal(method, "POST");
+    postedArtist = payload;
+    return { id: 7, ...payload, monitored: true };
+  };
+
+  await client.addArtist("artist-mbid", "Boards of Canada", {
+    albumOnly: true,
+    albumMbid: "album-mbid",
+    triggerSearch: true,
+    metadataProfileId: 1,
+  });
+
+  assert.deepEqual(postedArtist.addOptions.albumsToMonitor, ["album-mbid"]);
+  assert.equal(postedArtist.addOptions.searchForMissingAlbums, true);
+});
+
 test("Lidarr cooldown permits only one half-open recovery request", async (t) => {
   const firstRequest = Promise.withResolvers();
   const releaseFirst = Promise.withResolvers();

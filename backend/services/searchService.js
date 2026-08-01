@@ -33,12 +33,14 @@ async function getAlbumLibraryLookup(albumMbids) {
   }
 
   try {
-    const lidarrAlbums = await lidarrClient.getAllAlbums();
-    if (!lidarrAlbums?.length) return lookup;
-    const wanted = new Set(albumMbids);
-    for (const album of Array.isArray(lidarrAlbums) ? lidarrAlbums : []) {
-      const foreignAlbumId = album?.foreignAlbumId;
-      if (!foreignAlbumId || !wanted.has(foreignAlbumId)) continue;
+    const wanted = [...new Set(albumMbids)];
+    const albums = await Promise.allSettled(
+      wanted.map((foreignAlbumId) => lidarrClient.getAlbumByMbid(foreignAlbumId)),
+    );
+    for (let index = 0; index < wanted.length; index += 1) {
+      const album = albums[index].status === "fulfilled" ? albums[index].value : null;
+      if (!album) continue;
+      const foreignAlbumId = wanted[index];
       const percentOfTracks = normalizePercentOfTracks(album?.statistics?.percentOfTracks);
       const sizeOnDisk = Number(album?.statistics?.sizeOnDisk || 0);
       const monitored = Boolean(album?.monitored);
