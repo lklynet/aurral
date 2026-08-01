@@ -99,6 +99,35 @@ test("getAlbumByMbid selects the matching album from filtered results", async (t
   client._httpsInsecureAgent.destroy();
 });
 
+test("getAlbumsByMbidsSettled bounds concurrent lookups and preserves failures", async (t) => {
+  const client = new LidarrClient();
+  t.after(() => {
+    client._httpAgent.destroy();
+    client._httpsAgent.destroy();
+    client._httpsInsecureAgent.destroy();
+  });
+
+  let active = 0;
+  let maxActive = 0;
+  client.getAlbumByMbid = async (albumMbid) => {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    await delay(10);
+    active -= 1;
+    if (albumMbid === "album-7") throw new Error("lookup failed");
+    return { foreignAlbumId: albumMbid };
+  };
+
+  const results = await client.getAlbumsByMbidsSettled(
+    Array.from({ length: 8 }, (_, index) => `album-${index}`),
+  );
+
+  assert.equal(maxActive, 6);
+  assert.equal(results[0].value.foreignAlbumId, "album-0");
+  assert.equal(results[7].status, "rejected");
+  assert.equal(results[7].reason.message, "lookup failed");
+});
+
 test("album-only artist add queues a search for the selected album", async (t) => {
   const client = new LidarrClient();
   t.after(() => {

@@ -86,18 +86,19 @@ export function registerMisc(router) {
         return res.status(400).json({ error: "mbids must be an array" });
       }
 
-      const { lidarrClient } = await import("../../../services/lidarrClient.js");
+      const { lidarrClient, LIDARR_ALBUM_LOOKUP_BATCH_MAX } =
+        await import("../../../services/lidarrClient.js");
+      const wanted = [...new Set(mbids.map((mbid) => String(mbid || "").trim()).filter(Boolean))];
+      if (wanted.length > LIDARR_ALBUM_LOOKUP_BATCH_MAX) {
+        return res.status(400).json({
+          error: `mbids must contain at most ${LIDARR_ALBUM_LOOKUP_BATCH_MAX} unique values`,
+        });
+      }
       if (!lidarrClient.isConfigured()) {
         return res.json({});
       }
-
-      const wanted = [...new Set(mbids.map((mbid) => String(mbid || "").trim()).filter(Boolean))];
       const results = {};
-      const albums = await Promise.allSettled(
-        wanted.map((foreignAlbumId) =>
-          lidarrClient.getAlbumByMbid(foreignAlbumId, { forceRefresh: true }),
-        ),
-      );
+      const albums = await lidarrClient.getAlbumsByMbidsSettled(wanted, { forceRefresh: true });
 
       for (let index = 0; index < wanted.length; index += 1) {
         const foreignAlbumId = wanted[index];

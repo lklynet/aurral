@@ -1,7 +1,7 @@
 import { getDiscoveryCache } from "./discovery/index.js";
 import { getLastfmApiKey, lastfmRequest } from "./apiClients/index.js";
 import { buildImageProxyUrl } from "./imageProxyService.js";
-import { lidarrClient } from "./lidarrClient.js";
+import { LIDARR_ALBUM_LOOKUP_BATCH_MAX, lidarrClient } from "./lidarrClient.js";
 import {
   searchAlbums as providerSearchAlbums,
   searchArtists as providerSearchArtists,
@@ -34,10 +34,8 @@ async function getAlbumLibraryLookup(albumMbids) {
   }
 
   try {
-    const wanted = [...new Set(albumMbids)];
-    const albums = await Promise.allSettled(
-      wanted.map((foreignAlbumId) => lidarrClient.getAlbumByMbid(foreignAlbumId)),
-    );
+    const wanted = [...new Set(albumMbids)].slice(0, LIDARR_ALBUM_LOOKUP_BATCH_MAX);
+    const albums = await lidarrClient.getAlbumsByMbidsSettled(wanted);
     for (let index = 0; index < wanted.length; index += 1) {
       const foreignAlbumId = wanted[index];
       const result = albums[index];

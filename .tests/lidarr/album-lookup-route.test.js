@@ -80,6 +80,16 @@ test("album batch lookup bypasses stale cache and unrelated broken albums", asyn
         message: "Lidarr lookup failed",
       },
     });
+
+    statusCode = 200;
+    body = undefined;
+    await routes.get("/albums/lookup/batch")(
+      { body: { mbids: Array.from({ length: 101 }, (_, index) => `album-${index}`) } },
+      response,
+    );
+
+    assert.equal(statusCode, 400);
+    assert.equal(body?.error, "mbids must contain at most 100 unique values");
   } finally {
     lidarrClient.isConfigured = originalIsConfigured;
     lidarrClient.getAlbumMbidIndex = originalGetAlbumMbidIndex;
