@@ -4,10 +4,13 @@ import https from "https";
 import { dbOps } from "../db/helpers/index.js";
 import { logger } from "./logger.js";
 import BoundedMap from "./boundedMap.js";
+import { mapWithConcurrency } from "./discovery/helpers.js";
 
 const CIRCUIT_COOLDOWN_MS = 60000;
 const CIRCUIT_FAILURE_THRESHOLD = 3;
 const LIDARR_MAX_CONCURRENT = 12;
+const LIDARR_ALBUM_LOOKUP_CONCURRENCY = 6;
+export const LIDARR_ALBUM_LOOKUP_BATCH_MAX = 100;
 const LIDARR_LIST_CACHE_MS = 30000;
 const LIDARR_ARTIST_ALBUM_CACHE_MAX = 10;
 const LIDARR_RETRY_ATTEMPTS = 2;
@@ -940,12 +943,18 @@ export class LidarrClient {
       tags: tags,
       addOptions: {
         monitor: monitoring.monitor,
-        searchForMissingAlbums: albumOnly ? false : searchOnAdd,
+        searchForMissingAlbums: albumOnly ? options.triggerSearch === true : searchOnAdd,
         ...(albumsToMonitor.length > 0 ? { albumsToMonitor } : {}),
       },
     };
 
     const ensureArtistMonitored = async (artist) => {
+      if (albumOnly && options.triggerSearch === true) {
+        logger.info("library", "Queued Lidarr album search with artist add", {
+          artistId: artist?.id ?? null,
+          albumMbid,
+        });
+      }
       if (!artist?.id || artist.monitored === true) {
         return artist;
       }
@@ -1188,6 +1197,16 @@ export class LidarrClient {
       : undefined;
   }
 
+  async getAlbumsByMbidsSettled(albumMbids, options = {}) {
+    return mapWithConcurrency(albumMbids, LIDARR_ALBUM_LOOKUP_CONCURRENCY, async (albumMbid) => {
+      try {
+        return { status: "fulfilled", value: await this.getAlbumByMbid(albumMbid, options) };
+      } catch (reason) {
+        return { status: "rejected", reason };
+      }
+    });
+  }
+
   async updateAlbum(albumId, updates) {
     const album = await this.getAlbum(albumId);
 
@@ -1204,10 +1223,16 @@ export class LidarrClient {
   }
 
   async triggerAlbumSearch(albumId) {
-    return this.request("/command", "POST", {
+    const command = await this.request("/command", "POST", {
       name: "AlbumSearch",
       albumIds: [albumId],
     });
+    logger.info("library", "Triggered Lidarr album search", {
+      albumId,
+      commandId: command?.id ?? null,
+      commandStatus: command?.status ?? null,
+    });
+    return command;
   }
 
   async triggerArtistSearch(artistId) {

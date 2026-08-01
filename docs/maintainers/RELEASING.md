@@ -18,7 +18,7 @@ There are no long-lived deployment branches. Channels are container tags produce
 | Channel | Image | Trigger | Version | Git tag |
 | --- | --- | --- | --- | --- |
 | Preview | `ghcr.io/lklynet/aurral:pr-<number>` | Every push to an open PR | `pr.<number>+<short-sha>` | No |
-| Nightly | `ghcr.io/lklynet/aurral:nightly` | Every push to `main` | `nightly.<run>+<short-sha>` | No |
+| Nightly | `ghcr.io/lklynet/aurral:nightly` | Every push to `main`, or manual reconciliation | `nightly.<run>+<short-sha>` | No |
 | Stable | `ghcr.io/lklynet/aurral:latest`, `:2.1.0`, `:2.1`, `:2` | Manual dispatch of a stable version | `2.1.0` | Yes |
 
 Preview and nightly builds create no Git tags. Their identity is the commit they were built from, which is what the update check compares.
@@ -58,9 +58,9 @@ Contributors do not change product versions. `package.json` is package metadata,
    docker pull ghcr.io/lklynet/aurral:pr-464
    ```
 
-5. Test that image. Push fixes to the branch, and each push replaces the preview image.
+5. Test that image. The Preview workflow comments on the PR with the exact pull command and Compose test steps, and updates that comment when a new image is built. Push fixes to the branch, and each push replaces the preview image.
 6. Give the PR a Conventional Commit title such as `feat: add playlist sharing` or `fix: prevent duplicate imports`.
-7. Complete the PR checklist and use **Squash and merge**.
+7. Complete the PR checklist and test plan, including affected areas and manual steps, then use **Squash and merge**.
 8. Delete the working branch. GitHub normally does this automatically.
 
 Preview images are public, so testers can pull `:pr-<number>` without credentials. Keep a PR open when you want user feedback before the change reaches `main`. The image is deleted when the PR closes.
@@ -74,6 +74,18 @@ Every merge to `main` publishes `ghcr.io/lklynet/aurral:nightly` automatically. 
 Nightly is the channel for anyone who wants merged work immediately, including you. It accumulates everything merged since the last release, so integration problems surface between releases rather than during one.
 
 Nightly is also where user testing happens, and it is the last gate before a stable release.
+
+After a successful nightly build, the workflow updates one status comment on each merged PR and each issue linked with a closing reference. The comment includes the nightly build identity, pull command, and links to the workflow and changes. It also applies the `nightly` label and removes `released`. A stable release updates the same comment with the released version, applies `released`, and removes `nightly` instead of adding another status comment.
+
+## Release readiness
+
+The first successful nightly after changes accumulate creates or updates the open **Release readiness: next stable** issue. It contains the current nightly build, source commit, change range, merged PRs, and linked closing issues. Keep test evidence in that issue, including the tester, date, exact nightly build, affected area, and result.
+
+Complete the checklist in the issue and apply the `release-ready` label only when the current nightly candidate is ready to ship. The Release workflow requires both that label and a candidate built from the current `main` commit. Any newer source commit removes `release-ready`, so new changes must be tested before approval is restored.
+
+After a successful stable release, the workflow records the release on the readiness issue and closes it. A later merge creates the next readiness issue. If a nightly notification fails, manually run **Actions → Nightly** on `main`; it rebuilds the current nightly and reconciles every change since the last stable release.
+
+If stable-release comments fail after the release is published, run **Release** again with the already-published version, such as `2.1.0`, while `main` is still at the release commit. The existing-release path skips the image build and only finishes the release lifecycle. If `main` has advanced, run **Actions → Reconcile release notifications** with the published version instead; it pins reconciliation to the immutable release tag and never rebuilds or republishes the stable image.
 
 ## Fix a problem found on nightly
 

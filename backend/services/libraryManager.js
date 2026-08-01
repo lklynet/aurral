@@ -289,6 +289,7 @@ export class LibraryManager {
       const lidarrArtist = await lidarr.addArtist(mbid, artistName, {
         albumOnly: options.albumOnly === true,
         albumMbid: options.albumMbid,
+        triggerSearch: options.triggerSearch === true,
         monitorOption: options.monitorOption || "none",
         rootFolderPath: options.rootFolderPath,
         savedRootFolderPath: options.savedRootFolderPath,
@@ -520,6 +521,7 @@ export class LibraryManager {
       quality: options.quality,
       albumOnly,
       albumMbid: options.albumMbid,
+      triggerSearch: options.triggerSearch === true,
       monitorOption: requestedMonitorOption,
       rootFolderPath: options.rootFolderPath,
       qualityProfileId: options.qualityProfileId,
@@ -578,6 +580,7 @@ export class LibraryManager {
       ...resolvedOptions,
       albumOnly: options.albumOnly === true,
       albumMbid: options.albumMbid || resolvedOptions.albumMbid || null,
+      triggerSearch: options.triggerSearch === true,
     });
   }
 
@@ -1155,6 +1158,10 @@ export class LibraryManager {
       throw error;
     }
 
+    const settings = getSettings();
+    const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
+    const shouldTriggerSearch = triggerSearch === true || searchOnAdd;
+
     let artist = await this.getArtist(normalizedArtistMbid);
     let createdArtist = false;
 
@@ -1180,6 +1187,7 @@ export class LibraryManager {
           ...resolvedArtistAddOptions,
           albumOnly: true,
           albumMbid: normalizedAlbumMbid,
+          triggerSearch: shouldTriggerSearch,
         },
       );
       if (created?.error) {
@@ -1212,11 +1220,8 @@ export class LibraryManager {
       throw error;
     }
 
-    const settings = getSettings();
-    const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
-    const shouldTriggerSearch = triggerSearch === true || searchOnAdd;
     const album = await this.addAlbum(artist.id, normalizedAlbumMbid, normalizedAlbumName, {
-      triggerSearch: shouldTriggerSearch,
+      triggerSearch: shouldTriggerSearch && !createdArtist,
     });
 
     if (album?.error) {

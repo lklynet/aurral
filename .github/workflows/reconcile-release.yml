@@ -1,0 +1,67 @@
+name: Reconcile release notifications
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published stable version to reconcile (for example 2.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Resolve published release commit
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          RELEASE_VERSION="${RELEASE_VERSION#v}"
+          RELEASE_TAG="v${RELEASE_VERSION}"
+          gh release view "${RELEASE_TAG}" >/dev/null
+
+          TAG_OBJECT="$(gh api \
+            "repos/${REPOSITORY}/git/ref/tags/${RELEASE_TAG}" \
+            --jq '.object | "\(.type)\t\(.sha)"')"
+          IFS=$'\t' read -r TAG_TYPE TAG_SHA <<< "${TAG_OBJECT}"
+          if [ "${TAG_TYPE}" = "tag" ]; then
+            TAG_SHA="$(gh api "repos/${REPOSITORY}/git/tags/${TAG_SHA}" --jq '.object.sha')"
+          fi
+
+          {
+            echo "version=${RELEASE_VERSION}"
+            echo "tag=${RELEASE_TAG}"
+            echo "sha=${TAG_SHA}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Reconcile release-readiness record
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ steps.release.outputs.sha }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: bash scripts/update-release-readiness.sh stable
+
+      - name: Reconcile merged pull requests and linked issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ steps.release.outputs.sha }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: bash scripts/notify-github-status.sh stable

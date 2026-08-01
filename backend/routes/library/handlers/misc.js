@@ -4,6 +4,7 @@ import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
 import { fetchReleaseGroupCoverUrl } from "../../../services/releaseGroupCoverService.js";
 import { libraryManager, getCachedArtists } from "../../../services/libraryManager.js";
 import { normalizePercentOfTracks } from "../../../services/lidarrAlbumStats.js";
+import { logger } from "../../../services/logger.js";
 
 export function registerMisc(router) {
   router.get("/rootfolder", async (req, res) => {
@@ -85,17 +86,31 @@ export function registerMisc(router) {
         return res.status(400).json({ error: "mbids must be an array" });
       }
 
-      const { lidarrClient } = await import("../../../services/lidarrClient.js");
+      const { lidarrClient, LIDARR_ALBUM_LOOKUP_BATCH_MAX } =
+        await import("../../../services/lidarrClient.js");
+      const wanted = [...new Set(mbids.map((mbid) => String(mbid || "").trim()).filter(Boolean))];
+      if (wanted.length > LIDARR_ALBUM_LOOKUP_BATCH_MAX) {
+        return res.status(400).json({
+          error: `mbids must contain at most ${LIDARR_ALBUM_LOOKUP_BATCH_MAX} unique values`,
+        });
+      }
       if (!lidarrClient.isConfigured()) {
         return res.json({});
       }
-
-      const index = await lidarrClient.getAlbumMbidIndex();
-      const wanted = new Set(mbids.map((mbid) => String(mbid || "").trim()).filter(Boolean));
       const results = {};
+      const albums = await lidarrClient.getAlbumsByMbidsSettled(wanted, { forceRefresh: true });
 
-      for (const foreignAlbumId of wanted) {
-        const album = index.get(foreignAlbumId);
+      for (let index = 0; index < wanted.length; index += 1) {
+        const foreignAlbumId = wanted[index];
+        const result = albums[index];
+        if (result.status === "rejected") {
+          logger.warn("library", "Lidarr album lookup failed", {
+            foreignAlbumId,
+            message: result.reason?.message || String(result.reason),
+          });
+          continue;
+        }
+        const album = result.value;
         if (!album) continue;
 
         const percentOfTracks = normalizePercentOfTracks(album?.statistics?.percentOfTracks);

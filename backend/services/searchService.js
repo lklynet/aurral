@@ -1,7 +1,7 @@
 import { getDiscoveryCache } from "./discovery/index.js";
 import { getLastfmApiKey, lastfmRequest } from "./apiClients/index.js";
 import { buildImageProxyUrl } from "./imageProxyService.js";
-import { lidarrClient } from "./lidarrClient.js";
+import { LIDARR_ALBUM_LOOKUP_BATCH_MAX, lidarrClient } from "./lidarrClient.js";
 import {
   searchAlbums as providerSearchAlbums,
   searchArtists as providerSearchArtists,
@@ -12,6 +12,7 @@ import {
 } from "./listenbrainzDiscoveryFallback.js";
 import { getNormalizedText } from "./providers/brainzmashRanking.js";
 import { normalizePercentOfTracks } from "./lidarrAlbumStats.js";
+import { logger } from "./logger.js";
 import {
   PRIMARY_RELEASE_TYPES as PRIMARY_RELEASE_TYPE_LIST,
   SECONDARY_RELEASE_TYPES as SECONDARY_RELEASE_TYPE_LIST,
@@ -33,12 +34,20 @@ async function getAlbumLibraryLookup(albumMbids) {
   }
 
   try {
-    const lidarrAlbums = await lidarrClient.getAllAlbums();
-    if (!lidarrAlbums?.length) return lookup;
-    const wanted = new Set(albumMbids);
-    for (const album of Array.isArray(lidarrAlbums) ? lidarrAlbums : []) {
-      const foreignAlbumId = album?.foreignAlbumId;
-      if (!foreignAlbumId || !wanted.has(foreignAlbumId)) continue;
+    const wanted = [...new Set(albumMbids)].slice(0, LIDARR_ALBUM_LOOKUP_BATCH_MAX);
+    const albums = await lidarrClient.getAlbumsByMbidsSettled(wanted);
+    for (let index = 0; index < wanted.length; index += 1) {
+      const foreignAlbumId = wanted[index];
+      const result = albums[index];
+      if (result.status === "rejected") {
+        logger.warn("library", "Album search enrichment lookup failed", {
+          foreignAlbumId,
+          message: result.reason?.message || String(result.reason),
+        });
+        continue;
+      }
+      const album = result.value;
+      if (!album) continue;
       const percentOfTracks = normalizePercentOfTracks(album?.statistics?.percentOfTracks);
       const sizeOnDisk = Number(album?.statistics?.sizeOnDisk || 0);
       const monitored = Boolean(album?.monitored);
@@ -53,7 +62,7 @@ async function getAlbumLibraryLookup(albumMbids) {
       });
     }
   } catch (error) {
-    console.warn("Album search enrichment failed:", error.message);
+    logger.warn("library", "Album search enrichment failed", { message: error.message });
   }
 
   return lookup;

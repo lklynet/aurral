@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+      pull-requests: write
       packages: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -66,6 +67,51 @@ jobs:
             echo "docker pull ghcr.io/${GITHUB_REPOSITORY}:pr-${{ github.event.number }}"
             echo '```'
           } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Comment preview image on pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_TAG: pr-${{ github.event.number }}
+          PR_NUMBER: ${{ github.event.number }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          COMMENT_BODY="$(cat <<EOF
+          <!-- aurral-preview-image -->
+          ## Aurral preview image ready
+
+          This image was rebuilt from the latest push to this pull request. It will be replaced when you push another change.
+
+          \`\`\`bash
+          docker pull ghcr.io/${REPOSITORY}:${IMAGE_TAG}
+          \`\`\`
+
+          To test it with your existing Docker Compose setup:
+
+          1. Back up your Aurral config.
+          2. Temporarily change the Aurral service image to \`ghcr.io/${REPOSITORY}:${IMAGE_TAG}\`.
+          3. Run \`docker compose pull aurral && docker compose up -d aurral\`.
+          4. Exercise the behavior changed by this pull request.
+          5. Restore the image reference that was configured before testing.
+
+          [View the preview workflow run](https://github.com/${REPOSITORY}/actions/runs/${RUN_ID}) · [Report a problem](https://github.com/${REPOSITORY}/issues)
+          EOF
+          )"
+
+          COMMENT_ID="$(gh api --paginate \
+            "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- aurral-preview-image -->"))) | .id' | head -n1)"
+
+          if [ -n "${COMMENT_ID}" ]; then
+            gh api \
+              --method PATCH \
+              "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}" \
+              -f "body=${COMMENT_BODY}" >/dev/null
+          else
+            gh pr comment "${PR_NUMBER}" \
+              --repo "${REPOSITORY}" \
+              --body "${COMMENT_BODY}" >/dev/null
+          fi
 
   delete-image:
     if: >-

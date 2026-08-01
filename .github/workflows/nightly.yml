@@ -3,6 +3,7 @@ name: Nightly
 on:
   push:
     branches: ["main"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -21,9 +22,21 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+      issues: write
+      pull-requests: write
       packages: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Verify manual run uses main
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [ "${GITHUB_REF_NAME}" != "main" ]; then
+            echo "Manual nightly reconciliation must run from main, not ${GITHUB_REF_NAME}."
+            exit 1
+          fi
 
       - name: Resolve build version
         id: version
@@ -54,3 +67,15 @@ jobs:
             RELEASE_CHANNEL=nightly
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Update release readiness record
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NIGHTLY_VERSION: ${{ steps.version.outputs.value }}
+        run: bash scripts/update-release-readiness.sh nightly
+
+      - name: Notify merged pull requests and linked issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NIGHTLY_VERSION: ${{ steps.version.outputs.value }}
+        run: bash scripts/notify-github-status.sh nightly
