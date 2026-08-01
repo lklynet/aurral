@@ -90,7 +90,7 @@ jobs:
 
           1. Back up your Aurral config.
           2. Temporarily change the Aurral service image to \`ghcr.io/${REPOSITORY}:${IMAGE_TAG}\`.
-          3. Run `docker compose pull aurral && docker compose up -d aurral`.
+          3. Run \`docker compose pull aurral && docker compose up -d aurral\`.
           4. Exercise the behavior changed by this pull request.
           5. Restore the image reference that was configured before testing.
 
