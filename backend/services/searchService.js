@@ -12,6 +12,7 @@ import {
 } from "./listenbrainzDiscoveryFallback.js";
 import { getNormalizedText } from "./providers/brainzmashRanking.js";
 import { normalizePercentOfTracks } from "./lidarrAlbumStats.js";
+import { logger } from "./logger.js";
 import {
   PRIMARY_RELEASE_TYPES as PRIMARY_RELEASE_TYPE_LIST,
   SECONDARY_RELEASE_TYPES as SECONDARY_RELEASE_TYPE_LIST,
@@ -38,9 +39,17 @@ async function getAlbumLibraryLookup(albumMbids) {
       wanted.map((foreignAlbumId) => lidarrClient.getAlbumByMbid(foreignAlbumId)),
     );
     for (let index = 0; index < wanted.length; index += 1) {
-      const album = albums[index].status === "fulfilled" ? albums[index].value : null;
-      if (!album) continue;
       const foreignAlbumId = wanted[index];
+      const result = albums[index];
+      if (result.status === "rejected") {
+        logger.warn("library", "Album search enrichment lookup failed", {
+          foreignAlbumId,
+          message: result.reason?.message || String(result.reason),
+        });
+        continue;
+      }
+      const album = result.value;
+      if (!album) continue;
       const percentOfTracks = normalizePercentOfTracks(album?.statistics?.percentOfTracks);
       const sizeOnDisk = Number(album?.statistics?.sizeOnDisk || 0);
       const monitored = Boolean(album?.monitored);
@@ -55,7 +64,7 @@ async function getAlbumLibraryLookup(albumMbids) {
       });
     }
   } catch (error) {
-    console.warn("Album search enrichment failed:", error.message);
+    logger.warn("library", "Album search enrichment failed", { message: error.message });
   }
 
   return lookup;

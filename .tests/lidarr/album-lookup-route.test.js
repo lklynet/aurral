@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { registerMisc } from "../../backend/routes/library/handlers/misc.js";
 import { lidarrClient } from "../../backend/services/lidarrClient.js";
+import { logger } from "../../backend/services/logger.js";
 
 test("album batch lookup bypasses stale cache and unrelated broken albums", async () => {
   const routes = new Map();
@@ -16,13 +17,18 @@ test("album batch lookup bypasses stale cache and unrelated broken albums", asyn
   const originalIsConfigured = lidarrClient.isConfigured;
   const originalGetAlbumMbidIndex = lidarrClient.getAlbumMbidIndex;
   const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
+  const originalWarn = logger.warn;
   let lookupOptions;
+  let warning;
   lidarrClient.isConfigured = () => true;
   lidarrClient.getAlbumMbidIndex = async () => {
     throw new Error("Sequence contains more than one element");
   };
   lidarrClient.getAlbumByMbid = async (mbid, options) => {
     lookupOptions = options;
+    if (mbid === "broken-album") {
+      throw new Error("Lidarr lookup failed");
+    }
     return mbid === "target-album"
       ? {
           id: 42,
@@ -38,6 +44,9 @@ test("album batch lookup bypasses stale cache and unrelated broken albums", asyn
           },
         }
       : undefined;
+  };
+  logger.warn = (category, message, data) => {
+    warning = { category, message, data };
   };
 
   let statusCode = 200;
@@ -55,7 +64,7 @@ test("album batch lookup bypasses stale cache and unrelated broken albums", asyn
 
   try {
     await routes.get("/albums/lookup/batch")(
-      { body: { mbids: ["target-album"] } },
+      { body: { mbids: ["target-album", "broken-album"] } },
       response,
     );
 
@@ -63,9 +72,18 @@ test("album batch lookup bypasses stale cache and unrelated broken albums", asyn
     assert.equal(body?.["target-album"]?.inLibrary, true);
     assert.equal(body?.["target-album"]?.status, "monitored");
     assert.equal(lookupOptions?.forceRefresh, true);
+    assert.deepEqual(warning, {
+      category: "library",
+      message: "Lidarr album lookup failed",
+      data: {
+        foreignAlbumId: "broken-album",
+        message: "Lidarr lookup failed",
+      },
+    });
   } finally {
     lidarrClient.isConfigured = originalIsConfigured;
     lidarrClient.getAlbumMbidIndex = originalGetAlbumMbidIndex;
     lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
+    logger.warn = originalWarn;
   }
 });

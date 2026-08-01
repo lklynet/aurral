@@ -57,8 +57,8 @@ reviews:
   tools:
     eslint:
       enabled: false
-    e18e:
-      enabled: false
+      e18e:
+        enabled: false
     biome:
       enabled: false
     markdownlint:

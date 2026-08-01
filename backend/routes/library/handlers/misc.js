@@ -4,6 +4,7 @@ import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
 import { fetchReleaseGroupCoverUrl } from "../../../services/releaseGroupCoverService.js";
 import { libraryManager, getCachedArtists } from "../../../services/libraryManager.js";
 import { normalizePercentOfTracks } from "../../../services/lidarrAlbumStats.js";
+import { logger } from "../../../services/logger.js";
 
 export function registerMisc(router) {
   router.get("/rootfolder", async (req, res) => {
@@ -101,7 +102,14 @@ export function registerMisc(router) {
       for (let index = 0; index < wanted.length; index += 1) {
         const foreignAlbumId = wanted[index];
         const result = albums[index];
-        const album = result.status === "fulfilled" ? result.value : null;
+        if (result.status === "rejected") {
+          logger.warn("library", "Lidarr album lookup failed", {
+            foreignAlbumId,
+            message: result.reason?.message || String(result.reason),
+          });
+          continue;
+        }
+        const album = result.value;
         if (!album) continue;
 
         const percentOfTracks = normalizePercentOfTracks(album?.statistics?.percentOfTracks);
