@@ -3,7 +3,7 @@ set -euo pipefail
 
 status="${1:-}"
 repository="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
-head_sha="${GITHUB_SHA:?GITHUB_SHA is required}"
+head_sha="${HEAD_SHA:-${GITHUB_SHA:?GITHUB_SHA is required}}"
 owner="${repository%%/*}"
 repo="${repository#*/}"
 
@@ -19,7 +19,7 @@ case "${status}" in
   stable)
     release_tag="${RELEASE_TAG:?RELEASE_TAG is required}"
     release_version="${RELEASE_VERSION:?RELEASE_VERSION is required}"
-    base_tag="$(printf '%s\n' "${stable_tags}" | awk -v exclude="${release_tag}" '$0 != exclude' | sort -V | tail -n1)"
+    base_tag="$(printf '%s\n' "${stable_tags}" | awk 'NF' | sort -V | awk -v target="${release_tag}" '$0 == target { print previous; found=1; exit } { previous=$0 } END { if (!found) print previous }')"
     ;;
   *)
     echo "Usage: $0 nightly|stable" >&2
@@ -86,6 +86,21 @@ for pull_number in "${!pull_numbers[@]}"; do
   done <<< "${closing_issues}"
 done
 
+set_status_label() {
+  local target_number="$1"
+  local add_label="$2"
+  local remove_label="$3"
+
+  gh api \
+    --method POST \
+    "repos/${repository}/issues/${target_number}/labels" \
+    -f "labels[]=${add_label}" >/dev/null
+  gh api \
+    --method DELETE \
+    "repos/${repository}/issues/${target_number}/labels/${remove_label}" \
+    >/dev/null 2>&1 || true
+}
+
 for target_number in $(printf '%s\n' "${!target_numbers[@]}" | sort -n); do
   comment_state="$(gh api --paginate \
     "repos/${repository}/issues/${target_number}/comments" \
@@ -99,10 +114,7 @@ for target_number in $(printf '%s\n' "${!target_numbers[@]}" | sort -n); do
   fi
 
   if [ "${status}" = "nightly" ]; then
-    gh issue edit "${target_number}" \
-      --repo "${repository}" \
-      --add-label nightly \
-      --remove-label released >/dev/null
+    set_status_label "${target_number}" nightly released
     comment_body="$(cat <<EOF
 <!-- aurral-release-status -->
 ### Available on nightly
@@ -113,15 +125,12 @@ A linked pull request was merged into \`main\` and is now included in the latest
 docker pull ghcr.io/${repository}:nightly
 \`\`\`
 
-Build: \`${nightly_version}\`  
-[View the nightly workflow](https://github.com/${repository}/actions/runs/${GITHUB_RUN_ID}) · [View changes on main](https://github.com/${repository}/commits/main)
+- Build: \`${nightly_version}\`
+- [View the nightly workflow](https://github.com/${repository}/actions/runs/${GITHUB_RUN_ID}) · [View changes on main](https://github.com/${repository}/commits/main)
 EOF
     )"
   else
-    gh issue edit "${target_number}" \
-      --repo "${repository}" \
-      --add-label released \
-      --remove-label nightly >/dev/null
+    set_status_label "${target_number}" released nightly
     comment_body="$(cat <<EOF
 <!-- aurral-release-status -->
 ### Included in stable release ${release_version}

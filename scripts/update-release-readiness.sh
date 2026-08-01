@@ -5,7 +5,7 @@ mode="${1:-}"
 repository="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
 owner="${repository%%/*}"
 repo="${repository#*/}"
-head_sha="${GITHUB_SHA:?GITHUB_SHA is required}"
+head_sha="${HEAD_SHA:-${GITHUB_SHA:?GITHUB_SHA is required}}"
 run_id="${GITHUB_RUN_ID:-unknown}"
 readiness_marker='<!-- aurral-release-readiness -->'
 status_marker='<!-- aurral-release-readiness-status -->'
@@ -62,9 +62,36 @@ update_status_comment() {
   fi
 }
 
+write_output() {
+  if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    printf '%s=%s\n' "$1" "$2" >> "${GITHUB_OUTPUT}"
+  fi
+}
+
+resolve_tag_commit() {
+  local tag_ref="$1"
+  local tag_object tag_type tag_sha
+
+  tag_object="$(gh api "repos/${repository}/git/ref/tags/${tag_ref}" --jq '.object | "\(.type)\t\(.sha)"')"
+  IFS=$'\t' read -r tag_type tag_sha <<< "${tag_object}"
+
+  if [ "${tag_type}" = "tag" ]; then
+    tag_sha="$(gh api "repos/${repository}/git/tags/${tag_sha}" --jq '.object.sha')"
+  fi
+
+  printf '%s\n' "${tag_sha}"
+}
+
 if [ "${mode}" = "check" ]; then
   if [ -n "${RELEASE_TAG:-}" ] && gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-    echo "Stable release ${RELEASE_TAG} already exists; allowing lifecycle reconciliation."
+    published_sha="$(resolve_tag_commit "${RELEASE_TAG}")"
+    if [ "${published_sha}" != "${head_sha}" ]; then
+      echo "Stable release ${RELEASE_TAG} already points to ${published_sha}, not ${head_sha}; refusing to republish release aliases." >&2
+      exit 1
+    fi
+
+    write_output existing_release true
+    echo "Stable release ${RELEASE_TAG} already exists at ${head_sha}; allowing lifecycle reconciliation."
     exit 0
   fi
 
@@ -93,6 +120,7 @@ if [ "${mode}" = "check" ]; then
     exit 1
   fi
 
+  write_output existing_release false
   echo "Release readiness approved for ${head_sha}."
   exit 0
 fi
@@ -109,7 +137,7 @@ case "${mode}" in
   stable)
     release_tag="${RELEASE_TAG:?RELEASE_TAG is required}"
     release_version="${RELEASE_VERSION:?RELEASE_VERSION is required}"
-    base_tag="$(printf '%s\n' "${stable_tags}" | awk -v exclude="${release_tag}" 'NF && $0 != exclude' | sort -V | tail -n1)"
+    base_tag="$(printf '%s\n' "${stable_tags}" | awk 'NF' | sort -V | awk -v target="${release_tag}" '$0 == target { print previous; found=1; exit } { previous=$0 } END { if (!found) print previous }')"
     ;;
   *)
     echo "Usage: $0 nightly|stable|check" >&2
@@ -118,73 +146,79 @@ case "${mode}" in
 esac
 
 if [ -n "${base_tag}" ]; then
-  commit_shas="$(gh api --paginate \
-    "repos/${repository}/compare/${base_tag}...${head_sha}" \
-    --jq '.commits[].sha')"
-  change_range="${base_tag}...${head_sha:0:7}"
   change_url="https://github.com/${repository}/compare/${base_tag}...${head_sha}"
 else
-  commit_shas="${head_sha}"
-  change_range="${head_sha:0:7}"
   change_url="https://github.com/${repository}/commit/${head_sha}"
 fi
 
-declare -A pull_numbers=()
-while IFS= read -r commit_sha; do
-  [ -z "${commit_sha}" ] && continue
-  associated_pulls="$(gh api --paginate \
-    "repos/${repository}/commits/${commit_sha}/pulls" \
-    --jq '.[].number')"
-  while IFS= read -r pull_number; do
-    [ -z "${pull_number}" ] && continue
-    pull_numbers["${pull_number}"]=1
-  done <<< "${associated_pulls}"
-done <<< "${commit_shas}"
+if [ "${mode}" = "nightly" ]; then
+  if [ -n "${base_tag}" ]; then
+    commit_shas="$(gh api --paginate \
+      "repos/${repository}/compare/${base_tag}...${head_sha}" \
+      --jq '.commits[].sha')"
+    change_range="${base_tag}...${head_sha:0:7}"
+  else
+    commit_shas="${head_sha}"
+    change_range="${head_sha:0:7}"
+  fi
 
-if [ "${mode}" = "nightly" ] && [ "${#pull_numbers[@]}" -eq 0 ]; then
-  echo "No merged pull requests found; no release-readiness issue is needed."
-  exit 0
-fi
+  declare -A pull_numbers=()
+  while IFS= read -r commit_sha; do
+    [ -z "${commit_sha}" ] && continue
+    associated_pulls="$(gh api --paginate \
+      "repos/${repository}/commits/${commit_sha}/pulls" \
+      --jq '.[].number')"
+    while IFS= read -r pull_number; do
+      [ -z "${pull_number}" ] && continue
+      pull_numbers["${pull_number}"]=1
+    done <<< "${associated_pulls}"
+  done <<< "${commit_shas}"
 
-declare -A issue_numbers=()
-for pull_number in $(printf '%s\n' "${!pull_numbers[@]}" | sort -n); do
-  closing_issues="$(gh api graphql \
-    -f query='query($owner: String!, $repo: String!, $number: Int!) {
-      repository(owner: $owner, name: $repo) {
-        pullRequest(number: $number) {
-          closingIssuesReferences(first: 100) {
-            nodes { number }
+  if [ "${#pull_numbers[@]}" -eq 0 ]; then
+    echo "No merged pull requests found; no release-readiness issue is needed."
+    exit 0
+  fi
+
+  declare -A issue_numbers=()
+  for pull_number in $(printf '%s\n' "${!pull_numbers[@]}" | sort -n); do
+    closing_issues="$(gh api graphql \
+      -f query='query($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
+          pullRequest(number: $number) {
+            closingIssuesReferences(first: 100) {
+              nodes { number }
+            }
           }
         }
-      }
-    }' \
-    -f "owner=${owner}" \
-    -f "repo=${repo}" \
-    -F "number=${pull_number}" \
-    --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[]?.number')"
-  while IFS= read -r issue_number; do
-    [ -z "${issue_number}" ] && continue
-    issue_numbers["${issue_number}"]=1
-  done <<< "${closing_issues}"
-done
+      }' \
+      -f "owner=${owner}" \
+      -f "repo=${repo}" \
+      -F "number=${pull_number}" \
+      --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[]?.number')"
+    while IFS= read -r issue_number; do
+      [ -z "${issue_number}" ] && continue
+      issue_numbers["${issue_number}"]=1
+    done <<< "${closing_issues}"
+  done
 
-pull_list=""
-for pull_number in $(printf '%s\n' "${!pull_numbers[@]}" | sort -n); do
-  pull_line="$(gh api \
-    "repos/${repository}/pulls/${pull_number}" \
-    --jq '"- [#\(.number)](\(.html_url)) \(.title)"')"
-  pull_list+="${pull_line}"$'\n'
-done
-pull_list="${pull_list%$'\n'}"
+  pull_list=""
+  for pull_number in $(printf '%s\n' "${!pull_numbers[@]}" | sort -n); do
+    pull_line="$(gh api \
+      "repos/${repository}/pulls/${pull_number}" \
+      --jq '"- [#\(.number)](\(.html_url)) \(.title)"')"
+    pull_list+="${pull_line}"$'\n'
+  done
+  pull_list="${pull_list%$'\n'}"
 
-issue_list=""
-for issue_number in $(printf '%s\n' "${!issue_numbers[@]}" | sort -n); do
-  issue_line="$(gh api \
-    "repos/${repository}/issues/${issue_number}" \
-    --jq '"- [#\(.number)](\(.html_url)) \(.title)"')"
-  issue_list+="${issue_line}"$'\n'
-done
-issue_list="${issue_list%$'\n'}"
+  issue_list=""
+  for issue_number in $(printf '%s\n' "${!issue_numbers[@]}" | sort -n); do
+    issue_line="$(gh api \
+      "repos/${repository}/issues/${issue_number}" \
+      --jq '"- [#\(.number)](\(.html_url)) \(.title)"')"
+    issue_list+="${issue_line}"$'\n'
+  done
+  issue_list="${issue_list%$'\n'}"
+fi
 
 if [ "${mode}" = "nightly" ]; then
   ensure_labels
@@ -262,6 +296,17 @@ if [ -z "${readiness_issue}" ]; then
   exit 0
 fi
 
+previous_status_comment="$(find_status_comment "${readiness_issue}")"
+previous_status_body=""
+if [ -n "${previous_status_comment}" ]; then
+  previous_status_body="$(gh api "repos/${repository}/issues/comments/${previous_status_comment}" --jq '.body')"
+fi
+preserved_status_body="${previous_status_body#${status_marker}}"
+preserved_status_body="${preserved_status_body//### Current nightly candidate/### Included changes at release}"
+if [ -z "${preserved_status_body}" ]; then
+  preserved_status_body=$'\n### Included changes at release\n\nThe previous nightly status comment was unavailable; use the linked change range above.'
+fi
+
 status_body="$(cat <<EOF
 ${status_marker}
 ### Released
@@ -272,6 +317,8 @@ The readiness candidate was published as stable release \`${release_version}\`.
 - Source commit: \`${head_sha}\`
 - [View the release](https://github.com/${repository}/releases/tag/${release_tag})
 - [View the included changes](${change_url})
+
+${preserved_status_body}
 EOF
   )"
 update_status_comment "${readiness_issue}" "${status_body}"

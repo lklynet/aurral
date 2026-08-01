@@ -85,7 +85,7 @@ Complete the checklist in the issue and apply the `release-ready` label only whe
 
 After a successful stable release, the workflow records the release on the readiness issue and closes it. A later merge creates the next readiness issue. If a nightly notification fails, manually run **Actions → Nightly** on `main`; it rebuilds the current nightly and reconciles every change since the last stable release.
 
-If stable-release comments fail after the release is published, run **Release** again with the already-published version, such as `2.1.0`. Existing releases are treated as an idempotent reconciliation run, so the readiness and PR/issue notifications can finish without publishing a second version.
+If stable-release comments fail after the release is published, run **Release** again with the already-published version, such as `2.1.0`, while `main` is still at the release commit. The existing-release path skips the image build and only finishes the release lifecycle. If `main` has advanced, run **Actions → Reconcile release notifications** with the published version instead; it pins reconciliation to the immutable release tag and never rebuilds or republishes the stable image.
 
 ## Fix a problem found on nightly
 
