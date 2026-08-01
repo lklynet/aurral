@@ -3,13 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Aurral</title>
+    <title>Aurral — the Lidarr companion for self-hosted music discovery</title>
     <meta
       name="description"
       content="Aurral is the Lidarr companion for self-hosted music discovery."
     />
     <meta name="theme-color" content="#000000" />
+    <link rel="canonical" href="https://aurral.org/" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://aurral.org/" />
+    <meta property="og:site_name" content="Aurral" />
+    <meta
+      property="og:title"
+      content="Aurral — the Lidarr companion for self-hosted music discovery"
+    />
+    <meta
+      property="og:description"
+      content="Recommendations, rotating flows, and playlist downloads, built on Lidarr instead of replacing it."
+    />
+    <meta name="twitter:card" content="summary" />
     <style>
       :root {
         --bg: #0a0c0c;
@@ -31,9 +44,7 @@
       }
 
       body {
-        background:
-          radial-gradient(ellipse at 50% 30%, #121612 0%, var(--bg) 70%),
-          var(--bg);
+        background: radial-gradient(ellipse at 50% 30%, #121612 0%, var(--bg) 70%), var(--bg);
         color: var(--text);
         margin: 0;
         min-height: 100svh;
@@ -41,10 +52,17 @@
 
       main {
         align-items: center;
+        align-items: safe center;
         display: flex;
         justify-content: center;
         min-height: 100svh;
         padding: clamp(1rem, 4vw, 3rem);
+      }
+
+      .stack {
+        display: grid;
+        gap: 0.75rem;
+        width: min(42rem, 100%);
       }
 
       .player {
@@ -57,7 +75,6 @@
         display: grid;
         gap: 0.55rem;
         padding: 0.45rem;
-        width: min(42rem, 100%);
       }
 
       .titlebar {
@@ -84,18 +101,12 @@
       .lcd {
         background: var(--lcd);
         border: 1px solid #000;
-        box-shadow: inset 0 0 0 1px #24301c, inset 0 2px 8px rgba(0, 0, 0, 0.65);
+        box-shadow:
+          inset 0 0 0 1px #24301c,
+          inset 0 2px 8px rgba(0, 0, 0, 0.65);
         color: var(--lcd-text);
         display: grid;
-        gap: 0.35rem;
-        grid-template-columns: auto 1fr auto;
         padding: 0.55rem 0.7rem;
-      }
-
-      .lcd-time {
-        font-size: 0.95rem;
-        font-variant-numeric: tabular-nums;
-        letter-spacing: 0.08em;
       }
 
       .lcd-track {
@@ -105,19 +116,12 @@
       }
 
       .lcd-track p {
-        animation: marquee 14s linear infinite;
+        animation: marquee 34s linear infinite;
         display: inline-block;
         font-size: 0.78rem;
         letter-spacing: 0.04em;
         margin: 0;
-        padding-right: 2rem;
         text-transform: uppercase;
-      }
-
-      .lcd-kbps {
-        color: var(--lcd-dim);
-        font-size: 0.65rem;
-        letter-spacing: 0.06em;
       }
 
       .stage {
@@ -125,7 +129,9 @@
         aspect-ratio: 16 / 9;
         background: #050705;
         border: 1px solid #000;
-        box-shadow: inset 0 0 0 1px #1c2618, inset 0 0 24px rgba(0, 0, 0, 0.7);
+        box-shadow:
+          inset 0 0 0 1px #1c2618,
+          inset 0 0 24px rgba(0, 0, 0, 0.7);
         display: flex;
         justify-content: center;
         overflow: hidden;
@@ -171,11 +177,14 @@
       }
 
       .transport a,
+      .transport button,
       .transport span {
         align-items: center;
         background: linear-gradient(180deg, #2c3428, #171c16);
         border: 1px solid #000;
-        box-shadow: inset 1px 1px 0 #46503f, inset -1px -1px 0 #0a0d0a;
+        box-shadow:
+          inset 1px 1px 0 #46503f,
+          inset -1px -1px 0 #0a0d0a;
         color: var(--bright);
         display: inline-flex;
         font-size: 0.72rem;
@@ -189,10 +198,46 @@
       }
 
       .transport a:hover,
-      .transport a:focus-visible {
+      .transport a:focus-visible,
+      .transport button:hover,
+      .transport button:focus-visible {
         background: linear-gradient(180deg, #384232, #1d241b);
         color: #b5ec5a;
         outline: 1px solid var(--lcd-text);
+      }
+
+      .transport button {
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.72rem;
+      }
+
+      .transport button[aria-expanded="true"] {
+        background: linear-gradient(180deg, #1b3310, #0f1d08);
+        box-shadow:
+          inset 1px 1px 0 #0a0d0a,
+          inset -1px -1px 0 #46503f;
+        color: var(--lcd-text);
+      }
+
+      .player[hidden] {
+        display: none;
+      }
+
+      .titlebar button {
+        background: none;
+        border: 0;
+        color: var(--lcd-dim);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.7rem;
+        letter-spacing: 0.08em;
+        padding: 0 0.15rem;
+      }
+
+      .titlebar button:hover,
+      .titlebar button:focus-visible {
+        color: var(--bright);
       }
 
       .transport .play {
@@ -221,6 +266,7 @@
         background: var(--lcd-text);
         display: block;
         flex: 1;
+        height: 100%;
         min-width: 0.25rem;
         opacity: 0.85;
         transform-origin: bottom;
@@ -265,6 +311,143 @@
         font-weight: 600;
       }
 
+      .readout {
+        background: var(--lcd);
+        border: 1px solid #000;
+        box-shadow:
+          inset 0 0 0 1px #24301c,
+          inset 0 2px 8px rgba(0, 0, 0, 0.65);
+        display: grid;
+        gap: 0.5rem 0.7rem;
+        grid-auto-columns: 1fr;
+        grid-auto-flow: column;
+        margin: 0;
+        padding: 0.6rem 0.7rem;
+      }
+
+      .readout div {
+        display: grid;
+        gap: 0.1rem;
+        min-width: 0;
+      }
+
+      .readout dt {
+        color: var(--lcd-dim);
+        font-size: 0.58rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .readout dd {
+        color: var(--lcd-text);
+        font-size: 0.92rem;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0.03em;
+        margin: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .tracks {
+        background: var(--lcd);
+        border: 1px solid #000;
+        box-shadow:
+          inset 0 0 0 1px #24301c,
+          inset 0 2px 8px rgba(0, 0, 0, 0.65);
+        display: grid;
+        list-style: none;
+        margin: 0;
+        padding: 0.4rem 0.35rem;
+      }
+
+      .tracks a {
+        align-items: baseline;
+        color: var(--lcd-text);
+        display: grid;
+        gap: 0 0.6rem;
+        grid-template-columns: 1.6rem 1fr auto;
+        padding: 0.3rem 0.35rem;
+        text-decoration: none;
+      }
+
+      .tracks a:hover,
+      .tracks a:focus-visible {
+        background: #16330d;
+        outline: none;
+      }
+
+      .tracks b {
+        color: var(--lcd-dim);
+        font-size: 0.7rem;
+        font-variant-numeric: tabular-nums;
+        font-weight: 500;
+      }
+
+      .tracks strong {
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .tracks em {
+        color: #6f9b3a;
+        font-size: 0.68rem;
+        font-style: normal;
+        grid-column: 2 / -1;
+        letter-spacing: 0.02em;
+      }
+
+      .tracks i {
+        color: var(--lcd-dim);
+        font-size: 0.66rem;
+        font-style: normal;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .console {
+        background: var(--lcd);
+        border: 1px solid #000;
+        box-shadow:
+          inset 0 0 0 1px #24301c,
+          inset 0 2px 8px rgba(0, 0, 0, 0.65);
+        color: var(--lcd-text);
+        margin: 0;
+        overflow-x: auto;
+        padding: 0.6rem 0.7rem;
+      }
+
+      .console code {
+        font: inherit;
+        font-size: 0.7rem;
+        line-height: 1.5;
+        white-space: pre;
+      }
+
+      button.copy {
+        background: linear-gradient(180deg, #2c3428, #171c16);
+        border: 1px solid #000;
+        box-shadow:
+          inset 1px 1px 0 #46503f,
+          inset -1px -1px 0 #0a0d0a;
+        color: var(--bright);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.72rem;
+        letter-spacing: 0.04em;
+        min-height: 2.2rem;
+        padding: 0.35rem 0.55rem;
+        text-transform: uppercase;
+      }
+
+      button.copy:hover,
+      button.copy:focus-visible {
+        background: linear-gradient(180deg, #384232, #1d241b);
+        color: #b5ec5a;
+        outline: 1px solid var(--lcd-text);
+      }
+
       @keyframes marquee {
         from {
           transform: translateX(0);
@@ -289,16 +472,21 @@
           align-items: flex-start;
         }
 
-        .lcd {
-          grid-template-columns: 1fr;
-        }
-
         .deck {
           grid-template-columns: 1fr;
         }
 
         .eq {
           height: 1.8rem;
+        }
+
+        .tracks i {
+          display: none;
+        }
+
+        .readout {
+          grid-auto-flow: row;
+          grid-template-columns: repeat(3, 1fr);
         }
       }
 
@@ -316,49 +504,206 @@
   </head>
   <body>
     <main>
-      <section class="player" aria-label="Aurral player">
-        <header class="titlebar">
-          <span>Aurral</span>
-          <b aria-hidden="true">□□ ×</b>
-        </header>
+      <div class="stack">
+        <section class="player" aria-label="Aurral player">
+          <header class="titlebar">
+            <span>Aurral</span>
+            <b aria-hidden="true">□□ ×</b>
+          </header>
 
-        <div class="lcd" aria-hidden="true">
-          <div class="lcd-time">0:01</div>
-          <div class="lcd-track">
-            <p>
-              Aurral — the Lidarr companion for music discovery. · Aurral — the Lidarr companion for
-              music discovery.
-            </p>
+          <div class="lcd" aria-hidden="true">
+            <div class="lcd-track">
+              <p>
+                Aurral — the Lidarr companion for self-hosted music discovery. Recommendations,
+                rotating flows, and playlist downloads, built on Lidarr instead of replacing it. ·
+                Aurral — the Lidarr companion for self-hosted music discovery. Recommendations,
+                rotating flows, and playlist downloads, built on Lidarr instead of replacing it. ·
+              </p>
+            </div>
           </div>
-          <div class="lcd-kbps">320kbps</div>
-        </div>
 
-        <div class="stage" role="img" aria-label="A rotating Aurral logo rendered as ASCII art">
-          <div class="ascii-stack" aria-hidden="true">
-            <pre class="ascii-base" data-ascii-base></pre>
-            <pre class="ascii-highlight" data-ascii-highlight></pre>
+          <div class="stage" role="img" aria-label="A rotating Aurral logo rendered as ASCII art">
+            <div class="ascii-stack" aria-hidden="true">
+              <pre class="ascii-base" data-ascii-base></pre>
+              <pre class="ascii-highlight" data-ascii-highlight></pre>
+            </div>
+            <noscript>Aurral</noscript>
           </div>
-          <noscript>Aurral</noscript>
-        </div>
 
-        <div class="deck">
-          <nav class="transport" aria-label="Aurral links">
-            <span aria-hidden="true">◀◀</span>
-            <a class="play" href="https://docs.aurral.org/">▶ Docs</a>
-            <span aria-hidden="true">■</span>
-            <span aria-hidden="true">▶▶</span>
-            <a href="https://github.com/lklynet/aurral">⏏ GitHub</a>
-          </nav>
-          <div class="eq" aria-hidden="true">
-            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          <div class="deck">
+            <nav class="transport" aria-label="Aurral links">
+              <span aria-hidden="true">◀◀</span>
+              <a class="play" href="https://docs.aurral.org/">▶ Docs</a>
+              <span aria-hidden="true">■</span>
+              <span aria-hidden="true">▶▶</span>
+              <a href="https://github.com/lklynet/aurral">⏏ GitHub</a>
+              <button
+                type="button"
+                data-toggle="playlist"
+                aria-expanded="false"
+                aria-controls="playlist"
+                title="Playlist: what Aurral does"
+              >
+                PL
+              </button>
+              <button
+                type="button"
+                data-toggle="install"
+                aria-expanded="false"
+                aria-controls="install"
+                title="Load: docker compose"
+              >
+                Get
+              </button>
+            </nav>
+            <div class="eq" aria-hidden="true">
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            </div>
           </div>
-        </div>
 
-        <p class="status">
-          <span>stereo · playlist ready</span>
-          <strong>self-hosted</strong>
-        </p>
-      </section>
+          <dl class="readout" aria-label="Project stats">
+            <div>
+              <dt>Release</dt>
+              <dd data-stat="version">v2.0.2</dd>
+            </div>
+            <div>
+              <dt>Shipped</dt>
+              <dd data-stat="released">recently</dd>
+            </div>
+            <div>
+              <dt>Stars</dt>
+              <dd data-stat="stars">1.3K</dd>
+            </div>
+            <div>
+              <dt>Pulls</dt>
+              <dd data-stat="pulls">840K</dd>
+            </div>
+            <div>
+              <dt>Forks</dt>
+              <dd data-stat="forks">58</dd>
+            </div>
+            <div>
+              <dt>License</dt>
+              <dd>MIT</dd>
+            </div>
+          </dl>
+
+          <p class="status">
+            <span>last commit <span data-stat="pushed">today</span></span>
+            <strong>self-hosted</strong>
+          </p>
+        </section>
+
+        <section class="player" id="playlist" aria-label="What Aurral does" hidden>
+          <header class="titlebar">
+            <span>Playlist — what it does</span>
+            <b aria-hidden="true">8 tracks</b>
+            <button type="button" data-close aria-label="Close playlist">×</button>
+          </header>
+
+          <ol class="tracks">
+            <li>
+              <a href="https://docs.aurral.org/using/discover/">
+                <b>01</b>
+                <strong>Discover</strong>
+                <i>using/discover</i>
+                <em>Personalized recommendations, trends, tags, new releases, nearby shows.</em>
+              </a>
+            </li>
+            <li>
+              <a href="https://docs.aurral.org/using/overview/">
+                <b>02</b>
+                <strong>Search</strong>
+                <i>using/overview</i>
+                <em>Find artists and albums, preview tracks, add to Lidarr with your defaults.</em>
+              </a>
+            </li>
+            <li>
+              <a href="https://docs.aurral.org/using/library/">
+                <b>03</b>
+                <strong>Library</strong>
+                <i>using/library</i>
+                <em>Browse and search everything Lidarr already tracks.</em>
+              </a>
+            </li>
+            <li>
+              <a href="https://docs.aurral.org/using/playlists/">
+                <b>04</b>
+                <strong>Playlists</strong>
+                <i>using/playlists</i>
+                <em>Scheduled flows, Release Radar, Spotify imports, fixed tracklists.</em>
+              </a>
+            </li>
+            <li>
+              <a href="https://docs.aurral.org/using/activity/">
+                <b>05</b>
+                <strong>Activity</strong>
+                <i>using/activity</i>
+                <em>Queue, review, and history for every request, download, and job.</em>
+              </a>
+            </li>
+            <li>
+              <a href="https://docs.aurral.org/integrations/lidarr/">
+                <b>06</b>
+                <strong>Integrations</strong>
+                <i>integrations</i>
+                <em>Lidarr, Last.fm, ListenBrainz, Koito, yt-dlp, slskd, SABnzbd/NZBGet, more.</em>
+              </a>
+            </li>
+            <li>
+              <a href="https://docs.aurral.org/integrations/navidrome/">
+                <b>07</b>
+                <strong>Playback</strong>
+                <i>integrations/navidrome</i>
+                <em>Stream through Navidrome M3U playlists or Plex/Plexamp API sync.</em>
+              </a>
+            </li>
+            <li>
+              <a href="https://docs.aurral.org/admin/users/">
+                <b>08</b>
+                <strong>Multi-user</strong>
+                <i>admin/users</i>
+                <em>Per-user profiles, permissions, local auth, LAN login, reverse-proxy SSO.</em>
+              </a>
+            </li>
+          </ol>
+        </section>
+
+        <section class="player" id="install" aria-label="Install Aurral" hidden>
+          <header class="titlebar">
+            <span>Load — docker compose</span>
+            <b aria-hidden="true">ghcr.io</b>
+            <button type="button" data-close aria-label="Close docker compose">×</button>
+          </header>
+
+          <pre class="console"><code data-compose>services:
+  aurral:
+    image: ghcr.io/lklynet/aurral:latest
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - PUID=1000
+      - PGID=1000
+    volumes:
+      - /data:/data
+      - ./config:/config</code></pre>
+
+          <div class="deck">
+            <nav class="transport" aria-label="More Aurral links">
+              <a href="https://docs.aurral.org/getting-started/docker/">▶ Setup guide</a>
+              <a href="https://discord.gg/cpPYfgVURJ">◆ Discord</a>
+              <a href="https://github.com/sponsors/lklynet/">♥ Sponsor</a>
+            </nav>
+            <button class="copy" type="button" data-copy>⧉ Copy</button>
+          </div>
+
+          <p class="status">
+            <span>mount the same media path as Lidarr</span>
+            <strong>pin <span data-stat="version">v2.0.2</span></strong>
+          </p>
+        </section>
+      </div>
     </main>
 
     <script type="module">
@@ -390,6 +735,70 @@
           requestAnimationFrame(animate);
         })
         .catch(() => {});
+    </script>
+
+    <script type="module">
+      const compact = new Intl.NumberFormat("en", {
+        notation: "compact",
+        maximumFractionDigits: 1,
+      });
+      const ago = (iso) => {
+        const hours = (Date.now() - Date.parse(iso)) / 3600000;
+        if (hours < 1) return "just now";
+        if (hours < 24) return `${Math.round(hours)}h ago`;
+        return `${Math.round(hours / 24)}d ago`;
+      };
+
+      const set = (name, value) => {
+        for (const node of document.querySelectorAll(`[data-stat="${name}"]`)) {
+          node.textContent = value;
+        }
+      };
+
+      const json = (url) => fetch(url).then((r) => (r.ok ? r.json() : Promise.reject(r.status)));
+
+      json("https://api.github.com/repos/lklynet/aurral")
+        .then((repo) => {
+          set("stars", compact.format(repo.stargazers_count));
+          set("forks", compact.format(repo.forks_count));
+          set("pushed", ago(repo.pushed_at));
+        })
+        .catch(() => {});
+
+      json("https://api.github.com/repos/lklynet/aurral/releases/latest")
+        .then((release) => {
+          set("version", release.tag_name);
+          set("released", ago(release.published_at));
+        })
+        .catch(() => {});
+
+      json("https://ghcr-badge.elias.eu.org/api/lklynet/aurral/aurral")
+        .then(({ downloadCountRaw }) => set("pulls", compact.format(downloadCountRaw)))
+        .catch(() => {});
+
+      for (const button of document.querySelectorAll("[data-toggle]")) {
+        const panel = document.getElementById(button.dataset.toggle);
+        const show = (open) => {
+          panel.hidden = !open;
+          button.setAttribute("aria-expanded", String(open));
+        };
+        button.addEventListener("click", () => show(panel.hidden));
+        panel.querySelector("[data-close]").addEventListener("click", () => {
+          show(false);
+          button.focus();
+        });
+      }
+
+      const copy = document.querySelector("[data-copy]");
+      copy.addEventListener("click", () => {
+        navigator.clipboard
+          .writeText(document.querySelector("[data-compose]").textContent)
+          .then(() => {
+            copy.textContent = "✓ Copied";
+            setTimeout(() => (copy.textContent = "⧉ Copy"), 2000);
+          })
+          .catch(() => (copy.textContent = "⚠ Select manually"));
+      });
     </script>
   </body>
 </html>
