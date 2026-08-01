@@ -59,6 +59,45 @@ test("getAlbumByMbid avoids unrelated broken albums in Lidarr", async (t) => {
   client._httpsInsecureAgent.destroy();
 });
 
+test("getAlbumByMbid selects the matching album from filtered results", async (t) => {
+  const server = http.createServer((request, response) => {
+    if (request.url !== "/api/v1/album?foreignAlbumId=target-album") {
+      response.writeHead(404);
+      response.end();
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify([
+        { id: 1, foreignAlbumId: "other-album" },
+        { id: 2, foreignAlbumId: "target-album" },
+      ]),
+    );
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const address = server.address();
+  const client = new LidarrClient();
+  client._holdConfig = true;
+  client.config = {
+    url: `http://127.0.0.1:${address.port}`,
+    apiKey: "test",
+    timeoutMs: 2000,
+    circuitDisabled: true,
+  };
+
+  const album = await client.getAlbumByMbid("target-album");
+
+  assert.equal(album?.id, 2);
+  client._httpAgent.destroy();
+  client._httpsAgent.destroy();
+  client._httpsInsecureAgent.destroy();
+});
+
 test("Lidarr cooldown permits only one half-open recovery request", async (t) => {
   const firstRequest = Promise.withResolvers();
   const releaseFirst = Promise.withResolvers();

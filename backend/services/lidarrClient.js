@@ -1179,7 +1179,11 @@ export class LidarrClient {
       false,
       options,
     );
-    return Array.isArray(albums) ? albums[0] : undefined;
+    return Array.isArray(albums)
+      ? albums.find(
+          (album) => String(album?.foreignAlbumId ?? "").trim() === normalizedMbid,
+        )
+      : undefined;
   }
 
   async updateAlbum(albumId, updates) {
