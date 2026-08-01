@@ -54,7 +54,22 @@ function pathHasPrefix(candidate, prefix) {
   );
 }
 
-export async function findSampleTrackFile(lidarrClient) {
+function artistIsOutsideRoots(artist, rootPaths) {
+  const artistPath = String(artist?.path || "").trim();
+  if (!artistPath || rootPaths.length === 0) return false;
+  return !rootPaths.some((rootPath) => pathHasPrefix(artistPath, rootPath));
+}
+
+function unreadableSampleFix(samplePath, rootPaths) {
+  if (rootPaths.length > 0 && !rootPaths.some((rootPath) => pathHasPrefix(samplePath, rootPath))) {
+    return `Lidarr reports this track outside its root folders (${rootPaths.join(", ")}), which usually means the artist folder was left behind by a root folder change. In Lidarr, open the artist, choose Edit, and move the files into the current root folder, or add the old location as a Lidarr root folder and mount it into Aurral.`;
+  }
+  return looksLikeExternalOnlyPath(samplePath)
+    ? "Lidarr reports a host path Aurral cannot read inside Docker. Mount the parent folder into Aurral, then add a manual Lidarr path mapping under Settings → System → Storage."
+    : "Lidarr reports this file path, but Aurral cannot read it. Check Docker mounts and folder permissions (PUID/PGID). If Lidarr and Aurral intentionally use different container paths, add a manual Lidarr path mapping.";
+}
+
+export async function findSampleTrackFile(lidarrClient, rootPaths = []) {
   let artists = [];
   try {
     artists = await lidarrClient.request("/artist");
@@ -63,7 +78,12 @@ export async function findSampleTrackFile(lidarrClient) {
   }
   if (!Array.isArray(artists)) return null;
 
-  for (const artist of artists) {
+  const orderedArtists = [
+    ...artists.filter((artist) => !artistIsOutsideRoots(artist, rootPaths)),
+    ...artists.filter((artist) => artistIsOutsideRoots(artist, rootPaths)),
+  ];
+
+  for (const artist of orderedArtists) {
     if (!artist?.id) continue;
     let albums = [];
     try {
@@ -162,7 +182,7 @@ export async function runLidarrLibraryAccessTest(lidarrClient) {
     }
   }
 
-  const sample = await findSampleTrackFile(lidarrClient);
+  const sample = await findSampleTrackFile(lidarrClient, rootPaths);
 
   if (unreadableRoots.length > 0) {
     const missingPath = unreadableRoots[0];
@@ -175,7 +195,7 @@ export async function runLidarrLibraryAccessTest(lidarrClient) {
           : `Lidarr stores files at ${missingPath}, but Aurral cannot read that path. Recommended fix: mount the same host root into Aurral and Lidarr at the same container path, such as /data.`,
       }),
     );
-    return { ok: false, steps, sample };
+    return { ok: false, steps, sample, rootPaths };
   }
 
   steps.push(
@@ -204,6 +224,7 @@ export async function runLidarrLibraryAccessTest(lidarrClient) {
       ok: true,
       steps,
       sample: null,
+      rootPaths,
       partial: true,
     };
   }
@@ -213,12 +234,10 @@ export async function runLidarrLibraryAccessTest(lidarrClient) {
     steps.push(
       step("file", "fail", "Sample Lidarr track file is readable from Aurral", {
         detail: sample.path,
-        fix: looksLikeExternalOnlyPath(sample.path)
-          ? "Lidarr reports a host path Aurral cannot read inside Docker. Mount the parent folder into Aurral, then add a manual Lidarr path mapping under Settings → System → Storage."
-          : "Lidarr reports this file path, but Aurral cannot read it. Check Docker mounts and folder permissions (PUID/PGID). If Lidarr and Aurral intentionally use different container paths, add a manual Lidarr path mapping.",
+        fix: unreadableSampleFix(sample.path, rootPaths),
       }),
     );
-    return { ok: false, steps, sample };
+    return { ok: false, steps, sample, rootPaths };
   }
 
   const resolvedSamplePath = readableSamplePath || (await pathIsReadable(sample.path));
@@ -250,6 +269,7 @@ export async function runLidarrLibraryAccessTest(lidarrClient) {
       ...sample,
       path: resolvedSamplePath || sample.path,
     },
+    rootPaths,
     partial: steps.some((entry) => entry.status === "warn"),
   };
 }

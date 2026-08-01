@@ -119,6 +119,84 @@ test("runLidarrLibraryAccessTest shows translated root path when manual Lidarr m
   assert.match(mountStep?.detail || "", / -> /);
 });
 
+function createMultiArtistClient(rootPath, artists) {
+  return createMockLidarrClient({
+    rootPath,
+    request: async (endpoint) => {
+      if (endpoint === "/artist") {
+        return artists.map(({ id, path: artistPath }) => ({
+          id,
+          artistName: `Artist ${id}`,
+          path: artistPath,
+        }));
+      }
+      const match = endpoint.match(/^\/album\?artistId=(\d+)$/);
+      if (match) {
+        return [{ id: Number(match[1]), title: "Album", statistics: { sizeOnDisk: 100 } }];
+      }
+      return [];
+    },
+    getTracksByAlbumId: async (albumId) => [
+      { id: albumId, title: "Track", hasFile: true, trackFileId: albumId },
+    ],
+    getTrackFilesByAlbumId: async (albumId) => [
+      {
+        id: albumId,
+        path: artists.find((artist) => artist.id === albumId).trackPath,
+        size: 5,
+      },
+    ],
+  });
+}
+
+test("runLidarrLibraryAccessTest samples an artist inside the root folder over a stale one", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-lidarr-stale-"));
+  const rootDir = path.join(tempDir, "Music, Vol 1");
+  const trackPath = path.join(rootDir, "Artist 2", "Album", "01 - Track.mp3");
+  await fs.mkdir(path.dirname(trackPath), { recursive: true });
+  await fs.writeFile(trackPath, "audio");
+
+  const result = await runLidarrLibraryAccessTest(
+    createMultiArtistClient(rootDir, [
+      {
+        id: 1,
+        path: "/legacy-root/Artist 1",
+        trackPath: "/legacy-root/Artist 1/Album/01 - Track.mp3",
+      },
+      { id: 2, path: path.dirname(path.dirname(trackPath)), trackPath },
+    ]),
+  );
+
+  await fs.rm(tempDir, { recursive: true, force: true });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.partial, false);
+  assert.equal(result.sample?.path, trackPath);
+  assert.deepEqual(result.rootPaths, [rootDir]);
+});
+
+test("runLidarrLibraryAccessTest blames the root folder, not mounts, for a track outside every root", async () => {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-lidarr-outside-"));
+
+  const result = await runLidarrLibraryAccessTest(
+    createMultiArtistClient(rootDir, [
+      {
+        id: 1,
+        path: "/legacy-root/Artist 1",
+        trackPath: "/legacy-root/Artist 1/Album/01 - Track.mp3",
+      },
+    ]),
+  );
+
+  await fs.rm(rootDir, { recursive: true, force: true });
+
+  const fileStep = result.steps.find((step) => step.id === "file");
+  assert.equal(result.ok, false);
+  assert.equal(fileStep?.status, "fail");
+  assert.match(fileStep?.fix || "", /outside its root folders/);
+  assert.doesNotMatch(fileStep?.fix || "", /PUID/);
+});
+
 test("runLidarrLibraryAccessTest omits unrelated filesystem placement checks", async () => {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-lidarr-test-"));
   const albumDir = path.join(rootDir, "Artist", "Album");

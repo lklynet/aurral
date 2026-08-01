@@ -82,7 +82,11 @@ export function registerAlbums(router) {
           logger.error("library", `Failed to add album ${albumName}:`, {
             message: album.error,
           });
-          return res.status(503).json({
+          const statusCode =
+            Number.isInteger(album.statusCode) && album.statusCode >= 400
+              ? album.statusCode
+              : 503;
+          return res.status(statusCode).json({
             error: "Failed to add album",
             message: album.error,
           });

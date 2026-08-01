@@ -1,4 +1,3 @@
-import createCache from "./apiClients/simpleCache.js";
 import { getDiscoveryCache } from "./discovery/index.js";
 import { getLastfmApiKey, lastfmRequest } from "./apiClients/index.js";
 import { buildImageProxyUrl } from "./imageProxyService.js";
@@ -27,8 +26,6 @@ const ALL_RELEASE_TYPES = new Set([
   ...PRIMARY_RELEASE_TYPE_LIST,
   ...SECONDARY_RELEASE_TYPE_LIST,
 ]);
-const albumLibraryLookupCache = createCache(60);
-
 async function getAlbumLibraryLookup(albumMbids) {
   const lookup = new Map();
   if (!lidarrClient.isConfigured() || albumMbids.length === 0) {
@@ -36,13 +33,7 @@ async function getAlbumLibraryLookup(albumMbids) {
   }
 
   try {
-    let lidarrAlbums = albumLibraryLookupCache.get("lidarrAlbums");
-    if (!lidarrAlbums) {
-      lidarrAlbums = await lidarrClient.getAllAlbums();
-      if (lidarrAlbums.length > 0) {
-        albumLibraryLookupCache.set("lidarrAlbums", lidarrAlbums);
-      }
-    }
+    const lidarrAlbums = await lidarrClient.getAllAlbums();
     if (!lidarrAlbums?.length) return lookup;
     const wanted = new Set(albumMbids);
     for (const album of Array.isArray(lidarrAlbums) ? lidarrAlbums : []) {
