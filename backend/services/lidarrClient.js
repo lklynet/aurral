@@ -1169,8 +1169,17 @@ export class LidarrClient {
   }
 
   async getAlbumByMbid(albumMbid, options = {}) {
-    const index = await this.getAlbumMbidIndex(options);
-    return index.get(String(albumMbid || "").trim());
+    const normalizedMbid = String(albumMbid || "").trim();
+    if (!normalizedMbid) return undefined;
+
+    const albums = await this.request(
+      `/album?foreignAlbumId=${encodeURIComponent(normalizedMbid)}`,
+      "GET",
+      null,
+      false,
+      options,
+    );
+    return Array.isArray(albums) ? albums[0] : undefined;
   }
 
   async updateAlbum(albumId, updates) {
