@@ -72,8 +72,24 @@ jobs:
           git fetch --force --tags
           node scripts/resolve-next-release.js
 
-  publish-image:
+  check-release-readiness:
     needs: compute-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Require approved release-readiness record
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.compute-release.outputs.tag }}
+        run: bash scripts/update-release-readiness.sh check
+
+  publish-image:
+    needs: [compute-release, check-release-readiness]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -186,3 +202,28 @@ jobs:
               --generate-notes \
               --latest
           fi
+
+  notify-github-release:
+    needs: [compute-release, publish-github-release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Close release-readiness record
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.compute-release.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.compute-release.outputs.version }}
+        run: bash scripts/update-release-readiness.sh stable
+
+      - name: Notify merged pull requests and linked issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.compute-release.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.compute-release.outputs.version }}
+        run: bash scripts/notify-github-status.sh stable
