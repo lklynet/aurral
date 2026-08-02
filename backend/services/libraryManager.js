@@ -882,10 +882,13 @@ export class LibraryManager {
 
   mapLidarrArtist(lidarrArtist) {
     const artistPath = lidarrArtist.path ?? null;
+    const artistId = Number(lidarrArtist.id);
+    const normalizedArtistId =
+      Number.isSafeInteger(artistId) && artistId > 0 ? String(artistId) : null;
     const monitorOption = lidarrArtist.monitor || lidarrArtist.addOptions?.monitor || "none";
     const normalizedMonitorOption = monitorOption || "none";
     return {
-      id: lidarrArtist.id?.toString() || lidarrArtist.foreignArtistId,
+      id: normalizedArtistId,
       mbid: lidarrArtist.foreignArtistId,
       foreignArtistId: lidarrArtist.foreignArtistId,
       artistName: lidarrArtist.artistName,

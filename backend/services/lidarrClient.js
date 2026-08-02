@@ -45,6 +45,11 @@ function normalizeProfileId(value) {
   return Math.trunc(parsed);
 }
 
+function normalizeLidarrArtistId(value) {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? String(parsed) : null;
+}
+
 function normalizeMonitorOption(value) {
   const option = String(value || "none").trim();
   return VALID_MONITOR_OPTIONS.has(option) ? option : "none";
@@ -948,6 +953,14 @@ export class LidarrClient {
       },
     };
 
+    const resolveAddedArtist = async (artist) => {
+      if (normalizeLidarrArtistId(artist?.id)) {
+        return artist;
+      }
+      const resolvedArtist = await this.getArtistByMbid(mbid);
+      return normalizeLidarrArtistId(resolvedArtist?.id) ? resolvedArtist : artist;
+    };
+
     const ensureArtistMonitored = async (artist) => {
       if (albumOnly && options.triggerSearch === true) {
         logger.info("library", "Queued Lidarr album search with artist add", {
@@ -955,15 +968,16 @@ export class LidarrClient {
           albumMbid,
         });
       }
-      if (!artist?.id || artist.monitored === true) {
+      const artistId = normalizeLidarrArtistId(artist?.id);
+      if (!artistId || artist.monitored === true) {
         return artist;
       }
-      return this.updateArtistMonitoring(artist.id, monitoring.option);
+      return this.updateArtistMonitoring(artistId, monitoring.option);
     };
 
     try {
       const result = await this.request("/artist", "POST", lidarrArtist);
-      return ensureArtistMonitored(result);
+      return ensureArtistMonitored(await resolveAddedArtist(result));
     } catch (error) {
       if (requestedMonitorOption !== "all") {
         throw error;
@@ -977,12 +991,16 @@ export class LidarrClient {
         },
       };
       const result = await this.request("/artist", "POST", fallbackArtist);
-      return ensureArtistMonitored(result);
+      return ensureArtistMonitored(await resolveAddedArtist(result));
     }
   }
 
   async getArtist(artistId) {
-    return this.request(`/artist/${artistId}`);
+    const normalizedArtistId = normalizeLidarrArtistId(artistId);
+    if (!normalizedArtistId) {
+      throw new Error(`Lidarr artist ID must be numeric: ${artistId}`);
+    }
+    return this.request(`/artist/${normalizedArtistId}`);
   }
 
   async getArtistByMbid(mbid) {
@@ -1030,18 +1048,26 @@ export class LidarrClient {
   }
 
   async updateArtist(artistId, updates) {
-    const artist = await this.getArtist(artistId);
+    const normalizedArtistId = normalizeLidarrArtistId(artistId);
+    if (!normalizedArtistId) {
+      throw new Error(`Lidarr artist ID must be numeric: ${artistId}`);
+    }
+    const artist = await this.getArtist(normalizedArtistId);
 
     const updated = {
       ...artist,
       ...updates,
     };
 
-    return this.request(`/artist/${artistId}`, "PUT", updated);
+    return this.request(`/artist/${normalizedArtistId}`, "PUT", updated);
   }
 
   async updateArtistMonitoring(artistId, monitorOption) {
-    const artist = await this.getArtist(artistId);
+    const normalizedArtistId = normalizeLidarrArtistId(artistId);
+    if (!normalizedArtistId) {
+      throw new Error(`Lidarr artist ID must be numeric: ${artistId}`);
+    }
+    const artist = await this.getArtist(normalizedArtistId);
     const monitoring = getArtistMonitoringPayload(monitorOption);
 
     const updated = {
@@ -1056,7 +1082,7 @@ export class LidarrClient {
     };
 
     try {
-      return await this.request(`/artist/${artistId}`, "PUT", updated);
+      return await this.request(`/artist/${normalizedArtistId}`, "PUT", updated);
     } catch (error) {
       if (monitoring.option !== "all") {
         throw error;
@@ -1069,7 +1095,7 @@ export class LidarrClient {
           monitor: "existing",
         },
       };
-      return this.request(`/artist/${artistId}`, "PUT", fallbackUpdated);
+      return this.request(`/artist/${normalizedArtistId}`, "PUT", fallbackUpdated);
     }
   }
 
