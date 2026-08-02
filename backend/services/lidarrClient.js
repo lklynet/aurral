@@ -957,8 +957,14 @@ export class LidarrClient {
       if (normalizeLidarrArtistId(artist?.id)) {
         return artist;
       }
-      const resolvedArtist = await this.getArtistByMbid(mbid);
-      return normalizeLidarrArtistId(resolvedArtist?.id) ? resolvedArtist : artist;
+      let resolvedArtist = await this.getArtistByMbid(mbid);
+      if (!normalizeLidarrArtistId(resolvedArtist?.id)) {
+        resolvedArtist = await this.getArtistByMbid(mbid, { forceRefresh: true });
+      }
+      if (!normalizeLidarrArtistId(resolvedArtist?.id)) {
+        throw new Error(`Lidarr add did not return a numeric artist ID for ${mbid}`);
+      }
+      return resolvedArtist;
     };
 
     const ensureArtistMonitored = async (artist) => {
@@ -975,9 +981,9 @@ export class LidarrClient {
       return this.updateArtistMonitoring(artistId, monitoring.option);
     };
 
+    let result;
     try {
-      const result = await this.request("/artist", "POST", lidarrArtist);
-      return ensureArtistMonitored(await resolveAddedArtist(result));
+      result = await this.request("/artist", "POST", lidarrArtist);
     } catch (error) {
       if (requestedMonitorOption !== "all") {
         throw error;
@@ -990,9 +996,9 @@ export class LidarrClient {
           monitor: "existing",
         },
       };
-      const result = await this.request("/artist", "POST", fallbackArtist);
-      return ensureArtistMonitored(await resolveAddedArtist(result));
+      result = await this.request("/artist", "POST", fallbackArtist);
     }
+    return ensureArtistMonitored(await resolveAddedArtist(result));
   }
 
   async getArtist(artistId) {
@@ -1003,39 +1009,51 @@ export class LidarrClient {
     return this.request(`/artist/${normalizedArtistId}`);
   }
 
-  async getArtistByMbid(mbid) {
+  async getArtistByMbid(mbid, { forceRefresh = false } = {}) {
     const normalizedMbid = String(mbid || "").trim();
     if (!normalizedMbid) return null;
 
-    const cachedArtist = this._getArtistByMbidCacheEntry(normalizedMbid);
-    if (cachedArtist !== undefined) {
-      return cachedArtist;
+    if (forceRefresh) {
+      this._artistByMbidCache.delete(normalizedMbid);
+    } else {
+      const cachedArtist = this._getArtistByMbidCacheEntry(normalizedMbid);
+      if (cachedArtist !== undefined) {
+        return cachedArtist;
+      }
+
+      if (this._artistListCache && Date.now() - this._artistListCache.at < LIDARR_LIST_CACHE_MS) {
+        const artists = Array.isArray(this._artistListCache.data)
+          ? this._artistListCache.data
+          : [];
+        this._populateArtistIndexes(artists);
+        const artist = artists.find((entry) => entry?.foreignArtistId === normalizedMbid) || null;
+        this._setArtistByMbidCacheEntry(normalizedMbid, artist);
+        return artist;
+      }
     }
 
-    if (this._artistListCache && Date.now() - this._artistListCache.at < LIDARR_LIST_CACHE_MS) {
-      const artists = Array.isArray(this._artistListCache.data) ? this._artistListCache.data : [];
-      this._populateArtistIndexes(artists);
-      const artist = artists.find((entry) => entry?.foreignArtistId === normalizedMbid) || null;
-      this._setArtistByMbidCacheEntry(normalizedMbid, artist);
-      return artist;
-    }
-
-    const inflight = this._artistByMbidInflight.get(normalizedMbid);
-    if (inflight) {
-      return inflight;
+    if (!forceRefresh) {
+      const inflight = this._artistByMbidInflight.get(normalizedMbid);
+      if (inflight) {
+        return inflight;
+      }
     }
 
     const startedAt = Date.now();
-    const requestPromise = this.request("/artist")
+    const requestPromise = this.request("/artist", "GET", null, false, { forceRefresh })
       .then((artists) => {
         const list = Array.isArray(artists) ? artists : [];
         this._populateArtistIndexes(list);
         const artist = list.find((entry) => entry?.foreignArtistId === normalizedMbid) || null;
-        this._setArtistByMbidCacheEntry(normalizedMbid, artist);
+        if (artist || !forceRefresh) {
+          this._setArtistByMbidCacheEntry(normalizedMbid, artist);
+        }
         return artist;
       })
       .finally(() => {
-        this._artistByMbidInflight.delete(normalizedMbid);
+        if (!forceRefresh) {
+          this._artistByMbidInflight.delete(normalizedMbid);
+        }
         const durationMs = Date.now() - startedAt;
         logger.debug("api", "Lidarr getArtistByMbid completed", {
           mbid: normalizedMbid,
@@ -1043,7 +1061,9 @@ export class LidarrClient {
         });
       });
 
-    this._artistByMbidInflight.set(normalizedMbid, requestPromise);
+    if (!forceRefresh) {
+      this._artistByMbidInflight.set(normalizedMbid, requestPromise);
+    }
     return requestPromise;
   }
 

@@ -164,6 +164,7 @@ test("album-only artist add queues a search for the selected album", async (t) =
 test("artist add resolves a non-numeric Lidarr response ID before follow-up calls", async (t) => {
   const artistMbid = "f1693075-b637-49f8-8d0e-8cee8bec77cb";
   const requests = [];
+  let updatePayload;
   const server = http.createServer((request, response) => {
     requests.push(request.url);
     if (request.method === "POST" && request.url === "/api/v1/artist") {
@@ -214,15 +215,23 @@ test("artist add resolves a non-numeric Lidarr response ID before follow-up call
       return;
     }
     if (request.method === "PUT" && request.url === "/api/v1/artist/42") {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(
-        JSON.stringify({
-          id: 42,
-          foreignArtistId: artistMbid,
-          artistName: "Lena Raine",
-          monitored: true,
-        }),
-      );
+      let body = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk) => {
+        body += chunk;
+      });
+      request.on("end", () => {
+        updatePayload = JSON.parse(body);
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            id: 42,
+            foreignArtistId: artistMbid,
+            artistName: "Lena Raine",
+            monitored: true,
+          }),
+        );
+      });
       return;
     }
     response.writeHead(404);
@@ -255,6 +264,8 @@ test("artist add resolves a non-numeric Lidarr response ID before follow-up call
   });
 
   assert.equal(artist.id, 42);
+  assert.equal(artist.monitored, true);
+  assert.equal(updatePayload.monitored, true);
   assert.equal(requests.includes(`/api/v1/artist/${artistMbid}`), false);
   assert.deepEqual(requests, [
     "/api/v1/artist",
@@ -266,6 +277,106 @@ test("artist add resolves a non-numeric Lidarr response ID before follow-up call
   client._httpAgent.destroy();
   client._httpsAgent.destroy();
   client._httpsInsecureAgent.destroy();
+});
+
+test("artist add fails when Lidarr cannot resolve a numeric ID", async (t) => {
+  const artistMbid = "f1693075-b637-49f8-8d0e-8cee8bec77cb";
+  const client = new LidarrClient();
+  t.after(() => {
+    client._httpAgent.destroy();
+    client._httpsAgent.destroy();
+    client._httpsInsecureAgent.destroy();
+  });
+
+  client.resolveArtistAddConfiguration = async () => ({
+    resolved: {
+      rootFolderPath: "/music",
+      qualityProfileId: 1,
+    },
+  });
+
+  let postCount = 0;
+  let lookupCount = 0;
+  client.request = async (endpoint, method, _payload, _skipConfigUpdate, options) => {
+    if (endpoint === "/artist" && method === "POST") {
+      postCount += 1;
+      return {
+        id: artistMbid,
+        foreignArtistId: artistMbid,
+        artistName: "Lena Raine",
+      };
+    }
+    if (endpoint === "/artist" && method === "GET") {
+      lookupCount += 1;
+      if (lookupCount === 2) {
+        assert.equal(options.forceRefresh, true);
+      }
+      return [];
+    }
+    throw new Error(`Unexpected Lidarr request: ${method} ${endpoint}`);
+  };
+
+  await assert.rejects(
+    client.addArtist(artistMbid, "Lena Raine", {
+      metadataProfileId: 1,
+      monitorOption: "all",
+    }),
+    /numeric artist ID/,
+  );
+
+  assert.equal(postCount, 1);
+  assert.equal(lookupCount, 2);
+});
+
+test("artist add does not retry creation after monitoring fails", async (t) => {
+  const client = new LidarrClient();
+  t.after(() => {
+    client._httpAgent.destroy();
+    client._httpsAgent.destroy();
+    client._httpsInsecureAgent.destroy();
+  });
+
+  client.resolveArtistAddConfiguration = async () => ({
+    resolved: {
+      rootFolderPath: "/music",
+      qualityProfileId: 1,
+    },
+  });
+
+  let postCount = 0;
+  client.request = async (endpoint, method = "GET") => {
+    if (endpoint === "/artist" && method === "POST") {
+      postCount += 1;
+      return {
+        id: 42,
+        foreignArtistId: "artist-mbid",
+        artistName: "Lena Raine",
+        monitored: false,
+      };
+    }
+    if (endpoint === "/artist/42" && method === "GET") {
+      return {
+        id: 42,
+        foreignArtistId: "artist-mbid",
+        artistName: "Lena Raine",
+        monitored: false,
+      };
+    }
+    if (endpoint === "/artist/42" && method === "PUT") {
+      throw new Error("monitoring failed");
+    }
+    throw new Error(`Unexpected Lidarr request: ${method} ${endpoint}`);
+  };
+
+  await assert.rejects(
+    client.addArtist("artist-mbid", "Lena Raine", {
+      metadataProfileId: 1,
+      monitorOption: "all",
+    }),
+    /monitoring failed/,
+  );
+
+  assert.equal(postCount, 1);
 });
 
 test("Lidarr cooldown permits only one half-open recovery request", async (t) => {
