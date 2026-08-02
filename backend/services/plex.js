@@ -271,6 +271,17 @@ export class PlexClient {
     return out;
   }
 
+  async getMusicTracks(excludeSectionId = null) {
+    const libraries = await this.getLibraries();
+    const sections = (Array.isArray(libraries) ? libraries : []).filter(
+      (library) =>
+        library?.type === MUSIC_SECTION_TYPE &&
+        String(library.key ?? "") !== String(excludeSectionId ?? ""),
+    );
+    const results = await Promise.all(sections.map((section) => this.getTracks(section.key)));
+    return results.flat();
+  }
+
   async getPlaylists() {
     const data = await this.request("/playlists", {
       params: { playlistType: "audio" },

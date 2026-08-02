@@ -13,7 +13,9 @@ import {
   writeGeneratedPlaylistArtwork,
 } from "../playlistArtworkGenerator.js";
 import {
+  isPathInsideRoot,
   PLAYLIST_LIBRARY_DIR,
+  remapLegacyPath as remapLegacyWeeklyFlowPath,
   resolvePlaylistRoot,
 } from "../playlistPaths.js";
 import { buildM3uContent, collectPlaylistM3uEntries } from "../playlistM3u.js";
@@ -22,6 +24,15 @@ import { ytdlpClient } from "../ytdlpClient.js";
 const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg", ".png"];
 const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
 const PLAYLIST_FILE_EXTENSIONS = [".m3u", ".nsp"];
+
+function normalizePlexTrackPath(value) {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/\\/g, "/");
+  const caseInsensitive = /^[a-z]:\//i.test(normalized) || normalized.startsWith("//");
+  const collapsed = normalized.replace(/\/+/g, "/");
+  return caseInsensitive ? collapsed.toLowerCase() : collapsed;
+}
 
 export class WeeklyFlowPlaylistManager {
   constructor(
@@ -358,6 +369,21 @@ export class WeeklyFlowPlaylistManager {
     return this._getPlaylistLibraryHostPath();
   }
 
+  _getPlexTrackPathCandidates(job) {
+    const candidates = [job?.externalPath, job?.finalPath];
+    if (job?.finalPath) {
+      const finalPath = path.resolve(
+        remapLegacyWeeklyFlowPath(job.finalPath, this.weeklyFlowRoot),
+      );
+      if (isPathInsideRoot(finalPath, this.playlistLibraryRoot)) {
+        candidates.push(
+          path.join(this._getPlexLibraryPath(), path.relative(this.playlistLibraryRoot, finalPath)),
+        );
+      }
+    }
+    return [...new Set(candidates.map(normalizePlexTrackPath).filter(Boolean))];
+  }
+
   _hashKeys(ratingKeys) {
     const sorted = (ratingKeys || []).map(String).sort();
     return crypto.createHash("sha1").update(sorted.join(",")).digest("hex");
@@ -380,6 +406,17 @@ export class WeeklyFlowPlaylistManager {
     if (sectionId == null) return;
 
     const tracks = await this.plexClient.getTracks(sectionId);
+    const playlistIds = [
+      ...new Set([...flows.map((f) => f.id), ...sharedPlaylists.map((p) => p.id)]),
+    ];
+    const membership = new Map(playlistIds.map((id) => [id, []]));
+    const addMembership = (playlistId, ratingKey) => {
+      const keys = membership.get(playlistId);
+      if (!keys || ratingKey == null) return;
+      const key = String(ratingKey);
+      if (!key || keys.includes(key)) return;
+      keys.push(key);
+    };
     // Plex de-duplicates the same song across flow folders inconsistently:
     // sometimes one track with one path, sometimes two separate tracks sharing
     // a relative path. So resolve membership per relative file (Artist/Album/
@@ -400,10 +437,6 @@ export class WeeklyFlowPlaylistManager {
       if (!byRelative.has(rel)) byRelative.set(rel, []);
       byRelative.get(rel).push(t);
     }
-    const playlistIds = [
-      ...new Set([...flows.map((f) => f.id), ...sharedPlaylists.map((p) => p.id)]),
-    ];
-    const membership = new Map(playlistIds.map((id) => [id, []]));
     for (const id of playlistIds) {
       for (const [rel, group] of byRelative) {
         const ownsPath = (t) => t.files.some((f) => f.replace(/\\/g, "/").includes(`/${id}/`));
@@ -416,7 +449,31 @@ export class WeeklyFlowPlaylistManager {
         }
         if (!present) continue;
         const best = group.find(ownsPath) || group[0];
-        if (best?.ratingKey) membership.get(id).push(best.ratingKey);
+        addMembership(id, best?.ratingKey);
+      }
+    }
+
+    const reuseJobs = playlistIds.flatMap((playlistId) =>
+      downloadTracker
+        .getByPlaylistType(playlistId)
+        .filter((job) => job?.status === "done" && job.externalPath)
+        .map((job) => ({ playlistId, job })),
+    );
+    if (reuseJobs.length > 0) {
+      const existingTracks = await this.plexClient.getMusicTracks(sectionId);
+      const tracksByPath = new Map();
+      for (const track of existingTracks) {
+        for (const file of track.files || []) {
+          const key = normalizePlexTrackPath(file);
+          if (!key) continue;
+          if (!tracksByPath.has(key)) tracksByPath.set(key, track);
+        }
+      }
+      for (const { playlistId, job } of reuseJobs) {
+        for (const candidate of this._getPlexTrackPathCandidates(job)) {
+          const track = tracksByPath.get(candidate);
+          if (track) addMembership(playlistId, track.ratingKey);
+        }
       }
     }
     const ratingKeysFor = (playlistType) => membership.get(playlistType) || [];

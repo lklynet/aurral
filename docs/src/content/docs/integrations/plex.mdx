@@ -19,9 +19,11 @@ Plex does not read Aurral's `.m3u` files. Playlist sync uses the Plex API after 
 6. Make sure that the server URL is correct.
 7. Save the settings.
 8. Select **Test connection**.
-9. After a flow downloads tracks, select **Sync to Plex now**.
+9. After a flow or imported playlist adds tracks, select **Sync to Plex now**.
 
-Aurral registers the library at `<plex-visible-downloads>/aurral-weekly-flow`. Track files are in flow subfolders under that path.
+Aurral registers the library at `<plex-visible-downloads>/aurral-weekly-flow`. Downloaded tracks are in flow subfolders under that path. Reused Lidarr tracks stay in the Lidarr library; Plex playlist sync adds the existing Lidarr tracks to the Aurral playlists.
+
+Plex must already index the Lidarr music library so reused tracks are available to playlist sync.
 
 Navidrome M3U playlists are in `aurral-weekly-flow/_playlists/`. Plex does not use these files.
 
