@@ -47,6 +47,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gosu \
     fontconfig \
     fonts-dejavu-core \
+    fonts-noto-color-emoji \
     python3 \
     ffmpeg \
     ca-certificates \
