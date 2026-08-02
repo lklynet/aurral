@@ -2,6 +2,8 @@
 
 <!-- What changed, and why? -->
 
+<!-- Use a Conventional Commit title (`feat:`, `fix:`, etc.); merged commit subjects drive release version suggestions. -->
+
 ## Validation
 
 - [ ] CI passes
