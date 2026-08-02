@@ -22,19 +22,19 @@ jobs:
 
       - name: Ensure validation runtime dependencies
         run: |
-          if command -v fc-match >/dev/null 2>&1 && command -v ffmpeg >/dev/null 2>&1; then
+          if command -v fc-match >/dev/null 2>&1 && command -v ffmpeg >/dev/null 2>&1 && [ "$(fc-match -f '%{family}' 'Noto Color Emoji')" = "Noto Color Emoji" ]; then
             exit 0
           fi
 
           if [ "$(id -u)" -eq 0 ]; then
             apt-get update
-            apt-get install -y ffmpeg fontconfig fonts-dejavu-core
+            apt-get install -y ffmpeg fontconfig fonts-dejavu-core fonts-noto-color-emoji
           elif command -v sudo >/dev/null 2>&1; then
             sudo apt-get update
-            sudo apt-get install -y ffmpeg fontconfig fonts-dejavu-core
+            sudo apt-get install -y ffmpeg fontconfig fonts-dejavu-core fonts-noto-color-emoji
           else
             echo "ffmpeg and fontconfig are required for validation."
-            echo "Install ffmpeg, fontconfig, and fonts-dejavu-core on the runner."
+            echo "Install ffmpeg, fontconfig, fonts-dejavu-core, and fonts-noto-color-emoji on the runner."
             exit 1
           fi
 
