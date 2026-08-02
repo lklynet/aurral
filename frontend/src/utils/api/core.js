@@ -1,5 +1,4 @@
 import { getAppBasePath } from "../basePath.js";
-import { isProxyAuthActive, registerReauthAttempt } from "../authRecovery.js";
 
 const getDefaultApiBaseUrl = () => {
   if (import.meta.env.DEV) return "/api";
@@ -27,31 +26,25 @@ function appendParams(url, params) {
   return `${url}${url.includes("?") ? "&" : "?"}${query}`;
 }
 
-export const forceProxyReauthNavigation = () => {
-  if (typeof window === "undefined") return;
-  if (!registerReauthAttempt()) {
-    console.error(
-      "[Aurral] Repeated auth-redirect recovery attempts detected in a short window; " +
-        "stopping to avoid a reload loop. Check the reverse proxy / forwardAuth configuration.",
-    );
-    return;
-  }
-  clearAuthStorage();
-  window.location.href = `${API_BASE_URL}/auth/reauth`;
+const REAUTH_COOLDOWN_MS = 30000;
+const REAUTH_AT_KEY = "aurral:reauth-at";
+let reauthStarted = false;
+
+const dropServiceWorker = async () => {
+  const registrations = (await globalThis?.navigator?.serviceWorker?.getRegistrations?.()) || [];
+  const cacheKeys = (await globalThis?.caches?.keys?.()) || [];
+  await Promise.allSettled(registrations.map((registration) => registration.unregister()));
+  await Promise.allSettled(cacheKeys.map((cacheKey) => globalThis.caches.delete(cacheKey)));
 };
 
-const forceReloadForLogin = () => {
-  if (typeof window === "undefined") return;
-  if (!registerReauthAttempt()) {
-    console.error(
-      "[Aurral] Repeated auth-recovery reload attempts detected in a short window; stopping to avoid a reload loop.",
-    );
-    return;
-  }
+const reauthenticateThroughProxy = () => {
+  if (reauthStarted || typeof window === "undefined") return;
+  const lastAt = Number(globalThis?.sessionStorage?.getItem(REAUTH_AT_KEY) || 0);
+  if (Date.now() - lastAt < REAUTH_COOLDOWN_MS) return;
+  reauthStarted = true;
+  globalThis?.sessionStorage?.setItem(REAUTH_AT_KEY, String(Date.now()));
   clearAuthStorage();
-  const separator = window.location.pathname.includes("?") ? "&" : "?";
-  window.location.href =
-    window.location.origin + window.location.pathname + separator + "_nc=" + Date.now();
+  void dropServiceWorker().then(() => window.location.reload());
 };
 
 async function request(config) {
@@ -71,6 +64,8 @@ async function request(config) {
   const headers = { ...(isBinaryData ? {} : { "Content-Type": "application/json" }), ...config.headers };
   const token = getRequestToken();
   if (token) headers.Authorization = `Bearer ${token}`;
+  const urlPath = String(config.url || "");
+  const isAuthEndpoint = urlPath.includes("/auth/login") || urlPath.includes("/auth/logout");
 
   try {
     const init = { method, headers, signal: controller.signal, redirect: "manual" };
@@ -84,10 +79,8 @@ async function request(config) {
     const res = await fetch(url, init);
 
     if (res.type === "opaqueredirect") {
-      forceProxyReauthNavigation();
-      const authError = new Error("Request was redirected to an authentication provider");
-      authError.isAuthRedirect = true;
-      throw authError;
+      if (!isAuthEndpoint) reauthenticateThroughProxy();
+      throw new Error("Request was redirected to an authentication provider");
     }
 
     const contentType = res.headers.get("content-type") || "";
@@ -105,14 +98,9 @@ async function request(config) {
     if (!res.ok) {
       const error = new Error(`Request failed with status code ${res.status}`);
       error.response = response;
-      const urlPath = String(config.url || "");
-      const isAuthEndpoint = urlPath.includes("/auth/login") || urlPath.includes("/auth/logout");
       if (res.status === 401 && !isAuthEndpoint) {
-        if (isProxyAuthActive()) {
-          forceProxyReauthNavigation();
-        } else if (data?.code === "SESSION_INVALID") {
-          forceReloadForLogin();
-        }
+        clearAuthStorage();
+        if (!data?.error) reauthenticateThroughProxy();
       }
       throw error;
     }
@@ -149,10 +137,7 @@ export const getStoredAuth = () => {
   return sessionAuth;
 };
 
-export const getRequestToken = () => {
-  const { token } = getStoredAuth();
-  return token && !isProxyAuthActive() ? token : "";
-};
+export const getRequestToken = () => getStoredAuth().token;
 
 export const setStoredAuth = ({ token = "" } = {}) => {
   if (!token) {

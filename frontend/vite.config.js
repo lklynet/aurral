@@ -11,14 +11,6 @@ const appVersion = resolveAppVersion({
 });
 const releaseChannel = globalThis?.process?.env?.VITE_RELEASE_CHANNEL || "stable";
 
-export const NAVIGATE_FALLBACK_DENYLIST = [
-  /^\/oidc\//,
-  /^\/api\//,
-  /^\/outpost\.goauthentik\.io\//,
-  /^\/logout$/,
-  /^\/oauth\.html/,
-];
-
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, cwd(), "");
   const basePath = normalizeBasePathWithTrailingSlash(env.VITE_BASE_PATH || "/");
@@ -36,7 +28,8 @@ export default defineConfig(({ mode }) => {
         registerType: "autoUpdate",
         includeAssets: ["arralogo.svg", "icons/*.png", "spotify-oauth-callback.js"],
         workbox: {
-          navigateFallbackDenylist: NAVIGATE_FALLBACK_DENYLIST,
+          navigateFallback: null,
+          directoryIndex: null,
         },
         manifest: {
           name: "Aurral - Music Discovery",

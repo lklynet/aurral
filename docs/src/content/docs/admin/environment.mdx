@@ -28,14 +28,14 @@ Use the web UI for most settings. Use these variables for Docker deployment sett
 | `TRUST_PROXY` | Set when Aurral is behind a reverse proxy. |
 | `AUTH_PROXY_ENABLED` | Enable reverse-proxy authentication. Default header `x-forwarded-user`. |
 | `AUTH_PROXY_HEADER` | Custom header that contains the authenticated username. |
-| `AUTH_PROXY_DOMAIN` | Origin of your forwardAuth login page (for example, `https://auth.example.com`). Authelia-style setups need this value. It lets CSP permit the login redirect and complete session reauthentication. |
+| `AUTH_PROXY_DOMAIN` | Origin of your forwardAuth login page (for example, `https://auth.example.com`). Aurral adds it to the `connect-src` content security policy so pages can reach your authentication origin. |
 | `AUTH_PROXY_TRUSTED_IPS` | Comma-separated proxy IP allowlist for authentication headers. You must set it when you enable proxy authentication. Without it, a direct client can use the identity header to impersonate users. |
-| `AUTH_PROXY_LOGOUT_URL` | Your proxy or IdP logout endpoint. For Authentik single-application forward auth, use `https://aurral.example.com/outpost.goauthentik.io/sign_out`. This value ends the proxy session when you log out of Aurral. |
+| `AUTH_PROXY_LOGOUT_URL` | Your proxy or IdP logout endpoint. For Authentik single-application forward auth, use `https://aurral.example.com/outpost.goauthentik.io/sign_out`. This value ends the proxy session when you log out of Aurral. Aurral hides its **Log out** control while proxy authentication is on and this value is unset. |
 | `AUTH_PROXY_DEFAULT_ROLE` | Role for proxy-auth users who do not otherwise have the admin role: `user` or `admin`. Aurral evaluates the role on every request. |
 | `AUTH_PROXY_ADMIN_USERS` | Comma-separated usernames that get the admin role. Aurral checks the list on each request. If you remove a username, Aurral changes that user on the next request. |
 | `AUTH_PROXY_ROLE_HEADER` | Optional header that contains the user's group membership (for example, Authelia's `Remote-Groups`). Usually, this is a comma-separated list. Aurral compares it with `AUTH_PROXY_ADMIN_GROUPS` on every request. |
 | `AUTH_PROXY_ADMIN_GROUPS` | Comma-separated group names that give the admin role. Aurral compares these names with `AUTH_PROXY_ROLE_HEADER`. A group named `admin` has no special function unless you list it here. |
-| `SESSION_EXPIRY_HOURS` | Password-login session lifetime in hours. Default `720` (30 days). |
+| `SESSION_EXPIRY_HOURS` | Session lifetime in hours for password login and for sessions issued after proxy authentication. Default `720` (30 days). |
 
 ## Logging
 

@@ -2,7 +2,7 @@ import crypto from "crypto";
 import os from "os";
 import { dbOps, userOps } from "../db/helpers/index.js";
 import { getDefaultListenHistoryProfile } from "../services/listeningHistory.js";
-import { getSessionByToken } from "../config/session-helpers.js";
+import { createSession, getSessionByToken } from "../config/session-helpers.js";
 import { hashPassword, verifyPassword, needsRehash } from "./passwordHash.js";
 
 const safeCompare = (a, b) => {
@@ -485,6 +485,14 @@ export function resolveProxyUser(req) {
     return toResolvedUser(existing);
   }
   return createProxyUser(username, role);
+}
+
+export function issueProxySession(req) {
+  if (!isAuthRequiredByConfig()) return null;
+  if (resolveSessionUserFromToken(getBearerToken(req))) return null;
+  const proxyUser = resolveProxyUser(req);
+  if (!proxyUser?.id || proxyUser.id < 0) return null;
+  return createSession(proxyUser.id, req.ip || null, req.headers["user-agent"] || null);
 }
 
 function migrateLegacyAdmin() {

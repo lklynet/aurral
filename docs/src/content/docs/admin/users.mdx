@@ -39,7 +39,13 @@ You do not have to edit the account in Aurral.
 
 Set `AUTH_PROXY_TRUSTED_IPS` to your reverse proxy's address. Without it, Aurral accepts identity headers from any client that can reach Aurral.
 
-For Authelia or similar forwardAuth, set `AUTH_PROXY_DOMAIN` to the login origin. When a session expires, Aurral navigates to `/api/auth/reauth` so the proxy can show its login page, then returns the user to Aurral's home page.
+On the first request that your proxy authenticates, Aurral issues its own session and the browser uses it for later API calls. Use `SESSION_EXPIRY_HOURS` to change how long an Aurral session lasts.
+
+Most setups also protect `/api` with the proxy, so the proxy still decides every request. Page loads always go to the network rather than to Aurral's offline cache, so your proxy can redirect them to the identity provider whenever its session has ended.
+
+A tab that is already open has no page load to redirect. When the proxy rejects one of its API calls, Aurral reloads that tab, which sends it back through the proxy. Aurral reloads at most once every 30 seconds, so a misconfigured proxy cannot cause a redirect loop.
+
+When the proxy protects only page loads and leaves `/api` to Aurral's own session, the open page keeps working after the identity-provider session ends, until the Aurral session expires.
 
 For Authentik, route `/outpost.goauthentik.io` directly to the Authentik outpost.
 
@@ -52,6 +58,8 @@ curl -i https://aurral.example.com/outpost.goauthentik.io/ping
 The response must be `204`.
 
 Set `AUTH_PROXY_LOGOUT_URL=https://aurral.example.com/outpost.goauthentik.io/sign_out` to end the Authentik session when you log out.
+
+Aurral hides its **Log out** control while proxy authentication is on and this variable is unset, because clearing an Aurral session cannot end the proxy session. Set the variable to get the control back.
 
 Proxy-created users cannot use local password login until an admin sets a password. After creation, admins can manage the account from **Settings > Users**.
 

@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import { build } from "vite";
 
-import { NAVIGATE_FALLBACK_DENYLIST } from "../../frontend/vite.config.js";
+test("the service worker leaves navigations to the network", async (t) => {
+  const outDir = await mkdtemp(join(tmpdir(), "aurral-sw-"));
+  t.after(() => rm(outDir, { recursive: true, force: true }));
 
-const isHandledByAurralShell = (pathname) =>
-  !NAVIGATE_FALLBACK_DENYLIST.some((pattern) => pattern.test(pathname));
+  await build({ root: "frontend", logLevel: "silent", build: { outDir, emptyOutDir: true } });
+  const serviceWorker = await readFile(join(outDir, "sw.js"), "utf8");
 
-test("PWA navigation fallback does not claim reverse-proxy auth routes", () => {
-  assert.equal(isHandledByAurralShell("/discover"), true);
-  assert.equal(isHandledByAurralShell("/api/auth/reauth"), false);
-  assert.equal(isHandledByAurralShell("/outpost.goauthentik.io/start"), false);
-  assert.equal(isHandledByAurralShell("/outpost.goauthentik.io/sign_out"), false);
+  assert.doesNotMatch(serviceWorker, /NavigationRoute/);
+  assert.doesNotMatch(serviceWorker, /createHandlerBoundToURL/);
 });

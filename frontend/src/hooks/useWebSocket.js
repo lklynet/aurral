@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import api, { forceProxyReauthNavigation, getRequestToken } from "../utils/api/core.js";
-import { isProxyAuthActive } from "../utils/authRecovery.js";
+import { getRequestToken } from "../utils/api/core.js";
 
 function getWsUrl() {
   const token = getRequestToken();
@@ -45,26 +44,6 @@ const notifyConnectionState = (isConnected) => {
   for (const listener of statusListeners) {
     listener(isConnected);
   }
-};
-
-export const recoverProxyAuthFromWebSocketClose = async (event) => {
-  if (!isProxyAuthActive()) return false;
-  if (Number(event?.code) === 4401) {
-    forceProxyReauthNavigation();
-    return true;
-  }
-  if (Number(event?.code) !== 1006) return false;
-
-  try {
-    const { data } = await api.get("/health/bootstrap", { timeout: 5000 });
-    if (data?.proxyAuthEnabled && data?.authRequired && !data?.user) {
-      forceProxyReauthNavigation();
-      return true;
-    }
-  } catch (error) {
-    return error?.isAuthRedirect || error?.response?.status === 401;
-  }
-  return false;
 };
 
 const hasActiveListeners = () =>
@@ -230,13 +209,12 @@ function connectSocket() {
     notifyConnectionState(false);
   };
 
-  currentSocket.onclose = async (event) => {
+  currentSocket.onclose = () => {
     if (socket !== currentSocket) return;
     clearHeartbeat();
     notifyConnectionState(false);
     socket = null;
-    const isRecoveringProxyAuth = await recoverProxyAuthFromWebSocketClose(event);
-    if (!isRecoveringProxyAuth && shouldReconnect && hasActiveListeners()) {
+    if (shouldReconnect && hasActiveListeners()) {
       scheduleReconnect();
     }
   };

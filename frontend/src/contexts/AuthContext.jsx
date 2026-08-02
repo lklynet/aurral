@@ -11,7 +11,6 @@ import {
   loginApi,
   logoutApi,
 } from "../utils/api/endpoints/auth.js";
-import { isProxyAuthActive, syncProxyAuthFromBootstrap } from "../utils/authRecovery.js";
 
 const AuthContext = createContext(null);
 
@@ -27,6 +26,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const bootstrap = await getBootstrapStatus();
       setBootstrap(bootstrap);
+      if (bootstrap.token) setStoredAuth({ token: bootstrap.token });
       const isOnboarding = !!bootstrap.onboardingRequired;
       setOnboardingRequired(isOnboarding);
 
@@ -41,14 +41,11 @@ export const AuthProvider = ({ children }) => {
       setAuthRequired(isRequired);
 
       if (isRequired && bootstrap.user) {
-        syncProxyAuthFromBootstrap(bootstrap);
         setUser(bootstrap.user);
         setIsAuthenticated(true);
         setIsLoading(false);
         return;
       }
-
-      syncProxyAuthFromBootstrap();
 
       if (!isRequired) {
         setUser(
@@ -118,23 +115,20 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const logout = useCallback(async () => {
+    const proxyLogoutUrl = bootstrap?.proxyLogoutUrl;
+    if (proxyLogoutUrl) {
+      void logoutApi().catch(() => {});
+      clearAuthStorage();
+      invalidateBootstrapCache();
+      window.location.href = proxyLogoutUrl;
+      return;
+    }
+
     try {
       await logoutApi();
     } catch {}
     clearAuthStorage();
     invalidateBootstrapCache();
-
-    let proxyLogoutUrl = bootstrap?.proxyLogoutUrl;
-    if (!proxyLogoutUrl && isProxyAuthActive()) {
-      try {
-        proxyLogoutUrl = (await getBootstrapStatus())?.proxyLogoutUrl;
-      } catch {}
-    }
-
-    if (proxyLogoutUrl) {
-      window.location.href = proxyLogoutUrl;
-      return;
-    }
     setIsAuthenticated(false);
     setUser(null);
   }, [bootstrap]);
@@ -145,6 +139,8 @@ export const AuthProvider = ({ children }) => {
     return !!user.permissions?.[perm];
   }, [user]);
 
+  const canLogOut = !bootstrap?.proxyAuthEnabled || !!bootstrap?.proxyLogoutUrl;
+
   return (
     <AuthContext.Provider
       value={useMemo(() => ({
@@ -154,11 +150,12 @@ export const AuthProvider = ({ children }) => {
         bootstrap,
         login,
         logout,
+        canLogOut,
         authRequired,
         onboardingRequired,
         refreshAuth: checkAuthStatus,
         hasPermission,
-      }), [isAuthenticated, isLoading, user, bootstrap, login, logout, authRequired, onboardingRequired, checkAuthStatus, hasPermission])}
+      }), [isAuthenticated, isLoading, user, bootstrap, login, logout, canLogOut, authRequired, onboardingRequired, checkAuthStatus, hasPermission])}
     >
       {children}
     </AuthContext.Provider>
