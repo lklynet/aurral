@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+      issues: write
       pull-requests: write
       packages: write
     steps:
@@ -68,7 +69,7 @@ jobs:
             echo '```'
           } >> "${GITHUB_STEP_SUMMARY}"
 
-      - name: Comment preview image on pull request
+      - name: Comment preview image on pull request and linked issues
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           IMAGE_TAG: pr-${{ github.event.number }}
@@ -113,6 +114,68 @@ jobs:
               --body "${COMMENT_BODY}" >/dev/null
           fi
 
+          OWNER="${REPOSITORY%%/*}"
+          REPO="${REPOSITORY#*/}"
+          ISSUE_MARKER="aurral-preview-issue-${PR_NUMBER}"
+          CLOSING_ISSUES="$(gh api graphql \
+            -f query='query($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $number) {
+                  closingIssuesReferences(first: 100) {
+                    nodes { number }
+                  }
+                }
+              }
+            }' \
+            -f "owner=${OWNER}" \
+            -f "repo=${REPO}" \
+            -F "number=${PR_NUMBER}" \
+            --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[]?.number')"
+
+          while IFS= read -r issue_number; do
+            [ -z "${issue_number}" ] && continue
+
+            ISSUE_COMMENT_BODY="$(cat <<EOF
+          <!-- ${ISSUE_MARKER} -->
+          ## Aurral preview image ready
+
+          [Pull request #${PR_NUMBER}](https://github.com/${REPOSITORY}/pull/${PR_NUMBER}), which is linked to this issue, has a preview image ready to test before it is merged into \`nightly\`. It will be replaced when the pull request changes.
+
+          \`\`\`bash
+          docker pull ghcr.io/${REPOSITORY}:${IMAGE_TAG}
+          \`\`\`
+
+          To test it with your existing Docker Compose setup:
+
+          1. Back up your Aurral config.
+          2. Temporarily change the Aurral service image to \`ghcr.io/${REPOSITORY}:${IMAGE_TAG}\`.
+          3. Run \`docker compose pull aurral && docker compose up -d aurral\`.
+          4. Exercise the behavior changed by the pull request.
+          5. Restore the image reference that was configured before testing.
+
+          Please report your results and approval on the pull request before it is merged into nightly.
+
+          [View the preview workflow run](https://github.com/${REPOSITORY}/actions/runs/${RUN_ID})
+          EOF
+            )"
+
+            COMMENT_ID="$(gh api --paginate \
+              "repos/${REPOSITORY}/issues/${issue_number}/comments" \
+              --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"<!-- ${ISSUE_MARKER} -->\"))) | .id" | head -n1)"
+
+            if [ -n "${COMMENT_ID}" ]; then
+              gh api \
+                --method PATCH \
+                "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}" \
+                -f "body=${ISSUE_COMMENT_BODY}" >/dev/null
+            else
+              gh api \
+                --method POST \
+                "repos/${REPOSITORY}/issues/${issue_number}/comments" \
+                -f "body=${ISSUE_COMMENT_BODY}" >/dev/null
+            fi
+          done <<< "${CLOSING_ISSUES}"
+
   delete-image:
     if: >-
       github.event.action == 'closed' &&
@@ -121,6 +184,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      issues: write
+      pull-requests: read
       packages: write
     steps:
       - name: Delete preview image
@@ -140,3 +205,49 @@ jobs:
             fi
           done
           echo "No preview image tagged ${IMAGE_TAG}."
+
+      - name: Invalidate linked issue preview comments
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          OWNER="${REPOSITORY%%/*}"
+          REPO="${REPOSITORY#*/}"
+          ISSUE_MARKER="aurral-preview-issue-${PR_NUMBER}"
+          COMMENT_BODY="$(cat <<EOF
+          <!-- ${ISSUE_MARKER} -->
+          ## Aurral preview image no longer available
+
+          The preview image for [pull request #${PR_NUMBER}](https://github.com/${REPOSITORY}/pull/${PR_NUMBER}) was retired because the pull request was closed. It is no longer available for testing.
+          EOF
+          )"
+          CLOSING_ISSUES="$(gh api graphql \
+            -f query='query($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $number) {
+                  closingIssuesReferences(first: 100) {
+                    nodes { number }
+                  }
+                }
+              }
+            }' \
+            -f "owner=${OWNER}" \
+            -f "repo=${REPO}" \
+            -F "number=${PR_NUMBER}" \
+            --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[]?.number')"
+
+          while IFS= read -r issue_number; do
+            [ -z "${issue_number}" ] && continue
+
+            COMMENT_ID="$(gh api --paginate \
+              "repos/${REPOSITORY}/issues/${issue_number}/comments" \
+              --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"<!-- ${ISSUE_MARKER} -->\"))) | .id" | head -n1)"
+
+            if [ -n "${COMMENT_ID}" ]; then
+              gh api \
+                --method PATCH \
+                "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}" \
+                -f "body=${COMMENT_BODY}" >/dev/null
+            fi
+          done <<< "${CLOSING_ISSUES}"
