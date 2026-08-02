@@ -45,6 +45,11 @@ function normalizeProfileId(value) {
   return Math.trunc(parsed);
 }
 
+function normalizeLidarrArtistId(value) {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? String(parsed) : null;
+}
+
 function normalizeMonitorOption(value) {
   const option = String(value || "none").trim();
   return VALID_MONITOR_OPTIONS.has(option) ? option : "none";
@@ -948,6 +953,20 @@ export class LidarrClient {
       },
     };
 
+    const resolveAddedArtist = async (artist) => {
+      if (normalizeLidarrArtistId(artist?.id)) {
+        return artist;
+      }
+      let resolvedArtist = await this.getArtistByMbid(mbid);
+      if (!normalizeLidarrArtistId(resolvedArtist?.id)) {
+        resolvedArtist = await this.getArtistByMbid(mbid, { forceRefresh: true });
+      }
+      if (!normalizeLidarrArtistId(resolvedArtist?.id)) {
+        throw new Error(`Lidarr add did not return a numeric artist ID for ${mbid}`);
+      }
+      return resolvedArtist;
+    };
+
     const ensureArtistMonitored = async (artist) => {
       if (albumOnly && options.triggerSearch === true) {
         logger.info("library", "Queued Lidarr album search with artist add", {
@@ -955,15 +974,16 @@ export class LidarrClient {
           albumMbid,
         });
       }
-      if (!artist?.id || artist.monitored === true) {
+      const artistId = normalizeLidarrArtistId(artist?.id);
+      if (!artistId || artist.monitored === true) {
         return artist;
       }
-      return this.updateArtistMonitoring(artist.id, monitoring.option);
+      return this.updateArtistMonitoring(artistId, monitoring.option);
     };
 
+    let result;
     try {
-      const result = await this.request("/artist", "POST", lidarrArtist);
-      return ensureArtistMonitored(result);
+      result = await this.request("/artist", "POST", lidarrArtist);
     } catch (error) {
       if (requestedMonitorOption !== "all") {
         throw error;
@@ -976,48 +996,64 @@ export class LidarrClient {
           monitor: "existing",
         },
       };
-      const result = await this.request("/artist", "POST", fallbackArtist);
-      return ensureArtistMonitored(result);
+      result = await this.request("/artist", "POST", fallbackArtist);
     }
+    return ensureArtistMonitored(await resolveAddedArtist(result));
   }
 
   async getArtist(artistId) {
-    return this.request(`/artist/${artistId}`);
+    const normalizedArtistId = normalizeLidarrArtistId(artistId);
+    if (!normalizedArtistId) {
+      throw new Error(`Lidarr artist ID must be numeric: ${artistId}`);
+    }
+    return this.request(`/artist/${normalizedArtistId}`);
   }
 
-  async getArtistByMbid(mbid) {
+  async getArtistByMbid(mbid, { forceRefresh = false } = {}) {
     const normalizedMbid = String(mbid || "").trim();
     if (!normalizedMbid) return null;
 
-    const cachedArtist = this._getArtistByMbidCacheEntry(normalizedMbid);
-    if (cachedArtist !== undefined) {
-      return cachedArtist;
+    if (forceRefresh) {
+      this._artistByMbidCache.delete(normalizedMbid);
+    } else {
+      const cachedArtist = this._getArtistByMbidCacheEntry(normalizedMbid);
+      if (cachedArtist !== undefined) {
+        return cachedArtist;
+      }
+
+      if (this._artistListCache && Date.now() - this._artistListCache.at < LIDARR_LIST_CACHE_MS) {
+        const artists = Array.isArray(this._artistListCache.data)
+          ? this._artistListCache.data
+          : [];
+        this._populateArtistIndexes(artists);
+        const artist = artists.find((entry) => entry?.foreignArtistId === normalizedMbid) || null;
+        this._setArtistByMbidCacheEntry(normalizedMbid, artist);
+        return artist;
+      }
     }
 
-    if (this._artistListCache && Date.now() - this._artistListCache.at < LIDARR_LIST_CACHE_MS) {
-      const artists = Array.isArray(this._artistListCache.data) ? this._artistListCache.data : [];
-      this._populateArtistIndexes(artists);
-      const artist = artists.find((entry) => entry?.foreignArtistId === normalizedMbid) || null;
-      this._setArtistByMbidCacheEntry(normalizedMbid, artist);
-      return artist;
-    }
-
-    const inflight = this._artistByMbidInflight.get(normalizedMbid);
-    if (inflight) {
-      return inflight;
+    if (!forceRefresh) {
+      const inflight = this._artistByMbidInflight.get(normalizedMbid);
+      if (inflight) {
+        return inflight;
+      }
     }
 
     const startedAt = Date.now();
-    const requestPromise = this.request("/artist")
+    const requestPromise = this.request("/artist", "GET", null, false, { forceRefresh })
       .then((artists) => {
         const list = Array.isArray(artists) ? artists : [];
         this._populateArtistIndexes(list);
         const artist = list.find((entry) => entry?.foreignArtistId === normalizedMbid) || null;
-        this._setArtistByMbidCacheEntry(normalizedMbid, artist);
+        if (artist || !forceRefresh) {
+          this._setArtistByMbidCacheEntry(normalizedMbid, artist);
+        }
         return artist;
       })
       .finally(() => {
-        this._artistByMbidInflight.delete(normalizedMbid);
+        if (!forceRefresh) {
+          this._artistByMbidInflight.delete(normalizedMbid);
+        }
         const durationMs = Date.now() - startedAt;
         logger.debug("api", "Lidarr getArtistByMbid completed", {
           mbid: normalizedMbid,
@@ -1025,23 +1061,33 @@ export class LidarrClient {
         });
       });
 
-    this._artistByMbidInflight.set(normalizedMbid, requestPromise);
+    if (!forceRefresh) {
+      this._artistByMbidInflight.set(normalizedMbid, requestPromise);
+    }
     return requestPromise;
   }
 
   async updateArtist(artistId, updates) {
-    const artist = await this.getArtist(artistId);
+    const normalizedArtistId = normalizeLidarrArtistId(artistId);
+    if (!normalizedArtistId) {
+      throw new Error(`Lidarr artist ID must be numeric: ${artistId}`);
+    }
+    const artist = await this.getArtist(normalizedArtistId);
 
     const updated = {
       ...artist,
       ...updates,
     };
 
-    return this.request(`/artist/${artistId}`, "PUT", updated);
+    return this.request(`/artist/${normalizedArtistId}`, "PUT", updated);
   }
 
   async updateArtistMonitoring(artistId, monitorOption) {
-    const artist = await this.getArtist(artistId);
+    const normalizedArtistId = normalizeLidarrArtistId(artistId);
+    if (!normalizedArtistId) {
+      throw new Error(`Lidarr artist ID must be numeric: ${artistId}`);
+    }
+    const artist = await this.getArtist(normalizedArtistId);
     const monitoring = getArtistMonitoringPayload(monitorOption);
 
     const updated = {
@@ -1056,7 +1102,7 @@ export class LidarrClient {
     };
 
     try {
-      return await this.request(`/artist/${artistId}`, "PUT", updated);
+      return await this.request(`/artist/${normalizedArtistId}`, "PUT", updated);
     } catch (error) {
       if (monitoring.option !== "all") {
         throw error;
@@ -1069,7 +1115,7 @@ export class LidarrClient {
           monitor: "existing",
         },
       };
-      return this.request(`/artist/${artistId}`, "PUT", fallbackUpdated);
+      return this.request(`/artist/${normalizedArtistId}`, "PUT", fallbackUpdated);
     }
   }
 

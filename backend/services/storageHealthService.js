@@ -674,8 +674,8 @@ async function checkSlskdSection() {
     extraSteps: (connection) => {
       if (connection.soulseekConnected === false) {
         return [
-          healthStep("soulseek", "warn", "Soulseek network is connected", {
-            detail: connection.serverState || "Disconnected",
+          healthStep("soulseek", "warn", "slskd network is not connected", {
+            detail: "slskd is started but the network is not connected",
             fix: "Open slskd, log in, and connect to the Soulseek server before starting downloads.",
           }),
         ];
