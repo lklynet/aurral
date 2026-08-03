@@ -1235,12 +1235,17 @@ export class LidarrClient {
       false,
       options,
     );
-    return Array.isArray(albums)
-      ? albums.find(
-          (album) =>
-            String(album?.foreignAlbumId ?? "").trim().toLowerCase() === normalizedMbidKey,
-        )
-      : undefined;
+    const candidates = Array.isArray(albums)
+      ? albums
+      : Array.isArray(albums?.records)
+        ? albums.records
+        : albums && typeof albums === "object"
+          ? [albums]
+          : [];
+    return candidates.find(
+      (album) =>
+        String(album?.foreignAlbumId ?? "").trim().toLowerCase() === normalizedMbidKey,
+    );
   }
 
   async getAlbumsByMbidsSettled(albumMbids, options = {}) {

@@ -99,6 +99,51 @@ test("getAlbumByMbid selects the matching album from filtered results", async (t
   client._httpsInsecureAgent.destroy();
 });
 
+test("getAlbumByMbid accepts wrapped Lidarr album results", async (t) => {
+  const server = http.createServer((request, response) => {
+    if (request.url !== "/api/v1/album?foreignAlbumId=wrapped-album") {
+      response.writeHead(404);
+      response.end();
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        records: [
+          {
+            id: 42,
+            artistId: 7,
+            foreignAlbumId: "wrapped-album",
+          },
+        ],
+      }),
+    );
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const address = server.address();
+  const client = new LidarrClient();
+  client._holdConfig = true;
+  client.config = {
+    url: `http://127.0.0.1:${address.port}`,
+    apiKey: "test",
+    timeoutMs: 2000,
+    circuitDisabled: true,
+  };
+
+  const album = await client.getAlbumByMbid("wrapped-album", { forceRefresh: true });
+
+  assert.equal(album?.id, 42);
+  assert.equal(album?.artistId, 7);
+  client._httpAgent.destroy();
+  client._httpsAgent.destroy();
+  client._httpsInsecureAgent.destroy();
+});
+
 test("getAlbumsByMbidsSettled bounds concurrent lookups and preserves failures", async (t) => {
   const client = new LidarrClient();
   t.after(() => {
