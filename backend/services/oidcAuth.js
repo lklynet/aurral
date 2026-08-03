@@ -104,7 +104,7 @@ async function getDiscoveryConfig() {
   if (!config) {
     throw new Error("OIDC is not configured");
   }
-  const key = `${config.issuer}|${config.clientId}|${config.redirectUri}`;
+  const key = `${config.issuer}|${config.clientId}|${config.clientSecret}|${config.redirectUri}`;
   if (discoveryConfig && discoveryKey === key) return { config, oidc: discoveryConfig };
   const issuerUrl = new URL(config.issuer);
   const discoveryOptions =

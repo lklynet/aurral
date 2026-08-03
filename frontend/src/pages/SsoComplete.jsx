@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { setStoredAuth } from "../utils/api/core.js";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -9,18 +9,29 @@ const readHashParams = () => {
   return new URLSearchParams(hash);
 };
 
+let consumedSsoParams = null;
+
+const consumeSsoParams = () => {
+  if (consumedSsoParams) return consumedSsoParams;
+  const params = readHashParams();
+  const token = params.get("token");
+  const error = params.get("error");
+  consumedSsoParams = { token, error };
+  if (token || error) {
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  }
+  return consumedSsoParams;
+};
+
 const SsoComplete = () => {
   useDocumentTitle("Signing in");
+  const navigate = useNavigate();
   const { refreshAuth } = useAuth();
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    const params = readHashParams();
-    const token = params.get("token");
-    const hashError = params.get("error");
-
-    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    const { token, error: hashError } = consumeSsoParams();
 
     if (hashError) {
       setError(hashError);
@@ -36,7 +47,7 @@ const SsoComplete = () => {
     refreshAuth()
       .then(() => {
         if (!cancelled) {
-          window.location.replace("/");
+          navigate("/", { replace: true });
         }
       })
       .catch(() => {
@@ -46,7 +57,7 @@ const SsoComplete = () => {
     return () => {
       cancelled = true;
     };
-  }, [refreshAuth]);
+  }, [navigate, refreshAuth]);
 
   if (error) {
     return (
