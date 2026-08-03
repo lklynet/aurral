@@ -409,13 +409,12 @@ export class WeeklyFlowPlaylistManager {
     const playlistIds = [
       ...new Set([...flows.map((f) => f.id), ...sharedPlaylists.map((p) => p.id)]),
     ];
-    const membership = new Map(playlistIds.map((id) => [id, []]));
+    const membership = new Map(playlistIds.map((id) => [id, new Set()]));
     const addMembership = (playlistId, ratingKey) => {
       const keys = membership.get(playlistId);
       if (!keys || ratingKey == null) return;
       const key = String(ratingKey);
-      if (!key || keys.includes(key)) return;
-      keys.push(key);
+      if (key) keys.add(key);
     };
     // Plex de-duplicates the same song across flow folders inconsistently:
     // sometimes one track with one path, sometimes two separate tracks sharing
@@ -460,23 +459,30 @@ export class WeeklyFlowPlaylistManager {
         .map((job) => ({ playlistId, job })),
     );
     if (reuseJobs.length > 0) {
-      const existingTracks = await this.plexClient.getMusicTracks(sectionId);
-      const tracksByPath = new Map();
-      for (const track of existingTracks) {
-        for (const file of track.files || []) {
-          const key = normalizePlexTrackPath(file);
-          if (!key) continue;
-          if (!tracksByPath.has(key)) tracksByPath.set(key, track);
+      try {
+        const existingTracks = await this.plexClient.getMusicTracks(sectionId);
+        const tracksByPath = new Map();
+        for (const track of existingTracks) {
+          for (const file of track.files || []) {
+            const key = normalizePlexTrackPath(file);
+            if (!key) continue;
+            if (!tracksByPath.has(key)) tracksByPath.set(key, track);
+          }
         }
-      }
-      for (const { playlistId, job } of reuseJobs) {
-        for (const candidate of this._getPlexTrackPathCandidates(job)) {
-          const track = tracksByPath.get(candidate);
-          if (track) addMembership(playlistId, track.ratingKey);
+        for (const { playlistId, job } of reuseJobs) {
+          for (const candidate of this._getPlexTrackPathCandidates(job)) {
+            const track = tracksByPath.get(candidate);
+            if (track) addMembership(playlistId, track.ratingKey);
+          }
         }
+      } catch (err) {
+        console.warn(
+          "[WeeklyFlowPlaylistManager] Failed to match reused Plex tracks:",
+          err?.message,
+        );
       }
     }
-    const ratingKeysFor = (playlistType) => membership.get(playlistType) || [];
+    const ratingKeysFor = (playlistType) => [...(membership.get(playlistType) || [])];
 
     const deletePlexPlaylistsByNames = async (names) => {
       const playlists = await this.plexClient.getPlaylists();
