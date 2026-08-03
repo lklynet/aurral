@@ -866,14 +866,19 @@ export class WeeklyFlowWorker {
               );
             }
 
-            const flow = flowPlaylistConfig.getFlow(playlistType);
             const completed = done;
+            const flowName =
+              playlistManager.getPlaylistName(playlistType) || playlistType;
+            const flowPath = path.join(
+              playlistManager.playlistLibraryRoot,
+              playlistType,
+            );
             const { notifyWeeklyFlowDone } = await import("../notificationService.js");
             notifyWeeklyFlowDone(
               playlistType,
               { completed, failed },
-              path.join(playlistManager.libraryRoot, playlistType),
-              flow ? flow.name : playlistType,
+              flowPath,
+              flowName,
             ).catch((err) =>
               console.warn("[WeeklyFlowWorker] Gotify notification failed:", err.message),
             );

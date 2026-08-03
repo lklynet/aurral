@@ -208,12 +208,13 @@ export async function notifyWeeklyFlowDone(playlistType, stats = {}, flowPath = 
   const gotify = settings.integrations?.gotify || {};
   const completed = stats.completed ?? 0;
   const failed = stats.failed ?? 0;
+  const displayName = String(flowName || playlistType || "").trim() || playlistType;
   const tasks = [];
   if (gotify.notifyWeeklyFlowDone) {
     tasks.push(
       queueGotify(
         "Aurral – Weekly Flow",
-        `Weekly flow "${playlistType}" finished processing.${completed > 0 || failed > 0 ? ` Completed: ${completed}, Failed: ${failed}` : ""}`,
+        `Weekly flow "${displayName}" finished processing.${completed > 0 || failed > 0 ? ` Completed: ${completed}, Failed: ${failed}` : ""}`,
         5,
       ),
     );
@@ -221,7 +222,7 @@ export async function notifyWeeklyFlowDone(playlistType, stats = {}, flowPath = 
   tasks.push(
     queueWebhooks(settings.integrations, "notifyWeeklyFlowDone", {
       flowPath,
-      flowName,
+      flowName: displayName,
     }),
   );
   await Promise.all(tasks);

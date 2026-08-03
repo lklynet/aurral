@@ -15,7 +15,7 @@ const [isolatedState, { db }, { dbOps }, notifications] = await setupIsolatedBac
   "backend/services/notificationService.js",
 );
 
-const { interpolateBody, deliverQueuedNotification, notifyRequestMade, notifyRequestAvailable } =
+const { interpolateBody, deliverQueuedNotification, notifyRequestMade, notifyRequestAvailable, notifyWeeklyFlowDone } =
   notifications;
 
 async function withCaptureServer(handler) {
@@ -260,5 +260,52 @@ test("notifyRequestMade does not queue Gotify when the event toggle is off", asy
 
     await new Promise((resolve) => setTimeout(resolve, 250));
     assert.equal(requests.length, 0);
+  });
+});
+
+test("notifyWeeklyFlowDone uses display name and track library path placeholders", async () => {
+  await withCaptureServer(async ({ baseUrl, waitFor }) => {
+    const settings = dbOps.getSettings();
+    dbOps.updateSettings({
+      integrations: {
+        ...settings.integrations,
+        gotify: {
+          url: baseUrl,
+          token: "test-token",
+          notifyWeeklyFlowDone: true,
+        },
+        webhookEvents: {
+          notifyWeeklyFlowDone: true,
+        },
+        webhooks: [
+          {
+            url: `${baseUrl}/hook`,
+            body: '{"name":"$flowName","path":"$flowPath"}',
+            headers: [],
+          },
+        ],
+      },
+    });
+
+    const playlistId = "c0c01bc3-72ca-4110-8ab6-681f132a6e63";
+    const flowPath = `/data/downloads/aurral-weekly-flow/${playlistId}`;
+    await notifyWeeklyFlowDone(
+      playlistId,
+      { completed: 3, failed: 1 },
+      flowPath,
+      "Late Night",
+    );
+
+    const requests = await waitFor(2);
+    const gotify = requests.find((entry) => entry.url.startsWith("/message"));
+    const webhook = requests.find((entry) => entry.url === "/hook");
+    assert.ok(gotify);
+    assert.match(gotify.body.message, /Weekly flow "Late Night"/);
+    assert.doesNotMatch(gotify.body.message, /c0c01bc3-72ca-4110-8ab6-681f132a6e63/);
+    assert.deepEqual(webhook.body, {
+      name: "Late Night",
+      path: flowPath,
+    });
+    assert.doesNotMatch(webhook.body.path, /_playlists/);
   });
 });

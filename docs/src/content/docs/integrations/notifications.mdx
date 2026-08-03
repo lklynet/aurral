@@ -30,7 +30,8 @@ Webhooks send an HTTP request for each enabled event. Configure them in the **We
 Enter these values for each webhook:
 - **URL**: the endpoint to call (must start with `http://` or `https://`)
 - **Body**: optional JSON data. Use these placeholders:
-  - `$flowPath` and `$flowName` for weekly flow playlist values
+  - `$flowName`: playlist display name
+  - `$flowPath`: on-disk playlist track folder under `aurral-weekly-flow` (not the `_playlists` M3U folder)
   - `$albumName`, `$artistName`, `$username`, `$userId`, and `$event` for request events
 - **Headers**: optional key-value pairs
 
