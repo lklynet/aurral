@@ -42,7 +42,9 @@ export class WeeklyFlowPlaylistSource {
 
   _matchesYearRange(releaseYear, yearFrom, yearTo) {
     if (!this._hasYearRange(yearFrom, yearTo)) return true;
-    const year = Number(getYear(releaseYear));
+    const extractedYear = getYear(releaseYear);
+    if (extractedYear == null) return false;
+    const year = Number(extractedYear);
     if (!Number.isFinite(year)) return false;
     if (yearFrom != null && year < yearFrom) return false;
     if (yearTo != null && year > yearTo) return false;

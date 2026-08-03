@@ -18,6 +18,7 @@ test("year range matching accepts bounds and rejects unknown years when set", ()
   assert.equal(source._matchesYearRange("2024", 2020, null), true);
   assert.equal(source._matchesYearRange("2019", 2020, null), false);
   assert.equal(source._matchesYearRange(null, 2020, 2026), false);
+  assert.equal(source._matchesYearRange(null, null, 2000), false);
   assert.equal(source._matchesYearRange(null, null, null), true);
 });
 

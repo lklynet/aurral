@@ -74,6 +74,34 @@ test("stores and swaps optional release year range", () => {
   assert.equal(updated?.yearTo, null);
 });
 
+test("partial year updates do not silently swap the untouched bound", () => {
+  const flow = flowPlaylistConfig.createFlow({
+    name: "Nineties",
+    size: 20,
+    yearFrom: 1980,
+    yearTo: 1989,
+  });
+
+  const raisedFrom = flowPlaylistConfig.updateFlow(flow.id, {
+    yearFrom: 2020,
+  });
+  assert.equal(raisedFrom?.yearFrom, 2020);
+  assert.equal(raisedFrom?.yearTo, null);
+
+  const loweredTo = flowPlaylistConfig.updateFlow(flow.id, {
+    yearFrom: 1980,
+    yearTo: 1989,
+  });
+  assert.equal(loweredTo?.yearFrom, 1980);
+  assert.equal(loweredTo?.yearTo, 1989);
+
+  const earlyTo = flowPlaylistConfig.updateFlow(flow.id, {
+    yearTo: 1970,
+  });
+  assert.equal(earlyTo?.yearFrom, null);
+  assert.equal(earlyTo?.yearTo, 1970);
+});
+
 test("rejects flow and shared playlist names that collide across types", () => {
   const flow = flowPlaylistConfig.createFlow({ name: "Rock" });
   assert.throws(

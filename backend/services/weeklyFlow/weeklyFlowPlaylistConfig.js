@@ -36,6 +36,31 @@ export const normalizeYearRange = (yearFrom, yearTo) => {
   return { yearFrom: from, yearTo: to };
 };
 
+export const resolveYearRangeUpdate = (current, updates = {}) => {
+  const hasYearFromUpdate = Object.prototype.hasOwnProperty.call(updates, "yearFrom");
+  const hasYearToUpdate = Object.prototype.hasOwnProperty.call(updates, "yearTo");
+  if (!hasYearFromUpdate && !hasYearToUpdate) {
+    return {
+      yearFrom: normalizeYearBound(current?.yearFrom),
+      yearTo: normalizeYearBound(current?.yearTo),
+    };
+  }
+  if (hasYearFromUpdate && hasYearToUpdate) {
+    return normalizeYearRange(updates.yearFrom, updates.yearTo);
+  }
+  let yearFrom = hasYearFromUpdate
+    ? normalizeYearBound(updates.yearFrom)
+    : normalizeYearBound(current?.yearFrom);
+  let yearTo = hasYearToUpdate
+    ? normalizeYearBound(updates.yearTo)
+    : normalizeYearBound(current?.yearTo);
+  if (yearFrom != null && yearTo != null && yearFrom > yearTo) {
+    if (hasYearFromUpdate) yearTo = null;
+    else yearFrom = null;
+  }
+  return { yearFrom, yearTo };
+};
+
 export const normalizeWeightMap = (value) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const out = {};
@@ -623,6 +648,7 @@ export const flowPlaylistConfig = {
     });
     const currentSchedule = normalizeScheduleDays(current.scheduleDays);
     const currentScheduleTime = normalizeScheduleTime(current.scheduleTime);
+    const { yearFrom, yearTo } = resolveYearRangeUpdate(current, updates || {});
     const next = normalizeFlow({
       ...current,
       name: nextName,
@@ -633,12 +659,8 @@ export const flowPlaylistConfig = {
       scheduleDays: updates?.scheduleDays ?? current.scheduleDays,
       scheduleTime: updates?.scheduleTime ?? current.scheduleTime,
       deepDive: typeof updates?.deepDive === "boolean" ? updates.deepDive : current.deepDive,
-      yearFrom: Object.prototype.hasOwnProperty.call(updates || {}, "yearFrom")
-        ? updates.yearFrom
-        : current.yearFrom,
-      yearTo: Object.prototype.hasOwnProperty.call(updates || {}, "yearTo")
-        ? updates.yearTo
-        : current.yearTo,
+      yearFrom,
+      yearTo,
       enabled: current.enabled,
       nextRunAt: current.nextRunAt,
       lastRunAt: current.lastRunAt,
