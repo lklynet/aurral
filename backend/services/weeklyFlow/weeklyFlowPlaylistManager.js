@@ -112,16 +112,16 @@ export class WeeklyFlowPlaylistManager {
   _getFlowPlaylistNames(flowName) {
     const name = String(flowName || "").trim();
     return {
-      current: `[A] ${name}`,
-      legacy: [`Aurral ${name}`],
+      current: name,
+      legacy: [`[A] ${name}`, `Aurral ${name}`],
     };
   }
 
   _getSharedPlaylistNames(playlistName) {
     const name = String(playlistName || "").trim();
     return {
-      current: `[AS] ${name}`,
-      legacy: [`Aurral Shared ${name}`],
+      current: name,
+      legacy: [`[AS] ${name}`, `Aurral Shared ${name}`],
     };
   }
 
@@ -136,7 +136,7 @@ export class WeeklyFlowPlaylistManager {
       const names = this._getSharedPlaylistNames(sharedPlaylist.name);
       return [names.current, ...names.legacy];
     }
-    return [`[A] ${playlistType}`, `Aurral ${playlistType}`];
+    return [playlistType, `[A] ${playlistType}`, `Aurral ${playlistType}`];
   }
 
   async ensurePlaylists() {
@@ -445,7 +445,6 @@ export class WeeklyFlowPlaylistManager {
       this._plexSyncHashes.set(desired, hash);
     };
 
-    // Plex uses the bare flow name; remove any old "[A]"/"[AS]" prefixed names.
     for (const flow of flows) {
       const desired = String(flow.name || "").trim();
       const { current, legacy } = this._getFlowPlaylistNames(flow.name);

@@ -86,7 +86,7 @@ test("approving a reviewed download commits it inside the managed playlist libra
   assert.equal(downloadTracker.getJob(jobId)?.finalPath, expectedPath);
   assert.equal(await fs.readFile(expectedPath, "utf8"), "reviewed audio");
   const m3u = await fs.readFile(
-    path.join(playlistManager.libraryRoot, "[AS] Reviewed.m3u"),
+    path.join(playlistManager.libraryRoot, "Reviewed.m3u"),
     "utf8",
   );
   assert.match(m3u, /Track\.flac/);
