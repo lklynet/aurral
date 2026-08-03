@@ -25,7 +25,7 @@ jobs:
       pull-requests: write
       packages: write
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Resolve build version
         id: version
@@ -37,7 +37,7 @@ jobs:
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Log into ghcr.io
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -132,6 +132,14 @@ jobs:
             -F "number=${PR_NUMBER}" \
             --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[]?.number')"
 
+          if [ -n "${CLOSING_ISSUES}" ]; then
+            gh label create in-progress \
+              --repo "${REPOSITORY}" \
+              --color FBCA04 \
+              --description "Linked pull request is open and being worked on." \
+              --force >/dev/null
+          fi
+
           while IFS= read -r issue_number; do
             [ -z "${issue_number}" ] && continue
 
@@ -174,6 +182,11 @@ jobs:
                 "repos/${REPOSITORY}/issues/${issue_number}/comments" \
                 -f "body=${ISSUE_COMMENT_BODY}" >/dev/null
             fi
+
+            gh api \
+              --method POST \
+              "repos/${REPOSITORY}/issues/${issue_number}/labels" \
+              -f "labels[]=in-progress" >/dev/null
           done <<< "${CLOSING_ISSUES}"
 
   delete-image:
@@ -249,5 +262,17 @@ jobs:
                 --method PATCH \
                 "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}" \
                 -f "body=${COMMENT_BODY}" >/dev/null
+            fi
+
+            if ! DELETE_OUTPUT="$(gh api \
+                --method DELETE \
+                "repos/${REPOSITORY}/issues/${issue_number}/labels/in-progress" \
+                --include \
+                --silent 2>&1)"; then
+              DELETE_STATUS="$(printf '%s\n' "${DELETE_OUTPUT}" | awk 'NR == 1 { print $2; exit }')"
+              if [ "${DELETE_STATUS}" != "404" ]; then
+                printf '%s\n' "${DELETE_OUTPUT}" >&2
+                exit 1
+              fi
             fi
           done <<< "${CLOSING_ISSUES}"

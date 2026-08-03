@@ -45,7 +45,7 @@ Aurral checks for a newer build in your channel and shows a banner when one exis
 
 When a pull request has a preview image, its GitHub conversation contains a comment with the exact `pr-<number>` image tag and test instructions. The comment is updated whenever a new preview image is built.
 
-If the pull request is linked to an issue, that issue also receives the preview image and test instructions. The issue comment is updated for new images and invalidated when the pull request closes.
+If the pull request is linked to an issue, that issue also receives the preview image and test instructions, and the `in-progress` label. The issue comment is updated for new images and invalidated when the pull request closes. The `in-progress` label is removed when the pull request closes, and later replaced by `nightly` or `released` after merge.
 
 To test the image with an existing Compose setup:
 

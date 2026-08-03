@@ -86,6 +86,29 @@ for pull_number in "${!pull_numbers[@]}"; do
   done <<< "${closing_issues}"
 done
 
+remove_issue_label() {
+  local target_number="$1"
+  local label="$2"
+  local output
+  local status
+
+  if output="$(gh api \
+      --method DELETE \
+      "repos/${repository}/issues/${target_number}/labels/${label}" \
+      --include \
+      --silent 2>&1)"; then
+    return 0
+  fi
+
+  status="$(printf '%s\n' "${output}" | awk 'NR == 1 { print $2; exit }')"
+  if [ "${status}" = "404" ]; then
+    return 0
+  fi
+
+  printf '%s\n' "${output}" >&2
+  return 1
+}
+
 set_status_label() {
   local target_number="$1"
   local add_label="$2"
@@ -95,10 +118,9 @@ set_status_label() {
     --method POST \
     "repos/${repository}/issues/${target_number}/labels" \
     -f "labels[]=${add_label}" >/dev/null
-  gh api \
-    --method DELETE \
-    "repos/${repository}/issues/${target_number}/labels/${remove_label}" \
-    >/dev/null 2>&1 || true
+  for label in "${remove_label}" in-progress; do
+    remove_issue_label "${target_number}" "${label}"
+  done
 }
 
 for target_number in $(printf '%s\n' "${!target_numbers[@]}" | sort -n); do
