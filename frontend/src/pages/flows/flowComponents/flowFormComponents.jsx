@@ -289,7 +289,7 @@ export function FlowFormFields({
       >
         <div className="flow-page__field">
           <div className="flow-page__field-label flow-page__field-label--section">
-            Focus filters (comma separated)
+            Focus filters
           </div>
           {focusValidationError ? (
             <div className="flow-page__warning-text">{focusValidationError}</div>
@@ -327,6 +327,49 @@ export function FlowFormFields({
                 }))
               }
             />
+          </div>
+
+          <div className="flow-page__field">
+            <label className="flow-page__field-label">Release year(s)</label>
+            <div className="flow-page__year-range">
+              <div className="flow-page__field-round">
+                <input
+                  type="number"
+                  min="1000"
+                  max="9999"
+                  step="1"
+                  inputMode="numeric"
+                  placeholder="Any"
+                  aria-label="Release year from"
+                  className={`${inputClassName} flow-page__field-input--size`}
+                  value={draft.yearFrom ?? ""}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    updateDraft((prev) => ({ ...prev, yearFrom: value }));
+                  }}
+                />
+              </div>
+              <span className="flow-page__year-range-sep" aria-hidden="true">
+                –
+              </span>
+              <div className="flow-page__field-round">
+                <input
+                  type="number"
+                  min="1000"
+                  max="9999"
+                  step="1"
+                  inputMode="numeric"
+                  placeholder="Any"
+                  aria-label="Release year to"
+                  className={`${inputClassName} flow-page__field-input--size`}
+                  value={draft.yearTo ?? ""}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    updateDraft((prev) => ({ ...prev, yearTo: value }));
+                  }}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>

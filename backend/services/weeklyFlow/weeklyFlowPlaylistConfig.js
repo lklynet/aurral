@@ -16,6 +16,26 @@ const clampSize = (value) => {
   return Math.max(Math.round(n), 1);
 };
 
+export const normalizeYearBound = (value) => {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const year = Math.trunc(parsed);
+  if (year < 1000 || year > 9999) return null;
+  return year;
+};
+
+export const normalizeYearRange = (yearFrom, yearTo) => {
+  let from = normalizeYearBound(yearFrom);
+  let to = normalizeYearBound(yearTo);
+  if (from != null && to != null && from > to) {
+    const swap = from;
+    from = to;
+    to = swap;
+  }
+  return { yearFrom: from, yearTo: to };
+};
+
 export const normalizeWeightMap = (value) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const out = {};
@@ -177,6 +197,7 @@ const normalizeFlow = (flow) => {
     normalizedRelatedArray.length > 0
       ? normalizedRelatedArray
       : Object.keys(legacyRelatedArtists);
+  const { yearFrom, yearTo } = normalizeYearRange(flow?.yearFrom, flow?.yearTo);
   return {
     id: flow?.id || randomUUID(),
     name: name || "Flow",
@@ -188,6 +209,8 @@ const normalizeFlow = (flow) => {
     scheduleDays: normalizeScheduleDays(flow?.scheduleDays),
     scheduleTime: normalizeScheduleTime(flow?.scheduleTime),
     deepDive: flow?.deepDive === true,
+    yearFrom,
+    yearTo,
     nextRunAt:
       flow?.nextRunAt != null && Number.isFinite(Number(flow.nextRunAt))
         ? Number(flow.nextRunAt)
@@ -550,6 +573,8 @@ export const flowPlaylistConfig = {
     mix,
     size,
     deepDive,
+    yearFrom,
+    yearTo,
     tags,
     relatedArtists,
     scheduleDays,
@@ -567,6 +592,8 @@ export const flowPlaylistConfig = {
       mix,
       size,
       deepDive,
+      yearFrom,
+      yearTo,
       tags,
       relatedArtists,
       discoverPresetId,
@@ -606,6 +633,12 @@ export const flowPlaylistConfig = {
       scheduleDays: updates?.scheduleDays ?? current.scheduleDays,
       scheduleTime: updates?.scheduleTime ?? current.scheduleTime,
       deepDive: typeof updates?.deepDive === "boolean" ? updates.deepDive : current.deepDive,
+      yearFrom: Object.prototype.hasOwnProperty.call(updates || {}, "yearFrom")
+        ? updates.yearFrom
+        : current.yearFrom,
+      yearTo: Object.prototype.hasOwnProperty.call(updates || {}, "yearTo")
+        ? updates.yearTo
+        : current.yearTo,
       enabled: current.enabled,
       nextRunAt: current.nextRunAt,
       lastRunAt: current.lastRunAt,

@@ -8131,6 +8131,18 @@ textarea {
   box-sizing: border-box;
 }
 
+.flow-page__year-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.flow-page__year-range-sep {
+  color: var(--aurral-gray-light);
+  line-height: 1;
+}
+
 .flow-page__field-round .flow-page__field-control {
   height: 2.25rem;
   min-height: 2.25rem;

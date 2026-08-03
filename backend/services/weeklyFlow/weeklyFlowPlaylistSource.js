@@ -3,6 +3,8 @@ import { getDiscoveryCache } from "../discovery/index.js";
 import { normalizeWeightMap } from "./weeklyFlowPlaylistConfig.js";
 import { getBlockedArtistKeys } from "../discovery/feedback.js";
 import { mapWithConcurrency } from "../discovery/helpers.js";
+import { getYear } from "../providers/brainzmashRanking.js";
+import { resolveWeeklyFlowTrackContext } from "./weeklyFlowTrackResolver.js";
 import BoundedMap from "../boundedMap.js";
 const LASTFM_HARVEST_CONCURRENCY = 12;
 const ARTIST_TOP_TRACKS_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -32,6 +34,48 @@ export class WeeklyFlowPlaylistSource {
           { start: 0, end: 9 },
           { start: 0, end: Number.MAX_SAFE_INTEGER },
         ];
+  }
+
+  _hasYearRange(yearFrom, yearTo) {
+    return yearFrom != null || yearTo != null;
+  }
+
+  _matchesYearRange(releaseYear, yearFrom, yearTo) {
+    if (!this._hasYearRange(yearFrom, yearTo)) return true;
+    const year = Number(getYear(releaseYear));
+    if (!Number.isFinite(year)) return false;
+    if (yearFrom != null && year < yearFrom) return false;
+    if (yearTo != null && year > yearTo) return false;
+    return true;
+  }
+
+  async _resolveTrackReleaseYear(track) {
+    const existing = getYear(track?.releaseYear);
+    if (existing) return existing;
+    try {
+      const resolved = await resolveWeeklyFlowTrackContext(track);
+      return getYear(resolved?.releaseYear) || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async _selectFromCandidates(candidates, count, usedArtistKeys, yearFrom = null, yearTo = null) {
+    const picked = [];
+    const rangeActive = this._hasYearRange(yearFrom, yearTo);
+    for (const candidate of Array.isArray(candidates) ? candidates : []) {
+      if (picked.length >= count) break;
+      const artistKeys = this._artistKeysFromArtist(candidate);
+      if (artistKeys.length === 0 || artistKeys.some((key) => usedArtistKeys.has(key))) continue;
+      if (rangeActive && candidate?.source === "focus") {
+        const year = await this._resolveTrackReleaseYear(candidate);
+        candidate.releaseYear = year;
+        if (!this._matchesYearRange(year, yearFrom, yearTo)) continue;
+      }
+      artistKeys.forEach((key) => usedArtistKeys.add(key));
+      picked.push(candidate);
+    }
+    return picked;
   }
 
   _harvestLimitFor(count) {
@@ -1454,18 +1498,6 @@ export class WeeklyFlowPlaylistSource {
     });
   }
 
-  _selectFromCandidates(candidates, count, usedArtistKeys) {
-    const picked = [];
-    for (const candidate of Array.isArray(candidates) ? candidates : []) {
-      if (picked.length >= count) break;
-      const artistKeys = this._artistKeysFromArtist(candidate);
-      if (artistKeys.length === 0 || artistKeys.some((key) => usedArtistKeys.has(key))) continue;
-      artistKeys.forEach((key) => usedArtistKeys.add(key));
-      picked.push(candidate);
-    }
-    return picked;
-  }
-
   _buildSourceTargets(size, mix) {
     return this._buildCounts(size, mix);
   }
@@ -1571,7 +1603,7 @@ export class WeeklyFlowPlaylistSource {
     };
   }
 
-  _assembleFlowPlan({
+  async _assembleFlowPlan({
     candidateMap,
     excludeArtistKeys,
     targetSize,
@@ -1579,24 +1611,34 @@ export class WeeklyFlowPlaylistSource {
     sourceTargets,
     reserveTargets,
     includeReserve = true,
+    yearFrom = null,
+    yearTo = null,
   }) {
     const orderedSources = ["focus", "mix", "discover", "trending"];
     const usedArtistKeys = new Set(excludeArtistKeys);
     const primaryTracks = [];
     for (const source of orderedSources) {
       primaryTracks.push(
-        ...this._selectFromCandidates(
+        ...(await this._selectFromCandidates(
           candidateMap[source],
           Number(sourceTargets[source] || 0),
           usedArtistKeys,
-        ),
+          yearFrom,
+          yearTo,
+        )),
       );
     }
     const remainingPrimaryNeeded = Math.max(0, targetSize - primaryTracks.length);
     if (remainingPrimaryNeeded > 0) {
       const pooled = orderedSources.flatMap((source) => candidateMap[source]);
       primaryTracks.push(
-        ...this._selectFromCandidates(pooled, remainingPrimaryNeeded, usedArtistKeys),
+        ...(await this._selectFromCandidates(
+          pooled,
+          remainingPrimaryNeeded,
+          usedArtistKeys,
+          yearFrom,
+          yearTo,
+        )),
       );
     }
     const reserveTracks = [];
@@ -1604,14 +1646,26 @@ export class WeeklyFlowPlaylistSource {
       for (const source of orderedSources) {
         const needed = Math.max(0, Number(reserveTargets[source] || 0));
         reserveTracks.push(
-          ...this._selectFromCandidates(candidateMap[source], needed, usedArtistKeys),
+          ...(await this._selectFromCandidates(
+            candidateMap[source],
+            needed,
+            usedArtistKeys,
+            yearFrom,
+            yearTo,
+          )),
         );
       }
       const remainingReserveNeeded = Math.max(0, reserveSize - reserveTracks.length);
       if (remainingReserveNeeded > 0) {
         const pooled = orderedSources.flatMap((source) => candidateMap[source]);
         reserveTracks.push(
-          ...this._selectFromCandidates(pooled, remainingReserveNeeded, usedArtistKeys),
+          ...(await this._selectFromCandidates(
+            pooled,
+            remainingReserveNeeded,
+            usedArtistKeys,
+            yearFrom,
+            yearTo,
+          )),
         );
       }
     }
@@ -1715,6 +1769,8 @@ export class WeeklyFlowPlaylistSource {
       sourceTargets: _sourceTargets,
       reserveTargets: { discover: 0, mix: 0, trending: 0, focus: 0 },
       includeReserve: false,
+      yearFrom: flow?.yearFrom ?? null,
+      yearTo: flow?.yearTo ?? null,
     });
   }
 
@@ -1750,6 +1806,8 @@ export class WeeklyFlowPlaylistSource {
       sourceTargets: { discover: 0, mix: 0, trending: 0, focus: 0 },
       reserveTargets,
       includeReserve: true,
+      yearFrom: flow?.yearFrom ?? null,
+      yearTo: flow?.yearTo ?? null,
     });
   }
 
