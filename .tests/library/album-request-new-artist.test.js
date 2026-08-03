@@ -138,6 +138,8 @@ test("new-artist album request queues AlbumSearch even when Lidarr already creat
   const originalAddArtistWithResolvedOptions =
     libraryManager.addArtistWithResolvedOptions;
   const originalEnsureArtistMonitored = libraryManager.ensureArtistMonitored;
+  const originalScheduleRequestedAlbumMonitoringRepair =
+    libraryManager.scheduleRequestedAlbumMonitoringRepair;
 
   await withFakeLidarr(
     () => ({
@@ -176,6 +178,7 @@ test("new-artist album request queues AlbumSearch even when Lidarr already creat
         monitorOption: "none",
       });
       libraryManager.ensureArtistMonitored = async (artist) => artist;
+      libraryManager.scheduleRequestedAlbumMonitoringRepair = () => {};
 
       try {
         const result = await libraryManager.requestAlbumFromSearch({
@@ -209,6 +212,8 @@ test("new-artist album request queues AlbumSearch even when Lidarr already creat
         libraryManager.addArtistWithResolvedOptions =
           originalAddArtistWithResolvedOptions;
         libraryManager.ensureArtistMonitored = originalEnsureArtistMonitored;
+        libraryManager.scheduleRequestedAlbumMonitoringRepair =
+          originalScheduleRequestedAlbumMonitoringRepair;
       }
     },
   );
@@ -220,6 +225,8 @@ test("new-artist album request recovers from AlbumExistsValidator and still sear
   const originalAddArtistWithResolvedOptions =
     libraryManager.addArtistWithResolvedOptions;
   const originalEnsureArtistMonitored = libraryManager.ensureArtistMonitored;
+  const originalScheduleRequestedAlbumMonitoringRepair =
+    libraryManager.scheduleRequestedAlbumMonitoringRepair;
 
   await withFakeLidarr(
     () => ({
@@ -261,6 +268,7 @@ test("new-artist album request recovers from AlbumExistsValidator and still sear
         };
       };
       libraryManager.ensureArtistMonitored = async (artist) => artist;
+      libraryManager.scheduleRequestedAlbumMonitoringRepair = () => {};
 
       const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid.bind(lidarrClient);
       lidarrClient.getAlbumByMbid = async (albumMbid, options = {}) => {
@@ -303,6 +311,8 @@ test("new-artist album request recovers from AlbumExistsValidator and still sear
         libraryManager.addArtistWithResolvedOptions =
           originalAddArtistWithResolvedOptions;
         libraryManager.ensureArtistMonitored = originalEnsureArtistMonitored;
+        libraryManager.scheduleRequestedAlbumMonitoringRepair =
+          originalScheduleRequestedAlbumMonitoringRepair;
       }
     },
   );
