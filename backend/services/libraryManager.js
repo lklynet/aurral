@@ -370,12 +370,13 @@ export class LibraryManager {
     }
 
     const normalizedAlbumMbid = String(albumMbid || "").trim();
+    const normalizedAlbumMbidKey = normalizedAlbumMbid.toLowerCase();
     const normalizedArtistId = String(artistId || "").trim();
     if (!normalizedAlbumMbid || !normalizedArtistId) {
       return null;
     }
 
-    for (let attempt = 0; attempt <= delaysMs.length; attempt++) {
+    const findAlbum = async () => {
       try {
         const album = await lidarr.getAlbumByMbid(normalizedAlbumMbid, {
           forceRefresh: true,
@@ -384,6 +385,37 @@ export class LibraryManager {
           return album;
         }
       } catch {}
+
+      try {
+        const albums = await lidarr.request(
+          `/album?artistId=${encodeURIComponent(normalizedArtistId)}`,
+          "GET",
+          null,
+          false,
+          { forceRefresh: true },
+        );
+        const list = Array.isArray(albums)
+          ? albums
+          : Array.isArray(albums?.records)
+            ? albums.records
+            : [];
+        return (
+          list.find(
+            (album) =>
+              String(album?.foreignAlbumId ?? "")
+                .trim()
+                .toLowerCase() === normalizedAlbumMbidKey &&
+              String(album?.artistId) === normalizedArtistId,
+          ) || null
+        );
+      } catch {
+        return null;
+      }
+    };
+
+    for (let attempt = 0; attempt <= delaysMs.length; attempt++) {
+      const album = await findAlbum();
+      if (album) return album;
 
       if (attempt < delaysMs.length) {
         await new Promise((resolve) => setTimeout(resolve, delaysMs[attempt]));
@@ -1002,7 +1034,8 @@ export class LibraryManager {
         return (
           msg.includes("this album has already been added") ||
           msg.includes("albumexistsvalidator") ||
-          msg.includes("foreignalbumid")
+          msg.includes("foreignalbumid") ||
+          msg.includes("unique constraint")
         );
       };
       const settings = getSettings();
@@ -1224,7 +1257,7 @@ export class LibraryManager {
     }
 
     const album = await this.addAlbum(artist.id, normalizedAlbumMbid, normalizedAlbumName, {
-      triggerSearch: shouldTriggerSearch && !createdArtist,
+      triggerSearch: shouldTriggerSearch,
     });
 
     if (album?.error) {

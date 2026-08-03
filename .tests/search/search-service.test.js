@@ -133,7 +133,7 @@ test("requestAlbumFromSearch queues a new artist album search with the artist ad
     assert.equal(artistId, "7");
     assert.equal(albumMbid, "album-mbid");
     assert.equal(albumName, "Geogaddi");
-    assert.equal(options.triggerSearch, false);
+    assert.equal(options.triggerSearch, true);
     return {
       id: "42",
       artistId: "7",
