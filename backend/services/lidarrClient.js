@@ -1239,9 +1239,7 @@ export class LidarrClient {
       ? albums
       : Array.isArray(albums?.records)
         ? albums.records
-        : albums && typeof albums === "object"
-          ? [albums]
-          : [];
+        : [];
     return candidates.find(
       (album) =>
         String(album?.foreignAlbumId ?? "").trim().toLowerCase() === normalizedMbidKey,
