@@ -264,8 +264,15 @@ jobs:
                 -f "body=${COMMENT_BODY}" >/dev/null
             fi
 
-            gh api \
-              --method DELETE \
-              "repos/${REPOSITORY}/issues/${issue_number}/labels/in-progress" \
-              >/dev/null 2>&1 || true
+            if ! DELETE_OUTPUT="$(gh api \
+                --method DELETE \
+                "repos/${REPOSITORY}/issues/${issue_number}/labels/in-progress" \
+                --include \
+                --silent 2>&1)"; then
+              DELETE_STATUS="$(printf '%s\n' "${DELETE_OUTPUT}" | awk 'NR == 1 { print $2; exit }')"
+              if [ "${DELETE_STATUS}" != "404" ]; then
+                printf '%s\n' "${DELETE_OUTPUT}" >&2
+                exit 1
+              fi
+            fi
           done <<< "${CLOSING_ISSUES}"
