@@ -89,6 +89,16 @@ test("interpolateBody replaces request and flow placeholders", () => {
   );
 });
 
+test("interpolateBody does not rescan substituted placeholder values", () => {
+  assert.equal(
+    interpolateBody('{"album":"$albumName","user":"$username"}', {
+      albumName: "$username",
+      username: "alice",
+    }),
+    '{"album":"$username","user":"alice"}',
+  );
+});
+
 test("deliverQueuedNotification skips disabled webhook events", async () => {
   await withCaptureServer(async ({ baseUrl, requests }) => {
     await deliverQueuedNotification({

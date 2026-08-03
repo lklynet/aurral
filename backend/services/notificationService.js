@@ -42,13 +42,9 @@ const WEBHOOK_PLACEHOLDERS = [
 ];
 
 export function interpolateBody(str, vars = {}) {
-  let result = String(str ?? "");
-  for (const key of WEBHOOK_PLACEHOLDERS) {
-    const token = `$${key}`;
-    if (!result.includes(token)) continue;
-    result = result.split(token).join(escapeJsonString(vars[key] ?? ""));
-  }
-  return result;
+  const source = String(str ?? "");
+  const pattern = new RegExp(`\\$(${WEBHOOK_PLACEHOLDERS.join("|")})`, "g");
+  return source.replace(pattern, (_, key) => escapeJsonString(vars[key] ?? ""));
 }
 
 function normalizeWebhookVars(vars = {}, flowPath = "", flowName = "") {
