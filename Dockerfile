@@ -32,7 +32,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY package*.json ./
 COPY backend/package*.json ./backend/
-COPY backend/scripts/patchHonkerAbortListener.js ./backend/scripts/patchHonkerAbortListener.js
 COPY frontend/package*.json ./frontend/
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm ci --workspace backend --omit=dev --include=optional --include-workspace-root=false && \
