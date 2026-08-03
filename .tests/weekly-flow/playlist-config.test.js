@@ -54,6 +54,23 @@ test("creates flows with normalized scheduling and enforces unique names", () =>
   );
 });
 
+test("rejects flow and shared playlist names that collide across types", () => {
+  const flow = flowPlaylistConfig.createFlow({ name: "Rock" });
+  assert.throws(
+    () => flowPlaylistConfig.createSharedPlaylist({ name: "rock" }),
+    /already exists/,
+  );
+
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Jazz" });
+  assert.throws(
+    () => flowPlaylistConfig.createFlow({ name: "Jazz" }),
+    /already exists/,
+  );
+
+  flowPlaylistConfig.deleteFlow(flow.id);
+  flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+});
+
 test("records flow last run time", () => {
   const flow = flowPlaylistConfig.createFlow({
     name: "Morning",
