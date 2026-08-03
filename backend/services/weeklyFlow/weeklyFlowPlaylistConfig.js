@@ -469,36 +469,34 @@ const createSharedPlaylistNameConflictError = (name) => {
   return error;
 };
 
-const assertUniqueFlowName = (flows, nextName, exceptFlowId = null) => {
-  const key = normalizeNameKey(nextName);
-  if (!key) return;
-  const hasConflict = flows.some((flow) => {
-    if (!flow) return false;
-    if (exceptFlowId && flow.id === exceptFlowId) return false;
-    return normalizeNameKey(flow.name) === key;
-  });
-  if (hasConflict) {
-    throw createNameConflictError(String(nextName || "").trim());
-  }
-};
-
 const canUserAccessOwnerScopedEntity = (user, ownerUserId) => {
   if (user?.role === "admin") return true;
   if (!user || ownerUserId == null) return false;
   return Number(user.id) === Number(ownerUserId);
 };
 
-const assertUniqueSharedPlaylistName = (playlists, nextName, exceptPlaylistId = null) => {
+const assertUniqueLibraryName = (
+  nextName,
+  { exceptFlowId = null, exceptPlaylistId = null, conflictAs = "flow" } = {},
+) => {
   const key = normalizeNameKey(nextName);
   if (!key) return;
-  const hasConflict = playlists.some((playlist) => {
+  const displayName = String(nextName || "").trim();
+  const flowConflict = getStoredFlows().some((flow) => {
+    if (!flow) return false;
+    if (exceptFlowId && flow.id === exceptFlowId) return false;
+    return normalizeNameKey(flow.name) === key;
+  });
+  const playlistConflict = getStoredSharedPlaylists().some((playlist) => {
     if (!playlist) return false;
     if (exceptPlaylistId && playlist.id === exceptPlaylistId) return false;
     return normalizeNameKey(playlist.name) === key;
   });
-  if (hasConflict) {
-    throw createSharedPlaylistNameConflictError(String(nextName || "").trim());
+  if (!flowConflict && !playlistConflict) return;
+  if (conflictAs === "shared") {
+    throw createSharedPlaylistNameConflictError(displayName);
   }
+  throw createNameConflictError(displayName);
 };
 
 export const flowPlaylistConfig = {
@@ -561,8 +559,8 @@ export const flowPlaylistConfig = {
     type = null,
     tag = null,
   }) {
+    assertUniqueLibraryName(name, { conflictAs: "flow" });
     const flows = getStoredFlows();
-    assertUniqueFlowName(flows, name);
     const flow = normalizeFlow({
       id: randomUUID(),
       name,
@@ -592,7 +590,10 @@ export const flowPlaylistConfig = {
     if (index === -1) return null;
     const current = flows[index];
     const nextName = updates?.name ?? current.name;
-    assertUniqueFlowName(flows, nextName, flowId);
+    assertUniqueLibraryName(nextName, {
+      exceptFlowId: flowId,
+      conflictAs: "flow",
+    });
     const currentSchedule = normalizeScheduleDays(current.scheduleDays);
     const currentScheduleTime = normalizeScheduleTime(current.scheduleTime);
     const next = normalizeFlow({
@@ -713,8 +714,8 @@ export const flowPlaylistConfig = {
     ownerUserId = null,
     importSource = null,
   }) {
+    assertUniqueLibraryName(name, { conflictAs: "shared" });
     const playlists = getStoredSharedPlaylists();
-    assertUniqueSharedPlaylistName(playlists, name);
     const playlist = normalizeSharedPlaylist({
       id: String(id || "").trim() || randomUUID(),
       name,
@@ -755,7 +756,10 @@ export const flowPlaylistConfig = {
     if (index === -1) return null;
     const current = playlists[index];
     const nextName = updates?.name ?? current.name;
-    assertUniqueSharedPlaylistName(playlists, nextName, playlistId);
+    assertUniqueLibraryName(nextName, {
+      exceptPlaylistId: playlistId,
+      conflictAs: "shared",
+    });
     const next = normalizeSharedPlaylist({
       ...current,
       name: nextName,
