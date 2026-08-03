@@ -222,19 +222,30 @@ jobs:
       - name: Invalidate linked issue preview comments
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_MERGED: ${{ github.event.pull_request.merged }}
           PR_NUMBER: ${{ github.event.number }}
           REPOSITORY: ${{ github.repository }}
         run: |
           OWNER="${REPOSITORY%%/*}"
           REPO="${REPOSITORY#*/}"
           ISSUE_MARKER="aurral-preview-issue-${PR_NUMBER}"
-          COMMENT_BODY="$(cat <<EOF
+          if [ "${PR_MERGED}" = "true" ]; then
+            COMMENT_BODY="$(cat <<EOF
+          <!-- ${ISSUE_MARKER} -->
+          ## Aurral preview image retired
+
+          [Pull request #${PR_NUMBER}](https://github.com/${REPOSITORY}/pull/${PR_NUMBER}) was merged into \`main\`. The preview image was retired. The change will appear on \`nightly\` after that build succeeds, and linked issues stay open until a stable release includes it.
+          EOF
+            )"
+          else
+            COMMENT_BODY="$(cat <<EOF
           <!-- ${ISSUE_MARKER} -->
           ## Aurral preview image no longer available
 
-          The preview image for [pull request #${PR_NUMBER}](https://github.com/${REPOSITORY}/pull/${PR_NUMBER}) was retired because the pull request was closed. It is no longer available for testing.
+          The preview image for [pull request #${PR_NUMBER}](https://github.com/${REPOSITORY}/pull/${PR_NUMBER}) was retired because the pull request was closed without merging. It is no longer available for testing.
           EOF
-          )"
+            )"
+          fi
           CLOSING_ISSUES="$(gh api graphql \
             -f query='query($owner: String!, $repo: String!, $number: Int!) {
               repository(owner: $owner, name: $repo) {
