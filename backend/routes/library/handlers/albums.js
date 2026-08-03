@@ -151,17 +151,23 @@ export function registerAlbums(router) {
           triggerSearch === true ||
           searchOnAdd ||
           result?.status === "searching";
-        const { recordAlbumRequested } = await import(
+        const { recordAlbumRequested, recordAlbumSearchCompleted } = await import(
           "../../../services/aurralHistoryService.js"
         );
-        recordAlbumRequested({
+        const historyAlbum = {
           albumId: result?.album?.id || result?.id,
           albumName: result?.album?.albumName || result?.albumName || albumName,
           artistName: result?.artist?.artistName || result?.artistName || artistName,
           artistMbid: result?.artist?.mbid || result?.mbid || artistMbid,
-          searching,
           user: req.user,
+        };
+        recordAlbumRequested({
+          ...historyAlbum,
+          searching: result?.status === "available" ? false : searching,
         });
+        if (result?.status === "available") {
+          recordAlbumSearchCompleted(historyAlbum);
+        }
         return res.status(201).json({ ...result, queued: false });
       } catch (error) {
         const statusCode =

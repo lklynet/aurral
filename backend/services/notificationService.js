@@ -31,20 +31,72 @@ function escapeJsonString(value) {
   return JSON.stringify(String(value ?? "")).slice(1, -1);
 }
 
-function interpolateBody(str, flowPath, flowName) {
-  return str
-    .replace(/\$flowPath/g, escapeJsonString(flowPath))
-    .replace(/\$flowName/g, escapeJsonString(flowName));
+const WEBHOOK_PLACEHOLDERS = [
+  "flowPath",
+  "flowName",
+  "albumName",
+  "artistName",
+  "username",
+  "userId",
+  "event",
+];
+
+export function interpolateBody(str, vars = {}) {
+  let result = String(str ?? "");
+  for (const key of WEBHOOK_PLACEHOLDERS) {
+    const token = `$${key}`;
+    if (!result.includes(token)) continue;
+    result = result.split(token).join(escapeJsonString(vars[key] ?? ""));
+  }
+  return result;
 }
 
-async function sendWebhooksDirect(
-  { webhooks, webhookEvents = {} },
-  event,
-  flowPath = "",
-  flowName = "",
-) {
+function normalizeWebhookVars(vars = {}, flowPath = "", flowName = "") {
+  if (vars && typeof vars === "object" && !Array.isArray(vars)) {
+    return {
+      flowPath: vars.flowPath ?? flowPath ?? "",
+      flowName: vars.flowName ?? flowName ?? "",
+      albumName: vars.albumName ?? "",
+      artistName: vars.artistName ?? "",
+      username: vars.username ?? "",
+      userId: vars.userId ?? "",
+      event: vars.event ?? "",
+    };
+  }
+  return {
+    flowPath: flowPath || "",
+    flowName: flowName || "",
+    albumName: "",
+    artistName: "",
+    username: "",
+    userId: "",
+    event: "",
+  };
+}
+
+function requestActorVars(user = null) {
+  if (!user || typeof user !== "object") {
+    return { username: "", userId: "" };
+  }
+  const username = String(user.username || "").trim();
+  const userId = user.userId ?? user.id;
+  return {
+    username,
+    userId: userId == null || userId === "" ? "" : String(userId),
+  };
+}
+
+function formatRequestSubject(albumName, artistName) {
+  const album = String(albumName || "").trim() || "Album";
+  const artist = String(artistName || "").trim();
+  return artist ? `${album} by ${artist}` : album;
+}
+
+async function sendWebhooksDirect({ webhooks, webhookEvents = {} }, event, vars = {}) {
   if (!webhookEvents[event]) return;
   if (!Array.isArray(webhooks) || webhooks.length === 0) return;
+
+  const resolved = normalizeWebhookVars({ ...vars, event });
 
   for (const webhook of webhooks) {
     const url = (webhook.url || "").trim();
@@ -55,7 +107,7 @@ async function sendWebhooksDirect(
     }
     const rawBody = (webhook.body || "").trim();
     if (rawBody) {
-      const interpolated = interpolateBody(rawBody, flowPath, flowName);
+      const interpolated = interpolateBody(rawBody, resolved);
       let parsed;
       try {
         parsed = JSON.parse(interpolated);
@@ -86,8 +138,7 @@ export async function deliverQueuedNotification(payload = {}) {
       await sendWebhooksDirect(
         payload.integrations || {},
         payload.event,
-        payload.flowPath || "",
-        payload.flowName || "",
+        normalizeWebhookVars(payload.vars, payload.flowPath, payload.flowName),
       );
       return;
     default:
@@ -105,13 +156,15 @@ function queueGotify(title, message, priority = 5) {
   });
 }
 
-function queueWebhooks(integrations, event, flowPath = "", flowName = "") {
+function queueWebhooks(integrations, event, vars = {}) {
+  const resolved = normalizeWebhookVars({ ...vars, event });
   return enqueueNotification({
     kind: "webhooks",
     integrations,
     event,
-    flowPath,
-    flowName,
+    vars: resolved,
+    flowPath: resolved.flowPath,
+    flowName: resolved.flowName,
     requestedAt: Date.now(),
   });
 }
@@ -147,7 +200,9 @@ export async function notifyDiscoveryUpdated() {
     );
   }
   tasks.push(
-    queueWebhooks(settings.integrations, "notifyDiscoveryUpdated", "", "Aurral – Discover"),
+    queueWebhooks(settings.integrations, "notifyDiscoveryUpdated", {
+      flowName: "Aurral – Discover",
+    }),
   );
   await Promise.all(tasks);
 }
@@ -167,6 +222,51 @@ export async function notifyWeeklyFlowDone(playlistType, stats = {}, flowPath = 
       ),
     );
   }
-  tasks.push(queueWebhooks(settings.integrations, "notifyWeeklyFlowDone", flowPath, flowName));
+  tasks.push(
+    queueWebhooks(settings.integrations, "notifyWeeklyFlowDone", {
+      flowPath,
+      flowName,
+    }),
+  );
+  await Promise.all(tasks);
+}
+
+export async function notifyRequestMade({ albumName, artistName, user = null } = {}) {
+  const settings = dbOps.getSettings();
+  const gotify = settings.integrations?.gotify || {};
+  const actor = requestActorVars(user);
+  const subject = formatRequestSubject(albumName, artistName);
+  const tasks = [];
+  if (gotify.notifyRequestMade) {
+    const byUser = actor.username ? ` (${actor.username})` : "";
+    tasks.push(queueGotify("Aurral – Request", `Album requested: ${subject}${byUser}`, 5));
+  }
+  tasks.push(
+    queueWebhooks(settings.integrations, "notifyRequestMade", {
+      albumName: String(albumName || "").trim(),
+      artistName: String(artistName || "").trim(),
+      ...actor,
+    }),
+  );
+  await Promise.all(tasks);
+}
+
+export async function notifyRequestAvailable({ albumName, artistName, user = null } = {}) {
+  const settings = dbOps.getSettings();
+  const gotify = settings.integrations?.gotify || {};
+  const actor = requestActorVars(user);
+  const subject = formatRequestSubject(albumName, artistName);
+  const tasks = [];
+  if (gotify.notifyRequestAvailable) {
+    const byUser = actor.username ? ` requested by ${actor.username}` : "";
+    tasks.push(queueGotify("Aurral – Request", `Album available: ${subject}${byUser}`, 5));
+  }
+  tasks.push(
+    queueWebhooks(settings.integrations, "notifyRequestAvailable", {
+      albumName: String(albumName || "").trim(),
+      artistName: String(artistName || "").trim(),
+      ...actor,
+    }),
+  );
   await Promise.all(tasks);
 }

@@ -111,11 +111,15 @@ export const defaultData = {
         token: "",
         notifyDiscoveryUpdated: false,
         notifyWeeklyFlowDone: false,
+        notifyRequestMade: false,
+        notifyRequestAvailable: false,
       },
       webhooks: [],
       webhookEvents: {
         notifyDiscoveryUpdated: false,
         notifyWeeklyFlowDone: false,
+        notifyRequestMade: false,
+        notifyRequestAvailable: false,
       },
     },
     releaseTypes: [

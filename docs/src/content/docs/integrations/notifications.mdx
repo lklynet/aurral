@@ -1,9 +1,9 @@
 ---
 title: Notifications (Gotify and webhooks)
-description: Get alerts when flows finish and discovery updates.
+description: Get alerts when flows finish, discovery updates, and album requests change.
 ---
 
-Aurral can send a notification when a flow download completes. It can also send one when daily recommendations are ready.
+Aurral can send a notification when a flow download completes. It can also send one when daily recommendations are ready, when a user requests an album, and when that album becomes available.
 
 Two delivery methods are available. You can use one or both.
 
@@ -18,6 +18,8 @@ Enter these values:
 Toggle which events fire:
 - **Notify when discovery updates**: sends a notification when the daily recommendation refresh finishes
 - **Notify when weekly flow finishes**: sends a notification with the number of completed and failed tracks
+- **Notify when a request is made**: sends a notification when a user requests an album
+- **Notify when a request is available**: sends a notification when a requested album is downloaded or already on disk
 
 Select **Test notification** on the Gotify card to test the connection.
 
@@ -27,7 +29,9 @@ Webhooks send an HTTP request for each enabled event. Configure them in the **We
 
 Enter these values for each webhook:
 - **URL**: the endpoint to call (must start with `http://` or `https://`)
-- **Body**: optional JSON data. Use `$flowPath` and `$flowName` as playlist placeholders.
+- **Body**: optional JSON data. Use these placeholders:
+  - `$flowPath` and `$flowName` for weekly flow playlist values
+  - `$albumName`, `$artistName`, `$username`, `$userId`, and `$event` for request events
 - **Headers**: optional key-value pairs
 
 Leave **Body** blank to send a GET request. Enter a body to send a POST request.
@@ -35,5 +39,7 @@ Leave **Body** blank to send a GET request. Enter a body to send a POST request.
 Toggle which events fire for your webhooks:
 - **Notify when discovery updates**
 - **Notify when weekly flow finishes**
+- **Notify when a request is made**
+- **Notify when a request is available**
 
 Aurral does not send events that you turn off, even if you configured webhook URLs.

@@ -232,6 +232,22 @@ const requesterFromMetadata = (metadata) => {
   };
 };
 
+const queueRequestNotification = (notifyName, { albumName, artistName, requester }) => {
+  import("./notificationService.js")
+    .then((notifications) =>
+      notifications[notifyName]({
+        albumName,
+        artistName,
+        user: requester
+          ? { id: requester.userId, username: requester.username }
+          : null,
+      }),
+    )
+    .catch((err) => {
+      console.warn(`[AurralHistory] ${notifyName} failed:`, err?.message || err);
+    });
+};
+
 export const recordAlbumRequested = ({
   albumId,
   albumName,
@@ -247,7 +263,7 @@ export const recordAlbumRequested = ({
   const existing = dbOps.getAurralHistoryById(stableId("album_requested", ref));
   const requester =
     requesterFromUser(user) || requesterFromMetadata(existing?.metadata);
-  return upsertAurralHistory({
+  const entry = upsertAurralHistory({
     referenceId: ref,
     kind: "album_requested",
     title: searching ? `Searching Lidarr for ${name}` : `Requested ${name}`,
@@ -263,6 +279,12 @@ export const recordAlbumRequested = ({
       ...requester,
     },
   });
+  queueRequestNotification("notifyRequestMade", {
+    albumName: name,
+    artistName: artist,
+    requester,
+  });
+  return entry;
 };
 
 export const recordAlbumSearchStarted = ({
@@ -330,7 +352,8 @@ export const recordAlbumSearchCompleted = ({
   const existing = dbOps.getAurralHistoryById(stableId("album_requested", ref));
   const requester =
     requesterFromUser(user) || requesterFromMetadata(existing?.metadata);
-  return upsertAurralHistory({
+  const alreadyAvailable = existing?.statusLabel === "Downloaded";
+  const entry = upsertAurralHistory({
     referenceId: ref,
     kind: "album_requested",
     title: `Downloaded ${name}`,
@@ -346,6 +369,14 @@ export const recordAlbumSearchCompleted = ({
       ...requester,
     },
   });
+  if (!alreadyAvailable) {
+    queueRequestNotification("notifyRequestAvailable", {
+      albumName: name,
+      artistName: artist,
+      requester,
+    });
+  }
+  return entry;
 };
 
 const albumRequestReferenceId = (entry) => {

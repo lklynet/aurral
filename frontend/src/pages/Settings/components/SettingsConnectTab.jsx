@@ -390,6 +390,26 @@ export function SettingsConnectTab({
               }
             />
           </SettingsArrFormGroup>
+          <SettingsArrFormGroup label="Request made">
+            <PillToggle
+              checked={webhookEvents.notifyRequestMade || false}
+              onChange={(e) =>
+                updateWebhookEvents({
+                  notifyRequestMade: e.target.checked,
+                })
+              }
+            />
+          </SettingsArrFormGroup>
+          <SettingsArrFormGroup label="Request available">
+            <PillToggle
+              checked={webhookEvents.notifyRequestAvailable || false}
+              onChange={(e) =>
+                updateWebhookEvents({
+                  notifyRequestAvailable: e.target.checked,
+                })
+              }
+            />
+          </SettingsArrFormGroup>
           <SettingsArrFormGroup label="Gotify: Discover updated">
             <PillToggle
               checked={gotify.notifyDiscoveryUpdated || false}
@@ -400,6 +420,18 @@ export function SettingsConnectTab({
             <PillToggle
               checked={gotify.notifyWeeklyFlowDone || false}
               onChange={(e) => updateGotify({ notifyWeeklyFlowDone: e.target.checked })}
+            />
+          </SettingsArrFormGroup>
+          <SettingsArrFormGroup label="Gotify: Request made">
+            <PillToggle
+              checked={gotify.notifyRequestMade || false}
+              onChange={(e) => updateGotify({ notifyRequestMade: e.target.checked })}
+            />
+          </SettingsArrFormGroup>
+          <SettingsArrFormGroup label="Gotify: Request available">
+            <PillToggle
+              checked={gotify.notifyRequestAvailable || false}
+              onChange={(e) => updateGotify({ notifyRequestAvailable: e.target.checked })}
             />
           </SettingsArrFormGroup>
         </SettingsArrFieldSet>
