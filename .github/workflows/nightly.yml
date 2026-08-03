@@ -69,6 +69,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Update release readiness record
+        id: readiness
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NIGHTLY_VERSION: ${{ steps.version.outputs.value }}
@@ -79,3 +80,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NIGHTLY_VERSION: ${{ steps.version.outputs.value }}
         run: bash scripts/notify-github-status.sh nightly
+
+      - name: Notify Discord nightly channel
+        env:
+          DISCORD_WEBHOOK_NIGHTLY: ${{ secrets.DISCORD_WEBHOOK_NIGHTLY }}
+          NIGHTLY_VERSION: ${{ steps.version.outputs.value }}
+          CHANGE_URL: ${{ steps.readiness.outputs.change_url }}
+          CHANGE_RANGE: ${{ steps.readiness.outputs.change_range }}
+          READINESS_ISSUE: ${{ steps.readiness.outputs.readiness_issue }}
+        run: bash scripts/notify-discord.sh nightly

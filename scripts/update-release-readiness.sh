@@ -68,6 +68,32 @@ write_output() {
   fi
 }
 
+pin_issue() {
+  local issue_number="$1"
+  local err
+  if err="$(gh issue pin "${issue_number}" --repo "${repository}" 2>&1)"; then
+    return 0
+  fi
+  if printf '%s\n' "${err}" | grep -qi 'already pinned'; then
+    return 0
+  fi
+  printf '%s\n' "${err}" >&2
+  return 1
+}
+
+unpin_issue() {
+  local issue_number="$1"
+  local err
+  if err="$(gh issue unpin "${issue_number}" --repo "${repository}" 2>&1)"; then
+    return 0
+  fi
+  if printf '%s\n' "${err}" | grep -qi 'not pinned'; then
+    return 0
+  fi
+  printf '%s\n' "${err}" >&2
+  return 1
+}
+
 resolve_tag_commit() {
   local tag_ref="$1"
   local tag_object tag_type tag_sha
@@ -263,6 +289,8 @@ EOF
     fi
   fi
 
+  pin_issue "${readiness_issue}"
+
   status_body="$(cat <<EOF
 ${status_marker}
 ### Current nightly candidate
@@ -285,6 +313,9 @@ The candidate above is the build that should be used for readiness testing. A ni
 EOF
   )"
   update_status_comment "${readiness_issue}" "${status_body}"
+  write_output readiness_issue "${readiness_issue}"
+  write_output change_url "${change_url}"
+  write_output change_range "${change_range}"
   echo "Updated release-readiness issue #${readiness_issue}."
   exit 0
 fi
@@ -328,4 +359,5 @@ gh issue edit "${readiness_issue}" \
   --add-label released \
   --remove-label release-ready >/dev/null
 gh issue close "${readiness_issue}" --repo "${repository}" >/dev/null
+unpin_issue "${readiness_issue}"
 echo "Closed release-readiness issue #${readiness_issue} for ${release_version}."
