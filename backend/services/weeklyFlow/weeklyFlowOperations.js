@@ -6,10 +6,12 @@ import {
   recordPlaylistTracksAdded,
 } from "../aurralHistoryService.js";
 import {
+  buildSharedTrackIdentity,
   dedupeSharedTracks,
   filterMissingSharedTracks,
   flowPlaylistConfig,
   normalizeSharedTrack,
+  rebuildSharedPlaylistTracksFromJobs,
   tracksShareMembership,
   DEFAULT_SIZE,
 } from "./weeklyFlowPlaylistConfig.js";
@@ -80,20 +82,6 @@ const removePlaylistLocalTrackFile = async (job, playlistId) => {
   });
 };
 
-const jobToSharedTrack = (job) =>
-  normalizeSharedTrack({
-    artistName: job?.artistName,
-    trackName: job?.trackName,
-    albumName: job?.albumName || null,
-    artistMbid: job?.artistMbid || null,
-    albumMbid: job?.albumMbid || null,
-    trackMbid: job?.trackMbid || null,
-    releaseYear: job?.releaseYear || null,
-    durationMs: job?.durationMs || null,
-    artistAliases: job?.artistAliases || [],
-    reason: job?.reason || null,
-  });
-
 const sharedPlaylistTracksMatchJobs = (playlist, jobs) => {
   const configTracks = dedupeSharedTracks(playlist?.tracks);
   if (configTracks.length !== jobs.length) return false;
@@ -113,36 +101,40 @@ const syncSharedPlaylistConfigFromJobs = async (playlistId) => {
   const playlist = flowPlaylistConfig.getSharedPlaylist(safePlaylistId);
   if (!playlist) return null;
   const jobs = downloadTracker.getByPlaylistType(safePlaylistId);
-  const tracksFromJobs = jobs.map((job) => jobToSharedTrack(job)).filter(Boolean);
   if (sharedPlaylistTracksMatchJobs(playlist, jobs)) {
     return playlist;
   }
   const updatedPlaylist = flowPlaylistConfig.updateSharedPlaylist(safePlaylistId, {
-    tracks: tracksFromJobs,
+    tracks: rebuildSharedPlaylistTracksFromJobs(playlist.tracks, jobs),
   });
   playlistManager.updateConfig(false);
   return updatedPlaylist;
 };
 
-const reuseTracksForPlaylist = async (tracks, playlistId) => {
+const queueTracksForPlaylist = async (tracks, playlistId) => {
   const settings = weeklyFlowWorker.getWorkerSettings();
   const existingFileMode = normalizeExistingFileMode(settings.existingFileMode);
   const reusedJobIds = [];
-  const tracksToQueue = [];
+  const jobIds = [];
+  const createdJobIds = [];
   for (const track of normalizeTrackList(tracks)) {
+    const jobId = downloadTracker.addJob(track, playlistId);
+    if (!jobId) continue;
+    createdJobIds.push(jobId);
     const reuse = await reuseTrackForPlaylist(track, playlistId, {
       existingFileMode,
       weeklyFlowRoot: weeklyFlowWorker.weeklyFlowRoot,
       targetPlaylistType: playlistId,
       skipHistory: true,
+      existingJobId: jobId,
     });
     if (reuse.reused) {
-      reusedJobIds.push(reuse.jobId);
+      reusedJobIds.push(jobId);
     } else {
-      tracksToQueue.push(track);
+      jobIds.push(jobId);
     }
   }
-  return { reusedJobIds, tracksToQueue };
+  return { reusedJobIds, jobIds, createdJobIds };
 };
 
 const filterTracksMissingDownloadJobs = (tracks, playlistId) => {
@@ -173,8 +165,10 @@ async function seedSharedPlaylistTracks(playlistId, tracks) {
   const playlist = flowPlaylistConfig.getSharedPlaylist(playlistId);
   const allowedTracks = filterBlockedPlaylistTracks(playlist?.ownerUserId, tracks);
   const missingTracks = filterTracksMissingDownloadJobs(allowedTracks, playlistId);
-  const { reusedJobIds, tracksToQueue } = await reuseTracksForPlaylist(missingTracks, playlistId);
-  const jobIds = downloadTracker.addJobs(tracksToQueue, playlistId);
+  const { reusedJobIds, jobIds, createdJobIds } = await queueTracksForPlaylist(
+    missingTracks,
+    playlistId,
+  );
   playlistManager.updateConfig(false);
   await playlistManager.ensureSmartPlaylists();
   if (reusedJobIds.length > 0) {
@@ -190,6 +184,7 @@ async function seedSharedPlaylistTracks(playlistId, tracks) {
   return {
     reusedJobIds,
     jobIds,
+    createdJobIds,
     tracksQueued: jobIds.length,
     tracksReused: reusedJobIds.length,
   };
@@ -369,7 +364,7 @@ async function createSharedPlaylist({
   }
   const queued = normalizedTracks.length
     ? await seedSharedPlaylistTracks(safePlaylistId, normalizedTracks)
-    : { jobIds: [], reusedJobIds: [], tracksQueued: 0, tracksReused: 0 };
+    : { jobIds: [], reusedJobIds: [], createdJobIds: [], tracksQueued: 0, tracksReused: 0 };
   playlistManager.updateConfig(false);
   await playlistManager.ensureSmartPlaylists();
   if (normalizedTracks.length > 0) {
@@ -383,7 +378,7 @@ async function createSharedPlaylist({
     playlist,
     tracksQueued: queued.tracksQueued,
     tracksReused: queued.tracksReused,
-    jobIds: [...queued.reusedJobIds, ...queued.jobIds],
+    jobIds: queued.createdJobIds,
   };
 }
 
@@ -403,7 +398,7 @@ export async function appendSharedPlaylistTracks({ playlistId, tracks = [] } = {
   const queued =
     tracksToAdd.length > 0
       ? await seedSharedPlaylistTracks(safePlaylistId, tracksToAdd)
-      : { jobIds: [], reusedJobIds: [], tracksQueued: 0, tracksReused: 0 };
+      : { jobIds: [], reusedJobIds: [], createdJobIds: [], tracksQueued: 0, tracksReused: 0 };
   if (tracksToAdd.length > 0) {
     schedulePlaylistMbidEnrichment(safePlaylistId, {
       reason: "shared-playlist-append",
@@ -415,7 +410,7 @@ export async function appendSharedPlaylistTracks({ playlistId, tracks = [] } = {
     playlist: updatedPlaylist,
     tracksQueued: queued.tracksQueued,
     tracksReused: queued.tracksReused,
-    jobIds: [...queued.reusedJobIds, ...queued.jobIds],
+    jobIds: queued.createdJobIds,
   };
 }
 
@@ -489,8 +484,8 @@ async function updateSharedPlaylist({
         tracks: normalizedTracks,
         ...(hasImportSourceUpdate ? { importSource } : {}),
       });
-      const { tracksToQueue } = await reuseTracksForPlaylist(tracksNeedingWork, safePlaylistId);
-      tracksQueued = downloadTracker.addJobs(tracksToQueue, safePlaylistId).length;
+      const queued = await queueTracksForPlaylist(tracksNeedingWork, safePlaylistId);
+      tracksQueued = queued.jobIds.length;
     });
     weeklyFlowWorker.pruneOrphanedJobState();
   }

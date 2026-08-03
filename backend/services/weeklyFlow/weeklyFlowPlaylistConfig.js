@@ -276,6 +276,36 @@ export const tracksShareMembership = (left, right) => {
   return Boolean(leftCore) && leftCore === rightCore;
 };
 
+export const sortJobsByCreatedAt = (jobs) =>
+  [...(Array.isArray(jobs) ? jobs : [])].sort((left, right) => {
+    const leftCreated = Number(left?.createdAt || 0);
+    const rightCreated = Number(right?.createdAt || 0);
+    if (leftCreated !== rightCreated) return leftCreated - rightCreated;
+    return String(left?.id || "").localeCompare(String(right?.id || ""));
+  });
+
+export const orderJobsBySharedPlaylistTracks = (jobs, tracks) => {
+  const list = Array.isArray(jobs) ? [...jobs] : [];
+  const configTracks = Array.isArray(tracks) ? tracks : [];
+  if (!configTracks.length) {
+    return sortJobsByCreatedAt(list);
+  }
+  const unmatchedJobs = sortJobsByCreatedAt(list);
+  const orderedJobs = [];
+  for (const track of configTracks) {
+    const identity = buildSharedTrackIdentity(track);
+    let index = unmatchedJobs.findIndex(
+      (job) => buildSharedTrackIdentity(job) === identity,
+    );
+    if (index < 0) {
+      index = unmatchedJobs.findIndex((job) => tracksShareMembership(job, track));
+    }
+    if (index >= 0) orderedJobs.push(unmatchedJobs.splice(index, 1)[0]);
+  }
+  orderedJobs.push(...unmatchedJobs);
+  return orderedJobs;
+};
+
 export const dedupeSharedTracks = (tracks) => {
   const seen = new Set();
   const uniqueTracks = [];
@@ -288,6 +318,38 @@ export const dedupeSharedTracks = (tracks) => {
     uniqueTracks.push(normalizedTrack);
   }
   return uniqueTracks;
+};
+
+export const rebuildSharedPlaylistTracksFromJobs = (configTracks, jobs) => {
+  const jobList = Array.isArray(jobs) ? jobs : [];
+  const unmatchedJobIds = new Set(jobList.map((job) => job.id));
+  const remainingTracks = [];
+  for (const track of dedupeSharedTracks(configTracks)) {
+    const match = jobList.find(
+      (job) => unmatchedJobIds.has(job.id) && tracksShareMembership(job, track),
+    );
+    if (!match) continue;
+    unmatchedJobIds.delete(match.id);
+    remainingTracks.push(track);
+  }
+  for (const job of sortJobsByCreatedAt(jobList)) {
+    if (!unmatchedJobIds.has(job.id)) continue;
+    unmatchedJobIds.delete(job.id);
+    const track = normalizeSharedTrack({
+      artistName: job?.artistName,
+      trackName: job?.trackName,
+      albumName: job?.albumName || null,
+      artistMbid: job?.artistMbid || null,
+      albumMbid: job?.albumMbid || null,
+      trackMbid: job?.trackMbid || null,
+      releaseYear: job?.releaseYear || null,
+      durationMs: job?.durationMs || null,
+      artistAliases: job?.artistAliases || [],
+      reason: job?.reason || null,
+    });
+    if (track) remainingTracks.push(track);
+  }
+  return remainingTracks;
 };
 
 export const filterMissingSharedTracks = (existingTracks, incomingTracks) => {

@@ -1,15 +1,15 @@
 import fs from "fs/promises";
 import path from "path";
 import {
-  buildSharedTrackIdentity,
   flowPlaylistConfig,
-  tracksShareMembership,
+  orderJobsBySharedPlaylistTracks,
 } from "./weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 import {
   remapLegacyPath as remapLegacyWeeklyFlowPath,
   resolvePlaylistRoot as resolveWeeklyFlowRoot,
-} from "./playlistPaths.js";import { getM3uPathMode, normalizeM3uPathMode, resolveM3uTrackPath } from "./playlistM3uPaths.js";
+} from "./playlistPaths.js";
+import { getM3uPathMode, normalizeM3uPathMode, resolveM3uTrackPath } from "./playlistM3uPaths.js";
 
 export function formatExtinf(durationSeconds, title, artist) {
   const duration = Math.max(0, Math.floor(Number(durationSeconds) || 0));
@@ -37,15 +37,6 @@ async function fileExists(filePath) {
   }
 }
 
-function sortJobsByCreatedAt(jobs) {
-  return [...jobs].sort((left, right) => {
-    const leftCreated = Number(left?.createdAt || 0);
-    const rightCreated = Number(right?.createdAt || 0);
-    if (leftCreated !== rightCreated) return leftCreated - rightCreated;
-    return String(left?.id || "").localeCompare(String(right?.id || ""));
-  });
-}
-
 function jobToEntry(job, weeklyFlowRoot, m3uPathMode = getM3uPathMode()) {
   const localPath = path.resolve(remapLegacyWeeklyFlowPath(job.finalPath, weeklyFlowRoot));
   return {
@@ -63,25 +54,10 @@ export async function collectPlaylistM3uEntries(playlistType, options = {}) {
     .getByPlaylistType(playlistType)
     .filter((job) => job?.status === "done" && typeof job?.finalPath === "string");
   const sharedPlaylist = flowPlaylistConfig.getSharedPlaylist(playlistType);
-  let orderedJobs;
-  if (sharedPlaylist?.tracks?.length) {
-    const unmatchedJobs = sortJobsByCreatedAt(doneJobs);
-    orderedJobs = [];
-    // ponytail: playlists are small; persist immutable track IDs if quadratic matching matters
-    for (const track of sharedPlaylist.tracks) {
-      const identity = buildSharedTrackIdentity(track);
-      let index = unmatchedJobs.findIndex(
-        (job) => buildSharedTrackIdentity(job) === identity,
-      );
-      if (index < 0) {
-        index = unmatchedJobs.findIndex((job) => tracksShareMembership(job, track));
-      }
-      if (index >= 0) orderedJobs.push(unmatchedJobs.splice(index, 1)[0]);
-    }
-    orderedJobs.push(...unmatchedJobs);
-  } else {
-    orderedJobs = sortJobsByCreatedAt(doneJobs);
-  }
+  const orderedJobs = orderJobsBySharedPlaylistTracks(
+    doneJobs,
+    sharedPlaylist?.tracks,
+  );
 
   const entries = [];
   for (const job of orderedJobs) {
