@@ -95,10 +95,12 @@ set_status_label() {
     --method POST \
     "repos/${repository}/issues/${target_number}/labels" \
     -f "labels[]=${add_label}" >/dev/null
-  gh api \
-    --method DELETE \
-    "repos/${repository}/issues/${target_number}/labels/${remove_label}" \
-    >/dev/null 2>&1 || true
+  for label in "${remove_label}" in-progress; do
+    gh api \
+      --method DELETE \
+      "repos/${repository}/issues/${target_number}/labels/${label}" \
+      >/dev/null 2>&1 || true
+  done
 }
 
 for target_number in $(printf '%s\n' "${!target_numbers[@]}" | sort -n); do
