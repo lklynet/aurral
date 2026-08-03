@@ -332,12 +332,19 @@ function resolveApiKeyUser(req) {
   return null;
 }
 
+export const isOidcAuthEnabled = () => process.env.OIDC_ENABLED === "true";
+
 export const isAuthRequiredByConfig = () => {
   const settings = dbOps.getSettings();
   const onboardingDone = settings.onboardingComplete;
   if (!onboardingDone) return false;
   const legacyPasswords = getAuthPassword();
-  return isProxyAuthEnabled() || userOps.countUsers() > 0 || legacyPasswords.length > 0;
+  return (
+    isProxyAuthEnabled() ||
+    isOidcAuthEnabled() ||
+    userOps.countUsers() > 0 ||
+    legacyPasswords.length > 0
+  );
 };
 
 export const getLocalNetworkBypassConfig = (settings = dbOps.getSettings()) =>
@@ -433,7 +440,15 @@ export function reconcileLocalNetworkBypassSetting() {
   };
 }
 
-function createProxyUser(username, role) {
+export function ensureExternalUser(username, role) {
+  const existing = userOps.getUserByUsername(username);
+  if (existing) {
+    if (existing.role !== role) {
+      const updated = userOps.updateUser(existing.id, { role });
+      return toResolvedUser(updated || existing);
+    }
+    return toResolvedUser(existing);
+  }
   const passwordHash = hashPassword(crypto.randomBytes(32).toString("hex"));
   const created = userOps.createUser(username, passwordHash, role, null);
   return created
@@ -476,15 +491,7 @@ export function resolveProxyUser(req) {
   if (!username) return null;
 
   const role = resolveProxyRole(req, username);
-  const existing = userOps.getUserByUsername(username);
-  if (existing) {
-    if (existing.role !== role) {
-      const updated = userOps.updateUser(existing.id, { role });
-      return toResolvedUser(updated || existing);
-    }
-    return toResolvedUser(existing);
-  }
-  return createProxyUser(username, role);
+  return ensureExternalUser(username, role);
 }
 
 export function issueProxySession(req) {
@@ -652,7 +659,7 @@ export const authMiddleware = (req, res, next) => {
     ) {
       return next();
     }
-    if (req.path === "/api/auth/login") return next();
+    if (req.path === "/api/auth/login" || req.path === "/api/auth/oidc/login") return next();
 
     const settings = dbOps.getSettings();
     const onboardingDone = settings.onboardingComplete;

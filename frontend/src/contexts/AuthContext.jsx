@@ -115,12 +115,12 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const logout = useCallback(async () => {
-    const proxyLogoutUrl = bootstrap?.proxyLogoutUrl;
-    if (proxyLogoutUrl) {
+    const externalLogoutUrl = bootstrap?.oidcLogoutUrl || bootstrap?.proxyLogoutUrl;
+    if (externalLogoutUrl) {
       void logoutApi().catch(() => {});
       clearAuthStorage();
       invalidateBootstrapCache();
-      window.location.href = proxyLogoutUrl;
+      window.location.href = externalLogoutUrl;
       return;
     }
 

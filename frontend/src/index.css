@@ -6737,6 +6737,34 @@ textarea {
   text-align: center;
 }
 
+.login-sso {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.login-sso-button {
+  min-height: 2.75rem;
+}
+
+.login-divider {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--aurral-gray-light);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: "";
+  height: 1px;
+  background: color-mix(in srgb, var(--aurral-gray-light) 35%, transparent);
+}
+
 .login-submit {
   min-height: 2.75rem;
 }

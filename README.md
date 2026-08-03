@@ -30,7 +30,7 @@ Aurral is the Lidarr companion for self-hosted music discovery. Best-in-class re
 - **Activity**: Queue, review, and history for Lidarr requests, yt-dlp / slskd / Usenet downloads, and Aurral playlist jobs.
 - **Integrations**: Lidarr, Last.fm, ListenBrainz, Koito, yt-dlp, slskd, SABnzbd/NZBGet, Navidrome, Plex, Ticketmaster, Gotify, and webhooks.
 - **Playback**: Stream through Navidrome (M3U playlists) or Plex/Plexamp (API-synced playlists) from a dedicated download folder.
-- **Multi-user**: Per-user profiles, discovery layout, permissions, local auth, LAN auto-login, and reverse-proxy SSO.
+- **Multi-user**: Per-user profiles, discovery layout, permissions, local auth, LAN auto-login, reverse-proxy SSO, and native OIDC.
 
 ## Screenshots
 

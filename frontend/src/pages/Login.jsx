@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { getAppBasePath } from "../utils/basePath.js";
 
 const Login = () => {
   useDocumentTitle("Sign in");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const { login } = useAuth();
+  const { login, bootstrap } = useAuth();
+  const oidcEnabled = !!bootstrap?.oidcEnabled;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -20,6 +22,12 @@ const Login = () => {
     }
   };
 
+  const handleOidcLogin = () => {
+    const basePath = getAppBasePath();
+    const prefix = basePath === "/" ? "" : basePath.replace(/\/$/, "");
+    window.location.assign(`${prefix}/api/auth/oidc/login`);
+  };
+
   return (
     <div className="login-page">
       <div className="login-card">
@@ -28,6 +36,21 @@ const Login = () => {
           <h1 className="login-title">Sign in</h1>
           <p className="login-subtitle">Enter your credentials to access Aurral</p>
         </div>
+
+        {oidcEnabled && (
+          <div className="login-sso">
+            <button
+              type="button"
+              className="btn btn-secondary btn--full btn--bold login-sso-button"
+              onClick={handleOidcLogin}
+            >
+              Sign in with SSO
+            </button>
+            <div className="login-divider">
+              <span>or</span>
+            </div>
+          </div>
+        )}
 
         <form className="login-form" onSubmit={handleSubmit}>
           <div className="login-fields">

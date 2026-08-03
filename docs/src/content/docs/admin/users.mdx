@@ -21,6 +21,33 @@ Admins can control whether users can:
 - Local username and password accounts
 - Optional local-network auto-login for single-admin home setups
 - Reverse-proxy authentication for SSO
+- Native OpenID Connect login
+
+## Native OIDC
+
+Set `OIDC_ENABLED=true` and configure your identity provider as a confidential OIDC client.
+
+Required variables:
+
+- `OIDC_ISSUER` - discovery issuer URL
+- `OIDC_CLIENT_ID`
+- `OIDC_CLIENT_SECRET`
+- `OIDC_REDIRECT_URI` - must be exactly `https://aurral.example.com/sso/callback`
+
+Optional role mapping:
+
+- `OIDC_DEFAULT_ROLE` - `user` (default) or `admin`
+- `OIDC_ADMIN_USERS` - exact usernames promoted to admin at login
+- `OIDC_GROUPS_CLAIM` - ID-token claim with group membership
+- `OIDC_ADMIN_GROUPS` - groups from that claim that grant admin
+
+Aurral starts login at `/api/auth/oidc/login`, handles the IdP return at `/sso/callback`, then issues a normal Aurral session. Username comes from `OIDC_USERNAME_CLAIM` (default `preferred_username`), with a fallback to `email`.
+
+OIDC-created users cannot use local password login until an admin sets a password. Role changes from the IdP apply on the next OIDC login.
+
+Set `OIDC_LOGOUT_URL` if you want **Log out** to end the identity-provider session as well.
+
+Native OIDC and reverse-proxy auth can both stay configured. Use one as the primary browser login path for a given deployment.
 
 ## Reverse-proxy auth
 

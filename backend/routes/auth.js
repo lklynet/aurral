@@ -4,6 +4,8 @@ import { createSession, deleteSession, getSessionByToken } from "../config/sessi
 import { requireAuth } from "../middleware/requirePermission.js";
 import { getApiKey, rotateApiKey } from "../middleware/auth.js";
 import { hashPassword, verifyPassword, needsRehash } from "../middleware/passwordHash.js";
+import { startOidcLogin } from "../services/oidcAuth.js";
+import { logger } from "../services/logger.js";
 
 const router = express.Router();
 
@@ -81,6 +83,17 @@ router.get("/api-key", requireAuth, (req, res) => {
 router.post("/api-key/rotate", requireAuth, (req, res) => {
   const newKey = rotateApiKey();
   res.json({ apiKey: newKey });
+});
+
+router.get("/oidc/login", async (req, res) => {
+  try {
+    await startOidcLogin(req, res);
+  } catch (error) {
+    logger.error("auth", "OIDC login start failed:", { message: error.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: "OIDC login failed" });
+    }
+  }
 });
 
 export default router;

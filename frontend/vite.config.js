@@ -69,6 +69,11 @@ export default defineConfig(({ mode }) => {
           timeout: 60000,
           proxyTimeout: 60000,
         },
+        "/sso/callback": {
+          target: "http://localhost:3001",
+          changeOrigin: true,
+          secure: false,
+        },
         "/ws": {
           target: "ws://localhost:3001",
           ws: true,
