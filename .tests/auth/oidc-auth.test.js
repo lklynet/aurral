@@ -1,7 +1,8 @@
-import test from "node:test";
+import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  createMockHttpServer,
   setupIsolatedBackend,
   cleanupIsolatedState,
   resetDatabase,
@@ -25,7 +26,9 @@ const {
   resolveOidcUsername,
   resolveOidcRole,
   getOidcBootstrapInfo,
+  handleOidcCallback,
   resetOidcStateForTests,
+  startOidcLogin,
 } = oidcModule;
 
 const completeOnboarding = () => dbOps.updateSettings({ onboardingComplete: true });
@@ -55,6 +58,35 @@ function enableOidcEnv(overrides = {}) {
   process.env.OIDC_CLIENT_SECRET = "secret";
   process.env.OIDC_REDIRECT_URI = "https://aurral.example.com/sso/callback";
   Object.assign(process.env, overrides);
+}
+
+async function createPendingOidcLogin() {
+  let issuer;
+  const discoveryServer = await createMockHttpServer((_request, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        issuer,
+        authorization_endpoint: `${issuer}authorize`,
+      }),
+    );
+  });
+  issuer = `${discoveryServer.url}/`;
+  enableOidcEnv({
+    OIDC_ISSUER: issuer,
+    OIDC_REDIRECT_URI: `${issuer}callback`,
+  });
+
+  const response = {
+    redirect(_status, location) {
+      this.location = location;
+    },
+  };
+  await startOidcLogin({}, response);
+  return {
+    state: new URL(response.location).searchParams.get("state"),
+    close: discoveryServer.close,
+  };
 }
 
 test.beforeEach(() => {
@@ -141,4 +173,45 @@ test("OIDC-provisioned users get normal Aurral sessions", () => {
   const session = createSession(user.id, "127.0.0.1", "test-agent");
   assert.ok(session?.token);
   assert.equal(getSessionByToken(session.token)?.user?.username, "sso-erin");
+});
+
+test("OIDC callback rejects an expired state without creating a session", async () => {
+  const pending = await createPendingOidcLogin();
+  const now = Date.now();
+  const clock = mock.method(Date, "now", () => now + 11 * 60 * 1000);
+
+  try {
+    await assert.rejects(
+      () =>
+        handleOidcCallback({
+          query: { state: pending.state },
+          headers: {},
+          ip: "127.0.0.1",
+        }),
+      { status: 400, message: "OIDC login session expired" },
+    );
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sessions").get().count, 0);
+  } finally {
+    clock.mock.restore();
+    await pending.close();
+  }
+});
+
+test("OIDC callback rejects a mismatched state without creating a session", async () => {
+  const pending = await createPendingOidcLogin();
+
+  try {
+    await assert.rejects(
+      () =>
+        handleOidcCallback({
+          query: { state: `${pending.state}-mismatched` },
+          headers: {},
+          ip: "127.0.0.1",
+        }),
+      { status: 400, message: "OIDC login session expired" },
+    );
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sessions").get().count, 0);
+  } finally {
+    await pending.close();
+  }
 });
