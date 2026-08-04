@@ -1,0 +1,32 @@
+name: Label pull request
+
+on:
+  pull_request:
+    branches: ["main"]
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  label:
+    if: >-
+      github.event.action != 'edited' ||
+      github.event.changes.title != null
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Label from Conventional Commit title
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: bash scripts/label-pr-from-title.sh

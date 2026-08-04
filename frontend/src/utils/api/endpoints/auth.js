@@ -108,3 +108,29 @@ export const updateMyLidarrPreferences = (payload) =>
 
 export const updateMyDiscoverLayout = (layout) =>
   patchData("/users/me/discover-layout", { layout });
+
+export const getMyPlexLinkStatus = () => getData("/users/me/plex-link/status");
+
+export const startMyPlexLinkPin = (forwardUrl) =>
+  postData("/users/me/plex-link/oauth/pin", { forwardUrl });
+
+export const completeMyPlexLink = (pinId, code, clientId) =>
+  postData("/users/me/plex-link/oauth/complete", { pinId, code, clientId });
+
+export const disconnectMyPlex = async () => {
+  await deleteData("/users/me/plex-link");
+};
+
+export const getPlexHomeUsersForAdmin = () => getData("/users/plex-link/home-users");
+
+export const linkManagedPlexUser = (userId, plexUserId, { plexUsername, plexUuid, pin } = {}) =>
+  postData(`/users/${userId}/plex-link/managed`, {
+    plexUserId,
+    plexUsername,
+    plexUuid,
+    pin,
+  });
+
+export const adminUnlinkPlex = async (userId) => {
+  await deleteData(`/users/${userId}/plex-link`);
+};

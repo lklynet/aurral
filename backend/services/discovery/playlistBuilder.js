@@ -242,7 +242,7 @@ export async function generateDiscoverPlaylists({
 }
 
 export function annotateDiscoverPlaylistsForUser(playlists, user) {
-  const flows = flowPlaylistConfig.getFlowsForUser(user);
+  const flows = flowPlaylistConfig.getFlowsOwnedByUser(user?.id);
   const adoptedFlowByPresetId = new Map();
   for (const flow of flows) {
     const presetId = String(flow?.discoverPresetId || "").trim();
@@ -250,7 +250,7 @@ export function annotateDiscoverPlaylistsForUser(playlists, user) {
     adoptedFlowByPresetId.set(presetId, flow.id);
   }
   const adoptedPlaylistByPresetId = new Map();
-  for (const playlist of flowPlaylistConfig.getSharedPlaylistsForUser(user)) {
+  for (const playlist of flowPlaylistConfig.getSharedPlaylistsOwnedByUser(user?.id)) {
     const presetId = String(playlist?.discoverPresetId || "").trim();
     if (!presetId) continue;
     adoptedPlaylistByPresetId.set(presetId, playlist.id);
@@ -271,6 +271,7 @@ export function getCachedDiscoverPlaylist(cache, presetId) {
 export function buildFlowPayloadFromPreset(preset, presetId) {
   const flow = {
     name: preset.name,
+    description: preset.description || null,
     discoverPresetId: presetId,
     scheduleDays: [5],
     scheduleTime: "00:00",

@@ -81,6 +81,8 @@ export const validateFlowPayload = ({
   tags,
   relatedArtists,
   scheduleDays,
+  yearFrom,
+  yearTo,
 } = {}) => {
   if (!name || !String(name).trim()) {
     return "name is required";
@@ -103,6 +105,20 @@ export const validateFlowPayload = ({
   }
   if (!Array.isArray(scheduleDays) || scheduleDays.length === 0) {
     return "scheduleDays must include at least one day";
+  }
+  const hasYearFrom = yearFrom != null && String(yearFrom).trim() !== "";
+  const hasYearTo = yearTo != null && String(yearTo).trim() !== "";
+  if (hasYearFrom) {
+    const parsed = Number(yearFrom);
+    if (!Number.isFinite(parsed) || Math.trunc(parsed) < 1000 || Math.trunc(parsed) > 9999) {
+      return "yearFrom must be a 4-digit year";
+    }
+  }
+  if (hasYearTo) {
+    const parsed = Number(yearTo);
+    if (!Number.isFinite(parsed) || Math.trunc(parsed) < 1000 || Math.trunc(parsed) > 9999) {
+      return "yearTo must be a 4-digit year";
+    }
   }
   return null;
 };

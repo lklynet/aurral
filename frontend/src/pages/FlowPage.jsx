@@ -1762,6 +1762,8 @@ function FlowPage() {
                       activityHint={getEntryActivityMessage(entry)}
                       collapsed={!isMobileLayout && libraryCollapsed}
                       onSelect={selectPlaylist}
+                      viewerUsername={user?.username}
+                      viewerIsAdmin={user?.role === "admin"}
                       trailing={
                         isExpanded ? (
                           <>

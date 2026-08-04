@@ -81,6 +81,8 @@ export function registerFlows(router) {
         mix,
         size,
         deepDive,
+        yearFrom,
+        yearTo,
         tags,
         relatedArtists,
         scheduleDays,
@@ -95,6 +97,8 @@ export function registerFlows(router) {
         mix,
         size,
         deepDive,
+        yearFrom,
+        yearTo,
         tags,
         relatedArtists,
         scheduleDays,
@@ -141,7 +145,7 @@ export function registerFlows(router) {
       if (validationError) {
         return res.status(400).json({ error: validationError, message: validationError });
       }
-      const updated = flowPlaylistConfig.updateFlow(flowId, {
+      const updates = {
         name,
         mix,
         size,
@@ -150,7 +154,14 @@ export function registerFlows(router) {
         relatedArtists,
         scheduleDays,
         scheduleTime,
-      });
+      };
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, "yearFrom")) {
+        updates.yearFrom = req.body.yearFrom;
+      }
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, "yearTo")) {
+        updates.yearTo = req.body.yearTo;
+      }
+      const updated = flowPlaylistConfig.updateFlow(flowId, updates);
       if (!updated) {
         return res.status(404).json({ error: "Flow not found" });
       }
