@@ -7,6 +7,8 @@ owner="${repository%%/*}"
 repo="${repository#*/}"
 max_field_chars=1000
 max_description_chars=3500
+max_embed_chars=6000
+max_embed_fields=25
 
 case "${channel}" in
   releases|nightly|previews)
@@ -61,7 +63,15 @@ add_bullet_fields() {
       field_name="${name}"
       [ "${part}" -gt 1 ] && field_name+=" (continued)"
       add_field "${field_name}" "${chunk}"
-      chunk="${line}"
+      if [ "${#line}" -gt "${max_field_chars}" ]; then
+        part=$((part + 1))
+        field_name="${name}"
+        [ "${part}" -gt 1 ] && field_name+=" (continued)"
+        add_field "${field_name}" "$(truncate_text "${line}" "${max_field_chars}")"
+        chunk=""
+      else
+        chunk="${line}"
+      fi
     else
       chunk="${candidate}"
     fi
@@ -188,6 +198,8 @@ pr_summary_excerpt() {
 }
 
 embed_fields_json='[]'
+embed_field_chars=0
+embed_field_count=0
 description=""
 title=""
 url=""
@@ -195,13 +207,27 @@ url=""
 add_field() {
   local name="$1"
   local value="$2"
+  local available value_limit
   [ -z "${value}" ] && return 0
+
+  if [ "${embed_field_count}" -ge "${max_embed_fields}" ]; then
+    return 0
+  fi
+
+  available=$((max_embed_chars - ${#title} - ${#description} - embed_field_chars - ${#name}))
+  [ "${available}" -le 0 ] && return 0
+  value_limit="${max_field_chars}"
+  [ "${available}" -lt "${value_limit}" ] && value_limit="${available}"
+  value="$(truncate_text "${value}" "${value_limit}")"
+
   embed_fields_json="$(
     EMBED_FIELDS_JSON="${embed_fields_json}" \
     FIELD_NAME="${name}" \
     FIELD_VALUE="${value}" \
     python3 -c 'import json, os; fields=json.loads(os.environ["EMBED_FIELDS_JSON"]); fields.append({"name": os.environ["FIELD_NAME"], "value": os.environ["FIELD_VALUE"], "inline": False}); print(json.dumps(fields))'
   )"
+  embed_field_chars=$((embed_field_chars + ${#name} + ${#value}))
+  embed_field_count=$((embed_field_count + 1))
 }
 
 case "${channel}" in
