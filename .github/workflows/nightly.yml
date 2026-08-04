@@ -83,9 +83,12 @@ jobs:
 
       - name: Notify Discord nightly channel
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DISCORD_WEBHOOK_NIGHTLY: ${{ secrets.DISCORD_WEBHOOK_NIGHTLY }}
           NIGHTLY_VERSION: ${{ steps.version.outputs.value }}
           CHANGE_URL: ${{ steps.readiness.outputs.change_url }}
           CHANGE_RANGE: ${{ steps.readiness.outputs.change_range }}
           READINESS_ISSUE: ${{ steps.readiness.outputs.readiness_issue }}
+          PULL_LIST: ${{ steps.readiness.outputs.pull_list }}
+          ISSUE_LIST: ${{ steps.readiness.outputs.issue_list }}
         run: bash scripts/notify-discord.sh nightly

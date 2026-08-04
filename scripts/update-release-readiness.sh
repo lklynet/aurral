@@ -68,6 +68,18 @@ write_output() {
   fi
 }
 
+write_output_multiline() {
+  local name="$1"
+  local value="$2"
+  if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    {
+      printf '%s<<AURRAL_EOF\n' "${name}"
+      printf '%s\n' "${value}"
+      printf 'AURRAL_EOF\n'
+    } >> "${GITHUB_OUTPUT}"
+  fi
+}
+
 pin_issue() {
   local issue_number="$1"
   local err
@@ -316,6 +328,8 @@ EOF
   write_output readiness_issue "${readiness_issue}"
   write_output change_url "${change_url}"
   write_output change_range "${change_range}"
+  write_output_multiline pull_list "${pull_list}"
+  write_output_multiline issue_list "${issue_list:-}"
   echo "Updated release-readiness issue #${readiness_issue}."
   exit 0
 fi

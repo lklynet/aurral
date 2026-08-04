@@ -242,6 +242,7 @@ jobs:
 
       - name: Notify Discord releases channel
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DISCORD_WEBHOOK_RELEASES: ${{ secrets.DISCORD_WEBHOOK_RELEASES }}
           RELEASE_TAG: ${{ needs.compute-release.outputs.tag }}
           RELEASE_VERSION: ${{ needs.compute-release.outputs.version }}
