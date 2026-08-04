@@ -16,6 +16,7 @@ import {
   issueStreamToken,
   getLocalNetworkBypassStatus,
 } from "../middleware/auth.js";
+import { getOidcBootstrapInfo } from "../services/oidcAuth.js";
 import { lidarrClient } from "../services/lidarrClient.js";
 import {
   getDiscoveryCache,
@@ -243,10 +244,13 @@ function buildBootstrapPayload(req) {
   const currentUser = resolveRequestUser(req);
   const lidarrConfigured = lidarrClient.isConfigured();
 
+  const oidcInfo = getOidcBootstrapInfo();
   const payload = {
     status: "ok",
     authRequired,
     proxyAuthEnabled: isProxyAuthEnabled(),
+    oidcEnabled: oidcInfo.oidcEnabled,
+    oidcLogoutUrl: oidcInfo.oidcLogoutUrl,
     onboardingRequired: !onboardingDone,
     timestamp: new Date().toISOString(),
     appVersion: APP_VERSION,

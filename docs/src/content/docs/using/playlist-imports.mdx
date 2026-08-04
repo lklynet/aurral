@@ -165,6 +165,7 @@ Aurral treats a top-level array of track objects as one playlist.
 - If an imported playlist name conflicts with an existing playlist, Aurral renames it automatically.
 - Imported playlists queue their own downloads and do not affect any flow configuration.
 - When existing file reuse succeeds, Aurral immediately marks the imported track as complete.
+- Aurral keeps the imported track order in the playlist view and in the `.m3u` file after reuse and downloads finish.
 
 ## Download retries and failure behavior
 
@@ -179,6 +180,8 @@ Imported playlists behave differently from flows when downloads fail:
 ## Existing file reuse
 
 Aurral can use one file in multiple playlists. This prevents a second download of the same file.
+
+Reuse does not change the imported track order. Owned tracks stay in their place in the list while missing tracks download.
 
 If you add a flow track to a static playlist, both playlists use the same file.
 

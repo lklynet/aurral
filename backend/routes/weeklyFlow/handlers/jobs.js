@@ -4,6 +4,7 @@ import { startSlskdOrchestratorWorker } from "../../../services/slskdOrchestrato
 import { playlistManager } from "../../../services/weeklyFlow/weeklyFlowPlaylistManager.js";
 import {
   flowPlaylistConfig,
+  orderJobsBySharedPlaylistTracks,
 } from "../../../services/weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { weeklyFlowOperationQueue } from "../../../services/weeklyFlow/weeklyFlowOperationQueue.js";
 import { getWeeklyFlowStatusSnapshot } from "../../../services/weeklyFlow/weeklyFlowStatusSnapshot.js";
@@ -47,11 +48,12 @@ export function registerJobs(router) {
       rawLimit && Number.isFinite(parsedLimit) && parsedLimit > 0
         ? Math.floor(parsedLimit)
         : null;
-    const jobs = filterJobsForUser(
-      req.user,
-      downloadTracker.getByPlaylistType(flowId, limit),
-    );
-    res.json(jobs);
+    let jobs = downloadTracker.getByPlaylistType(flowId, limit);
+    const sharedPlaylist = flowPlaylistConfig.getSharedPlaylist(flowId);
+    if (sharedPlaylist?.tracks?.length && limit == null) {
+      jobs = orderJobsBySharedPlaylistTracks(jobs, sharedPlaylist.tracks);
+    }
+    res.json(filterJobsForUser(req.user, jobs));
   });
 
   router.get("/jobs", (req, res) => {

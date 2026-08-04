@@ -40,6 +40,8 @@ export const loginApi = async (username, password) => {
   return result;
 };
 
+export const exchangeOidcCode = (code) => postData("/auth/oidc/exchange", { code });
+
 export const logoutApi = async () => {
   const result = await postData("/auth/logout");
   invalidateBootstrapCache();

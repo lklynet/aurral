@@ -30,6 +30,7 @@ function ActivityRootRedirect() {
 }
 
 const Login = lazy(() => import("./pages/Login"));
+const SsoComplete = lazy(() => import("./pages/SsoComplete"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const SearchResultsPage = lazy(() => import("./pages/SearchResultsPage"));
 const DiscoverPage = lazy(() => import("./pages/DiscoverPage"));
@@ -189,100 +190,115 @@ function AppContent() {
 
   return (
     <Router basename={basePath}>
-      <DiscoverRecentProvider>
-        <ProtectedRoute>
-          <Layout>
-          <UpdateBanner
-            currentVersion={appVersion}
-            visible={!user || user.role === "admin"}
-          />
-          {healthIssue === "lidarr" && isHealthy && (
-            <div className="app-status-banner app-status-banner--warning">
-              <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
-              <p className="app-status-banner__text app-status-banner__text--warning">
-                Lidarr is busy. Library data may be stale until it catches up.
-              </p>
-            </div>
-          )}
-
-          {healthIssue === "degraded" && (
-            <div className="app-status-banner app-status-banner--warning">
-              <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
-              <p className="app-status-banner__text app-status-banner__text--warning">
-                Aurral is responding slowly. Lidarr may be busy — try again in a minute.
-              </p>
-            </div>
-          )}
-
-          {healthIssue === "backend" && isHealthy === false && (
-            <div className="app-status-banner app-status-banner--error">
-              <XCircle className="app-status-banner__icon app-status-banner__icon--error" />
-              <p className="app-status-banner__text app-status-banner__text--error">
-                Unable to connect to the Aurral backend. Please check your configuration.
-              </p>
-            </div>
-          )}
-
-          {isHealthy && !rootFolderConfigured && (
-            <div className="app-status-banner app-status-banner--warning">
-              <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
-              <p className="app-status-banner__text app-status-banner__text--warning">
-                Root folder is not configured. Please configure your music
-                library root folder in settings.
-              </p>
-            </div>
-          )}
-            <Suspense fallback={<PageLoader />}>
-              <Routes>
-                <Route path="/" element={<DiscoverPage />} />
-                <Route path="/shows" element={<Navigate to="/shows/all" replace />} />
-                <Route path="/shows/:filter" element={<ShowsPage />} />
-                <Route path="/search" element={<SearchResultsPage />} />
-                <Route path="/discover" element={<Navigate to="/" replace />} />
-                <Route path="/discover/playlists/:presetId" element={<DiscoverPlaylistDetailPage />} />
-                <Route path="/discover/playlists" element={<DiscoverPlaylistsPage />} />
-                <Route path="/library" element={<LibraryPage />} />
-                <Route
-                  path="/playlists"
-                  element={
-                    <PermissionRoute permission="accessFlow">
-                      <FlowPage />
-                    </PermissionRoute>
-                  }
-                />
-                <Route path="/flow" element={<Navigate to="/playlists" replace />} />
-                <Route path="/downloads" element={<Navigate to="/activity/queue" replace />} />
-                <Route path="/requests" element={<Navigate to="/activity/queue" replace />} />
-                <Route path="/history" element={<Navigate to="/activity/history" replace />} />
-                <Route path="/history/:legacyTab" element={<LegacyHistoryRedirect />} />
-                <Route path="/activity" element={<ActivityRootRedirect />} />
-                <Route path="/activity/:view" element={<ActivityPage />} />
-                <Route path="/activity/:view/:source" element={<ActivitySourceRedirect />} />
-                <Route
-                  path="/artist/:mbid/albums"
-                  element={<ArtistReleaseListPage mode="releases" />}
-                />
-                <Route path="/artist/:mbid/release/:releaseMbid" element={<ReleasePage />} />
-                <Route
-                  path="/artist/:mbid/appears-on"
-                  element={<ArtistReleaseListPage mode="appearsOn" />}
-                />
-                <Route path="/artist/:mbid" element={<ArtistDetailsPage />} />
-                <Route
-                  path="/settings/:tab?"
-                  element={
-                    <PermissionRoute permission="accessSettings">
-                      <SettingsPage />
-                    </PermissionRoute>
-                  }
-                />
-                <Route path="/profile" element={<ProfilePage />} />
-                <Route path="/blocklist" element={<BlocklistPage />} />
-              </Routes>
+      <Routes>
+        <Route
+          path="/sso/complete"
+          element={
+            <Suspense fallback={<ScreenLoader />}>
+              <SsoComplete />
             </Suspense>
-          </Layout>
-        </ProtectedRoute>
-      </DiscoverRecentProvider>
+          }
+        />
+        <Route
+          path="/*"
+          element={
+            <DiscoverRecentProvider>
+              <ProtectedRoute>
+                <Layout>
+                  <UpdateBanner
+                    currentVersion={appVersion}
+                    visible={!user || user.role === "admin"}
+                  />
+                  {healthIssue === "lidarr" && isHealthy && (
+                    <div className="app-status-banner app-status-banner--warning">
+                      <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
+                      <p className="app-status-banner__text app-status-banner__text--warning">
+                        Lidarr is busy. Library data may be stale until it catches up.
+                      </p>
+                    </div>
+                  )}
+
+                  {healthIssue === "degraded" && (
+                    <div className="app-status-banner app-status-banner--warning">
+                      <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
+                      <p className="app-status-banner__text app-status-banner__text--warning">
+                        Aurral is responding slowly. Lidarr may be busy — try again in a minute.
+                      </p>
+                    </div>
+                  )}
+
+                  {healthIssue === "backend" && isHealthy === false && (
+                    <div className="app-status-banner app-status-banner--error">
+                      <XCircle className="app-status-banner__icon app-status-banner__icon--error" />
+                      <p className="app-status-banner__text app-status-banner__text--error">
+                        Unable to connect to the Aurral backend. Please check your configuration.
+                      </p>
+                    </div>
+                  )}
+
+                  {isHealthy && !rootFolderConfigured && (
+                    <div className="app-status-banner app-status-banner--warning">
+                      <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
+                      <p className="app-status-banner__text app-status-banner__text--warning">
+                        Root folder is not configured. Please configure your music
+                        library root folder in settings.
+                      </p>
+                    </div>
+                  )}
+                  <Suspense fallback={<PageLoader />}>
+                    <Routes>
+                      <Route path="/" element={<DiscoverPage />} />
+                      <Route path="/shows" element={<Navigate to="/shows/all" replace />} />
+                      <Route path="/shows/:filter" element={<ShowsPage />} />
+                      <Route path="/search" element={<SearchResultsPage />} />
+                      <Route path="/discover" element={<Navigate to="/" replace />} />
+                      <Route path="/discover/playlists/:presetId" element={<DiscoverPlaylistDetailPage />} />
+                      <Route path="/discover/playlists" element={<DiscoverPlaylistsPage />} />
+                      <Route path="/library" element={<LibraryPage />} />
+                      <Route
+                        path="/playlists"
+                        element={
+                          <PermissionRoute permission="accessFlow">
+                            <FlowPage />
+                          </PermissionRoute>
+                        }
+                      />
+                      <Route path="/flow" element={<Navigate to="/playlists" replace />} />
+                      <Route path="/downloads" element={<Navigate to="/activity/queue" replace />} />
+                      <Route path="/requests" element={<Navigate to="/activity/queue" replace />} />
+                      <Route path="/history" element={<Navigate to="/activity/history" replace />} />
+                      <Route path="/history/:legacyTab" element={<LegacyHistoryRedirect />} />
+                      <Route path="/activity" element={<ActivityRootRedirect />} />
+                      <Route path="/activity/:view" element={<ActivityPage />} />
+                      <Route path="/activity/:view/:source" element={<ActivitySourceRedirect />} />
+                      <Route
+                        path="/artist/:mbid/albums"
+                        element={<ArtistReleaseListPage mode="releases" />}
+                      />
+                      <Route path="/artist/:mbid/release/:releaseMbid" element={<ReleasePage />} />
+                      <Route
+                        path="/artist/:mbid/appears-on"
+                        element={<ArtistReleaseListPage mode="appearsOn" />}
+                      />
+                      <Route path="/artist/:mbid" element={<ArtistDetailsPage />} />
+                      <Route
+                        path="/settings/:tab?"
+                        element={
+                          <PermissionRoute permission="accessSettings">
+                            <SettingsPage />
+                          </PermissionRoute>
+                        }
+                      />
+                      <Route path="/profile" element={<ProfilePage />} />
+                      <Route path="/blocklist" element={<BlocklistPage />} />
+                    </Routes>
+                  </Suspense>
+                </Layout>
+              </ProtectedRoute>
+            </DiscoverRecentProvider>
+          }
+        />
+      </Routes>
     </Router>
   );
 }

@@ -35,7 +35,20 @@ Use the web UI for most settings. Use these variables for Docker deployment sett
 | `AUTH_PROXY_ADMIN_USERS` | Comma-separated usernames that get the admin role. Aurral checks the list on each request. If you remove a username, Aurral changes that user on the next request. |
 | `AUTH_PROXY_ROLE_HEADER` | Optional header that contains the user's group membership (for example, Authelia's `Remote-Groups`). Usually, this is a comma-separated list. Aurral compares it with `AUTH_PROXY_ADMIN_GROUPS` on every request. |
 | `AUTH_PROXY_ADMIN_GROUPS` | Comma-separated group names that give the admin role. Aurral compares these names with `AUTH_PROXY_ROLE_HEADER`. A group named `admin` has no special function unless you list it here. |
-| `SESSION_EXPIRY_HOURS` | Session lifetime in hours for password login and for sessions issued after proxy authentication. Default `720` (30 days). |
+| `OIDC_ENABLED` | Enable native OpenID Connect login. |
+| `OIDC_ISSUER` | Identity provider issuer URL used for OIDC discovery. |
+| `OIDC_CLIENT_ID` | OIDC client ID. |
+| `OIDC_CLIENT_SECRET` | OIDC client secret. |
+| `OIDC_REDIRECT_URI` | Exact callback URL registered with your IdP. Must be `https://<your-aurral-host>/sso/callback`. |
+| `OIDC_SCOPES` | Space-separated scopes. Default `openid profile email`. |
+| `OIDC_USERNAME_CLAIM` | Claim used as the Aurral username. Default `preferred_username`. Falls back to `email` when that claim is missing. |
+| `OIDC_DEFAULT_ROLE` | Role for OIDC users who are not otherwise granted admin: `user` or `admin`. |
+| `OIDC_ADMIN_USERS` | Comma-separated usernames that get the admin role at OIDC login. |
+| `OIDC_GROUPS_CLAIM` | Optional ID-token claim that contains group membership. |
+| `OIDC_ADMIN_GROUPS` | Comma-separated group names that grant the admin role when present in `OIDC_GROUPS_CLAIM`. |
+| `OIDC_LOGOUT_URL` | Optional IdP logout URL. When set, Aurral redirects there after clearing the local session. |
+| `OIDC_DOMAIN` | Optional IdP origin added to the `connect-src` content security policy. |
+| `SESSION_EXPIRY_HOURS` | Session lifetime in hours for password login, proxy auth, and native OIDC. Default `720` (30 days). |
 
 ## Logging
 
