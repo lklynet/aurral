@@ -495,6 +495,7 @@ test("artist add succeeds when a provider mapping conflict follows a successful 
           `Lidarr API error: 500 - The input string '${artistMbid}' was not in a correct format.`,
         );
       }
+      assert.equal(payload.foreignArtistId, providerId);
       return { id: 42, foreignArtistId: providerId, artistName: "Muse", monitored: true };
     }
     if (endpoint === `/artist/lookup?term=${encodeURIComponent("Muse")}` && method === "GET") {
