@@ -144,7 +144,6 @@ test("POST /api/onboarding/complete requires Lidarr and auto-picks profiles", as
     body: JSON.stringify({
       authUser: "admin",
       authPassword: "password123",
-      security: { localNetworkBypass: { enabled: true } },
       lidarr: {
         url: fakeLidarr.url,
         apiKey: "fake-key",
@@ -159,5 +158,4 @@ test("POST /api/onboarding/complete requires Lidarr and auto-picks profiles", as
   assert.equal(settings.integrations?.lidarr?.apiKey, "fake-key");
   assert.equal(settings.integrations?.lidarr?.qualityProfileId, 1);
   assert.equal(settings.integrations?.lidarr?.metadataProfileId, 2);
-  assert.equal(settings.security?.localNetworkBypass?.enabled, true);
 });

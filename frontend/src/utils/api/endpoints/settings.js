@@ -24,6 +24,11 @@ export const testNavidromeConnection = (url, username, password) =>
 
 export const syncPlexNow = () => postData("/settings/plex/sync");
 
+export const getPlexLibraries = () => getData("/settings/plex/libraries");
+
+export const checkPlexLibraryAccess = (sectionId) =>
+  getData(`/settings/plex/libraries/${encodeURIComponent(sectionId)}/access-check`);
+
 export const getAppSettings = () => getData("/settings");
 
 export const updateAppSettings = (settings) => postData("/settings", settings);

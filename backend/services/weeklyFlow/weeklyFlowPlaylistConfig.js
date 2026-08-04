@@ -1,6 +1,8 @@
 import { randomBytes, randomUUID } from "crypto";
 import { dbOps } from "../../db/helpers/index.js";
 import { downloadTracker } from "./weeklyFlowDownloadTracker.js";
+import { getDiscoverPlaylistPreset } from "../../config/discoverPlaylistPresets.js";
+import { EDITORIAL_PLAYLIST_POOL } from "../../config/editorialPlaylistPresets.js";
 
 const LEGACY_TYPES = ["discover", "mix", "trending"];
 const DEFAULT_MIX = { discover: 34, mix: 33, trending: 33, focus: 0 };
@@ -14,6 +16,51 @@ const clampSize = (value) => {
   const n = Number(value);
   if (!Number.isFinite(n)) return DEFAULT_SIZE;
   return Math.max(Math.round(n), 1);
+};
+
+export const normalizeYearBound = (value) => {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const year = Math.trunc(parsed);
+  if (year < 1000 || year > 9999) return null;
+  return year;
+};
+
+export const normalizeYearRange = (yearFrom, yearTo) => {
+  let from = normalizeYearBound(yearFrom);
+  let to = normalizeYearBound(yearTo);
+  if (from != null && to != null && from > to) {
+    const swap = from;
+    from = to;
+    to = swap;
+  }
+  return { yearFrom: from, yearTo: to };
+};
+
+export const resolveYearRangeUpdate = (current, updates = {}) => {
+  const hasYearFromUpdate = Object.prototype.hasOwnProperty.call(updates, "yearFrom");
+  const hasYearToUpdate = Object.prototype.hasOwnProperty.call(updates, "yearTo");
+  if (!hasYearFromUpdate && !hasYearToUpdate) {
+    return {
+      yearFrom: normalizeYearBound(current?.yearFrom),
+      yearTo: normalizeYearBound(current?.yearTo),
+    };
+  }
+  if (hasYearFromUpdate && hasYearToUpdate) {
+    return normalizeYearRange(updates.yearFrom, updates.yearTo);
+  }
+  let yearFrom = hasYearFromUpdate
+    ? normalizeYearBound(updates.yearFrom)
+    : normalizeYearBound(current?.yearFrom);
+  let yearTo = hasYearToUpdate
+    ? normalizeYearBound(updates.yearTo)
+    : normalizeYearBound(current?.yearTo);
+  if (yearFrom != null && yearTo != null && yearFrom > yearTo) {
+    if (hasYearFromUpdate) yearTo = null;
+    else yearFrom = null;
+  }
+  return { yearFrom, yearTo };
 };
 
 export const normalizeWeightMap = (value) => {
@@ -161,6 +208,14 @@ const normalizeMix = (mix) => {
   return out;
 };
 
+const resolvePresetDescription = (discoverPresetId) => {
+  const id = String(discoverPresetId || "").trim();
+  if (!id) return null;
+  const preset =
+    getDiscoverPlaylistPreset(id) || EDITORIAL_PLAYLIST_POOL.find((entry) => entry.id === id);
+  return preset?.description || null;
+};
+
 const normalizeFlow = (flow) => {
   const name = String(flow?.name || "").trim();
   const size = clampSize(flow?.size);
@@ -177,6 +232,7 @@ const normalizeFlow = (flow) => {
     normalizedRelatedArray.length > 0
       ? normalizedRelatedArray
       : Object.keys(legacyRelatedArtists);
+  const { yearFrom, yearTo } = normalizeYearRange(flow?.yearFrom, flow?.yearTo);
   return {
     id: flow?.id || randomUUID(),
     name: name || "Flow",
@@ -188,6 +244,8 @@ const normalizeFlow = (flow) => {
     scheduleDays: normalizeScheduleDays(flow?.scheduleDays),
     scheduleTime: normalizeScheduleTime(flow?.scheduleTime),
     deepDive: flow?.deepDive === true,
+    yearFrom,
+    yearTo,
     nextRunAt:
       flow?.nextRunAt != null && Number.isFinite(Number(flow.nextRunAt))
         ? Number(flow.nextRunAt)
@@ -203,6 +261,8 @@ const normalizeFlow = (flow) => {
     discoverPresetId: String(flow?.discoverPresetId || "").trim() || null,
     type: flow?.type || null,
     tag: flow?.tag || null,
+    description:
+      String(flow?.description || "").trim() || resolvePresetDescription(flow?.discoverPresetId),
     lidarrFeedToken: String(flow?.lidarrFeedToken || "").trim() || null,
     createdAt:
       flow?.createdAt != null && Number.isFinite(Number(flow.createdAt))
@@ -409,6 +469,10 @@ const normalizeSharedPlaylist = (playlist) => {
     sourceName: String(playlist?.sourceName || "").trim() || null,
     sourceFlowId: String(playlist?.sourceFlowId || "").trim() || null,
     discoverPresetId: String(playlist?.discoverPresetId || "").trim() || null,
+    type: playlist?.type || null,
+    description:
+      String(playlist?.description || "").trim() ||
+      resolvePresetDescription(playlist?.discoverPresetId),
     importSource,
     importedAt:
       playlist?.importedAt != null && Number.isFinite(Number(playlist.importedAt))
@@ -537,28 +601,39 @@ const canUserAccessOwnerScopedEntity = (user, ownerUserId) => {
   return Number(user.id) === Number(ownerUserId);
 };
 
-const assertUniqueLibraryName = (
-  nextName,
-  { exceptFlowId = null, exceptPlaylistId = null, conflictAs = "flow" } = {},
-) => {
+const isOwnedByUser = (entity, userId) => Number(entity?.ownerUserId) === Number(userId);
+
+const entitiesRelevantForNameCheck = (entities, { ownerUserId }) =>
+  entities.filter((e) => isOwnedByUser(e, ownerUserId));
+
+const assertUniqueFlowName = (flows, sameOwnerPlaylists, nextName, exceptFlowId = null) => {
   const key = normalizeNameKey(nextName);
   if (!key) return;
-  const displayName = String(nextName || "").trim();
-  const flowConflict = getStoredFlows().some((flow) => {
+  const flowConflict = flows.some((flow) => {
     if (!flow) return false;
     if (exceptFlowId && flow.id === exceptFlowId) return false;
     return normalizeNameKey(flow.name) === key;
   });
-  const playlistConflict = getStoredSharedPlaylists().some((playlist) => {
+  const playlistConflict = sameOwnerPlaylists.some(
+    (playlist) => playlist && normalizeNameKey(playlist.name) === key,
+  );
+  if (flowConflict || playlistConflict) {
+    throw createNameConflictError(String(nextName || "").trim());
+  }
+};
+
+const assertUniqueSharedPlaylistName = (playlists, sameOwnerFlows, nextName, exceptPlaylistId = null) => {
+  const key = normalizeNameKey(nextName);
+  if (!key) return;
+  const playlistConflict = playlists.some((playlist) => {
     if (!playlist) return false;
     if (exceptPlaylistId && playlist.id === exceptPlaylistId) return false;
     return normalizeNameKey(playlist.name) === key;
   });
-  if (!flowConflict && !playlistConflict) return;
-  if (conflictAs === "shared") {
-    throw createSharedPlaylistNameConflictError(displayName);
+  const flowConflict = sameOwnerFlows.some((flow) => flow && normalizeNameKey(flow.name) === key);
+  if (playlistConflict || flowConflict) {
+    throw createSharedPlaylistNameConflictError(String(nextName || "").trim());
   }
-  throw createNameConflictError(displayName);
 };
 
 export const flowPlaylistConfig = {
@@ -576,6 +651,10 @@ export const flowPlaylistConfig = {
 
   getFlowsForUser(user) {
     return getStoredFlows().filter((flow) => this.canUserAccessFlow(user, flow));
+  },
+
+  getFlowsOwnedByUser(userId) {
+    return getStoredFlows().filter((flow) => isOwnedByUser(flow, userId));
   },
 
   getFlow(flowId) {
@@ -612,6 +691,8 @@ export const flowPlaylistConfig = {
     mix,
     size,
     deepDive,
+    yearFrom,
+    yearTo,
     tags,
     relatedArtists,
     scheduleDays,
@@ -620,20 +701,28 @@ export const flowPlaylistConfig = {
     discoverPresetId = null,
     type = null,
     tag = null,
+    description = null,
   }) {
-    assertUniqueLibraryName(name, { conflictAs: "flow" });
     const flows = getStoredFlows();
+    assertUniqueFlowName(
+      entitiesRelevantForNameCheck(flows, { ownerUserId }),
+      entitiesRelevantForNameCheck(getStoredSharedPlaylists(), { ownerUserId }),
+      name,
+    );
     const flow = normalizeFlow({
       id: randomUUID(),
       name,
       mix,
       size,
       deepDive,
+      yearFrom,
+      yearTo,
       tags,
       relatedArtists,
       discoverPresetId,
       type,
       tag,
+      description,
       scheduleDays,
       scheduleTime,
       ownerUserId,
@@ -652,12 +741,17 @@ export const flowPlaylistConfig = {
     if (index === -1) return null;
     const current = flows[index];
     const nextName = updates?.name ?? current.name;
-    assertUniqueLibraryName(nextName, {
-      exceptFlowId: flowId,
-      conflictAs: "flow",
-    });
+    assertUniqueFlowName(
+      entitiesRelevantForNameCheck(flows, { ownerUserId: current.ownerUserId }),
+      entitiesRelevantForNameCheck(getStoredSharedPlaylists(), {
+        ownerUserId: current.ownerUserId,
+      }),
+      nextName,
+      flowId,
+    );
     const currentSchedule = normalizeScheduleDays(current.scheduleDays);
     const currentScheduleTime = normalizeScheduleTime(current.scheduleTime);
+    const { yearFrom, yearTo } = resolveYearRangeUpdate(current, updates || {});
     const next = normalizeFlow({
       ...current,
       name: nextName,
@@ -668,6 +762,8 @@ export const flowPlaylistConfig = {
       scheduleDays: updates?.scheduleDays ?? current.scheduleDays,
       scheduleTime: updates?.scheduleTime ?? current.scheduleTime,
       deepDive: typeof updates?.deepDive === "boolean" ? updates.deepDive : current.deepDive,
+      yearFrom,
+      yearTo,
       enabled: current.enabled,
       nextRunAt: current.nextRunAt,
       lastRunAt: current.lastRunAt,
@@ -757,6 +853,10 @@ export const flowPlaylistConfig = {
     );
   },
 
+  getSharedPlaylistsOwnedByUser(userId) {
+    return getStoredSharedPlaylists().filter((playlist) => isOwnedByUser(playlist, userId));
+  },
+
   getSharedPlaylist(playlistId) {
     return getStoredSharedPlaylists().find((playlist) => playlist.id === playlistId) || null;
   },
@@ -772,12 +872,18 @@ export const flowPlaylistConfig = {
     sourceName,
     sourceFlowId,
     discoverPresetId = null,
+    type = null,
     tracks = [],
     ownerUserId = null,
     importSource = null,
+    description = null,
   }) {
-    assertUniqueLibraryName(name, { conflictAs: "shared" });
     const playlists = getStoredSharedPlaylists();
+    assertUniqueSharedPlaylistName(
+      entitiesRelevantForNameCheck(playlists, { ownerUserId }),
+      entitiesRelevantForNameCheck(getStoredFlows(), { ownerUserId }),
+      name,
+    );
     const playlist = normalizeSharedPlaylist({
       id: String(id || "").trim() || randomUUID(),
       name,
@@ -785,7 +891,9 @@ export const flowPlaylistConfig = {
       sourceName,
       sourceFlowId,
       discoverPresetId,
+      type,
       importSource,
+      description,
       tracks,
       importedAt: Date.now(),
       createdAt: Date.now(),
@@ -818,10 +926,12 @@ export const flowPlaylistConfig = {
     if (index === -1) return null;
     const current = playlists[index];
     const nextName = updates?.name ?? current.name;
-    assertUniqueLibraryName(nextName, {
-      exceptPlaylistId: playlistId,
-      conflictAs: "shared",
-    });
+    assertUniqueSharedPlaylistName(
+      entitiesRelevantForNameCheck(playlists, { ownerUserId: current.ownerUserId }),
+      entitiesRelevantForNameCheck(getStoredFlows(), { ownerUserId: current.ownerUserId }),
+      nextName,
+      playlistId,
+    );
     const next = normalizeSharedPlaylist({
       ...current,
       name: nextName,

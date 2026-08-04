@@ -9,7 +9,6 @@
     "start": "node --env-file=.env server.js",
     "dev": "node --watch --env-file=.env server.js",
     "test": "cd .. && npm test",
-    "postinstall": "node scripts/patchHonkerAbortListener.js",
     "auth:reset-admin-password": "node --env-file=.env scripts/resetAdminPassword.js"
   },
   "keywords": [
@@ -20,21 +19,21 @@
   "author": "",
   "license": "MIT",
   "optionalDependencies": {
-    "@russellthehippo/honker-node-darwin-arm64": "0.4.2",
-    "@russellthehippo/honker-node-darwin-x64": "0.4.2",
-    "@russellthehippo/honker-node-linux-arm64-gnu": "0.4.2",
-    "@russellthehippo/honker-node-linux-x64-gnu": "0.4.2"
+    "@russellthehippo/honker-node-darwin-arm64": "0.4.5",
+    "@russellthehippo/honker-node-darwin-x64": "0.4.5",
+    "@russellthehippo/honker-node-linux-arm64-gnu": "0.4.5",
+    "@russellthehippo/honker-node-linux-x64-gnu": "0.4.5"
   },
   "dependencies": {
-    "@russellthehippo/honker-node": "^0.4.2",
+    "@russellthehippo/honker-node": "^0.4.5",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.10.0",
     "express": "^5.2.1",
-    "express-rate-limit": "^8.5.2",
-    "helmet": "^8.2.0",
-    "music-metadata": "^11.12.3",
+    "express-rate-limit": "^8.6.1",
+    "helmet": "^8.3.0",
+    "music-metadata": "^11.14.0",
     "sharp": "^0.35.3",
-    "undici": "^7.28.0",
-    "ws": "^8.21.0"
+    "undici": "^7.29.0",
+    "ws": "^8.21.1"
   }
 }

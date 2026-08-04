@@ -12,6 +12,7 @@ const PATH_MAPPING_SOURCE_OPTIONS = [
   { value: "slskd", label: "slskd" },
   { value: "nzbget", label: "NZBGet" },
   { value: "sabnzbd", label: "SABnzbd" },
+  { value: "plex", label: "Plex" },
 ];
 
 const EMPTY_MAPPING = { source: "all", remote: "", local: "" };

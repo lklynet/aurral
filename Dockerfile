@@ -1,4 +1,4 @@
-FROM node:26.5.0-bookworm-slim@sha256:2d49d876e96237d76de412761cf05dbfe5aee325cc4406a4d41d5824c5bb8beb AS node-base
+FROM node:26.5.1-bookworm-slim@sha256:9e6f9357d371591e32ab6f2d8a26d63bdd0d17c29eee3f4f3e7e454d9634bf73 AS node-base
 
 FROM node-base AS builder
 
@@ -32,7 +32,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY package*.json ./
 COPY backend/package*.json ./backend/
-COPY backend/scripts/patchHonkerAbortListener.js ./backend/scripts/patchHonkerAbortListener.js
 COPY frontend/package*.json ./frontend/
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm ci --workspace backend --omit=dev --include=optional --include-workspace-root=false && \

@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs/promises";
 import crypto from "crypto";
-import { dbOps } from "../../db/helpers/index.js";
+import { dbOps, userOps } from "../../db/helpers/index.js";
 import { NavidromeClient } from "../navidrome.js";
 import { PlexClient } from "../plex.js";
 import { flowPlaylistConfig } from "./weeklyFlowPlaylistConfig.js";
@@ -14,11 +14,22 @@ import {
 } from "../playlistArtworkGenerator.js";
 import {
   PLAYLIST_LIBRARY_DIR,
+  isPathInsideRoot,
+  remapLegacyPath,
   resolvePlaylistRoot,
 } from "../playlistPaths.js";
 import { buildM3uContent, collectPlaylistM3uEntries } from "../playlistM3u.js";
 import { scheduleLibraryScan } from "../libraryScanWorker.js";
 import { ytdlpClient } from "../ytdlpClient.js";
+import { plexConnectionStore } from "../plex/plexConnectionStore.js";
+import { plexPlaylistPointerStore } from "../plex/plexPlaylistPointerStore.js";
+import { getPathMappings, resolveLocalPath } from "../pathMappings.js";
+import {
+  recoverManagedUserToken,
+  resolvePlexClientForOwner,
+} from "./weeklyFlowPlexOwnerClients.js";
+
+const PLEX_SYNC_SKIPPED = Symbol("plex-sync-skipped");
 const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg", ".png"];
 const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
 const PLAYLIST_FILE_EXTENSIONS = [".m3u", ".nsp"];
@@ -76,6 +87,9 @@ export class WeeklyFlowPlaylistManager {
     const plexChanged = this._plexConfigKey !== nextPlexKey;
     this._plexConfigKey = nextPlexKey;
     this._plexDownloadsPath = plexConfig.downloadsPath || "";
+    this._plexMainLibrarySectionId = String(plexConfig.mainLibrarySectionId || "").trim();
+    this._plexConfiguredByUserId =
+      plexConfig.configuredByUserId != null ? Number(plexConfig.configuredByUserId) : null;
     if (plexConfig.url && plexConfig.token) {
       if (!this.plexClient || plexChanged) {
         this.plexClient = new PlexClient(plexConfig.url, plexConfig.token, plexConfig.clientId);
@@ -109,31 +123,41 @@ export class WeeklyFlowPlaylistManager {
     return this._sanitize(playlistName);
   }
 
-  _getFlowPlaylistNames(flowName) {
-    const name = String(flowName || "").trim();
-    return {
-      current: name,
-      legacy: [`[A] ${name}`, `Aurral ${name}`],
-    };
+  // Navidrome (and the on-disk .m3u/artwork files it reads) has one shared
+  // library with no per-owner destination, unlike Plex - so two owners'
+  // same-named flow/playlist would otherwise overwrite each other's file.
+  // Prepending the owner's username keeps every destination name unique.
+  _resolveOwnerFileNamePrefix(ownerUserId) {
+    if (ownerUserId == null) return null;
+    const owner = userOps.getUserById(ownerUserId);
+    return owner?.username || null;
   }
 
-  _getSharedPlaylistNames(playlistName) {
+  _getFlowPlaylistNames(flowName, ownerUserId = null) {
+    const name = String(flowName || "").trim();
+    const ownerPrefix = this._resolveOwnerFileNamePrefix(ownerUserId);
+    const current = ownerPrefix ? `${ownerPrefix} - ${name}` : name;
+    const legacy = [name, `[A] ${name}`, `Aurral ${name}`].filter((n) => n !== current);
+    return { current, legacy };
+  }
+
+  _getSharedPlaylistNames(playlistName, ownerUserId = null) {
     const name = String(playlistName || "").trim();
-    return {
-      current: name,
-      legacy: [`[AS] ${name}`, `Aurral Shared ${name}`],
-    };
+    const ownerPrefix = this._resolveOwnerFileNamePrefix(ownerUserId);
+    const current = ownerPrefix ? `${ownerPrefix} - ${name}` : name;
+    const legacy = [name, `[AS] ${name}`, `Aurral Shared ${name}`].filter((n) => n !== current);
+    return { current, legacy };
   }
 
   _getPlaylistNameSet(playlistType) {
     const flow = flowPlaylistConfig.getFlow(playlistType);
     if (flow) {
-      const names = this._getFlowPlaylistNames(flow.name);
+      const names = this._getFlowPlaylistNames(flow.name, flow.ownerUserId);
       return [names.current, ...names.legacy];
     }
     const sharedPlaylist = flowPlaylistConfig.getSharedPlaylist(playlistType);
     if (sharedPlaylist) {
-      const names = this._getSharedPlaylistNames(sharedPlaylist.name);
+      const names = this._getSharedPlaylistNames(sharedPlaylist.name, sharedPlaylist.ownerUserId);
       return [names.current, ...names.legacy];
     }
     return [playlistType, `[A] ${playlistType}`, `Aurral ${playlistType}`];
@@ -171,12 +195,15 @@ export class WeeklyFlowPlaylistManager {
     const flow = flowPlaylistConfig.getFlow(playlistType);
     if (flow) {
       if (!flow.enabled) return null;
-      const { current } = this._getFlowPlaylistNames(flow.name);
+      const { current } = this._getFlowPlaylistNames(flow.name, flow.ownerUserId);
       return this._writePlaylistFile(current, playlistType, "Flow");
     }
     const sharedPlaylist = flowPlaylistConfig.getSharedPlaylist(playlistType);
     if (!sharedPlaylist) return null;
-    const { current } = this._getSharedPlaylistNames(sharedPlaylist.name);
+    const { current } = this._getSharedPlaylistNames(
+      sharedPlaylist.name,
+      sharedPlaylist.ownerUserId,
+    );
     return this._writePlaylistFile(current, playlistType, "Playlist");
   }
 
@@ -295,7 +322,7 @@ export class WeeklyFlowPlaylistManager {
         await this._writePlaylistFile(playlistName, playlistType, artworkKind);
       };
       for (const flow of flows) {
-        const { current, legacy } = this._getFlowPlaylistNames(flow.name);
+        const { current, legacy } = this._getFlowPlaylistNames(flow.name, flow.ownerUserId);
         const playlistName = current;
         if (flow.enabled) {
           await writePlaylistFile(playlistName, flow.id, "Flow");
@@ -310,7 +337,10 @@ export class WeeklyFlowPlaylistManager {
         }
       }
       for (const playlist of sharedPlaylists) {
-        const { current, legacy } = this._getSharedPlaylistNames(playlist.name);
+        const { current, legacy } = this._getSharedPlaylistNames(
+          playlist.name,
+          playlist.ownerUserId,
+        );
         await writePlaylistFile(current, playlist.id, "Playlist");
         await deleteNavidromePlaylistsByNames(legacy);
         await deletePlaylistAssetsByNames(legacy);
@@ -373,6 +403,184 @@ export class WeeklyFlowPlaylistManager {
     return id;
   }
 
+  async _withOwnerPlexClient(ownerUserId, ownerClientCache, fn) {
+    const client = resolvePlexClientForOwner(this.plexClient, ownerUserId, ownerClientCache);
+    try {
+      return await fn(client);
+    } catch (error) {
+      if (error?.response?.status !== 401 || client === this.plexClient || ownerUserId == null) {
+        throw error;
+      }
+      const recovered = await recoverManagedUserToken(ownerUserId, this.plexClient);
+      if (recovered) {
+        ownerClientCache.set(String(ownerUserId), recovered);
+        try {
+          return await fn(recovered);
+        } catch (retryError) {
+          plexConnectionStore.setLastError(
+            ownerUserId,
+            retryError?.message || "Plex sync failed after reconnect",
+          );
+          console.warn(
+            `[WeeklyFlowPlaylistManager] Plex sync skipped for owner ${ownerUserId}: still failing after reconnect`,
+          );
+          return PLEX_SYNC_SKIPPED;
+        }
+      }
+      plexConnectionStore.setLastError(ownerUserId, error?.message || "Plex sync failed (401)");
+      console.warn(
+        `[WeeklyFlowPlaylistManager] Plex sync skipped for owner ${ownerUserId}: reconnect needed`,
+      );
+      return PLEX_SYNC_SKIPPED;
+    }
+  }
+
+  _getCachedOwnerUser(ownerUserId, ownerUserCache) {
+    const key = String(ownerUserId);
+    if (ownerUserCache.has(key)) return ownerUserCache.get(key);
+    const owner = userOps.getUserById(ownerUserId);
+    ownerUserCache.set(key, owner);
+    return owner;
+  }
+
+  // Whether this owner is the one whose Plex identity the shared/global
+  // connection resolves to. Once an admin has actually connected the global
+  // Plex account (configuredByUserId set), only they get the fallback -
+  // every other owner, admin or not, must link their own account. Installs
+  // that haven't reconnected since this existed fall back to the legacy
+  // any-admin rule.
+  _ownsGlobalPlexFallback(ownerUserId, owner) {
+    if (this._plexConfiguredByUserId != null) {
+      return Number(ownerUserId) === this._plexConfiguredByUserId;
+    }
+    return !owner || owner.role === "admin";
+  }
+
+  _resolveOwnerPlexTitle(ownerUserId, desired, ownerClientCache, ownerUserCache = new Map()) {
+    if (ownerUserId == null) return desired;
+    const client = resolvePlexClientForOwner(this.plexClient, ownerUserId, ownerClientCache);
+    if (client !== this.plexClient) return desired;
+    const owner = this._getCachedOwnerUser(ownerUserId, ownerUserCache);
+    if (this._ownsGlobalPlexFallback(ownerUserId, owner)) return desired;
+    return `${desired} (${owner?.username || "unlinked"})`;
+  }
+
+  _isOwnerPlexSyncBlocked(ownerUserId, ownerClientCache, ownerUserCache = new Map()) {
+    if (ownerUserId == null) return false;
+    const client = resolvePlexClientForOwner(this.plexClient, ownerUserId, ownerClientCache);
+    if (client !== this.plexClient) return false;
+    if (this._plexConfiguredByUserId != null) {
+      return Number(ownerUserId) !== this._plexConfiguredByUserId;
+    }
+    const owner = this._getCachedOwnerUser(ownerUserId, ownerUserCache);
+    return Boolean(owner) && owner.role !== "admin";
+  }
+
+  _resolvePlexLocationKey(ownerUserId) {
+    if (ownerUserId == null) return "global";
+    const connection = plexConnectionStore.getConnection(ownerUserId);
+    if (!connection) return "global";
+    return `${connection.linkType}:${connection.plexAccountId ?? connection.plexUuid ?? ownerUserId}`;
+  }
+
+  async _cleanupRelocatedPointer(pointer) {
+    if (pointer.location !== "global") return;
+    try {
+      await this.plexClient.deletePlaylist(pointer.ratingKey);
+    } catch (err) {
+      if (err?.response?.status !== 404) {
+        console.warn(
+          `[WeeklyFlowPlaylistManager] Failed to clean up relocated Plex playlist (ratingKey ${pointer.ratingKey}):`,
+          err?.message,
+        );
+      }
+    }
+  }
+
+  async _deleteTrackedPlaylist(entityId, targetKey, pointer, ownerClientCache) {
+    const ownerUserId = targetKey === "global" ? null : Number(targetKey);
+    const client =
+      pointer.location === "global"
+        ? this.plexClient
+        : resolvePlexClientForOwner(this.plexClient, ownerUserId, ownerClientCache);
+    if (client === this.plexClient && pointer.location !== "global") {
+      plexPlaylistPointerStore.deletePointer(entityId, targetKey);
+      return;
+    }
+    try {
+      await client.deletePlaylist(pointer.ratingKey);
+    } catch (err) {
+      if (err?.response?.status !== 404) {
+        console.warn(
+          `[WeeklyFlowPlaylistManager] Failed to delete Plex playlist (ratingKey ${pointer.ratingKey}):`,
+          err?.message,
+        );
+      }
+    }
+    plexPlaylistPointerStore.deletePointer(entityId, targetKey);
+  }
+
+  async cleanupUserPlexPlaylists(userId) {
+    const targetKey = String(userId);
+    const pointers = plexPlaylistPointerStore.getPointersForTarget(targetKey);
+    const ownerClientCache = new Map();
+    for (const pointer of pointers) {
+      await this._deleteTrackedPlaylist(pointer.entityId, targetKey, pointer, ownerClientCache);
+    }
+  }
+
+  async cleanupEntityPlexPlaylists(entityId) {
+    const pointers = plexPlaylistPointerStore.getPointersForEntity(entityId);
+    const ownerClientCache = new Map();
+    for (const pointer of pointers) {
+      await this._deleteTrackedPlaylist(entityId, pointer.targetKey, pointer, ownerClientCache);
+    }
+  }
+
+  async _resolveMainLibraryRatingKeys(playlistIds) {
+    const membership = new Map(playlistIds.map((id) => [id, []]));
+    const sectionId = this._plexMainLibrarySectionId;
+    if (!sectionId) return membership;
+
+    const activeIds = new Set(playlistIds);
+    const reusedJobs = downloadTracker.getAll().filter((job) => {
+      if (job?.status !== "done" || typeof job?.finalPath !== "string") return false;
+      if (!activeIds.has(String(job.playlistType || ""))) return false;
+      const finalPath = path.resolve(remapLegacyPath(job.finalPath, this.weeklyFlowRoot));
+      return !isPathInsideRoot(finalPath, this.playlistLibraryRoot);
+    });
+    if (!reusedJobs.length) return membership;
+
+    let mainLibraryTracks;
+    try {
+      mainLibraryTracks = await this.plexClient.getTracks(sectionId);
+    } catch (err) {
+      console.warn(
+        "[WeeklyFlowPlaylistManager] Failed to read configured main Plex library section:",
+        err?.message,
+      );
+      return membership;
+    }
+
+    const plexMappings = getPathMappings("plex");
+    const byPath = new Map();
+    for (const t of mainLibraryTracks) {
+      if (!t.ratingKey) continue;
+      for (const file of t.files || []) {
+        const localPath = path.resolve(resolveLocalPath(file, plexMappings));
+        if (!byPath.has(localPath)) byPath.set(localPath, t.ratingKey);
+      }
+    }
+
+    for (const job of reusedJobs) {
+      const finalPath = path.resolve(remapLegacyPath(job.finalPath, this.weeklyFlowRoot));
+      const ratingKey = byPath.get(finalPath);
+      if (!ratingKey) continue;
+      membership.get(String(job.playlistType)).push(ratingKey);
+    }
+    return membership;
+  }
+
   // Plex has no equivalent of Navidrome's .nsp smart playlists, so we build
   // regular playlists from indexed tracks, grouped by their weekly-flow subfolder.
   async _syncPlexPlaylists(flows, sharedPlaylists) {
@@ -380,6 +588,14 @@ export class WeeklyFlowPlaylistManager {
     if (sectionId == null) return;
 
     const tracks = await this.plexClient.getTracks(sectionId);
+    if (tracks.length === 0) {
+      // Plex hasn't indexed anything yet (fresh library, or a scan triggered
+      // by syncPlexNow()/catch-up hasn't finished) rather than the library
+      // actually being emptied. Skip this pass instead of wiping every
+      // tracked playlist; the next successful sync/catch-up reconciles
+      // normally once tracks are indexed.
+      return;
+    }
     // Plex de-duplicates the same song across flow folders inconsistently:
     // sometimes one track with one path, sometimes two separate tracks sharing
     // a relative path. So resolve membership per relative file (Artist/Album/
@@ -419,63 +635,121 @@ export class WeeklyFlowPlaylistManager {
         if (best?.ratingKey) membership.get(id).push(best.ratingKey);
       }
     }
-    const ratingKeysFor = (playlistType) => membership.get(playlistType) || [];
 
-    const deletePlexPlaylistsByNames = async (names) => {
-      const playlists = await this.plexClient.getPlaylists();
-      for (const name of [...new Set((names || []).filter(Boolean))]) {
-        const existing = playlists.find((p) => p.title === name);
-        if (existing) {
+    const mainLibraryMembership = await this._resolveMainLibraryRatingKeys(playlistIds);
+    for (const [id, ratingKeys] of mainLibraryMembership) {
+      membership.get(id).push(...ratingKeys);
+    }
+
+    const ratingKeysFor = (playlistType) => [...new Set(membership.get(playlistType) || [])];
+
+    const ownerClientCache = new Map();
+    const ownerUserCache = new Map();
+    const syncHashKey = (ownerUserId, desired) => `${ownerUserId ?? "global"}:${desired}`;
+
+    const resolveOwnerPlexTitle = (ownerUserId, desired) =>
+      this._resolveOwnerPlexTitle(ownerUserId, desired, ownerClientCache, ownerUserCache);
+
+    const deleteCurrentPointerTarget = async (entityId, ownerUserId) => {
+      const targetKey = String(ownerUserId ?? "global");
+      const pointer = plexPlaylistPointerStore.getPointer(entityId, targetKey);
+      if (!pointer) return;
+      const location = this._resolvePlexLocationKey(ownerUserId);
+      if (pointer.location === location) {
+        await this._withOwnerPlexClient(ownerUserId, ownerClientCache, async (client) => {
           try {
-            await this.plexClient.deletePlaylist(existing.ratingKey);
+            await client.deletePlaylist(pointer.ratingKey);
           } catch (err) {
-            console.warn(
-              `[WeeklyFlowPlaylistManager] Failed to delete Plex playlist "${name}":`,
-              err?.message,
-            );
+            if (err?.response?.status !== 404) {
+              console.warn(
+                `[WeeklyFlowPlaylistManager] Failed to delete Plex playlist (ratingKey ${pointer.ratingKey}):`,
+                err?.message,
+              );
+            }
           }
-        }
+        });
+      } else {
+        await this._cleanupRelocatedPointer(pointer);
       }
+      plexPlaylistPointerStore.deletePointer(entityId, targetKey);
     };
 
-    const buildIfChanged = async (desired, ratingKeys) => {
-      const hash = this._hashKeys(ratingKeys);
-      if (this._plexSyncHashes.get(desired) === hash) return;
-      await this.plexClient.createPlaylist(desired, ratingKeys, true);
-      this._plexSyncHashes.set(desired, hash);
+    const buildIfChanged = async (entityId, ownerUserId, desired, ratingKeys, description) => {
+      const cacheKey = syncHashKey(ownerUserId, desired);
+      const hash = `${this._hashKeys(ratingKeys)}|${description || ""}`;
+      if (this._plexSyncHashes.get(cacheKey) === hash) return;
+
+      const targetKey = String(ownerUserId ?? "global");
+      const location = this._resolvePlexLocationKey(ownerUserId);
+      const pointer = plexPlaylistPointerStore.getPointer(entityId, targetKey);
+      if (pointer && pointer.location !== location) {
+        await this._cleanupRelocatedPointer(pointer);
+      }
+      const reusable = pointer && pointer.location === location ? pointer : null;
+
+      const result = await this._withOwnerPlexClient(ownerUserId, ownerClientCache, (client) =>
+        client.syncPlaylist({
+          ratingKey: reusable?.ratingKey ?? null,
+          previousTitle: reusable?.title ?? null,
+          previousDescription: reusable?.description ?? null,
+          title: desired,
+          description,
+          ratingKeys,
+        }),
+      );
+      if (result === PLEX_SYNC_SKIPPED) return;
+      if (result?.ratingKey) {
+        plexPlaylistPointerStore.setPointer(entityId, targetKey, {
+          location,
+          ratingKey: result.ratingKey,
+          title: desired,
+          description,
+        });
+      } else {
+        plexPlaylistPointerStore.deletePointer(entityId, targetKey);
+      }
+      this._plexSyncHashes.set(cacheKey, hash);
     };
 
     for (const flow of flows) {
+      const ownerUserId = flow.ownerUserId ?? null;
       const desired = String(flow.name || "").trim();
-      const { current, legacy } = this._getFlowPlaylistNames(flow.name);
-      const stale = [current, ...legacy].filter((name) => name !== desired);
+      if (this._isOwnerPlexSyncBlocked(ownerUserId, ownerClientCache, ownerUserCache)) {
+        await deleteCurrentPointerTarget(flow.id, ownerUserId);
+        this._plexSyncHashes.delete(syncHashKey(ownerUserId, resolveOwnerPlexTitle(ownerUserId, desired)));
+        continue;
+      }
+      const title = resolveOwnerPlexTitle(ownerUserId, desired);
       if (flow.enabled) {
         const ratingKeys = ratingKeysFor(flow.id);
         if (ratingKeys.length) {
-          await buildIfChanged(desired, ratingKeys);
+          await buildIfChanged(flow.id, ownerUserId, title, ratingKeys, flow.description);
         } else {
-          await deletePlexPlaylistsByNames([desired]);
-          this._plexSyncHashes.delete(desired);
+          await deleteCurrentPointerTarget(flow.id, ownerUserId);
+          this._plexSyncHashes.delete(syncHashKey(ownerUserId, title));
         }
-        await deletePlexPlaylistsByNames(stale);
       } else {
-        await deletePlexPlaylistsByNames([desired, ...stale]);
-        this._plexSyncHashes.delete(desired);
+        await deleteCurrentPointerTarget(flow.id, ownerUserId);
+        this._plexSyncHashes.delete(syncHashKey(ownerUserId, title));
       }
     }
 
     for (const playlist of sharedPlaylists) {
+      const ownerUserId = playlist.ownerUserId ?? null;
       const desired = String(playlist.name || "").trim();
-      const { current, legacy } = this._getSharedPlaylistNames(playlist.name);
-      const stale = [current, ...legacy].filter((name) => name !== desired);
       const ratingKeys = ratingKeysFor(playlist.id);
-      if (ratingKeys.length) {
-        await buildIfChanged(desired, ratingKeys);
-      } else {
-        await deletePlexPlaylistsByNames([desired]);
-        this._plexSyncHashes.delete(desired);
+      if (this._isOwnerPlexSyncBlocked(ownerUserId, ownerClientCache, ownerUserCache)) {
+        await deleteCurrentPointerTarget(playlist.id, ownerUserId);
+        this._plexSyncHashes.delete(syncHashKey(ownerUserId, resolveOwnerPlexTitle(ownerUserId, desired)));
+        continue;
       }
-      await deletePlexPlaylistsByNames(stale);
+      const title = resolveOwnerPlexTitle(ownerUserId, desired);
+      if (ratingKeys.length) {
+        await buildIfChanged(playlist.id, ownerUserId, title, ratingKeys, playlist.description);
+      } else {
+        await deleteCurrentPointerTarget(playlist.id, ownerUserId);
+        this._plexSyncHashes.delete(syncHashKey(ownerUserId, title));
+      }
     }
   }
 
@@ -505,11 +779,25 @@ export class WeeklyFlowPlaylistManager {
 
     this._schedulePlexCatchup(sectionId);
 
+    const summaryClientCache = new Map();
+    const summaryUserCache = new Map();
     const managedNames = new Set(
-      [
-        ...flows.map((f) => String(f.name || "").trim()),
-        ...sharedPlaylists.map((p) => String(p.name || "").trim()),
-      ].filter(Boolean),
+      [...flows, ...sharedPlaylists]
+        .map((entity) => {
+          if (
+            this._isOwnerPlexSyncBlocked(entity.ownerUserId, summaryClientCache, summaryUserCache)
+          )
+            return null;
+          const desired = String(entity.name || "").trim();
+          if (!desired) return null;
+          return this._resolveOwnerPlexTitle(
+            entity.ownerUserId,
+            desired,
+            summaryClientCache,
+            summaryUserCache,
+          );
+        })
+        .filter(Boolean),
     );
 
     return {

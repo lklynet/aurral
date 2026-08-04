@@ -9,6 +9,134 @@ test("harvest limit scales with target without over-fetching", () => {
   assert.equal(source._harvestLimitFor(100), 72);
 });
 
+test("year range matching accepts bounds and rejects unknown years when set", () => {
+  const source = new WeeklyFlowPlaylistSource();
+  assert.equal(source._matchesYearRange("1985", null, null), true);
+  assert.equal(source._matchesYearRange("1985", 1980, 1989), true);
+  assert.equal(source._matchesYearRange("1979", 1980, 1989), false);
+  assert.equal(source._matchesYearRange("1990", 1980, 1989), false);
+  assert.equal(source._matchesYearRange("2024", 2020, null), true);
+  assert.equal(source._matchesYearRange("2019", 2020, null), false);
+  assert.equal(source._matchesYearRange(null, 2020, 2026), false);
+  assert.equal(source._matchesYearRange(null, null, 2000), false);
+  assert.equal(source._matchesYearRange(null, null, null), true);
+});
+
+test("candidate selection skips tracks outside the year range", async () => {
+  const source = new WeeklyFlowPlaylistSource();
+  source._resolveTrackReleaseYear = async (track) => track.releaseYear || null;
+  const used = new Set();
+  const picked = await source._selectFromCandidates(
+    [
+      { artistName: "A", trackName: "Old", releaseYear: "1975", source: "focus" },
+      { artistName: "B", trackName: "Fit", releaseYear: "1984", source: "focus" },
+      { artistName: "C", trackName: "New", releaseYear: "2001", source: "focus" },
+    ],
+    2,
+    used,
+    1980,
+    1989,
+  );
+  assert.equal(picked.length, 1);
+  assert.equal(picked[0].trackName, "Fit");
+});
+
+test("assemble applies year range only to focus candidates", async () => {
+  const source = new WeeklyFlowPlaylistSource();
+  source._resolveTrackReleaseYear = async (track) => track.releaseYear || null;
+  const plan = await source._assembleFlowPlan({
+    candidateMap: {
+      focus: [
+        {
+          artistName: "Focus Old",
+          trackName: "Old",
+          releaseYear: "1970",
+          source: "focus",
+          trackKey: "focus old::old",
+        },
+        {
+          artistName: "Focus Fit",
+          trackName: "Fit",
+          releaseYear: "1985",
+          source: "focus",
+          trackKey: "focus fit::fit",
+        },
+      ],
+      mix: [
+        {
+          artistName: "Mix Old",
+          trackName: "Keep",
+          releaseYear: "1960",
+          source: "mix",
+          trackKey: "mix old::keep",
+        },
+      ],
+      discover: [],
+      trending: [],
+    },
+    excludeArtistKeys: new Set(),
+    targetSize: 2,
+    reserveSize: 0,
+    sourceTargets: { focus: 1, mix: 1, discover: 0, trending: 0 },
+    reserveTargets: { discover: 0, mix: 0, trending: 0, focus: 0 },
+    includeReserve: false,
+    yearFrom: 1980,
+    yearTo: 1989,
+  });
+  assert.deepEqual(
+    plan.primaryTracks.map((track) => track.trackName),
+    ["Fit", "Keep"],
+  );
+});
+
+test("shortfall backfill does not reintroduce out-of-range focus tracks", async () => {
+  const source = new WeeklyFlowPlaylistSource();
+  source._resolveTrackReleaseYear = async (track) => track.releaseYear || null;
+  const plan = await source._assembleFlowPlan({
+    candidateMap: {
+      focus: [
+        {
+          artistName: "Focus Old",
+          trackName: "Old",
+          releaseYear: "1970",
+          source: "focus",
+          trackKey: "focus old::old",
+        },
+        {
+          artistName: "Focus Also Old",
+          trackName: "Older",
+          releaseYear: "1965",
+          source: "focus",
+          trackKey: "focus also old::older",
+        },
+      ],
+      mix: [
+        {
+          artistName: "Mix Keep",
+          trackName: "Filler",
+          releaseYear: "1950",
+          source: "mix",
+          trackKey: "mix keep::filler",
+        },
+      ],
+      discover: [],
+      trending: [],
+    },
+    excludeArtistKeys: new Set(),
+    targetSize: 2,
+    reserveSize: 0,
+    sourceTargets: { focus: 2, mix: 0, discover: 0, trending: 0 },
+    reserveTargets: { discover: 0, mix: 0, trending: 0, focus: 0 },
+    includeReserve: false,
+    yearFrom: 1980,
+    yearTo: 1989,
+  });
+  assert.deepEqual(
+    plan.primaryTracks.map((track) => `${track.source}:${track.trackName}`),
+    ["mix:Filler"],
+  );
+});
+
 test("mix album pick prefers top track list metadata before track.getInfo", () => {
   const source = new WeeklyFlowPlaylistSource();
   const ownedTitles = new Set(["owned track"]);

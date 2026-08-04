@@ -12,7 +12,7 @@ function step(id, status, label, extra = {}) {
   return { id, status, label, ...extra };
 }
 
-async function pathIsReadable(filePath, mappings = getPathMappings("lidarr")) {
+export async function pathIsReadable(filePath, mappings = getPathMappings("lidarr")) {
   if (!filePath) return false;
   const candidates = [filePath, resolveLocalPath(filePath, mappings)];
   const uniqueCandidates = [

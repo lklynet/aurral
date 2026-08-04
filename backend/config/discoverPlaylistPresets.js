@@ -26,7 +26,7 @@ export const DISCOVER_PLAYLIST_PRESETS = [
   {
     id: "focus-listening-history",
     name: "Listening History",
-    description: "",
+    description: "Tracks based on what you've recently been listening to",
     mix: { discover: 0, mix: 0, trending: 0, focus: 100 },
     size: 20,
     deepDive: false,

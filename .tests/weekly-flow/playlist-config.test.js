@@ -44,6 +44,8 @@ test("creates flows with normalized scheduling and enforces unique names", () =>
   assert.equal(flow.scheduleTime, "06:00");
   assert.equal(flow.enabled, false);
   assert.equal(flow.lastRunAt, null);
+  assert.equal(flow.yearFrom, null);
+  assert.equal(flow.yearTo, null);
 
   assert.throws(
     () =>
@@ -52,6 +54,52 @@ test("creates flows with normalized scheduling and enforces unique names", () =>
       }),
     /already exists/,
   );
+});
+
+test("stores and swaps optional release year range", () => {
+  const flow = flowPlaylistConfig.createFlow({
+    name: "Eighties",
+    size: 20,
+    yearFrom: 1989,
+    yearTo: 1980,
+  });
+  assert.equal(flow.yearFrom, 1980);
+  assert.equal(flow.yearTo, 1989);
+
+  const updated = flowPlaylistConfig.updateFlow(flow.id, {
+    yearFrom: 2020,
+    yearTo: null,
+  });
+  assert.equal(updated?.yearFrom, 2020);
+  assert.equal(updated?.yearTo, null);
+});
+
+test("partial year updates do not silently swap the untouched bound", () => {
+  const flow = flowPlaylistConfig.createFlow({
+    name: "Nineties",
+    size: 20,
+    yearFrom: 1980,
+    yearTo: 1989,
+  });
+
+  const raisedFrom = flowPlaylistConfig.updateFlow(flow.id, {
+    yearFrom: 2020,
+  });
+  assert.equal(raisedFrom?.yearFrom, 2020);
+  assert.equal(raisedFrom?.yearTo, null);
+
+  const loweredTo = flowPlaylistConfig.updateFlow(flow.id, {
+    yearFrom: 1980,
+    yearTo: 1989,
+  });
+  assert.equal(loweredTo?.yearFrom, 1980);
+  assert.equal(loweredTo?.yearTo, 1989);
+
+  const earlyTo = flowPlaylistConfig.updateFlow(flow.id, {
+    yearTo: 1970,
+  });
+  assert.equal(earlyTo?.yearFrom, null);
+  assert.equal(earlyTo?.yearTo, 1970);
 });
 
 test("rejects flow and shared playlist names that collide across types", () => {
