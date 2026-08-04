@@ -8,6 +8,8 @@ export const NEW_FLOW_TEMPLATE = {
   size: DEFAULT_SIZE,
   mix: DEFAULT_MIX,
   deepDive: false,
+  yearFrom: null,
+  yearTo: null,
   tags: [],
   relatedArtists: [],
   scheduleTime: "00:00",
@@ -191,6 +193,36 @@ export const normalizeScheduleTime = (value) => {
   return `${String(hours).padStart(2, "0")}:00`;
 };
 
+export const normalizeYearBound = (value) => {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const year = Math.trunc(parsed);
+  if (year < 1000 || year > 9999) return null;
+  return year;
+};
+
+export const normalizeYearRange = (yearFrom, yearTo) => {
+  let from = normalizeYearBound(yearFrom);
+  let to = normalizeYearBound(yearTo);
+  if (from != null && to != null && from > to) {
+    const swap = from;
+    from = to;
+    to = swap;
+  }
+  return { yearFrom: from, yearTo: to };
+};
+
+const parseOptionalYearInput = (value, label) => {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const parsed = Number(text);
+  if (!Number.isFinite(parsed) || Math.trunc(parsed) < 1000 || Math.trunc(parsed) > 9999) {
+    throw new Error(`${label} must be a 4-digit year`);
+  }
+  return Math.trunc(parsed);
+};
+
 export const normalizeMixPercent = (mix) => {
   const raw = {
     discover: Number(mix?.discover ?? 0),
@@ -237,11 +269,14 @@ export const flowToForm = (flow) => {
   const rawSize = Number(flow?.size || 0);
   const size = Number.isFinite(rawSize) && rawSize > 0 ? rawSize : DEFAULT_SIZE;
   const mix = normalizeMixPercent(flow?.mix || DEFAULT_MIX);
+  const { yearFrom, yearTo } = normalizeYearRange(flow?.yearFrom, flow?.yearTo);
   return {
     name: flow?.name || "",
     size: Number.isFinite(size) && size > 0 ? Math.round(size) : DEFAULT_SIZE,
     mix,
     deepDive: flow?.deepDive === true,
+    yearFrom: yearFrom == null ? "" : String(yearFrom),
+    yearTo: yearTo == null ? "" : String(yearTo),
     includeTags: tagsList.join(", "),
     includeRelatedArtists: relatedList.join(", "),
     scheduleDays: scheduleDays.length > 0 ? scheduleDays : [new Date().getDay()],
@@ -271,6 +306,10 @@ export const buildFlowFromForm = (draft) => {
   if (focusEnabled && includeTags.length === 0 && includeRelatedArtists.length === 0) {
     throw new Error("Focus needs at least one genre tag or related artist");
   }
+  const { yearFrom, yearTo } = normalizeYearRange(
+    parseOptionalYearInput(draft?.yearFrom, "From year"),
+    parseOptionalYearInput(draft?.yearTo, "To year"),
+  );
   return {
     name,
     size,
@@ -278,6 +317,8 @@ export const buildFlowFromForm = (draft) => {
     tags: includeTags,
     relatedArtists: includeRelatedArtists,
     deepDive: draft?.deepDive === true,
+    yearFrom,
+    yearTo,
     scheduleDays,
     scheduleTime,
   };
@@ -299,6 +340,7 @@ const normalizeDraftForCompare = (draft) => {
       .map((entry) => entry.toLowerCase())
       .sort((a, b) => a.localeCompare(b))
       .join(", ");
+  const { yearFrom, yearTo } = normalizeYearRange(draft?.yearFrom, draft?.yearTo);
   return {
     name: String(draft?.name ?? "").trim(),
     size: Number(draft?.size ?? 0),
@@ -306,6 +348,8 @@ const normalizeDraftForCompare = (draft) => {
     includeTags: normalizeList(draft?.includeTags),
     includeRelatedArtists: normalizeList(draft?.includeRelatedArtists),
     deepDive: draft?.deepDive === true,
+    yearFrom,
+    yearTo,
     scheduleDays: normalizeScheduleDays(draft?.scheduleDays),
     scheduleTime: normalizeScheduleTime(draft?.scheduleTime),
   };
@@ -345,6 +389,8 @@ export const buildScheduleOnlyFlowFromForm = (flow, draft, { sizeError, extra = 
     tags: normalizeFlowEntryList(flow?.tags),
     relatedArtists: normalizeFlowEntryList(flow?.relatedArtists),
     deepDive: flow?.deepDive === true,
+    yearFrom: flow?.yearFrom ?? null,
+    yearTo: flow?.yearTo ?? null,
     scheduleDays,
     scheduleTime: normalizeScheduleTime(draft?.scheduleTime),
     ...extra,

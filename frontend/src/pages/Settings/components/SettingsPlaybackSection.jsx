@@ -3,13 +3,23 @@ import {
   startPlexAuth,
   checkPlexAuth,
   getPlexResources,
+  getPlexLibraries,
+  checkPlexLibraryAccess,
   testPlexConnection,
   testNavidromeConnection,
   syncPlexNow,
 } from "../../../utils/api/endpoints/settings.js";
 import { getConfiguredStatus } from "../utils/integrationStatus";
 
-import { CheckCircle, Folder, Plus, RefreshCw, Trash2, Wrench } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle,
+  Folder,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Wrench,
+} from "lucide-react";
 import DownloadFolderPickerModal from "../../../components/DownloadFolderPickerModal";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
@@ -52,8 +62,11 @@ export function SettingsPlaybackSection({
   const [testingNavidrome, setTestingNavidrome] = useState(false);
   const [syncingPlex, setSyncingPlex] = useState(false);
   const [plexServers, setPlexServers] = useState([]);
+  const [plexLibraries, setPlexLibraries] = useState([]);
+  const [libraryAccessCheck, setLibraryAccessCheck] = useState(null);
   const [navidromeMappingModal, setNavidromeMappingModal] = useState(null);
   const [plexPathPickerOpen, setPlexPathPickerOpen] = useState(false);
+  const [plexLibraryPathPickerOpen, setPlexLibraryPathPickerOpen] = useState(false);
 
   const navidrome = settings.integrations?.navidrome || {};
   const plex = settings.integrations?.plex || {};
@@ -63,6 +76,8 @@ export function SettingsPlaybackSection({
   const navidromePathMappings = coerceNavidromePathMappings(navidrome.pathMappings).filter(
     (entry) => entry.local || entry.remote,
   );
+  const pathMappings = Array.isArray(settings.pathMappings) ? settings.pathMappings : [];
+  const plexLibraryMapping = pathMappings.find((entry) => entry?.source === "plex") || null;
   const showNavidromeMappings =
     navidrome.m3uPathMode === "remote" || navidromePathMappings.length > 0;
 
@@ -124,6 +139,20 @@ export function SettingsPlaybackSection({
       },
     });
 
+  const updatePlexLibraryLocalPath = (localPath) => {
+    const trimmed = String(localPath || "").trim();
+    const others = pathMappings.filter((entry) => entry?.source !== "plex");
+    if (!trimmed) {
+      updateSettings({ ...settings, pathMappings: others });
+      return;
+    }
+    const remote = libraryAccessCheck?.reportedPath || plexLibraryMapping?.remote || "";
+    updateSettings({
+      ...settings,
+      pathMappings: [...others, { source: "plex", remote, local: trimmed }],
+    });
+  };
+
   const loadPlexServers = async (token) => {
     const { servers } = await getPlexResources(token);
     const list = Array.isArray(servers) ? servers : [];
@@ -147,6 +176,42 @@ export function SettingsPlaybackSection({
     };
   }, [plexToken]);
 
+  useEffect(() => {
+    if (!plexConfigured) {
+      setPlexLibraries([]);
+      return;
+    }
+    let cancelled = false;
+    getPlexLibraries()
+      .then(({ libraries }) => {
+        if (!cancelled) setPlexLibraries(Array.isArray(libraries) ? libraries : []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [plexConfigured]);
+
+  useEffect(() => {
+    const sectionId = plex.mainLibrarySectionId;
+    if (!sectionId) {
+      setLibraryAccessCheck(null);
+      return;
+    }
+    let cancelled = false;
+    setLibraryAccessCheck({ checking: true });
+    checkPlexLibraryAccess(sectionId)
+      .then((result) => {
+        if (!cancelled) setLibraryAccessCheck({ checking: false, ...result });
+      })
+      .catch(() => {
+        if (!cancelled) setLibraryAccessCheck({ checking: false, checked: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [plex.mainLibrarySectionId]);
+
   const handleConnectPlex = async () => {
     setPlexConnecting(true);
     try {
@@ -154,12 +219,14 @@ export function SettingsPlaybackSection({
       const popup = window.open(authUrl, "plex-auth", "width=600,height=700");
       const deadline = Date.now() + 3 * 60 * 1000;
       let token = null;
+      let plexUsername = null;
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 2000));
         try {
           const res = await checkPlexAuth(pinId, code);
           if (res.token) {
             token = res.token;
+            plexUsername = res.plexUsername || null;
             break;
           }
         } catch {}
@@ -171,7 +238,7 @@ export function SettingsPlaybackSection({
       }
       const servers = await loadPlexServers(token);
       const owned = (servers || []).filter((s) => s.owned);
-      const patch = { token, ...(clientId ? { clientId } : {}) };
+      const patch = { token, plexUsername, ...(clientId ? { clientId } : {}) };
       if (owned.length === 1) {
         const best = pickBestPlexConnection(owned[0]);
         const url = resolvePlexConnectionUrl(best);
@@ -574,9 +641,9 @@ export function SettingsPlaybackSection({
             </SettingsModalField>
           </SettingsModalSection>
 
-          <SettingsModalSection title="Library path">
+          <SettingsModalSection title="Aurral Library Path">
             <SettingsModalField
-              label="Plex downloads path (optional)"
+              label="Plex Aurral Library path (optional)"
               hint={
                 <>
                   Only needed if Plex runs in a different container/host than Aurral. Enter the
@@ -616,6 +683,103 @@ export function SettingsPlaybackSection({
                 setPlexPathPickerOpen(false);
               }}
               onCancel={() => setPlexPathPickerOpen(false)}
+            />
+          ) : null}
+
+          <SettingsModalSection title="Main library (optional)">
+            <SettingsModalField
+              label="Include tracks from an existing library"
+              hint={
+                <>
+                  If a flow includes songs you already have in another Plex library — like the
+                  one Lidarr manages — Aurral needs this library selected to reuse those songs in
+                  Plex playlists; without it, the tracks are silently left out of the playlist.
+                </>
+              }
+            >
+              <SettingsSelect
+                value={plex.mainLibrarySectionId || ""}
+                onChange={(event) => updatePlex({ mainLibrarySectionId: event.target.value })}
+                disabled={!plexConfigured}
+              >
+                <option value="">None</option>
+                {plexLibraries.map((library) => (
+                  <option key={library.key} value={library.key}>
+                    {library.title}
+                  </option>
+                ))}
+              </SettingsSelect>
+            </SettingsModalField>
+
+            {plex.mainLibrarySectionId && libraryAccessCheck?.checking ? (
+              <p className="settings-modal__hint">
+                <RefreshCw className="artist-icon-xs" aria-hidden /> Checking whether Aurral can
+                already read this library…
+              </p>
+            ) : null}
+
+            {plex.mainLibrarySectionId &&
+            libraryAccessCheck?.checked &&
+            !libraryAccessCheck.accessible ? (
+              <p className="settings-modal__hint">
+                <AlertTriangle className="artist-icon-xs" aria-hidden /> Aurral can&apos;t read this
+                library directly yet. Plex reports its files at{" "}
+                <code>{libraryAccessCheck.reportedPath}</code> — set a path mapping below so
+                Aurral knows where to find that same file.
+              </p>
+            ) : null}
+
+            {plex.mainLibrarySectionId && libraryAccessCheck?.checked === false ? (
+              <p className="settings-modal__hint">
+                {libraryAccessCheck.reason ||
+                  "Couldn't check library access right now — you can still set a path mapping manually below if needed."}
+              </p>
+            ) : null}
+
+            {plex.mainLibrarySectionId &&
+            (plexLibraryMapping || (libraryAccessCheck?.checked && !libraryAccessCheck.accessible)) ? (
+              <SettingsModalField
+                label="Local path for this library (optional)"
+                hint={
+                  <>
+                    Plex reports this library&apos;s files at{" "}
+                    <code>{libraryAccessCheck?.reportedPath || plexLibraryMapping?.remote}</code>.
+                    Enter that same folder as <strong>Aurral</strong> sees it. Leave blank to
+                    remove this mapping.
+                  </>
+                }
+              >
+                <div className="arr-path-input">
+                  <SettingsInput
+                    className="arr-path-input__field"
+                    type="text"
+                    placeholder="/data/media/music"
+                    autoComplete="off"
+                    value={plexLibraryMapping?.local || ""}
+                    onChange={(event) => updatePlexLibraryLocalPath(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="arr-path-input__browse"
+                    onClick={() => setPlexLibraryPathPickerOpen(true)}
+                    aria-label="Browse folders"
+                  >
+                    <Folder className="artist-icon-xs" />
+                  </button>
+                </div>
+              </SettingsModalField>
+            ) : null}
+          </SettingsModalSection>
+
+          {plexLibraryPathPickerOpen ? (
+            <DownloadFolderPickerModal
+              initialPath={plexLibraryMapping?.local || ""}
+              createOnConfirm={false}
+              onConfirm={(path) => {
+                updatePlexLibraryLocalPath(path);
+                setPlexLibraryPathPickerOpen(false);
+              }}
+              onCancel={() => setPlexLibraryPathPickerOpen(false)}
             />
           ) : null}
 

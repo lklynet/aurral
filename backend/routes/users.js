@@ -18,6 +18,8 @@ import {
 } from "../services/listeningHistory.js";
 import { validateExternalUrl } from "../middleware/urlValidator.js";
 import { normalizeKoitoBaseUrl } from "../services/koitoClient.js";
+import { registerPlexLink, resolveGlobalPlexAccount } from "./users/plexLinkHandlers.js";
+import { plexConnectionStore } from "../services/plex/plexConnectionStore.js";
 
 const buildListenHistoryUpdates = (body, existing) => {
   const hasLegacyLastfmUpdate = Object.hasOwn(body, "lastfmUsername");
@@ -161,10 +163,17 @@ const clearOrphanedDiscoveryCache = (userId, existingProfile, nextProfile) => {
   }
 };
 
-router.get("/", requireAuth, requireAdmin, (req, res) => {
+router.get("/", requireAuth, requireAdmin, async (req, res) => {
   try {
     const users = userOps.getAllUsers();
-    res.json(users);
+    const globalPlexAccount = await resolveGlobalPlexAccount();
+    res.json(
+      users.map((user) => ({
+        ...user,
+        plexLink: plexConnectionStore.getPublicStatus(user.id),
+        plexGlobalAccount: globalPlexAccount,
+      })),
+    );
   } catch (e) {
     res.status(500).json({ error: "Failed to list users", message: e.message });
   }
@@ -537,5 +546,7 @@ router.delete("/:id", requireAuth, requireAdmin, (req, res) => {
     res.status(500).json({ error: "Failed to delete user", message: e.message });
   }
 });
+
+registerPlexLink(router);
 
 export default router;

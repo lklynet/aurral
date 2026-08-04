@@ -6,6 +6,16 @@ function getPlexConfig() {
   return dbOps.getSettings()?.integrations?.plex || {};
 }
 
+function describePlexError(error) {
+  const status = error?.response?.status;
+  const data = error?.response?.data;
+  if (typeof data === "string" && data.trim() && !/^\s*<(!doctype|html)/i.test(data)) {
+    return data.length > 300 ? `${data.slice(0, 300)}…` : data;
+  }
+  if (status) return `Plex returned an error (HTTP ${status}).`;
+  return error?.message || "Unknown error";
+}
+
 export function registerPlex(router) {
   router.post("/plex/auth/pin", async (req, res) => {
     try {
@@ -53,7 +63,12 @@ export function registerPlex(router) {
       }
       const token = await PlexClient.checkPin(pinId, code, clientId);
       if (!token) return res.json({ pending: true });
-      res.json({ token });
+      let plexUsername = null;
+      try {
+        const identity = await PlexClient.validateToken(token, clientId);
+        plexUsername = identity?.username || identity?.title || null;
+      } catch {}
+      res.json({ token, plexUsername });
     } catch (error) {
       logger.error("settings", "Plex PIN check failed:", error.message);
       res.status(500).json({
@@ -117,7 +132,68 @@ export function registerPlex(router) {
     } catch (error) {
       res.status(400).json({
         error: "Connection failed",
-        message: error.response?.data || error.message,
+        message: describePlexError(error),
+      });
+    }
+  });
+
+  router.get("/plex/libraries/:sectionId/access-check", async (req, res) => {
+    try {
+      const { PlexClient } = await import("../../../services/plex.js");
+      const { pathIsReadable } = await import("../../../services/lidarrLibraryAccessTest.js");
+      const { getPathMappings } = await import("../../../services/pathMappings.js");
+      const stored = getPlexConfig();
+      if (!stored.url || !stored.token) {
+        return res.status(400).json({ error: "Connect Plex first" });
+      }
+      const sectionId = String(req.params.sectionId || "").trim();
+      if (!sectionId) {
+        return res.status(400).json({ error: "sectionId is required" });
+      }
+      const client = new PlexClient(stored.url, stored.token, stored.clientId);
+      const sample = await client.getSampleTrack(sectionId);
+      if (!sample?.files?.length) {
+        return res.json({
+          checked: false,
+          reason: "This library doesn't have any tracks yet to check against.",
+        });
+      }
+      const reportedPath = sample.files[0];
+      const readablePath = await pathIsReadable(reportedPath, getPathMappings("plex"));
+      res.json({
+        checked: true,
+        accessible: Boolean(readablePath),
+        reportedPath,
+      });
+    } catch (error) {
+      logger.error("settings", "Plex library access check failed:", error.message);
+      res.status(500).json({
+        error: "Failed to check library access",
+        message: describePlexError(error),
+      });
+    }
+  });
+
+  router.get("/plex/libraries", async (req, res) => {
+    try {
+      const { PlexClient, MUSIC_SECTION_TYPE } = await import("../../../services/plex.js");
+      const stored = getPlexConfig();
+      if (!stored.url || !stored.token) {
+        return res.status(400).json({ error: "Connect Plex first" });
+      }
+      const client = new PlexClient(stored.url, stored.token, stored.clientId);
+      const libraries = await client.getLibraries();
+      const musicLibraries = libraries.filter(
+        (lib) => lib.type === MUSIC_SECTION_TYPE && lib.title !== "Aurral",
+      );
+      res.json({
+        libraries: musicLibraries.map((lib) => ({ key: lib.key, title: lib.title })),
+      });
+    } catch (error) {
+      logger.error("settings", "Plex library listing failed:", error.message);
+      res.status(500).json({
+        error: "Failed to list Plex libraries",
+        message: describePlexError(error),
       });
     }
   });
@@ -141,7 +217,7 @@ export function registerPlex(router) {
       logger.error("settings", "Plex sync failed:", error.message);
       res.status(500).json({
         error: "Plex sync failed",
-        message: error.response?.data || error.message,
+        message: describePlexError(error),
       });
     }
   });

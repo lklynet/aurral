@@ -63,8 +63,17 @@ Focus is a dedicated fourth source. It does not change Discover, Library, or Tre
 
 - **Genre tags** tell Focus which genres to target.
 - **Related artists** tell Focus which similarity seeds to target.
+- **Release year(s)** limits Focus picks to a from–to year range. Leave blank for no year limit.
 - If you enable Focus, add at least one genre tag or related artist.
-- If you disable Focus, Aurral saves your tags and artists but does not use them.
+- If you disable Focus, Aurral saves your tags, artists, and year range but does not use them.
+
+Year range examples:
+
+- `1980`–`1989` for a decade
+- `2020`–blank for that year and later
+- blank–`2000` for that year and earlier
+
+Aurral resolves release years from metadata when needed. Focus tracks without a known year are skipped while a year range is set. Discover, Library, and Trending ignore the year range.
 
 ### Focus match behavior
 

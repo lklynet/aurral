@@ -33,6 +33,8 @@ export const defaultData = {
         clientId: "",
         machineIdentifier: "",
         downloadsPath: "",
+        plexUsername: "",
+        mainLibrarySectionId: "",
       },
       lastfm: {
         apiKey: "",

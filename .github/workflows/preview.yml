@@ -70,6 +70,7 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Comment preview image on pull request and linked issues
+        id: preview-comment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           IMAGE_TAG: pr-${{ github.event.number }}
@@ -103,6 +104,7 @@ jobs:
             "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
             --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- aurral-preview-image -->"))) | .id' | head -n1)"
 
+          FIRST_PREVIEW=false
           if [ -n "${COMMENT_ID}" ]; then
             gh api \
               --method PATCH \
@@ -112,7 +114,9 @@ jobs:
             gh pr comment "${PR_NUMBER}" \
               --repo "${REPOSITORY}" \
               --body "${COMMENT_BODY}" >/dev/null
+            FIRST_PREVIEW=true
           fi
+          echo "first_preview=${FIRST_PREVIEW}" >> "${GITHUB_OUTPUT}"
 
           OWNER="${REPOSITORY%%/*}"
           REPO="${REPOSITORY#*/}"
@@ -188,6 +192,16 @@ jobs:
               "repos/${REPOSITORY}/issues/${issue_number}/labels" \
               -f "labels[]=in-progress" >/dev/null
           done <<< "${CLOSING_ISSUES}"
+
+      - name: Notify Discord previews channel
+        if: steps.preview-comment.outputs.first_preview == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISCORD_WEBHOOK_PREVIEWS: ${{ secrets.DISCORD_WEBHOOK_PREVIEWS }}
+          IMAGE_TAG: pr-${{ github.event.number }}
+          PR_NUMBER: ${{ github.event.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: bash scripts/notify-discord.sh previews
 
   delete-image:
     if: >-
