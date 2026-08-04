@@ -1094,7 +1094,18 @@ export class LidarrClient {
       for (const providerArtistId of providerArtistIds) {
         try {
           result = await postArtist({ ...lidarrArtist, foreignArtistId: providerArtistId });
-          dbOps.setLidarrArtistIdMap(mbid, providerArtistId);
+          try {
+            dbOps.setLidarrArtistIdMap(mbid, providerArtistId);
+          } catch (mappingError) {
+            if (mappingError?.code !== "LIDARR_ARTIST_ID_CONFLICT") {
+              throw mappingError;
+            }
+            logger.warn("library", "Failed to persist Lidarr artist ID mapping", {
+              mbid,
+              providerArtistId,
+              error: mappingError.message,
+            });
+          }
           break;
         } catch (providerAttemptError) {
           if (!isMetadataProviderIdError(providerAttemptError)) {

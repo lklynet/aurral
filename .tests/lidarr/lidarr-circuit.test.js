@@ -464,6 +464,51 @@ test("artist add rejects a MusicBrainz ID and name mismatch", async (t) => {
   assert.equal(dbOps.getLidarrArtistIdMap(artistMbid), null);
 });
 
+test("artist add succeeds when a provider mapping conflict follows a successful POST", async (t) => {
+  const artistMbid = "mapping-conflict-add-mbid";
+  const existingMbid = "mapping-conflict-existing-mbid";
+  const providerId = "mapping-conflict-provider@deezer";
+  const client = new LidarrClient();
+  t.after(() => {
+    dbOps.deleteLidarrArtistIdMap(artistMbid);
+    dbOps.deleteLidarrArtistIdMap(existingMbid);
+    client._httpAgent.destroy();
+    client._httpsAgent.destroy();
+    client._httpsInsecureAgent.destroy();
+  });
+
+  dbOps.setLidarrArtistIdMap(existingMbid, providerId);
+  client.resolveArtistAddConfiguration = async () => ({
+    resolved: {
+      rootFolderPath: "/music",
+      qualityProfileId: 1,
+    },
+  });
+  client.resolveCanonicalArtistIdentity = async () => ({
+    name: "Muse",
+    providerIds: [providerId],
+  });
+  client.request = async (endpoint, method = "GET", payload) => {
+    if (endpoint === "/artist" && method === "POST") {
+      if (payload.foreignArtistId === artistMbid) {
+        throw new Error(
+          `Lidarr API error: 500 - The input string '${artistMbid}' was not in a correct format.`,
+        );
+      }
+      return { id: 42, foreignArtistId: providerId, artistName: "Muse", monitored: true };
+    }
+    if (endpoint === `/artist/lookup?term=${encodeURIComponent("Muse")}` && method === "GET") {
+      return [{ foreignArtistId: providerId, artistName: "Muse" }];
+    }
+    throw new Error(`Unexpected Lidarr request: ${method} ${endpoint}`);
+  };
+
+  const artist = await client.addArtist(artistMbid, "Muse", { metadataProfileId: 1 });
+
+  assert.equal(artist.id, 42);
+  assert.equal(dbOps.getLidarrArtistMbid(providerId), existingMbid);
+});
+
 test("Lidarr artist provider mappings reject reverse-ID conflicts", async (t) => {
   const firstMbid = "mapping-first-mbid";
   const secondMbid = "mapping-second-mbid";

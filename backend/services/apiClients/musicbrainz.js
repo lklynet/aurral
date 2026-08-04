@@ -347,8 +347,10 @@ export async function musicbrainzGetArtistIdentityByMbid(mbid, { signal } = {}) 
     });
     musicbrainzArtistIdentityCache.set(normalizedMbid, identity);
     return identity;
-  } catch {
-    musicbrainzArtistIdentityCache.set(normalizedMbid, null);
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      musicbrainzArtistIdentityCache.set(normalizedMbid, null);
+    }
     return null;
   }
 }

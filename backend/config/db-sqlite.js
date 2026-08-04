@@ -220,11 +220,22 @@ const duplicateLidarrArtistIds = db
 
 if (duplicateLidarrArtistIds.length > 0) {
   const deleteDuplicateLidarrArtistId = db.prepare(
-    "DELETE FROM lidarr_artist_id_map WHERE lidarr_foreign_artist_id = ?",
+    `DELETE FROM lidarr_artist_id_map
+     WHERE lidarr_foreign_artist_id = ?
+       AND musicbrainz_id NOT IN (
+         SELECT musicbrainz_id
+         FROM lidarr_artist_id_map
+         WHERE lidarr_foreign_artist_id = ?
+         ORDER BY updated_at DESC, musicbrainz_id ASC
+         LIMIT 1
+       )`,
   );
   db.transaction((duplicates) => {
     for (const duplicate of duplicates) {
-      deleteDuplicateLidarrArtistId.run(duplicate.lidarr_foreign_artist_id);
+      deleteDuplicateLidarrArtistId.run(
+        duplicate.lidarr_foreign_artist_id,
+        duplicate.lidarr_foreign_artist_id,
+      );
     }
   })(duplicateLidarrArtistIds);
 }
