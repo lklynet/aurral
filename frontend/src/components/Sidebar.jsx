@@ -258,6 +258,9 @@ function Sidebar({ mode, width = 208 }) {
 
   const getNavGroupClassName = (item, active) => {
     const classes = ["sidebar-nav-group"];
+    if (item.section === "discover") {
+      classes.push("sidebar-nav-group--discover");
+    }
     if (active && (item.subnav?.length || item.section === "discover") && !isIcons) {
       classes.push("is-expanded");
     } else if (active) {
