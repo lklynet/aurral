@@ -24,6 +24,8 @@
   --aurral-danger: #ef4444;
   --aurral-warning: #f59e0b;
   --aurral-focus: rgba(132, 204, 22, 0.42);
+  --aurral-surface-grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  --aurral-sidebar-grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.012'/%3E%3C/svg%3E");
   --aurral-border: color-mix(in srgb, var(--aurral-white) 8%, transparent);
   --aurral-border-strong: color-mix(in srgb, var(--aurral-white) 14%, transparent);
   --aurral-space-outer: 0.25rem;
@@ -1426,6 +1428,21 @@ textarea {
   overflow: visible;
   border-radius: var(--aurral-radius-round);
   background: var(--aurral-surface);
+}
+
+.app-shell,
+.app-topbar,
+.app-mobile-nav {
+  background-image: var(--aurral-surface-grain);
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+
+.sidebar-shell,
+.app-main {
+  background-image: var(--aurral-sidebar-grain);
+  background-repeat: repeat;
+  background-size: 256px 256px;
 }
 
 .global-search__scope-wrap {
@@ -4874,9 +4891,7 @@ textarea {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
-    var(--aurral-surface);
+  background: var(--aurral-surface);
   border-radius: var(--aurral-radius-round);
   transition: border-color 0.18s ease;
 }
