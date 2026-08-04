@@ -659,7 +659,13 @@ export const authMiddleware = (req, res, next) => {
     ) {
       return next();
     }
-    if (req.path === "/api/auth/login" || req.path === "/api/auth/oidc/login") return next();
+    if (
+      req.path === "/api/auth/login" ||
+      req.path === "/api/auth/oidc/login" ||
+      req.path === "/api/auth/oidc/exchange"
+    ) {
+      return next();
+    }
 
     const settings = dbOps.getSettings();
     const onboardingDone = settings.onboardingComplete;

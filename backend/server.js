@@ -165,6 +165,7 @@ const authLimiter = rateLimit({
 });
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/oidc/login", authLimiter);
+app.use("/api/auth/oidc/exchange", authLimiter);
 app.use("/api/users/me/password", authLimiter);
 
 const limiter = rateLimit({
@@ -195,8 +196,8 @@ app.use("/api/image-proxy", imageProxyRouter);
 app.get("/sso/callback", async (req, res) => {
   try {
     const result = await handleOidcCallback(req);
-    const token = encodeURIComponent(result.token);
-    res.redirect(302, `/sso/complete#token=${token}`);
+    const code = encodeURIComponent(result.code);
+    res.redirect(302, `/sso/complete#code=${code}`);
   } catch (error) {
     logger.error("auth", "OIDC callback failed:", { message: error.message });
     const message = encodeURIComponent(error.message || "OIDC login failed");

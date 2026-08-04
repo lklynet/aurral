@@ -3,7 +3,10 @@ import { createSession } from "../config/session-helpers.js";
 import { ensureExternalUser } from "../middleware/auth.js";
 
 const STATE_TTL_MS = 10 * 60 * 1000;
+const EXCHANGE_TTL_MS = 60 * 1000;
+const OIDC_TRANSACTION_COOKIE = "aurral_oidc_transaction";
 const pendingLogins = new Map();
+const pendingExchanges = new Map();
 let discoveryConfig = null;
 let discoveryKey = "";
 
@@ -19,6 +22,39 @@ function prunePendingLogins(now = Date.now()) {
   for (const [state, entry] of pendingLogins) {
     if (!entry || entry.expiresAt <= now) pendingLogins.delete(state);
   }
+}
+
+function prunePendingExchanges(now = Date.now()) {
+  for (const [code, entry] of pendingExchanges) {
+    if (!entry || entry.expiresAt <= now) pendingExchanges.delete(code);
+  }
+}
+
+function getTransactionCookie(req) {
+  const cookies = String(req.headers?.cookie || "").split(";");
+  for (const cookie of cookies) {
+    const [name, ...parts] = cookie.trim().split("=");
+    if (name !== OIDC_TRANSACTION_COOKIE) continue;
+    try {
+      return decodeURIComponent(parts.join("="));
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
+function setTransactionCookie(req, res, value, maxAge) {
+  const secure = req.secure || req.protocol === "https";
+  const attributes = [
+    `${OIDC_TRANSACTION_COOKIE}=${encodeURIComponent(value)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+  ];
+  if (secure) attributes.push("Secure");
+  if (maxAge != null) attributes.push(`Max-Age=${maxAge}`);
+  res.setHeader("Set-Cookie", attributes.join("; "));
 }
 
 function getRequiredConfig() {
@@ -146,11 +182,13 @@ export async function startOidcLogin(req, res) {
   const codeChallenge = await client.calculatePKCECodeChallenge(codeVerifier);
   const state = client.randomState();
   const nonce = client.randomNonce();
+  const transactionId = client.randomState();
 
   prunePendingLogins();
   pendingLogins.set(state, {
     codeVerifier,
     nonce,
+    transactionId,
     expiresAt: Date.now() + STATE_TTL_MS,
   });
 
@@ -164,6 +202,7 @@ export async function startOidcLogin(req, res) {
   };
 
   const redirectTo = client.buildAuthorizationUrl(oidc, parameters);
+  setTransactionCookie(req, res, transactionId);
   res.redirect(302, redirectTo.href);
 }
 
@@ -173,10 +212,11 @@ export async function handleOidcCallback(req) {
   }
 
   const state = String(req.query?.state || "");
+  const transactionId = getTransactionCookie(req);
   prunePendingLogins();
   const pending = pendingLogins.get(state);
   pendingLogins.delete(state);
-  if (!pending || pending.expiresAt <= Date.now()) {
+  if (!pending || pending.expiresAt <= Date.now() || pending.transactionId !== transactionId) {
     throw Object.assign(new Error("OIDC login session expired"), { status: 400 });
   }
 
@@ -202,16 +242,48 @@ export async function handleOidcCallback(req) {
     throw Object.assign(new Error("Failed to provision OIDC user"), { status: 500 });
   }
 
-  const session = createSession(user.id, req.ip || null, req.headers["user-agent"] || null);
+  const code = client.randomState();
+  prunePendingExchanges();
+  pendingExchanges.set(code, {
+    expiresAt: Date.now() + EXCHANGE_TTL_MS,
+    transactionId,
+    user,
+  });
   return {
-    token: session.token,
-    expiresAt: session.expiresAt,
+    code,
     user,
   };
 }
 
+export function exchangeOidcCallback(code, req) {
+  if (!isOidcEnabled()) {
+    throw Object.assign(new Error("OIDC is not enabled"), { status: 404 });
+  }
+
+  const transactionId = getTransactionCookie(req);
+  const exchangeCode = String(code || "");
+  prunePendingExchanges();
+  const pending = pendingExchanges.get(exchangeCode);
+  if (!pending || pending.expiresAt <= Date.now() || pending.transactionId !== transactionId) {
+    throw Object.assign(new Error("OIDC login session expired"), { status: 400 });
+  }
+
+  pendingExchanges.delete(exchangeCode);
+  const session = createSession(pending.user.id, req.ip || null, req.headers["user-agent"] || null);
+  return {
+    token: session.token,
+    expiresAt: session.expiresAt,
+    user: pending.user,
+  };
+}
+
+export function clearOidcTransactionCookie(req, res) {
+  setTransactionCookie(req, res, "", 0);
+}
+
 export function resetOidcStateForTests() {
   pendingLogins.clear();
+  pendingExchanges.clear();
   discoveryConfig = null;
   discoveryKey = "";
 }

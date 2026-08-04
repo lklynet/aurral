@@ -4,7 +4,7 @@ import { createSession, deleteSession, getSessionByToken } from "../config/sessi
 import { requireAuth } from "../middleware/requirePermission.js";
 import { getApiKey, rotateApiKey } from "../middleware/auth.js";
 import { hashPassword, verifyPassword, needsRehash } from "../middleware/passwordHash.js";
-import { startOidcLogin } from "../services/oidcAuth.js";
+import { clearOidcTransactionCookie, exchangeOidcCallback, startOidcLogin } from "../services/oidcAuth.js";
 import { logger } from "../services/logger.js";
 
 const router = express.Router();
@@ -93,6 +93,16 @@ router.get("/oidc/login", async (req, res) => {
     if (!res.headersSent) {
       res.status(500).json({ error: "OIDC login failed" });
     }
+  }
+});
+
+router.post("/oidc/exchange", (req, res) => {
+  try {
+    const result = exchangeOidcCallback(req.body?.code, req);
+    clearOidcTransactionCookie(req, res);
+    res.json(result);
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message || "OIDC exchange failed" });
   }
 });
 

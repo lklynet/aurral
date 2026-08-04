@@ -1,5 +1,6 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
+import { createSign, generateKeyPairSync } from "node:crypto";
 
 import {
   createMockHttpServer,
@@ -22,6 +23,7 @@ const { dbOps, userOps } = dbHelpers;
 const { ensureExternalUser, isAuthRequiredByConfig, isOidcAuthEnabled } = authModule;
 const { createSession, getSessionByToken } = sessionModule;
 const {
+  exchangeOidcCallback,
   isOidcEnabled,
   resolveOidcUsername,
   resolveOidcRole,
@@ -32,6 +34,26 @@ const {
 } = oidcModule;
 
 const completeOnboarding = () => dbOps.updateSettings({ onboardingComplete: true });
+
+const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+const oidcKey = { ...publicKey.export({ format: "jwk" }), kid: "test-key", use: "sig", alg: "RS256" };
+
+const createIdToken = (issuer, nonce) => {
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  const header = encode({ alg: "RS256", kid: oidcKey.kid, typ: "JWT" });
+  const payload = encode({
+    iss: issuer,
+    aud: "aurral",
+    sub: "oidc-subject",
+    preferred_username: "callback-user",
+    nonce,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 300,
+  });
+  const input = `${header}.${payload}`;
+  const signature = createSign("RSA-SHA256").update(input).sign(privateKey).toString("base64url");
+  return `${input}.${signature}`;
+};
 
 function resetOidcEnv() {
   delete process.env.OIDC_ENABLED;
@@ -62,12 +84,29 @@ function enableOidcEnv(overrides = {}) {
 
 async function createPendingOidcLogin() {
   let issuer;
-  const discoveryServer = await createMockHttpServer((_request, response) => {
+  let nonce;
+  const discoveryServer = await createMockHttpServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
+    if (request.url === "/jwks") {
+      response.end(JSON.stringify({ keys: [oidcKey] }));
+      return;
+    }
+    if (request.method === "POST" && request.url === "/token") {
+      response.end(
+        JSON.stringify({
+          access_token: "access-token",
+          token_type: "Bearer",
+          id_token: createIdToken(issuer, nonce),
+        }),
+      );
+      return;
+    }
     response.end(
       JSON.stringify({
         issuer,
         authorization_endpoint: `${issuer}authorize`,
+        token_endpoint: `${issuer}token`,
+        jwks_uri: `${issuer}jwks`,
       }),
     );
   });
@@ -78,13 +117,25 @@ async function createPendingOidcLogin() {
   });
 
   const response = {
+    headers: {},
     redirect(_status, location) {
       this.location = location;
     },
+    setHeader(name, value) {
+      this.headers[name] = value;
+    },
   };
   await startOidcLogin({}, response);
+  const redirect = new URL(response.location);
+  const state = redirect.searchParams.get("state");
+  nonce = redirect.searchParams.get("nonce");
+  assert.ok(state, "OIDC login redirect must include state");
+  const setCookie = response.headers["Set-Cookie"];
+  assert.ok(setCookie, "OIDC login must set a transaction cookie");
   return {
-    state: new URL(response.location).searchParams.get("state"),
+    state,
+    nonce,
+    cookie: setCookie.split(";", 1)[0],
     close: discoveryServer.close,
   };
 }
@@ -175,6 +226,39 @@ test("OIDC-provisioned users get normal Aurral sessions", () => {
   assert.equal(getSessionByToken(session.token)?.user?.username, "sso-erin");
 });
 
+test("OIDC callback issues a cookie-bound one-time session exchange", async () => {
+  const pending = await createPendingOidcLogin();
+
+  try {
+    const callback = await handleOidcCallback({
+      query: { state: pending.state, code: "authorization-code" },
+      headers: { cookie: pending.cookie },
+      ip: "127.0.0.1",
+    });
+    assert.ok(callback.code);
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sessions").get().count, 0);
+
+    assert.throws(
+      () => exchangeOidcCallback(callback.code, { headers: { cookie: "aurral_oidc_transaction=wrong" } }),
+      { status: 400, message: "OIDC login session expired" },
+    );
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sessions").get().count, 0);
+
+    const session = exchangeOidcCallback(callback.code, {
+      headers: { cookie: pending.cookie, "user-agent": "test-agent" },
+      ip: "127.0.0.1",
+    });
+    assert.ok(session.token);
+    assert.equal(getSessionByToken(session.token)?.user?.username, "callback-user");
+    assert.throws(
+      () => exchangeOidcCallback(callback.code, { headers: { cookie: pending.cookie } }),
+      { status: 400, message: "OIDC login session expired" },
+    );
+  } finally {
+    await pending.close();
+  }
+});
+
 test("OIDC callback rejects an expired state without creating a session", async () => {
   const pending = await createPendingOidcLogin();
   const now = Date.now();
@@ -185,7 +269,7 @@ test("OIDC callback rejects an expired state without creating a session", async 
       () =>
         handleOidcCallback({
           query: { state: pending.state },
-          headers: {},
+          headers: { cookie: pending.cookie },
           ip: "127.0.0.1",
         }),
       { status: 400, message: "OIDC login session expired" },
@@ -205,7 +289,7 @@ test("OIDC callback rejects a mismatched state without creating a session", asyn
       () =>
         handleOidcCallback({
           query: { state: `${pending.state}-mismatched` },
-          headers: {},
+          headers: { cookie: pending.cookie },
           ip: "127.0.0.1",
         }),
       { status: 400, message: "OIDC login session expired" },

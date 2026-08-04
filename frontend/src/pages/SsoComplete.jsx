@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { setStoredAuth } from "../utils/api/core.js";
+import { exchangeOidcCode } from "../utils/api/endpoints/auth.js";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 const readHashParams = () => {
@@ -14,10 +15,10 @@ let consumedSsoParams = null;
 const consumeSsoParams = () => {
   if (consumedSsoParams) return consumedSsoParams;
   const params = readHashParams();
-  const token = params.get("token");
+  const code = params.get("code");
   const error = params.get("error");
-  consumedSsoParams = { token, error };
-  if (token || error) {
+  consumedSsoParams = { code, error };
+  if (code || error) {
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
   }
   return consumedSsoParams;
@@ -31,20 +32,24 @@ const SsoComplete = () => {
 
   useEffect(() => {
     let cancelled = false;
-    const { token, error: hashError } = consumeSsoParams();
+    const { code, error: hashError } = consumeSsoParams();
 
     if (hashError) {
       setError(hashError);
       return undefined;
     }
 
-    if (!token) {
+    if (!code) {
       setError("Missing SSO session");
       return undefined;
     }
 
-    setStoredAuth({ token });
-    refreshAuth()
+    exchangeOidcCode(code)
+      .then(({ token }) => {
+        if (!token) throw new Error("Missing SSO session token");
+        setStoredAuth({ token });
+        return refreshAuth();
+      })
       .then(() => {
         if (!cancelled) {
           navigate("/", { replace: true });
