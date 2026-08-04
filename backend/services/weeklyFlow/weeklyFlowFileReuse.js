@@ -2,8 +2,8 @@ import fs from "fs/promises";
 import path from "path";
 import { downloadTracker } from "./weeklyFlowDownloadTracker.js";
 import {
-  buildSharedTrackIdentity,
   flowPlaylistConfig,
+  tracksShareMembership,
 } from "./weeklyFlowPlaylistConfig.js";
 import { libraryManager } from "../libraryManager.js";
 import { commitImportToPlaylistLibrary } from "../playlistDownloadUtils.js";
@@ -118,7 +118,6 @@ function isFlowPlaylistType(playlistType) {
 async function findAurralSource(track, options = {}) {
   const weeklyFlowRoot = path.resolve(options.weeklyFlowRoot || resolveWeeklyFlowRoot());
   const targetPlaylistType = String(options.targetPlaylistType || "").trim();
-  const identity = buildSharedTrackIdentity(track);
   const excludeJobIds = new Set(
     (Array.isArray(options.excludeJobIds) ? options.excludeJobIds : [])
       .map((id) => String(id || "").trim())
@@ -129,7 +128,7 @@ async function findAurralSource(track, options = {}) {
     if (!job || job.status !== "done") continue;
     if (excludeJobIds.has(String(job.id || ""))) continue;
     if (!job.finalPath || typeof job.finalPath !== "string") continue;
-    if (buildSharedTrackIdentity(job) !== identity) continue;
+    if (!tracksShareMembership(track, job)) continue;
     if (targetPlaylistType && String(job.playlistType || "") === targetPlaylistType) {
       continue;
     }
@@ -322,7 +321,12 @@ async function findLidarrSource(track) {
     return null;
   }
   const artist = findMatchingArtist(Array.isArray(artists) ? artists : [], track);
-  if (!artist) return null;
+  if (!artist) {
+    console.log(
+      `[WeeklyFlowReuse] Lidarr: no artist match for "${track?.artistName}" (mbid ${track?.artistMbid || "none"}, ${artists.length} Lidarr artists checked)`,
+    );
+    return null;
+  }
   const artistId = artist.id || artist.artistId;
   if (!artistId) return null;
 
@@ -333,7 +337,14 @@ async function findLidarrSource(track) {
     console.warn("[WeeklyFlowReuse] Failed to inspect Lidarr albums:", error.message);
     return null;
   }
+  if (!albums.length) {
+    console.log(
+      `[WeeklyFlowReuse] Lidarr: artist "${artist.artistName}" (id ${artistId}) matched but has 0 albums`,
+    );
+    return null;
+  }
 
+  let foundTitleOnAnyAlbum = false;
   for (const album of rankAlbums(Array.isArray(albums) ? albums : [], track)) {
     let tracks = [];
     try {
@@ -343,11 +354,18 @@ async function findLidarrSource(track) {
       continue;
     }
     const matchedTrack = findMatchingTrack(Array.isArray(tracks) ? tracks : [], track);
-    if (!matchedTrack || matchedTrack.hasFile !== true || !matchedTrack.path) continue;
+    if (!matchedTrack) continue;
+    foundTitleOnAnyAlbum = true;
+    if (matchedTrack.hasFile !== true || !matchedTrack.path) {
+      console.log(
+        `[WeeklyFlowReuse] Lidarr: "${track.trackName}" found on album "${album.albumName}" (id ${album.id}) but hasFile=${matchedTrack.hasFile} path=${matchedTrack.path || "none"}`,
+      );
+      continue;
+    }
     const sourcePath = path.resolve(resolveLocalPath(matchedTrack.path, getPathMappings("lidarr")));
     if (!(await fileExists(sourcePath))) {
       console.warn(
-        `[WeeklyFlowReuse] Lidarr track exists but file is not accessible from Aurral: ${matchedTrack.path}`,
+        `[WeeklyFlowReuse] Lidarr track exists but file is not accessible from Aurral: ${matchedTrack.path} (resolved to ${sourcePath})`,
       );
       continue;
     }
@@ -358,6 +376,11 @@ async function findLidarrSource(track) {
       lidarrTrack: matchedTrack,
       albumName: album.albumName || track.albumName || null,
     };
+  }
+  if (!foundTitleOnAnyAlbum) {
+    console.log(
+      `[WeeklyFlowReuse] Lidarr: artist "${artist.artistName}" matched (${albums.length} albums checked) but no album's tracklist contained "${track.trackName}"`,
+    );
   }
   return null;
 }

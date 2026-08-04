@@ -184,14 +184,19 @@ export function PlaylistLibraryItem({
   collapsed = false,
   onSelect,
   trailing = null,
+  viewerUsername = null,
+  viewerIsAdmin = false,
 }) {
   const trackCount =
     entry.kind === "flow"
       ? getFlowDisplayTrackCount(entry, stats)
       : getSharedPlaylistTrackCount(entry, stats);
   const trackLabel = formatTrackCountLabel(trackCount, stats);
-  const typeLabel =
+  const baseTypeLabel =
     entry.kind === "flow" ? (entry.enabled === true ? "Flow" : "Flow draft") : "Playlist";
+  const showOwner =
+    Boolean(entry.ownerUsername) && (viewerIsAdmin || entry.ownerUsername !== viewerUsername);
+  const typeLabel = showOwner ? `${entry.ownerUsername} · ${baseTypeLabel}` : baseTypeLabel;
   const showSyncedBadge =
     entry.kind === "shared" &&
     entry.importSource?.syncEnabled === true &&

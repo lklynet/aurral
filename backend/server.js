@@ -5,6 +5,10 @@ import path from "path";
 import fs from "fs";
 import { createServer } from "http";
 import { fileURLToPath } from "url";
+import dns from "node:dns";
+
+dns.setDefaultResultOrder("ipv4first");
+
 import { authMiddleware, isProxyAuthEnabled } from "./middleware/auth.js";
 import { logger } from "./services/logger.js";
 import { websocketService } from "./services/websocketService.js";

@@ -16,8 +16,12 @@ import {
   getDiscoverRecentPageLinkState,
 } from "../utils/discoverRecentNavigation";
 import { useStorageHealth } from "../hooks/useStorageHealth";
+import SidebarStageBackdrop, {
+  resolveSidebarStageBackdropVariant,
+} from "./SidebarStageBackdrop";
 
 function Sidebar({ mode, width = 208 }) {
+  const stageBackdropVariant = resolveSidebarStageBackdropVariant();
   const location = useLocation();
   const { user, bootstrap } = useAuth();
   const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
@@ -254,6 +258,9 @@ function Sidebar({ mode, width = 208 }) {
 
   const getNavGroupClassName = (item, active) => {
     const classes = ["sidebar-nav-group"];
+    if (item.section === "discover") {
+      classes.push("sidebar-nav-group--discover");
+    }
     if (active && (item.subnav?.length || item.section === "discover") && !isIcons) {
       classes.push("is-expanded");
     } else if (active) {
@@ -264,11 +271,14 @@ function Sidebar({ mode, width = 208 }) {
 
   return (
     <aside
-      className={`sidebar-shell ${translateClass}`}
+      className={`sidebar-shell ${translateClass}${
+        stageBackdropVariant ? ` sidebar-shell--${stageBackdropVariant}` : ""
+      }`}
       style={{
         width: `${width}px`,
       }}
     >
+      {stageBackdropVariant ? <SidebarStageBackdrop variant={stageBackdropVariant} /> : null}
       <div className="sidebar-logo-row">
         <Link to="/" className="sidebar-logo-link">
           <img src="/arralogo.svg" alt="Aurral Logo" className="sidebar-logo" />

@@ -260,9 +260,8 @@ export function enqueuePendingJobsWithoutBatch() {
   if (!isAnyDownloadSourceConfigured()) return 0;
   let count = 0;
   for (const job of downloadTracker.getByStatus("pending")) {
-    if (job.slskdBatchId || job.slskdSearchId) {
-      downloadTracker.clearSlskdPipelineState(job.id);
-    }
+    if (!job.slskdBatchId && !job.slskdSearchId) continue;
+    downloadTracker.clearSlskdPipelineState(job.id);
     if (enqueueJobPipeline(job.id)) count += 1;
   }
   return count;

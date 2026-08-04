@@ -64,6 +64,7 @@ gh label create released \
   --force >/dev/null
 
 declare -A target_numbers=()
+declare -A closing_issue_numbers=()
 for pull_number in "${!pull_numbers[@]}"; do
   target_numbers["${pull_number}"]=1
   closing_issues="$(gh api graphql \
@@ -83,6 +84,7 @@ for pull_number in "${!pull_numbers[@]}"; do
   while IFS= read -r issue_number; do
     [ -z "${issue_number}" ] && continue
     target_numbers["${issue_number}"]=1
+    closing_issue_numbers["${issue_number}"]=1
   done <<< "${closing_issues}"
 done
 
@@ -141,7 +143,7 @@ for target_number in $(printf '%s\n' "${!target_numbers[@]}" | sort -n); do
 <!-- aurral-release-status -->
 ### Available on nightly
 
-A linked pull request was merged into \`main\` and is now included in the latest nightly build.
+A linked pull request was merged into \`main\` and is now included in the latest nightly build. Linked issues stay open until this change ships in a stable release.
 
 \`\`\`bash
 docker pull ghcr.io/${repository}:nightly
@@ -180,3 +182,18 @@ EOF
       -f "body=${comment_body}" >/dev/null
   fi
 done
+
+if [ "${status}" = "stable" ]; then
+  for issue_number in $(printf '%s\n' "${!closing_issue_numbers[@]}" | sort -n); do
+    issue_state="$(gh api \
+      "repos/${repository}/issues/${issue_number}" \
+      --jq 'if .pull_request then "pull" else .state end')"
+    if [ "${issue_state}" != "open" ]; then
+      continue
+    fi
+    gh issue close "${issue_number}" \
+      --repo "${repository}" \
+      --reason completed >/dev/null
+    echo "Closed linked issue #${issue_number} for stable release ${release_version}."
+  done
+fi
