@@ -35,7 +35,7 @@ export async function adoptDiscoverPresetAsFlow(user, presetId) {
   }
 
   const existingFlow = flowPlaylistConfig
-    .getFlowsForUser(user)
+    .getFlowsOwnedByUser(user.id)
     .find((flow) => flow.discoverPresetId === safePresetId);
   if (existingFlow) {
     return {
@@ -90,7 +90,7 @@ export async function adoptDiscoverPresetAsPlaylist(user, presetId) {
   }
 
   const existingPlaylist = flowPlaylistConfig
-    .getSharedPlaylistsForUser(user)
+    .getSharedPlaylistsOwnedByUser(user.id)
     .find((playlist) => playlist.discoverPresetId === safePresetId);
   if (existingPlaylist) {
     return {
@@ -118,9 +118,11 @@ export async function adoptDiscoverPresetAsPlaylist(user, presetId) {
     playlistId,
     name: cachedPlaylist.name,
     sourceName: cachedPlaylist.name,
+    description: cachedPlaylist.description || null,
     tracks,
     ownerUserId: user.id,
     discoverPresetId: safePresetId,
+    type: cachedPlaylist.type === "editorial" ? "editorial" : null,
   });
   const playlist = result?.playlist || null;
 

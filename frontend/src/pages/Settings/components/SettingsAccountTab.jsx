@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { resetDiscoveryFeedback } from "../../../utils/api/endpoints/discovery.js";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
+import { PlexSelfLinkSection } from "./PlexSelfLinkSection";
 
 import { Link } from "react-router-dom";
 import { RotateCcw } from "lucide-react";
@@ -147,6 +148,8 @@ export function SettingsAccountTab({
             )}
           </fieldset>
         </div>
+
+        <PlexSelfLinkSection showSuccess={showSuccess} showError={showError} />
 
         <div className="settings-page__section">
           <div className="settings-page__section-intro">

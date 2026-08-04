@@ -1159,10 +1159,17 @@ textarea {
   background: rgba(255, 255, 255, 0.04);
 }
 
+<<<<<<< HEAD
 .sidebar-shell--nightly .sidebar-nav-group--discover.is-expanded,
 .sidebar-shell--nightly .sidebar-nav-group--discover.is-active-row,
 .sidebar-shell--preview .sidebar-nav-group--discover.is-expanded,
 .sidebar-shell--preview .sidebar-nav-group--discover.is-active-row {
+=======
+.sidebar-shell--nightly .sidebar-nav-group.is-expanded,
+.sidebar-shell--nightly .sidebar-nav-group.is-active-row,
+.sidebar-shell--preview .sidebar-nav-group.is-expanded,
+.sidebar-shell--preview .sidebar-nav-group.is-active-row {
+>>>>>>> origin/main
   background: linear-gradient(
     to bottom,
     transparent 0,
@@ -7059,6 +7066,25 @@ textarea {
   color: var(--aurral-gray-light);
   font-size: 0.75rem;
   line-height: 1.5;
+}
+
+.settings-page__hint--warning {
+  color: var(--aurral-warning);
+}
+
+.settings-page__callout {
+  margin: 0.5rem 0 0;
+  padding: 0.625rem 0.875rem;
+  border-radius: var(--aurral-radius-sm);
+  border-left: 3px solid var(--aurral-green);
+  background: color-mix(in srgb, var(--aurral-green) 14%, transparent);
+  color: var(--aurral-white);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.settings-page__callout strong {
+  color: var(--aurral-green);
 }
 
 .settings-page__status {

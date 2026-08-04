@@ -303,6 +303,7 @@ async function deleteFlow({ flowId, tokenScope = null, token = null } = {}) {
     playlistManager.updateConfig(false);
     await playlistManager.weeklyReset([safeFlowId]);
     downloadTracker.clearByPlaylistType(safeFlowId);
+    await playlistManager.cleanupEntityPlexPlaylists(safeFlowId);
     didDelete = flowPlaylistConfig.deleteFlow(safeFlowId);
     await playlistManager.ensureSmartPlaylists();
   });
@@ -345,9 +346,11 @@ async function createSharedPlaylist({
   sourceName = null,
   sourceFlowId = null,
   discoverPresetId = null,
+  type = null,
   tracks = [],
   ownerUserId = null,
   importSource = null,
+  description = null,
 } = {}) {
   const safePlaylistId = String(playlistId || "").trim() || randomUUID();
   const normalizedTracks = filterBlockedPlaylistTracks(
@@ -362,9 +365,11 @@ async function createSharedPlaylist({
       sourceName,
       sourceFlowId,
       discoverPresetId,
+      type,
       tracks: normalizedTracks,
       ownerUserId,
       importSource,
+      description,
     });
   }
   const queued = normalizedTracks.length
@@ -615,6 +620,7 @@ async function deleteSharedPlaylist({ playlistId } = {}) {
     playlistManager.updateConfig(false);
     await playlistManager.weeklyReset([safePlaylistId]);
     downloadTracker.clearByPlaylistType(safePlaylistId);
+    await playlistManager.cleanupEntityPlexPlaylists(safePlaylistId);
     deleted = flowPlaylistConfig.deleteSharedPlaylist(safePlaylistId);
     await playlistManager.ensureSmartPlaylists();
   });
