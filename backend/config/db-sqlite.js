@@ -209,6 +209,32 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_honker_task_runs_job ON honker_task_runs(job_id, queue);
 `);
 
+const duplicateLidarrArtistIds = db
+  .prepare(
+    `SELECT lidarr_foreign_artist_id
+     FROM lidarr_artist_id_map
+     GROUP BY lidarr_foreign_artist_id
+     HAVING COUNT(*) > 1`,
+  )
+  .all();
+
+if (duplicateLidarrArtistIds.length > 0) {
+  const deleteDuplicateLidarrArtistId = db.prepare(
+    "DELETE FROM lidarr_artist_id_map WHERE lidarr_foreign_artist_id = ?",
+  );
+  db.transaction((duplicates) => {
+    for (const duplicate of duplicates) {
+      deleteDuplicateLidarrArtistId.run(duplicate.lidarr_foreign_artist_id);
+    }
+  })(duplicateLidarrArtistIds);
+}
+
+db.exec(`
+  DROP INDEX IF EXISTS idx_lidarr_artist_id_map_foreign_id;
+  CREATE UNIQUE INDEX idx_lidarr_artist_id_map_foreign_id
+    ON lidarr_artist_id_map (lidarr_foreign_artist_id);
+`);
+
 const tableColumns = db
   .prepare("PRAGMA table_info(playlist_download_jobs)")
   .all()

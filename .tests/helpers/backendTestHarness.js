@@ -19,6 +19,7 @@ const RESET_TABLES = [
   "deezer_mbid_cache",
   "musicbrainz_artist_mbid_cache",
   "artist_overrides",
+  "lidarr_artist_id_map",
   "settings",
 ];
 

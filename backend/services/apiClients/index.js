@@ -12,6 +12,7 @@ export {
   musicbrainzGetArtistAppearsOnReleaseGroups,
   getMusicbrainzAppearsOnScanState,
   musicbrainzGetArtistNameByMbid,
+  musicbrainzGetArtistIdentityByMbid,
   musicbrainzGetCachedArtistMbidByName,
   musicbrainzResolveArtistMbidByName,
 } from "./musicbrainz.js";

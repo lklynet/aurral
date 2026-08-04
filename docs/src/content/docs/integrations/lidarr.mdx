@@ -11,14 +11,14 @@ Enter these values in first-run setup or in **Settings > Lidarr**:
 
 ![Aurral Lidarr integration settings](../../../assets/screenshots/settings-lidarr.webp)
 
-- The URL Aurral can reach (often `http://lidarr:8686` in Docker)
+- The URL Aurral can reach (often `http://lidarr:8686` in Docker). When an API key is configured, use HTTPS. For a trusted local HTTP connection, set `LIDARR_ALLOW_HTTP=true` in the Aurral environment.
 - Your Lidarr API key
 - Default quality profile, metadata profile, tag, monitoring option, and search-on-add behavior
 - Optional **Davo's Community Lidarr Guide** for quality profiles and file names
 
 ## Metadata providers
 
-Aurral sends MusicBrainz artist IDs to Lidarr. If Lidarr uses a provider such as Tubifarry Deezer or Discogs, Aurral retries a provider-ID format error with the ID returned by Lidarr's own artist lookup. If that lookup cannot resolve the artist, search for the artist in Lidarr first or use MusicBrainz metadata.
+Aurral sends MusicBrainz artist IDs to Lidarr. If Lidarr uses a provider such as Tubifarry Deezer or Discogs, Aurral verifies the submitted MusicBrainz artist, uses Lidarr's lookup to identify the active provider, and retries a provider-ID format error with the canonical provider ID. If the identities do not match, search for the artist in Lidarr first or use MusicBrainz metadata.
 
 ## Library access check
 

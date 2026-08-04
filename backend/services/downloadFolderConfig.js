@@ -27,13 +27,24 @@ export function resolveEnvDownloadFolder() {
   return null;
 }
 
-export function resolveDefaultPlaylistDownloadRoot() {
+function isWritableDirectory(targetPath) {
+  try {
+    return (
+      fs.statSync(targetPath).isDirectory() &&
+      fs.accessSync(targetPath, fs.constants.W_OK | fs.constants.X_OK) === undefined
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function resolveDefaultPlaylistDownloadRoot({ dataRoot = "/data" } = {}) {
   const envDownloadFolder = resolveEnvDownloadFolder();
   if (envDownloadFolder) {
     return envDownloadFolder;
   }
-  if (fs.existsSync("/data")) {
-    return "/data/downloads/aurral";
+  if (isWritableDirectory(dataRoot)) {
+    return path.join(dataRoot, "downloads", "aurral");
   }
   return path.join(resolveAurralDataDir(), "downloads", "aurral");
 }

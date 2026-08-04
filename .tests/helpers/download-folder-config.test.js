@@ -23,6 +23,8 @@ test("default download folder follows the available writable data root", async (
   const previousPlaylistFolder = process.env.PLAYLIST_FOLDER;
   const previousWeeklyFlowFolder = process.env.WEEKLY_FLOW_FOLDER;
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aurral-download-default-"));
+  const nonDirectoryPath = path.join(tempDir, "not-a-directory");
+  fs.writeFileSync(nonDirectoryPath, "test");
   process.env.AURRAL_DATA_DIR = tempDir;
   delete process.env.DOWNLOAD_FOLDER;
   delete process.env.PLAYLIST_FOLDER;
@@ -32,12 +34,13 @@ test("default download folder follows the available writable data root", async (
     const { resolveDefaultPlaylistDownloadRoot } = await import(
       "../../backend/services/downloadFolderConfig.js"
     );
-    const expectedRoot = fs.existsSync("/data")
-      ? "/data/downloads/aurral"
-      : path.join(tempDir, "downloads", "aurral");
     assert.equal(
-      resolveDefaultPlaylistDownloadRoot(),
-      expectedRoot,
+      resolveDefaultPlaylistDownloadRoot({ dataRoot: tempDir }),
+      path.join(tempDir, "downloads", "aurral"),
+    );
+    assert.equal(
+      resolveDefaultPlaylistDownloadRoot({ dataRoot: nonDirectoryPath }),
+      path.join(tempDir, "downloads", "aurral"),
     );
   } finally {
     if (previousDataDir === undefined) delete process.env.AURRAL_DATA_DIR;

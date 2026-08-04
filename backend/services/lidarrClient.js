@@ -5,6 +5,7 @@ import { dbOps } from "../db/helpers/index.js";
 import { logger } from "./logger.js";
 import BoundedMap from "./boundedMap.js";
 import { mapWithConcurrency } from "./discovery/helpers.js";
+import { musicbrainzGetArtistIdentityByMbid } from "./apiClients/musicbrainz.js";
 
 const CIRCUIT_COOLDOWN_MS = 60000;
 const CIRCUIT_FAILURE_THRESHOLD = 3;
@@ -320,12 +321,16 @@ export class LidarrClient {
     const circuitDisabled =
       process.env.LIDARR_CIRCUIT_DISABLED === "true" || process.env.LIDARR_CIRCUIT_DISABLED === "1";
 
+    const allowHttp =
+      process.env.LIDARR_ALLOW_HTTP === "true" || process.env.LIDARR_ALLOW_HTTP === "1";
+
     const newConfig = {
       url: url,
       apiKey: (dbConfig.apiKey || process.env.LIDARR_API_KEY || "").trim(),
       insecure: !!insecure,
       timeoutMs,
       circuitDisabled,
+      allowHttp,
     };
 
     const didConfigChange =
@@ -334,7 +339,8 @@ export class LidarrClient {
       previousConfig.apiKey !== newConfig.apiKey ||
       previousConfig.insecure !== newConfig.insecure ||
       previousConfig.timeoutMs !== newConfig.timeoutMs ||
-      previousConfig.circuitDisabled !== newConfig.circuitDisabled;
+      previousConfig.circuitDisabled !== newConfig.circuitDisabled ||
+      previousConfig.allowHttp !== newConfig.allowHttp;
 
     this.config = newConfig;
     if (didConfigChange) {
@@ -396,6 +402,16 @@ export class LidarrClient {
 
     if (!this.isConfigured(skipConfigUpdate)) {
       throw new Error("Lidarr API key not configured");
+    }
+
+    if (
+      this.config.apiKey &&
+      /^http:/i.test(this.config.url) &&
+      this.config.allowHttp !== true
+    ) {
+      throw new Error(
+        "Lidarr API key requests require an HTTPS URL. Set LIDARR_ALLOW_HTTP=true only for a trusted local network.",
+      );
     }
 
     const now = Date.now();
@@ -958,20 +974,60 @@ export class LidarrClient {
       },
     };
 
-    const resolveMetadataProviderArtistId = async () => {
-      const lookup = await this.request(
-        `/artist/lookup?term=${encodeURIComponent(String(artistName || "").trim())}`,
-      );
-      const normalizedArtistName = String(artistName || "").trim().toLowerCase();
-      const match = (Array.isArray(lookup) ? lookup : []).find((candidate) => {
-        const providerId = String(candidate?.foreignArtistId || "").trim();
-        return (
-          providerId &&
-          providerId !== mbid &&
-          String(candidate?.artistName || "").trim().toLowerCase() === normalizedArtistName
+    const resolveMetadataProviderArtistIds = async () => {
+      const identity = await this.resolveCanonicalArtistIdentity(mbid);
+      const canonicalName = String(identity?.name || "").trim();
+      const normalizedArtistName = String(artistName || "")
+        .trim()
+        .toLowerCase();
+      if (!canonicalName || normalizedArtistName !== canonicalName.toLowerCase()) {
+        const error = new Error(
+          `MusicBrainz artist name for ${mbid} does not match the requested artist name`,
         );
-      });
-      return String(match?.foreignArtistId || "").trim() || null;
+        error.code = "LIDARR_ARTIST_IDENTITY_MISMATCH";
+        throw error;
+      }
+
+      const lookup = await this.request(
+        `/artist/lookup?term=${encodeURIComponent(canonicalName)}`,
+      );
+      const canonicalProviderIds = new Set(
+        (Array.isArray(identity?.providerIds) ? identity.providerIds : []).map((providerId) =>
+          String(providerId || "").trim().toLowerCase(),
+        ),
+      );
+      const lookupProviderIds = [];
+      const lookupProviderSuffixes = new Set();
+      let hasCanonicalLookupMatch = false;
+      for (const candidate of Array.isArray(lookup) ? lookup : []) {
+        const providerId = String(candidate?.foreignArtistId || "").trim();
+        if (
+          providerId &&
+          String(candidate?.artistName || "").trim().toLowerCase() === canonicalName.toLowerCase()
+        ) {
+          hasCanonicalLookupMatch = true;
+          const normalizedProviderId = providerId.toLowerCase();
+          if (canonicalProviderIds.has(normalizedProviderId)) {
+            lookupProviderIds.push(providerId);
+          }
+          const providerSuffix = normalizedProviderId.split("@").pop();
+          if (providerSuffix && providerSuffix !== normalizedProviderId) {
+            lookupProviderSuffixes.add(providerSuffix);
+          }
+        }
+      }
+      if (lookupProviderIds.length > 0) return [...new Set(lookupProviderIds)];
+      if (!hasCanonicalLookupMatch) return [];
+      return (Array.isArray(identity?.providerIds) ? identity.providerIds : []).filter(
+        (providerId) => {
+          const normalizedProviderId = String(providerId || "").trim().toLowerCase();
+          const providerSuffix = normalizedProviderId.split("@").pop();
+          return (
+            normalizedProviderId &&
+            (lookupProviderSuffixes.size === 0 || lookupProviderSuffixes.has(providerSuffix))
+          );
+        },
+      );
     };
 
     const resolveAddedArtist = async (artist) => {
@@ -1028,16 +1084,32 @@ export class LidarrClient {
       if (!isMetadataProviderIdError(error)) {
         throw error;
       }
-      const providerArtistId = await resolveMetadataProviderArtistId();
-      if (!providerArtistId) {
+      const providerArtistIds = await resolveMetadataProviderArtistIds();
+      if (providerArtistIds.length === 0) {
         throw new Error(
           `Lidarr metadata provider could not resolve ${artistName} from its MusicBrainz ID. Search the artist in Lidarr first or use MusicBrainz metadata.`,
         );
       }
-      result = await postArtist({ ...lidarrArtist, foreignArtistId: providerArtistId });
-      dbOps.setLidarrArtistIdMap(mbid, providerArtistId);
+      let providerError = error;
+      for (const providerArtistId of providerArtistIds) {
+        try {
+          result = await postArtist({ ...lidarrArtist, foreignArtistId: providerArtistId });
+          dbOps.setLidarrArtistIdMap(mbid, providerArtistId);
+          break;
+        } catch (providerAttemptError) {
+          if (!isMetadataProviderIdError(providerAttemptError)) {
+            throw providerAttemptError;
+          }
+          providerError = providerAttemptError;
+        }
+      }
+      if (!result) throw providerError;
     }
     return ensureArtistMonitored(await resolveAddedArtist(result));
+  }
+
+  async resolveCanonicalArtistIdentity(mbid) {
+    return musicbrainzGetArtistIdentityByMbid(mbid);
   }
 
   async getArtist(artistId) {
