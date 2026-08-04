@@ -25,7 +25,7 @@ jobs:
       pull-requests: write
       packages: write
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Resolve build version
         id: version
@@ -37,7 +37,7 @@ jobs:
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Log into ghcr.io
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -70,6 +70,7 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Comment preview image on pull request and linked issues
+        id: preview-comment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           IMAGE_TAG: pr-${{ github.event.number }}
@@ -103,6 +104,7 @@ jobs:
             "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
             --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- aurral-preview-image -->"))) | .id' | head -n1)"
 
+          FIRST_PREVIEW=false
           if [ -n "${COMMENT_ID}" ]; then
             gh api \
               --method PATCH \
@@ -112,7 +114,9 @@ jobs:
             gh pr comment "${PR_NUMBER}" \
               --repo "${REPOSITORY}" \
               --body "${COMMENT_BODY}" >/dev/null
+            FIRST_PREVIEW=true
           fi
+          echo "first_preview=${FIRST_PREVIEW}" >> "${GITHUB_OUTPUT}"
 
           OWNER="${REPOSITORY%%/*}"
           REPO="${REPOSITORY#*/}"
@@ -189,6 +193,16 @@ jobs:
               -f "labels[]=in-progress" >/dev/null
           done <<< "${CLOSING_ISSUES}"
 
+      - name: Notify Discord previews channel
+        if: steps.preview-comment.outputs.first_preview == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISCORD_WEBHOOK_PREVIEWS: ${{ secrets.DISCORD_WEBHOOK_PREVIEWS }}
+          IMAGE_TAG: pr-${{ github.event.number }}
+          PR_NUMBER: ${{ github.event.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: bash scripts/notify-discord.sh previews
+
   delete-image:
     if: >-
       github.event.action == 'closed' &&
@@ -222,19 +236,30 @@ jobs:
       - name: Invalidate linked issue preview comments
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_MERGED: ${{ github.event.pull_request.merged }}
           PR_NUMBER: ${{ github.event.number }}
           REPOSITORY: ${{ github.repository }}
         run: |
           OWNER="${REPOSITORY%%/*}"
           REPO="${REPOSITORY#*/}"
           ISSUE_MARKER="aurral-preview-issue-${PR_NUMBER}"
-          COMMENT_BODY="$(cat <<EOF
+          if [ "${PR_MERGED}" = "true" ]; then
+            COMMENT_BODY="$(cat <<EOF
+          <!-- ${ISSUE_MARKER} -->
+          ## Aurral preview image retired
+
+          [Pull request #${PR_NUMBER}](https://github.com/${REPOSITORY}/pull/${PR_NUMBER}) was merged into \`main\`. The preview image was retired. The change will appear on \`nightly\` after that build succeeds, and linked issues stay open until a stable release includes it.
+          EOF
+            )"
+          else
+            COMMENT_BODY="$(cat <<EOF
           <!-- ${ISSUE_MARKER} -->
           ## Aurral preview image no longer available
 
-          The preview image for [pull request #${PR_NUMBER}](https://github.com/${REPOSITORY}/pull/${PR_NUMBER}) was retired because the pull request was closed. It is no longer available for testing.
+          The preview image for [pull request #${PR_NUMBER}](https://github.com/${REPOSITORY}/pull/${PR_NUMBER}) was retired because the pull request was closed without merging. It is no longer available for testing.
           EOF
-          )"
+            )"
+          fi
           CLOSING_ISSUES="$(gh api graphql \
             -f query='query($owner: String!, $repo: String!, $number: Int!) {
               repository(owner: $owner, name: $repo) {

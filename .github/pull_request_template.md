@@ -4,6 +4,10 @@
 
 <!-- Use a Conventional Commit title (`feat:`, `fix:`, etc.); merged commit subjects drive release version suggestions. -->
 
+## Linked issues
+
+<!-- Use Fixes #123 or Closes #123 to link. Issues stay open until the change ships in a stable release; merging only puts the fix on nightly. -->
+
 ## Validation
 
 - [ ] CI passes

@@ -35,7 +35,10 @@ Point `/data:/data` at the host path that Lidarr mounts. `./config` holds Aurral
 | `nightly` | Every change merged since the last release | You want fixes and features early and can report bugs |
 | `pr-<number>` | The current preview image for an open pull request | You were asked to test a proposed change |
 
-Aurral checks for a newer build in your channel and shows a banner when one exists.
+Aurral checks for a newer build in your channel and shows a banner when one exists. Non-stable channels also mark the sidebar:
+
+- `nightly` shows a night-sky backdrop behind the sidebar logo.
+- `pr-<number>` preview images show a blueprint backdrop behind the sidebar logo.
 
 :::caution
 `nightly` is untested by users until you run it. Back up `./config` before switching to it, and report anything broken.
