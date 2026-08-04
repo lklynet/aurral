@@ -63,6 +63,16 @@ async function withCaptureServer(handler) {
   }
 }
 
+async function waitFor(predicate, timeoutMs = 5000) {
+  const started = Date.now();
+  while (Date.now() - started <= timeoutMs) {
+    const result = predicate();
+    if (result) return result;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("Timed out waiting for notification result");
+}
+
 test.beforeEach(() => {
   resetDatabase(db);
 });
@@ -261,6 +271,78 @@ test("notifyRequestMade does not queue Gotify when the event toggle is off", asy
     await new Promise((resolve) => setTimeout(resolve, 250));
     assert.equal(requests.length, 0);
   });
+});
+
+test("failed notification delivery is logged without an unhandled rejection", async () => {
+  const errors = [];
+  const unhandled = [];
+  const originalError = console.error;
+  const onUnhandledRejection = (reason) => unhandled.push(reason);
+  console.error = (...args) => errors.push(args);
+  process.on("unhandledRejection", onUnhandledRejection);
+
+  const server = http.createServer((_req, res) => {
+    res.writeHead(500, { "Content-Type": "text/plain" });
+    res.end("receiver-secret");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const webhookUrl = `http://127.0.0.1:${port}/hook?token=receiver-secret`;
+
+  try {
+    const settings = dbOps.getSettings();
+    dbOps.updateSettings({
+      integrations: {
+        ...settings.integrations,
+        gotify: { ...settings.integrations?.gotify, notifyRequestMade: false },
+        webhookEvents: {
+          ...settings.integrations?.webhookEvents,
+          notifyRequestMade: true,
+          notifyRequestAvailable: true,
+        },
+        webhooks: [
+          {
+            url: webhookUrl,
+            body: '{"album":"$albumName"}',
+            headers: [{ key: "Authorization", value: "receiver-secret" }],
+          },
+        ],
+      },
+    });
+
+    await notifyRequestMade({ albumName: "Blue Train", artistName: "John Coltrane" });
+    const failedLog = await waitFor(() =>
+      errors.find((args) => String(args[0]).includes("Notification delivery failed")),
+    );
+    assert.deepEqual(failedLog[1], {
+      kind: "webhooks",
+      event: "notifyRequestMade",
+      receiver: `http://127.0.0.1:${port}/hook`,
+      status: 500,
+      message: "Request failed with status code 500",
+    });
+    assert.doesNotMatch(JSON.stringify(failedLog), /receiver-secret/);
+
+    await new Promise((resolve) => server.close(resolve));
+    await notifyRequestAvailable({ albumName: "Blue Train", artistName: "John Coltrane" });
+    const failedLogs = await waitFor(() => {
+      const logs = errors.filter((args) => String(args[0]).includes("Notification delivery failed"));
+      return logs.length >= 2 ? logs : null;
+    });
+    assert.deepEqual(
+      {
+        kind: failedLogs[1][1].kind,
+        event: failedLogs[1][1].event,
+        status: failedLogs[1][1].status,
+      },
+      { kind: "webhooks", event: "notifyRequestAvailable", status: null },
+    );
+    assert.equal(unhandled.length, 0);
+  } finally {
+    if (server.listening) await new Promise((resolve) => server.close(resolve));
+    process.off("unhandledRejection", onUnhandledRejection);
+    console.error = originalError;
+  }
 });
 
 test("notifyWeeklyFlowDone uses display name and track library path placeholders", async () => {

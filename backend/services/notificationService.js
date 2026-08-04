@@ -1,6 +1,30 @@
 import axios from "../../lib/axiosFetch.js";
 import { dbOps } from "../db/helpers/index.js";
+import { logger } from "./logger.js";
 import { enqueueNotification } from "./honkerDb.js";
+
+function redactUrl(value) {
+  try {
+    const url = new URL(String(value));
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "[redacted]";
+  }
+}
+
+function logDeliveryFailure(kind, event, url, error) {
+  logger.error("notifications", "Notification delivery failed", {
+    kind,
+    event: event || null,
+    receiver: redactUrl(url),
+    status: error?.response?.status ?? null,
+    message: error?.message || String(error),
+  });
+}
 
 async function sendGotifyDirect(title, message, priority = 5) {
   const settings = dbOps.getSettings();
@@ -9,11 +33,16 @@ async function sendGotifyDirect(title, message, priority = 5) {
   const token = (gotify.token || "").trim();
   if (!url || !token) return;
   const endpoint = `${url}/message?token=${encodeURIComponent(token)}`;
-  await axios.post(
-    endpoint,
-    { title, message, priority },
-    { timeout: 10000, headers: { "Content-Type": "application/json" } },
-  );
+  try {
+    await axios.post(
+      endpoint,
+      { title, message, priority },
+      { timeout: 10000, headers: { "Content-Type": "application/json" } },
+    );
+  } catch (error) {
+    logDeliveryFailure("gotify", null, url, error);
+    throw error;
+  }
 }
 
 function buildHeaders(headers) {
@@ -102,24 +131,29 @@ async function sendWebhooksDirect({ webhooks, webhookEvents = {} }, event, vars 
       continue;
     }
     const rawBody = (webhook.body || "").trim();
-    if (rawBody) {
-      const interpolated = interpolateBody(rawBody, resolved);
-      let parsed;
-      try {
-        parsed = JSON.parse(interpolated);
-      } catch {
-        parsed = interpolated;
+    try {
+      if (rawBody) {
+        const interpolated = interpolateBody(rawBody, resolved);
+        let parsed;
+        try {
+          parsed = JSON.parse(interpolated);
+        } catch {
+          parsed = interpolated;
+        }
+        const headers = {
+          ...buildHeaders(webhook.headers),
+          "Content-Type": "application/json",
+        };
+        await axios.post(url, parsed, { timeout: 30000, headers });
+      } else {
+        await axios.get(url, {
+          timeout: 30000,
+          headers: buildHeaders(webhook.headers),
+        });
       }
-      const headers = {
-        ...buildHeaders(webhook.headers),
-        "Content-Type": "application/json",
-      };
-      await axios.post(url, parsed, { timeout: 30000, headers });
-    } else {
-      await axios.get(url, {
-        timeout: 30000,
-        headers: buildHeaders(webhook.headers),
-      });
+    } catch (error) {
+      logDeliveryFailure("webhooks", event, url, error);
+      throw error;
     }
   }
 }
