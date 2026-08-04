@@ -1159,17 +1159,10 @@ textarea {
   background: rgba(255, 255, 255, 0.04);
 }
 
-<<<<<<< HEAD
 .sidebar-shell--nightly .sidebar-nav-group--discover.is-expanded,
 .sidebar-shell--nightly .sidebar-nav-group--discover.is-active-row,
 .sidebar-shell--preview .sidebar-nav-group--discover.is-expanded,
 .sidebar-shell--preview .sidebar-nav-group--discover.is-active-row {
-=======
-.sidebar-shell--nightly .sidebar-nav-group.is-expanded,
-.sidebar-shell--nightly .sidebar-nav-group.is-active-row,
-.sidebar-shell--preview .sidebar-nav-group.is-expanded,
-.sidebar-shell--preview .sidebar-nav-group.is-active-row {
->>>>>>> origin/main
   background: linear-gradient(
     to bottom,
     transparent 0,
