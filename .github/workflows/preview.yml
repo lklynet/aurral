@@ -193,11 +193,11 @@ jobs:
               -f "labels[]=in-progress" >/dev/null
           done <<< "${CLOSING_ISSUES}"
 
-      - name: Notify Discord previews channel
+      - name: Notify Discord announcements channel
         if: steps.preview-comment.outputs.first_preview == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DISCORD_WEBHOOK_PREVIEWS: ${{ secrets.DISCORD_WEBHOOK_PREVIEWS }}
+          DISCORD_WEBHOOK_ANNOUNCEMENTS: ${{ secrets.DISCORD_WEBHOOK_ANNOUNCEMENTS }}
           IMAGE_TAG: pr-${{ github.event.number }}
           PR_NUMBER: ${{ github.event.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}

@@ -7,17 +7,10 @@ owner="${repository%%/*}"
 repo="${repository#*/}"
 max_field_chars=1000
 max_description_chars=3500
-max_list_items=12
 
 case "${channel}" in
-  releases)
-    webhook_url="${DISCORD_WEBHOOK_RELEASES:-}"
-    ;;
-  nightly)
-    webhook_url="${DISCORD_WEBHOOK_NIGHTLY:-}"
-    ;;
-  previews)
-    webhook_url="${DISCORD_WEBHOOK_PREVIEWS:-}"
+  releases|nightly|previews)
+    webhook_url="${DISCORD_WEBHOOK_ANNOUNCEMENTS:-}"
     ;;
   *)
     echo "Usage: $0 releases|nightly|previews" >&2
@@ -40,38 +33,46 @@ truncate_text() {
   printf '%s…' "${text:0:$((limit - 1))}"
 }
 
-format_bullet_field() {
+add_bullet_fields() {
   local raw="$1"
   local empty_label="$2"
-  local lines=()
-  local line count=0 truncated=0
+  local name="$3"
+  local line candidate chunk="" part=0 field_name
 
   if [ -z "${raw}" ]; then
-    printf '%s' "${empty_label}"
+    add_field "${name}" "${empty_label}"
     return 0
   fi
 
   while IFS= read -r line; do
     [ -z "${line}" ] && continue
-    if [ "${count}" -ge "${max_list_items}" ]; then
-      truncated=$((truncated + 1))
-      continue
+    if [ -n "${chunk}" ]; then
+      candidate="${chunk}"$'\n'"${line}"
+    else
+      candidate="${line}"
     fi
-    lines+=("${line}")
-    count=$((count + 1))
+
+    if [ "${#candidate}" -gt "${max_field_chars}" ]; then
+      if [ -z "${chunk}" ]; then
+        add_field "${name}" "$(truncate_text "${line}" "${max_field_chars}")"
+        continue
+      fi
+      part=$((part + 1))
+      field_name="${name}"
+      [ "${part}" -gt 1 ] && field_name+=" (continued)"
+      add_field "${field_name}" "${chunk}"
+      chunk="${line}"
+    else
+      chunk="${candidate}"
+    fi
   done <<< "${raw}"
 
-  if [ "${#lines[@]}" -eq 0 ]; then
-    printf '%s' "${empty_label}"
-    return 0
+  if [ -n "${chunk}" ]; then
+    part=$((part + 1))
+    field_name="${name}"
+    [ "${part}" -gt 1 ] && field_name+=" (continued)"
+    add_field "${field_name}" "${chunk}"
   fi
-
-  local body
-  body="$(printf '%s\n' "${lines[@]}")"
-  if [ "${truncated}" -gt 0 ]; then
-    body+=$'\n'"…and ${truncated} more"
-  fi
-  truncate_text "${body}" "${max_field_chars}"
 }
 
 collect_merged_pull_lines() {
@@ -208,83 +209,56 @@ case "${channel}" in
     release_version="${RELEASE_VERSION:?RELEASE_VERSION is required}"
     release_tag="${RELEASE_TAG:?RELEASE_TAG is required}"
     head_sha="${HEAD_SHA:-${GITHUB_SHA:-}}"
-    title="Aurral ${release_version} released"
+    title="Aurral ${release_version} is out!"
     url="https://github.com/${repository}/releases/tag/${release_tag}"
     description="$(cat <<EOF
-Stable \`${release_version}\` is published.
-
-\`\`\`
-docker pull ghcr.io/${repository}:${release_version}
-docker pull ghcr.io/${repository}:latest
-\`\`\`
+\`docker pull ghcr.io/${repository}:${release_version}\`
+\`docker pull ghcr.io/${repository}:latest\`
 EOF
 )"
-    release_notes="$(gh release view "${release_tag}" --repo "${repository}" --json body --jq '.body // ""' 2>/dev/null || true)"
-    if [ -n "${release_notes}" ]; then
-      release_notes="$(printf '%s\n' "${release_notes}" | sed -e 's/\r$//' -e '/^<!--/,/-->$/d' | head -n 20)"
-      release_notes="$(truncate_text "$(printf '%s\n' "${release_notes}" | sed '/./,$!d')" 900)"
-      if [ -n "${release_notes}" ]; then
-        add_field "Release notes" "${release_notes}"
-      fi
-    fi
     if [ -n "${head_sha}" ]; then
       base_tag="$(previous_stable_tag "${release_tag}")"
       pull_list="$(collect_merged_pull_lines "${head_sha}" "${base_tag}")"
       issue_list="$(collect_closing_issue_lines_for_pulls "${pull_list}")"
-      add_field "Included pull requests" "$(format_bullet_field "${pull_list}" "None recorded for this release.")"
-      add_field "Linked issues" "$(format_bullet_field "${issue_list}" "None")"
+      add_bullet_fields "${pull_list}" "None recorded for this release." "Included"
+      add_bullet_fields "${issue_list}" "None" "Linked issues"
     fi
     ;;
   nightly)
-    nightly_version="${NIGHTLY_VERSION:?NIGHTLY_VERSION is required}"
     head_sha="${HEAD_SHA:-${GITHUB_SHA:?GITHUB_SHA is required}}"
     run_id="${GITHUB_RUN_ID:-}"
-    change_url="${CHANGE_URL:-}"
-    change_range="${CHANGE_RANGE:-}"
     readiness_issue="${READINESS_ISSUE:-}"
     pull_list="${PULL_LIST:-}"
     issue_list="${ISSUE_LIST:-}"
-    title="Nightly ${nightly_version}"
+    title="A new nightly is out!"
     url="https://github.com/${repository}/actions/runs/${run_id}"
     description="$(cat <<EOF
-\`ghcr.io/${repository}:nightly\` was rebuilt from \`${head_sha:0:7}\`.
-
-\`\`\`
-docker pull ghcr.io/${repository}:nightly
-\`\`\`
+\`docker pull ghcr.io/${repository}:nightly\`
 EOF
 )"
-    if [ -n "${change_range}" ] && [ -n "${change_url}" ]; then
-      description+=$'\n'"Changes since last stable: [\`${change_range}\`](${change_url})"
-    fi
     if [ -n "${readiness_issue}" ]; then
-      description+=$'\n'"Release readiness: https://github.com/${repository}/issues/${readiness_issue}"
+      description+=$'\n\n'"Release readiness: [view the checklist](https://github.com/${repository}/issues/${readiness_issue})"
     fi
-    description+=$'\n'"Give feedback in #testing."
     if [ -z "${pull_list}" ] && [ -n "${head_sha}" ]; then
       base_tag="$(previous_stable_tag)"
       pull_list="$(collect_merged_pull_lines "${head_sha}" "${base_tag}")"
       issue_list="$(collect_closing_issue_lines_for_pulls "${pull_list}")"
     fi
-    add_field "Included since last stable" "$(format_bullet_field "${pull_list}" "No merged pull requests in this range.")"
-    add_field "Linked issues" "$(format_bullet_field "${issue_list}" "None")"
+    add_bullet_fields "${pull_list}" "No merged pull requests in this range." "Included"
+    add_bullet_fields "${issue_list}" "None" "Linked issues"
     ;;
   previews)
     pr_number="${PR_NUMBER:?PR_NUMBER is required}"
     pr_title="${PR_TITLE:?PR_TITLE is required}"
     image_tag="${IMAGE_TAG:?IMAGE_TAG is required}"
-    title="Preview ready: #${pr_number}"
+    title="A new preview is ready to test!"
     url="https://github.com/${repository}/pull/${pr_number}"
     description="$(cat <<EOF
 **${pr_title}**
 
-First preview image for this pull request.
+\`docker pull ghcr.io/${repository}:${image_tag}\`
 
-\`\`\`
-docker pull ghcr.io/${repository}:${image_tag}
-\`\`\`
-
-How to test: see #testing.
+Please test it and share feedback in #testing.
 EOF
 )"
     add_field "What changed" "$(pr_summary_excerpt "${pr_number}")"
@@ -309,7 +283,7 @@ EOF
       -f "repo=${repo}" \
       -F "number=${pr_number}" \
       --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[]?.number')"
-    add_field "Linked issues" "$(format_bullet_field "${closing_issues%$'\n'}" "None linked yet")"
+    add_bullet_fields "${closing_issues%$'\n'}" "None linked yet" "Linked issues"
     ;;
 esac
 
