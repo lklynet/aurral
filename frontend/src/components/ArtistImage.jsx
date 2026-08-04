@@ -237,7 +237,7 @@ const ArtistImage = ({
       <div
         className={`artist-image-root ${className}`}
         style={{
-          background: "linear-gradient(135deg, rgba(33,31,39,1) 0%, rgba(46,43,54,1) 100%)",
+          background: "var(--aurral-surface-mid)",
         }}
       >
         <div className="artist-image-overlay">
@@ -256,9 +256,15 @@ const ArtistImage = ({
   }
 
   return (
-    <div className={`artist-image-root ${className}`} style={{ backgroundColor: "#211f27" }}>
+    <div
+      className={`artist-image-root ${className}`}
+      style={{ backgroundColor: "var(--aurral-surface-mid)" }}
+    >
       {isLoading && showLoading && (
-        <div className="artist-image-overlay" style={{ backgroundColor: "#211f27" }}>
+        <div
+          className="artist-image-overlay"
+          style={{ backgroundColor: "var(--aurral-surface-mid)" }}
+        >
           <Loader className="artist-image-loader animate-spin is-brand" />
         </div>
       )}

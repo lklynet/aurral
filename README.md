@@ -71,6 +71,9 @@ docker compose up -d
 
 Open `http://localhost:3001`, create your admin account, and connect Lidarr.
 
+Want the latest merged changes? Use `ghcr.io/lklynet/aurral:nightly`. Nightly
+builds may be less stable than releases; see the [Docker image channels](https://docs.aurral.org/getting-started/docker/#which-image-tag-to-use).
+
 For a stack with Lidarr, slskd, and Navidrome, see [`docker-compose.example.yml`](docker-compose.example.yml). For Plex, see the [Plex setup guide](https://docs.aurral.org/integrations/plex/).
 
 ## Documentation
