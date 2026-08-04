@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
+import { dbOps } from "../../backend/db/helpers/index.js";
 import { LidarrClient } from "../../backend/services/lidarrClient.js";
 
 test("isCircuitOpen returns stale GET cache instead of throwing", async () => {
@@ -322,6 +323,70 @@ test("artist add resolves a non-numeric Lidarr response ID before follow-up call
   client._httpAgent.destroy();
   client._httpsAgent.destroy();
   client._httpsInsecureAgent.destroy();
+});
+
+test("artist add retries with the active metadata provider ID after a UUID format error", async (t) => {
+  const artistMbid = "9c9f1380-2516-4fc9-a3e6-f9f61941d090";
+  const requests = [];
+  let providerPayload;
+  const client = new LidarrClient();
+  t.after(() => {
+    dbOps.deleteLidarrArtistIdMap(artistMbid);
+    client._httpAgent.destroy();
+    client._httpsAgent.destroy();
+    client._httpsInsecureAgent.destroy();
+  });
+
+  client.resolveArtistAddConfiguration = async () => ({
+    resolved: {
+      rootFolderPath: "/music",
+      qualityProfileId: 1,
+    },
+  });
+  client.request = async (endpoint, method = "GET", payload) => {
+    requests.push({ endpoint, method });
+    if (endpoint === "/artist" && method === "POST") {
+      if (payload.foreignArtistId === artistMbid) {
+        throw new Error(
+          `Lidarr API error: 500 - The input string '${artistMbid}' was not in a correct format.`,
+        );
+      }
+      providerPayload = payload;
+      return {
+        id: 42,
+        foreignArtistId: "123@deezer",
+        artistName: "Muse",
+        monitored: true,
+      };
+    }
+    if (endpoint === "/artist" && method === "GET") {
+      return [{ id: 42, foreignArtistId: "123@deezer", artistName: "Muse" }];
+    }
+    if (endpoint === `/artist/lookup?term=${encodeURIComponent("Muse")}` && method === "GET") {
+      return [
+        {
+          foreignArtistId: "123@deezer",
+          artistName: "Muse",
+        },
+      ];
+    }
+    throw new Error(`Unexpected Lidarr request: ${method} ${endpoint}`);
+  };
+
+  const artist = await client.addArtist(artistMbid, "Muse", {
+    metadataProfileId: 1,
+  });
+
+  assert.equal(artist.id, 42);
+  assert.equal(providerPayload.foreignArtistId, "123@deezer");
+  assert.equal(dbOps.getLidarrArtistIdMap(artistMbid), "123@deezer");
+  assert.equal((await client.getArtistByMbid(artistMbid, { forceRefresh: true })).id, 42);
+  assert.deepEqual(requests, [
+    { endpoint: "/artist", method: "POST" },
+    { endpoint: `/artist/lookup?term=${encodeURIComponent("Muse")}`, method: "GET" },
+    { endpoint: "/artist", method: "POST" },
+    { endpoint: "/artist", method: "GET" },
+  ]);
 });
 
 test("artist add fails when Lidarr cannot resolve a numeric ID", async (t) => {

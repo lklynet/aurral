@@ -16,6 +16,10 @@ Enter these values in first-run setup or in **Settings > Lidarr**:
 - Default quality profile, metadata profile, tag, monitoring option, and search-on-add behavior
 - Optional **Davo's Community Lidarr Guide** for quality profiles and file names
 
+## Metadata providers
+
+Aurral sends MusicBrainz artist IDs to Lidarr. If Lidarr uses a provider such as Tubifarry Deezer or Discogs, Aurral retries a provider-ID format error with the ID returned by Lidarr's own artist lookup. If that lookup cannot resolve the artist, search for the artist in Lidarr first or use MusicBrainz metadata.
+
 ## Library access check
 
 Aurral tests file access at each path that Lidarr reports. If the test fails, mount the Lidarr media root in Aurral.

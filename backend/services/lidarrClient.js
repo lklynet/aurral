@@ -50,6 +50,11 @@ function normalizeLidarrArtistId(value) {
   return Number.isSafeInteger(parsed) && parsed > 0 ? String(parsed) : null;
 }
 
+function isMetadataProviderIdError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return message.includes("input string") && message.includes("correct format");
+}
+
 function normalizeMonitorOption(value) {
   const option = String(value || "none").trim();
   return VALID_MONITOR_OPTIONS.has(option) ? option : "none";
@@ -953,6 +958,22 @@ export class LidarrClient {
       },
     };
 
+    const resolveMetadataProviderArtistId = async () => {
+      const lookup = await this.request(
+        `/artist/lookup?term=${encodeURIComponent(String(artistName || "").trim())}`,
+      );
+      const normalizedArtistName = String(artistName || "").trim().toLowerCase();
+      const match = (Array.isArray(lookup) ? lookup : []).find((candidate) => {
+        const providerId = String(candidate?.foreignArtistId || "").trim();
+        return (
+          providerId &&
+          providerId !== mbid &&
+          String(candidate?.artistName || "").trim().toLowerCase() === normalizedArtistName
+        );
+      });
+      return String(match?.foreignArtistId || "").trim() || null;
+    };
+
     const resolveAddedArtist = async (artist) => {
       if (normalizeLidarrArtistId(artist?.id)) {
         return artist;
@@ -981,22 +1002,40 @@ export class LidarrClient {
       return this.updateArtistMonitoring(artistId, monitoring.option);
     };
 
+    const postArtist = async (payload) => {
+      try {
+        return await this.request("/artist", "POST", payload);
+      } catch (error) {
+        if (isMetadataProviderIdError(error) || requestedMonitorOption !== "all") {
+          throw error;
+        }
+        const fallbackArtist = {
+          ...payload,
+          monitor: "existing",
+          addOptions: {
+            ...payload.addOptions,
+            monitor: "existing",
+          },
+        };
+        return this.request("/artist", "POST", fallbackArtist);
+      }
+    };
+
     let result;
     try {
-      result = await this.request("/artist", "POST", lidarrArtist);
+      result = await postArtist(lidarrArtist);
     } catch (error) {
-      if (requestedMonitorOption !== "all") {
+      if (!isMetadataProviderIdError(error)) {
         throw error;
       }
-      const fallbackArtist = {
-        ...lidarrArtist,
-        monitor: "existing",
-        addOptions: {
-          ...lidarrArtist.addOptions,
-          monitor: "existing",
-        },
-      };
-      result = await this.request("/artist", "POST", fallbackArtist);
+      const providerArtistId = await resolveMetadataProviderArtistId();
+      if (!providerArtistId) {
+        throw new Error(
+          `Lidarr metadata provider could not resolve ${artistName} from its MusicBrainz ID. Search the artist in Lidarr first or use MusicBrainz metadata.`,
+        );
+      }
+      result = await postArtist({ ...lidarrArtist, foreignArtistId: providerArtistId });
+      dbOps.setLidarrArtistIdMap(mbid, providerArtistId);
     }
     return ensureArtistMonitored(await resolveAddedArtist(result));
   }
@@ -1012,6 +1051,11 @@ export class LidarrClient {
   async getArtistByMbid(mbid, { forceRefresh = false } = {}) {
     const normalizedMbid = String(mbid || "").trim();
     if (!normalizedMbid) return null;
+    const mappedLidarrArtistId = dbOps.getLidarrArtistIdMap(normalizedMbid);
+
+    const matchesArtistId = (artist) =>
+      artist?.foreignArtistId === normalizedMbid ||
+      (mappedLidarrArtistId && artist?.foreignArtistId === mappedLidarrArtistId);
 
     if (forceRefresh) {
       this._artistByMbidCache.delete(normalizedMbid);
@@ -1026,7 +1070,7 @@ export class LidarrClient {
           ? this._artistListCache.data
           : [];
         this._populateArtistIndexes(artists);
-        const artist = artists.find((entry) => entry?.foreignArtistId === normalizedMbid) || null;
+        const artist = artists.find(matchesArtistId) || null;
         this._setArtistByMbidCacheEntry(normalizedMbid, artist);
         return artist;
       }
@@ -1044,7 +1088,7 @@ export class LidarrClient {
       .then((artists) => {
         const list = Array.isArray(artists) ? artists : [];
         this._populateArtistIndexes(list);
-        const artist = list.find((entry) => entry?.foreignArtistId === normalizedMbid) || null;
+        const artist = list.find(matchesArtistId) || null;
         if (artist || !forceRefresh) {
           this._setArtistByMbidCacheEntry(normalizedMbid, artist);
         }

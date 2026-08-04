@@ -915,14 +915,16 @@ export class LibraryManager {
   mapLidarrArtist(lidarrArtist) {
     const artistPath = lidarrArtist.path ?? null;
     const artistId = Number(lidarrArtist.id);
+    const mappedMbid = dbOps.getLidarrArtistMbid(lidarrArtist.foreignArtistId);
+    const foreignArtistId = mappedMbid || lidarrArtist.foreignArtistId;
     const normalizedArtistId =
       Number.isSafeInteger(artistId) && artistId > 0 ? String(artistId) : null;
     const monitorOption = lidarrArtist.monitor || lidarrArtist.addOptions?.monitor || "none";
     const normalizedMonitorOption = monitorOption || "none";
     return {
       id: normalizedArtistId,
-      mbid: lidarrArtist.foreignArtistId,
-      foreignArtistId: lidarrArtist.foreignArtistId,
+      mbid: foreignArtistId,
+      foreignArtistId,
       artistName: lidarrArtist.artistName,
       path: artistPath,
       addedAt: lidarrArtist.added || new Date().toISOString(),
@@ -980,6 +982,7 @@ export class LibraryManager {
       const lidarrArtist = await lidarr.getArtistByMbid(mbid);
       if (!lidarrArtist) return { success: false, error: "Artist not found in Lidarr" };
       await lidarr.deleteArtist(lidarrArtist.id, deleteFiles);
+      dbOps.deleteLidarrArtistIdMap(mbid);
       removeCachedArtistByMbid(mbid);
       logger.info('library', `[LibraryManager] Deleted artist "${lidarrArtist.artistName}" from Lidarr`);
       return { success: true };

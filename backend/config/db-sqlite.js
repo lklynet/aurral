@@ -132,6 +132,15 @@ db.exec(`
     updated_at INTEGER
   );
 
+  CREATE TABLE IF NOT EXISTS lidarr_artist_id_map (
+    musicbrainz_id TEXT PRIMARY KEY,
+    lidarr_foreign_artist_id TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_lidarr_artist_id_map_foreign_id
+    ON lidarr_artist_id_map (lidarr_foreign_artist_id);
+
   CREATE TABLE IF NOT EXISTS aurral_history (
     id TEXT PRIMARY KEY,
     kind TEXT NOT NULL,
