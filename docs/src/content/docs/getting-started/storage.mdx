@@ -3,13 +3,66 @@ title: Filesystem and mounts
 description: Give Aurral, Lidarr, download clients, and playback servers compatible filesystem views.
 ---
 
-Aurral is a bridge between several applications. It needs a network connection to each application and, for media work, access to the same files.
+Aurral coordinates several applications. It uses APIs to ask them to search, download, manage, or play music. It also needs to open the same files that those applications open.
 
 An API test does not test file access. Aurral can connect to Lidarr, Navidrome, Plex, or a download client and still fail to read or move files if the mounts are wrong.
 
 :::caution
-The recommended setup is one shared media mount, with the same container path in every container. Use path mappings only when you cannot use the same path.
+The simplest setup is one shared media mount, with the same container path in every service that shares files. Use path mappings only when you cannot use the same path.
 :::
+
+## The simple rule
+
+Docker containers do not share files automatically. A volume shows one folder from the Docker host inside a container. It does not create a second copy of the folder.
+
+```text
+/srv/media:/data
+```
+
+- `/srv/media` is the folder on the Docker host.
+- `/data` is the folder inside the container.
+
+Mount the same host media folder at the same container path in every service that shares files:
+
+```text
+Aurral          /srv/media:/data
+Lidarr          /srv/media:/data
+Download client /srv/media:/data
+Navidrome       /srv/media:/data:ro
+```
+
+Then every service sees the same host file at the same path:
+
+```text
+Host:       /srv/media/downloads/aurral/track.flac
+Aurral:     /data/downloads/aurral/track.flac
+Lidarr:     /data/downloads/aurral/track.flac
+Navidrome:  /data/downloads/aurral/track.flac
+```
+
+The host path can be different between mounts if it points to the same host folder. The path inside the container is what the application uses, so keep that path the same when possible.
+
+If a service uses a separate path for its own database or configuration, keep that mount separate from the media mount. For example, Navidrome can use `/config` for its database and `/data` for media.
+
+## How one track moves
+
+### A track already in Lidarr
+
+1. Aurral asks Lidarr for the track.
+2. Lidarr reports a path such as `/data/music/Artist/Album/Track.flac`.
+3. Aurral checks that the same path exists in its own container.
+4. Aurral reuses that file. It does not download another copy.
+5. Navidrome scans `/data/music` and can play the file.
+
+### A new track
+
+1. Aurral asks a download client to find the track.
+2. The download client writes the completed file under `/data/downloads/...`.
+3. Aurral reads that file and moves it to `/data/downloads/aurral/aurral-weekly-flow/...`.
+4. Aurral writes a playlist file next to the downloaded tracks.
+5. Navidrome scans `/data/downloads/aurral/aurral-weekly-flow` and can play the tracks.
+
+If Aurral writes a file as `/data/downloads/aurral/track.flac` but Navidrome sees the same host folder as `/downloads/track.flac`, Navidrome cannot open the path in Aurral's playlist file. The API connection can still work, but the playlist will be empty or the tracks will not play. Use matching container paths, or follow [When paths cannot match](#when-paths-cannot-match).
 
 ## What Aurral connects to
 
