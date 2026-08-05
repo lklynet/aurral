@@ -11,7 +11,7 @@ import { DiscoverRecentProvider } from "./contexts/DiscoverRecentProvider";
 import { AudioQueueProvider } from "./contexts/AudioQueueProvider";
 import { AlertTriangle, XCircle } from "lucide-react";
 import ReloadPrompt from "./components/ReloadPrompt";
-import UpdateBanner from "./components/UpdateBanner";
+import UpdateIndicator from "./components/UpdateIndicator";
 import { useWebSocketChannel } from "./hooks/useWebSocket";
 import { buildActivityPath, DEFAULT_ACTIVITY_VIEW } from "./navigation/activityNavConfig";
 import { getBootstrapPollIntervalMs } from "./utils/requestScheduling.js";
@@ -204,11 +204,14 @@ function AppContent() {
           element={
             <DiscoverRecentProvider>
               <ProtectedRoute>
-                <Layout>
-                  <UpdateBanner
-                    currentVersion={appVersion}
-                    visible={!user || user.role === "admin"}
-                  />
+                <Layout
+                  headerActions={
+                    <UpdateIndicator
+                      currentVersion={appVersion}
+                      visible={!user || user.role === "admin"}
+                    />
+                  }
+                >
                   {healthIssue === "lidarr" && isHealthy && (
                     <div className="app-status-banner app-status-banner--warning">
                       <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />

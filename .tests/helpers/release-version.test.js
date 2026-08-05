@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   compareReleaseVersions,
+  extractReleaseNoteItems,
   parseReleaseVersion,
   resolveNextRelease,
   selectLatestRelease,
@@ -52,6 +53,15 @@ test("selectNightlyUpdate reports only a genuinely newer commit", () => {
   assert.equal(selectNightlyUpdate("nightly.5+a1b2c3d", head), null);
   assert.equal(selectNightlyUpdate("nightly.5", head), null);
   assert.equal(selectNightlyUpdate("nightly.5+9999999", ""), null);
+});
+
+test("extractReleaseNoteItems keeps concise markdown change items", () => {
+  assert.deepEqual(
+    extractReleaseNoteItems(
+      "## What's Changed\n### Fixes\n* fix: repair imports by @a in https://github.com/aurral/pull/1\n* [Add search](https://example.com)\n\n**Full Changelog**: https://example.com/compare",
+    ),
+    ["fix: repair imports by @a", "Add search"],
+  );
 });
 
 test("suggestNextVersion bumps according to Conventional Commit titles", () => {

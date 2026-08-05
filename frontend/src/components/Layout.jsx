@@ -26,7 +26,7 @@ const SIDEBAR_MIN = 56;
 const SIDEBAR_MAX = 400;
 const MOBILE_SHEET_EXIT_MS = 180;
 
-function Layout({ children }) {
+function Layout({ children, headerActions }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [scrollbar, setScrollbar] = useState({
     visible: false,
@@ -411,6 +411,7 @@ function Layout({ children }) {
 
           <div className="app-header-actions">
             <UserProfileMenu />
+            {headerActions}
           </div>
         </header>
 
