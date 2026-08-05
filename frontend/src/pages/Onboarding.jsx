@@ -202,7 +202,7 @@ function Onboarding() {
                   key={s}
                   className="onboarding-progress__dot"
                   style={{
-                    backgroundColor: i <= step ? "var(--aurral-green)" : "var(--aurral-gray)",
+                    backgroundColor: i <= step ? "var(--aurral-accent)" : "var(--aurral-text-subtle)",
                   }}
                 />
               ))}
@@ -333,7 +333,7 @@ function Onboarding() {
               type="button"
               onClick={primaryAction}
               disabled={isPrimaryDisabled}
-              className={`btn btn--bold btn--grow${isPrimaryDisabled ? " btn-secondary" : " btn-primary"}`}
+              className={`btn btn--bold btn--grow${isPrimaryDisabled ? " btn-secondary" : " btn-accent"}`}
             >
               {primaryLabel === "Next" ? (
                 <>

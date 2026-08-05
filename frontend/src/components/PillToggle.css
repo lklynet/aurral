@@ -1,9 +1,4 @@
 .pill-toggle {
-  --secondary-container: #3a4b39;
-  --primary: #84da89;
-  --track-off: #313033;
-  --thumb-off: #aeaaae;
-  --focus-ring: rgba(132, 218, 137, 0.42);
   --w: 47.2px;
   --h: calc(var(--w) * 0.4865);
   --thumb-size: calc(var(--w) * 0.3784);
@@ -32,7 +27,7 @@
   overflow: hidden;
   cursor: pointer;
   border-radius: var(--aurral-radius-round);
-  background-color: var(--track-off);
+  background-color: var(--aurral-surface-raised);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   text-indent: 200vw;
   transition:
@@ -49,7 +44,7 @@
   left: var(--thumb-offset);
   bottom: var(--thumb-offset);
   border-radius: var(--aurral-radius-round);
-  background-color: var(--thumb-off);
+  background-color: var(--aurral-text-muted);
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.38),
     0 0 0 1px rgba(255, 255, 255, 0.08);
@@ -60,30 +55,30 @@
 }
 
 .pill-toggle input:checked + label {
-  background-color: var(--secondary-container);
+  background-color: var(--aurral-surface-selected);
   box-shadow:
-    inset 0 0 0 1px rgba(132, 218, 137, 0.18),
-    0 0 0 1px rgba(132, 218, 137, 0.08);
+    inset 0 0 0 1px var(--aurral-border-strong),
+    0 0 0 1px var(--aurral-border);
 }
 
 .pill-toggle input:checked + label::before {
   transform: translateX(var(--thumb-travel));
-  background-color: var(--primary);
+  background-color: var(--aurral-text);
   box-shadow:
     0 1px 3px rgba(0, 0, 0, 0.42),
-    0 0 0 1px rgba(132, 218, 137, 0.28);
+    0 0 0 1px color-mix(in srgb, var(--aurral-text) 35%, transparent);
 }
 
 .pill-toggle input:focus-visible + label {
   box-shadow:
-    0 0 0 3px var(--focus-ring),
+    0 0 0 3px var(--aurral-ring),
     inset 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 .pill-toggle input:checked:focus-visible + label {
   box-shadow:
-    0 0 0 3px var(--focus-ring),
-    inset 0 0 0 1px rgba(132, 218, 137, 0.28);
+    0 0 0 3px var(--aurral-ring),
+    inset 0 0 0 1px var(--aurral-border-strong);
 }
 
 .pill-toggle input:active + label::before {

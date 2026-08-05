@@ -12,7 +12,7 @@ export function ArtistTrackListToolbar({
       <button
         type="button"
         onClick={onPlayAll}
-        className="btn btn-primary btn-round-lg"
+        className="btn btn-accent btn-round-lg"
         disabled={disabled}
         aria-label={isPlaying ? "Pause playback" : "Play all tracks"}
       >

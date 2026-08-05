@@ -66,8 +66,9 @@ export function DiscoverRail({
               onClick={onViewAll}
               className="btn btn-ghost btn-icon-square"
               aria-label={`Open ${title}`}
+              title={`Open ${title}`}
             >
-              →
+              <ChevronRight className="artist-icon-lg" />
             </button>
           ) : null}
           {afterTitle}
@@ -80,6 +81,7 @@ export function DiscoverRail({
             className="btn btn-ghost btn-icon-square"
             style={{ color: canScrollLeft ? "#6f7685" : "#2d3442" }}
             aria-label={`Scroll ${title} left`}
+            title={`Scroll ${title} left`}
             disabled={!canScrollLeft}
           >
             <ChevronLeft className="artist-icon-lg" />
@@ -90,6 +92,7 @@ export function DiscoverRail({
             className="btn btn-ghost btn-icon-square"
             style={{ color: canScrollRight ? "#d1d5df" : "#2d3442" }}
             aria-label={`Scroll ${title} right`}
+            title={`Scroll ${title} right`}
             disabled={!canScrollRight}
           >
             <ChevronRight className="artist-icon-lg" />

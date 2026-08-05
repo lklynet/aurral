@@ -47,6 +47,7 @@ function UserProfileMenu() {
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         aria-label="User menu"
+        title="User menu"
       >
         <span className="app-profile-menu__icon" aria-hidden="true">
           <User />

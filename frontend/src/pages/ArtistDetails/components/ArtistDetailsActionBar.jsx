@@ -174,7 +174,7 @@ export function ArtistDetailsActionBar({
             type="button"
             onClick={handlePreviewPlayAll}
             disabled={buildingQueue}
-            className="btn btn-primary btn-round-lg"
+            className="btn btn-accent btn-round-lg"
             aria-label={isPreviewPlaying ? "Pause playback" : "Play artist"}
             title={isPreviewPlaying ? "Pause playback" : "Play artist"}
           >

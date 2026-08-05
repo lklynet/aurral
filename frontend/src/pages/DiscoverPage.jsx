@@ -24,7 +24,6 @@ import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
 import { AlbumCard, ArtistCard, ViewAllCard } from "./DiscoverCards";
 import { useDiscoverLayoutState } from "./useDiscoverLayoutState";
 import {
-  getTagColor,
   DEFAULT_DISCOVER_SECTIONS,
   getFallbackGenreSectionId,
   getFallbackGenreFromSectionId,
@@ -1003,9 +1002,6 @@ function DiscoverPage() {
                         navigate(`/search?q=${encodeURIComponent(`#${genre}`)}&type=tag`)
                       }
                       className="artist-tag--discover"
-                      style={{
-                        backgroundColor: getTagColor(genre),
-                      }}
                     >
                       #{genre}
                     </button>

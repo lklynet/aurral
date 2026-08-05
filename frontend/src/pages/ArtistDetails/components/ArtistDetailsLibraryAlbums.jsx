@@ -282,6 +282,7 @@ export function ArtistDetailsLibraryAlbums({
             onClick={() => scrollByAmount(-1)}
             className="btn btn-ghost btn-icon-square"
             aria-label="Scroll library albums left"
+            title="Scroll library albums left"
             disabled={!canScrollLeft}
           >
             <ChevronLeft className="artist-icon-lg" />
@@ -291,6 +292,7 @@ export function ArtistDetailsLibraryAlbums({
             onClick={() => scrollByAmount(1)}
             className="btn btn-ghost btn-icon-square"
             aria-label="Scroll library albums right"
+            title="Scroll library albums right"
             disabled={!canScrollRight}
           >
             <ChevronRight className="artist-icon-lg" />

@@ -1321,6 +1321,7 @@ function SearchResultsPage() {
                 type="button"
                 className="btn btn-surface btn-icon-square"
                 aria-label="Dismiss Last.fm reminder"
+                title="Dismiss Last.fm reminder"
                 onClick={() => {
                   setDismissedTagBanner(true);
                   try {

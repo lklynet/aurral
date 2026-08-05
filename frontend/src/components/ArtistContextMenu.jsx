@@ -3,10 +3,6 @@ import { createPortal } from "react-dom";
 import { Ban, Library, Loader2, MoreVertical, ThumbsDown, ThumbsUp } from "lucide-react";
 import { getDiscoveryFeedbackLabel } from "../utils/discoveryFeedback";
 
-const MAIN_CONTENT_PORTAL_SELECTOR = ".app-main-wrap";
-
-const getMainContentPortalRoot = () => document.querySelector(MAIN_CONTENT_PORTAL_SELECTOR);
-
 const getMenuHorizontalAnchorRect = (button) => {
   const discoverCard = button.closest(".artist-discover-card");
   if (discoverCard) {
@@ -67,9 +63,13 @@ export function ArtistContextMenu({
 
   const updateMenuPosition = useCallback(() => {
     const button = menuButtonRef.current;
-    const portalRoot = getMainContentPortalRoot();
-    if (!button || !portalRoot) return;
-    const wrapRect = portalRoot.getBoundingClientRect();
+    if (!button) return;
+    const wrapRect = document.querySelector(".app-main-wrap")?.getBoundingClientRect() ?? {
+      top: 0,
+      left: 0,
+      right: window.innerWidth,
+      bottom: window.innerHeight,
+    };
     const rect = button.getBoundingClientRect();
     const gap = 8;
     const menuHeight = menuRef.current?.offsetHeight || estimateMenuHeight();
@@ -81,15 +81,20 @@ export function ArtistContextMenu({
     } else if (spaceAbove < menuHeight && spaceBelow < menuHeight) {
       placement = spaceBelow > spaceAbove ? "below" : "above";
     }
-    const top =
-      placement === "below" ? rect.bottom - wrapRect.top + gap : rect.top - wrapRect.top - gap;
+    const top = placement === "below" ? rect.bottom + gap : rect.top - gap;
     const anchorRect = getMenuHorizontalAnchorRect(button);
-    const right = wrapRect.right - anchorRect.right;
+    const menuWidth = menuRef.current?.offsetWidth || 200;
+    const minLeft = Math.max(8, wrapRect.left + gap);
+    const maxLeft = Math.max(
+      minLeft,
+      Math.min(window.innerWidth - menuWidth - gap, wrapRect.right - menuWidth - gap),
+    );
+    const left = Math.min(Math.max(anchorRect.right - menuWidth, minLeft), maxLeft);
     setMenuPosition((prev) => {
-      if (prev && prev.top === top && prev.right === right && prev.placement === placement) {
+      if (prev && prev.top === top && prev.left === left && prev.placement === placement) {
         return prev;
       }
-      return { top, right, placement };
+      return { top, left, placement };
     });
   }, [estimateMenuHeight]);
 
@@ -199,17 +204,18 @@ export function ArtistContextMenu({
         }}
         className={buttonClassName}
         aria-label={`Artist options for ${labelName}`}
+        title={`Artist options for ${labelName}`}
       >
         <MoreVertical className="artist-icon-sm" />
       </button>
-      {showMenu && menuPosition && getMainContentPortalRoot()
+      {showMenu && menuPosition
         ? createPortal(
             <div
               ref={setMenuRef}
               className={`artist-options-menu--discover${menuPosition.placement === "below" ? " is-below" : ""}`}
               style={{
                 top: menuPosition.top,
-                right: menuPosition.right,
+                left: menuPosition.left,
               }}
               onClick={(event) => event.stopPropagation()}
             >
@@ -280,7 +286,7 @@ export function ArtistContextMenu({
                 </>
               )}
             </div>,
-            getMainContentPortalRoot(),
+            document.body,
           )
         : null}
     </div>

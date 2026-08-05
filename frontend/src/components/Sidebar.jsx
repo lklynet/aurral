@@ -271,9 +271,10 @@ function Sidebar({ mode, width = 208 }) {
 
   return (
     <aside
-      className={`sidebar-shell ${translateClass}${
+      className={`sidebar-shell ${isIcons ? "sidebar-shell--icons" : "sidebar-shell--full"} ${translateClass}${
         stageBackdropVariant ? ` sidebar-shell--${stageBackdropVariant}` : ""
       }`}
+      aria-label="Primary navigation"
       style={{
         width: `${width}px`,
       }}

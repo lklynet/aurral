@@ -230,6 +230,7 @@ function FlowTrackKebabMenu({
         }}
         className="btn btn-secondary btn-icon btn-xs flow-page__track-menu-trigger"
         aria-label={`Options for ${trackLabel}`}
+        title={`Options for ${trackLabel}`}
         aria-expanded={isOpen}
         aria-haspopup="menu"
       >
@@ -570,11 +571,12 @@ export function FlowTracksPanel({
               <button
                 type="button"
                 onClick={handlePrimaryPlay}
-                className="btn btn-primary btn-round-lg"
+                className="btn btn-accent btn-round-lg"
                 disabled={playableTracks.length === 0}
                 aria-label={
                   isPlaylistPlaying ? "Pause playback" : "Play all tracks"
                 }
+                title={isPlaylistPlaying ? "Pause playback" : "Play all tracks"}
               >
                 {isPlaylistPlaying ? (
                   <Pause className="artist-icon-md" />
@@ -588,6 +590,7 @@ export function FlowTracksPanel({
                 className={`btn btn-secondary btn-round-lg flow-page__tracks-toolbar-shuffle${isShuffleEnabled ? " is-active" : ""}`}
                 disabled={playableTracks.length === 0}
                 aria-label="Shuffle and play"
+                title="Shuffle and play"
               >
                 <Shuffle className="artist-icon-md" />
               </button>
@@ -608,6 +611,7 @@ export function FlowTracksPanel({
                     className="btn btn-ghost-danger btn-icon btn-sm"
                     disabled={bulkActionLoading || !selectedCount}
                     aria-label="Remove selected"
+                    title="Remove selected"
                   >
                     <Trash2 className="artist-icon-sm" />
                   </button>
@@ -834,6 +838,11 @@ export function FlowTracksPanel({
                                 ? `Pause ${track.trackName}`
                                 : `Play ${track.trackName}`
                             }
+                            title={
+                              isCurrent
+                                ? `Pause ${track.trackName}`
+                                : `Play ${track.trackName}`
+                            }
                           >
                             {isCurrent ? (
                               <Pause className="artist-icon-xs" />
@@ -969,4 +978,3 @@ export function FlowTracksPanel({
     </div>
   );
 }
-

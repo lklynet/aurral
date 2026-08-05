@@ -1,26 +1,14 @@
 import ArtistImage from "./ArtistImage";
 import SearchLibraryCheck from "./SearchLibraryCheck";
 import { ArtistContextMenu } from "./ArtistContextMenu";
-import { useImageGradientColors } from "../utils/imageColors";
 import { getArtistFeedbackFlags } from "../utils/discoveryFeedback";
 import { getArtistRecordId } from "../utils/artistTaste";
 
 function TagRecommendedArtistCover({ artist, artistId, artistImages, isInLibrary }) {
   const coverSrc = artistImages[artistId] || artist.image || artist.imageUrl || "";
-  const gradientColors = useImageGradientColors(coverSrc);
 
   return (
-    <div
-      className="artist-discover-card__cover artist-discover-card__cover--recommended"
-      style={
-        gradientColors
-          ? {
-              "--recommended-gradient-top": gradientColors.top,
-              "--recommended-gradient-bottom": gradientColors.bottom,
-            }
-          : undefined
-      }
-    >
+    <div className="artist-discover-card__cover artist-discover-card__cover--recommended">
       <ArtistImage
         src={coverSrc}
         mbid={artistId}

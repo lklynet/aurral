@@ -748,7 +748,10 @@ export const handleImageProxyRequest = async (req, res) => {
   res.set("Content-Type", cached.meta.contentType || "image/jpeg");
   res.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
   touchCacheEntry(cached.imagePath);
-  return res.sendFile(cached.imagePath);
+  return res.sendFile(path.basename(cached.imagePath), {
+    root: IMAGE_PROXY_DIR,
+    dotfiles: "allow",
+  });
 };
 
 export const handleLegacyImageProxyRequest = async (req, res) => {

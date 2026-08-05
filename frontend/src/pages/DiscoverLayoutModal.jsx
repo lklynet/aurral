@@ -153,6 +153,7 @@ export function DiscoverLayoutModal({
             onClick={onClose}
             disabled={isSaving}
             aria-label="Close"
+            title="Close"
           >
             <X className="artist-icon-md" />
           </button>
