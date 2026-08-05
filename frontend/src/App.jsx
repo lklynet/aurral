@@ -46,6 +46,7 @@ const ActivityPage = lazy(() => import("./pages/ActivityPage"));
 const FlowPage = lazy(() => import("./pages/FlowPage"));
 const DiscoverPlaylistsPage = lazy(() => import("./pages/DiscoverPlaylistsPage"));
 const DiscoverPlaylistDetailPage = lazy(() => import("./pages/DiscoverPlaylistDetailPage"));
+const NewsPage = lazy(() => import("./pages/NewsPage"));
 
 const PageLoader = () => (
   <div className="app-loading">
@@ -254,6 +255,7 @@ function AppContent() {
                       <Route path="/discover" element={<Navigate to="/" replace />} />
                       <Route path="/discover/playlists/:presetId" element={<DiscoverPlaylistDetailPage />} />
                       <Route path="/discover/playlists" element={<DiscoverPlaylistsPage />} />
+                      <Route path="/discover/news" element={<NewsPage />} />
                       <Route path="/library" element={<LibraryPage />} />
                       <Route
                         path="/playlists"

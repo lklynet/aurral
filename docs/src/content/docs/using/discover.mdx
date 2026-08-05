@@ -3,7 +3,7 @@ title: Discover
 description: Recommendations, trends, tags, discover playlists, and shows.
 ---
 
-Discover is Aurral's home screen. It shows personalized recommendations, global trends, tags, recent releases, discover playlists, and recently added artists.
+Discover is Aurral's home screen. It shows personalized recommendations, global trends, tags, recent releases, discover playlists, artist news, and recently added artists.
 
 When you configure Ticketmaster, Discover also shows nearby events.
 
@@ -37,6 +37,12 @@ Manage the list from **Blocklist** in the sidebar.
 You can customize which sections appear on your Discover page and reorder them per user.
 
 ![Aurral Discover layout customization](../../../assets/screenshots/discover-customize.webp)
+
+## Artist news
+
+When you add a NewsAPI key in **Settings > Connect**, Discover shows recent stories about artists in your Lidarr library.
+
+Select the arrow on the **Artist News** section, or **News** in the sidebar, to open the full news page. Aurral searches each library artist's exact name for recent stories and keeps the NewsAPI key on the server. It checks artists in rotating batches, uses a shared rolling budget of 100 NewsAPI requests per 24 hours, and keeps the results in the local database. The page shows how many artists are checked and how many calls remain. If NewsAPI does not provide an article photo, Aurral uses the artist artwork from your library when available. Use an article's kebab menu to block a publisher; blocks are per user and can be undone from **Blocked publishers**.
 
 ## Discover playlists
 

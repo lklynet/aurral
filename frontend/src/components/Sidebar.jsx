@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Ban, Library, Sparkles, Activity, AudioWaveform, Ticket, Settings } from "lucide-react";
+import { Ban, Library, Sparkles, Activity, AudioWaveform, Newspaper, Ticket, Settings } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useFlowWorkerActivity } from "../pages/flows/useFlowWorkerActivity";
 import { DEFAULT_SETTINGS_TAB, SETTINGS_NAV_TABS } from "../pages/Settings/settingsTabsConfig";
@@ -36,6 +36,7 @@ function Sidebar({ mode, width = 208 }) {
     typeof window !== "undefined" ? window.matchMedia("(min-width: 768px)").matches : true,
   );
   const [ticketmasterConfigured, setTicketmasterConfigured] = useState(true);
+  const [newsConfigured, setNewsConfigured] = useState(true);
   const {
     recentPages: discoverRecentPages,
     clearRecentPages,
@@ -48,6 +49,7 @@ function Sidebar({ mode, width = 208 }) {
     getDiscoverArtistPath(currentDiscoverPath) || currentDiscoverPath;
   const isOnSettings = location.pathname.startsWith("/settings");
   const isOnShows = location.pathname.startsWith("/shows");
+  const isOnNews = location.pathname.startsWith("/discover/news");
   const isOnActivity =
     location.pathname.startsWith("/activity") || location.pathname.startsWith("/history");
 
@@ -104,6 +106,7 @@ function Sidebar({ mode, width = 208 }) {
   useEffect(() => {
     if (bootstrap) {
       setTicketmasterConfigured(!!bootstrap.ticketmasterConfigured);
+      setNewsConfigured(!!bootstrap.newsapiConfigured);
     }
   }, [bootstrap]);
 
@@ -113,11 +116,12 @@ function Sidebar({ mode, width = 208 }) {
         return isDiscoverSectionActive;
       }
       if (item.section === "shows") return isOnShows;
+      if (item.section === "news") return isOnNews;
       if (item.section === "activity") return isOnActivity;
       if (item.path === "/discover" && location.pathname === "/") return true;
       return location.pathname === item.path;
     },
-    [isDiscoverSectionActive, isOnActivity, isOnShows, location.pathname],
+    [isDiscoverSectionActive, isOnActivity, isOnNews, isOnShows, location.pathname],
   );
 
   const navItems = useMemo(() => {
@@ -142,6 +146,16 @@ function Sidebar({ mode, width = 208 }) {
             },
           ]
         : []),
+      ...(newsConfigured
+        ? [
+            {
+              path: "/discover/news",
+              label: "News",
+              icon: Newspaper,
+              section: "news",
+            },
+          ]
+        : []),
       {
         path: "/playlists",
         label: "Playlists",
@@ -162,7 +176,7 @@ function Sidebar({ mode, width = 208 }) {
       (item) =>
         !item.permission || user?.role === "admin" || !!user?.permissions?.[item.permission],
     );
-  }, [discoverRecentPages, ticketmasterConfigured, user]);
+  }, [discoverRecentPages, newsConfigured, ticketmasterConfigured, user]);
 
   const translateClass = mode === "hidden" ? "-translate-x-full" : "translate-x-0";
 

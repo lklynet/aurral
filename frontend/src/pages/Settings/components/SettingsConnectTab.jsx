@@ -34,9 +34,12 @@ export function SettingsConnectTab({
   const gotify = settings.integrations?.gotify || {};
   const lastfm = settings.integrations?.lastfm || {};
   const ticketmaster = settings.integrations?.ticketmaster || {};
+  const newsapi = settings.integrations?.newsapi || {};
+  const inbox = settings.inbox || {};
   const gotifyConfigured = Boolean(gotify.url && gotify.token);
   const lastfmConfigured = Boolean(health?.lastfmConfigured);
   const ticketmasterConfigured = Boolean(health?.ticketmasterConfigured);
+  const newsapiConfigured = Boolean(health?.newsapiConfigured);
 
   const webhooks = settings.integrations?.webhooks || [];
   const webhookEvents = settings.integrations?.webhookEvents || {};
@@ -86,6 +89,21 @@ export function SettingsConnectTab({
         ...settings.integrations,
         ticketmaster: { ...ticketmaster, ...patch },
       },
+    });
+
+  const updateNewsApi = (patch) =>
+    updateSettings({
+      ...settings,
+      integrations: {
+        ...settings.integrations,
+        newsapi: { ...newsapi, ...patch },
+      },
+    });
+
+  const updateInbox = (patch) =>
+    updateSettings({
+      ...settings,
+      inbox: { ...inbox, ...patch },
     });
 
   const [dragIdx, setDragIdx] = useState(null);
@@ -197,7 +215,44 @@ export function SettingsConnectTab({
               meta={`${ticketmaster.searchRadiusMiles ?? 250} mi radius`}
               onClick={() => setActiveModal("ticketmaster")}
             />
+            <IntegrationCard
+              title="NewsAPI"
+              subtitle="Artist news"
+              status={getConfiguredStatus(newsapiConfigured)}
+              meta={newsapi.domains || "Optional"}
+              onClick={() => setActiveModal("newsapi")}
+            />
           </SettingsArrCardGrid>
+        </SettingsArrFieldSet>
+
+        <SettingsArrFieldSet legend="Inbox">
+          <div className="arr-info">
+            Choose which library-based updates appear in the inbox dropdown.
+          </div>
+          <SettingsArrFormGroup label="Upcoming releases">
+            <PillToggle
+              checked={inbox.releases !== false}
+              onChange={(e) => updateInbox({ releases: e.target.checked })}
+            />
+          </SettingsArrFormGroup>
+          <SettingsArrFormGroup label="Upcoming shows">
+            <PillToggle
+              checked={inbox.shows !== false}
+              onChange={(e) => updateInbox({ shows: e.target.checked })}
+            />
+          </SettingsArrFormGroup>
+          <SettingsArrFormGroup label="Artist news">
+            <PillToggle
+              checked={inbox.news !== false}
+              onChange={(e) => updateInbox({ news: e.target.checked })}
+            />
+          </SettingsArrFormGroup>
+          <SettingsArrFormGroup label="Discoveries">
+            <PillToggle
+              checked={inbox.discoveries !== false}
+              onChange={(e) => updateInbox({ discoveries: e.target.checked })}
+            />
+          </SettingsArrFormGroup>
         </SettingsArrFieldSet>
 
         <SettingsArrFieldSet
@@ -567,6 +622,42 @@ export function SettingsConnectTab({
                 }
               />
             </SettingsModalToggleGroup>
+          </SettingsModalSection>
+        </SettingsIntegrationModal>
+      )}
+
+      {activeModal === "newsapi" && (
+        <SettingsIntegrationModal title="NewsAPI" onClose={() => setActiveModal(null)}>
+          <SettingsModalIntro>
+            Optional artist news for the inbox. Keep the key on the server and use a production NewsAPI plan for deployed instances.
+          </SettingsModalIntro>
+          <SettingsModalSection title="Connection">
+            <SettingsModalField label="API key">
+              <SettingsInput
+                type="password"
+                placeholder="NewsAPI key"
+                autoComplete="off"
+                value={newsapi.apiKey || ""}
+                onChange={(e) => updateNewsApi({ apiKey: e.target.value })}
+              />
+            </SettingsModalField>
+            <SettingsModalField label="Language">
+              <SettingsInput
+                type="text"
+                placeholder="en"
+                maxLength={5}
+                value={newsapi.language || "en"}
+                onChange={(e) => updateNewsApi({ language: e.target.value })}
+              />
+            </SettingsModalField>
+            <SettingsModalField label="Optional domains">
+              <SettingsInput
+                type="text"
+                placeholder="news.example.com, magazine.example.com"
+                value={newsapi.domains || ""}
+                onChange={(e) => updateNewsApi({ domains: e.target.value })}
+              />
+            </SettingsModalField>
           </SettingsModalSection>
         </SettingsIntegrationModal>
       )}

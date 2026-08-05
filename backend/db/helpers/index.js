@@ -9,11 +9,13 @@ import registerDiscovery from "./discovery.js";
 import registerOverrides from "./overrides.js";
 import registerLidarr from "./lidarr.js";
 import registerHistory from "./history.js";
+import registerInbox from "./inbox.js";
 
 registerCache(dbOps);
 registerDiscovery(dbOps);
 registerOverrides(dbOps);
 registerLidarr(dbOps);
 registerHistory(dbOps);
+registerInbox(dbOps);
 
 export { dbOps, userOps };

@@ -148,6 +148,29 @@ accept `releaseTypes` and `sort`. `GET /api/requests` accepts `refresh=true`.
 | `POST` | `/api/discover/clear` | Clear image and metadata-provider caches |
 | `POST` | `/api/discover/clear-discovery` | Clear the discovery cache |
 
+## News
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/news` | Read recent news for the current user's library |
+| `GET` | `/api/news/preferences` | Read the current user's blocked publishers |
+| `PATCH` | `/api/news/preferences` | Replace the current user's blocked publishers |
+
+`/api/news` accepts an optional `limit` query parameter. News preferences are
+user-scoped; the `blockedPublishers` request field is an array of publisher
+names. The response includes `refresh.checkedArtistCount`,
+`refresh.queuedArtistCount`, `refresh.callsRemaining`, and an optional
+`refresh.warning` so clients can explain partial coverage and provider limits.
+
+## Inbox
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/inbox` | Read the current user's Inbox items and unread count |
+| `POST` | `/api/inbox/refresh` | Manually refresh the current user's Inbox |
+| `POST` | `/api/inbox/read-all` | Mark the current user's Inbox items as read |
+| `PATCH` | `/api/inbox/:id` | Read, save, unsave, dismiss, or add an Inbox item |
+
 ## Playlists and flows
 
 The canonical prefix is `/api/playlists`. The legacy `/api/weekly-flow`

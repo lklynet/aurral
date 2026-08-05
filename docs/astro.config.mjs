@@ -50,6 +50,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { slug: "using/overview" },
+            { slug: "using/inbox" },
             { slug: "using/discover" },
             { slug: "using/library" },
             { slug: "using/playlists" },

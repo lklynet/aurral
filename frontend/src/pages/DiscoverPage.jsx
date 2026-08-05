@@ -19,6 +19,7 @@ import ShowCard from "../components/ShowCard";
 import LastfmBanner from "../components/LastfmBanner";
 import { useToast } from "../contexts/ToastContext";
 import { DiscoverRail } from "../components/DiscoverRail";
+import { NewsArticleCard } from "../components/NewsArticleCard";
 import { DiscoverLayoutModal } from "./DiscoverLayoutModal";
 import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
 import { AlbumCard, ArtistCard, ViewAllCard } from "./DiscoverCards";
@@ -34,14 +35,23 @@ import {
   writeStoredDiscoverLayout,
 } from "./discoverUtils";
 import { useDiscoverData } from "./useDiscoverData";
+import { useLibraryNews } from "../hooks/useLibraryNews";
 const getArtistId = (artist) => getArtistRecordId(artist);
 
 function DiscoverPage() {
   useDocumentTitle("Discover");
-  const { user: authUser, hasPermission } = useAuth();
+  const { user: authUser, hasPermission, bootstrap } = useAuth();
   const navigate = useDiscoverNavigation();
   const { showSuccess, showError } = useToast();
   const canAdoptPlaylist = hasPermission("accessFlow");
+  const newsConfigured = bootstrap?.newsapiConfigured === true;
+  const {
+    articles: newsArticles,
+    loading: newsLoading,
+    error: newsError,
+    refresh: newsRefresh,
+    blockPublisher: blockNewsPublisher,
+  } = useLibraryNews({ enabled: newsConfigured, limit: 60 });
 
   const {
     data,
@@ -248,6 +258,7 @@ function DiscoverPage() {
       recentlyAdded: recentlyAdded.length > 0,
       playlists: displayDiscoverPlaylists.length > 0 || !!playlistsUpdating,
       recentReleases: recentReleases.length > 0,
+      news: newsConfigured,
       recommended:
         !isListenBrainzFallback &&
         (recommendations.length > 0 ||
@@ -262,6 +273,7 @@ function DiscoverPage() {
       displayDiscoverPlaylists,
       playlistsUpdating,
       recentReleases,
+      newsConfigured,
       globalTop,
       genreSections,
       recommendations,
@@ -546,6 +558,37 @@ function DiscoverPage() {
               </div>
             ))}
           </>
+        </DiscoverRail>
+      );
+    }
+
+    if (id === "news") {
+      if (!sectionAvailability.news) return null;
+      return (
+        <DiscoverRail
+          key="news"
+          title="Artist News"
+          onViewAll={() => navigate("/discover/news")}
+        >
+          {newsLoading && newsArticles.length === 0 ? (
+            <div className="discover-news-rail-status artist-discover-shelf-card--news-status">
+              Checking recent stories…
+            </div>
+          ) : newsArticles.length > 0 ? (
+            newsArticles.slice(0, 12).map((article) => (
+              <div key={article.url} className="artist-discover-shelf-card artist-discover-shelf-card--news">
+                <NewsArticleCard
+                  article={article}
+                  compact
+                  onBlockPublisher={blockNewsPublisher}
+                />
+              </div>
+            ))
+          ) : (
+            <div className="discover-news-rail-status artist-discover-shelf-card--news-status">
+              {newsError || newsRefresh?.warning || "No recent artist news"}
+            </div>
+          )}
         </DiscoverRail>
       );
     }

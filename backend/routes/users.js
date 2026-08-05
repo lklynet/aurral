@@ -109,6 +109,7 @@ const DEFAULT_DISCOVER_LAYOUT = [
   { id: "playlists", enabled: true },
   { id: "recommendedShows", enabled: true },
   { id: "recentReleases", enabled: true },
+  { id: "news", enabled: true },
   { id: "recommended", enabled: true },
   { id: "globalTop", enabled: true },
   { id: "genreSections", enabled: true },

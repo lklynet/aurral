@@ -15,6 +15,24 @@ export const getTicketmasterApiKey = () => {
   return String(process.env.TICKETMASTER_API_KEY || "").trim();
 };
 
+export const getNewsApiKey = () => {
+  const settings = dbOps.getSettings();
+  return String(settings.integrations?.newsapi?.apiKey || process.env.NEWSAPI_API_KEY || "").trim();
+};
+
+export const getNewsApiSettings = () => {
+  const settings = dbOps.getSettings();
+  const newsapi = settings.integrations?.newsapi || {};
+  return {
+    language: String(newsapi.language || "en").trim().toLowerCase() || "en",
+    domains: String(newsapi.domains || "")
+      .split(",")
+      .map((domain) => domain.trim().toLowerCase())
+      .filter(Boolean)
+      .slice(0, 20),
+  };
+};
+
 export const getMusicBrainzContact = () => {
   const settings = dbOps.getSettings();
   return (

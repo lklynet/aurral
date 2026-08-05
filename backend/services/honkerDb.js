@@ -66,6 +66,18 @@ export const SCHEDULED_SYSTEM_TASKS = [
     payload: { kind: "discovery-refresh-check" },
   },
   {
+    name: "inbox-refresh",
+    queue: "system-task",
+    schedule: "@every 24h",
+    payload: { kind: "inbox-refresh" },
+  },
+  {
+    name: "news-refresh",
+    queue: "system-task",
+    schedule: "@every 6h",
+    payload: { kind: "news-refresh" },
+  },
+  {
     name: "import-list-sync",
     queue: "system-task",
     schedule: "@every 30m",
@@ -352,6 +364,7 @@ export function enqueueHonkerStartupTasks() {
     { delaySeconds: 15, priority: 5 },
   );
   enqueueSystemTaskJob({ kind: "discovery-bootstrap" }, { delaySeconds: 15, priority: 5 });
+  enqueueSystemTaskJob({ kind: "inbox-refresh" }, { delaySeconds: 20, priority: -5 });
   enqueuePlaylistMbidEnrichmentJob(
     {
       kind: "playlist-mbid-enrichment-sweep",

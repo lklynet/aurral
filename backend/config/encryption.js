@@ -47,6 +47,7 @@ const SENSITIVE_PATHS = [
   ["nzbget", "password"],
   ["gotify", "token"],
   ["lastfm", "apiKey"],
+  ["newsapi", "apiKey"],
 ];
 
 function getAt(obj, path) {

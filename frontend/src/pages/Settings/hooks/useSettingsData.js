@@ -99,6 +99,11 @@ const defaultSettings = {
       localDiscoveryIncludeRecommendations: true,
       localDiscoveryIncludeTrending: true,
     },
+    newsapi: {
+      apiKey: "",
+      language: "en",
+      domains: "",
+    },
     lidarr: {
       url: "",
       externalUrl: "",
@@ -134,6 +139,12 @@ const defaultSettings = {
   },
   playlistArtwork: {
     style: "photo",
+  },
+  inbox: {
+    releases: true,
+    shows: true,
+    news: true,
+    discoveries: true,
   },
   security: {
     localNetworkBypass: {

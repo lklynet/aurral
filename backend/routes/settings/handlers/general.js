@@ -98,6 +98,7 @@ export function registerGeneral(router) {
         pathMappings,
         security,
         playlistArtwork,
+        inbox,
       } = req.body;
 
       const currentSettings = dbOps.getSettings();
@@ -282,8 +283,23 @@ export function registerGeneral(router) {
           integrations.navidrome.pathMappings,
         );
       }
+      if (integrations?.newsapi) {
+        const nextNewsApi = {
+          ...(currentSettings.integrations?.newsapi || {}),
+          ...integrations.newsapi,
+        };
+        nextNewsApi.apiKey = String(nextNewsApi.apiKey || "").trim();
+        nextNewsApi.language = String(nextNewsApi.language || "en").trim().toLowerCase() || "en";
+        nextNewsApi.domains = String(nextNewsApi.domains || "")
+          .split(",")
+          .map((domain) => domain.trim().toLowerCase())
+          .filter(Boolean)
+          .slice(0, 20)
+          .join(",");
+        integrations.newsapi = nextNewsApi;
+      }
 
-      const INTEGRATION_KEYS = ["lidarr", "navidrome", "slskd", "prowlarr", "nzbget", "ytdlp", "lastfm", "ticketmaster", "metadata", "general", "gotify", "webhookEvents"];
+      const INTEGRATION_KEYS = ["lidarr", "navidrome", "slskd", "prowlarr", "nzbget", "ytdlp", "lastfm", "ticketmaster", "newsapi", "metadata", "general", "gotify", "webhookEvents"];
       let mergedIntegrations =
         currentSettings.integrations || defaultData.settings.integrations || {};
       if (integrations) {
@@ -334,6 +350,17 @@ export function registerGeneral(router) {
             ? releaseTypes
             : currentSettings.releaseTypes || defaultData.settings.releaseTypes,
         integrations: mergedIntegrations,
+        inbox:
+          inbox !== undefined
+            ? {
+                ...(currentSettings.inbox || defaultData.settings.inbox),
+                ...inbox,
+                releases: inbox.releases !== false,
+                shows: inbox.shows !== false,
+                news: inbox.news !== false,
+                discoveries: inbox.discoveries !== false,
+              }
+            : currentSettings.inbox || defaultData.settings.inbox,
         security:
           security !== undefined
             ? {

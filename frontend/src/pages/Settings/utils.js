@@ -15,6 +15,7 @@ export const normalizeSettings = (savedSettings) => {
   const lastfm = savedSettings.integrations?.lastfm || {};
   const legacyMusicbrainz = savedSettings.integrations?.musicbrainz || {};
   const metadata = savedSettings.integrations?.metadata || {};
+  const newsapi = savedSettings.integrations?.newsapi || {};
   const parsedAutoRefreshHours = parseInt(lastfm.discoveryAutoRefreshHours, 10);
   const normalizedAutoRefreshHours = [24, 168, 720].includes(parsedAutoRefreshHours)
     ? parsedAutoRefreshHours
@@ -39,6 +40,12 @@ export const normalizeSettings = (savedSettings) => {
     playlistArtwork: {
       ...playlistArtwork,
       style: playlistArtworkStyle,
+    },
+    inbox: {
+      releases: savedSettings.inbox?.releases !== false,
+      shows: savedSettings.inbox?.shows !== false,
+      news: savedSettings.inbox?.news !== false,
+      discoveries: savedSettings.inbox?.discoveries !== false,
     },
     releaseTypes: savedSettings.releaseTypes || allReleaseTypes,
     quality: savedSettings.quality || "standard",
@@ -93,6 +100,12 @@ export const normalizeSettings = (savedSettings) => {
             ? lastfm.discoveryMode
             : "balanced",
         ...lastfm,
+      },
+      newsapi: {
+        apiKey: "",
+        language: "en",
+        domains: "",
+        ...newsapi,
       },
       slskd: {
         enabled: false,

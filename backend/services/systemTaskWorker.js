@@ -43,6 +43,16 @@ async function processSystemTask(payload = {}) {
       await bootstrapDiscoveryRefresh();
       return;
     }
+    case "inbox-refresh": {
+      const { refreshInboxForAllUsers } = await import("./inboxService.js");
+      await refreshInboxForAllUsers();
+      return;
+    }
+    case "news-refresh": {
+      const { refreshLibraryNews } = await import("./newsService.js");
+      await refreshLibraryNews();
+      return;
+    }
     case "playlist-startup-migration": {
       const [
         { migrateLegacyPaths, resolvePlaylistRoot },

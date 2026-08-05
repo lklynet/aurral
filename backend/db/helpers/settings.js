@@ -140,6 +140,7 @@ export const dbOps = {
     const playlistArtwork = normalizePlaylistArtworkSettings(
       readStoredSettingJson("playlistArtwork"),
     );
+    const inbox = dbHelpers.parseJSON(getSettingStmt.get("inbox")?.value) || {};
     const blocklist = dbHelpers.parseJSON(
       getSettingStmt.get("blocklist")?.value
     );
@@ -162,6 +163,12 @@ export const dbOps = {
       sharedPlaylists: sharedPlaylists || null,
       playlistWorker,
       playlistArtwork,
+      inbox: {
+        releases: inbox.releases !== false,
+        shows: inbox.shows !== false,
+        news: inbox.news !== false,
+        discoveries: inbox.discoveries !== false,
+      },
       blocklist:
         blocklist && typeof blocklist === "object"
           ? blocklist
@@ -233,6 +240,17 @@ export const dbOps = {
         upsertSettingStmt.run(
           "security",
           dbHelpers.stringifyJSON(settings.security)
+        );
+      }
+      if (settings.inbox !== undefined) {
+        upsertSettingStmt.run(
+          "inbox",
+          dbHelpers.stringifyJSON({
+            releases: settings.inbox.releases !== false,
+            shows: settings.inbox.shows !== false,
+            news: settings.inbox.news !== false,
+            discoveries: settings.inbox.discoveries !== false,
+          }),
         );
       }
       if (

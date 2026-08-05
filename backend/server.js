@@ -36,6 +36,8 @@ import {
 import authRouter from "./routes/auth.js";
 import imageProxyRouter from "./routes/imageProxy.js";
 import lidarrFeedRouter from "./routes/lidarrFeed.js";
+import inboxRouter from "./routes/inbox.js";
+import newsRouter from "./routes/news.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -181,6 +183,8 @@ app.use("/api/search", searchRouter);
 app.use("/api/artists", artistsRouter);
 app.use("/api/library", libraryRouter);
 app.use("/api/discover", discoveryRouter);
+app.use("/api/inbox", inboxRouter);
+app.use("/api/news", newsRouter);
 app.use("/api/requests", requestsRouter);
 app.use("/api/health", healthRouter);
 app.use("/api/filesystem", filesystemRouter);

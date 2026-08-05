@@ -110,6 +110,10 @@ export const SYSTEM_TASK_LABELS = {
     label: "Discovery Startup Check",
     description: "Initializes discovery data and schedules the next refresh.",
   },
+  "inbox-refresh": {
+    label: "Inbox Refresh",
+    description: "Refreshes release, show, news, and discovery updates.",
+  },
   "playlist-startup-migration": {
     label: "Playlist Startup Migration",
     description: "Migrates legacy playlist files and reconciles playlist folders.",

@@ -91,6 +91,11 @@ export const defaultData = {
         localDiscoveryIncludeRecommendations: true,
         localDiscoveryIncludeTrending: true,
       },
+      newsapi: {
+        apiKey: "",
+        language: "en",
+        domains: "",
+      },
       lidarr: {
         url: "",
         externalUrl: "",
@@ -143,6 +148,12 @@ export const defaultData = {
     },
     playlistArtwork: {
       style: "photo",
+    },
+    inbox: {
+      releases: true,
+      shows: true,
+      news: true,
+      discoveries: true,
     },
   },
 };

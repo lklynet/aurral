@@ -13,6 +13,7 @@ import {
   deezerTopTrackCache,
 } from "./deezer.js";
 import { youtubeVideoCache } from "./crossProvider.js";
+import { newsCache } from "./newsapi.js";
 import { clearMetadataProviderCaches } from "../providers/brainzmashProvider.js";
 
 export function clearApiCaches() {
@@ -28,4 +29,5 @@ export function clearApiCaches() {
   deezerPreviewMatchCache.flushAll();
   deezerTopTrackCache.flushAll();
   youtubeVideoCache.flushAll();
+  newsCache.flushAll();
 }

@@ -13,6 +13,7 @@ const RESET_TABLES = [
   "honker_task_runs",
   "slskd_transfer_history",
   "playlist_download_jobs",
+  "inbox_items",
   "users",
   "discovery_cache",
   "images_cache",
