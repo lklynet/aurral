@@ -1,9 +1,16 @@
 ---
 title: Lidarr
-description: Connect Lidarr for library management and requests.
+description: Connect Lidarr for library management, requests, and library file access.
 ---
 
 Aurral requires Lidarr. Aurral adds artists and albums, reads library state, and shows queue and history status through Lidarr.
+
+The Lidarr integration has two parts:
+
+1. Aurral connects to the Lidarr API.
+2. Aurral reads the library files at the paths that Lidarr reports.
+
+The API connection can pass while the file connection fails. Mount the same media root in Aurral and Lidarr at the same container path. See [Filesystem and mounts](/getting-started/storage/).
 
 ## Connection
 
@@ -22,23 +29,15 @@ Aurral sends MusicBrainz artist IDs to Lidarr. If Lidarr uses a provider such as
 
 ## Library access check
 
-Aurral tests file access at each path that Lidarr reports. If the test fails, mount the Lidarr media root in Aurral.
-
-See [Match Lidarr](/getting-started/storage/).
+Aurral tests file access at paths that Lidarr reports. If the test fails, mount the Lidarr media root in Aurral. The recommended layout uses `/data` in both containers, with a Lidarr root folder such as `/data/music`.
 
 The check samples a track from an artist inside a root folder. It falls back to an artist outside them and then reports that the artist was left behind by a root folder change.
 
 See [Library access fails on a folder that is not your root folder](/admin/troubleshooting/#library-access-fails-on-a-folder-that-is-not-your-root-folder).
 
-In mixed Windows and Docker setups, **Test library access** shows the exact path that Lidarr reports.
+In mixed Windows and Docker setups, **Test library access** shows the exact path that Lidarr reports. If that path differs from the path inside Aurral, add a mapping under **Settings > Download Clients > Remote Path Mappings** with **Source** set to **Lidarr**.
 
-If Aurral mounts that folder at a different path, add a mapping under **Settings > Download Clients > Remote Path Mappings**.
-
-Path mappings let Aurral read files. If Navidrome uses a different path, enable **Use Navidrome paths in M3U files**.
-
-Add a Navidrome mapping so that `.m3u` files use the correct paths.
-
-See [Navidrome](/integrations/navidrome/#mixed-windows-and-docker-navidrome).
+This mapping only helps Aurral read Lidarr files. It does not change paths in Navidrome `.m3u` files. Configure Navidrome paths under **Settings > Playback > Navidrome**. See [Path mismatches](/getting-started/storage/#when-paths-cannot-match).
 
 ## Safety
 

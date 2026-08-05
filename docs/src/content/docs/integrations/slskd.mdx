@@ -9,10 +9,10 @@ slskd downloads flow and playlist tracks from Soulseek. Aurral can also use [Use
 
 ## Setup
 
-1. If Lidarr uses slskd on a shared `/data` mount, give Aurral that same mount ([Match Lidarr](/getting-started/storage/)).
+1. Mount the same media root in Aurral and slskd at the same container path. See [Filesystem and mounts](/getting-started/storage/).
 2. Connect slskd in **Settings > Download Clients > slskd**.
 
-Aurral moves completed files from slskd into your Downloads Folder path.
+Aurral uses the slskd API and reads the completed files from the path slskd reports. It then moves those files into your Downloads Folder path.
 
 If slskd runs on Windows and reports host paths, mount the parent folder into Aurral. For example, slskd can report `N:\...`.
 

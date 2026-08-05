@@ -59,11 +59,11 @@ services:
       - PUID=1000
       - PGID=1000
     volumes:
-      - /data:/data
+      - ${MEDIA_ROOT:-/srv/media}:/data
       - ./config:/config
 ```
 
-Change `/data:/data` to the **same host media path Lidarr already mounts**. If Lidarr's stack works, Aurral's filesystem is already right. Then set the Downloads Folder path in the UI. See [Match Lidarr](https://docs.aurral.org/getting-started/storage/).
+Set `MEDIA_ROOT` to the **same host media path that Lidarr already mounts**. Keep `/data` as the container path and use that same mapping for your download clients and Navidrome or Plex. Then set Aurral's Downloads Folder to a container path such as `/data/downloads/aurral`. See [Filesystem and mounts](https://docs.aurral.org/getting-started/storage/).
 
 ```bash
 docker compose up -d

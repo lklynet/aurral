@@ -1,40 +1,40 @@
 ---
 title: First run
-description: Create your admin account, connect Lidarr, then finish setup in Settings.
+description: Create your admin account, connect Lidarr, and verify the filesystem before playback setup.
 ---
 
-First, create your admin account. Then, connect Lidarr.
-
-Use Settings for all other setup tasks.
+First, create the admin account and connect Lidarr. Then configure the filesystem before you connect a download client or playback server.
 
 ![Aurral Lidarr connection settings](../../../assets/screenshots/settings-lidarr.webp)
 
+## Before first run
+
+Complete [Filesystem and mounts](/getting-started/storage/) first. The short version is:
+
+- Mount the same host media root in Aurral, Lidarr, and the services you use.
+- Use the same container path, normally `/data`.
+- Keep Aurral's `/config` mount separate.
+
 ## First-run steps
 
-1. Create your admin account.
-2. If necessary, enable **Auto-login on local network**.
-3. Enter the Lidarr URL and API key.
-4. Test the Lidarr connection.
-5. Open Aurral.
+1. Open Aurral and create your admin account.
+2. Open **Settings > Lidarr**.
+3. Enter the Lidarr URL that Aurral can reach. In one Docker Compose network this is often `http://lidarr:8686`.
+4. Enter the Lidarr API key and select **Test connection**.
+5. Open **Settings > Download Clients**.
+6. Set **Downloads Folder > Path** to a writable path inside Aurral, such as `/data/downloads/aurral`.
+7. Open **Settings > System**, select **Run Checks** under **Storage Health**, and fix failed checks.
+8. Open **Settings > Lidarr** and select **Test library access**.
+9. Connect the download clients and playback server that you use.
 
-If Lidarr is operational, match its media mount. See [Match Lidarr](/getting-started/storage/).
+The Lidarr connection test checks the API. The library-access and storage checks verify that Aurral can read the files and write the Downloads Folder.
 
-## After first-run setup
+## Configure the other services
 
-Configure these in Settings when you need them:
+- **Download clients:** Open **Settings > Download Clients**. Connect slskd, SABnzbd, or NZBGet and make sure their completed path is under the shared media mount. The built-in yt-dlp source needs no separate service.
+- **Navidrome:** Open **Settings > Playback > Navidrome** and connect it. Aurral creates its playlist library when a flow or playlist produces output. See [Navidrome](/integrations/navidrome/).
+- **Plex:** Open **Settings > Playback > Plex**, connect Plex, and select **Sync to Plex now** after a flow downloads tracks. See [Plex](/integrations/plex/).
 
-- **Settings > Download Clients > Downloads Folder**: path under your Lidarr media root (for example `/data/downloads/aurral`).
-- **Settings > Lidarr**: quality profile, monitoring, community guide, library access check.
-- **Settings > Download Clients** or **Indexers**: yt-dlp, slskd, Prowlarr, SABnzbd, or NZBGet.
-- **Settings > Playback**: Navidrome or Plex.
-- **Settings > Connect**: Last.fm API key and Ticketmaster.
-- **Settings > Discover**: recommendation refresh and discovery mode.
-- **Profile**: listening-history provider (ListenBrainz by default until you add Last.fm or Koito).
-
-## Per-user setup
-
-Each user can customize their Profile. Each user can also customize the Discover layout.
-
-Admins use Settings to manage integrations, download clients, notifications, and user permissions.
+If any service uses a different path, see [Path mismatches](/getting-started/storage/#when-paths-cannot-match). Do not add a path mapping until the local folder is mounted inside Aurral.
 
 Next: [Discover](/using/discover/)

@@ -8,7 +8,7 @@ services:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
     volumes:
-      - /data:/data
+      - ${MEDIA_ROOT:-/srv/media}:/data
       - ./config:/config
 
   lidarr:
@@ -20,7 +20,7 @@ services:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
     volumes:
-      - /data:/data
+      - ${MEDIA_ROOT:-/srv/media}:/data
       - ./config/lidarr:/config
 
   slskd:
@@ -29,7 +29,7 @@ services:
     ports:
       - "5030:5030"
     volumes:
-      - /data:/data
+      - ${MEDIA_ROOT:-/srv/media}:/data
       - ./config/slskd:/app
 
   navidrome:
@@ -41,5 +41,5 @@ services:
       - ND_SCANNER_PURGEMISSING=always
       - ND_DATA=/config
     volumes:
-      - /data:/data:ro
+      - ${MEDIA_ROOT:-/srv/media}:/data:ro
       - ./data/navidrome:/config

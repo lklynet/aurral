@@ -31,10 +31,13 @@ description: Common setup and runtime issues.
 
 ## Files do not appear in Navidrome
 
-- Make sure that Aurral mounts the same media root as Lidarr ([Match Lidarr](/getting-started/storage/)).
+- Make sure that Aurral mounts the same media root as Lidarr ([Filesystem and mounts](/getting-started/storage/)).
 - Make sure that **Settings > Download Clients > Downloads Folder > Path** is under that mount.
+- In **Settings > Playback > Navidrome**, test and save the Navidrome connection.
 - Make sure that Navidrome scans Aurral's downloads path and not only Lidarr's library.
-- Review the [Navidrome missing-track setting](/integrations/navidrome/#recommended-navidrome-setting).
+- Aurral's **Aurral Playlists** library can be empty until a flow finishes a download. Check for a file under `aurral-weekly-flow`, then wait for the Navidrome scan.
+- If the library is missing, check that the Navidrome account can manage libraries through its API.
+- Review the [Navidrome missing-track setting](/integrations/navidrome/#remove-missing-tracks).
 
 ## Library reuse or download handoff fails on Windows
 
@@ -53,7 +56,7 @@ Completed slskd or Usenet files can also remain in their source folders. **Test 
 - For NZBGet on Windows, open **Settings > Download Clients > NZBGet**.
 - Set **Completed download path** if Aurral cannot detect the folder automatically.
 
-See [Match Lidarr: Windows and mixed Docker setups](/getting-started/storage/#windows-and-mixed-docker-setups).
+See [Filesystem and mounts: Windows and mixed Docker setups](/getting-started/storage/#windows-and-mixed-docker-setups).
 
 ## Library access fails on a folder that is not your root folder
 
@@ -81,7 +84,7 @@ The path problem is common when Aurral runs in Docker and Navidrome runs on Wind
 
 Leave **Use Navidrome paths in M3U files** off when Navidrome runs in Docker with the same mounts as Aurral.
 
-See [Navidrome: Mixed Windows and Docker](/integrations/navidrome/#mixed-windows-and-docker-navidrome).
+See [Navidrome: Different Navidrome paths](/integrations/navidrome/#different-navidrome-paths).
 
 ## Plex playlists are empty or tracks are missing
 
@@ -89,7 +92,7 @@ See [Navidrome: Mixed Windows and Docker](/integrations/navidrome/#mixed-windows
 
 - Make sure that Plex can read the flow download tree.
 - The Plex container or host must contain this path: `<downloads>/aurral-weekly-flow/<flow-id>/...`.
-- If Plex and Aurral use different mounts, set **Settings → Playback → Plex → Plex Aurral Library path** to the folder that Plex sees.
+- If Plex and Aurral use different mounts, set **Settings > Playback > Plex > Plex Aurral Library path** to the folder that Plex sees.
 - Leave **Plex Aurral Library path** blank if both apps use the same path prefix.
 - Save the settings.
 - Select **Sync to Plex now** again.

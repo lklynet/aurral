@@ -1,13 +1,16 @@
 ---
-title: Docker Setup
-description: Run Aurral with Docker as a Lidarr companion.
+title: Docker setup
+description: Run Aurral in Docker and connect it to the shared media filesystem.
 ---
 
-Aurral runs in Docker. It needs a `/config` mount for app data.
+Aurral runs in Docker. It needs two mounts:
 
-Aurral also needs the **same media root that Lidarr uses**. Most installations use `/data`.
+- `/config` for Aurral's database, settings, users, and jobs.
+- A shared media mount for the Lidarr library, completed downloads, and Aurral output.
 
-## Minimal compose file
+Read [Filesystem and mounts](/getting-started/storage/) before you create the Compose file. Aurral must share a media mount with Lidarr, your download clients, and Navidrome or Plex.
+
+## Minimal Compose file
 
 ```yaml
 services:
@@ -20,43 +23,15 @@ services:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
     volumes:
-      - /data:/data
+      - ${MEDIA_ROOT:-/srv/media}:/data
       - ./config:/config
 ```
 
-Point `/data:/data` at the host path that Lidarr mounts. `./config` holds Aurral's database, settings, and encrypted secrets.
+Replace `/srv/media` with the host directory that Lidarr already uses. Keep `:/data` as the container side of the mount if the other services use the recommended layout.
 
-## Which image tag to use
+For example, the host folder `/srv/media/downloads/aurral` is `/data/downloads/aurral` inside Aurral. Set the Downloads Folder to the container path in **Settings > Download Clients**, not to the host path.
 
-| Tag | Contents | Use it when |
-| --- | --- | --- |
-| `latest` | The newest stable release | You want a tested release. This is the default. |
-| `2.1.0`, `2.1`, `2` | An exact version, or the newest release in that line | You pin versions or need to roll back to a known build |
-| `nightly` | Every change merged since the last release | You want fixes and features early and can report bugs |
-| `pr-<number>` | The current preview image for an open pull request | You were asked to test a proposed change |
-
-Aurral checks for a newer build in your channel and shows a banner when one exists. Non-stable channels also mark the sidebar:
-
-- `nightly` shows a night-sky backdrop behind the sidebar logo.
-- `pr-<number>` preview images show a blueprint backdrop behind the sidebar logo.
-
-:::caution
-`nightly` is untested by users until you run it. Back up `./config` before switching to it, and report anything broken.
-:::
-
-## Test a pull request preview
-
-When a pull request has a preview image, its GitHub conversation contains a comment with the exact `pr-<number>` image tag and test instructions. The comment is updated whenever a new preview image is built.
-
-If the pull request is linked to an issue, that issue also receives the preview image and test instructions, and the `in-progress` label. The issue comment is updated for new images and invalidated when the pull request closes. The `in-progress` label is removed when the pull request closes, and later replaced by `nightly` or `released` after merge.
-
-To test the image with an existing Compose setup:
-
-1. Back up `./config`.
-2. Temporarily change the Aurral service image to the preview tag from the pull request comment.
-3. Run `docker compose pull aurral && docker compose up -d aurral`.
-4. Exercise the behavior changed by the pull request.
-5. Restore the image reference that was configured before testing.
+`/config` is only for Aurral. Do not share it with another service.
 
 ## Start Aurral
 
@@ -65,28 +40,41 @@ docker compose up -d
 ```
 
 1. Open `http://localhost:3001`.
-2. Create your admin account.
+2. Create the admin account.
 3. Connect Lidarr.
+4. Set the Downloads Folder path and run the storage checks.
 
-## What the mounts do
+Continue with [First run](/getting-started/first-run/).
 
-| Mount             | Container path | Purpose                                        |
-| ----------------- | -------------- | ---------------------------------------------- |
-| Lidarr media root | `/data`        | Same path view as Lidarr for the library and downloads |
-| Host config dir   | `/config`      | Aurral database, settings, users, and jobs     |
+## Which image tag to use
 
-Set the downloads path in **Settings > Download Clients > Downloads Folder > Path**. For example, use `/data/downloads/aurral`.
+| Tag | Contents | Use it when |
+| --- | --- | --- |
+| `latest` | The newest stable release | You want a tested release. |
+| `2.1.0`, `2.1`, `2` | An exact version, or the newest release in that line | You pin versions or need to roll back. |
+| `nightly` | Every change merged since the last release | You want fixes and features early and can report bugs. |
+| `pr-<number>` | The preview image for an open pull request | You were asked to test a proposed change. |
 
-The downloads path must be under the media mount.
+Aurral checks for a newer build in your channel and shows a banner when one exists. Non-stable channels also mark the sidebar.
 
-:::note
-`/config` replaces the older `/app/backend/data` path from Aurral v1. At startup, Aurral automatically detects existing databases in either location.
+:::caution
+`nightly` is not a stable release. Back up `./config` before switching to it.
 :::
 
-## Full stack
+## Test a pull request preview
 
-Use [`docker-compose.example.yml`](https://github.com/lklynet/aurral/blob/main/docker-compose.example.yml) for a stack with Lidarr, slskd, and Navidrome.
+When a pull request has a preview image, its GitHub conversation contains the exact `pr-<number>` image tag and test instructions.
 
-Match Lidarr's media mount. See [Match Lidarr](/getting-started/storage/) for details and Servarr links.
+1. Back up `./config`.
+2. Temporarily change the Aurral image to the preview tag.
+3. Run `docker compose pull aurral && docker compose up -d aurral`.
+4. Test the behavior changed by the pull request.
+5. Restore the image reference that you used before testing.
 
-Next: [Match Lidarr](/getting-started/storage/)
+## Full stack example
+
+Use [`docker-compose.example.yml`](https://github.com/lklynet/aurral/blob/main/docker-compose.example.yml) for Aurral, Lidarr, slskd, and Navidrome. It uses one `${MEDIA_ROOT:-/srv/media}:/data` mount for the media services.
+
+For Plex, see the [Plex setup guide](/integrations/plex/).
+
+Next: [Filesystem and mounts](/getting-started/storage/)

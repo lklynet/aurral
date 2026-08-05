@@ -191,7 +191,7 @@ Aurral prefers static playlists and Lidarr files. Multiple playlists can use one
 
 Before Aurral removes a playlist, it moves the other file references. Navidrome does not show duplicate files.
 
-Lidarr-aware reuse requires Aurral to read the files at the paths Lidarr reports. Match Lidarr's media mount (for example `/data:/data` with root `/data/music`). See [Match Lidarr](/getting-started/storage/).
+Lidarr-aware reuse requires Aurral to read the files at the paths Lidarr reports. Mount the same media root at the same container path (for example `/data:/data` with root `/data/music`). See [Filesystem and mounts](/getting-started/storage/).
 
 If Lidarr runs on Windows and Aurral runs in Docker, run **Test library access** in **Settings > Lidarr**.
 
@@ -199,4 +199,4 @@ Use the reported path to add a mapping under **Settings > Download Clients > Rem
 
 If Navidrome uses a different path for reused Lidarr files, enable **Use Navidrome paths in M3U files**.
 
-Add a Navidrome path mapping so `.m3u` files use paths that Navidrome can open. See [Navidrome](/integrations/navidrome/#mixed-windows-and-docker-navidrome).
+Add a Navidrome path mapping so `.m3u` files use paths that Navidrome can open. See [Navidrome](/integrations/navidrome/#different-navidrome-paths).

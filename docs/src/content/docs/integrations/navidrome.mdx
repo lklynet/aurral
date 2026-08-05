@@ -1,100 +1,103 @@
 ---
 title: Navidrome
-description: Stream generated playlists and flow libraries.
+description: Connect Navidrome to play Aurral downloads and generated playlists.
 ---
 
-Navidrome is optional. Aurral creates an **Aurral Playlists** library at the `aurral-weekly-flow` path.
+Navidrome is optional. Aurral connects to Navidrome through its API and writes playlist files to the Aurral download tree. Navidrome must also be able to read that tree on disk.
 
-Aurral also writes M3U playlists for your flows and static playlists.
+This is a filesystem connection as well as an API connection. A successful **Test connection** only proves that Aurral can reach the Navidrome API.
 
-![Aurral in-app playback](../../../assets/screenshots/playback.webp)
+See [Filesystem and mounts](/getting-started/storage/) for the complete layout. The recommended Docker setup mounts the same host media root at `/data` in Aurral and Navidrome:
+
+```yaml
+# Aurral
+volumes:
+  - /srv/media:/data
+  - ./config:/config
+
+# Navidrome
+volumes:
+  - /srv/media:/data:ro
+```
 
 ## Setup
 
-1. Mount the same media volume in Aurral and Navidrome at the same container path. For the usual `/data` layout:
+1. Mount the same media root in Aurral and Navidrome at the same container path.
+2. Set Aurral's **Settings > Download Clients > Downloads Folder > Path** to a folder under that path, for example `/data/downloads/aurral`.
+3. Make sure Navidrome can read both `/data/music` and `/data/downloads/aurral` if you want to play reused Lidarr tracks as well as new Aurral downloads.
+4. Open **Settings > Playback > Navidrome** in Aurral.
+5. Enter the Navidrome URL, username, and password. Select **Test connection**, then save.
+6. Run a flow or update a playlist so Aurral can create or update the **Aurral Playlists** library and request a Navidrome scan.
 
-   ```yaml
-   # Aurral
-   volumes:
-     - data:/data
+Aurral creates the **Aurral Playlists** library at:
 
-   # Navidrome
-   volumes:
-     - data:/data:ro
-   ```
-
-   If Navidrome already uses `/music`, also mount the Aurral folder at the path Aurral uses:
-
-   ```yaml
-   - data/downloads/aurral:/data/downloads/aurral:ro
-   ```
-
-2. Set Aurral's **Downloads Folder > Path** to a folder under `/data`, such as `/data/downloads/aurral`.
-3. Connect Navidrome in **Settings > Playback > Navidrome** and save.
-4. Aurral creates the **Aurral Playlists** library, writes its playlist files under `aurral-weekly-flow`, and requests a Navidrome scan. You do not need to create this library manually in Navidrome.
-
-Aurral configures Navidrome through its API. Navidrome must also have access to the audio files on disk.
-
-Aurral embeds playlist metadata into new yt-dlp downloads. On startup, it also repairs older yt-dlp M4A files that have missing or incorrect title, artist, or album tags, then schedules a Navidrome library scan.
-
-## Mixed Windows and Docker Navidrome
-
-Aurral writes M3U playlists under `aurral-weekly-flow` with one track path per line. Navidrome must be able to open those paths on its filesystem.
-
-| Navidrome deployment | Playlist path mode | Setting |
-| -------------------- | ------------------ | ------- |
-| Docker, same mounts as Aurral | **local** (default) | Leave **Use Navidrome paths in M3U files** off |
-| Docker, different mount path than Aurral | **remote** | Enable the Navidrome setting and add a path mapping, or set `M3U_PATH_MODE=remote` plus `M3U_PATH_MAPPINGS` |
-| Native Windows while Aurral is in Docker | **remote** | Enable the Navidrome setting and add a path mapping, or set `M3U_PATH_MODE=remote` plus `M3U_PATH_MAPPINGS` |
-
-### What remote mode does
-
-Path mappings translate Lidarr Windows paths into Aurral container paths. Aurral can then read the files.
-
-For example, `N:\ServerFolders\Music\Music\Artist\track.mp3` becomes `/music/Music/Artist/track.mp3` in Docker.
-
-By default, M3U files use Aurral's container paths. Navidrome cannot resolve `/music/...` if it runs natively on Windows.
-
-The same problem occurs if the Navidrome container uses a different path for the files. Playlists can appear, but tracks do not play.
-
-**Use Navidrome paths in M3U files** changes paths only in M3U files. You can also set `M3U_PATH_MODE=remote`.
-
-Aurral still uses container paths for file checks, reuse, and repairs.
-
-### Example (Aurral in Docker, Navidrome on Windows)
-
-```yaml
-services:
-  aurral:
-    environment:
-      - PATH_MAPPINGS=N:/ServerFolders/Music|/music
-      - M3U_PATH_MODE=remote
-      - M3U_PATH_MAPPINGS=/music|N:/ServerFolders/Music
-    volumes:
-      - N:/ServerFolders/Music:/music
-      - ./config:/config
+```text
+/data/downloads/aurral/aurral-weekly-flow
 ```
 
-Set **Downloads Folder > Path** to a path under `/music`. For example, use `/music/Aurral`.
+You do not normally need to create this library manually in Navidrome. The library can be empty until a track finishes downloading. Wait for the scan after the first completed track.
 
-After you enable remote mode, refresh each affected playlist.
+Navidrome must have permission to manage libraries through its API. If Aurral cannot create the library, use **Settings > System > Storage Health** for the exact path and error, then check the Navidrome account permissions and mount.
 
-Run the flow again. For a shared playlist, edit the playlist and then save it.
+## Existing Lidarr library
 
-See also [Match Lidarr: Windows and mixed Docker setups](/getting-started/storage/#windows-and-mixed-docker-setups).
+Aurral does not copy your Lidarr library into the Aurral playlist folder. If a playlist reuses tracks that already exist in Lidarr, Navidrome must also scan the Lidarr root folder, such as `/data/music`.
 
-## Recommended Navidrome setting
+Add `/data/music` as a normal Navidrome music library if it is not already present. The automatically managed **Aurral Playlists** library is for Aurral's generated download tree.
+
+## Different Navidrome paths
+
+Use matching container paths when possible. A different path affects two things:
+
+- the path Navidrome uses for its music library;
+- the paths written into Aurral's `.m3u` files.
+
+The **Use Navidrome paths in M3U files** setting only changes the second item. It does not mount a folder and it does not make an incorrect Navidrome library path valid.
+
+If Aurral uses `/data/downloads/aurral` and Navidrome uses `/music/aurral` for the same host folder:
+
+1. Mount the same host folder in both containers.
+2. Make sure the Aurral playlist library exists in Navidrome at the path Navidrome can read. If automatic library creation used the Aurral path, correct the library path in Navidrome.
+3. In Aurral, open **Settings > Playback > Navidrome**.
+4. Enable **Use Navidrome paths in M3U files**.
+5. Add this mapping:
+
+   | | Value |
+   | --- | --- |
+   | Aurral Path | `/data/downloads/aurral` |
+   | Navidrome Path | `/music/aurral` |
+
+6. Save the settings and refresh the affected playlist. Run the flow again, or edit and save a shared playlist, to rewrite its `.m3u` file.
+
+For a native Windows Navidrome installation, use the Windows path as **Navidrome Path**, for example `N:/ServerFolders/Music/Aurral`. Use a separate [Remote Path Mapping](/getting-started/storage/#paths-reported-by-lidarr-or-download-clients) if Aurral cannot read paths reported by Lidarr or a download client.
+
+## Generated playlists and scans
+
+Aurral stores generated `.m3u` files under:
+
+```text
+/data/downloads/aurral/aurral-weekly-flow/_playlists/
+```
+
+Navidrome scans the **Aurral Playlists** library, not only your main Lidarr library. If the library appears but has no tracks:
+
+- confirm that a track exists under `aurral-weekly-flow`;
+- confirm that the Navidrome library path points to that folder;
+- run a Navidrome scan or save the Aurral Navidrome settings;
+- wait for the scan to finish.
+
+## Remove missing tracks
+
+For Weekly Flow, set this Navidrome environment variable:
 
 ```bash
 ND_SCANNER_PURGEMISSING=always
 ```
 
-`ND_SCANNER_PURGEMISSING=always` removes old flow entries after a flow changes.
+This removes old flow entries after a flow changes.
 
 :::caution
-`ND_SCANNER_PURGEMISSING=always` also removes other missing Navidrome files. It removes their ratings, play counts, and playlist entries.
-
-Use this setting only when missing files will not return.
+`ND_SCANNER_PURGEMISSING=always` also removes other missing Navidrome files. It can remove their ratings, play counts, and playlist entries. Use it only when missing files will not return.
 :::
 
-For Plex and Plexamp instead, see [Plex](/integrations/plex/).
+For Plex and Plexamp, see [Plex](/integrations/plex/).
