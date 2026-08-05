@@ -3,7 +3,8 @@ import { MoreVertical, Newspaper } from "lucide-react";
 import { getArtistCover } from "../utils/api/endpoints/artists.js";
 
 const formatNewsDate = (value) => {
-  const date = new Date(value || 0);
+  if (!value) return "Recent";
+  const date = new Date(value);
   return Number.isFinite(date.getTime())
     ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(date)
     : "Recent";

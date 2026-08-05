@@ -224,7 +224,17 @@ function InboxMenu() {
   };
 
   const handleReadAll = async () => {
-    await markAllInboxItemsRead();
+    try {
+      await markAllInboxItemsRead();
+    } catch (error) {
+      showError(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          error?.message ||
+          "Failed to mark Inbox items as read",
+      );
+      return;
+    }
     await loadInbox();
   };
 
