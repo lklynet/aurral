@@ -50,8 +50,16 @@ test.before(async () => {
 
   navidrome = http.createServer((req, res) => {
     const url = new URL(req.url || "/", "http://127.0.0.1");
-    navidromeRequests.push(url);
+    navidromeRequests.push({ method: req.method, url });
     res.writeHead(200, { "Content-Type": "application/json" });
+    if (url.pathname === "/auth/login") {
+      res.end(JSON.stringify({ token: "test-token" }));
+      return;
+    }
+    if (url.pathname === "/api/library" && req.method === "GET") {
+      res.end(JSON.stringify([]));
+      return;
+    }
     res.end(JSON.stringify({ "subsonic-response": { status: "ok", version: "1.16.1" } }));
   });
   await new Promise((resolve) => navidrome.listen(0, "127.0.0.1", resolve));
@@ -86,6 +94,11 @@ test("admin can update and test Navidrome after onboarding", async () => {
   assert.equal(saved.response.status, 200, JSON.stringify(saved.payload));
   assert.equal(saved.payload.integrations.navidrome.url, navidromeUrl);
   assert.equal(saved.payload.integrations.navidrome.username, "local-user");
+  assert.ok(
+    navidromeRequests.some(
+      ({ method, url }) => method === "POST" && url.pathname === "/api/library",
+    ),
+  );
 
   const tested = await apiFetch("/api/settings/navidrome/test", {
     method: "POST",
@@ -96,9 +109,9 @@ test("admin can update and test Navidrome after onboarding", async () => {
     success: true,
     message: "Connection successful",
   });
-  assert.equal(navidromeRequests.length, 1);
-  assert.equal(navidromeRequests[0].pathname, "/rest/ping");
-  assert.equal(navidromeRequests[0].searchParams.get("u"), "local-user");
+  const pingRequests = navidromeRequests.filter(({ url }) => url.pathname === "/rest/ping");
+  assert.equal(pingRequests.length, 1);
+  assert.equal(pingRequests[0].url.searchParams.get("u"), "local-user");
 });
 
 test("admin can configure persistent yt-dlp staging outside the download folder", async () => {

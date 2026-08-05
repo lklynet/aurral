@@ -11,11 +11,27 @@ Aurral also writes M3U playlists for your flows and static playlists.
 
 ## Setup
 
-1. Use the Lidarr media mount in Aurral and Navidrome. See [Match Lidarr](/getting-started/storage/).
-2. In Navidrome, scan the Lidarr library.
-3. Add the Aurral Downloads Folder to the Navidrome scan. For example, use `/data/downloads/aurral`.
-4. Connect Navidrome in **Settings > Playback > Navidrome**.
-5. Let Aurral create its library and playlist files under `aurral-weekly-flow`.
+1. Mount the same media volume in Aurral and Navidrome at the same container path. For the usual `/data` layout:
+
+   ```yaml
+   # Aurral
+   volumes:
+     - data:/data
+
+   # Navidrome
+   volumes:
+     - data:/data:ro
+   ```
+
+   If Navidrome already uses `/music`, also mount the Aurral folder at the path Aurral uses:
+
+   ```yaml
+   - data/downloads/aurral:/data/downloads/aurral:ro
+   ```
+
+2. Set Aurral's **Downloads Folder > Path** to a folder under `/data`, such as `/data/downloads/aurral`.
+3. Connect Navidrome in **Settings > Playback > Navidrome** and save.
+4. Aurral creates the **Aurral Playlists** library, writes its playlist files under `aurral-weekly-flow`, and requests a Navidrome scan. You do not need to create this library manually in Navidrome.
 
 Aurral configures Navidrome through its API. Navidrome must also have access to the audio files on disk.
 
