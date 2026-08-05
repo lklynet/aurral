@@ -50,17 +50,31 @@ test.before(async () => {
 
   navidrome = http.createServer((req, res) => {
     const url = new URL(req.url || "/", "http://127.0.0.1");
-    navidromeRequests.push({ method: req.method, url });
-    res.writeHead(200, { "Content-Type": "application/json" });
-    if (url.pathname === "/auth/login") {
-      res.end(JSON.stringify({ token: "test-token" }));
-      return;
-    }
-    if (url.pathname === "/api/library" && req.method === "GET") {
-      res.end(JSON.stringify([]));
-      return;
-    }
-    res.end(JSON.stringify({ "subsonic-response": { status: "ok", version: "1.16.1" } }));
+    let requestBody = "";
+    req.on("data", (chunk) => {
+      requestBody += chunk;
+    });
+    req.on("end", () => {
+      let body = null;
+      try {
+        body = requestBody ? JSON.parse(requestBody) : null;
+      } catch {}
+      navidromeRequests.push({ method: req.method, url, body });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      if (url.pathname === "/auth/login") {
+        res.end(JSON.stringify({ token: "test-token" }));
+        return;
+      }
+      if (url.pathname === "/api/library" && req.method === "GET") {
+        res.end(JSON.stringify([]));
+        return;
+      }
+      if (url.pathname === "/api/library" && req.method === "POST") {
+        res.end(JSON.stringify({ id: "library-1", ...body }));
+        return;
+      }
+      res.end(JSON.stringify({ "subsonic-response": { status: "ok", version: "1.16.1" } }));
+    });
   });
   await new Promise((resolve) => navidrome.listen(0, "127.0.0.1", resolve));
   navidromeUrl = `http://127.0.0.1:${navidrome.address().port}`;
@@ -94,11 +108,13 @@ test("admin can update and test Navidrome after onboarding", async () => {
   assert.equal(saved.response.status, 200, JSON.stringify(saved.payload));
   assert.equal(saved.payload.integrations.navidrome.url, navidromeUrl);
   assert.equal(saved.payload.integrations.navidrome.username, "local-user");
-  assert.ok(
-    navidromeRequests.some(
-      ({ method, url }) => method === "POST" && url.pathname === "/api/library",
-    ),
+  const libraryRequest = navidromeRequests.find(
+    ({ method, url }) => method === "POST" && url.pathname === "/api/library",
   );
+  assert.deepEqual(libraryRequest?.body, {
+    name: "Aurral Playlists",
+    path: path.join(isolatedState.baseDir, "weekly-flow", "aurral-weekly-flow"),
+  });
 
   const tested = await apiFetch("/api/settings/navidrome/test", {
     method: "POST",
