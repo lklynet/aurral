@@ -30,7 +30,7 @@ For path design, hardlinks, and permissions, use the Servarr guides:
 2. Set a folder under the media root.
 3. Connect Lidarr.
 4. Run **Test library access**.
-5. If you use Navidrome, add the Aurral downloads path as a music folder.
+5. If you use Navidrome, mount the Aurral downloads path at the same container path and connect Navidrome in Aurral. Aurral creates its Navidrome library automatically.
 6. If you use Plex, let Aurral register the downloads path.
 
 For example, set the downloads path to `/data/downloads/aurral`.
@@ -59,7 +59,7 @@ This example uses the standard Servarr layout. You can use a different layout if
 | Aurral         | `/data:/data`    | Same mount. Set Downloads Folder in the UI.          |
 | slskd          | `/data:/data`    | Same mount that Lidarr uses                         |
 | SABnzbd/NZBGet | `/data:/data`    | Same mount that Lidarr uses                         |
-| Navidrome      | `/data:/data:ro` | Scan Lidarr library **and** Aurral's downloads path |
+| Navidrome      | `/data:/data:ro` | Reads the Lidarr library and Aurral's downloads path |
 | Plex           | `/data:/data`    | Reads Aurral's `aurral-weekly-flow` tree            |
 
 App state stays in `./config:/config` and is not shared.

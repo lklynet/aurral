@@ -371,6 +371,14 @@ export function registerGeneral(router) {
       }
 
       dbOps.updateSettings(updatedSettings);
+      if (integrations?.navidrome) {
+        const { playlistManager } = await import(
+          "../../../services/weeklyFlow/weeklyFlowPlaylistManager.js"
+        );
+        playlistManager.updateConfig(false);
+        await playlistManager.ensureSmartPlaylists();
+        playlistManager.scheduleScanLibrary(true);
+      }
       const reconciled = reconcileLocalNetworkBypassSetting().settings;
       if (
         localBypassWasEnabled &&

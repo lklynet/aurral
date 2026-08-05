@@ -66,11 +66,11 @@ jobs:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: bash scripts/notify-github-status.sh stable
 
-      - name: Notify Discord releases channel
+      - name: Notify Discord announcements channel
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_SHA: ${{ steps.release.outputs.sha }}
-          DISCORD_WEBHOOK_RELEASES: ${{ secrets.DISCORD_WEBHOOK_RELEASES }}
+          DISCORD_WEBHOOK_ANNOUNCEMENTS: ${{ secrets.DISCORD_WEBHOOK_ANNOUNCEMENTS }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: bash scripts/notify-discord.sh releases
