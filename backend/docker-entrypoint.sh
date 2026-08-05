@@ -104,7 +104,7 @@ if [ "$(id -u)" = "0" ]; then
     mkdir -p "$AURRAL_DATA_DIR"
     chown -R "$target_uid:$target_gid" /config /app/backend/data "$AURRAL_DATA_DIR"
 
-    exec gosu "$target_uid:$target_gid" env AURRAL_DATA_DIR="$AURRAL_DATA_DIR" "$@"
+    exec setpriv --reuid "$target_uid" --regid "$target_gid" --groups "$target_gid" env AURRAL_DATA_DIR="$AURRAL_DATA_DIR" "$@"
 fi
 
 if [ -z "${AURRAL_DATA_DIR:-}" ]; then
