@@ -61,8 +61,10 @@ export async function getRecentMissingReleases(limit = 24, options = {}) {
   if (Array.isArray(artists)) {
     artists.forEach((artist) => {
       if (artist?.id != null) {
-        artistsById.set(artist.id, artist);
-        artistsById.set(String(artist.id), artist);
+        const mappedArtist = libraryManager.mapLidarrArtist(artist);
+        mappedArtist.artistName = mappedArtist.artistName || artist.name || null;
+        artistsById.set(artist.id, mappedArtist);
+        artistsById.set(String(artist.id), mappedArtist);
       }
     });
   }
@@ -91,8 +93,8 @@ export async function getRecentMissingReleases(limit = 24, options = {}) {
       return {
         ...mapped,
         artistName: mapped.artistName || artist.artistName || artist.name || null,
-        artistMbid: artist.foreignArtistId || artist.mbid || null,
-        foreignArtistId: artist.foreignArtistId || artist.mbid || null,
+        artistMbid: artist.mbid || null,
+        foreignArtistId: artist.foreignArtistId || null,
       };
     })
     .filter(Boolean)

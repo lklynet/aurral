@@ -1,4 +1,5 @@
 import path from "path";
+import { UUID_REGEX } from "../../lib/uuid.js";
 import { dbOps, userOps } from "../db/helpers/index.js";
 import { hasPermission } from "../middleware/auth.js";
 const normalizeTypeName = (value) =>
@@ -18,7 +19,10 @@ const getTypeName = (item) => {
 import {
   musicbrainzRequest,
   musicbrainzGetArtistReleaseGroups,
+  musicbrainzGetArtistIdentityByMbid,
+  musicbrainzResolveArtistMbidByName,
 } from "./apiClients/index.js";
+import { mapWithConcurrency } from "./discovery/helpers.js";
 import { logger } from "./logger.js";
 import { runMonitoringRepairSequence } from "./libraryMonitoringRepair.js";
 const LIDARR_RETRY_MS = 60000;
@@ -36,6 +40,7 @@ const _tracksCache = new Map();
 let _playbackQueueCache = null;
 const _artistMonitoringRepairs = new Map();
 const _albumAddInflight = new Map();
+const _artistMappingInflight = new Map();
 const ALBUM_OWNED_BY_DIFFERENT_ARTIST_ERROR =
   "Album already exists in Lidarr under a different artist";
 
@@ -739,6 +744,7 @@ export class LibraryManager {
     }
     try {
       const lidarrArtist = await lidarr.getArtist(id);
+      await this.backfillLidarrArtistMappings([lidarrArtist]);
       return this.mapLidarrArtist(lidarrArtist);
     } catch (error) {
       return null;
@@ -831,6 +837,7 @@ export class LibraryManager {
         if (!Array.isArray(lidarrArtists)) {
           return _cachedArtists;
         }
+        await this.backfillLidarrArtistMappings(lidarrArtists);
         _cachedArtists = lidarrArtists.map((a) => this.mapLidarrArtist(a));
         import("../../services/unifiedSearchService.js").then(({ clearSearchContextCache }) => clearSearchContextCache()).catch(() => {});
         return _cachedArtists;
@@ -883,6 +890,7 @@ export class LibraryManager {
           try {
             const lidarrArtists = await lidarr.request("/artist");
             if (Array.isArray(lidarrArtists)) {
+              await this.backfillLidarrArtistMappings(lidarrArtists);
               _cachedArtists = lidarrArtists.map((a) => this.mapLidarrArtist(a));
               _lastFullArtistFetchAt = Date.now();
             }
@@ -892,6 +900,7 @@ export class LibraryManager {
       }
       const picked = artistIds.sort(() => 0.5 - Math.random()).slice(0, normalizedLimit);
       const artists = await Promise.all(picked.map((id) => lidarr.getArtist(id).catch(() => null)));
+      await this.backfillLidarrArtistMappings(artists.filter(Boolean));
       const mapped = artists.filter(Boolean).map((artist) => this.mapLidarrArtist(artist));
       if (mapped.length >= normalizedLimit) return mapped;
       if (Array.isArray(_cachedArtists) && _cachedArtists.length > 0) {
@@ -915,15 +924,17 @@ export class LibraryManager {
   mapLidarrArtist(lidarrArtist) {
     const artistPath = lidarrArtist.path ?? null;
     const artistId = Number(lidarrArtist.id);
-    const mappedMbid = dbOps.getLidarrArtistMbid(lidarrArtist.foreignArtistId);
-    const foreignArtistId = mappedMbid || lidarrArtist.foreignArtistId;
+    const foreignArtistId = String(lidarrArtist.foreignArtistId || "").trim() || null;
+    const mappedMbid = dbOps.getLidarrArtistMbid(foreignArtistId);
+    const mbid =
+      mappedMbid || (foreignArtistId && UUID_REGEX.test(foreignArtistId) ? foreignArtistId : null);
     const normalizedArtistId =
       Number.isSafeInteger(artistId) && artistId > 0 ? String(artistId) : null;
     const monitorOption = lidarrArtist.monitor || lidarrArtist.addOptions?.monitor || "none";
     const normalizedMonitorOption = monitorOption || "none";
     return {
       id: normalizedArtistId,
-      mbid: foreignArtistId,
+      mbid,
       foreignArtistId,
       artistName: lidarrArtist.artistName,
       path: artistPath,
@@ -942,6 +953,70 @@ export class LibraryManager {
         sizeOnDisk: 0,
       },
     };
+  }
+
+  async resolveLidarrArtistMbid(lidarrArtist) {
+    const providerId = String(lidarrArtist?.foreignArtistId || "").trim();
+    const artistName = String(lidarrArtist?.artistName || "").trim();
+    if (!providerId || !artistName || UUID_REGEX.test(providerId)) return null;
+
+    const existingMbid = dbOps.getLidarrArtistMbid(providerId);
+    if (existingMbid) return existingMbid;
+
+    const mbid = await musicbrainzResolveArtistMbidByName(artistName);
+    if (!UUID_REGEX.test(String(mbid || ""))) return null;
+
+    const identity = await musicbrainzGetArtistIdentityByMbid(mbid);
+    const identityName = String(identity?.name || "").trim();
+    const providerIds = Array.isArray(identity?.providerIds) ? identity.providerIds : [];
+    const matchesProviderId = providerIds.some(
+      (value) => String(value || "").trim().toLowerCase() === providerId.toLowerCase(),
+    );
+    if (!identityName || identityName.toLowerCase() !== artistName.toLowerCase() || !matchesProviderId) {
+      return null;
+    }
+
+    try {
+      dbOps.setLidarrArtistIdMap(mbid, providerId);
+      return mbid;
+    } catch (error) {
+      if (error?.code !== "LIDARR_ARTIST_ID_CONFLICT") throw error;
+      return null;
+    }
+  }
+
+  async backfillLidarrArtistMappings(lidarrArtists) {
+    const candidates = [];
+    const seen = new Set();
+    for (const artist of Array.isArray(lidarrArtists) ? lidarrArtists : []) {
+      const providerId = String(artist?.foreignArtistId || "").trim();
+      if (
+        !providerId ||
+        UUID_REGEX.test(providerId) ||
+        seen.has(providerId) ||
+        dbOps.getLidarrArtistMbid(providerId)
+      ) {
+        continue;
+      }
+      seen.add(providerId);
+      candidates.push(artist);
+    }
+
+    await mapWithConcurrency(candidates, 2, (artist) => {
+      const providerId = String(artist?.foreignArtistId || "").trim();
+      let mappingRequest = _artistMappingInflight.get(providerId);
+      if (!mappingRequest) {
+        mappingRequest = this.resolveLidarrArtistMbid(artist)
+          .catch(() => null)
+          .finally(() => {
+            if (_artistMappingInflight.get(providerId) === mappingRequest) {
+              _artistMappingInflight.delete(providerId);
+            }
+          });
+        _artistMappingInflight.set(providerId, mappingRequest);
+      }
+      return mappingRequest;
+    });
   }
 
   async updateArtist(mbid, updates) {
