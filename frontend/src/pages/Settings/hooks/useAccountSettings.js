@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   getMyListeningHistory,
   getMyLidarrPreferences,
@@ -6,7 +6,7 @@ import {
   updateMyLidarrPreferences,
 } from "../../../utils/api/endpoints/auth.js";
 
-export function useAccountSettings(authUser, showSuccess, showError) {
+export function useAccountSettings(authUser, showError) {
   const [listenHistoryProvider, setListenHistoryProvider] = useState("lastfm");
   const [listenHistoryUsername, setListenHistoryUsername] = useState("");
   const [listenHistoryUrl, setListenHistoryUrl] = useState("");
@@ -22,6 +22,10 @@ export function useAccountSettings(authUser, showSuccess, showError) {
   const [savedLidarrQualityProfileId, setSavedLidarrQualityProfileId] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const saveTimerRef = useRef(null);
+  const handleSaveRef = useRef(null);
+  const hasUnsavedChangesRef = useRef(false);
+  const isListenHistoryValidRef = useRef(false);
 
   const hasUnsavedChanges =
     listenHistoryProvider !== savedListenHistoryProvider ||
@@ -33,7 +37,8 @@ export function useAccountSettings(authUser, showSuccess, showError) {
   const isListenHistoryValid =
     listenHistoryProvider !== "koito" || !!listenHistoryUrl.trim().replace(/\/+$/, "");
 
-  const canSave = hasUnsavedChanges && isListenHistoryValid;
+  hasUnsavedChangesRef.current = hasUnsavedChanges;
+  isListenHistoryValidRef.current = isListenHistoryValid;
 
   const fetchListeningHistory = useCallback(async () => {
     try {
@@ -116,7 +121,6 @@ export function useAccountSettings(authUser, showSuccess, showError) {
       setSavedLidarrRootFolderPath(nextRootFolderPath);
       setLidarrQualityProfileId(nextQualityProfileId);
       setSavedLidarrQualityProfileId(nextQualityProfileId);
-      showSuccess("Profile saved");
     } catch {
       showError("Failed to save account settings");
     } finally {
@@ -129,9 +133,43 @@ export function useAccountSettings(authUser, showSuccess, showError) {
     listenHistoryUrl,
     lidarrRootFolderPath,
     lidarrQualityProfileId,
-    showSuccess,
     showError,
   ]);
+
+  handleSaveRef.current = handleSave;
+
+  useEffect(() => {
+    if (loading || !hasUnsavedChanges || !isListenHistoryValid) return undefined;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      void handleSaveRef.current?.();
+    }, 450);
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+    };
+  }, [
+    loading,
+    hasUnsavedChanges,
+    isListenHistoryValid,
+    listenHistoryProvider,
+    listenHistoryUsername,
+    listenHistoryUrl,
+    lidarrRootFolderPath,
+    lidarrQualityProfileId,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (hasUnsavedChangesRef.current && isListenHistoryValidRef.current) {
+        void handleSaveRef.current?.();
+      }
+    };
+  }, []);
 
   return {
     listenHistoryProvider,
@@ -147,8 +185,6 @@ export function useAccountSettings(authUser, showSuccess, showError) {
     setLidarrRootFolderPath,
     lidarrQualityProfileId,
     setLidarrQualityProfileId,
-    hasUnsavedChanges,
-    canSave,
     loading,
     saving,
     handleSave,

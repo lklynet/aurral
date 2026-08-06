@@ -251,7 +251,7 @@ export function SettingsPlaybackSection({
       updatePlex(patch);
       showSuccess(
         owned.length === 1 && patch.url
-          ? `Signed in and selected "${owned[0].name}". Remember to Save settings.`
+          ? `Signed in and selected "${owned[0].name}". Changes save automatically.`
           : "Signed in to Plex. Select your server below.",
       );
     } catch (err) {
@@ -270,7 +270,7 @@ export function SettingsPlaybackSection({
       return;
     }
     updatePlex({ url, machineIdentifier: server.clientIdentifier });
-    showInfo(`Selected "${server.name}". Remember to Save settings.`);
+    showInfo(`Selected "${server.name}". Changes save automatically.`);
   };
 
   const handleDisconnectPlex = () => {
@@ -280,7 +280,7 @@ export function SettingsPlaybackSection({
       machineIdentifier: "",
     });
     setPlexServers([]);
-    showInfo("Plex disconnected. Save settings to apply.");
+    showInfo("Plex disconnected. Changes save automatically.");
   };
 
   const handleTestPlex = async () => {
@@ -329,8 +329,8 @@ export function SettingsPlaybackSection({
 
   const handleSyncPlex = async () => {
     if (hasUnsavedChanges) {
-      showError("Save settings first, then sync to Plex.");
-      return;
+      const saved = await handleSaveSettings?.();
+      if (saved !== true) return;
     }
     setSyncingPlex(true);
     try {
@@ -795,7 +795,7 @@ export function SettingsPlaybackSection({
             <p className="settings-modal__hint">
               Creates an &quot;Aurral&quot; music library pointed at your downloads, scans it, and
               builds a playlist per flow. The Plex server must be able to read the same downloads
-              path Aurral writes to. Save settings before syncing.
+              path Aurral writes to. Changes save automatically before syncing.
             </p>
           </SettingsModalSection>
         </SettingsIntegrationModal>

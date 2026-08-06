@@ -5,7 +5,6 @@ import { PlexSelfLinkSection } from "./PlexSelfLinkSection";
 
 import { Link } from "react-router-dom";
 import { RotateCcw } from "lucide-react";
-import FlipSaveButton from "../../../components/FlipSaveButton";
 export function SettingsAccountTab({
   listenHistoryProvider,
   setListenHistoryProvider,
@@ -20,10 +19,7 @@ export function SettingsAccountTab({
   setLidarrRootFolderPath,
   lidarrQualityProfileId,
   setLidarrQualityProfileId,
-  hasUnsavedChanges,
-  canSave = hasUnsavedChanges,
   loading,
-  saving,
   handleSave,
   hidePanelHeader = false,
   showSuccess,
@@ -71,12 +67,7 @@ export function SettingsAccountTab({
 
   return (
     <div className="settings-page__panel">
-      {!hidePanelHeader && (
-        <div className="settings-page__panel-header">
-          <h2 className="settings-page__panel-title">Profile</h2>
-          <FlipSaveButton saving={saving} disabled={!canSave} onClick={handleSave} />
-        </div>
-      )}
+      {!hidePanelHeader && <h2 className="settings-page__panel-title">Profile</h2>}
       <form
         onSubmit={(e) => {
           e.preventDefault();

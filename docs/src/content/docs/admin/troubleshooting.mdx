@@ -33,7 +33,7 @@ description: Common setup and runtime issues.
 
 - Make sure that Aurral mounts the same media root as Lidarr ([Filesystem and mounts](/getting-started/storage/)).
 - Make sure that **Settings > Download Clients > Downloads Folder > Path** is under that mount.
-- In **Settings > Playback > Navidrome**, test and save the Navidrome connection.
+- In **Settings > Playback > Navidrome**, test the Navidrome connection. Changes save automatically.
 - Make sure that Navidrome scans Aurral's downloads path and not only Lidarr's library.
 - Aurral's **Aurral Playlists** library can be empty until a flow finishes a download. Check for a file under `aurral-weekly-flow`, then wait for the Navidrome scan.
 - If the library is missing, check that the Navidrome account can manage libraries through its API.
@@ -94,7 +94,7 @@ See [Navidrome: Different Navidrome paths](/integrations/navidrome/#different-na
 - The Plex container or host must contain this path: `<downloads>/aurral-weekly-flow/<flow-id>/...`.
 - If Plex and Aurral use different mounts, set **Settings > Playback > Plex > Plex Aurral Library path** to the folder that Plex sees.
 - Leave **Plex Aurral Library path** blank if both apps use the same path prefix.
-- Save the settings.
+- Make sure the Plex settings have finished saving automatically.
 - Select **Sync to Plex now** again.
 - Initial scans can take several minutes. Aurral runs catch-up synchronization in the background while Plex indexes files.
 - Make sure that flows finish their downloads before you expect Plex playlists to populate.

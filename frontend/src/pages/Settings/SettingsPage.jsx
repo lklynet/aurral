@@ -1,14 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo } from "react";
+import { Navigate, useParams } from "react-router-dom";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import SettingsMetadataSponsorSection from "../../components/SettingsMetadataSponsorSection";
 import { useSettingsData } from "./hooks/useSettingsData";
-import { useUnsavedGuard } from "./hooks/useUnsavedGuard";
 import { useSettingsTabs } from "./hooks/useSettingsTabs";
 import { useSettingsUsers } from "./hooks/useSettingsUsers";
-import { UnsavedModal } from "./components/UnsavedModal";
 import { CommunityGuideModal } from "./components/CommunityGuideModal";
 import { SettingsMobileNav } from "./components/SettingsMobileNav";
 import { SettingsStorageTab } from "./components/SettingsStorageTab";
@@ -21,21 +19,15 @@ import { SettingsConnectTab } from "./components/SettingsConnectTab";
 import { SettingsDiscoverTab } from "./components/SettingsDiscoverTab";
 import { SettingsUsersTab } from "./components/SettingsUsersTab";
 import { SettingsMetadataTab } from "./components/SettingsMetadataTab";
-import { SettingsArrToolbar } from "./components/SettingsArrToolbar";
 import { DEFAULT_SETTINGS_TAB, normalizeSettingsTabId } from "./settingsTabsConfig";
 import "./settingsArr.css";
-
-const SETTINGS_TABS_WITHOUT_SAVE = new Set(["system", "tasks"]);
 
 function SettingsPage() {
   const { showSuccess, showError, showInfo } = useToast();
   const { user: authUser } = useAuth();
-  const navigate = useNavigate();
   const { tab: tabParam } = useParams();
-  const [pendingTab, setPendingTab] = useState(null);
 
   const data = useSettingsData(showSuccess, showError, showInfo);
-  const guard = useUnsavedGuard(data.hasUnsavedChanges, data.setHasUnsavedChanges);
 
   const tabs = useSettingsTabs(authUser);
 
@@ -57,24 +49,8 @@ function SettingsPage() {
   }, [tabs.activeTab]);
 
   const handleTabSelect = (tabId) => {
-    if (data.hasUnsavedChanges && tabId !== tabs.activeTab) {
-      setPendingTab(tabId);
-      return;
-    }
     tabs.setActiveTab(tabId);
   };
-
-  const handleConfirmLeave = () => {
-    data.setHasUnsavedChanges(false);
-    if (pendingTab) {
-      navigate(`/settings/${pendingTab}`);
-      setPendingTab(null);
-      return;
-    }
-    guard.handleConfirmLeave();
-  };
-
-  const showUnsavedModal = guard.showUnsavedModal || Boolean(pendingTab);
 
   const renderTabContent = () => {
     switch (tabs.activeTab) {
@@ -214,8 +190,6 @@ function SettingsPage() {
               settings={data.settings}
               updateSettings={data.updateSettings}
               health={data.health}
-              hasUnsavedChanges={data.hasUnsavedChanges}
-              saving={data.saving}
               handleSaveSettings={data.handleSaveSettings}
               hidePanelHeader
             />
@@ -292,15 +266,6 @@ function SettingsPage() {
 
   return (
     <>
-      <UnsavedModal
-        show={showUnsavedModal}
-        onCancel={() => {
-          setPendingTab(null);
-          guard.handleCancelLeave();
-        }}
-        onConfirm={handleConfirmLeave}
-      />
-
       <CommunityGuideModal
         show={data.showCommunityGuideModal}
         onClose={() => data.setShowCommunityGuideModal(false)}
@@ -308,14 +273,6 @@ function SettingsPage() {
       />
 
       <div className="settings-arr">
-        {SETTINGS_TABS_WITHOUT_SAVE.has(tabs.activeTab) ? null : (
-          <SettingsArrToolbar
-            hasPendingChanges={data.hasUnsavedChanges}
-            isSaving={data.saving}
-            onSave={data.handleSaveSettings}
-          />
-        )}
-
         <div className="settings-arr__body">
           <div className="settings-arr__content">
             <SettingsMobileNav
