@@ -213,7 +213,7 @@ export class SlskdClient {
         downloadPath,
         message: soulseekConnected
           ? "slskd is connected"
-          : `Aurral reached slskd, but Soulseek is ${serverState || "disconnected"}. Open slskd, log in, and connect to the Soulseek server.`,
+          : "slskd is reachable, but it is not connected to Soulseek. Open slskd and connect to the Soulseek server.",
       };
       connectionCache = { checkedAt: Date.now(), result };
       return result;

@@ -48,6 +48,44 @@ test("slskd search state helpers recognize active and completed searches", () =>
   assert.equal(isSearchComplete({ state: "Requested" }), false);
 });
 
+test("testConnection explains an unavailable Soulseek connection without leaking its enum state", async () => {
+  const originalSettings = dbOps.getSettings();
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    if (request.method === "GET" && request.url === "/api/v0/application") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ server: { state: "None", isConnected: false } }));
+      return;
+    }
+    if (request.method === "GET" && request.url === "/api/v0/options") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ directories: { downloads: "/downloads" } }));
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...(originalSettings.integrations || {}),
+      slskd: { url: mock.url, apiKey: "test-key" },
+    },
+  });
+
+  try {
+    const result = await slskdClient.testConnection({ force: true });
+    assert.equal(
+      result.message,
+      "slskd is reachable, but it is not connected to Soulseek. Open slskd and connect to the Soulseek server.",
+    );
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    await mock.close();
+  }
+});
+
 test("flattenSearchResults reads files and lockedFiles payloads", () => {
   const results = slskdClient.flattenSearchResults({
     responses: [
