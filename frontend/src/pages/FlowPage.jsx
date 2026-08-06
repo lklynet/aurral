@@ -1617,29 +1617,36 @@ function FlowPage() {
               )}
             </Suspense>
             <div className="flow-page__recipe-actions">
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                disabled={applyingFlowId === selectedFlow.id}
-                onClick={() => handleCancelSimple(selectedFlow)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm${flowHasChanges ? " btn-primary" : " btn-secondary"}`}
-                disabled={
-                  !flowHasChanges || Boolean(simpleError) || applyingFlowId === selectedFlow.id
-                }
-                onClick={() => handleApplySimple(selectedFlow)}
-              >
-                {applyingFlowId === selectedFlow.id ? (
-                  <Loader2 className="artist-icon-sm animate-spin" />
-                ) : (
-                  <Check className="artist-icon-sm" />
-                )}
-                {flowHasChanges ? "Save recipe" : "Saved"}
-              </button>
+              {flowHasChanges ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={applyingFlowId === selectedFlow.id}
+                  onClick={() => handleCancelSimple(selectedFlow)}
+                >
+                  Cancel
+                </button>
+              ) : null}
+              {flowHasChanges || applyingFlowId === selectedFlow.id ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={
+                    !flowHasChanges || Boolean(simpleError) || applyingFlowId === selectedFlow.id
+                  }
+                  onClick={() => handleApplySimple(selectedFlow)}
+                >
+                  {applyingFlowId === selectedFlow.id ? (
+                    <Loader2 className="artist-icon-sm animate-spin" />
+                  ) : null}
+                  Save recipe
+                </button>
+              ) : (
+                <span className="flow-page__recipe-status" role="status">
+                  <Check className="artist-icon-sm" aria-hidden="true" />
+                  Saved
+                </span>
+              )}
             </div>
           </div>
         ) : null}

@@ -1,18 +1,18 @@
 .app-main--settings {
   padding: var(--aurral-space-page-lg);
   background: var(--aurral-surface);
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .app-main--settings .app-main__content {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
+  display: block;
+  height: auto;
+  min-height: 100%;
 }
 
 .app-main--settings + .app-main-scrollbar {
-  display: none;
+  display: block;
 }
 
 .app-shell:has(.settings-arr) .app-main-wrap {
@@ -42,8 +42,8 @@
   width: 100%;
   max-width: 55rem;
   flex-direction: column;
-  min-height: 0;
-  height: 100%;
+  min-height: 100%;
+  height: auto;
   margin: 0 auto;
   background: transparent;
   color: var(--aurral-text-muted);
@@ -109,9 +109,9 @@
 }
 
 .settings-arr__body {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
+  flex: none;
+  min-height: auto;
+  overflow: visible;
 }
 
 .settings-arr__content {
@@ -1018,7 +1018,7 @@
   display: block;
   height: 100%;
   min-width: 0.125rem;
-  background: #60a5fa;
+  background: var(--aurral-info);
 }
 
 .arr-disk-meter__label {
@@ -1072,8 +1072,8 @@
 }
 
 .arr-task-status--active {
-  background: rgba(96, 165, 250, 0.16);
-  color: #93c5fd;
+  background: var(--aurral-info-soft);
+  color: var(--aurral-info-text);
 }
 
 .arr-task-status--queued {
@@ -1119,7 +1119,7 @@
 }
 
 .arr-table__row--warning {
-  background: rgba(251, 191, 36, 0.08);
+  background: color-mix(in srgb, var(--aurral-warning) 8%, transparent);
 }
 
 .arr-table__subtle--warning {
@@ -1510,32 +1510,6 @@
   .settings-arr .arr-meta-grid--two-col {
     grid-template-columns: 1fr;
   }
-}
-
-.app-main--settings {
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.app-main--settings + .app-main-scrollbar {
-  display: block;
-}
-
-.app-main--settings .app-main__content {
-  display: block;
-  height: auto;
-  min-height: 100%;
-}
-
-.settings-arr {
-  height: auto;
-  min-height: 100%;
-}
-
-.settings-arr__body {
-  flex: none;
-  min-height: auto;
-  overflow: visible;
 }
 
 @media (min-width: 48rem) {

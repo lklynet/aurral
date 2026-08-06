@@ -79,7 +79,6 @@ export function DiscoverRail({
             type="button"
             onClick={() => scrollByAmount(-1)}
             className="btn btn-ghost btn-icon-square"
-            style={{ color: canScrollLeft ? "#6f7685" : "#2d3442" }}
             aria-label={`Scroll ${title} left`}
             title={`Scroll ${title} left`}
             disabled={!canScrollLeft}
@@ -90,7 +89,6 @@ export function DiscoverRail({
             type="button"
             onClick={() => scrollByAmount(1)}
             className="btn btn-ghost btn-icon-square"
-            style={{ color: canScrollRight ? "#d1d5df" : "#2d3442" }}
             aria-label={`Scroll ${title} right`}
             title={`Scroll ${title} right`}
             disabled={!canScrollRight}

@@ -248,11 +248,6 @@ export function MixSlider({
                 }
                 disabled={isDisabled}
                 className={`flow-page__mix-toggle${isActive ? " is-active" : ""}${isDisabled ? " is-disabled" : ""}`}
-                style={
-                  isActive
-                    ? { backgroundColor: SOURCE_MIX_COLORS[option.key] }
-                    : undefined
-                }
                 aria-pressed={isActive}
                 title={disabledReason || undefined}
               >
@@ -287,7 +282,7 @@ export function MixSlider({
                 className={`flow-page__mix-segment flow-page__mix-segment--${key}`}
                 style={{
                   width: `${percent}%`,
-                  backgroundColor: SOURCE_MIX_COLORS[key],
+                  "--flow-mix-color": SOURCE_MIX_COLORS[key],
                 }}
               >
                 {showLabel

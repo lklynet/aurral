@@ -10,6 +10,7 @@ import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { SettingsInput } from "./Settings/components/SettingsField";
 import { OnboardingStep, OnboardingStepHeader, OnboardingHint } from "./onboardingUtils.jsx";
+import PillToggle from "../components/PillToggle";
 import {
   getApiErrorMessage,
   ONBOARDING_HERO_LOGO_SIZE,
@@ -264,15 +265,14 @@ function Onboarding() {
                       onChange={(e) => setAuthPasswordConfirm(e.target.value)}
                     />
                     <OnboardingHint>Password must be at least 8 characters long.</OnboardingHint>
-                    <label className="onboarding-checkbox-row">
-                      <input
-                        type="checkbox"
-                        className="artist-checkbox"
+                    <div className="onboarding-toggle-row">
+                      <span>Auto-login on local network</span>
+                      <PillToggle
                         checked={localNetworkBypass}
                         onChange={(e) => setLocalNetworkBypass(e.target.checked)}
+                        aria-label="Auto-login on local network"
                       />
-                      <span>Auto-login on local network</span>
-                    </label>
+                    </div>
                     <OnboardingHint>
                       Skip the login screen from devices on your LAN. You can change this later in
                       Settings → Users.
