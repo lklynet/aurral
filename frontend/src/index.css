@@ -3143,6 +3143,23 @@ textarea {
   margin-bottom: 0;
 }
 
+.artist-pick-panel .artist-track-list__toolbar .btn-accent {
+  width: 2.25rem !important;
+  min-width: 2.25rem !important;
+  height: 2.25rem !important;
+  min-height: 2.25rem !important;
+  border-color: transparent;
+  background: transparent;
+  color: var(--aurral-text-muted);
+}
+
+.artist-pick-panel .artist-track-list__toolbar .btn-accent:hover:not(:disabled),
+.artist-pick-panel .artist-track-list__toolbar .btn-accent:focus-visible {
+  border-color: transparent;
+  background: var(--aurral-surface-hover);
+  color: var(--aurral-text);
+}
+
 .artist-pick-panel__tracks-label {
   color: var(--aurral-text-muted);
   font-size: 0.75rem;
