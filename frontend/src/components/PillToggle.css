@@ -41,18 +41,18 @@
 }
 
 .pill-toggle[aria-checked="true"] {
-  background-color: var(--aurral-surface-selected);
+  background-color: var(--aurral-control-on);
   box-shadow:
-    inset 0 0 0 1px var(--aurral-border-strong),
-    0 0 0 1px var(--aurral-border);
+    inset 0 0 0 1px color-mix(in srgb, var(--aurral-control-on) 72%, var(--aurral-text)),
+    0 0 0 1px color-mix(in srgb, var(--aurral-control-on) 38%, transparent);
 }
 
 .pill-toggle[aria-checked="true"]::before {
   transform: translateX(var(--thumb-travel));
-  background-color: var(--aurral-text);
+  background-color: var(--aurral-control-on-contrast);
   box-shadow:
     0 1px 3px rgba(0, 0, 0, 0.42),
-    0 0 0 1px color-mix(in srgb, var(--aurral-text) 35%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--aurral-control-on-contrast) 35%, transparent);
 }
 
 .pill-toggle:focus-visible {
@@ -65,7 +65,7 @@
 .pill-toggle[aria-checked="true"]:focus-visible {
   box-shadow:
     0 0 0 3px var(--aurral-ring),
-    inset 0 0 0 1px var(--aurral-border-strong);
+    inset 0 0 0 1px color-mix(in srgb, var(--aurral-control-on) 72%, var(--aurral-text));
 }
 
 .pill-toggle:active::before {
