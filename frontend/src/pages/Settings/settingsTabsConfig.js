@@ -3,6 +3,7 @@ import {
   Compass,
   Database,
   Download,
+  HardDrive,
   ListChecks,
   Monitor,
   Music,
@@ -13,6 +14,7 @@ import {
 
 export const SETTINGS_TABS = [
   { id: "system", label: "System", icon: Monitor },
+  { id: "storage-health", label: "Storage Health", icon: HardDrive },
   { id: "tasks", label: "Tasks", icon: ListChecks },
   { id: "lidarr", label: "Lidarr", icon: Server },
   { id: "indexers", label: "Indexers", icon: Radar },
@@ -28,11 +30,19 @@ export const SETTINGS_NAV_TABS = SETTINGS_TABS.filter((tab) => !tab.hidden);
 
 const SETTINGS_SEARCH_METADATA = {
   system: {
-    sections: ["Health", "Disk Space", "Storage Health", "API Key", "About", "More Info"],
+    sections: ["Runtime", "Data", "API Key", "More Info"],
     services: {
-      Storage: "disk filesystem paths",
-      Database: "sqlite data",
+      Runtime: "version uptime host platform",
+      Database: "sqlite data runtime",
       Docker: "container runtime",
+    },
+  },
+  "storage-health": {
+    sections: ["Health", "Disk Space", "Storage Health"],
+    services: {
+      Storage: "disk filesystem paths data directory",
+      Downloads: "download paths free space",
+      Database: "sqlite data storage",
     },
   },
   tasks: {
@@ -140,7 +150,7 @@ export const LEGACY_SETTINGS_TAB_MAP = {
   library: "lidarr",
   playlists: "download-clients",
   downloads: "system",
-  storage: "system",
+  storage: "storage-health",
   general: "system",
   notifications: "connect",
 };

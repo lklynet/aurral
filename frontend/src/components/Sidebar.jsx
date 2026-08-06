@@ -431,7 +431,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
                   <nav className="sidebar-subnav" aria-label="Settings sections">
                     {settingsTabs.map((tab) => {
                       const tabActive = activeSettingsTab === tab.id;
-                      const showStorageAlert = tab.id === "system" && hasStorageFailure;
+                      const showStorageAlert = tab.id === "storage-health" && hasStorageFailure;
                       return (
                         <Link
                           key={tab.id}

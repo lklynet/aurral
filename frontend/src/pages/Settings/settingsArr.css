@@ -798,6 +798,30 @@
   overflow-wrap: anywhere;
 }
 
+.arr-health__technical {
+  min-width: 0;
+}
+
+.arr-health__technical summary {
+  color: var(--aurral-text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  list-style-position: inside;
+}
+
+.arr-health__technical[open] {
+  display: grid;
+  gap: 0.375rem;
+}
+
+.arr-health__technical[open] .arr-health__path {
+  max-height: 10rem;
+  overflow: auto;
+  padding: 0.375rem;
+  border-radius: var(--aurral-radius-sm);
+  background: var(--aurral-surface-muted);
+}
+
 .arr-health__muted {
   color: var(--aurral-text-subtle);
 }
@@ -2108,5 +2132,204 @@
 
   .settings-arr .arr-form-group--large .arr-form-control {
     margin-top: 0.375rem;
+  }
+}
+
+.settings-arr .settings-system {
+  display: grid;
+  gap: 2.5rem;
+}
+
+.settings-arr .settings-system__body {
+  display: grid;
+  gap: 2.5rem;
+  min-width: 0;
+}
+
+.settings-arr .settings-system__intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 0.75rem;
+}
+
+.settings-arr .settings-system__title {
+  margin: 0;
+  color: var(--aurral-text);
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.settings-arr .settings-system__intro-text {
+  margin: 0.375rem 0 0;
+  color: var(--arr-text-muted);
+  font-size: 0.8125rem;
+}
+
+.settings-arr .settings-system__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-shrink: 0;
+  padding-top: 0.25rem;
+  color: var(--arr-text-muted);
+  font-size: 0.75rem;
+}
+
+.settings-arr .settings-system__status-dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: var(--aurral-text-subtle);
+}
+
+.settings-arr .settings-system__status.is-ready .settings-system__status-dot {
+  background: var(--aurral-success);
+}
+
+.settings-arr .settings-system__section {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.settings-arr .settings-system__section-header {
+  padding: 0 0.75rem;
+}
+
+.settings-arr .settings-system__section-title {
+  margin: 0;
+  color: var(--aurral-text);
+  font-size: 1.125rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.settings-arr .settings-system__section-description {
+  max-width: 38rem;
+  margin: 0.25rem 0 0;
+  color: var(--arr-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.settings-arr .settings-system__rows {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.settings-arr .settings-system__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, 26rem);
+  align-items: center;
+  gap: 2rem;
+  min-width: 0;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+}
+
+.settings-arr .settings-system__row:hover {
+  background: var(--settings-row-hover);
+}
+
+.settings-arr .settings-system__copy {
+  min-width: 0;
+}
+
+.settings-arr .settings-system__label {
+  color: var(--aurral-text);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.settings-arr .settings-system__description {
+  max-width: 38rem;
+  margin: 0.25rem 0 0;
+  color: var(--arr-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.settings-arr .settings-system__value {
+  min-width: 0;
+  color: var(--aurral-text-muted);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.settings-arr .settings-system__value code {
+  color: var(--aurral-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+}
+
+.settings-arr .settings-system__value--error {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.375rem;
+  color: var(--aurral-danger);
+}
+
+.settings-arr .settings-system__api-value {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.settings-arr .settings-system__api-key {
+  min-width: 0;
+  max-width: 22rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--settings-control-border);
+  border-radius: 0.5rem;
+  background: var(--settings-control-surface);
+  color: var(--aurral-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: all;
+  white-space: nowrap;
+}
+
+@media (max-width: 48rem) {
+  .settings-arr .settings-system__intro {
+    display: block;
+  }
+
+  .settings-arr .settings-system__status {
+    margin-top: 0.75rem;
+    padding-top: 0;
+  }
+
+  .settings-arr .settings-system__row {
+    display: block;
+  }
+
+  .settings-arr .settings-system__value,
+  .settings-arr .settings-system__value--error {
+    justify-content: flex-start;
+    margin-top: 0.375rem;
+    text-align: start;
+  }
+
+  .settings-arr .settings-system__api-value {
+    justify-content: flex-start;
+    margin-top: 0.375rem;
+  }
+
+  .settings-arr .settings-system__api-key {
+    flex: 1;
+    max-width: none;
   }
 }

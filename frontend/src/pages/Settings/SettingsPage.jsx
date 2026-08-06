@@ -9,7 +9,8 @@ import { useSettingsTabs } from "./hooks/useSettingsTabs";
 import { useSettingsUsers } from "./hooks/useSettingsUsers";
 import { CommunityGuideModal } from "./components/CommunityGuideModal";
 import { SettingsMobileNav } from "./components/SettingsMobileNav";
-import { SettingsStorageTab } from "./components/SettingsStorageTab";
+import { SettingsStorageHealthTab } from "./components/SettingsStorageTab";
+import { SettingsSystemTab } from "./components/SettingsSystemTab";
 import { LidarrSettingsSection } from "./components/LidarrSettingsModalContent";
 import { SettingsIndexersSection } from "./components/SettingsIndexersSection";
 import { SettingsDownloadClientsSection } from "./components/SettingsDownloadClientsSection";
@@ -42,7 +43,11 @@ function SettingsPage() {
   useDocumentTitle(settingsTitle);
 
   useEffect(() => {
-    if (tabs.activeTab === "discover" || tabs.activeTab === "system") {
+    if (
+      tabs.activeTab === "discover" ||
+      tabs.activeTab === "system" ||
+      tabs.activeTab === "storage-health"
+    ) {
       data.refreshHealth();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -56,12 +61,18 @@ function SettingsPage() {
     switch (tabs.activeTab) {
       case "system":
         return (
-          <SettingsStorageTab
+          <SettingsSystemTab
             key="settings-system"
-            settings={data.settings}
-            updateSettings={data.updateSettings}
+            health={data.health}
+            showSuccess={showSuccess}
+            showError={showError}
+          />
+        );
+      case "storage-health":
+        return (
+          <SettingsStorageHealthTab
+            key="settings-storage-health"
             hasUnsavedChanges={data.hasUnsavedChanges}
-            saving={data.saving}
             handleSaveSettings={data.handleSaveSettings}
             health={data.health}
             showSuccess={showSuccess}
