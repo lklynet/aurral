@@ -166,8 +166,7 @@ export function registerDetails(router) {
       }
 
       if (lidarrArtist) {
-        const artistMbid =
-          override?.musicbrainzId || lidarrArtist.foreignArtistId || mbid;
+        const artistMbid = override?.musicbrainzId || mbid;
         const metadataArtist = coreOnly
           ? null
           : await getArtistByMbid(artistMbid).catch(() => null);
