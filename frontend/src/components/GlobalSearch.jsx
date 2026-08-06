@@ -44,7 +44,7 @@ import SearchLibraryCheck from "./SearchLibraryCheck";
 import { TrackPlaylistMenu } from "../pages/ArtistDetails/components/TrackPlaylistMenu";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
-import { SETTINGS_NAV_TABS } from "../pages/Settings/settingsTabsConfig";
+import { SETTINGS_SEARCH_ITEMS } from "../pages/Settings/settingsTabsConfig";
 function GlobalSearch({ settingsMode = false }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [lastfmConfigured, setLastfmConfigured] = useState(true);
@@ -84,9 +84,7 @@ function GlobalSearch({ settingsMode = false }) {
   const settingsSearchResults = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!settingsMode || !query) return [];
-    return SETTINGS_NAV_TABS.filter((tab) =>
-      `${tab.label} ${tab.id}`.toLowerCase().includes(query),
-    );
+    return SETTINGS_SEARCH_ITEMS.filter((item) => item.searchText.includes(query));
   }, [searchQuery, settingsMode]);
 
   const showRecentSearches = useMemo(
@@ -633,17 +631,20 @@ function GlobalSearch({ settingsMode = false }) {
 
       {!loadingSuggestions && settingsMode && settingsSearchResults.length > 0 && (
         <div className="global-search__suggestions global-search__suggestions--grouped">
-          {settingsSearchResults.map((tab, index) => (
+          {settingsSearchResults.map((item, index) => (
             <button
-              key={tab.id}
+              key={item.key}
               type="button"
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => navigateToSettings(tab)}
+              onClick={() => navigateToSettings(item)}
               className={`global-search__suggestion${
                 index === suggestionIndex ? " is-highlighted" : ""
               }`}
             >
-              {tab.label}
+              <span className="global-search__settings-result-label">{item.label}</span>
+              <span className="global-search__settings-result-meta">
+                {item.kind === "page" ? "Settings" : `${item.kind} · ${item.tabLabel}`}
+              </span>
             </button>
           ))}
         </div>
