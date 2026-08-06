@@ -490,6 +490,12 @@ textarea {
   min-width: 8.75rem;
 }
 
+.btn-add-action:hover:not(:disabled),
+.btn-add-action:focus-visible {
+  border-color: var(--aurral-border-strong);
+  background-color: var(--aurral-surface-hover);
+}
+
 .btn-add-action:disabled {
   opacity: 0.7;
   cursor: not-allowed;
@@ -2655,8 +2661,16 @@ textarea {
   font-size: 0.75rem;
   font-weight: 600;
   transition:
+    border-color 0.18s ease,
     background-color 0.18s ease,
     color 0.18s ease;
+}
+
+.artist-tab:hover:not(:disabled),
+.artist-tab:focus-visible {
+  border-color: var(--aurral-border-strong);
+  background: var(--aurral-surface-hover);
+  color: var(--aurral-text);
 }
 
 .artist-tab.is-active {
