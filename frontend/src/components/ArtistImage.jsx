@@ -243,7 +243,7 @@ const ArtistImage = ({
         <div className="artist-image-overlay">
           {isLoading ? (
             <Loader
-              className={`artist-image-loader${showLoading ? " animate-spin is-brand" : " is-dim"}`}
+              className={`artist-image-loader${showLoading ? " animate-spin" : " is-dim"}`}
             />
           ) : (
             <Music className="artist-image-icon" />
@@ -265,7 +265,7 @@ const ArtistImage = ({
           className="artist-image-overlay"
           style={{ backgroundColor: "var(--aurral-surface-raised)" }}
         >
-          <Loader className="artist-image-loader animate-spin is-brand" />
+          <Loader className="artist-image-loader animate-spin" />
         </div>
       )}
       {currentSrc && (

@@ -74,7 +74,7 @@ function SortableSectionRow({ item, onToggle, showUnavailable }) {
       <button
         type="button"
         onClick={() => onToggle(item.id)}
-        className={`btn btn-xs${item.enabled ? " btn-primary" : " btn-secondary"}`}
+        className={`btn btn-xs artist-customize-section-toggle${item.enabled ? " is-active" : ""}`}
         aria-pressed={item.enabled}
         aria-label={`${item.enabled ? "Hide" : "Show"} ${item.label}`}
       >
@@ -210,7 +210,7 @@ export function DiscoverLayoutModal({
             <button
               type="button"
               onClick={onSave}
-              className="btn btn-primary btn-sm"
+              className="btn btn-secondary btn-sm artist-customize-modal__save"
               disabled={isSaving}
             >
               {isSaving ? "Saving..." : "Save Layout"}

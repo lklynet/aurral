@@ -519,7 +519,7 @@
 
 .arr-progress__fill {
   height: 100%;
-  background: var(--aurral-success);
+  background: var(--aurral-control-on);
   transition: width 0.2s ease;
 }
 
@@ -2081,7 +2081,7 @@
 .arr-portal .arr-modal {
   border: 1px solid var(--aurral-border-strong);
   border-radius: 0.75rem;
-  background: var(--aurral-surface-glass);
+  background: var(--aurral-surface-raised);
   box-shadow: var(--aurral-shadow-modal);
 }
 
@@ -2300,6 +2300,16 @@
   text-overflow: ellipsis;
   user-select: all;
   white-space: nowrap;
+}
+
+.settings-arr :is(.arr-input, .arr-select, .arr-textarea, .artist-input),
+.arr-portal :is(.arr-input, .arr-select, .arr-textarea, .artist-input) {
+  border-radius: 0.5rem !important;
+}
+
+.settings-arr .arr-path-input__field,
+.arr-portal .arr-path-input__field {
+  border-radius: var(--aurral-radius-sm) 0 0 var(--aurral-radius-sm) !important;
 }
 
 @media (max-width: 48rem) {

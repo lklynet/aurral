@@ -246,7 +246,10 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
               aria-current={active ? "page" : undefined}
             >
               {showReviewAlert ? (
-                <span className="sidebar-subnav-link__alert" aria-hidden="true" />
+                <span
+                  className="sidebar-subnav-link__alert sidebar-subnav-link__alert--review"
+                  aria-hidden="true"
+                />
               ) : null}
               <span>{entry.label}</span>
             </Link>
@@ -351,7 +354,10 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
                     <span className="sidebar-link__icon-wrap">
                       <Icon className="sidebar-link__icon" aria-hidden="true" />
                       {showActivityDot ? (
-                        <span className="sidebar-link__activity" aria-hidden="true" />
+                        <span
+                          className="sidebar-link__activity sidebar-link__activity--review"
+                          aria-hidden="true"
+                        />
                       ) : null}
                     </span>
                     {!isIcons && (
