@@ -1,5 +1,6 @@
 import { loginApi } from "../../../utils/api/endpoints/auth.js";
 import { setStoredAuth } from "../../../utils/api/core.js";
+import PillToggle from "../../../components/PillToggle";
 import { SettingsInput } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 
@@ -110,10 +111,10 @@ function PermissionChecklist({ permissions, onChange }) {
   return (
     <div className="arr-permissions">
       {granularPerms.map(({ key, label }) => (
-        <label key={key} className="artist-checkbox-label">
-          <input
-            type="checkbox"
-            className="artist-checkbox"
+        <div key={key} className="settings-toggle-row">
+          <span>{label}</span>
+          <PillToggle
+            className="settings-toggle"
             checked={!!permissions[key]}
             onChange={(event) =>
               onChange({
@@ -121,9 +122,9 @@ function PermissionChecklist({ permissions, onChange }) {
                 [key]: event.target.checked,
               })
             }
+            aria-label={label}
           />
-          <span>{label}</span>
-        </label>
+        </div>
       ))}
     </div>
   );
@@ -290,10 +291,10 @@ export function SettingsUsersTab({
               label="Auto-login"
               help={`${localBypassStatus.title}. ${localBypassStatus.detail}`}
             >
-              <label className="artist-checkbox-label">
-                <input
-                  type="checkbox"
-                  className="artist-checkbox"
+              <div className="settings-toggle-row">
+                <span>{localBypassEnabled ? "Enabled" : "Disabled"}</span>
+                <PillToggle
+                  className="settings-toggle"
                   checked={localBypassEnabled}
                   disabled={!localBypassStatus.canToggle}
                   onChange={async (event) => {
@@ -311,9 +312,9 @@ export function SettingsUsersTab({
                       await handleSaveSettings(null, nextSettings);
                     } catch {}
                   }}
+                  aria-label="Auto-login"
                 />
-                <span>{localBypassEnabled ? "Enabled" : "Disabled"}</span>
-              </label>
+              </div>
             </SettingsArrFormGroup>
           </SettingsArrFieldSet>
 

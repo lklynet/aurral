@@ -377,7 +377,7 @@ function Layout({ children }) {
       data-resizing={isResizing || undefined}
       style={{ "--sidebar-width": `${sidebarWidth}px` }}
     >
-      <Sidebar mode={sidebarMode} width={sidebarWidth} />
+      <Sidebar mode={sidebarMode} width={sidebarWidth} settingsMode={isSettingsRoute} />
 
       <div
         className={`sidebar-resize-handle${isResizing ? " is-active" : ""}`}
@@ -417,7 +417,7 @@ function Layout({ children }) {
             <Menu aria-hidden="true" />
           </button>
 
-          <GlobalSearch />
+          <GlobalSearch settingsMode={isSettingsRoute} />
 
           <div className="app-header-actions">
             <UserProfileMenu />

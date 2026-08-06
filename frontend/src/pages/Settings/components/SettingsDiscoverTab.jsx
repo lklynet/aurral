@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { RefreshCw, Trash2, X } from "lucide-react";
+import PillToggle from "../../../components/PillToggle";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 
@@ -199,22 +200,18 @@ export function SettingsDiscoverTab({
               </SettingsArrFormGroup>
               <SettingsArrFormGroup
                 label="Recommended playlists"
-                labelFor="discover-personalized"
                 help="Generate personalized playlists (Discover Weekly, Trending Mix, Library Blend, Listening History, Release Radar). When disabled, only editorial playlists are shown."
               >
-                <label className="artist-checkbox-label">
-                  <input
-                    id="discover-personalized"
-                    type="checkbox"
-                    className="artist-checkbox"
-                    checked={discoveryPersonalizedEnabled}
-                    onChange={(e) => {
-                      updateLastfmDiscovery({
-                        discoveryPersonalizedEnabled: e.target.checked,
-                      });
-                    }}
-                  />
-                </label>
+                <PillToggle
+                  className="settings-toggle"
+                  checked={discoveryPersonalizedEnabled}
+                  onChange={(e) =>
+                    updateLastfmDiscovery({
+                      discoveryPersonalizedEnabled: e.target.checked,
+                    })
+                  }
+                  aria-label="Recommended playlists"
+                />
               </SettingsArrFormGroup>
             </>
           ) : null}

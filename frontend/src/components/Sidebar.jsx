@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Ban, Library, Sparkles, Activity, AudioWaveform, Ticket, Settings } from "lucide-react";
+import { ArrowLeft, Ban, Library, Sparkles, Activity, AudioWaveform, Ticket, Settings } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useFlowWorkerActivity } from "../pages/flows/useFlowWorkerActivity";
 import { DEFAULT_SETTINGS_TAB, SETTINGS_NAV_TABS } from "../pages/Settings/settingsTabsConfig";
@@ -20,7 +20,7 @@ import SidebarStageBackdrop, {
   resolveSidebarStageBackdropVariant,
 } from "./SidebarStageBackdrop";
 
-function Sidebar({ mode, width = 208 }) {
+function Sidebar({ mode, width = 208, settingsMode = false }) {
   const stageBackdropVariant = resolveSidebarStageBackdropVariant();
   const location = useLocation();
   const { user, bootstrap } = useAuth();
@@ -269,12 +269,39 @@ function Sidebar({ mode, width = 208 }) {
     return classes.join(" ");
   };
 
+  const renderSettingsNav = () =>
+    settingsTabs.map((tab) => {
+      const Icon = tab.icon;
+      const active = activeSettingsTab === tab.id;
+      return (
+        <div key={tab.id} className={`sidebar-nav-group${active ? " is-active-row" : ""}`}>
+          <Link
+            to={`/settings/${tab.id}`}
+            onMouseEnter={(event) => {
+              if (isIcons) positionSidebarTooltip(event);
+            }}
+            className={`sidebar-link ${isIcons ? "sidebar-link--icons" : "sidebar-link--full"}${
+              active ? " is-active" : ""
+            }`}
+            aria-label={isIcons ? tab.label : undefined}
+            aria-current={active ? "page" : undefined}
+          >
+            <span className="sidebar-link__icon-wrap">
+              <Icon className="sidebar-link__icon" aria-hidden="true" />
+            </span>
+            {!isIcons && <span className="sidebar-link__label">{tab.label}</span>}
+            {isIcons && <span className="sidebar-tooltip">{tab.label}</span>}
+          </Link>
+        </div>
+      );
+    });
+
   return (
     <aside
       className={`sidebar-shell ${isIcons ? "sidebar-shell--icons" : "sidebar-shell--full"} ${translateClass}${
         stageBackdropVariant ? ` sidebar-shell--${stageBackdropVariant}` : ""
       }`}
-      aria-label="Primary navigation"
+      aria-label={settingsMode ? "Settings navigation" : "Primary navigation"}
       style={{
         width: `${width}px`,
       }}
@@ -290,7 +317,7 @@ function Sidebar({ mode, width = 208 }) {
       <div className={`sidebar-body${isIcons ? " sidebar-body--icons" : ""}`}>
         <div className={`sidebar-nav-wrap${isIcons ? " sidebar-nav-wrap--icons" : ""}`}>
           <nav className="sidebar-nav">
-            {navItems.map((item) => {
+            {settingsMode ? renderSettingsNav() : navItems.map((item) => {
               const Icon = item.icon;
               const active = isNavItemActive(item);
               const showActivityDot = item.section === "activity" && hasReviewAlert;
@@ -345,10 +372,23 @@ function Sidebar({ mode, width = 208 }) {
         {canAccessSettings && (
           <div
             className={`sidebar-settings-group${
-              isIcons ? "" : isOnSettings ? " sidebar-nav-group is-expanded" : ""
+              isIcons || settingsMode ? "" : isOnSettings ? " sidebar-nav-group is-expanded" : ""
             }`}
           >
-            {isIcons ? (
+            {settingsMode ? (
+              <Link
+                to="/"
+                onMouseEnter={positionSidebarTooltip}
+                className={`sidebar-link sidebar-link--${isIcons ? "icons" : "full"}`}
+                aria-label="Back to Aurral"
+              >
+                <span className="sidebar-link__icon-wrap">
+                  <ArrowLeft className="sidebar-link__icon" aria-hidden="true" />
+                </span>
+                {!isIcons && <span className="sidebar-link__label">Back</span>}
+                {isIcons && <span className="sidebar-tooltip">Back</span>}
+              </Link>
+            ) : isIcons ? (
               <Link
                 to={`/settings/${DEFAULT_SETTINGS_TAB}`}
                 onMouseEnter={positionSidebarTooltip}

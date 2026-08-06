@@ -5877,11 +5877,11 @@ textarea {
   .artist-segmented-button:active:not(:disabled),
   .flow-page__mix-toggle:active:not(:disabled),
   .flow-page__library-create-btn:active:not(:disabled),
-  .pill-toggle input:active + label::before {
+  .pill-toggle:active::before {
     transform: none;
   }
 
-  .pill-toggle input:checked:active + label::before {
+  .pill-toggle[aria-checked="true"]:active::before {
     transform: translateX(var(--thumb-travel));
   }
 
@@ -7223,16 +7223,34 @@ textarea {
 
 .settings-modal__toggle {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: space-between;
   gap: 0.625rem;
-  cursor: pointer;
+  width: 100%;
+  min-width: 0;
+  padding: 0.375rem 0.5rem;
+  border: 0;
+  border-radius: var(--aurral-radius-sm);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.settings-modal__toggle:hover {
+  background: var(--settings-row-hover, color-mix(in srgb, var(--aurral-text) 4%, transparent));
 }
 
 .settings-modal__toggle-label {
+  min-width: 0;
+  flex: 1 1 auto;
   color: var(--aurral-text);
   font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1.4;
+}
+
+.settings-modal__toggle .settings-toggle {
+  --w: 2rem;
 }
 
 .settings-modal__toggle-group {

@@ -44,7 +44,8 @@ import SearchLibraryCheck from "./SearchLibraryCheck";
 import { TrackPlaylistMenu } from "../pages/ArtistDetails/components/TrackPlaylistMenu";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
-function GlobalSearch() {
+import { SETTINGS_NAV_TABS } from "../pages/Settings/settingsTabsConfig";
+function GlobalSearch({ settingsMode = false }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [lastfmConfigured, setLastfmConfigured] = useState(true);
   const [localSearchConfigured, setLocalSearchConfigured] = useState(true);
@@ -80,14 +81,30 @@ function GlobalSearch() {
     return suggestionRows.filter((row) => row.kind === "item");
   }, [suggestionRows, suggestionMode]);
 
+  const settingsSearchResults = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!settingsMode || !query) return [];
+    return SETTINGS_NAV_TABS.filter((tab) =>
+      `${tab.label} ${tab.id}`.toLowerCase().includes(query),
+    );
+  }, [searchQuery, settingsMode]);
+
   const showRecentSearches = useMemo(
     () =>
       inputFocused &&
+      !settingsMode &&
       searchQuery.trim().length < 2 &&
       recentSearches.length > 0 &&
       !loadingSuggestions &&
       suggestionRows.length === 0,
-    [inputFocused, loadingSuggestions, recentSearches.length, searchQuery, suggestionRows.length],
+    [
+      inputFocused,
+      loadingSuggestions,
+      recentSearches.length,
+      searchQuery,
+      settingsMode,
+      suggestionRows.length,
+    ],
   );
 
   const recentSelectableRows = useMemo(
@@ -102,7 +119,11 @@ function GlobalSearch() {
     [recentSearches, showRecentSearches],
   );
 
-  const keyboardRows = showRecentSearches ? recentSelectableRows : selectableRows;
+  const keyboardRows = settingsMode
+    ? settingsSearchResults
+    : showRecentSearches
+      ? recentSelectableRows
+      : selectableRows;
 
   const rememberSearch = useCallback((rawQuery) => {
     const next = addRecentSearch(rawQuery);
@@ -143,6 +164,12 @@ function GlobalSearch() {
 
   useEffect(() => {
     const trimmed = searchQuery.trim();
+    if (settingsMode) {
+      cancelSuggest();
+      setLoadingSuggestions(false);
+      closeAutocomplete();
+      return cancelSuggest;
+    }
     const isTagShortcut = lastfmConfigured && trimmed.startsWith("#");
     const tagPart = isTagShortcut ? trimmed.slice(1).trim() : trimmed;
 
@@ -225,7 +252,7 @@ function GlobalSearch() {
     }, AUTOCOMPLETE_DEBOUNCE_MS);
 
     return cancelSuggest;
-  }, [searchQuery, closeAutocomplete, lastfmConfigured, scheduleSuggest, cancelSuggest]);
+  }, [searchQuery, closeAutocomplete, lastfmConfigured, scheduleSuggest, cancelSuggest, settingsMode]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -240,7 +267,7 @@ function GlobalSearch() {
   const navigateToSearch = useCallback(
     (rawQuery) => {
       const trimmed = String(rawQuery || "").trim();
-      if (!trimmed) return;
+      if (!trimmed || settingsMode) return;
       rememberSearch(trimmed);
       if (trimmed.startsWith("#")) {
         navigate(`/search?q=${encodeURIComponent(trimmed.slice(1))}&type=tag`);
@@ -251,11 +278,26 @@ function GlobalSearch() {
       closeAutocomplete();
       setInputFocused(false);
     },
-    [navigate, closeAutocomplete, rememberSearch],
+    [navigate, closeAutocomplete, rememberSearch, settingsMode],
+  );
+
+  const navigateToSettings = useCallback(
+    (tab) => {
+      if (!tab) return;
+      navigate(`/settings/${tab.id}`);
+      setSearchQuery("");
+      closeAutocomplete();
+      setInputFocused(false);
+    },
+    [navigate, closeAutocomplete],
   );
 
   const handleSubmit = (event) => {
     event.preventDefault();
+    if (settingsMode) {
+      navigateToSettings(settingsSearchResults[0]);
+      return;
+    }
     navigateToSearch(searchQuery);
   };
 
@@ -533,12 +575,18 @@ function GlobalSearch() {
       setSuggestionIndex((current) => (current > 0 ? current - 1 : -1));
     } else if (event.key === "Enter" && suggestionIndex >= 0) {
       event.preventDefault();
-      handleSuggestionSelect(keyboardRows[suggestionIndex]);
+      if (settingsMode) {
+        navigateToSettings(keyboardRows[suggestionIndex]);
+      } else {
+        handleSuggestionSelect(keyboardRows[suggestionIndex]);
+      }
     }
   };
 
   let selectableCursor = -1;
-  const emptySearchPlaceholder = inputFocused ? (
+  const emptySearchPlaceholder = settingsMode ? (
+    <span>Search settings</span>
+  ) : inputFocused ? (
     <span className="global-search__scope-label--full">Search music, artists, or #rock</span>
   ) : (
     <>
@@ -568,6 +616,7 @@ function GlobalSearch() {
             }}
             onKeyDown={handleKeyDown}
             placeholder=""
+            aria-label={settingsMode ? "Search settings" : "Search music, artists, or tags"}
             className="global-search__input"
             autoComplete="off"
           />
@@ -582,7 +631,26 @@ function GlobalSearch() {
         </div>
       </div>
 
+      {!loadingSuggestions && settingsMode && settingsSearchResults.length > 0 && (
+        <div className="global-search__suggestions global-search__suggestions--grouped">
+          {settingsSearchResults.map((tab, index) => (
+            <button
+              key={tab.id}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => navigateToSettings(tab)}
+              className={`global-search__suggestion${
+                index === suggestionIndex ? " is-highlighted" : ""
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {!loadingSuggestions &&
+        !settingsMode &&
         suggestionMode === "unified" &&
         !localSearchConfigured &&
         searchQuery.trim().length >= 2 && (
@@ -594,7 +662,7 @@ function GlobalSearch() {
           </div>
         )}
 
-      {showRecentSearches && (
+      {!settingsMode && showRecentSearches && (
         <div className="global-search__suggestions global-search__suggestions--grouped global-search__suggestions--recent">
           <div className="global-search__recent-header">
             <span className="global-search__recent-label">Recent searches</span>
@@ -624,7 +692,7 @@ function GlobalSearch() {
         </div>
       )}
 
-      {!loadingSuggestions && suggestionRows.length > 0 && (
+      {!loadingSuggestions && !settingsMode && suggestionRows.length > 0 && (
         <div className="global-search__suggestions global-search__suggestions--grouped">
           {suggestionMode === "tag"
             ? suggestionRows.map((row, index) => (

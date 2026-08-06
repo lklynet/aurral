@@ -1772,6 +1772,7 @@ function FlowPage() {
                                 <PillToggle
                                   checked={flowEnabled}
                                   className={`pill-toggle--flow-compact${flowEnabled ? "" : " is-off"}`}
+                                  aria-label={`Enable ${selectedFlow?.name || "flow"}`}
                                   onChange={(event) =>
                                     selectedFlow &&
                                     handleToggleRequest(selectedFlow, event.target.checked)

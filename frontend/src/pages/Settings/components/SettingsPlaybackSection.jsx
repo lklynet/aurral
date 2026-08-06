@@ -21,6 +21,7 @@ import {
   Wrench,
 } from "lucide-react";
 import DownloadFolderPickerModal from "../../../components/DownloadFolderPickerModal";
+import PillToggle from "../../../components/PillToggle";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
 import {
@@ -392,19 +393,16 @@ export function SettingsPlaybackSection({
           label="M3U path mode"
           help="Generated playlists will use mapped paths that Navidrome can open. Leave this off when Navidrome and Aurral share the same container paths."
         >
-          <label className="artist-checkbox-label">
-            <input
-              type="checkbox"
-              className="artist-checkbox"
-              checked={navidrome.m3uPathMode === "remote"}
-              onChange={(event) =>
-                updateNavidrome({
-                  m3uPathMode: event.target.checked ? "remote" : "local",
-                })
-              }
-            />
-            <span>Use Navidrome paths in M3U files</span>
-          </label>
+          <PillToggle
+            className="settings-toggle"
+            checked={navidrome.m3uPathMode === "remote"}
+            onChange={(event) =>
+              updateNavidrome({
+                m3uPathMode: event.target.checked ? "remote" : "local",
+              })
+            }
+            aria-label="Use Navidrome paths in M3U files"
+          />
         </SettingsArrFormGroup>
 
         {showNavidromeMappings ? (
