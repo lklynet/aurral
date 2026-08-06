@@ -59,6 +59,7 @@ export async function getRecentMissingReleases(limit = 24, options = {}) {
 
   const artistsById = new Map();
   if (Array.isArray(artists)) {
+    await libraryManager.backfillLidarrArtistMappings(artists);
     artists.forEach((artist) => {
       if (artist?.id != null) {
         const mappedArtist = libraryManager.mapLidarrArtist(artist);
