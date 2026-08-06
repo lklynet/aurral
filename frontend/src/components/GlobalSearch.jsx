@@ -583,7 +583,12 @@ function GlobalSearch({ settingsMode = false }) {
 
   let selectableCursor = -1;
   const emptySearchPlaceholder = settingsMode ? (
-    <span>Search settings</span>
+    <>
+      <span className="global-search__scope-label--short">Search settings</span>
+      <span className="global-search__scope-label--full">Type</span>
+      <span className="global-search__key">/</span>
+      <span className="global-search__scope-label--full">to search</span>
+    </>
   ) : inputFocused ? (
     <span className="global-search__scope-label--full">Search music, artists, or #rock</span>
   ) : (
