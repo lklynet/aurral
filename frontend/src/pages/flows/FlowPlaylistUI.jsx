@@ -363,6 +363,7 @@ export function PlaylistDetailHero({
               <PillToggle
                 checked={enabled}
                 className={`pill-toggle--flow-compact${enabled ? "" : " is-off"}`}
+                aria-label={`Enable ${entry.name || "flow"}`}
                 onChange={(event) => onToggleEnabled?.(event.target.checked)}
                 disabled={togglingId === entry.id}
               />

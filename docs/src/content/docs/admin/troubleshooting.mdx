@@ -33,7 +33,7 @@ description: Common setup and runtime issues.
 
 - Make sure that Aurral mounts the same media root as Lidarr ([Filesystem and mounts](/getting-started/storage/)).
 - Make sure that **Settings > Download Clients > Downloads Folder > Path** is under that mount.
-- In **Settings > Playback > Navidrome**, test and save the Navidrome connection.
+- In **Settings > Playback > Navidrome**, test the Navidrome connection. Changes save automatically.
 - Make sure that Navidrome scans Aurral's downloads path and not only Lidarr's library.
 - Aurral's **Aurral Playlists** library can be empty until a flow finishes a download. Check for a file under `aurral-weekly-flow`, then wait for the Navidrome scan.
 - If the library is missing, check that the Navidrome account can manage libraries through its API.
@@ -94,7 +94,7 @@ See [Navidrome: Different Navidrome paths](/integrations/navidrome/#different-na
 - The Plex container or host must contain this path: `<downloads>/aurral-weekly-flow/<flow-id>/...`.
 - If Plex and Aurral use different mounts, set **Settings > Playback > Plex > Plex Aurral Library path** to the folder that Plex sees.
 - Leave **Plex Aurral Library path** blank if both apps use the same path prefix.
-- Save the settings.
+- Make sure the Plex settings have finished saving automatically.
 - Select **Sync to Plex now** again.
 - Initial scans can take several minutes. Aurral runs catch-up synchronization in the background while Plex indexes files.
 - Make sure that flows finish their downloads before you expect Plex playlists to populate.
@@ -108,6 +108,7 @@ See [Plex integration](/integrations/plex/).
 - This value is different from `TRUST_PROXY`. Use the proxy access logs to find its source address.
 - If you enable proxy authentication, set `AUTH_PROXY_TRUSTED_IPS` before you expose the app.
 - Reload the page. Aurral shows its sign-in page when the browser holds no valid session, and a reload lets your proxy authenticate again.
+- A brief backend restart should not sign out an already authenticated tab, and the discovery connection stays closed while the sign-in screen is shown. If the logs repeatedly show `WebSocket server initialized` and `Server running`, the backend process is restarting; check the container or file-watcher supervisor.
 - Page loads always reach your proxy, and an open tab reloads itself when the proxy rejects an API call, so ending the identity-provider session no longer needs a manual hard refresh.
 - If errors such as "Error Loading Artist" persist instead, your proxy is answering rejected API calls with an Aurral-shaped JSON error. Let it return its own redirect or `401`.
 - For Authelia or forwardAuth, set `AUTH_PROXY_DOMAIN` to your authentication origin.

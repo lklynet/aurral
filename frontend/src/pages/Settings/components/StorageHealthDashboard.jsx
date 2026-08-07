@@ -18,16 +18,76 @@ function formatCheckedAt(value) {
 function defaultExpandedBySection(sections) {
   const next = {};
   for (const section of sections) {
-    if (section.status === "skip") {
-      next[section.id] = false;
-      continue;
-    }
-    next[section.id] = section.status !== "pass";
+    next[section.id] = section.status === "fail";
   }
   return next;
 }
 
-export function StorageHealthDashboard({ result, loading = false }) {
+function getSummary(result) {
+  const activeSections = result.sections.filter((section) => section.status !== "skip");
+  const status = result.ok ? (result.partial ? "warn" : "pass") : "fail";
+  const label = result.ok ? (result.partial ? "Review recommended" : "Healthy") : "Needs attention";
+  return { activeSections, status, label, checkedAt: formatCheckedAt(result.checkedAt) };
+}
+
+export function StorageHealthSummary({ result, loading = false }) {
+  if (!result?.sections?.length) {
+    return (
+      <div className="arr-health__summary is-warn">
+        <div className="arr-health__summary-main">
+          <span className="arr-health__badge arr-health__badge--warn">
+            {loading ? "Checking" : "Pending"}
+          </span>
+          <span className="arr-health__summary-text">
+            {loading ? "Checking storage access…" : "Run checks to review storage access."}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const { activeSections, status, label, checkedAt } = getSummary(result);
+  return (
+    <div className={`arr-health__summary is-${status}`}>
+      <div className="arr-health__summary-main">
+        <span className={`arr-health__badge arr-health__badge--${status}`}>{label}</span>
+        <span className="arr-health__summary-text">
+          {activeSections.length} checks reviewed
+          {result.failedCount > 0 ? ` · ${result.failedCount} failed` : ""}
+          {result.warningCount > 0
+            ? ` · ${result.warningCount} warning${result.warningCount === 1 ? "" : "s"}`
+            : ""}
+        </span>
+      </div>
+      {checkedAt ? (
+        <span className="arr-health__summary-time">Last checked {checkedAt}</span>
+      ) : null}
+    </div>
+  );
+}
+
+function summarizeDetail(detail) {
+  const text = String(detail || "").trim();
+  if (text.length <= 180) return null;
+  if (/ENOENT|no such file/i.test(text)) return "Some configured paths could not be found.";
+  if (/EACCES|permission denied/i.test(text)) return "A configured path could not be accessed.";
+  return "Show technical details";
+}
+
+function HealthDetail({ detail }) {
+  const text = String(detail || "").trim();
+  const summary = summarizeDetail(text);
+  if (!summary) return <code className="arr-health__path">{text}</code>;
+
+  return (
+    <details className="arr-health__technical">
+      <summary>{summary}</summary>
+      <code className="arr-health__path">{text}</code>
+    </details>
+  );
+}
+
+export function StorageHealthDashboard({ result, loading = false, showSummary = true }) {
   const [expanded, setExpanded] = useState({});
   const sections = result?.sections;
 
@@ -47,11 +107,6 @@ export function StorageHealthDashboard({ result, loading = false }) {
     return null;
   }
 
-  const activeSections = result.sections.filter((section) => section.status !== "skip");
-  const summaryStatus = result.ok ? (result.partial ? "warn" : "pass") : "fail";
-  const summaryLabel = result.ok ? (result.partial ? "Warnings" : "Healthy") : "Failed";
-  const checkedAt = formatCheckedAt(result.checkedAt);
-
   const toggleSection = (sectionId) => {
     setExpanded((current) => ({
       ...current,
@@ -61,23 +116,7 @@ export function StorageHealthDashboard({ result, loading = false }) {
 
   return (
     <div className="arr-health" role="status">
-      <div className={`arr-health__summary is-${summaryStatus}`}>
-        <div className="arr-health__summary-main">
-          <span className={`arr-health__badge arr-health__badge--${summaryStatus}`}>
-            {summaryLabel}
-          </span>
-          <span className="arr-health__summary-text">
-            {activeSections.length} sections checked
-            {result.failedCount > 0 ? ` · ${result.failedCount} failed` : ""}
-            {result.warningCount > 0
-              ? ` · ${result.warningCount} warning${result.warningCount === 1 ? "" : "s"}`
-              : ""}
-          </span>
-        </div>
-        {checkedAt ? (
-          <span className="arr-health__summary-time">Last checked {checkedAt}</span>
-        ) : null}
-      </div>
+      {showSummary ? <StorageHealthSummary result={result} /> : null}
 
       <div className="arr-health__table-wrap">
         <table className="arr-health__table">
@@ -163,7 +202,7 @@ function SectionGroup({ section, isExpanded, isCollapsible, onToggle }) {
               <td className="arr-health__check">{step.label}</td>
               <td className="arr-health__detail">
                 {step.detail ? (
-                  <code className="arr-health__path">{step.detail}</code>
+                  <HealthDetail detail={step.detail} />
                 ) : (
                   <span className="arr-health__muted">—</span>
                 )}

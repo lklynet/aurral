@@ -47,6 +47,7 @@ export function ModalShell({
             onClick={disableClose ? undefined : onClose}
             className="btn btn-ghost btn-sm btn-icon"
             aria-label="Close"
+            title="Close"
             disabled={disableClose}
           >
             <X className="artist-icon-sm" />
@@ -304,6 +305,7 @@ export function RenamePlaylistModal({
                 className="btn btn-secondary btn-icon btn-sm playlist-modal__cover-menu-trigger"
                 disabled={busy}
                 aria-label="Cover image options"
+                title="Cover image options"
                 aria-expanded={coverMenuOpen}
                 aria-haspopup="menu"
                 onClick={(event) => {

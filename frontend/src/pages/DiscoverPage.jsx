@@ -25,7 +25,6 @@ import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
 import { AlbumCard, ArtistCard, ViewAllCard } from "./DiscoverCards";
 import { useDiscoverLayoutState } from "./useDiscoverLayoutState";
 import {
-  getTagColor,
   DEFAULT_DISCOVER_SECTIONS,
   getFallbackGenreSectionId,
   getFallbackGenreFromSectionId,
@@ -1027,10 +1026,11 @@ function DiscoverPage() {
             <button
               type="button"
               onClick={openDiscoverModal}
-              className="btn btn-sm btn-surface discover-page__customize-btn"
+              className="btn btn-icon-square btn-surface discover-page__customize-btn"
+              aria-label="Customize Discover"
+              title="Customize Discover"
             >
               <LayoutTemplate className="artist-discover-hero__customize-icon" />
-              <span>Customize</span>
             </button>
           </div>
 
@@ -1046,9 +1046,6 @@ function DiscoverPage() {
                         navigate(`/search?q=${encodeURIComponent(`#${genre}`)}&type=tag`)
                       }
                       className="artist-tag--discover"
-                      style={{
-                        backgroundColor: getTagColor(genre),
-                      }}
                     >
                       #{genre}
                     </button>

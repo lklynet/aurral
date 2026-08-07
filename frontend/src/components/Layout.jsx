@@ -25,9 +25,10 @@ import { useModalDialog } from "../hooks/useModalDialog.js";
 const SIDEBAR_THRESHOLD = 100;
 const SIDEBAR_MIN = 56;
 const SIDEBAR_MAX = 400;
+const SIDEBAR_DEFAULT = 208;
 const MOBILE_SHEET_EXIT_MS = 180;
 
-function Layout({ children }) {
+function Layout({ children, headerActions }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [scrollbar, setScrollbar] = useState({
     visible: false,
@@ -45,9 +46,9 @@ function Layout({ children }) {
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     try {
       const w = parseInt(localStorage.getItem("sidebarWidth"), 10);
-      return w >= SIDEBAR_MIN && w <= SIDEBAR_MAX ? w : 208;
+      return w >= SIDEBAR_MIN && w <= SIDEBAR_MAX ? w : SIDEBAR_DEFAULT;
     } catch {
-      return 208;
+      return SIDEBAR_DEFAULT;
     }
   });
   const sidebarWidthRef = useRef(sidebarWidth);
@@ -55,9 +56,9 @@ function Layout({ children }) {
   const [lastFullWidth, setLastFullWidth] = useState(() => {
     try {
       const w = parseInt(localStorage.getItem("sidebarFullWidth"), 10);
-      return w >= SIDEBAR_THRESHOLD && w <= SIDEBAR_MAX ? w : 208;
+      return w >= SIDEBAR_THRESHOLD && w <= SIDEBAR_MAX ? w : SIDEBAR_DEFAULT;
     } catch {
-      return 208;
+      return SIDEBAR_DEFAULT;
     }
   });
   const [isResizing, setIsResizing] = useState(false);
@@ -236,6 +237,14 @@ function Layout({ children }) {
     [persistSidebarWidth, sidebarWidth],
   );
 
+  const handleResizeReset = useCallback(
+    (event) => {
+      event.preventDefault();
+      persistSidebarWidth(SIDEBAR_DEFAULT);
+    },
+    [persistSidebarWidth],
+  );
+
   const updateScrollFromPointer = useCallback((clientY) => {
     const node = mainScrollRef.current;
     const track = scrollbarTrackRef.current;
@@ -369,7 +378,7 @@ function Layout({ children }) {
       data-resizing={isResizing || undefined}
       style={{ "--sidebar-width": `${sidebarWidth}px` }}
     >
-      <Sidebar mode={sidebarMode} width={sidebarWidth} />
+      <Sidebar mode={sidebarMode} width={sidebarWidth} settingsMode={isSettingsRoute} />
 
       <div
         className={`sidebar-resize-handle${isResizing ? " is-active" : ""}`}
@@ -385,6 +394,7 @@ function Layout({ children }) {
         onPointerUp={handleResizeEnd}
         onPointerCancel={handleResizeEnd}
         onLostPointerCapture={handleResizeEnd}
+        onDoubleClick={handleResizeReset}
         onKeyDown={handleResizeKeyDown}
       />
 
@@ -408,11 +418,12 @@ function Layout({ children }) {
             <Menu aria-hidden="true" />
           </button>
 
-          <GlobalSearch />
+          <GlobalSearch settingsMode={isSettingsRoute} />
 
           <div className="app-header-actions">
             <InboxMenu />
             <UserProfileMenu />
+            {headerActions}
           </div>
         </header>
 

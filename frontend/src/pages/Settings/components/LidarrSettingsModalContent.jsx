@@ -9,6 +9,7 @@ import {
 
 import { Link } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
+import PillToggle from "../../../components/PillToggle";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 export function LidarrSettingsSection({
@@ -433,15 +434,12 @@ export function LidarrSettingsSection({
         </SettingsArrFormGroup>
 
         <SettingsArrFormGroup label="Search on Add">
-          <label className="artist-checkbox-label">
-            <input
-              type="checkbox"
-              className="artist-checkbox"
-              checked={settings.integrations?.lidarr?.searchOnAdd || false}
-              onChange={(e) => updateLidarr({ searchOnAdd: e.target.checked })}
-            />
-            <span>Search for missing albums when artists are added</span>
-          </label>
+          <PillToggle
+            className="settings-toggle"
+            checked={settings.integrations?.lidarr?.searchOnAdd || false}
+            onChange={(e) => updateLidarr({ searchOnAdd: e.target.checked })}
+            aria-label="Search for missing albums when artists are added"
+          />
         </SettingsArrFormGroup>
       </SettingsArrFieldSet>
 

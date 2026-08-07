@@ -347,7 +347,6 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
             label={triggerLabel}
             icon={TriggerIcon}
             isLoading={saving}
-            isExpanded={open}
             disabled={disabled}
             onClick={handleOpen}
             aria-haspopup="menu"

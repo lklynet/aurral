@@ -428,6 +428,7 @@ export function SettingsConnectTab({
           <SettingsArrFormGroup label="Discover updated">
             <PillToggle
               checked={webhookEvents.notifyDiscoveryUpdated || false}
+              aria-label="Discover updated"
               onChange={(e) =>
                 updateWebhookEvents({
                   notifyDiscoveryUpdated: e.target.checked,
@@ -438,6 +439,7 @@ export function SettingsConnectTab({
           <SettingsArrFormGroup label="Weekly flow finished">
             <PillToggle
               checked={webhookEvents.notifyWeeklyFlowDone || false}
+              aria-label="Weekly flow finished"
               onChange={(e) =>
                 updateWebhookEvents({
                   notifyWeeklyFlowDone: e.target.checked,
@@ -448,6 +450,7 @@ export function SettingsConnectTab({
           <SettingsArrFormGroup label="Request made">
             <PillToggle
               checked={webhookEvents.notifyRequestMade || false}
+              aria-label="Request made"
               onChange={(e) =>
                 updateWebhookEvents({
                   notifyRequestMade: e.target.checked,
@@ -458,35 +461,12 @@ export function SettingsConnectTab({
           <SettingsArrFormGroup label="Request available">
             <PillToggle
               checked={webhookEvents.notifyRequestAvailable || false}
+              aria-label="Request available"
               onChange={(e) =>
                 updateWebhookEvents({
                   notifyRequestAvailable: e.target.checked,
                 })
               }
-            />
-          </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Gotify: Discover updated">
-            <PillToggle
-              checked={gotify.notifyDiscoveryUpdated || false}
-              onChange={(e) => updateGotify({ notifyDiscoveryUpdated: e.target.checked })}
-            />
-          </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Gotify: Weekly flow finished">
-            <PillToggle
-              checked={gotify.notifyWeeklyFlowDone || false}
-              onChange={(e) => updateGotify({ notifyWeeklyFlowDone: e.target.checked })}
-            />
-          </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Gotify: Request made">
-            <PillToggle
-              checked={gotify.notifyRequestMade || false}
-              onChange={(e) => updateGotify({ notifyRequestMade: e.target.checked })}
-            />
-          </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Gotify: Request available">
-            <PillToggle
-              checked={gotify.notifyRequestAvailable || false}
-              onChange={(e) => updateGotify({ notifyRequestAvailable: e.target.checked })}
             />
           </SettingsArrFormGroup>
         </SettingsArrFieldSet>
@@ -526,6 +506,30 @@ export function SettingsConnectTab({
                 onChange={(e) => updateGotify({ token: e.target.value })}
               />
             </SettingsModalField>
+          </SettingsModalSection>
+          <SettingsModalSection title="Notification events">
+            <SettingsModalToggleGroup>
+              <SettingsModalToggle
+                label="Discover updated"
+                checked={gotify.notifyDiscoveryUpdated || false}
+                onChange={(e) => updateGotify({ notifyDiscoveryUpdated: e.target.checked })}
+              />
+              <SettingsModalToggle
+                label="Weekly flow finished"
+                checked={gotify.notifyWeeklyFlowDone || false}
+                onChange={(e) => updateGotify({ notifyWeeklyFlowDone: e.target.checked })}
+              />
+              <SettingsModalToggle
+                label="Request made"
+                checked={gotify.notifyRequestMade || false}
+                onChange={(e) => updateGotify({ notifyRequestMade: e.target.checked })}
+              />
+              <SettingsModalToggle
+                label="Request available"
+                checked={gotify.notifyRequestAvailable || false}
+                onChange={(e) => updateGotify({ notifyRequestAvailable: e.target.checked })}
+              />
+            </SettingsModalToggleGroup>
           </SettingsModalSection>
         </SettingsIntegrationModal>
       )}

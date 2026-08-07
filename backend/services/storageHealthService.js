@@ -566,6 +566,7 @@ async function checkDownloadClientSection({
   resolveCompletedPath,
   missingPathFix,
   pathFix,
+  connectionLabel = `Connected to ${title}`,
   extraSteps = null,
 }) {
   const integrations = dbOps.getSettings()?.integrations || {};
@@ -591,7 +592,7 @@ async function checkDownloadClientSection({
   }
 
   steps.push(
-    healthStep("api", "pass", `Connected to ${title}`, {
+    healthStep("api", "pass", connectionLabel, {
       detail: connection.message || `${key} is reachable`,
     }),
   );
@@ -671,10 +672,11 @@ async function checkSlskdSection() {
       looksLikeExternalOnlyPath(downloadPath)
         ? "slskd reports a host path Aurral cannot read inside Docker. Mount the shared parent folder into both containers, or add an slskd mapping under Settings → Download Clients → Remote Path Mappings."
         : `Mount the same host folder into Aurral at the path slskd uses, or add an slskd mapping for ${downloadPath} under Settings → Download Clients → Remote Path Mappings.`,
+    connectionLabel: "slskd API is reachable",
     extraSteps: (connection) => {
       if (connection.soulseekConnected === false) {
         return [
-          healthStep("soulseek", "warn", "slskd network is not connected", {
+          healthStep("soulseek", "warn", "Soulseek network is not connected", {
             detail: "slskd is started but the network is not connected",
             fix: "Open slskd, log in, and connect to the Soulseek server before starting downloads.",
           }),

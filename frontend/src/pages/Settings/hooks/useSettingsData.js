@@ -153,6 +153,8 @@ const defaultSettings = {
   },
 };
 
+const AUTOSAVE_DELAY_MS = 450;
+
 export function useSettingsData(showSuccess, showError, showInfo) {
   const [health, setHealth] = useState(null);
   const [settings, setSettingsState] = useState(defaultSettings);
@@ -176,6 +178,14 @@ export function useSettingsData(showSuccess, showError, showInfo) {
   const [applyingCommunityGuide, setApplyingCommunityGuide] = useState(false);
   const [showCommunityGuideModal, setShowCommunityGuideModal] = useState(false);
   const comparisonEnabledRef = useRef(false);
+  const settingsRef = useRef(defaultSettings);
+  const originalSettingsRef = useRef(null);
+  const hasUnsavedChangesRef = useRef(false);
+  const saveTimerRef = useRef(null);
+  const saveInFlightRef = useRef(null);
+  const saveQueuedRef = useRef(false);
+  const persistSettingsRef = useRef(null);
+  const mountedRef = useRef(true);
 
   const applyHealthUpdate = useCallback((healthData, { allowClearRefreshing = true } = {}) => {
     setHealth(healthData);
@@ -243,8 +253,12 @@ export function useSettingsData(showSuccess, showError, showInfo) {
     try {
       const [, savedSettings] = await Promise.all([refreshHealth(), getAppSettings()]);
       const updatedSettings = normalizeSettings(savedSettings);
+      const savedSnapshot = structuredClone(updatedSettings);
+      settingsRef.current = updatedSettings;
+      originalSettingsRef.current = savedSnapshot;
       setSettingsState(updatedSettings);
-      setOriginalSettings(structuredClone(updatedSettings));
+      setOriginalSettings(savedSnapshot);
+      hasUnsavedChangesRef.current = false;
       setHasUnsavedChanges(false);
       setTimeout(() => {
         comparisonEnabledRef.current = true;
@@ -283,6 +297,20 @@ export function useSettingsData(showSuccess, showError, showInfo) {
   }, [fetchSettings]);
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      if (hasUnsavedChangesRef.current) {
+        persistSettingsRef.current?.(settingsRef.current);
+      }
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (
       !refreshingDiscovery ||
       !shouldPollDiscoveryHealth({ isConnected: discoveryWsConnected })
@@ -315,39 +343,112 @@ export function useSettingsData(showSuccess, showError, showInfo) {
     };
   }, [discoveryWsConnected, refreshingDiscovery, refreshHealth]);
 
-  const updateSettings = useCallback(
-    (newSettings) => {
-      setSettingsState(newSettings);
-      if (comparisonEnabledRef.current && originalSettings) {
-        setHasUnsavedChanges(checkForChanges(newSettings, originalSettings));
+  const persistSettings = useCallback(
+    async (settingsToSave) => {
+      if (!settingsToSave) return false;
+      if (saveInFlightRef.current) {
+        if (checkForChanges(settingsRef.current, originalSettingsRef.current)) {
+          saveQueuedRef.current = true;
+        }
+        return saveInFlightRef.current;
+      }
+
+      if (mountedRef.current) setSaving(true);
+      let succeeded = false;
+      const request = (async () => {
+        try {
+          const savedSettings = await updateAppSettings(settingsToSave);
+          const normalizedSettings = normalizeSettings(savedSettings);
+          const savedSnapshot = structuredClone(normalizedSettings);
+          const isLatestSettings = settingsRef.current === settingsToSave;
+
+          originalSettingsRef.current = savedSnapshot;
+          if (mountedRef.current) setOriginalSettings(savedSnapshot);
+
+          if (isLatestSettings) {
+            settingsRef.current = normalizedSettings;
+            if (mountedRef.current) setSettingsState(normalizedSettings);
+            hasUnsavedChangesRef.current = false;
+            if (mountedRef.current) setHasUnsavedChanges(false);
+          } else {
+            const stillDirty = checkForChanges(settingsRef.current, normalizedSettings);
+            hasUnsavedChangesRef.current = stillDirty;
+            if (mountedRef.current) setHasUnsavedChanges(stillDirty);
+          }
+
+          if (mountedRef.current) await refreshHealth();
+          succeeded = true;
+          return true;
+        } catch (err) {
+          if (mountedRef.current) {
+            showError("Failed to save settings: " + err.message);
+          }
+          return false;
+        }
+      })();
+
+      saveInFlightRef.current = request;
+      try {
+        return await request;
+      } finally {
+        saveInFlightRef.current = null;
+        if (mountedRef.current) setSaving(false);
+
+        const shouldSaveLatest =
+          succeeded &&
+          (saveQueuedRef.current ||
+            checkForChanges(settingsRef.current, originalSettingsRef.current));
+        saveQueuedRef.current = false;
+        if (shouldSaveLatest) {
+          saveTimerRef.current = setTimeout(() => {
+            saveTimerRef.current = null;
+            persistSettingsRef.current?.(settingsRef.current);
+          }, 0);
+        }
       }
     },
-    [originalSettings],
+    [refreshHealth, showError],
   );
 
+  persistSettingsRef.current = persistSettings;
+
+  const updateSettings = useCallback((newSettings) => {
+    settingsRef.current = newSettings;
+    setSettingsState(newSettings);
+    if (!comparisonEnabledRef.current || !originalSettingsRef.current) return;
+
+    const changed = checkForChanges(newSettings, originalSettingsRef.current);
+    hasUnsavedChangesRef.current = changed;
+    setHasUnsavedChanges(changed);
+
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (!changed) return;
+
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      persistSettingsRef.current?.(settingsRef.current);
+    }, AUTOSAVE_DELAY_MS);
+  }, []);
+
   const handleSaveSettings = useCallback(
-    async (e, settingsOverride) => {
+    (e, settingsOverride) => {
       e?.preventDefault();
-      const toSave = settingsOverride ?? settings;
-      setSaving(true);
-      try {
-        const savedSettings = await updateAppSettings(toSave);
-        const normalizedSettings = normalizeSettings(savedSettings);
-        setSettingsState(normalizedSettings);
-        setOriginalSettings(structuredClone(normalizedSettings));
-        setHasUnsavedChanges(false);
-        showSuccess("Settings saved successfully!");
-        await refreshHealth();
-        return true;
-      } catch (err) {
-        await fetchSettings();
-        showError("Failed to save settings: " + err.message);
-        return false;
-      } finally {
-        setSaving(false);
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
       }
+
+      const toSave = settingsOverride ?? settingsRef.current;
+      if (settingsOverride) {
+        settingsRef.current = settingsOverride;
+        setSettingsState(settingsOverride);
+      }
+      return persistSettings(toSave);
     },
-    [settings, showSuccess, showError, refreshHealth, fetchSettings],
+    [persistSettings],
   );
 
   const handleRefreshDiscovery = useCallback(async () => {

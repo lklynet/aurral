@@ -68,7 +68,7 @@ export function SettingsIntegrationModal({
         </div>
         {saveReminder ? (
           <p className="settings-page__modal-reminder">
-            Save this settings section to apply changes.
+            Changes save automatically.
           </p>
         ) : null}
         <div className="settings-page__modal-body">
