@@ -1,24 +1,36 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  disableNewsFeed,
   getLibraryNews,
-  updateNewsPreferences,
 } from "../utils/api/endpoints/news.js";
 
-export function useLibraryNews({ enabled = false, limit = 60 } = {}) {
+const CLIENT_CACHE_TTL_MS = 5 * 60 * 1000;
+const newsPageCache = new Map();
+
+export function useLibraryNews({ enabled = false, limit = 60, mode = "matched" } = {}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
+  const cacheKey = `${mode}:${limit}`;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ append = false, offset = 0 } = {}) => {
     if (!enabled) {
       setData(null);
       setError("");
       return null;
     }
-    setLoading(true);
+    if (append) setLoadingMore(true);
+    else setLoading(true);
     try {
-      const next = await getLibraryNews(limit);
-      setData(next);
+      const next = await getLibraryNews(limit, mode, offset);
+      setData((previous) => {
+        const result = append
+          ? { ...next, articles: [...(previous?.articles || []), ...(next.articles || [])] }
+          : next;
+        newsPageCache.set(cacheKey, { data: result, cachedAt: Date.now() });
+        return result;
+      });
       setError("");
       return next;
     } catch (err) {
@@ -26,38 +38,43 @@ export function useLibraryNews({ enabled = false, limit = 60 } = {}) {
       return null;
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, [enabled, limit]);
+  }, [cacheKey, enabled, limit, mode]);
 
-  const blockPublisher = useCallback(async (publisher) => {
-    const current = Array.isArray(data?.blockedPublishers) ? data.blockedPublishers : [];
-    const next = [...current, publisher];
-    const preferences = await updateNewsPreferences(next);
-    setData((previous) => ({ ...(previous || {}), blockedPublishers: preferences.blockedPublishers }));
-    await load();
-  }, [data?.blockedPublishers, load]);
+  const loadMore = useCallback(() => {
+    if (loading || loadingMore || !data?.hasMore) return Promise.resolve(null);
+    return load({ append: true, offset: data.articles?.length || 0 });
+  }, [data?.articles?.length, data?.hasMore, load, loading, loadingMore]);
 
-  const unblockPublisher = useCallback(async (publisher) => {
-    const current = Array.isArray(data?.blockedPublishers) ? data.blockedPublishers : [];
-    const next = current.filter((entry) => entry.toLowerCase() !== String(publisher || "").toLowerCase());
-    const preferences = await updateNewsPreferences(next);
-    setData((previous) => ({ ...(previous || {}), blockedPublishers: preferences.blockedPublishers }));
+  const disablePublisher = useCallback(async (publisher, sourceUrl) => {
+    await disableNewsFeed(sourceUrl, publisher);
     await load();
-  }, [data?.blockedPublishers, load]);
+  }, [load]);
 
   useEffect(() => {
+    if (!enabled) {
+      load();
+      return;
+    }
+    const cached = newsPageCache.get(cacheKey);
+    if (cached) {
+      setData(cached.data);
+      if (Date.now() - cached.cachedAt < CLIENT_CACHE_TTL_MS) return;
+    }
     load();
-  }, [load]);
+  }, [cacheKey, enabled, load]);
 
   return {
     articles: Array.isArray(data?.articles) ? data.articles : [],
     artistCount: Number(data?.artistCount || 0),
     refresh: data?.refresh || null,
     configured: data?.configured === true,
-    blockedPublishers: Array.isArray(data?.blockedPublishers) ? data.blockedPublishers : [],
     loading,
+    loadingMore,
+    hasMore: data?.hasMore === true,
+    loadMore,
     error,
-    blockPublisher,
-    unblockPublisher,
+    disablePublisher,
   };
 }

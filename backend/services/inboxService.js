@@ -28,7 +28,6 @@ const getInboxPreferences = () => {
     shows: configured.shows !== false,
     news: configured.news !== false,
     recommendedNews: configured.recommendedNews === true,
-    musicHeadlines: configured.musicHeadlines === true,
     discoveries: configured.discoveries !== false,
   };
 };
@@ -39,7 +38,6 @@ const getEnabledKinds = (preferences) =>
     show: preferences.shows,
     news: preferences.news,
     recommendedNews: preferences.recommendedNews,
-    musicHeadline: preferences.musicHeadlines,
     discovery: preferences.discoveries,
   })
     .filter(([, enabled]) => enabled)
@@ -189,18 +187,8 @@ async function buildNewsItems(userId, now, enabledKinds) {
   for (const article of articles) {
     const kind = article.newsType === "recommended"
       ? "recommendedNews"
-      : article.newsType === "musicHeadlines"
-        ? "musicHeadline"
-        : "news";
+      : "news";
     if (!enabledKinds.has(kind)) continue;
-    if (kind === "musicHeadline") {
-      const day = String(article?.publishedAt || "").slice(0, 10) || new Date(now).toISOString().slice(0, 10);
-      const key = `${kind}:${day}`;
-      const list = grouped.get(key) || [];
-      if (list.length < 5) list.push(article);
-      grouped.set(key, list);
-      continue;
-    }
     const artistMbid = String(article?.artistMbid || article?.artistName || "").trim();
     const artistName = String(article?.artistName || "").trim();
     if (!artistName) continue;
@@ -214,19 +202,6 @@ async function buildNewsItems(userId, now, enabledKinds) {
   return [...grouped.entries()].map(([key, dailyArticles]) => {
     const first = dailyArticles[0];
     const sources = [...new Set(dailyArticles.map((article) => article.source).filter(Boolean))];
-    if (first.newsType === "musicHeadlines") {
-      return {
-        userId,
-        kind: "musicHeadline",
-        sourceKey: key,
-        title: "Top music headlines",
-        subtitle: `${dailyArticles.length} ${dailyArticles.length === 1 ? "story" : "stories"}${sources.length ? ` · ${sources.slice(0, 2).join(", ")}` : ""}`,
-        href: first.url,
-        imageUrl: first.imageUrl,
-        metadata: { newsType: "musicHeadlines", articles: dailyArticles },
-        expiresAt: now + CONTENT_TTL_MS,
-      };
-    }
     const kind = first.newsType === "recommended" ? "recommendedNews" : "news";
     return {
       userId,
@@ -253,7 +228,7 @@ const dismissBlockedNewsItems = (userId) => {
   );
   if (blocked.size === 0) return;
   for (const item of dbOps.getInboxItems(userId, {
-    kinds: ["news", "recommendedNews", "musicHeadline"],
+    kinds: ["news", "recommendedNews"],
     limit: 50,
   })) {
     const articles = Array.isArray(item.metadata?.articles) ? item.metadata.articles : [];
@@ -289,7 +264,7 @@ export async function refreshInboxForUser(userId, { req = null, zipCode = "", fo
       : [];
     const enabledNewsKinds = new Set(
       getEnabledKinds(preferences).filter((kind) =>
-        ["news", "recommendedNews", "musicHeadline"].includes(kind),
+        ["news", "recommendedNews"].includes(kind),
       ),
     );
     const results = await Promise.allSettled([

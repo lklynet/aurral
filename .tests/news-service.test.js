@@ -1,399 +1,84 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import axios from "../lib/axiosFetch.js";
-import {
-  cleanupIsolatedState,
-  setupIsolatedBackend,
-} from "./helpers/backendTestHarness.js";
+import { setupIsolatedBackend, cleanupIsolatedState } from "./helpers/backendTestHarness.js";
 
-const [isolatedState, { dbOps }, newsApi, newsService] = await setupIsolatedBackend(
-  "news-service",
+const [isolatedState, { dbOps }, rssNews, newsService, config] = await setupIsolatedBackend(
+  "rss-news-service",
   "backend/db/helpers/index.js",
-  "backend/services/apiClients/newsapi.js",
+  "backend/services/rssNews.js",
   "backend/services/newsService.js",
+  "backend/services/apiClients/config.js",
 );
 
-const resetNewsState = () => {
-  dbOps.setJSONSetting("news:refreshState", null);
-  newsApi.newsCache.flushAll();
-};
+test.after(async () => cleanupIsolatedState(isolatedState));
 
-test.beforeEach(() => {
-  resetNewsState();
+test("parses RSS items, Atom entries, entities, and images", () => {
+  const articles = rssNews.parseRssFeed(`
+    <rss><channel><title>Example Music</title><item>
+      <title><![CDATA[Artist One &amp; the new album]]></title>
+      <description>A new story.</description>
+      <link>https://example.test/story</link>
+      <pubDate>2026-08-07T12:00:00Z</pubDate>
+      <media:content url="https://example.test/image.jpg" />
+    </item></channel></rss>
+  `, { name: "Example", url: "https://example.test/feed" });
+
+  assert.equal(articles.length, 1);
+  assert.equal(articles[0].title, "Artist One & the new album");
+  assert.equal(articles[0].source, "Example Music");
+  assert.equal(articles[0].imageUrl, "https://example.test/image.jpg");
 });
 
-test.after(async () => {
-  resetNewsState();
-  await cleanupIsolatedState(isolatedState);
-});
-
-test("fetchNewsForArtists normalizes artist metadata and removes duplicate stories", async (t) => {
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      ...dbOps.getSettings().integrations,
-      newsapi: { apiKey: "test-news-key", language: "en", domains: "" },
-    },
-  });
-  newsApi.newsCache.flushAll();
-
-  let calls = 0;
-  t.mock.method(axios, "get", async () => {
-    calls += 1;
-    return {
-      data: {
-        articles: [
-          {
-            title: "Artist One shares music story",
-            description: "A recent story.",
-            url: "https://news.example.test/shared-story",
-            source: { name: "Example News" },
-            publishedAt: "2026-08-05T12:00:00Z",
-            urlToImage: "https://images.example.test/story.jpg",
-          },
-        ],
-      },
-    };
-  });
-
-  const result = await newsService.fetchNewsForArtists([
-    { foreignArtistId: "artist-one", artistName: "Artist One" },
-    { mbid: "artist-two", name: "Artist Two" },
-  ]);
-
-  assert.equal(result.configured, true);
-  assert.equal(result.artistCount, 2);
-  assert.equal(calls, 2);
-  assert.equal(result.articles.length, 1);
-  assert.equal(result.articles[0].artistName, "Artist One");
-  assert.equal(result.articles[0].artistMbid, "artist-one");
-  assert.equal(result.articles[0].title, "Artist One shares music story");
-});
-
-test("news searches the artist with music context and reuses the hourly query cache", async (t) => {
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      ...dbOps.getSettings().integrations,
-      newsapi: { apiKey: "test-news-key", language: "en", domains: "" },
-    },
-  });
-  newsApi.newsCache.flushAll();
-
-  let calls = 0;
-  let params;
-  t.mock.method(axios, "get", async (_url, config) => {
-    calls += 1;
-    params = config.params;
-    return { data: { articles: [] } };
-  });
-
-  await newsApi.newsApiSearchArtist("David Bowie");
-  await newsApi.newsApiSearchArtist("David Bowie");
-
-  assert.equal(calls, 1);
-  assert.match(params.q, /"David Bowie"/);
-  assert.match(params.q, /music/);
-  assert.equal(params.searchIn, "title");
-});
-
-test("top music headlines use one cached request per day", async (t) => {
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      ...dbOps.getSettings().integrations,
-      newsapi: { apiKey: "test-news-key", language: "en", domains: "" },
-    },
-  });
-  newsApi.newsCache.flushAll();
-
-  let calls = 0;
-  t.mock.method(axios, "get", async (_url, config) => {
-    calls += 1;
-    assert.match(config.params.q, /music/);
-    assert.equal(config.params.searchIn, "title,description");
-    return {
-      data: {
-        articles: [
-          {
-            title: "Music release headlines",
-            description: "The latest track and album news.",
-            url: "https://news.example.test/music-headline",
-            source: { name: "Example Music News" },
-            publishedAt: "2026-08-05T12:00:00Z",
-          },
-          {
-            title: "CION Investment Corporation Q2 2026 Earnings Call Summary",
-            description: "Strategic performance and valuation validation.",
-            url: "https://biztoc.com/cion-earnings",
-            source: { name: "Biztoc.com" },
-            publishedAt: "2026-08-05T11:00:00Z",
-          },
-          {
-            title: "Planet Fitness, Inc. Q2 2026 Earnings Call Summary",
-            description: "Operational performance and same-club sales growth.",
-            url: "https://news.example.test/planet-fitness",
-            source: { name: "Example Business News" },
-            publishedAt: "2026-08-05T10:00:00Z",
-          },
-        ],
-      },
-    };
-  });
-
-  const first = await newsService.fetchNewsForArtists([], { topMusicHeadlines: true });
-  const second = await newsService.fetchNewsForArtists([], { topMusicHeadlines: true });
-
-  assert.equal(calls, 1);
-  assert.equal(first.articles[0].newsType, "musicHeadlines");
-  assert.deepEqual(first.articles.map((article) => article.title), ["Music release headlines"]);
-  assert.equal(second.articles[0].title, "Music release headlines");
-});
-
-test("filters artist-name matches without music intent and keeps music commerce stories", async (t) => {
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      ...dbOps.getSettings().integrations,
-      newsapi: { apiKey: "test-news-key", language: "en", domains: "" },
-    },
-  });
-  newsApi.newsCache.flushAll();
-
+test("fetches and normalizes RSS feed articles", async (t) => {
   t.mock.method(axios, "get", async () => ({
-    data: {
-      articles: [
-        {
-          title: "Nine Inch Nails announce a new music release",
-          description: "The band returns to the studio for a new album.",
-          url: "https://news.example.test/music-story",
-          source: { name: "Example Music News" },
-          publishedAt: "2026-08-05T12:00:00Z",
-        },
-        {
-          title: "How an NYC Nightlife Legend Tracked Down the Pablo Escobar of Animal Trafficking",
-          description: "A true-crime story with an unrelated mention of Nine Inch Nails.",
-          url: "https://news.example.test/unrelated-story",
-          source: { name: "Example Magazine" },
-          publishedAt: "2026-08-05T11:00:00Z",
-        },
-        {
-          title: "Nine Inch Nails - TRON: Ares Target Exclusive Vinyl Deal",
-          description: "A shopping listing for a Nine Inch Nails record.",
-          url: "https://news.example.test/commerce-story",
-          source: { name: "Slickdeals.net" },
-          publishedAt: "2026-08-05T10:00:00Z",
-        },
-      ],
-    },
+    data: "<feed><title>Feed Name</title><entry><title>Artist One news</title><link href=\"https://example.test/story\"/><summary>News</summary></entry></feed>",
   }));
 
-  const result = await newsApi.newsApiSearchArtist("Nine Inch Nails");
-
-  assert.deepEqual(result.map((article) => article.title), [
-    "Nine Inch Nails announce a new music release",
-    "Nine Inch Nails - TRON: Ares Target Exclusive Vinyl Deal",
-  ]);
+  const [article] = await rssNews.fetchRssFeed({ name: "Feed", url: "https://example.test/rss" });
+  assert.equal(article.title, "Artist One news");
+  assert.equal(article.url, "https://example.test/story");
+  assert.equal(article.source, "Feed Name");
 });
 
-test("filters non-music stories already in the local cache", async () => {
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      ...dbOps.getSettings().integrations,
-      newsapi: { apiKey: "test-news-key", language: "en", domains: "" },
+test("matches only artist mentions and applies publisher blocks", () => {
+  const result = newsService.matchNewsArticles([
+    {
+      id: "good",
+      title: "Artist One announces a new album",
+      description: "A music story.",
+      source: "Good Music",
+      url: "https://good.test/story",
+      publishedAt: "2026-08-07T12:00:00Z",
     },
-  });
-  const now = Date.now();
-  dbOps.setJSONSetting("news:refreshState", {
-    artists: {
-      "artist-one": {
-        artistMbid: "artist-one",
-        artistName: "Nine Inch Nails",
-        checkedAt: now,
-        attemptedAt: now,
-        nextAttemptAt: now + 60 * 60 * 1000,
-        articles: [
-          {
-            title: "Nine Inch Nails announce a new music release",
-            description: "The band returns to the studio for a new album.",
-            url: "https://news.example.test/cached-music-story",
-            source: "Example Music News",
-            publishedAt: "2026-08-05T12:00:00Z",
-          },
-          {
-            title: "How an NYC Nightlife Legend Tracked Down the Pablo Escobar of Animal Trafficking",
-            description: "A true-crime story with an unrelated mention of Nine Inch Nails.",
-            url: "https://news.example.test/cached-unrelated-story",
-            source: "Example Magazine",
-            publishedAt: "2026-08-05T11:00:00Z",
-          },
-        ],
-      },
+    {
+      id: "bad",
+      title: "Artist One company reports record earnings",
+      description: "A business story.",
+      source: "Bad News",
+      url: "https://bad.test/story",
+      publishedAt: "2026-08-07T11:00:00Z",
     },
-    requestTimes: [],
-    rateLimitedUntil: 0,
-  });
+    {
+      id: "description-only",
+      title: "A different artist announces a tour",
+      description: "Artist One appears in the article body.",
+      source: "Good Music",
+      url: "https://good.test/other-story",
+      publishedAt: "2026-08-07T10:00:00Z",
+    },
+  ], [{ artistMbid: "mbid-1", artistName: "Artist One", newsType: "library" }], ["Bad News"]);
 
-  const result = await newsService.fetchNewsForArtists([
-    { foreignArtistId: "artist-one", artistName: "Nine Inch Nails" },
-  ]);
-
-  assert.deepEqual(result.articles.map((article) => article.title), [
-    "Nine Inch Nails announce a new music release",
-  ]);
+  assert.deepEqual(result.map((article) => article.title), ["Artist One announces a new album"]);
+  assert.equal(result[0].newsType, "library");
 });
 
-test("does not turn an all-artist NewsAPI failure into an empty success", async (t) => {
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      ...dbOps.getSettings().integrations,
-      newsapi: { apiKey: "test-news-key", language: "en", domains: "" },
-    },
-  });
-  newsApi.newsCache.flushAll();
-  t.mock.method(axios, "get", async () => {
-    throw new Error("NewsAPI rate limited");
-  });
-
-  await assert.rejects(
-    newsService.fetchNewsForArtists([
-      { foreignArtistId: "artist-one", artistName: "Artist One" },
-      { foreignArtistId: "artist-two", artistName: "Artist Two" },
-    ]),
-    /NewsAPI failed for every library artist/,
-  );
-});
-
-test("keeps cached stories when NewsAPI reaches its rate limit", async (t) => {
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      ...dbOps.getSettings().integrations,
-      newsapi: { apiKey: "test-news-key", language: "en", domains: "" },
-    },
-  });
-
-  let rateLimited = false;
-  t.mock.method(axios, "get", async () => {
-    if (rateLimited) {
-      const error = new Error("rate limited");
-      error.response = { status: 429, data: { code: "rateLimited" } };
-      throw error;
-    }
-    return {
-      data: {
-        articles: [
-          {
-            title: "Artist One cached music story",
-            url: "https://news.example.test/cached-story",
-            source: { name: "Example News" },
-            publishedAt: "2026-08-05T12:00:00Z",
-          },
-        ],
-      },
-    };
-  });
-
-  const artist = [{ foreignArtistId: "artist-one", artistName: "Artist One" }];
-  await newsService.fetchNewsForArtists(artist);
-  const state = dbOps.getJSONSetting("news:refreshState");
-  state.artists["artist-one"].checkedAt = Date.now() - 2 * 24 * 60 * 60 * 1000;
-  state.artists["artist-one"].nextAttemptAt = Date.now() - 1;
-  dbOps.setJSONSetting("news:refreshState", state);
-  newsApi.newsCache.flushAll();
-  rateLimited = true;
-
-  const result = await newsService.fetchNewsForArtists(artist);
-  assert.equal(result.articles[0].title, "Artist One cached music story");
-  assert.match(result.refresh.warning, /rate limit reached/);
-  assert.ok(result.refresh.rateLimitedUntil > Date.now());
-});
-
-test("filters blocked publishers before returning library news", async (t) => {
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      ...dbOps.getSettings().integrations,
-      newsapi: { apiKey: "test-news-key", language: "en", domains: "" },
-    },
-  });
-  newsApi.newsCache.flushAll();
-  t.mock.method(axios, "get", async () => ({
-    data: {
-      articles: [
-        {
-          title: "Artist One good music story",
-          url: "https://good.example/story",
-          source: { name: "Good News" },
-          publishedAt: "2026-08-05T12:00:00Z",
-        },
-        {
-          title: "Bad result",
-          url: "https://rlsbb.cc/result",
-          source: { name: "Rlsbb.cc" },
-          publishedAt: "2026-08-05T11:00:00Z",
-        },
-      ],
-    },
-  }));
-
-  const result = await newsService.fetchNewsForArtists(
-    [{ foreignArtistId: "artist-one", artistName: "Artist One" }],
-    { blockedPublishers: ["rlsbb.cc"] },
-  );
-
-  assert.deepEqual(result.articles.map((article) => article.source), ["Good News"]);
-});
-
-test("rotates large libraries through a shared 100-call budget", async (t) => {
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      ...dbOps.getSettings().integrations,
-      newsapi: { apiKey: "test-news-key", language: "en", domains: "" },
-    },
-  });
-
-  let calls = 0;
-  const queriedArtists = [];
-  t.mock.method(axios, "get", async (_url, config) => {
-    calls += 1;
-    queriedArtists.push(config.params.q);
-    return {
-      data: {
-        articles: [
-          {
-            title: config.params.q,
-            url: `https://news.example.test/${calls}`,
-            source: { name: "Example News" },
-            publishedAt: "2026-08-05T12:00:00Z",
-          },
-        ],
-      },
-    };
-  });
-
-  const artists = Array.from({ length: 110 }, (_, index) => ({
-    foreignArtistId: `artist-${index}`,
-    artistName: `Artist ${index}`,
-  }));
-
-  const first = await newsService.fetchNewsForArtists(artists);
-  assert.equal(calls, 25);
-  assert.equal(first.refresh.checkedArtistCount, 25);
-  assert.equal(first.refresh.queuedArtistCount, 85);
-  assert.equal(first.refresh.callsRemaining, 75);
-
-  await newsService.fetchNewsForArtists(artists);
-  await newsService.fetchNewsForArtists(artists);
-  await newsService.fetchNewsForArtists(artists);
-  assert.equal(calls, 100);
-  assert.equal(new Set(queriedArtists).size, 100);
-
-  const exhausted = await newsService.fetchNewsForArtists(artists);
-  assert.equal(calls, 100);
-  assert.equal(exhausted.refresh.callsRemaining, 0);
-  assert.match(exhausted.refresh.warning, /budget exhausted/);
+test("uses curated RSS groups and preserves custom feeds", () => {
+  const settings = config.getNewsSettings();
+  assert.ok(settings.feeds.length >= 10);
+  assert.ok(settings.feeds.some((feed) => feed.group === "indie"));
+  const customFeed = config.normalizeNewsFeeds([
+    { name: "Custom", url: "https://custom.test/feed", group: "custom" },
+  ]).find((feed) => feed.url === "https://custom.test/feed");
+  assert.equal(customFeed.builtIn, false);
 });

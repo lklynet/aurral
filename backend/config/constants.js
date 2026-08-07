@@ -91,13 +91,9 @@ export const defaultData = {
         localDiscoveryIncludeRecommendations: true,
         localDiscoveryIncludeTrending: true,
       },
-      newsapi: {
-        apiKey: "",
-        language: "en",
-        domains: "",
-        searchLibraryArtists: true,
-        searchRecommendedArtists: false,
-        topMusicHeadlines: false,
+      news: {
+        enabled: true,
+        feeds: [],
       },
       lidarr: {
         url: "",
@@ -157,7 +153,6 @@ export const defaultData = {
       shows: true,
       news: true,
       recommendedNews: false,
-      musicHeadlines: false,
       discoveries: true,
     },
   },

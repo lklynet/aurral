@@ -40,9 +40,9 @@ You can customize which sections appear on your Discover page and reorder them p
 
 ## Artist news
 
-When you add a NewsAPI key in **Settings > Connect**, Discover shows recent music stories about artists in your Lidarr library. The NewsAPI settings let you search library artists, recommended artists, and top music headlines independently. Aurral searches for exact artist names in article titles with music-related terms, then removes artist-news headlines without the artist name. Top music headlines use one cached request per day when enabled.
+When **News** is enabled in **Settings > RSS News**, Discover shows recent stories from the configured RSS feeds when they mention artists in your Lidarr library or recommended artists. Aurral combines the feeds locally, removes duplicate stories, and matches artist names before showing an article.
 
-Select the arrow on the **Artist News** section, or **News** in the sidebar, to open the full news page. Aurral keeps the NewsAPI key on the server, checks artists in rotating batches, uses a shared rolling budget of 100 NewsAPI requests per 24 hours, and keeps the results in the local database. If NewsAPI does not provide an article photo, Aurral uses the artist artwork from your library when available. Select the block icon beside an article's publisher to block that publisher; blocks are per user and can be undone from **Blocked publishers**.
+Select the arrow on the **Artist News** section, or **News** in the sidebar, to open the full news page. Aurral refreshes enabled RSS feeds in the background and keeps recent results in the local database. If a feed does not provide an article photo, Aurral uses the available image fallback. Select the disable icon beside an article's publisher to turn that RSS feed off in **Settings > RSS News**.
 
 ## Discover playlists
 

@@ -1,8 +1,11 @@
 export {
   getLastfmApiKey,
   getTicketmasterApiKey,
-  getNewsApiKey,
-  getNewsApiSettings,
+  getNewsSettings,
+  normalizeNewsFeeds,
+  normalizeNewsGroups,
+  DEFAULT_NEWS_FEEDS,
+  DEFAULT_NEWS_GROUPS,
   getMusicBrainzContact,
   getMusicbrainzApiBaseUrl,
   getMetadataProviderHealthSnapshot,

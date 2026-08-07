@@ -17,6 +17,7 @@ import { SettingsDownloadClientsSection } from "./components/SettingsDownloadCli
 import { SettingsTasksTab } from "./components/SettingsTasksTab";
 import { SettingsPlaybackTab } from "./components/SettingsPlaybackTab";
 import { SettingsConnectTab } from "./components/SettingsConnectTab";
+import { SettingsRssNewsTab } from "./components/SettingsRssNewsTab";
 import { SettingsDiscoverTab } from "./components/SettingsDiscoverTab";
 import { SettingsUsersTab } from "./components/SettingsUsersTab";
 import { SettingsMetadataTab } from "./components/SettingsMetadataTab";
@@ -174,6 +175,14 @@ function SettingsPage() {
             setTestingGotify={data.setTestingGotify}
             showSuccess={showSuccess}
             showError={showError}
+          />
+        );
+      case "rss-news":
+        return (
+          <SettingsRssNewsTab
+            settings={data.settings}
+            updateSettings={data.updateSettings}
+            handleSaveSettings={data.handleSaveSettings}
           />
         );
       case "discover":

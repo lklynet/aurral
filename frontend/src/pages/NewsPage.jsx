@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Newspaper, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -9,20 +10,36 @@ export default function NewsPage() {
   useDocumentTitle("Artist News");
   const navigate = useNavigate();
   const { bootstrap } = useAuth();
-  const newsConfigured = bootstrap?.newsapiConfigured === true;
+  const newsConfigured = bootstrap?.newsConfigured === true;
+  const [highlightedOnly, setHighlightedOnly] = useState(false);
+  const loadMoreRef = useRef(null);
   const {
     articles,
     refresh,
-    blockedPublishers,
     loading,
+    loadingMore,
+    hasMore,
+    loadMore,
     error,
-    blockPublisher,
-    unblockPublisher,
+    disablePublisher,
   } = useLibraryNews({
     enabled: newsConfigured,
-    limit: 100,
+    limit: 24,
+    mode: "top",
   });
+  const visibleArticles = highlightedOnly
+    ? articles.filter((article) => article.artistName)
+    : articles;
   const refreshWarning = error || refresh?.warning || "";
+
+  useEffect(() => {
+    if (!hasMore || !loadMoreRef.current) return undefined;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) void loadMore();
+    }, { rootMargin: "600px" });
+    observer.observe(loadMoreRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, loadMore]);
 
   return (
     <div className="artist-discover-page discover-news-page">
@@ -30,40 +47,28 @@ export default function NewsPage() {
         <div>
           <h1 className="page-title">Artist News</h1>
           <p className="discover-news-page__subtitle">
-            Recent stories about artists in your library
+            Top stories from your enabled RSS feeds
           </p>
         </div>
         {newsConfigured ? (
-          <div className="discover-news-page__header-actions">
-            {blockedPublishers.length > 0 ? (
-              <details className="discover-news-page__blocked">
-                <summary>Blocked publishers</summary>
-                <div className="discover-news-page__blocked-list">
-                  {blockedPublishers.map((publisher) => (
-                    <div key={publisher}>
-                      <span>{publisher}</span>
-                      <button
-                        type="button"
-                        onClick={() => void unblockPublisher(publisher).catch(() => {})}
-                      >
-                        Unblock
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </details>
-            ) : null}
-          </div>
+          <button
+            type="button"
+            className={`discover-news-page__highlight-toggle${highlightedOnly ? " is-active" : ""}`}
+            aria-pressed={highlightedOnly}
+            onClick={() => setHighlightedOnly((value) => !value)}
+          >
+            Highlighted only
+          </button>
         ) : null}
       </header>
 
       {!newsConfigured ? (
         <section className="discover-news-page__status">
           <Newspaper aria-hidden="true" />
-          <h2>Connect NewsAPI</h2>
-          <p>Add a NewsAPI key to see recent stories about artists in your library.</p>
-          <button type="button" className="btn btn-primary btn--bold" onClick={() => navigate("/settings/connect")}>
-            Open NewsAPI settings
+          <h2>Enable News</h2>
+          <p>Enable the RSS news feed in Settings to see recent stories about artists in your library.</p>
+          <button type="button" className="btn btn-primary btn--bold" onClick={() => navigate("/settings/rss-news")}>
+            Open News settings
           </button>
         </section>
       ) : loading && articles.length === 0 ? (
@@ -80,14 +85,26 @@ export default function NewsPage() {
             </div>
           ) : null}
           <div className="discover-news-page__grid">
-            {articles.map((article) => (
+            {visibleArticles.map((article) => (
               <NewsArticleCard
                 key={article.url}
                 article={article}
-                onBlockPublisher={blockPublisher}
+                onDisablePublisher={disablePublisher}
               />
             ))}
           </div>
+          {highlightedOnly && visibleArticles.length === 0 ? (
+            <section className="discover-news-page__status">
+              <Newspaper aria-hidden="true" />
+              <h2>No highlighted stories</h2>
+              <p>None of the loaded stories mention a library or recommended artist.</p>
+            </section>
+          ) : null}
+          {hasMore ? (
+            <div ref={loadMoreRef} className="discover-news-page__load-more" aria-live="polite">
+              {loadingMore ? "Loading more stories…" : "Loading more stories…"}
+            </div>
+          ) : null}
         </>
       ) : error ? (
         <section className="discover-news-page__status" role="alert">
@@ -99,7 +116,7 @@ export default function NewsPage() {
         <section className="discover-news-page__status">
           <Newspaper aria-hidden="true" />
           <h2>No recent artist news</h2>
-          <p>{refreshWarning || "NewsAPI did not return recent stories for the artists in your library."}</p>
+          <p>{refreshWarning || "No recent RSS stories matched the artists in your library or recommendations."}</p>
         </section>
       ) : null}
     </div>

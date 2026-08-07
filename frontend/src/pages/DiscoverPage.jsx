@@ -43,14 +43,14 @@ function DiscoverPage() {
   const navigate = useDiscoverNavigation();
   const { showSuccess, showError } = useToast();
   const canAdoptPlaylist = hasPermission("accessFlow");
-  const newsConfigured = bootstrap?.newsapiConfigured === true;
+  const newsConfigured = bootstrap?.newsConfigured === true;
   const {
     articles: newsArticles,
     loading: newsLoading,
     error: newsError,
     refresh: newsRefresh,
-    blockPublisher: blockNewsPublisher,
-  } = useLibraryNews({ enabled: newsConfigured, limit: 60 });
+    disablePublisher: disableNewsPublisher,
+  } = useLibraryNews({ enabled: newsConfigured, limit: 60, mode: "top" });
 
   const {
     data,
@@ -579,7 +579,7 @@ function DiscoverPage() {
                 <NewsArticleCard
                   article={article}
                   compact
-                  onBlockPublisher={blockNewsPublisher}
+                  onDisablePublisher={disableNewsPublisher}
                 />
               </div>
             ))

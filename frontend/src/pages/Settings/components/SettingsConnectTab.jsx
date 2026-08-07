@@ -34,12 +34,10 @@ export function SettingsConnectTab({
   const gotify = settings.integrations?.gotify || {};
   const lastfm = settings.integrations?.lastfm || {};
   const ticketmaster = settings.integrations?.ticketmaster || {};
-  const newsapi = settings.integrations?.newsapi || {};
   const inbox = settings.inbox || {};
   const gotifyConfigured = Boolean(gotify.url && gotify.token);
   const lastfmConfigured = Boolean(health?.lastfmConfigured);
   const ticketmasterConfigured = Boolean(health?.ticketmasterConfigured);
-  const newsapiConfigured = Boolean(health?.newsapiConfigured);
 
   const webhooks = settings.integrations?.webhooks || [];
   const webhookEvents = settings.integrations?.webhookEvents || {};
@@ -88,15 +86,6 @@ export function SettingsConnectTab({
       integrations: {
         ...settings.integrations,
         ticketmaster: { ...ticketmaster, ...patch },
-      },
-    });
-
-  const updateNewsApi = (patch) =>
-    updateSettings({
-      ...settings,
-      integrations: {
-        ...settings.integrations,
-        newsapi: { ...newsapi, ...patch },
       },
     });
 
@@ -214,13 +203,6 @@ export function SettingsConnectTab({
               status={getConfiguredStatus(ticketmasterConfigured)}
               meta={`${ticketmaster.searchRadiusMiles ?? 250} mi radius`}
               onClick={() => setActiveModal("ticketmaster")}
-            />
-            <IntegrationCard
-              title="NewsAPI"
-              subtitle="Artist news"
-              status={getConfiguredStatus(newsapiConfigured)}
-              meta={newsapi.domains || "Optional"}
-              onClick={() => setActiveModal("newsapi")}
             />
           </SettingsArrCardGrid>
         </SettingsArrFieldSet>
@@ -469,12 +451,6 @@ export function SettingsConnectTab({
               onChange={(e) => updateInbox({ recommendedNews: e.target.checked })}
             />
           </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Top Music headlines">
-            <PillToggle
-              checked={inbox.musicHeadlines === true}
-              onChange={(e) => updateInbox({ musicHeadlines: e.target.checked })}
-            />
-          </SettingsArrFormGroup>
           <SettingsArrFormGroup label="Discoveries">
             <PillToggle
               checked={inbox.discoveries !== false}
@@ -636,61 +612,6 @@ export function SettingsConnectTab({
                     localDiscoveryIncludeTrending: e.target.checked,
                   })
                 }
-              />
-            </SettingsModalToggleGroup>
-          </SettingsModalSection>
-        </SettingsIntegrationModal>
-      )}
-
-      {activeModal === "newsapi" && (
-        <SettingsIntegrationModal title="NewsAPI" onClose={() => setActiveModal(null)}>
-          <SettingsModalIntro>
-            Optional artist news for the inbox. Keep the key on the server and use a production NewsAPI plan for deployed instances.
-          </SettingsModalIntro>
-          <SettingsModalSection title="Connection">
-            <SettingsModalField label="API key">
-              <SettingsInput
-                type="password"
-                placeholder="NewsAPI key"
-                autoComplete="off"
-                value={newsapi.apiKey || ""}
-                onChange={(e) => updateNewsApi({ apiKey: e.target.value })}
-              />
-            </SettingsModalField>
-            <SettingsModalField label="Language">
-              <SettingsInput
-                type="text"
-                placeholder="en"
-                maxLength={5}
-                value={newsapi.language || "en"}
-                onChange={(e) => updateNewsApi({ language: e.target.value })}
-              />
-            </SettingsModalField>
-            <SettingsModalField label="Optional domains">
-              <SettingsInput
-                type="text"
-                placeholder="news.example.com, magazine.example.com"
-                value={newsapi.domains || ""}
-                onChange={(e) => updateNewsApi({ domains: e.target.value })}
-              />
-            </SettingsModalField>
-          </SettingsModalSection>
-          <SettingsModalSection title="Search sources">
-            <SettingsModalToggleGroup>
-              <SettingsModalToggle
-                label="Search Library Artists"
-                checked={newsapi.searchLibraryArtists !== false}
-                onChange={(e) => updateNewsApi({ searchLibraryArtists: e.target.checked })}
-              />
-              <SettingsModalToggle
-                label="Search Recommended Artists"
-                checked={newsapi.searchRecommendedArtists === true}
-                onChange={(e) => updateNewsApi({ searchRecommendedArtists: e.target.checked })}
-              />
-              <SettingsModalToggle
-                label="Top music headlines"
-                checked={newsapi.topMusicHeadlines === true}
-                onChange={(e) => updateNewsApi({ topMusicHeadlines: e.target.checked })}
               />
             </SettingsModalToggleGroup>
           </SettingsModalSection>

@@ -116,7 +116,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
   useEffect(() => {
     if (bootstrap) {
       setTicketmasterConfigured(!!bootstrap.ticketmasterConfigured);
-      setNewsConfigured(!!bootstrap.newsapiConfigured);
+      setNewsConfigured(!!bootstrap.newsConfigured);
     }
   }, [bootstrap]);
 

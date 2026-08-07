@@ -11,17 +11,16 @@ Inbox items are private to each Aurral user. The source library is shared, but r
 
 - Upcoming and recently released albums from artists in the Lidarr library
 - Upcoming shows for library artists when Ticketmaster is configured
-- Optional library-artist news from NewsAPI
-- Optional recommended-artist news from NewsAPI
-- Optional top music headlines from NewsAPI
+- Optional library-artist news from RSS feeds
+- Optional recommended-artist news from RSS feeds
 - Personalized artist discoveries from Discover
 
 The green Inbox icon shows that unread items exist. Select an item to mark it as read; it stays in the Inbox with reduced emphasis. Select the checkmark to remove it. Artist and release items open their full pages, where you can decide whether to add them to Lidarr. Use the filter button to show all notifications or one category. The dropdown scrolls when there are more updates than fit on screen.
 
 ## Settings
 
-Admins can enable or disable each Inbox category in the **Inbox** section below **Notification Events** under **Settings > Connect**. Library artist news, recommended artist news, and top music headlines have separate toggles. Ticketmaster is configured under **Settings > Connect > Ticketmaster**.
+Admins can enable or disable each Inbox category in the **Inbox** section below **Notification Events** under **Settings > Connect**. Only library-artist news and recommended-artist news are available as news Inbox categories. Configure RSS feeds and feed groups under **Settings > RSS News**. Ticketmaster is configured under **Settings > Connect > Ticketmaster**.
 
-News is optional. Add a NewsAPI key under **Settings > Connect > NewsAPI**. The NewsAPI modal lets you search library artists, recommended artists, and top music headlines independently. Top music headlines use one cached request per day when enabled. Aurral stores the key encrypted with the instance key and sends NewsAPI requests from the server. Publisher blocks from Artist News also apply to Inbox news. Aurral checks up to 25 due artists per refresh, shares a rolling 100-request budget across Discover, Artist News, and Inbox, and keeps successful results in the local database. Configure an appropriate NewsAPI plan for your deployment.
+News is optional. Enable it under **Settings > RSS News**. This page lists Aurral's built-in RSS feeds, lets you enable or disable feed groups, and lets you add or remove custom feeds. Aurral combines enabled feeds locally, matches stories to library and recommended artist names, and applies publisher blocks before creating Inbox items.
 
 Inbox data refreshes in the background once a day and also refreshes when opened. Artist news advances in the background every six hours and checks due artists when the news page opens.

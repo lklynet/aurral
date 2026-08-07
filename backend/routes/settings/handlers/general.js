@@ -20,6 +20,7 @@ import {
 import { logger } from "../../../services/logger.js";
 import { testNavidromeConnection } from "../../shared/navidromeTest.js";
 import { mergePlexIntegration } from "./plexSettings.js";
+import { getNewsSettings, normalizeNewsFeeds, normalizeNewsGroups } from "../../../services/apiClients/config.js";
 
 function mergeIntegrations(existing, input, keys) {
   const merged = { ...existing, ...input };
@@ -44,6 +45,10 @@ export function registerGeneral(router) {
       if (settings?.integrations?.musicbrainz) {
         delete settings.integrations.musicbrainz;
       }
+      if (settings?.integrations?.newsapi) {
+        delete settings.integrations.newsapi;
+      }
+      settings.integrations.news = getNewsSettings();
       if (!settings?.integrations?.metadata) {
         settings.integrations.metadata = {
           provider: "brainzmash",
@@ -283,26 +288,18 @@ export function registerGeneral(router) {
           integrations.navidrome.pathMappings,
         );
       }
-      if (integrations?.newsapi) {
-        const nextNewsApi = {
-          ...(currentSettings.integrations?.newsapi || {}),
-          ...integrations.newsapi,
+      if (integrations?.news) {
+        const nextNews = {
+          ...(currentSettings.integrations?.news || {}),
+          ...integrations.news,
         };
-        nextNewsApi.apiKey = String(nextNewsApi.apiKey || "").trim();
-        nextNewsApi.language = String(nextNewsApi.language || "en").trim().toLowerCase() || "en";
-        nextNewsApi.domains = String(nextNewsApi.domains || "")
-          .split(",")
-          .map((domain) => domain.trim().toLowerCase())
-          .filter(Boolean)
-          .slice(0, 20)
-          .join(",");
-        nextNewsApi.searchLibraryArtists = nextNewsApi.searchLibraryArtists !== false;
-        nextNewsApi.searchRecommendedArtists = nextNewsApi.searchRecommendedArtists === true;
-        nextNewsApi.topMusicHeadlines = nextNewsApi.topMusicHeadlines === true;
-        integrations.newsapi = nextNewsApi;
+        nextNews.enabled = nextNews.enabled !== false;
+        nextNews.feeds = normalizeNewsFeeds(nextNews.feeds);
+        nextNews.groups = normalizeNewsGroups(nextNews.groups);
+        integrations.news = nextNews;
       }
 
-      const INTEGRATION_KEYS = ["lidarr", "navidrome", "slskd", "prowlarr", "nzbget", "ytdlp", "lastfm", "ticketmaster", "newsapi", "metadata", "general", "gotify", "webhookEvents"];
+      const INTEGRATION_KEYS = ["lidarr", "navidrome", "slskd", "prowlarr", "nzbget", "ytdlp", "lastfm", "ticketmaster", "news", "metadata", "general", "gotify", "webhookEvents"];
       let mergedIntegrations =
         currentSettings.integrations || defaultData.settings.integrations || {};
       if (integrations) {
@@ -330,6 +327,9 @@ export function registerGeneral(router) {
 
       if (mergedIntegrations?.coverArtArchive) {
         delete mergedIntegrations.coverArtArchive;
+      }
+      if (mergedIntegrations?.newsapi) {
+        delete mergedIntegrations.newsapi;
       }
 
       const updatedSettings = {
@@ -362,7 +362,6 @@ export function registerGeneral(router) {
                 shows: inbox.shows !== false,
                 news: inbox.news !== false,
                 recommendedNews: inbox.recommendedNews === true,
-                musicHeadlines: inbox.musicHeadlines === true,
                 discoveries: inbox.discoveries !== false,
               }
             : currentSettings.inbox || defaultData.settings.inbox,

@@ -74,7 +74,7 @@ export const SCHEDULED_SYSTEM_TASKS = [
   {
     name: "news-refresh",
     queue: "system-task",
-    schedule: "@every 6h",
+    schedule: "@every 15m",
     payload: { kind: "news-refresh" },
   },
   {

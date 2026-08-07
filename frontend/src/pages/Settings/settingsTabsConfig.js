@@ -7,6 +7,7 @@ import {
   ListChecks,
   Monitor,
   Music,
+  Rss,
   DatabaseSearch,
   Server,
   Users,
@@ -21,6 +22,7 @@ export const SETTINGS_TABS = [
   { id: "download-clients", label: "Download Clients", icon: Download },
   { id: "playback", label: "Playback", icon: Music },
   { id: "connect", label: "Connect", icon: Bell },
+  { id: "rss-news", label: "RSS News", icon: Rss },
   { id: "discover", label: "Discover", icon: Compass },
   { id: "metadata", label: "Metadata", icon: Database, hidden: true },
   { id: "users", label: "Users", icon: Users },
@@ -90,6 +92,13 @@ const SETTINGS_SEARCH_METADATA = {
       Ticketmaster: "local shows events",
       Inbox: "library updates releases shows news discoveries",
       Webhooks: "notifications HTTP callbacks",
+    },
+  },
+  "rss-news": {
+    sections: ["RSS News", "Feed groups", "RSS feeds"],
+    services: {
+      News: "RSS articles artists library recommendations",
+      Feeds: "music news sources custom feeds",
     },
   },
   discover: {

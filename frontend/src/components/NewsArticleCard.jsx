@@ -11,7 +11,7 @@ const formatNewsDate = (value) => {
     : "Recent";
 };
 
-export function NewsArticleCard({ article, compact = false, onBlockPublisher }) {
+export function NewsArticleCard({ article, compact = false, onDisablePublisher }) {
   const [imageFailed, setImageFailed] = useState(false);
   const [fallbackImage, setFallbackImage] = useState("");
   const [fallbackFailed, setFallbackFailed] = useState(false);
@@ -38,10 +38,11 @@ export function NewsArticleCard({ article, compact = false, onBlockPublisher }) 
   const imageUrl =
     article.imageUrl && !imageFailed ? article.imageUrl : fallbackFailed ? "" : fallbackImage;
   const publisher = String(article.source || "").trim();
+  const isHighlighted = Boolean(article.artistName);
 
   return (
     <article className="discover-news-card-shell">
-      <div className={`discover-news-card${compact ? " discover-news-card--compact" : ""}`}>
+      <div className={`discover-news-card${compact ? " discover-news-card--compact" : ""}${isHighlighted ? " discover-news-card--highlighted" : ""}`}>
         <a
           className="discover-news-card__link"
           href={article.url}
@@ -67,9 +68,7 @@ export function NewsArticleCard({ article, compact = false, onBlockPublisher }) 
             )}
           </div>
           <div className="discover-news-card__content">
-            <span className="discover-news-card__artist">
-              {article.artistName || (article.newsType === "musicHeadlines" ? "Music headlines" : "Library news")}
-            </span>
+            {article.artistName ? <span className="discover-news-card__artist">{article.artistName}</span> : null}
             <h3 className="discover-news-card__title">{article.title}</h3>
             {!compact && article.description ? (
               <p className="discover-news-card__description">{article.description}</p>
@@ -77,11 +76,11 @@ export function NewsArticleCard({ article, compact = false, onBlockPublisher }) 
           </div>
         </a>
         <div className="discover-news-card__footer">
-          {publisher && onBlockPublisher ? (
+          {publisher && onDisablePublisher ? (
             <TooltipButton
-              label={`Block ${publisher}`}
+              label={`Disable ${publisher} RSS feed`}
               className="discover-news-card__block"
-              onClick={() => void Promise.resolve(onBlockPublisher(publisher)).catch(() => {})}
+              onClick={() => void Promise.resolve(onDisablePublisher(publisher, article.sourceUrl)).catch(() => {})}
             >
               <Ban aria-hidden="true" />
             </TooltipButton>
