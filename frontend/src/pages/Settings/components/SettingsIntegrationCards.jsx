@@ -37,6 +37,7 @@ export function SettingsIntegrationModal({
   saveReminder = true,
   wide = true,
   footerActions = null,
+  showDone = true,
 }) {
   const titleId = useId();
   const { dialogRef, handleBackdropClick } = useModalDialog({
@@ -79,9 +80,7 @@ export function SettingsIntegrationModal({
         </div>
         <div className="settings-page__modal-actions">
           {footerActions}
-          <button type="button" className="arr-btn arr-btn--primary" onClick={onClose}>
-            Done
-          </button>
+          {showDone ? <button type="button" className="arr-btn arr-btn--primary" onClick={onClose}>Done</button> : null}
         </div>
       </div>
     </div>

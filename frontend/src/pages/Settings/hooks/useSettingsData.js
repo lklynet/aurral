@@ -435,7 +435,6 @@ export function useSettingsData(showSuccess, showError, showInfo) {
     const changed = checkForChanges(newSettings, originalSettingsRef.current);
     hasUnsavedChangesRef.current = changed;
     setHasUnsavedChanges(changed);
-
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;

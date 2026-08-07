@@ -612,7 +612,7 @@ textarea {
 }
 
 .input::placeholder {
-  color: var(--aurral-text-subtle);
+  color: var(--aurral-text);
 }
 
 .input:focus-visible {
@@ -4999,23 +4999,21 @@ textarea {
 .artist-discover-hero__artist-tag {
   display: inline-flex;
   align-items: center;
-  min-height: 1.75rem;
-  padding: 0.25rem 0.625rem;
-  border: 1px solid var(--aurral-border);
+  min-height: 1.5rem;
+  padding: 0.2rem 0.5rem;
+  border: 0;
   border-radius: var(--aurral-radius-sm);
   background-color: var(--aurral-surface-raised);
   color: var(--aurral-text-muted);
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.7rem;
+  font-weight: 500;
   transition:
-    border-color 0.18s ease,
     background-color 0.18s ease,
     color 0.18s ease;
   cursor: pointer;
 }
 
 .artist-discover-hero__artist-tag:hover {
-  border-color: var(--aurral-border-strong);
   background-color: var(--aurral-surface-hover);
   color: var(--aurral-text);
 }
