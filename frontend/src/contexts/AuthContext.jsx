@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   clearAuthStorage,
   getStoredAuth,
@@ -14,6 +14,8 @@ import {
 
 const AuthContext = createContext(null);
 
+export const shouldResetAuthAfterBootstrapFailure = (hasResolvedAuth) => !hasResolvedAuth;
+
 export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
@@ -21,10 +23,12 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [bootstrap, setBootstrap] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const authResolvedRef = useRef(false);
 
   const checkAuthStatus = useCallback(async () => {
     try {
       const bootstrap = await getBootstrapStatus();
+      authResolvedRef.current = true;
       setBootstrap(bootstrap);
       if (bootstrap.token) setStoredAuth({ token: bootstrap.token });
       const isOnboarding = !!bootstrap.onboardingRequired;
@@ -83,9 +87,11 @@ export const AuthProvider = ({ children }) => {
         setIsAuthenticated(false);
       }
     } catch {
-      setBootstrap(null);
-      setUser(null);
-      setIsAuthenticated(false);
+      if (shouldResetAuthAfterBootstrapFailure(authResolvedRef.current)) {
+        setBootstrap(null);
+        setUser(null);
+        setIsAuthenticated(false);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -102,6 +108,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const result = await loginApi(normalizedUsername, password);
       if (!result?.token) return false;
+      authResolvedRef.current = true;
       setStoredAuth({ token: result.token });
       setUser(result.user || null);
       setIsAuthenticated(true);

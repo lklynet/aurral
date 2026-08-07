@@ -108,6 +108,7 @@ See [Plex integration](/integrations/plex/).
 - This value is different from `TRUST_PROXY`. Use the proxy access logs to find its source address.
 - If you enable proxy authentication, set `AUTH_PROXY_TRUSTED_IPS` before you expose the app.
 - Reload the page. Aurral shows its sign-in page when the browser holds no valid session, and a reload lets your proxy authenticate again.
+- A brief backend restart should not sign out an already authenticated tab, and the discovery connection stays closed while the sign-in screen is shown. If the logs repeatedly show `WebSocket server initialized` and `Server running`, the backend process is restarting; check the container or file-watcher supervisor.
 - Page loads always reach your proxy, and an open tab reloads itself when the proxy rejects an API call, so ending the identity-provider session no longer needs a manual hard refresh.
 - If errors such as "Error Loading Artist" persist instead, your proxy is answering rejected API calls with an Aurral-shaped JSON error. Let it return its own redirect or `401`.
 - For Authelia or forwardAuth, set `AUTH_PROXY_DOMAIN` to your authentication origin.
