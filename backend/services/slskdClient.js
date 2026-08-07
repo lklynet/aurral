@@ -18,6 +18,12 @@ function getSettingsKey({ url, apiKey }) {
   return `${url}\u0000${apiKey}`;
 }
 
+function cacheConnectionResult(settingsKey, result) {
+  const activeSettings = getSettings();
+  if (getSettingsKey(activeSettings) !== settingsKey) return;
+  connectionCache = { checkedAt: Date.now(), result, settingsKey };
+}
+
 function getSettings() {
   const integrations = dbOps.getSettings()?.integrations || {};
   const slskd = integrations.slskd || {};
@@ -205,7 +211,7 @@ export class SlskdClient {
           connected: false,
           message: `slskd returned HTTP ${appRes.status}`,
         };
-        connectionCache = { checkedAt: Date.now(), result, settingsKey };
+        cacheConnectionResult(settingsKey, result);
         return result;
       }
       const server = appRes.data?.server || {};
@@ -226,7 +232,7 @@ export class SlskdClient {
           ? "slskd is connected"
           : "slskd is reachable, but it is not connected to Soulseek. Open slskd and connect to the Soulseek server.",
       };
-      connectionCache = { checkedAt: Date.now(), result, settingsKey };
+      cacheConnectionResult(settingsKey, result);
       return result;
     } catch (error) {
       const result = {
@@ -235,7 +241,7 @@ export class SlskdClient {
         connected: false,
         message: error?.message || "Failed to reach slskd",
       };
-      connectionCache = { checkedAt: Date.now(), result, settingsKey };
+      cacheConnectionResult(settingsKey, result);
       return result;
     }
   }
