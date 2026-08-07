@@ -12,16 +12,20 @@ function ProfilePage() {
   const account = useAccountSettings(authUser, showError);
 
   return (
-    <div className="profile-page">
+    <div className="profile-page profile-page--settings">
       <div className="profile-page__header">
         <div className="profile-page__intro">
           <h1 className="page-title">Profile</h1>
           <p className="page-subtitle">Personal listening history and library defaults</p>
         </div>
+        <span className="profile-page__save-state" aria-live="polite">
+          {account.saving ? "Saving…" : "Saved automatically"}
+        </span>
       </div>
 
       <SettingsAccountTab
         hidePanelHeader
+        profileVariant
         listenHistoryProvider={account.listenHistoryProvider}
         setListenHistoryProvider={account.setListenHistoryProvider}
         listenHistoryUsername={account.listenHistoryUsername}

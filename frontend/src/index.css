@@ -10243,6 +10243,14 @@ textarea {
   animation: fade-in 0.2s ease-out;
 }
 
+.profile-page--settings {
+  width: min(100%, 55rem);
+  margin-inline: auto;
+  color: var(--aurral-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
 .profile-page__header {
   display: flex;
   align-items: flex-start;
@@ -10255,6 +10263,137 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
+.profile-page__save-state {
+  flex-shrink: 0;
+  padding-top: 0.25rem;
+  color: var(--aurral-text-subtle);
+  font-size: 0.75rem;
+}
+
+.profile-settings {
+  display: grid;
+  gap: 0;
+}
+
+.profile-settings .settings-page__form {
+  gap: 0;
+}
+
+.profile-settings__section {
+  padding: 1rem 0 1.5rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.profile-settings__section:first-child {
+  padding-top: 0;
+}
+
+.profile-settings__section + .profile-settings__section {
+  border-top: 1px solid var(--aurral-border);
+}
+
+.profile-settings__section .settings-page__section-header {
+  align-items: flex-start;
+}
+
+.profile-settings__section .settings-page__section-intro {
+  margin-bottom: 0.5rem;
+}
+
+.profile-settings__section .settings-page__callout {
+  margin: 0;
+  padding: 0.625rem 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.profile-settings__section > .btn,
+.profile-settings__section .settings-page__inline-row > .btn {
+  justify-self: start;
+  width: max-content;
+}
+
+.profile-page--settings .arr-input,
+.profile-page--settings .arr-select {
+  border-radius: 0.5rem !important;
+}
+
+.profile-settings__section-status {
+  max-width: 45%;
+  padding-top: 0.125rem;
+  color: var(--aurral-text-subtle);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.profile-settings__fields {
+  gap: 0.75rem;
+}
+
+.profile-settings__field {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.8fr) minmax(0, 1.2fr);
+  align-items: start;
+  gap: 1rem;
+}
+
+.profile-settings__label {
+  padding-top: 0.5rem;
+  color: var(--aurral-text);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.profile-settings__field > .arr-input,
+.profile-settings__field > .arr-select,
+.profile-settings__field > .settings-page__hint {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.profile-settings__field > .settings-page__hint {
+  margin-top: -0.5rem;
+}
+
+@media (max-width: 48rem) {
+  .profile-page--settings {
+    width: 100%;
+  }
+
+  .profile-page__header {
+    align-items: flex-start;
+  }
+
+  .profile-page__save-state {
+    max-width: 8rem;
+    text-align: right;
+  }
+
+  .profile-settings__field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .profile-settings__label {
+    padding-top: 0;
+  }
+
+  .profile-settings__field > .settings-page__hint {
+    margin-top: 0;
+  }
+
+  .profile-settings__section-status {
+    max-width: 40%;
+  }
 }
 
 .blocklist-page {

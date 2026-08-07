@@ -24,6 +24,7 @@ export function SettingsAccountTab({
   hidePanelHeader = false,
   showSuccess,
   showError,
+  profileVariant = false,
 }) {
   const [resettingTastes, setResettingTastes] = useState(false);
 
@@ -46,8 +47,8 @@ export function SettingsAccountTab({
 
   if (loading) {
     return (
-      <div className="settings-page__panel">
-        <p>Loading...</p>
+      <div className={profileVariant ? "profile-settings" : "settings-page__panel"}>
+        <p className="settings-page__muted-copy">Loading…</p>
       </div>
     );
   }
@@ -66,7 +67,7 @@ export function SettingsAccountTab({
   })();
 
   return (
-    <div className="settings-page__panel">
+    <div className={profileVariant ? "profile-settings" : "settings-page__panel"}>
       {!hidePanelHeader && <h2 className="settings-page__panel-title">Profile</h2>}
       <form
         onSubmit={(e) => {
@@ -76,19 +77,25 @@ export function SettingsAccountTab({
         className="settings-page__form"
         autoComplete="off"
       >
-        <div className="settings-page__section">
+        <div className="settings-page__section profile-settings__section">
           <div className="settings-page__section-header">
-            <h3 className="settings-page__section-title">Listening History</h3>
-            <div className="settings-page__inline-row">
-              {profileSummary && (
-                <span className="settings-page__muted-copy">{profileSummary}</span>
-              )}
+            <div className="settings-page__section-intro">
+              <h3 className="settings-page__section-title">Listening History</h3>
+              <p className="settings-page__section-note">
+                Connect a listening service to personalize discovery recommendations.
+              </p>
             </div>
+            {profileSummary ? (
+              <span className="profile-settings__section-status">{profileSummary}</span>
+            ) : null}
           </div>
-          <fieldset className="settings-page__fields">
-            <div>
-              <label className="artist-field-label">Provider</label>
+          <fieldset className="settings-page__fields profile-settings__fields">
+            <div className="profile-settings__field">
+              <label className="profile-settings__label" htmlFor="profile-history-provider">
+                Provider
+              </label>
               <SettingsSelect
+                id="profile-history-provider"
                 value={listenHistoryProvider}
                 onChange={(e) => setListenHistoryProvider(e.target.value)}
               >
@@ -98,9 +105,12 @@ export function SettingsAccountTab({
               </SettingsSelect>
             </div>
             {listenHistoryProvider === "koito" ? (
-              <div>
-                <label className="artist-field-label">Koito URL</label>
+              <div className="profile-settings__field">
+                <label className="profile-settings__label" htmlFor="profile-history-url">
+                  Koito URL
+                </label>
                 <SettingsInput
+                  id="profile-history-url"
                   type="url"
                   required
                   placeholder="https://koito.example.com:4110"
@@ -114,9 +124,12 @@ export function SettingsAccountTab({
                 </p>
               </div>
             ) : (
-              <div>
-                <label className="artist-field-label">Username</label>
+              <div className="profile-settings__field">
+                <label className="profile-settings__label" htmlFor="profile-history-username">
+                  Username
+                </label>
                 <SettingsInput
+                  id="profile-history-username"
                   type="text"
                   placeholder={
                     listenHistoryProvider === "listenbrainz"
@@ -140,9 +153,13 @@ export function SettingsAccountTab({
           </fieldset>
         </div>
 
-        <PlexSelfLinkSection showSuccess={showSuccess} showError={showError} />
+        <PlexSelfLinkSection
+          className={profileVariant ? "profile-settings__section" : ""}
+          showSuccess={showSuccess}
+          showError={showError}
+        />
 
-        <div className="settings-page__section">
+        <div className="settings-page__section profile-settings__section">
           <div className="settings-page__section-intro">
             <h3 className="settings-page__section-title">Library Defaults</h3>
             <p className="settings-page__section-note">
@@ -153,11 +170,14 @@ export function SettingsAccountTab({
 
           <fieldset
             disabled={!lidarrConfigured}
-            className={`settings-page__field-stack--lg${lidarrConfigured ? "" : " settings-page__is-dimmed"}`}
+            className={`settings-page__field-stack--lg settings-page__fields profile-settings__fields${lidarrConfigured ? "" : " settings-page__is-dimmed"}`}
           >
-            <div>
-              <label className="artist-field-label">Default Root Folder</label>
+            <div className="profile-settings__field">
+              <label className="profile-settings__label" htmlFor="profile-root-folder">
+                Default Root Folder
+              </label>
               <SettingsSelect
+                id="profile-root-folder"
                 value={lidarrRootFolderPath}
                 onChange={(e) => setLidarrRootFolderPath(e.target.value)}
               >
@@ -170,9 +190,12 @@ export function SettingsAccountTab({
               </SettingsSelect>
             </div>
 
-            <div>
-              <label className="artist-field-label">Default Quality Profile</label>
+            <div className="profile-settings__field">
+              <label className="profile-settings__label" htmlFor="profile-quality-profile">
+                Default Quality Profile
+              </label>
               <SettingsSelect
+                id="profile-quality-profile"
                 value={lidarrQualityProfileId}
                 onChange={(e) => setLidarrQualityProfileId(e.target.value)}
               >
@@ -197,7 +220,7 @@ export function SettingsAccountTab({
           )}
         </div>
 
-        <div className="settings-page__section">
+        <div className="settings-page__section profile-settings__section">
           <div className="settings-page__section-intro">
             <h3 className="settings-page__section-title">Discovery Tastes</h3>
             <p className="settings-page__section-note">
@@ -209,10 +232,10 @@ export function SettingsAccountTab({
             type="button"
             onClick={handleResetDiscoveryTastes}
             disabled={resettingTastes}
-            className="btn btn-secondary"
+            className="btn btn-secondary btn-sm"
           >
             <RotateCcw className={`artist-icon-xs${resettingTastes ? " animate-spin" : ""}`} />
-            {resettingTastes ? "Resetting..." : "Reset Discovery Tastes"}
+            {resettingTastes ? "Resetting…" : "Reset Discovery Tastes"}
           </button>
         </div>
       </form>
