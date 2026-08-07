@@ -6,6 +6,7 @@ import AddActionButton from "../../../components/AddActionButton";
 import { navigateToReleaseGroup } from "../../../utils/searchNavigation";
 import { getReleaseGroupCoverUrl, getReleaseMetric, getReleaseYear } from "../utils";
 import { getAlbumAddButtonLabel } from "../../../utils/albumAddAction";
+import { useResponsiveReleaseLimit } from "../hooks/useResponsiveReleaseLimit";
 
 const sortLatest = (items) =>
   [...items].sort((a, b) =>
@@ -27,10 +28,11 @@ export function ArtistDetailsAppearsOn({
   onViewAll,
 }) {
   const navigate = useDiscoverNavigation();
+  const [releaseGridRef, previewLimit] = useResponsiveReleaseLimit();
   const releaseGroups = useMemo(() => artist["appears-on-release-groups"] || [], [artist]);
   const visibleReleaseGroups = useMemo(
-    () => sortLatest(releaseGroups).slice(0, 6),
-    [releaseGroups],
+    () => sortLatest(releaseGroups).slice(0, previewLimit),
+    [previewLimit, releaseGroups],
   );
 
   useEffect(() => {
@@ -69,7 +71,7 @@ export function ArtistDetailsAppearsOn({
         ) : null}
       </div>
 
-      <div className="artist-release-grid">
+      <div ref={releaseGridRef} className="artist-release-grid">
         {visibleReleaseGroups.map((releaseGroup) => {
           const status = getAlbumStatus(releaseGroup.id);
           const metric = getReleaseMetric(releaseGroup);

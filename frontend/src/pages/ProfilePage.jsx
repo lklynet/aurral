@@ -1,4 +1,3 @@
-import FlipSaveButton from "../components/FlipSaveButton";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -10,26 +9,23 @@ function ProfilePage() {
   useDocumentTitle("Profile");
   const { showSuccess, showError } = useToast();
   const { user: authUser } = useAuth();
-  const account = useAccountSettings(authUser, showSuccess, showError);
+  const account = useAccountSettings(authUser, showError);
 
   return (
-    <div className="profile-page">
+    <div className="profile-page profile-page--settings">
       <div className="profile-page__header">
         <div className="profile-page__intro">
           <h1 className="page-title">Profile</h1>
           <p className="page-subtitle">Personal listening history and library defaults</p>
         </div>
-        {!account.loading && (
-          <FlipSaveButton
-            saving={account.saving}
-            disabled={!account.canSave}
-            onClick={account.handleSave}
-          />
-        )}
+        <span className="profile-page__save-state" aria-live="polite">
+          {account.saving ? "Saving…" : "Saved automatically"}
+        </span>
       </div>
 
       <SettingsAccountTab
         hidePanelHeader
+        profileVariant
         listenHistoryProvider={account.listenHistoryProvider}
         setListenHistoryProvider={account.setListenHistoryProvider}
         listenHistoryUsername={account.listenHistoryUsername}
@@ -43,10 +39,7 @@ function ProfilePage() {
         setLidarrRootFolderPath={account.setLidarrRootFolderPath}
         lidarrQualityProfileId={account.lidarrQualityProfileId}
         setLidarrQualityProfileId={account.setLidarrQualityProfileId}
-        hasUnsavedChanges={account.hasUnsavedChanges}
-        canSave={account.canSave}
         loading={account.loading}
-        saving={account.saving}
         handleSave={account.handleSave}
         showSuccess={showSuccess}
         showError={showError}

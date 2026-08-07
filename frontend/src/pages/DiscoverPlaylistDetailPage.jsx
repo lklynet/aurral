@@ -303,7 +303,7 @@ export default function DiscoverPlaylistDetailPage() {
           <div className="discover-playlist-detail__actions">
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-surface btn-sm"
               disabled={isBusy}
               onClick={handleAdoptFlow}
             >
@@ -311,7 +311,7 @@ export default function DiscoverPlaylistDetailPage() {
             </button>
             <button
               type="button"
-              className="btn btn-secondary"
+              className="btn btn-surface btn-sm"
               disabled={isBusy}
               onClick={handleAdoptPlaylist}
             >

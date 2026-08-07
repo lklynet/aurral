@@ -26,4 +26,4 @@ export const emptyArtistShape = {
 };
 
 export const RELEASE_LIST_VIEW_MODE_KEY = "aurralReleaseListViewMode";
-export const ARTIST_DETAILS_APPEARS_ON_LIMIT = 6;
+export const ARTIST_DETAILS_APPEARS_ON_LIMIT = 24;

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader, Music, Star } from "lucide-react";
 import AddActionButton from "../../../components/AddActionButton";
-import { useImageGradientColors } from "../../../utils/imageColors";
 import { getReleaseGroupTracks } from "../../../utils/api/endpoints/artists.js";
 import { buildAurralPick, getReleaseGroupCoverUrl, getReleaseMetric } from "../utils";
 import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
@@ -60,11 +59,6 @@ export function ArtistDetailsDownloadTargets({
     () => buildAurralPick({ releaseGroups, getAlbumStatus }),
     [releaseGroups, getAlbumStatus],
   );
-  const coverSrc = getReleaseGroupCoverUrl(missingReleasePick?.releaseGroup, albumCovers, {
-    artistFallback: artistCoverImage,
-    resolved: fulfilledCoverIds?.has(missingReleasePick?.releaseGroupId),
-  });
-  const gradientColors = useImageGradientColors(coverSrc);
   const [tracks, setTracks] = useState([]);
   const [loadingTracks, setLoadingTracks] = useState(false);
   const [showAllTracks, setShowAllTracks] = useState(false);
@@ -203,61 +197,46 @@ export function ArtistDetailsDownloadTargets({
 
   return (
     <section className="artist-section">
-      <div
-        className={`artist-pick-panel${gradientColors ? " artist-pick-panel--gradient" : ""}`}
-        style={
-          gradientColors
-            ? {
-                "--artist-pick-gradient-top": gradientColors.top,
-                "--artist-pick-gradient-bottom": gradientColors.bottom,
-              }
-            : undefined
-        }
-      >
-        {gradientColors ? (
-          <span className="artist-pick-panel__backdrop" aria-hidden="true">
-            <span className="artist-pick-panel__backdrop-gradient" />
-            <span className="artist-pick-panel__backdrop-wash" />
-          </span>
-        ) : null}
+      <div className="artist-pick-panel">
         <div className="artist-pick-panel__grid">
-          <div className="artist-media-cell">
-            <PickCover
-              pick={missingReleasePick}
-              albumCovers={albumCovers}
-              fulfilledCoverIds={fulfilledCoverIds}
-              artistCoverImage={artistCoverImage}
-            />
-          </div>
-          <div className="artist-pick-panel__content">
-            <div className="artist-min-0">
-              <div className="artist-eyebrow">Aurral Pick</div>
-              <h2 className="artist-pick-title">{missingReleasePick.title}</h2>
-              <div className="artist-meta-line">
-                {missingReleasePick.year && <span>{missingReleasePick.year}</span>}
-                {missingReleasePick.type && <span>{missingReleasePick.type}</span>}
-                {metric?.label && (
-                  <span className="artist-meta-line__item">
-                    <Star className="artist-star-icon" />
-                    {metric.label}
-                  </span>
-                )}
-              </div>
+          <div className="artist-pick-panel__feature">
+            <div className="artist-media-cell">
+              <PickCover
+                pick={missingReleasePick}
+                albumCovers={albumCovers}
+                fulfilledCoverIds={fulfilledCoverIds}
+                artistCoverImage={artistCoverImage}
+              />
             </div>
-            {canAddAlbum && missingReleasePick.releaseGroupId && (
-              <div>
-                <AddActionButton
-                  isExpanded
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleRequestAlbum(missingReleasePick.releaseGroupId, missingReleasePick.title);
-                  }}
-                  isLoading={requestingAlbum === missingReleasePick.releaseGroupId}
-                  disabled={requestingAlbum === missingReleasePick.releaseGroupId}
-                  label="Add to Lidarr"
-                />
+            <div className="artist-pick-panel__content">
+              <div className="artist-min-0">
+                <div className="artist-eyebrow">Aurral Pick</div>
+                <h2 className="artist-pick-title">{missingReleasePick.title}</h2>
+                <div className="artist-meta-line">
+                  {missingReleasePick.year && <span>{missingReleasePick.year}</span>}
+                  {missingReleasePick.type && <span>{missingReleasePick.type}</span>}
+                  {metric?.label && (
+                    <span className="artist-meta-line__item">
+                      <Star className="artist-star-icon" />
+                      {metric.label}
+                    </span>
+                  )}
+                </div>
               </div>
-            )}
+              {canAddAlbum && missingReleasePick.releaseGroupId && (
+                <div>
+                  <AddActionButton
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleRequestAlbum(missingReleasePick.releaseGroupId, missingReleasePick.title);
+                    }}
+                    isLoading={requestingAlbum === missingReleasePick.releaseGroupId}
+                    disabled={requestingAlbum === missingReleasePick.releaseGroupId}
+                    label="Add to Lidarr"
+                  />
+                </div>
+              )}
+            </div>
           </div>
           <div className="artist-pick-panel__tracks artist-min-0">
             {loadingTracks ? (
@@ -266,13 +245,16 @@ export function ArtistDetailsDownloadTargets({
               </div>
             ) : tracks.length ? (
               <>
-                <ArtistTrackListToolbar
-                  disabled={toolbarDisabled}
-                  isPlaying={isListPlaying}
-                  isShuffleEnabled={isShuffleEnabled}
-                  onPlayAll={handlePlayAll}
-                  onShufflePlay={handleShufflePlay}
-                />
+                <div className="artist-pick-panel__tracks-header">
+                  <span className="artist-pick-panel__tracks-label">Preview tracks</span>
+                  <ArtistTrackListToolbar
+                    disabled={toolbarDisabled}
+                    isPlaying={isListPlaying}
+                    isShuffleEnabled={isShuffleEnabled}
+                    onPlayAll={handlePlayAll}
+                    onShufflePlay={handleShufflePlay}
+                  />
+                </div>
                 <div className="artist-pick-panel__track-grid">
                   {visibleTracks.map((track, index) => {
                     const currentTrackId = String(track.id ?? track.mbid ?? `pick-${index}`);

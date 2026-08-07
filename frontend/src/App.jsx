@@ -126,7 +126,7 @@ function AppContent() {
         discoveryToastShownRef.current = false;
       }, 1000);
     }
-  });
+  }, { enabled: isAuthenticated });
 
   const applyBootstrapHealth = (payload) => {
     setIsHealthy(payload.status === "ok");

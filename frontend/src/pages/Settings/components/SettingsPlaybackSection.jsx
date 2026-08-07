@@ -21,6 +21,7 @@ import {
   Wrench,
 } from "lucide-react";
 import DownloadFolderPickerModal from "../../../components/DownloadFolderPickerModal";
+import PillToggle from "../../../components/PillToggle";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
 import {
@@ -250,7 +251,7 @@ export function SettingsPlaybackSection({
       updatePlex(patch);
       showSuccess(
         owned.length === 1 && patch.url
-          ? `Signed in and selected "${owned[0].name}". Remember to Save settings.`
+          ? `Signed in and selected "${owned[0].name}". Changes save automatically.`
           : "Signed in to Plex. Select your server below.",
       );
     } catch (err) {
@@ -269,7 +270,7 @@ export function SettingsPlaybackSection({
       return;
     }
     updatePlex({ url, machineIdentifier: server.clientIdentifier });
-    showInfo(`Selected "${server.name}". Remember to Save settings.`);
+    showInfo(`Selected "${server.name}". Changes save automatically.`);
   };
 
   const handleDisconnectPlex = () => {
@@ -279,7 +280,7 @@ export function SettingsPlaybackSection({
       machineIdentifier: "",
     });
     setPlexServers([]);
-    showInfo("Plex disconnected. Save settings to apply.");
+    showInfo("Plex disconnected. Changes save automatically.");
   };
 
   const handleTestPlex = async () => {
@@ -328,8 +329,8 @@ export function SettingsPlaybackSection({
 
   const handleSyncPlex = async () => {
     if (hasUnsavedChanges) {
-      showError("Save settings first, then sync to Plex.");
-      return;
+      const saved = await handleSaveSettings?.();
+      if (saved !== true) return;
     }
     setSyncingPlex(true);
     try {
@@ -392,19 +393,16 @@ export function SettingsPlaybackSection({
           label="M3U path mode"
           help="Generated playlists will use mapped paths that Navidrome can open. Leave this off when Navidrome and Aurral share the same container paths."
         >
-          <label className="artist-checkbox-label">
-            <input
-              type="checkbox"
-              className="artist-checkbox"
-              checked={navidrome.m3uPathMode === "remote"}
-              onChange={(event) =>
-                updateNavidrome({
-                  m3uPathMode: event.target.checked ? "remote" : "local",
-                })
-              }
-            />
-            <span>Use Navidrome paths in M3U files</span>
-          </label>
+          <PillToggle
+            className="settings-toggle"
+            checked={navidrome.m3uPathMode === "remote"}
+            onChange={(event) =>
+              updateNavidrome({
+                m3uPathMode: event.target.checked ? "remote" : "local",
+              })
+            }
+            aria-label="Use Navidrome paths in M3U files"
+          />
         </SettingsArrFormGroup>
 
         {showNavidromeMappings ? (
@@ -797,7 +795,7 @@ export function SettingsPlaybackSection({
             <p className="settings-modal__hint">
               Creates an &quot;Aurral&quot; music library pointed at your downloads, scans it, and
               builds a playlist per flow. The Plex server must be able to read the same downloads
-              path Aurral writes to. Save settings before syncing.
+              path Aurral writes to. Changes save automatically before syncing.
             </p>
           </SettingsModalSection>
         </SettingsIntegrationModal>

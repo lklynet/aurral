@@ -1,5 +1,4 @@
 import { CheckCircle } from "lucide-react";
-import FlipSaveButton from "../../../components/FlipSaveButton";
 import { DEFAULT_METADATA_BASE_URL } from "../utils";
 import { SettingsInput } from "./SettingsField";
 
@@ -7,8 +6,6 @@ export function SettingsMetadataTab({
   settings,
   updateSettings,
   health,
-  hasUnsavedChanges,
-  saving,
   handleSaveSettings,
   hidePanelHeader = false,
 }) {
@@ -63,11 +60,6 @@ export function SettingsMetadataTab({
     <div className="settings-page__panel">
       <div className="settings-page__panel-header">
         <h2 className="settings-page__panel-title">Metadata</h2>
-        <FlipSaveButton
-          saving={saving}
-          disabled={!hasUnsavedChanges}
-          onClick={handleSaveSettings}
-        />
       </div>
       {form}
     </div>

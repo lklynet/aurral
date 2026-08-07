@@ -1,26 +1,14 @@
 import ArtistImage from "./ArtistImage";
 import SearchLibraryCheck from "./SearchLibraryCheck";
 import { ArtistContextMenu } from "./ArtistContextMenu";
-import { useImageGradientColors } from "../utils/imageColors";
 import { getArtistFeedbackFlags } from "../utils/discoveryFeedback";
 import { getArtistRecordId } from "../utils/artistTaste";
 
-function TagRecommendedArtistCover({ artist, artistId, artistImages, isInLibrary }) {
+function TagRecommendedArtistCover({ artist, artistId, artistImages, isInLibrary, className = "" }) {
   const coverSrc = artistImages[artistId] || artist.image || artist.imageUrl || "";
-  const gradientColors = useImageGradientColors(coverSrc);
 
   return (
-    <div
-      className="artist-discover-card__cover artist-discover-card__cover--recommended"
-      style={
-        gradientColors
-          ? {
-              "--recommended-gradient-top": gradientColors.top,
-              "--recommended-gradient-bottom": gradientColors.bottom,
-            }
-          : undefined
-      }
-    >
+    <div className={`artist-discover-card__cover artist-discover-card__cover--recommended ${className}`}>
       <ArtistImage
         src={coverSrc}
         mbid={artistId}
@@ -47,6 +35,7 @@ function SearchArtistResults({
   onArtistFeedback,
   artistFeedbackLookup,
   variant = "square",
+  gridColumns,
 }) {
   const formatLifeSpan = (artist) => {
     const begin = artist?.begin || artist?.["life-span"]?.begin || artist?.lifeSpan?.begin;
@@ -93,20 +82,32 @@ function SearchArtistResults({
     });
   };
 
-  const gridClassName =
-    variant === "round" ? "artist-release-grid search-artist-grid--round" : "artist-release-grid";
+  const isList = variant === "list";
+  const gridClassName = isList
+    ? "artist-release-list search-artist-list"
+    : variant === "round"
+      ? "artist-release-grid search-artist-grid--round"
+      : "artist-release-grid";
+  const gridStyle =
+    !isList && gridColumns
+      ? { gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }
+      : undefined;
 
   return (
-    <div className={gridClassName}>
+    <div className={gridClassName} style={gridStyle}>
       {artists.map((artist, index) => {
         const artistId = getArtistRecordId(artist);
         const isRecommendedTagResult = type === "tag" && artist.tagResultSource === "recommended";
         const artistTypeLabel = normalizeArtistType(artist);
+        const displayArtistTypeLabel =
+          type === "recommended" && artistTypeLabel?.toLowerCase() === "artist"
+            ? null
+            : artistTypeLabel;
         const lifeSpan = formatLifeSpan(artist);
         const area = normalizeArea(artist);
         const country = artist?.country ? String(artist.country).trim() : null;
         const disambiguation = artist?.disambiguation ? String(artist.disambiguation).trim() : null;
-        const disambiguationLine = [artistTypeLabel, area || country, lifeSpan, disambiguation]
+        const disambiguationLine = [displayArtistTypeLabel, area || country, lifeSpan, disambiguation]
           .filter(Boolean)
           .join(" • ");
         const artistMetaText = [
@@ -114,6 +115,83 @@ function SearchArtistResults({
         ]
           .filter(Boolean)
           .join(" • ");
+
+        const cover = isRecommendedTagResult ? (
+          <TagRecommendedArtistCover
+            artist={artist}
+            artistId={artistId}
+            artistImages={artistImages}
+            isInLibrary={!!libraryLookup[artistId]}
+            className={isList ? "artist-list-cover" : ""}
+          />
+        ) : (
+          <div className={`artist-discover-card__cover${isList ? " artist-list-cover" : ""}`}>
+            <ArtistImage
+              src={artistImages[artistId] || artist.image || artist.imageUrl}
+              mbid={artistId}
+              artistName={artist.name}
+              alt={artist.name}
+              className="artist-discover-card__image"
+              showLoading={false}
+              enableBackendFallback={false}
+              enablePreviewPlayback
+              isInLibrary={!!libraryLookup[artistId]}
+            />
+          </div>
+        );
+
+        const contextMenu = (
+          <div onClick={(event) => event.stopPropagation()} role="none">
+            <ArtistContextMenu
+              artist={artist}
+              isInLibrary={!!libraryLookup[artistId]}
+              canAddArtist={canAddArtist}
+              onAddToLibrary={onAddArtistToLibrary}
+              onFeedback={onArtistFeedback}
+              menuLayout={isList ? "inline" : "text"}
+              feedbackUsed={
+                artistFeedbackLookup
+                  ? getArtistFeedbackFlags(artistFeedbackLookup, artist)
+                  : undefined
+              }
+            />
+          </div>
+        );
+
+        if (isList) {
+          return (
+            <article
+              key={artistId || `artist-${index}`}
+              className="artist-release-list-item search-artist-results__item"
+              onClick={() => openArtist(artist)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  openArtist(artist);
+                }
+              }}
+              tabIndex={0}
+            >
+              {cover}
+              <div className="artist-min-0">
+                <h2 className="artist-release-card__title artist-truncate" title={artist.name}>
+                  {artist.name}
+                </h2>
+                {artistMetaText ? (
+                  <p className="artist-release-card__meta artist-truncate" title={artistMetaText}>
+                    {artistMetaText}
+                  </p>
+                ) : null}
+                {disambiguationLine ? (
+                  <p className="artist-release-card__meta artist-truncate" title={disambiguationLine}>
+                    {disambiguationLine}
+                  </p>
+                ) : null}
+              </div>
+              {contextMenu}
+            </article>
+          );
+        }
 
         return (
           <article
@@ -130,28 +208,7 @@ function SearchArtistResults({
             }}
             tabIndex={0}
           >
-            {isRecommendedTagResult ? (
-              <TagRecommendedArtistCover
-                artist={artist}
-                artistId={artistId}
-                artistImages={artistImages}
-                isInLibrary={!!libraryLookup[artistId]}
-              />
-            ) : (
-              <div className="artist-discover-card__cover">
-                <ArtistImage
-                  src={artistImages[artistId] || artist.image || artist.imageUrl}
-                  mbid={artistId}
-                  artistName={artist.name}
-                  alt={artist.name}
-                  className="artist-discover-card__image"
-                  showLoading={false}
-                  enableBackendFallback={false}
-                  enablePreviewPlayback
-                  isInLibrary={!!libraryLookup[artistId]}
-                />
-              </div>
-            )}
+            {cover}
 
             <div className="artist-discover-card__content">
               <div className="artist-discover-card__text">
@@ -176,20 +233,7 @@ function SearchArtistResults({
                 ) : null}
               </div>
 
-              <div onClick={(event) => event.stopPropagation()} role="none">
-                <ArtistContextMenu
-                  artist={artist}
-                  isInLibrary={!!libraryLookup[artistId]}
-                  canAddArtist={canAddArtist}
-                  onAddToLibrary={onAddArtistToLibrary}
-                  onFeedback={onArtistFeedback}
-                  feedbackUsed={
-                    artistFeedbackLookup
-                      ? getArtistFeedbackFlags(artistFeedbackLookup, artist)
-                      : undefined
-                  }
-                />
-              </div>
+              {contextMenu}
             </div>
           </article>
         );

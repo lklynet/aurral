@@ -1,6 +1,6 @@
 import { Fragment, useMemo } from "react";
 import { ExternalLink } from "lucide-react";
-import { getArtistHeroImage, getArtistType, getTagColor } from "../utils";
+import { getArtistHeroImage, getArtistType } from "../utils";
 import lidarrLogo from "../../../../images/logos/lidarr.svg?raw";
 import lastFmLogo from "../../../../images/logos/last-fm.svg?raw";
 import musicBrainzLogo from "../../../../images/logos/musicbrainz.svg?raw";
@@ -229,8 +229,7 @@ export function ArtistDetailsAbout({
                     key={tag.key}
                     type="button"
                     onClick={() => onNavigate?.(tagSearchPath(tag.name))}
-                    className="artist-tag"
-                    style={{ backgroundColor: getTagColor(tag.name) }}
+                    className="artist-tag--discover"
                     title={`View artists with tag: ${tag.name}`}
                   >
                     #{tag.name}

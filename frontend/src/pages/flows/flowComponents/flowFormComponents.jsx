@@ -78,43 +78,41 @@ export function FlowScheduleFields({
             {WEEKDAY_OPTIONS.map((day) => {
               const checked = scheduleDays.includes(day.id);
               return (
-                <label
+                <button
                   key={day.id}
+                  type="button"
                   className={`flow-page__weekday${checked ? " is-active" : ""}`}
                   title={day.full}
+                  aria-label={day.full}
+                  aria-pressed={checked}
+                  disabled={checked && scheduleDays.length === 1}
+                  onClick={() =>
+                    updateDraft((prev) => {
+                      const current = Array.isArray(prev?.scheduleDays) ? prev.scheduleDays : [];
+                      const normalized = [
+                        ...new Set(
+                          current
+                            .map((entry) => Number(entry))
+                            .filter(
+                              (entry) => Number.isFinite(entry) && entry >= 0 && entry <= 6,
+                            ),
+                        ),
+                      ];
+                      if (checked && normalized.length === 1) {
+                        return prev;
+                      }
+                      const next = checked
+                        ? normalized.filter((entry) => entry !== day.id)
+                        : [...normalized, day.id];
+                      return {
+                        ...prev,
+                        scheduleDays: next.sort((a, b) => a - b),
+                      };
+                    })
+                  }
                 >
-                  <input
-                    type="checkbox"
-                    className="flow-page__weekday-input"
-                    checked={checked}
-                    disabled={checked && scheduleDays.length === 1}
-                    onChange={() =>
-                      updateDraft((prev) => {
-                        const current = Array.isArray(prev?.scheduleDays) ? prev.scheduleDays : [];
-                        const normalized = [
-                          ...new Set(
-                            current
-                              .map((entry) => Number(entry))
-                              .filter(
-                                (entry) => Number.isFinite(entry) && entry >= 0 && entry <= 6,
-                              ),
-                          ),
-                        ];
-                        if (checked && normalized.length === 1) {
-                          return prev;
-                        }
-                        const next = checked
-                          ? normalized.filter((entry) => entry !== day.id)
-                          : [...normalized, day.id];
-                        return {
-                          ...prev,
-                          scheduleDays: next.sort((a, b) => a - b),
-                        };
-                      })
-                    }
-                  />
                   <span>{day.short}</span>
-                </label>
+                </button>
               );
             })}
           </div>

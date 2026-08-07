@@ -191,12 +191,10 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
       {menuOpen && (
         <div className="app-update-indicator__popover" role="dialog" aria-label="Update preview">
           <div>
-            <div>
-              <p className="app-update-indicator__title">Update available</p>
-              <p className="app-update-indicator__version">
-                {updateInfo.current} <span aria-hidden="true">→</span> {updateInfo.latest}
-              </p>
-            </div>
+            <p className="app-update-indicator__title">Update available</p>
+            <p className="app-update-indicator__version">
+              {updateInfo.current} <span aria-hidden="true">→</span> {updateInfo.latest}
+            </p>
           </div>
 
           <div className="app-update-indicator__preview">

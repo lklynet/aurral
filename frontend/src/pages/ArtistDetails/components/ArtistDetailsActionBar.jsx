@@ -148,20 +148,16 @@ export function ArtistDetailsActionBar({
         <AddActionButton
           onClick={library.handleAddToLibrary}
           isLoading={library.addingToLibrary}
-          isExpanded
           label="Add to Lidarr"
-          className="btn-add-action--split"
         />
-        <button
+        <AddActionButton
           type="button"
+          icon={SlidersHorizontal}
+          label="Customize add options"
           onClick={library.handleOpenAddCustomizeModal}
           disabled={library.addingToLibrary}
-          className="btn btn-add-action-options"
-          aria-label="Customize add options"
-          title="Customize add options"
-        >
-          <SlidersHorizontal className="artist-icon-sm" />
-        </button>
+          className="btn-add-action-options"
+        />
       </div>
     );
   };
@@ -174,7 +170,7 @@ export function ArtistDetailsActionBar({
             type="button"
             onClick={handlePreviewPlayAll}
             disabled={buildingQueue}
-            className="btn btn-primary btn-round-lg"
+            className="btn btn-accent btn-round-lg"
             aria-label={isPreviewPlaying ? "Pause playback" : "Play artist"}
             title={isPreviewPlaying ? "Pause playback" : "Play artist"}
           >

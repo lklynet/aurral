@@ -16,7 +16,7 @@ const EMPTY_STATUS = {
   isGlobalAccountOwner: false,
 };
 
-export function PlexSelfLinkSection({ showSuccess, showError }) {
+export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) {
   const [status, setStatus] = useState(EMPTY_STATUS);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
@@ -102,7 +102,7 @@ export function PlexSelfLinkSection({ showSuccess, showError }) {
   if (loading) return null;
 
   return (
-    <div className="settings-page__section">
+    <div className={`settings-page__section${className ? ` ${className}` : ""}`}>
       <div className="settings-page__section-intro">
         <h3 className="settings-page__section-title">Plex Account</h3>
         <p className="settings-page__section-note">

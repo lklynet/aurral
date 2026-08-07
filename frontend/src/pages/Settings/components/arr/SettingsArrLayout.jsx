@@ -20,14 +20,16 @@ export function SettingsArrFormGroup({
 }) {
   return (
     <div className={`arr-form-group arr-form-group--${size}`}>
-      <label className="arr-form-label" htmlFor={labelFor}>
-        {label}
-      </label>
-      <div className="arr-form-control">
-        {children}
+      <div className="arr-form-copy">
+        <label className="arr-form-label" htmlFor={labelFor}>
+          {label}
+        </label>
         {help ? (
           <p className={`arr-form-help${helpWarning ? " arr-form-help--warning" : ""}`}>{help}</p>
         ) : null}
+      </div>
+      <div className="arr-form-control">
+        {children}
       </div>
     </div>
   );

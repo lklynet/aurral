@@ -115,7 +115,6 @@ function ArtistDetailsPage() {
     setSimilarArtists,
     loading,
     error,
-    loadingCover,
     setLoadingCover,
     loadingSimilar,
     setLoadingSimilar,
@@ -456,9 +455,6 @@ function ArtistDetailsPage() {
       <ArtistDetailsHero
         artist={artist}
         coverImages={coverImages}
-        loadingCover={loadingCover}
-        loadingLibrary={loadingLibrary}
-        existsInLibrary={existsInLibrary}
         onCoverError={handleCoverError}
         onNavigate={(path) => navigate(path)}
       />
@@ -708,6 +704,7 @@ function EditArtistIdsModal({
             className="btn btn-surface btn-icon-square"
             onClick={onClose}
             aria-label="Close"
+            title="Close"
           >
             <X className="artist-icon-md" />
           </button>

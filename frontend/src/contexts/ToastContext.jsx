@@ -5,7 +5,10 @@ import {
   useCallback,
   useRef,
   useMemo,
-} from "react";import { ToastContainer } from "../components/Toast";
+} from "react";
+import { ToastContainer } from "../components/Toast";
+
+const MAX_TOASTS = 4;
 
 const ToastContext = createContext();
 
@@ -15,7 +18,16 @@ export function ToastProvider({ children }) {
 
   const addToast = useCallback((message, type = "info", duration = 3000) => {
     const id = `${Date.now()}-${nextToastIdRef.current++}`;
-    setToasts((prev) => [...prev, { id, message, type, duration }]);
+    const content =
+      message &&
+      typeof message === "object" &&
+      ("message" in message || "title" in message || "description" in message || "action" in message)
+        ? message
+        : { message };
+    setToasts((prev) => [
+      { ...content, id, type, duration: content.duration ?? duration },
+      ...prev,
+    ].slice(0, MAX_TOASTS));
     return id;
   }, []);
 

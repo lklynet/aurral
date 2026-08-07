@@ -1,3 +1,5 @@
+import PillToggle from "../../../components/PillToggle";
+
 export function SettingsModalSection({ title, children, className = "" }) {
   return (
     <section className={`settings-modal__section${className ? ` ${className}` : ""}`}>
@@ -21,12 +23,18 @@ export function SettingsModalField({ label, htmlFor, hint, children }) {
   );
 }
 
-export function SettingsModalToggle({ label, ...inputProps }) {
+export function SettingsModalToggle({ label, checked, onChange, disabled = false }) {
   return (
-    <label className="settings-modal__toggle">
-      <input type="checkbox" className="artist-checkbox" {...inputProps} />
+    <div className="settings-modal__toggle">
       <span className="settings-modal__toggle-label">{label}</span>
-    </label>
+      <PillToggle
+        className="settings-toggle"
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        aria-label={label}
+      />
+    </div>
   );
 }
 

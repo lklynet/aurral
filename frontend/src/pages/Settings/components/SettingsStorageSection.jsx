@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { StorageHealthDashboard } from "./StorageHealthDashboard";
+import { StorageHealthDashboard, StorageHealthSummary } from "./StorageHealthDashboard";
 import {
   getStorageHealthCache,
   refreshStorageHealth,
@@ -34,36 +34,6 @@ function formatUptime(seconds) {
   if (hours || days) parts.push(`${hours}h`);
   parts.push(`${minutes}m`);
   return parts.join(" ");
-}
-
-function healthMessages(healthResult, health) {
-  const messages = [];
-  if (health?.onboardingRequired) {
-    messages.push({
-      status: "warn",
-      text: "Onboarding is not complete.",
-    });
-  }
-  if (!healthResult) {
-    messages.push({
-      status: "warn",
-      text: "Storage checks have not run in this session.",
-    });
-    return messages;
-  }
-  if (healthResult.failedCount > 0) {
-    messages.push({
-      status: "fail",
-      text: `${healthResult.failedCount} storage check${healthResult.failedCount === 1 ? "" : "s"} failed.`,
-    });
-  }
-  if (healthResult.warningCount > 0) {
-    messages.push({
-      status: "warn",
-      text: `${healthResult.warningCount} storage warning${healthResult.warningCount === 1 ? "" : "s"} found.`,
-    });
-  }
-  return messages;
 }
 
 function DiskSpaceTable({ entries = [] }) {
@@ -121,16 +91,31 @@ function DiskSpaceTable({ entries = [] }) {
   );
 }
 
-function MetaRow({ label, children }) {
+function SystemSection({ title, description, children }) {
   return (
-    <div>
-      <dt className="arr-meta-term">{label}</dt>
-      <dd className="arr-meta-value">{children || "—"}</dd>
+    <section className="settings-system__section">
+      <div className="settings-system__section-header">
+        <h2 className="settings-system__section-title">{title}</h2>
+        {description ? <p className="settings-system__section-description">{description}</p> : null}
+      </div>
+      <div className="settings-system__rows">{children}</div>
+    </section>
+  );
+}
+
+function SystemRow({ label, description, children }) {
+  return (
+    <div className="settings-system__row">
+      <div className="settings-system__copy">
+        <div className="settings-system__label">{label}</div>
+        {description ? <p className="settings-system__description">{description}</p> : null}
+      </div>
+      <div className="settings-system__value">{children ?? "—"}</div>
     </div>
   );
 }
 
-export function SettingsStorageSection({
+export function SettingsStorageHealthSection({
   hasUnsavedChanges,
   handleSaveSettings,
   health,
@@ -201,25 +186,11 @@ export function SettingsStorageSection({
   }, []);
 
   const system = health?.system || {};
-  const messages = healthMessages(healthResult, health);
 
   return (
     <>
       <SettingsArrFieldSet legend="Health">
-        {messages.length === 0 ? (
-          <p className="arr-health-line">No issues with your configuration</p>
-        ) : (
-          <ul className="arr-health-list">
-            {messages.map((message, index) => (
-              <li
-                key={`${message.status}-${index}`}
-                className={`arr-health-list__item is-${message.status}`}
-              >
-                {message.text}
-              </li>
-            ))}
-          </ul>
-        )}
+        <StorageHealthSummary result={healthResult} loading={checkingHealth} />
       </SettingsArrFieldSet>
 
       <SettingsArrFieldSet legend="Disk Space">
@@ -245,40 +216,76 @@ export function SettingsStorageSection({
           and emit paths that playback servers can scan. Matching container paths are simplest,
           but narrower mounts and remote path mappings are supported.
         </p>
-        <StorageHealthDashboard result={healthResult} loading={checkingHealth} />
-      </SettingsArrFieldSet>
-
-      <SettingsArrFieldSet legend="About">
-        <dl className="arr-meta-grid arr-meta-grid--two-col">
-          <MetaRow label="Version">{system.version || health?.appVersion}</MetaRow>
-          <MetaRow label="Node">{system.nodeVersion}</MetaRow>
-          <MetaRow label="Platform">
-            {system.platform && system.arch ? `${system.platform} ${system.arch}` : null}
-          </MetaRow>
-          <MetaRow label="Docker">
-            {system.docker == null ? null : system.docker ? "Yes" : "No"}
-          </MetaRow>
-          <MetaRow label="Database">{system.database?.label}</MetaRow>
-          <MetaRow label="App Data Directory">{system.dataDir}</MetaRow>
-          <MetaRow label="Database Path">{system.databasePath}</MetaRow>
-          <MetaRow label="Startup Directory">{system.startupDirectory}</MetaRow>
-          <MetaRow label="Mode">{system.mode}</MetaRow>
-          <MetaRow label="Uptime">{formatUptime(system.uptimeSeconds)}</MetaRow>
-          <MetaRow label="Hostname">{system.hostname}</MetaRow>
-        </dl>
-      </SettingsArrFieldSet>
-
-      <SettingsArrFieldSet legend="More Info">
-        <dl className="arr-meta-grid arr-meta-grid--two-col">
-          {(system.links || []).map((link) => (
-            <MetaRow key={link.label} label={link.label}>
-              <a href={link.url} target="_blank" rel="noopener noreferrer" className="arr-link">
-                {link.value || link.url}
-              </a>
-            </MetaRow>
-          ))}
-        </dl>
+        <StorageHealthDashboard result={healthResult} loading={checkingHealth} showSummary={false} />
       </SettingsArrFieldSet>
     </>
+  );
+}
+
+export function SettingsSystemSection({ health }) {
+  const system = health?.system || {};
+  const runtimeReady = !!health?.system;
+
+  return (
+    <div className="settings-system__body">
+      <div className="settings-system__intro">
+        <div>
+          <h1 className="settings-system__title">System</h1>
+          <p className="settings-system__intro-text">A quick overview of the running Aurral app.</p>
+        </div>
+        <div className={`settings-system__status${runtimeReady ? " is-ready" : ""}`}>
+          <span className="settings-system__status-dot" aria-hidden />
+          {runtimeReady ? "Running" : "Loading"}
+        </div>
+      </div>
+
+      <SystemSection
+        title="Runtime"
+        description="The process and environment currently running Aurral."
+      >
+        <SystemRow label="Version" description="Current application build">
+          {system.version || health?.appVersion}
+        </SystemRow>
+        <SystemRow label="Uptime" description="Time since the application started">
+          {formatUptime(system.uptimeSeconds)}
+        </SystemRow>
+        <SystemRow label="Environment" description="Runtime mode and host">
+          {system.mode && system.hostname ? `${system.mode} · ${system.hostname}` : null}
+        </SystemRow>
+        <SystemRow label="Platform" description="Node.js runtime and operating system">
+          {system.nodeVersion && system.platform && system.arch
+            ? `Node ${system.nodeVersion} · ${system.platform} ${system.arch}`
+            : null}
+        </SystemRow>
+        <SystemRow label="Container" description="Whether Aurral is running in Docker">
+          {system.docker == null ? null : system.docker ? "Docker" : "Host process"}
+        </SystemRow>
+      </SystemSection>
+
+      <SystemSection title="Data" description="Where Aurral stores its application data.">
+        <SystemRow label="Database" description="Database engine and version">
+          {system.database?.label}
+        </SystemRow>
+        <SystemRow label="App data" description="Application data directory">
+          <code>{system.dataDir}</code>
+        </SystemRow>
+        <SystemRow label="Database path" description="Active SQLite database file">
+          <code>{system.databasePath}</code>
+        </SystemRow>
+        <SystemRow label="Startup directory" description="Directory used to start Aurral">
+          <code>{system.startupDirectory}</code>
+        </SystemRow>
+      </SystemSection>
+
+      <SystemSection title="More info" description="Useful links for the Aurral project.">
+        {(system.links || []).map((link) => (
+          <SystemRow key={link.label} label={link.label}>
+            <a href={link.url} target="_blank" rel="noopener noreferrer" className="arr-link">
+              {link.value || link.url}
+            </a>
+          </SystemRow>
+        ))}
+      </SystemSection>
+    </div>
   );
 }
