@@ -48,6 +48,129 @@ test("slskd search state helpers recognize active and completed searches", () =>
   assert.equal(isSearchComplete({ state: "Requested" }), false);
 });
 
+test("testConnection explains an unavailable Soulseek connection without leaking its enum state", async () => {
+  const originalSettings = dbOps.getSettings();
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    if (request.method === "GET" && request.url === "/api/v0/application") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ server: { state: "None", isConnected: false } }));
+      return;
+    }
+    if (request.method === "GET" && request.url === "/api/v0/options") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ directories: { downloads: "/mock-slskd-downloads" } }));
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...(originalSettings.integrations || {}),
+      slskd: { url: mock.url, apiKey: "test-key" },
+    },
+  });
+
+  try {
+    const result = await slskdClient.testConnection({ force: true });
+    assert.equal(
+      result.message,
+      "slskd is reachable, but it is not connected to Soulseek. Open slskd and connect to the Soulseek server.",
+    );
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    await mock.close();
+    assert.equal(slskdClient.getStatus().downloadPath, null);
+  }
+});
+
+test("testConnection does not let an older request replace the active cache", async () => {
+  const originalSettings = dbOps.getSettings();
+  let oldRequestCount = 0;
+  let resolveOldRequests;
+  let releaseOldRequests;
+  const oldRequestsReady = new Promise((resolve) => {
+    resolveOldRequests = resolve;
+  });
+  const oldRequestsReleased = new Promise((resolve) => {
+    releaseOldRequests = resolve;
+  });
+  let oldResultPromise = null;
+  const mock = await createMockHttpServer(async (request, response) => {
+    request.resume();
+    const isOldRequest = request.headers["x-api-key"] === "old-key";
+    if (isOldRequest) {
+      oldRequestCount += 1;
+      if (oldRequestCount === 2) resolveOldRequests();
+      await oldRequestsReleased;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    if (request.url === "/api/v0/application") {
+      response.end(
+        JSON.stringify({
+          server: isOldRequest
+            ? { state: "None", isConnected: false }
+            : { state: "Connected", isConnected: true },
+        }),
+      );
+      return;
+    }
+    if (request.url === "/api/v0/options") {
+      response.end(
+        JSON.stringify({
+          directories: {
+            downloads: isOldRequest ? "/old-downloads" : "/new-downloads",
+          },
+        }),
+      );
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+
+  try {
+    dbOps.updateSettings({
+      ...originalSettings,
+      integrations: {
+        ...(originalSettings.integrations || {}),
+        slskd: { url: mock.url, apiKey: "old-key" },
+      },
+    });
+    oldResultPromise = slskdClient.testConnection({ force: true });
+    await oldRequestsReady;
+
+    dbOps.updateSettings({
+      ...originalSettings,
+      integrations: {
+        ...(originalSettings.integrations || {}),
+        slskd: { url: mock.url, apiKey: "new-key" },
+      },
+    });
+    const newResult = await slskdClient.testConnection({ force: true });
+    assert.equal(newResult.connected, true);
+    assert.equal(newResult.downloadPath, "/new-downloads");
+
+    releaseOldRequests();
+    await oldResultPromise;
+    assert.deepEqual(slskdClient.getStatus(), {
+      configured: true,
+      connected: true,
+      downloadPath: "/new-downloads",
+      serverState: "Connected",
+    });
+  } finally {
+    releaseOldRequests();
+    if (oldResultPromise) await oldResultPromise.catch(() => {});
+    dbOps.updateSettings(originalSettings);
+    await mock.close();
+  }
+});
+
 test("flattenSearchResults reads files and lockedFiles payloads", () => {
   const results = slskdClient.flattenSearchResults({
     responses: [

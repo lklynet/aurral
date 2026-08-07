@@ -83,6 +83,7 @@ export default function DownloadFolderField({
             onClick={() => setShowPicker(true)}
             disabled={disabled}
             aria-label="Browse folders"
+            title="Browse folders"
           >
             <Folder className="artist-icon-xs" />
           </button>

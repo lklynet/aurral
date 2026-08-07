@@ -15,6 +15,7 @@ const MAX_NEGATIVE_CACHE = 1000;
 const MAX_PENDING_REQUESTS = 100;
 const NEGATIVE_CACHE_TTL_MS = 60 * 60 * 1000;
 const RELEASE_GROUP_CONCURRENCY = 4;
+const ARTIST_IMAGE_PROFILE = "artist";
 const negativeImageCache = new Map();
 const pendingImageRequests = new Map();
 
@@ -58,7 +59,8 @@ const getAlbumImageKindRank = (image) => {
 
 const getImageUrl = (image) => image?.url || image?.Url || null;
 
-const toPublicImageUrl = async (imageUrl) => warmPublicImageUrl(imageUrl);
+const toPublicImageUrl = async (imageUrl, imageProfile = "card") =>
+  warmPublicImageUrl(imageUrl, imageProfile);
 
 const selectBestImageByKind = (images = [], getKindRank) => {
   if (!Array.isArray(images)) return null;
@@ -107,7 +109,7 @@ const buildCachedArtistImagePayload = async (cachedImageUrl, metadataArtist = nu
   const directImages = sortArtistImages(metadataArtist?.images);
 
   for (const image of directImages) {
-    const publicUrl = await toPublicImageUrl(getImageUrl(image));
+    const publicUrl = await toPublicImageUrl(getImageUrl(image), ARTIST_IMAGE_PROFILE);
     if (!publicUrl || seen.has(publicUrl)) continue;
     seen.add(publicUrl);
     images.push({
@@ -126,7 +128,7 @@ const buildDirectArtistImagePayload = async (directImages = []) => {
   const seen = new Set();
 
   for (const image of sorted) {
-    const publicUrl = await toPublicImageUrl(getImageUrl(image));
+    const publicUrl = await toPublicImageUrl(getImageUrl(image), ARTIST_IMAGE_PROFILE);
     if (!publicUrl || seen.has(publicUrl)) continue;
     seen.add(publicUrl);
     images.push({
@@ -218,7 +220,8 @@ const recoverArtistCoverFromCachedReleaseGroups = async (resolvedMbid) => {
   if (cachedRgId && cachedRgId !== "NOT_FOUND") {
     const cachedUrl = await getCachedUrl(`rg:${cachedRgId}`);
     if (cachedUrl) {
-      return buildArtistCoverFromUrl(cachedUrl);
+      const artistUrl = await warmPublicImageUrl(cachedUrl, ARTIST_IMAGE_PROFILE);
+      return buildArtistCoverFromUrl(artistUrl || cachedUrl);
     }
   }
 
@@ -240,7 +243,8 @@ const recoverArtistCoverFromCachedReleaseGroups = async (resolvedMbid) => {
     const cachedUrl = await getCachedUrl(`rg:${rg.id}`);
     if (cachedUrl) {
       dbOps.setDeezerMbidCache(rgCacheKey, rg.id);
-      return buildArtistCoverFromUrl(cachedUrl);
+      const artistUrl = await warmPublicImageUrl(cachedUrl, ARTIST_IMAGE_PROFILE);
+      return buildArtistCoverFromUrl(artistUrl || cachedUrl);
     }
   }
 
@@ -289,7 +293,7 @@ export const getArtistImage = async (
     cachedImage.imageUrl !== "NOT_FOUND" &&
     !LEGACY_COVER_HOST_PATTERN.test(cachedImage.imageUrl)
   ) {
-    const warmedCached = await warmPublicImageUrl(cachedImage.imageUrl);
+    const warmedCached = await warmPublicImageUrl(cachedImage.imageUrl, ARTIST_IMAGE_PROFILE);
     if (warmedCached) {
       if (warmedCached !== cachedImage.imageUrl) dbOps.setImage(mbid, warmedCached);
       const override = dbOps.getArtistOverride(mbid);
@@ -346,6 +350,7 @@ export const getArtistImage = async (
       const deezerImage = await fetchDeezerArtistImageUrl({
         artistName: resolvedArtistName || "",
         deezerArtistId: override?.deezerArtistId || null,
+        imageProfile: ARTIST_IMAGE_PROFILE,
       });
       if (deezerImage) {
         negativeImageCache.delete(mbid);
@@ -405,16 +410,19 @@ export const getArtistImage = async (
       await Promise.all(workers);
 
       if (foundCover) {
+        const artistImageUrl =
+          (await warmPublicImageUrl(foundCover.imageUrl, ARTIST_IMAGE_PROFILE)) ||
+          foundCover.imageUrl;
         negativeImageCache.delete(mbid);
-        dbOps.setImage(mbid, foundCover.imageUrl);
+        dbOps.setImage(mbid, artistImageUrl);
         if (!cachedRg || forceRefresh) {
           dbOps.setDeezerMbidCache(rgCacheKey, foundCover.releaseGroupId);
         }
         return {
-          url: foundCover.imageUrl,
+          url: artistImageUrl,
           images: [
             {
-              image: foundCover.imageUrl,
+              image: artistImageUrl,
               front: true,
               types: foundCover.types,
             },

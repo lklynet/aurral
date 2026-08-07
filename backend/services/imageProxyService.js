@@ -15,9 +15,10 @@ const FETCH_TIMEOUT_MS = 25000;
 const MAX_REDIRECTS = 5;
 const MAX_SOURCE_IMAGE_BYTES = 25 * 1024 * 1024;
 const MAX_SOURCE_IMAGE_PIXELS = 40_000_000;
-const CARD_IMAGE_MAX_PX = 512;
-const CARD_IMAGE_MAX_BYTES = 150 * 1024;
-const WEBP_QUALITY = 70;
+const IMAGE_PROFILES = {
+  card: { maxPx: 512, maxBytes: 150 * 1024, quality: 70 },
+  artist: { maxPx: 2048, maxBytes: 2 * 1024 * 1024, quality: 82 },
+};
 // ponytail: FIFO by mtime, touch on serve for LRU; raise/env only if disk pressure complains
 const IMAGE_PROXY_MAX_BYTES = (() => {
   const parsed = Number(process.env.AURRAL_IMAGE_PROXY_MAX_BYTES);
@@ -156,9 +157,10 @@ const initializeCacheIndex = () => {
               return;
             }
             const sourceUrl = normalizeKnownImageUrl(meta.sourceUrl);
+            const profile = normalizeImageProfile(meta.profile);
             cacheEntriesByKey.set(cacheKey, {
               cacheKey,
-              meta,
+              meta: { ...meta, profile },
               imagePath,
               localUrl: buildLocalImageUrl(cacheKey, meta.extension),
               isFresh:
@@ -166,7 +168,7 @@ const initializeCacheIndex = () => {
                 Date.now() - Number(meta.fetchedAt || 0) < CACHE_TTL_MS,
             });
             if (sourceUrl) {
-              cacheKeysBySourceUrl.set(sourceUrl, cacheKey);
+              cacheKeysBySourceUrl.set(buildSourceMapKey(sourceUrl, profile), cacheKey);
             }
           }),
         );
@@ -203,7 +205,7 @@ export const getImageProxyCacheSizeBytes = async () => {
   return total;
 };
 
-const removeCacheEntryFromDisk = async (cacheKey, extension, sourceUrl) => {
+const removeCacheEntryFromDisk = async (cacheKey, extension, sourceUrl, profile = "card") => {
   const normalizedKey = String(cacheKey || "").toLowerCase();
   if (!normalizedKey) return;
   const { metaPath, baseImagePath } = getCachePaths(normalizedKey);
@@ -216,7 +218,7 @@ const removeCacheEntryFromDisk = async (cacheKey, extension, sourceUrl) => {
   cacheEntriesByKey.delete(normalizedKey);
   const normalizedSource = normalizeKnownImageUrl(sourceUrl);
   if (normalizedSource) {
-    cacheKeysBySourceUrl.delete(normalizedSource);
+    cacheKeysBySourceUrl.delete(buildSourceMapKey(normalizedSource, profile));
   }
 };
 
@@ -249,6 +251,7 @@ const pruneImageProxyCacheToLimit = async () => {
         cacheKey,
         extension,
         sourceUrl: meta?.sourceUrl || null,
+        profile: normalizeImageProfile(meta?.profile),
         mtimeMs: Math.max(Number(imageStat.mtimeMs) || 0, Number(metaStat.mtimeMs) || 0),
         bytes: Number(imageStat.size || 0) + Number(metaStat.size || 0),
       });
@@ -265,7 +268,12 @@ const pruneImageProxyCacheToLimit = async () => {
   );
   for (const entry of entries) {
     if (total <= IMAGE_PROXY_MAX_BYTES) break;
-    await removeCacheEntryFromDisk(entry.cacheKey, entry.extension, entry.sourceUrl);
+    await removeCacheEntryFromDisk(
+      entry.cacheKey,
+      entry.extension,
+      entry.sourceUrl,
+      entry.profile,
+    );
     total -= entry.bytes;
   }
 };
@@ -296,6 +304,17 @@ export const isPrivateHostname = (hostname) => {
 };
 
 const hashValue = (value) => crypto.createHash("sha256").update(String(value)).digest("hex");
+
+const normalizeImageProfile = (value) =>
+  typeof value === "string" && Object.hasOwn(IMAGE_PROFILES, value) ? value : "card";
+
+const buildSourceMapKey = (sourceUrl, profile = "card") =>
+  `${normalizeImageProfile(profile)}:${sourceUrl}`;
+
+const buildImageCacheKey = (sourceUrl, profile = "card") => {
+  const normalizedProfile = normalizeImageProfile(profile);
+  return hashValue(normalizedProfile === "card" ? sourceUrl : `${normalizedProfile}:${sourceUrl}`);
+};
 
 const normalizeKnownImageUrl = (value) =>
   String(value || "")
@@ -348,9 +367,10 @@ const readCacheEntryFromDisk = (cacheKey) => {
   const imagePath = path.join(IMAGE_PROXY_DIR, `${cacheKey}.${meta.extension}`);
   if (!fs.existsSync(imagePath)) return null;
   const sourceUrl = normalizeKnownImageUrl(meta.sourceUrl);
+  const profile = normalizeImageProfile(meta.profile);
   const entry = {
     cacheKey,
-    meta,
+    meta: { ...meta, profile },
     imagePath,
     localUrl: buildLocalImageUrl(cacheKey, meta.extension),
     isFresh:
@@ -359,7 +379,7 @@ const readCacheEntryFromDisk = (cacheKey) => {
   };
   cacheEntriesByKey.set(cacheKey, entry);
   if (sourceUrl) {
-    cacheKeysBySourceUrl.set(sourceUrl, cacheKey);
+    cacheKeysBySourceUrl.set(buildSourceMapKey(sourceUrl, profile), cacheKey);
   }
   return entry;
 };
@@ -403,26 +423,38 @@ const getCachedEntryFromKey = (cacheKey) => {
   };
 };
 
-const getCachedEntry = (sourceUrl) => {
+const getCachedEntry = (sourceUrl, imageProfile = "card") => {
   const normalizedSourceUrl = normalizeKnownImageUrl(sourceUrl);
   if (!normalizedSourceUrl) return null;
+  const profile = normalizeImageProfile(imageProfile);
   initializeCacheIndex();
-  const cacheKey = cacheKeysBySourceUrl.get(normalizedSourceUrl) || hashValue(normalizedSourceUrl);
+  const cacheKey =
+    cacheKeysBySourceUrl.get(buildSourceMapKey(normalizedSourceUrl, profile)) ||
+    buildImageCacheKey(normalizedSourceUrl, profile);
   return getCachedEntryFromKey(cacheKey);
 };
 
-const writeCacheEntry = async (cacheKey, buffer, contentType, sourceUrl) => {
+const writeCacheEntry = async (
+  cacheKey,
+  buffer,
+  contentType,
+  sourceUrl,
+  imageProfile = "card",
+) => {
   await ensureCacheDir();
+  const profile = normalizeImageProfile(imageProfile);
+  const normalizedSourceUrl = normalizeKnownImageUrl(sourceUrl) || sourceUrl;
   const extension = MIME_EXTENSION_MAP[contentType] || "img";
   const { metaPath, baseImagePath } = getCachePaths(cacheKey);
   const imagePath = `${baseImagePath}.${extension}`;
   const fetchedAt = Date.now();
   const meta = {
-    sourceUrl,
+    sourceUrl: normalizedSourceUrl,
     contentType,
     extension,
     fetchedAt,
     size: buffer.length,
+    profile,
   };
 
   await removeStaleCachedFiles(cacheKey, extension);
@@ -436,8 +468,11 @@ const writeCacheEntry = async (cacheKey, buffer, contentType, sourceUrl) => {
     isFresh: true,
   };
   cacheEntriesByKey.set(cacheKey, entry);
-  if (sourceUrl) {
-    cacheKeysBySourceUrl.set(sourceUrl, cacheKey);
+  if (normalizedSourceUrl) {
+    cacheKeysBySourceUrl.set(
+      buildSourceMapKey(normalizedSourceUrl, profile),
+      cacheKey,
+    );
   }
   await pruneImageProxyCacheToLimit();
   return entry;
@@ -446,10 +481,8 @@ const writeCacheEntry = async (cacheKey, buffer, contentType, sourceUrl) => {
 const shouldNormalizeCachedEntry = (entry) => {
   if (!entry?.imagePath || !entry?.meta?.contentType) return false;
   if (!OPTIMIZABLE_CONTENT_TYPES.has(entry.meta.contentType)) return false;
-  return (
-    entry.meta.contentType !== "image/webp" ||
-    Number(entry.meta.size || 0) > CARD_IMAGE_MAX_BYTES
-  );
+  const profile = IMAGE_PROFILES[normalizeImageProfile(entry.meta.profile)];
+  return entry.meta.contentType !== "image/webp" || Number(entry.meta.size || 0) > profile.maxBytes;
 };
 
 const inspectImageBuffer = async (buffer, contentType) => {
@@ -473,10 +506,11 @@ const inspectImageBuffer = async (buffer, contentType) => {
   return metadata;
 };
 
-const optimizeImageBuffer = async (buffer, contentType) => {
+const optimizeImageBuffer = async (buffer, contentType, imageProfile = "card") => {
   if (!OPTIMIZABLE_CONTENT_TYPES.has(contentType)) {
     return { buffer, contentType };
   }
+  const profile = IMAGE_PROFILES[normalizeImageProfile(imageProfile)];
 
   const optimizedBuffer = await sharp(buffer, {
     animated: false,
@@ -484,12 +518,12 @@ const optimizeImageBuffer = async (buffer, contentType) => {
   })
     .rotate()
     .resize({
-      width: CARD_IMAGE_MAX_PX,
-      height: CARD_IMAGE_MAX_PX,
+      width: profile.maxPx,
+      height: profile.maxPx,
       fit: "inside",
       withoutEnlargement: true,
     })
-    .webp({ quality: WEBP_QUALITY })
+    .webp({ quality: profile.quality })
     .toBuffer();
 
   return { buffer: optimizedBuffer, contentType: "image/webp" };
@@ -507,7 +541,11 @@ const normalizeCachedEntryIfNeeded = async (entry) => {
     return entry;
   }
 
-  const optimized = await optimizeImageBuffer(buffer, entry.meta.contentType);
+  const optimized = await optimizeImageBuffer(
+    buffer,
+    entry.meta.contentType,
+    entry.meta.profile,
+  );
   if (
     optimized.contentType === entry.meta.contentType &&
     optimized.buffer.length === buffer.length
@@ -520,6 +558,7 @@ const normalizeCachedEntryIfNeeded = async (entry) => {
     optimized.buffer,
     optimized.contentType,
     normalizeKnownImageUrl(entry.meta.sourceUrl) || entry.meta.sourceUrl || null,
+    entry.meta.profile,
   );
 };
 
@@ -606,37 +645,48 @@ const fetchRemoteImage = async (sourceUrl) => {
   throw new Error("Too many upstream image redirects");
 };
 
-const fetchAndCacheImage = async (sourceUrl) => {
+const fetchAndCacheImage = async (sourceUrl, imageProfile = "card") => {
   const normalizedSourceUrl = normalizeKnownImageUrl(sourceUrl);
   if (!normalizedSourceUrl) {
     throw new Error("Missing source image URL");
   }
+  const profile = normalizeImageProfile(imageProfile);
 
   const sourceImage = await fetchRemoteImage(normalizedSourceUrl);
-  const optimized = await optimizeImageBuffer(sourceImage.buffer, sourceImage.contentType);
+  const optimized = await optimizeImageBuffer(sourceImage.buffer, sourceImage.contentType, profile);
 
   return writeCacheEntry(
-    hashValue(normalizedSourceUrl),
+    buildImageCacheKey(normalizedSourceUrl, profile),
     optimized.buffer,
     optimized.contentType,
     normalizedSourceUrl,
+    profile,
   );
 };
 
-export const warmImageProxy = async (sourceUrl) => {
+export const warmImageProxy = async (sourceUrl, imageProfile = "card") => {
+  const profile = normalizeImageProfile(imageProfile);
   const cacheKeyFromLocalUrl = getCacheKeyFromLocalUrl(sourceUrl);
   if (cacheKeyFromLocalUrl) {
     await awaitCacheIndexReady();
     const cachedLocal = getCachedEntryFromKey(cacheKeyFromLocalUrl);
     if (cachedLocal?.imagePath && fs.existsSync(cachedLocal.imagePath)) {
-      return normalizeCachedEntryIfNeeded(cachedLocal);
+      if (normalizeImageProfile(cachedLocal.meta?.profile) === profile) {
+        return normalizeCachedEntryIfNeeded(cachedLocal);
+      }
+      const sourceFromMeta =
+        normalizeKnownImageUrl(cachedLocal.meta?.sourceUrl) || cachedLocal.meta?.sourceUrl || null;
+      if (sourceFromMeta) {
+        return fetchAndCacheImage(sourceFromMeta, profile);
+      }
+      return cachedLocal;
     }
     const meta = _readCacheMetadata(
       path.join(IMAGE_PROXY_DIR, `${cacheKeyFromLocalUrl}.json`),
     );
     const sourceFromMeta = normalizeKnownImageUrl(meta?.sourceUrl) || meta?.sourceUrl || null;
     if (sourceFromMeta) {
-      return fetchAndCacheImage(sourceFromMeta);
+      return fetchAndCacheImage(sourceFromMeta, profile);
     }
     throw new Error("Missing local cached image");
   }
@@ -646,27 +696,33 @@ export const warmImageProxy = async (sourceUrl) => {
     throw new Error("Missing source image URL");
   }
 
-  const cached = getCachedEntry(normalizedSourceUrl);
+  const cached = getCachedEntry(normalizedSourceUrl, profile);
   if (cached?.isFresh) {
     return normalizeCachedEntryIfNeeded(cached);
   }
 
-  if (inflightRequests.has(normalizedSourceUrl)) {
-    return inflightRequests.get(normalizedSourceUrl);
+  const inflightKey = buildSourceMapKey(normalizedSourceUrl, profile);
+  if (inflightRequests.has(inflightKey)) {
+    return inflightRequests.get(inflightKey);
   }
 
-  const request = fetchAndCacheImage(normalizedSourceUrl).finally(() => {
-    inflightRequests.delete(normalizedSourceUrl);
+  const request = fetchAndCacheImage(normalizedSourceUrl, profile).finally(() => {
+    inflightRequests.delete(inflightKey);
   });
-  inflightRequests.set(normalizedSourceUrl, request);
+  inflightRequests.set(inflightKey, request);
   return request;
 };
 
-export const warmPublicImageUrl = async (sourceUrl) => {
+export const warmPublicImageUrl = async (sourceUrl, imageProfile = "card") => {
   const normalized = String(sourceUrl || "").trim();
   if (!normalized || normalized === "NOT_FOUND") return null;
   if (isImageProxyLocalUrl(normalized)) {
-    return resolveImageProxyLocalUrl(normalized) || null;
+    try {
+      const entry = await warmImageProxy(normalized, imageProfile);
+      return entry?.localUrl || null;
+    } catch {
+      return null;
+    }
   }
   const srcMatch = normalized.match(/\/api\/image-proxy\?src=([^&]+)/i);
   const remote = srcMatch ? decodeURIComponent(srcMatch[1]) : normalized;
@@ -674,7 +730,7 @@ export const warmPublicImageUrl = async (sourceUrl) => {
     return remote || null;
   }
   try {
-    const entry = await warmImageProxy(remote);
+    const entry = await warmImageProxy(remote, imageProfile);
     return entry?.localUrl || null;
   } catch {
     return null;
@@ -732,7 +788,7 @@ export const handleImageProxyRequest = async (req, res) => {
     const sourceFromMeta = normalizeKnownImageUrl(meta?.sourceUrl) || meta?.sourceUrl || null;
     if (sourceFromMeta) {
       try {
-        cached = await fetchAndCacheImage(sourceFromMeta);
+        cached = await fetchAndCacheImage(sourceFromMeta, meta?.profile);
       } catch {}
     }
   }
@@ -748,7 +804,10 @@ export const handleImageProxyRequest = async (req, res) => {
   res.set("Content-Type", cached.meta.contentType || "image/jpeg");
   res.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
   touchCacheEntry(cached.imagePath);
-  return res.sendFile(cached.imagePath);
+  return res.sendFile(path.basename(cached.imagePath), {
+    root: IMAGE_PROXY_DIR,
+    dotfiles: "allow",
+  });
 };
 
 export const handleLegacyImageProxyRequest = async (req, res) => {

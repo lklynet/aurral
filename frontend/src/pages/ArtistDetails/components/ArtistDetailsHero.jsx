@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
-import { MapPin } from "lucide-react";
-import { formatLifeSpan, getArtistHeroImage, getArtistType, getTagColor } from "../utils";
+import { getArtistHeroImage } from "../utils";
 
 const normalizeTagName = (value) => String(value || "").trim();
 
@@ -25,8 +24,6 @@ const buildTags = (artist) => {
 export function ArtistDetailsHero({
   artist,
   coverImages,
-  existsInLibrary,
-  loadingLibrary,
   onCoverError,
   onNavigate,
 }) {
@@ -34,10 +31,6 @@ export function ArtistDetailsHero({
   const [imageFailed, setImageFailed] = useState(false);
   const tags = useMemo(() => buildTags(artist), [artist]);
   const visibleTags = tags.slice(0, 8);
-  const artistType = getArtistType(artist?.type);
-  const lifeSpan = formatLifeSpan(artist?.["life-span"]);
-  const releaseCount = Number(artist?.["release-group-count"] || 0);
-  const location = artist?.area?.name || artist?.country || "";
   const showImage = heroImage && !imageFailed;
 
   return (
@@ -65,30 +58,6 @@ export function ArtistDetailsHero({
         <div className="artist-hero__content">
           <h1 className="artist-hero__title">{artist.name}</h1>
 
-          <div className="artist-meta-line">
-            {artistType && <span>{artistType}</span>}
-            {location && (
-              <span className="artist-meta-line__item">
-                <MapPin className="artist-meta-line__icon" />
-                {location}
-              </span>
-            )}
-            {lifeSpan && <span>{lifeSpan}</span>}
-            {releaseCount > 0 && (
-              <span>
-                {releaseCount.toLocaleString()} release
-                {releaseCount === 1 ? "" : "s"}
-              </span>
-            )}
-            <span>
-              {loadingLibrary
-                ? "Checking library"
-                : existsInLibrary
-                  ? "In your library"
-                  : "Not in library"}
-            </span>
-          </div>
-
           {visibleTags.length > 0 && (
             <div className="artist-tag-list">
               {visibleTags.map((tag) => (
@@ -99,7 +68,6 @@ export function ArtistDetailsHero({
                     onNavigate?.(`/search?q=${encodeURIComponent(`#${tag.name}`)}&type=tag`)
                   }
                   className="artist-tag"
-                  style={{ backgroundColor: getTagColor(tag.name) }}
                   title={`View artists with tag: ${tag.name}`}
                 >
                   #{tag.name}

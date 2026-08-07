@@ -124,6 +124,7 @@ const fetchDeezerAlbumCover = async (cacheKey, { artistName = "", albumTitle = "
 export const fetchDeezerArtistImageUrl = async ({
   artistName = "",
   deezerArtistId = null,
+  imageProfile = "card",
 } = {}) => {
   try {
     const artist = deezerArtistId
@@ -132,7 +133,7 @@ export const fetchDeezerArtistImageUrl = async ({
         ? await getDeezerArtist(artistName)
         : null;
     if (!artist?.imageUrl) return null;
-    return warmPublicImageUrl(artist.imageUrl);
+    return warmPublicImageUrl(artist.imageUrl, imageProfile);
   } catch {
     return null;
   }

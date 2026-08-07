@@ -97,6 +97,7 @@ export function ArtistDetailsSimilar({
             onClick={() => scrollByAmount(-1)}
             className="btn btn-ghost btn-icon-square"
             aria-label="Scroll similar artists left"
+            title="Scroll similar artists left"
             disabled={!canScrollLeft}
           >
             <ChevronLeft className="artist-icon-lg" />
@@ -106,6 +107,7 @@ export function ArtistDetailsSimilar({
             onClick={() => scrollByAmount(1)}
             className="btn btn-ghost btn-icon-square"
             aria-label="Scroll similar artists right"
+            title="Scroll similar artists right"
             disabled={!canScrollRight}
           >
             <ChevronRight className="artist-icon-lg" />

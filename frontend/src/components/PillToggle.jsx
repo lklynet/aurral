@@ -1,18 +1,20 @@
 import "./PillToggle.css";
 
-function PillToggle({ checked, onChange, disabled, id, className }) {
-  const inputId = id || `pill-toggle-${Math.random().toString(36).slice(2)}`;
+function PillToggle({ checked = false, onChange, disabled = false, id, className, ...buttonProps }) {
+  const handleClick = () => onChange?.({ target: { checked: !checked } });
+
   return (
-    <div className={`pill-toggle ${className || ""}`.trim()}>
-      <input
-        type="checkbox"
-        id={inputId}
-        checked={checked}
-        onChange={onChange}
-        disabled={disabled}
-      />
-      <label htmlFor={inputId} />
-    </div>
+    <button
+      type="button"
+      id={id}
+      className={`pill-toggle ${className || ""}`.trim()}
+      role="switch"
+      aria-checked={Boolean(checked)}
+      aria-label={buttonProps["aria-label"] || "Toggle"}
+      disabled={disabled}
+      onClick={handleClick}
+      {...buttonProps}
+    />
   );
 }
 

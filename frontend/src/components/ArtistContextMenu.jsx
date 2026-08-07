@@ -2,10 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { Ban, Library, Loader2, MoreVertical, ThumbsDown, ThumbsUp } from "lucide-react";
 import { getDiscoveryFeedbackLabel } from "../utils/discoveryFeedback";
-
-const MAIN_CONTENT_PORTAL_SELECTOR = ".app-main-wrap";
-
-const getMainContentPortalRoot = () => document.querySelector(MAIN_CONTENT_PORTAL_SELECTOR);
+import TooltipButton from "./TooltipButton";
 
 const getMenuHorizontalAnchorRect = (button) => {
   const discoverCard = button.closest(".artist-discover-card");
@@ -33,6 +30,7 @@ export function ArtistContextMenu({
   feedbackUsed = {},
   className = "",
   buttonClassName = "btn btn-icon-square artist-context-menu__trigger",
+  menuLayout = "text",
 }) {
   const [showMenu, setShowMenu] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
@@ -41,6 +39,7 @@ export function ArtistContextMenu({
   const menuRef = useRef(null);
   const closeMenuRef = useRef(null);
   const labelName = artistName || artist?.name || artist?.artistName || "artist";
+  const isInlineActions = menuLayout === "inline";
 
   const closeMenu = useCallback(() => {
     setShowMenu(false);
@@ -67,9 +66,13 @@ export function ArtistContextMenu({
 
   const updateMenuPosition = useCallback(() => {
     const button = menuButtonRef.current;
-    const portalRoot = getMainContentPortalRoot();
-    if (!button || !portalRoot) return;
-    const wrapRect = portalRoot.getBoundingClientRect();
+    if (!button) return;
+    const wrapRect = document.querySelector(".app-main-wrap")?.getBoundingClientRect() ?? {
+      top: 0,
+      left: 0,
+      right: window.innerWidth,
+      bottom: window.innerHeight,
+    };
     const rect = button.getBoundingClientRect();
     const gap = 8;
     const menuHeight = menuRef.current?.offsetHeight || estimateMenuHeight();
@@ -81,15 +84,20 @@ export function ArtistContextMenu({
     } else if (spaceAbove < menuHeight && spaceBelow < menuHeight) {
       placement = spaceBelow > spaceAbove ? "below" : "above";
     }
-    const top =
-      placement === "below" ? rect.bottom - wrapRect.top + gap : rect.top - wrapRect.top - gap;
+    const top = placement === "below" ? rect.bottom + gap : rect.top - gap;
     const anchorRect = getMenuHorizontalAnchorRect(button);
-    const right = wrapRect.right - anchorRect.right;
+    const menuWidth = menuRef.current?.offsetWidth || 200;
+    const minLeft = Math.max(8, wrapRect.left + gap);
+    const maxLeft = Math.max(
+      minLeft,
+      Math.min(window.innerWidth - menuWidth - gap, wrapRect.right - menuWidth - gap),
+    );
+    const left = Math.min(Math.max(anchorRect.right - menuWidth, minLeft), maxLeft);
     setMenuPosition((prev) => {
-      if (prev && prev.top === top && prev.right === right && prev.placement === placement) {
+      if (prev && prev.top === top && prev.left === left && prev.placement === placement) {
         return prev;
       }
-      return { top, right, placement };
+      return { top, left, placement };
     });
   }, [estimateMenuHeight]);
 
@@ -180,15 +188,80 @@ export function ArtistContextMenu({
 
   if (!showMenuTrigger) return null;
 
+  if (isInlineActions) {
+    return (
+      <div
+        className={`${className} artist-context-menu--inline`}
+        style={{ position: "relative", flexShrink: 0 }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        {canAddArtist && onAddToLibrary && (
+          <TooltipButton
+            label={isInLibrary ? "In library" : "Add to library"}
+            onClick={(event) => handleAction(event, "library", onAddToLibrary)}
+            disabled={isInLibrary || !!pendingAction}
+            className={`btn btn-icon-square artist-context-menu__inline-action${isInLibrary ? " is-selected" : ""}`}
+          >
+            {pendingAction === "library" ? (
+              <Loader2 className="artist-icon-sm animate-spin" />
+            ) : (
+              <Library className="artist-icon-sm" />
+            )}
+          </TooltipButton>
+        )}
+        {onFeedback && (
+          <>
+            <TooltipButton
+              label={getDiscoveryFeedbackLabel("more_like_this")}
+              onClick={(event) => handleFeedbackClick(event, "more_like_this")}
+              disabled={!!pendingAction}
+              className={`btn btn-icon-square artist-context-menu__inline-action${feedbackUsed.more_like_this ? " is-selected" : ""}`}
+            >
+              {pendingAction === "more_like_this" ? (
+                <Loader2 className="artist-icon-sm animate-spin" />
+              ) : (
+                <ThumbsUp className="artist-icon-sm" />
+              )}
+            </TooltipButton>
+            <TooltipButton
+              label={getDiscoveryFeedbackLabel("less_like_this")}
+              onClick={(event) => handleFeedbackClick(event, "less_like_this")}
+              disabled={!!pendingAction}
+              className={`btn btn-icon-square artist-context-menu__inline-action${feedbackUsed.less_like_this ? " is-selected" : ""}`}
+            >
+              {pendingAction === "less_like_this" ? (
+                <Loader2 className="artist-icon-sm animate-spin" />
+              ) : (
+                <ThumbsDown className="artist-icon-sm" />
+              )}
+            </TooltipButton>
+            <TooltipButton
+              label={feedbackUsed.block_artist ? "Unblock artist" : getDiscoveryFeedbackLabel("block_artist")}
+              onClick={(event) => handleFeedbackClick(event, "block_artist")}
+              disabled={!!pendingAction}
+              className={`btn btn-icon-square artist-context-menu__inline-action artist-context-menu__inline-action--danger${feedbackUsed.block_artist ? " is-selected" : ""}`}
+            >
+              {pendingAction === "block_artist" ? (
+                <Loader2 className="artist-icon-sm animate-spin" />
+              ) : (
+                <Ban className="artist-icon-sm" />
+              )}
+            </TooltipButton>
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       className={className}
       style={{ position: "relative", flexShrink: 0 }}
       onClick={(event) => event.stopPropagation()}
     >
-      <button
+      <TooltipButton
         ref={menuButtonRef}
-        type="button"
+        label={`Artist options for ${labelName}`}
         onClick={(event) => {
           event.stopPropagation();
           if (showMenu) {
@@ -198,18 +271,17 @@ export function ArtistContextMenu({
           }
         }}
         className={buttonClassName}
-        aria-label={`Artist options for ${labelName}`}
       >
         <MoreVertical className="artist-icon-sm" />
-      </button>
-      {showMenu && menuPosition && getMainContentPortalRoot()
+      </TooltipButton>
+      {showMenu && menuPosition
         ? createPortal(
             <div
               ref={setMenuRef}
               className={`artist-options-menu--discover${menuPosition.placement === "below" ? " is-below" : ""}`}
               style={{
                 top: menuPosition.top,
-                right: menuPosition.right,
+                left: menuPosition.left,
               }}
               onClick={(event) => event.stopPropagation()}
             >
@@ -219,6 +291,8 @@ export function ArtistContextMenu({
                   onClick={(event) => handleAction(event, "library", onAddToLibrary)}
                   disabled={isInLibrary || !!pendingAction}
                   className="artist-menu-item--discover"
+                  aria-label={isInLibrary ? "In library" : "Add to library"}
+                  title={isInLibrary ? "In library" : "Add to library"}
                 >
                   <div className="artist-menu-item__main--discover">
                     {pendingAction === "library" ? (
@@ -226,7 +300,9 @@ export function ArtistContextMenu({
                     ) : (
                       <Library className="artist-icon-sm" />
                     )}
-                    {isInLibrary ? "In Library" : "Add to Library"}
+                    <span className="artist-menu-item__text--discover">
+                      {isInLibrary ? "In Library" : "Add to Library"}
+                    </span>
                   </div>
                 </button>
               )}
@@ -237,6 +313,8 @@ export function ArtistContextMenu({
                     onClick={(event) => handleFeedbackClick(event, "more_like_this")}
                     disabled={!!pendingAction}
                     className={`artist-menu-item--discover${feedbackUsed.more_like_this ? " is-selected" : ""}`}
+                    aria-label={getDiscoveryFeedbackLabel("more_like_this")}
+                    title={getDiscoveryFeedbackLabel("more_like_this")}
                   >
                     <div className="artist-menu-item__main--discover">
                       {pendingAction === "more_like_this" ? (
@@ -244,7 +322,9 @@ export function ArtistContextMenu({
                       ) : (
                         <ThumbsUp className="artist-icon-sm" />
                       )}
-                      {getDiscoveryFeedbackLabel("more_like_this")}
+                      <span className="artist-menu-item__text--discover">
+                        {getDiscoveryFeedbackLabel("more_like_this")}
+                      </span>
                     </div>
                   </button>
                   <button
@@ -252,6 +332,8 @@ export function ArtistContextMenu({
                     onClick={(event) => handleFeedbackClick(event, "less_like_this")}
                     disabled={!!pendingAction}
                     className={`artist-menu-item--discover${feedbackUsed.less_like_this ? " is-selected" : ""}`}
+                    aria-label={getDiscoveryFeedbackLabel("less_like_this")}
+                    title={getDiscoveryFeedbackLabel("less_like_this")}
                   >
                     <div className="artist-menu-item__main--discover">
                       {pendingAction === "less_like_this" ? (
@@ -259,7 +341,9 @@ export function ArtistContextMenu({
                       ) : (
                         <ThumbsDown className="artist-icon-sm" />
                       )}
-                      {getDiscoveryFeedbackLabel("less_like_this")}
+                      <span className="artist-menu-item__text--discover">
+                        {getDiscoveryFeedbackLabel("less_like_this")}
+                      </span>
                     </div>
                   </button>
                   <button
@@ -267,6 +351,8 @@ export function ArtistContextMenu({
                     onClick={(event) => handleFeedbackClick(event, "block_artist")}
                     disabled={!!pendingAction}
                     className={`artist-menu-item--discover artist-menu-item--danger${feedbackUsed.block_artist ? " is-selected" : ""}`}
+                    aria-label={feedbackUsed.block_artist ? "Unblock artist" : getDiscoveryFeedbackLabel("block_artist")}
+                    title={feedbackUsed.block_artist ? "Unblock artist" : getDiscoveryFeedbackLabel("block_artist")}
                   >
                     <div className="artist-menu-item__main--discover">
                       {pendingAction === "block_artist" ? (
@@ -274,13 +360,15 @@ export function ArtistContextMenu({
                       ) : (
                         <Ban className="artist-icon-sm" />
                       )}
-                      {feedbackUsed.block_artist ? "Unblock artist" : getDiscoveryFeedbackLabel("block_artist")}
+                      <span className="artist-menu-item__text--discover">
+                        {feedbackUsed.block_artist ? "Unblock artist" : getDiscoveryFeedbackLabel("block_artist")}
+                      </span>
                     </div>
                   </button>
                 </>
               )}
             </div>,
-            getMainContentPortalRoot(),
+            document.body,
           )
         : null}
     </div>

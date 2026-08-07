@@ -6,6 +6,7 @@ import AddActionButton from "../../../components/AddActionButton";
 import { navigateToReleaseGroup } from "../../../utils/searchNavigation";
 import { getPopularReleaseGroups, getReleaseGroupCoverUrl, getReleaseMetric, getReleaseYear } from "../utils";
 import { getAlbumAddButtonLabel } from "../../../utils/albumAddAction";
+import { useResponsiveReleaseLimit } from "../hooks/useResponsiveReleaseLimit";
 
 const viewModes = [
   { value: "popular", label: "Popular Releases" },
@@ -26,9 +27,9 @@ const sortLatest = (items) =>
     String(b["first-release-date"] || "").localeCompare(String(a["first-release-date"] || "")),
   );
 
-const getVisibleReleases = (releaseGroups, viewMode) => {
+const getVisibleReleases = (releaseGroups, viewMode, limit) => {
   if (viewMode === "popular") {
-    return getPopularReleaseGroups(releaseGroups);
+    return getPopularReleaseGroups(releaseGroups, limit);
   }
   if (viewMode === "albums") {
     return sortLatest(
@@ -36,16 +37,16 @@ const getVisibleReleases = (releaseGroups, viewMode) => {
         (releaseGroup) =>
           releaseGroup?.["primary-type"] === "Album" && !isCompilation(releaseGroup),
       ),
-    ).slice(0, 6);
+    ).slice(0, limit);
   }
   if (viewMode === "singles") {
     return sortLatest(
       releaseGroups.filter(
         (releaseGroup) => isSingleOrEp(releaseGroup) && !isCompilation(releaseGroup),
       ),
-    ).slice(0, 6);
+    ).slice(0, limit);
   }
-  return sortLatest(releaseGroups.filter(isCompilation)).slice(0, 6);
+  return sortLatest(releaseGroups.filter(isCompilation)).slice(0, limit);
 };
 
 export function ArtistDetailsReleaseGroups({
@@ -64,10 +65,11 @@ export function ArtistDetailsReleaseGroups({
 }) {
   const navigate = useDiscoverNavigation();
   const [viewMode, setViewMode] = useState("popular");
+  const [releaseGridRef, previewLimit] = useResponsiveReleaseLimit();
   const releaseGroups = useMemo(() => artist["release-groups"] || [], [artist]);
   const visibleReleaseGroups = useMemo(
-    () => getVisibleReleases(releaseGroups, viewMode),
-    [releaseGroups, viewMode],
+    () => getVisibleReleases(releaseGroups, viewMode, previewLimit),
+    [previewLimit, releaseGroups, viewMode],
   );
 
   useEffect(() => {
@@ -116,7 +118,7 @@ export function ArtistDetailsReleaseGroups({
         </button>
       </div>
 
-      <div className="artist-release-grid">
+      <div ref={releaseGridRef} className="artist-release-grid">
         {visibleReleaseGroups.map((releaseGroup) => {
           const status = getAlbumStatus(releaseGroup.id);
           const metric = getReleaseMetric(releaseGroup);
