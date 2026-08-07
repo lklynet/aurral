@@ -1581,7 +1581,7 @@
 .settings-arr__toolbar {
   justify-content: flex-end;
   min-height: 2rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
   padding: 0 0.75rem;
   border: 0;
 }
@@ -1627,7 +1627,7 @@
 .settings-arr .settings-page__panel,
 .settings-arr .settings-page__form {
   display: grid;
-  gap: 2.75rem;
+  gap: 2.25rem;
 }
 
 .settings-arr .arr-fieldset,
@@ -1676,11 +1676,11 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(10rem, 26rem);
   align-items: center;
-  gap: 2rem;
+  gap: 1.5rem;
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: 0.75rem;
+  padding: 0.5rem 0.625rem;
   border-radius: 0.75rem;
 }
 
@@ -1752,9 +1752,9 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(10rem, 26rem);
   align-items: start;
-  gap: 2rem;
+  gap: 1.5rem;
   min-width: 0;
-  padding: 0.75rem;
+  padding: 0.5rem 0.625rem;
   border-radius: 0.75rem;
 }
 
@@ -1811,7 +1811,7 @@
 
 .settings-arr :is(.arr-input, .arr-select, .arr-textarea, .artist-input) {
   height: 2rem;
-  padding: 0 0.75rem;
+  padding: 0 0.625rem;
   border: 1px solid var(--settings-control-border);
   border-radius: 0.5rem;
   background: var(--settings-control-surface);
@@ -1824,7 +1824,7 @@
 .settings-arr textarea.arr-input {
   height: auto;
   min-height: 6rem;
-  padding: 0.625rem 0.75rem;
+  padding: 0.5rem 0.625rem;
 }
 
 .settings-arr :is(.arr-input, .arr-select, .arr-textarea, .artist-input):hover:not(:disabled) {
@@ -1945,7 +1945,7 @@
   width: auto;
   min-width: 0;
   margin: 0;
-  padding: 0.75rem;
+  padding: 0.625rem;
   border: 1px solid var(--aurral-border);
   border-radius: 0.75rem;
   background: transparent;
@@ -2111,12 +2111,12 @@
 
 .settings-arr .settings-system {
   display: grid;
-  gap: 2.5rem;
+  gap: 2.25rem;
 }
 
 .settings-arr .settings-system__body {
   display: grid;
-  gap: 2.5rem;
+  gap: 2.25rem;
   min-width: 0;
 }
 
@@ -2201,9 +2201,9 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(12rem, 26rem);
   align-items: center;
-  gap: 2rem;
+  gap: 1.5rem;
   min-width: 0;
-  padding: 0.75rem;
+  padding: 0.5rem 0.625rem;
   border-radius: 0.75rem;
 }
 

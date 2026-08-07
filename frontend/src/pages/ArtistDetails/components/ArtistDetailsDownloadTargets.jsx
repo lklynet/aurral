@@ -226,7 +226,6 @@ export function ArtistDetailsDownloadTargets({
               {canAddAlbum && missingReleasePick.releaseGroupId && (
                 <div>
                   <AddActionButton
-                    isExpanded
                     onClick={(event) => {
                       event.stopPropagation();
                       handleRequestAlbum(missingReleasePick.releaseGroupId, missingReleasePick.title);
