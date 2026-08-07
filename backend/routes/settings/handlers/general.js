@@ -45,9 +45,6 @@ export function registerGeneral(router) {
       if (settings?.integrations?.musicbrainz) {
         delete settings.integrations.musicbrainz;
       }
-      if (settings?.integrations?.newsapi) {
-        delete settings.integrations.newsapi;
-      }
       settings.integrations.news = getNewsSettings();
       if (!settings?.integrations?.metadata) {
         settings.integrations.metadata = {
@@ -328,10 +325,6 @@ export function registerGeneral(router) {
       if (mergedIntegrations?.coverArtArchive) {
         delete mergedIntegrations.coverArtArchive;
       }
-      if (mergedIntegrations?.newsapi) {
-        delete mergedIntegrations.newsapi;
-      }
-
       const updatedSettings = {
         ...currentSettings,
         quality:
