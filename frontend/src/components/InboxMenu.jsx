@@ -22,6 +22,8 @@ const ITEM_ICONS = {
   release: Music2,
   show: CalendarDays,
   news: Newspaper,
+  recommendedNews: Newspaper,
+  musicHeadline: Newspaper,
   discovery: Sparkles,
 };
 
@@ -50,7 +52,9 @@ const getInboxSubtitle = (item) => {
   }
   if (item.kind === "discovery") return ["New artist discovery", item.subtitle].filter(Boolean).join(" · ");
   if (item.kind === "show") return ["Upcoming show", item.subtitle].filter(Boolean).join(" · ");
-  if (item.kind === "news") return ["Artist news", item.subtitle].filter(Boolean).join(" · ");
+  if (item.kind === "news") return ["Library artist news", item.subtitle].filter(Boolean).join(" · ");
+  if (item.kind === "recommendedNews") return ["Recommended artist news", item.subtitle].filter(Boolean).join(" · ");
+  if (item.kind === "musicHeadline") return ["Top music headlines", item.subtitle].filter(Boolean).join(" · ");
   return item.subtitle;
 };
 
@@ -58,7 +62,9 @@ const FILTER_OPTIONS = [
   { value: "all", label: "All notifications" },
   { value: "release", label: "Releases" },
   { value: "show", label: "Shows" },
-  { value: "news", label: "News" },
+  { value: "news", label: "Library Artist news" },
+  { value: "recommendedNews", label: "Recommended Artist news" },
+  { value: "musicHeadline", label: "Top Music headlines" },
   { value: "discovery", label: "Discoveries" },
 ];
 

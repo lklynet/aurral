@@ -457,10 +457,22 @@ export function SettingsConnectTab({
               onChange={(e) => updateInbox({ shows: e.target.checked })}
             />
           </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Artist news">
+          <SettingsArrFormGroup label="Library Artist news">
             <PillToggle
               checked={inbox.news !== false}
               onChange={(e) => updateInbox({ news: e.target.checked })}
+            />
+          </SettingsArrFormGroup>
+          <SettingsArrFormGroup label="Recommended Artist news">
+            <PillToggle
+              checked={inbox.recommendedNews === true}
+              onChange={(e) => updateInbox({ recommendedNews: e.target.checked })}
+            />
+          </SettingsArrFormGroup>
+          <SettingsArrFormGroup label="Top Music headlines">
+            <PillToggle
+              checked={inbox.musicHeadlines === true}
+              onChange={(e) => updateInbox({ musicHeadlines: e.target.checked })}
             />
           </SettingsArrFormGroup>
           <SettingsArrFormGroup label="Discoveries">
@@ -662,6 +674,25 @@ export function SettingsConnectTab({
                 onChange={(e) => updateNewsApi({ domains: e.target.value })}
               />
             </SettingsModalField>
+          </SettingsModalSection>
+          <SettingsModalSection title="Search sources">
+            <SettingsModalToggleGroup>
+              <SettingsModalToggle
+                label="Search Library Artists"
+                checked={newsapi.searchLibraryArtists !== false}
+                onChange={(e) => updateNewsApi({ searchLibraryArtists: e.target.checked })}
+              />
+              <SettingsModalToggle
+                label="Search Recommended Artists"
+                checked={newsapi.searchRecommendedArtists === true}
+                onChange={(e) => updateNewsApi({ searchRecommendedArtists: e.target.checked })}
+              />
+              <SettingsModalToggle
+                label="Top music headlines"
+                checked={newsapi.topMusicHeadlines === true}
+                onChange={(e) => updateNewsApi({ topMusicHeadlines: e.target.checked })}
+              />
+            </SettingsModalToggleGroup>
           </SettingsModalSection>
         </SettingsIntegrationModal>
       )}

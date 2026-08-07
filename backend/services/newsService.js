@@ -2,9 +2,16 @@ import { createHash } from "crypto";
 import { buildImageProxyUrl } from "./imageProxyService.js";
 import { dbOps } from "../db/helpers/index.js";
 import { libraryManager } from "./libraryManager.js";
-import { getNewsApiKey } from "./apiClients/config.js";
-import { isMusicArticle, newsApiSearchArtist } from "./apiClients/newsapi.js";
+import { getNewsApiKey, getNewsApiSettings } from "./apiClients/config.js";
+import {
+  isMusicArticle,
+  isMusicHeadlineArticle,
+  isLowQualityNewsPublisher,
+  newsApiSearchArtist,
+  newsApiSearchMusicHeadlines,
+} from "./apiClients/newsapi.js";
 import { mapWithConcurrency } from "./discovery/helpers.js";
+import { getUserDiscovery } from "./discovery/userDiscovery.js";
 
 const NEWS_PREFERENCES_KEY = (userId) => `user:${Number.parseInt(userId, 10)}:newsPreferences`;
 const NEWS_STATE_KEY = "news:refreshState";
@@ -57,6 +64,7 @@ const normalizeArtists = (artists) =>
     .map((artist) => ({
       artistMbid: String(artist?.foreignArtistId || artist?.mbid || "").trim() || null,
       artistName: String(artist?.artistName || artist?.name || "").trim(),
+      newsType: artist?.newsType === "recommended" ? "recommended" : "library",
     }))
     .filter((artist) => artist.artistName)
     .map((artist) => [getArtistKey(artist), artist]),
@@ -76,6 +84,9 @@ const getStoredNewsState = () => {
   const artists = stored?.artists && typeof stored.artists === "object"
     ? stored.artists
     : {};
+  const musicHeadlines = stored?.musicHeadlines && typeof stored.musicHeadlines === "object"
+    ? stored.musicHeadlines
+    : null;
   const requestTimes = Array.isArray(stored?.requestTimes)
     ? keyChanged
       ? []
@@ -83,6 +94,7 @@ const getStoredNewsState = () => {
     : [];
   return {
     artists,
+    musicHeadlines,
     requestTimes,
     rateLimitedUntil: keyChanged ? 0 : Number(stored?.rateLimitedUntil || 0),
     apiKeyMarker,
@@ -95,6 +107,7 @@ const pruneRequestTimes = (requestTimes, now = Date.now()) =>
 const saveStoredNewsState = (state) => {
   dbOps.setJSONSetting(NEWS_STATE_KEY, {
     artists: state.artists,
+    musicHeadlines: state.musicHeadlines || null,
     requestTimes: state.requestTimes,
     rateLimitedUntil: state.rateLimitedUntil || 0,
     apiKeyMarker: state.apiKeyMarker || "",
@@ -120,14 +133,20 @@ const normalizeArticles = (articles, artistName) =>
       publishedAt: article?.publishedAt || null,
       imageUrl: String(article?.imageUrl || "").trim() || null,
     }))
-    .filter((article) => article.title && article.url && isMusicArticle(article, artistName))
+    .filter(
+      (article) =>
+        article.title &&
+        article.url &&
+        isMusicArticle(article, artistName) &&
+        !isLowQualityNewsPublisher(article),
+    )
     .slice(0, MAX_ARTICLES_PER_ARTIST);
 
 const isRateLimitedError = (error) =>
   Number(error?.response?.status) === 429 ||
   error?.response?.data?.code === "rateLimited";
 
-const runDueArtistRefresh = async (artists) => {
+const runDueArtistRefresh = async (artists, { topMusicHeadlines = false } = {}) => {
   const now = Date.now();
   const state = getStoredNewsState();
   state.requestTimes = pruneRequestTimes(state.requestTimes, now);
@@ -137,6 +156,8 @@ const runDueArtistRefresh = async (artists) => {
   }
 
   const availableCalls = Math.max(0, NEWS_REQUEST_LIMIT - state.requestTimes.length);
+  const topDue = topMusicHeadlines && isArtistDue(state.musicHeadlines, now);
+  const canFetchTop = topDue && availableCalls > 0;
   const dueArtists = artists
     .filter((artist) => isArtistDue(getArtistEntry(state, artist), now))
     .sort((left, right) => {
@@ -150,9 +171,10 @@ const runDueArtistRefresh = async (artists) => {
       }
       return leftAttempted - rightAttempted;
     });
-  const selectedArtists = dueArtists.slice(0, Math.min(REFRESH_BATCH_SIZE, availableCalls));
+  const artistCallCapacity = Math.max(0, availableCalls - (canFetchTop ? 1 : 0));
+  const selectedArtists = dueArtists.slice(0, Math.min(REFRESH_BATCH_SIZE, artistCallCapacity));
 
-  if (selectedArtists.length === 0) {
+  if (selectedArtists.length === 0 && !canFetchTop) {
     const warning = dueArtists.length > 0
       ? "NewsAPI refresh budget exhausted for the current 24-hour window."
       : null;
@@ -197,6 +219,7 @@ const runDueArtistRefresh = async (artists) => {
         ...previous,
         artistMbid: result.artist.artistMbid,
         artistName: result.artist.artistName,
+        newsType: result.artist.newsType,
         attemptedAt: result.attemptedAt,
         nextAttemptAt: result.attemptedAt + FAILED_ARTIST_RETRY_MS,
       };
@@ -206,11 +229,34 @@ const runDueArtistRefresh = async (artists) => {
     state.artists[key] = {
       artistMbid: result.artist.artistMbid,
       artistName: result.artist.artistName,
+      newsType: result.artist.newsType,
       checkedAt: result.attemptedAt,
       attemptedAt: result.attemptedAt,
       nextAttemptAt: result.attemptedAt + ARTIST_REFRESH_TTL_MS,
       articles: normalizeArticles(result.articles, result.artist.artistName),
     };
+  }
+
+  let topFailed = false;
+  if (canFetchTop && !rateLimited) {
+    const attemptedAt = Date.now();
+    state.requestTimes.push(attemptedAt);
+    try {
+      state.musicHeadlines = {
+        checkedAt: attemptedAt,
+        attemptedAt,
+        nextAttemptAt: attemptedAt + ARTIST_REFRESH_TTL_MS,
+        articles: await newsApiSearchMusicHeadlines(),
+      };
+    } catch (error) {
+      topFailed = true;
+      if (isRateLimitedError(error)) rateLimitedCount += 1;
+      state.musicHeadlines = {
+        ...(state.musicHeadlines || {}),
+        attemptedAt,
+        nextAttemptAt: attemptedAt + FAILED_ARTIST_RETRY_MS,
+      };
+    }
   }
 
   if (rateLimitedCount > 0) {
@@ -226,13 +272,15 @@ const runDueArtistRefresh = async (artists) => {
       ? "NewsAPI rate limit reached. Showing cached stories until the quota window resets."
       : failedCount > 0
         ? "Some artist news could not be refreshed. Showing cached stories."
+        : topFailed
+          ? "Top music headlines could not be refreshed. Showing cached stories."
         : null,
   };
 };
 
-const refreshDueArtists = (artists) => {
+const refreshDueArtists = (artists, options) => {
   if (!refreshPromise) {
-    refreshPromise = runDueArtistRefresh(artists).finally(() => {
+    refreshPromise = runDueArtistRefresh(artists, options).finally(() => {
       refreshPromise = null;
     });
   }
@@ -244,25 +292,44 @@ const publishedTime = (value) => {
   return Number.isFinite(time) ? time : 0;
 };
 
-const collectArticles = (state, artists, blockedPublishers) => {
+const collectArticles = (state, artists, blockedPublishers, { topMusicHeadlines = false } = {}) => {
   const seenUrls = new Set();
-  return artists
+  const artistArticles = artists
     .flatMap((artist) => {
       const entry = getArtistEntry(state, artist);
       return (Array.isArray(entry?.articles) ? entry.articles : []).map((article) => ({
         ...article,
         artistMbid: artist.artistMbid,
         artistName: artist.artistName,
+        newsType: artist.newsType,
         imageUrl: buildImageProxyUrl(article.imageUrl) || article.imageUrl || null,
       }));
     })
     .filter((article) => {
       if (!article.url || seenUrls.has(article.url)) return false;
       if (!isMusicArticle(article, article.artistName)) return false;
+      if (isLowQualityNewsPublisher(article)) return false;
       if (isPublisherBlocked(article.source, blockedPublishers)) return false;
       seenUrls.add(article.url);
       return true;
-    })
+    });
+  const musicArticles = topMusicHeadlines && Array.isArray(state.musicHeadlines?.articles)
+    ? state.musicHeadlines.articles
+      .map((article) => ({
+        ...article,
+        newsType: "musicHeadlines",
+        imageUrl: buildImageProxyUrl(article.imageUrl) || article.imageUrl || null,
+      }))
+      .filter((article) => {
+        if (!article.url || seenUrls.has(article.url)) return false;
+        if (!isMusicHeadlineArticle(article)) return false;
+        if (isLowQualityNewsPublisher(article)) return false;
+        if (isPublisherBlocked(article.source, blockedPublishers)) return false;
+        seenUrls.add(article.url);
+        return true;
+      })
+    : [];
+  return [...artistArticles, ...musicArticles]
     .sort((left, right) => publishedTime(right.publishedAt) - publishedTime(left.publishedAt));
 };
 
@@ -285,16 +352,21 @@ const getRefreshStatus = (state, artists, refreshResult, now = Date.now()) => {
   };
 };
 
-export async function fetchNewsForArtists(artists, { blockedPublishers = [] } = {}) {
+export async function fetchNewsForArtists(
+  artists,
+  { blockedPublishers = [], topMusicHeadlines = getNewsApiSettings().topMusicHeadlines } = {},
+) {
   if (!getNewsApiKey()) {
     return { configured: false, artistCount: 0, articles: [] };
   }
 
   const normalizedArtists = normalizeArtists(artists);
   const normalizedBlockedPublishers = normalizeBlockedPublishers(blockedPublishers);
-  const refreshResult = await refreshDueArtists(normalizedArtists);
+  const refreshResult = await refreshDueArtists(normalizedArtists, { topMusicHeadlines });
   const state = getStoredNewsState();
-  const articles = collectArticles(state, normalizedArtists, normalizedBlockedPublishers);
+  const articles = collectArticles(state, normalizedArtists, normalizedBlockedPublishers, {
+    topMusicHeadlines,
+  });
   if (refreshResult.failedCount > 0 && articles.length === 0) {
     const allLibraryArtistsFailed =
       refreshResult.failedCount === refreshResult.attemptedCount &&
@@ -318,9 +390,23 @@ export async function fetchNewsForArtists(artists, { blockedPublishers = [] } = 
   };
 }
 
-export async function getLibraryNews({ limit = 60, userId } = {}) {
+export async function getNewsForUser({ limit = 60, userId } = {}) {
+  const settings = getNewsApiSettings();
+  const libraryArtists = settings.searchLibraryArtists
+    ? await libraryManager.getAllArtists()
+    : [];
+  const recommendedArtists = settings.searchRecommendedArtists && userId
+    ? ((await getUserDiscovery(userId, 50, 0))?.body?.recommendations || [])
+    : [];
+  const artists = [
+    ...libraryArtists.map((artist) => ({ ...artist, newsType: "library" })),
+    ...recommendedArtists.map((artist) => ({ ...artist, newsType: "recommended" })),
+  ];
   const preferences = getNewsPreferences(userId);
-  const result = await fetchNewsForArtists(await libraryManager.getAllArtists(), preferences);
+  const result = await fetchNewsForArtists(artists, {
+    ...preferences,
+    topMusicHeadlines: settings.topMusicHeadlines,
+  });
   const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 60)));
   return {
     ...result,
@@ -329,7 +415,9 @@ export async function getLibraryNews({ limit = 60, userId } = {}) {
   };
 }
 
+export const getLibraryNews = getNewsForUser;
+
 export async function refreshLibraryNews() {
   if (!getNewsApiKey()) return { configured: false, artistCount: 0, articles: [] };
-  return fetchNewsForArtists(await libraryManager.getAllArtists());
+  return getNewsForUser();
 }

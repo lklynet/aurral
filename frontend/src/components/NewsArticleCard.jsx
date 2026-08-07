@@ -67,7 +67,9 @@ export function NewsArticleCard({ article, compact = false, onBlockPublisher }) 
             )}
           </div>
           <div className="discover-news-card__content">
-            <span className="discover-news-card__artist">{article.artistName || "Library news"}</span>
+            <span className="discover-news-card__artist">
+              {article.artistName || (article.newsType === "musicHeadlines" ? "Music headlines" : "Library news")}
+            </span>
             <h3 className="discover-news-card__title">{article.title}</h3>
             {!compact && article.description ? (
               <p className="discover-news-card__description">{article.description}</p>

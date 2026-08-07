@@ -296,6 +296,9 @@ export function registerGeneral(router) {
           .filter(Boolean)
           .slice(0, 20)
           .join(",");
+        nextNewsApi.searchLibraryArtists = nextNewsApi.searchLibraryArtists !== false;
+        nextNewsApi.searchRecommendedArtists = nextNewsApi.searchRecommendedArtists === true;
+        nextNewsApi.topMusicHeadlines = nextNewsApi.topMusicHeadlines === true;
         integrations.newsapi = nextNewsApi;
       }
 
@@ -358,6 +361,8 @@ export function registerGeneral(router) {
                 releases: inbox.releases !== false,
                 shows: inbox.shows !== false,
                 news: inbox.news !== false,
+                recommendedNews: inbox.recommendedNews === true,
+                musicHeadlines: inbox.musicHeadlines === true,
                 discoveries: inbox.discoveries !== false,
               }
             : currentSettings.inbox || defaultData.settings.inbox,

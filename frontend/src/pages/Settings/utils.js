@@ -45,6 +45,8 @@ export const normalizeSettings = (savedSettings) => {
       releases: savedSettings.inbox?.releases !== false,
       shows: savedSettings.inbox?.shows !== false,
       news: savedSettings.inbox?.news !== false,
+      recommendedNews: savedSettings.inbox?.recommendedNews === true,
+      musicHeadlines: savedSettings.inbox?.musicHeadlines === true,
       discoveries: savedSettings.inbox?.discoveries !== false,
     },
     releaseTypes: savedSettings.releaseTypes || allReleaseTypes,
@@ -105,6 +107,9 @@ export const normalizeSettings = (savedSettings) => {
         apiKey: "",
         language: "en",
         domains: "",
+        searchLibraryArtists: newsapi.searchLibraryArtists !== false,
+        searchRecommendedArtists: newsapi.searchRecommendedArtists === true,
+        topMusicHeadlines: newsapi.topMusicHeadlines === true,
         ...newsapi,
       },
       slskd: {

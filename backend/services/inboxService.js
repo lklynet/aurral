@@ -4,7 +4,7 @@ import { libraryManager } from "./libraryManager.js";
 import { getNearbyShows } from "./nearbyShowsService.js";
 import { getUserDiscovery } from "./discovery/userDiscovery.js";
 import { logger } from "./logger.js";
-import { fetchNewsForArtists, getNewsPreferences } from "./newsService.js";
+import { getNewsForUser, getNewsPreferences } from "./newsService.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RELEASE_PAST_DAYS = 30;
@@ -27,6 +27,8 @@ const getInboxPreferences = () => {
     releases: configured.releases !== false,
     shows: configured.shows !== false,
     news: configured.news !== false,
+    recommendedNews: configured.recommendedNews === true,
+    musicHeadlines: configured.musicHeadlines === true,
     discoveries: configured.discoveries !== false,
   };
 };
@@ -36,6 +38,8 @@ const getEnabledKinds = (preferences) =>
     release: preferences.releases,
     show: preferences.shows,
     news: preferences.news,
+    recommendedNews: preferences.recommendedNews,
+    musicHeadline: preferences.musicHeadlines,
     discovery: preferences.discoveries,
   })
     .filter(([, enabled]) => enabled)
@@ -179,27 +183,54 @@ async function buildShowItems(userId, now, req, zipCode, libraryArtists) {
   });
 }
 
-async function buildNewsItems(userId, now, libraryArtists) {
-  if (!Array.isArray(libraryArtists)) return [];
-  const { articles } = await fetchNewsForArtists(libraryArtists, getNewsPreferences(userId));
-  const byArtistDay = new Map();
+async function buildNewsItems(userId, now, enabledKinds) {
+  const { articles } = await getNewsForUser({ userId, limit: 100 });
+  const grouped = new Map();
   for (const article of articles) {
+    const kind = article.newsType === "recommended"
+      ? "recommendedNews"
+      : article.newsType === "musicHeadlines"
+        ? "musicHeadline"
+        : "news";
+    if (!enabledKinds.has(kind)) continue;
+    if (kind === "musicHeadline") {
+      const day = String(article?.publishedAt || "").slice(0, 10) || new Date(now).toISOString().slice(0, 10);
+      const key = `${kind}:${day}`;
+      const list = grouped.get(key) || [];
+      if (list.length < 5) list.push(article);
+      grouped.set(key, list);
+      continue;
+    }
     const artistMbid = String(article?.artistMbid || article?.artistName || "").trim();
     const artistName = String(article?.artistName || "").trim();
     if (!artistName) continue;
     const day = String(article?.publishedAt || "").slice(0, 10) || new Date(now).toISOString().slice(0, 10);
-    const key = `${artistMbid}:${day}`;
-    const list = byArtistDay.get(key) || [];
+    const key = `${kind}:${artistMbid}:${day}`;
+    const list = grouped.get(key) || [];
     if (list.length < 5) list.push(article);
-    byArtistDay.set(key, list);
+    grouped.set(key, list);
   }
 
-  return [...byArtistDay.entries()].map(([key, dailyArticles]) => {
+  return [...grouped.entries()].map(([key, dailyArticles]) => {
     const first = dailyArticles[0];
     const sources = [...new Set(dailyArticles.map((article) => article.source).filter(Boolean))];
+    if (first.newsType === "musicHeadlines") {
+      return {
+        userId,
+        kind: "musicHeadline",
+        sourceKey: key,
+        title: "Top music headlines",
+        subtitle: `${dailyArticles.length} ${dailyArticles.length === 1 ? "story" : "stories"}${sources.length ? ` · ${sources.slice(0, 2).join(", ")}` : ""}`,
+        href: first.url,
+        imageUrl: first.imageUrl,
+        metadata: { newsType: "musicHeadlines", articles: dailyArticles },
+        expiresAt: now + CONTENT_TTL_MS,
+      };
+    }
+    const kind = first.newsType === "recommended" ? "recommendedNews" : "news";
     return {
       userId,
-      kind: "news",
+      kind,
       sourceKey: key,
       title: `${first.artistName} news`,
       subtitle: `${dailyArticles.length} ${dailyArticles.length === 1 ? "story" : "stories"}${sources.length ? ` · ${sources.slice(0, 2).join(", ")}` : ""}`,
@@ -208,6 +239,7 @@ async function buildNewsItems(userId, now, libraryArtists) {
       metadata: {
         artistMbid: first.artistMbid,
         artistName: first.artistName,
+        newsType: first.newsType,
         articles: dailyArticles,
       },
       expiresAt: now + CONTENT_TTL_MS,
@@ -220,7 +252,10 @@ const dismissBlockedNewsItems = (userId) => {
     getNewsPreferences(userId).blockedPublishers.map((publisher) => publisher.toLowerCase()),
   );
   if (blocked.size === 0) return;
-  for (const item of dbOps.getInboxItems(userId, { kinds: ["news"], limit: 50 })) {
+  for (const item of dbOps.getInboxItems(userId, {
+    kinds: ["news", "recommendedNews", "musicHeadline"],
+    limit: 50,
+  })) {
     const articles = Array.isArray(item.metadata?.articles) ? item.metadata.articles : [];
     if (
       articles.length > 0 &&
@@ -249,14 +284,19 @@ export async function refreshInboxForUser(userId, { req = null, zipCode = "", fo
   const promise = (async () => {
     const now = Date.now();
     const preferences = getInboxPreferences();
-    const libraryArtists = preferences.shows || preferences.news
+    const libraryArtists = preferences.shows
       ? await libraryManager.getAllArtists()
       : [];
+    const enabledNewsKinds = new Set(
+      getEnabledKinds(preferences).filter((kind) =>
+        ["news", "recommendedNews", "musicHeadline"].includes(kind),
+      ),
+    );
     const results = await Promise.allSettled([
       preferences.releases ? buildReleaseItems(normalizedUserId, now) : [],
       preferences.discoveries ? buildDiscoveryItems(normalizedUserId, now) : [],
       preferences.shows ? buildShowItems(normalizedUserId, now, req, zipCode, libraryArtists) : [],
-      preferences.news ? buildNewsItems(normalizedUserId, now, libraryArtists) : [],
+      enabledNewsKinds.size > 0 ? buildNewsItems(normalizedUserId, now, enabledNewsKinds) : [],
     ]);
     const items = results.flatMap((result) => {
       if (result.status === "fulfilled") return result.value;

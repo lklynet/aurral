@@ -97,6 +97,59 @@ test("news searches the artist with music context and reuses the hourly query ca
   assert.equal(params.searchIn, "title");
 });
 
+test("top music headlines use one cached request per day", async (t) => {
+  dbOps.updateSettings({
+    ...dbOps.getSettings(),
+    integrations: {
+      ...dbOps.getSettings().integrations,
+      newsapi: { apiKey: "test-news-key", language: "en", domains: "" },
+    },
+  });
+  newsApi.newsCache.flushAll();
+
+  let calls = 0;
+  t.mock.method(axios, "get", async (_url, config) => {
+    calls += 1;
+    assert.match(config.params.q, /music/);
+    assert.equal(config.params.searchIn, "title,description");
+    return {
+      data: {
+        articles: [
+          {
+            title: "Music release headlines",
+            description: "The latest track and album news.",
+            url: "https://news.example.test/music-headline",
+            source: { name: "Example Music News" },
+            publishedAt: "2026-08-05T12:00:00Z",
+          },
+          {
+            title: "CION Investment Corporation Q2 2026 Earnings Call Summary",
+            description: "Strategic performance and valuation validation.",
+            url: "https://biztoc.com/cion-earnings",
+            source: { name: "Biztoc.com" },
+            publishedAt: "2026-08-05T11:00:00Z",
+          },
+          {
+            title: "Planet Fitness, Inc. Q2 2026 Earnings Call Summary",
+            description: "Operational performance and same-club sales growth.",
+            url: "https://news.example.test/planet-fitness",
+            source: { name: "Example Business News" },
+            publishedAt: "2026-08-05T10:00:00Z",
+          },
+        ],
+      },
+    };
+  });
+
+  const first = await newsService.fetchNewsForArtists([], { topMusicHeadlines: true });
+  const second = await newsService.fetchNewsForArtists([], { topMusicHeadlines: true });
+
+  assert.equal(calls, 1);
+  assert.equal(first.articles[0].newsType, "musicHeadlines");
+  assert.deepEqual(first.articles.map((article) => article.title), ["Music release headlines"]);
+  assert.equal(second.articles[0].title, "Music release headlines");
+});
+
 test("filters artist-name matches without music intent and keeps music commerce stories", async (t) => {
   dbOps.updateSettings({
     ...dbOps.getSettings(),

@@ -95,6 +95,9 @@ export const defaultData = {
         apiKey: "",
         language: "en",
         domains: "",
+        searchLibraryArtists: true,
+        searchRecommendedArtists: false,
+        topMusicHeadlines: false,
       },
       lidarr: {
         url: "",
@@ -153,6 +156,8 @@ export const defaultData = {
       releases: true,
       shows: true,
       news: true,
+      recommendedNews: false,
+      musicHeadlines: false,
       discoveries: true,
     },
   },

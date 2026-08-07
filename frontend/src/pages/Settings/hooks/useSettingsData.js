@@ -103,6 +103,9 @@ const defaultSettings = {
       apiKey: "",
       language: "en",
       domains: "",
+      searchLibraryArtists: true,
+      searchRecommendedArtists: false,
+      topMusicHeadlines: false,
     },
     lidarr: {
       url: "",
@@ -144,6 +147,8 @@ const defaultSettings = {
     releases: true,
     shows: true,
     news: true,
+    recommendedNews: false,
+    musicHeadlines: false,
     discoveries: true,
   },
   security: {

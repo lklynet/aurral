@@ -167,6 +167,8 @@ export const dbOps = {
         releases: inbox.releases !== false,
         shows: inbox.shows !== false,
         news: inbox.news !== false,
+        recommendedNews: inbox.recommendedNews === true,
+        musicHeadlines: inbox.musicHeadlines === true,
         discoveries: inbox.discoveries !== false,
       },
       blocklist:
@@ -249,6 +251,8 @@ export const dbOps = {
             releases: settings.inbox.releases !== false,
             shows: settings.inbox.shows !== false,
             news: settings.inbox.news !== false,
+            recommendedNews: settings.inbox.recommendedNews === true,
+            musicHeadlines: settings.inbox.musicHeadlines === true,
             discoveries: settings.inbox.discoveries !== false,
           }),
         );

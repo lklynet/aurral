@@ -30,6 +30,9 @@ export const getNewsApiSettings = () => {
       .map((domain) => domain.trim().toLowerCase())
       .filter(Boolean)
       .slice(0, 20),
+    searchLibraryArtists: newsapi.searchLibraryArtists !== false,
+    searchRecommendedArtists: newsapi.searchRecommendedArtists === true,
+    topMusicHeadlines: newsapi.topMusicHeadlines === true,
   };
 };
 
