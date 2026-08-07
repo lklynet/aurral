@@ -384,7 +384,7 @@ function DiscoverPage() {
       }
     }
     for (const artist of recentlyAdded) {
-      const id = artist?.foreignArtistId || artist?.mbid || artist?.id;
+      const id = artist?.mbid;
       if (id) ids.add(id);
     }
     return [...ids];
@@ -483,7 +483,7 @@ function DiscoverPage() {
         <DiscoverRail key="recentlyAdded" title="Recently Added">
           <>
             {recentlyAdded.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((artist) => {
-              const artistId = artist.foreignArtistId || artist.mbid || artist.id;
+              const artistId = artist.mbid || null;
               return (
                 <div key={`artist-${artist.id}`} className="artist-discover-shelf-card">
                   <ArtistCard
