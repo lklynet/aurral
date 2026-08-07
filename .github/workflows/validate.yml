@@ -3,13 +3,16 @@ name: Validate
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 concurrency:
   group: validate-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'lklynet' && 'aurral-personal' || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -110,15 +113,24 @@ jobs:
             --build-arg "APP_VERSION=ci-${GITHUB_SHA}" \
             --tag "$IMAGE" \
             .
-          docker run --detach --name "$CONTAINER" "$IMAGE"
+          docker run --detach --name "$CONTAINER" --env PUID=3007 --env PGID=3001 "$IMAGE"
 
+          ready=0
           for i in {1..30}; do
             if docker exec "$CONTAINER" node -e \
               'fetch("http://127.0.0.1:3001/api/health").then((response) => { if (!response.ok) process.exit(1); })'; then
-              exit 0
+              ready=1
+              break
             fi
             sleep 2
           done
 
+          if [ "$ready" -ne 1 ]; then
+            docker logs "$CONTAINER"
+            exit 1
+          fi
+
+          docker exec "$CONTAINER" node --input-type=module -e \
+            'import fs from "node:fs/promises"; const status = await fs.readFile("/proc/1/status", "utf8"); const groups = status.match(/^Groups:\s*(.*)$/m)?.[1].trim().split(/\s+/).filter(Boolean) || []; if (!groups.includes("3001")) { console.error(status); process.exit(1); }'
+
           docker logs "$CONTAINER"
-          exit 1

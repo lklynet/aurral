@@ -17,7 +17,7 @@ const getArtistName = (artist) =>
   String(artist?.artistName || artist?.sortName || artist?.name || "").trim();
 
 const getArtistRouteId = (artist) =>
-  String(artist?.foreignArtistId || artist?.mbid || artist?.id || "").trim();
+  String(artist?.mbid || "").trim();
 
 const letterKeyFor = (artist) => {
   const letter = (getArtistName(artist)[0] || "#").toUpperCase();
