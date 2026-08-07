@@ -257,13 +257,13 @@ textarea {
 
 .btn-primary {
   border-color: var(--aurral-border-strong);
-  background-color: var(--aurral-text);
-  color: var(--aurral-chrome);
+  background-color: var(--aurral-surface-raised);
+  color: var(--aurral-text);
 }
 
 .btn-primary:hover:not(:disabled) {
-  border-color: var(--aurral-text);
-  background-color: var(--aurral-text-muted);
+  border-color: var(--aurral-border-strong);
+  background-color: var(--aurral-surface-hover);
 }
 
 .btn-accent {
