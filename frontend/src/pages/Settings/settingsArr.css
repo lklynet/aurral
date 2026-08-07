@@ -1227,12 +1227,14 @@
 .arr-path-input {
   display: flex;
   align-items: stretch;
+  height: 2.1875rem;
   max-width: 100%;
 }
 
 .arr-path-input__field {
   flex: 1;
   min-width: 0;
+  height: 100%;
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
   border-right-width: 0;
@@ -1249,7 +1251,7 @@
   justify-content: center;
   flex-shrink: 0;
   width: 2.1875rem;
-  height: 2.1875rem;
+  height: 100%;
   border: 0.0625rem solid var(--aurral-border-strong);
   border-radius: 0 var(--aurral-radius-sm) var(--aurral-radius-sm) 0;
   background: var(--aurral-surface-raised);
@@ -2283,6 +2285,7 @@
 
 .settings-arr .arr-path-input__field,
 .arr-portal .arr-path-input__field {
+  height: 100%;
   border-radius: var(--aurral-radius-sm) 0 0 var(--aurral-radius-sm) !important;
 }
 
