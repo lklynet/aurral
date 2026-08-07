@@ -6,8 +6,25 @@ const NEWS_API_BASE = "https://newsapi.org/v2/everything";
 const newsCache = createCache(3600);
 const HOUR_MS = 60 * 60 * 1000;
 const NEWS_WINDOW_MS = 7 * 24 * HOUR_MS;
+const MUSIC_CONTEXT_QUERY =
+  "(music OR musician OR band OR singer OR songwriter OR album OR single OR song OR track OR tune OR release OR tour OR concert OR festival OR performance OR recording OR record OR soundtrack OR discography OR lyrics OR spotify OR grammy OR billboard OR vinyl OR producer OR composer OR guitarist OR drummer OR bassist OR label)";
+const MUSIC_INTENT_PATTERN =
+  /\b(?:music|musician|band|singer|songwriter|album|single|song|track|tune|release|tour|concert|festival|performance|performing|recording|record|soundtrack|discography|lyrics|spotify|grammy|billboard|vinyl|producer|composer|guitarist|drummer|bassist|label)\b/i;
 
-const buildQuery = (artistName) => `"${String(artistName || "").replaceAll('"', "")}"`;
+const buildQuery = (artistName) =>
+  `"${String(artistName || "").replaceAll('"', "")}" AND ${MUSIC_CONTEXT_QUERY}`;
+
+const normalizeSearchText = (value) =>
+  String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+export const isMusicArticle = (article, artistName = "") => {
+  const title = String(article?.title || "");
+  const text = `${title} ${String(article?.description || "")}`;
+  const normalizedArtist = normalizeSearchText(artistName);
+  const normalizedTitle = normalizeSearchText(title);
+  if (normalizedArtist && !normalizedTitle.includes(normalizedArtist)) return false;
+  return MUSIC_INTENT_PATTERN.test(text);
+};
 
 export async function newsApiSearchArtist(artistName, { signal } = {}) {
   const apiKey = getNewsApiKey();
@@ -19,7 +36,7 @@ export async function newsApiSearchArtist(artistName, { signal } = {}) {
   ).toISOString();
   const params = {
     q: buildQuery(normalizedName),
-    searchIn: "title,description",
+    searchIn: "title",
     from,
     language: settings.language,
     sortBy: "publishedAt",
@@ -45,7 +62,7 @@ export async function newsApiSearchArtist(artistName, { signal } = {}) {
       publishedAt: article?.publishedAt || null,
       imageUrl: String(article?.urlToImage || "").trim() || null,
     }))
-    .filter((article) => article.title && article.url);
+    .filter((article) => article.title && article.url && isMusicArticle(article, normalizedName));
   newsCache.set(cacheKey, normalized);
   return normalized;
 }

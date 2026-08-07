@@ -225,36 +225,6 @@ export function SettingsConnectTab({
           </SettingsArrCardGrid>
         </SettingsArrFieldSet>
 
-        <SettingsArrFieldSet legend="Inbox">
-          <div className="arr-info">
-            Choose which library-based updates appear in the inbox dropdown.
-          </div>
-          <SettingsArrFormGroup label="Upcoming releases">
-            <PillToggle
-              checked={inbox.releases !== false}
-              onChange={(e) => updateInbox({ releases: e.target.checked })}
-            />
-          </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Upcoming shows">
-            <PillToggle
-              checked={inbox.shows !== false}
-              onChange={(e) => updateInbox({ shows: e.target.checked })}
-            />
-          </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Artist news">
-            <PillToggle
-              checked={inbox.news !== false}
-              onChange={(e) => updateInbox({ news: e.target.checked })}
-            />
-          </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Discoveries">
-            <PillToggle
-              checked={inbox.discoveries !== false}
-              onChange={(e) => updateInbox({ discoveries: e.target.checked })}
-            />
-          </SettingsArrFormGroup>
-        </SettingsArrFieldSet>
-
         <SettingsArrFieldSet
           legend="Webhooks"
           actions={
@@ -470,6 +440,36 @@ export function SettingsConnectTab({
             />
           </SettingsArrFormGroup>
         </SettingsArrFieldSet>
+
+        <SettingsArrFieldSet legend="Inbox">
+          <div className="arr-info">
+            Choose which library-based updates appear in the inbox dropdown.
+          </div>
+          <SettingsArrFormGroup label="Upcoming releases">
+            <PillToggle
+              checked={inbox.releases !== false}
+              onChange={(e) => updateInbox({ releases: e.target.checked })}
+            />
+          </SettingsArrFormGroup>
+          <SettingsArrFormGroup label="Upcoming shows">
+            <PillToggle
+              checked={inbox.shows !== false}
+              onChange={(e) => updateInbox({ shows: e.target.checked })}
+            />
+          </SettingsArrFormGroup>
+          <SettingsArrFormGroup label="Artist news">
+            <PillToggle
+              checked={inbox.news !== false}
+              onChange={(e) => updateInbox({ news: e.target.checked })}
+            />
+          </SettingsArrFormGroup>
+          <SettingsArrFormGroup label="Discoveries">
+            <PillToggle
+              checked={inbox.discoveries !== false}
+              onChange={(e) => updateInbox({ discoveries: e.target.checked })}
+            />
+          </SettingsArrFormGroup>
+        </SettingsArrFieldSet>
       </form>
 
       {activeModal === "gotify" && (
@@ -665,6 +665,7 @@ export function SettingsConnectTab({
           </SettingsModalSection>
         </SettingsIntegrationModal>
       )}
+
     </div>
   );
 }

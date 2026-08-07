@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { MoreVertical, Newspaper } from "lucide-react";
+import { Ban, Newspaper } from "lucide-react";
 import { getArtistCover } from "../utils/api/endpoints/artists.js";
+import TooltipButton from "./TooltipButton";
 
 const formatNewsDate = (value) => {
   if (!value) return "Recent";
@@ -40,60 +41,54 @@ export function NewsArticleCard({ article, compact = false, onBlockPublisher }) 
 
   return (
     <article className="discover-news-card-shell">
-      <a
-        className={`discover-news-card${compact ? " discover-news-card--compact" : ""}`}
-        href={article.url}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        <div className="discover-news-card__image-wrap">
-          {imageUrl ? (
-            <img
-              src={imageUrl}
-              alt=""
-              className="discover-news-card__image"
-              loading="lazy"
-              onError={() => {
-                if (article.imageUrl && !imageFailed) setImageFailed(true);
-                else setFallbackFailed(true);
-              }}
-            />
-          ) : (
-            <div className="discover-news-card__image-placeholder" aria-hidden="true">
-              <Newspaper />
-            </div>
-          )}
-        </div>
-        <div className="discover-news-card__content">
-          <span className="discover-news-card__artist">{article.artistName || "Library news"}</span>
-          <h3 className="discover-news-card__title">{article.title}</h3>
-          {!compact && article.description ? (
-            <p className="discover-news-card__description">{article.description}</p>
+      <div className={`discover-news-card${compact ? " discover-news-card--compact" : ""}`}>
+        <a
+          className="discover-news-card__link"
+          href={article.url}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <div className="discover-news-card__image-wrap">
+            {imageUrl ? (
+              <img
+                src={imageUrl}
+                alt=""
+                className="discover-news-card__image"
+                loading="lazy"
+                onError={() => {
+                  if (article.imageUrl && !imageFailed) setImageFailed(true);
+                  else setFallbackFailed(true);
+                }}
+              />
+            ) : (
+              <div className="discover-news-card__image-placeholder" aria-hidden="true">
+                <Newspaper />
+              </div>
+            )}
+          </div>
+          <div className="discover-news-card__content">
+            <span className="discover-news-card__artist">{article.artistName || "Library news"}</span>
+            <h3 className="discover-news-card__title">{article.title}</h3>
+            {!compact && article.description ? (
+              <p className="discover-news-card__description">{article.description}</p>
+            ) : null}
+          </div>
+        </a>
+        <div className="discover-news-card__footer">
+          {publisher && onBlockPublisher ? (
+            <TooltipButton
+              label={`Block ${publisher}`}
+              className="discover-news-card__block"
+              onClick={() => void Promise.resolve(onBlockPublisher(publisher)).catch(() => {})}
+            >
+              <Ban aria-hidden="true" />
+            </TooltipButton>
           ) : null}
           <span className="discover-news-card__meta">
-            {[article.source, formatNewsDate(article.publishedAt)].filter(Boolean).join(" · ")}
+            {[publisher, formatNewsDate(article.publishedAt)].filter(Boolean).join(" · ")}
           </span>
         </div>
-      </a>
-      {publisher && onBlockPublisher ? (
-        <details className="discover-news-card__menu">
-          <summary aria-label={`Article options for ${publisher}`}>
-            <MoreVertical aria-hidden="true" />
-          </summary>
-          <div className="discover-news-card__menu-popover" role="menu">
-            <button
-              type="button"
-              role="menuitem"
-              onClick={(event) => {
-                event.stopPropagation();
-                void Promise.resolve(onBlockPublisher(publisher)).catch(() => {});
-              }}
-            >
-              Block {publisher}
-            </button>
-          </div>
-        </details>
-      ) : null}
+      </div>
     </article>
   );
 }

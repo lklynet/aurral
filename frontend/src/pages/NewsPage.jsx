@@ -12,7 +12,6 @@ export default function NewsPage() {
   const newsConfigured = bootstrap?.newsapiConfigured === true;
   const {
     articles,
-    artistCount,
     refresh,
     blockedPublishers,
     loading,
@@ -32,9 +31,6 @@ export default function NewsPage() {
           <h1 className="page-title">Artist News</h1>
           <p className="discover-news-page__subtitle">
             Recent stories about artists in your library
-            {artistCount > 0 && refresh
-              ? ` · ${refresh.checkedArtistCount} of ${artistCount} artists checked · ${refresh.callsRemaining} calls left`
-              : ""}
           </p>
         </div>
         {newsConfigured ? (

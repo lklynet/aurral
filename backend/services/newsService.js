@@ -3,7 +3,7 @@ import { buildImageProxyUrl } from "./imageProxyService.js";
 import { dbOps } from "../db/helpers/index.js";
 import { libraryManager } from "./libraryManager.js";
 import { getNewsApiKey } from "./apiClients/config.js";
-import { newsApiSearchArtist } from "./apiClients/newsapi.js";
+import { isMusicArticle, newsApiSearchArtist } from "./apiClients/newsapi.js";
 import { mapWithConcurrency } from "./discovery/helpers.js";
 
 const NEWS_PREFERENCES_KEY = (userId) => `user:${Number.parseInt(userId, 10)}:newsPreferences`;
@@ -110,7 +110,7 @@ const isArtistDue = (entry, now) => {
   return now - Number(entry.checkedAt || 0) >= ARTIST_REFRESH_TTL_MS;
 };
 
-const normalizeArticles = (articles) =>
+const normalizeArticles = (articles, artistName) =>
   (Array.isArray(articles) ? articles : [])
     .map((article) => ({
       title: String(article?.title || "").trim(),
@@ -120,7 +120,7 @@ const normalizeArticles = (articles) =>
       publishedAt: article?.publishedAt || null,
       imageUrl: String(article?.imageUrl || "").trim() || null,
     }))
-    .filter((article) => article.title && article.url)
+    .filter((article) => article.title && article.url && isMusicArticle(article, artistName))
     .slice(0, MAX_ARTICLES_PER_ARTIST);
 
 const isRateLimitedError = (error) =>
@@ -209,7 +209,7 @@ const runDueArtistRefresh = async (artists) => {
       checkedAt: result.attemptedAt,
       attemptedAt: result.attemptedAt,
       nextAttemptAt: result.attemptedAt + ARTIST_REFRESH_TTL_MS,
-      articles: normalizeArticles(result.articles),
+      articles: normalizeArticles(result.articles, result.artist.artistName),
     };
   }
 
@@ -258,6 +258,7 @@ const collectArticles = (state, artists, blockedPublishers) => {
     })
     .filter((article) => {
       if (!article.url || seenUrls.has(article.url)) return false;
+      if (!isMusicArticle(article, article.artistName)) return false;
       if (isPublisherBlocked(article.source, blockedPublishers)) return false;
       seenUrls.add(article.url);
       return true;

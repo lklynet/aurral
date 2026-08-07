@@ -44,7 +44,7 @@ test("fetchNewsForArtists normalizes artist metadata and removes duplicate stori
       data: {
         articles: [
           {
-            title: "Shared music story",
+            title: "Artist One shares music story",
             description: "A recent story.",
             url: "https://news.example.test/shared-story",
             source: { name: "Example News" },
@@ -67,10 +67,10 @@ test("fetchNewsForArtists normalizes artist metadata and removes duplicate stori
   assert.equal(result.articles.length, 1);
   assert.equal(result.articles[0].artistName, "Artist One");
   assert.equal(result.articles[0].artistMbid, "artist-one");
-  assert.equal(result.articles[0].title, "Shared music story");
+  assert.equal(result.articles[0].title, "Artist One shares music story");
 });
 
-test("news searches only the artist phrase and reuses the hourly query cache", async (t) => {
+test("news searches the artist with music context and reuses the hourly query cache", async (t) => {
   dbOps.updateSettings({
     ...dbOps.getSettings(),
     integrations: {
@@ -92,8 +92,103 @@ test("news searches only the artist phrase and reuses the hourly query cache", a
   await newsApi.newsApiSearchArtist("David Bowie");
 
   assert.equal(calls, 1);
-  assert.equal(params.q, '"David Bowie"');
-  assert.equal(params.searchIn, "title,description");
+  assert.match(params.q, /"David Bowie"/);
+  assert.match(params.q, /music/);
+  assert.equal(params.searchIn, "title");
+});
+
+test("filters artist-name matches without music intent and keeps music commerce stories", async (t) => {
+  dbOps.updateSettings({
+    ...dbOps.getSettings(),
+    integrations: {
+      ...dbOps.getSettings().integrations,
+      newsapi: { apiKey: "test-news-key", language: "en", domains: "" },
+    },
+  });
+  newsApi.newsCache.flushAll();
+
+  t.mock.method(axios, "get", async () => ({
+    data: {
+      articles: [
+        {
+          title: "Nine Inch Nails announce a new music release",
+          description: "The band returns to the studio for a new album.",
+          url: "https://news.example.test/music-story",
+          source: { name: "Example Music News" },
+          publishedAt: "2026-08-05T12:00:00Z",
+        },
+        {
+          title: "How an NYC Nightlife Legend Tracked Down the Pablo Escobar of Animal Trafficking",
+          description: "A true-crime story with an unrelated mention of Nine Inch Nails.",
+          url: "https://news.example.test/unrelated-story",
+          source: { name: "Example Magazine" },
+          publishedAt: "2026-08-05T11:00:00Z",
+        },
+        {
+          title: "Nine Inch Nails - TRON: Ares Target Exclusive Vinyl Deal",
+          description: "A shopping listing for a Nine Inch Nails record.",
+          url: "https://news.example.test/commerce-story",
+          source: { name: "Slickdeals.net" },
+          publishedAt: "2026-08-05T10:00:00Z",
+        },
+      ],
+    },
+  }));
+
+  const result = await newsApi.newsApiSearchArtist("Nine Inch Nails");
+
+  assert.deepEqual(result.map((article) => article.title), [
+    "Nine Inch Nails announce a new music release",
+    "Nine Inch Nails - TRON: Ares Target Exclusive Vinyl Deal",
+  ]);
+});
+
+test("filters non-music stories already in the local cache", async () => {
+  dbOps.updateSettings({
+    ...dbOps.getSettings(),
+    integrations: {
+      ...dbOps.getSettings().integrations,
+      newsapi: { apiKey: "test-news-key", language: "en", domains: "" },
+    },
+  });
+  const now = Date.now();
+  dbOps.setJSONSetting("news:refreshState", {
+    artists: {
+      "artist-one": {
+        artistMbid: "artist-one",
+        artistName: "Nine Inch Nails",
+        checkedAt: now,
+        attemptedAt: now,
+        nextAttemptAt: now + 60 * 60 * 1000,
+        articles: [
+          {
+            title: "Nine Inch Nails announce a new music release",
+            description: "The band returns to the studio for a new album.",
+            url: "https://news.example.test/cached-music-story",
+            source: "Example Music News",
+            publishedAt: "2026-08-05T12:00:00Z",
+          },
+          {
+            title: "How an NYC Nightlife Legend Tracked Down the Pablo Escobar of Animal Trafficking",
+            description: "A true-crime story with an unrelated mention of Nine Inch Nails.",
+            url: "https://news.example.test/cached-unrelated-story",
+            source: "Example Magazine",
+            publishedAt: "2026-08-05T11:00:00Z",
+          },
+        ],
+      },
+    },
+    requestTimes: [],
+    rateLimitedUntil: 0,
+  });
+
+  const result = await newsService.fetchNewsForArtists([
+    { foreignArtistId: "artist-one", artistName: "Nine Inch Nails" },
+  ]);
+
+  assert.deepEqual(result.articles.map((article) => article.title), [
+    "Nine Inch Nails announce a new music release",
+  ]);
 });
 
 test("does not turn an all-artist NewsAPI failure into an empty success", async (t) => {
@@ -138,7 +233,7 @@ test("keeps cached stories when NewsAPI reaches its rate limit", async (t) => {
       data: {
         articles: [
           {
-            title: "Cached story",
+            title: "Artist One cached music story",
             url: "https://news.example.test/cached-story",
             source: { name: "Example News" },
             publishedAt: "2026-08-05T12:00:00Z",
@@ -158,7 +253,7 @@ test("keeps cached stories when NewsAPI reaches its rate limit", async (t) => {
   rateLimited = true;
 
   const result = await newsService.fetchNewsForArtists(artist);
-  assert.equal(result.articles[0].title, "Cached story");
+  assert.equal(result.articles[0].title, "Artist One cached music story");
   assert.match(result.refresh.warning, /rate limit reached/);
   assert.ok(result.refresh.rateLimitedUntil > Date.now());
 });
@@ -176,7 +271,7 @@ test("filters blocked publishers before returning library news", async (t) => {
     data: {
       articles: [
         {
-          title: "Good story",
+          title: "Artist One good music story",
           url: "https://good.example/story",
           source: { name: "Good News" },
           publishedAt: "2026-08-05T12:00:00Z",

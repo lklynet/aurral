@@ -5,7 +5,7 @@ import { useModalDialog } from "../../../hooks/useModalDialog.js";
 function statusTone(className) {
   if (className === "is-enabled") return "ok";
   if (className === "is-warning") return "warn";
-  if (className === "is-disabled") return "muted";
+  if (className === "is-disabled") return "danger";
   return "muted";
 }
 
@@ -18,9 +18,12 @@ export function IntegrationCard({ title, subtitle, status, meta, onClick }) {
         {meta ? <span className="arr-card__meta">{meta}</span> : null}
       </span>
       <span className="arr-card__side">
-        <span className={`arr-card__status arr-card__status--${statusTone(status.className)}`}>
-          {status.label}
-        </span>
+        <span
+          className={`arr-card__status arr-card__status--${statusTone(status.className)}`}
+          role="img"
+          aria-label={status.label}
+          title={status.label}
+        />
         <Pencil className="artist-icon-sm" aria-hidden />
       </span>
     </button>
