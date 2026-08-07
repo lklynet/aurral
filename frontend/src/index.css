@@ -513,7 +513,7 @@ textarea {
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 55%));
 }
 
-.btn-add-action__tooltip {
+.aurral-tooltip {
   position: fixed;
   top: 0;
   left: 0;
@@ -3743,6 +3743,38 @@ textarea {
   transform: translateY(-100%);
 }
 
+.artist-context-menu--inline {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.artist-context-menu__inline-action {
+  width: 2.25rem;
+  height: 2.25rem;
+  color: var(--aurral-text-muted);
+}
+
+.artist-context-menu__inline-action.is-selected {
+  background: var(--aurral-surface-selected);
+  color: var(--aurral-text);
+}
+
+.artist-context-menu__inline-action--danger,
+.artist-context-menu__inline-action--danger.is-selected {
+  color: var(--aurral-danger);
+}
+
+.artist-context-menu__inline-action:hover:not(:disabled),
+.artist-context-menu__inline-action:focus-visible {
+  color: var(--aurral-text);
+}
+
+.artist-context-menu__inline-action--danger:hover:not(:disabled),
+.artist-context-menu__inline-action--danger:focus-visible {
+  color: var(--aurral-danger);
+}
+
 .artist-options-view-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4719,6 +4751,11 @@ textarea {
 
 .artist-discover-card__cover-wrap .artist-discover-card__cover {
   margin-bottom: 0;
+}
+
+.search-artist-list .artist-discover-card__cover {
+  margin-bottom: 0;
+  border-radius: var(--aurral-radius-sm);
 }
 
 .artist-discover-card__action {

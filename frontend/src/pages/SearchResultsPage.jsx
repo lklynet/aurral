@@ -50,7 +50,50 @@ import {
 import { useSearchParams } from "react-router-dom";
 import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { Grid3X3, List, Loader, Music, SlidersHorizontal, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  Grid3X3,
+  LayoutGrid,
+  List,
+  Loader,
+  Music,
+  Search,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
+
+const RECOMMENDED_SORT_OPTIONS = [
+  { value: "name", label: "Name" },
+  { value: "relevance", label: "Relevance" },
+  { value: "popularity", label: "Popularity" },
+];
+
+const getRecommendedArtistName = (artist) => String(artist?.name || "").trim();
+
+const getRecommendedScore = (artist) =>
+  Number(artist?.scoreTotal ?? artist?.score ?? artist?.scoreSimilarity ?? 0) || 0;
+
+const getRecommendedPopularity = (artist) => {
+  const rank = Number(artist?.popularityRank);
+  if (Number.isFinite(rank) && rank > 0) return -rank;
+  return Number(artist?.listeners ?? artist?.playcount ?? 0) || 0;
+};
+
+const sortRecommendedArtists = (artists, sortKey, sortDirection) =>
+  [...artists].sort((left, right) => {
+    let difference;
+    if (sortKey === "name") {
+      difference = getRecommendedArtistName(left).localeCompare(getRecommendedArtistName(right));
+    } else if (sortKey === "relevance") {
+      difference = getRecommendedScore(left) - getRecommendedScore(right);
+    } else {
+      difference = getRecommendedPopularity(left) - getRecommendedPopularity(right);
+    }
+    if (difference !== 0) return sortDirection === "asc" ? difference : -difference;
+    return getRecommendedArtistName(left).localeCompare(getRecommendedArtistName(right));
+  });
 function SearchResultsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
@@ -79,6 +122,17 @@ function SearchResultsPage() {
   const [albumOptionsOpen, setAlbumOptionsOpen] = useState(false);
   const [albumViewMode, setAlbumViewMode] = useState(() => readReleaseListViewMode());
   const [albumReleaseTab, setAlbumReleaseTab] = useState("all");
+  const [recommendedSearchTerm, setRecommendedSearchTerm] = useState("");
+  const [recommendedSortKey, setRecommendedSortKey] = useState("name");
+  const [recommendedSortDirection, setRecommendedSortDirection] = useState("asc");
+  const [recommendedSortMenuOpen, setRecommendedSortMenuOpen] = useState(false);
+  const [recommendedViewMode, setRecommendedViewMode] = useState(
+    () => localStorage.getItem("libraryViewMode") || "grid",
+  );
+  const [recommendedGridColumns, setRecommendedGridColumns] = useState(() => {
+    const saved = parseInt(localStorage.getItem("libraryGridColumns"), 10);
+    return saved >= 2 && saved <= 10 ? saved : 6;
+  });
   const [dismissedTagBanner, setDismissedTagBanner] = useState(false);
   const {
     sharedPlaylists,
@@ -91,6 +145,7 @@ function SearchResultsPage() {
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
   const sentinelRef = useRef(null);
   const albumOptionsMenuRef = useRef(null);
+  const recommendedToolbarRef = useRef(null);
   const navigate = useDiscoverNavigation();
   const { hasPermission, bootstrap } = useAuth();
   const { showSuccess, showError } = useToast();
@@ -134,6 +189,20 @@ function SearchResultsPage() {
       setSearchParams(params);
     },
     [searchParams, setSearchParams],
+  );
+
+  const handleRecommendedSortOptionClick = useCallback(
+    (option) => {
+      if (recommendedSortKey === option.value) {
+        setRecommendedSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+        setRecommendedSortMenuOpen(false);
+        return;
+      }
+      setRecommendedSortKey(option.value);
+      setRecommendedSortDirection(option.value === "name" ? "asc" : "desc");
+      setRecommendedSortMenuOpen(false);
+    },
+    [recommendedSortKey],
   );
 
   const updateUnifiedFilter = useCallback(
@@ -183,15 +252,13 @@ function SearchResultsPage() {
         setError(null);
         try {
           const isRecommended = normalizedType === "recommended";
-          const data = isRecommended
-            ? await getDiscovery({ offset: 0, limit: PAGE_SIZE })
-            : await getDiscovery();
+          const data = await getDiscovery();
           const list =
             isRecommended ? data.recommendations || [] : data.globalTop || [];
           if (isRecommended) {
             setResults(list);
             setSearchTotalCount(data.recommendationCount ?? list.length);
-            setHasMore(list.length === PAGE_SIZE && (data.recommendationCount ?? 0) > PAGE_SIZE);
+            setHasMore(false);
           } else {
             setFullList(list);
             setResults(list);
@@ -1223,9 +1290,18 @@ function SearchResultsPage() {
     return results.filter((album) => matchesAlbumReleaseTab(album, albumReleaseTab));
   }, [albumReleaseTab, isAlbumSearch, results]);
 
+  const recommendedArtists = useMemo(() => {
+    if (normalizedType !== "recommended") return [];
+    const normalizedSearch = recommendedSearchTerm.trim().toLowerCase();
+    const filtered = normalizedSearch
+      ? results.filter((artist) => getRecommendedArtistName(artist).toLowerCase().includes(normalizedSearch))
+      : results;
+    return sortRecommendedArtists(filtered, recommendedSortKey, recommendedSortDirection);
+  }, [normalizedType, recommendedSearchTerm, recommendedSortDirection, recommendedSortKey, results]);
+
   const displayedResults =
     normalizedType === "recommended"
-      ? results
+      ? recommendedArtists
       : normalizedType === "trending"
         ? results.slice(0, visibleCount)
         : isAlbumSearch
@@ -1252,6 +1328,23 @@ function SearchResultsPage() {
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [albumOptionsOpen]);
+
+  useEffect(() => {
+    if (!recommendedSortMenuOpen) return undefined;
+    const handlePointerDown = (event) => {
+      if (recommendedToolbarRef.current?.contains(event.target)) return;
+      setRecommendedSortMenuOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setRecommendedSortMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [recommendedSortMenuOpen]);
 
   useEffect(() => {
     const element = sentinelRef.current;
@@ -1285,9 +1378,12 @@ function SearchResultsPage() {
       ? "Connect Last.fm"
       : "No Results Found";
 
+  const recommendedCount = recommendedSearchTerm.trim()
+    ? recommendedArtists.length
+    : searchTotalCount || results.length;
   const pageSubtitle =
     normalizedType === "recommended"
-      ? `${searchTotalCount || results.length} artist${searchTotalCount !== 1 ? "s" : ""} we think you'll like`
+      ? `${recommendedCount} artist${recommendedCount !== 1 ? "s" : ""} we think you'll like`
       : normalizedType === "trending"
         ? "Trending artists right now"
         : isUnifiedSearch && trimmedQuery
@@ -1299,6 +1395,10 @@ function SearchResultsPage() {
               : trimmedQuery
                 ? `${displayedResults.length} artist${displayedResults.length !== 1 ? "s" : ""}`
                 : null;
+  const selectedRecommendedSort =
+    RECOMMENDED_SORT_OPTIONS.find((option) => option.value === recommendedSortKey) ||
+    RECOMMENDED_SORT_OPTIONS[0];
+  const RecommendedSortDirectionIcon = recommendedSortDirection === "asc" ? ArrowUp : ArrowDown;
 
   return (
     <div className="search-page">
@@ -1350,6 +1450,114 @@ function SearchResultsPage() {
                 <span>recommended</span>
               </span>
             )}
+          </div>
+        )}
+
+        {normalizedType === "recommended" && (
+          <div ref={recommendedToolbarRef} className="library-page__toolbar global-search">
+            <div className="global-search__box">
+              <div className="global-search__scope-wrap">
+                <button
+                  type="button"
+                  onClick={() => setRecommendedSortMenuOpen((open) => !open)}
+                  className={`global-search__scope-button library-page__sort-button${recommendedSortMenuOpen ? " is-open" : ""}`}
+                  aria-haspopup="listbox"
+                  aria-expanded={recommendedSortMenuOpen}
+                  aria-controls="recommended-sort-menu"
+                  aria-label="Sort recommendations"
+                >
+                  <span className="library-page__sort-label">{selectedRecommendedSort.label}</span>
+                  <RecommendedSortDirectionIcon className="artist-icon-xs library-page__sort-direction" />
+                  <ChevronDown
+                    className={`artist-icon-sm${recommendedSortMenuOpen ? " artist-chevron--open" : ""}`}
+                  />
+                </button>
+
+                {recommendedSortMenuOpen && (
+                  <div
+                    id="recommended-sort-menu"
+                    className="artist-options-menu library-page__sort-menu"
+                    role="listbox"
+                    aria-label="Recommendation sort options"
+                  >
+                    {RECOMMENDED_SORT_OPTIONS.map((option) => {
+                      const active = recommendedSortKey === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => handleRecommendedSortOptionClick(option)}
+                          className={`artist-menu-item${active ? " is-active" : ""}`}
+                          role="option"
+                          aria-selected={active}
+                        >
+                          <span>{option.label}</span>
+                          <span>
+                            {active && <RecommendedSortDirectionIcon className="artist-icon-xs" />}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="global-search__divider" />
+
+              <div className="global-search__input-wrap">
+                <Search className="global-search__icon" />
+                <input
+                  type="text"
+                  value={recommendedSearchTerm}
+                  onChange={(event) => setRecommendedSearchTerm(event.target.value)}
+                  placeholder=""
+                  className="global-search__input"
+                  autoComplete="off"
+                  aria-label="Search recommendations"
+                />
+                {!recommendedSearchTerm && (
+                  <div className="global-search__placeholder">Search recommendations...</div>
+                )}
+              </div>
+            </div>
+
+            <div className="library-page__view-controls">
+              {recommendedViewMode === "grid" && (
+                <input
+                  type="range"
+                  min="2"
+                  max="10"
+                  value={recommendedGridColumns}
+                  onChange={(event) => {
+                    const value = parseInt(event.target.value, 10);
+                    setRecommendedGridColumns(value);
+                    localStorage.setItem("libraryGridColumns", String(value));
+                  }}
+                  className="library-page__grid-slider"
+                  aria-label="Grid columns"
+                  title={`${recommendedGridColumns} columns`}
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = recommendedViewMode === "grid" ? "list" : "grid";
+                  setRecommendedViewMode(next);
+                  localStorage.setItem("libraryViewMode", next);
+                }}
+                className="btn btn-icon-square library-page__view-toggle"
+                aria-label={
+                  recommendedViewMode === "grid" ? "Switch to list view" : "Switch to grid view"
+                }
+                title={recommendedViewMode === "grid" ? "List view" : "Grid view"}
+              >
+                {recommendedViewMode === "grid" ? (
+                  <List className="artist-icon-sm" />
+                ) : (
+                  <LayoutGrid className="artist-icon-sm" />
+                )}
+              </button>
+            </div>
           </div>
         )}
 
@@ -1576,6 +1784,12 @@ function SearchResultsPage() {
                   onAddArtistToLibrary={handleArtistAction}
                   onArtistFeedback={handleArtistFeedback}
                   artistFeedbackLookup={artistFeedbackLookup}
+                  variant={normalizedType === "recommended" ? recommendedViewMode : "square"}
+                  gridColumns={
+                    normalizedType === "recommended" && recommendedViewMode === "grid"
+                      ? recommendedGridColumns
+                      : undefined
+                  }
                 />
               )}
 
