@@ -39,6 +39,20 @@ const getAttribute = (xml, tag, attribute) => {
   return decodeXml(match?.[1] || "");
 };
 
+const isUsableImageUrl = (value) => {
+  const url = String(value || "").trim().toLowerCase();
+  return /^https?:\/\//.test(url) && !/(tracking|pixel|badge|listen-on|favicon|\.ico(?:$|\?))/.test(url);
+};
+
+const getHtmlImage = (html) => {
+  const candidates = [
+    ...String(html || "").matchAll(/<meta\b[^>]*(?:property|name)=["'](?:og:image|twitter:image)["'][^>]*content=["']([^"']+)/gi),
+    ...String(html || "").matchAll(/<meta\b[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["'](?:og:image|twitter:image)["']/gi),
+    ...String(html || "").matchAll(/<img\b[^>]*\bsrc=["']([^"']+)/gi),
+  ].map((match) => match[1]);
+  return candidates.find(isUsableImageUrl) || null;
+};
+
 const getItemLink = (xml) =>
   getTag(xml, "link") ||
   getAttribute(xml, "link", "href") ||
@@ -52,9 +66,8 @@ const getItemImage = (xml) =>
   (getAttribute(xml, "enclosure", "type").startsWith("image/")
     ? getAttribute(xml, "enclosure", "url")
     : null) ||
-  getAttribute(xml, "img", "src") ||
-  getRawTag(xml, "content:encoded").match(/<img\b[^>]*\bsrc=["']([^"']+)/i)?.[1] ||
-  getRawTag(xml, "description").match(/<img\b[^>]*\bsrc=["']([^"']+)/i)?.[1] ||
+  getHtmlImage(getRawTag(xml, "content:encoded")) ||
+  getHtmlImage(getRawTag(xml, "description")) ||
   getTag(xml, "media:content");
 
 const parseItems = (xml) => {
@@ -103,4 +116,16 @@ export async function fetchRssFeed(feed, { signal } = {}) {
     headers: { Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml" },
   });
   return parseRssFeed(String(response.data || ""), feed);
+}
+
+export async function fetchArticleImage(articleUrl) {
+  try {
+    const response = await axios.get(articleUrl, {
+      timeout: 8000,
+      headers: { Accept: "text/html,application/xhtml+xml" },
+    });
+    return getHtmlImage(String(response.data || ""));
+  } catch {
+    return null;
+  }
 }

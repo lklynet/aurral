@@ -41,6 +41,19 @@ test("fetches and normalizes RSS feed articles", async (t) => {
   assert.equal(article.source, "Feed Name");
 });
 
+test("ignores tracking pixels and badges when finding RSS HTML images", () => {
+  const articles = rssNews.parseRssFeed(`
+    <rss><channel><title>Example</title><item>
+      <title>Artist news</title><link>https://example.test/story</link>
+      <content:encoded><![CDATA[
+        <img src="https://example.test/tracking-pixel.png">
+        <img src="https://example.test/article.jpg">
+      ]]></content:encoded>
+    </item></channel></rss>
+  `, { name: "Example", url: "https://example.test/feed" });
+  assert.equal(articles[0].imageUrl, "https://example.test/article.jpg");
+});
+
 test("matches only artist mentions and applies publisher blocks", () => {
   const result = newsService.matchNewsArticles([
     {

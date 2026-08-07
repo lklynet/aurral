@@ -2,7 +2,7 @@ import { buildImageProxyUrl } from "./imageProxyService.js";
 import { dbOps } from "../db/helpers/index.js";
 import { libraryManager } from "./libraryManager.js";
 import { getNewsSettings } from "./apiClients/config.js";
-import { fetchRssFeed } from "./rssNews.js";
+import { fetchArticleImage, fetchRssFeed } from "./rssNews.js";
 import { mapWithConcurrency } from "./discovery/helpers.js";
 import { getUserDiscovery } from "./discovery/userDiscovery.js";
 
@@ -83,6 +83,24 @@ const normalizeArtists = (artists) => [...new Map(
 const getEnabledFeeds = (settings) => settings.enabled
   ? settings.feeds.filter((feed) => feed.enabled && (feed.group === "custom" || settings.groups[feed.group] !== false))
   : [];
+
+async function enrichArticleImages(articles, state) {
+  const missing = articles.filter((article) => !article.imageUrl && article.url);
+  if (missing.length === 0) return articles;
+  const discovered = await mapWithConcurrency(missing, 3, async (article) => ({
+    id: article.id,
+    imageUrl: await fetchArticleImage(article.url),
+  }));
+  const images = new Map(discovered.filter((entry) => entry.imageUrl).map((entry) => [entry.id, entry.imageUrl]));
+  if (images.size === 0) return articles;
+  state.articles = state.articles.map((article) => (
+    images.has(article.id) ? { ...article, imageUrl: images.get(article.id) } : article
+  ));
+  saveState(state);
+  return articles.map((article) => (
+    images.has(article.id) ? { ...article, imageUrl: images.get(article.id) } : article
+  ));
+}
 
 async function refreshRssFeeds() {
   const settings = getNewsSettings();
@@ -205,7 +223,10 @@ export async function getNewsForUser({ limit = 60, offset = 0, userId, mode = "m
     preferences.blockedPublishers,
   );
   const matchedById = new Map(matchedArticles.map((article) => [article.id, article]));
-  const articles = mode === "top"
+  // Normalize pagination before enriching or slicing the current page.
+  const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 60)));
+  const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
+  let articles = mode === "top"
     ? activeArticles
       .filter((article) => !isPublisherBlocked(article.source, preferences.blockedPublishers))
       .map((article) => ({
@@ -214,8 +235,12 @@ export async function getNewsForUser({ limit = 60, offset = 0, userId, mode = "m
         imageUrl: buildImageProxyUrl(article.imageUrl) || article.imageUrl || null,
       }))
     : matchedArticles;
-  const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 60)));
-  const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
+  if (mode === "top") {
+    const page = articles.slice(safeOffset, safeOffset + safeLimit);
+    const enrichedPage = await enrichArticleImages(page, refresh.state);
+    const enrichedById = new Map(enrichedPage.map((article) => [article.id, article]));
+    articles = articles.map((article) => enrichedById.get(article.id) || article);
+  }
   return {
     configured: settings.enabled && getEnabledFeeds(settings).length > 0,
     artistCount: artists.length,
