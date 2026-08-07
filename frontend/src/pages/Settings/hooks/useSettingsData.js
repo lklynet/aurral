@@ -286,6 +286,7 @@ export function useSettingsData(showSuccess, showError, showInfo) {
   }, [fetchSettings]);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);

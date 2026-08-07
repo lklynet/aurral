@@ -24,11 +24,19 @@ export function SettingsSystemTab({ health, showSuccess, showError }) {
     fetchKey();
   }, [fetchKey]);
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!apiKey) return;
-    navigator.clipboard.writeText(apiKey);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+      showError("Failed to copy API key. Select the key and copy it manually.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(apiKey);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      showError("Failed to copy API key. Select the key and copy it manually.");
+    }
   };
 
   const handleRotate = async () => {

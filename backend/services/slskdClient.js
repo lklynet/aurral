@@ -12,7 +12,11 @@ const DEFAULT_RESPONSE_LIMIT = 150;
 const DEFAULT_MAX_PEER_QUEUE = 150;
 const DEFAULT_MIN_PEER_SPEED = 51200;
 
-let connectionCache = { checkedAt: 0, result: null };
+let connectionCache = { checkedAt: 0, result: null, settingsKey: null };
+
+function getSettingsKey({ url, apiKey }) {
+  return `${url}\u0000${apiKey}`;
+}
 
 function getSettings() {
   const integrations = dbOps.getSettings()?.integrations || {};
@@ -170,7 +174,8 @@ export class SlskdClient {
   }
 
   async testConnection({ force = false } = {}) {
-    if (!this.isConfigured()) {
+    const { url, apiKey } = getSettings();
+    if (!url || !apiKey) {
       return {
         ok: false,
         configured: false,
@@ -178,7 +183,13 @@ export class SlskdClient {
         message: "slskd URL and API key are required",
       };
     }
-    if (!force && connectionCache.result && Date.now() - connectionCache.checkedAt < 30000) {
+    const settingsKey = getSettingsKey({ url, apiKey });
+    if (
+      !force &&
+      connectionCache.settingsKey === settingsKey &&
+      connectionCache.result &&
+      Date.now() - connectionCache.checkedAt < 30000
+    ) {
       return connectionCache.result;
     }
     const client = buildClient();
@@ -194,7 +205,7 @@ export class SlskdClient {
           connected: false,
           message: `slskd returned HTTP ${appRes.status}`,
         };
-        connectionCache = { checkedAt: Date.now(), result };
+        connectionCache = { checkedAt: Date.now(), result, settingsKey };
         return result;
       }
       const server = appRes.data?.server || {};
@@ -215,7 +226,7 @@ export class SlskdClient {
           ? "slskd is connected"
           : "slskd is reachable, but it is not connected to Soulseek. Open slskd and connect to the Soulseek server.",
       };
-      connectionCache = { checkedAt: Date.now(), result };
+      connectionCache = { checkedAt: Date.now(), result, settingsKey };
       return result;
     } catch (error) {
       const result = {
@@ -224,14 +235,18 @@ export class SlskdClient {
         connected: false,
         message: error?.message || "Failed to reach slskd",
       };
-      connectionCache = { checkedAt: Date.now(), result };
+      connectionCache = { checkedAt: Date.now(), result, settingsKey };
       return result;
     }
   }
 
   getStatus() {
-    const configured = this.isConfigured();
-    const cached = connectionCache.result;
+    const { url, apiKey } = getSettings();
+    const configured = !!(url && apiKey);
+    const cached =
+      connectionCache.settingsKey === getSettingsKey({ url, apiKey })
+        ? connectionCache.result
+        : null;
     return {
       configured,
       connected: configured && cached?.connected === true,

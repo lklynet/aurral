@@ -59,7 +59,7 @@ test("testConnection explains an unavailable Soulseek connection without leaking
     }
     if (request.method === "GET" && request.url === "/api/v0/options") {
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ directories: { downloads: "/downloads" } }));
+      response.end(JSON.stringify({ directories: { downloads: "/mock-slskd-downloads" } }));
       return;
     }
     response.writeHead(404);
@@ -83,6 +83,7 @@ test("testConnection explains an unavailable Soulseek connection without leaking
   } finally {
     dbOps.updateSettings(originalSettings);
     await mock.close();
+    assert.equal(slskdClient.getStatus().downloadPath, null);
   }
 });
 

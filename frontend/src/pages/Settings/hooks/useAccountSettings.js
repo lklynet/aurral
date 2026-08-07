@@ -6,6 +6,16 @@ import {
   updateMyLidarrPreferences,
 } from "../../../utils/api/endpoints/auth.js";
 
+function areDraftsEqual(left, right) {
+  return (
+    left?.provider === right?.provider &&
+    left?.username === right?.username &&
+    left?.url === right?.url &&
+    left?.rootFolderPath === right?.rootFolderPath &&
+    left?.qualityProfileId === right?.qualityProfileId
+  );
+}
+
 export function useAccountSettings(authUser, showError) {
   const [listenHistoryProvider, setListenHistoryProvider] = useState("lastfm");
   const [listenHistoryUsername, setListenHistoryUsername] = useState("");
@@ -24,6 +34,9 @@ export function useAccountSettings(authUser, showError) {
   const [saving, setSaving] = useState(false);
   const saveTimerRef = useRef(null);
   const handleSaveRef = useRef(null);
+  const saveInFlightRef = useRef(null);
+  const saveQueuedRef = useRef(false);
+  const currentDraftRef = useRef(null);
   const hasUnsavedChangesRef = useRef(false);
   const isListenHistoryValidRef = useRef(false);
 
@@ -39,6 +52,14 @@ export function useAccountSettings(authUser, showError) {
 
   hasUnsavedChangesRef.current = hasUnsavedChanges;
   isListenHistoryValidRef.current = isListenHistoryValid;
+  const currentDraft = {
+    provider: listenHistoryProvider,
+    username: listenHistoryUsername.trim(),
+    url: listenHistoryUrl.trim().replace(/\/+$/, ""),
+    rootFolderPath: lidarrRootFolderPath,
+    qualityProfileId: lidarrQualityProfileId,
+  };
+  currentDraftRef.current = currentDraft;
 
   const fetchListeningHistory = useCallback(async () => {
     try {
@@ -83,56 +104,84 @@ export function useAccountSettings(authUser, showError) {
 
   const handleSave = useCallback(async () => {
     if (!authUser?.id) return;
-    const trimmedUsername = listenHistoryUsername.trim();
-    const trimmedUrl = listenHistoryUrl.trim().replace(/\/+$/, "");
-    if (listenHistoryProvider === "koito" && !trimmedUrl) {
+    if (saveInFlightRef.current) {
+      saveQueuedRef.current = true;
+      return saveInFlightRef.current;
+    }
+
+    const saveDraft = currentDraftRef.current;
+    if (saveDraft.provider === "koito" && !saveDraft.url) {
       showError("Koito URL is required");
       return;
     }
+    let succeeded = false;
+    const request = (async () => {
+      try {
+        setSaving(true);
+        const lidarrData = await Promise.all([
+          updateMyListeningHistory(authUser.id, {
+            listenHistoryProvider: saveDraft.provider,
+            listenHistoryUsername:
+              saveDraft.provider === "koito" ? null : saveDraft.username || null,
+            listenHistoryUrl: saveDraft.provider === "koito" ? saveDraft.url || null : null,
+          }),
+          updateMyLidarrPreferences({
+            rootFolderPath: saveDraft.rootFolderPath || null,
+            qualityProfileId: saveDraft.qualityProfileId ? Number(saveDraft.qualityProfileId) : null,
+          }),
+        ]).then(([, lidarrResponse]) => lidarrResponse);
+        const isCurrentDraft = areDraftsEqual(currentDraftRef.current, saveDraft);
+
+        setSavedListenHistoryProvider(saveDraft.provider);
+        setSavedListenHistoryUsername(saveDraft.username);
+        setSavedListenHistoryUrl(saveDraft.url);
+        if (isCurrentDraft) {
+          setListenHistoryUsername(saveDraft.username);
+          setListenHistoryUrl(saveDraft.url);
+        }
+        setLidarrConfigured(lidarrData?.configured === true);
+        setLidarrRootFolders(Array.isArray(lidarrData?.rootFolders) ? lidarrData.rootFolders : []);
+        setLidarrQualityProfiles(
+          Array.isArray(lidarrData?.qualityProfiles) ? lidarrData.qualityProfiles : [],
+        );
+        const nextRootFolderPath = lidarrData?.savedDefaults?.rootFolderPath || "";
+        const nextQualityProfileId =
+          lidarrData?.savedDefaults?.qualityProfileId != null
+            ? String(lidarrData.savedDefaults.qualityProfileId)
+            : "";
+        if (isCurrentDraft) {
+          setLidarrRootFolderPath(nextRootFolderPath);
+          setLidarrQualityProfileId(nextQualityProfileId);
+        }
+        setSavedLidarrRootFolderPath(nextRootFolderPath);
+        setSavedLidarrQualityProfileId(nextQualityProfileId);
+        succeeded = true;
+        return true;
+      } catch {
+        showError("Failed to save account settings");
+        return false;
+      }
+    })();
+
+    saveInFlightRef.current = request;
     try {
-      setSaving(true);
-      const lidarrData = await Promise.all([
-        updateMyListeningHistory(authUser.id, {
-          listenHistoryProvider,
-          listenHistoryUsername: listenHistoryProvider === "koito" ? null : trimmedUsername || null,
-          listenHistoryUrl: listenHistoryProvider === "koito" ? trimmedUrl || null : null,
-        }),
-        updateMyLidarrPreferences({
-          rootFolderPath: lidarrRootFolderPath || null,
-          qualityProfileId: lidarrQualityProfileId ? Number(lidarrQualityProfileId) : null,
-        }),
-      ]).then(([, lidarrResponse]) => lidarrResponse);
-      setSavedListenHistoryProvider(listenHistoryProvider);
-      setSavedListenHistoryUsername(trimmedUsername);
-      setSavedListenHistoryUrl(trimmedUrl);
-      setListenHistoryUsername(trimmedUsername);
-      setListenHistoryUrl(trimmedUrl);
-      setLidarrConfigured(lidarrData?.configured === true);
-      setLidarrRootFolders(Array.isArray(lidarrData?.rootFolders) ? lidarrData.rootFolders : []);
-      setLidarrQualityProfiles(
-        Array.isArray(lidarrData?.qualityProfiles) ? lidarrData.qualityProfiles : [],
-      );
-      const nextRootFolderPath = lidarrData?.savedDefaults?.rootFolderPath || "";
-      const nextQualityProfileId =
-        lidarrData?.savedDefaults?.qualityProfileId != null
-          ? String(lidarrData.savedDefaults.qualityProfileId)
-          : "";
-      setLidarrRootFolderPath(nextRootFolderPath);
-      setSavedLidarrRootFolderPath(nextRootFolderPath);
-      setLidarrQualityProfileId(nextQualityProfileId);
-      setSavedLidarrQualityProfileId(nextQualityProfileId);
-    } catch {
-      showError("Failed to save account settings");
+      return await request;
     } finally {
+      saveInFlightRef.current = null;
       setSaving(false);
+      if (
+        (succeeded || saveQueuedRef.current) &&
+        !areDraftsEqual(currentDraftRef.current, saveDraft) &&
+        isListenHistoryValidRef.current
+      ) {
+        saveQueuedRef.current = false;
+        void handleSaveRef.current?.();
+      } else {
+        saveQueuedRef.current = false;
+      }
     }
   }, [
     authUser?.id,
-    listenHistoryProvider,
-    listenHistoryUsername,
-    listenHistoryUrl,
-    lidarrRootFolderPath,
-    lidarrQualityProfileId,
     showError,
   ]);
 

@@ -964,7 +964,7 @@
   color: var(--aurral-text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.8125rem;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .arr-table__primary {

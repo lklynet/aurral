@@ -680,6 +680,7 @@ textarea {
 
 .volume-slider {
   --volume-percent: 0%;
+
   -webkit-appearance: none;
   appearance: none;
   height: 8px;
@@ -1737,7 +1738,7 @@ textarea {
   align-items: center;
   justify-content: center;
   background: transparent;
-  color: currentColor;
+  color: currentcolor;
 }
 
 .app-profile-menu__icon svg {
@@ -3233,6 +3234,7 @@ textarea {
   position: relative;
   overflow: hidden;
   --artist-pick-cover-size: 5.5rem;
+
   background: var(--aurral-surface-raised);
   border: 1px solid var(--aurral-border);
   border-radius: var(--aurral-radius);
@@ -6872,7 +6874,6 @@ textarea {
   font-size: 0.6875rem;
   line-height: 1.35;
   overflow-wrap: anywhere;
-  word-break: break-word;
 }
 
 .requests-page__review-reason {
