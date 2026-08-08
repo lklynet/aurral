@@ -427,33 +427,43 @@ export function SettingsConnectTab({
           <div className="arr-info">
             Choose which library-based updates appear in the inbox dropdown.
           </div>
-          <SettingsArrFormGroup label="Upcoming releases">
+          <SettingsArrFormGroup label="Upcoming releases" labelFor="inbox-releases">
             <PillToggle
+              id="inbox-releases"
               checked={inbox.releases !== false}
+              aria-label="Show upcoming releases in inbox"
               onChange={(e) => updateInbox({ releases: e.target.checked })}
             />
           </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Upcoming shows">
+          <SettingsArrFormGroup label="Upcoming shows" labelFor="inbox-shows">
             <PillToggle
+              id="inbox-shows"
               checked={inbox.shows !== false}
+              aria-label="Show upcoming shows in inbox"
               onChange={(e) => updateInbox({ shows: e.target.checked })}
             />
           </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Library Artist news">
+          <SettingsArrFormGroup label="Library Artist news" labelFor="inbox-news">
             <PillToggle
+              id="inbox-news"
               checked={inbox.news !== false}
+              aria-label="Show library artist news in inbox"
               onChange={(e) => updateInbox({ news: e.target.checked })}
             />
           </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Recommended Artist news">
+          <SettingsArrFormGroup label="Recommended Artist news" labelFor="inbox-recommended-news">
             <PillToggle
+              id="inbox-recommended-news"
               checked={inbox.recommendedNews === true}
+              aria-label="Show recommended artist news in inbox"
               onChange={(e) => updateInbox({ recommendedNews: e.target.checked })}
             />
           </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Discoveries">
+          <SettingsArrFormGroup label="Discoveries" labelFor="inbox-discoveries">
             <PillToggle
+              id="inbox-discoveries"
               checked={inbox.discoveries !== false}
+              aria-label="Show discoveries in inbox"
               onChange={(e) => updateInbox({ discoveries: e.target.checked })}
             />
           </SettingsArrFormGroup>

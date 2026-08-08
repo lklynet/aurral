@@ -125,8 +125,13 @@ async function refreshRssFeeds() {
       return { feed, articles: [], failed: true };
     }
   });
+  const failedUrls = new Set(results.filter((result) => result.failed).map(({ feed }) => feed.url));
+  const cachedArticles = state.articles.filter((article) => (
+    failedUrls.has(article.sourceUrl)
+    && (!article.publishedAt || now - publishedTime(article.publishedAt) <= ARTICLE_TTL_MS)
+  ));
   const freshArticles = results.flatMap((result) => result.articles);
-  const byId = new Map(freshArticles.map((article) => [article.id, article]));
+  const byId = new Map([...cachedArticles, ...freshArticles].map((article) => [article.id, article]));
   const failedFeeds = results.filter((result) => result.failed).map(({ feed }) => feed.name);
   state.articles = [...byId.values()]
     .filter((article) => !article.publishedAt || now - publishedTime(article.publishedAt) <= ARTICLE_TTL_MS)

@@ -50,7 +50,7 @@ function DiscoverPage() {
     error: newsError,
     refresh: newsRefresh,
     disablePublisher: disableNewsPublisher,
-  } = useLibraryNews({ enabled: newsConfigured, limit: 60, mode: "top" });
+  } = useLibraryNews({ enabled: newsConfigured, limit: 60, mode: "top", userId: authUser?.id });
 
   const {
     data,

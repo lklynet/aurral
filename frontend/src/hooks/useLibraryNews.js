@@ -7,12 +7,12 @@ import {
 const CLIENT_CACHE_TTL_MS = 5 * 60 * 1000;
 const newsPageCache = new Map();
 
-export function useLibraryNews({ enabled = false, limit = 60, mode = "matched" } = {}) {
+export function useLibraryNews({ enabled = false, limit = 60, mode = "matched", userId = null } = {}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
-  const cacheKey = `${mode}:${limit}`;
+  const cacheKey = `${userId || "anonymous"}:${mode}:${limit}`;
 
   const load = useCallback(async ({ append = false, offset = 0 } = {}) => {
     if (!enabled) {

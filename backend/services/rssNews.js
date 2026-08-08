@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import axios from "../../lib/axiosFetch.js";
+import { assertPublicUrl } from "../../lib/publicUrl.js";
 
 const MAX_ITEMS_PER_FEED = 100;
 const ENTITY_MAP = {
@@ -111,6 +112,7 @@ export const parseRssFeed = (xml, feed) =>
 
 export async function fetchRssFeed(feed, { signal } = {}) {
   const response = await axios.get(feed.url, {
+    publicOnly: true,
     signal,
     timeout: 10000,
     headers: { Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml" },
@@ -120,7 +122,9 @@ export async function fetchRssFeed(feed, { signal } = {}) {
 
 export async function fetchArticleImage(articleUrl) {
   try {
+    await assertPublicUrl(articleUrl);
     const response = await axios.get(articleUrl, {
+      publicOnly: true,
       timeout: 8000,
       headers: { Accept: "text/html,application/xhtml+xml" },
     });

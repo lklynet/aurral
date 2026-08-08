@@ -277,6 +277,10 @@ export function useSettingsData(showSuccess, showError, showInfo) {
       setHasUnsavedChanges(false);
       setTimeout(() => {
         comparisonEnabledRef.current = true;
+        const changed = checkForChanges(settingsRef.current, originalSettingsRef.current);
+        hasUnsavedChangesRef.current = changed;
+        setHasUnsavedChanges(changed);
+        if (changed) persistSettingsRef.current?.(settingsRef.current);
       }, 600);
 
       const lidarr = updatedSettings.integrations?.lidarr || {};

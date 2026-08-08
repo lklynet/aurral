@@ -95,3 +95,8 @@ test("uses curated RSS groups and preserves custom feeds", () => {
   ]).find((feed) => feed.url === "https://custom.test/feed");
   assert.equal(customFeed.builtIn, false);
 });
+
+test("ignores malformed stored RSS feed URLs", () => {
+  const feeds = config.normalizeNewsFeeds([{ name: "Broken", url: "http://", group: "custom" }]);
+  assert.equal(feeds.some((feed) => feed.name === "Broken"), false);
+});

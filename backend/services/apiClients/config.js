@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isPublicUrl } from "../../../lib/publicUrl.js";
 import { dbOps } from "../../db/helpers/index.js";
 import { getMetadataBaseUrl, getMetadataProviderHealthSnapshot as getBrainzmashHealthSnapshot } from "../providers/brainzmashProvider.js";
 
@@ -98,11 +99,17 @@ export const normalizeNewsFeeds = (feeds) => {
   return source
     .map((feed) => {
       const url = String(feed?.url || "").trim();
-      if (!/^https?:\/\//i.test(url)) return null;
+      if (!isPublicUrl(url)) return null;
       const builtIn = builtInsByUrl.get(url);
+      let hostname;
+      try {
+        hostname = new URL(url).hostname;
+      } catch {
+        return null;
+      }
       return {
         id: String(feed?.id || builtIn?.id || createHash("sha1").update(url).digest("hex").slice(0, 12)),
-        name: String(feed?.name || builtIn?.name || new URL(url).hostname).trim().slice(0, 100),
+        name: String(feed?.name || builtIn?.name || hostname).trim().slice(0, 100),
         url,
         group: String(feed?.group || builtIn?.group || "custom").trim().toLowerCase() || "custom",
         enabled: feed?.enabled !== false,
