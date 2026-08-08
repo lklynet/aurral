@@ -39,3 +39,26 @@ test("MusicBrainz identity caches definitive missing artists", async (t) => {
   assert.equal(await musicbrainzGetArtistIdentityByMbid(mbid), null);
   assert.equal(attempts, 1);
 });
+
+test("MusicBrainz identity includes artist aliases", async (t) => {
+  const mbid = "alias-identity-test";
+  musicbrainzArtistIdentityCache.flushAll();
+  t.after(() => musicbrainzArtistIdentityCache.flushAll());
+  t.mock.method(axios, "get", async (_url, options) => {
+    assert.equal(options.params.inc, "url-rels+aliases");
+    return {
+      data: {
+        name: "FromSoftware",
+        aliases: [{ name: "From Software" }],
+        relations: [],
+      },
+    };
+  });
+
+  assert.deepEqual(await musicbrainzGetArtistIdentityByMbid(mbid), {
+    mbid,
+    name: "FromSoftware",
+    aliases: ["From Software"],
+    providerIds: [],
+  });
+});

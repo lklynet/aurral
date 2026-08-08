@@ -328,7 +328,7 @@ export async function musicbrainzGetArtistIdentityByMbid(mbid, { signal } = {}) 
       const response = await axios.get(
         `${MUSICBRAINZ_API}/artist/${encodeURIComponent(normalizedMbid)}`,
         {
-          params: { fmt: "json", inc: "url-rels" },
+          params: { fmt: "json", inc: "url-rels+aliases" },
           headers: { "User-Agent": userAgent },
           timeout: 8000,
           signal,
@@ -339,9 +339,16 @@ export async function musicbrainzGetArtistIdentityByMbid(mbid, { signal } = {}) 
       ]
         .map((relation) => getMusicbrainzProviderId(relation?.url?.resource))
         .filter(Boolean);
+      const name = String(response.data?.name || "").trim() || null;
+      const aliases = Array.isArray(response.data?.aliases)
+        ? response.data.aliases
+            .map((alias) => String(alias?.name || "").trim())
+            .filter(Boolean)
+        : [];
       return {
         mbid: normalizedMbid,
-        name: String(response.data?.name || "").trim() || null,
+        name,
+        aliases: [...new Set(aliases)],
         providerIds: [...new Set(providerIds)],
       };
     });

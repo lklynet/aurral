@@ -965,7 +965,12 @@ export class LidarrClient {
       const normalizedArtistName = String(artistName || "")
         .trim()
         .toLowerCase();
-      if (!canonicalName || normalizedArtistName !== canonicalName.toLowerCase()) {
+      const acceptedArtistNames = new Set(
+        [canonicalName, ...(Array.isArray(identity?.aliases) ? identity.aliases : [])]
+          .map((name) => String(name || "").trim().toLowerCase())
+          .filter(Boolean),
+      );
+      if (!canonicalName || !acceptedArtistNames.has(normalizedArtistName)) {
         const error = new Error(
           `MusicBrainz artist name for ${mbid} does not match the requested artist name`,
         );

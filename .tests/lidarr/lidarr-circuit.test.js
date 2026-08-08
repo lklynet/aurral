@@ -440,6 +440,62 @@ test("artist add rejects a MusicBrainz ID and name mismatch", async (t) => {
   assert.equal(dbOps.getLidarrArtistIdMap(artistMbid), null);
 });
 
+test("artist add accepts a MusicBrainz alias when resolving a provider ID", async (t) => {
+  const artistMbid = "c5c3e287-d2a7-497f-a212-e2cfb7bcb90c";
+  const providerArtistId = "181216727@deezer";
+  const client = new LidarrClient();
+  t.after(() => {
+    dbOps.deleteLidarrArtistIdMap(artistMbid);
+    client._httpAgent.destroy();
+    client._httpsAgent.destroy();
+    client._httpsInsecureAgent.destroy();
+  });
+
+  client.resolveArtistAddConfiguration = async () => ({
+    resolved: {
+      rootFolderPath: "/music",
+      qualityProfileId: 1,
+    },
+  });
+  client.resolveCanonicalArtistIdentity = async () => ({
+    name: "FromSoftware",
+    aliases: ["From Software"],
+    providerIds: [providerArtistId],
+  });
+  client.request = async (endpoint, method = "GET", payload) => {
+    if (endpoint === "/artist" && method === "POST") {
+      if (payload.foreignArtistId === artistMbid) {
+        throw new Error(
+          `Lidarr API error: 500 - The input string '${artistMbid}' was not in a correct format.`,
+        );
+      }
+      return {
+        id: 42,
+        foreignArtistId: providerArtistId,
+        artistName: "FromSoftware",
+        monitored: true,
+      };
+    }
+    if (endpoint === "/artist" && method === "GET") {
+      return [{ id: 42, foreignArtistId: providerArtistId, artistName: "FromSoftware" }];
+    }
+    if (
+      endpoint === `/artist/lookup?term=${encodeURIComponent("FromSoftware")}` &&
+      method === "GET"
+    ) {
+      return [{ foreignArtistId: providerArtistId, artistName: "FromSoftware" }];
+    }
+    throw new Error(`Unexpected Lidarr request: ${method} ${endpoint}`);
+  };
+
+  const artist = await client.addArtist(artistMbid, "From Software", {
+    metadataProfileId: 1,
+  });
+
+  assert.equal(artist.id, 42);
+  assert.equal(dbOps.getLidarrArtistIdMap(artistMbid), providerArtistId);
+});
+
 test("artist add succeeds when a provider mapping conflict follows a successful POST", async (t) => {
   const artistMbid = "mapping-conflict-add-mbid";
   const existingMbid = "mapping-conflict-existing-mbid";

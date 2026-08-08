@@ -25,7 +25,7 @@ Enter these values in first-run setup or in **Settings > Lidarr**:
 
 ## Metadata providers
 
-Aurral keeps the MusicBrainz UUID for artist routes and stores Lidarr's provider ID separately. If Lidarr uses a provider such as Tubifarry Deezer or Discogs, Aurral verifies the submitted MusicBrainz artist, uses Lidarr's lookup to identify the active provider, and retries a provider-ID format error with the canonical provider ID. Existing provider-ID artists are verified and backfilled when Aurral reads the library. If the identities do not match, search for the artist in Lidarr first or use MusicBrainz metadata.
+Aurral keeps the MusicBrainz UUID for artist routes and stores Lidarr's provider ID separately. If Lidarr uses a provider such as Tubifarry Deezer or Discogs, Aurral verifies the submitted MusicBrainz artist, accepts names recorded as MusicBrainz aliases, uses Lidarr's lookup to identify the active provider, and retries a provider-ID format error with the canonical provider ID. Existing provider-ID artists are verified and backfilled when Aurral reads the library. If the identities do not match, search for the artist in Lidarr first or use MusicBrainz metadata.
 
 ## Library access check
 

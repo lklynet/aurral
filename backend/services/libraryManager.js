@@ -968,11 +968,17 @@ export class LibraryManager {
 
     const identity = await musicbrainzGetArtistIdentityByMbid(mbid);
     const identityName = String(identity?.name || "").trim();
+    const normalizedArtistName = artistName.toLowerCase();
+    const acceptedArtistNames = new Set(
+      [identityName, ...(Array.isArray(identity?.aliases) ? identity.aliases : [])]
+        .map((name) => String(name || "").trim().toLowerCase())
+        .filter(Boolean),
+    );
     const providerIds = Array.isArray(identity?.providerIds) ? identity.providerIds : [];
     const matchesProviderId = providerIds.some(
       (value) => String(value || "").trim().toLowerCase() === providerId.toLowerCase(),
     );
-    if (!identityName || identityName.toLowerCase() !== artistName.toLowerCase() || !matchesProviderId) {
+    if (!identityName || !acceptedArtistNames.has(normalizedArtistName) || !matchesProviderId) {
       return null;
     }
 
