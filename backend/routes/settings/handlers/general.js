@@ -351,6 +351,7 @@ export function registerGeneral(router) {
             ? {
                 ...(currentSettings.inbox || defaultData.settings.inbox),
                 ...inbox,
+                enabled: inbox.enabled !== false,
                 releases: inbox.releases !== false,
                 shows: inbox.shows !== false,
                 news: inbox.news !== false,

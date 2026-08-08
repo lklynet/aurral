@@ -42,6 +42,7 @@ export const normalizeSettings = (savedSettings) => {
       style: playlistArtworkStyle,
     },
     inbox: {
+      enabled: savedSettings.inbox?.enabled !== false,
       releases: savedSettings.inbox?.releases !== false,
       shows: savedSettings.inbox?.shows !== false,
       news: savedSettings.inbox?.news !== false,

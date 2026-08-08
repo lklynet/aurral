@@ -427,9 +427,19 @@ export function SettingsConnectTab({
           <div className="arr-info">
             Choose which library-based updates appear in the inbox dropdown.
           </div>
+          <SettingsArrFormGroup label="Enable Inbox" labelFor="inbox-enabled">
+            <PillToggle
+              id="inbox-enabled"
+              checked={inbox.enabled !== false}
+              aria-label="Enable inbox"
+              onChange={(e) => updateInbox({ enabled: e.target.checked })}
+            />
+          </SettingsArrFormGroup>
+          <div className={`settings-inbox-preferences${inbox.enabled === false ? " is-disabled" : ""}`} aria-disabled={inbox.enabled === false}>
           <SettingsArrFormGroup label="Upcoming releases" labelFor="inbox-releases">
             <PillToggle
               id="inbox-releases"
+              disabled={inbox.enabled === false}
               checked={inbox.releases !== false}
               aria-label="Show upcoming releases in inbox"
               onChange={(e) => updateInbox({ releases: e.target.checked })}
@@ -462,11 +472,13 @@ export function SettingsConnectTab({
           <SettingsArrFormGroup label="Discoveries" labelFor="inbox-discoveries">
             <PillToggle
               id="inbox-discoveries"
+              disabled={inbox.enabled === false}
               checked={inbox.discoveries !== false}
               aria-label="Show discoveries in inbox"
               onChange={(e) => updateInbox({ discoveries: e.target.checked })}
             />
           </SettingsArrFormGroup>
+          </div>
         </SettingsArrFieldSet>
       </form>
 

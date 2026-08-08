@@ -164,6 +164,7 @@ export const dbOps = {
       playlistWorker,
       playlistArtwork,
       inbox: {
+        enabled: inbox.enabled !== false,
         releases: inbox.releases !== false,
         shows: inbox.shows !== false,
         news: inbox.news !== false,
@@ -247,6 +248,7 @@ export const dbOps = {
         upsertSettingStmt.run(
           "inbox",
           dbHelpers.stringifyJSON({
+            enabled: settings.inbox.enabled !== false,
             releases: settings.inbox.releases !== false,
             shows: settings.inbox.shows !== false,
             news: settings.inbox.news !== false,

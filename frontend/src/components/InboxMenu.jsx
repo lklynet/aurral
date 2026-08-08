@@ -143,8 +143,21 @@ function InboxMenu() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [pendingActions, setPendingActions] = useState({});
   const menuRef = useRef(null);
-  const { user } = useAuth();
+  const { user, bootstrap } = useAuth();
+  const [inboxEnabled, setInboxEnabled] = useState(true);
   const { showError } = useToast();
+
+  useEffect(() => {
+    setInboxEnabled(bootstrap?.inboxEnabled !== false);
+  }, [bootstrap?.inboxEnabled]);
+
+  useEffect(() => {
+    const handleSettingsUpdated = (event) => {
+      if (typeof event.detail?.inboxEnabled === "boolean") setInboxEnabled(event.detail.inboxEnabled);
+    };
+    window.addEventListener("aurral:settings-updated", handleSettingsUpdated);
+    return () => window.removeEventListener("aurral:settings-updated", handleSettingsUpdated);
+  }, []);
 
   const loadInbox = useCallback(async () => {
     setLoading(true);
@@ -162,11 +175,12 @@ function InboxMenu() {
   }, []);
 
   useEffect(() => {
+    if (!inboxEnabled) return undefined;
     if (!Number.isInteger(Number(user?.id)) || Number(user.id) <= 0) return undefined;
     loadInbox();
     const interval = window.setInterval(loadInbox, 60 * 1000);
     return () => window.clearInterval(interval);
-  }, [loadInbox, user?.id]);
+  }, [inboxEnabled, loadInbox, user?.id]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -244,7 +258,7 @@ function InboxMenu() {
   const visibleItems = filter === "all" ? items : items.filter((item) => item.kind === filter);
   const selectedFilter = FILTER_OPTIONS.find((option) => option.value === filter) || FILTER_OPTIONS[0];
 
-  if (!Number.isInteger(Number(user?.id)) || Number(user.id) <= 0) return null;
+  if (!inboxEnabled || !Number.isInteger(Number(user?.id)) || Number(user.id) <= 0) return null;
 
   return (
     <div ref={menuRef} className="app-inbox-menu">

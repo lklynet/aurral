@@ -155,6 +155,7 @@ const defaultSettings = {
     style: "photo",
   },
   inbox: {
+    enabled: true,
     releases: true,
     shows: true,
     news: true,
@@ -401,6 +402,11 @@ export function useSettingsData(showSuccess, showError, showInfo) {
             const stillDirty = checkForChanges(settingsRef.current, normalizedSettings);
             hasUnsavedChangesRef.current = stillDirty;
             if (mountedRef.current) setHasUnsavedChanges(stillDirty);
+          }
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("aurral:settings-updated", {
+              detail: { inboxEnabled: normalizedSettings.inbox?.enabled !== false },
+            }));
           }
 
           if (mountedRef.current) await refreshHealth();

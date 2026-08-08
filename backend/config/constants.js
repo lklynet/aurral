@@ -149,6 +149,7 @@ export const defaultData = {
       style: "photo",
     },
     inbox: {
+      enabled: true,
       releases: true,
       shows: true,
       news: true,

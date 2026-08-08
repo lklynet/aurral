@@ -184,6 +184,14 @@
   max-width: 40.625rem;
 }
 
+.settings-inbox-preferences {
+  transition: opacity 0.16s ease;
+}
+
+.settings-inbox-preferences.is-disabled {
+  opacity: 0.5;
+}
+
 .arr-form-group--large {
   max-width: 75rem;
 }
