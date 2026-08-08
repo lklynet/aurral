@@ -117,7 +117,6 @@ async function withFakeLidarr(buildState, run) {
   lidarrClient.config = {
     url: `http://127.0.0.1:${port}`,
     apiKey: "test",
-    allowHttp: true,
     timeoutMs: 2000,
     circuitDisabled: true,
   };

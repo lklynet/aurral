@@ -10,7 +10,6 @@ test("isCircuitOpen returns stale GET cache instead of throwing", async () => {
   client.config = {
     url: "http://localhost:8686",
     apiKey: "test",
-    allowHttp: true,
     circuitDisabled: false,
   };
   client._circuitOpen = true;
@@ -21,25 +20,6 @@ test("isCircuitOpen returns stale GET cache instead of throwing", async () => {
   const artists = await client.request("/artist", "GET", null, true);
   assert.equal(artists.length, 1);
   assert.equal(artists[0].artistName, "Test");
-});
-
-test("Lidarr refuses API-key requests over HTTP unless explicitly allowed", async (t) => {
-  const client = new LidarrClient();
-  t.after(() => {
-    client._httpAgent.destroy();
-    client._httpsAgent.destroy();
-    client._httpsInsecureAgent.destroy();
-  });
-  client._holdConfig = true;
-  client.config = {
-    url: "http://127.0.0.1:8686",
-    apiKey: "test",
-    allowHttp: false,
-    timeoutMs: 2000,
-    circuitDisabled: true,
-  };
-
-  await assert.rejects(client.request("/artist/lookup?term=Muse"), /require an HTTPS URL/);
 });
 
 test("getAlbumByMbid avoids unrelated broken albums in Lidarr", async (t) => {
@@ -71,7 +51,6 @@ test("getAlbumByMbid avoids unrelated broken albums in Lidarr", async (t) => {
   client.config = {
     url: `http://127.0.0.1:${address.port}`,
     apiKey: "test",
-    allowHttp: true,
     timeoutMs: 2000,
     circuitDisabled: true,
   };
@@ -112,7 +91,6 @@ test("getAlbumByMbid selects the matching album from filtered results", async (t
   client.config = {
     url: `http://127.0.0.1:${address.port}`,
     apiKey: "test",
-    allowHttp: true,
     timeoutMs: 2000,
     circuitDisabled: true,
   };
@@ -158,7 +136,6 @@ test("getAlbumByMbid accepts wrapped Lidarr album results", async (t) => {
   client.config = {
     url: `http://127.0.0.1:${address.port}`,
     apiKey: "test",
-    allowHttp: true,
     timeoutMs: 2000,
     circuitDisabled: true,
   };
@@ -322,7 +299,6 @@ test("artist add resolves a non-numeric Lidarr response ID before follow-up call
   client.config = {
     url: `http://127.0.0.1:${address.port}`,
     apiKey: "test",
-    allowHttp: true,
     timeoutMs: 2000,
     circuitDisabled: true,
   };
@@ -654,7 +630,6 @@ test("Lidarr cooldown permits only one half-open recovery request", async (t) =>
   client.config = {
     url: `http://127.0.0.1:${address.port}`,
     apiKey: "test",
-    allowHttp: true,
     timeoutMs: 2000,
     circuitDisabled: false,
   };
@@ -701,7 +676,6 @@ test("a failed Lidarr recovery probe reopens the cooldown", async (t) => {
   client.config = {
     url: `http://127.0.0.1:${address.port}`,
     apiKey: "test",
-    allowHttp: true,
     timeoutMs: 2000,
     circuitDisabled: false,
   };

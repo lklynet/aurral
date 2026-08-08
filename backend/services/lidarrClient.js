@@ -321,16 +321,12 @@ export class LidarrClient {
     const circuitDisabled =
       process.env.LIDARR_CIRCUIT_DISABLED === "true" || process.env.LIDARR_CIRCUIT_DISABLED === "1";
 
-    const allowHttp =
-      process.env.LIDARR_ALLOW_HTTP === "true" || process.env.LIDARR_ALLOW_HTTP === "1";
-
     const newConfig = {
       url: url,
       apiKey: (dbConfig.apiKey || process.env.LIDARR_API_KEY || "").trim(),
       insecure: !!insecure,
       timeoutMs,
       circuitDisabled,
-      allowHttp,
     };
 
     const didConfigChange =
@@ -339,8 +335,7 @@ export class LidarrClient {
       previousConfig.apiKey !== newConfig.apiKey ||
       previousConfig.insecure !== newConfig.insecure ||
       previousConfig.timeoutMs !== newConfig.timeoutMs ||
-      previousConfig.circuitDisabled !== newConfig.circuitDisabled ||
-      previousConfig.allowHttp !== newConfig.allowHttp;
+      previousConfig.circuitDisabled !== newConfig.circuitDisabled;
 
     this.config = newConfig;
     if (didConfigChange) {
@@ -402,16 +397,6 @@ export class LidarrClient {
 
     if (!this.isConfigured(skipConfigUpdate)) {
       throw new Error("Lidarr API key not configured");
-    }
-
-    if (
-      this.config.apiKey &&
-      /^http:/i.test(this.config.url) &&
-      this.config.allowHttp !== true
-    ) {
-      throw new Error(
-        "Lidarr API key requests require an HTTPS URL. Set LIDARR_ALLOW_HTTP=true only for a trusted local network.",
-      );
     }
 
     const now = Date.now();
