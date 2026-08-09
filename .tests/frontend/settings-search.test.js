@@ -78,4 +78,5 @@ test("settings search handles punctuation and non-adjacent terms", () => {
   assert.ok(searchSettingsItems("auto login").some((item) => item.id === "users"));
   assert.ok(searchSettingsItems("yt dlp staging").some((item) => item.id === "download-clients"));
   assert.ok(searchSettingsItems("quality cutoff").some((item) => item.id === "download-clients"));
+  assert.ok(searchSettingsItems("m4a 320").some((item) => item.id === "download-clients"));
 });

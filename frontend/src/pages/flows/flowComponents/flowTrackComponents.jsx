@@ -788,7 +788,7 @@ export function FlowTracksPanel({
                 )}
                 {hideStatusColumn ? null : (
                   <FlowTracksSortHeader
-                    label="Status"
+                    label={<span className="sr-only">Status</span>}
                     sortKey="status"
                     activeSortKey={sortKey}
                     sortDirection={sortDirection}

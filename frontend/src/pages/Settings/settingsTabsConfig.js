@@ -125,7 +125,7 @@ const SETTINGS_SEARCH_METADATA = {
     },
     fields: {
       "Quality Profile": "default acceptable allowed formats rank preference cutoff upgrades",
-      Qualities: "FLAC MP3 M4A bitrate hi-res standard allowed cutoff drag rank",
+      Qualities: "FLAC MP3 M4A 128 192 256 320 bitrate hi-res standard allowed cutoff drag rank",
       "Automatic upgrades": "upgrade searches Flow Static tracks",
       "Upgrade interval": "days between checks",
       Path: "downloads folder media library",
