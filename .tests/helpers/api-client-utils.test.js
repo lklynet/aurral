@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import createCache from "../../backend/services/apiClients/simpleCache.js";
 import createRateLimiter from "../../backend/services/apiClients/rateLimiter.js";
@@ -43,4 +44,45 @@ test("fetch transport failures expose axios-compatible request metadata", async 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("public-only transport rejects socket failures without an uncaught exception", () => {
+  const moduleUrl = new URL("../../lib/axiosFetch.js", import.meta.url).href;
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", `
+    import dns from "node:dns/promises";
+    import net from "node:net";
+
+    let publicLookups = 0;
+    dns.lookup = async () => {
+      publicLookups += 1;
+      return [{ address: "203.0.113.1", family: 4 }];
+    };
+    net.Socket.prototype.connect = function (options) {
+      options.lookup(options.hostname || options.host, { all: false }, () => {
+        this.emit("error", Object.assign(new Error("injected transport failure"), {
+          code: "EINJECTED",
+        }));
+      });
+      return this;
+    };
+
+    const { default: axios } = await import(${JSON.stringify(moduleUrl)});
+    try {
+      await axios.get("https://example.test", { publicOnly: true, timeout: 1000 });
+      process.exitCode = 2;
+    } catch (error) {
+      console.log(JSON.stringify({
+        code: error.cause?.code || error.code,
+        publicLookups,
+        request: error.request,
+      }));
+    }
+  `], { encoding: "utf8" });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    code: "EINJECTED",
+    publicLookups: 1,
+    request: { method: "GET", url: "https://example.test" },
+  });
 });
