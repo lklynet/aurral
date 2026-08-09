@@ -28,6 +28,19 @@ const defaultSettings = {
   downloadFolderPath: "",
   pathMappings: [],
   quality: "standard",
+  qualityProfile: {
+    order: [
+      "flac-hires", "flac-standard", "mp3-320", "m4a-320", "mp3-256",
+      "m4a-256", "mp3-192", "m4a-192", "mp3-128", "m4a-128",
+    ],
+    enabled: [
+      "flac-hires", "flac-standard", "mp3-320", "m4a-320", "mp3-256",
+      "m4a-256", "mp3-192", "m4a-192", "mp3-128", "m4a-128",
+    ],
+    cutoff: "flac-standard",
+    automaticUpgrades: false,
+    intervalDays: 2,
+  },
   releaseTypes: allReleaseTypes,
   integrations: {
     navidrome: {

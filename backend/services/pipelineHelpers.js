@@ -42,7 +42,7 @@ export function blockPipelineJobForReview({
   sourcePath,
 }) {
   const stagingPath = String(sourcePath || "").trim();
-  if (!validation?.blocked || !stagingPath) return false;
+  if (job?.upgradeForJobId || !validation?.blocked || !stagingPath) return false;
   const reason = validation.reason || "Blocked for review";
   if (!downloadTracker.setBlocked(job.id, reason, stagingPath)) return false;
   import("./aurralHistoryService.js")
@@ -56,9 +56,16 @@ export async function finalizePipelineJobSuccess({
   job,
   committedFinalPath,
   album,
+  quality,
   onSuccess,
 }) {
+  if (job.upgradeForJobId) {
+    const { finalizeQualityUpgradeSuccess } = await import("./qualityProfileService.js");
+    if (onSuccess) await onSuccess();
+    return finalizeQualityUpgradeSuccess(job, committedFinalPath, quality);
+  }
   downloadTracker.setDone(job.id, committedFinalPath, album);
+  if (quality) downloadTracker.updateQuality(job.id, quality);
 
   if (onSuccess) await onSuccess();
 

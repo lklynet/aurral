@@ -53,6 +53,7 @@ export const normalizeSettings = (savedSettings) => {
     },
     releaseTypes: savedSettings.releaseTypes || allReleaseTypes,
     quality: savedSettings.quality || "standard",
+    qualityProfile: savedSettings.qualityProfile,
     security: {
       ...(savedSettings.security || {}),
       localNetworkBypass: {

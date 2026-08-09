@@ -44,7 +44,7 @@ import SearchLibraryCheck from "./SearchLibraryCheck";
 import { TrackPlaylistMenu } from "../pages/ArtistDetails/components/TrackPlaylistMenu";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
-import { SETTINGS_SEARCH_ITEMS } from "../pages/Settings/settingsTabsConfig";
+import { searchSettingsItems } from "../pages/Settings/settingsTabsConfig";
 function GlobalSearch({ settingsMode = false }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [lastfmConfigured, setLastfmConfigured] = useState(true);
@@ -82,9 +82,8 @@ function GlobalSearch({ settingsMode = false }) {
   }, [suggestionRows, suggestionMode]);
 
   const settingsSearchResults = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!settingsMode || !query) return [];
-    return SETTINGS_SEARCH_ITEMS.filter((item) => item.searchText.includes(query));
+    if (!settingsMode) return [];
+    return searchSettingsItems(searchQuery);
   }, [searchQuery, settingsMode]);
 
   const showRecentSearches = useMemo(

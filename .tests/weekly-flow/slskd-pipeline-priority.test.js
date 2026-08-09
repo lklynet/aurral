@@ -28,6 +28,7 @@ test("slskd pipeline queue prioritizes active transfer phases over search", () =
   const queue = getPipelineQueue();
   enqueuePipelineJob({ phase: "search", jobId: "a" });
   enqueuePipelineJob({ phase: "search", jobId: "b" });
+  enqueuePipelineJob({ phase: "finalize", jobId: "upgrade", upgrade: true });
   enqueuePipelineJob({ phase: "download", jobId: "a" });
   const claimed = queue.claimOne("priority-test-worker");
   assert.equal(claimed.payload.phase, "download");

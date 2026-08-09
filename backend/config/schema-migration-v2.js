@@ -190,7 +190,15 @@ function ensurePlaylistDownloadJobsTable(db) {
       slskd_search_id TEXT,
       slskd_batch_id TEXT,
       remote_username TEXT,
-      remote_filename TEXT
+      remote_filename TEXT,
+      quality_tier TEXT,
+      quality_format TEXT,
+      quality_bitrate_kbps INTEGER,
+      quality_sample_rate_hz INTEGER,
+      quality_bit_depth INTEGER,
+      quality_checked_at INTEGER,
+      quality_upgrade_checked_at INTEGER,
+      upgrade_for_job_id TEXT
     );
   `);
 }
@@ -402,6 +410,21 @@ function migrateJobsTable(db) {
     db,
     "ALTER TABLE playlist_download_jobs ADD COLUMN indexer_name TEXT",
   );
+  for (const [name, type] of [
+    ["quality_tier", "TEXT"],
+    ["quality_format", "TEXT"],
+    ["quality_bitrate_kbps", "INTEGER"],
+    ["quality_sample_rate_hz", "INTEGER"],
+    ["quality_bit_depth", "INTEGER"],
+    ["quality_checked_at", "INTEGER"],
+    ["quality_upgrade_checked_at", "INTEGER"],
+    ["upgrade_for_job_id", "TEXT"],
+  ]) {
+    tryAddColumn(
+      db,
+      `ALTER TABLE playlist_download_jobs ADD COLUMN ${name} ${type}`,
+    );
+  }
 
   dropLegacyWeeklyFlowJobTriggers(db);
   syncWeeklyFlowJobsToPlaylistDownloads(db);

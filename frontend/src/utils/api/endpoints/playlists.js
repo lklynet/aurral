@@ -113,10 +113,23 @@ export const reSearchSharedPlaylistTrack = (playlistId, jobId) =>
     `/playlists/shared-playlists/${playlistId}/tracks/${jobId}/research`,
   );
 
+export const reSearchFlowTrack = (playlistId, jobId) =>
+  postData(
+    `/playlists/flows/${encodeURIComponent(playlistId)}/tracks/${encodeURIComponent(jobId)}/research`,
+  );
+
 export const reSearchMissingSharedPlaylistTracks = (playlistId) =>
   postData(
     `/playlists/shared-playlists/${playlistId}/research-missing`,
   );
+
+export const searchTrackUpgrade = (playlistId, jobId) =>
+  postData(
+    `/playlists/quality-upgrades/${encodeURIComponent(playlistId)}/${encodeURIComponent(jobId)}`,
+  );
+
+export const searchPlaylistUpgrades = (playlistId) =>
+  postData(`/playlists/quality-upgrades/${encodeURIComponent(playlistId)}`);
 
 export const approveBlockedJob = (jobId) =>
   postData(`/playlists/jobs/${jobId}/approve`);

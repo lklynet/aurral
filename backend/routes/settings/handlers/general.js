@@ -22,6 +22,7 @@ import { logger } from "../../../services/logger.js";
 import { testNavidromeConnection } from "../../shared/navidromeTest.js";
 import { mergePlexIntegration } from "./plexSettings.js";
 import { getNewsSettings, normalizeNewsFeeds, normalizeNewsGroups } from "../../../services/apiClients/config.js";
+import { normalizeQualityProfile } from "../../../services/qualityProfileModel.js";
 
 function mergeIntegrations(existing, input, keys) {
   const merged = { ...existing, ...input };
@@ -94,6 +95,7 @@ export function registerGeneral(router) {
     try {
       const {
         quality,
+        qualityProfile,
         releaseTypes,
         integrations,
         rootFolderPath,
@@ -339,6 +341,10 @@ export function registerGeneral(router) {
             : currentSettings.dateTimeFormat || defaultData.settings.dateTimeFormat,
         quality:
           quality !== undefined ? quality : currentSettings.quality || "standard",
+        qualityProfile:
+          qualityProfile !== undefined
+            ? normalizeQualityProfile(qualityProfile, integrations?.slskd)
+            : currentSettings.qualityProfile,
         rootFolderPath:
           rootFolderPath !== undefined
             ? rootFolderPath
@@ -406,6 +412,19 @@ export function registerGeneral(router) {
       }
 
       dbOps.updateSettings(updatedSettings);
+      if (
+        qualityProfile !== undefined &&
+        JSON.stringify(updatedSettings.qualityProfile) !==
+          JSON.stringify(currentSettings.qualityProfile)
+      ) {
+        const { enqueueSystemTaskJob } = await import(
+          "../../../services/honkerDb.js"
+        );
+        enqueueSystemTaskJob(
+          { kind: "quality-profile-refresh" },
+          { priority: -10 },
+        );
+      }
       if (integrations?.navidrome) {
         const { playlistManager } = await import(
           "../../../services/weeklyFlow/weeklyFlowPlaylistManager.js"

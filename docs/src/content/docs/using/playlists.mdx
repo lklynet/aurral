@@ -48,6 +48,52 @@ See [yt-dlp](/integrations/ytdlp/), [slskd](/integrations/slskd/), and [Usenet](
 
 See [Filesystem and mounts](/getting-started/storage/) for storage setup.
 
+## Quality profile
+
+Open **Settings > Download Clients > Quality Profile** to set the audio quality rules for flows and static playlists.
+
+The profile is global. Only an administrator can change it.
+
+The list order sets the quality rank. Move the best quality to the top. Select each tier that Aurral can accept. Select one enabled tier as the cutoff.
+
+- An enabled tier at or above the cutoff is **Preferred**.
+- An enabled tier below the cutoff is **Upgrade**.
+- A disabled or unknown tier is **Below floor**.
+
+The default profile accepts all tiers and uses **FLAC standard** as the cutoff.
+
+| Tier | Final-file rule |
+| --- | --- |
+| FLAC hi-res | More than 16 bits or more than 48 kHz |
+| FLAC standard | Up to 16 bits and up to 48 kHz |
+| MP3 128, 192, 256, or 320 | Average bitrate, rounded to the nearest kbps |
+| M4A 128, 192, 256, or 320 | Average bitrate, rounded to the nearest kbps |
+
+Aurral can use search-result names and bitrate data to order candidates. Aurral does not trust that data for final admission. It reads the downloaded file and rejects it when the format, bitrate, sample rate, or bit depth does not match an enabled tier.
+
+An unknown final quality is not valid. A quality rejection does not go to **Activity > Review**. Review stays for track identity and duration decisions.
+
+The **Quality** column on the Playlists page shows the measured tier and its profile state.
+
+## Track upgrades
+
+Aurral can upgrade files that it owns under the flow and static playlist folder. It does not change files from Lidarr or another external library.
+
+Existing Aurral files stay available when they are below the new quality floor. Aurral replaces one only after it downloads and validates a better file. If more than one playlist uses the same file, Aurral updates all playlist references together.
+
+To start upgrades manually:
+
+- Select **Search for upgrade** on an eligible track.
+- Select **Search for upgrades** from a flow or static playlist menu.
+
+A user who can open the playlist can start these searches. Manual searches work when automatic upgrades are off.
+
+To schedule upgrades, enable **Automatic upgrades** in the Quality Profile. The default is off. Set the interval from 1 to 365 days. The default is 2 days for each track.
+
+Upgrade jobs have a lower priority than missing-track downloads. Aurral uses slskd and Usenet for upgrades, in the configured source-priority order. It stops after the first source provides a valid, strictly better file. It waits for the next interval before it tries another automatic improvement for that track.
+
+yt-dlp can supply an acceptable first file. Aurral does not use yt-dlp for upgrades.
+
 ## Next steps
 
 - [Flows](/using/flows/): schedule, source mix, focus, and generation behavior

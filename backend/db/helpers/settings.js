@@ -17,6 +17,7 @@ import {
 } from "../../services/playlistM3uPaths.js";
 import { normalizeExistingFileMode } from "../../services/weeklyFlow/weeklyFlowFileReuse.js";
 import { normalizeDateTimeFormat } from "../../config/constants.js";
+import { normalizeQualityProfile } from "../../services/qualityProfileModel.js";
 
 const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
 const upsertSettingStmt = db.prepare(
@@ -149,10 +150,25 @@ export const dbOps = {
     const onboardingComplete =
       getSettingStmt.get("onboardingComplete")?.value === "true";
 
+    const decryptedIntegrations = decryptIntegrations(integrations, encKey) || {};
+    const storedQualityProfile = dbHelpers.parseJSON(
+      getSettingStmt.get("qualityProfile")?.value,
+    );
+    const qualityProfile = normalizeQualityProfile(
+      storedQualityProfile,
+      decryptedIntegrations.slskd,
+    );
+    if (storedQualityProfile == null) {
+      upsertSettingStmt.run(
+        "qualityProfile",
+        dbHelpers.stringifyJSON(qualityProfile),
+      );
+    }
     const result = {
-      integrations: decryptIntegrations(integrations, encKey) || {},
+      integrations: decryptedIntegrations,
       quality: quality || "standard",
       dateTimeFormat: normalizeDateTimeFormat(dateTimeFormat),
+      qualityProfile,
       queueCleaner: queueCleaner || {},
       security:
         security && typeof security === "object"
@@ -239,6 +255,17 @@ export const dbOps = {
         upsertSettingStmt.run(
           "dateTimeFormat",
           normalizeDateTimeFormat(settings.dateTimeFormat),
+        );
+      }
+      if (settings.qualityProfile !== undefined) {
+        upsertSettingStmt.run(
+          "qualityProfile",
+          dbHelpers.stringifyJSON(
+            normalizeQualityProfile(
+              settings.qualityProfile,
+              settings.integrations?.slskd,
+            ),
+          ),
         );
       }
       if (settings.queueCleaner) {

@@ -60,6 +60,13 @@ export const SCHEDULED_SYSTEM_TASKS = [
     payload: { kind: "weekly-flow-reuse-repair" },
   },
   {
+    name: "quality-upgrade-check",
+    queue: "system-task",
+    schedule: "@every 1h",
+    payload: { kind: "quality-upgrade-check" },
+    priority: -10,
+  },
+  {
     name: "discovery-refresh-check",
     queue: "system-task",
     schedule: "@every 15m",
@@ -179,7 +186,8 @@ const pipeline = registerQueue({
   maxAttempts: 5,
   workerModule: "./slskdOrchestratorWorker.js",
   workerStartFn: "startSlskdOrchestratorWorker",
-  defaultPriorityFn: (payload) => getPipelinePriorityForPhase(payload?.phase),
+  defaultPriorityFn: (payload) =>
+    getPipelinePriorityForPhase(payload?.phase) - (payload?.upgrade ? 100 : 0),
 });
 export const getPipelineQueue = pipeline.getQueue;
 export const enqueuePipelineJob = pipeline.enqueueJob;
@@ -359,6 +367,7 @@ export function bootstrapHonkerSchedules() {
 export function enqueueHonkerStartupTasks() {
   enqueueSystemTaskJob({ kind: "playlist-startup-migration" }, { delaySeconds: 3, priority: 10 });
   enqueueSystemTaskJob({ kind: "weekly-flow-startup-check" }, { delaySeconds: 5, priority: 5 });
+  enqueueSystemTaskJob({ kind: "quality-profile-refresh" }, { delaySeconds: 10, priority: -10 });
   enqueueSystemTaskJob(
     { kind: "weekly-flow-startup-reuse-repair" },
     { delaySeconds: 15, priority: 5 },

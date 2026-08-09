@@ -3,17 +3,17 @@ import { testNzbgetConnection, testSabnzbdConnection, testSlskdConnection, testY
 
 import { Plus, RefreshCw, Trash2, Wrench } from "lucide-react";
 import DownloadFolderField from "../../../components/DownloadFolderField";
-import { SettingsInput, SettingsSelect } from "./SettingsField";
+import { SettingsInput } from "./SettingsField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
 import {
   SettingsModalField,
   SettingsModalSection,
   SettingsModalToggle,
-  SettingsModalToggleGroup,
 } from "./SettingsModalLayout";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { getProviderStatus } from "../utils/integrationStatus";
 import { PATH_MAPPING_SOURCE_OPTIONS, PathMappingModal } from "./PathMappingModal";
+import { QUALITY_TIER_LABELS, QualityProfileModal } from "./QualityProfileModal";
 const PATH_MAPPING_SOURCE_VALUES = new Set(
   PATH_MAPPING_SOURCE_OPTIONS.map((option) => option.value),
 );
@@ -44,6 +44,7 @@ function sourceLabel(source) {
 }
 
 const CLIENT_MODALS = {
+  qualityProfile: "quality-profile",
   slskd: "slskd",
   ytdlp: "ytdlp",
   nzbget: "nzbget",
@@ -75,6 +76,13 @@ export function SettingsDownloadClientsSection({
   const pathMappings = coercePathMappings(settings.pathMappings).filter(
     (entry) => entry.remote || entry.local,
   );
+  const qualityProfile = settings.qualityProfile || {};
+  const qualityOrder = Array.isArray(qualityProfile.order)
+    ? qualityProfile.order
+    : Object.keys(QUALITY_TIER_LABELS);
+  const qualityEnabled = new Set(
+    Array.isArray(qualityProfile.enabled) ? qualityProfile.enabled : qualityOrder,
+  );
 
   const slskdConfigured = Boolean(slskd.url && slskd.apiKey);
   const ytdlpConfigured = health?.ytdlpConfigured === true;
@@ -101,6 +109,13 @@ export function SettingsDownloadClientsSection({
     updateSettings({
       ...settings,
       pathMappings: coercePathMappings(nextMappings),
+    });
+  };
+
+  const updateQualityProfile = (patch) => {
+    updateSettings({
+      ...settings,
+      qualityProfile: { ...qualityProfile, ...patch },
     });
   };
 
@@ -266,6 +281,19 @@ export function SettingsDownloadClientsSection({
         </div>
       </div>
 
+      <SettingsArrFieldSet legend="Quality Profile">
+        <div className="arr-info">
+          Choose acceptable formats, rank them by preference, and set the upgrade cutoff.
+        </div>
+        <IntegrationCard
+          title="Default"
+          subtitle={`${qualityEnabled.size} qualities allowed`}
+          status={{ label: "Configured", className: "is-enabled" }}
+          meta={`Cutoff ${QUALITY_TIER_LABELS[qualityProfile.cutoff] || "not set"}`}
+          onClick={() => setActiveModal(CLIENT_MODALS.qualityProfile)}
+        />
+      </SettingsArrFieldSet>
+
       <SettingsArrFieldSet legend="Downloads Folder">
         <SettingsArrFormGroup
           label="Path"
@@ -373,6 +401,14 @@ export function SettingsDownloadClientsSection({
         />
       ) : null}
 
+      {activeModal === CLIENT_MODALS.qualityProfile && (
+        <QualityProfileModal
+          profile={{ ...qualityProfile, order: qualityOrder, enabled: [...qualityEnabled] }}
+          onChange={updateQualityProfile}
+          onClose={() => setActiveModal(null)}
+        />
+      )}
+
       {activeModal === CLIENT_MODALS.slskd && (
         <SettingsIntegrationModal
           title="slskd"
@@ -431,39 +467,15 @@ export function SettingsDownloadClientsSection({
                 }
               />
             </SettingsModalField>
-            <SettingsModalField label="Preferred format">
-              <SettingsSelect
-                value={slskd.preferredFormat || "flac"}
-                onChange={(event) =>
-                  updateIntegration("slskd", {
-                    preferredFormat: event.target.value,
-                  })
-                }
-              >
-                <option value="flac">FLAC</option>
-                <option value="mp3">MP3</option>
-              </SettingsSelect>
-            </SettingsModalField>
-            <SettingsModalToggleGroup>
-              <SettingsModalToggle
-                label="Strict format only"
-                checked={slskd.preferredFormatStrict === true}
-                onChange={(event) =>
-                  updateIntegration("slskd", {
-                    preferredFormatStrict: event.target.checked,
-                  })
-                }
-              />
-              <SettingsModalToggle
-                label="Clean up after runs"
-                checked={slskd.cleanupAfterRuns === true}
-                onChange={(event) =>
-                  updateIntegration("slskd", {
-                    cleanupAfterRuns: event.target.checked,
-                  })
-                }
-              />
-            </SettingsModalToggleGroup>
+            <SettingsModalToggle
+              label="Clean up after runs"
+              checked={slskd.cleanupAfterRuns === true}
+              onChange={(event) =>
+                updateIntegration("slskd", {
+                  cleanupAfterRuns: event.target.checked,
+                })
+              }
+            />
           </SettingsModalSection>
         </SettingsIntegrationModal>
       )}

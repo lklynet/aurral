@@ -30,6 +30,8 @@ import {
   blockPipelineJobForReview,
   finalizePipelineJobSuccess,
 } from "./pipelineHelpers.js";
+import { getQualityProfile } from "./qualityProfileService.js";
+import { orderAdvertisedQualityCandidates } from "./qualityProfileModel.js";
 
 const MIN_USENET_CANDIDATES = 2;
 const MAX_DOWNLOAD_CANDIDATES = 5;
@@ -46,11 +48,14 @@ function getUsenetClientKey() {
   return "nzbget";
 }
 
-function hasEnoughCandidates(aggregated, resolvedTrack) {
-  return (
-    rankUsenetReleases(aggregated, resolvedTrack).filter((entry) => entry.preDownloadValid)
-      .length >= MIN_USENET_CANDIDATES
+function hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions) {
+  const ranked = rankUsenetReleases(aggregated, resolvedTrack).filter(
+    (entry) => entry.preDownloadValid,
   );
+  return orderAdvertisedQualityCandidates(ranked, {
+    ...qualityOptions,
+    readName: (entry) => entry?.raw?.release?.title,
+  }).length >= MIN_USENET_CANDIDATES;
 }
 
 function classifyHistoryStatus(item) {
@@ -173,16 +178,26 @@ async function handleUsenetSearch(payload, helpers) {
     .then(({ recordTrackJobSearching }) => recordTrackJobSearching(job))
     .catch((err) => { console.warn(err); });
 
-  const resolvedTrack = buildResolvedTrack(job, payload.track);
+  const resolvedTrack = {
+    ...buildResolvedTrack(job, payload.track),
+    upgradeForJobId: payload.upgradeForJobId || null,
+  };
+  const qualityOptions = {
+    profile: getQualityProfile(),
+    currentTier: payload.upgradeForJobId
+      ? downloadTracker.getJob(payload.upgradeForJobId)?.qualityTier
+      : null,
+    upgrade: payload.upgrade === true,
+  };
   const searchTiers = buildFlowSearchTiers(resolvedTrack);
   const aggregated = [];
   const seen = new Set();
   const queries = [];
   let lastError = "";
   for (const tier of searchTiers) {
-    if (hasEnoughCandidates(aggregated, resolvedTrack)) break;
+    if (hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions)) break;
     for (const query of tier.queries) {
-      if (hasEnoughCandidates(aggregated, resolvedTrack)) break;
+      if (hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions)) break;
       queries.push(query);
       try {
         const releases = await prowlarrClient.search(query);
@@ -211,7 +226,14 @@ async function handleUsenetSearch(payload, helpers) {
   const filteredRanked = deniedSourceGuidSet.size > 0
     ? ranked.filter((entry) => !deniedSourceGuidSet.has(String(entry?.raw?.guid || "").trim()))
     : ranked;
-  const candidates = selectRankedUsenetCandidates(filteredRanked, MAX_DOWNLOAD_CANDIDATES).map((entry) => ({
+  const qualityRanked = orderAdvertisedQualityCandidates(
+    filteredRanked.filter((entry) => entry.preDownloadValid),
+    {
+    ...qualityOptions,
+    readName: (entry) => entry?.raw?.release?.title,
+    },
+  );
+  const candidates = selectRankedUsenetCandidates(qualityRanked, MAX_DOWNLOAD_CANDIDATES).map((entry) => ({
     raw: entry.raw,
     score: entry.score,
     scores: entry.scores,
@@ -359,7 +381,10 @@ async function handleUsenetFinalize(payload, helpers) {
   const candidate = getPayloadCandidate(payload);
   const client = getUsenetClient();
   const historyItem = payload.history || (await client.getHistoryItem(payload.nzbId));
-  const resolvedTrack = buildResolvedTrack(job, payload.track);
+  const resolvedTrack = {
+    ...buildResolvedTrack(job, payload.track),
+    upgradeForJobId: payload.upgradeForJobId || null,
+  };
   const found = await locateBestDownloadedAudio(historyItem, candidate, resolvedTrack, client);
   if (
     blockPipelineJobForReview({
@@ -403,6 +428,7 @@ async function handleUsenetFinalize(payload, helpers) {
     job,
     committedFinalPath,
     album: candidate?.resolvedAlbumName || job.albumName,
+    quality: found.validation?.quality,
   });
 }
 

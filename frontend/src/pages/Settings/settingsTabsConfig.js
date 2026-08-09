@@ -38,6 +38,17 @@ const SETTINGS_SEARCH_METADATA = {
       Database: "sqlite data runtime",
       Docker: "container runtime",
     },
+    fields: {
+      Version: "application build",
+      Uptime: "running process",
+      Environment: "runtime mode hostname",
+      Platform: "node operating system architecture",
+      Container: "docker host process",
+      "App data": "data directory",
+      "Database path": "sqlite file",
+      "Startup directory": "working directory",
+      "API key": "X-Api-Key api_key authentication copy rotate",
+    },
   },
   "storage-health": {
     sections: ["Health", "Disk Space", "Storage Health"],
@@ -46,12 +57,25 @@ const SETTINGS_SEARCH_METADATA = {
       Downloads: "download paths free space",
       Database: "sqlite data storage",
     },
+    fields: {
+      Location: "mount path filesystem",
+      Role: "storage purpose",
+      "Free space": "disk available capacity",
+      "Total space": "disk capacity",
+      "Run checks": "verify storage library paths transfers playback",
+    },
   },
   tasks: {
     sections: ["Scheduled", "Workers", "Queue"],
     services: {
       "Background tasks": "jobs workers",
       "Weekly Flow": "playlist flow",
+    },
+    fields: {
+      Scheduled: "next run interval schedule",
+      Workers: "processor status failures standby",
+      Queue: "jobs running queued completed failed retry duration",
+      "Clear stale": "stuck tasks jobs",
     },
   },
   lidarr: {
@@ -60,6 +84,18 @@ const SETTINGS_SEARCH_METADATA = {
       Lidarr: "music library artists albums",
       MusicBrainz: "metadata artist ids",
     },
+    fields: {
+      "Server URL": "address host connection",
+      "API key": "credentials authentication",
+      "External URL": "browser view on lidarr public address",
+      "Default root folder": "library path",
+      "Default quality profile": "lidarr profile",
+      "Default metadata profile": "lidarr metadata",
+      Tag: "lidarr tag",
+      "Default monitoring option": "albums existing future missing latest first",
+      "Search on add": "missing albums artists",
+      "Community guide": "Davo recommended settings custom formats naming scheme",
+    },
   },
   indexers: {
     sections: ["General", "Connection", "Indexing", "Priority", "Details"],
@@ -67,21 +103,72 @@ const SETTINGS_SEARCH_METADATA = {
       Prowlarr: "indexer manager search",
       Usenet: "audio indexers",
     },
+    fields: {
+      "Enable Prowlarr": "turn on indexer manager",
+      "Server URL": "address host connection",
+      "API key": "credentials authentication",
+      "Music categories": "audio category 3000",
+      "Result limit": "maximum search results",
+      "Enable in Aurral": "indexer enabled",
+      Priority: "indexer order preference",
+      Protocol: "usenet torrent",
+      "Prowlarr status": "enabled disabled",
+    },
   },
   "download-clients": {
-    sections: ["Downloads Folder", "Remote Path Mappings", "General", "Connection", "Behavior", "Downloads", "Advanced"],
+    sections: ["Quality Profile", "Downloads Folder", "Remote Path Mappings", "General", "Connection", "Behavior", "Downloads", "Advanced"],
     services: {
       slskd: "Soulseek download client",
       "yt-dlp": "YouTube web download client",
       NZBGet: "Usenet download client",
       SABnzbd: "Usenet download client",
     },
+    fields: {
+      "Quality Profile": "default acceptable allowed formats rank preference cutoff upgrades",
+      Qualities: "FLAC MP3 M4A bitrate hi-res standard allowed cutoff drag rank",
+      "Automatic upgrades": "upgrade searches Flow Static tracks",
+      "Upgrade interval": "days between checks",
+      Path: "downloads folder media library",
+      "Applies to": "remote path mapping source client all",
+      "Remote path": "download client path mapping",
+      "Local path": "Aurral path mapping",
+      "Enable slskd": "Soulseek on off",
+      "Enable yt-dlp": "YouTube web on off",
+      "Enable NZBGet": "Usenet on off",
+      "Enable SABnzbd": "Usenet on off",
+      "Server URL": "client address host connection",
+      "API key": "client credentials authentication",
+      Username: "NZBGet credentials",
+      Password: "NZBGet credentials",
+      "Source priority": "client order preference",
+      "Staging path": "yt-dlp temporary download folder",
+      Category: "Usenet downloads",
+      "NZB priority": "NZBGet queue",
+      "Completed download path": "NZBGet import folder",
+      "Add NZBs paused": "NZBGet pause queue",
+      "Clean up after runs": "SABnzbd history cleanup",
+    },
   },
   playback: {
-    sections: ["Playback Servers", "Navidrome Playlist Paths", "Cover Art", "Connection", "Account", "Aurral Library Path", "Main library", "Sync"],
+    sections: ["Playback Servers", "Navidrome Playlist Paths", "Cover Art", "Connection", "Account", "Aurral Library Path", "Main library (optional)", "Sync"],
     services: {
       Navidrome: "Subsonic music server",
       Plex: "Plexamp music server",
+    },
+    fields: {
+      "M3U path mode": "playlist paths navidrome aurral",
+      "Aurral path": "Navidrome path mapping local",
+      "Navidrome path": "M3U path mapping remote",
+      "Server URL": "playback server address host connection",
+      "Subsonic / Navidrome": "playback server connection",
+      Username: "Navidrome Subsonic credentials",
+      Password: "Navidrome Subsonic credentials",
+      Account: "Plex link sign in authentication",
+      "Plex server": "select server",
+      "Plex Aurral Library path (optional)": "Plex library section path",
+      "Include tracks from an existing library": "Plex main library",
+      "Local path for this library (optional)": "Plex path mapping",
+      Sync: "Navidrome scan playlists Plex refresh",
     },
   },
   connect: {
@@ -93,12 +180,43 @@ const SETTINGS_SEARCH_METADATA = {
       Inbox: "library updates releases shows news discoveries",
       Webhooks: "notifications HTTP callbacks",
     },
+    fields: {
+      "Server URL": "Gotify address host connection",
+      "Application token": "Gotify credentials API",
+      "API key": "Last.fm credentials",
+      "Default username": "Last.fm account listening history",
+      "Consumer key": "Ticketmaster API credentials",
+      "Search radius (miles)": "local shows concerts distance",
+      "Local discovery": "Ticketmaster shows concerts artists",
+      "Include recommended artists in local shows": "Ticketmaster discovery",
+      "Include trending artists in local shows": "Ticketmaster discovery",
+      URL: "webhook endpoint",
+      Headers: "webhook HTTP header key value",
+      Body: "webhook payload JSON",
+      "Discover updated": "notification event webhook Gotify",
+      "Weekly flow finished": "notification event webhook Gotify",
+      "Request made": "notification event webhook Gotify",
+      "Request available": "notification event webhook Gotify",
+      "Enable Inbox": "inbox on off",
+      "Upcoming releases": "inbox albums",
+      "Upcoming shows": "inbox concerts events",
+      "Library Artist news": "inbox RSS",
+      "Recommended Artist news": "inbox RSS",
+      Discoveries: "inbox recommendations",
+    },
   },
   "rss-news": {
-    sections: ["RSS News", "Feed groups", "RSS feeds"],
+    sections: ["RSS News", "Custom feeds", "Feed groups"],
     services: {
       News: "RSS articles artists library recommendations",
       Feeds: "music news sources custom feeds",
+    },
+    fields: {
+      "Enable RSS News": "news on off",
+      "Add RSS feed": "custom source",
+      "Feed name": "custom RSS source",
+      "Feed URL": "custom RSS address",
+      "Feed groups": "major publications magazines indie alternative discovery hip hop rap pop mainstream electronic dance metal hard rock country americana jazz classical specialty regional concerts festivals live music",
     },
   },
   discover: {
@@ -108,11 +226,24 @@ const SETTINGS_SEARCH_METADATA = {
       ListenBrainz: "recommendations discovery fallback",
       "Release Radar": "personalized playlists",
     },
+    fields: {
+      "Auto-refresh frequency": "daily weekly monthly recommendations",
+      "Discovery mode": "safer balanced deeper recommendations",
+      "Recommended artists": "number per refresh",
+      "Recommended playlists": "Discover Weekly Trending Mix Library Blend Listening History Release Radar",
+      "Refresh discovery": "update recommendations now",
+      "Clear image cache": "artwork cache reset",
+      Provider: "Last.fm ListenBrainz fallback",
+      "Last updated": "discovery cache status",
+    },
   },
   metadata: {
     sections: ["Metadata Server"],
     services: {
       BrainzMash: "MusicBrainz metadata provider",
+    },
+    fields: {
+      "Base URL": "metadata server address endpoint",
     },
   },
   users: {
@@ -122,8 +253,24 @@ const SETTINGS_SEARCH_METADATA = {
       Permissions: "roles access control",
       Plex: "account linking",
     },
+    fields: {
+      "Current password": "change password authentication",
+      "New password": "change password authentication",
+      "Confirm password": "change password authentication",
+      "Auto-login": "local network bypass authentication login",
+      Username: "create edit user account",
+      Password: "create edit user account",
+      Permissions: "roles manage users access",
+      "Plex account": "link user playback identity",
+    },
   },
 };
+
+const normalizeSearchText = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 
 const createSettingsSearchItem = (tab, kind, label, keywords = "") => ({
   id: tab.id,
@@ -131,10 +278,10 @@ const createSettingsSearchItem = (tab, kind, label, keywords = "") => ({
   label,
   kind,
   tabLabel: tab.label,
-  searchText: `${tab.label} ${tab.id} ${label} ${keywords}`.toLowerCase(),
+  searchText: normalizeSearchText(`${tab.label} ${tab.id} ${label} ${keywords}`),
 });
 
-export const SETTINGS_SEARCH_ITEMS = SETTINGS_NAV_TABS.flatMap((tab) => {
+export const SETTINGS_SEARCH_ITEMS = SETTINGS_TABS.flatMap((tab) => {
   const metadata = SETTINGS_SEARCH_METADATA[tab.id] || {};
   const items = [createSettingsSearchItem(tab, "page", tab.label, tab.id)];
 
@@ -148,8 +295,25 @@ export const SETTINGS_SEARCH_ITEMS = SETTINGS_NAV_TABS.flatMap((tab) => {
     }
   }
 
+  for (const [field, keywords] of Object.entries(metadata.fields || {})) {
+    const existing = items.find((item) => item.label.toLowerCase() === field.toLowerCase());
+    if (existing) {
+      existing.searchText = normalizeSearchText(`${existing.searchText} ${keywords}`);
+    } else {
+      items.push(createSettingsSearchItem(tab, "setting", field, keywords));
+    }
+  }
+
   return items;
 });
+
+export function searchSettingsItems(query) {
+  const terms = normalizeSearchText(query).split(" ").filter(Boolean);
+  if (!terms.length) return [];
+  return SETTINGS_SEARCH_ITEMS.filter((item) =>
+    terms.every((term) => item.searchText.includes(term)),
+  );
+}
 
 export const SETTINGS_TAB_IDS = SETTINGS_TABS.map((tab) => tab.id);
 

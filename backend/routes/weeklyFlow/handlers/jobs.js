@@ -30,6 +30,13 @@ import { finalizePipelineJobSuccess } from "../../../services/pipelineHelpers.js
 import path from "path";
 import fs from "fs/promises";
 import { invalidateRequestsCache } from "../../requests.js";
+import {
+  decorateJobQuality,
+  classifyQualityJob,
+  getQualityProfile,
+  queueQualityUpgrade,
+  runQualityUpgradeCheck,
+} from "../../../services/qualityProfileService.js";
 
 export function registerJobs(router) {
   router.get("/status", noCache, (req, res) => {
@@ -53,7 +60,8 @@ export function registerJobs(router) {
     if (sharedPlaylist?.tracks?.length && limit == null) {
       jobs = orderJobsBySharedPlaylistTracks(jobs, sharedPlaylist.tracks);
     }
-    res.json(filterJobsForUser(req.user, jobs));
+    const profile = getQualityProfile();
+    res.json(filterJobsForUser(req.user, jobs).map((job) => decorateJobQuality(job, profile)));
   });
 
   router.get("/jobs", (req, res) => {
@@ -62,7 +70,33 @@ export function registerJobs(router) {
       req.user,
       status ? downloadTracker.getByStatus(status) : downloadTracker.getAll(),
     );
-    res.json(jobs);
+    const profile = getQualityProfile();
+    res.json(jobs.map((job) => decorateJobQuality(job, profile)));
+  });
+
+  router.post("/quality-upgrades/:playlistId/:jobId", async (req, res) => {
+    const { playlistId, jobId } = req.params;
+    if (!canAccessPlaylistType(req.user, playlistId)) {
+      return res.status(404).json({ error: "Playlist not found" });
+    }
+    const job = downloadTracker.getJob(jobId);
+    if (!job || job.playlistType !== playlistId) {
+      return res.status(404).json({ error: "Track not found" });
+    }
+    const queued = await queueQualityUpgrade(job);
+    if (!queued) {
+      return res.status(409).json({ error: "Track is not eligible for an upgrade" });
+    }
+    return res.json({ success: true, queued: 1, jobId });
+  });
+
+  router.post("/quality-upgrades/:playlistId", async (req, res) => {
+    const { playlistId } = req.params;
+    if (!canAccessPlaylistType(req.user, playlistId)) {
+      return res.status(404).json({ error: "Playlist not found" });
+    }
+    const queued = await runQualityUpgradeCheck({ force: true, playlistId, limit: 500 });
+    return res.json({ success: true, queued });
   });
 
   router.put("/playlists/:playlistId/retry-cycle", async (req, res) => {
@@ -188,6 +222,7 @@ export function registerJobs(router) {
         committedFinalPath: committedPath,
         album: job.albumName,
       });
+      await classifyQualityJob(downloadTracker.getJob(job.id));
       invalidateRequestsCache();
       res.json({ success: true, path: committedPath });
     } catch (error) {

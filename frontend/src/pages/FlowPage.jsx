@@ -20,7 +20,10 @@ import {
   deleteFlowArtwork,
   generateFlowArtwork,
   reSearchSharedPlaylistTrack,
+  reSearchFlowTrack,
   reSearchMissingSharedPlaylistTracks,
+  searchTrackUpgrade,
+  searchPlaylistUpgrades,
   syncSharedPlaylistImport,
   getFlowLidarrImportListUrl,
 } from "../utils/api/endpoints/playlists.js";
@@ -178,6 +181,7 @@ function FlowPage() {
   const [applyingSharedPlaylistNameId, setApplyingSharedPlaylistNameId] = useState(null);
   const [reSearchingTrackIds, setReSearchingTrackIds] = useState({});
   const [reSearchingMissingPlaylistId, setReSearchingMissingPlaylistId] = useState(null);
+  const [searchingUpgradePlaylistId, setSearchingUpgradePlaylistId] = useState(null);
   const [syncingImportPlaylistId, setSyncingImportPlaylistId] = useState(null);
   const [updatingSyncIntervalPlaylistId, setUpdatingSyncIntervalPlaylistId] = useState(null);
   const [savingToPlaylistId, setSavingToPlaylistId] = useState(null);
@@ -952,14 +956,14 @@ function FlowPage() {
     }
   };
 
-  const handleReSearchSharedPlaylistTrack = async (playlistId, track) => {
+  const handleReSearchTrack = async (playlistId, track, isFlow = false) => {
     const jobId = track?.id;
     if (!playlistId || !jobId || reSearchingTrackIds[jobId]) return;
     setReSearchingTrackIds((prev) => ({
       ...prev,
       [jobId]: true,
     }));
-    if (playlistId === selectedId) {
+    if (track.status !== "done" && playlistId === selectedId) {
       setSelectedTracks((prev) =>
         prev.map((entry) =>
           entry?.id === jobId
@@ -974,8 +978,16 @@ function FlowPage() {
       );
     }
     try {
-      await reSearchSharedPlaylistTrack(playlistId, jobId);
-      showSuccess(`Re-searching ${track.trackName}`);
+      if (track.status === "done") {
+        await searchTrackUpgrade(playlistId, jobId);
+        showSuccess(`Searching for an upgrade to ${track.trackName}`);
+      } else if (isFlow) {
+        await reSearchFlowTrack(playlistId, jobId);
+        showSuccess(`Re-searching ${track.trackName}`);
+      } else {
+        await reSearchSharedPlaylistTrack(playlistId, jobId);
+        showSuccess(`Re-searching ${track.trackName}`);
+      }
       await fetchStatus();
       await fetchFlowTracks(playlistId, { showSpinner: false });
     } catch (err) {
@@ -988,6 +1000,24 @@ function FlowPage() {
       await fetchFlowTracks(playlistId, { showSpinner: false });
     } finally {
       setReSearchingTrackIds(({ [jobId]: _, ...prev }) => prev);
+    }
+  };
+
+  const handleSearchPlaylistUpgrades = async (playlistId) => {
+    if (!playlistId || searchingUpgradePlaylistId) return;
+    setSearchingUpgradePlaylistId(playlistId);
+    try {
+      const result = await searchPlaylistUpgrades(playlistId);
+      showSuccess(
+        result?.queued > 0
+          ? `Searching upgrades for ${result.queued} track${result.queued !== 1 ? "s" : ""}`
+          : "No tracks are eligible for an upgrade",
+      );
+      await fetchFlowTracks(playlistId, { showSpinner: false });
+    } catch (err) {
+      showError(getApiErrorMessage(err, "Failed to search for upgrades"));
+    } finally {
+      setSearchingUpgradePlaylistId(null);
     }
   };
 
@@ -1109,7 +1139,11 @@ function FlowPage() {
         ),
       );
       try {
-        await reSearchSharedPlaylistTrack(selectedPlaylist.id, track.id);
+        if (track.status === "done") {
+          await searchTrackUpgrade(selectedPlaylist.id, track.id);
+        } else {
+          await reSearchSharedPlaylistTrack(selectedPlaylist.id, track.id);
+        }
         requeued++;
       } catch {
       }
@@ -1336,6 +1370,21 @@ function FlowPage() {
           <button
             type="button"
             className="artist-menu-item"
+            onClick={() => handleSearchPlaylistUpgrades(selectedFlow.id)}
+            disabled={searchingUpgradePlaylistId === selectedFlow.id}
+          >
+            <span className="artist-menu-item__main">
+              {searchingUpgradePlaylistId === selectedFlow.id ? (
+                <Loader2 className="artist-icon-sm animate-spin" />
+              ) : (
+                <Search className="artist-icon-sm" />
+              )}
+              Search for upgrades
+            </span>
+          </button>
+          <button
+            type="button"
+            className="artist-menu-item"
             onClick={() => handleRunNow(selectedFlow)}
             disabled={!flowCanRunNow}
           >
@@ -1471,6 +1520,21 @@ function FlowPage() {
           <button
             type="button"
             className="artist-menu-item"
+            onClick={() => handleSearchPlaylistUpgrades(selectedPlaylist.id)}
+            disabled={searchingUpgradePlaylistId === selectedPlaylist.id}
+          >
+            <span className="artist-menu-item__main">
+              {searchingUpgradePlaylistId === selectedPlaylist.id ? (
+                <Loader2 className="artist-icon-sm animate-spin" />
+              ) : (
+                <Search className="artist-icon-sm" />
+              )}
+              Search for upgrades
+            </span>
+          </button>
+          <button
+            type="button"
+            className="artist-menu-item"
             onClick={() => handleExportFlow(selectedPlaylist)}
           >
             <span className="artist-menu-item__main">
@@ -1527,12 +1591,14 @@ function FlowPage() {
             excludedPlaylistIds={selectedPlaylist ? [selectedPlaylist.id] : []}
             getDefaultPlaylistName={getDefaultTrackPlaylistName}
             onLoadPlaylists={loadPlaylistsForMenu}
-            reSearchingTrackIds={selectedIsFlow ? undefined : reSearchingTrackIds}
+            reSearchingTrackIds={reSearchingTrackIds}
             deletingTrackId={selectedIsFlow ? undefined : deletingTrackId}
             onReSearchTrack={
-              selectedIsFlow || !selectedPlaylist
-                ? undefined
-                : (track) => handleReSearchSharedPlaylistTrack(selectedPlaylist.id, track)
+              selectedIsFlow
+                ? (track) => handleReSearchTrack(selectedFlow.id, track, true)
+                : selectedPlaylist
+                  ? (track) => handleReSearchTrack(selectedPlaylist.id, track)
+                  : undefined
             }
             onDeleteTrack={
               selectedIsFlow || !selectedPlaylist

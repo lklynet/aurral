@@ -44,7 +44,10 @@ async function handleYtdlpSearch(payload, helpers) {
       console.warn(err);
     });
 
-  const resolvedTrack = buildResolvedTrack(job, payload.track);
+  const resolvedTrack = {
+    ...buildResolvedTrack(job, payload.track),
+    upgradeForJobId: payload.upgradeForJobId || null,
+  };
   const queries = buildYtdlpSearchQueries(resolvedTrack);
   const aggregated = [];
   const seen = new Set();
@@ -154,7 +157,10 @@ async function handleYtdlpFinalize(payload, helpers) {
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
   const candidate = getPayloadCandidate(payload);
-  const resolvedTrack = buildResolvedTrack(job, payload.track);
+  const resolvedTrack = {
+    ...buildResolvedTrack(job, payload.track),
+    upgradeForJobId: payload.upgradeForJobId || null,
+  };
   const filePath = String(payload.downloadedPath || "").trim();
   if (!filePath) {
     if (hasNextCandidate(payload)) {
@@ -213,6 +219,7 @@ async function handleYtdlpFinalize(payload, helpers) {
     job,
     committedFinalPath,
     album: candidate?.resolvedAlbumName || job.albumName,
+    quality: validation.quality,
   });
 }
 

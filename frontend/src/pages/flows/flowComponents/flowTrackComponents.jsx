@@ -38,6 +38,23 @@ function getTrackStatusMeta(status) {
   }
 }
 
+function getTrackQualityMeta(track) {
+  if (track?.status !== "done") return { label: "—", state: "" };
+  let label = track.qualityLabel || "Unknown";
+  if (track.qualityFormat === "flac" && track.qualityBitDepth && track.qualitySampleRate) {
+    label = `FLAC ${track.qualityBitDepth}/${track.qualitySampleRate / 1000}`;
+  } else if (track.qualityFormat && track.qualityBitrateKbps) {
+    label = `${track.qualityFormat.toUpperCase()} ${track.qualityBitrateKbps}`;
+  }
+  const state = {
+    preferred: "Preferred",
+    upgrade: "Upgrade",
+    "below-floor": "Below floor",
+    external: "External",
+  }[track.qualityState] || "";
+  return { label, state };
+}
+
 function BulkPlaylistAction({
   icon: Icon,
   label,
@@ -269,7 +286,7 @@ function FlowTrackKebabMenu({
                   ) : (
                     <Search className="artist-icon-sm" />
                   )}
-                  Re-search
+                  {track.status === "done" ? "Search for upgrade" : "Re-search"}
                 </span>
               </button>
             ) : null}
@@ -779,6 +796,9 @@ export function FlowTracksPanel({
                     className="flow-page__tracks-table-status-head"
                   />
                 )}
+                <th className="flow-page__tracks-table-quality-head" scope="col">
+                  Quality
+                </th>
                 <th
                   className="flow-page__tracks-table-actions-head"
                   aria-hidden="true"
@@ -803,10 +823,14 @@ export function FlowTracksPanel({
                 const canReSearch =
                   typeof onReSearchTrack === "function" &&
                   !!track.id &&
-                  (track.status === "done" || track.status === "failed");
+                  (track.status === "failed" ||
+                    track.status === "done" &&
+                      track.qualityOwned === true &&
+                      track.qualityState !== "preferred");
                 const isReSearching = reSearchingTrackIds[track.id] === true;
                 const isDeleting = deletingTrackId === track.id;
                 const isCurrent = track.id === currentTrackId && isCurrentPlaying;
+                const quality = getTrackQualityMeta(track);
                 return (
                   <tr
                     key={track.id}
@@ -896,6 +920,14 @@ export function FlowTracksPanel({
                         <TrackStatusDot status={track.status} />
                       </td>
                     )}
+                    <td className="flow-page__tracks-table-quality-cell">
+                      <span className="flow-page__tracks-table-cell-text">{quality.label}</span>
+                      {quality.state ? (
+                        <span className={`flow-page__quality-state flow-page__quality-state--${track.qualityState}`}>
+                          {quality.state}
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="flow-page__tracks-table-actions-cell">
                       {editMode ? null : (
                       <div className="flow-page__tracks-actions">
@@ -934,8 +966,8 @@ export function FlowTracksPanel({
                                     type="button"
                                     onClick={() => onReSearchTrack(track)}
                                     className="btn btn-secondary btn-icon btn-xs"
-                                    aria-label={`Re-search ${track.trackName}`}
-                                    title={`Re-search ${track.trackName}`}
+                                    aria-label={`${track.status === "done" ? "Search for an upgrade to" : "Re-search"} ${track.trackName}`}
+                                    title={`${track.status === "done" ? "Search for an upgrade to" : "Re-search"} ${track.trackName}`}
                                     disabled={isReSearching}
                                   >
                                     {isReSearching ? (

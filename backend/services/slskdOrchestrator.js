@@ -39,6 +39,8 @@ import {
   blockPipelineJobForReview,
   finalizePipelineJobSuccess,
 } from "./pipelineHelpers.js";
+import { getQualityProfile } from "./qualityProfileService.js";
+import { orderAdvertisedQualityCandidates } from "./qualityProfileModel.js";
 
 export { commitImportToPlaylistLibrary };
 
@@ -63,19 +65,27 @@ export function buildSlskdSearchTierGroups(resolvedTrack) {
 }
 
 export function hasSlskdSearchCandidates(aggregated, resolvedTrack, searchOptions) {
-  return (
-    countPreDownloadValidCandidates(aggregated, resolvedTrack, searchOptions) >=
-    MIN_SEARCH_CANDIDATES
-  );
+  const ranked = rankFlowSearchResults(aggregated, resolvedTrack, searchOptions)
+    .filter((entry) => entry.preDownloadValid);
+  const eligible = orderAdvertisedQualityCandidates(ranked, {
+    profile: searchOptions?.qualityProfile || getQualityProfile(),
+    currentTier: searchOptions?.currentTier || null,
+    upgrade: searchOptions?.upgrade === true,
+    readName: (entry) => entry?.raw?.file,
+    readBitrate: (entry) => entry?.raw?.bitrate ?? entry?.raw?.bitRate,
+  });
+  return eligible.length >= MIN_SEARCH_CANDIDATES;
 }
 
 const _MAX_EMPTY_POLL_ATTEMPTS = 60;
 const MAX_POLL_ATTEMPTS = 600;
 
 async function getWorkerSearchOptions() {
-  const { getSlskdSearchFormatOptions } = await import("./slskdClient.js");
+  const profile = getQualityProfile();
+  const firstEnabled = profile.order.find((id) => profile.enabled.includes(id));
   return {
-    ...getSlskdSearchFormatOptions(),
+    preferredFormat: firstEnabled?.startsWith("mp3-") ? "mp3" : "flac",
+    strictFormat: false,
     ...buildSlskdRankingHistoryOptions(),
   };
 }
@@ -268,6 +278,11 @@ export function enqueuePendingJobsWithoutBatch() {
 }
 
 async function failJob(job, message) {
+  if (job.upgradeForJobId) {
+    const { finalizeQualityUpgradeFailure } = await import("./qualityProfileService.js");
+    await finalizeQualityUpgradeFailure(job, message);
+    return;
+  }
   downloadTracker.setFailed(job.id, message);
   try {
     const { recordTrackJobFailed } = await import("./aurralHistoryService.js");
@@ -290,7 +305,12 @@ function isSourceConfigured(sourceId) {
 }
 
 function buildNextSourcePayload(payload, failedSource = null, reason = null) {
-  const sources = getEnabledDownloadSources();
+  const allowedSources = Array.isArray(payload?.allowedSources)
+    ? new Set(payload.allowedSources)
+    : null;
+  const sources = getEnabledDownloadSources().filter(
+    (source) => !allowedSources || allowedSources.has(source.id),
+  );
   if (sources.length === 0) return null;
   const tried = new Set(Array.isArray(payload?.triedSources) ? payload.triedSources : []);
   const sourceErrors = Array.isArray(payload?.sourceErrors) ? [...payload.sourceErrors] : [];
@@ -609,11 +629,6 @@ async function cleanupEmptyAncestors(dir, rootBoundary) {
   }
 }
 
-function countPreDownloadValidCandidates(results, resolvedTrack, searchOptions) {
-  const ranked = rankFlowSearchResults(results, resolvedTrack, searchOptions);
-  return ranked.filter((entry) => entry.preDownloadValid).length;
-}
-
 function recordPayloadOutcome(job, payload, status, reason, details = {}) {
   recordSlskdTransferOutcome({
     job,
@@ -707,7 +722,15 @@ async function handleSearch(payload) {
     .catch((err) => { logger.warn("slskd", "Failed to record track job searching", { jobId: job.id, error: err?.message || String(err) }); });
   const resolvedTrack = buildResolvedTrack(job, payload.track);
   const searchTiers = buildSlskdSearchTierGroups(resolvedTrack);
-  const searchOptions = await getWorkerSearchOptions();
+  const currentTier = payload.upgradeForJobId
+    ? downloadTracker.getJob(payload.upgradeForJobId)?.qualityTier
+    : null;
+  const searchOptions = {
+    ...(await getWorkerSearchOptions()),
+    qualityProfile: getQualityProfile(),
+    currentTier,
+    upgrade: payload.upgrade === true,
+  };
   const aggregated = [];
   const seen = new Set();
   const searchIdRef = { value: null };
@@ -742,16 +765,14 @@ async function handleSearch(payload) {
     job.slskdSearchId = searchIdRef.value;
   }
   const ranked = rankFlowSearchResults(aggregated, resolvedTrack, searchOptions);
-  const eligible = ranked.filter((entry) => entry.preDownloadValid);
-  const eligibleKeys = new Set(
-    eligible.map((entry) => `${entry.raw?.user || ""}\0${entry.raw?.file || ""}`),
-  );
-  const candidatePool = [
-    ...eligible,
-    ...ranked.filter(
-      (entry) => !eligibleKeys.has(`${entry.raw?.user || ""}\0${entry.raw?.file || ""}`),
-    ),
-  ];
+  const orderForQuality = (entries) => orderAdvertisedQualityCandidates(entries, {
+    profile: getQualityProfile(),
+    currentTier,
+    upgrade: payload.upgrade === true,
+    readName: (entry) => entry?.raw?.file,
+    readBitrate: (entry) => entry?.raw?.bitrate ?? entry?.raw?.bitRate,
+  });
+  const eligible = orderForQuality(ranked.filter((entry) => entry.preDownloadValid));
   const deniedSources = Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [];
   const deniedSourceKeys = new Set(
     deniedSources
@@ -759,12 +780,12 @@ async function handleSearch(payload) {
       .map((entry) => String(entry[1] || "").trim().toLowerCase()),
   );
   const filteredPool = deniedSourceKeys.size > 0
-    ? candidatePool.filter((entry) => {
+    ? eligible.filter((entry) => {
         const user = String(entry?.raw?.user || "").trim().toLowerCase();
         const file = String(entry?.raw?.file || "").trim().toLowerCase();
         return !deniedSourceKeys.has(`${user}\0${file}`);
       })
-    : candidatePool;
+    : eligible;
   const candidates = selectRankedMatchAttempts(filteredPool, MAX_DOWNLOAD_CANDIDATES).map(
     (entry) => ({
       raw: entry.raw,
@@ -1005,7 +1026,10 @@ async function handleFinalize(payload) {
   const validation = await validateDownloadedTrack(
     sourcePath,
     candidate,
-    buildResolvedTrack(job, payload.track),
+    {
+      ...buildResolvedTrack(job, payload.track),
+      upgradeForJobId: payload.upgradeForJobId || null,
+    },
   );
   if (!validation.valid) {
     logger.warn("slskd", "slskd download validation failed", {
@@ -1076,6 +1100,7 @@ async function handleFinalize(payload) {
     job,
     committedFinalPath,
     album: candidate?.resolvedAlbumName || job.albumName,
+    quality: validation.quality,
     onSuccess: () => cleanupSuccessfulRunArtifacts(payload, transfer),
   });
 }

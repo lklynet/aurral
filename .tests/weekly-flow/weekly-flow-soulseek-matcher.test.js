@@ -483,7 +483,7 @@ test("selectRankedMatchAttempts spreads early attempts across users before reusi
   );
 });
 
-test("validateDownloadedTrack scores accepted candidates and rejects live mismatches", async () => {
+test("validateDownloadedTrack scores identity before final quality admission", async () => {
   const rejected = await validateDownloadedTrack(
     "/tmp/does-not-exist.mp3",
     {
@@ -517,7 +517,8 @@ test("validateDownloadedTrack scores accepted candidates and rejects live mismat
       durationMs: 433000,
     },
   );
-  assert.equal(accepted.valid, true);
+  assert.equal(accepted.valid, false);
+  assert.match(accepted.reason, /^quality-unknown:/);
   assert.notEqual(accepted.scores.matchReason, "pre-download-trusted");
   assert.equal(accepted.scores.preDownloadValid, true);
   assert.ok(accepted.scores.title >= 82);

@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 
 import {
   setupIsolatedBackend,
@@ -34,27 +35,29 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-async function writeOneSecondWav(filePath) {
-  const sampleRate = 8000;
-  const channels = 1;
-  const bitsPerSample = 16;
-  const dataSize = sampleRate * channels * (bitsPerSample / 8);
-  const wav = Buffer.alloc(44 + dataSize);
-  wav.write("RIFF", 0);
-  wav.writeUInt32LE(36 + dataSize, 4);
-  wav.write("WAVE", 8);
-  wav.write("fmt ", 12);
-  wav.writeUInt32LE(16, 16);
-  wav.writeUInt16LE(1, 20);
-  wav.writeUInt16LE(channels, 22);
-  wav.writeUInt32LE(sampleRate, 24);
-  wav.writeUInt32LE(sampleRate * channels * (bitsPerSample / 8), 28);
-  wav.writeUInt16LE(channels * (bitsPerSample / 8), 32);
-  wav.writeUInt16LE(bitsPerSample, 34);
-  wav.write("data", 36);
-  wav.writeUInt32LE(dataSize, 40);
+async function writeOneSecondMp3(filePath) {
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, wav);
+  const generated = spawnSync(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "anullsrc",
+      "-t",
+      "1",
+      "-c:a",
+      "libmp3lame",
+      "-b:a",
+      "128k",
+      filePath,
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(generated.status, 0, generated.stderr);
 }
 
 function addDurationMismatchJob(playlistId) {
@@ -91,9 +94,9 @@ test("yt-dlp sends plausible duration mismatches to review", async () => {
     process.env.DOWNLOAD_FOLDER,
     ".ytdlp-staging",
     jobId,
-    "Artist Name - Correct Track.wav",
+    "Artist Name - Correct Track.mp3",
   );
-  await writeOneSecondWav(filePath);
+  await writeOneSecondMp3(filePath);
   downloadTracker.updateDownloadMetadata(jobId, {
     downloadSource: "ytdlp",
     downloadClient: "ytdlp",
@@ -133,9 +136,9 @@ test("Usenet sends its best plausible duration mismatch to review", async () => 
       completedDir,
       "Artist Name",
       "Album Name",
-      "01 Correct Track.wav",
+      "01 Correct Track.mp3",
     );
-    await writeOneSecondWav(filePath);
+    await writeOneSecondMp3(filePath);
     dbOps.updateSettings({
       integrations: {
         nzbget: {

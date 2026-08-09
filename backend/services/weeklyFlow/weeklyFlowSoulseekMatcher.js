@@ -1,5 +1,6 @@
 import path from "path";
 import { parseFile } from "music-metadata";
+import { validateParsedQuality } from "../qualityProfileService.js";
 import {
   normalizeTitle as normalizeTitleBase,
   scoreTextMatch as scoreTextMatchBase,
@@ -985,8 +986,11 @@ export async function validateDownloadedTrack(filePath, candidate, context) {
     titleScore,
     artistScore,
   );
-  const valid = matchCheck.valid && durationValid;
-  const blocked = matchCheck.valid && !durationValid;
+  const qualityCheck = validateParsedQuality(parsed, filePath, {
+    upgradeForJobId: context?.upgradeForJobId || null,
+  });
+  const valid = matchCheck.valid && durationValid && qualityCheck.valid;
+  const blocked = matchCheck.valid && qualityCheck.valid && !durationValid;
 
   return {
     valid,
@@ -997,7 +1001,9 @@ export async function validateDownloadedTrack(filePath, candidate, context) {
         ? `blocked-duration-mismatch: title=${titleScore}, artist=${artistScore}, album=${albumScore}, actualDurationMs=${actualDurationMs}, expectedDurationMs=${expectedDuration}`
         : !matchCheck.valid
           ? `${matchCheck.reason}: title=${titleScore}, artist=${artistScore}, album=${albumScore}, variantScore=${variantMatch.score}, trackNumberMismatch=${trackNumberMismatch}`
-          : `duration-mismatch: title=${titleScore}, artist=${artistScore}, album=${albumScore}, durationValid=${durationValid}`,
+          : !qualityCheck.valid
+            ? qualityCheck.reason
+            : `duration-mismatch: title=${titleScore}, artist=${artistScore}, album=${albumScore}, durationValid=${durationValid}`,
     scores: {
       title: titleScore,
       artist: artistScore,
@@ -1010,5 +1016,6 @@ export async function validateDownloadedTrack(filePath, candidate, context) {
     },
     actualDurationMs,
     remoteFilename,
+    quality: qualityCheck.quality,
   };
 }

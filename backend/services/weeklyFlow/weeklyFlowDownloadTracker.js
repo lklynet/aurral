@@ -64,6 +64,14 @@ function rowToJob(row) {
     remoteUsername: row.remote_username || null,
     remoteFilename: row.remote_filename || null,
     deniedRemoteSources: parseDeniedSources(row.denied_remote_sources),
+    qualityTier: row.quality_tier || null,
+    qualityFormat: row.quality_format || null,
+    qualityBitrateKbps: row.quality_bitrate_kbps ?? null,
+    qualitySampleRate: row.quality_sample_rate_hz ?? null,
+    qualityBitDepth: row.quality_bit_depth ?? null,
+    qualityCheckedAt: row.quality_checked_at ?? null,
+    qualityUpgradeCheckedAt: row.quality_upgrade_checked_at ?? null,
+    upgradeForJobId: row.upgrade_for_job_id || null,
     retryCycle: false,
   };
 }
@@ -93,9 +101,17 @@ const insertStmt = db.prepare(`
     error,
     started_at,
     completed_at,
-    created_at
+    created_at,
+    quality_tier,
+    quality_format,
+    quality_bitrate_kbps,
+    quality_sample_rate_hz,
+    quality_bit_depth,
+    quality_checked_at,
+    quality_upgrade_checked_at,
+    upgrade_for_job_id
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const updateStmt = db.prepare(`
@@ -117,7 +133,15 @@ const updateStmt = db.prepare(`
       track_number = ?,
       album_track_count = ?,
       album_track_titles = ?,
-      artist_aliases = ?
+      artist_aliases = ?,
+      quality_tier = ?,
+      quality_format = ?,
+      quality_bitrate_kbps = ?,
+      quality_sample_rate_hz = ?,
+      quality_bit_depth = ?,
+      quality_checked_at = ?,
+      quality_upgrade_checked_at = ?,
+      upgrade_for_job_id = ?
   WHERE id = ?
 `);
 
@@ -126,6 +150,9 @@ const deleteAllStmt = db.prepare(`DELETE FROM ${JOBS_TABLE}`);
 const selectAllStmt = db.prepare(`SELECT * FROM ${JOBS_TABLE} ORDER BY created_at ASC, id ASC`);
 const updatePlaylistTypeStmt = db.prepare(
   `UPDATE ${JOBS_TABLE} SET playlist_type = ?, playlist_id = ? WHERE playlist_type = ?`,
+);
+const updatePlaylistIdStmt = db.prepare(
+  `UPDATE ${JOBS_TABLE} SET playlist_id = ? WHERE id = ?`,
 );
 const clearSlskdMetaStmt = db.prepare(`
   UPDATE ${JOBS_TABLE}
@@ -202,6 +229,9 @@ function buildPipelinePayload(job) {
     },
     attempt: 0,
     destination: buildPlaylistDestination(playlistId, artistDir, albumDir),
+    upgrade: Boolean(job.upgradeForJobId),
+    upgradeForJobId: job.upgradeForJobId || null,
+    allowedSources: job.upgradeForJobId ? ["slskd", "usenet"] : null,
   };
 }
 
@@ -375,7 +405,7 @@ export class WeeklyFlowDownloadTracker {
     this.pendingRetrySet = new Set();
     for (const job of this.jobs.values()) {
       this._applyStatusDelta(job.playlistType, null, job.status);
-      if (job.status === "pending") {
+      if (job.status === "pending" && !job.upgradeForJobId) {
         this.pendingFreshQueue.push(job.id);
         this.pendingSet.add(job.id);
       }
@@ -415,6 +445,14 @@ export class WeeklyFlowDownloadTracker {
           job.albumTrackCount ?? null,
           stringifyStringListJson(job.albumTrackTitles),
           stringifyStringListJson(job.artistAliases),
+          job.qualityTier ?? null,
+          job.qualityFormat ?? null,
+          job.qualityBitrateKbps ?? null,
+          job.qualitySampleRate ?? null,
+          job.qualityBitDepth ?? null,
+          job.qualityCheckedAt ?? null,
+          job.qualityUpgradeCheckedAt ?? null,
+          job.upgradeForJobId ?? null,
           job.id,
         );
       }
@@ -451,6 +489,14 @@ export class WeeklyFlowDownloadTracker {
       job.startedAt ?? null,
       job.completedAt ?? null,
       createdAt,
+      job.qualityTier ?? null,
+      job.qualityFormat ?? null,
+      job.qualityBitrateKbps ?? null,
+      job.qualitySampleRate ?? null,
+      job.qualityBitDepth ?? null,
+      job.qualityCheckedAt ?? null,
+      job.qualityUpgradeCheckedAt ?? null,
+      job.upgradeForJobId ?? null,
     );
     this._touchRevision();
   }
@@ -475,6 +521,14 @@ export class WeeklyFlowDownloadTracker {
       job.albumTrackCount ?? null,
       stringifyStringListJson(job.albumTrackTitles),
       stringifyStringListJson(job.artistAliases),
+      job.qualityTier ?? null,
+      job.qualityFormat ?? null,
+      job.qualityBitrateKbps ?? null,
+      job.qualitySampleRate ?? null,
+      job.qualityBitDepth ?? null,
+      job.qualityCheckedAt ?? null,
+      job.qualityUpgradeCheckedAt ?? null,
+      job.upgradeForJobId ?? null,
       job.id,
     );
     this._touchRevision();
@@ -534,6 +588,76 @@ export class WeeklyFlowDownloadTracker {
       ids.push(id);
     }
     return ids;
+  }
+
+  addUpgradeJob(sourceJob) {
+    if (!sourceJob?.id || sourceJob.status !== "done" || !sourceJob.finalPath) return null;
+    const active = [...this.jobs.values()].some(
+      (job) => {
+        if (
+          !job.upgradeForJobId ||
+          (job.status !== "pending" && job.status !== "downloading")
+        ) {
+          return false;
+        }
+        const activeSource = this.jobs.get(job.upgradeForJobId);
+        return activeSource?.finalPath === sourceJob.finalPath;
+      },
+    );
+    if (active) return null;
+    const id = this.addJob(sourceJob, "quality-upgrade");
+    const job = this.jobs.get(id);
+    job.playlistId = sourceJob.playlistId || sourceJob.playlistType;
+    job.upgradeForJobId = sourceJob.id;
+    updatePlaylistIdStmt.run(job.playlistId, id);
+    this.pendingSet.delete(id);
+    this.pendingRetrySet.delete(id);
+    this._removeFromPendingQueues(id);
+    this._update(job);
+    return id;
+  }
+
+  updateQuality(id, quality = {}) {
+    const job = this.jobs.get(id);
+    if (!job) return false;
+    job.qualityTier = quality.tier || null;
+    job.qualityFormat = quality.format || null;
+    job.qualityBitrateKbps = quality.bitrateKbps ?? null;
+    job.qualitySampleRate = quality.sampleRate ?? null;
+    job.qualityBitDepth = quality.bitDepth ?? null;
+    job.qualityCheckedAt = quality.checkedAt ?? Date.now();
+    if (quality.upgradeCheckedAt !== undefined) {
+      job.qualityUpgradeCheckedAt = quality.upgradeCheckedAt;
+    }
+    this._update(job);
+    return true;
+  }
+
+  markQualityUpgradeChecked(id, checkedAt = Date.now()) {
+    const job = this.jobs.get(id);
+    if (!job) return false;
+    job.qualityUpgradeCheckedAt = checkedAt;
+    this._update(job);
+    return true;
+  }
+
+  replaceFinalPath(sourcePath, finalPath, quality) {
+    const changed = [];
+    for (const job of this.jobs.values()) {
+      if (job.status !== "done" || job.finalPath !== sourcePath) continue;
+      job.finalPath = finalPath;
+      job.externalPath = null;
+      job.qualityTier = quality?.tier || null;
+      job.qualityFormat = quality?.format || null;
+      job.qualityBitrateKbps = quality?.bitrateKbps ?? null;
+      job.qualitySampleRate = quality?.sampleRate ?? null;
+      job.qualityBitDepth = quality?.bitDepth ?? null;
+      job.qualityCheckedAt = Date.now();
+      job.qualityUpgradeCheckedAt = Date.now();
+      this._update(job);
+      changed.push(job);
+    }
+    return changed;
   }
 
   updateMetadata(id, metadata = {}) {
