@@ -138,7 +138,7 @@ function SearchTopArtistCard({
         tabIndex={0}
         className={`search-top-artist__main${
           gradientColors ? " search-top-artist__main--gradient" : ""
-        }`}
+        }${gradientColors || backdropSrc ? " search-top-artist__main--overlay" : ""}`}
         style={
           gradientColors
             ? {

@@ -309,12 +309,6 @@ function AppContent() {
 }
 
 function App() {
-  useEffect(() => {
-    const root = window.document.documentElement;
-    root.classList.remove("light");
-    root.classList.add("dark");
-  }, []);
-
   return (
     <ToastProvider>
         <AuthProvider>

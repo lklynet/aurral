@@ -55,7 +55,9 @@ export function ArtistDetailsHero({
           <div className="artist-hero__fallback" />
         )}
 
-        <div className="artist-hero__content">
+        <div
+          className={`artist-hero__content${showImage ? " artist-hero__content--overlay" : ""}`}
+        >
           <h1 className="artist-hero__title">{artist.name}</h1>
 
           {visibleTags.length > 0 && (

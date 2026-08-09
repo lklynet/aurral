@@ -117,7 +117,7 @@ export function ArtistDetailsAbout({
             label: "Lidarr",
             href: lidarrHref,
             logo: toCurrentColorSvg(lidarrLogo),
-            color: "#b3b3b3",
+            color: "var(--aurral-text-muted)",
           }
         : null,
       artist?.name
@@ -126,7 +126,7 @@ export function ArtistDetailsAbout({
             label: "Last.fm",
             href: `https://www.last.fm/music/${encodeURIComponent(artist.name)}`,
             logo: toCurrentColorSvg(lastFmLogo),
-            color: "#b3b3b3",
+            color: "var(--aurral-text-muted)",
           }
         : null,
       artist?.id && UUID_REGEX.test(artist.id)
@@ -135,7 +135,7 @@ export function ArtistDetailsAbout({
             label: "MusicBrainz",
             href: `https://musicbrainz.org/artist/${artist.id}`,
             logo: toCurrentColorSvg(musicBrainzLogo),
-            color: "#b3b3b3",
+            color: "var(--aurral-text-muted)",
           }
         : null,
       artist?.id && UUID_REGEX.test(artist.id)
@@ -144,7 +144,7 @@ export function ArtistDetailsAbout({
             label: "ListenBrainz",
             href: `https://listenbrainz.org/artist/${encodeURIComponent(artist.id)}/`,
             logo: toCurrentColorSvg(listenBrainzLogo),
-            color: "#b3b3b3",
+            color: "var(--aurral-text-muted)",
           }
         : null,
     ].filter(Boolean);
@@ -189,7 +189,9 @@ export function ArtistDetailsAbout({
             </div>
           )}
 
-          <div className="artist-about-card__body">
+          <div
+            className={`artist-about-card__body${aboutImage ? " artist-about-card__body--overlay" : ""}`}
+          >
             <div className="artist-about-meta">
               {artistTypeLabel && <span>{artistTypeLabel}</span>}
               {artist?.disambiguation && <span>{artist.disambiguation}</span>}
@@ -254,7 +256,7 @@ export function ArtistDetailsAbout({
                     {link.logo ? (
                       <span
                         className="artist-external-link__logo"
-                        style={{ color: link.color || "#b3b3b3" }}
+                        style={{ color: link.color || "var(--aurral-text-muted)" }}
                         aria-hidden="true"
                         dangerouslySetInnerHTML={{ __html: link.logo }}
                       />

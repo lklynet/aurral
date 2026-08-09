@@ -1549,10 +1549,10 @@
 @media (prefers-contrast: more) {
   .settings-arr,
   .arr-portal {
-    --arr-text-muted: #e2e2e2;
-    --arr-control-hover: #4a4a4a;
-    --aurral-border: rgba(255, 255, 255, 0.3);
-    --aurral-border-strong: rgba(255, 255, 255, 0.55);
+    --arr-text-muted: var(--aurral-text);
+    --arr-control-hover: color-mix(in srgb, var(--aurral-text) 18%, var(--aurral-surface));
+    --aurral-border: color-mix(in srgb, var(--aurral-text) 30%, transparent);
+    --aurral-border-strong: color-mix(in srgb, var(--aurral-text) 55%, transparent);
   }
 
   .settings-arr :is(.arr-btn, input, select, textarea):focus-visible,
@@ -1829,7 +1829,7 @@
   border-radius: 0.5rem;
   background: var(--settings-control-surface);
   color: var(--aurral-text);
-  box-shadow: 0 1px 0 rgb(255 255 255 / 0.025);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--aurral-text) 2.5%, transparent);
 }
 
 .settings-arr .arr-textarea,

@@ -528,7 +528,7 @@ function ReleasePage() {
       className="artist-details-page release-page"
       style={
         heroColor
-          ? { background: `linear-gradient(180deg, ${heroColor} 0%, ${heroColor} 120px, #121212 400px)` }
+          ? { background: `linear-gradient(180deg, ${heroColor} 0%, ${heroColor} 120px, var(--aurral-surface) 400px)` }
           : undefined
       }
     >

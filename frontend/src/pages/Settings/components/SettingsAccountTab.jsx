@@ -1,5 +1,9 @@
 import { useState } from "react";
 import { resetDiscoveryFeedback } from "../../../utils/api/endpoints/discovery.js";
+import {
+  getThemePreference,
+  setThemePreference,
+} from "../../../utils/theme.js";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { PlexSelfLinkSection } from "./PlexSelfLinkSection";
 
@@ -27,6 +31,7 @@ export function SettingsAccountTab({
   profileVariant = false,
 }) {
   const [resettingTastes, setResettingTastes] = useState(false);
+  const [theme, setTheme] = useState(getThemePreference);
 
   const handleResetDiscoveryTastes = async () => {
     if (resettingTastes) return;
@@ -77,6 +82,34 @@ export function SettingsAccountTab({
         className="settings-page__form"
         autoComplete="off"
       >
+        <div className="settings-page__section profile-settings__section">
+          <div className="settings-page__section-intro">
+            <h3 className="settings-page__section-title">Appearance</h3>
+            <p className="settings-page__section-note">
+              Choose how Aurral looks on this device.
+            </p>
+          </div>
+          <fieldset className="settings-page__fields profile-settings__fields">
+            <div className="profile-settings__field">
+              <label className="profile-settings__label" htmlFor="profile-theme">
+                Theme
+              </label>
+              <SettingsSelect
+                id="profile-theme"
+                value={theme}
+                onChange={(event) => setTheme(setThemePreference(event.target.value))}
+              >
+                <option value="system">System</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </SettingsSelect>
+              <p className="settings-page__hint">
+                System follows the appearance setting of your device.
+              </p>
+            </div>
+          </fieldset>
+        </div>
+
         <div className="settings-page__section profile-settings__section">
           <div className="settings-page__section-header">
             <div className="settings-page__section-intro">

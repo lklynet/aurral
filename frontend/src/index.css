@@ -8,14 +8,15 @@
 }
 
 :root {
+  color-scheme: dark;
   --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --aurral-chrome: #000000;
-  --aurral-surface: #121212;
-  --aurral-text-subtle: #535353;
-  --aurral-text-muted: #b3b3b3;
-  --aurral-text: #ffffff;
-  --aurral-accent: #84cc16;
-  --aurral-accent-contrast: #000000;
+  --aurral-chrome: light-dark(#e5e7eb, #000000);
+  --aurral-surface: light-dark(#ffffff, #121212);
+  --aurral-text-subtle: light-dark(#737373, #535353);
+  --aurral-text-muted: light-dark(#525252, #b3b3b3);
+  --aurral-text: light-dark(#171717, #ffffff);
+  --aurral-accent: light-dark(#4d7c0f, #84cc16);
+  --aurral-accent-contrast: light-dark(#ffffff, #000000);
   --aurral-surface-raised: color-mix(in srgb, var(--aurral-surface) 94%, var(--aurral-text));
   --aurral-surface-popover: color-mix(in srgb, var(--aurral-surface-raised) 94%, var(--aurral-text));
   --aurral-surface-glass: color-mix(in srgb, var(--aurral-surface-popover) 88%, transparent);
@@ -32,15 +33,15 @@
   --aurral-radius: 10px;
   --aurral-radius-sm: 6px;
   --aurral-radius-round: 9999px;
-  --aurral-control-on: #3b82f6;
-  --aurral-control-on-contrast: #07111f;
-  --aurral-info: #60a5fa;
-  --aurral-info-text: #93c5fd;
+  --aurral-control-on: light-dark(#2563eb, #3b82f6);
+  --aurral-control-on-contrast: light-dark(#ffffff, #07111f);
+  --aurral-info: light-dark(#2563eb, #60a5fa);
+  --aurral-info-text: light-dark(#1d4ed8, #93c5fd);
   --aurral-info-soft: color-mix(in srgb, var(--aurral-info) 16%, transparent);
-  --aurral-review: #a78bfa;
-  --aurral-success: #22c55e;
-  --aurral-danger: #ef4444;
-  --aurral-warning: #f59e0b;
+  --aurral-review: light-dark(#7c3aed, #a78bfa);
+  --aurral-success: light-dark(#15803d, #22c55e);
+  --aurral-danger: light-dark(#dc2626, #ef4444);
+  --aurral-warning: light-dark(#b45309, #f59e0b);
   --aurral-ring: color-mix(in srgb, var(--aurral-text) 46%, transparent);
   --aurral-scrim: color-mix(in srgb, var(--aurral-chrome) 72%, transparent);
   --aurral-border: color-mix(in srgb, var(--aurral-text) 8%, transparent);
@@ -56,6 +57,20 @@
   --aurral-space-stack: 0.75rem;
   --aurral-space-card: 0.875rem;
   --aurral-space-header: 0.875rem;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+  }
 }
 
 *,
@@ -2468,7 +2483,7 @@ textarea {
 
 .global-search__suggestion:hover .global-search__suggestion-meta,
 .global-search__suggestion.is-highlighted .global-search__suggestion-meta {
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--aurral-text-muted);
 }
 
 .global-search__suggestion-actions {
@@ -2846,6 +2861,10 @@ textarea {
   line-height: 0.96;
 }
 
+.artist-hero__content--overlay .artist-hero__title {
+  color: #fff;
+}
+
 .artist-meta-line {
   display: flex;
   flex-wrap: wrap;
@@ -2897,11 +2916,23 @@ textarea {
   backdrop-filter: blur(10px) saturate(1.05);
 }
 
+.artist-hero__content--overlay .artist-tag {
+  border-color: rgb(255 255 255 / 0.18);
+  background: rgb(0 0 0 / 0.58);
+  color: #fff;
+}
+
 .artist-tag:hover,
 .artist-tag--discover:hover {
   border-color: var(--aurral-border-strong);
   background: var(--aurral-surface-hover);
   color: var(--aurral-text);
+}
+
+.artist-hero__content--overlay .artist-tag:hover {
+  border-color: rgb(255 255 255 / 0.3);
+  background: rgb(0 0 0 / 0.72);
+  color: #fff;
 }
 
 .artist-action-bar {
@@ -3811,7 +3842,7 @@ textarea {
   justify-content: center;
   border-radius: var(--aurral-radius-round);
   background: gold;
-  color: var(--aurral-chrome);
+  color: #000;
   text-align: center;
 }
 
@@ -3834,6 +3865,10 @@ textarea {
   inset-inline: 0;
   bottom: 0;
   padding: 1.25rem;
+}
+
+.artist-about-card__body--overlay :is(.artist-about-meta, .artist-about-bio, .artist-modal__subcopy) {
+  color: #fff;
 }
 
 .artist-about-meta {
@@ -3991,7 +4026,7 @@ textarea {
   padding: 0.125rem 0.375rem;
   border-radius: var(--aurral-radius-sm);
   background: rgba(0, 0, 0, 0.7);
-  color: var(--aurral-text);
+  color: #fff;
   font-size: 0.625rem;
   font-weight: 700;
   transform: translate(-10%, 12%);
@@ -4579,7 +4614,7 @@ textarea {
 }
 
 .artist-playlist-menu--search-suggestion .artist-menu-item:disabled {
-  color: rgba(255, 255, 255, 0.52);
+  color: var(--aurral-text-subtle);
 }
 
 .artist-playlist-menu--search-suggestion .artist-playlist-menu__check {
@@ -4937,7 +4972,7 @@ textarea {
   display: flex;
   align-items: center;
   border-radius: var(--aurral-radius-round);
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--aurral-text) 5%, transparent);
   padding: 0.25rem 0.5rem;
   color: var(--aurral-text-subtle);
   font-size: 0.75rem;
@@ -5399,7 +5434,7 @@ textarea {
 
 .artist-show-card__title--discover {
   margin-top: 0.25rem;
-  color: var(--aurral-text);
+  color: #fff;
   font-size: 1.65rem;
   font-weight: 700;
   line-height: 0.98;
@@ -5465,7 +5500,7 @@ textarea {
   padding: 0.25rem 0.625rem;
   border-radius: var(--aurral-radius-sm);
   background: rgba(20, 20, 26, 0.82);
-  color: var(--aurral-text);
+  color: #fff;
   font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.05em;
@@ -5484,7 +5519,7 @@ textarea {
 }
 
 .artist-show-card__body-artist--discover {
-  color: #8a8a8f;
+  color: var(--aurral-text-subtle);
   font-size: 0.75rem;
   letter-spacing: 0.22em;
   text-transform: uppercase;
@@ -5528,7 +5563,7 @@ textarea {
 }
 
 .artist-view-all-card--discover:hover .artist-media-cell {
-  border-color: rgba(255, 255, 255, 0.3);
+  border-color: var(--aurral-border-strong);
 }
 
 .artist-view-all-card--discover .artist-card-title {
@@ -6035,9 +6070,9 @@ textarea {
   align-items: center;
   gap: 0.25rem;
   border-radius: var(--aurral-radius-round);
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--aurral-text) 5%, transparent);
   padding: 0.25rem 0.625rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--aurral-text-muted);
   font-size: 0.75rem;
   font-weight: 500;
   transition:
@@ -6047,8 +6082,8 @@ textarea {
 
 .artist-nearby-badge:hover,
 .artist-nearby-badge.is-open {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.85);
+  background: color-mix(in srgb, var(--aurral-text) 10%, transparent);
+  color: var(--aurral-text);
 }
 
 .artist-nearby-badge__chevron {
@@ -6677,6 +6712,23 @@ textarea {
     opacity 0.18s ease,
     transform 0.18s ease,
     background-color 0.18s ease;
+}
+
+.search-top-artist__main--overlay :is(
+    .search-top-artist__image-wrap,
+    .search-top-artist__name,
+    .search-top-artist__meta-row
+  ) {
+  color: #fff;
+}
+
+.search-top-artist__main--overlay .search-top-artist__eyebrow {
+  color: rgb(255 255 255 / 0.72);
+}
+
+.search-top-artist__main--overlay .search-top-artist__cta {
+  background: rgb(255 255 255 / 0.12);
+  color: #fff;
 }
 
 .search-top-artist__cta-icon {
@@ -7901,7 +7953,7 @@ textarea {
   color: var(--aurral-text-muted);
   font-size: 0.75rem;
   line-height: 1.45;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--aurral-text) 4%, transparent);
   border-radius: var(--aurral-radius-sm);
 }
 
@@ -8090,7 +8142,7 @@ textarea {
 .settings-modal__callout {
   margin: 0 0 0.25rem;
   padding: 0.625rem 0.75rem;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--aurral-text) 4%, transparent);
   border-radius: var(--aurral-radius-sm);
   font-size: 0.8125rem;
   line-height: 1.45;
@@ -11656,9 +11708,9 @@ textarea {
   inset: 0;
   background: linear-gradient(
     110deg,
-    rgba(255, 255, 255, 0.02) 8%,
-    rgba(255, 255, 255, 0.08) 18%,
-    rgba(255, 255, 255, 0.02) 33%
+    color-mix(in srgb, var(--aurral-text) 2%, transparent) 8%,
+    color-mix(in srgb, var(--aurral-text) 8%, transparent) 18%,
+    color-mix(in srgb, var(--aurral-text) 2%, transparent) 33%
   );
   background-size: 200% 100%;
   animation: shimmer 1.6s linear infinite;
