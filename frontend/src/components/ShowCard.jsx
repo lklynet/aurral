@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { Clock, MapPin, Music } from "lucide-react";
+import { formatDate, formatTime } from "../utils/dateTime.js";
 
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -21,7 +22,7 @@ const formatShowTime = (value) => {
   if (!match) return value;
   const [, hour, minute] = match;
   const parsed = new Date(2000, 0, 1, Number(hour), Number(minute));
-  return parsed.toLocaleTimeString(undefined, {
+  return formatTime(parsed, {
     hour: "numeric",
     minute: "2-digit",
   });
@@ -31,7 +32,7 @@ const formatShowDate = (show) => {
   if (!show?.date && !show?.dateTime) return null;
   const parsed = parseShowDate(show.date) || parseShowDate(show.dateTime);
   if (!parsed) return show.date || null;
-  const dateLabel = parsed.toLocaleDateString(undefined, {
+  const dateLabel = formatDate(parsed, {
     month: "short",
     day: "numeric",
     year: "numeric",

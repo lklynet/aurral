@@ -11,6 +11,7 @@ import {
   loginApi,
   logoutApi,
 } from "../utils/api/endpoints/auth.js";
+import { setDateTimeFormat } from "../utils/dateTime.js";
 
 const AuthContext = createContext(null);
 
@@ -24,6 +25,7 @@ export const AuthProvider = ({ children }) => {
   const [bootstrap, setBootstrap] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const authResolvedRef = useRef(false);
+  setDateTimeFormat(bootstrap?.dateTimeFormat);
 
   const checkAuthStatus = useCallback(async () => {
     try {

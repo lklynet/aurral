@@ -1,4 +1,5 @@
 import { Loader, Clock } from "lucide-react";
+import { formatDate } from "../utils/dateTime.js";
 
 export default function DiscoveryStatusPill({
   isUpdating = false,
@@ -29,7 +30,7 @@ export default function DiscoveryStatusPill({
     return (
       <span className="artist-discover-hero__updated">
         <Clock className="artist-discover-hero__updated-icon" />
-        Updated {new Date(lastUpdated).toLocaleDateString()}
+        Updated {formatDate(new Date(lastUpdated))}
       </span>
     );
   }

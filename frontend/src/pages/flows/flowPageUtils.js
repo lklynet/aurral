@@ -1,4 +1,5 @@
 import { parseFlowTimestamp } from "./flowStats";
+import { formatDate } from "../../utils/dateTime.js";
 
 export const DEFAULT_MIX = { discover: 34, mix: 33, trending: 33, focus: 0 };
 export const DEFAULT_SIZE = 30;
@@ -61,7 +62,7 @@ export function formatFlowLastRunShort(lastRunAt) {
   if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return null;
-  return `${date.getMonth() + 1}/${date.getDate()}`;
+  return formatDate(date, { month: "numeric", day: "numeric" });
 }
 
 export const slugifyFilePart = (value, fallback = "flow") => {

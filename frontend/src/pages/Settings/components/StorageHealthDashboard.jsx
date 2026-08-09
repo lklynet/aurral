@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { formatDateTime } from "../../../utils/dateTime.js";
 
 const STATUS_LABELS = {
   pass: "PASS",
@@ -12,7 +13,7 @@ function formatCheckedAt(value) {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleString();
+  return formatDateTime(date);
 }
 
 function defaultExpandedBySection(sections) {

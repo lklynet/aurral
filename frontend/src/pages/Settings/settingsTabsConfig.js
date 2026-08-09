@@ -32,7 +32,7 @@ export const SETTINGS_NAV_TABS = SETTINGS_TABS.filter((tab) => !tab.hidden);
 
 const SETTINGS_SEARCH_METADATA = {
   system: {
-    sections: ["Runtime", "Data", "API Key", "More Info"],
+    sections: ["Runtime", "Data", "Display", "API Key", "More Info"],
     services: {
       Runtime: "version uptime host platform",
       Database: "sqlite data runtime",

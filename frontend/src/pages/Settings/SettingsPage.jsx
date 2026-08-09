@@ -65,6 +65,8 @@ function SettingsPage() {
           <SettingsSystemTab
             key="settings-system"
             health={data.health}
+            settings={data.settings}
+            updateSettings={data.updateSettings}
             showSuccess={showSuccess}
             showError={showError}
           />

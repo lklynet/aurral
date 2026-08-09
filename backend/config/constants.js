@@ -16,9 +16,13 @@ export const APP_VERSION = resolveAppVersion({
   envValue: process.env.APP_VERSION,
   cwd: process.cwd(),
 });
+export const DATE_TIME_FORMATS = ["browser", "day-first", "year-first"];
+export const normalizeDateTimeFormat = (value) =>
+  DATE_TIME_FORMATS.includes(value) ? value : "browser";
 
 export const defaultData = {
   settings: {
+    dateTimeFormat: "browser",
     integrations: {
       navidrome: {
         url: "",

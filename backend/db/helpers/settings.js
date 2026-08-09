@@ -16,6 +16,7 @@ import {
   syncM3uPathMode,
 } from "../../services/playlistM3uPaths.js";
 import { normalizeExistingFileMode } from "../../services/weeklyFlow/weeklyFlowFileReuse.js";
+import { normalizeDateTimeFormat } from "../../config/constants.js";
 
 const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
 const upsertSettingStmt = db.prepare(
@@ -113,6 +114,7 @@ export const dbOps = {
     );
     const encKey = getOrCreateEncryptionKey();
     const quality = getSettingStmt.get("quality")?.value;
+    const dateTimeFormat = getSettingStmt.get("dateTimeFormat")?.value;
     const queueCleaner = dbHelpers.parseJSON(
       getSettingStmt.get("queueCleaner")?.value
     );
@@ -150,6 +152,7 @@ export const dbOps = {
     const result = {
       integrations: decryptIntegrations(integrations, encKey) || {},
       quality: quality || "standard",
+      dateTimeFormat: normalizeDateTimeFormat(dateTimeFormat),
       queueCleaner: queueCleaner || {},
       security:
         security && typeof security === "object"
@@ -231,6 +234,12 @@ export const dbOps = {
       }
       if (settings.quality) {
         upsertSettingStmt.run("quality", settings.quality);
+      }
+      if (settings.dateTimeFormat !== undefined) {
+        upsertSettingStmt.run(
+          "dateTimeFormat",
+          normalizeDateTimeFormat(settings.dateTimeFormat),
+        );
       }
       if (settings.queueCleaner) {
         upsertSettingStmt.run(
