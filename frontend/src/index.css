@@ -9,7 +9,7 @@
 
 :root {
   color-scheme: dark;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
   --aurral-chrome: light-dark(#e5e7eb, #000000);
   --aurral-surface: light-dark(#ffffff, #121212);
   --aurral-text-subtle: light-dark(#737373, #535353);
