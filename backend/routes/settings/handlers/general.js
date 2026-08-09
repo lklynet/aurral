@@ -1,5 +1,6 @@
 import { dbOps } from "../../../db/helpers/index.js";
 import {
+  DATE_TIME_FORMATS,
   DEFAULT_METADATA_BASE_URL,
   defaultData,
 } from "../../../config/constants.js";
@@ -101,7 +102,12 @@ export function registerGeneral(router) {
         security,
         playlistArtwork,
         inbox,
+        dateTimeFormat,
       } = req.body;
+
+      if (dateTimeFormat !== undefined && !DATE_TIME_FORMATS.includes(dateTimeFormat)) {
+        return res.status(400).json({ error: "Invalid date and time format" });
+      }
 
       const currentSettings = dbOps.getSettings();
       const localBypassWasEnabled =
@@ -327,6 +333,10 @@ export function registerGeneral(router) {
       }
       const updatedSettings = {
         ...currentSettings,
+        dateTimeFormat:
+          dateTimeFormat !== undefined
+            ? dateTimeFormat
+            : currentSettings.dateTimeFormat || defaultData.settings.dateTimeFormat,
         quality:
           quality !== undefined ? quality : currentSettings.quality || "standard",
         rootFolderPath:

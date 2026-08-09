@@ -3,6 +3,7 @@ import {
 } from "./constants";
 import { TAG_COLORS } from "../discoverUtils";
 import { shouldTriggerAlbumSearch } from "../../utils/albumAddAction.js";
+import { formatDate } from "../../utils/dateTime.js";
 
 export const readReleaseListViewMode = () => {
   if (typeof window === "undefined") return "grid";
@@ -196,7 +197,7 @@ export const formatReleaseDate = (releaseGroupOrAlbum) => {
     const [, year, month, day] = match;
     const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
     if (!Number.isNaN(date.getTime())) {
-      return date.toLocaleDateString(undefined, {
+      return formatDate(date, {
         year: "numeric",
         month: "short",
         day: "numeric",

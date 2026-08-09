@@ -35,6 +35,7 @@ import {
 } from "./discoverUtils";
 import { useDiscoverData } from "./useDiscoverData";
 import { useLibraryNews } from "../hooks/useLibraryNews";
+import { formatDate } from "../utils/dateTime.js";
 const getArtistId = (artist) => getArtistRecordId(artist);
 
 function DiscoverPage() {
@@ -508,9 +509,9 @@ function DiscoverPage() {
                       image: getLibraryArtistImage(artist),
                       type: "Artist",
                       metaText: "",
-                      subtitle: `Added ${new Date(
-                        artist.added || artist.addedAt,
-                      ).toLocaleDateString()}`,
+                      subtitle: `Added ${formatDate(
+                        new Date(artist.added || artist.addedAt),
+                      )}`,
                     }}
                   />
                 </div>

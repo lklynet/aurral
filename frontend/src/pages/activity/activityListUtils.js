@@ -1,3 +1,5 @@
+import { formatDate, formatTime } from "../../utils/dateTime.js";
+
 const getRequestIdentity = (request) =>
   String(
     request?.id ||
@@ -60,7 +62,7 @@ export const mergeActivityRequests = (previousRequests, nextRequests) => {
 export const formatTimelineTime = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString(undefined, {
+  return formatTime(date, {
     hour: "numeric",
     minute: "2-digit",
   });
@@ -109,7 +111,7 @@ const formatDateGroupLabel = (value) => {
   );
   if (diffDays === 0) return "Today";
   if (diffDays === 1) return "Yesterday";
-  return date.toLocaleDateString(undefined, {
+  return formatDate(date, {
     weekday: "long",
     month: "long",
     day: "numeric",

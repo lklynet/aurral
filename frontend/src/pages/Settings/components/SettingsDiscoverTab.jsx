@@ -4,6 +4,7 @@ import { RefreshCw, Trash2, X } from "lucide-react";
 import PillToggle from "../../../components/PillToggle";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
+import { formatDateTime } from "../../../utils/dateTime.js";
 
 const AUTO_REFRESH_OPTIONS = [
   { value: 24, label: "Daily" },
@@ -257,7 +258,7 @@ export function SettingsDiscoverTab({
               <dt className="arr-meta-term">Last updated</dt>
               <dd className="arr-meta-value">
                 {health?.discovery?.lastUpdated
-                  ? new Date(health.discovery.lastUpdated).toLocaleString()
+                  ? formatDateTime(new Date(health.discovery.lastUpdated))
                   : "—"}
               </dd>
             </div>

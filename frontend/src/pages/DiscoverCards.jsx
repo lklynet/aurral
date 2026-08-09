@@ -7,6 +7,7 @@ import AddActionButton from "../components/AddActionButton";
 import { ArtistContextMenu } from "../components/ArtistContextMenu";
 import SearchLibraryCheck from "../components/SearchLibraryCheck";
 import { getReleaseNavigationTarget } from "../utils/searchNavigation";
+import { formatDate } from "../utils/dateTime.js";
 const parseCalendarDate = (value) => {
   if (!value) return null;
   const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -24,7 +25,7 @@ const formatReleaseStatus = (releaseDate) => {
   if (!date) return null;
   const today = new Date();
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const formattedDate = date.toLocaleDateString();
+  const formattedDate = formatDate(date);
   if (date.getTime() === todayStart.getTime()) {
     return "Released today";
   }

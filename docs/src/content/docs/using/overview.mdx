@@ -73,7 +73,7 @@ Settings contains the admin configuration. The page has these tabs:
 
 | Tab                  | What it covers                                                      |
 | -------------------- | ------------------------------------------------------------------- |
-| **System**           | Downloads folder, path mappings, general settings, cover art        |
+| **System**           | Runtime details, date and time format, and API access                |
 | **Tasks**            | Active and stale worker task management                             |
 | **Lidarr**           | Lidarr connection, profiles, tags, library access check             |
 | **Indexers**         | Prowlarr connection, indexer management, search priorities          |
@@ -85,5 +85,8 @@ Settings contains the admin configuration. The page has these tabs:
 
 Settings and Profile changes save automatically after you edit them. Connection tests and sync
 actions remain separate actions.
+
+Administrators can set dates and times to the browser default, day-first format, or year-first
+format under **Settings > System > Display**. The selected format applies to all users.
 
 Advanced metadata settings are available at `/settings/metadata`. They do not appear in the main settings navigation.

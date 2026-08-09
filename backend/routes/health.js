@@ -253,6 +253,7 @@ function buildBootstrapPayload(req) {
     oidcEnabled: oidcInfo.oidcEnabled,
     oidcLogoutUrl: oidcInfo.oidcLogoutUrl,
     onboardingRequired: !onboardingDone,
+    dateTimeFormat: settings.dateTimeFormat,
     timestamp: new Date().toISOString(),
     appVersion: APP_VERSION,
   };

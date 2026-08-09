@@ -1,4 +1,5 @@
 import { allReleaseTypes } from "./constants";
+import { normalizeDateTimeFormat } from "../../utils/dateTime.js";
 
 export const LEGACY_METADATA_BASE_URL = "https://brainzmash.kell.ly";
 export const DEFAULT_METADATA_BASE_URL = "https://lidarrapi.brainzmash.cc";
@@ -35,6 +36,7 @@ export const normalizeSettings = (savedSettings) => {
       : "photo";
   return {
     ...savedSettings,
+    dateTimeFormat: normalizeDateTimeFormat(savedSettings.dateTimeFormat),
     downloadFolderPath: String(savedSettings.downloadFolderPath || "").trim(),
     pathMappings: Array.isArray(savedSettings.pathMappings) ? savedSettings.pathMappings : [],
     playlistArtwork: {

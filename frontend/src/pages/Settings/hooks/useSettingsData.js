@@ -23,6 +23,7 @@ import {
 } from "../utils";
 
 const defaultSettings = {
+  dateTimeFormat: "browser",
   rootFolderPath: "",
   downloadFolderPath: "",
   pathMappings: [],

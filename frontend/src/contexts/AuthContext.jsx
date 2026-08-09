@@ -11,6 +11,7 @@ import {
   loginApi,
   logoutApi,
 } from "../utils/api/endpoints/auth.js";
+import { setDateTimeFormat } from "../utils/dateTime.js";
 
 const AuthContext = createContext(null);
 
@@ -29,6 +30,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const bootstrap = await getBootstrapStatus();
       authResolvedRef.current = true;
+      setDateTimeFormat(bootstrap.dateTimeFormat);
       setBootstrap(bootstrap);
       if (bootstrap.token) setStoredAuth({ token: bootstrap.token });
       const isOnboarding = !!bootstrap.onboardingRequired;
@@ -113,7 +115,9 @@ export const AuthProvider = ({ children }) => {
       setUser(result.user || null);
       setIsAuthenticated(true);
       try {
-        setBootstrap(await getBootstrapStatus());
+        const bootstrap = await getBootstrapStatus();
+        setDateTimeFormat(bootstrap.dateTimeFormat);
+        setBootstrap(bootstrap);
       } catch {}
       return true;
     } catch {

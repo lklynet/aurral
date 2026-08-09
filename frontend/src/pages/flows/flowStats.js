@@ -1,3 +1,5 @@
+import { formatDateTime } from "../../utils/dateTime.js";
+
 export const RELEASE_RADAR_PRESET_ID = "release-radar";
 
 export const isReleaseRadarFlow = (flow) =>
@@ -58,7 +60,7 @@ export const formatFlowLastRun = (lastRunAt) => {
   if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleString(undefined, {
+  return formatDateTime(date, {
     month: "short",
     day: "numeric",
     hour: "numeric",

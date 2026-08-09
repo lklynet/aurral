@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertCircle, Check, Copy, RotateCcw } from "lucide-react";
 import { getApiKey, rotateApiKey } from "../../../utils/api/endpoints/auth";
 import { SettingsSystemSection } from "./SettingsStorageSection";
+import { SettingsSelect } from "./SettingsField";
+import { setDateTimeFormat } from "../../../utils/dateTime.js";
 
-export function SettingsSystemTab({ health, showSuccess, showError }) {
+export function SettingsSystemTab({ health, settings, updateSettings, showSuccess, showError }) {
   const [apiKey, setApiKey] = useState(null);
   const [loading, setLoading] = useState(true);
   const [rotating, setRotating] = useState(false);
@@ -55,6 +57,37 @@ export function SettingsSystemTab({ health, showSuccess, showError }) {
   return (
     <div className="arr-page settings-system">
       <SettingsSystemSection health={health} />
+
+      <section className="settings-system__section">
+        <div className="settings-system__section-header">
+          <h2 className="settings-system__section-title">Display</h2>
+        </div>
+        <div className="settings-system__rows">
+          <div className="settings-system__row">
+            <div className="settings-system__copy">
+              <label className="settings-system__label" htmlFor="date-time-format">
+                Date and time format
+              </label>
+              <p className="settings-system__description">
+                Set the date and 24-hour time order for all users.
+              </p>
+            </div>
+            <SettingsSelect
+              id="date-time-format"
+              value={settings.dateTimeFormat}
+              onChange={(event) => {
+                const dateTimeFormat = event.target.value;
+                setDateTimeFormat(dateTimeFormat);
+                updateSettings({ ...settings, dateTimeFormat });
+              }}
+            >
+              <option value="browser">Browser default</option>
+              <option value="day-first">14:30 09/08/2026</option>
+              <option value="year-first">2026/08/09 14:30</option>
+            </SettingsSelect>
+          </div>
+        </div>
+      </section>
 
       <section className="settings-system__section settings-system__api-section">
         <div className="settings-system__section-header">
