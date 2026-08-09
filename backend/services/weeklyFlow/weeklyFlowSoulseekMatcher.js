@@ -285,15 +285,13 @@ function getDirectoryKey(item) {
   return `${user}\0${directory}`;
 }
 
+function isPreferredFormat(ext, preferredFormat) {
+  return ext === `.${preferredFormat}` || (preferredFormat === "m4a" && ext === ".aac");
+}
+
 function formatRank(ext, preferredFormat) {
-  if (preferredFormat === "mp3") {
-    if (ext === ".mp3") return 0;
-    if (ext === ".flac") return 1;
-  } else {
-    if (ext === ".flac") return 0;
-    if (ext === ".mp3") return 1;
-  }
-  return 2;
+  if (isPreferredFormat(ext, preferredFormat)) return 0;
+  return AUDIO_EXTENSIONS.has(ext) ? 1 : 2;
 }
 
 function countAudioFiles(files) {
@@ -552,8 +550,11 @@ function isSelfTitledAlbumContext(context) {
 }
 
 function readMatcherOptions(options = {}) {
+  const preferredFormat = String(options?.preferredFormat || "").toLowerCase();
   return {
-    preferredFormat: options?.preferredFormat === "mp3" ? "mp3" : "flac",
+    preferredFormat: ["flac", "mp3", "m4a"].includes(preferredFormat)
+      ? preferredFormat
+      : "flac",
     strictFormat: options?.strictFormat === true,
     isUserBlacklisted:
       typeof options?.isUserBlacklisted === "function" ? options.isUserBlacklisted : () => false,
@@ -702,7 +703,11 @@ function buildGroupCandidate(group, context, options = {}) {
 
   const files = strictFormat
     ? audioFiles.filter(
-        (item) => path.extname(String(item?.file || "")).toLowerCase() === `.${preferredFormat}`,
+        (item) =>
+          isPreferredFormat(
+            path.extname(String(item?.file || "")).toLowerCase(),
+            preferredFormat,
+          ),
       )
     : audioFiles;
   const candidates = [];
@@ -741,8 +746,11 @@ function buildGroupCandidate(group, context, options = {}) {
       siblingTrackPenalty,
       context,
     });
-    const formatScore =
-      ext === `.${preferredFormat}` ? 18 : ext === ".flac" || ext === ".mp3" ? 9 : 0;
+    const formatScore = isPreferredFormat(ext, preferredFormat)
+      ? 18
+      : AUDIO_EXTENSIONS.has(ext)
+        ? 9
+        : 0;
     const bitRate = Number(item?.bitrate ?? item?.bitRate ?? 0);
     const bitrateScore = Number.isFinite(bitRate) ? Math.min(8, Math.round(bitRate / 64)) : 0;
     const totalScore =

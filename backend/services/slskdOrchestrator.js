@@ -40,7 +40,7 @@ import {
   finalizePipelineJobSuccess,
 } from "./pipelineHelpers.js";
 import { getQualityProfile } from "./qualityProfileService.js";
-import { orderAdvertisedQualityCandidates } from "./qualityProfileModel.js";
+import { getQualityTier, orderAdvertisedQualityCandidates } from "./qualityProfileModel.js";
 
 export { commitImportToPlaylistLibrary };
 
@@ -84,7 +84,7 @@ async function getWorkerSearchOptions() {
   const profile = getQualityProfile();
   const firstEnabled = profile.order.find((id) => profile.enabled.includes(id));
   return {
-    preferredFormat: firstEnabled?.startsWith("mp3-") ? "mp3" : "flac",
+    preferredFormat: getQualityTier(firstEnabled)?.family || "flac",
     strictFormat: false,
     ...buildSlskdRankingHistoryOptions(),
   };

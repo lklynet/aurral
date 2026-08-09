@@ -458,6 +458,9 @@ export class WeeklyFlowDownloadTracker {
       }
       this.jobs.set(job.id, job);
     }
+    for (const job of this.jobs.values()) {
+      if (job.status === "pending" && job.upgradeForJobId) this.removeJob(job.id);
+    }
     this._rebuildStatsByPlaylistType();
   }
 

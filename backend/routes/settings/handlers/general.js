@@ -343,7 +343,12 @@ export function registerGeneral(router) {
           quality !== undefined ? quality : currentSettings.quality || "standard",
         qualityProfile:
           qualityProfile !== undefined
-            ? normalizeQualityProfile(qualityProfile, integrations?.slskd)
+            ? normalizeQualityProfile(
+                qualityProfile && typeof qualityProfile === "object" && !Array.isArray(qualityProfile)
+                  ? { ...currentSettings.qualityProfile, ...qualityProfile }
+                  : qualityProfile,
+                integrations?.slskd,
+              )
             : currentSettings.qualityProfile,
         rootFolderPath:
           rootFolderPath !== undefined

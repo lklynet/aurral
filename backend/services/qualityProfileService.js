@@ -208,7 +208,7 @@ export async function finalizeQualityUpgradeSuccess(upgradeJob, finalPath, quali
     albumName: original.albumName,
     playlistId: originalDetails.playlistType,
     title: `Upgraded ${originalDetails.trackName}`,
-    subtitle: `${originalDetails.qualityTier || "Unknown"} → ${quality.tier}`,
+    subtitle: `${originalDetails.qualityTier || "Unknown"} → ${quality?.tier || "Unknown"}`,
     status: "completed",
     statusLabel: "Upgraded",
     downloadSource: upgradeJob.downloadSource,

@@ -454,6 +454,19 @@ for (const { name, results, track, options, assertRanked } of rankFlowCases) {
   });
 }
 
+test("rankFlowSearchResults preserves M4A as the preferred format", () => {
+  const ranked = rankFlowSearchResults(
+    [
+      result({ user: "sameUser", file: "Artist\\Album\\01 - Song.flac" }),
+      result({ user: "sameUser", file: "Artist\\Album\\01 - Song.m4a" }),
+    ],
+    { artistName: "Artist", trackName: "Song", albumName: "Album", trackNumber: 1 },
+    { preferredFormat: "m4a", strictFormat: false },
+  );
+
+  assert.equal(ranked[0]?.ext, ".m4a");
+});
+
 test("selectRankedMatchAttempts spreads early attempts across users before reusing one", () => {
   const selected = selectRankedMatchAttempts(
     [

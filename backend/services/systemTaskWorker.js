@@ -20,7 +20,11 @@ async function processSystemTask(payload = {}) {
     }
     case "quality-upgrade-check": {
       const { runQualityUpgradeCheck } = await import("./qualityProfileService.js");
-      await runQualityUpgradeCheck();
+      await runQualityUpgradeCheck({
+        force: payload.force === true,
+        playlistId: payload.playlistId || null,
+        limit: payload.limit,
+      });
       return;
     }
     case "quality-profile-refresh": {

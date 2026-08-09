@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 
 import {
   setupIsolatedBackend,
@@ -7,10 +9,11 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, trackerModule] = await setupIsolatedBackend(
+const [isolatedState, { db }, trackerModule, qualityProfileService] = await setupIsolatedBackend(
   "download-tracker",
   "backend/config/db-sqlite.js",
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+  "backend/services/qualityProfileService.js",
 );
 
 const { WeeklyFlowDownloadTracker } = trackerModule;
@@ -84,7 +87,7 @@ test("returns complete playlist job lists unless a caller explicitly limits them
   );
 });
 
-test("persists upgrade jobs and updates every playlist reference to a shared file", () => {
+test("drops orphaned upgrade jobs on restart and updates every shared file reference", () => {
   const tracker = new WeeklyFlowDownloadTracker();
   const firstId = tracker.addJob(
     { artistName: "Artist", trackName: "Song", albumName: "Album" },
@@ -100,11 +103,11 @@ test("persists upgrade jobs and updates every playlist reference to a shared fil
   }
 
   const upgradeId = tracker.addUpgradeJob(tracker.getJob(firstId));
+  assert.ok(upgradeId);
+  assert.equal(tracker.addUpgradeJob(tracker.getJob(secondId)), null);
   const reloaded = new WeeklyFlowDownloadTracker();
-  assert.equal(reloaded.getJob(upgradeId)?.playlistType, "quality-upgrade");
-  assert.equal(reloaded.getJob(upgradeId)?.playlistId, "flow-one");
-  assert.equal(reloaded.getJob(upgradeId)?.upgradeForJobId, firstId);
-  assert.equal(reloaded.addUpgradeJob(reloaded.getJob(secondId)), null);
+  assert.equal(reloaded.getJob(upgradeId), null);
+  assert.ok(reloaded.addUpgradeJob(reloaded.getJob(secondId)));
 
   const changed = reloaded.replaceFinalPath("/library/Song.mp3", "/library/Song.flac", {
     tier: "flac-standard",
@@ -115,4 +118,29 @@ test("persists upgrade jobs and updates every playlist reference to a shared fil
   assert.equal(changed.length, 2);
   assert.equal(reloaded.getJob(firstId)?.finalPath, "/library/Song.flac");
   assert.equal(reloaded.getJob(secondId)?.qualityTier, "flac-standard");
+});
+
+test("finalizes an upgrade when optional quality metadata is absent", async () => {
+  const tracker = trackerModule.downloadTracker;
+  const library = path.join(isolatedState.baseDir, "weekly-flow", "aurral-weekly-flow");
+  const oldPath = path.join(library, "old.mp3");
+  const finalPath = path.join(library, "new.m4a");
+  await mkdir(library, { recursive: true });
+  await writeFile(oldPath, "old");
+  await writeFile(finalPath, "new");
+
+  const sourceId = tracker.addJob({ artistName: "Artist", trackName: "Song" }, "discover");
+  tracker.setDone(sourceId, oldPath, "Album");
+  tracker.updateQuality(sourceId, { tier: "mp3-128", format: "mp3" });
+  const upgradeId = tracker.addUpgradeJob(tracker.getJob(sourceId));
+
+  await assert.doesNotReject(
+    qualityProfileService.finalizeQualityUpgradeSuccess(
+      tracker.getJob(upgradeId),
+      finalPath,
+      undefined,
+    ),
+  );
+  assert.equal(tracker.getJob(upgradeId), null);
+  assert.equal(tracker.getJob(sourceId)?.finalPath, finalPath);
 });

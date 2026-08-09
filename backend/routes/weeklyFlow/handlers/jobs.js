@@ -30,12 +30,12 @@ import { finalizePipelineJobSuccess } from "../../../services/pipelineHelpers.js
 import path from "path";
 import fs from "fs/promises";
 import { invalidateRequestsCache } from "../../requests.js";
+import { enqueueSystemTaskJob } from "../../../services/honkerDb.js";
 import {
   decorateJobQuality,
   classifyQualityJob,
   getQualityProfile,
   queueQualityUpgrade,
-  runQualityUpgradeCheck,
 } from "../../../services/qualityProfileService.js";
 
 export function registerJobs(router) {
@@ -95,8 +95,11 @@ export function registerJobs(router) {
     if (!canAccessPlaylistType(req.user, playlistId)) {
       return res.status(404).json({ error: "Playlist not found" });
     }
-    const queued = await runQualityUpgradeCheck({ force: true, playlistId, limit: 500 });
-    return res.json({ success: true, queued });
+    enqueueSystemTaskJob(
+      { kind: "quality-upgrade-check", force: true, playlistId, limit: 500 },
+      { priority: -10 },
+    );
+    return res.json({ success: true, queued: 0, scheduled: true });
   });
 
   router.put("/playlists/:playlistId/retry-cycle", async (req, res) => {

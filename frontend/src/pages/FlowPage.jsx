@@ -1009,7 +1009,9 @@ function FlowPage() {
     try {
       const result = await searchPlaylistUpgrades(playlistId);
       showSuccess(
-        result?.queued > 0
+        result?.scheduled
+          ? "Upgrade search queued"
+          : result?.queued > 0
           ? `Searching upgrades for ${result.queued} track${result.queued !== 1 ? "s" : ""}`
           : "No tracks are eligible for an upgrade",
       );
