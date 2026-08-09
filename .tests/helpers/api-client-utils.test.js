@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import createCache from "../../backend/services/apiClients/simpleCache.js";
 import createRateLimiter from "../../backend/services/apiClients/rateLimiter.js";
@@ -43,4 +44,22 @@ test("fetch transport failures expose axios-compatible request metadata", async 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("public-only transport rejects unreachable IPv6 without an uncaught exception", () => {
+  const moduleUrl = new URL("../../lib/axiosFetch.js", import.meta.url).href;
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", `
+    import dns from "node:dns/promises";
+    dns.lookup = async () => [{ address: "2001:db8::1", family: 6 }];
+    const { default: axios } = await import(${JSON.stringify(moduleUrl)});
+    try {
+      await axios.get("https://example.test", { publicOnly: true, timeout: 1000 });
+      process.exitCode = 2;
+    } catch (error) {
+      console.log(error.cause?.code || error.code);
+    }
+  `], { encoding: "utf8" });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), "ENETUNREACH");
 });
