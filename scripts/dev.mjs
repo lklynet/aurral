@@ -2,13 +2,19 @@ import { spawn } from "node:child_process";
 
 const children = [];
 let stopping = false;
+let exitCode = 0;
 
 function start(command, args) {
   const child = spawn(command, args, {
-    detached: true,
     stdio: "inherit",
   });
   children.push(child);
+  child.once("exit", (code, signal) => {
+    if (stopping) return;
+    exitCode = 1;
+    console.error(`${command} exited unexpectedly${signal ? ` with ${signal}` : ` with code ${code}`}`);
+    stop();
+  });
   return child;
 }
 
@@ -18,25 +24,36 @@ function stop() {
   for (const child of children) {
     if (child.pid) {
       try {
-        process.kill(-child.pid, "SIGTERM");
+        process.kill(child.pid, "SIGTERM");
       } catch {}
     }
   }
 }
 
 process.on("SIGINT", () => {
+  exitCode = 130;
   stop();
-  process.exit(130);
 });
 process.on("SIGTERM", () => {
+  exitCode = 143;
   stop();
-  process.exit(143);
 });
 
-const backend = start(process.execPath, [
+start(process.execPath, [
   "--watch",
   "--env-file=backend/.env",
   "backend/server.js",
+]);
+start("npm", [
+  "run",
+  "dev",
+  "--workspace",
+  "frontend",
+  "--",
+  "--host",
+  "0.0.0.0",
+  "--port",
+  "3009",
 ]);
 
 while (!stopping) {
@@ -47,21 +64,17 @@ while (!stopping) {
   await new Promise((resolve) => setTimeout(resolve, 250));
 }
 
-if (!stopping) {
-  start("npm", [
-    "run",
-    "dev",
-    "--workspace",
-    "frontend",
-    "--",
-    "--host",
-    "0.0.0.0",
-    "--port",
-    "3009",
-  ]);
-}
-
-await new Promise((resolve) => {
-  backend.once("exit", resolve);
-});
+await Promise.all(
+  children.map(
+    (child) =>
+      new Promise((resolve) => {
+        if (child.exitCode !== null || child.signalCode) {
+          resolve();
+        } else {
+          child.once("exit", resolve);
+        }
+      }),
+  ),
+);
 stop();
+process.exitCode = exitCode;
