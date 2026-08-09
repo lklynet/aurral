@@ -1290,8 +1290,8 @@ function SearchResultsPage() {
     return results.filter((album) => matchesAlbumReleaseTab(album, albumReleaseTab));
   }, [albumReleaseTab, isAlbumSearch, results]);
 
-  const recommendedArtists = useMemo(() => {
-    if (normalizedType !== "recommended") return [];
+  const discoveryArtists = useMemo(() => {
+    if (!["recommended", "trending", "tag"].includes(normalizedType)) return [];
     const normalizedSearch = recommendedSearchTerm.trim().toLowerCase();
     const filtered = normalizedSearch
       ? results.filter((artist) => getRecommendedArtistName(artist).toLowerCase().includes(normalizedSearch))
@@ -1300,10 +1300,8 @@ function SearchResultsPage() {
   }, [normalizedType, recommendedSearchTerm, recommendedSortDirection, recommendedSortKey, results]);
 
   const displayedResults =
-    normalizedType === "recommended"
-      ? recommendedArtists
-      : normalizedType === "trending"
-        ? results.slice(0, visibleCount)
+    ["recommended", "trending", "tag"].includes(normalizedType)
+      ? discoveryArtists.slice(0, normalizedType === "trending" ? visibleCount : undefined)
         : isAlbumSearch
           ? albumResultsForTab
           : results;
@@ -1313,7 +1311,7 @@ function SearchResultsPage() {
   const isEmpty = isUnifiedSearch ? unifiedView.isEmpty : displayedResults.length === 0;
   const showLoadMore =
     hasMore &&
-    (normalizedType === "recommended"
+    (["recommended", "trending", "tag"].includes(normalizedType)
       ? true
       : normalizedType === "trending"
         ? results.length > PAGE_SIZE
@@ -1361,7 +1359,7 @@ function SearchResultsPage() {
   const emptyMessage =
     normalizedType === "recommended" && lastfmConfigured === false
       ? "Connect a Last.fm API key in Settings → Connect to populate recommendations."
-      : normalizedType === "recommended" || normalizedType === "trending"
+      : ["recommended", "trending", "tag"].includes(normalizedType)
         ? "Nothing to show here yet."
         : isUnifiedSearch && !localSearchConfigured
           ? "Configure the search server in Settings to search artists, releases, and tracks."
@@ -1370,30 +1368,30 @@ function SearchResultsPage() {
             : isAlbumSearch
               ? `We couldn't find any albums matching "${trimmedQuery}"`
               : isTagSearch
-                ? `We couldn't find any artists for tag "${trimmedQuery.replace(/^#/, "")}"`
-                : `We couldn't find any artists matching "${trimmedQuery}"`;
+                ? `We couldn't find any results for tag "${trimmedQuery.replace(/^#/, "")}"`
+                : `We couldn't find any results matching "${trimmedQuery}"`;
 
   const emptyTitle =
     normalizedType === "recommended" && lastfmConfigured === false
       ? "Connect Last.fm"
       : "No Results Found";
 
-  const recommendedCount = recommendedSearchTerm.trim()
-    ? recommendedArtists.length
+  const discoveryCount = recommendedSearchTerm.trim()
+    ? discoveryArtists.length
     : searchTotalCount || results.length;
   const pageSubtitle =
     normalizedType === "recommended"
-      ? `${recommendedCount} artist${recommendedCount !== 1 ? "s" : ""} we think you'll like`
+      ? `${discoveryCount} recommendations we think you'll like`
       : normalizedType === "trending"
-        ? "Trending artists right now"
+        ? "Trending right now"
         : isUnifiedSearch && trimmedQuery
           ? "Artists, releases, and songs"
           : isTagSearch && trimmedQuery
-            ? `Artists for tag "${trimmedQuery.replace(/^#/, "")}"`
+            ? `Results for tag "${trimmedQuery.replace(/^#/, "")}"`
             : isAlbumSearch && trimmedQuery
               ? null
               : trimmedQuery
-                ? `${displayedResults.length} artist${displayedResults.length !== 1 ? "s" : ""}`
+                ? `${displayedResults.length} results`
                 : null;
   const selectedRecommendedSort =
     RECOMMENDED_SORT_OPTIONS.find((option) => option.value === recommendedSortKey) ||
@@ -1453,7 +1451,7 @@ function SearchResultsPage() {
           </div>
         )}
 
-        {normalizedType === "recommended" && (
+        {["recommended", "trending", "tag"].includes(normalizedType) && (
           <div ref={recommendedToolbarRef} className="library-page__toolbar global-search">
             <div className="global-search__box">
               <div className="global-search__scope-wrap">
@@ -1464,7 +1462,7 @@ function SearchResultsPage() {
                   aria-haspopup="listbox"
                   aria-expanded={recommendedSortMenuOpen}
                   aria-controls="recommended-sort-menu"
-                  aria-label="Sort recommendations"
+                  aria-label="Sort results"
                 >
                   <span className="library-page__sort-label">{selectedRecommendedSort.label}</span>
                   <RecommendedSortDirectionIcon className="artist-icon-xs library-page__sort-direction" />
@@ -1478,7 +1476,7 @@ function SearchResultsPage() {
                     id="recommended-sort-menu"
                     className="artist-options-menu library-page__sort-menu"
                     role="listbox"
-                    aria-label="Recommendation sort options"
+                    aria-label="Result sort options"
                   >
                     {RECOMMENDED_SORT_OPTIONS.map((option) => {
                       const active = recommendedSortKey === option.value;
@@ -1513,10 +1511,10 @@ function SearchResultsPage() {
                   placeholder=""
                   className="global-search__input"
                   autoComplete="off"
-                  aria-label="Search recommendations"
+                  aria-label="Search results"
                 />
                 {!recommendedSearchTerm && (
-                  <div className="global-search__placeholder">Search recommendations...</div>
+                  <div className="global-search__placeholder">Search results...</div>
                 )}
               </div>
             </div>
@@ -1784,9 +1782,14 @@ function SearchResultsPage() {
                   onAddArtistToLibrary={handleArtistAction}
                   onArtistFeedback={handleArtistFeedback}
                   artistFeedbackLookup={artistFeedbackLookup}
-                  variant={normalizedType === "recommended" ? recommendedViewMode : "square"}
+                  variant={
+                    ["recommended", "trending", "tag"].includes(normalizedType)
+                      ? recommendedViewMode
+                      : "square"
+                  }
                   gridColumns={
-                    normalizedType === "recommended" && recommendedViewMode === "grid"
+                    ["recommended", "trending", "tag"].includes(normalizedType) &&
+                    recommendedViewMode === "grid"
                       ? recommendedGridColumns
                       : undefined
                   }
