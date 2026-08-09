@@ -25,12 +25,12 @@ export const AuthProvider = ({ children }) => {
   const [bootstrap, setBootstrap] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const authResolvedRef = useRef(false);
-  setDateTimeFormat(bootstrap?.dateTimeFormat);
 
   const checkAuthStatus = useCallback(async () => {
     try {
       const bootstrap = await getBootstrapStatus();
       authResolvedRef.current = true;
+      setDateTimeFormat(bootstrap.dateTimeFormat);
       setBootstrap(bootstrap);
       if (bootstrap.token) setStoredAuth({ token: bootstrap.token });
       const isOnboarding = !!bootstrap.onboardingRequired;
@@ -115,7 +115,9 @@ export const AuthProvider = ({ children }) => {
       setUser(result.user || null);
       setIsAuthenticated(true);
       try {
-        setBootstrap(await getBootstrapStatus());
+        const bootstrap = await getBootstrapStatus();
+        setDateTimeFormat(bootstrap.dateTimeFormat);
+        setBootstrap(bootstrap);
       } catch {}
       return true;
     } catch {

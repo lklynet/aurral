@@ -18,30 +18,34 @@ const getLocale = () => {
 const pad = (value) => String(value).padStart(2, "0");
 
 export const formatDate = (date, options) => {
-  if (options || currentFormat === "browser" || Number.isNaN(date.getTime())) {
+  if (currentFormat === "browser" || Number.isNaN(date.getTime())) {
     return date.toLocaleDateString(getLocale(), options);
   }
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
+  const utc = options?.timeZone === "UTC";
+  const year = utc ? date.getUTCFullYear() : date.getFullYear();
+  const month = pad((utc ? date.getUTCMonth() : date.getMonth()) + 1);
+  const day = pad(utc ? date.getUTCDate() : date.getDate());
   return currentFormat === "day-first"
     ? `${day}/${month}/${year}`
     : `${year}/${month}/${day}`;
 };
 
 export const formatTime = (date, options) => {
-  if (options || currentFormat === "browser" || Number.isNaN(date.getTime())) {
+  if (currentFormat === "browser" || Number.isNaN(date.getTime())) {
     return date.toLocaleTimeString(getLocale(), options);
   }
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const utc = options?.timeZone === "UTC";
+  return `${pad(utc ? date.getUTCHours() : date.getHours())}:${pad(
+    utc ? date.getUTCMinutes() : date.getMinutes(),
+  )}`;
 };
 
 export const formatDateTime = (date, options) => {
-  if (options || currentFormat === "browser" || Number.isNaN(date.getTime())) {
+  if (currentFormat === "browser" || Number.isNaN(date.getTime())) {
     return date.toLocaleString(getLocale(), options);
   }
-  const datePart = formatDate(date);
-  const timePart = formatTime(date);
+  const datePart = formatDate(date, options);
+  const timePart = formatTime(date, options);
   return currentFormat === "day-first"
     ? `${timePart} ${datePart}`
     : `${datePart} ${timePart}`;
