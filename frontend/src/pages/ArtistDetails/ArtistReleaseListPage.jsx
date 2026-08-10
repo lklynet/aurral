@@ -4,15 +4,17 @@ import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
 import {
   ArrowDown,
   ArrowUp,
+  ChevronDown,
   CornerUpLeft,
-  Grid3X3,
+  LayoutGrid,
   List,
   Loader,
   Music,
-  SlidersHorizontal,
+  Search,
   Star,
 } from "lucide-react";
 import AddActionButton from "../../components/AddActionButton";
+import PillToggle from "../../components/PillToggle";
 import SearchLibraryCheck from "../../components/SearchLibraryCheck";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
@@ -29,6 +31,10 @@ import {
   readReleaseListViewMode,
   writeReleaseListViewMode,
 } from "./utils";
+import {
+  matchesReleaseGroupSearch,
+  matchesReleaseGroupTab,
+} from "./releaseFilters.js";
 import { getAlbumAddButtonLabel } from "../../utils/albumAddAction";
 import {
   getArtistAppearsOnPage,
@@ -49,22 +55,6 @@ const releaseTabs = [
   { value: "singles", label: "EP & Singles" },
   { value: "compilations", label: "Compilations" },
 ];
-
-const isCompilation = (releaseGroup) =>
-  releaseGroup?.["primary-type"] === "Compilation" ||
-  (releaseGroup?.["secondary-types"] || []).includes("Compilation");
-
-const isSingleOrEp = (releaseGroup) =>
-  releaseGroup?.["primary-type"] === "Single" || releaseGroup?.["primary-type"] === "EP";
-
-const matchesReleaseTab = (releaseGroup, tab) => {
-  if (tab === "all") return true;
-  if (tab === "compilations") return isCompilation(releaseGroup);
-  if (tab === "singles") {
-    return isSingleOrEp(releaseGroup) && !isCompilation(releaseGroup);
-  }
-  return releaseGroup?.["primary-type"] === "Album" && !isCompilation(releaseGroup);
-};
 
 const getReleaseTypeLabel = (releaseGroup) => {
   const types = [
@@ -98,15 +88,17 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   const { showSuccess, showError } = useToast();
   const { hasPermission } = useAuth();
   const [selectedTab, setSelectedTab] = useState("all");
+  const [showLiveAlbums, setShowLiveAlbums] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
   const [sortKey, setSortKey] = useState("date");
   const [sortDirection, setSortDirection] = useState("desc");
   const [viewMode, setViewMode] = useState(() => readReleaseListViewMode());
-  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [visibleCoverIds, setVisibleCoverIds] = useState([]);
   const [visibleReleaseCount, setVisibleReleaseCount] = useState(RELEASE_PAGE_SIZE);
   const [hasMoreAppearances, setHasMoreAppearances] = useState(true);
   const [loadingMoreAppearances, setLoadingMoreAppearances] = useState(false);
-  const optionsMenuRef = useRef(null);
+  const toolbarRef = useRef(null);
   const requestedRatingIdsRef = useRef(new Set());
   const artistNameFromNav = state?.artistName || "";
   const canAddAlbum = hasPermission("addAlbum");
@@ -169,11 +161,15 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   const filteredReleaseGroups = useMemo(
     () =>
       sortReleaseGroups(
-        releaseGroups.filter((releaseGroup) => matchesReleaseTab(releaseGroup, selectedTab)),
+        releaseGroups.filter(
+          (releaseGroup) =>
+            matchesReleaseGroupTab(releaseGroup, selectedTab, showLiveAlbums) &&
+            matchesReleaseGroupSearch(releaseGroup, searchTerm),
+        ),
         sortKey,
         sortDirection,
       ),
-    [releaseGroups, selectedTab, sortDirection, sortKey],
+    [releaseGroups, searchTerm, selectedTab, showLiveAlbums, sortDirection, sortKey],
   );
   const renderedReleaseGroups = useMemo(
     () => filteredReleaseGroups.slice(0, visibleReleaseCount),
@@ -189,6 +185,10 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   useEffect(() => {
     setVisibleCoverIds(renderedReleaseGroups.map((item) => item.id).filter(Boolean));
   }, [renderedReleaseGroups]);
+
+  useEffect(() => {
+    setVisibleReleaseCount(RELEASE_PAGE_SIZE);
+  }, [searchTerm, selectedTab, showLiveAlbums]);
 
   useEffect(() => {
     setVisibleReleaseCount(RELEASE_PAGE_SIZE);
@@ -280,14 +280,21 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   ]);
 
   useEffect(() => {
-    if (!optionsOpen) return undefined;
+    if (!sortMenuOpen) return undefined;
     const handlePointerDown = (event) => {
-      if (optionsMenuRef.current?.contains(event.target)) return;
-      setOptionsOpen(false);
+      if (toolbarRef.current?.contains(event.target)) return;
+      setSortMenuOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setSortMenuOpen(false);
     };
     document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [optionsOpen]);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [sortMenuOpen]);
 
   const handleViewModeChange = (next) => {
     setViewMode(next);
@@ -297,9 +304,12 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   const handleSortOptionClick = (option) => {
     if (sortKey === option.value) {
       setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+      setSortMenuOpen(false);
       return;
     }
     setSortKey(option.value);
+    setSortDirection(option.defaultDirection);
+    setSortMenuOpen(false);
   };
 
   const openRelease = (releaseGroup) => {
@@ -456,7 +466,9 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   };
 
   const noun = isAppearsOn ? "appearance" : "release";
-  const optionsLabel = isAppearsOn ? "Appears on display options" : "Album display options";
+  const selectedSort = sortOptions.find((option) => option.value === sortKey) || sortOptions[0];
+  const SortDirectionIcon = sortDirection === "asc" ? ArrowUp : ArrowDown;
+  const searchLabel = isAppearsOn ? "Search appearances" : "Search releases";
 
   return (
     <div className="artist-details-page">
@@ -479,8 +491,92 @@ function ArtistReleaseListPage({ mode = "releases" }) {
         </div>
       </div>
 
-      <div className="artist-heading-row artist-page-header">
-        <div className="artist-min-0">
+      <div className="artist-release-page__controls artist-page-header">
+        <div ref={toolbarRef} className="library-page__toolbar global-search">
+          <div className="global-search__box">
+            <div className="global-search__scope-wrap">
+              <button
+                type="button"
+                onClick={() => setSortMenuOpen((open) => !open)}
+                className={`global-search__scope-button library-page__sort-button${sortMenuOpen ? " is-open" : ""}`}
+                aria-haspopup="listbox"
+                aria-expanded={sortMenuOpen}
+                aria-controls="artist-release-sort-menu"
+                aria-label={`Sort ${noun}s`}
+              >
+                <span className="library-page__sort-label">{selectedSort.label}</span>
+                <SortDirectionIcon className="artist-icon-xs library-page__sort-direction" />
+                <ChevronDown
+                  className={`artist-icon-sm${sortMenuOpen ? " artist-chevron--open" : ""}`}
+                />
+              </button>
+
+              {sortMenuOpen && (
+                <div
+                  id="artist-release-sort-menu"
+                  className="artist-options-menu library-page__sort-menu"
+                  role="listbox"
+                  aria-label={`${noun} sort options`}
+                >
+                  {sortOptions.map((option) => {
+                    const active = sortKey === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => handleSortOptionClick(option)}
+                        className={`artist-menu-item${active ? " is-active" : ""}`}
+                        role="option"
+                        aria-selected={active}
+                      >
+                        <span>{option.label}</span>
+                        <span>
+                          {active && <SortDirectionIcon className="artist-icon-xs" />}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="global-search__divider" />
+
+            <div className="global-search__input-wrap">
+              <Search className="global-search__icon" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder=""
+                className="global-search__input"
+                autoComplete="off"
+                aria-label={searchLabel}
+              />
+              {!searchTerm && (
+                <div className="global-search__placeholder">{searchLabel}...</div>
+              )}
+            </div>
+          </div>
+
+          <div className="library-page__view-controls">
+            <button
+              type="button"
+              onClick={() => handleViewModeChange(viewMode === "grid" ? "list" : "grid")}
+              className="btn btn-icon-square library-page__view-toggle"
+              aria-label={viewMode === "grid" ? "Switch to list view" : "Switch to grid view"}
+              title={viewMode === "grid" ? "List view" : "Grid view"}
+            >
+              {viewMode === "grid" ? (
+                <List className="artist-icon-sm" />
+              ) : (
+                <LayoutGrid className="artist-icon-sm" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        <div className="artist-release-page__filters">
           <div className="artist-tabs">
             {releaseTabs.map((tab) => {
               const active = selectedTab === tab.value;
@@ -496,61 +592,14 @@ function ArtistReleaseListPage({ mode = "releases" }) {
               );
             })}
           </div>
-        </div>
-
-        <div className="artist-options" ref={optionsMenuRef}>
-          <button
-            type="button"
-            onClick={() => setOptionsOpen((current) => !current)}
-            className="btn btn-surface btn-icon-square"
-            aria-label={optionsLabel}
-            title={optionsLabel}
-            aria-expanded={optionsOpen}
-          >
-            <SlidersHorizontal className="artist-icon-sm" />
-          </button>
-          {optionsOpen && (
-            <div className="artist-options-menu">
-              {sortOptions.map((option) => {
-                const active = sortKey === option.value;
-                const DirectionIcon = sortDirection === "asc" ? ArrowUp : ArrowDown;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => handleSortOptionClick(option)}
-                    className={`artist-menu-item${active ? " is-active" : ""}`}
-                  >
-                    <span>{option.label}</span>
-                    <span>{active && <DirectionIcon className="artist-icon-xs" />}</span>
-                  </button>
-                );
-              })}
-              <div className="artist-menu-section" />
-              <div className="artist-options-view-grid">
-                <button
-                  type="button"
-                  onClick={() => handleViewModeChange("grid")}
-                  className={`btn btn-icon-square btn-surface${viewMode === "grid" ? " is-active" : ""}`}
-                  aria-label="Grid view"
-                  title="Grid view"
-                  aria-pressed={viewMode === "grid"}
-                >
-                  <Grid3X3 className="artist-icon-sm" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleViewModeChange("list")}
-                  className={`btn btn-icon-square btn-surface${viewMode === "list" ? " is-active" : ""}`}
-                  aria-label="List view"
-                  title="List view"
-                  aria-pressed={viewMode === "list"}
-                >
-                  <List className="artist-icon-sm" />
-                </button>
-              </div>
-            </div>
-          )}
+          <div className="artist-release-page__live-toggle">
+            <span>Live albums</span>
+            <PillToggle
+              checked={showLiveAlbums}
+              onChange={(event) => setShowLiveAlbums(event.target.checked)}
+              aria-label="Show live albums"
+            />
+          </div>
         </div>
       </div>
 

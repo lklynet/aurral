@@ -4100,6 +4100,50 @@ textarea {
   margin-bottom: 1.75rem;
 }
 
+.artist-release-page__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.artist-release-page__filters,
+.artist-release-page__live-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.artist-release-page__filters {
+  justify-content: space-between;
+}
+
+.artist-release-page__filters .artist-tabs {
+  min-width: 0;
+}
+
+.artist-release-page__live-toggle {
+  flex-shrink: 0;
+  color: var(--aurral-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+@media (max-width: 639px) {
+  .artist-release-page__controls .artist-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .artist-release-page__controls .artist-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .artist-release-page__controls .artist-tab {
+    flex-shrink: 0;
+  }
+}
+
 .app-main--artist-details .artist-details-page > .artist-page-header:first-child {
   padding-top: 1rem;
 }
