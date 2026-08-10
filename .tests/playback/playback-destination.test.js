@@ -9,7 +9,7 @@ import {
   playbackOperationSuccess,
 } from "../../backend/services/playback/playbackDestination.js";
 
-test("playlist snapshots keep Aurral identity separate from display names", () => {
+test("playlist snapshots keep Aurral identity and exact paths", () => {
   const first = createPlaybackPlaylistSnapshot({
     entityId: "flow-1",
     ownerUserId: 7,
@@ -17,7 +17,7 @@ test("playlist snapshots keep Aurral identity separate from display names", () =
     description: "A mix for the morning",
     tracks: [
       {
-        path: "/music/Artist/Album/Track.flac",
+        path: " /music/Artist/Album/Track.flac ",
         title: "Track",
         artist: "Artist",
         album: "Album",
@@ -31,7 +31,7 @@ test("playlist snapshots keep Aurral identity separate from display names", () =
   assert.deepEqual(createPlaybackPlaylistIdentity(first), createPlaybackPlaylistIdentity(renamed));
   assert.equal(first.description, "A mix for the morning");
   assert.deepEqual(first.tracks[0], {
-    path: "/music/Artist/Album/Track.flac",
+    path: " /music/Artist/Album/Track.flac ",
     title: "Track",
     artist: "Artist",
     album: "Album",

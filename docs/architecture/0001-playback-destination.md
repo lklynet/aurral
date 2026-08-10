@@ -30,7 +30,7 @@ A playlist snapshot contains:
 - An optional `description`
 - An ordered `tracks` array
 
-Each track contains its Aurral-readable local `path`, `title`, and `artist`. It can also contain `album`, `durationMs`, and a recording `mbid`. The snapshot is immutable. Each adapter converts local paths to its destination paths or track IDs.
+Each track contains its exact Aurral-readable local `path`, `title`, and `artist`. Path validation does not trim valid filename whitespace. A track can also contain `album`, `durationMs`, and a recording `mbid`. The snapshot is immutable. Each adapter converts local paths to its destination paths or track IDs.
 
 Destination adapters own their names, authentication, configuration, vendor IDs, stored pointers, owner policy, and detailed connection state. Callers only use the contract values above.
 

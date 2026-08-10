@@ -45,8 +45,10 @@ export function createPlaybackPlaylistSnapshot({
   }
   const identity = createPlaybackPlaylistIdentity({ entityId, ownerUserId });
   const normalizedTracks = tracks.map((track, index) => {
+    const trackPath = track?.path;
+    requireText(trackPath, `tracks[${index}].path`);
     const normalized = {
-      path: requireText(track?.path, `tracks[${index}].path`),
+      path: trackPath,
       title: requireText(track?.title, `tracks[${index}].title`),
       artist: requireText(track?.artist, `tracks[${index}].artist`),
     };
