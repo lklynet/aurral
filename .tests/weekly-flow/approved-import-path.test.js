@@ -30,6 +30,10 @@ const [
 
 const app = express();
 app.use(express.json());
+app.use((req, _res, next) => {
+  req.user = { role: "admin" };
+  next();
+});
 const router = express.Router();
 registerJobs(router);
 app.use(router);
@@ -90,4 +94,48 @@ test("approving a reviewed download commits it inside the managed playlist libra
     "utf8",
   );
   assert.match(m3u, /Track\.flac/);
+});
+
+test("reports when an upgrade search is already queued for a track", async () => {
+  const playlistId = "c79c1598-699a-4ab3-b8cd-4e570f001f18";
+  flowPlaylistConfig.createSharedPlaylist({
+    id: playlistId,
+    name: "Upgrades",
+    tracks: [{ artistName: "Artist", trackName: "Track", albumName: "Album" }],
+  });
+  dbOps.updateSettings({
+    ...dbOps.getSettings(),
+    integrations: {
+      slskd: { enabled: true, url: "http://127.0.0.1:1", apiKey: "test-key" },
+    },
+  });
+  const finalPath = path.join(
+    process.env.DOWNLOAD_FOLDER,
+    "aurral-weekly-flow",
+    playlistId,
+    "Artist",
+    "Album",
+    "Track.mp3",
+  );
+  await fs.mkdir(path.dirname(finalPath), { recursive: true });
+  await fs.writeFile(finalPath, "audio");
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Track", albumName: "Album" },
+    playlistId,
+  );
+  downloadTracker.setDone(jobId, finalPath, "Album");
+  downloadTracker.updateQuality(jobId, { tier: "mp3-128", format: "mp3" });
+
+  const first = await fetch(`${baseUrl}/quality-upgrades/${playlistId}/${jobId}`, {
+    method: "POST",
+  });
+  const second = await fetch(`${baseUrl}/quality-upgrades/${playlistId}/${jobId}`, {
+    method: "POST",
+  });
+  const payload = await second.json();
+
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200, JSON.stringify(payload));
+  assert.equal(payload.alreadyQueued, true);
+  assert.equal(payload.queued, 0);
 });

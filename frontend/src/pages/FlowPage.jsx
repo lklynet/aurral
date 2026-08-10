@@ -979,8 +979,12 @@ function FlowPage() {
     }
     try {
       if (track.status === "done") {
-        await searchTrackUpgrade(playlistId, jobId);
-        showSuccess(`Searching for an upgrade to ${track.trackName}`);
+        const result = await searchTrackUpgrade(playlistId, jobId);
+        showSuccess(
+          result?.alreadyQueued
+            ? `Upgrade search already queued for ${track.trackName}`
+            : `Searching for an upgrade to ${track.trackName}`,
+        );
       } else if (isFlow) {
         await reSearchFlowTrack(playlistId, jobId);
         showSuccess(`Re-searching ${track.trackName}`);

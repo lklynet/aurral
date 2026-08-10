@@ -593,21 +593,22 @@ export class WeeklyFlowDownloadTracker {
     return ids;
   }
 
+  findActiveUpgradeJob(sourceJob) {
+    if (!sourceJob?.finalPath) return null;
+    return [...this.jobs.values()].find((job) => {
+      if (
+        !job.upgradeForJobId ||
+        (job.status !== "pending" && job.status !== "downloading")
+      ) {
+        return false;
+      }
+      return this.jobs.get(job.upgradeForJobId)?.finalPath === sourceJob.finalPath;
+    }) || null;
+  }
+
   addUpgradeJob(sourceJob) {
     if (!sourceJob?.id || sourceJob.status !== "done" || !sourceJob.finalPath) return null;
-    const active = [...this.jobs.values()].some(
-      (job) => {
-        if (
-          !job.upgradeForJobId ||
-          (job.status !== "pending" && job.status !== "downloading")
-        ) {
-          return false;
-        }
-        const activeSource = this.jobs.get(job.upgradeForJobId);
-        return activeSource?.finalPath === sourceJob.finalPath;
-      },
-    );
-    if (active) return null;
+    if (this.findActiveUpgradeJob(sourceJob)) return null;
     const id = this.addJob(sourceJob, "quality-upgrade");
     const job = this.jobs.get(id);
     job.playlistId = sourceJob.playlistId || sourceJob.playlistType;

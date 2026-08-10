@@ -73,7 +73,7 @@ Aurral can use search-result names and bitrate data to order candidates. Aurral 
 
 An unknown final quality is not valid. A quality rejection does not go to **Activity > Review**. Review stays for track identity and duration decisions.
 
-The **Quality** column on the Playlists page shows the measured tier and its profile state.
+The **Quality** column on the Playlists page shows the measured tier and its profile state. It labels a file reused from Lidarr as **Lidarr**.
 
 ## Track upgrades
 
@@ -85,6 +85,8 @@ To start upgrades manually:
 
 - Select **Search for upgrade** on an eligible track.
 - Select **Search for upgrades** from a flow or static playlist menu.
+
+If an upgrade search is already in the queue for a track, Aurral reports that state instead of reporting that the track is not eligible.
 
 A user who can open the playlist can start these searches. Manual searches work when automatic upgrades are off.
 

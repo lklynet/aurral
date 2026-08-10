@@ -83,8 +83,11 @@ export function registerJobs(router) {
     if (!job || job.playlistType !== playlistId) {
       return res.status(404).json({ error: "Track not found" });
     }
-    const queued = await queueQualityUpgrade(job);
-    if (!queued) {
+    const result = await queueQualityUpgrade(job);
+    if (result === "already-queued") {
+      return res.json({ success: true, queued: 0, alreadyQueued: true, jobId });
+    }
+    if (result !== "queued") {
       return res.status(409).json({ error: "Track is not eligible for an upgrade" });
     }
     return res.json({ success: true, queued: 1, jobId });

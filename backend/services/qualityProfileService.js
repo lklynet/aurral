@@ -83,8 +83,7 @@ export async function classifyQualityJob(job) {
   if (
     !job?.finalPath ||
     job.status !== "done" ||
-    job.upgradeForJobId ||
-    !isAurralOwnedPath(job.finalPath)
+    job.upgradeForJobId
   ) {
     return null;
   }
@@ -116,8 +115,7 @@ export async function reclassifyQualityJobs({ enqueue = false } = {}) {
     if (
       !job?.finalPath ||
       job.status !== "done" ||
-      job.upgradeForJobId ||
-      !isAurralOwnedPath(job.finalPath)
+      job.upgradeForJobId
     ) {
       continue;
     }
@@ -138,21 +136,24 @@ function hasUpgradeSource() {
 }
 
 export async function queueQualityUpgrade(job) {
-  if (!job?.id || job.status !== "done" || !isAurralOwnedPath(job.finalPath)) return false;
+  if (!job?.id || job.status !== "done" || !isAurralOwnedPath(job.finalPath)) {
+    return "ineligible";
+  }
   if (!job.qualityCheckedAt) await classifyQualityJob(job);
   const current = downloadTracker.getJob(job.id);
   if (getQualityState({ tier: current?.qualityTier }, getQualityProfile()) === "preferred") {
-    return false;
+    return "ineligible";
   }
-  if (!hasUpgradeSource()) return false;
+  if (!hasUpgradeSource()) return "ineligible";
+  if (downloadTracker.findActiveUpgradeJob(current)) return "already-queued";
   const upgradeJobId = downloadTracker.addUpgradeJob(current);
-  if (!upgradeJobId) return false;
+  if (!upgradeJobId) return "ineligible";
   if (!downloadTracker.enqueueDownloadPipeline(upgradeJobId)) {
     downloadTracker.removeJob(upgradeJobId);
-    return false;
+    return "ineligible";
   }
   downloadTracker.markQualityUpgradeChecked(current.id);
-  return true;
+  return "queued";
 }
 
 export async function runQualityUpgradeCheck({ force = false, playlistId = null, limit = 25 } = {}) {
@@ -173,7 +174,7 @@ export async function runQualityUpgradeCheck({ force = false, playlistId = null,
     const current = downloadTracker.getJob(job.id);
     if (getQualityState({ tier: current?.qualityTier }, profile) === "preferred") continue;
     if (!force && Number(current?.qualityUpgradeCheckedAt || 0) > dueBefore) continue;
-    if (await queueQualityUpgrade(current)) queued += 1;
+    if (await queueQualityUpgrade(current) === "queued") queued += 1;
   }
   return queued;
 }

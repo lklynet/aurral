@@ -46,12 +46,12 @@ function getTrackQualityMeta(track) {
   } else if (track.qualityFormat && track.qualityBitrateKbps) {
     label = `${track.qualityFormat.toUpperCase()} ${track.qualityBitrateKbps}`;
   }
-  const state = {
+  const state = track.externalPath ? "Lidarr" : ({
     preferred: "Preferred",
     upgrade: "Upgrade",
     "below-floor": "Below floor",
     external: "External",
-  }[track.qualityState] || "";
+  }[track.qualityState] || "");
   return { label, state };
 }
 

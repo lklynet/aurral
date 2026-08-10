@@ -9,9 +9,10 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, trackerModule, qualityProfileService] = await setupIsolatedBackend(
+const [isolatedState, { db }, { dbOps }, trackerModule, qualityProfileService] = await setupIsolatedBackend(
   "download-tracker",
   "backend/config/db-sqlite.js",
+  "backend/db/helpers/index.js",
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
   "backend/services/qualityProfileService.js",
 );
@@ -20,6 +21,7 @@ const { WeeklyFlowDownloadTracker } = trackerModule;
 
 test.beforeEach(async () => {
   await resetDatabase(db);
+  trackerModule.downloadTracker.clearAll();
 });
 
 test.after(async () => {
@@ -143,4 +145,33 @@ test("finalizes an upgrade when optional quality metadata is absent", async () =
   );
   assert.equal(tracker.getJob(upgradeId), null);
   assert.equal(tracker.getJob(sourceId)?.finalPath, finalPath);
+});
+
+test("classifies reused Lidarr files without making them eligible for upgrades", async () => {
+  const tracker = trackerModule.downloadTracker;
+  const lidarrPath = path.join(isolatedState.baseDir, "lidarr", "Song.mp3");
+  await mkdir(path.dirname(lidarrPath), { recursive: true });
+  await writeFile(
+    lidarrPath,
+    Buffer.from(
+      "SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYxLjcuMTAzAAAAAAAAAAAAAAD/+5DAAAAAAAAAAAAAAAAAAAAAAABJbmZvAAAADwAAAAIAAATkAKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqr//////////////////////////////////////////////////////////////////wAAAABMYXZjNjEuMTkAAAAAAAAAAAAAAAAkBQcAAAAAAAAE5MAlg1kAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+      "base64",
+    ),
+  );
+  dbOps.updateSettings({
+    ...dbOps.getSettings(),
+    downloadFolderPath: path.join(isolatedState.baseDir, "managed"),
+  });
+  const jobId = tracker.addJob({ artistName: "Artist", trackName: "Song" }, "discover");
+  tracker.setDone(jobId, lidarrPath, "Album", "/music/Artist/Album/Song.mp3");
+
+  const result = await qualityProfileService.reclassifyQualityJobs();
+  const job = tracker.getJob(jobId);
+  const decorated = qualityProfileService.decorateJobQuality(job);
+
+  assert.equal(result.classified, 1);
+  assert.equal(job.qualityTier, "mp3-128");
+  assert.equal(decorated.qualityLabel, "MP3 128");
+  assert.equal(decorated.qualityState, "external");
+  assert.equal(await qualityProfileService.queueQualityUpgrade(job), "ineligible");
 });
