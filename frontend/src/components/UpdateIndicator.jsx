@@ -7,6 +7,7 @@ import {
 } from "../../../lib/release-version";
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const NIGHTLY_CHECK_INTERVAL_MS = 2 * 60 * 60 * 1000;
 const MAX_NIGHTLY_NOTES = 8;
 
 async function fetchJson(url) {
@@ -45,6 +46,7 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
   const repo = import.meta.env.VITE_GITHUB_REPO || "lklynet/aurral";
   const releaseChannel = (import.meta.env.VITE_RELEASE_CHANNEL || "stable").toLowerCase();
   const isNightly = releaseChannel === "nightly";
+  const checkIntervalMs = isNightly ? NIGHTLY_CHECK_INTERVAL_MS : CHECK_INTERVAL_MS;
   const cacheKey = useMemo(
     () => `aurral:updateCache:${repo}:${releaseChannel}`,
     [releaseChannel, repo],
@@ -120,7 +122,7 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
       const checkMeta = readStorage(checkMetaKey);
       if (
         checkMeta?.lastCheckedAt &&
-        Date.now() - Number(checkMeta.lastCheckedAt) < CHECK_INTERVAL_MS &&
+        Date.now() - Number(checkMeta.lastCheckedAt) < checkIntervalMs &&
         cached?.sourceVersion === resolvedVersion
       ) {
         return;
@@ -145,12 +147,12 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
     };
 
     checkForUpdate();
-    const intervalId = setInterval(checkForUpdate, CHECK_INTERVAL_MS);
+    const intervalId = setInterval(checkForUpdate, checkIntervalMs);
     return () => {
       active = false;
       clearInterval(intervalId);
     };
-  }, [cacheKey, checkMetaKey, isNightly, releaseChannel, repo, resolvedVersion, visible]);
+  }, [cacheKey, checkIntervalMs, checkMetaKey, isNightly, releaseChannel, repo, resolvedVersion, visible]);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
