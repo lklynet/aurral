@@ -14,7 +14,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "lucide-react": "^1.28.0",
+    "lucide-react": "^1.29.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router": "8.3.0",
