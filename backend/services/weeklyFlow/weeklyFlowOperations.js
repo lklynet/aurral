@@ -291,6 +291,8 @@ async function runFlowCleanup({ flowId, tokenScope = null, token = null } = {}) 
 async function deleteFlow({ flowId, tokenScope = null, token = null } = {}) {
   const safeFlowId = String(flowId || "").trim();
   if (!safeFlowId) return false;
+  const flow = flowPlaylistConfig.getFlow(safeFlowId);
+  if (!flow) return false;
   if (!isLatestWeeklyFlowOperationToken(tokenScope, token)) {
     return { cancelled: true };
   }
@@ -302,6 +304,7 @@ async function deleteFlow({ flowId, tokenScope = null, token = null } = {}) {
     weeklyFlowWorker.setRetryCyclePaused(safeFlowId, false);
     weeklyFlowWorker.clearPlaylistRunState(safeFlowId);
     playlistManager.updateConfig(false);
+    await playlistManager.deletePlaybackPlaylist(flow);
     await playlistManager.weeklyReset([safeFlowId]);
     downloadTracker.clearByPlaylistType(safeFlowId);
     await playlistManager.cleanupEntityPlexPlaylists(safeFlowId);
@@ -619,6 +622,7 @@ async function deleteSharedPlaylist({ playlistId } = {}) {
   await withPlaylistMutation(safePlaylistId, async () => {
     weeklyFlowWorker.setRetryCyclePaused(safePlaylistId, false);
     playlistManager.updateConfig(false);
+    await playlistManager.deletePlaybackPlaylist(exists);
     await playlistManager.weeklyReset([safePlaylistId]);
     downloadTracker.clearByPlaylistType(safePlaylistId);
     await playlistManager.cleanupEntityPlexPlaylists(safePlaylistId);

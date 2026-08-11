@@ -215,6 +215,16 @@ export class WeeklyFlowPlaylistManager {
     return this.plexDestination.deleteEntityPlaylists(entityId);
   }
 
+  async deletePlaybackPlaylist(entity) {
+    return this.destinationRegistry.run(
+      "deletePlaylist",
+      createPlaybackPlaylistIdentity({
+        entityId: entity.id,
+        ownerUserId: entity.ownerUserId ?? null,
+      }),
+    );
+  }
+
   async syncPlexNow() {
     for (const flow of flowPlaylistConfig.getFlows()) {
       if (flow.enabled) continue;

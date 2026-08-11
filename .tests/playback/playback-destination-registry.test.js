@@ -19,7 +19,10 @@ function destination(name, configured, result = { ok: true }) {
       if (result instanceof Error) throw result;
       return result;
     },
-    async deletePlaylist() {},
+    async deletePlaylist(identity) {
+      calls.push(["deletePlaylist", identity]);
+      return result;
+    },
     async requestScan() {},
   };
 }
@@ -42,6 +45,13 @@ test("runs zero, one, or multiple configured destinations from settings", async 
   assert.deepEqual(off.calls[0], ["updateConfig", {}]);
   assert.deepEqual(first.calls[0], ["updateConfig", { url: "first" }]);
   assert.deepEqual(second.calls[0], ["updateConfig", { url: "second" }]);
+
+  assert.deepEqual(await registry.run("deletePlaylist", { entityId: "playlist-1" }), [
+    { destination: "First", operation: "deletePlaylist", ok: true },
+    { destination: "Second", operation: "deletePlaylist", ok: true },
+  ]);
+  assert.deepEqual(first.calls.at(-1), ["deletePlaylist", { entityId: "playlist-1" }]);
+  assert.deepEqual(second.calls.at(-1), ["deletePlaylist", { entityId: "playlist-1" }]);
 });
 
 test("records destination failures without blocking other destinations", async (t) => {
