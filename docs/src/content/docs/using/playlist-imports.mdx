@@ -165,7 +165,7 @@ Aurral treats a top-level array of track objects as one playlist.
 - If an imported playlist name conflicts with an existing playlist, Aurral renames it automatically.
 - Imported playlists queue their own downloads and do not affect any flow configuration.
 - When existing file reuse succeeds, Aurral immediately marks the imported track as complete.
-- Aurral keeps the imported track order in the playlist view and in the `.m3u` file after reuse and downloads finish.
+- Aurral keeps the imported track order in the playlist view and in the Navidrome playlist after reuse and downloads finish.
 
 ## Download retries and failure behavior
 
@@ -199,4 +199,4 @@ Use the reported path to add a mapping under **Settings > Download Clients > Rem
 
 If Navidrome uses a different path for reused Lidarr files, enable **Use Navidrome paths in M3U files**.
 
-Add a Navidrome path mapping so `.m3u` files use paths that Navidrome can open. See [Navidrome](/integrations/navidrome/#different-navidrome-paths).
+Add a Navidrome path mapping so temporary fallback files use paths that Navidrome can open. See [Navidrome](/integrations/navidrome/#different-navidrome-paths).

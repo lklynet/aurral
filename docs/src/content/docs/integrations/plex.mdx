@@ -38,7 +38,7 @@ Aurral registers the library at `<plex-visible-downloads>/aurral-weekly-flow`. T
 
 You do not need to create this library manually in Plex. The library can be empty until a flow finishes downloading tracks. Plex can take several minutes to scan the files.
 
-Navidrome M3U playlists are in `aurral-weekly-flow/_playlists/`. Plex does not use these files.
+Navidrome can temporarily write M3U fallback files in `aurral-weekly-flow/_playlists/`. Plex does not use these files.
 
 ## Plex compared with Navidrome
 
@@ -46,9 +46,9 @@ You can run both at the same time. They use the same download tree but different
 
 |                   | Navidrome                                              | Plex                                               |
 | ----------------- | ------------------------------------------------------ | -------------------------------------------------- |
-| Playlist format   | `.m3u` files on disk                                   | Regular Plex playlists through the API                     |
-| Library setup     | Scan folders and read M3U                              | Aurral creates an **Aurral** music library through the API |
-| Path mismatch fix | **Use Navidrome paths in M3U files** / `M3U_PATH_MODE` | **Plex Aurral Library path** (optional)            |
+| Playlist format   | Regular playlists through the Subsonic API             | Regular Plex playlists through the API                     |
+| Library setup     | Aurral creates a library and requests scans             | Aurral creates an **Aurral** music library through the API |
+| Path mismatch fix | M3U path setting for temporary fallback files          | **Plex Aurral Library path** (optional)                     |
 | Playlist names    | Bare flow or playlist name                             | Bare flow or playlist name                         |
 
 Navidrome's M3U path settings do not affect Plex.

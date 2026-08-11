@@ -6,7 +6,7 @@
 
 ## Context
 
-`WeeklyFlowPlaylistManager` creates path-first playlist snapshots. A settings-driven registry sends each snapshot to every configured playback destination. Navidrome writes track paths to M3U files. Plex resolves track paths to Plex track IDs and stores Plex playlist pointers. Both destinations publish the same Aurral playlists, but their configuration and identity rules are different.
+`WeeklyFlowPlaylistManager` creates path-first playlist snapshots. A settings-driven registry sends each snapshot to every configured playback destination. Navidrome and Plex resolve snapshot tracks to their own song IDs and store playlist pointers. Both destinations publish the same Aurral playlists, but their configuration and identity rules are different.
 
 ## Decision
 
@@ -36,16 +36,15 @@ Destination adapters own their names, authentication, configuration, vendor IDs,
 
 ## Compatibility
 
-The Navidrome adapter writes snapshot paths to M3U files after it applies Navidrome path mappings. It owns Navidrome file naming, legacy cleanup, library setup, and scans.
+The Navidrome adapter resolves snapshot paths and metadata to Subsonic song IDs. It stores a Navidrome playlist ID for each Aurral entity and owner. It temporarily writes an M3U file when Navidrome has not indexed all tracks. A post-scan catch-up replaces that file with an API-managed playlist. The adapter owns Navidrome naming, migration cleanup, library setup, and scans.
 
 The Plex adapter resolves snapshot paths to Plex rating keys. It keeps section IDs, user tokens, playlist pointers, owner-specific titles, library setup, and scans inside the adapter.
 
-This decision does not change current Navidrome or Plex behavior. Both playback flows use this seam through an in-process registry. The registry checks saved settings, runs every configured destination, and records one destination failure without blocking another destination.
+The registry and playback contract remain unchanged. Navidrome's Subsonic API behavior stays inside its adapter, and Plex retains its existing behavior. The registry checks saved settings, runs every configured destination, and records one destination failure without blocking another destination.
 
 ## Deliberate non-goals
 
 - Do not add a generic integration host.
 - Do not add plugin loading or uploaded code.
-- Do not migrate Navidrome from M3U files to the Subsonic API.
 - Do not make Settings forms part of this contract.
-- Do not move current destination behavior in this issue.
+- Do not move vendor behavior out of destination adapters.

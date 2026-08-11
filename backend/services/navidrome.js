@@ -48,12 +48,15 @@ export class NavidromeClient {
     if (!this.isConfigured()) throw new Error("Navidrome not configured");
 
     try {
-      const response = await axios.get(`${this.url}/rest/${endpoint}`, {
-        params: {
-          ...this.getAuthParams(),
-          ...params,
-        },
-      });
+      const query = new URLSearchParams();
+      for (const [key, value] of Object.entries({ ...this.getAuthParams(), ...params })) {
+        if (Array.isArray(value)) {
+          for (const item of value) query.append(key, item);
+        } else if (value != null) {
+          query.set(key, value);
+        }
+      }
+      const response = await axios.get(`${this.url}/rest/${endpoint}?${query}`);
 
       if (response.data["subsonic-response"]?.status === "failed") {
         throw new Error(
@@ -72,7 +75,7 @@ export class NavidromeClient {
     return this.request("ping");
   }
 
-  async findSong(title, artist) {
+  async findSong(title, artist, track = {}) {
     const data = await this.request("search3", {
       query: `${artist} ${title}`,
       songCount: 5,
@@ -81,13 +84,27 @@ export class NavidromeClient {
     });
 
     const songs = data.searchResult3?.song || [];
-    const match = songs.find(
+    const matches = (Array.isArray(songs) ? songs : [songs]).filter(
       (s) =>
-        s.title.toLowerCase() === title.toLowerCase() &&
-        s.artist.toLowerCase() === artist.toLowerCase(),
+        String(s.title || "").toLowerCase() === title.toLowerCase() &&
+        String(s.artist || "").toLowerCase() === artist.toLowerCase(),
     );
-
-    return match || null;
+    const normalizedPath = String(track.path || "").replace(/\\/g, "/").toLowerCase();
+    const fileName = normalizedPath.split("/").at(-1);
+    const album = String(track.album || "").toLowerCase();
+    const mbid = String(track.mbid || "").toLowerCase();
+    const duration = Number(track.durationMs) / 1000;
+    const score = (song) => {
+      const songPath = String(song.path || "").replace(/\\/g, "/").toLowerCase();
+      let value = 0;
+      if (mbid && String(song.musicBrainzId || "").toLowerCase() === mbid) value += 8;
+      if (songPath && normalizedPath.endsWith(songPath)) value += 4;
+      else if (fileName && songPath.split("/").at(-1) === fileName) value += 2;
+      if (album && String(song.album || "").toLowerCase() === album) value += 2;
+      if (Number.isFinite(duration) && Math.abs(Number(song.duration) - duration) <= 2) value += 1;
+      return value;
+    };
+    return matches.sort((a, b) => score(b) - score(a))[0] || null;
   }
 
   async searchSongsByArtist(artistName, limit = 5) {
@@ -119,42 +136,35 @@ export class NavidromeClient {
 
   async getPlaylists() {
     const data = await this.request("getPlaylists");
-    return data.playlists?.playlist || [];
+    const playlists = data.playlists?.playlist || [];
+    return Array.isArray(playlists) ? playlists : [playlists];
   }
 
-  async createPlaylist(name, songIds, replace = false) {
-    if (!songIds || songIds.length === 0) {
-      if (replace) {
-        const playlists = await this.getPlaylists();
-        const existing = playlists.find((p) => p.name === name);
-        if (existing) {
-          await this.deletePlaylist(existing.id);
-        }
-      }
-      return null;
-    }
+  async getPlaylist(id) {
+    const data = await this.request("getPlaylist", { id });
+    return data.playlist || null;
+  }
 
-    const playlists = await this.getPlaylists();
-    const existing = playlists.find((p) => p.name === name);
-
-    if (existing) {
-      if (replace) {
-        await this.deletePlaylist(existing.id);
-      } else {
-        const data = await this.request("updatePlaylist", {
-          playlistId: existing.id,
-          songIdToAdd: songIds,
-        });
-        return data.playlist || existing;
-      }
-    }
-
+  async createPlaylist(name, songIds) {
+    const ids = Array.isArray(songIds) ? songIds : [];
     const data = await this.request("createPlaylist", {
       name,
-      songId: songIds,
+      songId: ids,
     });
+    return data.playlist || null;
+  }
 
-    return data.playlist;
+  async updatePlaylist(playlistId, { name, songIds = [] } = {}) {
+    const playlist = await this.getPlaylist(playlistId);
+    const entries = playlist?.entry
+      ? Array.isArray(playlist.entry) ? playlist.entry : [playlist.entry]
+      : [];
+    await this.request("updatePlaylist", {
+      playlistId,
+      name,
+      songIndexToRemove: entries.map((_, index) => index),
+      songIdToAdd: songIds,
+    });
   }
 
   async deletePlaylist(id) {

@@ -3,7 +3,7 @@ title: Navidrome
 description: Connect Navidrome to play Aurral downloads and generated playlists.
 ---
 
-Navidrome is optional. Aurral connects to Navidrome through its API and writes playlist files to the Aurral download tree. Navidrome must also be able to read that tree on disk.
+Navidrome is optional. Aurral creates and updates Navidrome playlists through the Subsonic API. Navidrome must also be able to read and scan the Aurral download tree.
 
 This is a filesystem connection as well as an API connection. A successful **Test connection** only proves that Aurral can reach the Navidrome API.
 
@@ -50,9 +50,9 @@ Add `/data/music` as a normal Navidrome music library if it is not already prese
 Use matching container paths when possible. A different path affects two things:
 
 - the path Navidrome uses for its music library;
-- the paths written into Aurral's `.m3u` files.
+- the paths in temporary M3U fallback files.
 
-The **Use Navidrome paths in M3U files** setting only changes the second item. It does not mount a folder and it does not make an incorrect Navidrome library path valid.
+The **Use Navidrome paths in M3U files** setting only changes the fallback files. Aurral uses a fallback while Navidrome waits to index a new track. The setting does not mount a folder and it does not make an incorrect Navidrome library path valid.
 
 If Aurral uses `/data/downloads/aurral` and Navidrome uses `/music/aurral` for the same host folder:
 
@@ -67,19 +67,21 @@ If Aurral uses `/data/downloads/aurral` and Navidrome uses `/music/aurral` for t
    | Aurral Path | `/data/downloads/aurral` |
    | Navidrome Path | `/music/aurral` |
 
-6. After the settings save automatically, refresh the affected playlist. Run the flow again, or edit and save a shared playlist, to rewrite its `.m3u` file.
+6. After the settings save automatically, refresh the affected playlist. Run the flow again, or edit and save a shared playlist.
 
 For a native Windows Navidrome installation, use the Windows path as **Navidrome Path**, for example `N:/ServerFolders/Music/Aurral`. Use a separate [Remote Path Mapping](/getting-started/storage/#paths-reported-by-lidarr-or-download-clients) if Aurral cannot read paths reported by Lidarr or a download client.
 
-## Generated playlists and scans
+## API playlists and scans
 
-Aurral stores generated `.m3u` files under:
+Aurral stores the Navidrome playlist ID for each flow or shared playlist. Names are only display values, so a rename updates the same Navidrome playlist.
+
+If a new track is not indexed, Aurral temporarily writes an `.m3u` file under:
 
 ```text
 /data/downloads/aurral/aurral-weekly-flow/_playlists/
 ```
 
-Navidrome scans the **Aurral Playlists** library, not only your main Lidarr library. If the library appears but has no tracks:
+After a scan, Aurral resolves the song IDs, updates the API playlist, and removes the fallback file. Navidrome scans the **Aurral Playlists** library, not only your main Lidarr library. If the library appears but has no tracks:
 
 - confirm that a track exists under `aurral-weekly-flow`;
 - confirm that the Navidrome library path points to that folder;

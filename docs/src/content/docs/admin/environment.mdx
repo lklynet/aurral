@@ -18,8 +18,8 @@ Use the web UI for most settings. Use these variables for Docker deployment sett
 | Variable | Purpose |
 | -------- | ------- |
 | `PATH_MAPPINGS` | Translate paths for mixed Windows and Docker setups. Use the format `remote\|local`. Separate multiple mappings with `;`. To limit a mapping to one source, use `source\|remote\|local`. Aurral applies these mappings at runtime. Edit them under **Settings > Download Clients > Remote Path Mappings**. |
-| `M3U_PATH_MODE` | `local` (default, Aurral paths in `.m3u` files) or `remote` (paths Navidrome can open). |
-| `M3U_PATH_MAPPINGS` | Translate Navidrome playlist paths. Use the format `Aurral path\|Navidrome path`. Separate multiple mappings with `;`. Aurral applies these mappings at runtime. The UI does not show them. |
+| `M3U_PATH_MODE` | `local` (default, Aurral paths in temporary fallback files) or `remote` (paths Navidrome can open). |
+| `M3U_PATH_MAPPINGS` | Translate paths in temporary Navidrome fallback files. Use the format `Aurral path\|Navidrome path`. Separate multiple mappings with `;`. Aurral applies these mappings at runtime. The UI does not show them. |
 
 ## Authentication
 

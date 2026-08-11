@@ -222,7 +222,7 @@ For a native Windows service, the remote path can be `N:\ServerFolders\Music`. M
 
 ### Navidrome sees a different path
 
-This is a separate mapping. It changes paths in generated `.m3u` files; it does not help Aurral read Lidarr or download-client paths.
+This is a separate mapping. It changes paths in temporary M3U fallback files; it does not help Aurral read Lidarr or download-client paths.
 
 1. Open **Settings > Playback > Navidrome**.
 2. Enable **Use Navidrome paths in M3U files**.
@@ -260,10 +260,10 @@ The same rule applies when one service runs on Windows:
 
 1. Mount the Windows media folder into Aurral.
 2. Add a **Remote Path Mapping** from the Windows path reported by Lidarr or the download client to the Aurral container path.
-3. If Navidrome also runs on Windows, add a separate Navidrome M3U mapping so generated playlists contain Windows paths.
+3. If Navidrome also runs on Windows, add a separate Navidrome M3U mapping so temporary fallback files contain Windows paths.
 4. If Plex sees a different path, set **Plex Aurral Library path** to the Plex path.
 
-Do not use one mapping for all three jobs. A Lidarr mapping, a Navidrome M3U mapping, and the Plex library path solve different path translations.
+Do not use one mapping for all three jobs. A Lidarr mapping, a Navidrome fallback mapping, and the Plex library path solve different path translations.
 
 ## Common incorrect layouts
 
