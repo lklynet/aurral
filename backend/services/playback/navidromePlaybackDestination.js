@@ -21,6 +21,19 @@ const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
 const PLAYLIST_FILE_EXTENSIONS = [".m3u", ".nsp"];
 const SONG_LOOKUP_BATCH_SIZE = 5;
 
+function buildM3uContent(tracks) {
+  const lines = ["#EXTM3U"];
+  for (const track of tracks) {
+    const duration = Math.max(0, Math.round(Number(track.durationMs) / 1000 || 0));
+    const label = track.artist && track.title
+      ? `${track.artist} - ${track.title}`
+      : track.title || track.artist || "";
+    lines.push(`#EXTINF:${duration},${label}`);
+    lines.push(String(track.path || "").replace(/\\/g, "/"));
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 export class NavidromePlaybackDestination {
   constructor(weeklyFlowRoot = resolvePlaylistRoot(), { client = null } = {}) {
     this.key = "navidrome";
@@ -333,6 +346,15 @@ export class NavidromePlaybackDestination {
     }
     const hasUnresolvedSongs = songs.some((song) => !song?.id);
     const songIds = songs.filter((song) => song?.id).map((song) => song.id);
+    if (snapshot.tracks.length && !songIds.length && !pointer) {
+      await fs.writeFile(
+        path.join(this.libraryRoot, `${this._sanitize(current)}.m3u`),
+        buildM3uContent(snapshot.tracks),
+        "utf8",
+      );
+      this._pendingSnapshots.set(`${snapshot.entityId}:${targetKey}`, snapshot);
+      return playbackOperationSuccess();
+    }
 
     let playlist = null;
     if (pointer) {

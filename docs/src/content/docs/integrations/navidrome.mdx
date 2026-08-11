@@ -55,7 +55,7 @@ Reused Lidarr tracks do not need matching path strings because Aurral resolves i
 
 Aurral stores the Navidrome playlist ID for each flow or shared playlist. Names are only display values, so a rename updates the same Navidrome playlist.
 
-If a new track is not indexed, Aurral publishes the indexed tracks and adds the missing track during the next scan catch-up instead of creating a file playlist. Navidrome scans the **Aurral Playlists** library, not only your main Lidarr library. If the library appears but has no tracks:
+If a new track is not indexed, Aurral publishes the indexed tracks and adds the missing track during the next scan catch-up. If no tracks are indexed yet, it keeps a temporary M3U fallback until Navidrome can resolve at least one track. Navidrome scans the **Aurral Playlists** library, not only your main Lidarr library. If the library appears but has no tracks:
 
 - confirm that a track exists under `aurral-weekly-flow`;
 - confirm that the Navidrome library path points to that folder;

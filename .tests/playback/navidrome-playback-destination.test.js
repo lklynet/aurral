@@ -87,7 +87,7 @@ test.after(async () => {
 test("ensures the Navidrome library without creating an M3U playlist", async () => {
   const owner = userOps.createUser("jody", "hash", "user");
   const flow = flowPlaylistConfig.createFlow({ name: "Morning Mix", ownerUserId: owner.id });
-  const client = createClient();
+  const client = createClient({ songs: { Song: { id: "song-1" } } });
   const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
 
   assert.deepEqual(await destination.ensureLibrary(), { ok: true });
@@ -210,6 +210,26 @@ test("creates an empty API playlist without waiting for a scan", async () => {
     { ok: true },
   );
   assert.deepEqual(client.calls.created, [{ name: "Empty", songIds: [] }]);
+});
+
+test("keeps an M3U fallback when no songs are indexed", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Unindexed" });
+  const client = createClient();
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+
+  await destination.publishPlaylist(
+    createPlaybackPlaylistSnapshot({
+      entityId: playlist.id,
+      displayName: playlist.name,
+      tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
+    }),
+  );
+
+  assert.deepEqual(client.calls.created, []);
+  assert.equal(
+    await fs.readFile(path.join(destination.libraryRoot, "Unindexed.m3u"), "utf8"),
+    "#EXTM3U\n#EXTINF:0,Artist - Song\n/music/song.flac\n",
+  );
 });
 
 test("serializes concurrent publishes before creating a native playlist", async () => {
