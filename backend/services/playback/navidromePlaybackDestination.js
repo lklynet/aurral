@@ -36,6 +36,8 @@ function buildM3uContent(tracks, resolveTrackPath) {
 
 export class NavidromePlaybackDestination {
   constructor(weeklyFlowRoot = resolvePlaylistRoot(), { client = null } = {}) {
+    this.key = "navidrome";
+    this.name = "Navidrome";
     this.weeklyFlowRoot = resolvePlaylistRoot(weeklyFlowRoot);
     this.playlistLibraryRoot = path.join(this.weeklyFlowRoot, PLAYLIST_LIBRARY_DIR);
     this.libraryRoot = path.join(this.playlistLibraryRoot, "_playlists");

@@ -22,6 +22,8 @@ const SYNC_SKIPPED = Symbol("plex-sync-skipped");
 
 export class PlexPlaybackDestination {
   constructor(weeklyFlowRoot = resolvePlaylistRoot(), { client = null } = {}) {
+    this.key = "plex";
+    this.name = "Plex";
     this.weeklyFlowRoot = resolvePlaylistRoot(weeklyFlowRoot);
     this.playlistLibraryRoot = path.join(this.weeklyFlowRoot, PLAYLIST_LIBRARY_DIR);
     this.client = client;

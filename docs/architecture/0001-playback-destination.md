@@ -6,7 +6,7 @@
 
 ## Context
 
-`WeeklyFlowPlaylistManager` creates path-first playlist snapshots. It calls the Navidrome and Plex destinations directly. Navidrome writes track paths to M3U files. Plex resolves track paths to Plex track IDs and stores Plex playlist pointers. Both destinations publish the same Aurral playlists, but their configuration and identity rules are different.
+`WeeklyFlowPlaylistManager` creates path-first playlist snapshots. A settings-driven registry sends each snapshot to every configured playback destination. Navidrome writes track paths to M3U files. Plex resolves track paths to Plex track IDs and stores Plex playlist pointers. Both destinations publish the same Aurral playlists, but their configuration and identity rules are different.
 
 ## Decision
 
@@ -40,7 +40,7 @@ The Navidrome adapter writes snapshot paths to M3U files after it applies Navidr
 
 The Plex adapter resolves snapshot paths to Plex rating keys. It keeps section IDs, user tokens, playlist pointers, owner-specific titles, library setup, and scans inside the adapter.
 
-This decision does not change current Navidrome or Plex behavior. Both playback flows now use this seam. A later roadmap issue will replace the direct adapter calls with settings-driven orchestration.
+This decision does not change current Navidrome or Plex behavior. Both playback flows use this seam through an in-process registry. The registry checks saved settings, runs every configured destination, and records one destination failure without blocking another destination.
 
 ## Deliberate non-goals
 

@@ -34,6 +34,18 @@ const { syncM3uPathMappings } = m3uPathsModule;
 
 const weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER;
 
+function enableNavidrome(manager) {
+  manager.navidromeDestination.client = {
+    isConfigured: () => true,
+    async ensureWeeklyFlowLibrary() {},
+    async getPlaylists() {
+      return [];
+    },
+    async deletePlaylist() {},
+    async scanLibrary() {},
+  };
+}
+
 test.beforeEach(async () => {
   await resetDatabase(db);
   downloadTracker.clearAll();
@@ -131,6 +143,7 @@ test("refreshPlaylist writes m3u entries for completed tracks", async () => {
   downloadTracker.setDone(jobId, trackPath, "Album");
 
   const manager = new WeeklyFlowPlaylistManager(weeklyFlowRoot);
+  enableNavidrome(manager);
   await manager.refreshPlaylist(playlist.id);
 
   const m3uPath = path.join(
@@ -147,6 +160,7 @@ test("ensurePlaylists continues after one Navidrome playlist fails", async (t) =
   const first = flowPlaylistConfig.createSharedPlaylist({ name: "Isolation Broken" });
   const second = flowPlaylistConfig.createSharedPlaylist({ name: "Isolation Ready" });
   const manager = new WeeklyFlowPlaylistManager(weeklyFlowRoot);
+  enableNavidrome(manager);
   const publish = manager.navidromeDestination.publishPlaylist.bind(
     manager.navidromeDestination,
   );
@@ -180,6 +194,7 @@ test("the Navidrome adapter uses stored external paths in remote mode", async ()
 
   process.env.M3U_PATH_MODE = "remote";
   const manager = new WeeklyFlowPlaylistManager(weeklyFlowRoot);
+  enableNavidrome(manager);
   await manager.refreshPlaylist(playlist.id);
   const content = await fs.readFile(
     path.join(manager.libraryRoot, `${manager.getPlaylistName(playlist.id)}.m3u`),
@@ -207,6 +222,7 @@ test("the Navidrome adapter uses Navidrome path mappings in remote mode", async 
   downloadTracker.setDone(jobId, localPath, "Album");
   process.env.M3U_PATH_MODE = "remote";
   const manager = new WeeklyFlowPlaylistManager(weeklyFlowRoot);
+  enableNavidrome(manager);
   syncM3uPathMappings([
     {
       local: mappedRoot,
@@ -238,6 +254,7 @@ test("the Navidrome adapter falls back to shared path mappings in remote mode", 
 
   process.env.M3U_PATH_MODE = "remote";
   const manager = new WeeklyFlowPlaylistManager(weeklyFlowRoot);
+  enableNavidrome(manager);
   let content;
   try {
     await manager.refreshPlaylist(playlist.id);

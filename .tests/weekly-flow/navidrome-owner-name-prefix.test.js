@@ -37,7 +37,17 @@ test.after(async () => {
 });
 
 function makeManager() {
-  return new WeeklyFlowPlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
+  const manager = new WeeklyFlowPlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
+  manager.navidromeDestination.client = {
+    isConfigured: () => true,
+    async ensureWeeklyFlowLibrary() {},
+    async getPlaylists() {
+      return [];
+    },
+    async deletePlaylist() {},
+    async scanLibrary() {},
+  };
+  return manager;
 }
 
 test("the Navidrome adapter keeps an unowned flow name bare", () => {

@@ -42,6 +42,16 @@ const server = await new Promise((resolve) => {
 });
 const baseUrl = `http://127.0.0.1:${server.address().port}`;
 
+playlistManager.navidromeDestination.client = {
+  isConfigured: () => true,
+  async ensureWeeklyFlowLibrary() {},
+  async getPlaylists() {
+    return [];
+  },
+  async deletePlaylist() {},
+  async scanLibrary() {},
+};
+
 test.beforeEach(async () => {
   await resetDatabase(db);
   downloadTracker.clearAll();

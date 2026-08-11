@@ -303,6 +303,7 @@ test("keeps Navidrome and Plex failures isolated when both destinations are conf
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Isolation" });
   const manager = new WeeklyFlowPlaylistManager(weeklyFlowRoot);
   const calls = [];
+  manager.navidromeDestination.isConfigured = () => true;
   manager.navidromeDestination.ensureLibrary = async () => ({ ok: true });
   manager.navidromeDestination.publishPlaylist = async () => ({
     ok: false,

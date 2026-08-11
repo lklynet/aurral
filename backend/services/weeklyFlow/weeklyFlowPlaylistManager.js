@@ -20,6 +20,7 @@ import {
   createPlaybackPlaylistIdentity,
   createPlaybackPlaylistSnapshot,
 } from "../playback/playbackDestination.js";
+import { PlaybackDestinationRegistry } from "../playback/playbackDestinationRegistry.js";
 import { collectPlaybackPlaylistTracks } from "../playback/playbackPlaylistTracks.js";
 import { NavidromePlaybackDestination } from "../playback/navidromePlaybackDestination.js";
 import { PlexPlaybackDestination } from "../playback/plexPlaybackDestination.js";
@@ -41,6 +42,10 @@ export class WeeklyFlowPlaylistManager {
     this.plexDestination = assertPlaybackDestination(
       new PlexPlaybackDestination(this.weeklyFlowRoot),
     );
+    this.destinationRegistry = new PlaybackDestinationRegistry([
+      this.navidromeDestination,
+      this.plexDestination,
+    ]);
     this._ensureInFlight = null;
     this._refreshInFlight = new Map();
     this.updateConfig(triggerEnsureOnInit);
@@ -48,10 +53,7 @@ export class WeeklyFlowPlaylistManager {
 
   updateConfig(triggerEnsurePlaylists = true) {
     const settings = dbOps.getSettings();
-    const navidromeConfig = settings.integrations?.navidrome || {};
-    this.navidromeDestination.updateConfig(navidromeConfig);
-
-    this.plexDestination.updateConfig(settings.integrations?.plex || {});
+    this.destinationRegistry.updateConfig(settings.integrations);
 
     if (triggerEnsurePlaylists) {
       this.ensurePlaylists().catch((err) =>
@@ -106,11 +108,11 @@ export class WeeklyFlowPlaylistManager {
     const flow = flowPlaylistConfig.getFlow(playlistType);
     if (flow) {
       if (!flow.enabled) return null;
-      return this._publishNavidromePlaylist(flow, "Flow");
+      return this._publishPlaylist(flow, "Flow");
     }
     const sharedPlaylist = flowPlaylistConfig.getSharedPlaylist(playlistType);
     if (!sharedPlaylist) return null;
-    return this._publishNavidromePlaylist(sharedPlaylist, "Playlist");
+    return this._publishPlaylist(sharedPlaylist, "Playlist");
   }
 
   scheduleScanLibrary(force = false) {
@@ -147,92 +149,52 @@ export class WeeklyFlowPlaylistManager {
     });
   }
 
-  async _publishNavidromePlaylist(entity, artworkKind) {
+  async _publishPlaylist(entity, artworkKind) {
     const snapshot = await this._createPlaybackSnapshot(entity);
-    const result = await this.navidromeDestination.publishPlaylist(snapshot);
-    if (!result.ok) throw new Error(result.error.message);
-    const playlistName = this.navidromeDestination.getPlaylistName(snapshot);
-    await this._ensureFlowArtwork(entity.id, playlistName, artworkKind);
-    return result;
+    const results = await this.destinationRegistry.run("publishPlaylist", snapshot);
+    if (
+      results.some(
+        (result) => result.destination === this.navidromeDestination.name && result.ok,
+      )
+    ) {
+      const playlistName = this.navidromeDestination.getPlaylistName(snapshot);
+      await this._ensureFlowArtwork(entity.id, playlistName, artworkKind);
+    }
+    return results;
   }
 
   async _ensurePlaylistsInternal() {
     const flows = flowPlaylistConfig.getFlows();
     const sharedPlaylists = flowPlaylistConfig.getSharedPlaylists();
-    const syncEntity = async (entityId, run) => {
-      try {
-        await run();
-      } catch (err) {
-        console.warn(
-          `[WeeklyFlowPlaylistManager] Navidrome sync failed for ${entityId}:`,
-          err?.message,
-        );
-      }
-    };
-    try {
-      const ensured = await this.navidromeDestination.ensureLibrary();
-      if (!ensured.ok) throw new Error(ensured.error.message);
-    } catch (err) {
-      console.warn("[WeeklyFlowPlaylistManager] Navidrome library setup failed:", err?.message);
-    }
+    await this.destinationRegistry.run("ensureLibrary");
     for (const flow of flows) {
-      await syncEntity(flow.id, async () => {
-        if (flow.enabled) {
-          await this._publishNavidromePlaylist(flow, "Flow");
-          return;
-        }
-        const deleted = await this.navidromeDestination.deletePlaylist(
+      if (flow.enabled) {
+        await this._publishPlaylist(flow, "Flow");
+      } else {
+        const results = await this.destinationRegistry.run(
+          "deletePlaylist",
           createPlaybackPlaylistIdentity({
             entityId: flow.id,
             ownerUserId: flow.ownerUserId ?? null,
           }),
         );
-        if (!deleted.ok) throw new Error(deleted.error.message);
-        const playlistName = this.navidromeDestination.getPlaylistName({
-          entityId: flow.id,
-          ownerUserId: flow.ownerUserId ?? null,
-          displayName: flow.name,
-        });
-        await this._ensureFlowArtwork(flow.id, playlistName, "Flow");
-      });
+        if (
+          results.some(
+            (result) => result.destination === this.navidromeDestination.name && result.ok,
+          )
+        ) {
+          const playlistName = this.navidromeDestination.getPlaylistName({
+            entityId: flow.id,
+            ownerUserId: flow.ownerUserId ?? null,
+            displayName: flow.name,
+          });
+          await this._ensureFlowArtwork(flow.id, playlistName, "Flow");
+        }
+      }
     }
     for (const playlist of sharedPlaylists) {
-      await syncEntity(playlist.id, () => this._publishNavidromePlaylist(playlist, "Playlist"));
+      await this._publishPlaylist(playlist, "Playlist");
     }
-
-    if (this.plexDestination.isConfigured()) {
-      try {
-        await this._syncPlexPlaylists(flows, sharedPlaylists);
-      } catch (err) {
-        console.warn("[WeeklyFlowPlaylistManager] Plex playlist sync failed:", err?.message);
-      }
-    }
-  }
-
-  async _syncPlexPlaylists(flows, sharedPlaylists) {
-    if (!this.plexDestination.isConfigured()) return;
-    const ensured = await this.plexDestination.ensureLibrary();
-    if (!ensured.ok) throw new Error(ensured.error.message);
-    const sync = async (entity, enabled = true) => {
-      try {
-        const result = enabled
-          ? await this.plexDestination.publishPlaylist(await this._createPlaybackSnapshot(entity))
-          : await this.plexDestination.deletePlaylist(
-              createPlaybackPlaylistIdentity({
-                entityId: entity.id,
-                ownerUserId: entity.ownerUserId ?? null,
-              }),
-            );
-        if (!result.ok) throw new Error(result.error.message);
-      } catch (error) {
-        console.warn(
-          `[WeeklyFlowPlaylistManager] Plex sync failed for ${entity.id}:`,
-          error?.message,
-        );
-      }
-    };
-    for (const flow of flows) await sync(flow, flow.enabled);
-    for (const playlist of sharedPlaylists) await sync(playlist);
   }
 
   async _activePlaybackSnapshots() {
@@ -281,13 +243,7 @@ export class WeeklyFlowPlaylistManager {
   }
 
   async scanLibrary() {
-    const results = [];
-    if (this.navidromeDestination.isConfigured()) {
-      results.push(await this.navidromeDestination.requestScan());
-    }
-    if (this.plexDestination.isConfigured()) {
-      results.push(await this.plexDestination.requestScan());
-    }
+    const results = await this.destinationRegistry.run("requestScan");
     return results.length ? results : null;
   }
 

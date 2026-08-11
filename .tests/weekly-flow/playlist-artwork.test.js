@@ -34,6 +34,20 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
+function makeManager() {
+  const manager = new WeeklyFlowPlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
+  manager.navidromeDestination.client = {
+    isConfigured: () => true,
+    async ensureWeeklyFlowLibrary() {},
+    async getPlaylists() {
+      return [];
+    },
+    async deletePlaylist() {},
+    async scanLibrary() {},
+  };
+  return manager;
+}
+
 test("writes WebP sidecar artwork for flow and playlist m3u files", async () => {
   const flow = flowPlaylistConfig.createFlow({
     name: "Late Night",
@@ -46,7 +60,7 @@ test("writes WebP sidecar artwork for flow and playlist m3u files", async () => 
     tracks: [{ artistName: "A", trackName: "One" }],
   });
 
-  const manager = new WeeklyFlowPlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
+  const manager = makeManager();
   await manager.ensurePlaylists();
 
   const flowName = manager.getPlaylistName(flow.id);
@@ -82,7 +96,7 @@ test("removes old sidecar artwork when a flow is renamed", async () => {
   });
   flowPlaylistConfig.setEnabled(flow.id, true);
 
-  const manager = new WeeklyFlowPlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
+  const manager = makeManager();
   await manager.ensurePlaylists();
 
   const oldName = manager.getPlaylistName(flow.id);
@@ -112,7 +126,7 @@ test("writes sidecar artwork for draft flows without m3u files", async () => {
     enabled: false,
   });
 
-  const manager = new WeeklyFlowPlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
+  const manager = makeManager();
   await manager.ensurePlaylists();
 
   const playlistName = manager.getPlaylistName(flow.id);
@@ -131,7 +145,7 @@ test("keeps artwork when an enabled flow is disabled", async () => {
   });
   flowPlaylistConfig.setEnabled(flow.id, true);
 
-  const manager = new WeeklyFlowPlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
+  const manager = makeManager();
   await manager.ensurePlaylists();
 
   const base = manager._sanitize(manager.getPlaylistName(flow.id));
@@ -153,7 +167,7 @@ test("does not regenerate artwork after explicit remove until generate", async (
   });
   flowPlaylistConfig.setEnabled(flow.id, true);
 
-  const manager = new WeeklyFlowPlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
+  const manager = makeManager();
   await manager.ensurePlaylists();
 
   const flowWebp = path.join(
