@@ -177,6 +177,44 @@ test("creates an empty API playlist without waiting for a scan", async () => {
   assert.deepEqual(client.calls.created, [{ name: "Empty", songIds: [] }]);
 });
 
+test("serializes concurrent publishes before creating a native playlist", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Concurrent" });
+  const client = createClient({ songs: { Song: { id: "song-1" } } });
+  const createPlaylist = client.createPlaylist.bind(client);
+  let createEntrants = 0;
+  let releaseCreate;
+  let signalCreate;
+  const createStarted = new Promise((resolve) => {
+    signalCreate = resolve;
+  });
+  client.createPlaylist = async (...args) => {
+    createEntrants += 1;
+    signalCreate();
+    await new Promise((resolve) => {
+      releaseCreate = resolve;
+    });
+    return createPlaylist(...args);
+  };
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+  const snapshot = createPlaybackPlaylistSnapshot({
+    entityId: playlist.id,
+    displayName: playlist.name,
+    tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
+  });
+
+  const publishes = [destination.publishPlaylist(snapshot), destination.publishPlaylist(snapshot)];
+  await createStarted;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(createEntrants, 1);
+  releaseCreate();
+  await Promise.all(publishes);
+
+  assert.equal(client.calls.created.length, 1);
+  assert.deepEqual(client.calls.updated, [
+    { id: "created", name: "Concurrent", songIds: ["song-1"] },
+  ]);
+});
+
 test("adopts an imported M3U playlist and keeps its ID across rename and delete", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Imported" });
   const client = createClient({
@@ -186,14 +224,35 @@ test("adopts an imported M3U playlist and keeps its ID across rename and delete"
   const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
   await fs.mkdir(destination.libraryRoot, { recursive: true });
   await fs.writeFile(path.join(destination.libraryRoot, "Imported.m3u"), "legacy");
+  const updatePlaylist = client.updatePlaylist.bind(client);
+  let releaseUpdate;
+  let signalUpdate;
+  const updateStarted = new Promise((resolve) => {
+    signalUpdate = resolve;
+  });
+  client.updatePlaylist = async (...args) => {
+    signalUpdate();
+    await new Promise((resolve) => {
+      releaseUpdate = resolve;
+    });
+    return updatePlaylist(...args);
+  };
 
-  await destination.publishPlaylist(
+  const migrating = destination.publishPlaylist(
     createPlaybackPlaylistSnapshot({
       entityId: playlist.id,
       displayName: "Imported",
       tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
     }),
   );
+  await updateStarted;
+  assert.equal(
+    await fs.readFile(path.join(destination.libraryRoot, "Imported.m3u"), "utf8"),
+    "legacy",
+  );
+  releaseUpdate();
+  await migrating;
+  client.updatePlaylist = updatePlaylist;
   await destination.publishPlaylist(
     createPlaybackPlaylistSnapshot({
       entityId: playlist.id,
