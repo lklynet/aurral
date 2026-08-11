@@ -159,6 +159,43 @@ test("publishes resolved tracks through the Subsonic API and stores the playlist
   );
 });
 
+test("bounds concurrent Navidrome song lookups and preserves track order", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Large API Mix" });
+  const tracks = Array.from({ length: 6 }, (_, index) => ({
+    path: `/music/song-${index}.flac`,
+    title: `Song ${index}`,
+    artist: "Artist",
+  }));
+  const client = createClient({
+    songs: Object.fromEntries(tracks.map((track, index) => [track.title, { id: `song-${index}` }])),
+  });
+  const findSong = client.findSong.bind(client);
+  let active = 0;
+  let maxActive = 0;
+  client.findSong = async (...args) => {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    await new Promise((resolve) => setImmediate(resolve));
+    const song = await findSong(...args);
+    active -= 1;
+    return song;
+  };
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+
+  assert.deepEqual(
+    await destination.publishPlaylist(
+      createPlaybackPlaylistSnapshot({
+        entityId: playlist.id,
+        displayName: playlist.name,
+        tracks,
+      }),
+    ),
+    { ok: true },
+  );
+  assert.equal(maxActive, 5);
+  assert.deepEqual(client.calls.created[0].songIds, tracks.map((_, index) => `song-${index}`));
+});
+
 test("creates an empty API playlist without waiting for a scan", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Empty" });
   const client = createClient();
@@ -478,6 +515,29 @@ test("cleans local files when deleting a stored playlist during an outage", asyn
   );
 
   assert.equal(result.ok, false);
+  await assert.rejects(fs.access(path.join(destination.libraryRoot, `${flow.name}.m3u`)));
+  assert.equal(
+    navidromePlaylistPointerStore.getPointer(flow.id, "global").playlistId,
+    "saved-id",
+  );
+});
+
+test("keeps a stored pointer while deleting local files when Navidrome is unconfigured", async () => {
+  const flow = flowPlaylistConfig.createFlow({ name: "Disabled Delete" });
+  const client = createClient({ configured: false });
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+  navidromePlaylistPointerStore.setPointer(flow.id, "global", {
+    playlistId: "saved-id",
+    title: flow.name,
+  });
+  await fs.mkdir(destination.libraryRoot, { recursive: true });
+  await fs.writeFile(path.join(destination.libraryRoot, `${flow.name}.m3u`), "playlist");
+
+  assert.deepEqual(
+    await destination.deletePlaylist(createPlaybackPlaylistIdentity({ entityId: flow.id })),
+    { ok: true },
+  );
+  assert.deepEqual(client.calls.deleted, []);
   await assert.rejects(fs.access(path.join(destination.libraryRoot, `${flow.name}.m3u`)));
   assert.equal(
     navidromePlaylistPointerStore.getPointer(flow.id, "global").playlistId,

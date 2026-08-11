@@ -22,6 +22,7 @@ import {
 const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg", ".png"];
 const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
 const PLAYLIST_FILE_EXTENSIONS = [".m3u", ".nsp"];
+const SONG_LOOKUP_BATCH_SIZE = 5;
 
 function buildM3uContent(tracks, resolveTrackPath) {
   const lines = ["#EXTM3U"];
@@ -283,11 +284,13 @@ export class NavidromePlaybackDestination {
       return playbackOperationSuccess();
     }
     try {
-      const songs = await Promise.all(
-        snapshot.tracks.map((track) =>
-          this.client.findSong(track.title, track.artist, track),
-        ),
-      );
+      const songs = [];
+      for (let index = 0; index < snapshot.tracks.length; index += SONG_LOOKUP_BATCH_SIZE) {
+        const batch = snapshot.tracks.slice(index, index + SONG_LOOKUP_BATCH_SIZE);
+        songs.push(...await Promise.all(
+          batch.map((track) => this.client.findSong(track.title, track.artist, track)),
+        ));
+      }
       if (songs.some((song) => !song?.id)) {
         await fs.writeFile(playlistPath, content, "utf8");
         this._pendingSnapshots.set(`${snapshot.entityId}:${targetKey}`, snapshot);
@@ -378,14 +381,16 @@ export class NavidromePlaybackDestination {
       const targetKey = this._targetKey(identity.ownerUserId);
       const pointer = navidromePlaylistPointerStore.getPointer(identity.entityId, targetKey);
       let pointerError = null;
+      let pointerResolved = !pointer;
       if (pointer && this.isConfigured()) {
         try {
           await this.client.deletePlaylist(pointer.playlistId);
+          pointerResolved = true;
         } catch (error) {
           pointerError = error;
         }
       }
-      if (!pointerError) {
+      if (pointerResolved) {
         navidromePlaylistPointerStore.deletePointer(identity.entityId, targetKey);
       }
       this._pendingSnapshots.delete(`${identity.entityId}:${targetKey}`);
