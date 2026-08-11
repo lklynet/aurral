@@ -42,6 +42,9 @@ function createClient({ configured = true, playlists = [], songs = {} } = {}) {
     async getPlaylists() {
       return currentPlaylists;
     },
+    async getPlaylist(id) {
+      return currentPlaylists.find((playlist) => playlist.id === id) || null;
+    },
     async findSong(title) {
       return songs[title] || null;
     },
@@ -308,6 +311,72 @@ test("adopts an imported M3U playlist and keeps its ID across rename and delete"
   );
   assert.deepEqual(client.calls.deleted, ["imported-id"]);
   assert.equal(navidromePlaylistPointerStore.getPointer(playlist.id, "global"), null);
+});
+
+test("adopts an imported API playlist from its source comment", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Comment Recovery" });
+  const client = createClient({
+    playlists: [{
+      id: "comment-id",
+      name: "Imported Legacy Name",
+      comment: "Auto-imported from 'Comment Recovery.m3u'",
+    }],
+    songs: { Song: { id: "song-1" } },
+  });
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+
+  await destination.publishPlaylist(
+    createPlaybackPlaylistSnapshot({
+      entityId: playlist.id,
+      displayName: playlist.name,
+      tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
+    }),
+  );
+
+  assert.deepEqual(client.calls.renamed, [
+    { id: "comment-id", name: "Comment Recovery" },
+  ]);
+  assert.deepEqual(client.calls.created, []);
+  assert.equal(
+    navidromePlaylistPointerStore.getPointer(playlist.id, "global").playlistId,
+    "comment-id",
+  );
+});
+
+test("replaces a pointer whose imported source belongs to another entity", async () => {
+  const original = flowPlaylistConfig.createSharedPlaylist({ name: "Original" });
+  const wrong = flowPlaylistConfig.createSharedPlaylist({ name: "Wrong Target" });
+  const client = createClient({
+    playlists: [{
+      id: "foreign-id",
+      name: "Wrong Target",
+      comment: "Auto-imported from 'Original.m3u'",
+    }],
+    songs: { Song: { id: "song-1" } },
+  });
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+  navidromePlaylistPointerStore.setPointer(wrong.id, "global", {
+    playlistId: "foreign-id",
+    title: wrong.name,
+  });
+
+  await destination.publishPlaylist(
+    createPlaybackPlaylistSnapshot({
+      entityId: wrong.id,
+      displayName: wrong.name,
+      tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
+    }),
+  );
+
+  assert.deepEqual(client.calls.created, [
+    { name: "Wrong Target", songIds: ["song-1"] },
+  ]);
+  assert.deepEqual(client.calls.renamed, []);
+  assert.equal(
+    navidromePlaylistPointerStore.getPointer(wrong.id, "global").playlistId,
+    "created",
+  );
+  assert.equal(navidromePlaylistPointerStore.getPointer(original.id, "global"), null);
 });
 
 test("keeps a stored playlist during rename cleanup until tracks resolve", async () => {

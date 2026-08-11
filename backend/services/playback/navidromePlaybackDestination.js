@@ -94,6 +94,31 @@ export class NavidromePlaybackDestination {
     });
   }
 
+  _getImportedSourceName(comment) {
+    const match = String(comment || "").match(/Auto-imported from ['"]([^'"]+)['"]/i);
+    if (!match) return null;
+    return this._sanitize(path.basename(match[1], path.extname(match[1])));
+  }
+
+  _isActiveNameForOtherEntity(entityId, name) {
+    const expected = this._sanitize(name);
+    const entities = [
+      ...flowPlaylistConfig.getFlows(),
+      ...flowPlaylistConfig.getSharedPlaylists(),
+    ];
+    return entities.some((entity) => {
+      if (entity.id === entityId) return false;
+      const names = this.getPlaylistNames({
+        entityId: entity.id,
+        ownerUserId: entity.ownerUserId,
+        displayName: entity.name,
+      });
+      return [names.current, ...names.legacy].some(
+        (candidate) => this._sanitize(candidate) === expected,
+      );
+    });
+  }
+
   async _loadPlaylists(force = false) {
     if (!this.isConfigured()) return [];
     if (!force && this._playlists) return this._playlists;
@@ -239,6 +264,14 @@ export class NavidromePlaybackDestination {
     if (pointer && this._syncHashes.get(syncKey) === syncHash) {
       return playbackOperationSuccess();
     }
+    if (pointer && typeof this.client.getPlaylist === "function") {
+      const nativePlaylist = await this.client.getPlaylist(pointer.playlistId).catch(() => null);
+      const importedSourceName = this._getImportedSourceName(nativePlaylist?.comment);
+      if (importedSourceName && this._isActiveNameForOtherEntity(snapshot.entityId, importedSourceName)) {
+        navidromePlaylistPointerStore.deletePointer(snapshot.entityId, targetKey);
+        pointer = null;
+      }
+    }
     const files = await fs.readdir(this.libraryRoot).catch(() => []);
     const normalizeTrackPath = (value) => path
       .normalize(String(value || "").replace(/\\/g, "/"))
@@ -264,10 +297,16 @@ export class NavidromePlaybackDestination {
       if (matchesTrackSet) importedPlaylistNames.push(name);
     }
     let importedPlaylistName = null;
-    if (!pointer && importedPlaylistNames.length) {
+    if (!pointer) {
       const playlists = await this._loadPlaylists();
       const importedPlaylist = playlists.find(
-        (playlist) => importedPlaylistNames.includes(playlist.name)
+        (playlist) => (
+          importedPlaylistNames.includes(playlist.name)
+          || this._getImportedSourceName(playlist.comment) === this._sanitize(current)
+          || legacy.some(
+            (name) => this._getImportedSourceName(playlist.comment) === this._sanitize(name),
+          )
+        )
           && !navidromePlaylistPointerStore.hasPlaylistId(playlist.id),
       );
       if (importedPlaylist) {
