@@ -4,6 +4,7 @@ import crypto from "crypto";
 const LEGACY_LIBRARY_DIR = "aurral-weekly-flow";
 const PLAYLIST_LIBRARY_NAME = "Aurral Playlists";
 const LEGACY_LIBRARY_NAMES = new Set(["Aurral Weekly Flow"]);
+const PLAYLIST_SONG_BATCH_SIZE = 50;
 
 function normalizeLibraryPath(value) {
   return String(value || "")
@@ -150,9 +151,17 @@ export class NavidromeClient {
     const ids = Array.isArray(songIds) ? songIds : [];
     const data = await this.request("createPlaylist", {
       name,
-      songId: ids,
+      songId: ids.slice(0, PLAYLIST_SONG_BATCH_SIZE),
     });
-    return data.playlist || null;
+    const playlist = data.playlist || null;
+    if (!playlist?.id) return playlist;
+    for (let index = PLAYLIST_SONG_BATCH_SIZE; index < ids.length; index += PLAYLIST_SONG_BATCH_SIZE) {
+      await this.request("updatePlaylist", {
+        playlistId: playlist.id,
+        songIdToAdd: ids.slice(index, index + PLAYLIST_SONG_BATCH_SIZE),
+      });
+    }
+    return playlist;
   }
 
   async updatePlaylist(playlistId, { name, songIds = [] } = {}) {
@@ -160,12 +169,19 @@ export class NavidromeClient {
     const entries = playlist?.entry
       ? Array.isArray(playlist.entry) ? playlist.entry : [playlist.entry]
       : [];
+    const ids = Array.isArray(songIds) ? songIds : [];
     await this.request("updatePlaylist", {
       playlistId,
       name,
       songIndexToRemove: entries.map((_, index) => index),
-      songIdToAdd: songIds,
+      songIdToAdd: ids.slice(0, PLAYLIST_SONG_BATCH_SIZE),
     });
+    for (let index = PLAYLIST_SONG_BATCH_SIZE; index < ids.length; index += PLAYLIST_SONG_BATCH_SIZE) {
+      await this.request("updatePlaylist", {
+        playlistId,
+        songIdToAdd: ids.slice(index, index + PLAYLIST_SONG_BATCH_SIZE),
+      });
+    }
   }
 
   async renamePlaylist(playlistId, name) {

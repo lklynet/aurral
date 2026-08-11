@@ -30,6 +30,34 @@ test("creates a distinct playlist without looking up matching display names", as
   assert.equal(urls[0].pathname, "/rest/createPlaylist");
 });
 
+test("batches large playlist creation requests", async () => {
+  const originalFetch = globalThis.fetch;
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    urls.push(new URL(url));
+    return jsonResponse({
+      "subsonic-response": {
+        status: "ok",
+        playlist: urls.length === 1 ? { id: "new-id", name: "Large" } : undefined,
+      },
+    });
+  };
+
+  try {
+    await new NavidromeClient("http://navidrome.test", "user", "password")
+      .createPlaylist("Large", Array.from({ length: 401 }, (_, index) => `song-${index}`));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(urls.length, 9);
+  assert.equal(urls[0].pathname, "/rest/createPlaylist");
+  assert.equal(urls[0].searchParams.getAll("songId").length, 50);
+  assert.equal(urls[1].pathname, "/rest/updatePlaylist");
+  assert.equal(urls[1].searchParams.getAll("songIdToAdd").length, 50);
+  assert.ok(urls.every((url) => url.toString().length < 8192));
+});
+
 test("preserves Subsonic error codes for missing native IDs", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => jsonResponse({
@@ -76,6 +104,39 @@ test("replaces playlist entries with repeated Subsonic parameters", async () => 
   assert.deepEqual(urls[1].searchParams.getAll("songIndexToRemove"), ["0", "1"]);
   assert.deepEqual(urls[1].searchParams.getAll("songIdToAdd"), ["song-1", "song-2"]);
   assert.equal(urls[1].searchParams.get("name"), "Renamed");
+});
+
+test("batches large playlist replacement requests", async () => {
+  const originalFetch = globalThis.fetch;
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    urls.push(new URL(url));
+    if (urls.length === 1) {
+      return jsonResponse({
+        "subsonic-response": {
+          status: "ok",
+          playlist: { entry: [{ id: "old-1" }] },
+        },
+      });
+    }
+    return jsonResponse({ "subsonic-response": { status: "ok" } });
+  };
+
+  try {
+    await new NavidromeClient("http://navidrome.test", "user", "password")
+      .updatePlaylist("playlist-1", {
+        name: "Large",
+        songIds: Array.from({ length: 101 }, (_, index) => `song-${index}`),
+      });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(urls.length, 4);
+  assert.equal(urls[1].searchParams.getAll("songIdToAdd").length, 50);
+  assert.equal(urls[2].searchParams.getAll("songIdToAdd").length, 50);
+  assert.equal(urls[3].searchParams.getAll("songIdToAdd").length, 1);
+  assert.ok(urls.every((url) => url.toString().length < 8192));
 });
 
 test("prefers the exact path and metadata when duplicate songs match", async () => {
