@@ -15,21 +15,15 @@ import {
   AlertTriangle,
   CheckCircle,
   Folder,
-  Plus,
   RefreshCw,
-  Trash2,
-  Wrench,
 } from "lucide-react";
 import DownloadFolderPickerModal from "../../../components/DownloadFolderPickerModal";
-import PillToggle from "../../../components/PillToggle";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
 import {
   SettingsArrCardGrid,
   SettingsArrFieldSet,
-  SettingsArrFormGroup,
 } from "./arr/SettingsArrLayout";
-import { NavidromePathMappingModal } from "./NavidromePathMappingModal";
 import {
   SettingsModalActions,
   SettingsModalField,
@@ -40,14 +34,6 @@ import {
   pickBestPlexConnection,
   resolvePlexConnectionUrl,
 } from "../utils/plexConnections";
-function coerceNavidromePathMappings(value) {
-  if (!Array.isArray(value)) return [];
-  return value.map((entry) => ({
-    local: String(entry?.local || "").trim(),
-    remote: String(entry?.remote || "").trim(),
-  }));
-}
-
 export function SettingsPlaybackSection({
   settings,
   updateSettings,
@@ -65,7 +51,6 @@ export function SettingsPlaybackSection({
   const [plexServers, setPlexServers] = useState([]);
   const [plexLibraries, setPlexLibraries] = useState([]);
   const [libraryAccessCheck, setLibraryAccessCheck] = useState(null);
-  const [navidromeMappingModal, setNavidromeMappingModal] = useState(null);
   const [plexPathPickerOpen, setPlexPathPickerOpen] = useState(false);
   const [plexLibraryPathPickerOpen, setPlexLibraryPathPickerOpen] = useState(false);
 
@@ -74,13 +59,8 @@ export function SettingsPlaybackSection({
   const navidromeConfigured = Boolean(navidrome.url);
   const plexConfigured = Boolean(plex.token && plex.url);
   const plexToken = plex.token;
-  const navidromePathMappings = coerceNavidromePathMappings(navidrome.pathMappings).filter(
-    (entry) => entry.local || entry.remote,
-  );
   const pathMappings = Array.isArray(settings.pathMappings) ? settings.pathMappings : [];
   const plexLibraryMapping = pathMappings.find((entry) => entry?.source === "plex") || null;
-  const showNavidromeMappings =
-    navidrome.m3uPathMode === "remote" || navidromePathMappings.length > 0;
 
   const closeModal = () => {
     setActiveModal(null);
@@ -95,41 +75,6 @@ export function SettingsPlaybackSection({
         navidrome: { ...navidrome, ...patch },
       },
     });
-
-  const updateNavidromePathMappings = (nextMappings) => {
-    updateNavidrome({
-      pathMappings: coerceNavidromePathMappings(nextMappings),
-    });
-  };
-
-  const openAddNavidromeMapping = () => {
-    setNavidromeMappingModal({ mode: "add", index: null });
-  };
-
-  const openEditNavidromeMapping = (index) => {
-    setNavidromeMappingModal({ mode: "edit", index });
-  };
-
-  const closeNavidromeMappingModal = () => {
-    setNavidromeMappingModal(null);
-  };
-
-  const saveNavidromeMapping = (mapping) => {
-    if (navidromeMappingModal?.mode === "edit" && navidromeMappingModal.index != null) {
-      const nextMappings = [...navidromePathMappings];
-      nextMappings[navidromeMappingModal.index] = mapping;
-      updateNavidromePathMappings(nextMappings);
-    } else {
-      updateNavidromePathMappings([...navidromePathMappings, mapping]);
-    }
-    closeNavidromeMappingModal();
-  };
-
-  const deleteNavidromeMapping = (index) => {
-    updateNavidromePathMappings(
-      navidromePathMappings.filter((_entry, entryIndex) => entryIndex !== index),
-    );
-  };
 
   const updatePlex = (patch) =>
     updateSettings({
@@ -382,124 +327,6 @@ export function SettingsPlaybackSection({
           />
         </SettingsArrCardGrid>
       </SettingsArrFieldSet>
-
-      <SettingsArrFieldSet legend="Navidrome Playlist Paths">
-        <div className="arr-info">
-          Only needed when Navidrome cannot open Aurral&apos;s container paths, including native
-          Navidrome or Docker containers with different mounts.
-        </div>
-
-        <SettingsArrFormGroup
-          label="M3U path mode"
-          help="Generated playlists will use mapped paths that Navidrome can open. Leave this off when Navidrome and Aurral share the same container paths."
-        >
-          <PillToggle
-            className="settings-toggle"
-            checked={navidrome.m3uPathMode === "remote"}
-            onChange={(event) =>
-              updateNavidrome({
-                m3uPathMode: event.target.checked ? "remote" : "local",
-              })
-            }
-            aria-label="Use Navidrome paths in M3U files"
-          />
-        </SettingsArrFormGroup>
-
-        {showNavidromeMappings ? (
-          <>
-            <p className="arr-form-help arr-form-help--spaced">
-              These mappings only change track lines in generated <code>.m3u</code> files. They do
-              not help Aurral read files reported by Lidarr, slskd, or NZBGet.
-            </p>
-
-            <div className="arr-table-wrap">
-              <table className="arr-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Aurral Path</th>
-                    <th scope="col">Navidrome Path</th>
-                    <th scope="col" className="arr-table__actions-head">
-                      <span className="sr-only">Actions</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {navidromePathMappings.length === 0 ? (
-                    <tr className="arr-table__empty-row">
-                      <td colSpan={3}>No Navidrome path mappings configured.</td>
-                    </tr>
-                  ) : (
-                    navidromePathMappings.map((mapping, index) => (
-                      <tr key={`navidrome-path-mapping-${index}`}>
-                        <td>
-                          <code className="arr-table__path">{mapping.local}</code>
-                        </td>
-                        <td>
-                          <code className="arr-table__path">{mapping.remote}</code>
-                        </td>
-                        <td className="arr-table__actions">
-                          <div className="arr-table__actions-inner">
-                            <button
-                              type="button"
-                              className="arr-btn arr-btn--ghost arr-btn--icon"
-                              aria-label={`Edit Navidrome path mapping ${index + 1}`}
-                              onClick={() => openEditNavidromeMapping(index)}
-                            >
-                              <Wrench className="artist-icon-sm" aria-hidden />
-                            </button>
-                            <button
-                              type="button"
-                              className="arr-btn arr-btn--ghost arr-btn--icon"
-                              aria-label={`Delete Navidrome path mapping ${index + 1}`}
-                              onClick={() => deleteNavidromeMapping(index)}
-                            >
-                              <Trash2 className="artist-icon-sm" aria-hidden />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="arr-table-footer">
-              <button
-                type="button"
-                className="arr-btn arr-btn--ghost arr-btn--icon"
-                aria-label="Add Navidrome path mapping"
-                onClick={openAddNavidromeMapping}
-              >
-                <Plus className="artist-icon-sm" aria-hidden />
-              </button>
-            </div>
-          </>
-        ) : null}
-
-        <p className="arr-form-help">
-          When using Weekly Flow: set Navidrome&apos;s <code>Scanner.PurgeMissing</code> to{" "}
-          <code>always</code> or <code>full</code> (e.g. <code>ND_SCANNER_PURGEMISSING=always</code>
-          ) so turning off a flow removes those tracks from the library.
-        </p>
-      </SettingsArrFieldSet>
-
-      {navidromeMappingModal ? (
-        <NavidromePathMappingModal
-          title={
-            navidromeMappingModal.mode === "edit"
-              ? "Edit Navidrome Path Mapping"
-              : "Add Navidrome Path Mapping"
-          }
-          initialValue={
-            navidromeMappingModal.mode === "edit" && navidromeMappingModal.index != null
-              ? navidromePathMappings[navidromeMappingModal.index]
-              : undefined
-          }
-          onClose={closeNavidromeMappingModal}
-          onSave={saveNavidromeMapping}
-        />
-      ) : null}
 
       {activeModal === "navidrome" && (
         <SettingsIntegrationModal

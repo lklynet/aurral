@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs/promises";
 
 import {
   setupIsolatedBackend,
@@ -38,12 +37,19 @@ test.after(async () => {
 
 function makeManager() {
   const manager = new WeeklyFlowPlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
+  const created = [];
   manager.navidromeDestination.client = {
+    created,
     isConfigured: () => true,
     async ensureWeeklyFlowLibrary() {},
     async getPlaylists() {
       return [];
     },
+    async createPlaylist(name) {
+      created.push(name);
+      return { id: name, name };
+    },
+    async updatePlaylist() {},
     async deletePlaylist() {},
     async scanLibrary() {},
   };
@@ -92,7 +98,7 @@ test("the Navidrome adapter prefixes an owned shared playlist and keeps legacy n
   flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
 });
 
-test("two different owners can use the same flow name without their .m3u files colliding", async () => {
+test("two different owners can use the same native playlist name", async () => {
   const gordon = userOps.createUser("gordon", "hash", "admin");
   const jody = userOps.createUser("jody", "hash", "user");
   const gordonFlow = flowPlaylistConfig.createFlow({
@@ -106,10 +112,8 @@ test("two different owners can use the same flow name without their .m3u files c
   const manager = makeManager();
   await manager.ensurePlaylists();
 
-  const files = await fs.readdir(manager.libraryRoot);
-  const m3uFiles = files.filter((f) => f.endsWith(".m3u"));
   assert.deepEqual(
-    m3uFiles.sort(),
-    ["gordon - Weekend Vibes.m3u", "jody - Weekend Vibes.m3u"].sort(),
+    manager.navidromeDestination.client.created.sort(),
+    ["gordon - Weekend Vibes", "jody - Weekend Vibes"].sort(),
   );
 });

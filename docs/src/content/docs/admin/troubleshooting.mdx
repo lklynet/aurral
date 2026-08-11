@@ -74,19 +74,13 @@ Flows or shared playlists can appear in Navidrome, but the tracks do not play.
 
 First, wait for Navidrome to finish its scan. Aurral creates the API playlist after Navidrome indexes the tracks.
 
-If Aurral keeps a temporary M3U fallback file, a path problem is common when Aurral runs in Docker and Navidrome runs on Windows.
-
 - Make sure that **Test library access** passes in Lidarr settings.
-- Enable **Use Navidrome paths in M3U files** and add a Navidrome path mapping in **Settings > Playback > Navidrome**.
-- Alternatively, set `M3U_PATH_MODE=remote` and `M3U_PATH_MAPPINGS` in the Compose file.
-- Recreate the container.
-- Refresh the playlists to rewrite the fallback files.
+- Make sure that Navidrome scans the Aurral download folder and each reused Lidarr library folder.
+- Make sure the Aurral download tree uses the same absolute path in both containers.
 - Run or save a flow. You can also edit and save a shared playlist.
-- If a generated `.m3u` remains under `aurral-weekly-flow`, make sure that its track lines use paths Navidrome can open.
+- Run a full Navidrome scan and wait for Aurral's catch-up attempt.
 
-Leave **Use Navidrome paths in M3U files** off when Navidrome runs in Docker with the same mounts as Aurral.
-
-See [Navidrome: Different Navidrome paths](/integrations/navidrome/#different-navidrome-paths).
+See [Navidrome: Filesystem paths](/integrations/navidrome/#filesystem-paths).
 
 ## Plex playlists are empty or tracks are missing
 
@@ -100,8 +94,6 @@ See [Navidrome: Different Navidrome paths](/integrations/navidrome/#different-na
 - Select **Sync to Plex now** again.
 - Initial scans can take several minutes. Aurral runs catch-up synchronization in the background while Plex indexes files.
 - Make sure that flows finish their downloads before you expect Plex playlists to populate.
-- **Use Navidrome paths in M3U files** does not apply to Plex.
-
 See [Plex integration](/integrations/plex/).
 
 ## Sign-in page or blank page behind a reverse proxy

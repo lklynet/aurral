@@ -16,7 +16,7 @@ const COMPONENTS_BY_TAB = {
     "QualityProfileModal.jsx",
     "PathMappingModal.jsx",
   ],
-  playback: ["SettingsPlaybackSection.jsx", "NavidromePathMappingModal.jsx"],
+  playback: ["SettingsPlaybackSection.jsx"],
   connect: ["SettingsConnectTab.jsx"],
   "rss-news": ["SettingsRssNewsTab.jsx"],
   discover: ["SettingsDiscoverTab.jsx"],

@@ -45,48 +45,36 @@ Aurral does not copy your Lidarr library into the Aurral playlist folder. If a p
 
 Add `/data/music` as a normal Navidrome music library if it is not already present. The automatically managed **Aurral Playlists** library is for Aurral's generated download tree.
 
-## Different Navidrome paths
+## Filesystem paths
 
-Use matching container paths when possible. A different path affects two things:
+Aurral uses the Subsonic API for playlists, so it does not have a Navidrome playlist path-mapping setting. The automatically managed **Aurral Playlists** library must use the same absolute path in Aurral and Navidrome. Mount the shared download tree at matching paths in both applications.
 
-- the path Navidrome uses for its music library;
-- the paths in temporary M3U fallback files.
-
-The **Use Navidrome paths in M3U files** setting only changes the fallback files. Aurral uses a fallback while Navidrome waits to index a new track. The setting does not mount a folder and it does not make an incorrect Navidrome library path valid.
-
-If Aurral uses `/data/downloads/aurral` and Navidrome uses `/music/aurral` for the same host folder:
-
-1. Mount the same host folder in both containers.
-2. Make sure the Aurral playlist library exists in Navidrome at the path Navidrome can read. If automatic library creation used the Aurral path, correct the library path in Navidrome.
-3. In Aurral, open **Settings > Playback > Navidrome**.
-4. Enable **Use Navidrome paths in M3U files**.
-5. Add this mapping:
-
-   | | Value |
-   | --- | --- |
-   | Aurral Path | `/data/downloads/aurral` |
-   | Navidrome Path | `/music/aurral` |
-
-6. After the settings save automatically, refresh the affected playlist. Run the flow again, or edit and save a shared playlist.
-
-For a native Windows Navidrome installation, use the Windows path as **Navidrome Path**, for example `N:/ServerFolders/Music/Aurral`. Use a separate [Remote Path Mapping](/getting-started/storage/#paths-reported-by-lidarr-or-download-clients) if Aurral cannot read paths reported by Lidarr or a download client.
+Reused Lidarr tracks do not need matching path strings because Aurral resolves indexed songs by metadata. Navidrome still needs its own library for those files. Use a separate [Remote Path Mapping](/getting-started/storage/#paths-reported-by-lidarr-or-download-clients) only when Aurral cannot read a path reported by Lidarr or a download client.
 
 ## API playlists and scans
 
 Aurral stores the Navidrome playlist ID for each flow or shared playlist. Names are only display values, so a rename updates the same Navidrome playlist.
 
-If a new track is not indexed, Aurral temporarily writes an `.m3u` file under:
-
-```text
-/data/downloads/aurral/aurral-weekly-flow/_playlists/
-```
-
-After a scan, Aurral resolves the song IDs, updates the API playlist, and removes the fallback file. Navidrome scans the **Aurral Playlists** library, not only your main Lidarr library. If the library appears but has no tracks:
+If a new track is not indexed, Aurral waits for the next scan catch-up instead of creating a file playlist. Navidrome scans the **Aurral Playlists** library, not only your main Lidarr library. If the library appears but has no tracks:
 
 - confirm that a track exists under `aurral-weekly-flow`;
 - confirm that the Navidrome library path points to that folder;
 - run a Navidrome scan or save the Aurral Navidrome settings;
 - wait for the scan to finish.
+
+## Upgrade from M3U playlists
+
+Aurral adopts a matching Navidrome playlist that was imported from an old M3U file. It keeps the native playlist ID, updates its ordered tracks through the API, and then removes the legacy file. It also removes obsolete duplicate names.
+
+If migration does not finish:
+
+1. Keep the existing Navidrome playlist and M3U file.
+2. Make sure that Navidrome has indexed every track.
+3. Run a full Navidrome scan.
+4. Edit and save the Aurral playlist to retry migration.
+5. Confirm that the same Navidrome playlist updates and the legacy file disappears.
+
+To roll back, stop Aurral and deploy the previous exact image. Restore the previous Aurral data and legacy playlist files from the same backup. Do not delete or rename the Navidrome playlist before recovery completes.
 
 ## Remove missing tracks
 

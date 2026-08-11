@@ -48,6 +48,13 @@ playlistManager.navidromeDestination.client = {
   async getPlaylists() {
     return [];
   },
+  async findSong() {
+    return { id: "reviewed-song" };
+  },
+  async createPlaylist(name) {
+    return { id: name, name };
+  },
+  async updatePlaylist() {},
   async deletePlaylist() {},
   async scanLibrary() {},
 };
@@ -99,11 +106,7 @@ test("approving a reviewed download commits it inside the managed playlist libra
   assert.equal(payload.path, expectedPath);
   assert.equal(downloadTracker.getJob(jobId)?.finalPath, expectedPath);
   assert.equal(await fs.readFile(expectedPath, "utf8"), "reviewed audio");
-  const m3u = await fs.readFile(
-    path.join(playlistManager.libraryRoot, "Reviewed.m3u"),
-    "utf8",
-  );
-  assert.match(m3u, /Track\.flac/);
+  await assert.rejects(fs.access(path.join(playlistManager.libraryRoot, "Reviewed.m3u")));
 });
 
 test("reports when an upgrade search is already queued for a track", async () => {

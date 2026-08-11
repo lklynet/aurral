@@ -14,14 +14,7 @@ import {
   getPathMappings,
   looksLikeExternalOnlyPath,
   resolveLocalPath,
-  resolveRemotePath,
 } from "./pathMappings.js";
-import {
-  getM3uPathMappings,
-  getM3uPathMode,
-  resolveM3uTrackPath,
-  resolveM3uVisiblePath,
-} from "./playlistM3uPaths.js";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 import { commitImportToPlaylistLibrary } from "./playlistDownloadUtils.js";
 import {
@@ -728,40 +721,6 @@ async function checkSabnzbdSection() {
   });
 }
 
-function uniqueVisiblePathCandidates(paths) {
-  const seen = new Set();
-  const result = [];
-  for (const entry of paths) {
-    const value = String(entry || "").trim();
-    if (!value) continue;
-    const key = normalizePathCompare(value);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(value);
-  }
-  return result;
-}
-
-function resolveNavidromeVisiblePath(localPath, mode, mappings) {
-  const local = String(localPath || "").trim();
-  if (!local || mode !== "remote") return local;
-  const mapped = resolveM3uVisiblePath(local, mappings);
-  if (mapped) return mapped;
-  if (mappings.length === 0) {
-    const fallback = resolveRemotePath(local);
-    if (normalizePathCompare(fallback) !== normalizePathCompare(local)) {
-      return fallback;
-    }
-  }
-  return null;
-}
-
-function getNavidromePathCandidates(localPath, mode, mappings) {
-  const local = String(localPath || "").trim();
-  const visible = resolveNavidromeVisiblePath(local, mode, mappings);
-  return uniqueVisiblePathCandidates(mode === "remote" ? [visible] : [local]);
-}
-
 function libraryCoversAnyPath(libraryList, candidates) {
   return (Array.isArray(libraryList) ? libraryList : []).find((library) =>
     candidates.some((candidate) => pathCoversPrefix(library?.path, candidate)),
@@ -798,17 +757,11 @@ async function checkNavidromeSection({ lidarrRootPaths = [], lidarrSample = null
     return buildSection("navidrome", "Navidrome playback", steps);
   }
 
-  const m3uMode = getM3uPathMode();
-  const m3uMappings = getM3uPathMappings();
   const expectedLibraryPath = path
     .join(resolvePlaylistRoot(), PLAYLIST_LIBRARY_DIR)
     .replace(/\\/g, "/")
     .replace(/\/+$/, "");
-  const expectedLibraryCandidates = getNavidromePathCandidates(
-    expectedLibraryPath,
-    m3uMode,
-    m3uMappings,
-  );
+  const expectedLibraryCandidates = [expectedLibraryPath];
 
   let libraries = [];
   let librariesListed = true;
@@ -844,12 +797,9 @@ async function checkNavidromeSection({ lidarrRootPaths = [], lidarrSample = null
   const relevantLocalPaths = [expectedLibraryPath, ...lidarrRootPaths, lidarrSample?.path].filter(
     Boolean,
   );
-  const relevantLibraries =
-    m3uMode === "local"
-      ? libraryList.filter((library) =>
-          relevantLocalPaths.some((localPath) => pathCoversPrefix(library?.path, localPath)),
-        )
-      : [];
+  const relevantLibraries = libraryList.filter((library) =>
+    relevantLocalPaths.some((localPath) => pathCoversPrefix(library?.path, localPath)),
+  );
   const unreadableLibraries = [];
   for (const library of relevantLibraries) {
     const libraryPath = String(library?.path || "").trim();
@@ -864,7 +814,7 @@ async function checkNavidromeSection({ lidarrRootPaths = [], lidarrSample = null
     steps.push(
       healthStep("library-readable", "fail", "Relevant Navidrome libraries are readable from Aurral", {
         detail: formatLimitedList(unreadableLibraries),
-        fix: "Mount the relevant Navidrome music folders into Aurral at the same paths, or use Navidrome playlist path mappings when the apps have different filesystem views.",
+        fix: "Mount the relevant Navidrome music folders into Aurral at the same paths, or verify the corresponding Navidrome libraries separately when the apps have different filesystem views.",
       }),
     );
   } else if (relevantLibraries.length > 0) {
@@ -896,17 +846,14 @@ async function checkNavidromeSection({ lidarrRootPaths = [], lidarrSample = null
 
   const uncoveredRoots = lidarrRootPaths.filter(
     (rootPath) =>
-      !libraryCoversAnyPath(
-        libraryList,
-        getNavidromePathCandidates(rootPath, m3uMode, m3uMappings),
-      ),
+      !libraryCoversAnyPath(libraryList, [rootPath]),
   );
 
   if (lidarrRootPaths.length > 0 && uncoveredRoots.length > 0) {
     steps.push(
       healthStep("lidarr-library", "warn", "Navidrome scans Lidarr library folders", {
         detail: formatLimitedList(uncoveredRoots),
-        fix: "Reused playlist tracks point at your Lidarr library. Add those folders as Navidrome music libraries, or use Settings → Playback → Navidrome Playlist Paths when Navidrome sees them at different paths.",
+        fix: "Reused playlist tracks point at your Lidarr library. Add the corresponding folders as Navidrome music libraries and scan them.",
       }),
     );
   } else if (lidarrRootPaths.length > 0) {
@@ -921,7 +868,7 @@ async function checkNavidromeSection({ lidarrRootPaths = [], lidarrSample = null
     const samplePath = String(lidarrSample.path || "").trim();
     const navidromeCoversSample = libraryCoversAnyPath(
       libraryList,
-      getNavidromePathCandidates(samplePath, m3uMode, m3uMappings),
+      [samplePath],
     );
     if (!navidromeCoversSample) {
       steps.push(
@@ -946,16 +893,15 @@ async function checkNavidromeSection({ lidarrRootPaths = [], lidarrSample = null
       const localPath = path.resolve(
         remapLegacyWeeklyFlowPath(job.finalPath, resolveWeeklyFlowRoot()),
       );
-      const emittedPath = resolveM3uTrackPath(job, localPath, m3uMode, m3uMappings);
-      if (!emittedPath || !libraryCoversAnyPath(libraryList, [emittedPath])) {
-        uncoveredPlaylistTracks.push(emittedPath || localPath);
+      if (!libraryCoversAnyPath(libraryList, [localPath])) {
+        uncoveredPlaylistTracks.push(localPath);
       }
     }
     if (doneJobs.length > 0 && uncoveredPlaylistTracks.length > 0) {
       steps.push(
         healthStep("playlist-tracks", "warn", "Navidrome scans generated playlist track paths", {
           detail: `${uncoveredPlaylistTracks.length} of ${doneJobs.length} sampled paths are outside Navidrome libraries: ${formatLimitedList(uncoveredPlaylistTracks)}`,
-          fix: "Add the emitted paths to Navidrome's music libraries, or correct the Navidrome playlist path mappings so every generated M3U track points inside a scanned library.",
+          fix: "Add the corresponding folders to Navidrome's music libraries and scan them.",
         }),
       );
     } else if (doneJobs.length > 0) {
@@ -1053,8 +999,6 @@ async function checkPlexSection() {
 async function checkPlaylistFilesSection() {
   const steps = [];
   const weeklyFlowRoot = resolveWeeklyFlowRoot();
-  const m3uMode = getM3uPathMode();
-  const m3uMappings = getM3uPathMappings();
   const totalDoneJobs = Number(downloadTracker.getStats()?.done || 0);
   const doneJobs = downloadTracker.getDoneWithFinalPath(PLAYLIST_FILE_HEALTH_SAMPLE_LIMIT);
 
@@ -1063,43 +1007,6 @@ async function checkPlaylistFilesSection() {
       skipped: true,
       skipReason: "No completed playlist tracks are available to verify yet.",
     });
-  }
-
-  if (m3uMode === "remote") {
-    const unresolvedPaths = [];
-    let sampleResolved = null;
-    for (const job of doneJobs) {
-      const localPath = path.resolve(remapLegacyWeeklyFlowPath(job.finalPath, weeklyFlowRoot));
-      const resolved = resolveM3uTrackPath(job, localPath, m3uMode, m3uMappings);
-      if (resolved && normalizePathCompare(resolved) !== normalizePathCompare(localPath)) {
-        sampleResolved ||= `${localPath} -> ${resolved}`;
-      } else {
-        unresolvedPaths.push(localPath);
-      }
-    }
-
-    if (unresolvedPaths.length > 0) {
-      steps.push(
-        healthStep("m3u-mode", "warn", "Generated M3U paths resolve for playlist consumers", {
-          detail: `${unresolvedPaths.length} of ${doneJobs.length} sampled track paths are not mapped: ${formatLimitedList(unresolvedPaths)}`,
-          fix: "Add Navidrome path mappings for every unmapped Aurral or Lidarr folder used by playlists.",
-        }),
-      );
-    } else {
-      steps.push(
-        healthStep("m3u-mode", "pass", "Generated M3U paths resolve for playlist consumers", {
-          detail: sampleResolved
-            ? `${doneJobs.length} sampled track${doneJobs.length === 1 ? "" : "s"} resolved via path mappings (e.g. ${sampleResolved})`
-            : `${doneJobs.length} sampled track${doneJobs.length === 1 ? "" : "s"} resolved to consumer-visible paths`,
-        }),
-      );
-    }
-  } else {
-    steps.push(
-      healthStep("m3u-mode", "pass", "Playlist files use local container paths", {
-        detail: "M3U files use the same paths Aurral reads on disk.",
-      }),
-    );
   }
 
   let totalMissing = 0;
@@ -1138,8 +1045,8 @@ async function checkPlaylistFilesSection() {
       healthStep("tracked", "fail", "Completed playlist files are accessible", {
         detail: `${totalMissing} of ${doneJobs.length} completed tracks are missing on disk`,
         fix: sampleMissing
-          ? `Example missing path: ${sampleMissing}. Restore the missing file or fix the mount that should contain it, then update the affected playlist or flow so Aurral rewrites its playlist files.`
-          : "Restore the missing files or fix the mount that should contain them, then update the affected playlist or flow so Aurral rewrites its playlist files.",
+          ? `Example missing path: ${sampleMissing}. Restore the missing file or fix the mount that should contain it, then update the affected playlist or flow.`
+          : "Restore the missing files or fix the mount that should contain them, then update the affected playlist or flow.",
       }),
     );
     return buildSection("playlists", "Playlist files", steps);

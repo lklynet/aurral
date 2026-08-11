@@ -14,10 +14,6 @@ import {
   validateDownloadFolderPath,
 } from "../../../services/downloadFolderConfig.js";
 import { normalizePathMappings } from "../../../services/pathMappings.js";
-import {
-  normalizeM3uPathMappings,
-  normalizeM3uPathMode,
-} from "../../../services/playlistM3uPaths.js";
 import { logger } from "../../../services/logger.js";
 import { testNavidromeConnection } from "../../shared/navidromeTest.js";
 import { mergePlexIntegration } from "./plexSettings.js";
@@ -284,14 +280,6 @@ export function registerGeneral(router) {
         delete nextYtdlp.binaryPath;
         delete nextYtdlp.audioFormat;
         integrations.ytdlp = nextYtdlp;
-      }
-      if (integrations?.navidrome) {
-        integrations.navidrome.m3uPathMode = normalizeM3uPathMode(
-          integrations.navidrome.m3uPathMode,
-        );
-        integrations.navidrome.pathMappings = normalizeM3uPathMappings(
-          integrations.navidrome.pathMappings,
-        );
       }
       if (integrations?.news) {
         const nextNews = {

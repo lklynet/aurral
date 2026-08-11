@@ -28,8 +28,6 @@ export const defaultData = {
         url: "",
         username: "",
         password: "",
-        m3uPathMode: "local",
-        pathMappings: [],
       },
       plex: {
         url: "",

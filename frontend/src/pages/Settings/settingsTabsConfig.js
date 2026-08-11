@@ -150,15 +150,12 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   playback: {
-    sections: ["Playback Servers", "Navidrome Playlist Paths", "Cover Art", "Connection", "Account", "Aurral Library Path", "Main library (optional)", "Sync"],
+    sections: ["Playback Servers", "Cover Art", "Connection", "Account", "Aurral Library Path", "Main library (optional)", "Sync"],
     services: {
       Navidrome: "Subsonic music server",
       Plex: "Plexamp music server",
     },
     fields: {
-      "M3U path mode": "playlist paths navidrome aurral",
-      "Aurral path": "Navidrome path mapping local",
-      "Navidrome path": "M3U path mapping remote",
       "Server URL": "playback server address host connection",
       "Subsonic / Navidrome": "playback server connection",
       Username: "Navidrome Subsonic credentials",

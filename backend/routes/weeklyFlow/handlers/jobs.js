@@ -301,7 +301,7 @@ export function registerJobs(router) {
       res.json({
         success: true,
         message:
-          "Playlists ensured. M3U files in the Aurral playlist library reference completed track paths and import after Navidrome scans that library.",
+          "Playlists ensured. Navidrome creates API playlists after it indexes completed tracks.",
       });
     } catch (error) {
       res.status(500).json({

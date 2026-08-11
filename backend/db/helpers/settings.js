@@ -9,12 +9,6 @@ import {
   syncDownloadFolderPath,
   validateDownloadFolderPath,
 } from "../../services/downloadFolderConfig.js";
-import {
-  normalizeM3uPathMappings,
-  normalizeM3uPathMode,
-  syncM3uPathMappings,
-  syncM3uPathMode,
-} from "../../services/playlistM3uPaths.js";
 import { normalizeExistingFileMode } from "../../services/weeklyFlow/weeklyFlowFileReuse.js";
 import { normalizeDateTimeFormat } from "../../config/constants.js";
 import { normalizeQualityProfile } from "../../services/qualityProfileModel.js";
@@ -197,15 +191,9 @@ export const dbOps = {
       onboardingComplete: !!onboardingComplete,
     };
     if (result.integrations?.navidrome) {
-      result.integrations.navidrome.m3uPathMode = normalizeM3uPathMode(
-        result.integrations.navidrome.m3uPathMode,
-      );
-      result.integrations.navidrome.pathMappings = normalizeM3uPathMappings(
-        result.integrations.navidrome.pathMappings,
-      );
+      delete result.integrations.navidrome.m3uPathMode;
+      delete result.integrations.navidrome.pathMappings;
     }
-    syncM3uPathMode(result.integrations?.navidrome?.m3uPathMode);
-    syncM3uPathMappings(result.integrations?.navidrome?.pathMappings);
     settingsCache = result;
     settingsCacheTime = Date.now();
     return result;
@@ -231,13 +219,9 @@ export const dbOps = {
         if (nextIntegrations.navidrome) {
           nextIntegrations.navidrome = {
             ...nextIntegrations.navidrome,
-            m3uPathMode: normalizeM3uPathMode(
-              nextIntegrations.navidrome.m3uPathMode,
-            ),
-            pathMappings: normalizeM3uPathMappings(
-              nextIntegrations.navidrome.pathMappings,
-            ),
           };
+          delete nextIntegrations.navidrome.m3uPathMode;
+          delete nextIntegrations.navidrome.pathMappings;
         }
         upsertSettingStmt.run(
           "integrations",
@@ -245,8 +229,6 @@ export const dbOps = {
             encryptIntegrations(nextIntegrations, encKey)
           )
         );
-        syncM3uPathMode(nextIntegrations?.navidrome?.m3uPathMode);
-        syncM3uPathMappings(nextIntegrations?.navidrome?.pathMappings);
       }
       if (settings.quality) {
         upsertSettingStmt.run("quality", settings.quality);

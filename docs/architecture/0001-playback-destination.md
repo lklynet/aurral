@@ -36,7 +36,7 @@ Destination adapters own their names, authentication, configuration, vendor IDs,
 
 ## Compatibility
 
-The Navidrome adapter resolves snapshot paths and metadata to Subsonic song IDs. It stores a Navidrome playlist ID for each Aurral entity and owner. It temporarily writes an M3U file when Navidrome has not indexed all tracks. A post-scan catch-up replaces that file with an API-managed playlist. The adapter owns Navidrome naming, migration cleanup, library setup, and scans.
+The Navidrome adapter resolves snapshot paths and metadata to Subsonic song IDs. It stores a Navidrome playlist ID for each Aurral entity and owner. If Navidrome has not indexed a track, a post-scan catch-up retries the API playlist. The adapter adopts and removes legacy M3U playlists during migration. It owns Navidrome naming, migration cleanup, library setup, and scans.
 
 The Plex adapter resolves snapshot paths to Plex rating keys. It keeps section IDs, user tokens, playlist pointers, owner-specific titles, library setup, and scans inside the adapter.
 

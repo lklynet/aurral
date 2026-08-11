@@ -42,13 +42,20 @@ function makeManager() {
     async getPlaylists() {
       return [];
     },
+    async findSong() {
+      return null;
+    },
+    async createPlaylist(name) {
+      return { id: name, name };
+    },
+    async updatePlaylist() {},
     async deletePlaylist() {},
     async scanLibrary() {},
   };
   return manager;
 }
 
-test("writes WebP sidecar artwork for flow and playlist m3u files", async () => {
+test("writes WebP artwork for flows and playlists without M3U files", async () => {
   const flow = flowPlaylistConfig.createFlow({
     name: "Late Night",
     enabled: false,
@@ -65,18 +72,16 @@ test("writes WebP sidecar artwork for flow and playlist m3u files", async () => 
 
   const flowName = manager.getPlaylistName(flow.id);
   const flowBase = manager._sanitize(flowName);
-  const flowM3u = path.join(manager.libraryRoot, `${flowBase}.m3u`);
   const flowWebp = path.join(manager.libraryRoot, `${flowBase}.webp`);
 
   const playlistName = manager.getPlaylistName(playlist.id);
   const playlistBase = manager._sanitize(playlistName);
-  const playlistM3u = path.join(manager.libraryRoot, `${playlistBase}.m3u`);
   const playlistWebp = path.join(manager.libraryRoot, `${playlistBase}.webp`);
 
-  await assert.doesNotReject(() => fs.access(flowM3u));
   await assert.doesNotReject(() => fs.access(flowWebp));
-  await assert.doesNotReject(() => fs.access(playlistM3u));
   await assert.doesNotReject(() => fs.access(playlistWebp));
+  await assert.rejects(() => fs.access(path.join(manager.libraryRoot, `${flowBase}.m3u`)));
+  await assert.rejects(() => fs.access(path.join(manager.libraryRoot, `${playlistBase}.m3u`)));
 
   const flowMeta = await sharp(flowWebp).metadata();
   assert.equal(flowMeta.width, 1000);
@@ -101,9 +106,7 @@ test("removes old sidecar artwork when a flow is renamed", async () => {
 
   const oldName = manager.getPlaylistName(flow.id);
   const oldBase = manager._sanitize(oldName);
-  const oldM3u = path.join(manager.libraryRoot, `${oldBase}.m3u`);
   const oldWebp = path.join(manager.libraryRoot, `${oldBase}.webp`);
-  await assert.doesNotReject(() => fs.access(oldM3u));
   await assert.doesNotReject(() => fs.access(oldWebp));
 
   flowPlaylistConfig.updateFlow(flow.id, { name: "New Name" });
@@ -111,16 +114,13 @@ test("removes old sidecar artwork when a flow is renamed", async () => {
 
   const newName = manager.getPlaylistName(flow.id);
   const newBase = manager._sanitize(newName);
-  const newM3u = path.join(manager.libraryRoot, `${newBase}.m3u`);
   const newWebp = path.join(manager.libraryRoot, `${newBase}.webp`);
-  await assert.doesNotReject(() => fs.access(newM3u));
   await assert.doesNotReject(() => fs.access(newWebp));
 
-  await assert.rejects(() => fs.access(oldM3u));
   await assert.rejects(() => fs.access(oldWebp));
 });
 
-test("writes sidecar artwork for draft flows without m3u files", async () => {
+test("writes sidecar artwork for draft flows without playlists", async () => {
   const flow = flowPlaylistConfig.createFlow({
     name: "Draft Flow",
     enabled: false,
@@ -151,7 +151,7 @@ test("keeps artwork when an enabled flow is disabled", async () => {
   const base = manager._sanitize(manager.getPlaylistName(flow.id));
   const m3u = path.join(manager.libraryRoot, `${base}.m3u`);
   const webp = path.join(manager.libraryRoot, `${base}.webp`);
-  await assert.doesNotReject(() => fs.access(m3u));
+  await assert.rejects(() => fs.access(m3u));
   await assert.doesNotReject(() => fs.access(webp));
 
   flowPlaylistConfig.setEnabled(flow.id, false);

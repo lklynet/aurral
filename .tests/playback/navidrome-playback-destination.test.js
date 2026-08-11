@@ -14,7 +14,6 @@ const [
   { db },
   { userOps },
   { flowPlaylistConfig },
-  { syncM3uPathMappings },
   { createPlaybackPlaylistIdentity, createPlaybackPlaylistSnapshot },
   { navidromePlaylistPointerStore },
   { NavidromePlaybackDestination },
@@ -23,7 +22,6 @@ const [
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
-  "backend/services/playlistM3uPaths.js",
   "backend/services/playback/playbackDestination.js",
   "backend/services/navidrome/navidromePlaylistPointerStore.js",
   "backend/services/playback/navidromePlaybackDestination.js",
@@ -71,9 +69,6 @@ function createClient({ configured = true, playlists = [], songs = {} } = {}) {
 
 test.beforeEach(async () => {
   await resetDatabase(db);
-  syncM3uPathMappings([]);
-  delete process.env.M3U_PATH_MODE;
-  delete process.env.M3U_PATH_MAPPINGS;
   await fs.rm(weeklyFlowRoot, { recursive: true, force: true });
 });
 
@@ -81,15 +76,11 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("publishes mapped M3U files and ensures the Navidrome library", async () => {
+test("ensures the Navidrome library without creating an M3U playlist", async () => {
   const owner = userOps.createUser("jody", "hash", "user");
   const flow = flowPlaylistConfig.createFlow({ name: "Morning Mix", ownerUserId: owner.id });
-  const localRoot = path.join(weeklyFlowRoot, "music");
-  const trackPath = path.join(localRoot, "Artist", "Song.flac");
   const client = createClient();
   const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
-  syncM3uPathMappings([{ local: localRoot, remote: "/navidrome/music" }]);
-  process.env.M3U_PATH_MODE = "remote";
 
   assert.deepEqual(await destination.ensureLibrary(), { ok: true });
   assert.deepEqual(
@@ -100,7 +91,7 @@ test("publishes mapped M3U files and ensures the Navidrome library", async () =>
         displayName: flow.name,
         tracks: [
           {
-            path: trackPath,
+            path: "/music/Artist/Song.flac",
             title: "Song",
             artist: "Artist",
             durationMs: 245600,
@@ -112,9 +103,8 @@ test("publishes mapped M3U files and ensures the Navidrome library", async () =>
   );
 
   assert.deepEqual(client.calls.ensured, [destination.playlistLibraryRoot.replace(/\\/g, "/")]);
-  assert.equal(
-    await fs.readFile(path.join(destination.libraryRoot, "jody - Morning Mix.m3u"), "utf8"),
-    "#EXTM3U\n#EXTINF:246,Artist - Song\n/navidrome/music/Artist/Song.flac\n",
+  await assert.rejects(
+    fs.access(path.join(destination.libraryRoot, "jody - Morning Mix.m3u")),
   );
 });
 
@@ -253,12 +243,15 @@ test("serializes concurrent publishes before creating a native playlist", async 
 test("adopts an imported M3U playlist and keeps its ID across rename and delete", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Imported" });
   const client = createClient({
-    playlists: [{ id: "imported-id", name: "Imported" }],
+    playlists: [{ id: "imported-id", name: "[AS] Imported" }],
     songs: { Song: { id: "song-1" } },
   });
   const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
   await fs.mkdir(destination.libraryRoot, { recursive: true });
-  await fs.writeFile(path.join(destination.libraryRoot, "Imported.m3u"), "legacy");
+  const legacyPath = path.join(destination.libraryRoot, "[AS] Imported.m3u");
+  await fs.writeFile(legacyPath, "legacy");
+  await destination.ensureLibrary();
+  await assert.doesNotReject(fs.access(legacyPath));
   const updatePlaylist = client.updatePlaylist.bind(client);
   let releaseUpdate;
   let signalUpdate;
@@ -282,11 +275,12 @@ test("adopts an imported M3U playlist and keeps its ID across rename and delete"
   );
   await updateStarted;
   assert.equal(
-    await fs.readFile(path.join(destination.libraryRoot, "Imported.m3u"), "utf8"),
+    await fs.readFile(legacyPath, "utf8"),
     "legacy",
   );
   releaseUpdate();
   await migrating;
+  await assert.rejects(fs.access(legacyPath));
   client.updatePlaylist = updatePlaylist;
   await destination.publishPlaylist(
     createPlaybackPlaylistSnapshot({
@@ -337,7 +331,7 @@ test("does not adopt a same-name playlist claimed by another Aurral entity", asy
   assert.deepEqual(client.calls.created, [{ name: "Same Name", songIds: ["song-1"] }]);
 });
 
-test("converts the M3U fallback after Navidrome indexes a missing song", async () => {
+test("creates the API playlist after Navidrome indexes a missing song", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Catch-up" });
   const songs = {};
   const client = createClient({ songs });
@@ -349,7 +343,7 @@ test("converts the M3U fallback after Navidrome indexes a missing song", async (
   });
 
   await destination.publishPlaylist(snapshot);
-  await assert.doesNotReject(fs.access(path.join(destination.libraryRoot, "Catch-up.m3u")));
+  await assert.rejects(fs.access(path.join(destination.libraryRoot, "Catch-up.m3u")));
   songs.Song = { id: "indexed-song" };
   destination._scheduleCatchup([0]);
   while (destination._catchupRunning) await new Promise((resolve) => setTimeout(resolve, 1));

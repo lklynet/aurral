@@ -13,8 +13,6 @@ import {
 
 const previousFileBrowseRoots = process.env.FILE_BROWSE_ROOTS;
 const previousPathMappings = process.env.PATH_MAPPINGS;
-const previousM3uPathMode = process.env.M3U_PATH_MODE;
-const previousM3uPathMappings = process.env.M3U_PATH_MAPPINGS;
 
 const [isolatedState, { db }, { dbOps }, { runStorageHealthCheck }, { resolvePlaylistRoot }] =
   await setupIsolatedBackend(
@@ -35,8 +33,6 @@ test.beforeEach(async () => {
   await fs.mkdir(downloadFolder, { recursive: true });
   process.env.FILE_BROWSE_ROOTS = downloadFolder;
   delete process.env.PATH_MAPPINGS;
-  delete process.env.M3U_PATH_MODE;
-  delete process.env.M3U_PATH_MAPPINGS;
   dbOps.updateSettings({
     ...dbOps.getSettings(),
     integrations: {},
@@ -55,16 +51,6 @@ test.after(async () => {
     delete process.env.PATH_MAPPINGS;
   } else {
     process.env.PATH_MAPPINGS = previousPathMappings;
-  }
-  if (previousM3uPathMode === undefined) {
-    delete process.env.M3U_PATH_MODE;
-  } else {
-    process.env.M3U_PATH_MODE = previousM3uPathMode;
-  }
-  if (previousM3uPathMappings === undefined) {
-    delete process.env.M3U_PATH_MAPPINGS;
-  } else {
-    process.env.M3U_PATH_MAPPINGS = previousM3uPathMappings;
   }
   await cleanupIsolatedState(isolatedState);
 });
@@ -331,79 +317,6 @@ test("slskd missing-path remediation points to slskd rather than a nonexistent A
   assert.doesNotMatch(configured?.fix || "", /Settings .* Download Clients .* slskd/i);
 });
 
-test("remote M3U health validates every sampled track mapping", async () => {
-  const mappedRoot = path.join(isolatedState.baseDir, "mapped-playlists");
-  const unmappedRoot = path.join(isolatedState.baseDir, "unmapped-library");
-  const mappedTrack = path.join(mappedRoot, "Artist", "mapped.flac");
-  const unmappedTrack = path.join(unmappedRoot, "Artist", "unmapped.flac");
-  await fs.mkdir(path.dirname(mappedTrack), { recursive: true });
-  await fs.mkdir(path.dirname(unmappedTrack), { recursive: true });
-  await fs.writeFile(mappedTrack, "mapped");
-  await fs.writeFile(unmappedTrack, "unmapped");
-  process.env.M3U_PATH_MODE = "remote";
-  process.env.M3U_PATH_MAPPINGS = `${mappedRoot}|/navidrome/playlists`;
-  const { downloadTracker } = await importFromRepo(
-    "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
-  );
-  const mappedJob = downloadTracker.addJob(
-    { artistName: "Artist", trackName: "Mapped" },
-    "mapped",
-  );
-  const unmappedJob = downloadTracker.addJob(
-    { artistName: "Artist", trackName: "Unmapped" },
-    "mapped",
-  );
-  downloadTracker.setDone(mappedJob, mappedTrack, "Album");
-  downloadTracker.setDone(unmappedJob, unmappedTrack, "Album");
-
-  const result = await runStorageHealthCheck({ force: true });
-  const playlists = result.sections.find((section) => section.id === "playlists");
-  const pathCheck = playlists?.steps.find((step) => step.id === "m3u-mode");
-
-  assert.equal(pathCheck?.status, "warn");
-  assert.match(pathCheck?.detail || "", /1 of 2.*not mapped/i);
-  assert.match(pathCheck?.fix || "", /unmapped/i);
-});
-
-test("remote Navidrome health checks the emitted path, not Aurral's local fallback", async (t) => {
-  const playlistLibrary = path.join(resolvePlaylistRoot(), "aurral-weekly-flow");
-  process.env.M3U_PATH_MODE = "remote";
-  process.env.M3U_PATH_MAPPINGS = `${playlistLibrary}|/navidrome/playlists`;
-  const server = await createMockHttpServer((request, response) => {
-    response.writeHead(200, { "content-type": "application/json" });
-    if (request.url?.startsWith("/rest/ping")) {
-      response.end(JSON.stringify({ "subsonic-response": { status: "ok" } }));
-      return;
-    }
-    if (request.url === "/auth/login") {
-      response.end(JSON.stringify({ token: "test-token" }));
-      return;
-    }
-    response.end(JSON.stringify([{ id: "1", name: "Wrong view", path: playlistLibrary }]));
-  });
-  t.after(server.close);
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      ...dbOps.getSettings().integrations,
-      navidrome: {
-        url: server.url,
-        username: "user",
-        password: "password",
-        m3uPathMode: "remote",
-        pathMappings: [{ local: playlistLibrary, remote: "/navidrome/playlists" }],
-      },
-    },
-  });
-
-  const result = await runStorageHealthCheck({ force: true });
-  const navidrome = result.sections.find((section) => section.id === "navidrome");
-  const library = navidrome?.steps.find((step) => step.id === "aurral-library");
-
-  assert.equal(library?.status, "warn");
-  assert.match(library?.detail || "", /\/navidrome\/playlists/);
-});
-
 test("unrelated Navidrome libraries do not fail local storage health", async (t) => {
   const playlistLibrary = path.join(resolvePlaylistRoot(), "aurral-weekly-flow");
   const server = await createMockHttpServer((request, response) => {
@@ -432,7 +345,6 @@ test("unrelated Navidrome libraries do not fail local storage health", async (t)
         url: server.url,
         username: "user",
         password: "password",
-        m3uPathMode: "local",
       },
     },
   });
@@ -503,7 +415,6 @@ test("POSIX library paths remain case-sensitive", async (t) => {
         url: server.url,
         username: "user",
         password: "password",
-        m3uPathMode: "local",
       },
     },
   });

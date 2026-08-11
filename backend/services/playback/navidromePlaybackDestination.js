@@ -4,13 +4,10 @@ import { setTimeout as wait } from "node:timers/promises";
 import { userOps } from "../../db/helpers/index.js";
 import { NavidromeClient } from "../navidrome.js";
 import { navidromePlaylistPointerStore } from "../navidrome/navidromePlaylistPointerStore.js";
-import { getM3uPathMode, resolveM3uTrackPath } from "../playlistM3uPaths.js";
 import {
   PLAYLIST_LIBRARY_DIR,
-  remapLegacyPath,
   resolvePlaylistRoot,
 } from "../playlistPaths.js";
-import { downloadTracker } from "../weeklyFlow/weeklyFlowDownloadTracker.js";
 import { flowPlaylistConfig } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
 import {
   createPlaybackPlaylistIdentity,
@@ -23,19 +20,6 @@ const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg", ".png"];
 const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
 const PLAYLIST_FILE_EXTENSIONS = [".m3u", ".nsp"];
 const SONG_LOOKUP_BATCH_SIZE = 5;
-
-function buildM3uContent(tracks, resolveTrackPath) {
-  const lines = ["#EXTM3U"];
-  for (const track of tracks) {
-    const duration = Math.max(0, Math.round(Number(track.durationMs) / 1000 || 0));
-    const label = track.artist && track.title
-      ? `${track.artist} - ${track.title}`
-      : track.title || track.artist || "";
-    lines.push(`#EXTINF:${duration},${label}`);
-    lines.push(String(resolveTrackPath(track)).replace(/\\/g, "/"));
-  }
-  return `${lines.join("\n")}\n`;
-}
 
 export class NavidromePlaybackDestination {
   constructor(weeklyFlowRoot = resolvePlaylistRoot(), { client = null } = {}) {
@@ -163,13 +147,15 @@ export class NavidromePlaybackDestination {
       for (const extension of ARTWORK_FILE_EXTENSIONS) expected.add(`${baseName}${extension}`);
     };
     const addPlaylist = (entity) => {
-      const name = this.getPlaylistName({
+      const names = this.getPlaylistNames({
         entityId: entity.id,
         ownerUserId: entity.ownerUserId,
         displayName: entity.name,
       });
-      expected.add(`${this._sanitize(name)}.m3u`);
-      addArtwork(name);
+      for (const name of [names.current, ...names.legacy]) {
+        expected.add(`${this._sanitize(name)}.m3u`);
+      }
+      addArtwork(names.current);
     };
     for (const flow of flowPlaylistConfig.getFlows()) {
       if (flow.enabled) addPlaylist(flow);
@@ -200,16 +186,6 @@ export class NavidromePlaybackDestination {
         await fs.unlink(path.join(this.libraryRoot, file));
       } catch {}
     }
-  }
-
-  _jobsByPath(entityId) {
-    const jobs = new Map();
-    for (const job of downloadTracker.getByPlaylistType(entityId)) {
-      if (job?.status !== "done" || typeof job?.finalPath !== "string") continue;
-      const localPath = path.resolve(remapLegacyPath(job.finalPath, this.weeklyFlowRoot));
-      jobs.set(localPath, job);
-    }
-    return jobs;
   }
 
   async testConnection() {
@@ -261,7 +237,6 @@ export class NavidromePlaybackDestination {
     if (storedPointer && this._syncHashes.get(syncKey) === syncHash) {
       return playbackOperationSuccess();
     }
-    const playlistPath = path.join(this.libraryRoot, `${this._sanitize(current)}.m3u`);
     let hadPlaylistFile = false;
     for (const name of [current, ...legacy]) {
       try {
@@ -270,75 +245,56 @@ export class NavidromePlaybackDestination {
         break;
       } catch {}
     }
-    const jobsByPath = this._jobsByPath(snapshot.entityId);
-    const content = buildM3uContent(snapshot.tracks, (track) => {
-      const localPath = path.resolve(track.path);
-      return resolveM3uTrackPath(jobsByPath.get(localPath), localPath, getM3uPathMode());
-    });
-    if (
-      typeof this.client?.createPlaylist !== "function"
-      || typeof this.client?.updatePlaylist !== "function"
-      || (snapshot.tracks.length && typeof this.client?.findSong !== "function")
-    ) {
-      await fs.writeFile(playlistPath, content, "utf8");
+    const songs = [];
+    for (let index = 0; index < snapshot.tracks.length; index += SONG_LOOKUP_BATCH_SIZE) {
+      const batch = snapshot.tracks.slice(index, index + SONG_LOOKUP_BATCH_SIZE);
+      songs.push(...await Promise.all(
+        batch.map((track) => this.client.findSong(track.title, track.artist, track)),
+      ));
+    }
+    if (songs.some((song) => !song?.id)) {
+      this._pendingSnapshots.set(`${snapshot.entityId}:${targetKey}`, snapshot);
       return playbackOperationSuccess();
     }
-    try {
-      const songs = [];
-      for (let index = 0; index < snapshot.tracks.length; index += SONG_LOOKUP_BATCH_SIZE) {
-        const batch = snapshot.tracks.slice(index, index + SONG_LOOKUP_BATCH_SIZE);
-        songs.push(...await Promise.all(
-          batch.map((track) => this.client.findSong(track.title, track.artist, track)),
-        ));
-      }
-      if (songs.some((song) => !song?.id)) {
-        await fs.writeFile(playlistPath, content, "utf8");
-        this._pendingSnapshots.set(`${snapshot.entityId}:${targetKey}`, snapshot);
-        return playbackOperationSuccess();
-      }
 
-      const pointer = storedPointer;
-      let playlist = null;
-      if (pointer) {
-        for (const delayMs of [0, 250, 1000, 2000]) {
-          if (delayMs) await wait(delayMs);
-          try {
-            await this.client.updatePlaylist(pointer.playlistId, {
-              name: current,
-              songIds: songs.map((song) => song.id),
-            });
-            playlist = { id: pointer.playlistId };
-            break;
-          } catch (error) {
-            if (Number(error?.code) !== 70) throw error;
-          }
-        }
-        if (!playlist) {
-          navidromePlaylistPointerStore.deletePointer(snapshot.entityId, targetKey);
+    const pointer = storedPointer;
+    let playlist = null;
+    if (pointer) {
+      for (const delayMs of [0, 250, 1000, 2000]) {
+        if (delayMs) await wait(delayMs);
+        try {
+          await this.client.updatePlaylist(pointer.playlistId, {
+            name: current,
+            songIds: songs.map((song) => song.id),
+          });
+          playlist = { id: pointer.playlistId };
+          break;
+        } catch (error) {
+          if (Number(error?.code) !== 70) throw error;
         }
       }
       if (!playlist) {
-        const playlists = await this._fetchPlaylists();
-        if (hadPlaylistFile) playlist = playlists.find((candidate) =>
-          (candidate.name === current || legacy.includes(candidate.name))
-          && !navidromePlaylistPointerStore.hasPlaylistId(candidate.id),
-        );
-        const songIds = songs.map((song) => song.id);
-        if (playlist) {
-          await this.client.updatePlaylist(playlist.id, { name: current, songIds });
-        } else {
-          playlist = await this.client.createPlaylist(current, songIds);
-        }
+        navidromePlaylistPointerStore.deletePointer(snapshot.entityId, targetKey);
       }
-      if (!playlist?.id) throw new Error("Navidrome did not return a playlist ID");
-      navidromePlaylistPointerStore.setPointer(snapshot.entityId, targetKey, {
-        playlistId: playlist.id,
-        title: current,
-      });
-    } catch (error) {
-      await fs.writeFile(playlistPath, content, "utf8");
-      throw error;
     }
+    if (!playlist) {
+      const playlists = await this._fetchPlaylists();
+      if (hadPlaylistFile) playlist = playlists.find((candidate) =>
+        (candidate.name === current || legacy.includes(candidate.name))
+        && !navidromePlaylistPointerStore.hasPlaylistId(candidate.id),
+      );
+      const songIds = songs.map((song) => song.id);
+      if (playlist) {
+        await this.client.updatePlaylist(playlist.id, { name: current, songIds });
+      } else {
+        playlist = await this.client.createPlaylist(current, songIds);
+      }
+    }
+    if (!playlist?.id) throw new Error("Navidrome did not return a playlist ID");
+    navidromePlaylistPointerStore.setPointer(snapshot.entityId, targetKey, {
+      playlistId: playlist.id,
+      title: current,
+    });
     this._pendingSnapshots.delete(`${snapshot.entityId}:${targetKey}`);
     this._playlists = null;
     await this._deleteNativePlaylists(legacy);
