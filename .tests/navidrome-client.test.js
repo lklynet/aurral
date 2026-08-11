@@ -174,3 +174,68 @@ test("prefers the exact path and metadata when duplicate songs match", async () 
 
   assert.equal(song.id, "match");
 });
+
+test("matches metadata variants and falls back to title search", async () => {
+  const originalFetch = globalThis.fetch;
+  const queries = [];
+  globalThis.fetch = async (url) => {
+    const request = new URL(url);
+    queries.push(request.searchParams.get("query"));
+    const songs = queries.length === 1
+      ? []
+      : [{
+        id: "variant",
+        title: "Slide",
+        artist: "Goo Goo Dolls",
+        album: "Dizzy Up the Girl",
+        path: "Goo Goo Dolls/Dizzy Up the Girl/Slide.flac",
+      }];
+    return jsonResponse({
+      "subsonic-response": {
+        status: "ok",
+        searchResult3: { song: songs },
+      },
+    });
+  };
+
+  let song;
+  try {
+    song = await new NavidromeClient("http://navidrome.test", "user", "password")
+      .findSong("Slide", "The Goo Goo Dolls", {
+        album: "Dizzy Up the Girl",
+        path: "/music/Goo Goo Dolls/Dizzy Up the Girl/Slide.flac",
+      });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(song.id, "variant");
+  assert.deepEqual(queries, ["The Goo Goo Dolls Slide", "Slide"]);
+});
+
+test("uploads playlist artwork through the native API", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url, options });
+    return new Response(null, { status: 204 });
+  };
+
+  const client = new NavidromeClient("http://navidrome.test", "user", "password");
+  client._nativeLogin = async () => "token";
+  try {
+    await client.uploadPlaylistArtwork(
+      "playlist-1",
+      Buffer.from("image"),
+      "cover.webp",
+      "image/webp",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(requests.length, 1);
+  assert.equal(new URL(requests[0].url).pathname, "/api/playlist/playlist-1/image");
+  assert.equal(requests[0].options.headers["X-ND-Authorization"], "Bearer token");
+  assert.equal(requests[0].options.body.get("image").name, "cover.webp");
+});

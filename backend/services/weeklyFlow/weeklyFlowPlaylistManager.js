@@ -151,16 +151,9 @@ export class WeeklyFlowPlaylistManager {
 
   async _publishPlaylist(entity, artworkKind) {
     const snapshot = await this._createPlaybackSnapshot(entity);
-    const results = await this.destinationRegistry.run("publishPlaylist", snapshot);
-    if (
-      results.some(
-        (result) => result.destination === this.navidromeDestination.name && result.ok,
-      )
-    ) {
-      const playlistName = this.navidromeDestination.getPlaylistName(snapshot);
-      await this._ensureFlowArtwork(entity.id, playlistName, artworkKind);
-    }
-    return results;
+    const playlistName = this.navidromeDestination.getPlaylistName(snapshot);
+    await this._ensureFlowArtwork(entity.id, playlistName, artworkKind);
+    return this.destinationRegistry.run("publishPlaylist", snapshot);
   }
 
   async _ensurePlaylistsInternal() {

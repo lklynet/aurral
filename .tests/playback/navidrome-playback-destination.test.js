@@ -31,7 +31,15 @@ const weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER;
 
 function createClient({ configured = true, playlists = [], songs = {} } = {}) {
   const currentPlaylists = playlists.map((playlist) => ({ ...playlist }));
-  const calls = { created: [], deleted: [], ensured: [], renamed: [], scans: 0, updated: [] };
+  const calls = {
+    artwork: [],
+    created: [],
+    deleted: [],
+    ensured: [],
+    renamed: [],
+    scans: 0,
+    updated: [],
+  };
   return {
     calls,
     isConfigured: () => configured,
@@ -58,6 +66,9 @@ function createClient({ configured = true, playlists = [], songs = {} } = {}) {
       calls.updated.push({ id, ...payload });
       const playlist = currentPlaylists.find((candidate) => candidate.id === id);
       if (playlist) playlist.name = payload.name;
+    },
+    async uploadPlaylistArtwork(id, data, filename, contentType) {
+      calls.artwork.push({ id, size: data.length, filename, contentType });
     },
     async renamePlaylist(id, name) {
       calls.renamed.push({ id, name });
@@ -155,6 +166,29 @@ test("publishes resolved tracks through the Subsonic API and stores the playlist
   await assert.rejects(
     fs.access(path.join(destination.libraryRoot, "casey - API Mix.m3u")),
   );
+});
+
+test("uploads generated artwork for API playlists", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Art Mix" });
+  const client = createClient({ songs: { Song: { id: "song-1" } } });
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+  await fs.mkdir(destination.libraryRoot, { recursive: true });
+  await fs.writeFile(path.join(destination.libraryRoot, "Art Mix.webp"), "image");
+
+  await destination.publishPlaylist(
+    createPlaybackPlaylistSnapshot({
+      entityId: playlist.id,
+      displayName: playlist.name,
+      tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
+    }),
+  );
+
+  assert.deepEqual(client.calls.artwork, [{
+    id: "created",
+    size: 5,
+    filename: "Art Mix.webp",
+    contentType: "image/webp",
+  }]);
 });
 
 test("bounds concurrent Navidrome song lookups and preserves track order", async () => {

@@ -178,6 +178,33 @@ export class NavidromePlaybackDestination {
     }
   }
 
+  async _uploadPlaylistArtwork(snapshot, playlistId) {
+    if (typeof this.client?.uploadPlaylistArtwork !== "function") return;
+    const { current } = this.getPlaylistNames(snapshot);
+    for (const extension of ARTWORK_FILE_EXTENSIONS) {
+      const artworkPath = path.join(this.libraryRoot, `${this._sanitize(current)}${extension}`);
+      const data = await fs.readFile(artworkPath).catch(() => null);
+      if (!data) continue;
+      const contentType = extension === ".png"
+        ? "image/png"
+        : extension === ".jpg" ? "image/jpeg" : "image/webp";
+      try {
+        await this.client.uploadPlaylistArtwork(
+          playlistId,
+          data,
+          path.basename(artworkPath),
+          contentType,
+        );
+      } catch (error) {
+        console.warn(
+          "[NavidromePlaybackDestination] Failed to upload playlist artwork:",
+          error?.message,
+        );
+      }
+      return;
+    }
+  }
+
   _expectedFiles() {
     const expected = new Set();
     const addArtwork = (name) => {
@@ -396,6 +423,7 @@ export class NavidromePlaybackDestination {
       playlistId: playlist.id,
       title: current,
     });
+    await this._uploadPlaylistArtwork(snapshot, playlist.id);
     if (hasUnresolvedSongs) {
       this._pendingSnapshots.set(`${snapshot.entityId}:${targetKey}`, snapshot);
       return playbackOperationSuccess();
