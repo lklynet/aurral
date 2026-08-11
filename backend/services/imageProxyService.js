@@ -3,7 +3,7 @@ import dns from "node:dns";
 import fs from "fs";
 import net from "node:net";
 import path from "path";
-import { Agent } from "undici";
+import { Agent, fetch as undiciFetch } from "undici";
 import sharp from "./sharpConfig.js";
 import { resolveAurralDataDir } from "../config/data-dir.js";
 
@@ -124,6 +124,7 @@ const imageProxyDispatcher = new Agent({
   maxResponseSize: MAX_SOURCE_IMAGE_BYTES,
   connect: { lookup: safeLookup },
 });
+const usesNativeFetch = () => Function.prototype.toString.call(globalThis.fetch).includes("internal/deps/undici");
 
 const ensureCacheDir = () => fs.promises.mkdir(IMAGE_PROXY_DIR, { recursive: true });
 
@@ -600,7 +601,8 @@ const fetchRemoteImage = async (sourceUrl) => {
 
   try {
     for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
-      const response = await fetch(currentUrl, {
+      const requestFetch = usesNativeFetch() ? undiciFetch : globalThis.fetch;
+      const response = await requestFetch(currentUrl, {
         redirect: "manual",
         signal: controller.signal,
         dispatcher: imageProxyDispatcher,

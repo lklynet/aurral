@@ -27,14 +27,14 @@
   "dependencies": {
     "@russellthehippo/honker-node": "^0.4.5",
     "bcrypt": "^6.0.0",
-    "better-sqlite3": "^12.10.0",
+    "better-sqlite3": "^13.0.3",
     "express": "^5.2.1",
-    "express-rate-limit": "^8.6.1",
+    "express-rate-limit": "^8.6.2",
     "helmet": "^8.3.0",
     "music-metadata": "^11.14.0",
     "openid-client": "^6.8.4",
     "sharp": "^0.35.3",
-    "undici": "^7.29.0",
-    "ws": "^8.21.1"
+    "undici": "^8.10.0",
+    "ws": "^8.21.2"
   }
 }
