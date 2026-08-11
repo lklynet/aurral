@@ -331,25 +331,27 @@ export class NavidromePlaybackDestination {
         batch.map((track) => this.client.findSong(track.title, track.artist, track)),
       ));
     }
-    if (songs.some((song) => !song?.id)) {
-      this._pendingSnapshots.set(`${snapshot.entityId}:${targetKey}`, snapshot);
-      return playbackOperationSuccess();
-    }
+    const hasUnresolvedSongs = songs.some((song) => !song?.id);
+    const songIds = songs.filter((song) => song?.id).map((song) => song.id);
 
     let playlist = null;
     if (pointer) {
-      for (const delayMs of [0, 250, 1000, 2000]) {
-        if (delayMs) await wait(delayMs);
-        try {
-          await this.client.updatePlaylist(pointer.playlistId, {
-            name: current,
-            songIds: songs.map((song) => song.id),
-          });
-          playlist = { id: pointer.playlistId };
-          break;
-        } catch (error) {
-          if (Number(error?.code) !== 70) throw error;
+      if (songIds.length) {
+        for (const delayMs of [0, 250, 1000, 2000]) {
+          if (delayMs) await wait(delayMs);
+          try {
+            await this.client.updatePlaylist(pointer.playlistId, {
+              name: current,
+              songIds,
+            });
+            playlist = { id: pointer.playlistId };
+            break;
+          } catch (error) {
+            if (Number(error?.code) !== 70) throw error;
+          }
         }
+      } else {
+        playlist = { id: pointer.playlistId };
       }
       if (!playlist) {
         navidromePlaylistPointerStore.deletePointer(snapshot.entityId, targetKey);
@@ -361,7 +363,6 @@ export class NavidromePlaybackDestination {
         importedPlaylistNames.includes(candidate.name)
         && !navidromePlaylistPointerStore.hasPlaylistId(candidate.id),
       );
-      const songIds = songs.map((song) => song.id);
       if (playlist) {
         await this.client.updatePlaylist(playlist.id, { name: current, songIds });
       } else {
@@ -373,6 +374,10 @@ export class NavidromePlaybackDestination {
       playlistId: playlist.id,
       title: current,
     });
+    if (hasUnresolvedSongs) {
+      this._pendingSnapshots.set(`${snapshot.entityId}:${targetKey}`, snapshot);
+      return playbackOperationSuccess();
+    }
     this._pendingSnapshots.delete(`${snapshot.entityId}:${targetKey}`);
     this._playlists = null;
     const cleanupNames = [current, ...legacy, importedPlaylistName, pointer?.title];

@@ -551,25 +551,31 @@ test("does not adopt a same-name playlist claimed by another Aurral entity", asy
   assert.deepEqual(client.calls.created, [{ name: "Same Name", songIds: ["song-1"] }]);
 });
 
-test("creates the API playlist after Navidrome indexes a missing song", async () => {
+test("publishes resolved songs and catches up when Navidrome indexes the rest", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Catch-up" });
-  const songs = {};
+  const songs = { Ready: { id: "ready-song" } };
   const client = createClient({ songs });
   const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
   const snapshot = createPlaybackPlaylistSnapshot({
     entityId: playlist.id,
     displayName: playlist.name,
-    tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
+    tracks: [
+      { path: "/music/ready.flac", title: "Ready", artist: "Artist" },
+      { path: "/music/missing.flac", title: "Missing", artist: "Artist" },
+    ],
   });
 
   await destination.publishPlaylist(snapshot);
   await assert.rejects(fs.access(path.join(destination.libraryRoot, "Catch-up.m3u")));
-  songs.Song = { id: "indexed-song" };
+  assert.deepEqual(client.calls.created, [
+    { name: "Catch-up", songIds: ["ready-song"] },
+  ]);
+  songs.Missing = { id: "missing-song" };
   destination._scheduleCatchup([0]);
   while (destination._catchupRunning) await new Promise((resolve) => setTimeout(resolve, 1));
 
-  assert.deepEqual(client.calls.created, [
-    { name: "Catch-up", songIds: ["indexed-song"] },
+  assert.deepEqual(client.calls.updated, [
+    { id: "created", name: "Catch-up", songIds: ["ready-song", "missing-song"] },
   ]);
   await assert.rejects(fs.access(path.join(destination.libraryRoot, "Catch-up.m3u")));
 });
