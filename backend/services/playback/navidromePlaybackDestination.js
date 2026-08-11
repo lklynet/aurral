@@ -255,11 +255,13 @@ export class NavidromePlaybackDestination {
         continue;
       }
       const content = await fs.readFile(path.join(this.libraryRoot, file), "utf8").catch(() => "");
-      const matchesTrack = content
+      const importedTrackPaths = new Set(content
         .split(/\r?\n/)
         .filter((line) => line && !line.startsWith("#"))
-        .some((line) => trackPaths.has(normalizeTrackPath(line)));
-      if (matchesTrack) importedPlaylistNames.push(name);
+        .map(normalizeTrackPath));
+      const matchesTrackSet = importedTrackPaths.size === trackPaths.size
+        && [...importedTrackPaths].every((trackPath) => trackPaths.has(trackPath));
+      if (matchesTrackSet) importedPlaylistNames.push(name);
     }
     let importedPlaylistName = null;
     if (!pointer && importedPlaylistNames.length) {

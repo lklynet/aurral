@@ -438,7 +438,7 @@ test("does not adopt an imported playlist from a colliding track basename", asyn
   await fs.mkdir(destination.libraryRoot, { recursive: true });
   await fs.writeFile(
     path.join(destination.libraryRoot, "Legacy Collision.m3u"),
-    "#EXTM3U\n/music/other/intro.flac\n",
+    "#EXTM3U\n/music/expected/intro.flac\n/music/other/intro.flac\n",
   );
 
   await destination.publishPlaylist(
