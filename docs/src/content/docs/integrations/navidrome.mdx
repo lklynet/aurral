@@ -66,6 +66,8 @@ If a new track is not indexed, Aurral waits for the next scan catch-up instead o
 
 Aurral adopts a matching Navidrome playlist that was imported from an old M3U file. It keeps the native playlist ID, updates its ordered tracks through the API, and then removes the legacy file. It also removes obsolete duplicate names.
 
+If the old file is already gone, Aurral can recover the imported playlist from Navidrome's import comment during its next playlist publish. It also rejects an imported playlist whose comment belongs to a different Aurral playlist.
+
 If migration does not finish:
 
 1. Keep the existing Navidrome playlist and M3U file.
