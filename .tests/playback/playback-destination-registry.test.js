@@ -46,10 +46,13 @@ test("runs zero, one, or multiple configured destinations from settings", async 
   assert.deepEqual(first.calls[0], ["updateConfig", { url: "first" }]);
   assert.deepEqual(second.calls[0], ["updateConfig", { url: "second" }]);
 
+  first.isConfigured = () => false;
   assert.deepEqual(await registry.run("deletePlaylist", { entityId: "playlist-1" }), [
+    { destination: "Off", operation: "deletePlaylist", ok: true },
     { destination: "First", operation: "deletePlaylist", ok: true },
     { destination: "Second", operation: "deletePlaylist", ok: true },
   ]);
+  assert.deepEqual(off.calls.at(-1), ["deletePlaylist", { entityId: "playlist-1" }]);
   assert.deepEqual(first.calls.at(-1), ["deletePlaylist", { entityId: "playlist-1" }]);
   assert.deepEqual(second.calls.at(-1), ["deletePlaylist", { entityId: "playlist-1" }]);
 });

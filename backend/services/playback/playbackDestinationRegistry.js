@@ -29,7 +29,9 @@ export class PlaybackDestinationRegistry {
 
   async run(operation, ...args) {
     return Promise.all(
-      this.destinations.filter((destination) => destination.isConfigured()).map(
+      this.destinations.filter(
+        (destination) => operation === "deletePlaylist" || destination.isConfigured(),
+      ).map(
         async (destination) => {
           let result;
           try {
