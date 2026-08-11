@@ -10327,7 +10327,7 @@ textarea {
 
 .flow-page__bulk-menu-anchor {
   position: absolute;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .flow-page__bulk-count {
