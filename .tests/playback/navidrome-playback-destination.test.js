@@ -305,6 +305,46 @@ test("adopts an imported M3U playlist and keeps its ID across rename and delete"
   assert.equal(navidromePlaylistPointerStore.getPointer(playlist.id, "global"), null);
 });
 
+test("keeps a stored playlist during rename cleanup until tracks resolve", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Renamed" });
+  const client = createClient({
+    playlists: [{ id: "imported-id", name: "Legacy Rename Fixture" }],
+  });
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+  navidromePlaylistPointerStore.setPointer(playlist.id, "global", {
+    playlistId: "imported-id",
+    title: "Legacy Rename Fixture",
+  });
+  await fs.mkdir(destination.libraryRoot, { recursive: true });
+  await fs.writeFile(
+    path.join(destination.libraryRoot, "Legacy Rename Fixture.m3u"),
+    "legacy",
+  );
+
+  await destination.ensureLibrary();
+  assert.deepEqual(client.calls.deleted, []);
+  await assert.rejects(
+    fs.access(path.join(destination.libraryRoot, "Legacy Rename Fixture.m3u")),
+  );
+
+  const snapshot = createPlaybackPlaylistSnapshot({
+    entityId: playlist.id,
+    displayName: playlist.name,
+    tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
+  });
+  await destination.publishPlaylist(snapshot);
+  client.findSong = async () => ({ id: "song-1" });
+  await destination.publishPlaylist(snapshot);
+
+  assert.deepEqual(client.calls.updated, [
+    { id: "imported-id", name: "Renamed", songIds: ["song-1"] },
+  ]);
+  assert.equal(
+    navidromePlaylistPointerStore.getPointer(playlist.id, "global").playlistId,
+    "imported-id",
+  );
+});
+
 test("does not adopt a same-name playlist claimed by another Aurral entity", async () => {
   const second = flowPlaylistConfig.createSharedPlaylist({ name: "Same Name" });
   const client = createClient({

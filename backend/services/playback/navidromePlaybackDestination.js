@@ -116,7 +116,7 @@ export class NavidromePlaybackDestination {
     const playlists = await this._loadPlaylists();
     for (const name of [...new Set((names || []).filter(Boolean))]) {
       const playlist = playlists.find((candidate) => candidate.name === name);
-      if (!playlist) continue;
+      if (!playlist || navidromePlaylistPointerStore.hasPlaylistId(playlist.id)) continue;
       try {
         await this.client.deletePlaylist(playlist.id);
         this._playlists = this._playlists.filter((candidate) => candidate.id !== playlist.id);
