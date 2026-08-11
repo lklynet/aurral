@@ -55,7 +55,7 @@ Reused Lidarr tracks do not need matching path strings because Aurral resolves i
 
 Aurral stores the Navidrome playlist ID for each flow or shared playlist. Names are only display values, so a rename updates the same Navidrome playlist.
 
-Aurral also uploads its generated playlist artwork to API playlists and updates it when you change or regenerate artwork in Aurral. Navidrome uses that uploaded image instead of its automatic tiled artwork when custom playlist artwork is supported.
+Aurral also uploads its generated playlist artwork to API playlists and updates it when you change or regenerate artwork in Aurral. Aurral revalidates its local artwork response after restart, so the image stays current in the Aurral UI. Navidrome uses that uploaded image instead of its automatic tiled artwork when custom playlist artwork is supported.
 
 If a new track is not indexed, Aurral publishes the indexed tracks and adds the missing track during the next scan catch-up. If no tracks are indexed yet, it keeps a temporary M3U fallback until Navidrome can resolve at least one track. Navidrome scans the **Aurral Playlists** library, not only your main Lidarr library. If the library appears but has no tracks:
 

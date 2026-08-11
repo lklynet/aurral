@@ -27,7 +27,7 @@ export function registerArtworkServe(router) {
     const { getArtworkContentTypeForExtension } =
       await import("../../../services/playlistArtworkGenerator.js");
     res.type(getArtworkContentTypeForExtension(artwork.extension));
-    res.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+    res.set("Cache-Control", "private, no-cache, must-revalidate");
     res.sendFile(artwork.safePath);
   });
 }
