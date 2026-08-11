@@ -324,6 +324,7 @@ export class PlexPlaybackDestination {
 
   async _cleanupRelocatedPointer(pointer) {
     if (pointer.location !== "global") return;
+    if (!this.client) return;
     try {
       await this.client.deletePlaylist(pointer.ratingKey);
     } catch (error) {
@@ -359,6 +360,7 @@ export class PlexPlaybackDestination {
     const location = this._location(identity.ownerUserId);
     if (pointer.location === location) {
       await this._withOwnerClient(identity.ownerUserId, clientCache, async (client) => {
+        if (!client) return;
         try {
           await client.deletePlaylist(pointer.ratingKey);
         } catch (error) {

@@ -261,6 +261,18 @@ test("deletes the pointed playlist and forgets only that entity-owner state", as
   assert.equal(plexPlaylistPointerStore.getPointer("flow-2", "global").ratingKey, "99");
 });
 
+test("forgets an unreachable pointer after Plex configuration is cleared", async () => {
+  const destination = new PlexPlaybackDestination(weeklyFlowRoot);
+  plexPlaylistPointerStore.setPointer("flow-1", "global", {
+    location: "global",
+    ratingKey: "88",
+    title: "Discover Weekly",
+  });
+
+  assert.deepEqual(await destination.deletePlaylist(snapshot()), { ok: true });
+  assert.equal(plexPlaylistPointerStore.getPointer("flow-1", "global"), null);
+});
+
 test("ensures and scans the Plex library through the adapter", async () => {
   const destination = makeDestination({ downloadsPath: "/downloads" });
   const calls = [];
