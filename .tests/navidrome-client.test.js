@@ -200,7 +200,9 @@ test("matches metadata variants and falls back to title search", async () => {
 
   let song;
   try {
-    song = await new NavidromeClient("http://navidrome.test", "user", "password")
+    const client = new NavidromeClient("http://navidrome.test", "user", "password");
+    client._getIndexedSongs = async () => [];
+    song = await client
       .findSong("Slide", "The Goo Goo Dolls", {
         album: "Dizzy Up the Girl",
         path: "/music/Goo Goo Dolls/Dizzy Up the Girl/Slide.flac",

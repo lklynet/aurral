@@ -374,7 +374,8 @@ export class NavidromePlaybackDestination {
         .split(/\r?\n/)
         .filter((line) => line && !line.startsWith("#"))
         .map(normalizeTrackPath));
-      const matchesTrackSet = importedTrackPaths.size === trackPaths.size
+      const matchesTrackSet = trackPaths.size > 0
+        && importedTrackPaths.size === trackPaths.size
         && [...importedTrackPaths].every((trackPath) => trackPaths.has(trackPath));
       if (matchesTrackSet) importedPlaylistNames.push(name);
     }

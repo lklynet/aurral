@@ -107,9 +107,11 @@ export class NavidromeClient {
     const normalizedPath = String(track.path || "").replace(/\\/g, "/").toLowerCase();
     if (normalizedPath) {
       const indexedSongs = await this._getIndexedSongs();
+      const matchesPathSuffix = (songPath) => songPath
+        && (normalizedPath === songPath || normalizedPath.endsWith(`/${songPath}`));
       const pathMatch = indexedSongs.find((song) => {
         const songPath = String(song.path || "").replace(/\\/g, "/").toLowerCase();
-        return songPath && normalizedPath.endsWith(songPath);
+        return matchesPathSuffix(songPath);
       });
       if (pathMatch) return pathMatch;
     }
@@ -152,7 +154,7 @@ export class NavidromeClient {
       );
       let value = 0;
       if (mbid && String(song.musicBrainzId || "").toLowerCase() === mbid) value += 8;
-      if (songPath && normalizedPath.endsWith(songPath)) value += 8;
+      if (songPath && (normalizedPath === songPath || normalizedPath.endsWith(`/${songPath}`))) value += 8;
       else if (fileName && songPath.split("/").at(-1) === fileName) value += 4;
       if (wantedTitles.has(normalizeSearchText(song.title))) value += 10;
       else if ([...wantedTitles].some((form) => candidateTitles.has(form))) value += 7;
@@ -330,7 +332,10 @@ export class NavidromeClient {
     if (!this._indexedSongsPromise) {
       this._indexedSongsPromise = this._nativeRequest("GET", "/api/song?_start=0&_end=100000")
         .then((songs) => (Array.isArray(songs) ? songs : []))
-        .catch(() => []);
+        .catch(() => {
+          this._indexedSongsPromise = null;
+          return [];
+        });
     }
     return this._indexedSongsPromise;
   }
