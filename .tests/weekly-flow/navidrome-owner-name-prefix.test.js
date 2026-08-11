@@ -45,6 +45,9 @@ function makeManager() {
     async getPlaylists() {
       return [];
     },
+    async findSong() {
+      return { id: "song-id" };
+    },
     async createPlaylist(name) {
       created.push(name);
       return { id: name, name };

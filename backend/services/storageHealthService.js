@@ -727,7 +727,7 @@ function libraryCoversAnyPath(libraryList, candidates) {
   );
 }
 
-async function checkNavidromeSection({ lidarrRootPaths = [], lidarrSample = null } = {}) {
+async function checkNavidromeSection() {
   const integrations = dbOps.getSettings()?.integrations || {};
   const navidrome = integrations.navidrome || {};
   if (!navidrome.url || !navidrome.username || !navidrome.password) {
@@ -794,11 +794,8 @@ async function checkNavidromeSection({ lidarrRootPaths = [], lidarrSample = null
     );
   }
 
-  const relevantLocalPaths = [expectedLibraryPath, ...lidarrRootPaths, lidarrSample?.path].filter(
-    Boolean,
-  );
   const relevantLibraries = libraryList.filter((library) =>
-    relevantLocalPaths.some((localPath) => pathCoversPrefix(library?.path, localPath)),
+    pathCoversPrefix(library?.path, expectedLibraryPath),
   );
   const unreadableLibraries = [];
   for (const library of relevantLibraries) {
@@ -842,75 +839,6 @@ async function checkNavidromeSection({ lidarrRootPaths = [], lidarrSample = null
         fix: "Save Navidrome settings, then create or update a playlist or flow so Aurral can create the playlist library. Add that folder as a music library in Navidrome and scan it.",
       }),
     );
-  }
-
-  const uncoveredRoots = lidarrRootPaths.filter(
-    (rootPath) =>
-      !libraryCoversAnyPath(libraryList, [rootPath]),
-  );
-
-  if (lidarrRootPaths.length > 0 && uncoveredRoots.length > 0) {
-    steps.push(
-      healthStep("lidarr-library", "warn", "Navidrome scans Lidarr library folders", {
-        detail: formatLimitedList(uncoveredRoots),
-        fix: "Reused playlist tracks point at your Lidarr library. Add the corresponding folders as Navidrome music libraries and scan them.",
-      }),
-    );
-  } else if (lidarrRootPaths.length > 0) {
-    steps.push(
-      healthStep("lidarr-library", "pass", "Navidrome scans Lidarr library folders", {
-        detail: formatLimitedList(lidarrRootPaths),
-      }),
-    );
-  }
-
-  if (lidarrSample?.path) {
-    const samplePath = String(lidarrSample.path || "").trim();
-    const navidromeCoversSample = libraryCoversAnyPath(
-      libraryList,
-      [samplePath],
-    );
-    if (!navidromeCoversSample) {
-      steps.push(
-        healthStep("lidarr-sample", "warn", "Navidrome scans the sample Lidarr track folder", {
-          detail: samplePath,
-          fix: "Add the Lidarr library folder that contains this track as a Navidrome music library.",
-        }),
-      );
-    } else {
-      steps.push(
-        healthStep("lidarr-sample", "pass", "Navidrome scans the sample Lidarr track folder", {
-          detail: samplePath,
-        }),
-      );
-    }
-  }
-
-  if (librariesListed) {
-    const doneJobs = downloadTracker.getDoneWithFinalPath(PLAYLIST_FILE_HEALTH_SAMPLE_LIMIT);
-    const uncoveredPlaylistTracks = [];
-    for (const job of doneJobs) {
-      const localPath = path.resolve(
-        remapLegacyWeeklyFlowPath(job.finalPath, resolveWeeklyFlowRoot()),
-      );
-      if (!libraryCoversAnyPath(libraryList, [localPath])) {
-        uncoveredPlaylistTracks.push(localPath);
-      }
-    }
-    if (doneJobs.length > 0 && uncoveredPlaylistTracks.length > 0) {
-      steps.push(
-        healthStep("playlist-tracks", "warn", "Navidrome scans generated playlist track paths", {
-          detail: `${uncoveredPlaylistTracks.length} of ${doneJobs.length} sampled paths are outside Navidrome libraries: ${formatLimitedList(uncoveredPlaylistTracks)}`,
-          fix: "Add the corresponding folders to Navidrome's music libraries and scan them.",
-        }),
-      );
-    } else if (doneJobs.length > 0) {
-      steps.push(
-        healthStep("playlist-tracks", "pass", "Navidrome scans generated playlist track paths", {
-          detail: `${doneJobs.length} sampled track path${doneJobs.length === 1 ? "" : "s"} covered`,
-        }),
-      );
-    }
   }
 
   return buildSection("navidrome", "Navidrome playback", steps);
@@ -1090,11 +1018,7 @@ async function checkPlaylistFilesSection() {
 async function buildStorageHealthCheck() {
   const volumeSection = await checkSharedVolumeSection();
   const downloadsSection = await checkDownloadsSection();
-  const {
-    section: lidarrSection,
-    sample: lidarrSample,
-    rootPaths: lidarrRootPaths,
-  } = await checkLidarrSection();
+  const { section: lidarrSection } = await checkLidarrSection();
 
   const sections = [
     volumeSection,
@@ -1104,7 +1028,7 @@ async function buildStorageHealthCheck() {
     await checkSlskdSection(),
     await checkNzbgetSection(),
     await checkSabnzbdSection(),
-    await checkNavidromeSection({ lidarrRootPaths, lidarrSample }),
+    await checkNavidromeSection(),
     await checkPlexSection(),
     await checkPlaylistFilesSection(),
   ];

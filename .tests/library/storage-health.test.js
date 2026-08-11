@@ -359,6 +359,55 @@ test("unrelated Navidrome libraries do not fail local storage health", async (t)
   );
 });
 
+test("Navidrome health does not compare reused Lidarr and Navidrome paths", async (t) => {
+  const playlistLibrary = path.join(resolvePlaylistRoot(), "aurral-weekly-flow");
+  const lidarrRoot = path.join(isolatedState.baseDir, "lidarr-music");
+  await fs.mkdir(lidarrRoot, { recursive: true });
+  const server = await createMockHttpServer((request, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    if (request.url?.startsWith("/rest/ping")) {
+      response.end(JSON.stringify({ "subsonic-response": { status: "ok" } }));
+      return;
+    }
+    if (request.url === "/auth/login") {
+      response.end(JSON.stringify({ token: "test-token" }));
+      return;
+    }
+    if (request.url === "/api/library") {
+      response.end(JSON.stringify([
+        { id: "1", name: "Aurral", path: playlistLibrary },
+        { id: "2", name: "Music", path: "/navidrome/music" },
+      ]));
+      return;
+    }
+    if (request.url?.endsWith("/rootFolder")) {
+      response.end(JSON.stringify([{ id: 1, path: "/lidarr/music" }]));
+      return;
+    }
+    response.end(JSON.stringify([]));
+  });
+  t.after(server.close);
+  dbOps.updateSettings({
+    ...dbOps.getSettings(),
+    integrations: {
+      ...dbOps.getSettings().integrations,
+      lidarr: { url: server.url, apiKey: "test-key" },
+      navidrome: { url: server.url, username: "user", password: "password" },
+    },
+    pathMappings: [{ source: "lidarr", remote: "/lidarr/music", local: lidarrRoot }],
+  });
+
+  const result = await runStorageHealthCheck({ force: true });
+  const navidrome = result.sections.find((section) => section.id === "navidrome");
+
+  assert.notEqual(navidrome?.status, "fail");
+  assert.equal(
+    navidrome?.steps.some((step) =>
+      ["lidarr-library", "lidarr-sample", "playlist-tracks"].includes(step.id)),
+    false,
+  );
+});
+
 test("configured Plex is included and validates its Aurral library path", async (t) => {
   const expectedPath = path.join(resolvePlaylistRoot(), "aurral-weekly-flow");
   const server = await createMockHttpServer((request, response) => {
