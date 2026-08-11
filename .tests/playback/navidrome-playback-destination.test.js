@@ -325,10 +325,60 @@ test("converts the M3U fallback after Navidrome indexes a missing song", async (
   await assert.rejects(fs.access(path.join(destination.libraryRoot, "Catch-up.m3u")));
 });
 
+test("updates a stored playlist ID without relying on the playlist list", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Stored" });
+  const client = createClient({ songs: { Song: { id: "song-1" } } });
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+  navidromePlaylistPointerStore.setPointer(playlist.id, "global", {
+    playlistId: "saved-id",
+    title: playlist.name,
+  });
+
+  const result = await destination.publishPlaylist(
+    createPlaybackPlaylistSnapshot({
+      entityId: playlist.id,
+      displayName: playlist.name,
+      tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
+    }),
+  );
+
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(client.calls.updated, [
+    { id: "saved-id", name: "Stored", songIds: ["song-1"] },
+  ]);
+  assert.deepEqual(client.calls.created, []);
+});
+
+test("recreates a stored playlist only when Navidrome reports it missing", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Missing" });
+  const client = createClient({ songs: { Song: { id: "song-1" } } });
+  client.updatePlaylist = async () => {
+    const error = new Error("not found");
+    error.code = 70;
+    throw error;
+  };
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+  navidromePlaylistPointerStore.setPointer(playlist.id, "global", {
+    playlistId: "missing-id",
+    title: playlist.name,
+  });
+
+  const result = await destination.publishPlaylist(
+    createPlaybackPlaylistSnapshot({
+      entityId: playlist.id,
+      displayName: playlist.name,
+      tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
+    }),
+  );
+
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(client.calls.created, [{ name: "Missing", songIds: ["song-1"] }]);
+});
+
 test("keeps the stored playlist ID when Navidrome is unavailable", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Offline" });
   const client = createClient({ songs: { Song: { id: "song-1" } } });
-  client.getPlaylists = async () => {
+  client.updatePlaylist = async () => {
     throw new Error("offline");
   };
   const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });

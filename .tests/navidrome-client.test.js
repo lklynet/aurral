@@ -30,6 +30,26 @@ test("creates a distinct playlist without looking up matching display names", as
   assert.equal(urls[0].pathname, "/rest/createPlaylist");
 });
 
+test("preserves Subsonic error codes for missing native IDs", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => jsonResponse({
+    "subsonic-response": {
+      status: "failed",
+      error: { code: 70, message: "Playlist not found" },
+    },
+  });
+
+  try {
+    await assert.rejects(
+      new NavidromeClient("http://navidrome.test", "user", "password")
+        .getPlaylist("missing"),
+      (error) => error.code === 70,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("replaces playlist entries with repeated Subsonic parameters", async () => {
   const originalFetch = globalThis.fetch;
   const urls = [];

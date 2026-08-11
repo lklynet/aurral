@@ -59,9 +59,10 @@ export class NavidromeClient {
       const response = await axios.get(`${this.url}/rest/${endpoint}?${query}`);
 
       if (response.data["subsonic-response"]?.status === "failed") {
-        throw new Error(
-          response.data["subsonic-response"].error?.message || "Navidrome request failed",
-        );
+        const responseError = response.data["subsonic-response"].error || {};
+        const error = new Error(responseError.message || "Navidrome request failed");
+        error.code = responseError.code;
+        throw error;
       }
 
       return response.data["subsonic-response"];

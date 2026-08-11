@@ -286,25 +286,32 @@ export class NavidromePlaybackDestination {
         return playbackOperationSuccess();
       }
 
-      const playlists = await this._fetchPlaylists();
       const pointer = navidromePlaylistPointerStore.getPointer(snapshot.entityId, targetKey);
-      let playlist = pointer
-        ? playlists.find((candidate) => String(candidate.id) === pointer.playlistId)
-        : null;
-      if (!playlist && pointer) {
-        navidromePlaylistPointerStore.deletePointer(snapshot.entityId, targetKey);
+      let playlist = null;
+      if (pointer) {
+        try {
+          await this.client.updatePlaylist(pointer.playlistId, {
+            name: current,
+            songIds: songs.map((song) => song.id),
+          });
+          playlist = { id: pointer.playlistId };
+        } catch (error) {
+          if (Number(error?.code) !== 70) throw error;
+          navidromePlaylistPointerStore.deletePointer(snapshot.entityId, targetKey);
+        }
       }
-      if (!playlist && hadPlaylistFile) {
-        playlist = playlists.find((candidate) =>
+      if (!playlist) {
+        const playlists = await this._fetchPlaylists();
+        if (hadPlaylistFile) playlist = playlists.find((candidate) =>
           (candidate.name === current || legacy.includes(candidate.name))
           && !navidromePlaylistPointerStore.hasPlaylistId(candidate.id),
         );
-      }
-      const songIds = songs.map((song) => song.id);
-      if (playlist) {
-        await this.client.updatePlaylist(playlist.id, { name: current, songIds });
-      } else {
-        playlist = await this.client.createPlaylist(current, songIds);
+        const songIds = songs.map((song) => song.id);
+        if (playlist) {
+          await this.client.updatePlaylist(playlist.id, { name: current, songIds });
+        } else {
+          playlist = await this.client.createPlaylist(current, songIds);
+        }
       }
       if (!playlist?.id) throw new Error("Navidrome did not return a playlist ID");
       navidromePlaylistPointerStore.setPointer(snapshot.entityId, targetKey, {
