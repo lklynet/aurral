@@ -180,7 +180,9 @@ export class NavidromePlaybackDestination {
       ) continue;
       if (expected.has(file)) continue;
       if (PLAYLIST_FILE_EXTENSIONS.includes(extension)) {
-        await this._deleteNativePlaylists([path.basename(file, extension)]);
+        const name = path.basename(file, extension);
+        const playlists = await this._loadPlaylists();
+        if (playlists.some((playlist) => this._sanitize(playlist.name) === name)) continue;
       }
       try {
         await fs.unlink(path.join(this.libraryRoot, file));
@@ -233,17 +235,53 @@ export class NavidromePlaybackDestination {
     const targetKey = this._targetKey(snapshot.ownerUserId);
     const syncKey = `${snapshot.entityId}:${targetKey}`;
     const syncHash = JSON.stringify(snapshot);
-    const storedPointer = navidromePlaylistPointerStore.getPointer(snapshot.entityId, targetKey);
-    if (storedPointer && this._syncHashes.get(syncKey) === syncHash) {
+    let pointer = navidromePlaylistPointerStore.getPointer(snapshot.entityId, targetKey);
+    if (pointer && this._syncHashes.get(syncKey) === syncHash) {
       return playbackOperationSuccess();
     }
-    let hadPlaylistFile = false;
-    for (const name of [current, ...legacy]) {
-      try {
-        await fs.access(path.join(this.libraryRoot, `${this._sanitize(name)}.m3u`));
-        hadPlaylistFile = true;
-        break;
-      } catch {}
+    const files = await fs.readdir(this.libraryRoot).catch(() => []);
+    const normalizeTrackPath = (value) => path
+      .normalize(String(value || "").replace(/\\/g, "/"))
+      .toLowerCase();
+    const trackPaths = new Set(
+      snapshot.tracks.map((track) => normalizeTrackPath(track.path)),
+    );
+    const importedPlaylistNames = [];
+    for (const file of files) {
+      if (!PLAYLIST_FILE_EXTENSIONS.includes(path.extname(file).toLowerCase())) continue;
+      const name = path.basename(file, path.extname(file));
+      if ([current, ...legacy].includes(name)) {
+        importedPlaylistNames.push(name);
+        continue;
+      }
+      const content = await fs.readFile(path.join(this.libraryRoot, file), "utf8").catch(() => "");
+      const matchesTrack = content
+        .split(/\r?\n/)
+        .filter((line) => line && !line.startsWith("#"))
+        .some((line) => trackPaths.has(normalizeTrackPath(line)));
+      if (matchesTrack) importedPlaylistNames.push(name);
+    }
+    let importedPlaylistName = null;
+    if (!pointer && importedPlaylistNames.length) {
+      const playlists = await this._loadPlaylists();
+      const importedPlaylist = playlists.find(
+        (playlist) => importedPlaylistNames.includes(playlist.name)
+          && !navidromePlaylistPointerStore.hasPlaylistId(playlist.id),
+      );
+      if (importedPlaylist) {
+        importedPlaylistName = importedPlaylist.name;
+        pointer = { playlistId: importedPlaylist.id, title: importedPlaylist.name };
+        navidromePlaylistPointerStore.setPointer(snapshot.entityId, targetKey, pointer);
+      }
+    }
+    if (
+      pointer?.title
+      && pointer.title !== current
+      && typeof this.client.renamePlaylist === "function"
+    ) {
+      await this.client.renamePlaylist(pointer.playlistId, current);
+      pointer = { ...pointer, title: current };
+      navidromePlaylistPointerStore.setPointer(snapshot.entityId, targetKey, pointer);
     }
     const songs = [];
     for (let index = 0; index < snapshot.tracks.length; index += SONG_LOOKUP_BATCH_SIZE) {
@@ -257,7 +295,6 @@ export class NavidromePlaybackDestination {
       return playbackOperationSuccess();
     }
 
-    const pointer = storedPointer;
     let playlist = null;
     if (pointer) {
       for (const delayMs of [0, 250, 1000, 2000]) {
@@ -279,8 +316,8 @@ export class NavidromePlaybackDestination {
     }
     if (!playlist) {
       const playlists = await this._fetchPlaylists();
-      if (hadPlaylistFile) playlist = playlists.find((candidate) =>
-        (candidate.name === current || legacy.includes(candidate.name))
+      if (importedPlaylistNames.length) playlist = playlists.find((candidate) =>
+        importedPlaylistNames.includes(candidate.name)
         && !navidromePlaylistPointerStore.hasPlaylistId(candidate.id),
       );
       const songIds = songs.map((song) => song.id);
@@ -297,8 +334,9 @@ export class NavidromePlaybackDestination {
     });
     this._pendingSnapshots.delete(`${snapshot.entityId}:${targetKey}`);
     this._playlists = null;
-    await this._deleteNativePlaylists(legacy);
-    await this._deleteFiles([current], PLAYLIST_FILE_EXTENSIONS);
+    const cleanupNames = [current, ...legacy, importedPlaylistName, pointer?.title];
+    await this._deleteNativePlaylists([...legacy, importedPlaylistName, pointer?.title]);
+    await this._deleteFiles(cleanupNames, PLAYLIST_FILE_EXTENSIONS);
     await this._deleteFiles(legacy, [
       ...PLAYLIST_FILE_EXTENSIONS,
       ...ARTWORK_FILE_EXTENSIONS,

@@ -168,6 +168,10 @@ export class NavidromeClient {
     });
   }
 
+  async renamePlaylist(playlistId, name) {
+    return this.request("updatePlaylist", { playlistId, name });
+  }
+
   async deletePlaylist(id) {
     return this.request("deletePlaylist", { id });
   }

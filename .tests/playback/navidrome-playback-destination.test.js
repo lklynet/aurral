@@ -31,7 +31,7 @@ const weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER;
 
 function createClient({ configured = true, playlists = [], songs = {} } = {}) {
   const currentPlaylists = playlists.map((playlist) => ({ ...playlist }));
-  const calls = { created: [], deleted: [], ensured: [], scans: 0, updated: [] };
+  const calls = { created: [], deleted: [], ensured: [], renamed: [], scans: 0, updated: [] };
   return {
     calls,
     isConfigured: () => configured,
@@ -55,6 +55,11 @@ function createClient({ configured = true, playlists = [], songs = {} } = {}) {
       calls.updated.push({ id, ...payload });
       const playlist = currentPlaylists.find((candidate) => candidate.id === id);
       if (playlist) playlist.name = payload.name;
+    },
+    async renamePlaylist(id, name) {
+      calls.renamed.push({ id, name });
+      const playlist = currentPlaylists.find((candidate) => candidate.id === id);
+      if (playlist) playlist.name = name;
     },
     async deletePlaylist(id) {
       calls.deleted.push(id);
@@ -323,7 +328,7 @@ test("keeps a stored playlist during rename cleanup until tracks resolve", async
 
   await destination.ensureLibrary();
   assert.deepEqual(client.calls.deleted, []);
-  await assert.rejects(
+  await assert.doesNotReject(
     fs.access(path.join(destination.libraryRoot, "Legacy Rename Fixture.m3u")),
   );
 
@@ -343,6 +348,112 @@ test("keeps a stored playlist during rename cleanup until tracks resolve", async
     navidromePlaylistPointerStore.getPointer(playlist.id, "global").playlistId,
     "imported-id",
   );
+});
+
+test("keeps an unclaimed imported playlist during rename cleanup until tracks resolve", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Renamed without pointer" });
+  const client = createClient({
+    playlists: [{ id: "unclaimed-id", name: "Legacy Unclaimed Fixture" }],
+  });
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+  await fs.mkdir(destination.libraryRoot, { recursive: true });
+  const legacyPath = path.join(destination.libraryRoot, "Legacy Unclaimed Fixture.m3u");
+  await fs.writeFile(legacyPath, "#EXTM3U\n/music/song.flac\n");
+
+  await destination.ensureLibrary();
+  assert.deepEqual(client.calls.deleted, []);
+  await assert.doesNotReject(fs.access(legacyPath));
+
+  const snapshot = createPlaybackPlaylistSnapshot({
+    entityId: playlist.id,
+    displayName: playlist.name,
+    tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
+  });
+  await destination.publishPlaylist(snapshot);
+  client.findSong = async () => ({ id: "song-1" });
+  await destination.publishPlaylist(snapshot);
+
+  assert.deepEqual(client.calls.updated, [
+    { id: "unclaimed-id", name: "Renamed without pointer", songIds: ["song-1"] },
+  ]);
+  assert.equal(
+    navidromePlaylistPointerStore.getPointer(playlist.id, "global").playlistId,
+    "unclaimed-id",
+  );
+});
+
+test("renames an imported playlist before unresolved tracks are ready", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Renamed immediately" });
+  const client = createClient({
+    playlists: [{ id: "rename-first-id", name: "Legacy Rename First" }],
+  });
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+  await fs.mkdir(destination.libraryRoot, { recursive: true });
+  await fs.writeFile(
+    path.join(destination.libraryRoot, "Legacy Rename First.m3u"),
+    "#EXTM3U\n/music/song.flac\n",
+  );
+
+  await destination.publishPlaylist(
+    createPlaybackPlaylistSnapshot({
+      entityId: playlist.id,
+      displayName: playlist.name,
+      tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
+    }),
+  );
+
+  assert.deepEqual(client.calls.renamed, [
+    { id: "rename-first-id", name: "Renamed immediately" },
+  ]);
+  assert.deepEqual(client.calls.updated, []);
+  assert.equal(
+    navidromePlaylistPointerStore.getPointer(playlist.id, "global").playlistId,
+    "rename-first-id",
+  );
+});
+
+test("preserves imported files when Navidrome names require sanitizing", async () => {
+  flowPlaylistConfig.createSharedPlaylist({ name: "Current" });
+  const client = createClient({
+    playlists: [{ id: "sanitized-id", name: "Legacy: Name" }],
+  });
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+  await fs.mkdir(destination.libraryRoot, { recursive: true });
+  const legacyPath = path.join(destination.libraryRoot, "Legacy_ Name.m3u");
+  await fs.writeFile(legacyPath, "legacy");
+
+  await destination.ensureLibrary();
+
+  assert.deepEqual(client.calls.deleted, []);
+  await assert.doesNotReject(fs.access(legacyPath));
+});
+
+test("does not adopt an imported playlist from a colliding track basename", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Collision target" });
+  const client = createClient({
+    playlists: [{ id: "unrelated-id", name: "Legacy Collision" }],
+    songs: { Song: { id: "song-1" } },
+  });
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+  await fs.mkdir(destination.libraryRoot, { recursive: true });
+  await fs.writeFile(
+    path.join(destination.libraryRoot, "Legacy Collision.m3u"),
+    "#EXTM3U\n/music/other/intro.flac\n",
+  );
+
+  await destination.publishPlaylist(
+    createPlaybackPlaylistSnapshot({
+      entityId: playlist.id,
+      displayName: playlist.name,
+      tracks: [{ path: "/music/expected/intro.flac", title: "Song", artist: "Artist" }],
+    }),
+  );
+
+  assert.deepEqual(client.calls.renamed, []);
+  assert.deepEqual(client.calls.created, [
+    { name: "Collision target", songIds: ["song-1"] },
+  ]);
+  assert.deepEqual(client.calls.deleted, []);
 });
 
 test("does not adopt a same-name playlist claimed by another Aurral entity", async () => {
