@@ -136,6 +136,24 @@ export class WeeklyFlowPlaylistManager {
     }
   }
 
+  async _syncNavidromeArtwork(playlistId, clear = false) {
+    const entity = flowPlaylistConfig.getFlow(playlistId)
+      || flowPlaylistConfig.getSharedPlaylist(playlistId);
+    if (!entity) return;
+    const operation = clear ? "clearPlaylistArtwork" : "syncPlaylistArtwork";
+    if (typeof this.navidromeDestination[operation] !== "function") return;
+    const result = await this.navidromeDestination[operation]({
+      entityId: entity.id,
+      ownerUserId: entity.ownerUserId ?? null,
+    });
+    if (!result.ok) {
+      console.warn(
+        `[WeeklyFlowPlaylistManager] Navidrome artwork ${clear ? "clear" : "sync"} failed:`,
+        result.error?.message,
+      );
+    }
+  }
+
   async _createPlaybackSnapshot(entity) {
     const tracks = await collectPlaybackPlaylistTracks(entity.id, {
       weeklyFlowRoot: this.weeklyFlowRoot,
@@ -388,6 +406,7 @@ export class WeeklyFlowPlaylistManager {
       await fs.unlink(legacyPng);
     } catch {}
     await this._setArtworkGenerationSuppressed(resolved.safeRoot, resolved.baseName, false);
+    await this._syncNavidromeArtwork(playlistId);
     return webpPath;
   }
 
@@ -406,6 +425,7 @@ export class WeeklyFlowPlaylistManager {
       } catch {}
     }
     await this._setArtworkGenerationSuppressed(resolved.safeRoot, resolved.baseName, true);
+    await this._syncNavidromeArtwork(playlistId, true);
     return removed;
   }
 
@@ -427,6 +447,7 @@ export class WeeklyFlowPlaylistManager {
       kind: artworkContext?.kind || this.getArtworkKindForPlaylistId(playlistId),
     });
     await this._setArtworkGenerationSuppressed(resolved.safeRoot, resolved.baseName, false);
+    await this._syncNavidromeArtwork(playlistId);
     return outputPath;
   }
 }

@@ -48,6 +48,7 @@ export class NavidromeClient {
     this.url = url ? url.replace(/\/+$/, "") : null;
     this.user = user;
     this.password = password;
+    this._indexedSongsPromise = null;
   }
 
   isConfigured() {
@@ -103,6 +104,15 @@ export class NavidromeClient {
   }
 
   async findSong(title, artist, track = {}) {
+    const normalizedPath = String(track.path || "").replace(/\\/g, "/").toLowerCase();
+    if (normalizedPath) {
+      const indexedSongs = await this._getIndexedSongs();
+      const pathMatch = indexedSongs.find((song) => {
+        const songPath = String(song.path || "").replace(/\\/g, "/").toLowerCase();
+        return songPath && normalizedPath.endsWith(songPath);
+      });
+      if (pathMatch) return pathMatch;
+    }
     const search = (query, songCount) => this.request("search3", {
       query,
       songCount,
@@ -124,7 +134,6 @@ export class NavidromeClient {
       songs = toList(data.searchResult3?.song);
     }
     const candidates = songs;
-    const normalizedPath = String(track.path || "").replace(/\\/g, "/").toLowerCase();
     const fileName = normalizedPath.split("/").at(-1);
     const album = String(track.album || "").toLowerCase();
     const mbid = String(track.mbid || "").toLowerCase();
@@ -317,6 +326,15 @@ export class NavidromeClient {
     return response.data;
   }
 
+  async _getIndexedSongs() {
+    if (!this._indexedSongsPromise) {
+      this._indexedSongsPromise = this._nativeRequest("GET", "/api/song?_start=0&_end=100000")
+        .then((songs) => (Array.isArray(songs) ? songs : []))
+        .catch(() => []);
+    }
+    return this._indexedSongsPromise;
+  }
+
   async uploadPlaylistArtwork(playlistId, data, filename = "cover.webp", contentType = "image/webp") {
     const token = await this._nativeLogin();
     const form = new FormData();
@@ -331,6 +349,20 @@ export class NavidromeClient {
     );
     if (!response.ok) {
       throw new Error(`Playlist artwork upload failed with status ${response.status}`);
+    }
+  }
+
+  async deletePlaylistArtwork(playlistId) {
+    const token = await this._nativeLogin();
+    const response = await fetch(
+      `${this.url}/api/playlist/${encodeURIComponent(playlistId)}/image`,
+      {
+        method: "DELETE",
+        headers: { "X-ND-Authorization": `Bearer ${token}` },
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Playlist artwork deletion failed with status ${response.status}`);
     }
   }
 
@@ -349,6 +381,7 @@ export class NavidromeClient {
   async scanLibrary() {
     if (!this.isConfigured()) return null;
     try {
+      this._indexedSongsPromise = null;
       return await this.request("startScan");
     } catch (err) {
       console.warn("[Navidrome] scanLibrary failed:", err?.message);

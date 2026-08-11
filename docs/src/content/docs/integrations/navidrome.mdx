@@ -49,13 +49,13 @@ Add `/data/music` as a normal Navidrome music library if it is not already prese
 
 Aurral uses the Subsonic API for playlists, so it does not have a Navidrome playlist path-mapping setting. The automatically managed **Aurral Playlists** library must use the same absolute path in Aurral and Navidrome. Mount the shared download tree at matching paths in both applications.
 
-Reused Lidarr tracks do not need matching path strings because Aurral resolves indexed songs by metadata. Navidrome still needs its own library for those files. Use a separate [Remote Path Mapping](/getting-started/storage/#paths-reported-by-lidarr-or-download-clients) only when Aurral cannot read a path reported by Lidarr or a download client.
+Reused Lidarr tracks do not need matching path strings because Aurral resolves indexed songs by metadata. For generated tracks, Aurral first uses the exact indexed Navidrome path to get the Navidrome song ID, then uses metadata search only when the path is not available. Navidrome still needs its own library for those files. Use a separate [Remote Path Mapping](/getting-started/storage/#paths-reported-by-lidarr-or-download-clients) only when Aurral cannot read a path reported by Lidarr or a download client.
 
 ## API playlists and scans
 
 Aurral stores the Navidrome playlist ID for each flow or shared playlist. Names are only display values, so a rename updates the same Navidrome playlist.
 
-Aurral also uploads its generated playlist artwork to API playlists. Navidrome uses that uploaded image instead of its automatic tiled artwork when custom playlist artwork is supported.
+Aurral also uploads its generated playlist artwork to API playlists and updates it when you change or regenerate artwork in Aurral. Navidrome uses that uploaded image instead of its automatic tiled artwork when custom playlist artwork is supported.
 
 If a new track is not indexed, Aurral publishes the indexed tracks and adds the missing track during the next scan catch-up. If no tracks are indexed yet, it keeps a temporary M3U fallback until Navidrome can resolve at least one track. Navidrome scans the **Aurral Playlists** library, not only your main Lidarr library. If the library appears but has no tracks:
 

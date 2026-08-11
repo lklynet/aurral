@@ -181,7 +181,7 @@ test("matches metadata variants and falls back to title search", async () => {
   globalThis.fetch = async (url) => {
     const request = new URL(url);
     queries.push(request.searchParams.get("query"));
-    const songs = queries.length === 1
+    const songs = queries.filter(Boolean).length === 1
       ? []
       : [{
         id: "variant",
@@ -210,7 +210,26 @@ test("matches metadata variants and falls back to title search", async () => {
   }
 
   assert.equal(song.id, "variant");
-  assert.deepEqual(queries, ["The Goo Goo Dolls Slide", "Slide"]);
+  assert.deepEqual(queries.filter(Boolean), ["The Goo Goo Dolls Slide", "Slide"]);
+});
+
+test("uses an indexed path before metadata matching", async () => {
+  const client = new NavidromeClient("http://navidrome.test", "user", "password");
+  client._getIndexedSongs = async () => [{
+    id: "path-match",
+    path: "Artist/Album/track.flac",
+    title: "Different tag",
+    artist: "Different artist",
+  }];
+  client.request = async () => {
+    throw new Error("metadata search should not run");
+  };
+
+  const song = await client.findSong("Wanted title", "Wanted artist", {
+    path: "/data/music/Artist/Album/track.flac",
+  });
+
+  assert.equal(song.id, "path-match");
 });
 
 test("uploads playlist artwork through the native API", async () => {
@@ -238,4 +257,25 @@ test("uploads playlist artwork through the native API", async () => {
   assert.equal(new URL(requests[0].url).pathname, "/api/playlist/playlist-1/image");
   assert.equal(requests[0].options.headers["X-ND-Authorization"], "Bearer token");
   assert.equal(requests[0].options.body.get("image").name, "cover.webp");
+});
+
+test("deletes playlist artwork through the native API", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url, options });
+    return new Response(null, { status: 204 });
+  };
+
+  const client = new NavidromeClient("http://navidrome.test", "user", "password");
+  client._nativeLogin = async () => "token";
+  try {
+    await client.deletePlaylistArtwork("playlist-1");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(new URL(requests[0].url).pathname, "/api/playlist/playlist-1/image");
+  assert.equal(requests[0].options.method, "DELETE");
+  assert.equal(requests[0].options.headers["X-ND-Authorization"], "Bearer token");
 });

@@ -205,6 +205,48 @@ export class NavidromePlaybackDestination {
     }
   }
 
+  async syncPlaylistArtwork({ entityId, ownerUserId = null } = {}) {
+    try {
+      if (!this.isConfigured()) return playbackOperationSuccess();
+      const entity = this._getEntity(entityId);
+      const targetKey = this._targetKey(ownerUserId);
+      const pointer = navidromePlaylistPointerStore.getPointer(entityId, targetKey);
+      if (!entity || !pointer) return playbackOperationSuccess();
+      await this._uploadPlaylistArtwork({
+        entityId,
+        ownerUserId,
+        displayName: entity.name,
+      }, pointer.playlistId);
+      return playbackOperationSuccess();
+    } catch (error) {
+      return playbackOperationFailure({
+        code: "PLAYLIST_ARTWORK_SYNC_FAILED",
+        message: error?.message || "Could not sync Navidrome playlist artwork",
+        retryable: true,
+      });
+    }
+  }
+
+  async clearPlaylistArtwork({ entityId, ownerUserId = null } = {}) {
+    try {
+      if (!this.isConfigured() || typeof this.client?.deletePlaylistArtwork !== "function") {
+        return playbackOperationSuccess();
+      }
+      const pointer = navidromePlaylistPointerStore.getPointer(
+        entityId,
+        this._targetKey(ownerUserId),
+      );
+      if (pointer) await this.client.deletePlaylistArtwork(pointer.playlistId);
+      return playbackOperationSuccess();
+    } catch (error) {
+      return playbackOperationFailure({
+        code: "PLAYLIST_ARTWORK_CLEAR_FAILED",
+        message: error?.message || "Could not clear Navidrome playlist artwork",
+        retryable: true,
+      });
+    }
+  }
+
   _expectedFiles() {
     const expected = new Set();
     const addArtwork = (name) => {

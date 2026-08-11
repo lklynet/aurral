@@ -36,6 +36,7 @@ test.after(async () => {
 
 function makeManager() {
   const manager = new WeeklyFlowPlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
+  manager.__artworkUploads = [];
   manager.navidromeDestination.client = {
     isConfigured: () => true,
     async ensureWeeklyFlowLibrary() {},
@@ -50,6 +51,12 @@ function makeManager() {
     },
     async updatePlaylist() {},
     async deletePlaylist() {},
+    async uploadPlaylistArtwork(id, data, filename) {
+      manager.__artworkUploads.push({ id, size: data.length, filename });
+    },
+    async deletePlaylistArtwork(id) {
+      manager.__artworkUploads.push({ id, deleted: true });
+    },
     async scanLibrary() {},
   };
   return manager;
@@ -184,4 +191,22 @@ test("does not regenerate artwork after explicit remove until generate", async (
 
   await manager.generateArtwork(flow.id);
   await assert.doesNotReject(() => fs.access(flowWebp));
+});
+
+test("syncs artwork changes to the existing Navidrome playlist", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Artwork API" });
+  const manager = makeManager();
+  await manager.ensurePlaylists();
+  manager.__artworkUploads.length = 0;
+
+  await manager.generateArtwork(playlist.id);
+  assert.equal(manager.__artworkUploads.length, 1);
+  assert.deepEqual(manager.__artworkUploads[0], {
+    id: "Artwork API",
+    size: manager.__artworkUploads[0].size,
+    filename: "Artwork API.webp",
+  });
+
+  await manager.removeArtwork(playlist.id);
+  assert.deepEqual(manager.__artworkUploads.at(-1), { id: "Artwork API", deleted: true });
 });

@@ -38,6 +38,7 @@ function createClient({ configured = true, playlists = [], songs = {} } = {}) {
     ensured: [],
     renamed: [],
     scans: 0,
+    artworkDeleted: [],
     updated: [],
   };
   return {
@@ -69,6 +70,9 @@ function createClient({ configured = true, playlists = [], songs = {} } = {}) {
     },
     async uploadPlaylistArtwork(id, data, filename, contentType) {
       calls.artwork.push({ id, size: data.length, filename, contentType });
+    },
+    async deletePlaylistArtwork(id) {
+      calls.artworkDeleted.push(id);
     },
     async renamePlaylist(id, name) {
       calls.renamed.push({ id, name });
@@ -189,6 +193,32 @@ test("uploads generated artwork for API playlists", async () => {
     filename: "Art Mix.webp",
     contentType: "image/webp",
   }]);
+});
+
+test("syncs and clears artwork for an existing API playlist", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Artwork Sync" });
+  const client = createClient({ songs: { Song: { id: "song-1" } } });
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+  await fs.mkdir(destination.libraryRoot, { recursive: true });
+  await fs.writeFile(path.join(destination.libraryRoot, "Artwork Sync.webp"), "image");
+  await destination.publishPlaylist(
+    createPlaybackPlaylistSnapshot({
+      entityId: playlist.id,
+      displayName: playlist.name,
+      tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
+    }),
+  );
+
+  assert.deepEqual(
+    await destination.syncPlaylistArtwork({ entityId: playlist.id }),
+    { ok: true },
+  );
+  assert.deepEqual(client.calls.artwork.map(({ id }) => id), ["created", "created"]);
+  assert.deepEqual(
+    await destination.clearPlaylistArtwork({ entityId: playlist.id }),
+    { ok: true },
+  );
+  assert.deepEqual(client.calls.artworkDeleted, ["created"]);
 });
 
 test("bounds concurrent Navidrome song lookups and preserves track order", async () => {
