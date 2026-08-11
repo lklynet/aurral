@@ -195,33 +195,45 @@ export class WeeklyFlowPlaylistManager {
   async _ensurePlaylistsInternal() {
     const flows = flowPlaylistConfig.getFlows();
     const sharedPlaylists = flowPlaylistConfig.getSharedPlaylists();
+    const syncEntity = async (entityId, run) => {
+      try {
+        await run();
+      } catch (err) {
+        console.warn(
+          `[WeeklyFlowPlaylistManager] Navidrome sync failed for ${entityId}:`,
+          err?.message,
+        );
+      }
+    };
     try {
       const ensured = await this.navidromeDestination.ensureLibrary();
       if (!ensured.ok) throw new Error(ensured.error.message);
-      for (const flow of flows) {
+    } catch (err) {
+      console.warn("[WeeklyFlowPlaylistManager] Navidrome library setup failed:", err?.message);
+    }
+    for (const flow of flows) {
+      await syncEntity(flow.id, async () => {
         if (flow.enabled) {
           await this._publishNavidromePlaylist(flow, "Flow");
-        } else {
-          const deleted = await this.navidromeDestination.deletePlaylist(
-            createPlaybackPlaylistIdentity({
-              entityId: flow.id,
-              ownerUserId: flow.ownerUserId ?? null,
-            }),
-          );
-          if (!deleted.ok) throw new Error(deleted.error.message);
-          const playlistName = this.navidromeDestination.getPlaylistName({
+          return;
+        }
+        const deleted = await this.navidromeDestination.deletePlaylist(
+          createPlaybackPlaylistIdentity({
             entityId: flow.id,
             ownerUserId: flow.ownerUserId ?? null,
-            displayName: flow.name,
-          });
-          await this._ensureFlowArtwork(flow.id, playlistName, "Flow");
-        }
-      }
-      for (const playlist of sharedPlaylists) {
-        await this._publishNavidromePlaylist(playlist, "Playlist");
-      }
-    } catch (err) {
-      console.warn("[WeeklyFlowPlaylistManager] Navidrome playlist sync failed:", err?.message);
+          }),
+        );
+        if (!deleted.ok) throw new Error(deleted.error.message);
+        const playlistName = this.navidromeDestination.getPlaylistName({
+          entityId: flow.id,
+          ownerUserId: flow.ownerUserId ?? null,
+          displayName: flow.name,
+        });
+        await this._ensureFlowArtwork(flow.id, playlistName, "Flow");
+      });
+    }
+    for (const playlist of sharedPlaylists) {
+      await syncEntity(playlist.id, () => this._publishNavidromePlaylist(playlist, "Playlist"));
     }
 
     if (this.plexClient?.isConfigured()) {

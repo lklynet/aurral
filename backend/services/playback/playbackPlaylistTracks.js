@@ -33,8 +33,8 @@ export async function collectPlaybackPlaylistTracks(entityId, options = {}) {
     if (!(await isFile(localPath))) continue;
     tracks.push({
       path: localPath,
-      title: job.trackName,
-      artist: job.artistName,
+      title: String(job.trackName || "").trim() || "Unknown Track",
+      artist: String(job.artistName || "").trim() || "Unknown Artist",
       ...(job.albumName ? { album: job.albumName } : {}),
       ...(job.durationMs != null ? { durationMs: job.durationMs } : {}),
       ...(job.trackMbid ? { mbid: job.trackMbid } : {}),

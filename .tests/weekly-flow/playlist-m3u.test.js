@@ -101,6 +101,24 @@ test("collectPlaybackPlaylistTracks keeps completed tracks after metadata correc
   assert.deepEqual(entries.map((entry) => entry.path), [trackPath]);
 });
 
+test("collectPlaybackPlaylistTracks normalizes empty migrated names", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({
+    name: "Migrated",
+    tracks: [{ artistName: "Artist", trackName: "Track" }],
+  });
+  const trackPath = path.join(weeklyFlowRoot, "music", "migrated.flac");
+  await fs.mkdir(path.dirname(trackPath), { recursive: true });
+  await fs.writeFile(trackPath, "audio");
+  const jobId = downloadTracker.addJob(playlist.tracks[0], playlist.id);
+  downloadTracker.setDone(jobId, trackPath);
+  downloadTracker.updateMetadata(jobId, { artistName: "", trackName: " " });
+
+  const tracks = await collectPlaybackPlaylistTracks(playlist.id, { weeklyFlowRoot });
+
+  assert.equal(tracks[0].artist, "Unknown Artist");
+  assert.equal(tracks[0].title, "Unknown Track");
+});
+
 test("refreshPlaylist writes m3u entries for completed tracks", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({
     name: "Ready",
@@ -122,6 +140,26 @@ test("refreshPlaylist writes m3u entries for completed tracks", async () => {
   const content = await fs.readFile(m3uPath, "utf8");
   assert.match(content, /#EXTM3U/);
   assert.match(content, new RegExp(trackPath.replace(/\\/g, "/")));
+});
+
+test("ensurePlaylists continues after one Navidrome playlist fails", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  const first = flowPlaylistConfig.createSharedPlaylist({ name: "Isolation Broken" });
+  const second = flowPlaylistConfig.createSharedPlaylist({ name: "Isolation Ready" });
+  const manager = new WeeklyFlowPlaylistManager(weeklyFlowRoot);
+  const publish = manager.navidromeDestination.publishPlaylist.bind(
+    manager.navidromeDestination,
+  );
+  manager.navidromeDestination.publishPlaylist = (snapshot) =>
+    snapshot.entityId === first.id
+      ? Promise.resolve({ ok: false, error: { message: "write failed" } })
+      : publish(snapshot);
+
+  await manager.ensurePlaylists();
+
+  await assert.doesNotReject(
+    fs.access(path.join(manager.libraryRoot, `${manager.getPlaylistName(second.id)}.m3u`)),
+  );
 });
 
 test("the Navidrome adapter uses stored external paths in remote mode", async () => {
@@ -200,14 +238,17 @@ test("the Navidrome adapter falls back to shared path mappings in remote mode", 
 
   process.env.M3U_PATH_MODE = "remote";
   const manager = new WeeklyFlowPlaylistManager(weeklyFlowRoot);
-  await manager.refreshPlaylist(playlist.id);
-  const content = await fs.readFile(
-    path.join(manager.libraryRoot, `${manager.getPlaylistName(playlist.id)}.m3u`),
-    "utf8",
-  );
-
-  if (previousMappings === undefined) delete process.env.PATH_MAPPINGS;
-  else process.env.PATH_MAPPINGS = previousMappings;
+  let content;
+  try {
+    await manager.refreshPlaylist(playlist.id);
+    content = await fs.readFile(
+      path.join(manager.libraryRoot, `${manager.getPlaylistName(playlist.id)}.m3u`),
+      "utf8",
+    );
+  } finally {
+    if (previousMappings === undefined) delete process.env.PATH_MAPPINGS;
+    else process.env.PATH_MAPPINGS = previousMappings;
+  }
 
   assert.match(content, /N:\/ServerFolders\/Music\/Aurral\/Mapped\/Artist\/Song\.flac/);
 });
