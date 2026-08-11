@@ -49,6 +49,7 @@ export class NavidromePlaybackDestination {
     this._pendingSnapshots = new Map();
     this._catchupRunning = false;
     this._publishInFlight = new Map();
+    this._syncHashes = new Map();
   }
 
   updateConfig(config = {}) {
@@ -61,6 +62,7 @@ export class NavidromePlaybackDestination {
     this._configKey = key;
     this._playlists = null;
     this._pendingSnapshots.clear();
+    this._syncHashes.clear();
     this.client = config.url && config.username && config.password
       ? new NavidromeClient(config.url, config.username, config.password)
       : null;
@@ -251,6 +253,13 @@ export class NavidromePlaybackDestination {
   async _publishPlaylist(snapshot) {
     await fs.mkdir(this.libraryRoot, { recursive: true });
     const { current, legacy } = this.getPlaylistNames(snapshot);
+    const targetKey = this._targetKey(snapshot.ownerUserId);
+    const syncKey = `${snapshot.entityId}:${targetKey}`;
+    const syncHash = JSON.stringify(snapshot);
+    const storedPointer = navidromePlaylistPointerStore.getPointer(snapshot.entityId, targetKey);
+    if (storedPointer && this._syncHashes.get(syncKey) === syncHash) {
+      return playbackOperationSuccess();
+    }
     const playlistPath = path.join(this.libraryRoot, `${this._sanitize(current)}.m3u`);
     let hadPlaylistFile = false;
     for (const name of [current, ...legacy]) {
@@ -273,7 +282,6 @@ export class NavidromePlaybackDestination {
       await fs.writeFile(playlistPath, content, "utf8");
       return playbackOperationSuccess();
     }
-    const targetKey = this._targetKey(snapshot.ownerUserId);
     try {
       const songs = await Promise.all(
         snapshot.tracks.map((track) =>
@@ -286,17 +294,23 @@ export class NavidromePlaybackDestination {
         return playbackOperationSuccess();
       }
 
-      const pointer = navidromePlaylistPointerStore.getPointer(snapshot.entityId, targetKey);
+      const pointer = storedPointer;
       let playlist = null;
       if (pointer) {
-        try {
-          await this.client.updatePlaylist(pointer.playlistId, {
-            name: current,
-            songIds: songs.map((song) => song.id),
-          });
-          playlist = { id: pointer.playlistId };
-        } catch (error) {
-          if (Number(error?.code) !== 70) throw error;
+        for (const delayMs of [0, 250, 1000, 2000]) {
+          if (delayMs) await wait(delayMs);
+          try {
+            await this.client.updatePlaylist(pointer.playlistId, {
+              name: current,
+              songIds: songs.map((song) => song.id),
+            });
+            playlist = { id: pointer.playlistId };
+            break;
+          } catch (error) {
+            if (Number(error?.code) !== 70) throw error;
+          }
+        }
+        if (!playlist) {
           navidromePlaylistPointerStore.deletePointer(snapshot.entityId, targetKey);
         }
       }
@@ -331,6 +345,7 @@ export class NavidromePlaybackDestination {
       ...ARTWORK_FILE_EXTENSIONS,
       ARTWORK_SUPPRESS_SUFFIX,
     ]);
+    this._syncHashes.set(syncKey, syncHash);
     return playbackOperationSuccess();
   }
 
@@ -374,6 +389,7 @@ export class NavidromePlaybackDestination {
         navidromePlaylistPointerStore.deletePointer(identity.entityId, targetKey);
       }
       this._pendingSnapshots.delete(`${identity.entityId}:${targetKey}`);
+      this._syncHashes.delete(`${identity.entityId}:${targetKey}`);
       this._playlists = null;
       await this._deleteNativePlaylists([names.current, ...names.legacy]);
       await this._deleteFiles([names.current], PLAYLIST_FILE_EXTENSIONS);

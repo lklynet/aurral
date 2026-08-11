@@ -210,9 +210,7 @@ test("serializes concurrent publishes before creating a native playlist", async 
   await Promise.all(publishes);
 
   assert.equal(client.calls.created.length, 1);
-  assert.deepEqual(client.calls.updated, [
-    { id: "created", name: "Concurrent", songIds: ["song-1"] },
-  ]);
+  assert.deepEqual(client.calls.updated, []);
 });
 
 test("adopts an imported M3U playlist and keeps its ID across rename and delete", async () => {
@@ -347,6 +345,43 @@ test("updates a stored playlist ID without relying on the playlist list", async 
     { id: "saved-id", name: "Stored", songIds: ["song-1"] },
   ]);
   assert.deepEqual(client.calls.created, []);
+});
+
+test("retries a transient missing-ID response without replacing the playlist", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Transient" });
+  const client = createClient({ songs: { Song: { id: "song-1" } } });
+  const updatePlaylist = client.updatePlaylist.bind(client);
+  let attempts = 0;
+  client.updatePlaylist = async (...args) => {
+    attempts += 1;
+    if (attempts === 1) {
+      const error = new Error("temporarily missing");
+      error.code = 70;
+      throw error;
+    }
+    return updatePlaylist(...args);
+  };
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+  navidromePlaylistPointerStore.setPointer(playlist.id, "global", {
+    playlistId: "saved-id",
+    title: playlist.name,
+  });
+
+  const result = await destination.publishPlaylist(
+    createPlaybackPlaylistSnapshot({
+      entityId: playlist.id,
+      displayName: playlist.name,
+      tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
+    }),
+  );
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(attempts, 2);
+  assert.deepEqual(client.calls.created, []);
+  assert.equal(
+    navidromePlaylistPointerStore.getPointer(playlist.id, "global").playlistId,
+    "saved-id",
+  );
 });
 
 test("recreates a stored playlist only when Navidrome reports it missing", async () => {
