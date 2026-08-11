@@ -297,7 +297,7 @@ export class NavidromePlaybackDestination {
       const pointer = storedPointer;
       let playlist = null;
       if (pointer) {
-        for (const delayMs of [0, 250, 1000, 2000]) {
+        for (const delayMs of [0, 250, 1000, 2000, 4000]) {
           if (delayMs) await wait(delayMs);
           try {
             await this.client.updatePlaylist(pointer.playlistId, {
