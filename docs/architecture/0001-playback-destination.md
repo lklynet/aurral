@@ -6,7 +6,7 @@
 
 ## Context
 
-`WeeklyFlowPlaylistManager` currently controls playlist files, Navidrome, and Plex. Navidrome reads track paths from M3U files. Plex resolves track paths to Plex track IDs and stores Plex playlist pointers. Both destinations publish the same Aurral playlists, but their configuration and identity rules are different.
+`WeeklyFlowPlaylistManager` creates path-first playlist snapshots. It calls the Navidrome destination directly for M3U publishing and still controls Plex until the next roadmap step. Navidrome reads track paths from M3U files. Plex resolves track paths to Plex track IDs and stores Plex playlist pointers. Both destinations publish the same Aurral playlists, but their configuration and identity rules are different.
 
 ## Decision
 
@@ -36,11 +36,11 @@ Destination adapters own their names, authentication, configuration, vendor IDs,
 
 ## Compatibility
 
-The Navidrome adapter can write snapshot paths to M3U files after it applies Navidrome path mappings. It can keep Navidrome file naming and playlist deletion rules inside the adapter.
+The Navidrome adapter writes snapshot paths to M3U files after it applies Navidrome path mappings. It owns Navidrome file naming, legacy cleanup, library setup, and scans.
 
 The Plex adapter can resolve snapshot paths to Plex rating keys. It can keep section IDs, user tokens, playlist pointers, and owner-specific titles inside the adapter.
 
-This decision does not change current Navidrome or Plex behavior. Later roadmap issues will move each existing flow behind this seam.
+This decision does not change current Navidrome or Plex behavior. The Navidrome flow now uses this seam. A later roadmap issue will move the Plex flow behind it.
 
 ## Deliberate non-goals
 

@@ -41,7 +41,7 @@ test("writes WebP sidecar artwork for flow and playlist m3u files", async () => 
   });
   flowPlaylistConfig.setEnabled(flow.id, true);
 
-  flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createSharedPlaylist({
     name: "Road Trip",
     tracks: [{ artistName: "A", trackName: "One" }],
   });
@@ -49,12 +49,12 @@ test("writes WebP sidecar artwork for flow and playlist m3u files", async () => 
   const manager = new WeeklyFlowPlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
   await manager.ensurePlaylists();
 
-  const flowName = manager._getFlowPlaylistNames("Late Night").current;
+  const flowName = manager.getPlaylistName(flow.id);
   const flowBase = manager._sanitize(flowName);
   const flowM3u = path.join(manager.libraryRoot, `${flowBase}.m3u`);
   const flowWebp = path.join(manager.libraryRoot, `${flowBase}.webp`);
 
-  const playlistName = manager._getSharedPlaylistNames("Road Trip").current;
+  const playlistName = manager.getPlaylistName(playlist.id);
   const playlistBase = manager._sanitize(playlistName);
   const playlistM3u = path.join(manager.libraryRoot, `${playlistBase}.m3u`);
   const playlistWebp = path.join(manager.libraryRoot, `${playlistBase}.webp`);
@@ -85,7 +85,7 @@ test("removes old sidecar artwork when a flow is renamed", async () => {
   const manager = new WeeklyFlowPlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
   await manager.ensurePlaylists();
 
-  const oldName = manager._getFlowPlaylistNames("Old Name").current;
+  const oldName = manager.getPlaylistName(flow.id);
   const oldBase = manager._sanitize(oldName);
   const oldM3u = path.join(manager.libraryRoot, `${oldBase}.m3u`);
   const oldWebp = path.join(manager.libraryRoot, `${oldBase}.webp`);
@@ -95,7 +95,7 @@ test("removes old sidecar artwork when a flow is renamed", async () => {
   flowPlaylistConfig.updateFlow(flow.id, { name: "New Name" });
   await manager.ensurePlaylists();
 
-  const newName = manager._getFlowPlaylistNames("New Name").current;
+  const newName = manager.getPlaylistName(flow.id);
   const newBase = manager._sanitize(newName);
   const newM3u = path.join(manager.libraryRoot, `${newBase}.m3u`);
   const newWebp = path.join(manager.libraryRoot, `${newBase}.webp`);
@@ -107,7 +107,7 @@ test("removes old sidecar artwork when a flow is renamed", async () => {
 });
 
 test("writes sidecar artwork for draft flows without m3u files", async () => {
-  flowPlaylistConfig.createFlow({
+  const flow = flowPlaylistConfig.createFlow({
     name: "Draft Flow",
     enabled: false,
   });
@@ -115,7 +115,7 @@ test("writes sidecar artwork for draft flows without m3u files", async () => {
   const manager = new WeeklyFlowPlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
   await manager.ensurePlaylists();
 
-  const playlistName = manager._getFlowPlaylistNames("Draft Flow").current;
+  const playlistName = manager.getPlaylistName(flow.id);
   const base = manager._sanitize(playlistName);
   const m3u = path.join(manager.libraryRoot, `${base}.m3u`);
   const webp = path.join(manager.libraryRoot, `${base}.webp`);
@@ -134,7 +134,7 @@ test("keeps artwork when an enabled flow is disabled", async () => {
   const manager = new WeeklyFlowPlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
   await manager.ensurePlaylists();
 
-  const base = manager._sanitize(manager._getFlowPlaylistNames("Toggle").current);
+  const base = manager._sanitize(manager.getPlaylistName(flow.id));
   const m3u = path.join(manager.libraryRoot, `${base}.m3u`);
   const webp = path.join(manager.libraryRoot, `${base}.webp`);
   await assert.doesNotReject(() => fs.access(m3u));
@@ -158,7 +158,7 @@ test("does not regenerate artwork after explicit remove until generate", async (
 
   const flowWebp = path.join(
     manager.libraryRoot,
-    `${manager._sanitize(manager._getFlowPlaylistNames("No Regen").current)}.webp`,
+    `${manager._sanitize(manager.getPlaylistName(flow.id))}.webp`,
   );
   await assert.doesNotReject(() => fs.access(flowWebp));
 

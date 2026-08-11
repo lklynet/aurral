@@ -14,7 +14,7 @@ const [
   { db },
   trackerModule,
   configModule,
-  m3uModule,
+  tracksModule,
   m3uPathsModule,
   { WeeklyFlowPlaylistManager },
 ] = await setupIsolatedBackend(
@@ -22,14 +22,14 @@ const [
   "backend/config/db-sqlite.js",
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
-  "backend/services/playlistM3u.js",
+  "backend/services/playback/playbackPlaylistTracks.js",
   "backend/services/playlistM3uPaths.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
 );
 
 const { downloadTracker } = trackerModule;
 const { flowPlaylistConfig } = configModule;
-const { buildM3uContent, collectPlaylistM3uEntries } = m3uModule;
+const { collectPlaybackPlaylistTracks } = tracksModule;
 const { syncM3uPathMappings } = m3uPathsModule;
 
 const weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER;
@@ -38,6 +38,7 @@ test.beforeEach(async () => {
   await resetDatabase(db);
   downloadTracker.clearAll();
   syncM3uPathMappings([]);
+  delete process.env.M3U_PATH_MODE;
   delete process.env.M3U_PATH_MAPPINGS;
   await fs.rm(weeklyFlowRoot, { recursive: true, force: true });
 });
@@ -46,21 +47,7 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("buildM3uContent writes absolute paths with extinf metadata", () => {
-  const content = buildM3uContent([
-    {
-      path: "/data/music/Artist/Album/Track.flac",
-      title: "Track",
-      artist: "Artist",
-      durationSeconds: 245,
-    },
-  ]);
-  assert.match(content, /^#EXTM3U\n/);
-  assert.match(content, /#EXTINF:245,Artist - Track\n/);
-  assert.match(content, /\/data\/music\/Artist\/Album\/Track\.flac\n$/);
-});
-
-test("collectPlaylistM3uEntries preserves shared playlist track order", async () => {
+test("collectPlaybackPlaylistTracks preserves shared playlist track order", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({
     name: "Ordered",
     tracks: [
@@ -82,7 +69,7 @@ test("collectPlaylistM3uEntries preserves shared playlist track order", async ()
   downloadTracker.setDone(secondJobId, secondPath, "Album");
   downloadTracker.setDone(firstJobId, firstPath, "Album");
 
-  const entries = await collectPlaylistM3uEntries(playlist.id, {
+  const entries = await collectPlaybackPlaylistTracks(playlist.id, {
     weeklyFlowRoot,
   });
   assert.deepEqual(
@@ -91,7 +78,7 @@ test("collectPlaylistM3uEntries preserves shared playlist track order", async ()
   );
 });
 
-test("collectPlaylistM3uEntries keeps completed tracks after metadata correction", async () => {
+test("collectPlaybackPlaylistTracks keeps completed tracks after metadata correction", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({
     name: "Corrected album",
     tracks: [
@@ -108,7 +95,7 @@ test("collectPlaylistM3uEntries keeps completed tracks after metadata correction
   });
   downloadTracker.setDone(jobId, trackPath, "Resolved album");
 
-  const entries = await collectPlaylistM3uEntries(playlist.id, {
+  const entries = await collectPlaybackPlaylistTracks(playlist.id, {
     weeklyFlowRoot,
   });
   assert.deepEqual(entries.map((entry) => entry.path), [trackPath]);
@@ -130,14 +117,14 @@ test("refreshPlaylist writes m3u entries for completed tracks", async () => {
 
   const m3uPath = path.join(
     manager.libraryRoot,
-    `${manager._sanitize(manager._getSharedPlaylistNames("Ready").current)}.m3u`,
+    `${manager._sanitize(manager.getPlaylistName(playlist.id))}.m3u`,
   );
   const content = await fs.readFile(m3uPath, "utf8");
   assert.match(content, /#EXTM3U/);
   assert.match(content, new RegExp(trackPath.replace(/\\/g, "/")));
 });
 
-test("collectPlaylistM3uEntries uses stored external paths in remote mode", async () => {
+test("the Navidrome adapter uses stored external paths in remote mode", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({
     name: "Remote",
     tracks: [{ artistName: "Artist", trackName: "Song", albumName: "Album" }],
@@ -153,18 +140,17 @@ test("collectPlaylistM3uEntries uses stored external paths in remote mode", asyn
     "N:\\ServerFolders\\Music\\Music\\Artist\\Song.flac",
   );
 
-  const entries = await collectPlaylistM3uEntries(playlist.id, {
-    weeklyFlowRoot,
-    m3uPathMode: "remote",
-  });
-  assert.equal(entries.length, 1);
-  assert.equal(
-    entries[0].path,
-    "N:/ServerFolders/Music/Music/Artist/Song.flac",
+  process.env.M3U_PATH_MODE = "remote";
+  const manager = new WeeklyFlowPlaylistManager(weeklyFlowRoot);
+  await manager.refreshPlaylist(playlist.id);
+  const content = await fs.readFile(
+    path.join(manager.libraryRoot, `${manager.getPlaylistName(playlist.id)}.m3u`),
+    "utf8",
   );
+  assert.match(content, /N:\/ServerFolders\/Music\/Music\/Artist\/Song\.flac/);
 });
 
-test("collectPlaylistM3uEntries uses Navidrome path mappings in remote mode", async () => {
+test("the Navidrome adapter uses Navidrome path mappings in remote mode", async () => {
   const mappedRoot = path.join(weeklyFlowRoot, "navidrome-local");
   const localPath = path.join(
     mappedRoot,
@@ -181,26 +167,23 @@ test("collectPlaylistM3uEntries uses Navidrome path mappings in remote mode", as
   await fs.writeFile(localPath, "audio");
   const jobId = downloadTracker.addJob(playlist.tracks[0], playlist.id);
   downloadTracker.setDone(jobId, localPath, "Album");
+  process.env.M3U_PATH_MODE = "remote";
+  const manager = new WeeklyFlowPlaylistManager(weeklyFlowRoot);
   syncM3uPathMappings([
     {
       local: mappedRoot,
       remote: "/music/aurral",
     },
   ]);
-
-  const entries = await collectPlaylistM3uEntries(playlist.id, {
-    weeklyFlowRoot,
-    m3uPathMode: "remote",
-  });
-
-  assert.equal(entries.length, 1);
-  assert.equal(
-    entries[0].path,
-    "/music/aurral/Aurral/Mapped/Artist/Song.flac",
+  await manager.refreshPlaylist(playlist.id);
+  const content = await fs.readFile(
+    path.join(manager.libraryRoot, `${manager.getPlaylistName(playlist.id)}.m3u`),
+    "utf8",
   );
+  assert.match(content, /\/music\/aurral\/Aurral\/Mapped\/Artist\/Song\.flac/);
 });
 
-test("collectPlaylistM3uEntries falls back to path mappings in remote mode", async () => {
+test("the Navidrome adapter falls back to shared path mappings in remote mode", async () => {
   const previousMappings = process.env.PATH_MAPPINGS;
   const mappedRoot = path.join(weeklyFlowRoot, "mapped-root");
   const localPath = path.join(mappedRoot, "Aurral", "Mapped", "Artist", "Song.flac");
@@ -215,17 +198,16 @@ test("collectPlaylistM3uEntries falls back to path mappings in remote mode", asy
   const jobId = downloadTracker.addJob(playlist.tracks[0], playlist.id);
   downloadTracker.setDone(jobId, localPath, "Album");
 
-  const entries = await collectPlaylistM3uEntries(playlist.id, {
-    weeklyFlowRoot,
-    m3uPathMode: "remote",
-  });
+  process.env.M3U_PATH_MODE = "remote";
+  const manager = new WeeklyFlowPlaylistManager(weeklyFlowRoot);
+  await manager.refreshPlaylist(playlist.id);
+  const content = await fs.readFile(
+    path.join(manager.libraryRoot, `${manager.getPlaylistName(playlist.id)}.m3u`),
+    "utf8",
+  );
 
   if (previousMappings === undefined) delete process.env.PATH_MAPPINGS;
   else process.env.PATH_MAPPINGS = previousMappings;
 
-  assert.equal(entries.length, 1);
-  assert.equal(
-    entries[0].path,
-    "N:/ServerFolders/Music/Aurral/Mapped/Artist/Song.flac",
-  );
+  assert.match(content, /N:\/ServerFolders\/Music\/Aurral\/Mapped\/Artist\/Song\.flac/);
 });

@@ -40,17 +40,22 @@ function makeManager() {
   return new WeeklyFlowPlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
 }
 
-test("_getFlowPlaylistNames stays bare for an unowned flow", () => {
+test("the Navidrome adapter keeps an unowned flow name bare", () => {
   const manager = makeManager();
-  const names = manager._getFlowPlaylistNames("Weekend Vibes", null);
+  const names = manager.navidromeDestination.getPlaylistNames({
+    displayName: "Weekend Vibes",
+  });
   assert.equal(names.current, "Weekend Vibes");
   assert.deepEqual(names.legacy, ["[A] Weekend Vibes", "Aurral Weekend Vibes"]);
 });
 
-test("_getFlowPlaylistNames prepends the owner's username, and treats the bare name as legacy", () => {
+test("the Navidrome adapter prefixes an owned flow and keeps legacy names", () => {
   const jody = userOps.createUser("jody", "hash", "user");
   const manager = makeManager();
-  const names = manager._getFlowPlaylistNames("Weekend Vibes", jody.id);
+  const names = manager.navidromeDestination.getPlaylistNames({
+    ownerUserId: jody.id,
+    displayName: "Weekend Vibes",
+  });
   assert.equal(names.current, "jody - Weekend Vibes");
   assert.deepEqual(names.legacy, [
     "Weekend Vibes",
@@ -59,16 +64,22 @@ test("_getFlowPlaylistNames prepends the owner's username, and treats the bare n
   ]);
 });
 
-test("_getSharedPlaylistNames prepends the owner's username, and treats the bare name as legacy", () => {
+test("the Navidrome adapter prefixes an owned shared playlist and keeps legacy names", () => {
   const jody = userOps.createUser("jody", "hash", "user");
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "80s Anthems" });
   const manager = makeManager();
-  const names = manager._getSharedPlaylistNames("80s Anthems", jody.id);
+  const names = manager.navidromeDestination.getPlaylistNames({
+    entityId: playlist.id,
+    ownerUserId: jody.id,
+    displayName: "80s Anthems",
+  });
   assert.equal(names.current, "jody - 80s Anthems");
   assert.deepEqual(names.legacy, [
     "80s Anthems",
     "[AS] 80s Anthems",
     "Aurral Shared 80s Anthems",
   ]);
+  flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
 });
 
 test("two different owners can use the same flow name without their .m3u files colliding", async () => {
