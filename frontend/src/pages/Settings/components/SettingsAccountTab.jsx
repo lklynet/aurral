@@ -156,6 +156,9 @@ export function SettingsAccountTab({
                 <option value="listenbrainz">ListenBrainz</option>
                 <option value="koito">Koito</option>
               </SettingsSelect>
+              <p className="settings-page__hint">
+                Select the service that supplies your listening history for personalized discovery.
+              </p>
             </div>
             {listenHistoryProvider === "koito" ? (
               <div className="profile-settings__field">
@@ -241,6 +244,9 @@ export function SettingsAccountTab({
                   </option>
                 ))}
               </SettingsSelect>
+              <p className="settings-page__hint">
+                Choose where one-click artist adds should be stored by default.
+              </p>
             </div>
 
             <div className="profile-settings__field">
@@ -259,6 +265,9 @@ export function SettingsAccountTab({
                   </option>
                 ))}
               </SettingsSelect>
+              <p className="settings-page__hint">
+                Choose the Lidarr quality profile for one-click artist adds.
+              </p>
             </div>
           </fieldset>
 
@@ -273,7 +282,7 @@ export function SettingsAccountTab({
           )}
         </div>
 
-        <div className="settings-page__section profile-settings__section">
+        <div className="settings-page__section profile-settings__section profile-settings__section--action">
           <div className="settings-page__section-intro">
             <h3 className="settings-page__section-title">Discovery Tastes</h3>
             <p className="settings-page__section-note">
@@ -281,15 +290,17 @@ export function SettingsAccountTab({
               Manage hard exclusions on the <Link to="/blocklist" className="settings-page__link">Blocked Artists</Link> page.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleResetDiscoveryTastes}
-            disabled={resettingTastes}
-            className="btn btn-secondary btn-sm"
-          >
-            <RotateCcw className={`artist-icon-xs${resettingTastes ? " animate-spin" : ""}`} />
-            {resettingTastes ? "Resetting…" : "Reset Discovery Tastes"}
-          </button>
+          <div className="profile-settings__action">
+            <button
+              type="button"
+              onClick={handleResetDiscoveryTastes}
+              disabled={resettingTastes}
+              className="btn btn-secondary btn-sm"
+            >
+              <RotateCcw className={`artist-icon-xs${resettingTastes ? " animate-spin" : ""}`} />
+              {resettingTastes ? "Resetting…" : "Reset Discovery Tastes"}
+            </button>
+          </div>
         </div>
       </form>
     </div>

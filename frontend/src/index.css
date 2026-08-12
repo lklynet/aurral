@@ -11351,14 +11351,14 @@ textarea {
 }
 
 .profile-settings__section {
-  padding: 1rem 0 1.5rem;
+  padding: 2rem 0 2.25rem;
   border: 0;
   border-radius: 0;
   background: transparent;
 }
 
 .profile-settings__section:first-child {
-  padding-top: 0;
+  padding-top: 0.5rem;
 }
 
 .profile-settings__section + .profile-settings__section {
@@ -11370,7 +11370,7 @@ textarea {
 }
 
 .profile-settings__section .settings-page__section-intro {
-  margin-bottom: 0.5rem;
+  margin-bottom: 1.25rem;
 }
 
 .profile-settings__section .settings-page__callout {
@@ -11385,6 +11385,21 @@ textarea {
 .profile-settings__section .settings-page__inline-row > .btn {
   justify-self: start;
   width: max-content;
+}
+
+.profile-settings__section--action {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 2.5rem;
+}
+
+.profile-settings__section--action .settings-page__section-intro {
+  margin-bottom: 0;
+}
+
+.profile-settings__action {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .profile-page--settings .arr-input,
@@ -11403,33 +11418,40 @@ textarea {
 }
 
 .profile-settings__fields {
-  gap: 0.75rem;
+  gap: 2rem;
 }
 
 .profile-settings__field {
   display: grid;
-  grid-template-columns: minmax(10rem, 0.8fr) minmax(0, 1.2fr);
-  align-items: start;
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, 20rem);
+  grid-template-areas:
+    "title control"
+    "description control";
+  align-items: center;
+  column-gap: 2.5rem;
+  row-gap: 0.25rem;
 }
 
 .profile-settings__label {
-  padding-top: 0.5rem;
+  grid-area: title;
   color: var(--aurral-text);
-  font-size: 0.8125rem;
+  font-size: 0.9375rem;
   font-weight: 600;
   line-height: 1.35;
 }
 
 .profile-settings__field > .arr-input,
 .profile-settings__field > .arr-select,
-.profile-settings__field > .settings-page__hint {
-  grid-column: 2;
+.profile-settings__field > .pill-toggle {
+  grid-area: control;
   min-width: 0;
 }
 
 .profile-settings__field > .settings-page__hint {
-  margin-top: -0.5rem;
+  grid-area: description;
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
 }
 
 @media (max-width: 48rem) {
