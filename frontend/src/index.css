@@ -11316,7 +11316,7 @@ textarea {
   width: min(100%, 55rem);
   margin-inline: auto;
   color: var(--aurral-text-muted);
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   line-height: 1.5;
 }
 
@@ -11371,6 +11371,15 @@ textarea {
 
 .profile-settings__section .settings-page__section-intro {
   margin-bottom: 1.25rem;
+}
+
+.profile-settings__section .settings-page__section-title {
+  font-size: 1.125rem;
+}
+
+.profile-settings__section .settings-page__section-note {
+  font-size: 0.9375rem;
+  line-height: 1.5;
 }
 
 .profile-settings__section .settings-page__callout {
@@ -11435,7 +11444,7 @@ textarea {
 .profile-settings__label {
   grid-area: title;
   color: var(--aurral-text);
-  font-size: 0.9375rem;
+  font-size: 1rem;
   font-weight: 600;
   line-height: 1.35;
 }
@@ -11450,7 +11459,7 @@ textarea {
 .profile-settings__field > .settings-page__hint {
   grid-area: description;
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   line-height: 1.45;
 }
 
