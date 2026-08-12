@@ -15,3 +15,4 @@ coverage/
 # Private maintainer instructions
 /.maintainer/
 /AGENTS.md
+/.agents/
