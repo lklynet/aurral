@@ -28,10 +28,10 @@ export const navidromeSettings = Object.freeze({
   fields: Object.freeze([
     Object.freeze({ key: "url", label: "Server URL", type: "url", required: true }),
     Object.freeze({ key: "username", label: "Username", type: "text", required: true }),
-    Object.freeze({ key: "password", label: "Password", type: "password", secret: true }),
+    Object.freeze({ key: "password", label: "Password", type: "password", required: true, secret: true }),
   ]),
   defaults: Object.freeze({ url: "", username: "", password: "" }),
-  validation: Object.freeze({ required: ["url", "username"], url: ["url"] }),
+  validation: Object.freeze({ required: ["url", "username", "password"], url: ["url"] }),
   testConnection: true,
 });
 

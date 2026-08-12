@@ -254,8 +254,8 @@ export function SettingsPlaybackSection({
   };
 
   const handleTestNavidrome = async () => {
-    if (!navidrome.url || !navidrome.username) {
-      showError("Enter Navidrome URL and username first");
+    if (!navidrome.url || !navidrome.username || !navidrome.password) {
+      showError("Enter Navidrome URL, username, and password first");
       return;
     }
     setTestingNavidrome(true);
@@ -338,7 +338,7 @@ export function SettingsPlaybackSection({
               type="button"
               className="btn btn-secondary"
               onClick={handleTestNavidrome}
-              disabled={testingNavidrome || !navidrome.url || !navidrome.username}
+              disabled={testingNavidrome || !navidrome.url || !navidrome.username || !navidrome.password}
             >
               <RefreshCw className={`artist-icon-sm${testingNavidrome ? " animate-spin" : ""}`} />
               {testingNavidrome ? "Testing…" : "Test connection"}

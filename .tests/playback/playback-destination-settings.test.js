@@ -16,6 +16,8 @@ test("playback adapters expose declarative connection settings without credentia
   );
   assert.equal(settings.plex.customUi, "plex");
   assert.equal(settings.plex.fields.find((field) => field.key === "token").hidden, true);
+  assert.deepEqual(settings.navidrome.validation.required, ["url", "username", "password"]);
+  assert.equal(settings.navidrome.fields.find((field) => field.key === "password").required, true);
   for (const field of [...settings.navidrome.fields, ...settings.plex.fields]) {
     assert.equal("value" in field, false);
     assert.equal("default" in field, false);

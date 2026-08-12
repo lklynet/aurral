@@ -283,11 +283,11 @@ export function useSettingsData(showSuccess, showError, showInfo) {
     comparisonEnabledRef.current = false;
     if (settingsActivationTimerRef.current) clearTimeout(settingsActivationTimerRef.current);
     try {
-      const [, savedSettings, playback] = await Promise.all([
-        refreshHealth(),
-        getAppSettings(),
-        getPlaybackSettings(),
-      ]);
+      const [, savedSettings] = await Promise.all([refreshHealth(), getAppSettings()]);
+      let playback = null;
+      try {
+        playback = await getPlaybackSettings();
+      } catch {}
       setPlaybackSettings(playback?.destinations || null);
       const updatedSettings = normalizeSettings(savedSettings);
       const savedSnapshot = structuredClone(updatedSettings);
