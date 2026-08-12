@@ -9,6 +9,7 @@ const PLAYLIST_ARTWORK_STYLE_OPTIONS = [
 
 export function SettingsPlaybackTab({
   settings,
+  playbackSettings,
   updateSettings,
   hasUnsavedChanges,
   handleSaveSettings,
@@ -23,6 +24,7 @@ export function SettingsPlaybackTab({
       <form onSubmit={handleSaveSettings} className="arr-form" autoComplete="off">
         <SettingsPlaybackSection
           settings={settings}
+          playbackSettings={playbackSettings}
           updateSettings={updateSettings}
           hasUnsavedChanges={hasUnsavedChanges}
           handleSaveSettings={handleSaveSettings}

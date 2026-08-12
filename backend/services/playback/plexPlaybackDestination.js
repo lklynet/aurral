@@ -20,6 +20,20 @@ import {
 
 const SYNC_SKIPPED = Symbol("plex-sync-skipped");
 
+export const plexSettings = Object.freeze({
+  key: "plex",
+  label: "Plex",
+  subtitle: "Plexamp",
+  customUi: "plex",
+  fields: Object.freeze([
+    Object.freeze({ key: "url", label: "Server URL", type: "url", required: true }),
+    Object.freeze({ key: "token", label: "Account token", type: "password", secret: true, hidden: true }),
+  ]),
+  defaults: Object.freeze({ url: "", token: "" }),
+  validation: Object.freeze({ required: ["url"], url: ["url"] }),
+  testConnection: true,
+});
+
 export class PlexPlaybackDestination {
   constructor(weeklyFlowRoot = resolvePlaylistRoot(), { client = null } = {}) {
     this.key = "plex";

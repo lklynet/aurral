@@ -30,6 +30,9 @@ export const checkPlexLibraryAccess = (sectionId) =>
   getData(`/settings/plex/libraries/${encodeURIComponent(sectionId)}/access-check`);
 
 export const getAppSettings = () => getData("/settings");
+export const getPlaybackSettings = () => getData("/settings/playback");
+export const testPlaybackConnection = (key, config) =>
+  postData(`/settings/playback/${encodeURIComponent(key)}/test`, config);
 
 export const updateAppSettings = (settings) => postData("/settings", settings);
 

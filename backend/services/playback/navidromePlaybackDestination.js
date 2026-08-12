@@ -21,6 +21,20 @@ const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
 const PLAYLIST_FILE_EXTENSIONS = [".m3u", ".nsp"];
 const SONG_LOOKUP_BATCH_SIZE = 5;
 
+export const navidromeSettings = Object.freeze({
+  key: "navidrome",
+  label: "Navidrome",
+  subtitle: "Subsonic",
+  fields: Object.freeze([
+    Object.freeze({ key: "url", label: "Server URL", type: "url", required: true }),
+    Object.freeze({ key: "username", label: "Username", type: "text", required: true }),
+    Object.freeze({ key: "password", label: "Password", type: "password", secret: true }),
+  ]),
+  defaults: Object.freeze({ url: "", username: "", password: "" }),
+  validation: Object.freeze({ required: ["url", "username"], url: ["url"] }),
+  testConnection: true,
+});
+
 function buildM3uContent(tracks) {
   const lines = ["#EXTM3U"];
   for (const track of tracks) {

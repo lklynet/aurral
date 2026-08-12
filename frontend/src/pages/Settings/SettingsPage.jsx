@@ -155,6 +155,7 @@ function SettingsPage() {
         return (
           <SettingsPlaybackTab
             settings={data.settings}
+            playbackSettings={data.playbackSettings}
             updateSettings={data.updateSettings}
             hasUnsavedChanges={data.hasUnsavedChanges}
             saving={data.saving}

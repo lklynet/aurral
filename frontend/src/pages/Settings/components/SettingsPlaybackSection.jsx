@@ -5,8 +5,7 @@ import {
   getPlexResources,
   getPlexLibraries,
   checkPlexLibraryAccess,
-  testPlexConnection,
-  testNavidromeConnection,
+  testPlaybackConnection,
   syncPlexNow,
 } from "../../../utils/api/endpoints/settings.js";
 import { getConfiguredStatus } from "../utils/integrationStatus";
@@ -19,6 +18,7 @@ import {
 } from "lucide-react";
 import DownloadFolderPickerModal from "../../../components/DownloadFolderPickerModal";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
+import { SettingsAdapterFields } from "./SettingsAdapterFields";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
 import {
   SettingsArrCardGrid,
@@ -36,6 +36,7 @@ import {
 } from "../utils/plexConnections";
 export function SettingsPlaybackSection({
   settings,
+  playbackSettings,
   updateSettings,
   hasUnsavedChanges,
   handleSaveSettings,
@@ -235,7 +236,7 @@ export function SettingsPlaybackSection({
     }
     setTestingPlex(true);
     try {
-      const result = await testPlexConnection(plex.url, plex.token);
+      const result = await testPlaybackConnection("plex", plex);
       if (result.success) {
         showSuccess(`Plex connection successful!${result.version ? ` (v${result.version})` : ""}`);
         if (result.machineIdentifier) {
@@ -262,7 +263,7 @@ export function SettingsPlaybackSection({
       if (handleSaveSettings) {
         await handleSaveSettings();
       }
-      await testNavidromeConnection(navidrome.url, navidrome.username, navidrome.password || "");
+      await testPlaybackConnection("navidrome", navidrome);
       showSuccess("Navidrome connection OK");
     } catch (err) {
       const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
@@ -345,31 +346,11 @@ export function SettingsPlaybackSection({
           }
         >
           <SettingsModalSection title="Connection">
-            <SettingsModalField label="Server URL">
-              <SettingsInput
-                type="url"
-                placeholder="https://music.example.com"
-                autoComplete="off"
-                value={navidrome.url || ""}
-                onChange={(event) => updateNavidrome({ url: event.target.value })}
-              />
-            </SettingsModalField>
-            <SettingsModalField label="Username">
-              <SettingsInput
-                type="text"
-                autoComplete="off"
-                value={navidrome.username || ""}
-                onChange={(event) => updateNavidrome({ username: event.target.value })}
-              />
-            </SettingsModalField>
-            <SettingsModalField label="Password">
-              <SettingsInput
-                type="password"
-                autoComplete="off"
-                value={navidrome.password || ""}
-                onChange={(event) => updateNavidrome({ password: event.target.value })}
-              />
-            </SettingsModalField>
+            <SettingsAdapterFields
+              definition={playbackSettings?.navidrome}
+              settings={navidrome}
+              onChange={updateNavidrome}
+            />
           </SettingsModalSection>
         </SettingsIntegrationModal>
       )}
@@ -429,6 +410,11 @@ export function SettingsPlaybackSection({
           </SettingsModalSection>
 
           <SettingsModalSection title="Connection">
+            <SettingsAdapterFields
+              definition={playbackSettings?.plex}
+              settings={plex}
+              onChange={updatePlex}
+            />
             {plex.token && (
               <SettingsModalField label="Plex server">
                 <SettingsSelect
@@ -452,18 +438,6 @@ export function SettingsPlaybackSection({
                 </SettingsSelect>
               </SettingsModalField>
             )}
-            <SettingsModalField
-              label="Server URL"
-              hint="Auto-filled when you select a server, or enter it manually."
-            >
-              <SettingsInput
-                type="url"
-                placeholder="http://localhost:32400"
-                autoComplete="off"
-                value={plex.url || ""}
-                onChange={(event) => updatePlex({ url: event.target.value })}
-              />
-            </SettingsModalField>
           </SettingsModalSection>
 
           <SettingsModalSection title="Aurral Library Path">
