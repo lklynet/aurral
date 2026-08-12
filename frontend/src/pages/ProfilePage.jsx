@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -18,6 +18,9 @@ function ProfilePage() {
   const [showSidebarArt, setShowSidebarArt] = useState(() =>
     getSidebarStageBackdropEnabled(authUser?.id),
   );
+  useEffect(() => {
+    setShowSidebarArt(getSidebarStageBackdropEnabled(authUser?.id));
+  }, [authUser?.id]);
   const account = useAccountSettings(authUser, showError);
 
   return (

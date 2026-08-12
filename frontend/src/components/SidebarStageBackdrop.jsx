@@ -8,12 +8,20 @@ const getSidebarStageBackdropStorageKey = (userId) =>
 
 export function getSidebarStageBackdropEnabled(userId) {
   if (typeof window === "undefined") return true;
-  return window.localStorage.getItem(getSidebarStageBackdropStorageKey(userId)) !== "false";
+  try {
+    return window.localStorage.getItem(getSidebarStageBackdropStorageKey(userId)) !== "false";
+  } catch {
+    return true;
+  }
 }
 
 export function setSidebarStageBackdropEnabled(userId, enabled) {
   if (typeof window === "undefined") return enabled;
-  window.localStorage.setItem(getSidebarStageBackdropStorageKey(userId), String(enabled));
+  try {
+    window.localStorage.setItem(getSidebarStageBackdropStorageKey(userId), String(enabled));
+  } catch {
+    return enabled;
+  }
   window.dispatchEvent(
     new CustomEvent(SIDEBAR_STAGE_BACKDROP_EVENT, { detail: { userId } }),
   );
