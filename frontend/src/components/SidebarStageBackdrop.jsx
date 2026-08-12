@@ -1,6 +1,26 @@
 import { useId } from "react";
 
 const STAGE_BACKDROP_VIEW_BOX = "0 0 8192 96";
+const SIDEBAR_STAGE_BACKDROP_EVENT = "aurral:sidebar-stage-backdrop";
+
+const getSidebarStageBackdropStorageKey = (userId) =>
+  `sidebar-stage-backdrop:${userId ?? "anonymous"}`;
+
+export function getSidebarStageBackdropEnabled(userId) {
+  if (typeof window === "undefined") return true;
+  return window.localStorage.getItem(getSidebarStageBackdropStorageKey(userId)) !== "false";
+}
+
+export function setSidebarStageBackdropEnabled(userId, enabled) {
+  if (typeof window === "undefined") return enabled;
+  window.localStorage.setItem(getSidebarStageBackdropStorageKey(userId), String(enabled));
+  window.dispatchEvent(
+    new CustomEvent(SIDEBAR_STAGE_BACKDROP_EVENT, { detail: { userId } }),
+  );
+  return enabled;
+}
+
+export { SIDEBAR_STAGE_BACKDROP_EVENT };
 
 const NIGHTLY_STARS = [
   { cx: 14, cy: 10, r: 0.6, opacity: 0.85 },

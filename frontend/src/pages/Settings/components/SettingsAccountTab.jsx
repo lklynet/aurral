@@ -5,6 +5,7 @@ import {
   setThemePreference,
 } from "../../../utils/theme.js";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
+import PillToggle from "../../../components/PillToggle";
 import { PlexSelfLinkSection } from "./PlexSelfLinkSection";
 
 import { Link } from "react-router-dom";
@@ -29,6 +30,9 @@ export function SettingsAccountTab({
   showSuccess,
   showError,
   profileVariant = false,
+  showSidebarArt = false,
+  sidebarArtEnabled = true,
+  setSidebarArtEnabled,
 }) {
   const [resettingTastes, setResettingTastes] = useState(false);
   const [theme, setTheme] = useState(getThemePreference);
@@ -107,6 +111,22 @@ export function SettingsAccountTab({
                 System follows the appearance setting of your device.
               </p>
             </div>
+            {profileVariant && showSidebarArt ? (
+              <div className="profile-settings__field">
+                <label className="profile-settings__label" htmlFor="profile-sidebar-art">
+                  Environment art
+                </label>
+                <PillToggle
+                  id="profile-sidebar-art"
+                  checked={sidebarArtEnabled}
+                  onChange={(event) => setSidebarArtEnabled(event.target.checked)}
+                  aria-label="Show sidebar environment art"
+                />
+                <p className="settings-page__hint">
+                  Show the nightly or preview environment art in the sidebar.
+                </p>
+              </div>
+            ) : null}
           </fieldset>
         </div>
 

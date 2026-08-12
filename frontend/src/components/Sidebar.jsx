@@ -27,13 +27,20 @@ import {
 } from "../utils/discoverRecentNavigation";
 import { useStorageHealth } from "../hooks/useStorageHealth";
 import SidebarStageBackdrop, {
+  getSidebarStageBackdropEnabled,
   resolveSidebarStageBackdropVariant,
+  SIDEBAR_STAGE_BACKDROP_EVENT,
 } from "./SidebarStageBackdrop";
 
 function Sidebar({ mode, width = 208, settingsMode = false }) {
-  const stageBackdropVariant = resolveSidebarStageBackdropVariant();
   const location = useLocation();
   const { user, bootstrap } = useAuth();
+  const [showStageBackdrop, setShowStageBackdrop] = useState(() =>
+    getSidebarStageBackdropEnabled(user?.id),
+  );
+  const stageBackdropVariant = showStageBackdrop
+    ? resolveSidebarStageBackdropVariant()
+    : null;
   const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
   const canAccessSettings = user?.role === "admin" || !!user?.permissions?.accessSettings;
   const { hasReview: hasReviewAlert } = useFlowWorkerActivity({
@@ -52,6 +59,17 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
     clearRecentPages,
     isDiscoverSectionActive,
   } = useDiscoverRecent();
+
+  useEffect(() => {
+    setShowStageBackdrop(getSidebarStageBackdropEnabled(user?.id));
+    const onPreferenceChange = (event) => {
+      if (event.detail?.userId === user?.id) {
+        setShowStageBackdrop(getSidebarStageBackdropEnabled(user?.id));
+      }
+    };
+    window.addEventListener(SIDEBAR_STAGE_BACKDROP_EVENT, onPreferenceChange);
+    return () => window.removeEventListener(SIDEBAR_STAGE_BACKDROP_EVENT, onPreferenceChange);
+  }, [user?.id]);
 
   const isIcons = mode === "icons" && isDesktop;
   const currentDiscoverPath = `${location.pathname}${location.search}`;

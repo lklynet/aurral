@@ -1,14 +1,23 @@
+import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useAccountSettings } from "./Settings/hooks/useAccountSettings";
 import { SettingsAccountTab } from "./Settings/components/SettingsAccountTab";
+import {
+  getSidebarStageBackdropEnabled,
+  resolveSidebarStageBackdropVariant,
+  setSidebarStageBackdropEnabled,
+} from "../components/SidebarStageBackdrop";
 import "./Settings/settingsArr.css";
 
 function ProfilePage() {
   useDocumentTitle("Profile");
   const { showSuccess, showError } = useToast();
   const { user: authUser } = useAuth();
+  const [showSidebarArt, setShowSidebarArt] = useState(() =>
+    getSidebarStageBackdropEnabled(authUser?.id),
+  );
   const account = useAccountSettings(authUser, showError);
 
   return (
@@ -43,6 +52,11 @@ function ProfilePage() {
         handleSave={account.handleSave}
         showSuccess={showSuccess}
         showError={showError}
+        showSidebarArt={!!resolveSidebarStageBackdropVariant()}
+        sidebarArtEnabled={showSidebarArt}
+        setSidebarArtEnabled={(enabled) =>
+          setShowSidebarArt(setSidebarStageBackdropEnabled(authUser?.id, enabled))
+        }
       />
     </div>
   );
