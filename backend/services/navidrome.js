@@ -5,6 +5,11 @@ const LEGACY_LIBRARY_DIR = "aurral-weekly-flow";
 const PLAYLIST_LIBRARY_NAME = "Aurral Playlists";
 const LEGACY_LIBRARY_NAMES = new Set(["Aurral Weekly Flow"]);
 const PLAYLIST_SONG_BATCH_SIZE = 50;
+const NAVIDROME_RATE_LIMIT_RETRIES = 2;
+const NAVIDROME_RATE_LIMIT_DELAY_MS = 250;
+const NAVIDROME_RATE_LIMIT_MAX_DELAY_MS = 5_000;
+
+const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 function normalizeSearchText(value) {
   return String(value || "")
@@ -75,24 +80,35 @@ export class NavidromeClient {
     if (!this.isConfigured()) throw new Error("Navidrome not configured");
 
     try {
-      const query = new URLSearchParams();
-      for (const [key, value] of Object.entries({ ...this.getAuthParams(), ...params })) {
-        if (Array.isArray(value)) {
-          for (const item of value) query.append(key, item);
-        } else if (value != null) {
-          query.set(key, value);
+      for (let attempt = 0; ; attempt += 1) {
+        const query = new URLSearchParams();
+        for (const [key, value] of Object.entries({ ...this.getAuthParams(), ...params })) {
+          if (Array.isArray(value)) {
+            for (const item of value) query.append(key, item);
+          } else if (value != null) {
+            query.set(key, value);
+          }
+        }
+        try {
+          const response = await axios.get(`${this.url}/rest/${endpoint}?${query}`);
+
+          if (response.data["subsonic-response"]?.status === "failed") {
+            const responseError = response.data["subsonic-response"].error || {};
+            const error = new Error(responseError.message || "Navidrome request failed");
+            error.code = responseError.code;
+            throw error;
+          }
+
+          return response.data["subsonic-response"];
+        } catch (error) {
+          if (error?.response?.status !== 429 || attempt >= NAVIDROME_RATE_LIMIT_RETRIES) throw error;
+          const retryAfter = Number(error.response.headers?.["retry-after"]);
+          const delay = Number.isFinite(retryAfter)
+            ? Math.min(retryAfter * 1000, NAVIDROME_RATE_LIMIT_MAX_DELAY_MS)
+            : NAVIDROME_RATE_LIMIT_DELAY_MS;
+          await wait(Math.max(0, delay));
         }
       }
-      const response = await axios.get(`${this.url}/rest/${endpoint}?${query}`);
-
-      if (response.data["subsonic-response"]?.status === "failed") {
-        const responseError = response.data["subsonic-response"].error || {};
-        const error = new Error(responseError.message || "Navidrome request failed");
-        error.code = responseError.code;
-        throw error;
-      }
-
-      return response.data["subsonic-response"];
     } catch (error) {
       console.error(`Navidrome Error [${endpoint}]:`, error.message);
       throw error;
