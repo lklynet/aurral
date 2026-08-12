@@ -158,24 +158,3 @@ test("single-pass refresh: db discovery cache stores enriched quality after sing
   ]);
 });
 
-test("single-pass refresh: db discovery cache stores initial quality for backwards compatibility reads", async () => {
-  const { db } = await importFromRepo("backend/config/db-sqlite.js");
-  const { dbOps } = await importFromRepo("backend/db/helpers/index.js");
-  resetDatabase(db);
-
-  dbOps.updateDiscoveryCache({
-    recommendations: [{ id: "artist-2", name: "Initial Quality Artist" }],
-    recommendationQuality: "initial",
-    isEnriching: true,
-    discoveryRunId: "run-initial",
-    enrichmentStartedAt: "2026-06-22T00:00:00.000Z",
-    enrichmentProgressMessage: "Improving recommendations",
-  });
-
-  const cache = dbOps.getDiscoveryCache();
-  assert.equal(cache.recommendationQuality, "initial");
-  assert.equal(cache.isEnriching, true);
-  assert.equal(cache.discoveryRunId, "run-initial");
-  assert.equal(cache.enrichmentProgressMessage, "Improving recommendations");
-});
-

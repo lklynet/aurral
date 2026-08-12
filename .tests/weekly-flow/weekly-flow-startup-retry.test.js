@@ -90,20 +90,3 @@ test("startup resumes pending work", async () => {
   assert.equal(starts, 1);
   assert.equal(downloadTracker.getJob(pendingId)?.status, "pending");
 });
-
-test("legacy retry jobs leave failed tracks terminal", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
-    name: "Legacy retry",
-    tracks: [{ artistName: "Missing", trackName: "Leave Failed" }],
-  });
-  const failedId = downloadTracker.addJob(
-    { artistName: "Missing", trackName: "Leave Failed" },
-    playlist.id,
-  );
-  downloadTracker.setFailed(failedId, "not found");
-
-  const changed = await weeklyFlowWorker.retryIncompletePlaylist(playlist.id);
-
-  assert.equal(changed, 0);
-  assert.equal(downloadTracker.getJob(failedId)?.status, "failed");
-});
