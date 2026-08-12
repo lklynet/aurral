@@ -22,6 +22,47 @@ test("isCircuitOpen returns stale GET cache instead of throwing", async () => {
   assert.equal(artists[0].artistName, "Test");
 });
 
+test("testConnection preserves Lidarr HTTP diagnostics", async (t) => {
+  let status = 401;
+  const server = http.createServer((_request, response) => {
+    response.writeHead(status, {
+      "content-type": "application/json",
+      "x-test-header": String(status),
+    });
+    response.end(JSON.stringify({ message: `failure-${status}` }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const address = server.address();
+  const client = new LidarrClient();
+  client._holdConfig = true;
+  client.config = {
+    url: `http://127.0.0.1:${address.port}`,
+    apiKey: "test",
+    timeoutMs: 2000,
+    circuitDisabled: true,
+  };
+
+  let result = await client.testConnection(true);
+  assert.equal(result.statusCode, 401);
+  assert.match(result.details, /failure-401/);
+  assert.equal(result.responseHeaders["x-test-header"], "401");
+
+  status = 500;
+  result = await client.testConnection(true);
+  assert.equal(result.statusCode, 500);
+  assert.match(result.details, /failure-500/);
+  assert.equal(result.responseHeaders["x-test-header"], "500");
+
+  client._httpAgent.destroy();
+  client._httpsAgent.destroy();
+  client._httpsInsecureAgent.destroy();
+});
+
 test("getAlbumByMbid avoids unrelated broken albums in Lidarr", async (t) => {
   const requests = [];
   const server = http.createServer((request, response) => {

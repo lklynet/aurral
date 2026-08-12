@@ -606,34 +606,44 @@ export class LidarrClient {
               responseTextLower.includes("connect") ||
               responseTextLower.includes("econnrefused"));
           if (isLidarrSkyhookRefused) {
-            throw new Error(
+            const userError = new Error(
               "Lidarr cannot reach api.lidarr.audio from its container. Check Lidarr outbound internet/DNS or proxy settings.",
             );
+            userError.response = raw.response;
+            throw userError;
           }
           if (status === 400) {
-            throw new Error(
+            const userError = new Error(
               `Lidarr API returned 400 Bad Request: ${errorMsg}${
                 errorDetails ? `\n\nFull Response: ${errorDetails}` : ""
               }`,
             );
+            userError.response = raw.response;
+            throw userError;
           }
           if (status === 401) {
-            throw new Error(`Lidarr API authentication failed. Check your API key.`);
+            const userError = new Error(`Lidarr API authentication failed. Check your API key.`);
+            userError.response = raw.response;
+            throw userError;
           }
           if (status === 404) {
             const isAlbumEndpoint = endpoint.includes("/album/");
             if (isAlbumEndpoint) {
               return null;
             }
-            throw new Error(
+            const userError = new Error(
               `Lidarr endpoint not found: ${endpoint}. Check if Lidarr is running and the API version is correct.`,
             );
+            userError.response = raw.response;
+            throw userError;
           }
-          throw new Error(
+          const userError = new Error(
             `Lidarr API error: ${status} - ${
               responseData?.message || responseData?.error || statusText || "Unknown error"
             }`,
           );
+          userError.response = raw.response;
+          throw userError;
         } else if (error.request) {
           console.error("Lidarr API request failed - no response:", msg);
           throw new Error(
@@ -656,78 +666,37 @@ export class LidarrClient {
       return { connected: false, error: "Lidarr not configured" };
     }
 
-    const apiPaths = ["/api/v1", "/api"];
+    this.apiPath = "/api/v1";
 
-    for (const apiPath of apiPaths) {
-      this.apiPath = apiPath;
+    try {
+      const status = await this.request("/system/status", "GET", null, skipConfigUpdate, {
+        bypassCircuit: true,
+      });
+      return {
+        connected: true,
+        version: status.version || "unknown",
+        instanceName: status.instanceName || "Lidarr",
+        apiPath: this.apiPath,
+      };
+    } catch (error) {
+      const errorMessage = error.message || "Unknown error";
+      const errorDetails = error.response?.data
+        ? typeof error.response.data === "string"
+          ? error.response.data
+          : JSON.stringify(error.response.data, null, 2)
+        : "";
 
-      try {
-        try {
-          const rootFolders = await this.request("/rootFolder", "GET", null, skipConfigUpdate, {
-            bypassCircuit: true,
-          });
-          return {
-            connected: true,
-            version: "connected",
-            instanceName: "Lidarr",
-            rootFoldersCount: Array.isArray(rootFolders) ? rootFolders.length : 0,
-            apiPath: apiPath,
-          };
-        } catch (rootFolderError) {
-          if (rootFolderError.message.includes("404") || rootFolderError.message.includes("400")) {
-            try {
-              const status = await this.request("/system/status", "GET", null, skipConfigUpdate, {
-                bypassCircuit: true,
-              });
-              return {
-                connected: true,
-                version: status.version || "unknown",
-                instanceName: status.instanceName || "Lidarr",
-                apiPath: apiPath,
-              };
-            } catch (statusError) {
-              if (apiPath === "/api/v1" && apiPaths.length > 1) {
-                continue;
-              }
-              throw rootFolderError;
-            }
-          }
-          if (apiPath === "/api/v1" && apiPaths.length > 1) {
-            continue;
-          }
-          throw rootFolderError;
-        }
-      } catch (error) {
-        if (apiPath === apiPaths[apiPaths.length - 1]) {
-          const errorMessage = error.message || "Unknown error";
-          const errorDetails = error.response?.data
-            ? typeof error.response.data === "string"
-              ? error.response.data
-              : JSON.stringify(error.response.data, null, 2)
-            : "";
-
-          const fullUrl = `${this.config.url}${apiPath}/rootFolder`;
-
-          return {
-            connected: false,
-            error: errorMessage,
-            details: errorDetails,
-            url: this.config.url,
-            fullUrl: fullUrl,
-            statusCode: error.response?.status,
-            apiPath: apiPath,
-            responseHeaders: error.response?.headers,
-          };
-        }
-        continue;
-      }
+      return {
+        connected: false,
+        error: errorMessage,
+        details: errorDetails,
+        url: this.config.url,
+        fullUrl: `${this.config.url}${this.apiPath}/system/status`,
+        statusCode: error.response?.status,
+        apiPath: this.apiPath,
+        responseHeaders: error.response?.headers,
+      };
     }
-
-    return {
-      connected: false,
-      error: "Failed to connect with any API path",
-      url: this.config.url,
-    };
   }
 
   async getRootFolders() {
