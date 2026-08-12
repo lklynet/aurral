@@ -102,8 +102,9 @@ export class NavidromeClient {
           return response.data["subsonic-response"];
         } catch (error) {
           if (error?.response?.status !== 429 || attempt >= NAVIDROME_RATE_LIMIT_RETRIES) throw error;
-          const retryAfter = Number(error.response.headers?.["retry-after"]);
-          const delay = Number.isFinite(retryAfter)
+          const retryAfterHeader = error.response.headers?.["retry-after"]?.trim();
+          const retryAfter = Number(retryAfterHeader);
+          const delay = retryAfterHeader && Number.isFinite(retryAfter) && retryAfter >= 0
             ? Math.min(retryAfter * 1000, NAVIDROME_RATE_LIMIT_MAX_DELAY_MS)
             : NAVIDROME_RATE_LIMIT_DELAY_MS;
           await wait(Math.max(0, delay));
