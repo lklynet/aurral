@@ -3,7 +3,7 @@ import { getCanonicalLibrary } from "../../../services/libraryQueryService.js";
 
 const isFilesystemPathKey = (key) => key.toLowerCase().endsWith("path");
 
-function stripFilesystemPaths(value) {
+export function stripFilesystemPaths(value) {
   if (Array.isArray(value)) return value.map(stripFilesystemPaths);
   if (!value || typeof value !== "object") return value;
   return Object.fromEntries(

@@ -12,6 +12,7 @@ import {
   findCanonicalTracksForAlbum,
   getCanonicalLibraryReadModel,
 } from "../../../services/canonicalLibraryReadAdapter.js";
+import { stripFilesystemPaths } from "./canonical.js";
 
 const AUDIO_CONTENT_TYPES = {
   ".mp3": "audio/mpeg",
@@ -105,8 +106,8 @@ export function registerTracks(router) {
           )
           .find(Boolean);
         const canonicalTracks = album
-          ? findCanonicalTracksForAlbum(tracks, album.id).map(({ path: _path, ...track }) => ({
-              ...track,
+          ? findCanonicalTracksForAlbum(tracks, album.id).map((track) => ({
+              ...stripFilesystemPaths(track),
               streamPath: null,
               streamFormat: null,
             }))
