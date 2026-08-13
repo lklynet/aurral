@@ -55,7 +55,7 @@ test("getCanonicalLibrary merges sources and preserves normalized hierarchy", as
           foreignAlbumId: metadata.common.musicbrainz_releasegroupid,
           path: path.join(lidarrRoot, "Query Fixture", "Canonical Reads"),
         }],
-        getAllTracks: async () => [{
+        getTracksByAlbumId: async () => [{
           id: 9,
           albumId: 8,
           title: "One Source, Two Files",
@@ -63,7 +63,7 @@ test("getCanonicalLibrary merges sources and preserves normalized hierarchy", as
           foreignRecordingId: metadata.common.musicbrainz_recordingid,
           trackFileId: 10,
         }],
-        getAllTrackFiles: async () => [{ id: 10, path: lidarrFilePath, trackIds: [9] }],
+        getTrackFilesByAlbumId: async () => [{ id: 10, path: lidarrFilePath, trackIds: [9] }],
         getRootFolders: async () => [{ path: lidarrRoot }],
       },
     });

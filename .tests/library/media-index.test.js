@@ -139,7 +139,7 @@ test("indexLidarrLibrary imports logical media and readable track files", async 
           path: path.join(root, "Artist", "Album"),
         },
       ],
-      getAllTracks: async () => [
+      getTracksByAlbumId: async () => [
         {
           id: 9,
           albumId: 8,
@@ -149,7 +149,7 @@ test("indexLidarrLibrary imports logical media and readable track files", async 
           trackFileId: 10,
         },
       ],
-      getAllTrackFiles: async () => [
+      getTrackFilesByAlbumId: async () => [
         { id: 10, path: filePath, trackIds: [9], mediaInfo: { audioFormat: "FLAC" } },
       ],
       getRootFolders: async () => [{ path: root }],

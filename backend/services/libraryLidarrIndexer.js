@@ -12,6 +12,7 @@ import {
   withLibraryScan,
 } from "./libraryMediaStore.js";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
+import { mapWithConcurrency } from "./discovery/helpers.js";
 
 const text = (value) => String(value || "").trim();
 
@@ -64,23 +65,31 @@ export async function indexLidarrLibrary({ client } = {}) {
     return { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   }
 
-  const [artists, albums, tracks, files, rootFolders] = await Promise.all([
+  const [artists, albums, rootFolders] = await Promise.all([
     client.request("/artist", "GET", null, false, { forceRefresh: true }),
     client.getAllAlbums({ forceRefresh: true }),
-    client.getAllTracks(),
-    client.getAllTrackFiles(),
     client.getRootFolders(),
   ]);
   const artistById = new Map((Array.isArray(artists) ? artists : []).map((item) => [String(item.id), item]));
+  const albumTrackData = await mapWithConcurrency(albums, 4, async (album) => {
+    if (!album?.id) return { albumId: null, tracks: [], files: [] };
+    const [tracks, files] = await Promise.all([
+      client.getTracksByAlbumId(album.id),
+      client.getTrackFilesByAlbumId(album.id),
+    ]);
+    return {
+      albumId: String(album.id),
+      tracks: Array.isArray(tracks) ? tracks : [],
+      files: Array.isArray(files) ? files : [],
+    };
+  });
   const tracksByAlbumId = new Map();
-  for (const track of Array.isArray(tracks) ? tracks : []) {
-    const key = String(track?.albumId || "");
-    if (!key) continue;
-    const list = tracksByAlbumId.get(key) || [];
-    list.push(track);
-    tracksByAlbumId.set(key, list);
+  const allFiles = [];
+  for (const albumData of albumTrackData) {
+    if (albumData.albumId) tracksByAlbumId.set(albumData.albumId, albumData.tracks);
+    allFiles.push(...albumData.files);
   }
-  const fileIndex = buildFileIndex(files);
+  const fileIndex = buildFileIndex(allFiles);
   const rootPath = (Array.isArray(rootFolders) ? rootFolders : [])
     .map((folder) => text(folder?.path))
     .filter(Boolean)
