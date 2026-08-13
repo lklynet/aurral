@@ -103,6 +103,7 @@ test("getCanonicalLibrary merges sources and preserves normalized hierarchy", as
 test("getCanonicalLibrary deduplicates a file shared by multiple album relationships", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-query-duplicate-"));
   let filePath;
+  let duplicateAlbumId;
   try {
     filePath = await createAudioFile(root, "Artist/Album/01 Track.flac");
     await scanMusicRoot({ rootPath: root, source: "aurral", metadataReader: async () => metadata });
@@ -114,6 +115,7 @@ test("getCanonicalLibrary deduplicates a file shared by multiple album relations
       artistId: album.artistId,
       title: "Duplicate Relationship",
     });
+    duplicateAlbumId = duplicateAlbum.id;
     linkLibraryAlbumTrack({ albumId: duplicateAlbum.id, trackId: track.id, trackNumber: 1 });
 
     const result = getCanonicalLibrary({ source: "aurral" });
@@ -121,6 +123,10 @@ test("getCanonicalLibrary deduplicates a file shared by multiple album relations
     assert.equal(resultTrack.files.length, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
+    if (duplicateAlbumId) {
+      db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(duplicateAlbumId);
+      db.prepare("DELETE FROM library_albums WHERE id = ?").run(duplicateAlbumId);
+    }
     db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run("aurral", filePath);
   }
 });
