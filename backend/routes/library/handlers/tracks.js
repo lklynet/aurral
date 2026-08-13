@@ -4,7 +4,6 @@ import { noCache } from "../../../middleware/cache.js";
 import { verifyTokenAuth } from "../../../middleware/auth.js";
 import { getAlbumTracksByAlbumMbid } from "../../../services/providers/brainzmashProvider.js";
 import { enrichTracksWithDeezerPreviews } from "../../../services/apiClients/index.js";
-import fs from "fs";
 import fsp from "fs/promises";
 import path from "path";
 import { logger } from "../../../services/logger.js";
@@ -13,15 +12,7 @@ import {
   getCanonicalLibraryReadModel,
 } from "../../../services/canonicalLibraryReadAdapter.js";
 import { stripFilesystemPaths } from "./canonical.js";
-
-const AUDIO_CONTENT_TYPES = {
-  ".mp3": "audio/mpeg",
-  ".m4a": "audio/mp4",
-  ".aac": "audio/aac",
-  ".flac": "audio/flac",
-  ".ogg": "audio/ogg",
-  ".wav": "audio/wav",
-};
+import { streamAudioFile } from "../../../services/audioFileStream.js";
 
 const canReadAudioFile = async (filePath) => {
   if (!filePath) return false;
@@ -31,47 +22,6 @@ const canReadAudioFile = async (filePath) => {
   } catch {
     return false;
   }
-};
-
-const streamAudioFile = async (req, res, filePath) => {
-  let stat;
-  try {
-    stat = await fsp.stat(filePath);
-    if (!stat.isFile()) {
-      return res.status(404).json({ error: "Track file missing" });
-    }
-  } catch {
-    return res.status(404).json({ error: "Track file missing" });
-  }
-
-  const ext = path.extname(filePath).toLowerCase();
-  res.setHeader("Content-Type", AUDIO_CONTENT_TYPES[ext] || "application/octet-stream");
-  res.setHeader("Accept-Ranges", "bytes");
-
-  const range = req.headers.range;
-  if (!range) {
-    res.setHeader("Content-Length", stat.size);
-    fs.createReadStream(filePath).pipe(res);
-    return;
-  }
-
-  const match = /bytes=(\d*)-(\d*)/.exec(range);
-  if (!match) {
-    res.status(416).end();
-    return;
-  }
-  const rawStart = match[1] ? Number(match[1]) : 0;
-  const rawEnd = match[2] ? Number(match[2]) : stat.size - 1;
-  const start = Number.isFinite(rawStart) ? rawStart : 0;
-  const end = Number.isFinite(rawEnd) ? rawEnd : stat.size - 1;
-  if (start < 0 || end < start || end >= stat.size) {
-    res.status(416).end();
-    return;
-  }
-  res.status(206);
-  res.setHeader("Content-Range", `bytes ${start}-${end}/${stat.size}`);
-  res.setHeader("Content-Length", end - start + 1);
-  fs.createReadStream(filePath, { start, end }).pipe(res);
 };
 
 export function registerTracks(router) {
@@ -233,7 +183,9 @@ export function registerTracks(router) {
       if (!track?.hasFile || !track.path) {
         return res.status(404).json({ error: "Track file missing" });
       }
-      return streamAudioFile(req, res, track.path);
+      if (!(await streamAudioFile(req, res, track.path))) {
+        if (!res.headersSent) return res.status(404).json({ error: "Track file missing" });
+      }
     } catch (error) {
       if (!res.headersSent) {
         res.status(500).json({

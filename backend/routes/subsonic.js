@@ -2,6 +2,19 @@ import express from "express";
 
 import { APP_NAME, APP_VERSION } from "../config/constants.js";
 import { resolveUser } from "../middleware/auth.js";
+import { streamAudioFile } from "../services/audioFileStream.js";
+import {
+  getAlbum,
+  getArtist,
+  getFlowPlaylist,
+  getFlowPlaylists,
+  getMusicDirectory,
+  getSong,
+  listArtists,
+  resolveArtworkUrl,
+  resolveStreamPath,
+  searchLibrary,
+} from "../services/subsonicLibraryService.js";
 
 const SUBSONIC_VERSION = "1.16.1";
 const SUBSONIC_NAMESPACE = "http://subsonic.org/restapi";
@@ -41,25 +54,49 @@ function responseAttributes(status) {
   };
 }
 
-function renderXml({ status, error }) {
+function renderXmlElement(name, value) {
+  if (Array.isArray(value)) return value.map((entry) => renderXmlElement(name, entry)).join("");
+  if (value == null) return "";
+  if (typeof value !== "object") {
+    return `<${name}>${escapeXml(value)}</${name}>`;
+  }
+
+  const attributes = [];
+  const children = [];
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry == null || entry === undefined) continue;
+    if (typeof entry === "object") children.push(renderXmlElement(key, entry));
+    else attributes.push(`${key}="${escapeXml(entry)}"`);
+  }
+  const opening = `<${name}${attributes.length ? ` ${attributes.join(" ")}` : ""}>`;
+  return children.length ? `${opening}${children.join("")}</${name}>` : opening.slice(0, -1) + "/>";
+}
+
+function renderXml({ status, data = {}, error }) {
   const attributes = Object.entries(responseAttributes(status))
     .map(([key, value]) => `${key}="${escapeXml(value)}"`)
     .join(" ");
-  const errorElement = error
+  const body = error
     ? `<error code="${error.code}" message="${escapeXml(error.message)}"/>`
-    : "";
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<subsonic-response xmlns="${SUBSONIC_NAMESPACE}" ${attributes}>${errorElement}</subsonic-response>`;
+    : Object.entries(data)
+        .map(([key, value]) => renderXmlElement(key, value))
+        .join("");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<subsonic-response xmlns="${SUBSONIC_NAMESPACE}" ${attributes}>${body}</subsonic-response>`;
 }
 
-function sendResponse(res, format, status = "ok", error = null) {
+function sendResponse(res, format, status = "ok", error = null, data = {}) {
   const payload = {
     "subsonic-response": {
       ...responseAttributes(status),
-      ...(error ? { error } : {}),
+      ...(error ? { error } : data),
     },
   };
   res.type(format === "json" ? "application/json" : "application/xml");
-  return res.send(format === "json" ? JSON.stringify(payload) : renderXml({ status, error }));
+  return res.send(
+    format === "json"
+      ? JSON.stringify(payload)
+      : renderXml({ status, data, error }),
+  );
 }
 
 function sendError(res, format, code, message) {
@@ -101,7 +138,22 @@ function validateRequest(req, format) {
   return { format, password, token, salt };
 }
 
-function handleSubsonicRequest(req, res) {
+const groupArtists = (artists) => {
+  const groups = new Map();
+  for (const artist of artists) {
+    const name = String(artist.name || "#");
+    const key = name.slice(0, 1).toUpperCase();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(artist);
+  }
+  return [...groups.entries()].map(([name, artist]) => ({ name, artist }));
+};
+
+function handleBinaryError(res, message = "Requested media was not found") {
+  return res.status(404).set("Content-Type", "text/plain; charset=utf-8").send(message);
+}
+
+async function handleSubsonicRequest(req, res) {
   const validation = validateRequest(req, requestedFormat(req));
   if (validation.error) return sendError(res, validation.format, ...validation.error);
 
@@ -116,11 +168,73 @@ function handleSubsonicRequest(req, res) {
   req.user = user;
 
   const method = String(req.params.method || "").replace(/\.view$/i, "").toLowerCase();
-  if (method !== "ping") return sendError(res, format, 0, `Unsupported request: ${method}`);
-  return sendResponse(res, format);
+  if (method === "ping") return sendResponse(res, format);
+  if (method === "getmusicfolders") {
+    return sendResponse(res, format, "ok", null, {
+      musicFolders: { musicFolder: [{ id: "root", name: APP_NAME }] },
+    });
+  }
+  if (method === "getartists" || method === "getindexes") {
+    const indexes = groupArtists(listArtists());
+    return sendResponse(res, format, "ok", null, {
+      [method === "getartists" ? "artists" : "indexes"]: { index: indexes },
+    });
+  }
+  if (method === "getartist") {
+    const artist = getArtist(getParameter(req, "id"));
+    return artist
+      ? sendResponse(res, format, "ok", null, { artist })
+      : sendError(res, format, 70, "Requested data was not found");
+  }
+  if (method === "getalbum") {
+    const album = getAlbum(getParameter(req, "id"));
+    return album
+      ? sendResponse(res, format, "ok", null, { album })
+      : sendError(res, format, 70, "Requested data was not found");
+  }
+  if (method === "getsong") {
+    const song = getSong(getParameter(req, "id"), user);
+    return song
+      ? sendResponse(res, format, "ok", null, { song })
+      : sendError(res, format, 70, "Requested data was not found");
+  }
+  if (method === "getmusicdirectory") {
+    const directory = getMusicDirectory(getParameter(req, "id"));
+    return directory
+      ? sendResponse(res, format, "ok", null, { directory })
+      : sendError(res, format, 70, "Requested data was not found");
+  }
+  if (method === "search3" || method === "search2") {
+    const query = getParameter(req, "query");
+    if (!query) return sendError(res, format, 10, "Required parameter is missing: query");
+    return sendResponse(res, format, "ok", null, {
+      [method === "search3" ? "searchResult3" : "searchResult2"]: searchLibrary(query, req.query),
+    });
+  }
+  if (method === "getplaylists") {
+    return sendResponse(res, format, "ok", null, { playlists: { playlist: getFlowPlaylists(user) } });
+  }
+  if (method === "getplaylist") {
+    const playlist = getFlowPlaylist(getParameter(req, "id"), user);
+    return playlist
+      ? sendResponse(res, format, "ok", null, { playlist })
+      : sendError(res, format, 70, "Requested data was not found");
+  }
+  if (method === "stream" || method === "download") {
+    const filePath = resolveStreamPath(getParameter(req, "id"), user);
+    if (!filePath) return handleBinaryError(res, "Track file missing");
+    const streamed = await streamAudioFile(req, res, filePath);
+    return streamed || res.headersSent ? undefined : handleBinaryError(res, "Track file missing");
+  }
+  if (method === "getcoverart") {
+    const artworkUrl = await resolveArtworkUrl(getParameter(req, "id"));
+    return artworkUrl ? res.redirect(302, artworkUrl) : handleBinaryError(res, "Cover art not found");
+  }
+  return sendError(res, format, 0, `Unsupported request: ${method}`);
 }
 
 router.all("/:method", handleSubsonicRequest);
 router.use((_req, res) => sendError(res, "xml", 0, "Unsupported request"));
 
+export { groupArtists, renderXmlElement };
 export default router;

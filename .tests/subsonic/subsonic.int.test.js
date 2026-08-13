@@ -89,10 +89,10 @@ test("returns protocol errors for unsupported authentication and requests", asyn
   const token = await request("ping", { p: "", t: "token", s: "salt", f: "json" });
   assert.equal(token.json.error.code, 41);
 
-  const unsupported = await request("getArtists", { f: "json" });
+  const unsupported = await request("getVideos", { f: "json" });
   assert.deepEqual(unsupported.json.error, {
     code: 0,
-    message: "Unsupported request: getartists",
+    message: "Unsupported request: getvideos",
   });
 
   const unsupportedFormat = await request("ping", { f: "jsonp" });
