@@ -8,6 +8,10 @@ import fs from "fs";
 import fsp from "fs/promises";
 import path from "path";
 import { logger } from "../../../services/logger.js";
+import {
+  findCanonicalTracksForAlbum,
+  getCanonicalLibraryReadModel,
+} from "../../../services/canonicalLibraryReadAdapter.js";
 
 const AUDIO_CONTENT_TYPES = {
   ".mp3": "audio/mpeg",
@@ -85,6 +89,26 @@ export function registerTracks(router) {
   router.get("/tracks", cacheMiddleware(120), async (req, res) => {
     try {
       const { albumId, releaseGroupMbid } = req.query;
+
+      if (req.query.readPath === "canonical") {
+        const { albums, tracks } = getCanonicalLibraryReadModel({
+          source: req.query.source || "lidarr",
+        });
+        const reference = albumId || releaseGroupMbid;
+        const album = albums.find((candidate) =>
+          [candidate.id, candidate.mbid, candidate.foreignAlbumId].some(
+            (value) => String(value ?? "") === String(reference),
+          ),
+        );
+        const canonicalTracks = album
+          ? findCanonicalTracksForAlbum(tracks, album.id).map(({ path: _path, ...track }) => ({
+              ...track,
+              streamPath: null,
+              streamFormat: null,
+            }))
+          : [];
+        return res.json(canonicalTracks);
+      }
 
       let tracks = [];
 

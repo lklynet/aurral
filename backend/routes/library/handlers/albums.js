@@ -8,6 +8,10 @@ import {
   requirePermission,
 } from "../../../middleware/requirePermission.js";
 import { logger } from "../../../services/logger.js";
+import {
+  findCanonicalAlbumsForArtist,
+  getCanonicalLibraryReadModel,
+} from "../../../services/canonicalLibraryReadAdapter.js";
 
 export function registerAlbums(router) {
   router.get("/albums", cacheMiddleware(5), async (req, res) => {
@@ -15,6 +19,11 @@ export function registerAlbums(router) {
       const { artistId } = req.query;
       if (!artistId) {
         return res.status(400).json({ error: "artistId parameter is required" });
+      }
+
+      if (req.query.readPath === "canonical") {
+        const { albums } = getCanonicalLibraryReadModel({ source: req.query.source || "lidarr" });
+        return res.json(findCanonicalAlbumsForArtist(albums, artistId));
       }
 
       const albums = await libraryManager.getAlbums(artistId);
