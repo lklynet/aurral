@@ -137,10 +137,17 @@ test("getCanonicalLibrary rejects unknown source filters", () => {
 
 test("canonical library responses do not expose filesystem paths", () => {
   const response = toPublicLibrary({
-    artists: [],
-    albums: [],
-    tracks: [{ id: 1, files: [{ id: 2, path: "/music/private.flac", source: "aurral" }] }],
+    artists: [{ metadata: { path: "/music/private", tags: { genre: "rock" } } }],
+    albums: [{ metadata: { rootFolderPath: "/music/private" } }],
+    tracks: [{
+      id: 1,
+      metadata: { nested: { filePath: "/music/private.flac" } },
+      files: [{ id: 2, path: "/music/private.flac", source: "aurral" }],
+    }],
   });
 
+  assert.deepEqual(response.artists[0].metadata, { tags: { genre: "rock" } });
+  assert.deepEqual(response.albums[0].metadata, {});
+  assert.deepEqual(response.tracks[0].metadata, { nested: {} });
   assert.deepEqual(response.tracks[0].files, [{ id: 2, source: "aurral" }]);
 });

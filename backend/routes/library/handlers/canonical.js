@@ -1,15 +1,24 @@
 import { noCache } from "../../../middleware/cache.js";
 import { getCanonicalLibrary } from "../../../services/libraryQueryService.js";
 
+const isFilesystemPathKey = (key) => key.toLowerCase().endsWith("path");
+
+function stripFilesystemPaths(value) {
+  if (Array.isArray(value)) return value.map(stripFilesystemPaths);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !isFilesystemPathKey(key))
+      .map(([key, entry]) => [key, stripFilesystemPaths(entry)]),
+  );
+}
+
 function toPublicLibrary(library) {
-  return {
+  return stripFilesystemPaths({
     artists: library.artists,
     albums: library.albums,
-    tracks: library.tracks.map((track) => ({
-      ...track,
-      files: track.files.map(({ path: _path, ...file }) => file),
-    })),
-  };
+    tracks: library.tracks,
+  });
 }
 
 export function registerCanonical(router) {
