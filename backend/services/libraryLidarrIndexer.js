@@ -176,7 +176,9 @@ export async function indexLidarrLibrary({ client } = {}) {
         result.filesIndexed += 1;
       }
     }
-    markUnseenFilesUnavailable(scanId, "lidarr");
+    if (result.filesFailed === 0) {
+      markUnseenFilesUnavailable(scanId, "lidarr");
+    }
     return result;
   });
 }

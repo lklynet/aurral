@@ -9,6 +9,10 @@ import { scanMusicRoot } from "../../backend/services/libraryFileScanner.js";
 import { indexLidarrLibrary } from "../../backend/services/libraryLidarrIndexer.js";
 import { getCanonicalLibrary } from "../../backend/services/libraryQueryService.js";
 import { toPublicLibrary } from "../../backend/routes/library/handlers/canonical.js";
+import {
+  linkLibraryAlbumTrack,
+  upsertLibraryAlbum,
+} from "../../backend/services/libraryMediaStore.js";
 
 const metadata = {
   common: {
@@ -34,14 +38,10 @@ async function createAudioFile(root, relativePath) {
 
 test("getCanonicalLibrary merges sources and preserves normalized hierarchy", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-query-"));
-  const lidarrRoot = await mkdtemp(path.join(tmpdir(), "aurral-library-query-lidarr-"));
   const source = `query-aurral-${process.pid}`;
+  let filePath;
   try {
-    const filePath = await createAudioFile(root, "Query Fixture/Canonical Reads/01 One Source, Two Files.flac");
-    const lidarrFilePath = await createAudioFile(
-      lidarrRoot,
-      "Query Fixture/Canonical Reads/01 One Source, Two Files.flac",
-    );
+    filePath = await createAudioFile(root, "Query Fixture/Canonical Reads/01 One Source, Two Files.flac");
     await scanMusicRoot({ rootPath: root, source, metadataReader: async () => metadata });
 
     await indexLidarrLibrary({
@@ -53,7 +53,7 @@ test("getCanonicalLibrary merges sources and preserves normalized hierarchy", as
           artistId: 7,
           title: "Canonical Reads",
           foreignAlbumId: metadata.common.musicbrainz_releasegroupid,
-          path: path.join(lidarrRoot, "Query Fixture", "Canonical Reads"),
+          path: path.join(root, "Query Fixture", "Canonical Reads"),
         }],
         getTracksByAlbumId: async () => [{
           id: 9,
@@ -63,8 +63,8 @@ test("getCanonicalLibrary merges sources and preserves normalized hierarchy", as
           foreignRecordingId: metadata.common.musicbrainz_recordingid,
           trackFileId: 10,
         }],
-        getTrackFilesByAlbumId: async () => [{ id: 10, path: lidarrFilePath, trackIds: [9] }],
-        getRootFolders: async () => [{ path: lidarrRoot }],
+        getTrackFilesByAlbumId: async () => [{ id: 10, path: filePath, trackIds: [9] }],
+        getRootFolders: async () => [{ path: root }],
       },
     });
 
@@ -82,15 +82,46 @@ test("getCanonicalLibrary merges sources and preserves normalized hierarchy", as
     assert.equal(lidarr.tracks.length, 1);
     assert.deepEqual(lidarr.tracks[0].sources, ["lidarr"]);
 
-    db.prepare("UPDATE library_media_files SET available = 0 WHERE path = ?").run(lidarrFilePath);
+    db.prepare("UPDATE library_media_files SET available = 0 WHERE source = ? AND path = ?").run(
+      "lidarr",
+      filePath,
+    );
     const available = getCanonicalLibrary({ availableOnly: true });
     assert.equal(available.tracks.length, 1);
     assert.deepEqual(available.tracks[0].sources, [source]);
     assert.equal(available.tracks[0].files.length, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
-    await rm(lidarrRoot, { recursive: true, force: true });
-    db.prepare("DELETE FROM library_media_files WHERE source IN (?, ?)").run(source, "lidarr");
+    db.prepare("DELETE FROM library_media_files WHERE source IN (?, ?) AND path = ?").run(
+      source,
+      "lidarr",
+      filePath,
+    );
+  }
+});
+
+test("getCanonicalLibrary deduplicates a file shared by multiple album relationships", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-query-duplicate-"));
+  let filePath;
+  try {
+    filePath = await createAudioFile(root, "Artist/Album/01 Track.flac");
+    await scanMusicRoot({ rootPath: root, source: "aurral", metadataReader: async () => metadata });
+    const first = getCanonicalLibrary({ source: "aurral" });
+    const track = first.tracks.find((entry) => entry.files.some((file) => file.path === filePath));
+    const album = first.albums.find((entry) => entry.trackIds.includes(track.id));
+    const duplicateAlbum = upsertLibraryAlbum({
+      identityKey: `duplicate-album:${process.pid}`,
+      artistId: album.artistId,
+      title: "Duplicate Relationship",
+    });
+    linkLibraryAlbumTrack({ albumId: duplicateAlbum.id, trackId: track.id, trackNumber: 1 });
+
+    const result = getCanonicalLibrary({ source: "aurral" });
+    const resultTrack = result.tracks.find((entry) => entry.files.some((file) => file.path === filePath));
+    assert.equal(resultTrack.files.length, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run("aurral", filePath);
   }
 });
 

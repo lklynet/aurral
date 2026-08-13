@@ -117,9 +117,9 @@ test("a partial rescan preserves the last known-good file availability", async (
 
 test("indexLidarrLibrary imports logical media and readable track files", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-index-"));
-  const source = `lidarr-${process.pid}`;
+  let filePath;
   try {
-    const filePath = await createAudioFile(root, "Artist/Album/01 Track.flac");
+    filePath = await createAudioFile(root, "Artist/Album/01 Track.flac");
     const client = {
       isConfigured: () => true,
       request: async () => [
@@ -166,9 +166,52 @@ test("indexLidarrLibrary imports logical media and readable track files", async 
     assert.equal(snapshot.tracks.some((track) => track.title === "Track"), true);
   } finally {
     await rm(root, { recursive: true, force: true });
-    db.prepare("DELETE FROM library_media_files WHERE source IN (?, ?)").run(
-      source,
-      `test-aurral-${process.pid}`,
+    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run(
+      "lidarr",
+      filePath,
+    );
+  }
+});
+
+test("a partial Lidarr rescan preserves existing file availability", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-partial-"));
+  let filePath;
+  try {
+    filePath = await createAudioFile(root, "Artist/Album/01 Track.flac");
+    const client = {
+      isConfigured: () => true,
+      request: async () => [{ id: 17, artistName: "Artist", foreignArtistId: "77777777-7777-4777-8777-777777777777" }],
+      getAllAlbums: async () => [{
+        id: 18,
+        artistId: 17,
+        title: "Album",
+        foreignAlbumId: "88888888-8888-4888-8888-888888888888",
+        path: path.join(root, "Artist", "Album"),
+      }],
+      getTracksByAlbumId: async () => [{
+        id: 19,
+        albumId: 18,
+        title: "Track",
+        trackNumber: 1,
+        foreignRecordingId: "99999999-9999-4999-8999-999999999999",
+        trackFileId: 20,
+      }],
+      getTrackFilesByAlbumId: async () => [{ id: 20, path: filePath, trackIds: [19] }],
+      getRootFolders: async () => [{ path: root }],
+    };
+
+    await indexLidarrLibrary({ client });
+    await rm(filePath);
+    const result = await indexLidarrLibrary({ client });
+    const file = getLibrarySnapshot().files.find((entry) => entry.path === filePath);
+
+    assert.equal(result.filesFailed, 1);
+    assert.equal(file?.available, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run(
+      "lidarr",
+      filePath,
     );
   }
 });

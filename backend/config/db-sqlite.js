@@ -198,7 +198,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     track_id INTEGER NOT NULL,
     source TEXT NOT NULL,
-    path TEXT NOT NULL UNIQUE,
+    path TEXT NOT NULL,
     format TEXT,
     size INTEGER NOT NULL DEFAULT 0,
     mtime_ms INTEGER,
@@ -208,6 +208,7 @@ db.exec(`
     last_seen_scan_id INTEGER,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
+    UNIQUE (source, path),
     FOREIGN KEY (track_id) REFERENCES library_tracks(id) ON DELETE CASCADE
   );
 
@@ -328,6 +329,61 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_honker_task_runs_queue_started ON honker_task_runs(queue, started_at DESC);
   CREATE INDEX IF NOT EXISTS idx_honker_task_runs_job ON honker_task_runs(job_id, queue);
 `);
+
+function hasUniqueIndex(columns) {
+  return db.prepare("PRAGMA index_list(library_media_files)").all().some((index) => {
+    if (!index.unique) return false;
+    const indexName = String(index.name).replaceAll('"', '""');
+    const indexColumns = db
+      .prepare(`PRAGMA index_info("${indexName}")`)
+      .all()
+      .map((column) => column.name);
+    return JSON.stringify(indexColumns) === JSON.stringify(columns);
+  });
+}
+
+if (hasUniqueIndex(["path"])) {
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE library_media_files_v3 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        track_id INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        path TEXT NOT NULL,
+        format TEXT,
+        size INTEGER NOT NULL DEFAULT 0,
+        mtime_ms INTEGER,
+        duration_ms INTEGER,
+        quality_json TEXT,
+        available INTEGER NOT NULL DEFAULT 1,
+        last_seen_scan_id INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE (source, path),
+        FOREIGN KEY (track_id) REFERENCES library_tracks(id) ON DELETE CASCADE
+      );
+
+      INSERT INTO library_media_files_v3
+        (id, track_id, source, path, format, size, mtime_ms, duration_ms, quality_json,
+         available, last_seen_scan_id, created_at, updated_at)
+      SELECT id, track_id, source, path, format, size, mtime_ms, duration_ms, quality_json,
+        available, last_seen_scan_id, created_at, updated_at
+      FROM library_media_files;
+
+      DROP TABLE library_media_files;
+      ALTER TABLE library_media_files_v3 RENAME TO library_media_files;
+    `);
+  })();
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_library_media_files_track_id
+      ON library_media_files (track_id);
+    CREATE INDEX IF NOT EXISTS idx_library_media_files_source_available
+      ON library_media_files (source, available);
+    CREATE INDEX IF NOT EXISTS idx_library_media_files_scan_id
+      ON library_media_files (last_seen_scan_id);
+  `);
+}
 
 const duplicateLidarrArtistIds = db
   .prepare(

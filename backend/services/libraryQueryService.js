@@ -148,7 +148,9 @@ export function getCanonicalLibrary({ source = null, availableOnly = false } = {
       quality: parseJson(row.media_quality_json),
       available: Boolean(row.media_available),
     };
-    track.files.push(file);
+    if (!track.files.some((entry) => entry.id === file.id)) {
+      track.files.push(file);
+    }
     if (file.available) {
       artist.available = true;
       album.available = true;

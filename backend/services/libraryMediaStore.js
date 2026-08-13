@@ -174,7 +174,7 @@ export function upsertLibraryMediaFile({
     `INSERT INTO library_media_files
       (track_id, source, path, format, size, mtime_ms, duration_ms, quality_json, available, last_seen_scan_id, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(path) DO UPDATE SET
+     ON CONFLICT(source, path) DO UPDATE SET
        track_id = excluded.track_id,
        source = excluded.source,
        format = excluded.format,
