@@ -517,7 +517,7 @@ function migrateLegacyAdmin() {
   }
 }
 
-function resolveUser(username, password) {
+export function resolveUser(username, password) {
   if (userOps.countUsers() === 0) {
     migrateLegacyAdmin();
     if (userOps.countUsers() === 0) return null;

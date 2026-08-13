@@ -7,6 +7,8 @@ Navidrome is optional. Aurral creates and updates Navidrome playlists through th
 
 This is a filesystem connection as well as an API connection. A successful **Test connection** only proves that Aurral can reach the Navidrome API.
 
+Aurral also exposes an authenticated Subsonic handshake at `/rest/ping.view`. It supports XML and JSON responses and identifies the running server version. Browsing, artwork, streaming, playlists, and transcoding are not available through this endpoint yet. Navidrome remains the playback server.
+
 See [Filesystem and mounts](/getting-started/storage/) for the complete layout. The recommended Docker setup mounts the same host media root at `/data` in Aurral and Navidrome:
 
 ```yaml

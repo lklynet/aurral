@@ -38,6 +38,7 @@ import imageProxyRouter from "./routes/imageProxy.js";
 import lidarrFeedRouter from "./routes/lidarrFeed.js";
 import inboxRouter from "./routes/inbox.js";
 import newsRouter from "./routes/news.js";
+import subsonicRouter from "./routes/subsonic.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -196,6 +197,7 @@ app.use("/api/weekly-flow", (req, res) => {
 });
 app.use("/api/auth", authRouter);
 app.use("/api/image-proxy", imageProxyRouter);
+app.use("/rest", subsonicRouter);
 
 app.get("/sso/callback", async (req, res) => {
   try {
