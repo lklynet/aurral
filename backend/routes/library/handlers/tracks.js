@@ -94,12 +94,16 @@ export function registerTracks(router) {
         const { albums, tracks } = getCanonicalLibraryReadModel({
           source: req.query.source || "lidarr",
         });
-        const reference = albumId || releaseGroupMbid;
-        const album = albums.find((candidate) =>
-          [candidate.id, candidate.mbid, candidate.foreignAlbumId].some(
-            (value) => String(value ?? "") === String(reference),
-          ),
-        );
+        const album = [albumId, releaseGroupMbid]
+          .filter(Boolean)
+          .map((reference) =>
+            albums.find((candidate) =>
+              [candidate.id, candidate.mbid, candidate.foreignAlbumId].some(
+                (value) => String(value ?? "") === String(reference),
+              ),
+            ),
+          )
+          .find(Boolean);
         const canonicalTracks = album
           ? findCanonicalTracksForAlbum(tracks, album.id).map(({ path: _path, ...track }) => ({
               ...track,
