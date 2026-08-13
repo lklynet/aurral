@@ -116,8 +116,14 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   const artistsResult = responseJson(await request("getArtists"));
   const artist = artistsResult.artists.index[0].artist[0];
   assert.match(artist.id, /^artist:/);
+  assert.equal(artistsResult.artists.ignoredArticles, "The El La Los Las Le Les");
   const artistsXml = await request("getArtists", { f: "xml" });
-  assert.match(artistsXml.body, /<artists><index name="C"><artist id="artist:/);
+  assert.match(artistsXml.body, /<artists[^>]*><index name="C"><artist id="artist:/);
+
+  const license = responseJson(await request("getLicense"));
+  assert.equal(license.license.valid, true);
+  const indexes = responseJson(await request("getIndexes"));
+  assert.equal(typeof indexes.indexes.lastModified, "number");
 
   const albumResult = responseJson(await request("getArtist", { id: artist.id }));
   const album = albumResult.artist.album[0];
@@ -159,6 +165,17 @@ test("streams canonical files with full and range responses", async () => {
   const suffix = await request("stream", { id: song.id }, { headers: { Range: "bytes=-3" } });
   assert.equal(suffix.response.status, 206);
   assert.equal(suffix.body, "789");
+
+  const invalid = await request("stream", { id: song.id }, { headers: { Range: "not-a-range" } });
+  assert.equal(invalid.response.status, 200);
+  assert.equal(invalid.body, "0123456789");
+
+  const unsatisfiable = await request(
+    "stream",
+    { id: song.id },
+    { headers: { Range: "bytes=99-" } },
+  );
+  assert.equal(unsatisfiable.response.status, 416);
 });
 
 test("returns missing files and stale IDs without exposing filesystem paths", async () => {

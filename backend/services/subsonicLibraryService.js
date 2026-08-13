@@ -47,19 +47,21 @@ const visibleFlows = (user) =>
 
 const findAlbumForTrack = (library, track) => {
   const relation = track?.albums?.[0];
-  return library.albums.find((album) => album.id === relation?.albumId) || null;
+  return library.albumsById.get(relation?.albumId) || null;
 };
 
 const findArtistForAlbum = (library, album) =>
-  library.artists.find((artist) => artist.id === album?.artistId) || null;
+  library.artistsById.get(album?.artistId) || null;
 
 const albumTracks = (library, album) =>
   (album?.trackIds || [])
-    .map((trackId) => library.tracks.find((track) => track.id === trackId))
+    .map((trackId) => library.tracksById.get(trackId))
     .filter(Boolean);
 
 const artistAlbums = (library, artist) =>
-  library.albums.filter((album) => album.artistId === artist?.id);
+  (artist?.albumIds || [])
+    .map((albumId) => library.albumsById.get(albumId))
+    .filter(Boolean);
 
 const coverArtForAlbum = (album) => idFor("album", album.identityKey);
 
@@ -67,6 +69,7 @@ const toSong = (library, track, album = findAlbumForTrack(library, track)) => {
   const artist = findArtistForAlbum(library, album);
   const file = firstFile(track);
   const genres = track.metadata?.common?.genre || track.metadata?.genre;
+  const relation = track.albums?.find((entry) => entry.albumId === album?.id);
   return {
     id: idFor("song", track.identityKey),
     parent: album ? idFor("album", album.identityKey) : null,
@@ -76,11 +79,8 @@ const toSong = (library, track, album = findAlbumForTrack(library, track)) => {
     artist: artist?.name || track.artistName || null,
     albumId: album ? idFor("album", album.identityKey) : null,
     artistId: artist ? idFor("artist", artist.identityKey) : null,
-    track: album
-      ? album.trackIds
-          .map((trackId) => library.tracks.find((entry) => entry.id === trackId))
-          .findIndex((entry) => entry?.id === track.id) + 1
-      : 0,
+    track: Number(relation?.trackNumber) || 0,
+    discNumber: Number(relation?.discNumber) || null,
     year: year(album?.releaseDate),
     genre: (Array.isArray(genres) ? genres[0] : genres) || null,
     coverArt: album ? coverArtForAlbum(album) : null,
@@ -91,20 +91,29 @@ const toSong = (library, track, album = findAlbumForTrack(library, track)) => {
   };
 };
 
-const toAlbum = (library, album) => {
+const albumData = (library, album) => {
   const artist = findArtistForAlbum(library, album);
   const tracks = albumTracks(library, album);
   return {
-    id: idFor("album", album.identityKey),
-    name: album.title,
-    artist: artist?.name || album.albumArtist || null,
-    artistId: artist ? idFor("artist", artist.identityKey) : null,
-    coverArt: coverArtForAlbum(album),
-    songCount: tracks.length,
-    duration: tracks.reduce((total, track) => total + seconds(firstFile(track)?.durationMs), 0),
-    year: year(album.releaseDate),
-    song: tracks.map((track) => toSong(library, track, album)),
+    tracks,
+    value: {
+      id: idFor("album", album.identityKey),
+      name: album.title,
+      artist: artist?.name || album.albumArtist || null,
+      artistId: artist ? idFor("artist", artist.identityKey) : null,
+      coverArt: coverArtForAlbum(album),
+      songCount: tracks.length,
+      duration: tracks.reduce((total, track) => total + seconds(firstFile(track)?.durationMs), 0),
+      year: year(album.releaseDate),
+    },
   };
+};
+
+const toAlbumSummary = (library, album) => albumData(library, album).value;
+
+const toAlbum = (library, album) => {
+  const { tracks, value } = albumData(library, album);
+  return { ...value, song: tracks.map((track) => toSong(library, track, album)) };
 };
 
 const toArtist = (library, artist) => {
@@ -114,10 +123,7 @@ const toArtist = (library, artist) => {
     name: artist.name,
     coverArt: idFor("artist", artist.identityKey),
     albumCount: albums.length,
-    album: albums.map((album) => ({
-      ...toAlbum(library, album),
-      song: undefined,
-    })),
+    album: albums.map((album) => toAlbumSummary(library, album)),
   };
 };
 
@@ -129,19 +135,28 @@ const toArtistSummary = (artist) => ({
 });
 
 function readLibrary() {
-  return getCanonicalLibrary({ availableOnly: false });
+  const library = getCanonicalLibrary({ availableOnly: false });
+  return {
+    ...library,
+    artistsById: new Map(library.artists.map((artist) => [artist.id, artist])),
+    albumsById: new Map(library.albums.map((album) => [album.id, album])),
+    tracksById: new Map(library.tracks.map((track) => [track.id, track])),
+    artistsByIdentity: new Map(library.artists.map((artist) => [artist.identityKey, artist])),
+    albumsByIdentity: new Map(library.albums.map((album) => [album.identityKey, album])),
+    tracksByIdentity: new Map(library.tracks.map((track) => [track.identityKey, track])),
+  };
 }
 
 function findCanonical(library, parsed) {
   if (!parsed) return null;
   if (parsed.kind === "artist") {
-    return library.artists.find((artist) => artist.identityKey === parsed.key) || null;
+    return library.artistsByIdentity.get(parsed.key) || null;
   }
   if (parsed.kind === "album") {
-    return library.albums.find((album) => album.identityKey === parsed.key) || null;
+    return library.albumsByIdentity.get(parsed.key) || null;
   }
   if (parsed.kind === "song") {
-    return library.tracks.find((track) => track.identityKey === parsed.key) || null;
+    return library.tracksByIdentity.get(parsed.key) || null;
   }
   return null;
 }
@@ -247,17 +262,16 @@ export function getMusicDirectory(value) {
 export function searchLibrary(query, options = {}) {
   const needle = String(query || "").trim().toLocaleLowerCase();
   const library = readLibrary();
-  const artists = library.artists
-    .filter((artist) => artist.name.toLocaleLowerCase().includes(needle))
-    .map(toArtistSummary);
+  const artists = library.artists.filter((artist) =>
+    artist.name.toLocaleLowerCase().includes(needle),
+  );
   const albums = library.albums
     .filter((album) => {
       const artist = findArtistForAlbum(library, album);
       return [album.title, album.albumArtist, artist?.name].some((value) =>
         String(value || "").toLocaleLowerCase().includes(needle),
       );
-    })
-    .map((album) => ({ ...toAlbum(library, album), song: undefined }));
+    });
   const songs = library.tracks
     .filter((track) => {
       const album = findAlbumForTrack(library, track);
@@ -265,13 +279,18 @@ export function searchLibrary(query, options = {}) {
       return [track.title, track.artistName, album?.title, artist?.name].some((value) =>
         String(value || "").toLocaleLowerCase().includes(needle),
       );
-    })
-    .map((track) => toSong(library, track));
+    });
   const page = (items, count, offset) => items.slice(offset, offset + count);
   return {
-    artist: page(artists, normalizeLimit(options.artistCount), normalizeOffset(options.artistOffset)),
-    album: page(albums, normalizeLimit(options.albumCount), normalizeOffset(options.albumOffset)),
-    song: page(songs, normalizeLimit(options.songCount), normalizeOffset(options.songOffset)),
+    artist: page(artists, normalizeLimit(options.artistCount), normalizeOffset(options.artistOffset)).map(
+      toArtistSummary,
+    ),
+    album: page(albums, normalizeLimit(options.albumCount), normalizeOffset(options.albumOffset)).map(
+      (album) => toAlbumSummary(library, album),
+    ),
+    song: page(songs, normalizeLimit(options.songCount), normalizeOffset(options.songOffset)).map(
+      (track) => toSong(library, track),
+    ),
   };
 }
 

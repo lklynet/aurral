@@ -169,6 +169,9 @@ async function handleSubsonicRequest(req, res) {
 
   const method = String(req.params.method || "").replace(/\.view$/i, "").toLowerCase();
   if (method === "ping") return sendResponse(res, format);
+  if (method === "getlicense") {
+    return sendResponse(res, format, "ok", null, { license: { valid: true } });
+  }
   if (method === "getmusicfolders") {
     return sendResponse(res, format, "ok", null, {
       musicFolders: { musicFolder: [{ id: "root", name: APP_NAME }] },
@@ -177,7 +180,11 @@ async function handleSubsonicRequest(req, res) {
   if (method === "getartists" || method === "getindexes") {
     const indexes = groupArtists(listArtists());
     return sendResponse(res, format, "ok", null, {
-      [method === "getartists" ? "artists" : "indexes"]: { index: indexes },
+      [method === "getartists" ? "artists" : "indexes"]: {
+        ignoredArticles: "The El La Los Las Le Les",
+        ...(method === "getindexes" ? { lastModified: Date.now() } : {}),
+        index: indexes,
+      },
     });
   }
   if (method === "getartist") {
