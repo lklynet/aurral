@@ -146,8 +146,96 @@ db.exec(`
     updated_at INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS library_artists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    identity_key TEXT NOT NULL UNIQUE,
+    mbid TEXT,
+    name TEXT NOT NULL,
+    sort_name TEXT,
+    metadata_json TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS library_albums (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    identity_key TEXT NOT NULL UNIQUE,
+    mbid TEXT,
+    release_group_mbid TEXT,
+    artist_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    album_artist TEXT,
+    release_date TEXT,
+    metadata_json TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (artist_id) REFERENCES library_artists(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS library_tracks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    identity_key TEXT NOT NULL UNIQUE,
+    mbid TEXT,
+    title TEXT NOT NULL,
+    artist_name TEXT,
+    metadata_json TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS library_album_tracks (
+    album_id INTEGER NOT NULL,
+    track_id INTEGER NOT NULL,
+    disc_number INTEGER NOT NULL DEFAULT 1,
+    track_number INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (album_id, track_id, disc_number, track_number),
+    FOREIGN KEY (album_id) REFERENCES library_albums(id) ON DELETE CASCADE,
+    FOREIGN KEY (track_id) REFERENCES library_tracks(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS library_media_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    track_id INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    path TEXT NOT NULL UNIQUE,
+    format TEXT,
+    size INTEGER NOT NULL DEFAULT 0,
+    mtime_ms INTEGER,
+    duration_ms INTEGER,
+    quality_json TEXT,
+    available INTEGER NOT NULL DEFAULT 1,
+    last_seen_scan_id INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (track_id) REFERENCES library_tracks(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS library_scan_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    root_path TEXT,
+    status TEXT NOT NULL,
+    started_at INTEGER NOT NULL,
+    completed_at INTEGER,
+    error TEXT,
+    files_seen INTEGER NOT NULL DEFAULT 0,
+    files_indexed INTEGER NOT NULL DEFAULT 0,
+    files_failed INTEGER NOT NULL DEFAULT 0
+  );
+
   CREATE INDEX IF NOT EXISTS idx_lidarr_artist_id_map_foreign_id
     ON lidarr_artist_id_map (lidarr_foreign_artist_id);
+  CREATE INDEX IF NOT EXISTS idx_library_albums_artist_id
+    ON library_albums (artist_id);
+  CREATE INDEX IF NOT EXISTS idx_library_album_tracks_track_id
+    ON library_album_tracks (track_id);
+  CREATE INDEX IF NOT EXISTS idx_library_media_files_track_id
+    ON library_media_files (track_id);
+  CREATE INDEX IF NOT EXISTS idx_library_media_files_source_available
+    ON library_media_files (source, available);
+  CREATE INDEX IF NOT EXISTS idx_library_media_files_scan_id
+    ON library_media_files (last_seen_scan_id);
 
   CREATE TABLE IF NOT EXISTS aurral_history (
     id TEXT PRIMARY KEY,

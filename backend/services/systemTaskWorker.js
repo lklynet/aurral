@@ -49,6 +49,11 @@ async function processSystemTask(payload = {}) {
       await runDueImportSourceSyncs();
       return;
     }
+    case "library-index-refresh": {
+      const { scheduleLibraryScan } = await import("./libraryScanWorker.js");
+      scheduleLibraryScan();
+      return;
+    }
     case "weekly-flow-startup-check": {
       const { startWorkerIfPending } = await import("./weeklyFlow/weeklyFlowScheduler.js");
       await startWorkerIfPending();

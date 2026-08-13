@@ -116,7 +116,7 @@ export class WeeklyFlowPlaylistManager {
   }
 
   scheduleScanLibrary(force = false) {
-    return scheduleLibraryScan(force);
+    return scheduleLibraryScan({ force });
   }
 
   async _ensureFlowArtwork(playlistType, playlistName, artworkKind) {

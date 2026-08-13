@@ -59,6 +59,9 @@ const {
     return true;
   },
   processJob: async () => {
+    const { lidarrClient } = await import("./lidarrClient.js");
+    const { scanConfiguredLibrary } = await import("./libraryIndexService.js");
+    await scanConfiguredLibrary({ lidarrClient });
     const { playlistManager } = await import("./weeklyFlow/weeklyFlowPlaylistManager.js");
     await playlistManager.scanLibrary();
   },

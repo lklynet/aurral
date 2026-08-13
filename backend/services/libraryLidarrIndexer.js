@@ -1,0 +1,175 @@
+import fs from "fs/promises";
+import path from "path";
+import {
+  buildFallbackIdentityKey,
+  buildIdentityKey,
+  linkLibraryAlbumTrack,
+  markUnseenFilesUnavailable,
+  upsertLibraryAlbum,
+  upsertLibraryArtist,
+  upsertLibraryMediaFile,
+  upsertLibraryTrack,
+  withLibraryScan,
+} from "./libraryMediaStore.js";
+import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
+
+const text = (value) => String(value || "").trim();
+
+const isUuid = (value) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    text(value),
+  );
+
+function buildFileIndex(files) {
+  const index = new Map();
+  for (const file of Array.isArray(files) ? files : []) {
+    if (file?.id != null) index.set(`file:${file.id}`, file);
+    for (const trackId of Array.isArray(file?.trackIds) ? file.trackIds : []) {
+      index.set(`track:${trackId}`, file);
+    }
+  }
+  return index;
+}
+
+function resolveTrackFile(track, fileIndex, album) {
+  const file =
+    fileIndex.get(`file:${track?.trackFileId}`) ||
+    fileIndex.get(`track:${track?.id}`) ||
+    track?.trackFile ||
+    track?.file ||
+    null;
+  const externalPath =
+    track?.path ||
+    file?.path ||
+    (file?.relativePath && album?.path ? path.join(album.path, file.relativePath) : null);
+  if (!externalPath) return null;
+  return {
+    externalPath,
+    localPath: resolveLocalPath(externalPath, getPathMappings("lidarr")),
+    file,
+  };
+}
+
+async function readFileStats(filePath) {
+  try {
+    const stat = await fs.stat(filePath);
+    return stat.isFile() ? stat : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function indexLidarrLibrary({ client } = {}) {
+  if (!client || typeof client.isConfigured !== "function" || !client.isConfigured()) {
+    return { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
+  }
+
+  const [artists, albums, tracks, files, rootFolders] = await Promise.all([
+    client.request("/artist", "GET", null, false, { forceRefresh: true }),
+    client.getAllAlbums({ forceRefresh: true }),
+    client.getAllTracks(),
+    client.getAllTrackFiles(),
+    client.getRootFolders(),
+  ]);
+  const artistById = new Map((Array.isArray(artists) ? artists : []).map((item) => [String(item.id), item]));
+  const tracksByAlbumId = new Map();
+  for (const track of Array.isArray(tracks) ? tracks : []) {
+    const key = String(track?.albumId || "");
+    if (!key) continue;
+    const list = tracksByAlbumId.get(key) || [];
+    list.push(track);
+    tracksByAlbumId.set(key, list);
+  }
+  const fileIndex = buildFileIndex(files);
+  const rootPath = (Array.isArray(rootFolders) ? rootFolders : [])
+    .map((folder) => text(folder?.path))
+    .filter(Boolean)
+    .join(";") || null;
+  const result = { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
+
+  return withLibraryScan("lidarr", rootPath, async (scanId) => {
+    for (const album of Array.isArray(albums) ? albums : []) {
+      const artist = artistById.get(String(album?.artistId));
+      if (!artist || !album?.id) continue;
+      const artistProviderId = text(artist.foreignArtistId);
+      const artistName = text(artist.artistName || artist.name) || "Unknown Artist";
+      const artistKey =
+        (artistProviderId &&
+          buildIdentityKey(isUuid(artistProviderId) ? "mbid" : "lidarr-artist", artistProviderId)) ||
+        buildFallbackIdentityKey("lidarr-artist", artist.id, artistName);
+      const artistRecord = upsertLibraryArtist({
+        identityKey: artistKey,
+        mbid: isUuid(artistProviderId) ? artistProviderId : null,
+        name: artistName,
+        sortName: artist.sortName || null,
+        metadata: artist,
+      });
+      const albumProviderId = text(album.foreignAlbumId);
+      const albumKey =
+        (albumProviderId &&
+          buildIdentityKey(
+            isUuid(albumProviderId) ? "release-group" : "lidarr-album",
+            albumProviderId,
+          )) ||
+        buildFallbackIdentityKey("lidarr-album", album.id, album.title);
+      const albumRecord = upsertLibraryAlbum({
+        identityKey: albumKey,
+        mbid: isUuid(albumProviderId) ? albumProviderId : null,
+        releaseGroupMbid: isUuid(albumProviderId) ? albumProviderId : null,
+        artistId: artistRecord.id,
+        title: text(album.title) || "Unknown Album",
+        albumArtist: artistName,
+        releaseDate: album.releaseDate || null,
+        metadata: album,
+      });
+
+      for (const track of tracksByAlbumId.get(String(album.id)) || []) {
+        const trackProviderId = text(track.foreignRecordingId || track.foreignTrackId);
+        const trackKey =
+          (trackProviderId &&
+            buildIdentityKey(isUuid(trackProviderId) ? "recording" : "lidarr-track", trackProviderId)) ||
+          buildFallbackIdentityKey("lidarr-track", albumRecord.id, track.id, track.title);
+        const trackRecord = upsertLibraryTrack({
+          identityKey: trackKey,
+          mbid: isUuid(trackProviderId) ? trackProviderId : null,
+          title: text(track.title || track.trackTitle) || "Unknown Track",
+          artistName,
+          metadata: track,
+        });
+        const trackNumber = Number(track.trackNumber || track.absoluteTrackNumber) || 0;
+        linkLibraryAlbumTrack({
+          albumId: albumRecord.id,
+          trackId: trackRecord.id,
+          discNumber: Number(track.mediumNumber || track.discNumber) || 1,
+          trackNumber,
+        });
+
+        const resolvedFile = resolveTrackFile(track, fileIndex, album);
+        if (!resolvedFile) continue;
+        result.filesSeen += 1;
+        const stat = await readFileStats(resolvedFile.localPath);
+        if (!stat) {
+          result.filesFailed += 1;
+          continue;
+        }
+        upsertLibraryMediaFile({
+          trackId: trackRecord.id,
+          source: "lidarr",
+          path: resolvedFile.localPath,
+          format: path.extname(resolvedFile.localPath).slice(1).toLowerCase(),
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+          durationMs: track.duration || resolvedFile.file?.duration || null,
+          quality: resolvedFile.file?.mediaInfo || track.mediaInfo || null,
+          available: true,
+          scanId,
+        });
+        result.filesIndexed += 1;
+      }
+    }
+    markUnseenFilesUnavailable(scanId, "lidarr");
+    return result;
+  });
+}
+
+export { buildFileIndex, resolveTrackFile };
