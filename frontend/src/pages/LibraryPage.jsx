@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowDownAZ,
@@ -154,6 +154,7 @@ function LibraryPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [covers, setCovers] = useState({});
   const [pendingFavorite, setPendingFavorite] = useState(null);
+  const favoriteMutationInFlightRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isPreviewLibrary, setIsPreviewLibrary] = useState(false);
@@ -531,7 +532,7 @@ function LibraryPage() {
   const toggleFavorite = useCallback(
     async (kind, entity) => {
       const id = favoriteId(kind, entity);
-      if (!id || id.endsWith(":") || pendingFavorite) return;
+      if (!id || id.endsWith(":") || favoriteMutationInFlightRef.current) return;
       const nextStarred = !favoriteIds.has(id);
       if (isPreviewLibrary) {
         setFavoriteIds((current) => {
@@ -543,6 +544,7 @@ function LibraryPage() {
         return;
       }
       const previous = favoriteIds;
+      favoriteMutationInFlightRef.current = true;
       setPendingFavorite(id);
       setFavoriteIds((current) => {
         const next = new Set(current);
@@ -565,10 +567,11 @@ function LibraryPage() {
         setFavoriteIds(previous);
         showError(requestError.response?.data?.message || "Failed to update favorites");
       } finally {
+        favoriteMutationInFlightRef.current = false;
         setPendingFavorite(null);
       }
     },
-    [favoriteIds, isPreviewLibrary, pendingFavorite, showError],
+    [favoriteIds, isPreviewLibrary, showError],
   );
 
   const playTrack = useCallback(
