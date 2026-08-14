@@ -48,6 +48,12 @@ Use the web UI for most settings. Use these variables for Docker deployment sett
 | `OIDC_DOMAIN` | Optional IdP origin added to the `connect-src` content security policy. |
 | `SESSION_EXPIRY_HOURS` | Session lifetime in hours for password login, proxy auth, and native OIDC. Default `720` (30 days). |
 
+## Cross-origin clients
+
+| Variable | Purpose |
+| -------- | ------- |
+| `CORS_ORIGIN` | Comma-separated browser origins allowed to call Aurral. Set this when a Subsonic client such as Feishin is served from another origin. |
+
 ## Logging
 
 | Variable | Purpose |
