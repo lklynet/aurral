@@ -168,6 +168,52 @@ test("unlinking a nonexistent or another user's identity 404s", async () => {
   assert.equal(userIdentityOps.countForUser(userA.id), 1);
 });
 
+test("a successful local login records that the account has a usable local password", async () => {
+  const legacy = userOps.createUser(
+    "legacy-local-user",
+    bcrypt.hashSync("password123", 4),
+    "user",
+    null,
+    false,
+  );
+  assert.equal(userOps.getUserById(legacy.id).hasLocalPassword, false);
+
+  await login("legacy-local-user", "password123");
+
+  assert.equal(
+    userOps.getUserById(legacy.id).hasLocalPassword,
+    true,
+    "logging in with a password proves one exists, which re-arms lockout and password-change checks",
+  );
+});
+
+test("changing a password requires a recent auth, so a stale session cannot take the account over", async () => {
+  const user = userOps.createUser(
+    "stale-password-user",
+    bcrypt.hashSync("password123", 4),
+    "user",
+  );
+  const token = await login("stale-password-user", "password123");
+
+  ageSessionByToken(token, 20 * 60 * 1000);
+  const { response: staleResponse } = await apiFetch(token, "/api/users/me/password", {
+    method: "POST",
+    body: JSON.stringify({ currentPassword: "password123", newPassword: "brand-new-password" }),
+  });
+  assert.equal(staleResponse.status, 401);
+
+  await apiFetch(token, "/api/auth/reauth", {
+    method: "POST",
+    body: JSON.stringify({ currentPassword: "password123" }),
+  });
+
+  const { response: freshResponse } = await apiFetch(token, "/api/users/me/password", {
+    method: "POST",
+    body: JSON.stringify({ currentPassword: "password123", newPassword: "brand-new-password" }),
+  });
+  assert.equal(freshResponse.status, 200);
+});
+
 test("lockout protection blocks removing the last usable auth method", async () => {
   const passwordHash = bcrypt.hashSync("unused-random-hash", 4);
   const oidcOnlyUser = userOps.createUser("oidc-only-user", passwordHash, "user", null, false);
@@ -177,8 +223,6 @@ test("lockout protection blocks removing the last usable auth method", async () 
     subject: "sub-only",
   });
 
-  // Simulate an OIDC-provisioned session directly since this account has no
-  // usable local password to log in with over HTTP.
   const session = createSession(oidcOnlyUser.id, "127.0.0.1", "test-agent");
 
   const { response } = await apiFetch(session.token, `/api/users/me/identities/${identity.id}`, {

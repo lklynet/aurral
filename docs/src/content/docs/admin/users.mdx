@@ -49,6 +49,24 @@ Set `OIDC_LOGOUT_URL` if you want **Log out** to end the identity-provider sessi
 
 Native OIDC and reverse-proxy auth can both stay configured. Use one as the primary browser login path for a given deployment.
 
+### Claiming existing accounts after upgrading
+
+Aurral now identifies an OIDC user by the issuer and subject in their token rather than by username, so accounts created before this change have no linked identity yet. Until one is linked, an SSO sign-in does not recognise the old account and creates a separate new one instead.
+
+Because a matching username is not proof of ownership, an admin has to approve each account:
+
+1. In **Settings > Users**, accounts that predate identity linking show a **no SSO identity** badge.
+2. Open **Manage** on an account you know belongs to an SSO user and turn on **Claim by SSO sign-in**. The badge changes to **awaiting SSO claim**.
+3. That user signs in with SSO once. Their identity is linked to the existing account, keeping its flows, history, settings, and permissions.
+
+The approval is used up by that first sign-in, and the badge clears.
+
+Approve accounts before telling users the upgrade is live. If someone signs in with SSO before their account is approved, their identity is bound to the new empty account and later approval has no effect.
+
+To recover, delete the new duplicate account (the one with a `-2` suffix), approve the original, and have the user sign in again.
+
+The protected recovery admin can never be claimed this way.
+
 ## Reverse-proxy auth
 
 Set `AUTH_PROXY_ENABLED=true` to use reverse-proxy authentication. Use `AUTH_PROXY_HEADER` if the proxy uses a custom header.

@@ -1,7 +1,7 @@
 import express from "express";
 import { userOps, dbOps } from "../db/helpers/index.js";
 import { hashPassword, verifyPassword } from "../middleware/passwordHash.js";
-import { requireAuth, requireAdmin } from "../middleware/requirePermission.js";
+import { requireAuth, requireAdmin, requireRecentAuth } from "../middleware/requirePermission.js";
 import { reconcileLocalNetworkBypassSetting } from "../middleware/auth.js";
 import { requirePasswordStrength } from "../middleware/auth.js";
 import { deleteSessionsByUserId } from "../config/session-helpers.js";
@@ -227,7 +227,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
     if (!existing) {
       return res.status(404).json({ error: "User not found" });
     }
-    const { password, permissions, role, status } = req.body;
+    const { password, permissions, role, status, allowIdentityAdoption } = req.body;
     const VALID_STATUSES = ["active", "suspended", "disabled"];
     if (status !== undefined && !VALID_STATUSES.includes(status)) {
       return res.status(400).json({ error: "Invalid status" });
@@ -247,7 +247,12 @@ router.patch("/:id", requireAuth, async (req, res) => {
     });
     clearOrphanedDiscoveryCache(id, existingProfile, requestedProfile);
     if (isSelf && !isAdmin) {
-      if (permissions !== undefined || role !== undefined || status !== undefined) {
+      if (
+        permissions !== undefined ||
+        role !== undefined ||
+        status !== undefined ||
+        allowIdentityAdoption !== undefined
+      ) {
         return res.status(403).json({ error: "Forbidden" });
       }
       const updates = {};
@@ -312,6 +317,19 @@ router.patch("/:id", requireAuth, async (req, res) => {
       if (status !== "active") {
         deleteSessionsByUserId(id);
       }
+    }
+    if (allowIdentityAdoption !== undefined) {
+      if (allowIdentityAdoption && !existing.needsIdentityMigration) {
+        return res.status(400).json({
+          error: "Only accounts that predate identity linking can be approved for adoption",
+        });
+      }
+      if (allowIdentityAdoption && existing.isProtected) {
+        return res.status(400).json({
+          error: "The protected recovery account cannot be approved for adoption",
+        });
+      }
+      updates.allowIdentityAdoption = !!allowIdentityAdoption;
     }
     if (listenHistoryUpdates) {
       Object.assign(updates, listenHistoryUpdates);
@@ -527,7 +545,7 @@ router.patch("/me/lidarr-preferences", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/me/password", requireAuth, async (req, res) => {
+router.post("/me/password", requireAuth, requireRecentAuth(), async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!newPassword) {

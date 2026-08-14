@@ -47,9 +47,6 @@ const Login = () => {
 
   const handlePlexLogin = async () => {
     setError("");
-    // Open the popup synchronously, still inside the click handler's user
-    // gesture, then navigate it once we have the auth URL - opening it after
-    // the await below would lose transient activation and get blocked.
     const popup = window.open("about:blank", "plex-login", "width=600,height=700");
     if (!popup) {
       setError("Your browser blocked the Plex sign-in popup. Please allow popups for this site and try again.");

@@ -13,8 +13,6 @@ let discoveryConfig = null;
 let discoveryKey = "";
 let issuerOverride = null;
 
-// Test-only escape hatch: production always resolves discovery against the
-// real Google issuer, but tests need to point it at a local mock server.
 export function setGoogleIssuerForTests(issuerUrl) {
   issuerOverride = issuerUrl || null;
   discoveryConfig = null;
@@ -108,7 +106,6 @@ function buildCallbackUrl(req, redirectUri) {
   return url;
 }
 
-// mode is either { mode: "login" } or { mode: "link", linkUserId }
 export async function startGoogleAuth(req, res, mode) {
   const config = getGoogleConfig();
   if (!config) {

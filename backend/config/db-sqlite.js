@@ -384,23 +384,13 @@ if (!userColumns.includes("role_source")) {
 }
 if (!userColumns.includes("has_local_password")) {
   tryAddColumn("ALTER TABLE users ADD COLUMN has_local_password INTEGER NOT NULL DEFAULT 0");
-  // Pre-existing rows can't be told apart: a genuinely local-password
-  // account and an OIDC/proxy JIT-provisioned one (random, unknown
-  // password) look identical in this column. Defaulting to "no known
-  // password" is the safe direction - a real local-password user is only
-  // ever mildly inconvenienced (occasionally asked to sign back in instead
-  // of typing a password they do know), while defaulting the other way
-  // would let a JIT-provisioned account be told it has a password fallback
-  // it doesn't actually know, and be allowed to remove its only real way in.
 }
 if (!userColumns.includes("needs_identity_migration")) {
   tryAddColumn("ALTER TABLE users ADD COLUMN needs_identity_migration INTEGER NOT NULL DEFAULT 0");
-  // Every row that already existed before user_identities was introduced
-  // predates issuer+subject-based OIDC login entirely. Mark them so a first
-  // post-upgrade OIDC login can adopt the matching legacy account instead of
-  // provisioning an unreachable "username-2" duplicate and stranding their
-  // existing flows, history, and preferences on the orphaned original.
   db.exec("UPDATE users SET needs_identity_migration = 1");
+}
+if (!userColumns.includes("allow_identity_adoption")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN allow_identity_adoption INTEGER NOT NULL DEFAULT 0");
 }
 
 db.exec(`

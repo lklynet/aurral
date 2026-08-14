@@ -276,6 +276,18 @@ test("Plex login rejects an unsafe forwardUrl before ever contacting Plex", asyn
     },
   );
   assert.equal(protocolRelativeResponse.status, 400);
+
+  const { response: backslashResponse } = await apiFetch(null, "/api/auth/plex/login/pin", {
+    method: "POST",
+    body: JSON.stringify({ forwardUrl: "/\\evil.example.com/steal" }),
+  });
+  assert.equal(backslashResponse.status, 400);
+
+  const { response: controlCharResponse } = await apiFetch(null, "/api/auth/plex/login/pin", {
+    method: "POST",
+    body: JSON.stringify({ forwardUrl: "/\tevil.example.com/steal" }),
+  });
+  assert.equal(controlCharResponse.status, 400);
 });
 
 test("Plex login complete rejects a request with no valid transaction cookie, even with a guessed pinId/code/clientId", async () => {
@@ -291,9 +303,6 @@ test("Plex login complete rejects a request with no valid transaction cookie, ev
 
   const { response } = await apiFetch(null, "/api/auth/plex/login/complete", {
     method: "POST",
-    // Simulates an attacker who obtained pinId/code/clientId from their own
-    // /pin call and is trying to complete a victim's authorized PIN with it -
-    // the endpoint no longer reads these from the body at all.
     body: JSON.stringify({ pinId: "attacker-pin", code: "attacker-code", clientId: "attacker-client" }),
   });
   assert.equal(response.status, 400);
@@ -407,6 +416,59 @@ test("disconnecting Plex succeeds and removes the login identity when a fallback
   assert.equal(response.status, 200);
   assert.equal(plexConnectionStore.getConnection(userAId), null);
   assert.equal(userIdentityOps.getById(identity.id), null);
+});
+
+test("only an admin can approve a legacy account for SSO adoption, and only an eligible one", async () => {
+  const legacy = userOps.createUser(
+    "adoption-candidate",
+    bcrypt.hashSync("password123", 4),
+    "user",
+    null,
+    false,
+  );
+  userOps.updateUser(legacy.id, { needsIdentityMigration: true });
+
+  const legacyToken = await login("adoption-candidate", "password123");
+  const { response: selfResponse } = await apiFetch(legacyToken, `/api/users/${legacy.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ allowIdentityAdoption: true }),
+  });
+  assert.equal(selfResponse.status, 403, "a user must not be able to approve their own adoption");
+  assert.equal(userOps.getUserById(legacy.id).allowIdentityAdoption, false);
+
+  const { response: adminResponse } = await apiFetch(adminToken, `/api/users/${legacy.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ allowIdentityAdoption: true }),
+  });
+  assert.equal(adminResponse.status, 200);
+  assert.equal(userOps.getUserById(legacy.id).allowIdentityAdoption, true);
+
+  const modern = userOps.createUser("modern-user", bcrypt.hashSync("password123", 4), "user");
+  const { response: modernResponse } = await apiFetch(adminToken, `/api/users/${modern.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ allowIdentityAdoption: true }),
+  });
+  assert.equal(modernResponse.status, 400);
+  assert.equal(userOps.getUserById(modern.id).allowIdentityAdoption, false);
+});
+
+test("the protected recovery account can never be approved for SSO adoption", async () => {
+  const protectedLegacy = userOps.createUser(
+    "protected-legacy-admin",
+    bcrypt.hashSync("password123", 4),
+    "admin",
+    null,
+    false,
+  );
+  userOps.updateUser(protectedLegacy.id, { needsIdentityMigration: true });
+  userOps.setProtected(protectedLegacy.id, true);
+
+  const { response } = await apiFetch(adminToken, `/api/users/${protectedLegacy.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ allowIdentityAdoption: true }),
+  });
+  assert.equal(response.status, 400);
+  assert.equal(userOps.getUserById(protectedLegacy.id).allowIdentityAdoption, false);
 });
 
 test("disconnecting Plex requires a recent reauth, same as the generic identity-unlink route", async () => {

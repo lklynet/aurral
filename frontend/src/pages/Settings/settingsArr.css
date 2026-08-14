@@ -576,6 +576,13 @@
   color: var(--arr-warning-text-soft);
 }
 
+.arr-table__name-cell {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .arr-modal__copy {
   margin: 0;
   color: var(--aurral-text-muted);

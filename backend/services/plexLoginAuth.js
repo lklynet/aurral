@@ -44,11 +44,17 @@ function clearTransactionCookie(req, res) {
   setTransactionCookie(req, res, "", 0);
 }
 
-// forwardUrl is handed to plex.tv, which redirects the user's browser there
-// after they authorize - only allow a same-origin relative path so it can't
-// be used to send an authorized user somewhere attacker-controlled.
 function isSafeForwardUrl(forwardUrl) {
-  return /^\/(?!\/)/.test(String(forwardUrl || ""));
+  const value = String(forwardUrl || "");
+  if (!value.startsWith("/")) return false;
+  if (value.startsWith("//")) return false;
+  if (/[\\\u0000-\u001f\u007f]/.test(value)) return false;
+  try {
+    const base = "https://aurral.invalid";
+    return new URL(value, base).origin === base;
+  } catch {
+    return false;
+  }
 }
 
 export async function startPlexLogin(req, res) {

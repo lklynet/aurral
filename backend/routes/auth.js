@@ -45,6 +45,9 @@ router.post("/login", async (req, res) => {
     if (needsRehash(user.passwordHash)) {
       userOps.updateUser(user.id, { passwordHash: hashPassword(password) });
     }
+    if (!user.hasLocalPassword) {
+      userOps.updateUser(user.id, { hasLocalPassword: true });
+    }
     const session = createSession(user.id, req.ip || null, req.headers["user-agent"] || null);
     res.json({
       token: session.token,

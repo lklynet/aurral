@@ -270,6 +270,7 @@ const SETTINGS_SEARCH_METADATA = {
       "Plex account": "link user playback identity",
       "SSO-only": "sign in mode hide local login form SSO",
       Status: "active suspended disabled user account",
+      "Claim by SSO sign-in": "legacy account adoption migration link identity upgrade",
     },
   },
 };

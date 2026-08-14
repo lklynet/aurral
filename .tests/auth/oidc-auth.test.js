@@ -467,10 +467,13 @@ test("OIDC provisioning auto-suffixes a colliding username instead of linking to
   assert.equal(userOps.getUserByUsername("callback-user")?.id, firstUserId);
 });
 
-test("OIDC login adopts a matching legacy pre-migration account instead of orphaning it behind a duplicate", async () => {
+test("OIDC login adopts a legacy account only once an admin has approved that specific account", async () => {
   completeOnboarding();
   const legacy = userOps.createUser("callback-user", "random-unknown-hash", "user", null, false);
-  userOps.updateUser(legacy.id, { needsIdentityMigration: true });
+  userOps.updateUser(legacy.id, {
+    needsIdentityMigration: true,
+    allowIdentityAdoption: true,
+  });
 
   const pending = await createPendingOidcLogin();
   try {
@@ -489,18 +492,23 @@ test("OIDC login adopts a matching legacy pre-migration account instead of orpha
   const adopted = userOps.getUserById(legacy.id);
   assert.equal(adopted.needsIdentityMigration, false);
   assert.equal(adopted.roleSource, "oidc");
+  assert.equal(
+    adopted.allowIdentityAdoption,
+    false,
+    "approval must be consumed so it authorizes exactly one adoption",
+  );
 });
 
-test("OIDC login does not adopt a legacy account that has a known local password", async () => {
+test("OIDC login never adopts a legacy account the admin has not approved, even though the migration leaves has_local_password unset", async () => {
   completeOnboarding();
-  const legacyWithPassword = userOps.createUser(
+  const legacyLocalAccount = userOps.createUser(
     "callback-user",
-    "some-hash",
+    "real-local-password-hash",
     "user",
     null,
-    true,
+    false,
   );
-  userOps.updateUser(legacyWithPassword.id, { needsIdentityMigration: true });
+  userOps.updateUser(legacyLocalAccount.id, { needsIdentityMigration: true });
 
   const pending = await createPendingOidcLogin();
   try {
@@ -508,8 +516,8 @@ test("OIDC login does not adopt a legacy account that has a known local password
     const loggedInUser = getSessionByToken(session.token)?.user;
     assert.notEqual(
       loggedInUser?.id,
-      legacyWithPassword.id,
-      "an account with a real local password must never be silently claimed by a username match",
+      legacyLocalAccount.id,
+      "a username match alone must never hand an OIDC identity someone else's account",
     );
     assert.equal(loggedInUser?.username, "callback-user-2");
   } finally {
@@ -517,13 +525,16 @@ test("OIDC login does not adopt a legacy account that has a known local password
   }
 
   assert.equal(userOps.getAllUsers().length, 2);
-  assert.equal(userIdentityOps.getForUser(legacyWithPassword.id).length, 0);
+  assert.equal(userIdentityOps.getForUser(legacyLocalAccount.id).length, 0);
 });
 
-test("OIDC login does not adopt a legacy account that is already linked to another identity", async () => {
+test("OIDC login does not adopt an approved legacy account that is already linked to another identity", async () => {
   completeOnboarding();
   const legacy = userOps.createUser("callback-user", "random-unknown-hash", "user", null, false);
-  userOps.updateUser(legacy.id, { needsIdentityMigration: true });
+  userOps.updateUser(legacy.id, {
+    needsIdentityMigration: true,
+    allowIdentityAdoption: true,
+  });
   userIdentityOps.link(legacy.id, {
     providerType: "oidc",
     providerKey: "https://already-linked.example/",
@@ -544,7 +555,10 @@ test("OIDC login does not adopt a legacy account that is already linked to anoth
 test("OIDC login does not adopt the protected bootstrap admin", async () => {
   completeOnboarding();
   const legacy = userOps.createUser("callback-user", "random-unknown-hash", "admin", null, false);
-  userOps.updateUser(legacy.id, { needsIdentityMigration: true });
+  userOps.updateUser(legacy.id, {
+    needsIdentityMigration: true,
+    allowIdentityAdoption: true,
+  });
   userOps.setProtected(legacy.id, true);
 
   const pending = await createPendingOidcLogin();
@@ -682,16 +696,19 @@ test("OIDC token exchange supports the none auth method with an empty client sec
     const session = await completeOidcLogin(nonePending);
     assert.ok(session.token);
     assert.equal(nonePending.capturedTokenRequest.authorizationHeader, null);
-    assert.ok(!String(nonePending.capturedTokenRequest.body || "").includes("client_secret="));
+    const tokenRequestParams = new URLSearchParams(nonePending.capturedTokenRequest.body || "");
+    assert.equal(tokenRequestParams.get("client_secret"), null);
+    assert.equal(
+      tokenRequestParams.get("client_id"),
+      "aurral",
+      "a public client must still identify itself with client_id in the request body",
+    );
   } finally {
     await nonePending.close();
   }
 });
 
 test("OIDC rejects an unrecognized token endpoint auth method instead of silently defaulting", async () => {
-  // buildClientAuthentication() throws synchronously before any network call
-  // is made, so this doesn't need a live discovery server - a syntactically
-  // valid issuer URL is enough to reach getDiscoveryConfig().
   enableOidcEnv({ OIDC_TOKEN_ENDPOINT_AUTH_METHOD: "client_secert_basic" });
   const response = {
     headers: {},

@@ -23,11 +23,6 @@ export function requireAdmin(req, res, next) {
   next();
 }
 
-// Requires the caller's session to have been authenticated (or explicitly
-// reauthenticated via POST /api/auth/reauth) within the last maxAgeMinutes.
-// Non-session auth (proxy headers, API key) is re-verified on every request
-// by its own trust model, so it has no meaningful "session age" and is
-// allowed through unchanged.
 export function requireRecentAuth(maxAgeMinutes = DEFAULT_REAUTH_MAX_AGE_MINUTES) {
   return (req, res, next) => {
     if (!req.user) {
