@@ -303,9 +303,9 @@ router.patch("/:id", requireAuth, async (req, res) => {
       updates.roleSource = "local";
     }
     if (status !== undefined) {
-      if (existing.isProtected && status !== "active" && req.user.id === existing.id) {
+      if (existing.isProtected && status !== "active") {
         return res.status(400).json({
-          error: "You cannot suspend or disable your own protected recovery account",
+          error: "You cannot suspend or disable a protected recovery account",
         });
       }
       updates.status = status;

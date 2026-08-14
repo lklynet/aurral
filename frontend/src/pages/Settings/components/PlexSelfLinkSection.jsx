@@ -64,8 +64,13 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
           if (isReauthRequiredError(pollErr) && !reauthPrompted) {
             reauthPrompted = true;
             const shouldRetry = await promptReauth();
-            if (!shouldRetry) break;
+            if (shouldRetry) continue;
           }
+          if (popup && !popup.closed) popup.close();
+          const message =
+            pollErr.response?.data?.message || pollErr.response?.data?.error || pollErr.message;
+          showError?.(`Plex sign-in failed: ${message}`);
+          return;
         }
       }
       if (popup && !popup.closed) popup.close();

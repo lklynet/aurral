@@ -254,7 +254,7 @@ function buildPermissions(role, permissions) {
   };
 }
 
-function toResolvedUser(user) {
+export function toResolvedUser(user) {
   if (!user) return null;
   return {
     id: user.id,

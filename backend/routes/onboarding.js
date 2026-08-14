@@ -180,13 +180,10 @@ router.post("/complete", async (req, res) => {
     const authPasswordFinal = integrations?.general?.authPassword || "";
     if (authPasswordFinal && userOps.getAllUsers().length === 0) {
       const hash = hashPassword(authPasswordFinal);
-      const created = userOps.createUser(authUserFinal, hash, "admin", null, true);
+      const created = userOps.createUser(authUserFinal, hash, "admin", null, true, true);
       const initialListenHistory = getDefaultListenHistoryProfile(nextSettings);
       if (created && initialListenHistory) {
         userOps.updateUser(created.id, initialListenHistory);
-      }
-      if (created) {
-        userOps.setProtected(created.id, true);
       }
     }
 

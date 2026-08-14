@@ -250,6 +250,49 @@ test("a suspended user cannot log in via a linked Google identity", async () => 
   }
 });
 
+test("a suspended user cannot complete a Google link", async () => {
+  completeOnboarding();
+  const user = userOps.createUser("suspended-linker", "unused-hash", "user");
+  userOps.updateUser(user.id, { status: "suspended" });
+
+  const pending = await createPendingGoogleAuth({ mode: "link", linkUserId: user.id });
+  try {
+    await assert.rejects(
+      () =>
+        handleGoogleCallback({
+          query: { state: pending.state, code: "authorization-code" },
+          headers: { cookie: pending.cookie },
+          ip: "127.0.0.1",
+        }),
+      { status: 403, message: "This account has been suspended or disabled" },
+    );
+  } finally {
+    await pending.close();
+  }
+  assert.equal(userIdentityOps.findByProvider("google", "google", "google-subject"), null);
+});
+
+test("Google exchange never leaks passwordHash, for linking or login", async () => {
+  completeOnboarding();
+  const user = userOps.createUser("gordon-sanitize", "unused-hash", "user");
+
+  const linkPending = await createPendingGoogleAuth({ mode: "link", linkUserId: user.id });
+  try {
+    const linkResult = await completeGoogleAuth(linkPending);
+    assert.equal(linkResult.user.passwordHash, undefined);
+  } finally {
+    await linkPending.close();
+  }
+
+  const loginPending = await createPendingGoogleAuth({ mode: "login" });
+  try {
+    const loginResult = await completeGoogleAuth(loginPending);
+    assert.equal(loginResult.user.passwordHash, undefined);
+  } finally {
+    await loginPending.close();
+  }
+});
+
 test("exchangeGoogleCallback rejects a code that was never issued", () => {
   assert.throws(() => exchangeGoogleCallback("bogus-code", { headers: {} }), {
     status: 400,

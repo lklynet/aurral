@@ -205,6 +205,38 @@ test("admin DELETE /:id/plex-link unlinks a managed user", async () => {
   assert.equal(plexConnectionStore.getConnection(userBId), null);
 });
 
+test("admin DELETE /:id/plex-link also removes the user's Plex login identity", async () => {
+  const target = userOps.createUser(
+    "plex-login-target",
+    bcrypt.hashSync("password123", 4),
+    "user",
+  );
+  plexConnectionStore.saveConnection(target.id, {
+    linkType: "self",
+    token: "target-token",
+    clientId: "target-client",
+    plexAccountId: 555,
+    plexUsername: "targetPlex",
+  });
+  const identity = userIdentityOps.link(target.id, {
+    providerType: "plex",
+    providerKey: "plex",
+    subject: "555",
+    displayName: "targetPlex",
+  });
+
+  const { response } = await apiFetch(adminToken, `/api/users/${target.id}/plex-link`, {
+    method: "DELETE",
+  });
+  assert.equal(response.status, 200);
+  assert.equal(plexConnectionStore.getConnection(target.id), null);
+  assert.equal(
+    userIdentityOps.getById(identity.id),
+    null,
+    "admin unlink must remove the identity, not just the connection, so Plex sign-in stops working",
+  );
+});
+
 test("Plex login routes are disabled unless integrations.plex.loginEnabled is set", async () => {
   const { response: pinResponse } = await apiFetch(null, "/api/auth/plex/login/pin", {
     method: "POST",
@@ -283,6 +315,22 @@ test("a protected admin cannot suspend or disable their own account", async () =
   const { response } = await apiFetch(protectedAdminToken, `/api/users/${protectedAdmin.id}`, {
     method: "PATCH",
     body: JSON.stringify({ status: "suspended" }),
+  });
+  assert.equal(response.status, 400);
+  assert.equal(userOps.getUserById(protectedAdmin.id)?.status, "active");
+});
+
+test("a different admin also cannot suspend or disable a protected recovery account", async () => {
+  const protectedAdmin = userOps.createUser(
+    "protected-admin-2",
+    bcrypt.hashSync("password123", 4),
+    "admin",
+  );
+  userOps.setProtected(protectedAdmin.id, true);
+
+  const { response } = await apiFetch(adminToken, `/api/users/${protectedAdmin.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "disabled" }),
   });
   assert.equal(response.status, 400);
   assert.equal(userOps.getUserById(protectedAdmin.id)?.status, "active");

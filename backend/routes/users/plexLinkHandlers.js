@@ -346,6 +346,12 @@ export function registerPlexLink(router) {
       if (!target) return res.status(404).json({ error: "User not found" });
       await cleanupUserPlexPlaylistsSafely(id, "on unlink");
       plexConnectionStore.clearConnection(id);
+      const adminPlexIdentity = userIdentityOps
+        .getForUser(id)
+        .find((identity) => identity.providerType === "plex");
+      if (adminPlexIdentity) {
+        userIdentityOps.unlink(adminPlexIdentity.id);
+      }
       res.json({ connected: false });
     } catch (e) {
       res.status(500).json({ error: "Failed to unlink Plex", message: e.message });

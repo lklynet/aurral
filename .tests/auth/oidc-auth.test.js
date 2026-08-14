@@ -69,6 +69,7 @@ function resetOidcEnv() {
   delete process.env.OIDC_GROUPS_CLAIM;
   delete process.env.OIDC_ADMIN_GROUPS;
   delete process.env.OIDC_LOGOUT_URL;
+  delete process.env.OIDC_TOKEN_ENDPOINT_AUTH_METHOD;
   delete process.env.AUTH_PROXY_ENABLED;
   delete process.env.AUTH_PROXY_HEADER;
   resetOidcStateForTests();
@@ -281,6 +282,40 @@ test("OIDC callback issues a cookie-bound one-time session exchange", async () =
     );
   } finally {
     await pending.close();
+  }
+});
+
+test("OIDC exchange never leaks passwordHash, for new or returning users", async () => {
+  const first = await createPendingOidcLogin();
+  try {
+    const callback = await handleOidcCallback({
+      query: { state: first.state, code: "authorization-code" },
+      headers: { cookie: first.cookie },
+      ip: "127.0.0.1",
+    });
+    const session = exchangeOidcCallback(callback.code, {
+      headers: { cookie: first.cookie, "user-agent": "test-agent" },
+      ip: "127.0.0.1",
+    });
+    assert.equal(session.user.passwordHash, undefined, "newly provisioned user must be sanitized");
+  } finally {
+    await first.close();
+  }
+
+  const second = await createPendingOidcLogin();
+  try {
+    const callback = await handleOidcCallback({
+      query: { state: second.state, code: "authorization-code" },
+      headers: { cookie: second.cookie },
+      ip: "127.0.0.1",
+    });
+    const session = exchangeOidcCallback(callback.code, {
+      headers: { cookie: second.cookie, "user-agent": "test-agent" },
+      ip: "127.0.0.1",
+    });
+    assert.equal(session.user.passwordHash, undefined, "returning user must also be sanitized");
+  } finally {
+    await second.close();
   }
 });
 
@@ -545,4 +580,37 @@ test("OIDC token exchange defaults to client_secret_basic and honors OIDC_TOKEN_
   } finally {
     await postPending.close();
   }
+});
+
+test("OIDC token exchange supports the none auth method with an empty client secret", async () => {
+  const nonePending = await createPendingOidcLogin({
+    claimOverrides: { sub: "subject-none" },
+    envOverrides: { OIDC_TOKEN_ENDPOINT_AUTH_METHOD: "none", OIDC_CLIENT_SECRET: "" },
+  });
+  try {
+    assert.equal(isOidcEnabled(), true, "OIDC must stay enabled with an empty secret for none");
+    const session = await completeOidcLogin(nonePending);
+    assert.ok(session.token);
+    assert.equal(nonePending.capturedTokenRequest.authorizationHeader, null);
+    assert.ok(!String(nonePending.capturedTokenRequest.body || "").includes("client_secret="));
+  } finally {
+    await nonePending.close();
+  }
+});
+
+test("OIDC rejects an unrecognized token endpoint auth method instead of silently defaulting", async () => {
+  // buildClientAuthentication() throws synchronously before any network call
+  // is made, so this doesn't need a live discovery server - a syntactically
+  // valid issuer URL is enough to reach getDiscoveryConfig().
+  enableOidcEnv({ OIDC_TOKEN_ENDPOINT_AUTH_METHOD: "client_secert_basic" });
+  const response = {
+    headers: {},
+    redirect() {},
+    setHeader() {},
+    status() {
+      return this;
+    },
+    json() {},
+  };
+  await assert.rejects(() => startOidcLogin({}, response), /Unsupported OIDC_TOKEN_ENDPOINT_AUTH_METHOD/);
 });

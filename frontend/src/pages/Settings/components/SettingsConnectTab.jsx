@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { testGotifyConnection } from "../../../utils/api/endpoints/settings.js";
+import { getAppBasePath } from "../../../utils/basePath.js";
 
 import { Plus, Trash2, GripVertical } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -705,7 +706,7 @@ export function SettingsConnectTab({
             </SettingsModalField>
             <SettingsModalField
               label="Redirect URI"
-              hint={`Usually ${window.location.origin}/sso/google/callback`}
+              hint={`Usually ${window.location.origin}${getAppBasePath() === "/" ? "" : getAppBasePath().replace(/\/$/, "")}/sso/google/callback`}
             >
               <SettingsInput
                 type="url"

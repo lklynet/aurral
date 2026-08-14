@@ -21,6 +21,7 @@ export function ConnectedAccountsSection({ showSuccess, showError, className = "
   const [identities, setIdentities] = useState([]);
   const [hasLocalPassword, setHasLocalPassword] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [unlinkingId, setUnlinkingId] = useState(null);
 
   const load = () => {
@@ -29,8 +30,9 @@ export function ConnectedAccountsSection({ showSuccess, showError, className = "
       .then((data) => {
         setIdentities(data?.identities || []);
         setHasLocalPassword(data?.hasLocalPassword !== false);
+        setLoadError(false);
       })
-      .catch(() => {})
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   };
 
@@ -89,7 +91,14 @@ export function ConnectedAccountsSection({ showSuccess, showError, className = "
         </p>
       </div>
 
-      {identities.length === 0 ? (
+      {loadError ? (
+        <p className="settings-page__hint settings-page__hint--warning">
+          Failed to load your connected accounts.{" "}
+          <button type="button" className="settings-page__link" onClick={() => load()}>
+            Try again
+          </button>
+        </p>
+      ) : identities.length === 0 ? (
         <p className="settings-page__muted-copy">No other sign-in methods connected.</p>
       ) : (
         <div className="connected-account-list">
@@ -112,12 +121,12 @@ export function ConnectedAccountsSection({ showSuccess, showError, className = "
         </div>
       )}
 
-      {googleAvailable && !hasGoogle && (
+      {!loadError && googleAvailable && !hasGoogle && (
         <button type="button" className="btn btn-secondary" onClick={handleConnectGoogle}>
           Connect Google
         </button>
       )}
-      {!hasLocalPassword && (
+      {!loadError && !hasLocalPassword && (
         <p className="settings-page__hint">
           This account has no local password set. Set one below so you always have a way to sign
           in, even if a connected provider becomes unavailable.

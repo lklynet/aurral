@@ -1,6 +1,7 @@
 import * as client from "openid-client";
+import { db } from "../config/db-sqlite.js";
 import { createSession } from "../config/session-helpers.js";
-import { createSystemProvisionedUser } from "../middleware/auth.js";
+import { createSystemProvisionedUser, toResolvedUser } from "../middleware/auth.js";
 import { userOps, userIdentityOps } from "../db/helpers/index.js";
 
 const STATE_TTL_MS = 10 * 60 * 1000;
@@ -63,7 +64,8 @@ function getRequiredConfig() {
   const clientId = String(process.env.OIDC_CLIENT_ID || "").trim();
   const clientSecret = String(process.env.OIDC_CLIENT_SECRET || "").trim();
   const redirectUri = String(process.env.OIDC_REDIRECT_URI || "").trim();
-  if (!issuer || !clientId || !clientSecret || !redirectUri) return null;
+  const secretRequired = getTokenEndpointAuthMethod() !== "none";
+  if (!issuer || !clientId || (secretRequired && !clientSecret) || !redirectUri) return null;
   return { issuer, clientId, clientSecret, redirectUri };
 }
 
@@ -114,8 +116,11 @@ function buildClientAuthentication(method, clientSecret) {
     case "none":
       return client.None();
     case "client_secret_basic":
-    default:
       return client.ClientSecretBasic(clientSecret);
+    default:
+      throw new Error(
+        `Unsupported OIDC_TOKEN_ENDPOINT_AUTH_METHOD "${method}" (expected client_secret_basic, client_secret_post, or none)`,
+      );
   }
 }
 
@@ -214,14 +219,14 @@ function resolveOidcSessionUser(config, claims) {
       });
     }
     if (user.isProtected) {
-      return user;
+      return toResolvedUser(user);
     }
     const role = resolveOidcRole(resolveOidcUsername(claims) || user.username, claims);
     if (role !== user.role || user.roleSource !== "oidc") {
       userOps.updateUser(user.id, { role, roleSource: "oidc" });
-      return userOps.getUserById(user.id);
+      return toResolvedUser(userOps.getUserById(user.id));
     }
-    return user;
+    return toResolvedUser(user);
   }
 
   const baseUsername = resolveOidcUsername(claims);
@@ -233,18 +238,25 @@ function resolveOidcSessionUser(config, claims) {
 
   const uniqueUsername = generateUniqueUsername(baseUsername);
   const role = resolveOidcRole(baseUsername, claims);
-  const user = createSystemProvisionedUser(uniqueUsername, role);
-  if (!user?.id || user.id < 0) {
-    throw Object.assign(new Error("Failed to provision OIDC user"), { status: 500 });
-  }
-  userOps.updateUser(user.id, { roleSource: "oidc" });
-  userIdentityOps.link(user.id, {
-    providerType: "oidc",
-    providerKey: config.issuer,
-    subject,
-    displayName: toDisplayName(claims),
+  // Provisioning the user, setting roleSource, and linking the identity must
+  // succeed or fail together - a link failure (e.g. a unique-constraint hit
+  // from a concurrent first login for the same subject) must not leave an
+  // orphaned, unlinked user row behind.
+  const provisionUser = db.transaction(() => {
+    const created = createSystemProvisionedUser(uniqueUsername, role);
+    if (!created?.id || created.id < 0) {
+      throw Object.assign(new Error("Failed to provision OIDC user"), { status: 500 });
+    }
+    userOps.updateUser(created.id, { roleSource: "oidc" });
+    userIdentityOps.link(created.id, {
+      providerType: "oidc",
+      providerKey: config.issuer,
+      subject,
+      displayName: toDisplayName(claims),
+    });
+    return userOps.getUserById(created.id);
   });
-  return user;
+  return toResolvedUser(provisionUser());
 }
 
 function buildCallbackUrl(req) {

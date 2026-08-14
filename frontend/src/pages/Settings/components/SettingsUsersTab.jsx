@@ -331,6 +331,7 @@ export function SettingsUsersTab({
                   className="settings-toggle"
                   checked={settings?.security?.ssoOnly === true}
                   onChange={async (event) => {
+                    const previousSettings = settings;
                     const nextSettings = {
                       ...settings,
                       security: {
@@ -341,7 +342,10 @@ export function SettingsUsersTab({
                     updateSettings(nextSettings);
                     try {
                       await handleSaveSettings(null, nextSettings);
-                    } catch {}
+                    } catch (err) {
+                      updateSettings(previousSettings);
+                      showError(err.response?.data?.message || "Failed to save sign-in mode");
+                    }
                   }}
                   aria-label="SSO-only sign-in mode"
                 />

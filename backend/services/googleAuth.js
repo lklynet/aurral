@@ -1,5 +1,6 @@
 import * as client from "openid-client";
 import { createSession } from "../config/session-helpers.js";
+import { toResolvedUser } from "../middleware/auth.js";
 import { dbOps, userOps, userIdentityOps } from "../db/helpers/index.js";
 
 const REAL_GOOGLE_ISSUER = "https://accounts.google.com";
@@ -184,6 +185,11 @@ export async function handleGoogleCallback(req) {
     if (!linkUser) {
       throw Object.assign(new Error("Linking user no longer exists"), { status: 400 });
     }
+    if (linkUser.status !== "active") {
+      throw Object.assign(new Error("This account has been suspended or disabled"), {
+        status: 403,
+      });
+    }
     const existingIdentity = userIdentityOps.findByProvider("google", "google", subject);
     if (existingIdentity && existingIdentity.userId !== linkUser.id) {
       throw Object.assign(new Error("This Google account is already linked to another user"), {
@@ -198,7 +204,7 @@ export async function handleGoogleCallback(req) {
         displayName,
       });
     }
-    result = { linked: true, user: linkUser };
+    result = { linked: true, user: toResolvedUser(linkUser) };
   } else {
     const identity = userIdentityOps.findByProvider("google", "google", subject);
     if (!identity) {
@@ -218,7 +224,7 @@ export async function handleGoogleCallback(req) {
         status: 403,
       });
     }
-    result = { linked: false, user };
+    result = { linked: false, user: toResolvedUser(user) };
   }
 
   const code = client.randomState();

@@ -19,7 +19,7 @@ const getUserAuthByIdStmt = db.prepare(
 );
 const countUsersStmt = db.prepare("SELECT COUNT(*) AS count FROM users");
 const insertUserStmt = db.prepare(
-  "INSERT INTO users (username, password_hash, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id, has_local_password) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  "INSERT INTO users (username, password_hash, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id, has_local_password, is_protected) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
 );
 const updateUserStmt = db.prepare(
   "UPDATE users SET username = ?, password_hash = ?, role = ?, permissions = ?, lastfm_username = ?, listen_history_provider = ?, listen_history_username = ?, listen_history_url = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, status = ?, role_source = ?, has_local_password = ? WHERE id = ?"
@@ -132,7 +132,14 @@ export const userOps = {
       hasLocalPassword: !!r.has_local_password,
     }));
   },
-  createUser(username, passwordHash, role = "user", permissions = null, hasLocalPassword = true) {
+  createUser(
+    username,
+    passwordHash,
+    role = "user",
+    permissions = null,
+    hasLocalPassword = true,
+    isProtected = false,
+  ) {
     const un = String(username).trim();
     if (!un) return null;
     const perms = permissions
@@ -147,6 +154,7 @@ export const userOps = {
         null,
         null,
         hasLocalPassword ? 1 : 0,
+        isProtected ? 1 : 0,
       );
       return {
         id: result.lastInsertRowid,
@@ -160,7 +168,7 @@ export const userOps = {
         lidarrRootFolderPath: null,
         lidarrQualityProfileId: null,
         status: "active",
-        isProtected: false,
+        isProtected: !!isProtected,
         roleSource: "local",
         hasLocalPassword: !!hasLocalPassword,
       };

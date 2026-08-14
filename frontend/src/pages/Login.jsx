@@ -47,10 +47,28 @@ const Login = () => {
 
   const handlePlexLogin = async () => {
     setError("");
+    // Open the popup synchronously, still inside the click handler's user
+    // gesture, then navigate it once we have the auth URL - opening it after
+    // the await below would lose transient activation and get blocked.
+    const popup = window.open("about:blank", "plex-login", "width=600,height=700");
+    if (!popup) {
+      setError("Your browser blocked the Plex sign-in popup. Please allow popups for this site and try again.");
+      return;
+    }
     setPlexConnecting(true);
     try {
-      const { pinId, code, clientId, authUrl } = await startPlexLoginPin();
-      const popup = window.open(authUrl, "plex-login", "width=600,height=700");
+      let pin;
+      try {
+        pin = await startPlexLoginPin();
+      } catch (err) {
+        if (popup && !popup.closed) popup.close();
+        setError(
+          err.response?.data?.message || err.response?.data?.error || "Failed to start Plex sign-in",
+        );
+        return;
+      }
+      const { pinId, code, clientId, authUrl } = pin;
+      popup.location.href = authUrl;
       const deadline = Date.now() + 3 * 60 * 1000;
       let result = null;
       while (Date.now() < deadline) {
