@@ -479,6 +479,31 @@ function getPageLibrary(kind, ids, sourceFilter, availableOnly) {
   return buildLibraryFromRows(rows);
 }
 
+function getAlbumStats(albumIds, sourceFilter, availableOnly) {
+  if (!albumIds.length) return new Map();
+  const conditions = [`album_track.album_id IN (${albumIds.map(() => "?").join(",")})`];
+  const parameters = [...albumIds];
+  if (sourceFilter) {
+    conditions.push("media.source = ?");
+    parameters.push(sourceFilter);
+  }
+  if (availableOnly === true) conditions.push("media.available = 1");
+  const rows = db.prepare(
+    `SELECT
+       album_track.album_id AS album_id,
+       COUNT(DISTINCT album_track.track_id) AS track_count,
+       COUNT(DISTINCT CASE WHEN media.available = 1 THEN album_track.track_id END) AS available_track_count
+     FROM library_album_tracks AS album_track
+     JOIN library_media_files AS media ON media.track_id = album_track.track_id
+     WHERE ${conditions.join(" AND ")}
+     GROUP BY album_track.album_id`,
+  ).all(...parameters);
+  return new Map(rows.map((row) => [String(row.album_id), {
+    trackCount: Number(row.track_count),
+    availableTrackCount: Number(row.available_track_count),
+  }]));
+}
+
 export function getCanonicalLibraryPage({
   source = null,
   availableOnly = false,
@@ -561,18 +586,20 @@ export function getCanonicalLibraryPage({
   const library = getPageLibrary(normalizedKind, ids, sourceFilter, availableOnly);
   const artistsById = new Map(library.artists.map((artist) => [String(artist.id), artist]));
   const albumsById = new Map(library.albums.map((album) => [String(album.id), album]));
-  const tracksById = new Map(library.tracks.map((track) => [String(track.id), track]));
+  const albumStats = getAlbumStats(
+    library.albums.map((album) => album.id),
+    sourceFilter,
+    availableOnly,
+  );
   const collection = ids
     .map((id) => library[normalizedKind].find((entity) => String(entity.id) === String(id)))
     .filter(Boolean);
   const withAlbumStats = (album) => {
-    const availableTrackCount = album.trackIds.filter((trackId) =>
-      tracksById.get(String(trackId))?.available,
-    ).length;
+    const stats = albumStats.get(String(album.id));
     return {
       ...album,
-      trackCount: album.trackIds.length,
-      availableTrackCount,
+      trackCount: stats?.trackCount ?? album.trackIds.length,
+      availableTrackCount: stats?.availableTrackCount ?? 0,
     };
   };
   const items = collection.map((entity) => normalizedKind === "albums" ? withAlbumStats(entity) : entity);

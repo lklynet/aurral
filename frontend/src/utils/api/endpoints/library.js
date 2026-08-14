@@ -98,12 +98,17 @@ export const getLibraryFavorites = () => {
 };
 
 export const updateLibraryFavorites = async (ids, starred) => {
+  const token = getRequestToken();
   const data = await postData("/library/favorites", { ids, starred });
-  libraryFavoritesCache = {
-    token: getRequestToken(),
-    data,
-    expiresAt: Date.now() + LIBRARY_FAVORITES_CACHE_TTL_MS,
-  };
+  if (getRequestToken() === token) {
+    libraryFavoritesCache = {
+      token,
+      data,
+      expiresAt: Date.now() + LIBRARY_FAVORITES_CACHE_TTL_MS,
+    };
+  } else {
+    libraryFavoritesCache = null;
+  }
   clearCanonicalLibraryPageCache();
   return data;
 };

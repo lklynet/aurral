@@ -60,6 +60,20 @@ test.before(() => {
     format: "flac",
     available: true,
   });
+  const secondTrack = upsertLibraryTrack({
+    identityKey: "favorite-track-two",
+    mbid: "44444444-4444-4444-8444-444444444444",
+    title: "Favorite Track Two",
+    artistName: artist.name,
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: secondTrack.id, trackNumber: 2 });
+  upsertLibraryMediaFile({
+    trackId: secondTrack.id,
+    source: "aurral",
+    path: "/library/Favorite Artist/Favorite Album/02 Favorite Track Two.flac",
+    format: "flac",
+    available: true,
+  });
   const otherArtist = upsertLibraryArtist({
     identityKey: "other-artist",
     name: "Other Artist",
@@ -140,7 +154,10 @@ test("native favorites include the canonical favorite subset", () => {
 
   assert.deepEqual(response.body.library.artists.map((entry) => entry.name), ["Favorite Artist"]);
   assert.deepEqual(response.body.library.albums.map((entry) => entry.title), ["Favorite Album"]);
-  assert.deepEqual(response.body.library.tracks.map((entry) => entry.title), ["Favorite Track"]);
+  assert.deepEqual(response.body.library.tracks.map((entry) => entry.title), [
+    "Favorite Track",
+    "Favorite Track Two",
+  ]);
 });
 
 test("canonical library pages return bounded collection responses", () => {
@@ -154,9 +171,12 @@ test("canonical library pages return bounded collection responses", () => {
   assert.equal(response.body.kind, "tracks");
   assert.equal(response.body.page, 1);
   assert.equal(response.body.pageSize, 1);
-  assert.equal(response.body.total, 2);
+  assert.equal(response.body.total, 3);
   assert.equal(response.body.items.length, 1);
   assert.equal(response.body.items[0].artistName, "Favorite Artist");
+  assert.equal(response.body.albums[0].trackCount, 2);
+  assert.equal(response.body.albums[0].availableTrackCount, 2);
+  assert.equal(response.body.hasMore, true);
 
   const artistResponse = responseFor();
   getRoute("GET /canonical")(

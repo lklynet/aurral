@@ -257,7 +257,6 @@ function LibraryPage() {
             albumId: routeAlbumId,
             page: 1,
             pageSize,
-            signal: controller.signal,
           })
         : Promise.all([
             getCanonicalLibraryPage({
@@ -265,14 +264,12 @@ function LibraryPage() {
               artistId: routeArtistId,
               page: 1,
               pageSize,
-              signal: controller.signal,
             }),
             getCanonicalLibraryPage({
               kind: "tracks",
               artistId: routeArtistId,
               page: 1,
               pageSize,
-              signal: controller.signal,
             }),
           ])
       : section === "favorites"
@@ -284,13 +281,11 @@ function LibraryPage() {
               page: 1,
               pageSize: 12,
               sort: "newest",
-              signal: controller.signal,
             }),
             getCanonicalLibraryPage({
               kind: "tracks",
               page: 1,
               pageSize: 12,
-              signal: controller.signal,
             }),
           ])
         : getCanonicalLibraryPage({
@@ -301,7 +296,6 @@ function LibraryPage() {
             genre: selectedGenre,
             sort: sortMode,
             direction: sortDirection,
-            signal: controller.signal,
           });
 
     const favoritesRequest = Promise.resolve(null);
@@ -1483,7 +1477,9 @@ function LibraryPage() {
         ? selectedGenre
         : sectionLabel;
   const totalPages =
-    pageData?.kind === tab ? Math.ceil(pageData.total / pageData.pageSize) : 0;
+    pageData?.kind === tab && tab !== "genres"
+      ? Math.ceil(pageData.total / pageData.pageSize)
+      : 0;
   const pageCount =
     section === "home"
       ? pageData?.total ?? library.albums.length + library.tracks.length
