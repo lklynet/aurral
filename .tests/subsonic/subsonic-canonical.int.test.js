@@ -39,6 +39,11 @@ function subsonicUrl(method, params = {}) {
     f: "json",
     ...params,
   });
+  for (const [key, value] of Object.entries(params)) {
+    if (!Array.isArray(value)) continue;
+    query.delete(key);
+    for (const entry of value) query.append(key, entry);
+  }
   return `http://127.0.0.1:${aurral.port}/rest/${method}.view?${query}`;
 }
 
@@ -193,15 +198,30 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.equal(song.path, song.id);
   assert.deepEqual(song.artists, [{ id: artist.id, name: "Canonical Artist" }]);
 
-  assert.equal(responseJson(await request("star", { id: song.id })).status, "ok");
-  assert.equal(responseJson(await request("getStarred")).starred.song[0].id, song.id);
+  assert.equal(
+    responseJson(await request("star", { id: [song.id, album.id], artistId: artist.id })).status,
+    "ok",
+  );
+  const starred = responseJson(await request("getStarred")).starred;
+  assert.equal(starred.song[0].id, song.id);
+  assert.equal(starred.album[0].id, album.id);
+  assert.equal(starred.artist[0].id, artist.id);
   assert.equal(responseJson(await request("getStarred2")).starred2.song[0].id, song.id);
   userOps.createUser("bob", hashPassword("bob-password"), "user");
   assert.deepEqual(
     responseJson(await request("getStarred", { u: "bob", p: "bob-password" })).starred,
     { album: [], artist: [], song: [] },
   );
-  assert.equal(responseJson(await request("unstar", { id: song.id })).status, "ok");
+  assert.equal(
+    responseJson(await request("unstar", { id: [song.id, album.id], artistId: artist.id })).status,
+    "ok",
+  );
+  assert.deepEqual(responseJson(await request("getStarred")).starred, { album: [], artist: [], song: [] });
+  assert.equal(
+    responseJson(await request("star", { id: [song.id, "song:missing"] })).error.code,
+    70,
+  );
+  assert.deepEqual(responseJson(await request("getStarred")).starred, { album: [], artist: [], song: [] });
 
   const missingArtist = await request("getTopSongs", { artist: "   " });
   assert.equal(responseJson(missingArtist).error.code, 10);

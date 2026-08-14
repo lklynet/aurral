@@ -514,18 +514,32 @@ const starTarget = (value) => {
 };
 
 export function star(user, value) {
-  const parsed = starTarget(value);
-  if (!parsed || !user?.id) return false;
+  return starMany(user, [value]);
+}
+
+export function starMany(user, values) {
+  const parsed = values.map(starTarget);
+  if (!parsed.length || parsed.some((target) => !target) || !user?.id) return false;
   const library = readLibrary();
-  if (!findCanonical(library, parsed)) return false;
-  addStarStmt.run(user.id, parsed.kind, parsed.key, Date.now());
+  if (parsed.some((target) => !findCanonical(library, target))) return false;
+  const addStars = db.transaction(() => {
+    for (const target of parsed) addStarStmt.run(user.id, target.kind, target.key, Date.now());
+  });
+  addStars();
   return true;
 }
 
 export function unstar(user, value) {
-  const parsed = starTarget(value);
-  if (!parsed || !user?.id) return false;
-  removeStarStmt.run(user.id, parsed.kind, parsed.key);
+  return unstarMany(user, [value]);
+}
+
+export function unstarMany(user, values) {
+  const parsed = values.map(starTarget);
+  if (!parsed.length || parsed.some((target) => !target) || !user?.id) return false;
+  const removeStars = db.transaction(() => {
+    for (const target of parsed) removeStarStmt.run(user.id, target.kind, target.key);
+  });
+  removeStars();
   return true;
 }
 

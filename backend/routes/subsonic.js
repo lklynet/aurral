@@ -20,8 +20,8 @@ import {
   resolveArtworkUrl,
   resolveStreamPath,
   searchLibrary,
-  star,
-  unstar,
+  starMany,
+  unstarMany,
 } from "../services/subsonicLibraryService.js";
 
 const SUBSONIC_VERSION = "1.16.1";
@@ -32,6 +32,14 @@ const getParameter = (req, name) => {
   const value = req.query?.[name];
   return String(Array.isArray(value) ? value[0] || "" : value || "");
 };
+
+const getParameters = (req, names) =>
+  names.flatMap((name) => {
+    const value = req.query?.[name];
+    return (Array.isArray(value) ? value : [value])
+      .map((entry) => String(entry || "").trim())
+      .filter(Boolean);
+  });
 
 const escapeXml = (value) =>
   String(value)
@@ -278,9 +286,10 @@ async function handleSubsonicRequest(req, res) {
     });
   }
   if (method === "star" || method === "unstar") {
+    const targets = getParameters(req, ["id", "albumId", "artistId"]);
     const changed = method === "star"
-      ? star(user, getParameter(req, "id"))
-      : unstar(user, getParameter(req, "id"));
+      ? starMany(user, targets)
+      : unstarMany(user, targets);
     return changed
       ? sendResponse(res, format)
       : sendError(res, format, 70, "Requested data was not found");
