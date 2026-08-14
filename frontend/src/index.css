@@ -8035,7 +8035,6 @@ button.native-library-card__artist:focus-visible {
 .native-library-track-list {
   min-width: 0;
   overflow-x: auto;
-  border-top: 1px solid var(--aurral-border);
 }
 
 .native-library-track {
@@ -8194,7 +8193,6 @@ button.native-library-card__artist:focus-visible {
 .native-library-genre-list {
   min-width: 0;
   overflow-x: auto;
-  border-top: 1px solid var(--aurral-border);
 }
 
 .native-library-genre-row {
