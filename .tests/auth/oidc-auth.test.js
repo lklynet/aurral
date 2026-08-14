@@ -360,6 +360,82 @@ test("OIDC callback rejects a mismatched state without creating a session", asyn
   }
 });
 
+test("OIDC login falls back to the UserInfo endpoint when the ID token omits profile claims", async () => {
+  let issuer;
+  let nonce;
+  const discoveryServer = await createMockHttpServer((request, response) => {
+    if (request.url === "/jwks") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ keys: [oidcKey] }));
+      return;
+    }
+    if (request.method === "POST" && request.url === "/token") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          access_token: "access-token",
+          token_type: "Bearer",
+          id_token: createIdToken(issuer, nonce, { preferred_username: undefined, email: undefined }),
+        }),
+      );
+      return;
+    }
+    if (request.url === "/userinfo") {
+      assert.equal(request.headers.authorization, "Bearer access-token");
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ sub: "oidc-subject", preferred_username: "authelia-user" }));
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        issuer,
+        authorization_endpoint: `${issuer}authorize`,
+        token_endpoint: `${issuer}token`,
+        userinfo_endpoint: `${issuer}userinfo`,
+        jwks_uri: `${issuer}jwks`,
+      }),
+    );
+  });
+
+  try {
+    issuer = `${discoveryServer.url}/`;
+    enableOidcEnv({ OIDC_ISSUER: issuer, OIDC_REDIRECT_URI: `${issuer}callback` });
+
+    const response = {
+      headers: {},
+      redirect(_status, location) {
+        this.location = location;
+      },
+      setHeader(name, value) {
+        this.headers[name] = value;
+      },
+    };
+    await startOidcLogin({}, response);
+    const redirect = new URL(response.location);
+    nonce = redirect.searchParams.get("nonce");
+    const state = redirect.searchParams.get("state");
+    const cookie = response.headers["Set-Cookie"].split(";", 1)[0];
+    const callback = await handleOidcCallback({
+      query: { state, code: "authorization-code" },
+      headers: { cookie },
+      ip: "127.0.0.1",
+    });
+    const session = exchangeOidcCallback(callback.code, {
+      headers: { cookie, "user-agent": "test-agent" },
+      ip: "127.0.0.1",
+    });
+    const loggedInUser = getSessionByToken(session.token)?.user;
+    assert.equal(
+      loggedInUser?.username,
+      "authelia-user",
+      "must resolve the username from UserInfo when the ID token carries none",
+    );
+  } finally {
+    await discoveryServer.close();
+  }
+});
+
 test("OIDC login resolves returning users by issuer+subject, not by username claim", async () => {
   let issuer;
   let nonce;

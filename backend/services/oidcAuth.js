@@ -193,6 +193,17 @@ async function getDiscoveryConfig() {
   return { config, oidc: discoveryConfig };
 }
 
+async function fetchEffectiveClaims(oidc, tokens, claims) {
+  const subject = claims.sub;
+  if (!subject || !tokens.access_token) return claims;
+  try {
+    const userInfo = await client.fetchUserInfo(oidc, tokens.access_token, subject);
+    return { ...claims, ...userInfo };
+  } catch {
+    return claims;
+  }
+}
+
 function toDisplayName(claims) {
   return resolveOidcUsername(claims) || String(claims.email || "").trim() || null;
 }
@@ -356,7 +367,7 @@ export async function handleOidcCallback(req) {
   });
 
   const claims = tokens.claims() || {};
-  const user = resolveOidcSessionUser(config, claims);
+  const user = resolveOidcSessionUser(config, await fetchEffectiveClaims(oidc, tokens, claims));
 
   const code = client.randomState();
   prunePendingExchanges();
