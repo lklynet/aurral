@@ -37,6 +37,7 @@ test.before(() => {
     identityKey: "favorite-artist",
     mbid: "11111111-1111-4111-8111-111111111111",
     name: "Favorite Artist",
+    metadata: { genres: ["Indie Rock"] },
   });
   const album = upsertLibraryAlbum({
     identityKey: "favorite-album",
@@ -62,6 +63,7 @@ test.before(() => {
   const otherArtist = upsertLibraryArtist({
     identityKey: "other-artist",
     name: "Other Artist",
+    metadata: { genres: ["Jazz"] },
   });
   const otherAlbum = upsertLibraryAlbum({
     identityKey: "other-album",
@@ -144,7 +146,7 @@ test("native favorites include the canonical favorite subset", () => {
 test("canonical library pages return bounded collection responses", () => {
   const response = responseFor();
   getRoute("GET /canonical")(
-    { query: { kind: "tracks", page: "1", pageSize: "1" } },
+    { user, query: { kind: "tracks", page: "1", pageSize: "1" } },
     response,
   );
 
@@ -155,6 +157,13 @@ test("canonical library pages return bounded collection responses", () => {
   assert.equal(response.body.total, 2);
   assert.equal(response.body.items.length, 1);
   assert.equal(response.body.items[0].artistName, "Favorite Artist");
+
+  const artistResponse = responseFor();
+  getRoute("GET /canonical")(
+    { user, query: { kind: "artists", page: "1", pageSize: "1" } },
+    artistResponse,
+  );
+  assert.equal(artistResponse.body.items[0].userFavorite, true);
 });
 
 test("native favorites rejects unknown targets without changing stars", () => {
@@ -167,4 +176,25 @@ test("native favorites rejects unknown targets without changing stars", () => {
   assert.equal(response.statusCode, 400);
   assert.equal(response.body.error, "Invalid favorite target");
   assert.equal(libraryService.getStarred(user).artist.length, 1);
+});
+
+test("canonical pages filter, count, and paginate in the read query", () => {
+  const response = responseFor();
+  getRoute("GET /canonical")(
+    {
+      query: {
+        kind: "albums",
+        query: "Favorite",
+        genre: "indie rock",
+        page: "1",
+        pageSize: "1",
+      },
+    },
+    response,
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.total, 1);
+  assert.equal(response.body.hasMore, false);
+  assert.equal(response.body.items[0].title, "Favorite Album");
 });

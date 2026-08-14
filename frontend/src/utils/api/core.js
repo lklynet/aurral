@@ -178,7 +178,8 @@ export const setLibraryLookupCacheEntry = (id, value) => {
 export const setCoverCacheEntry = (key, value) => {
   if (!key) return;
   const images = Array.isArray(value?.images) ? value.images : [];
-  const ttlMs = images.length > 0 ? COVER_CACHE_TTL_MS : EMPTY_COVER_CACHE_TTL_MS;
+  const hasArtwork = images.length > 0 || Boolean(value?.image || value?.imageUrl || value?.coverUrl);
+  const ttlMs = hasArtwork ? COVER_CACHE_TTL_MS : EMPTY_COVER_CACHE_TTL_MS;
   if (coverResponseCache.has(key)) coverResponseCache.delete(key);
   coverResponseCache.set(key, { value, expiresAt: Date.now() + ttlMs });
   if (coverResponseCache.size > MAX_COVER_CACHE_SIZE) {

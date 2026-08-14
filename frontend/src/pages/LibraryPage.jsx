@@ -304,9 +304,7 @@ function LibraryPage() {
             signal: controller.signal,
           });
 
-    const favoritesRequest = section === "favorites"
-      ? Promise.resolve(null)
-      : getLibraryFavorites();
+    const favoritesRequest = Promise.resolve(null);
 
     Promise.all([pageRequest, favoritesRequest])
       .then(([nextData, starred]) => {
@@ -353,13 +351,25 @@ function LibraryPage() {
         setLibrary(usePreview ? libraryPreviewData : normalizedLibrary);
         setIsPreviewLibrary(usePreview);
         const favoriteData = section === "favorites" ? nextData : starred;
-        const nextFavorites = new Set(
-          ["artist", "album", "song"].flatMap((kind) =>
-            (Array.isArray(favoriteData?.[kind]) ? favoriteData[kind] : []).map(
-              (entry) => entry.id,
-            ),
-          ),
-        );
+        const nextFavorites = section === "favorites"
+          ? new Set(
+              ["artist", "album", "song"].flatMap((kind) =>
+                (Array.isArray(favoriteData?.[kind]) ? favoriteData[kind] : []).map(
+                  (entry) => entry.id,
+                ),
+              ),
+            )
+          : new Set(
+              ["artists", "albums", "tracks"].flatMap((kind) =>
+                pageResults
+                  .flatMap((page) => (Array.isArray(page?.[kind]) ? page[kind] : []))
+                  .filter((entity) => entity.userFavorite)
+                  .map((entity) => favoriteId(
+                    kind === "artists" ? "artist" : kind === "albums" ? "album" : "song",
+                    entity,
+                  )),
+              ),
+            );
         setFavoriteIds(usePreview ? new Set(libraryPreviewFavorites) : nextFavorites);
       })
       .catch((requestError) => {

@@ -565,6 +565,10 @@ export function unstarMany(user, values) {
 
 const starredRows = (user) => (user?.id ? getStarsStmt.all(user.id) : []);
 
+export function getStarredIdentityKeys(user) {
+  return new Set(starredRows(user).map((row) => `${row.entity_kind}:${row.entity_key}`));
+}
+
 const buildStarred = (library, rows) => {
   const starred = { album: [], artist: [], song: [] };
   for (const row of rows) {

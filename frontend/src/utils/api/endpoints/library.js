@@ -12,6 +12,10 @@ import {
 const buildStreamUrl = (path) => buildAuthenticatedApiUrl(path);
 const SLOW_LIBRARY_REQUEST_TIMEOUT_MS = 90000;
 const LIBRARY_FAVORITES_CACHE_TTL_MS = 30000;
+const LIBRARY_PAGE_CACHE_TTL_MS = 15000;
+const MAX_LIBRARY_PAGE_CACHE_SIZE = 100;
+const libraryPageCache = new Map();
+const libraryPageRequests = new Map();
 
 export const getLibraryArtists = (options = {}) =>
   getData("/library/artists", options);
@@ -25,25 +29,42 @@ export const getCanonicalLibrary = (options = {}) =>
     signal: options.signal,
   });
 
-export const getCanonicalLibraryPage = (options = {}) =>
-  getData("/library/canonical", {
-    params: Object.fromEntries(
-      Object.entries({
-        kind: options.kind,
-        page: options.page,
-        pageSize: options.pageSize,
-        query: options.query,
-        genre: options.genre,
-        sort: options.sort,
-        direction: options.direction,
-        artistId: options.artistId,
-        albumId: options.albumId,
-        source: options.source || "all",
-        availableOnly: options.availableOnly === true ? "true" : "false",
-      }).filter(([, value]) => value !== undefined && value !== null && value !== ""),
-    ),
-    signal: options.signal,
-  });
+export const getCanonicalLibraryPage = (options = {}) => {
+  const params = Object.fromEntries(
+    Object.entries({
+      kind: options.kind,
+      page: options.page,
+      pageSize: options.pageSize,
+      query: options.query,
+      genre: options.genre,
+      sort: options.sort,
+      direction: options.direction,
+      artistId: options.artistId,
+      albumId: options.albumId,
+      source: options.source || "all",
+      availableOnly: options.availableOnly === true ? "true" : "false",
+    }).filter(([, value]) => value !== undefined && value !== null && value !== ""),
+  );
+  const cacheKey = `${getRequestToken()}:${JSON.stringify(params)}`;
+  const cached = libraryPageCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) return Promise.resolve(cached.data);
+  if (cached) libraryPageCache.delete(cacheKey);
+  if (libraryPageRequests.has(cacheKey)) return libraryPageRequests.get(cacheKey);
+  const request = getData("/library/canonical", { params })
+    .then((data) => {
+      libraryPageCache.delete(cacheKey);
+      libraryPageCache.set(cacheKey, { data, expiresAt: Date.now() + LIBRARY_PAGE_CACHE_TTL_MS });
+      if (libraryPageCache.size > MAX_LIBRARY_PAGE_CACHE_SIZE) {
+        libraryPageCache.delete(libraryPageCache.keys().next().value);
+      }
+      return data;
+    })
+    .finally(() => libraryPageRequests.delete(cacheKey));
+  libraryPageRequests.set(cacheKey, request);
+  return request;
+};
+
+export const clearCanonicalLibraryPageCache = () => libraryPageCache.clear();
 
 let libraryFavoritesCache = null;
 let libraryFavoritesRequest = null;
@@ -83,6 +104,7 @@ export const updateLibraryFavorites = async (ids, starred) => {
     data,
     expiresAt: Date.now() + LIBRARY_FAVORITES_CACHE_TTL_MS,
   };
+  clearCanonicalLibraryPageCache();
   return data;
 };
 

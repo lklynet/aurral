@@ -49,6 +49,11 @@ export const getReleaseGroupRatingsBatch = (ids = []) =>
 
 const RELEASE_GROUP_COVER_BATCH_SIZE = 24;
 
+const normalizeCoverPart = (value) => String(value || "").trim().toLowerCase();
+
+const releaseGroupCoverCacheKey = (mbid, artistName = "", albumTitle = "") =>
+  `release-group:${mbid}:${normalizeCoverPart(artistName)}:${normalizeCoverPart(albumTitle)}`;
+
 export const getReleaseGroupTracks = async (mbid, context = {}) => {
   const params = {};
   if (context.artistMbid) params.artistMbid = context.artistMbid;
@@ -95,6 +100,16 @@ export const getReleaseGroupCoversBatch = async (items = []) => {
   if (!normalizedItems.length) {
     return {};
   }
+  const covers = {};
+  const uncachedItems = [];
+  normalizedItems.forEach((item) => {
+    const cached = getCoverCacheEntry(
+      releaseGroupCoverCacheKey(item.mbid, item.artistName, item.albumTitle),
+    );
+    if (cached) covers[item.mbid] = cached;
+    else uncachedItems.push(item);
+  });
+  if (!uncachedItems.length) return covers;
   const batchKey = normalizedItems
     .map(
       (item) =>
@@ -106,12 +121,22 @@ export const getReleaseGroupCoversBatch = async (items = []) => {
     return coverInflightRequests.get(batchKey);
   }
   const request = (async () => {
-    const covers = {};
-    for (let index = 0; index < normalizedItems.length; index += RELEASE_GROUP_COVER_BATCH_SIZE) {
+    for (let index = 0; index < uncachedItems.length; index += RELEASE_GROUP_COVER_BATCH_SIZE) {
+      const batch = uncachedItems.slice(index, index + RELEASE_GROUP_COVER_BATCH_SIZE);
       const data = await postData("/artists/release-groups/covers", {
-        items: normalizedItems.slice(index, index + RELEASE_GROUP_COVER_BATCH_SIZE),
+        items: batch,
       });
-      Object.assign(covers, data?.covers || {});
+      const batchCovers = data?.covers || {};
+      Object.assign(covers, batchCovers);
+      Object.entries(batchCovers).forEach(([mbid, cover]) => {
+        const item = batch.find((candidate) => candidate.mbid === mbid);
+        if (item && !cover?.transientError) {
+          setCoverCacheEntry(
+            releaseGroupCoverCacheKey(mbid, item.artistName, item.albumTitle),
+            cover,
+          );
+        }
+      });
     }
     return covers;
   })()
@@ -126,11 +151,7 @@ export const getReleaseGroupCover = async (
   mbid,
   { artistName = "", albumTitle = "", bypassCache = false } = {},
 ) => {
-  const normalizedArtistName =
-    typeof artistName === "string" ? artistName.trim().toLowerCase() : "";
-  const normalizedAlbumTitle =
-    typeof albumTitle === "string" ? albumTitle.trim().toLowerCase() : "";
-  const cacheKey = `release-group:${mbid}:${normalizedArtistName}:${normalizedAlbumTitle}`;
+  const cacheKey = releaseGroupCoverCacheKey(mbid, artistName, albumTitle);
   if (!bypassCache) {
     const cached = getCoverCacheEntry(cacheKey);
     if (cached) {

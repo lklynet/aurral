@@ -6,6 +6,7 @@ import {
   getCanonicalLibraryPage,
 } from "../../../services/libraryQueryService.js";
 import {
+  getStarredIdentityKeys,
   getStarredWithLibrary,
   starMany,
   unstarMany,
@@ -31,19 +32,25 @@ function getAlbumCoverUrl(album) {
   return /^https?:\/\//i.test(source || "") ? buildImageProxyUrl(source) : null;
 }
 
-function toPublicLibrary(library) {
+function toPublicLibrary(library, favoriteKeys = null) {
+  const publicEntity = (kind, entity) => favoriteKeys
+    ? { ...entity, userFavorite: favoriteKeys.has(`${kind}:${entity.identityKey}`) }
+    : entity;
   return stripFilesystemPaths({
-    artists: library.artists,
+    artists: library.artists.map((artist) => publicEntity("artist", artist)),
     albums: library.albums.map((album) => ({
       ...album,
       coverUrl: album.coverUrl || getAlbumCoverUrl(album),
+      ...(favoriteKeys
+        ? { userFavorite: favoriteKeys.has(`album:${album.identityKey}`) }
+        : {}),
     })),
-    tracks: library.tracks,
+    tracks: library.tracks.map((track) => publicEntity("song", track)),
   });
 }
 
-export function toPublicLibraryPage(page) {
-  const collections = toPublicLibrary(page);
+export function toPublicLibraryPage(page, favoriteKeys = null) {
+  const collections = toPublicLibrary(page, favoriteKeys);
   const items = page.kind === "artists"
     ? collections.artists
     : page.kind === "albums"
@@ -61,6 +68,7 @@ export function toPublicLibraryPage(page) {
 export function registerCanonical(router) {
   router.get("/canonical", noCache, (req, res) => {
     try {
+      const favoriteKeys = req.user ? getStarredIdentityKeys(req.user) : null;
       if (req.query.kind) {
         return res.json(toPublicLibraryPage(getCanonicalLibraryPage({
           source: req.query.source,
@@ -74,13 +82,13 @@ export function registerCanonical(router) {
           direction: req.query.direction,
           artistId: req.query.artistId,
           albumId: req.query.albumId,
-        })));
+        }), favoriteKeys));
       }
       const library = getCanonicalLibrary({
         source: req.query.source,
         availableOnly: req.query.availableOnly === "true",
       });
-      return res.json(toPublicLibrary(library));
+      return res.json(toPublicLibrary(library, favoriteKeys));
     } catch (error) {
       if (
         error.message.startsWith("Unsupported library source:") ||

@@ -15,6 +15,17 @@ const normalizeKeyPart = (value) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
+let libraryScanDepth = 0;
+let libraryCacheInvalidationPending = false;
+
+const invalidateLibraryCache = () => {
+  if (libraryScanDepth > 0) {
+    libraryCacheInvalidationPending = true;
+    return;
+  }
+  invalidateCanonicalLibraryCache();
+};
+
 export function buildIdentityKey(prefix, value) {
   const normalized = normalizeText(value);
   if (!normalized) return null;
@@ -74,7 +85,7 @@ export function upsertLibraryArtist({ identityKey, mbid = null, name, sortName =
        metadata_json = COALESCE(excluded.metadata_json, library_artists.metadata_json),
        updated_at = excluded.updated_at`,
   ).run(key, mbid || null, artistName, sortName || null, stringify(metadata), timestamp, timestamp);
-  invalidateCanonicalLibraryCache();
+  invalidateLibraryCache();
   return db.prepare("SELECT * FROM library_artists WHERE identity_key = ?").get(key);
 }
 
@@ -119,7 +130,7 @@ export function upsertLibraryAlbum({
     timestamp,
     timestamp,
   );
-  invalidateCanonicalLibraryCache();
+  invalidateLibraryCache();
   return db.prepare("SELECT * FROM library_albums WHERE identity_key = ?").get(key);
 }
 
@@ -144,7 +155,7 @@ export function upsertLibraryTrack({
        metadata_json = COALESCE(excluded.metadata_json, library_tracks.metadata_json),
        updated_at = excluded.updated_at`,
   ).run(key, mbid || null, trackTitle, artistName || null, stringify(metadata), timestamp, timestamp);
-  invalidateCanonicalLibraryCache();
+  invalidateLibraryCache();
   return db.prepare("SELECT * FROM library_tracks WHERE identity_key = ?").get(key);
 }
 
@@ -154,7 +165,7 @@ export function linkLibraryAlbumTrack({ albumId, trackId, discNumber = 1, trackN
       (album_id, track_id, disc_number, track_number, created_at)
      VALUES (?, ?, ?, ?, ?)`,
   ).run(Number(albumId), Number(trackId), Number(discNumber) || 1, Number(trackNumber) || 0, now());
-  invalidateCanonicalLibraryCache();
+  invalidateLibraryCache();
 }
 
 export function upsertLibraryMediaFile({
@@ -204,7 +215,7 @@ export function upsertLibraryMediaFile({
     timestamp,
     timestamp,
   );
-  invalidateCanonicalLibraryCache();
+  invalidateLibraryCache();
 }
 
 export function markUnseenFilesUnavailable(scanId, source) {
@@ -213,10 +224,11 @@ export function markUnseenFilesUnavailable(scanId, source) {
      SET available = 0, updated_at = ?
      WHERE source = ? AND (last_seen_scan_id IS NULL OR last_seen_scan_id != ?)`,
   ).run(now(), normalizeText(source), Number(scanId));
-  invalidateCanonicalLibraryCache();
+  invalidateLibraryCache();
 }
 
 export async function withLibraryScan(source, rootPath, run) {
+  libraryScanDepth += 1;
   const scanId = beginLibraryScan({ source, rootPath });
   try {
     const result = await run(scanId);
@@ -225,6 +237,12 @@ export async function withLibraryScan(source, rootPath, run) {
   } catch (error) {
     finishLibraryScan(scanId, { status: "failed", error: error.message });
     throw error;
+  } finally {
+    libraryScanDepth -= 1;
+    if (libraryScanDepth === 0 && libraryCacheInvalidationPending) {
+      libraryCacheInvalidationPending = false;
+      invalidateCanonicalLibraryCache();
+    }
   }
 }
 
