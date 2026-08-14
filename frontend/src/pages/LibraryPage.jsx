@@ -531,7 +531,7 @@ function LibraryPage() {
   const toggleFavorite = useCallback(
     async (kind, entity) => {
       const id = favoriteId(kind, entity);
-      if (!id || id.endsWith(":")) return;
+      if (!id || id.endsWith(":") || pendingFavorite) return;
       const nextStarred = !favoriteIds.has(id);
       if (isPreviewLibrary) {
         setFavoriteIds((current) => {
@@ -568,7 +568,7 @@ function LibraryPage() {
         setPendingFavorite(null);
       }
     },
-    [favoriteIds, isPreviewLibrary, showError],
+    [favoriteIds, isPreviewLibrary, pendingFavorite, showError],
   );
 
   const playTrack = useCallback(
@@ -780,7 +780,7 @@ function LibraryPage() {
             <FavoriteButton
               className="native-library-track__favorite"
               active={favoriteIds.has(favoriteId("song", track))}
-              pending={pendingFavorite === favoriteId("song", track)}
+              pending={Boolean(pendingFavorite)}
               label={track.title || "track"}
               onClick={() => toggleFavorite("song", track)}
             />
@@ -825,7 +825,7 @@ function LibraryPage() {
           </button>
           <FavoriteButton
             active={favoriteIds.has(favoriteId("artist", artist))}
-            pending={pendingFavorite === favoriteId("artist", artist)}
+            pending={Boolean(pendingFavorite)}
             label={artist.name || "artist"}
             onClick={() => toggleFavorite("artist", artist)}
           />
@@ -880,7 +880,7 @@ function LibraryPage() {
             </button>
             <FavoriteButton
               active={favoriteIds.has(favoriteId("album", album))}
-              pending={pendingFavorite === favoriteId("album", album)}
+              pending={Boolean(pendingFavorite)}
               label={album.title || "album"}
               onClick={() => toggleFavorite("album", album)}
             />
@@ -1054,7 +1054,7 @@ function LibraryPage() {
               </button>
               <FavoriteButton
                 active={favoriteIds.has(favoriteId("album", libraryAlbum))}
-                pending={pendingFavorite === favoriteId("album", libraryAlbum)}
+                pending={Boolean(pendingFavorite)}
                 label={libraryAlbum.title || "album"}
                 onClick={() => toggleFavorite("album", libraryAlbum)}
               />
@@ -1129,7 +1129,7 @@ function LibraryPage() {
               </button>
               <FavoriteButton
                 active={favoriteIds.has(favoriteId("artist", libraryArtist))}
-                pending={pendingFavorite === favoriteId("artist", libraryArtist)}
+                pending={Boolean(pendingFavorite)}
                 label={libraryArtist.name || "artist"}
                 onClick={() => toggleFavorite("artist", libraryArtist)}
               />
