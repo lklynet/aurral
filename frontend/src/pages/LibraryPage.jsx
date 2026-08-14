@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowDownAZ,
   ArrowLeft,
+  ArrowRight,
   ArrowUpZA,
   ExternalLink,
   Grid3X3,
@@ -24,6 +25,7 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.js";
 import {
   getCanonicalLibrary,
+  getCanonicalLibraryPage,
   getLibraryFavorites,
   updateLibraryFavorites,
 } from "../utils/api/endpoints/library.js";
@@ -144,7 +146,7 @@ function LibraryPage() {
   const { showError } = useToast();
   const { playQueue, currentTrack, isPlaying, isLoading, togglePlayPause, matchesSource } =
     useAudioQueue();
-  const [library, setLibrary] = useState({ artists: [], albums: [], tracks: [] });
+  const [library, setLibrary] = useState({ artists: [], albums: [], tracks: [], genres: [] });
   const [favoriteIds, setFavoriteIds] = useState(() => new Set());
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState("name");
@@ -159,6 +161,11 @@ function LibraryPage() {
   const [error, setError] = useState(null);
   const [isPreviewLibrary, setIsPreviewLibrary] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+  const [pageIndex, setPageIndex] = useState(1);
+  const [pageData, setPageData] = useState(null);
+  const albumTrackCacheRef = useRef(new Map());
+
+  const pageSize = 100;
 
   const section = LIBRARY_VIEW_IDS.has(routeSection) ? routeSection : DEFAULT_LIBRARY_VIEW;
   const isDetail = Boolean(routeAlbumId || routeArtistId);
@@ -190,6 +197,8 @@ function LibraryPage() {
     setViewMode(section === "tracks" || section === "genres" ? "list" : "grid");
     setSearchOpen(false);
     setFiltersOpen(false);
+    setPageIndex(1);
+    setPageData(null);
   }, [section]);
 
   useEffect(() => {
@@ -202,26 +211,105 @@ function LibraryPage() {
       setLibrary(libraryPreviewData);
       setFavoriteIds(new Set(libraryPreviewFavorites));
       setIsPreviewLibrary(true);
+      setPageData(null);
       setLoading(false);
       return () => controller.abort();
     }
 
-    Promise.all([
-      getCanonicalLibrary({ signal: controller.signal }),
-      getLibraryFavorites({ signal: controller.signal }),
-    ])
-      .then(([nextLibrary, starred]) => {
+    const pageRequest = isDetail
+      ? routeAlbumId
+        ? getCanonicalLibraryPage({
+            kind: "tracks",
+            albumId: routeAlbumId,
+            page: 1,
+            pageSize,
+            signal: controller.signal,
+          })
+        : Promise.all([
+            getCanonicalLibraryPage({
+              kind: "albums",
+              artistId: routeArtistId,
+              page: 1,
+              pageSize,
+              signal: controller.signal,
+            }),
+            getCanonicalLibraryPage({
+              kind: "tracks",
+              artistId: routeArtistId,
+              page: 1,
+              pageSize,
+              signal: controller.signal,
+            }),
+          ])
+      : section === "favorites"
+        ? getCanonicalLibrary({ signal: controller.signal })
+      : section === "home"
+        ? Promise.all([
+            getCanonicalLibraryPage({
+              kind: "albums",
+              page: 1,
+              pageSize: 12,
+              sort: "newest",
+              signal: controller.signal,
+            }),
+            getCanonicalLibraryPage({
+              kind: "tracks",
+              page: 1,
+              pageSize: 12,
+              signal: controller.signal,
+            }),
+          ])
+        : getCanonicalLibraryPage({
+            kind: tab,
+            page: pageIndex,
+            pageSize,
+            query: normalizedQuery,
+            genre: selectedGenre,
+            sort: sortMode,
+            direction: sortDirection,
+            signal: controller.signal,
+          });
+
+    Promise.all([pageRequest, getLibraryFavorites({ signal: controller.signal })])
+      .then(([nextData, starred]) => {
         if (controller.signal.aborted) return;
-        const normalizedLibrary = {
-          artists: Array.isArray(nextLibrary?.artists) ? nextLibrary.artists : [],
-          albums: Array.isArray(nextLibrary?.albums) ? nextLibrary.albums : [],
-          tracks: Array.isArray(nextLibrary?.tracks) ? nextLibrary.tracks : [],
-        };
+        const pageResults = Array.isArray(nextData) ? nextData : [nextData];
+        const normalizedLibrary = pageResults.reduce(
+          (result, page) => {
+            ["artists", "albums", "tracks"].forEach((kind) => {
+              (Array.isArray(page?.[kind]) ? page[kind] : []).forEach((entity) => {
+                if (!result[kind].some((candidate) => String(candidate.id) === String(entity.id))) {
+                  result[kind].push(entity);
+                }
+              });
+            });
+            if (Array.isArray(page?.genres) && page.genres.length > result.genres.length) {
+              result.genres = page.genres;
+            }
+            return result;
+          },
+          { artists: [], albums: [], tracks: [], genres: [] },
+        );
         const usePreview =
           import.meta.env.DEV &&
+          pageResults.every((page) => Number(page?.total || 0) === 0) &&
+          !normalizedQuery &&
+          !selectedGenre &&
           normalizedLibrary.artists.length === 0 &&
           normalizedLibrary.albums.length === 0 &&
           normalizedLibrary.tracks.length === 0;
+        if (usePreview || isDetail || section === "favorites") {
+          setPageData(null);
+        } else {
+          setPageData(
+            section === "home"
+              ? {
+                  kind: "home",
+                  total: pageResults.reduce((count, page) => count + Number(page?.total || 0), 0),
+                }
+              : nextData,
+          );
+        }
         setLibrary(usePreview ? libraryPreviewData : normalizedLibrary);
         setIsPreviewLibrary(usePreview);
         const nextFavorites = new Set(
@@ -245,12 +333,58 @@ function LibraryPage() {
       });
 
     return () => controller.abort();
-  }, [forcePreview, retryKey]);
+  }, [
+    forcePreview,
+    isDetail,
+    normalizedQuery,
+    pageIndex,
+    routeAlbumId,
+    routeArtistId,
+    retryKey,
+    section,
+    selectedGenre,
+    sortDirection,
+    sortMode,
+    tab,
+  ]);
 
   const getAlbumTracks = useCallback(
-    (album) => album?.trackIds?.map((id) => tracksById.get(String(id))).filter(Boolean) || [],
+    (album) => {
+      const cached = albumTrackCacheRef.current.get(String(album?.id));
+      return cached || album?.trackIds?.map((id) => tracksById.get(String(id))).filter(Boolean) || [];
+    },
     [tracksById],
   );
+
+  const loadAlbumTracks = useCallback(async (album) => {
+    if (!album?.id) return [];
+    const cacheKey = String(album.id);
+    const cached = albumTrackCacheRef.current.get(cacheKey);
+    if (cached) return cached;
+    const page = await getCanonicalLibraryPage({
+      kind: "tracks",
+      albumId: album.id,
+      page: 1,
+      pageSize,
+    });
+    const tracks = Array.isArray(page?.items) ? page.items : [];
+    albumTrackCacheRef.current.set(cacheKey, tracks);
+    setLibrary((current) => {
+      const merge = (kind) => [
+        ...(current[kind] || []),
+        ...(Array.isArray(page?.[kind]) ? page[kind] : []),
+      ].filter((entity, index, values) =>
+        values.findIndex((candidate) => String(candidate.id) === String(entity.id)) === index,
+      );
+      return {
+        ...current,
+        artists: merge("artists"),
+        albums: merge("albums"),
+        tracks: merge("tracks"),
+      };
+    });
+    return tracks;
+  }, []);
 
   const getAlbumForTrack = useCallback(
     (track) => (track?.albums?.[0] ? albumsById.get(String(track.albums[0].albumId)) : null),
@@ -265,8 +399,10 @@ function LibraryPage() {
   const albumAvailability = useCallback(
     (album) => {
       const tracks = getAlbumTracks(album);
-      const total = tracks.length || (album?.trackIds || []).length;
-      const available = tracks.filter((track) => firstAvailableFile(track)).length;
+      const total = album?.trackCount || tracks.length || (album?.trackIds || []).length;
+      const available = album?.availableTrackCount != null && tracks.length !== total
+        ? album.availableTrackCount
+        : tracks.filter((track) => firstAvailableFile(track)).length;
       return { total, available };
     },
     [getAlbumTracks],
@@ -314,6 +450,7 @@ function LibraryPage() {
   );
 
   const genreStats = useMemo(() => {
+    if (library.genres?.length) return library.genres;
     const stats = new Map();
     const add = (genre, kind) => {
       const entry = stats.get(genre) || { name: genre, artists: 0, albums: 0, tracks: 0 };
@@ -330,7 +467,7 @@ function LibraryPage() {
       metadataGenres(track).forEach((genre) => add(genre, "tracks")),
     );
     return [...stats.values()].sort((left, right) => left.name.localeCompare(right.name));
-  }, [library.albums, library.artists, library.tracks]);
+  }, [library.albums, library.artists, library.genres, library.tracks]);
 
   const visibleGenreStats = useMemo(
     () =>
@@ -530,6 +667,15 @@ function LibraryPage() {
     [buildPlayableTrack, librarySource, playQueue, showError],
   );
 
+  const playAlbum = useCallback(async (album) => {
+    try {
+      const tracks = await loadAlbumTracks(album);
+      playTracks(tracks);
+    } catch (requestError) {
+      showError(requestError.response?.data?.message || "Failed to load album tracks");
+    }
+  }, [loadAlbumTracks, playTracks, showError]);
+
   const toggleFavorite = useCallback(
     async (kind, entity) => {
       const id = favoriteId(kind, entity);
@@ -630,9 +776,11 @@ function LibraryPage() {
     favoriteArtists.length + favoriteAlbums.length + favoriteTracks.length;
   const activeCount =
     section === "home"
-      ? library.albums.length + library.tracks.length
+      ? pageData?.total ?? library.albums.length + library.tracks.length
       : section === "favorites"
         ? favoriteCount
+        : pageData?.kind === tab
+          ? pageData.total
         : tab === "artists"
           ? sortedArtists.length
           : tab === "albums"
@@ -680,6 +828,7 @@ function LibraryPage() {
   const collectionPlayable = collectionTracks.some((track) => firstAvailableFile(track));
 
   const updateGenreFilter = (genre) => {
+    setPageIndex(1);
     const next = new URLSearchParams(searchParams);
     if (genre) next.set("genre", genre);
     else next.delete("genre");
@@ -864,8 +1013,8 @@ function LibraryPage() {
           </button>
           <TooltipButton
             className="native-library-card__play"
-            onClick={() => playTracks(albumTracks)}
-            disabled={!albumTracks.some((track) => firstAvailableFile(track))}
+            onClick={() => playAlbum(album)}
+            disabled={!albumTracks.length && !album.trackCount && !album.trackIds?.length}
             label={"Play " + (album.title || "album")}
             aria-label={"Play " + (album.title || "album")}
           >
@@ -1252,9 +1401,11 @@ function LibraryPage() {
               : renderGenres();
 
   const pageTitle = section === "home" ? "Library" : sectionLabel;
+  const totalPages =
+    pageData?.kind === tab ? Math.ceil(pageData.total / pageData.pageSize) : 0;
   const pageCount =
     section === "home"
-      ? library.albums.length + library.tracks.length
+      ? pageData?.total ?? library.albums.length + library.tracks.length
       : activeCount;
   const showToolbar = section !== "home";
   const hasActiveFilters = Boolean(selectedGenre);
@@ -1311,13 +1462,22 @@ function LibraryPage() {
                   <input
                     type="search"
                     value={query}
-                    onChange={(event) => setQuery(event.target.value)}
+                    onChange={(event) => {
+                      setPageIndex(1);
+                      setQuery(event.target.value);
+                    }}
                     placeholder={"Search " + sectionLabel.toLocaleLowerCase()}
                     aria-label={"Search " + sectionLabel.toLocaleLowerCase()}
                     autoFocus
                   />
                   {query && (
-                    <TooltipButton onClick={() => setQuery("")} label="Clear search">
+                    <TooltipButton
+                      onClick={() => {
+                        setPageIndex(1);
+                        setQuery("");
+                      }}
+                      label="Clear search"
+                    >
                       <X aria-hidden="true" />
                     </TooltipButton>
                   )}
@@ -1329,7 +1489,10 @@ function LibraryPage() {
                     <span className="sr-only">Sort {sectionLabel.toLocaleLowerCase()} by</span>
                     <select
                       value={sortMode}
-                      onChange={(event) => setSortMode(event.target.value)}
+                      onChange={(event) => {
+                        setPageIndex(1);
+                        setSortMode(event.target.value);
+                      }}
                       aria-label={"Sort " + sectionLabel.toLocaleLowerCase()}
                     >
                       {sortOptions.map((option) => (
@@ -1342,9 +1505,10 @@ function LibraryPage() {
                   <span className="native-library-toolbar-divider" aria-hidden="true" />
                   <TooltipButton
                     className="native-library-icon-button"
-                    onClick={() =>
-                      setSortDirection((value) => (value === "asc" ? "desc" : "asc"))
-                    }
+                    onClick={() => {
+                      setPageIndex(1);
+                      setSortDirection((value) => (value === "asc" ? "desc" : "asc"));
+                    }}
                     label={sortDirection === "asc" ? "Descending" : "Ascending"}
                     aria-label={sortDirection === "asc" ? "Sort descending" : "Sort ascending"}
                   >
@@ -1451,6 +1615,31 @@ function LibraryPage() {
       )}
       {!loading && !error && activeCount > 0 && (
         <div className="native-library-content">{content}</div>
+      )}
+      {!loading && !error && totalPages > 1 && (
+        <nav className="native-library-pagination" aria-label={sectionLabel + " pages"}>
+          <TooltipButton
+            className="native-library-icon-button"
+            onClick={() => setPageIndex((value) => Math.max(1, value - 1))}
+            disabled={pageIndex === 1}
+            label="Previous page"
+            aria-label="Previous page"
+          >
+            <ArrowLeft aria-hidden="true" />
+          </TooltipButton>
+          <span>
+            Page {pageIndex} of {totalPages}
+          </span>
+          <TooltipButton
+            className="native-library-icon-button"
+            onClick={() => setPageIndex((value) => Math.min(totalPages, value + 1))}
+            disabled={pageIndex === totalPages}
+            label="Next page"
+            aria-label="Next page"
+          >
+            <ArrowRight aria-hidden="true" />
+          </TooltipButton>
+        </nav>
       )}
     </main>
   );

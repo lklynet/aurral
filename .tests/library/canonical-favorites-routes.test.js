@@ -109,6 +109,22 @@ test("native favorites reuse Subsonic star identity and return current favorites
   assert.deepEqual(getResponse.body.artist.map((entry) => entry.id), [target]);
 });
 
+test("canonical library pages return bounded collection responses", () => {
+  const response = responseFor();
+  getRoute("GET /canonical")(
+    { query: { kind: "tracks", page: "1", pageSize: "1" } },
+    response,
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.kind, "tracks");
+  assert.equal(response.body.page, 1);
+  assert.equal(response.body.pageSize, 1);
+  assert.equal(response.body.total, 1);
+  assert.equal(response.body.items.length, 1);
+  assert.equal(response.body.items[0].artistName, "Favorite Artist");
+});
+
 test("native favorites rejects unknown targets without changing stars", () => {
   const response = responseFor();
   getRoute("POST /favorites")(

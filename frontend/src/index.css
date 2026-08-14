@@ -8249,6 +8249,16 @@ button.native-library-genre-row:focus-visible {
   text-align: center;
 }
 
+.native-library-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  padding: 1rem 0 0.25rem;
+  color: var(--aurral-text-muted);
+  font-size: 0.72rem;
+}
+
 .native-library-state strong {
   color: var(--aurral-text);
   font-size: 0.9rem;

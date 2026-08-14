@@ -23,6 +23,26 @@ export const getCanonicalLibrary = (options = {}) =>
     signal: options.signal,
   });
 
+export const getCanonicalLibraryPage = (options = {}) =>
+  getData("/library/canonical", {
+    params: Object.fromEntries(
+      Object.entries({
+        kind: options.kind,
+        page: options.page,
+        pageSize: options.pageSize,
+        query: options.query,
+        genre: options.genre,
+        sort: options.sort,
+        direction: options.direction,
+        artistId: options.artistId,
+        albumId: options.albumId,
+        source: options.source || "all",
+        availableOnly: options.availableOnly === true ? "true" : "false",
+      }).filter(([, value]) => value !== undefined && value !== null && value !== ""),
+    ),
+    signal: options.signal,
+  });
+
 export const getLibraryFavorites = (options = {}) =>
   getData("/library/favorites", { signal: options.signal });
 

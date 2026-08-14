@@ -2,6 +2,9 @@ import { db, dbHelpers } from "../config/db-sqlite.js";
 
 const SOURCES = new Set(["aurral", "lidarr"]);
 const libraryCache = new Map();
+const PAGE_KINDS = new Set(["artists", "albums", "tracks", "genres"]);
+const DEFAULT_PAGE_SIZE = 100;
+const MAX_PAGE_SIZE = 100;
 
 const parseJson = (value) => {
   if (!value) return null;
@@ -176,6 +179,185 @@ export function getCanonicalLibrary({ source = null, availableOnly = false } = {
   };
   libraryCache.set(cacheKey, library);
   return library;
+}
+
+const text = (value) => String(value || "").trim();
+
+const metadataGenres = (entity) => {
+  const metadata = entity?.metadata || {};
+  return [metadata.genres, metadata.genre, metadata.common?.genre, metadata.tags?.genre]
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map(text)
+    .filter(Boolean)
+    .filter((value, index, values) => values.indexOf(value) === index);
+};
+
+const hasGenre = (genre, ...entities) => {
+  if (!genre) return true;
+  const wanted = genre.toLocaleLowerCase();
+  return entities.flatMap(metadataGenres).some((value) => value.toLocaleLowerCase() === wanted);
+};
+
+const matchesQuery = (entity, query, artist, album) => {
+  if (!query) return true;
+  return [
+    entity?.name,
+    entity?.title,
+    entity?.artistName,
+    entity?.albumArtist,
+    artist?.name,
+    album?.title,
+  ].some((value) => text(value).toLocaleLowerCase().includes(query));
+};
+
+const genreStatsFor = (library) => {
+  const stats = new Map();
+  const add = (genre, kind) => {
+    const entry = stats.get(genre) || { name: genre, artists: 0, albums: 0, tracks: 0 };
+    entry[kind] += 1;
+    stats.set(genre, entry);
+  };
+  library.artists.forEach((artist) =>
+    metadataGenres(artist).forEach((genre) => add(genre, "artists")),
+  );
+  library.albums.forEach((album) =>
+    metadataGenres(album).forEach((genre) => add(genre, "albums")),
+  );
+  library.tracks.forEach((track) =>
+    metadataGenres(track).forEach((genre) => add(genre, "tracks")),
+  );
+  return [...stats.values()].sort((left, right) => left.name.localeCompare(right.name));
+};
+
+const pageNumber = (value) => Math.max(1, Number.parseInt(value, 10) || 1);
+
+const pageSize = (value) =>
+  Math.min(MAX_PAGE_SIZE, Math.max(1, Number.parseInt(value, 10) || DEFAULT_PAGE_SIZE));
+
+export function getCanonicalLibraryPage({
+  source = null,
+  availableOnly = false,
+  kind = "albums",
+  page = 1,
+  pageSize: requestedPageSize = DEFAULT_PAGE_SIZE,
+  query = "",
+  genre = "",
+  sort = "name",
+  direction = "asc",
+  artistId = null,
+  albumId = null,
+} = {}) {
+  const normalizedKind = text(kind).toLocaleLowerCase();
+  if (!PAGE_KINDS.has(normalizedKind)) {
+    throw new Error(`Unsupported library page kind: ${normalizedKind}`);
+  }
+
+  const library = getCanonicalLibrary({ source, availableOnly });
+  const artistsById = new Map(library.artists.map((artist) => [String(artist.id), artist]));
+  const albumsById = new Map(library.albums.map((album) => [String(album.id), album]));
+  const normalizedQuery = text(query).toLocaleLowerCase();
+  const normalizedGenre = text(genre);
+
+  let collection = normalizedKind === "genres" ? genreStatsFor(library) : library[normalizedKind];
+  if (normalizedKind !== "genres") {
+    collection = collection.filter((entity) => {
+      const album = normalizedKind === "tracks"
+        ? albumsById.get(String(entity.albums?.[0]?.albumId))
+        : entity;
+      const artist = normalizedKind === "artists"
+        ? entity
+        : artistsById.get(String(album?.artistId));
+      const belongsToArtist = !artistId || (
+        normalizedKind === "artists"
+          ? String(entity.id) === String(artistId)
+          : String(artist?.id) === String(artistId)
+      );
+      const belongsToAlbum = !albumId || (
+        normalizedKind === "albums"
+          ? String(entity.id) === String(albumId)
+          : entity.albums?.some((entry) => String(entry.albumId) === String(albumId))
+      );
+      return (
+        belongsToArtist &&
+        belongsToAlbum &&
+        hasGenre(normalizedGenre, artist, album, entity) &&
+        matchesQuery(entity, normalizedQuery, artist, album)
+      );
+    });
+  } else if (normalizedQuery) {
+    collection = collection.filter((genreEntry) =>
+      genreEntry.name.toLocaleLowerCase().includes(normalizedQuery),
+    );
+  }
+
+  collection = [...collection].sort((left, right) => {
+    if (normalizedKind === "genres") return left.name.localeCompare(right.name);
+    if (sort === "newest" && normalizedKind === "albums") {
+      return text(right.releaseDate).localeCompare(text(left.releaseDate));
+    }
+    if (sort === "artist" && normalizedKind !== "artists") {
+      const leftArtist = artistsById.get(String(
+        normalizedKind === "tracks"
+          ? albumsById.get(String(left.albums?.[0]?.albumId))?.artistId
+          : left.artistId,
+      ));
+      const rightArtist = artistsById.get(String(
+        normalizedKind === "tracks"
+          ? albumsById.get(String(right.albums?.[0]?.albumId))?.artistId
+          : right.artistId,
+      ));
+      return text(leftArtist?.name).localeCompare(text(rightArtist?.name));
+    }
+    return text(left.name || left.title).localeCompare(text(right.name || right.title));
+  });
+  if (direction === "desc") collection.reverse();
+
+  const currentPage = pageNumber(page);
+  const currentPageSize = pageSize(requestedPageSize);
+  const total = collection.length;
+  const withAlbumStats = (album) => {
+    const availableTrackCount = album.trackIds.filter((trackId) =>
+      library.tracks.find((track) => track.id === trackId)?.available,
+    ).length;
+    return {
+      ...album,
+      trackCount: album.trackIds.length,
+      availableTrackCount,
+    };
+  };
+  const items = collection.slice(
+    (currentPage - 1) * currentPageSize,
+    currentPage * currentPageSize,
+  ).map((entity) => normalizedKind === "albums" ? withAlbumStats(entity) : entity);
+
+  const relatedAlbums = normalizedKind === "tracks"
+    ? [...new Set(items.flatMap((track) =>
+        track.albums.map((entry) => String(entry.albumId))))]
+        .map((id) => albumsById.get(id))
+        .filter(Boolean)
+        .map(withAlbumStats)
+    : normalizedKind === "albums" ? items : [];
+  const relatedArtists = normalizedKind === "artists"
+    ? items
+    : relatedAlbums
+      .map((album) => artistsById.get(String(album.artistId)))
+      .filter(Boolean)
+      .filter((artist, index, values) =>
+        values.findIndex((candidate) => candidate.id === artist.id) === index,
+      );
+
+  return {
+    kind: normalizedKind,
+    page: currentPage,
+    pageSize: currentPageSize,
+    total,
+    hasMore: currentPage * currentPageSize < total,
+    items,
+    artists: relatedArtists,
+    albums: relatedAlbums,
+    tracks: normalizedKind === "tracks" ? items : [],
+    genres: genreStatsFor(library),
+  };
 }
 
 export function invalidateCanonicalLibraryCache() {

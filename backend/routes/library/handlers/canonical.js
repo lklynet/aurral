@@ -1,7 +1,10 @@
 import { noCache } from "../../../middleware/cache.js";
 import { requireAuth } from "../../../middleware/requirePermission.js";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
-import { getCanonicalLibrary } from "../../../services/libraryQueryService.js";
+import {
+  getCanonicalLibrary,
+  getCanonicalLibraryPage,
+} from "../../../services/libraryQueryService.js";
 import { getStarred, starMany, unstarMany } from "../../../services/subsonicLibraryService.js";
 
 const isFilesystemPathKey = (key) => key.toLowerCase().endsWith("path");
@@ -35,16 +38,50 @@ function toPublicLibrary(library) {
   });
 }
 
+export function toPublicLibraryPage(page) {
+  const collections = toPublicLibrary(page);
+  const items = page.kind === "artists"
+    ? collections.artists
+    : page.kind === "albums"
+      ? collections.albums
+      : page.kind === "tracks"
+        ? collections.tracks
+        : stripFilesystemPaths(page.items);
+  return {
+    ...stripFilesystemPaths(page),
+    ...collections,
+    items,
+  };
+}
+
 export function registerCanonical(router) {
   router.get("/canonical", noCache, (req, res) => {
     try {
+      if (req.query.kind) {
+        return res.json(toPublicLibraryPage(getCanonicalLibraryPage({
+          source: req.query.source,
+          availableOnly: req.query.availableOnly === "true",
+          kind: req.query.kind,
+          page: req.query.page,
+          pageSize: req.query.pageSize,
+          query: req.query.query,
+          genre: req.query.genre,
+          sort: req.query.sort,
+          direction: req.query.direction,
+          artistId: req.query.artistId,
+          albumId: req.query.albumId,
+        })));
+      }
       const library = getCanonicalLibrary({
         source: req.query.source,
         availableOnly: req.query.availableOnly === "true",
       });
       return res.json(toPublicLibrary(library));
     } catch (error) {
-      if (error.message.startsWith("Unsupported library source:")) {
+      if (
+        error.message.startsWith("Unsupported library source:") ||
+        error.message.startsWith("Unsupported library page kind:")
+      ) {
         return res.status(400).json({ error: error.message });
       }
       return res.status(500).json({
