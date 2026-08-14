@@ -11,11 +11,11 @@ max_embed_chars=6000
 max_embed_fields=25
 
 case "${channel}" in
-  releases|nightly|previews)
+  releases|nightly)
     webhook_url="${DISCORD_WEBHOOK_ANNOUNCEMENTS:-}"
     ;;
   *)
-    echo "Usage: $0 releases|nightly|previews" >&2
+    echo "Usage: $0 releases|nightly" >&2
     exit 2
     ;;
 esac
@@ -175,28 +175,6 @@ previous_stable_tag() {
   fi
 }
 
-pr_summary_excerpt() {
-  local pr_number="$1"
-  local body
-  body="$(gh api "repos/${repository}/pulls/${pr_number}" --jq '.body // ""')"
-  body="$(printf '%s\n' "${body}" | sed -e 's/\r$//' -e '/^<!--/,/-->$/d')"
-  if printf '%s\n' "${body}" | grep -q '^## Summary'; then
-    body="$(printf '%s\n' "${body}" | awk '
-      BEGIN { take=0 }
-      /^## Summary/ { take=1; next }
-      /^## / { if (take) exit }
-      take { print }
-    ')"
-  fi
-  body="$(printf '%s\n' "${body}" | sed '/./,$!d' | head -n 8)"
-  body="$(printf '%s\n' "${body}" | sed 's/[[:space:]]*$//')"
-  if [ -z "${body}" ]; then
-    printf '%s' "No summary provided on the pull request."
-    return 0
-  fi
-  truncate_text "${body}" 500
-}
-
 embed_fields_json='[]'
 embed_field_chars=0
 embed_field_count=0
@@ -272,44 +250,6 @@ EOF
     fi
     add_bullet_fields "${pull_list}" "No merged pull requests in this range." "Included"
     add_bullet_fields "${issue_list}" "None" "Linked issues"
-    ;;
-  previews)
-    pr_number="${PR_NUMBER:?PR_NUMBER is required}"
-    pr_title="${PR_TITLE:?PR_TITLE is required}"
-    image_tag="${IMAGE_TAG:?IMAGE_TAG is required}"
-    title="A new preview is ready to test!"
-    url="https://github.com/${repository}/pull/${pr_number}"
-    description="$(cat <<EOF
-**${pr_title}**
-
-\`docker pull ghcr.io/${repository}:${image_tag}\`
-
-Please test it and share feedback in #testing.
-EOF
-)"
-    add_field "What changed" "$(pr_summary_excerpt "${pr_number}")"
-    closing_issues=""
-    while IFS= read -r issue_number; do
-      [ -z "${issue_number}" ] && continue
-      issue_line="$(gh api \
-        "repos/${repository}/issues/${issue_number}" \
-        --jq '"- [#\(.number)](\(.html_url)) \(.title)"')"
-      closing_issues+="${issue_line}"$'\n'
-    done <<< "$(gh api graphql \
-      -f query='query($owner: String!, $repo: String!, $number: Int!) {
-        repository(owner: $owner, name: $repo) {
-          pullRequest(number: $number) {
-            closingIssuesReferences(first: 100) {
-              nodes { number }
-            }
-          }
-        }
-      }' \
-      -f "owner=${owner}" \
-      -f "repo=${repo}" \
-      -F "number=${pr_number}" \
-      --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[]?.number')"
-    add_bullet_fields "${closing_issues%$'\n'}" "None linked yet" "Linked issues"
     ;;
 esac
 
