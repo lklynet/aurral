@@ -1,6 +1,5 @@
 import express from "express";
-import { userOps, userIdentityOps } from "../db/helpers/index.js";
-import { isPlexLoginEnabled } from "./users/plexLinkHandlers.js";
+import { userOps } from "../db/helpers/index.js";
 import {
   createSession,
   deleteSession,
@@ -16,6 +15,7 @@ import {
   exchangeGoogleCallback,
   startGoogleAuth,
 } from "../services/googleAuth.js";
+import { startPlexLogin, completePlexLogin } from "../services/plexLoginAuth.js";
 import { logger } from "../services/logger.js";
 
 const router = express.Router();
@@ -177,74 +177,23 @@ router.post("/google/exchange", (req, res) => {
 
 router.post("/plex/login/pin", async (req, res) => {
   try {
-    if (!isPlexLoginEnabled()) {
-      return res.status(404).json({ error: "Plex login is not enabled" });
-    }
-    const { PlexClient } = await import("../services/plex.js");
-    const clientId = PlexClient.generateClientId();
-    const { id, code } = await PlexClient.generatePin(clientId);
-    const forwardUrl = req.body?.forwardUrl;
-    res.json({
-      pinId: id,
-      code,
-      clientId,
-      authUrl: PlexClient.buildAuthUrl(clientId, code, forwardUrl),
-    });
+    await startPlexLogin(req, res);
   } catch (error) {
     logger.error("auth", "Plex login PIN generation failed:", error.message);
-    res.status(500).json({ error: "Failed to start Plex login", message: error.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to start Plex login", message: error.message });
+    }
   }
 });
 
 router.post("/plex/login/complete", async (req, res) => {
   try {
-    if (!isPlexLoginEnabled()) {
-      return res.status(404).json({ error: "Plex login is not enabled" });
-    }
-    const { PlexClient } = await import("../services/plex.js");
-    const { pinId, code, clientId } = req.body || {};
-    if (!pinId || !code || !clientId) {
-      return res.status(400).json({ error: "pinId, code and clientId are required" });
-    }
-    const token = await PlexClient.checkPin(pinId, code, clientId);
-    if (!token) return res.json({ pending: true });
-
-    const identity = await PlexClient.validateToken(token, clientId);
-    const subject = identity?.id != null ? String(identity.id) : null;
-    if (!subject) {
-      return res.status(400).json({ error: "Could not verify the Plex account" });
-    }
-
-    const linked = userIdentityOps.findByProvider("plex", "plex", subject);
-    if (!linked) {
-      return res.status(403).json({
-        error: "not_linked",
-        message:
-          "This Plex account isn't linked to an Aurral account yet. Sign in another way and link it in Settings.",
-      });
-    }
-    const user = userOps.getUserById(linked.userId);
-    if (!user) {
-      return res.status(500).json({ error: "Linked Plex identity has no matching user" });
-    }
-    if (user.status !== "active") {
-      return res.status(403).json({ error: "This account has been suspended or disabled" });
-    }
-
-    const session = createSession(user.id, req.ip || null, req.headers["user-agent"] || null);
-    res.json({
-      token: session.token,
-      expiresAt: session.expiresAt,
-      user: {
-        id: user.id,
-        username: user.username,
-        role: user.role,
-        permissions: user.permissions,
-      },
-    });
+    await completePlexLogin(req, res);
   } catch (error) {
     logger.error("auth", "Plex login completion failed:", error.message);
-    res.status(500).json({ error: "Plex login failed", message: error.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Plex login failed", message: error.message });
+    }
   }
 });
 

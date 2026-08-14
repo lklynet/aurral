@@ -236,8 +236,43 @@ function resolveOidcSessionUser(config, claims) {
     });
   }
 
-  const uniqueUsername = generateUniqueUsername(baseUsername);
   const role = resolveOidcRole(baseUsername, claims);
+
+  // One-time legacy adoption: an account that existed before user_identities
+  // was introduced predates issuer+subject login entirely and would
+  // otherwise be orphaned behind a newly provisioned "username-2" duplicate
+  // on its first post-upgrade OIDC login, stranding its existing flows,
+  // history, and preferences on an account nobody can sign back into. Only
+  // adopt when the matching account has never been linked to anything, has
+  // no known local password (it was JIT-provisioned - the same trust model
+  // this identity now formalizes), and isn't the protected bootstrap admin.
+  const legacyMatch = userOps.getUserByUsername(baseUsername);
+  if (
+    legacyMatch &&
+    legacyMatch.needsIdentityMigration &&
+    legacyMatch.status === "active" &&
+    !legacyMatch.isProtected &&
+    !legacyMatch.hasLocalPassword &&
+    userIdentityOps.countForUser(legacyMatch.id) === 0
+  ) {
+    const adoptUser = db.transaction(() => {
+      userOps.updateUser(legacyMatch.id, {
+        role,
+        roleSource: "oidc",
+        needsIdentityMigration: false,
+      });
+      userIdentityOps.link(legacyMatch.id, {
+        providerType: "oidc",
+        providerKey: config.issuer,
+        subject,
+        displayName: toDisplayName(claims),
+      });
+      return userOps.getUserById(legacyMatch.id);
+    });
+    return toResolvedUser(adoptUser());
+  }
+
+  const uniqueUsername = generateUniqueUsername(baseUsername);
   // Provisioning the user, setting roleSource, and linking the identity must
   // succeed or fail together - a link failure (e.g. a unique-constraint hit
   // from a concurrent first login for the same subject) must not leave an

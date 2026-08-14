@@ -197,7 +197,7 @@ export function registerPlexLink(router) {
     }
   });
 
-  router.delete("/me/plex-link", requireAuth, async (req, res) => {
+  router.delete("/me/plex-link", requireAuth, requireRecentAuth(), async (req, res) => {
     try {
       const plexIdentity = userIdentityOps
         .getForUser(req.user.id)

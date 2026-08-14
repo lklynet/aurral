@@ -48,8 +48,7 @@ export const reauthApi = (currentPassword) => postData("/auth/reauth", { current
 
 export const startPlexLoginPin = (forwardUrl) => postData("/auth/plex/login/pin", { forwardUrl });
 
-export const completePlexLogin = (pinId, code, clientId) =>
-  postData("/auth/plex/login/complete", { pinId, code, clientId });
+export const completePlexLogin = () => postData("/auth/plex/login/complete");
 
 export const logoutApi = async () => {
   const result = await postData("/auth/logout");

@@ -250,6 +250,56 @@ test("Plex login routes are disabled unless integrations.plex.loginEnabled is se
   assert.equal(completeResponse.status, 404);
 });
 
+test("Plex login rejects an unsafe forwardUrl before ever contacting Plex", async () => {
+  const settingsSave = await apiFetch(adminToken, "/api/settings", {
+    method: "POST",
+    body: JSON.stringify({
+      integrations: {
+        plex: { loginEnabled: true, url: "http://plex.example.com:32400", token: "fake-token" },
+      },
+    }),
+  });
+  assert.equal(settingsSave.response.status, 200, JSON.stringify(settingsSave.payload));
+
+  const { response: absoluteResponse } = await apiFetch(null, "/api/auth/plex/login/pin", {
+    method: "POST",
+    body: JSON.stringify({ forwardUrl: "https://evil.example.com/steal" }),
+  });
+  assert.equal(absoluteResponse.status, 400);
+
+  const { response: protocolRelativeResponse } = await apiFetch(
+    null,
+    "/api/auth/plex/login/pin",
+    {
+      method: "POST",
+      body: JSON.stringify({ forwardUrl: "//evil.example.com/steal" }),
+    },
+  );
+  assert.equal(protocolRelativeResponse.status, 400);
+});
+
+test("Plex login complete rejects a request with no valid transaction cookie, even with a guessed pinId/code/clientId", async () => {
+  const settingsSave = await apiFetch(adminToken, "/api/settings", {
+    method: "POST",
+    body: JSON.stringify({
+      integrations: {
+        plex: { loginEnabled: true, url: "http://plex.example.com:32400", token: "fake-token" },
+      },
+    }),
+  });
+  assert.equal(settingsSave.response.status, 200, JSON.stringify(settingsSave.payload));
+
+  const { response } = await apiFetch(null, "/api/auth/plex/login/complete", {
+    method: "POST",
+    // Simulates an attacker who obtained pinId/code/clientId from their own
+    // /pin call and is trying to complete a victim's authorized PIN with it -
+    // the endpoint no longer reads these from the body at all.
+    body: JSON.stringify({ pinId: "attacker-pin", code: "attacker-code", clientId: "attacker-client" }),
+  });
+  assert.equal(response.status, 400);
+  assert.match(response.headers.get("content-type") || "", /json/);
+});
+
 test("disconnecting Plex is blocked when it is the account's only usable auth method", async () => {
   const oidcOnlyUser = userOps.createUser(
     "plex-only-user",
@@ -357,4 +407,48 @@ test("disconnecting Plex succeeds and removes the login identity when a fallback
   assert.equal(response.status, 200);
   assert.equal(plexConnectionStore.getConnection(userAId), null);
   assert.equal(userIdentityOps.getById(identity.id), null);
+});
+
+test("disconnecting Plex requires a recent reauth, same as the generic identity-unlink route", async () => {
+  const target = userOps.createUser(
+    "plex-reauth-user",
+    bcrypt.hashSync("password123", 4),
+    "user",
+  );
+  plexConnectionStore.saveConnection(target.id, {
+    linkType: "self",
+    token: "reauth-token",
+    clientId: "reauth-client",
+    plexAccountId: 666,
+    plexUsername: "reauthPlex",
+  });
+  userIdentityOps.link(target.id, {
+    providerType: "plex",
+    providerKey: "plex",
+    subject: "666",
+    displayName: "reauthPlex",
+  });
+  const targetToken = await login("plex-reauth-user", "password123");
+
+  db.prepare("UPDATE sessions SET reauthenticated_at = ? WHERE token = ?").run(
+    Date.now() - 20 * 60 * 1000,
+    targetToken,
+  );
+
+  const { response: staleResponse } = await apiFetch(targetToken, "/api/users/me/plex-link", {
+    method: "DELETE",
+  });
+  assert.equal(staleResponse.status, 401);
+  assert.ok(plexConnectionStore.getConnection(target.id));
+
+  await apiFetch(targetToken, "/api/auth/reauth", {
+    method: "POST",
+    body: JSON.stringify({ currentPassword: "password123" }),
+  });
+
+  const { response: freshResponse } = await apiFetch(targetToken, "/api/users/me/plex-link", {
+    method: "DELETE",
+  });
+  assert.equal(freshResponse.status, 200);
+  assert.equal(plexConnectionStore.getConnection(target.id), null);
 });

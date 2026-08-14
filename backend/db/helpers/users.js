@@ -11,7 +11,7 @@ const getUserByUsernameStmt = db.prepare(
   "SELECT * FROM users WHERE username = ?"
 );
 const getAllUsersStmt = db.prepare(
-  "SELECT id, username, role, permissions, lastfm_username, listen_history_provider, listen_history_username, listen_history_url, lidarr_root_folder_path, lidarr_quality_profile_id, status, is_protected, role_source, has_local_password FROM users ORDER BY username"
+  "SELECT id, username, role, permissions, lastfm_username, listen_history_provider, listen_history_username, listen_history_url, lidarr_root_folder_path, lidarr_quality_profile_id, status, is_protected, role_source, has_local_password, needs_identity_migration FROM users ORDER BY username"
 );
 const getUserByIdStmt = db.prepare("SELECT * FROM users WHERE id = ?");
 const getUserAuthByIdStmt = db.prepare(
@@ -22,7 +22,7 @@ const insertUserStmt = db.prepare(
   "INSERT INTO users (username, password_hash, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id, has_local_password, is_protected) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
 );
 const updateUserStmt = db.prepare(
-  "UPDATE users SET username = ?, password_hash = ?, role = ?, permissions = ?, lastfm_username = ?, listen_history_provider = ?, listen_history_username = ?, listen_history_url = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, status = ?, role_source = ?, has_local_password = ? WHERE id = ?"
+  "UPDATE users SET username = ?, password_hash = ?, role = ?, permissions = ?, lastfm_username = ?, listen_history_provider = ?, listen_history_username = ?, listen_history_url = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, status = ?, role_source = ?, has_local_password = ?, needs_identity_migration = ? WHERE id = ?"
 );
 const setProtectedStmt = db.prepare("UPDATE users SET is_protected = ? WHERE id = ?");
 const deleteUserStmt = db.prepare("DELETE FROM users WHERE id = ?");
@@ -66,6 +66,7 @@ export const userOps = {
       isProtected: !!row.is_protected,
       roleSource: row.role_source || "local",
       hasLocalPassword: !!row.has_local_password,
+      needsIdentityMigration: !!row.needs_identity_migration,
       ...history,
     };
   },
@@ -90,6 +91,7 @@ export const userOps = {
       isProtected: !!row.is_protected,
       roleSource: row.role_source || "local",
       hasLocalPassword: !!row.has_local_password,
+      needsIdentityMigration: !!row.needs_identity_migration,
       ...history,
     };
   },
@@ -130,6 +132,7 @@ export const userOps = {
       isProtected: !!r.is_protected,
       roleSource: r.role_source || "local",
       hasLocalPassword: !!r.has_local_password,
+      needsIdentityMigration: !!r.needs_identity_migration,
     }));
   },
   createUser(
@@ -171,6 +174,7 @@ export const userOps = {
         isProtected: !!isProtected,
         roleSource: "local",
         hasLocalPassword: !!hasLocalPassword,
+        needsIdentityMigration: false,
       };
     } catch (e) {
       return null;
@@ -241,6 +245,10 @@ export const userOps = {
     const roleSource = data.roleSource !== undefined ? data.roleSource : existing.roleSource;
     const hasLocalPassword =
       data.hasLocalPassword !== undefined ? !!data.hasLocalPassword : existing.hasLocalPassword;
+    const needsIdentityMigration =
+      data.needsIdentityMigration !== undefined
+        ? !!data.needsIdentityMigration
+        : existing.needsIdentityMigration;
     try {
       updateUserStmt.run(
         username.toLowerCase(),
@@ -256,6 +264,7 @@ export const userOps = {
         status,
         roleSource,
         hasLocalPassword ? 1 : 0,
+        needsIdentityMigration ? 1 : 0,
         parseInt(id, 10)
       );
       return {
@@ -273,6 +282,7 @@ export const userOps = {
         isProtected: existing.isProtected,
         roleSource,
         hasLocalPassword,
+        needsIdentityMigration,
       };
     } catch (e) {
       return null;

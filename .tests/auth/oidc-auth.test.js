@@ -19,7 +19,7 @@ const [isolatedState, { db }, dbHelpers, authModule, sessionModule, oidcModule] 
     "backend/services/oidcAuth.js",
   );
 
-const { dbOps, userOps } = dbHelpers;
+const { dbOps, userOps, userIdentityOps } = dbHelpers;
 const { ensureExternalUser, isAuthRequiredByConfig, isOidcAuthEnabled } = authModule;
 const { createSession, getSessionByToken } = sessionModule;
 const {
@@ -465,6 +465,96 @@ test("OIDC provisioning auto-suffixes a colliding username instead of linking to
 
   assert.equal(userOps.getAllUsers().length, 2);
   assert.equal(userOps.getUserByUsername("callback-user")?.id, firstUserId);
+});
+
+test("OIDC login adopts a matching legacy pre-migration account instead of orphaning it behind a duplicate", async () => {
+  completeOnboarding();
+  const legacy = userOps.createUser("callback-user", "random-unknown-hash", "user", null, false);
+  userOps.updateUser(legacy.id, { needsIdentityMigration: true });
+
+  const pending = await createPendingOidcLogin();
+  try {
+    const session = await completeOidcLogin(pending);
+    const loggedInUser = getSessionByToken(session.token)?.user;
+    assert.equal(loggedInUser?.id, legacy.id, "must adopt the legacy account, not provision a new one");
+    assert.equal(loggedInUser?.username, "callback-user");
+  } finally {
+    await pending.close();
+  }
+
+  assert.equal(userOps.getAllUsers().length, 1, "no duplicate account should be created");
+  const identities = userIdentityOps.getForUser(legacy.id);
+  assert.equal(identities.length, 1);
+  assert.equal(identities[0].providerType, "oidc");
+  const adopted = userOps.getUserById(legacy.id);
+  assert.equal(adopted.needsIdentityMigration, false);
+  assert.equal(adopted.roleSource, "oidc");
+});
+
+test("OIDC login does not adopt a legacy account that has a known local password", async () => {
+  completeOnboarding();
+  const legacyWithPassword = userOps.createUser(
+    "callback-user",
+    "some-hash",
+    "user",
+    null,
+    true,
+  );
+  userOps.updateUser(legacyWithPassword.id, { needsIdentityMigration: true });
+
+  const pending = await createPendingOidcLogin();
+  try {
+    const session = await completeOidcLogin(pending);
+    const loggedInUser = getSessionByToken(session.token)?.user;
+    assert.notEqual(
+      loggedInUser?.id,
+      legacyWithPassword.id,
+      "an account with a real local password must never be silently claimed by a username match",
+    );
+    assert.equal(loggedInUser?.username, "callback-user-2");
+  } finally {
+    await pending.close();
+  }
+
+  assert.equal(userOps.getAllUsers().length, 2);
+  assert.equal(userIdentityOps.getForUser(legacyWithPassword.id).length, 0);
+});
+
+test("OIDC login does not adopt a legacy account that is already linked to another identity", async () => {
+  completeOnboarding();
+  const legacy = userOps.createUser("callback-user", "random-unknown-hash", "user", null, false);
+  userOps.updateUser(legacy.id, { needsIdentityMigration: true });
+  userIdentityOps.link(legacy.id, {
+    providerType: "oidc",
+    providerKey: "https://already-linked.example/",
+    subject: "some-other-subject",
+  });
+
+  const pending = await createPendingOidcLogin();
+  try {
+    const session = await completeOidcLogin(pending);
+    const loggedInUser = getSessionByToken(session.token)?.user;
+    assert.notEqual(loggedInUser?.id, legacy.id);
+    assert.equal(loggedInUser?.username, "callback-user-2");
+  } finally {
+    await pending.close();
+  }
+});
+
+test("OIDC login does not adopt the protected bootstrap admin", async () => {
+  completeOnboarding();
+  const legacy = userOps.createUser("callback-user", "random-unknown-hash", "admin", null, false);
+  userOps.updateUser(legacy.id, { needsIdentityMigration: true });
+  userOps.setProtected(legacy.id, true);
+
+  const pending = await createPendingOidcLogin();
+  try {
+    const session = await completeOidcLogin(pending);
+    const loggedInUser = getSessionByToken(session.token)?.user;
+    assert.notEqual(loggedInUser?.id, legacy.id);
+  } finally {
+    await pending.close();
+  }
 });
 
 test("OIDC login rejects a suspended user and never overwrites a protected account's role", async () => {

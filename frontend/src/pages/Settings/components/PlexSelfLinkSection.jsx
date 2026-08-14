@@ -106,7 +106,24 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
       }));
       showSuccess?.("Disconnected your Plex account.");
     } catch (err) {
-      showError?.(err.response?.data?.message || "Failed to disconnect Plex");
+      if (isReauthRequiredError(err)) {
+        const shouldRetry = await promptReauth();
+        if (shouldRetry) {
+          try {
+            await disconnectMyPlex();
+            setStatus((prev) => ({
+              ...EMPTY_STATUS,
+              globalAccount: prev.globalAccount,
+              isGlobalAccountOwner: prev.isGlobalAccountOwner,
+            }));
+            showSuccess?.("Disconnected your Plex account.");
+          } catch (retryErr) {
+            showError?.(retryErr.response?.data?.message || "Failed to disconnect Plex");
+          }
+        }
+      } else {
+        showError?.(err.response?.data?.message || "Failed to disconnect Plex");
+      }
     } finally {
       setDisconnecting(false);
     }

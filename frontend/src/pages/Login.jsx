@@ -67,14 +67,13 @@ const Login = () => {
         );
         return;
       }
-      const { pinId, code, clientId, authUrl } = pin;
-      popup.location.href = authUrl;
+      popup.location.href = pin.authUrl;
       const deadline = Date.now() + 3 * 60 * 1000;
       let result = null;
       while (Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         try {
-          const res = await completePlexLogin(pinId, code, clientId);
+          const res = await completePlexLogin();
           if (res.pending) continue;
           result = res;
           break;
