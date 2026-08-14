@@ -84,6 +84,41 @@ const formatLongDuration = (durationMs) => {
     : minutes + "m " + (seconds % 60) + "s";
 };
 
+const TOP_ARTIST_TRACK_LIMIT = 10;
+
+const trackRating = (track) => {
+  const value = track?.rating ?? track?.metadata?.rating ?? track?.metadata?.tags?.rating;
+  const rating = Array.isArray(value) ? value[0] : value;
+  const score = rating && typeof rating === "object" ? rating.rating : rating;
+  return Number.isFinite(Number(score)) ? Number(score) : null;
+};
+
+const trackRecency = (track, albumsById) => {
+  const fileTimes = (track?.files || [])
+    .filter((file) => file.available)
+    .map((file) => Number(file.mtimeMs))
+    .filter(Number.isFinite);
+  const albumTimes = (track?.albums || [])
+    .map((relation) => albumsById.get(String(relation.albumId))?.releaseDate)
+    .map((releaseDate) => Date.parse(String(releaseDate || "")))
+    .filter(Number.isFinite);
+  return Math.max(...fileTimes, ...albumTimes, 0);
+};
+
+const topArtistTracks = (tracks, albumsById) => {
+  const hasRatings = tracks.some((track) => trackRating(track) !== null);
+  return [...tracks]
+    .sort((left, right) => {
+      if (hasRatings) {
+        const ratingDifference = (trackRating(right) ?? -1) - (trackRating(left) ?? -1);
+        if (ratingDifference) return ratingDifference;
+      }
+      const recencyDifference = trackRecency(right, albumsById) - trackRecency(left, albumsById);
+      return recencyDifference || text(left?.title).localeCompare(text(right?.title));
+    })
+    .slice(0, TOP_ARTIST_TRACK_LIMIT);
+};
+
 const entityMatches = (entity, query) => {
   if (!query) return true;
   return [entity?.name, entity?.title, entity?.artistName, entity?.albumArtist, entity?.albumName]
@@ -1269,6 +1304,7 @@ function LibraryPage() {
       (album) => String(album.artistId) === String(libraryArtist.id),
     );
     const artistTracks = artistAlbums.flatMap(getAlbumTracks);
+    const artistTopTracks = topArtistTracks(artistTracks, albumsById);
     return (
       <section className="native-library-detail">
         <div className="native-library-detail__hero native-library-detail__hero--artist">
@@ -1333,11 +1369,11 @@ function LibraryPage() {
         </section>
         <section className="native-library-detail__section">
           <div className="native-library-detail__section-heading">
-            <h3>Tracks</h3>
-            <span>{artistTracks.length}</span>
+            <h3>Top tracks</h3>
+            <span>{artistTopTracks.length}</span>
           </div>
-          {artistTracks.length ? (
-            renderTrackList(artistTracks, libraryArtist.name + " tracks")
+          {artistTopTracks.length ? (
+            renderTrackList(artistTopTracks, libraryArtist.name + " top tracks")
           ) : (
             <EmptyState title="No tracks" message="No indexed tracks belong to this artist." />
           )}

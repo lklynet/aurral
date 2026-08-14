@@ -8341,6 +8341,10 @@ button.native-library-genre-row:focus-visible {
   gap: 1.5rem;
 }
 
+.native-library-detail__hero--artist {
+  grid-template-columns: minmax(9.6rem, 14.4rem) minmax(0, 1fr);
+}
+
 .native-library-detail__cover {
   width: 100%;
   aspect-ratio: 1;
