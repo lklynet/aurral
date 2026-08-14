@@ -18,6 +18,8 @@ import {
   getLocalNetworkBypassStatus,
 } from "../middleware/auth.js";
 import { getOidcBootstrapInfo } from "../services/oidcAuth.js";
+import { isGoogleLoginEnabled } from "../services/googleAuth.js";
+import { isPlexLoginEnabled } from "./users/plexLinkHandlers.js";
 import { lidarrClient } from "../services/lidarrClient.js";
 import {
   getDiscoveryCache,
@@ -252,6 +254,9 @@ function buildBootstrapPayload(req) {
     proxyAuthEnabled: isProxyAuthEnabled(),
     oidcEnabled: oidcInfo.oidcEnabled,
     oidcLogoutUrl: oidcInfo.oidcLogoutUrl,
+    googleLoginEnabled: isGoogleLoginEnabled(),
+    plexLoginEnabled: isPlexLoginEnabled(),
+    ssoOnly: settings?.security?.ssoOnly === true,
     onboardingRequired: !onboardingDone,
     dateTimeFormat: settings.dateTimeFormat,
     timestamp: new Date().toISOString(),

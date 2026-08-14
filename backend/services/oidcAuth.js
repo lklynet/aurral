@@ -1,6 +1,7 @@
 import * as client from "openid-client";
 import { createSession } from "../config/session-helpers.js";
-import { ensureExternalUser } from "../middleware/auth.js";
+import { createSystemProvisionedUser } from "../middleware/auth.js";
+import { userOps, userIdentityOps } from "../db/helpers/index.js";
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 const EXCHANGE_TTL_MS = 60 * 1000;
@@ -99,6 +100,36 @@ function getGroupsClaim() {
   return String(process.env.OIDC_GROUPS_CLAIM || "").trim();
 }
 
+function getTokenEndpointAuthMethod() {
+  const method = String(process.env.OIDC_TOKEN_ENDPOINT_AUTH_METHOD || "client_secret_basic")
+    .trim()
+    .toLowerCase();
+  return method || "client_secret_basic";
+}
+
+function buildClientAuthentication(method, clientSecret) {
+  switch (method) {
+    case "client_secret_post":
+      return client.ClientSecretPost(clientSecret);
+    case "none":
+      return client.None();
+    case "client_secret_basic":
+    default:
+      return client.ClientSecretBasic(clientSecret);
+  }
+}
+
+function generateUniqueUsername(base) {
+  const trimmed = String(base || "").trim().toLowerCase();
+  if (!trimmed) return trimmed;
+  if (!userOps.getUserByUsername(trimmed)) return trimmed;
+  for (let suffix = 2; suffix < 1000; suffix += 1) {
+    const candidate = `${trimmed}-${suffix}`;
+    if (!userOps.getUserByUsername(candidate)) return candidate;
+  }
+  throw new Error("Could not generate a unique username for OIDC provisioning");
+}
+
 function normalizeGroups(value) {
   if (Array.isArray(value)) {
     return value.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean);
@@ -140,7 +171,8 @@ async function getDiscoveryConfig() {
   if (!config) {
     throw new Error("OIDC is not configured");
   }
-  const key = `${config.issuer}|${config.clientId}|${config.clientSecret}|${config.redirectUri}`;
+  const authMethod = getTokenEndpointAuthMethod();
+  const key = `${config.issuer}|${config.clientId}|${config.clientSecret}|${config.redirectUri}|${authMethod}`;
   if (discoveryConfig && discoveryKey === key) return { config, oidc: discoveryConfig };
   const issuerUrl = new URL(config.issuer);
   const discoveryOptions =
@@ -149,11 +181,70 @@ async function getDiscoveryConfig() {
     issuerUrl,
     config.clientId,
     config.clientSecret,
-    undefined,
+    buildClientAuthentication(authMethod, config.clientSecret),
     discoveryOptions,
   );
   discoveryKey = key;
   return { config, oidc: discoveryConfig };
+}
+
+function toDisplayName(claims) {
+  return resolveOidcUsername(claims) || String(claims.email || "").trim() || null;
+}
+
+function resolveOidcSessionUser(config, claims) {
+  const subject = String(claims.sub || "").trim();
+  if (!subject) {
+    throw Object.assign(new Error("OIDC identity did not include a usable subject"), {
+      status: 400,
+    });
+  }
+
+  const existingIdentity = userIdentityOps.findByProvider("oidc", config.issuer, subject);
+  if (existingIdentity) {
+    const user = userOps.getUserById(existingIdentity.userId);
+    if (!user) {
+      throw Object.assign(new Error("Linked OIDC identity has no matching user"), {
+        status: 500,
+      });
+    }
+    if (user.status !== "active") {
+      throw Object.assign(new Error("This account has been suspended or disabled"), {
+        status: 403,
+      });
+    }
+    if (user.isProtected) {
+      return user;
+    }
+    const role = resolveOidcRole(resolveOidcUsername(claims) || user.username, claims);
+    if (role !== user.role || user.roleSource !== "oidc") {
+      userOps.updateUser(user.id, { role, roleSource: "oidc" });
+      return userOps.getUserById(user.id);
+    }
+    return user;
+  }
+
+  const baseUsername = resolveOidcUsername(claims);
+  if (!baseUsername) {
+    throw Object.assign(new Error("OIDC identity did not include a usable username"), {
+      status: 400,
+    });
+  }
+
+  const uniqueUsername = generateUniqueUsername(baseUsername);
+  const role = resolveOidcRole(baseUsername, claims);
+  const user = createSystemProvisionedUser(uniqueUsername, role);
+  if (!user?.id || user.id < 0) {
+    throw Object.assign(new Error("Failed to provision OIDC user"), { status: 500 });
+  }
+  userOps.updateUser(user.id, { roleSource: "oidc" });
+  userIdentityOps.link(user.id, {
+    providerType: "oidc",
+    providerKey: config.issuer,
+    subject,
+    displayName: toDisplayName(claims),
+  });
+  return user;
 }
 
 function buildCallbackUrl(req) {
@@ -220,7 +311,7 @@ export async function handleOidcCallback(req) {
     throw Object.assign(new Error("OIDC login session expired"), { status: 400 });
   }
 
-  const { oidc } = await getDiscoveryConfig();
+  const { config, oidc } = await getDiscoveryConfig();
   const tokens = await client.authorizationCodeGrant(oidc, buildCallbackUrl(req), {
     pkceCodeVerifier: pending.codeVerifier,
     expectedState: state,
@@ -229,18 +320,7 @@ export async function handleOidcCallback(req) {
   });
 
   const claims = tokens.claims() || {};
-  const username = resolveOidcUsername(claims);
-  if (!username) {
-    throw Object.assign(new Error("OIDC identity did not include a usable username"), {
-      status: 400,
-    });
-  }
-
-  const role = resolveOidcRole(username, claims);
-  const user = ensureExternalUser(username, role);
-  if (!user?.id || user.id < 0) {
-    throw Object.assign(new Error("Failed to provision OIDC user"), { status: 500 });
-  }
+  const user = resolveOidcSessionUser(config, claims);
 
   const code = client.randomState();
   prunePendingExchanges();

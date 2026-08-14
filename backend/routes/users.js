@@ -19,6 +19,7 @@ import {
 import { validateExternalUrl } from "../middleware/urlValidator.js";
 import { normalizeKoitoBaseUrl } from "../services/koitoClient.js";
 import { registerPlexLink, resolveGlobalPlexAccount } from "./users/plexLinkHandlers.js";
+import { registerIdentityLink } from "./users/identityLinkHandlers.js";
 import { plexConnectionStore } from "../services/plex/plexConnectionStore.js";
 
 const buildListenHistoryUpdates = (body, existing) => {
@@ -196,7 +197,7 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
     }
     const hash = hashPassword(password);
     const perms = permissions ? { ...userOps.getDefaultPermissions(), ...permissions } : null;
-    const created = userOps.createUser(un, hash, role, perms);
+    const created = userOps.createUser(un, hash, role, perms, true);
     if (!created) {
       return res.status(500).json({ error: "Failed to create user" });
     }
@@ -226,7 +227,11 @@ router.patch("/:id", requireAuth, async (req, res) => {
     if (!existing) {
       return res.status(404).json({ error: "User not found" });
     }
-    const { password, permissions, role } = req.body;
+    const { password, permissions, role, status } = req.body;
+    const VALID_STATUSES = ["active", "suspended", "disabled"];
+    if (status !== undefined && !VALID_STATUSES.includes(status)) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
     const existingProfile = getListenHistoryProfile(existing);
     let listenHistoryUpdates = null;
     try {
@@ -242,7 +247,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
     });
     clearOrphanedDiscoveryCache(id, existingProfile, requestedProfile);
     if (isSelf && !isAdmin) {
-      if (permissions !== undefined || role !== undefined) {
+      if (permissions !== undefined || role !== undefined || status !== undefined) {
         return res.status(403).json({ error: "Forbidden" });
       }
       const updates = {};
@@ -262,6 +267,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
           return res.status(400).json({ error: passwordValidation.error });
         }
         updates.passwordHash = hashPassword(password);
+        updates.hasLocalPassword = true;
       }
       if (Object.keys(updates).length === 0) {
         return res.json({
@@ -289,9 +295,24 @@ router.patch("/:id", requireAuth, async (req, res) => {
         return res.status(400).json({ error: passwordValidation.error });
       }
       updates.passwordHash = hashPassword(password);
+      updates.hasLocalPassword = true;
     }
     if (permissions !== undefined) updates.permissions = permissions;
-    if (role !== undefined) updates.role = role;
+    if (role !== undefined) {
+      updates.role = role;
+      updates.roleSource = "local";
+    }
+    if (status !== undefined) {
+      if (existing.isProtected && status !== "active" && req.user.id === existing.id) {
+        return res.status(400).json({
+          error: "You cannot suspend or disable your own protected recovery account",
+        });
+      }
+      updates.status = status;
+      if (status !== "active") {
+        deleteSessionsByUserId(id);
+      }
+    }
     if (listenHistoryUpdates) {
       Object.assign(updates, listenHistoryUpdates);
     }
@@ -517,11 +538,14 @@ router.post("/me/password", requireAuth, async (req, res) => {
       return res.status(400).json({ error: passwordValidation.error });
     }
     const u = userOps.getUserById(req.user.id);
-    if (!u || !verifyPassword(currentPassword || "", u.passwordHash)) {
+    if (!u) {
+      return res.status(400).json({ error: "Current password is incorrect" });
+    }
+    if (u.hasLocalPassword && !verifyPassword(currentPassword || "", u.passwordHash)) {
       return res.status(400).json({ error: "Current password is incorrect" });
     }
     const hash = hashPassword(newPassword);
-    userOps.updateUser(req.user.id, { passwordHash: hash });
+    userOps.updateUser(req.user.id, { passwordHash: hash, hasLocalPassword: true });
     deleteSessionsByUserId(req.user.id);
     res.json({ success: true });
   } catch (e) {
@@ -549,5 +573,6 @@ router.delete("/:id", requireAuth, requireAdmin, (req, res) => {
 });
 
 registerPlexLink(router);
+registerIdentityLink(router);
 
 export default router;

@@ -1,7 +1,7 @@
 import { loginApi } from "../../../utils/api/endpoints/auth.js";
 import { setStoredAuth } from "../../../utils/api/core.js";
 import PillToggle from "../../../components/PillToggle";
-import { SettingsInput } from "./SettingsField";
+import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 
 import { createPortal } from "react-dom";
@@ -152,6 +152,8 @@ export function SettingsUsersTab({
   setEditCurrentPassword,
   editPermissions,
   setEditPermissions,
+  editStatus,
+  setEditStatus,
   savingEdit,
   setSavingEdit,
   changePwCurrent,
@@ -318,6 +320,35 @@ export function SettingsUsersTab({
             </SettingsArrFormGroup>
           </SettingsArrFieldSet>
 
+          <SettingsArrFieldSet legend="Sign-in Mode">
+            <SettingsArrFormGroup
+              label="SSO-only"
+              help="Hide the local username/password form on the sign-in page by default when at least one SSO option is configured. A 'Sign in with a local account instead' link stays available, so local accounts — including the recovery admin — are never locked out."
+            >
+              <div className="settings-toggle-row">
+                <span>{settings?.security?.ssoOnly === true ? "Enabled" : "Disabled"}</span>
+                <PillToggle
+                  className="settings-toggle"
+                  checked={settings?.security?.ssoOnly === true}
+                  onChange={async (event) => {
+                    const nextSettings = {
+                      ...settings,
+                      security: {
+                        ...(settings.security || {}),
+                        ssoOnly: event.target.checked,
+                      },
+                    };
+                    updateSettings(nextSettings);
+                    try {
+                      await handleSaveSettings(null, nextSettings);
+                    } catch {}
+                  }}
+                  aria-label="SSO-only sign-in mode"
+                />
+              </div>
+            </SettingsArrFormGroup>
+          </SettingsArrFieldSet>
+
           <SettingsArrFieldSet
             legend="Users"
             actions={
@@ -333,6 +364,7 @@ export function SettingsUsersTab({
                   <tr>
                     <th scope="col">Username</th>
                     <th scope="col">Role</th>
+                    <th scope="col">Status</th>
                     <th scope="col">Listening history</th>
                     <th scope="col">Plex</th>
                     <th scope="col" className="arr-table__actions-head">
@@ -343,11 +375,11 @@ export function SettingsUsersTab({
                 <tbody>
                   {loadingUsers ? (
                     <tr className="arr-table__empty-row">
-                      <td colSpan={5}>Loading users…</td>
+                      <td colSpan={6}>Loading users…</td>
                     </tr>
                   ) : usersList.length === 0 ? (
                     <tr className="arr-table__empty-row">
-                      <td colSpan={5}>No users configured.</td>
+                      <td colSpan={6}>No users configured.</td>
                     </tr>
                   ) : (
                     usersList.map((user) => (
@@ -361,6 +393,13 @@ export function SettingsUsersTab({
                           >
                             {user.role}
                           </span>
+                        </td>
+                        <td>
+                          {user.status && user.status !== "active" ? (
+                            <span className="arr-badge arr-badge--warning">{user.status}</span>
+                          ) : (
+                            <span className="arr-table__path">active</span>
+                          )}
                         </td>
                         <td>
                           <span className="arr-table__path">{formatListenHistory(user)}</span>
@@ -378,6 +417,7 @@ export function SettingsUsersTab({
                                 setEditUser(user);
                                 setEditPassword("");
                                 setEditCurrentPassword("");
+                                setEditStatus(user.status || "active");
                                 setEditPermissions(
                                   user.permissions
                                     ? {
@@ -660,6 +700,7 @@ export function SettingsUsersTab({
                             await updateUser(editUser.id, {
                               ...(editPassword ? { password: editPassword } : {}),
                               permissions: editPermissions,
+                              status: editStatus,
                             });
                             showSuccess("User updated");
                             setEditUser(null);
@@ -726,6 +767,25 @@ export function SettingsUsersTab({
                                   permissions={editPermissions}
                                   onChange={setEditPermissions}
                                 />
+                              </SettingsArrFormGroup>
+                              <SettingsArrFormGroup
+                                label="Status"
+                                labelFor="edit-user-status"
+                                help={
+                                  editStatus !== "active"
+                                    ? "This user cannot sign in and their scheduled flows won't run while suspended or disabled."
+                                    : undefined
+                                }
+                              >
+                                <SettingsSelect
+                                  id="edit-user-status"
+                                  value={editStatus}
+                                  onChange={(event) => setEditStatus(event.target.value)}
+                                >
+                                  <option value="active">Active</option>
+                                  <option value="suspended">Suspended</option>
+                                  <option value="disabled">Disabled</option>
+                                </SettingsSelect>
                               </SettingsArrFormGroup>
                               <SettingsArrFormGroup
                                 label="Plex Account"

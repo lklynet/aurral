@@ -11,19 +11,20 @@ const getUserByUsernameStmt = db.prepare(
   "SELECT * FROM users WHERE username = ?"
 );
 const getAllUsersStmt = db.prepare(
-  "SELECT id, username, role, permissions, lastfm_username, listen_history_provider, listen_history_username, listen_history_url, lidarr_root_folder_path, lidarr_quality_profile_id FROM users ORDER BY username"
+  "SELECT id, username, role, permissions, lastfm_username, listen_history_provider, listen_history_username, listen_history_url, lidarr_root_folder_path, lidarr_quality_profile_id, status, is_protected, role_source, has_local_password FROM users ORDER BY username"
 );
 const getUserByIdStmt = db.prepare("SELECT * FROM users WHERE id = ?");
 const getUserAuthByIdStmt = db.prepare(
-  "SELECT id, username, role, permissions FROM users WHERE id = ?"
+  "SELECT id, username, role, permissions, status, is_protected, role_source FROM users WHERE id = ?"
 );
 const countUsersStmt = db.prepare("SELECT COUNT(*) AS count FROM users");
 const insertUserStmt = db.prepare(
-  "INSERT INTO users (username, password_hash, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id) VALUES (?, ?, ?, ?, ?, ?)"
+  "INSERT INTO users (username, password_hash, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id, has_local_password) VALUES (?, ?, ?, ?, ?, ?, ?)"
 );
 const updateUserStmt = db.prepare(
-  "UPDATE users SET username = ?, password_hash = ?, role = ?, permissions = ?, lastfm_username = ?, listen_history_provider = ?, listen_history_username = ?, listen_history_url = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ? WHERE id = ?"
+  "UPDATE users SET username = ?, password_hash = ?, role = ?, permissions = ?, lastfm_username = ?, listen_history_provider = ?, listen_history_username = ?, listen_history_url = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, status = ?, role_source = ?, has_local_password = ? WHERE id = ?"
 );
+const setProtectedStmt = db.prepare("UPDATE users SET is_protected = ? WHERE id = ?");
 const deleteUserStmt = db.prepare("DELETE FROM users WHERE id = ?");
 const getAllListeningHistoryUsersStmt = db.prepare(
   "SELECT id, username, lastfm_username, listen_history_provider, listen_history_username, listen_history_url FROM users WHERE (listen_history_username IS NOT NULL AND TRIM(listen_history_username) != '') OR (listen_history_url IS NOT NULL AND TRIM(listen_history_url) != '')"
@@ -61,6 +62,10 @@ export const userOps = {
         row.lidarr_quality_profile_id != null
           ? Number(row.lidarr_quality_profile_id)
           : null,
+      status: row.status || "active",
+      isProtected: !!row.is_protected,
+      roleSource: row.role_source || "local",
+      hasLocalPassword: !!row.has_local_password,
       ...history,
     };
   },
@@ -81,6 +86,10 @@ export const userOps = {
         row.lidarr_quality_profile_id != null
           ? Number(row.lidarr_quality_profile_id)
           : null,
+      status: row.status || "active",
+      isProtected: !!row.is_protected,
+      roleSource: row.role_source || "local",
+      hasLocalPassword: !!row.has_local_password,
       ...history,
     };
   },
@@ -94,6 +103,9 @@ export const userOps = {
       permissions: dbHelpers.parseJSON(row.permissions) || {
         ...DEFAULT_PERMISSIONS,
       },
+      status: row.status || "active",
+      isProtected: !!row.is_protected,
+      roleSource: row.role_source || "local",
     };
   },
   countUsers() {
@@ -114,9 +126,13 @@ export const userOps = {
         r.lidarr_quality_profile_id != null
           ? Number(r.lidarr_quality_profile_id)
           : null,
+      status: r.status || "active",
+      isProtected: !!r.is_protected,
+      roleSource: r.role_source || "local",
+      hasLocalPassword: !!r.has_local_password,
     }));
   },
-  createUser(username, passwordHash, role = "user", permissions = null) {
+  createUser(username, passwordHash, role = "user", permissions = null, hasLocalPassword = true) {
     const un = String(username).trim();
     if (!un) return null;
     const perms = permissions
@@ -130,6 +146,7 @@ export const userOps = {
         dbHelpers.stringifyJSON(perms),
         null,
         null,
+        hasLocalPassword ? 1 : 0,
       );
       return {
         id: result.lastInsertRowid,
@@ -142,6 +159,10 @@ export const userOps = {
         lastfmUsername: null,
         lidarrRootFolderPath: null,
         lidarrQualityProfileId: null,
+        status: "active",
+        isProtected: false,
+        roleSource: "local",
+        hasLocalPassword: !!hasLocalPassword,
       };
     } catch (e) {
       return null;
@@ -208,6 +229,10 @@ export const userOps = {
         : parsedLidarrQualityProfileId === null
           ? null
           : existing.lidarrQualityProfileId;
+    const status = data.status !== undefined ? data.status : existing.status;
+    const roleSource = data.roleSource !== undefined ? data.roleSource : existing.roleSource;
+    const hasLocalPassword =
+      data.hasLocalPassword !== undefined ? !!data.hasLocalPassword : existing.hasLocalPassword;
     try {
       updateUserStmt.run(
         username.toLowerCase(),
@@ -220,6 +245,9 @@ export const userOps = {
         resolvedUrl,
         lidarrRootFolderPath,
         lidarrQualityProfileId,
+        status,
+        roleSource,
+        hasLocalPassword ? 1 : 0,
         parseInt(id, 10)
       );
       return {
@@ -233,9 +261,21 @@ export const userOps = {
         lastfmUsername,
         lidarrRootFolderPath,
         lidarrQualityProfileId,
+        status,
+        isProtected: existing.isProtected,
+        roleSource,
+        hasLocalPassword,
       };
     } catch (e) {
       return null;
+    }
+  },
+  setProtected(id, isProtected) {
+    try {
+      setProtectedStmt.run(isProtected ? 1 : 0, parseInt(id, 10));
+      return true;
+    } catch (e) {
+      return false;
     }
   },
   deleteUser(id) {

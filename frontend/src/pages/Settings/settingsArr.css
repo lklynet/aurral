@@ -571,6 +571,11 @@
   color: var(--aurral-text-muted);
 }
 
+.arr-badge--warning {
+  background: var(--arr-warning-soft);
+  color: var(--arr-warning-text-soft);
+}
+
 .arr-modal__copy {
   margin: 0;
   color: var(--aurral-text-muted);

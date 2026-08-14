@@ -601,6 +601,21 @@ export function SettingsPlaybackSection({
             </SettingsModalActions>
           </SettingsModalSection>
 
+          <SettingsModalSection title="Login">
+            <SettingsModalField
+              label="Allow signing in to Aurral with Plex"
+              hint="Users who explicitly connect their own Plex account from their profile can then sign in with it. It never creates new Aurral accounts or changes anyone's role."
+            >
+              <PillToggle
+                className="settings-toggle"
+                checked={plex.loginEnabled === true}
+                disabled={!plexConfigured}
+                onChange={(event) => updatePlex({ loginEnabled: event.target.checked })}
+                aria-label="Allow signing in to Aurral with Plex"
+              />
+            </SettingsModalField>
+          </SettingsModalSection>
+
           <SettingsModalSection title="Connection">
             {plex.token && (
               <SettingsModalField label="Plex server">

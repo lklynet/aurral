@@ -1,11 +1,16 @@
-import { dbOps, userOps } from "../../db/helpers/index.js";
-import { requireAuth, requireAdmin } from "../../middleware/requirePermission.js";
+import { dbOps, userOps, userIdentityOps } from "../../db/helpers/index.js";
+import { requireAuth, requireAdmin, requireRecentAuth } from "../../middleware/requirePermission.js";
 import { plexConnectionStore } from "../../services/plex/plexConnectionStore.js";
 import { playlistManager } from "../../services/weeklyFlow/weeklyFlowPlaylistManager.js";
 import { logger } from "../../services/logger.js";
 
 function getGlobalPlexConfig() {
   return dbOps.getSettings()?.integrations?.plex || {};
+}
+
+export function isPlexLoginEnabled() {
+  const plex = getGlobalPlexConfig();
+  return plex.loginEnabled === true && !!plex.url && !!plex.token;
 }
 
 async function cleanupUserPlexPlaylistsSafely(userId, context) {
@@ -118,7 +123,7 @@ export function registerPlexLink(router) {
     }
   });
 
-  router.post("/me/plex-link/oauth/complete", requireAuth, async (req, res) => {
+  router.post("/me/plex-link/oauth/complete", requireAuth, requireRecentAuth(), async (req, res) => {
     try {
       const { PlexClient } = await import("../../services/plex.js");
       const { pinId, code, clientId } = req.body || {};
@@ -147,6 +152,16 @@ export function registerPlexLink(router) {
       }
       const serverToken = tokenResult.serverToken;
 
+      const subject = identity.id != null ? String(identity.id) : null;
+      if (subject) {
+        const existingIdentity = userIdentityOps.findByProvider("plex", "plex", subject);
+        if (existingIdentity && existingIdentity.userId !== req.user.id) {
+          return res.status(409).json({
+            error: "This Plex account is already linked to another Aurral account",
+          });
+        }
+      }
+
       await cleanupPlexPlaylistsIfIdentityChanged(req.user.id, "self", identity.id);
 
       const saved = plexConnectionStore.saveConnection(req.user.id, {
@@ -157,6 +172,16 @@ export function registerPlexLink(router) {
         plexUuid: identity.uuid || null,
         plexUsername: identity.username || identity.title || null,
       });
+
+      if (subject && !userIdentityOps.findByProvider("plex", "plex", subject)) {
+        userIdentityOps.link(req.user.id, {
+          providerType: "plex",
+          providerKey: "plex",
+          subject,
+          displayName: identity.username || identity.title || null,
+        });
+      }
+
       res.json({
         connected: true,
         linkType: saved.linkType,
@@ -174,8 +199,26 @@ export function registerPlexLink(router) {
 
   router.delete("/me/plex-link", requireAuth, async (req, res) => {
     try {
+      const plexIdentity = userIdentityOps
+        .getForUser(req.user.id)
+        .find((identity) => identity.providerType === "plex");
+      if (plexIdentity) {
+        const user = userOps.getUserById(req.user.id);
+        const remaining = userIdentityOps.countForUser(req.user.id) - 1;
+        if (remaining <= 0 && !user?.hasLocalPassword) {
+          return res.status(400).json({
+            error: "last_auth_method",
+            message:
+              "This is your only way to sign in. Set a local password or link another account before removing it.",
+          });
+        }
+      }
+
       await cleanupUserPlexPlaylistsSafely(req.user.id, "on unlink");
       plexConnectionStore.clearConnection(req.user.id);
+      if (plexIdentity) {
+        userIdentityOps.unlink(plexIdentity.id);
+      }
       res.json({ connected: false });
     } catch (e) {
       res.status(500).json({ error: "Failed to disconnect Plex", message: e.message });

@@ -2,14 +2,29 @@ import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { getAppBasePath } from "../utils/basePath.js";
+import { setStoredAuth } from "../utils/api/core.js";
+import { startPlexLoginPin, completePlexLogin } from "../utils/api/endpoints/auth.js";
+
+const buildApiUrl = (path) => {
+  const basePath = getAppBasePath();
+  const prefix = basePath === "/" ? "" : basePath.replace(/\/$/, "");
+  return `${prefix}${path}`;
+};
 
 const Login = () => {
   useDocumentTitle("Sign in");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const { login, bootstrap } = useAuth();
+  const [showLocalForm, setShowLocalForm] = useState(false);
+  const [plexConnecting, setPlexConnecting] = useState(false);
+  const { login, refreshAuth, bootstrap } = useAuth();
   const oidcEnabled = !!bootstrap?.oidcEnabled;
+  const googleEnabled = !!bootstrap?.googleLoginEnabled;
+  const plexEnabled = !!bootstrap?.plexLoginEnabled;
+  const ssoOnly = !!bootstrap?.ssoOnly;
+  const hasSsoOption = oidcEnabled || googleEnabled || plexEnabled;
+  const localFormVisible = !ssoOnly || !hasSsoOption || showLocalForm;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -23,9 +38,48 @@ const Login = () => {
   };
 
   const handleOidcLogin = () => {
-    const basePath = getAppBasePath();
-    const prefix = basePath === "/" ? "" : basePath.replace(/\/$/, "");
-    window.location.assign(`${prefix}/api/auth/oidc/login`);
+    window.location.assign(buildApiUrl("/api/auth/oidc/login"));
+  };
+
+  const handleGoogleLogin = () => {
+    window.location.assign(buildApiUrl("/api/auth/google/login"));
+  };
+
+  const handlePlexLogin = async () => {
+    setError("");
+    setPlexConnecting(true);
+    try {
+      const { pinId, code, clientId, authUrl } = await startPlexLoginPin();
+      const popup = window.open(authUrl, "plex-login", "width=600,height=700");
+      const deadline = Date.now() + 3 * 60 * 1000;
+      let result = null;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        try {
+          const res = await completePlexLogin(pinId, code, clientId);
+          if (res.pending) continue;
+          result = res;
+          break;
+        } catch (err) {
+          if (popup && !popup.closed) popup.close();
+          setError(
+            err.response?.data?.message ||
+              err.response?.data?.error ||
+              "Plex sign-in failed",
+          );
+          return;
+        }
+      }
+      if (popup && !popup.closed) popup.close();
+      if (!result?.token) {
+        setError("Plex sign-in timed out. Please try again.");
+        return;
+      }
+      setStoredAuth({ token: result.token });
+      await refreshAuth();
+    } finally {
+      setPlexConnecting(false);
+    }
   };
 
   return (
@@ -37,63 +91,99 @@ const Login = () => {
           <p className="login-subtitle">Enter your credentials to access Aurral</p>
         </div>
 
-        {oidcEnabled && (
+        {hasSsoOption && (
           <div className="login-sso">
-            <button
-              type="button"
-              className="btn btn-secondary btn--full btn--bold login-sso-button"
-              onClick={handleOidcLogin}
-            >
-              Sign in with SSO
-            </button>
-            <div className="login-divider">
-              <span>or</span>
-            </div>
+            {oidcEnabled && (
+              <button
+                type="button"
+                className="btn btn-secondary btn--full btn--bold login-sso-button"
+                onClick={handleOidcLogin}
+              >
+                Sign in with SSO
+              </button>
+            )}
+            {googleEnabled && (
+              <button
+                type="button"
+                className="btn btn-secondary btn--full btn--bold login-sso-button"
+                onClick={handleGoogleLogin}
+              >
+                Sign in with Google
+              </button>
+            )}
+            {plexEnabled && (
+              <button
+                type="button"
+                className="btn btn-secondary btn--full btn--bold login-sso-button"
+                onClick={handlePlexLogin}
+                disabled={plexConnecting}
+              >
+                {plexConnecting ? "Waiting for Plex…" : "Sign in with Plex"}
+              </button>
+            )}
+            {localFormVisible && (
+              <div className="login-divider">
+                <span>or</span>
+              </div>
+            )}
           </div>
         )}
 
-        <form className="login-form" onSubmit={handleSubmit}>
-          <div className="login-fields">
-            <div className="login-field">
-              <label htmlFor="username" className="sr-only">
-                Username
-              </label>
-              <input
-                id="username"
-                name="username"
-                type="text"
-                required
-                autoComplete="username"
-                className="login-input"
-                placeholder="Username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-              />
+        {localFormVisible ? (
+          <form className="login-form" onSubmit={handleSubmit}>
+            <div className="login-fields">
+              <div className="login-field">
+                <label htmlFor="username" className="sr-only">
+                  Username
+                </label>
+                <input
+                  id="username"
+                  name="username"
+                  type="text"
+                  required
+                  autoComplete="username"
+                  className="login-input"
+                  placeholder="Username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                />
+              </div>
+              <div className="login-field">
+                <label htmlFor="password" className="sr-only">
+                  Password
+                </label>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  required
+                  autoComplete="current-password"
+                  className="login-input"
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
             </div>
-            <div className="login-field">
-              <label htmlFor="password" className="sr-only">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                required
-                autoComplete="current-password"
-                className="login-input"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-          </div>
 
-          {error && <p className="login-error">{error}</p>}
+            {error && <p className="login-error">{error}</p>}
 
-          <button type="submit" className="btn btn-primary btn--full btn--bold login-submit">
-            Sign in
-          </button>
-        </form>
+            <button type="submit" className="btn btn-primary btn--full btn--bold login-submit">
+              Sign in
+            </button>
+          </form>
+        ) : (
+          <>
+            {error && <p className="login-error">{error}</p>}
+            <button
+              type="button"
+              className="login-local-toggle"
+              onClick={() => setShowLocalForm(true)}
+            >
+              Sign in with a local account instead
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

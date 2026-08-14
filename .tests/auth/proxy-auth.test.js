@@ -182,3 +182,37 @@ test("proxy auth re-syncs role on every request instead of only at creation", ()
   assert.equal(demoted.role, "user");
   assert.equal(userOps.getUserByUsername("dave")?.role, "user");
 });
+
+test("proxy auth resolves no user for a suspended or disabled identity", () => {
+  const created = resolveProxyUser(proxyRequest({ "x-forwarded-user": "gina" }));
+  assert.ok(created);
+
+  userOps.updateUser(created.id, { status: "suspended" });
+  assert.equal(resolveProxyUser(proxyRequest({ "x-forwarded-user": "gina" })), null);
+
+  userOps.updateUser(created.id, { status: "disabled" });
+  assert.equal(resolveProxyUser(proxyRequest({ "x-forwarded-user": "gina" })), null);
+});
+
+test("an existing session is invalidated once its user is suspended", () => {
+  completeOnboarding();
+  const issued = issueProxySession(proxyRequest({ "x-forwarded-user": "hank" }));
+  assert.ok(issued?.token);
+  assert.equal(getSessionByToken(issued.token)?.user?.username, "hank");
+
+  const user = userOps.getUserByUsername("hank");
+  userOps.updateUser(user.id, { status: "suspended" });
+
+  assert.equal(getSessionByToken(issued.token), null);
+});
+
+test("proxy auth never overwrites a protected account's role", () => {
+  const created = resolveProxyUser(proxyRequest({ "x-forwarded-user": "admin" }));
+  assert.equal(created.role, "user");
+  userOps.setProtected(created.id, true);
+
+  process.env.AUTH_PROXY_ADMIN_USERS = "admin";
+  const resolved = resolveProxyUser(proxyRequest({ "x-forwarded-user": "admin" }));
+  assert.equal(resolved.role, "user", "protected account role must not change via proxy auth");
+  assert.equal(userOps.getUserByUsername("admin")?.role, "user");
+});

@@ -11,6 +11,7 @@ dns.setDefaultResultOrder("ipv4first");
 
 import { authMiddleware, isProxyAuthEnabled } from "./middleware/auth.js";
 import { handleOidcCallback, isOidcEnabled } from "./services/oidcAuth.js";
+import { handleGoogleCallback } from "./services/googleAuth.js";
 import { logger } from "./services/logger.js";
 import { websocketService } from "./services/websocketService.js";
 import { getAllDownloadStatuses } from "./routes/library/handlers/downloads.js";
@@ -206,6 +207,18 @@ app.get("/sso/callback", async (req, res) => {
     logger.error("auth", "OIDC callback failed:", { message: error.message });
     const message = encodeURIComponent(error.message || "OIDC login failed");
     res.redirect(302, `/sso/complete#error=${message}`);
+  }
+});
+
+app.get("/sso/google/callback", async (req, res) => {
+  try {
+    const result = await handleGoogleCallback(req);
+    const code = encodeURIComponent(result.code);
+    res.redirect(302, `/sso/complete#code=${code}&provider=google`);
+  } catch (error) {
+    logger.error("auth", "Google callback failed:", { message: error.message });
+    const message = encodeURIComponent(error.message || "Google login failed");
+    res.redirect(302, `/sso/complete#error=${message}&provider=google`);
   }
 });
 

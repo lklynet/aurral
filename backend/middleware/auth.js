@@ -261,6 +261,9 @@ function toResolvedUser(user) {
     username: user.username,
     role: user.role,
     permissions: buildPermissions(user.role, user.permissions),
+    status: user.status || "active",
+    isProtected: !!user.isProtected,
+    roleSource: user.roleSource || "local",
   };
 }
 
@@ -440,20 +443,27 @@ export function reconcileLocalNetworkBypassSetting() {
   };
 }
 
+export function createSystemProvisionedUser(username, role) {
+  const passwordHash = hashPassword(crypto.randomBytes(32).toString("hex"));
+  const created = userOps.createUser(username, passwordHash, role, null, false);
+  return created
+    ? toResolvedUser(userOps.getUserByUsername(created.username) || created)
+    : toResolvedUser(userOps.getUserByUsername(username));
+}
+
 export function ensureExternalUser(username, role) {
   const existing = userOps.getUserByUsername(username);
   if (existing) {
+    if (existing.isProtected) {
+      return toResolvedUser(existing);
+    }
     if (existing.role !== role) {
-      const updated = userOps.updateUser(existing.id, { role });
+      const updated = userOps.updateUser(existing.id, { role, roleSource: "local" });
       return toResolvedUser(updated || existing);
     }
     return toResolvedUser(existing);
   }
-  const passwordHash = hashPassword(crypto.randomBytes(32).toString("hex"));
-  const created = userOps.createUser(username, passwordHash, role, null);
-  return created
-    ? toResolvedUser(userOps.getUserByUsername(created.username) || created)
-    : toResolvedUser(userOps.getUserByUsername(username));
+  return createSystemProvisionedUser(username, role);
 }
 
 function isProxyAdmin(req, username) {
@@ -491,7 +501,8 @@ export function resolveProxyUser(req) {
   if (!username) return null;
 
   const role = resolveProxyRole(req, username);
-  return ensureExternalUser(username, role);
+  const user = ensureExternalUser(username, role);
+  return user?.status === "active" ? user : null;
 }
 
 export function issueProxySession(req) {
@@ -662,7 +673,11 @@ export const authMiddleware = (req, res, next) => {
     if (
       req.path === "/api/auth/login" ||
       req.path === "/api/auth/oidc/login" ||
-      req.path === "/api/auth/oidc/exchange"
+      req.path === "/api/auth/oidc/exchange" ||
+      req.path === "/api/auth/google/login" ||
+      req.path === "/api/auth/google/exchange" ||
+      req.path === "/api/auth/plex/login/pin" ||
+      req.path === "/api/auth/plex/login/complete"
     ) {
       return next();
     }

@@ -5,6 +5,7 @@ import {
   completeMyPlexLink,
   disconnectMyPlex,
 } from "../../../utils/api/endpoints/auth.js";
+import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.js";
 
 const EMPTY_STATUS = {
   connected: false,
@@ -51,6 +52,7 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
       const popup = window.open(authUrl, "plex-self-link", "width=600,height=700");
       const deadline = Date.now() + 3 * 60 * 1000;
       let linked = null;
+      let reauthPrompted = false;
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 2000));
         try {
@@ -58,7 +60,13 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
           if (res.pending) continue;
           linked = res;
           break;
-        } catch {}
+        } catch (pollErr) {
+          if (isReauthRequiredError(pollErr) && !reauthPrompted) {
+            reauthPrompted = true;
+            const shouldRetry = await promptReauth();
+            if (!shouldRetry) break;
+          }
+        }
       }
       if (popup && !popup.closed) popup.close();
       if (!linked) {

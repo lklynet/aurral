@@ -10,13 +10,19 @@ import {
   startServerProcess,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { userOps, dbOps }, { plexConnectionStore }] =
-  await setupIsolatedBackend(
-    "plex-link-routes",
-    "backend/config/db-sqlite.js",
-    "backend/db/helpers/index.js",
-    "backend/services/plex/plexConnectionStore.js",
-  );
+const [
+  isolatedState,
+  { db },
+  { userOps, userIdentityOps, dbOps },
+  { plexConnectionStore },
+  { createSession },
+] = await setupIsolatedBackend(
+  "plex-link-routes",
+  "backend/config/db-sqlite.js",
+  "backend/db/helpers/index.js",
+  "backend/services/plex/plexConnectionStore.js",
+  "backend/config/session-helpers.js",
+);
 
 let server = null;
 let adminId = null;
@@ -197,4 +203,110 @@ test("admin DELETE /:id/plex-link unlinks a managed user", async () => {
   });
   assert.equal(response.status, 200);
   assert.equal(plexConnectionStore.getConnection(userBId), null);
+});
+
+test("Plex login routes are disabled unless integrations.plex.loginEnabled is set", async () => {
+  const { response: pinResponse } = await apiFetch(null, "/api/auth/plex/login/pin", {
+    method: "POST",
+  });
+  assert.equal(pinResponse.status, 404);
+
+  const { response: completeResponse } = await apiFetch(null, "/api/auth/plex/login/complete", {
+    method: "POST",
+    body: JSON.stringify({ pinId: "x", code: "x", clientId: "x" }),
+  });
+  assert.equal(completeResponse.status, 404);
+});
+
+test("disconnecting Plex is blocked when it is the account's only usable auth method", async () => {
+  const oidcOnlyUser = userOps.createUser(
+    "plex-only-user",
+    bcrypt.hashSync("unused-random-hash", 4),
+    "user",
+    null,
+    false,
+  );
+  plexConnectionStore.saveConnection(oidcOnlyUser.id, {
+    linkType: "self",
+    token: "plex-only-token",
+    clientId: "plex-only-client",
+    plexAccountId: 333,
+    plexUsername: "plexOnly",
+  });
+  const identity = userIdentityOps.link(oidcOnlyUser.id, {
+    providerType: "plex",
+    providerKey: "plex",
+    subject: "333",
+    displayName: "plexOnly",
+  });
+
+  const session = createSession(oidcOnlyUser.id, "127.0.0.1", "test-agent");
+
+  const { response } = await apiFetch(session.token, "/api/users/me/plex-link", {
+    method: "DELETE",
+  });
+  assert.equal(response.status, 400);
+  assert.ok(plexConnectionStore.getConnection(oidcOnlyUser.id));
+  assert.equal(userIdentityOps.getById(identity.id)?.id, identity.id);
+});
+
+test("admin can suspend a user, which immediately invalidates their existing session", async () => {
+  const target = userOps.createUser("suspendable-user", bcrypt.hashSync("password123", 4), "user");
+  const targetToken = await login("suspendable-user", "password123");
+  assert.equal((await apiFetch(targetToken, "/api/auth/me")).response.status, 200);
+
+  const { response } = await apiFetch(adminToken, `/api/users/${target.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "suspended" }),
+  });
+  assert.equal(response.status, 200);
+
+  const { response: sessionCheck } = await apiFetch(targetToken, "/api/auth/me");
+  assert.equal(sessionCheck.status, 401);
+
+  const { response: loginAttempt } = await apiFetch(null, "/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username: "suspendable-user", password: "password123" }),
+  });
+  assert.equal(loginAttempt.status, 403);
+});
+
+test("a protected admin cannot suspend or disable their own account", async () => {
+  const protectedAdmin = userOps.createUser(
+    "protected-admin",
+    bcrypt.hashSync("password123", 4),
+    "admin",
+  );
+  userOps.setProtected(protectedAdmin.id, true);
+  const protectedAdminToken = await login("protected-admin", "password123");
+
+  const { response } = await apiFetch(protectedAdminToken, `/api/users/${protectedAdmin.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "suspended" }),
+  });
+  assert.equal(response.status, 400);
+  assert.equal(userOps.getUserById(protectedAdmin.id)?.status, "active");
+});
+
+test("disconnecting Plex succeeds and removes the login identity when a fallback method exists", async () => {
+  plexConnectionStore.saveConnection(userAId, {
+    linkType: "self",
+    token: "user-a-token-2",
+    clientId: "user-a-client-2",
+    plexAccountId: 444,
+    plexUsername: "friendA2",
+  });
+  const identity = userIdentityOps.link(userAId, {
+    providerType: "plex",
+    providerKey: "plex",
+    subject: "444",
+    displayName: "friendA2",
+  });
+
+  const { response } = await apiFetch(userAToken, "/api/users/me/plex-link", {
+    method: "DELETE",
+  });
+  assert.equal(response.status, 200);
+  assert.equal(plexConnectionStore.getConnection(userAId), null);
+  assert.equal(userIdentityOps.getById(identity.id), null);
 });

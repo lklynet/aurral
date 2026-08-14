@@ -296,6 +296,7 @@ export async function refreshInboxForUser(userId, { req = null, zipCode = "", fo
 
 export async function refreshInboxForAllUsers() {
   for (const user of userOps.getAllUsers()) {
+    if (user.status !== "active") continue;
     await refreshInboxForUser(user.id);
   }
 }

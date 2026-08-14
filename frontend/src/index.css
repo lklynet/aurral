@@ -7967,6 +7967,24 @@ textarea {
   background: color-mix(in srgb, var(--aurral-text-muted) 35%, transparent);
 }
 
+.login-local-toggle {
+  display: block;
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--aurral-text-muted);
+  font-size: 0.8125rem;
+  text-align: center;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.login-local-toggle:hover {
+  color: var(--aurral-text);
+}
+
 .login-submit {
   min-height: 2.75rem;
   border-color: var(--aurral-border-strong);
@@ -11990,6 +12008,23 @@ textarea {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.connected-account-list {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.connected-account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--aurral-radius-sm);
+  background: var(--aurral-surface-hover);
+  font-size: 0.875rem;
 }
 
 .settings-page__section-intro {

@@ -73,6 +73,18 @@ db.exec(`
     expires_at INTEGER NOT NULL,
     ip_address TEXT,
     user_agent TEXT,
+    reauthenticated_at INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS user_identities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    provider_type TEXT NOT NULL,
+    provider_key TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    display_name TEXT,
+    linked_at INTEGER NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
@@ -229,6 +241,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
   CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_user_identities_provider_subject ON user_identities(provider_type, provider_key, subject);
+  CREATE INDEX IF NOT EXISTS idx_user_identities_user_id ON user_identities(user_id);
   CREATE INDEX IF NOT EXISTS idx_aurral_history_created_at ON aurral_history(created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_inbox_items_user_state ON inbox_items(user_id, is_dismissed, is_read, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_inbox_items_expiry ON inbox_items(expires_at, created_at DESC);
@@ -325,6 +339,14 @@ for (const [name, type] of [
   }
 }
 
+const sessionColumns = db
+  .prepare("PRAGMA table_info(sessions)")
+  .all()
+  .map((column) => column.name);
+if (!sessionColumns.includes("reauthenticated_at")) {
+  tryAddColumn("ALTER TABLE sessions ADD COLUMN reauthenticated_at INTEGER");
+}
+
 const userColumns = db
   .prepare("PRAGMA table_info(users)")
   .all()
@@ -350,6 +372,22 @@ if (!userColumns.includes("discover_layout")) {
 }
 if (!userColumns.includes("listen_history_url")) {
   tryAddColumn("ALTER TABLE users ADD COLUMN listen_history_url TEXT");
+}
+if (!userColumns.includes("status")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
+}
+if (!userColumns.includes("is_protected")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN is_protected INTEGER NOT NULL DEFAULT 0");
+}
+if (!userColumns.includes("role_source")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN role_source TEXT NOT NULL DEFAULT 'local'");
+}
+if (!userColumns.includes("has_local_password")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN has_local_password INTEGER NOT NULL DEFAULT 0");
+  // Pre-existing rows predate identity linking entirely, so treat them as
+  // already having a known local password rather than risk the lockout
+  // check wrongly blocking (or worse, failing to protect) an upgrade.
+  db.exec("UPDATE users SET has_local_password = 1");
 }
 
 db.exec(`

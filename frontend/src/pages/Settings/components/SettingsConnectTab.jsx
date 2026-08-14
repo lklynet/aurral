@@ -34,10 +34,14 @@ export function SettingsConnectTab({
   const gotify = settings.integrations?.gotify || {};
   const lastfm = settings.integrations?.lastfm || {};
   const ticketmaster = settings.integrations?.ticketmaster || {};
+  const google = settings.integrations?.google || {};
   const inbox = settings.inbox || {};
   const gotifyConfigured = Boolean(gotify.url && gotify.token);
   const lastfmConfigured = Boolean(health?.lastfmConfigured);
   const ticketmasterConfigured = Boolean(health?.ticketmasterConfigured);
+  const googleConfigured = Boolean(
+    google.enabled && google.clientId && google.clientSecret && google.redirectUri,
+  );
 
   const webhooks = settings.integrations?.webhooks || [];
   const webhookEvents = settings.integrations?.webhookEvents || {};
@@ -86,6 +90,15 @@ export function SettingsConnectTab({
       integrations: {
         ...settings.integrations,
         ticketmaster: { ...ticketmaster, ...patch },
+      },
+    });
+
+  const updateGoogle = (patch) =>
+    updateSettings({
+      ...settings,
+      integrations: {
+        ...settings.integrations,
+        google: { ...google, ...patch },
       },
     });
 
@@ -203,6 +216,13 @@ export function SettingsConnectTab({
               status={getConfiguredStatus(ticketmasterConfigured)}
               meta={`${ticketmaster.searchRadiusMiles ?? 250} mi radius`}
               onClick={() => setActiveModal("ticketmaster")}
+            />
+            <IntegrationCard
+              title="Google"
+              subtitle="Sign in with Google"
+              status={getConfiguredStatus(googleConfigured)}
+              meta="Additional login method"
+              onClick={() => setActiveModal("google")}
             />
           </SettingsArrCardGrid>
         </SettingsArrFieldSet>
@@ -636,6 +656,65 @@ export function SettingsConnectTab({
                 }
               />
             </SettingsModalToggleGroup>
+          </SettingsModalSection>
+        </SettingsIntegrationModal>
+      )}
+
+      {activeModal === "google" && (
+        <SettingsIntegrationModal title="Google" onClose={() => setActiveModal(null)}>
+          <SettingsModalIntro>
+            Let users who already linked their Google account (from their profile) sign in with
+            it. Google can never create new Aurral accounts or change anyone&apos;s role — it&apos;s
+            only usable once an authenticated user has explicitly connected it.
+          </SettingsModalIntro>
+          <SettingsModalCallout>
+            Create an OAuth client at{" "}
+            <a
+              href="https://console.cloud.google.com/apis/credentials"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="settings-page__link"
+            >
+              Google Cloud Console
+            </a>{" "}
+            and register the redirect URI below as an authorized redirect URI.
+          </SettingsModalCallout>
+          <SettingsModalSection title="Connection">
+            <SettingsModalToggle
+              label="Enabled"
+              checked={google.enabled === true}
+              onChange={(e) => updateGoogle({ enabled: e.target.checked })}
+            />
+            <SettingsModalField label="Client ID">
+              <SettingsInput
+                type="text"
+                placeholder="123456789-abcdefg.apps.googleusercontent.com"
+                autoComplete="off"
+                value={google.clientId || ""}
+                onChange={(e) => updateGoogle({ clientId: e.target.value })}
+              />
+            </SettingsModalField>
+            <SettingsModalField label="Client secret">
+              <SettingsInput
+                type="password"
+                placeholder="Google client secret"
+                autoComplete="off"
+                value={google.clientSecret || ""}
+                onChange={(e) => updateGoogle({ clientSecret: e.target.value })}
+              />
+            </SettingsModalField>
+            <SettingsModalField
+              label="Redirect URI"
+              hint={`Usually ${window.location.origin}/sso/google/callback`}
+            >
+              <SettingsInput
+                type="url"
+                placeholder="https://aurral.example.com/sso/google/callback"
+                autoComplete="off"
+                value={google.redirectUri || ""}
+                onChange={(e) => updateGoogle({ redirectUri: e.target.value })}
+              />
+            </SettingsModalField>
           </SettingsModalSection>
         </SettingsIntegrationModal>
       )}

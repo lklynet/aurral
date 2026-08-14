@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { resetDiscoveryFeedback } from "../../../utils/api/endpoints/discovery.js";
 import {
   getThemePreference,
@@ -6,6 +6,7 @@ import {
 } from "../../../utils/theme.js";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { PlexSelfLinkSection } from "./PlexSelfLinkSection";
+import { ConnectedAccountsSection } from "./ConnectedAccountsSection";
 
 import { Link } from "react-router-dom";
 import { RotateCcw } from "lucide-react";
@@ -32,6 +33,21 @@ export function SettingsAccountTab({
 }) {
   const [resettingTastes, setResettingTastes] = useState(false);
   const [theme, setTheme] = useState(getThemePreference);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("connected") === "google") {
+      showSuccess?.("Connected your Google account.");
+      params.delete("connected");
+      const query = params.toString();
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${query ? `?${query}` : ""}`,
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleResetDiscoveryTastes = async () => {
     if (resettingTastes) return;
@@ -185,6 +201,12 @@ export function SettingsAccountTab({
             )}
           </fieldset>
         </div>
+
+        <ConnectedAccountsSection
+          className={profileVariant ? "profile-settings__section" : ""}
+          showSuccess={showSuccess}
+          showError={showError}
+        />
 
         <PlexSelfLinkSection
           className={profileVariant ? "profile-settings__section" : ""}

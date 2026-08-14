@@ -304,7 +304,22 @@ export function registerGeneral(router) {
         integrations.news = nextNews;
       }
 
-      const INTEGRATION_KEYS = ["lidarr", "navidrome", "slskd", "prowlarr", "nzbget", "ytdlp", "lastfm", "ticketmaster", "news", "metadata", "general", "gotify", "webhookEvents"];
+      if (integrations?.google?.redirectUri !== undefined) {
+        const trimmedRedirectUri = String(integrations.google.redirectUri).trim();
+        if (trimmedRedirectUri) {
+          const redirectValidation = validateExternalUrl(trimmedRedirectUri);
+          if (!redirectValidation.valid) {
+            return res.status(400).json({
+              error: `Invalid Google redirect URI: ${redirectValidation.error}`,
+            });
+          }
+          integrations.google.redirectUri = redirectValidation.url;
+        } else {
+          integrations.google.redirectUri = "";
+        }
+      }
+
+      const INTEGRATION_KEYS = ["lidarr", "navidrome", "slskd", "prowlarr", "nzbget", "ytdlp", "lastfm", "ticketmaster", "news", "metadata", "general", "gotify", "webhookEvents", "google"];
       let mergedIntegrations =
         currentSettings.integrations || defaultData.settings.integrations || {};
       if (integrations) {

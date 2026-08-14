@@ -38,7 +38,7 @@ const completeOnboarding = () => dbOps.updateSettings({ onboardingComplete: true
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const oidcKey = { ...publicKey.export({ format: "jwk" }), kid: "test-key", use: "sig", alg: "RS256" };
 
-const createIdToken = (issuer, nonce) => {
+const createIdToken = (issuer, nonce, claimOverrides = {}) => {
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const header = encode({ alg: "RS256", kid: oidcKey.kid, typ: "JWT" });
   const payload = encode({
@@ -49,6 +49,7 @@ const createIdToken = (issuer, nonce) => {
     nonce,
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 300,
+    ...claimOverrides,
   });
   const input = `${header}.${payload}`;
   const signature = createSign("RSA-SHA256").update(input).sign(privateKey).toString("base64url");
@@ -82,9 +83,11 @@ function enableOidcEnv(overrides = {}) {
   Object.assign(process.env, overrides);
 }
 
-async function createPendingOidcLogin() {
+async function createPendingOidcLogin(options = {}) {
   let issuer;
   let nonce;
+  const claimOverrides = options.claimOverrides || {};
+  const capturedTokenRequest = {};
   const discoveryServer = await createMockHttpServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
     if (request.url === "/jwks") {
@@ -92,13 +95,21 @@ async function createPendingOidcLogin() {
       return;
     }
     if (request.method === "POST" && request.url === "/token") {
-      response.end(
-        JSON.stringify({
-          access_token: "access-token",
-          token_type: "Bearer",
-          id_token: createIdToken(issuer, nonce),
-        }),
-      );
+      let body = "";
+      request.on("data", (chunk) => {
+        body += chunk;
+      });
+      request.on("end", () => {
+        capturedTokenRequest.authorizationHeader = request.headers.authorization || null;
+        capturedTokenRequest.body = body;
+        response.end(
+          JSON.stringify({
+            access_token: "access-token",
+            token_type: "Bearer",
+            id_token: createIdToken(issuer, nonce, claimOverrides),
+          }),
+        );
+      });
       return;
     }
     response.end(
@@ -114,6 +125,7 @@ async function createPendingOidcLogin() {
   enableOidcEnv({
     OIDC_ISSUER: issuer,
     OIDC_REDIRECT_URI: `${issuer}callback`,
+    ...(options.envOverrides || {}),
   });
 
   const response = {
@@ -137,7 +149,20 @@ async function createPendingOidcLogin() {
     nonce,
     cookie: setCookie.split(";", 1)[0],
     close: discoveryServer.close,
+    capturedTokenRequest,
   };
+}
+
+async function completeOidcLogin(pending) {
+  const callback = await handleOidcCallback({
+    query: { state: pending.state, code: "authorization-code" },
+    headers: { cookie: pending.cookie },
+    ip: "127.0.0.1",
+  });
+  return exchangeOidcCallback(callback.code, {
+    headers: { cookie: pending.cookie, "user-agent": "test-agent" },
+    ip: "127.0.0.1",
+  });
 }
 
 test.beforeEach(() => {
@@ -297,5 +322,227 @@ test("OIDC callback rejects a mismatched state without creating a session", asyn
     assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sessions").get().count, 0);
   } finally {
     await pending.close();
+  }
+});
+
+test("OIDC login resolves returning users by issuer+subject, not by username claim", async () => {
+  let issuer;
+  let nonce;
+  let claimOverrides = {};
+  const discoveryServer = await createMockHttpServer((request, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    if (request.url === "/jwks") {
+      response.end(JSON.stringify({ keys: [oidcKey] }));
+      return;
+    }
+    if (request.method === "POST" && request.url === "/token") {
+      response.end(
+        JSON.stringify({
+          access_token: "access-token",
+          token_type: "Bearer",
+          id_token: createIdToken(issuer, nonce, claimOverrides),
+        }),
+      );
+      return;
+    }
+    response.end(
+      JSON.stringify({
+        issuer,
+        authorization_endpoint: `${issuer}authorize`,
+        token_endpoint: `${issuer}token`,
+        jwks_uri: `${issuer}jwks`,
+      }),
+    );
+  });
+
+  try {
+    issuer = `${discoveryServer.url}/`;
+    enableOidcEnv({ OIDC_ISSUER: issuer, OIDC_REDIRECT_URI: `${issuer}callback` });
+
+    const login = async () => {
+      const response = {
+        headers: {},
+        redirect(_status, location) {
+          this.location = location;
+        },
+        setHeader(name, value) {
+          this.headers[name] = value;
+        },
+      };
+      await startOidcLogin({}, response);
+      const redirect = new URL(response.location);
+      nonce = redirect.searchParams.get("nonce");
+      const state = redirect.searchParams.get("state");
+      const cookie = response.headers["Set-Cookie"].split(";", 1)[0];
+      const callback = await handleOidcCallback({
+        query: { state, code: "authorization-code" },
+        headers: { cookie },
+        ip: "127.0.0.1",
+      });
+      const session = exchangeOidcCallback(callback.code, {
+        headers: { cookie, "user-agent": "test-agent" },
+        ip: "127.0.0.1",
+      });
+      return getSessionByToken(session.token)?.user;
+    };
+
+    const firstUser = await login();
+    assert.ok(firstUser?.id);
+    assert.equal(userOps.getAllUsers().length, 1);
+
+    claimOverrides = { preferred_username: "renamed-user" };
+    const secondUser = await login();
+    assert.equal(secondUser?.id, firstUser.id, "same subject must resolve to the same user");
+    assert.equal(
+      secondUser?.username,
+      "callback-user",
+      "username claim changing after first login must not rename or re-provision the user",
+    );
+    assert.equal(userOps.getAllUsers().length, 1, "returning login must not create a second user");
+  } finally {
+    await discoveryServer.close();
+  }
+});
+
+test("OIDC provisioning auto-suffixes a colliding username instead of linking to the existing account", async () => {
+  const first = await createPendingOidcLogin({ claimOverrides: { sub: "subject-one" } });
+  let firstUserId;
+  try {
+    const session = await completeOidcLogin(first);
+    firstUserId = getSessionByToken(session.token)?.user?.id;
+  } finally {
+    await first.close();
+  }
+
+  const second = await createPendingOidcLogin({ claimOverrides: { sub: "subject-two" } });
+  try {
+    const session = await completeOidcLogin(second);
+    const loggedInUser = getSessionByToken(session.token)?.user;
+    assert.notEqual(
+      loggedInUser?.id,
+      firstUserId,
+      "a different subject with a colliding username must never log in as the existing account",
+    );
+    assert.equal(loggedInUser?.username, "callback-user-2");
+  } finally {
+    await second.close();
+  }
+
+  assert.equal(userOps.getAllUsers().length, 2);
+  assert.equal(userOps.getUserByUsername("callback-user")?.id, firstUserId);
+});
+
+test("OIDC login rejects a suspended user and never overwrites a protected account's role", async () => {
+  let issuer;
+  let nonce;
+  const discoveryServer = await createMockHttpServer((request, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    if (request.url === "/jwks") {
+      response.end(JSON.stringify({ keys: [oidcKey] }));
+      return;
+    }
+    if (request.method === "POST" && request.url === "/token") {
+      response.end(
+        JSON.stringify({
+          access_token: "access-token",
+          token_type: "Bearer",
+          id_token: createIdToken(issuer, nonce),
+        }),
+      );
+      return;
+    }
+    response.end(
+      JSON.stringify({
+        issuer,
+        authorization_endpoint: `${issuer}authorize`,
+        token_endpoint: `${issuer}token`,
+        jwks_uri: `${issuer}jwks`,
+      }),
+    );
+  });
+
+  try {
+    issuer = `${discoveryServer.url}/`;
+    enableOidcEnv({ OIDC_ISSUER: issuer, OIDC_REDIRECT_URI: `${issuer}callback` });
+
+    const login = async () => {
+      const response = {
+        headers: {},
+        redirect(_status, location) {
+          this.location = location;
+        },
+        setHeader(name, value) {
+          this.headers[name] = value;
+        },
+      };
+      await startOidcLogin({}, response);
+      const redirect = new URL(response.location);
+      nonce = redirect.searchParams.get("nonce");
+      const state = redirect.searchParams.get("state");
+      const cookie = response.headers["Set-Cookie"].split(";", 1)[0];
+      const callback = await handleOidcCallback({
+        query: { state, code: "authorization-code" },
+        headers: { cookie },
+        ip: "127.0.0.1",
+      });
+      const session = exchangeOidcCallback(callback.code, {
+        headers: { cookie, "user-agent": "test-agent" },
+        ip: "127.0.0.1",
+      });
+      return getSessionByToken(session.token)?.user;
+    };
+
+    const user = await login();
+    assert.equal(user?.role, "user");
+    assert.equal(userOps.getUserById(user.id)?.roleSource, "oidc");
+
+    process.env.OIDC_ADMIN_USERS = "callback-user";
+    userOps.setProtected(user.id, true);
+    const loggedInAgain = await login();
+    assert.equal(
+      loggedInAgain?.role,
+      "user",
+      "OIDC must never promote or otherwise change a protected account's role",
+    );
+    delete process.env.OIDC_ADMIN_USERS;
+
+    userOps.updateUser(user.id, { status: "suspended" });
+    await assert.rejects(() => login(), {
+      status: 403,
+      message: "This account has been suspended or disabled",
+    });
+  } finally {
+    await discoveryServer.close();
+  }
+});
+
+test("OIDC token exchange defaults to client_secret_basic and honors OIDC_TOKEN_ENDPOINT_AUTH_METHOD", async () => {
+  const basicPending = await createPendingOidcLogin();
+  try {
+    await completeOidcLogin(basicPending);
+    assert.ok(
+      basicPending.capturedTokenRequest.authorizationHeader?.startsWith("Basic "),
+      "default token endpoint auth method must be client_secret_basic",
+    );
+    assert.ok(
+      !String(basicPending.capturedTokenRequest.body || "").includes("client_secret="),
+      "client_secret_basic must not put the secret in the request body",
+    );
+  } finally {
+    await basicPending.close();
+  }
+
+  const postPending = await createPendingOidcLogin({
+    claimOverrides: { sub: "subject-post" },
+    envOverrides: { OIDC_TOKEN_ENDPOINT_AUTH_METHOD: "client_secret_post" },
+  });
+  try {
+    await completeOidcLogin(postPending);
+    assert.ok(
+      String(postPending.capturedTokenRequest.body || "").includes("client_secret="),
+      "client_secret_post must include the secret in the request body",
+    );
+  } finally {
+    await postPending.close();
   }
 });

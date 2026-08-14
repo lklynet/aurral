@@ -5,12 +5,13 @@ import { userOps } from "../db/helpers/index.js";
 const DEFAULT_EXPIRY_HOURS = 24 * 30;
 
 const insertSessionStmt = db.prepare(
-  "INSERT INTO sessions (user_id, token, created_at, expires_at, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?)",
+  "INSERT INTO sessions (user_id, token, created_at, expires_at, ip_address, user_agent, reauthenticated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
 );
 const getSessionByTokenStmt = db.prepare("SELECT * FROM sessions WHERE token = ? LIMIT 1");
 const deleteSessionByTokenStmt = db.prepare("DELETE FROM sessions WHERE token = ?");
 const deleteSessionsByUserIdStmt = db.prepare("DELETE FROM sessions WHERE user_id = ?");
 const deleteExpiredSessionsStmt = db.prepare("DELETE FROM sessions WHERE expires_at <= ?");
+const touchReauthStmt = db.prepare("UPDATE sessions SET reauthenticated_at = ? WHERE token = ?");
 
 const getSessionExpiryMs = () => {
   const hours = Number(process.env.SESSION_EXPIRY_HOURS);
@@ -39,11 +40,19 @@ export const createSession = (userId, ipAddress = null, userAgent = null) => {
     expiresAt,
     ipAddress ? String(ipAddress).slice(0, 255) : null,
     userAgent ? String(userAgent).slice(0, 1024) : null,
+    now,
   );
   return {
     token,
     expiresAt,
   };
+};
+
+export const touchReauth = (token) => {
+  const rawToken = String(token || "").trim();
+  if (!rawToken) return false;
+  const result = touchReauthStmt.run(Date.now(), rawToken);
+  return result.changes > 0;
 };
 
 export const getSessionByToken = (token) => {
@@ -56,7 +65,7 @@ export const getSessionByToken = (token) => {
     return null;
   }
   const user = userOps.getUserAuthById(row.user_id);
-  if (!user) {
+  if (!user || user.status !== "active") {
     deleteSessionByTokenStmt.run(rawToken);
     return null;
   }
@@ -68,6 +77,7 @@ export const getSessionByToken = (token) => {
     expiresAt: row.expires_at,
     ipAddress: row.ip_address,
     userAgent: row.user_agent,
+    reauthenticatedAt: row.reauthenticated_at || row.created_at,
     user: toUserPayload(user),
   };
 };

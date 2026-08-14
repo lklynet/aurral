@@ -150,7 +150,7 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   playback: {
-    sections: ["Playback Servers", "Navidrome Playlist Paths", "Cover Art", "Connection", "Account", "Aurral Library Path", "Main library (optional)", "Sync"],
+    sections: ["Playback Servers", "Navidrome Playlist Paths", "Cover Art", "Connection", "Account", "Login", "Aurral Library Path", "Main library (optional)", "Sync"],
     services: {
       Navidrome: "Subsonic music server",
       Plex: "Plexamp music server",
@@ -169,16 +169,18 @@ const SETTINGS_SEARCH_METADATA = {
       "Include tracks from an existing library": "Plex main library",
       "Local path for this library (optional)": "Plex path mapping",
       Sync: "Navidrome scan playlists Plex refresh",
+      "Allow signing in to Aurral with Plex": "authentication sign in login identity secondary",
     },
   },
   connect: {
-    sections: ["Connections", "Webhooks", "Notification Events", "Inbox"],
+    sections: ["Connections", "Webhooks", "Notification Events", "Inbox", "Connection"],
     services: {
       Gotify: "push notifications mobile alerts",
       "Last.fm": "listening history API",
       Ticketmaster: "local shows events",
       Inbox: "library updates releases shows news discoveries",
       Webhooks: "notifications HTTP callbacks",
+      Google: "sign in authentication OAuth login secondary",
     },
     fields: {
       "Server URL": "Gotify address host connection",
@@ -203,6 +205,10 @@ const SETTINGS_SEARCH_METADATA = {
       "Library Artist news": "inbox RSS",
       "Recommended Artist news": "inbox RSS",
       Discoveries: "inbox recommendations",
+      Enabled: "Google sign in on off",
+      "Client ID": "Google OAuth credentials",
+      "Client secret": "Google OAuth credentials",
+      "Redirect URI": "Google OAuth callback URL",
     },
   },
   "rss-news": {
@@ -247,7 +253,7 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   users: {
-    sections: ["Change Password", "Local Network Auto-login", "Users"],
+    sections: ["Change Password", "Local Network Auto-login", "Sign-in Mode", "Users"],
     services: {
       Authentication: "login password security",
       Permissions: "roles access control",
@@ -262,6 +268,8 @@ const SETTINGS_SEARCH_METADATA = {
       Password: "create edit user account",
       Permissions: "roles manage users access",
       "Plex account": "link user playback identity",
+      "SSO-only": "sign in mode hide local login form SSO",
+      Status: "active suspended disabled user account",
     },
   },
 };
