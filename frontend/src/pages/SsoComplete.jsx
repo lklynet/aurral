@@ -60,8 +60,11 @@ const SsoComplete = () => {
         return refreshAuth();
       })
       .then((refreshed) => {
-        if (!cancelled && refreshed !== null) {
+        if (cancelled || refreshed === null) return;
+        if (refreshed) {
           navigate("/", { replace: true });
+        } else {
+          setError("Signed in, but couldn't load your account. Please try again.");
         }
       })
       .catch(() => {
