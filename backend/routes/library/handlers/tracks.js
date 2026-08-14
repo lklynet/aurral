@@ -8,10 +8,11 @@ import fsp from "fs/promises";
 import path from "path";
 import { logger } from "../../../services/logger.js";
 import {
+  buildCanonicalLibraryReadModel,
   findCanonicalTracksForAlbum,
-  getCanonicalLibraryReadModel,
   resolveCanonicalTrackPath,
 } from "../../../services/canonicalLibraryReadAdapter.js";
+import { getCanonicalLibrary } from "../../../services/libraryQueryService.js";
 import { stripFilesystemPaths } from "./canonical.js";
 import { streamAudioFile } from "../../../services/audioFileStream.js";
 
@@ -43,9 +44,11 @@ export function registerTracks(router) {
       const { albumId, releaseGroupMbid } = req.query;
 
       if (req.query.readPath === "canonical") {
-        const { albums, tracks } = getCanonicalLibraryReadModel({
+        const canonicalLibrary = getCanonicalLibrary({
           source: req.query.source || "lidarr",
+          availableOnly: true,
         });
+        const { albums, tracks } = buildCanonicalLibraryReadModel(canonicalLibrary);
         const album = [albumId, releaseGroupMbid]
           .filter(Boolean)
           .map((reference) =>
