@@ -152,3 +152,25 @@ test("canonical library responses do not expose filesystem paths", () => {
   assert.deepEqual(response.tracks[0].metadata, { nested: {} });
   assert.deepEqual(response.tracks[0].files, [{ id: 2, source: "aurral" }]);
 });
+
+test("canonical album responses proxy public metadata artwork", () => {
+  const remoteUrl = "https://cdn.example.test/cover.jpg?size=500";
+  const response = toPublicLibrary({
+    artists: [],
+    albums: [{
+      id: 1,
+      metadata: {
+        images: [
+          { url: "/MediaCover/Albums/1/cover.jpg" },
+          { remoteUrl },
+        ],
+      },
+    }],
+    tracks: [],
+  });
+
+  assert.equal(
+    response.albums[0].coverUrl,
+    "/api/image-proxy?src=" + encodeURIComponent(remoteUrl),
+  );
+});

@@ -1,5 +1,6 @@
 import { noCache } from "../../../middleware/cache.js";
 import { requireAuth } from "../../../middleware/requirePermission.js";
+import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
 import { getCanonicalLibrary } from "../../../services/libraryQueryService.js";
 import { getStarred, starMany, unstarMany } from "../../../services/subsonicLibraryService.js";
 
@@ -15,10 +16,21 @@ export function stripFilesystemPaths(value) {
   );
 }
 
+function getAlbumCoverUrl(album) {
+  const image = (Array.isArray(album?.metadata?.images) ? album.metadata.images : []).find(
+    (entry) => /^https?:\/\//i.test(entry?.remoteUrl || entry?.imageUrl || entry?.url || ""),
+  );
+  const source = image?.remoteUrl || image?.imageUrl || image?.url;
+  return /^https?:\/\//i.test(source || "") ? buildImageProxyUrl(source) : null;
+}
+
 function toPublicLibrary(library) {
   return stripFilesystemPaths({
     artists: library.artists,
-    albums: library.albums,
+    albums: library.albums.map((album) => ({
+      ...album,
+      coverUrl: album.coverUrl || getAlbumCoverUrl(album),
+    })),
     tracks: library.tracks,
   });
 }

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import ArtistImage from "../components/ArtistImage";
+import TooltipButton from "../components/TooltipButton";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
@@ -109,17 +110,16 @@ function Cover({ src, label, round = false, compact = false }) {
 
 function FavoriteButton({ active, pending, label, onClick, className = "" }) {
   return (
-    <button
-      type="button"
+    <TooltipButton
       className={"native-library-favorite " + className + (active ? " is-active" : "")}
       onClick={onClick}
       disabled={pending}
+      label={active ? "Remove from favorites" : "Add to favorites"}
       aria-label={active ? "Remove " + label + " from favorites" : "Add " + label + " to favorites"}
       aria-pressed={active}
-      title={active ? "Remove from favorites" : "Add to favorites"}
     >
       <Heart aria-hidden="true" fill={active ? "currentColor" : "none"} />
-    </button>
+    </TooltipButton>
   );
 }
 
@@ -444,10 +444,11 @@ function LibraryPage() {
     const items = library.albums
       .map((album) => ({
         mbid: album.mbid || album.releaseGroupMbid,
+        coverUrl: album.coverUrl,
         artistName: getArtistForAlbum(album)?.name || album.albumArtist,
         albumTitle: album.title,
       }))
-      .filter((item) => item.mbid);
+      .filter((item) => item.mbid && !item.coverUrl);
     return items
       .filter(
         (item, index, values) =>
@@ -475,7 +476,7 @@ function LibraryPage() {
   }, [coverItems]);
 
   const getAlbumCover = useCallback(
-    (album) => covers[album?.mbid || album?.releaseGroupMbid] || "",
+    (album) => album?.coverUrl || covers[album?.mbid || album?.releaseGroupMbid] || "",
     [covers],
   );
 
@@ -716,11 +717,11 @@ function LibraryPage() {
             key={track.id}
             role="listitem"
           >
-            <button
-              type="button"
+            <TooltipButton
               className="native-library-track__play"
               onClick={() => playTrack(track, tracks)}
               disabled={!file || (active && isLoading)}
+              label={(active && isPlaying ? "Pause " : "Play ") + track.title}
               aria-label={(active && isPlaying ? "Pause " : "Play ") + track.title}
             >
               {active && isPlaying ? (
@@ -728,7 +729,7 @@ function LibraryPage() {
               ) : (
                 <Play aria-hidden="true" fill="currentColor" />
               )}
-            </button>
+            </TooltipButton>
             <span className="native-library-track__number" aria-hidden="true">
               {index + 1}
             </span>
@@ -861,15 +862,15 @@ function LibraryPage() {
           >
             <Cover src={getAlbumCover(album)} label={album.title} />
           </button>
-          <button
-            type="button"
+          <TooltipButton
             className="native-library-card__play"
             onClick={() => playTracks(albumTracks)}
             disabled={!albumTracks.some((track) => firstAvailableFile(track))}
+            label={"Play " + (album.title || "album")}
             aria-label={"Play " + (album.title || "album")}
           >
             <Play aria-hidden="true" fill="currentColor" />
-          </button>
+          </TooltipButton>
         </div>
         <div className="native-library-card__body">
           <div className="native-library-card__title-row">
@@ -1263,15 +1264,14 @@ function LibraryPage() {
       <header className="native-library-header">
         <div className="native-library-title-row">
           <div className="native-library-title">
-            <button
-              type="button"
+            <TooltipButton
               className="native-library-title-play"
               onClick={() => playTracks(collectionTracks)}
               disabled={!collectionPlayable}
-              aria-label={"Play " + pageTitle}
+              label={"Play " + pageTitle}
             >
               <Play aria-hidden="true" fill="currentColor" />
-            </button>
+            </TooltipButton>
             <h1 className="page-title">
               {pageTitle}
               {pageCount != null && (
@@ -1281,26 +1281,24 @@ function LibraryPage() {
           </div>
           <div className="native-library-header-actions">
             {showToolbar ? (
-              <button
-                type="button"
+              <TooltipButton
                 className={`native-library-icon-button${searchOpen ? " is-active" : ""}`}
                 onClick={() => setSearchOpen((value) => !value)}
+                label={searchOpen ? "Close search" : "Search"}
                 aria-label={searchOpen ? "Close search" : "Search " + sectionLabel.toLocaleLowerCase()}
                 aria-pressed={searchOpen}
-                title={searchOpen ? "Close search" : "Search"}
               >
                 <Search aria-hidden="true" />
-              </button>
+              </TooltipButton>
             ) : (
-              <button
-                type="button"
+              <TooltipButton
                 className="native-library-icon-button"
                 onClick={() => setRetryKey((value) => value + 1)}
+                label="Refresh"
                 aria-label="Refresh library"
-                title="Refresh"
               >
                 <RefreshCw aria-hidden="true" />
-              </button>
+              </TooltipButton>
             )}
           </div>
         </div>
@@ -1319,9 +1317,9 @@ function LibraryPage() {
                     autoFocus
                   />
                   {query && (
-                    <button type="button" onClick={() => setQuery("")} aria-label="Clear search">
+                    <TooltipButton onClick={() => setQuery("")} label="Clear search">
                       <X aria-hidden="true" />
-                    </button>
+                    </TooltipButton>
                   )}
                 </label>
               )}
@@ -1342,67 +1340,62 @@ function LibraryPage() {
                     </select>
                   </label>
                   <span className="native-library-toolbar-divider" aria-hidden="true" />
-                  <button
-                    type="button"
+                  <TooltipButton
                     className="native-library-icon-button"
                     onClick={() =>
                       setSortDirection((value) => (value === "asc" ? "desc" : "asc"))
                     }
+                    label={sortDirection === "asc" ? "Descending" : "Ascending"}
                     aria-label={sortDirection === "asc" ? "Sort descending" : "Sort ascending"}
-                    title={sortDirection === "asc" ? "Descending" : "Ascending"}
                   >
                     {sortDirection === "asc" ? (
                       <ArrowDownAZ aria-hidden="true" />
                     ) : (
                       <ArrowUpZA aria-hidden="true" />
                     )}
-                  </button>
+                  </TooltipButton>
                 </>
               )}
               {section !== "genres" && (
-                <button
-                  type="button"
+                <TooltipButton
                   className={`native-library-icon-button${hasActiveFilters ? " is-active" : ""}`}
                   onClick={() => setFiltersOpen((value) => !value)}
+                  label="Filters"
                   aria-label="Filter library"
                   aria-pressed={filtersOpen}
-                  title="Filters"
                 >
                   <ListFilter aria-hidden="true" />
-                </button>
+                </TooltipButton>
               )}
-              <button
-                type="button"
+              <TooltipButton
                 className="native-library-icon-button"
                 onClick={() => setRetryKey((value) => value + 1)}
+                label="Refresh"
                 aria-label="Refresh library"
-                title="Refresh"
               >
                 <RefreshCw aria-hidden="true" />
-              </button>
+              </TooltipButton>
               <span className="native-library-toolbar-spacer" aria-hidden="true" />
               {(tab === "artists" || tab === "albums") && (
                 <div className="native-library-view-toggle" aria-label="Library view">
-                  <button
-                    type="button"
+                  <TooltipButton
                     className={`native-library-icon-button${viewMode === "grid" ? " is-active" : ""}`}
                     onClick={() => setViewMode("grid")}
+                    label="Grid view"
                     aria-label="Grid view"
-                    title="Grid view"
                     aria-pressed={viewMode === "grid"}
                   >
                     <Grid3X3 aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
+                  </TooltipButton>
+                  <TooltipButton
                     className={`native-library-icon-button${viewMode === "list" ? " is-active" : ""}`}
                     onClick={() => setViewMode("list")}
+                    label="List view"
                     aria-label="List view"
-                    title="List view"
                     aria-pressed={viewMode === "list"}
                   >
                     <List aria-hidden="true" />
-                  </button>
+                  </TooltipButton>
                 </div>
               )}
             </div>

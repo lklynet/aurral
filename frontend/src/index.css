@@ -7926,7 +7926,7 @@ textarea {
   color: var(--aurral-text);
   cursor: pointer;
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 0.875rem;
   font-weight: 600;
   line-height: 1.35;
   text-align: left;
@@ -8463,6 +8463,23 @@ button.native-library-genre-row:focus-visible {
 ):focus-visible {
   outline: 2px solid var(--aurral-ring);
   outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .native-library-icon-button,
+  .native-library-title-play,
+  .native-library-page-play,
+  .native-library-state__action {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+
+  .native-library-favorite,
+  .native-library-card__play,
+  .native-library-track__play {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
 }
 
 @media (max-width: 760px) {

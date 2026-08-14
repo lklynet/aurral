@@ -47,6 +47,8 @@ export const getArtistAppearsOnPage = (
 export const getReleaseGroupRatingsBatch = (ids = []) =>
   postData("/artists/release-groups/ratings", { ids });
 
+const RELEASE_GROUP_COVER_BATCH_SIZE = 24;
+
 export const getReleaseGroupTracks = async (mbid, context = {}) => {
   const params = {};
   if (context.artistMbid) params.artistMbid = context.artistMbid;
@@ -103,10 +105,16 @@ export const getReleaseGroupCoversBatch = async (items = []) => {
   if (coverInflightRequests.has(batchKey)) {
     return coverInflightRequests.get(batchKey);
   }
-  const request = postData("/artists/release-groups/covers", {
-    items: normalizedItems,
-  })
-    .then((data) => data?.covers || {})
+  const request = (async () => {
+    const covers = {};
+    for (let index = 0; index < normalizedItems.length; index += RELEASE_GROUP_COVER_BATCH_SIZE) {
+      const data = await postData("/artists/release-groups/covers", {
+        items: normalizedItems.slice(index, index + RELEASE_GROUP_COVER_BATCH_SIZE),
+      });
+      Object.assign(covers, data?.covers || {});
+    }
+    return covers;
+  })()
     .finally(() => {
       coverInflightRequests.delete(batchKey);
     });
