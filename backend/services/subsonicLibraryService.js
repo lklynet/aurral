@@ -10,7 +10,7 @@ import { hasPermission } from "../middleware/auth.js";
 const idFor = (kind, key) => `${kind}:${encodeURIComponent(String(key))}`;
 
 const parseId = (value) => {
-  const match = /^(artist|album|song|flow|flow-song):(.+)$/.exec(String(value || ""));
+  const match = /^(artist|album|song|flow|flow-song|shared|shared-song):(.+)$/.exec(String(value || ""));
   if (!match) return null;
   try {
     return { kind: match[1], key: decodeURIComponent(match[2]) };
@@ -213,20 +213,21 @@ function findCanonical(library, parsed) {
   return null;
 }
 
-function flowFromId(user, value) {
+function playlistFromId(user, value) {
   const parsed = parseId(value);
-  if (!parsed || parsed.kind !== "flow") return null;
-  const flow = flowPlaylistConfig.getFlow(parsed.key);
-  return flow && visibleFlows(user).some((entry) => entry.id === flow.id) ? flow : null;
+  if (!parsed || !["flow", "shared"].includes(parsed.kind)) return null;
+  if (parsed.kind === "flow") return flowPlaylistConfig.getFlowForUser(user, parsed.key);
+  return flowPlaylistConfig.getSharedPlaylistForUser(user, parsed.key);
 }
 
-function toFlowSong(flow, job) {
+function toPlaylistSong(playlist, kind, job) {
   const artist = protocolArtist(null, job.artistName || "Unknown Artist");
   const format = String(job.finalPath || "").split(".").pop()?.toLowerCase() || "mp3";
-  const id = idFor("flow-song", `${flow.id}:${job.id}`);
+  const id = idFor(kind === "flow" ? "flow-song" : "shared-song", `${playlist.id}:${job.id}`);
+  const albumMbid = String(job.albumMbid || job.releaseGroupMbid || "").trim();
   return {
     id,
-    parent: idFor("flow", flow.id),
+    parent: idFor(kind, playlist.id),
     isDir: false,
     isVideo: false,
     title: job.trackName,
@@ -235,6 +236,7 @@ function toFlowSong(flow, job) {
     artistId: artist.id,
     albumArtists: [artist],
     artists: [artist],
+    coverArt: albumMbid ? idFor("album", `release-group:${albumMbid}`) : undefined,
     contentType: `audio/${format}`,
     created: PROTOCOL_DATE,
     track: job.trackNumber || 0,
@@ -247,16 +249,17 @@ function toFlowSong(flow, job) {
   };
 }
 
-function flowJobFromId(user, value) {
+function playlistJobFromId(user, value) {
   const parsed = parseId(value);
-  if (!parsed || parsed.kind !== "flow-song") return null;
+  if (!parsed || !["flow-song", "shared-song"].includes(parsed.kind)) return null;
   const separator = parsed.key.indexOf(":");
   if (separator < 1) return null;
-  const flow = flowFromId(user, idFor("flow", parsed.key.slice(0, separator)));
-  if (!flow) return null;
+  const kind = parsed.kind === "flow-song" ? "flow" : "shared";
+  const playlist = playlistFromId(user, idFor(kind, parsed.key.slice(0, separator)));
+  if (!playlist) return null;
   const job = downloadTracker.getJob(parsed.key.slice(separator + 1));
-  return job?.playlistType === flow.id && job.status === "done" && job.finalPath
-    ? { flow, job }
+  return job?.playlistType === playlist.id && job.status === "done" && job.finalPath
+    ? { kind, playlist, job }
     : null;
 }
 
@@ -288,8 +291,8 @@ export function getAlbum(value) {
 }
 
 export function getSong(value, user) {
-  const flowEntry = flowJobFromId(user, value);
-  if (flowEntry) return toFlowSong(flowEntry.flow, flowEntry.job);
+  const playlistEntry = playlistJobFromId(user, value);
+  if (playlistEntry) return toPlaylistSong(playlistEntry.playlist, playlistEntry.kind, playlistEntry.job);
 
   const library = readLibrary();
   const parsed = parseId(value);
@@ -492,7 +495,7 @@ export function getTopSongs(artist, options = {}) {
 }
 
 export function getFlowPlaylists(user) {
-  return visibleFlows(user).map((flow) => {
+  const flows = visibleFlows(user).map((flow) => {
     const jobs = flowJobs(flow);
     const playlist = {
       id: idFor("flow", flow.id),
@@ -507,28 +510,46 @@ export function getFlowPlaylists(user) {
     if (flow.description) playlist.comment = flow.description;
     return playlist;
   });
+  const sharedPlaylists = flowPlaylistConfig.getSharedPlaylistsForUser(user).map((playlist) => {
+    const jobs = flowJobs(playlist);
+    const value = {
+      id: idFor("shared", playlist.id),
+      name: playlist.name,
+      owner: user.username,
+      songCount: jobs.length,
+      duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
+      public: false,
+      created: new Date(playlist.createdAt || Date.now()).toISOString(),
+      changed: new Date(playlist.importedAt || playlist.createdAt || Date.now()).toISOString(),
+    };
+    if (playlist.description) value.comment = playlist.description;
+    return value;
+  });
+  return [...flows, ...sharedPlaylists];
 }
 
 export function getFlowPlaylist(value, user) {
-  const flow = flowFromId(user, value);
-  if (!flow) return null;
-  const jobs = flowJobs(flow);
+  const parsed = parseId(value);
+  const kind = parsed?.kind === "shared" ? "shared" : "flow";
+  const playlist = playlistFromId(user, value);
+  if (!playlist) return null;
+  const jobs = flowJobs(playlist);
   return {
-    id: idFor("flow", flow.id),
-    name: flow.name,
+    id: idFor(kind, playlist.id),
+    name: playlist.name,
     owner: user.username,
     songCount: jobs.length,
     duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
     public: false,
-    entry: jobs.map((job) => toFlowSong(flow, job)),
+    entry: jobs.map((job) => toPlaylistSong(playlist, kind, job)),
   };
 }
 
 export function resolveStreamPath(value, user) {
-  const flowEntry = flowJobFromId(user, value);
-  if (flowEntry) {
-    return flowEntry.job.status === "done" && flowEntry.job.finalPath
-      ? flowEntry.job.finalPath
+  const playlistEntry = playlistJobFromId(user, value);
+  if (playlistEntry) {
+    return playlistEntry.job.status === "done" && playlistEntry.job.finalPath
+      ? playlistEntry.job.finalPath
       : null;
   }
 

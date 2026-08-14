@@ -262,7 +262,6 @@ async function handleSubsonicRequest(req, res) {
   }
   if (method === "search3" || method === "search2") {
     const query = getParameter(req, "query");
-    if (!query) return sendError(res, format, 10, "Required parameter is missing: query");
     return sendResponse(res, format, "ok", null, {
       [method === "search3" ? "searchResult3" : "searchResult2"]: searchLibrary(query, req.query),
     });

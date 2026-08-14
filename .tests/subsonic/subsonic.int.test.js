@@ -92,6 +92,14 @@ test("allows browser Subsonic clients without CORS configuration", async () => {
   assert.equal(preflight.headers.get("access-control-allow-origin"), "*");
 });
 
+test("allows browser clients to read redirected artwork without CORS configuration", async () => {
+  const response = await fetch(`http://127.0.0.1:${aurral.port}/api/image-proxy/missing-cache-key.webp`, {
+    headers: { Origin: "http://feishin.example" },
+  });
+  assert.equal(response.headers.get("access-control-allow-origin"), "*");
+  assert.equal(response.headers.get("cross-origin-resource-policy"), "cross-origin");
+});
+
 test("returns the Subsonic invalid-credentials error", async () => {
   const result = await request("ping", { p: "wrong-password", f: "json" });
   assert.equal(result.response.status, 200);

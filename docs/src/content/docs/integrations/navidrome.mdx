@@ -9,11 +9,13 @@ Navidrome must be able to read and scan the Aurral download tree for that destin
 
 This is a filesystem connection as well as an API connection. A successful **Test connection** only proves that Aurral can reach the Navidrome API.
 
-Aurral also exposes an authenticated Subsonic server at `/rest/*.view`. It supports XML and JSON browsing, canonical artist/album/song search, artwork, and direct streaming with byte ranges. Completed flow entries are exposed as read-only playlist items through `getPlaylists` and `getPlaylist`; the endpoint does not create or update playlists, transcode audio, or write to the canonical library. Navidrome remains optional for clients that connect directly to Aurral.
+Aurral also exposes an authenticated Subsonic server at `/rest/*.view`. It supports XML and JSON browsing, canonical artist/album/song search, artwork, and direct streaming with byte ranges. Completed flow entries and accessible shared-playlist entries are exposed as read-only playlist items through `getPlaylists` and `getPlaylist`; the endpoint does not create or update playlists, transcode audio, or write to the canonical library. Navidrome remains optional for clients that connect directly to Aurral.
 
 ## Connect a Subsonic client
 
 Point the client at the Aurral URL and use the Aurral account from onboarding. Aurral enables browser Subsonic clients on `/rest` without an additional CORS setting. Feishin can connect with its default token authentication when you use that configured account. Feishin can also use password authentication when you set `LEGACY_AUTHENTICATION=true` in Feishin's environment, not Aurral's. When Feishin locks server settings, also set `SERVER_LOCK=true` in Feishin's environment.
+
+Use the Aurral URL as the Feishin server URL. Set the server type to `Subsonic`. Feishin then shows canonical tracks, flow playlists, and shared playlists that the account can access. A playlist entry remains playable while its canonical file is readable.
 
 Aurral accepts password authentication for every Aurral user. Token authentication is limited to the configured account because Aurral stores other user passwords as one-way hashes.
 

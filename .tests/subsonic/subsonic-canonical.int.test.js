@@ -25,6 +25,7 @@ const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidar
 let aurral;
 let fixtureRoot;
 let fixturePath;
+let sharedPlaylist;
 
 function subsonicUrl(method, params = {}) {
   const query = new URLSearchParams({
@@ -59,7 +60,7 @@ test.before(async () => {
     security: { localNetworkBypass: { enabled: false } },
     onboardingComplete: true,
   });
-  userOps.createUser("alice", hashPassword("password123"), "admin");
+  const alice = userOps.createUser("alice", hashPassword("password123"), "admin");
 
   fixtureRoot = await mkdtemp(path.join(isolatedState.baseDir, "media-"));
   fixturePath = path.join(fixtureRoot, "Canonical Artist", "Canonical Album", "01 Canonical Song.flac");
@@ -108,6 +109,23 @@ test.before(async () => {
     durationMs: 1000,
   }, flow.id);
   downloadTracker.setDone(jobId, fixturePath);
+  sharedPlaylist = flowPlaylistConfig.createSharedPlaylist({
+    name: "Canonical Shared",
+    ownerUserId: alice.id,
+    tracks: [{
+      artistName: "Flow Artist",
+      trackName: "Flow Song",
+      albumName: "Flow Album",
+      durationMs: 1000,
+    }],
+  });
+  const sharedJobId = downloadTracker.addJob({
+    artistName: "Flow Artist",
+    albumName: "Flow Album",
+    trackName: "Flow Song",
+    durationMs: 1000,
+  }, sharedPlaylist.id);
+  downloadTracker.setDone(sharedJobId, fixturePath);
   aurral = await startServerProcess();
 });
 
@@ -179,6 +197,43 @@ test("searches canonical records and exposes flow entries as playlist items", as
   const playlist = responseJson(await request("getPlaylist", { id: flow.id }));
   assert.equal(playlist.playlist.entry[0].title, "Flow Song");
   assert.equal(playlist.playlist.public, false);
+});
+
+test("accepts Feishin's empty search request for the tracks view", async () => {
+  const search = responseJson(await request("search3", {
+    query: "",
+    artistCount: 20,
+    albumCount: 20,
+    songCount: 20,
+  }));
+  assert.equal(search.searchResult3.song[0].title, "Canonical Song");
+});
+
+test("exposes owned static playlists and keeps their entries playable", async () => {
+  const playlists = responseJson(await request("getPlaylists")).playlists.playlist;
+  const shared = playlists.find((entry) => entry.name === "Canonical Shared");
+  assert.ok(shared);
+  assert.equal(shared.songCount, 1);
+
+  const playlist = responseJson(await request("getPlaylist", { id: shared.id })).playlist;
+  assert.equal(playlist.entry[0].title, "Flow Song");
+  assert.match(playlist.entry[0].id, /^shared-song:/);
+
+  const song = responseJson(await request("getSong", { id: playlist.entry[0].id })).song;
+  assert.equal(song.title, "Flow Song");
+  const stream = await request("stream", { id: song.id });
+  assert.equal(stream.response.status, 200);
+  assert.equal(stream.body, "0123456789");
+});
+
+test("does not expose another user's static playlist", async () => {
+  userOps.createUser("bob", hashPassword("bob-password"), "user");
+  const result = responseJson(await request("getPlaylist", {
+    id: `shared:${encodeURIComponent(sharedPlaylist.id)}`,
+    u: "bob",
+    p: "bob-password",
+  }));
+  assert.deepEqual(result.error, { code: 70, message: "Requested data was not found" });
 });
 
 test("streams canonical files with full and range responses", async () => {

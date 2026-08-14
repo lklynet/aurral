@@ -62,9 +62,11 @@ const allowedCorsOrigins = String(process.env.CORS_ORIGIN || "")
   .filter(Boolean);
 
 const isSubsonicRequest = (req) => req.path === "/rest" || req.path.startsWith("/rest/");
+const isImageProxyRequest = (req) =>
+  req.path === "/api/image-proxy" || req.path.startsWith("/api/image-proxy/");
 
 function corsMiddleware(req, res, next) {
-  if (isSubsonicRequest(req)) {
+  if (isSubsonicRequest(req) || isImageProxyRequest(req)) {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -171,6 +173,12 @@ app.use(
     crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
   }),
 );
+app.use((req, res, next) => {
+  if (isSubsonicRequest(req) || isImageProxyRequest(req)) {
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  }
+  next();
+});
 app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
 app.use(authMiddleware);
