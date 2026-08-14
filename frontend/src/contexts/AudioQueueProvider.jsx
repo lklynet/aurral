@@ -88,14 +88,19 @@ function queueReducer(state, action) {
         playbackOrder: order,
         source: source ?? null,
         currentIndex: boundedStart,
+        error: null,
         queueRevision: state.queueRevision + 1,
         isShuffleEnabled: updateShufflePreference ? shuffle : state.isShuffleEnabled,
       };
     }
     case "SET_CURRENT_INDEX":
-      return { ...state, currentIndex: action.index };
+      return { ...state, currentIndex: action.index, error: null };
     case "SET_QUEUE_REVISION":
-      return { ...state, queueRevision: state.queueRevision + 1 };
+      return { ...state, error: null, queueRevision: state.queueRevision + 1 };
+    case "SET_ERROR":
+      return { ...state, error: action.error };
+    case "CLEAR_ERROR":
+      return { ...state, error: null };
     case "SET_SHUFFLE": {
       if (state.queue.length === 0 || state.currentIndex < 0) {
         return { ...state, isShuffleEnabled: action.enabled };
@@ -122,6 +127,7 @@ function queueReducer(state, action) {
         queue: [],
         currentIndex: -1,
         source: null,
+        error: null,
         isShuffleEnabled: false,
         playbackOrder: [],
         repeatMode: "off",
@@ -136,6 +142,7 @@ const initialQueueState = {
   queue: [],
   currentIndex: -1,
   source: null,
+  error: null,
   isShuffleEnabled: false,
   playbackOrder: [],
   repeatMode: "off",
@@ -185,6 +192,14 @@ export function AudioQueueProvider({ children }) {
       format: getHowlerFormat(formatKey),
       onloaderror: () => {
         loadedSignatureRef.current = null;
+        if (formatAttemptIndex + 1 >= formatAttempts.length) {
+          dispatch({
+            type: "SET_ERROR",
+            error: "This track is unavailable. Restore the file or refresh the library.",
+          });
+          playerRef.current.stop();
+          return;
+        }
         loadTrackAtIndexRef.current(playbackIndex, formatAttemptIndex + 1);
       },
       onend: () => {
@@ -299,6 +314,12 @@ export function AudioQueueProvider({ children }) {
   const togglePlayPause = useCallback(() => {
     if (stateRef.current.queue.length === 0) return;
     const activePlayer = playerRef.current;
+    if (stateRef.current.error) {
+      dispatch({ type: "CLEAR_ERROR" });
+      loadedSignatureRef.current = null;
+      loadTrackAtIndex(stateRef.current.currentIndex);
+      return;
+    }
     if (activePlayer.isPlaying) {
       activePlayer.pause();
       return;
@@ -393,6 +414,7 @@ export function AudioQueueProvider({ children }) {
       currentTrack,
       currentIndex: state.currentIndex,
       source: state.source,
+      playbackError: state.error,
       isActive,
       isPlaying: player.isPlaying,
       isLoading: player.isLoading,
@@ -435,6 +457,7 @@ export function AudioQueueProvider({ children }) {
       sharedVolume,
       state.queue,
       state.currentIndex,
+      state.error,
       state.source,
       state.isShuffleEnabled,
       state.repeatMode,

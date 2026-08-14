@@ -46,6 +46,7 @@ export function useArtistPreviewPlayback({ mbid, artistName, enabled = true, isI
               const tracks = await getLibraryTracks(album.id, album.mbid || album.foreignAlbumId, {
                 artistName,
                 albumTitle: album.title,
+                readPath: "canonical",
               });
               for (const track of Array.isArray(tracks) ? tracks : []) {
                 if (!track?.preview_url || !track?.streamPath) continue;

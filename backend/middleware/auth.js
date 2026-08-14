@@ -540,6 +540,24 @@ export function resolveUser(username, password) {
   };
 }
 
+export function resolveSubsonicTokenUser(username, token, salt) {
+  if (!/^[a-f\d]{32}$/i.test(String(token || "")) || !String(salt || "")) return null;
+  if (
+    !safeCompare(
+      String(username || "").trim().toLowerCase(),
+      String(getAuthUser()).trim().toLowerCase(),
+    )
+  ) return null;
+
+  const matchedPassword = getAuthPassword().find((password) =>
+    safeCompare(
+      crypto.createHash("md5").update(`${password}${salt}`).digest("hex"),
+      token,
+    ),
+  );
+  return matchedPassword ? resolveUser(username, matchedPassword) : null;
+}
+
 function legacyAuth(username, password) {
   const authUser = getAuthUser();
   const passwords = getAuthPassword();
@@ -648,6 +666,7 @@ export const authMiddleware = (req, res, next) => {
     }
     if (
       /^\/api\/library\/stream\/[^/]+$/.test(req.path) ||
+      /^\/api\/library\/canonical-stream\/[^/]+$/i.test(req.path) ||
       /^\/api\/library\/file-stream\/[^/]+\/[^/]+$/i.test(req.path) ||
       /^\/api\/artists\/[a-f0-9-]{36}\/stream$/i.test(req.path) ||
       /^\/api\/weekly-flow\/stream\/[^/]+$/i.test(req.path) ||

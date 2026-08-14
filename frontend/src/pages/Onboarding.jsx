@@ -311,8 +311,9 @@ function Onboarding() {
                       }}
                     />
                     <OnboardingHint>
-                      Find your API key in Lidarr under Settings → General → Security. Downloads
-                      folder, playback, and other clients are configured in Settings after setup.
+                      Find your API key in Lidarr under Settings → General → Security. The
+                      Downloads Folder and optional playback clients are configured in Settings
+                      after setup. Aurral can play indexed media directly.
                     </OnboardingHint>
                   </div>
                 </OnboardingStep>

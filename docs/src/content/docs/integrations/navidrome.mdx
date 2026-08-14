@@ -3,11 +3,19 @@ title: Navidrome
 description: Connect Navidrome to play Aurral downloads and generated playlists.
 ---
 
-Navidrome is optional. Aurral creates and updates Navidrome playlists through the Subsonic API. Navidrome must also be able to read and scan the Aurral download tree.
+Navidrome is optional. Aurral can browse and play indexed media in the app without Navidrome. Aurral
+also creates and updates Navidrome playlists through the Subsonic API when Navidrome is configured.
+Navidrome must be able to read and scan the Aurral download tree for that destination.
 
 This is a filesystem connection as well as an API connection. A successful **Test connection** only proves that Aurral can reach the Navidrome API.
 
 Aurral also exposes an authenticated Subsonic server at `/rest/*.view`. It supports XML and JSON browsing, canonical artist/album/song search, artwork, and direct streaming with byte ranges. Completed flow entries are exposed as read-only playlist items through `getPlaylists` and `getPlaylist`; the endpoint does not create or update playlists, transcode audio, or write to the canonical library. Navidrome remains optional for clients that connect directly to Aurral.
+
+## Connect a Subsonic client
+
+Point the client at the Aurral URL and use the Aurral account from onboarding. Feishin can connect with its default token authentication when you use that configured account. Feishin can also use password authentication with `LEGACY_AUTHENTICATION=true`.
+
+Aurral accepts password authentication for every Aurral user. Token authentication is limited to the configured account because Aurral stores other user passwords as one-way hashes.
 
 See [Filesystem and mounts](/getting-started/storage/) for the complete layout. The recommended Docker setup mounts the same host media root at `/data` in Aurral and Navidrome:
 

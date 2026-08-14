@@ -3,6 +3,8 @@ import { getCanonicalLibrary } from "./libraryQueryService.js";
 const firstAvailableFile = (track) =>
   (track.files || []).find((file) => file.available) || track.files?.[0] || null;
 
+const firstReadableFile = (track) => (track?.files || []).find((file) => file.available) || null;
+
 const recordMatches = (record, reference) => {
   const value = String(reference ?? "").trim();
   if (!value) return false;
@@ -82,6 +84,7 @@ const buildTrack = (track, album) => {
     hasFile: Boolean(file?.available),
     size: Number(file?.size || 0),
     quality: file?.quality || null,
+    streamFormat: file?.format || null,
     addedAt: null,
     source: file?.source || null,
     available: track.available,
@@ -113,6 +116,18 @@ export function buildCanonicalLibraryReadModel(library) {
 
 export function getCanonicalLibraryReadModel({ source = "lidarr", availableOnly = true } = {}) {
   return buildCanonicalLibraryReadModel(getCanonicalLibrary({ source, availableOnly }));
+}
+
+export function resolveCanonicalTrackPath(reference) {
+  const value = String(reference ?? "").trim();
+  if (!value) return null;
+  const library = getCanonicalLibrary({ availableOnly: false });
+  const track = library.tracks.find((candidate) =>
+    [candidate.id, candidate.identityKey, candidate.mbid].some(
+      (valueCandidate) => String(valueCandidate ?? "").trim() === value,
+    ),
+  );
+  return firstReadableFile(track)?.path || null;
 }
 
 export function findCanonicalArtist(artists, reference) {

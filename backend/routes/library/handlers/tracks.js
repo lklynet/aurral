@@ -10,6 +10,7 @@ import { logger } from "../../../services/logger.js";
 import {
   findCanonicalTracksForAlbum,
   getCanonicalLibraryReadModel,
+  resolveCanonicalTrackPath,
 } from "../../../services/canonicalLibraryReadAdapter.js";
 import { stripFilesystemPaths } from "./canonical.js";
 import { streamAudioFile } from "../../../services/audioFileStream.js";
@@ -58,8 +59,9 @@ export function registerTracks(router) {
         const canonicalTracks = album
           ? findCanonicalTracksForAlbum(tracks, album.id).map((track) => ({
               ...stripFilesystemPaths(track),
-              streamPath: null,
-              streamFormat: null,
+              streamPath: track.hasFile
+                ? `/library/canonical-stream/${encodeURIComponent(track.id)}`
+                : null,
             }))
           : [];
         return res.json(canonicalTracks);
@@ -170,6 +172,25 @@ export function registerTracks(router) {
         message: error.message,
       });
     }
+  });
+
+  router.get("/canonical-stream/:trackId", noCache, async (req, res) => {
+    if (!verifyTokenAuth(req)) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const filePath = resolveCanonicalTrackPath(req.params.trackId);
+    if (!filePath) return res.status(404).json({ error: "Track file missing" });
+    try {
+      if (!(await streamAudioFile(req, res, filePath)) && !res.headersSent) {
+        return res.status(404).json({ error: "Track file missing" });
+      }
+    } catch (error) {
+      if (!res.headersSent) {
+        return res.status(500).json({ error: "Stream failed", message: error.message });
+      }
+    }
+    return undefined;
   });
 
   router.get("/file-stream/:albumId/:trackId", noCache, async (req, res) => {

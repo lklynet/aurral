@@ -25,6 +25,7 @@ function formatTime(seconds) {
 function GlobalPlayerBar() {
   const {
     currentTrack,
+    playbackError,
     isActive,
     isPlaying,
     isLoading,
@@ -116,6 +117,11 @@ function GlobalPlayerBar() {
                 {metaLink(artistLabel, artistPath)}
                 {artistLabel && albumLabel ? " · " : null}
                 {metaLink(albumLabel, albumPath)}
+              </span>
+            ) : null}
+            {playbackError ? (
+              <span className="global-player__error" role="alert">
+                {playbackError}
               </span>
             ) : null}
           </div>

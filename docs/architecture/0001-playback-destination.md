@@ -42,6 +42,12 @@ The Plex adapter resolves snapshot paths to Plex rating keys. It keeps section I
 
 The registry and playback contract remain unchanged. Navidrome's Subsonic API behavior stays inside its adapter, and Plex retains its existing behavior. The registry checks saved settings, runs every configured destination, and records one destination failure without blocking another destination.
 
+## Native Aurral playback
+
+The built-in player reads canonical artists, albums, and tracks, then requests an authenticated Aurral stream for each canonical track. This path does not depend on Navidrome. Weekly Flow items keep their existing owner-scoped playlist stream, so a flow item remains playable without changing its ownership rules.
+
+The native playback health section reports whether canonical media is indexed and readable. A stale or missing file returns a clear stream failure and leaves the user with a library refresh path instead of silently falling back to a playback destination.
+
 ## Deliberate non-goals
 
 - Do not add a generic integration host.

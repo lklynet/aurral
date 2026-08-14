@@ -70,6 +70,14 @@ export async function indexLidarrLibrary({ client } = {}) {
     client.getAllAlbums({ forceRefresh: true }),
     client.getRootFolders(),
   ]);
+  if (
+    Array.isArray(artists) &&
+    artists.length === 0 &&
+    Array.isArray(albums) &&
+    albums.length === 0
+  ) {
+    return { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
+  }
   const artistById = new Map((Array.isArray(artists) ? artists : []).map((item) => [String(item.id), item]));
   const albumTrackData = await mapWithConcurrency(albums, 4, async (album) => {
     if (!album?.id) return { albumId: null, tracks: [], files: [] };
@@ -176,7 +184,7 @@ export async function indexLidarrLibrary({ client } = {}) {
         result.filesIndexed += 1;
       }
     }
-    if (result.filesFailed === 0) {
+    if (result.filesFailed === 0 && result.filesIndexed > 0) {
       markUnseenFilesUnavailable(scanId, "lidarr");
     }
     return result;

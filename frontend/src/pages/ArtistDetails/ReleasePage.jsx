@@ -328,6 +328,7 @@ function ReleasePage() {
           releaseType: release["primary-type"] || "",
           releaseDate: release["first-release-date"] || "",
           deezerAlbumId: release._deezerAlbumId || "",
+          readPath: "canonical",
         };
 
         const nextTracks = libraryInfo?.libraryAlbumId

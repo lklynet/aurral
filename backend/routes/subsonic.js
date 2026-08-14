@@ -1,15 +1,20 @@
 import express from "express";
 
 import { APP_NAME, APP_VERSION } from "../config/constants.js";
-import { resolveUser } from "../middleware/auth.js";
+import { resolveSubsonicTokenUser, resolveUser } from "../middleware/auth.js";
 import { streamAudioFile } from "../services/audioFileStream.js";
 import {
   getAlbum,
+  getAlbumList,
   getArtist,
+  getArtistInfo,
   getFlowPlaylist,
   getFlowPlaylists,
+  getGenres,
   getMusicDirectory,
   getSong,
+  getStarred,
+  getTopSongs,
   listArtists,
   resolveArtworkUrl,
   resolveStreamPath,
@@ -158,17 +163,38 @@ async function handleSubsonicRequest(req, res) {
   if (validation.error) return sendError(res, validation.format, ...validation.error);
 
   const { format, password, token, salt } = validation;
-  if (token && salt && !password) {
-    return sendError(res, format, 41, "Token authentication is not supported.");
-  }
-
-  const decodedPassword = decodePassword(password);
-  const user = decodedPassword == null ? null : resolveUser(getParameter(req, "u"), decodedPassword);
+  const decodedPassword = password ? decodePassword(password) : null;
+  const user = password
+    ? decodedPassword == null
+      ? null
+      : resolveUser(getParameter(req, "u"), decodedPassword)
+    : resolveSubsonicTokenUser(getParameter(req, "u"), token, salt);
   if (!user) return sendError(res, format, 40, "Wrong username or password");
   req.user = user;
 
   const method = String(req.params.method || "").replace(/\.view$/i, "").toLowerCase();
   if (method === "ping") return sendResponse(res, format);
+  if (method === "getuser") {
+    const isAdmin = req.user.role === "admin";
+    return sendResponse(res, format, "ok", null, {
+      user: {
+        username: req.user.username,
+        adminRole: isAdmin,
+        commentRole: false,
+        coverArtRole: true,
+        downloadRole: true,
+        folder: ["root"],
+        jukeboxRole: false,
+        playlistRole: Boolean(req.user.permissions?.accessFlow),
+        podcastRole: false,
+        scrobblingEnabled: false,
+        settingsRole: isAdmin,
+        shareRole: false,
+        streamRole: true,
+        uploadRole: false,
+      },
+    });
+  }
   if (method === "getlicense") {
     return sendResponse(res, format, "ok", null, { license: { valid: true } });
   }
@@ -176,6 +202,23 @@ async function handleSubsonicRequest(req, res) {
     return sendResponse(res, format, "ok", null, {
       musicFolders: { musicFolder: [{ id: "root", name: APP_NAME }] },
     });
+  }
+  if (method === "getalbumlist2") {
+    return sendResponse(res, format, "ok", null, {
+      albumList2: {
+        album: getAlbumList({
+          fromYear: getParameter(req, "fromYear"),
+          genre: getParameter(req, "genre"),
+          offset: getParameter(req, "offset"),
+          size: getParameter(req, "size"),
+          toYear: getParameter(req, "toYear"),
+          type: getParameter(req, "type"),
+        }),
+      },
+    });
+  }
+  if (method === "getgenres") {
+    return sendResponse(res, format, "ok", null, { genres: { genre: getGenres() } });
   }
   if (method === "getartists" || method === "getindexes") {
     const indexes = groupArtists(listArtists());
@@ -191,6 +234,12 @@ async function handleSubsonicRequest(req, res) {
     const artist = getArtist(getParameter(req, "id"));
     return artist
       ? sendResponse(res, format, "ok", null, { artist })
+      : sendError(res, format, 70, "Requested data was not found");
+  }
+  if (method === "getartistinfo") {
+    const artistInfo = getArtistInfo(getParameter(req, "id"));
+    return artistInfo
+      ? sendResponse(res, format, "ok", null, { artistInfo })
       : sendError(res, format, 70, "Requested data was not found");
   }
   if (method === "getalbum") {
@@ -220,6 +269,16 @@ async function handleSubsonicRequest(req, res) {
   }
   if (method === "getplaylists") {
     return sendResponse(res, format, "ok", null, { playlists: { playlist: getFlowPlaylists(user) } });
+  }
+  if (method === "getstarred") {
+    return sendResponse(res, format, "ok", null, { starred: getStarred() });
+  }
+  if (method === "gettopsongs") {
+    return sendResponse(res, format, "ok", null, {
+      topSongs: {
+        song: getTopSongs(getParameter(req, "artist"), { count: getParameter(req, "count") }),
+      },
+    });
   }
   if (method === "getplaylist") {
     const playlist = getFlowPlaylist(getParameter(req, "id"), user);

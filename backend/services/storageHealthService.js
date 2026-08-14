@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import { dbOps } from "../db/helpers/index.js";
+import { getCanonicalLibrary } from "./libraryQueryService.js";
 import { lidarrClient } from "./lidarrClient.js";
 import { slskdClient } from "./slskdClient.js";
 import { nzbgetClient } from "./nzbgetClient.js";
@@ -844,6 +845,43 @@ async function checkNavidromeSection() {
   return buildSection("navidrome", "Navidrome playback", steps);
 }
 
+async function checkNativePlaybackSection() {
+  const library = getCanonicalLibrary({ availableOnly: true });
+  const tracks = Array.isArray(library.tracks) ? library.tracks : [];
+  if (tracks.length === 0) {
+    return buildSection("native-playback", "Aurral-native playback", [
+      healthStep("indexed", "warn", "Canonical media is ready for native playback", {
+        fix: "Connect Lidarr, let the library index refresh, then run Storage Health again.",
+      }),
+    ]);
+  }
+
+  const sample = tracks.slice(0, PLAYLIST_FILE_HEALTH_SAMPLE_LIMIT);
+  const missing = [];
+  for (const track of sample) {
+    const file = track.files?.find((entry) => entry.available);
+    if (!file?.path || !(await checkPathReadable(file.path, file.source))) {
+      missing.push(track.title || "Unknown Track");
+    }
+  }
+
+  const detail = `${tracks.length} canonical track${tracks.length === 1 ? "" : "s"} indexed`;
+  if (missing.length > 0) {
+    return buildSection("native-playback", "Aurral-native playback", [
+      healthStep("indexed", "fail", "Aurral-native playback can read indexed media", {
+        detail: `${missing.length} sampled track${missing.length === 1 ? " is" : "s are"} missing or unreadable`,
+        fix: "Restore the media mount or rescan the library so stale files become unavailable.",
+      }),
+    ]);
+  }
+
+  return buildSection("native-playback", "Aurral-native playback", [
+    healthStep("indexed", "pass", "Aurral-native playback can read indexed media", {
+      detail,
+    }),
+  ]);
+}
+
 function appendPortablePath(basePath, child) {
   return `${String(basePath || "").trim().replace(/\\/g, "/").replace(/\/+$/, "")}/${child}`;
 }
@@ -1025,6 +1063,7 @@ async function buildStorageHealthCheck() {
     await checkPathMappingsSection(),
     downloadsSection,
     lidarrSection,
+    await checkNativePlaybackSection(),
     await checkSlskdSection(),
     await checkNzbgetSection(),
     await checkSabnzbdSection(),

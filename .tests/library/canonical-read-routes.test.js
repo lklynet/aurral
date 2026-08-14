@@ -81,8 +81,8 @@ test("canonical track reads remove nested filesystem paths", async () => {
     assert.equal(body.length, 1);
     assert.equal("path" in body[0], false);
     assert.deepEqual(body[0].quality, { audioFormat: "FLAC", nested: {} });
-    assert.equal(body[0].streamPath, null);
-    assert.equal(body[0].streamFormat, null);
+    assert.match(body[0].streamPath, /\/library\/canonical-stream\/\d+$/);
+    assert.equal(body[0].streamFormat, "flac");
   } finally {
     const track = db.prepare(
       "SELECT track_id AS trackId FROM library_media_files WHERE source = ? AND path = ?",

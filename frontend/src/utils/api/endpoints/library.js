@@ -106,6 +106,8 @@ export const getLibraryTracks = async (
   if (context.releaseType) params.releaseType = context.releaseType;
   if (context.releaseDate) params.releaseDate = context.releaseDate;
   if (context.deezerAlbumId) params.deezerAlbumId = context.deezerAlbumId;
+  if (context.readPath) params.readPath = context.readPath;
+  if (context.readPath === "canonical") params.source = context.source || "all";
   const data = await getData("/library/tracks", { params });
   const tracks = Array.isArray(data) ? data : [];
   return Promise.all(

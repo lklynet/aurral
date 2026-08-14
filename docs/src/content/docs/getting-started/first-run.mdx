@@ -25,9 +25,12 @@ Complete [Filesystem and mounts](/getting-started/storage/) first. The short ver
 6. Set **Downloads Folder > Path** to a writable path inside Aurral, such as `/data/downloads/aurral`.
 7. Open **Settings > System**, select **Run Checks** under **Storage Health**, and fix failed checks.
 8. Open **Settings > Lidarr** and select **Test library access**.
-9. Connect the download clients and playback server that you use.
+9. Connect the download clients and playback server that you use. Navidrome and Plex are optional
+   destinations. Aurral can play indexed media in the app without either one.
 
-The Lidarr connection test checks the API. The library-access and storage checks verify that Aurral can read the files and write the Downloads Folder.
+The Lidarr connection test checks the API. The library-access and storage checks verify that Aurral
+can read the files and write the Downloads Folder. The **Aurral-native playback** check reports
+whether indexed media is ready to play.
 
 ## Configure the other services
 

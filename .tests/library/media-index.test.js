@@ -342,3 +342,38 @@ test("a Lidarr outage leaves the last indexed library available", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("an empty Lidarr response leaves the last indexed library available", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-empty-"));
+  let filePath;
+  try {
+    filePath = await createAudioFile(root, "Empty Artist/Empty Album/01 Empty Track.flac");
+    const indexedClient = {
+      isConfigured: () => true,
+      request: async () => [{ id: 37, artistName: "Empty Artist", foreignArtistId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd" }],
+      getAllAlbums: async () => [{ id: 38, artistId: 37, title: "Empty Album", foreignAlbumId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" }],
+      getTracksByAlbumId: async () => [{ id: 39, albumId: 38, title: "Empty Track", trackNumber: 1, foreignRecordingId: "ffffffff-ffff-4fff-8fff-ffffffffffff", trackFileId: 40 }],
+      getTrackFilesByAlbumId: async () => [{ id: 40, path: filePath, trackIds: [39] }],
+      getRootFolders: async () => [{ path: root }],
+    };
+
+    await indexLidarrLibrary({ client: indexedClient });
+    const result = await indexLidarrLibrary({
+      client: {
+        isConfigured: () => true,
+        request: async () => [{ id: 37, artistName: "Empty Artist", foreignArtistId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd" }],
+        getAllAlbums: async () => [{ id: 38, artistId: 37, title: "Empty Album", foreignAlbumId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" }],
+        getTracksByAlbumId: async () => [],
+        getTrackFilesByAlbumId: async () => [],
+        getRootFolders: async () => [{ path: root }],
+      },
+    });
+    const file = getLibrarySnapshot().files.find((entry) => entry.path === filePath);
+
+    assert.equal(result.filesIndexed, 0);
+    assert.equal(file?.available, 1);
+  } finally {
+    if (filePath) deleteIndexedFile("lidarr", filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});

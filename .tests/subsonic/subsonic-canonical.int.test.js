@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -53,7 +54,11 @@ function responseJson(result) {
 
 test.before(async () => {
   resetDatabase(db);
-  dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
+  dbOps.updateSettings({
+    integrations: { general: { authUser: "alice", authPassword: "password123" } },
+    security: { localNetworkBypass: { enabled: false } },
+    onboardingComplete: true,
+  });
   userOps.createUser("alice", hashPassword("password123"), "admin");
 
   fixtureRoot = await mkdtemp(path.join(isolatedState.baseDir, "media-"));
@@ -113,6 +118,11 @@ test.after(async () => {
 });
 
 test("browses canonical artists, albums, and songs with stable protocol IDs", async () => {
+  const user = responseJson(await request("getUser")).user;
+  assert.equal(user.username, "alice");
+  assert.equal(user.adminRole, true);
+  assert.equal(user.streamRole, true);
+
   const artistsResult = responseJson(await request("getArtists"));
   const artist = artistsResult.artists.index[0].artist[0];
   assert.match(artist.id, /^artist:/);
@@ -124,15 +134,35 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.equal(license.license.valid, true);
   const indexes = responseJson(await request("getIndexes"));
   assert.equal(typeof indexes.indexes.lastModified, "number");
+  const albumList = responseJson(await request("getAlbumList2", { type: "newest", size: 10 }));
+  assert.equal(albumList.albumList2.album[0].title, "Canonical Album");
+  assert.deepEqual(responseJson(await request("getGenres")).genres.genre, []);
+  assert.deepEqual(responseJson(await request("getStarred")).starred, {
+    album: [],
+    artist: [],
+    song: [],
+  });
 
   const albumResult = responseJson(await request("getArtist", { id: artist.id }));
   const album = albumResult.artist.album[0];
   assert.match(album.id, /^album:/);
+  assert.deepEqual(responseJson(await request("getArtistInfo", { id: artist.id })).artistInfo.similarArtist, []);
+  assert.equal(responseJson(await request("getTopSongs", { artist: "Canonical Artist" })).topSongs.song[0].title, "Canonical Song");
 
   const songResult = responseJson(await request("getAlbum", { id: album.id }));
   const song = songResult.album.song[0];
   assert.match(song.id, /^song:/);
   assert.equal(responseJson(await request("getSong", { id: song.id })).song.title, "Canonical Song");
+  assert.equal(song.contentType, "audio/flac");
+  assert.equal(song.path, song.id);
+  assert.deepEqual(song.artists, [{ id: artist.id, name: "Canonical Artist" }]);
+});
+
+test("accepts Subsonic token auth for the configured Aurral account", async () => {
+  const salt = "canonical-salt";
+  const token = createHash("md5").update(`password123${salt}`).digest("hex");
+  const result = responseJson(await request("getUser", { p: "", t: token, s: salt }));
+  assert.equal(result.user.username, "alice");
 });
 
 test("searches canonical records and exposes flow entries as playlist items", async () => {
@@ -145,6 +175,7 @@ test("searches canonical records and exposes flow entries as playlist items", as
   assert.ok(flow);
   const playlist = responseJson(await request("getPlaylist", { id: flow.id }));
   assert.equal(playlist.playlist.entry[0].title, "Flow Song");
+  assert.equal(playlist.playlist.public, false);
 });
 
 test("streams canonical files with full and range responses", async () => {
@@ -176,6 +207,38 @@ test("streams canonical files with full and range responses", async () => {
     { headers: { Range: "bytes=99-" } },
   );
   assert.equal(unsatisfiable.response.status, 416);
+});
+
+test("streams canonical files through the authenticated native route", async () => {
+  const login = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "alice", password: "password123" }),
+  });
+  const { token } = await login.json();
+  const headers = { Authorization: `Bearer ${token}` };
+  const canonical = await fetch(
+    `http://127.0.0.1:${aurral.port}/api/library/canonical?source=lidarr&availableOnly=true`,
+    { headers },
+  );
+  const library = await canonical.json();
+  const albumId = library.tracks[0].albums[0].albumId;
+  const tracks = await fetch(
+    `http://127.0.0.1:${aurral.port}/api/library/tracks?readPath=canonical&source=lidarr&albumId=${albumId}`,
+    { headers },
+  );
+  const track = (await tracks.json())[0];
+  const stream = await fetch(
+    `http://127.0.0.1:${aurral.port}/api${track.streamPath}`,
+    { headers },
+  );
+  assert.equal(stream.status, 200);
+  assert.equal(await stream.text(), "0123456789");
+
+  const unauthorized = await fetch(
+    `http://127.0.0.1:${aurral.port}/api${track.streamPath}`,
+  );
+  assert.equal(unauthorized.status, 401);
 });
 
 test("returns missing files and stale IDs without exposing filesystem paths", async () => {

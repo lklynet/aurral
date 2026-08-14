@@ -172,8 +172,11 @@ test("runStorageHealthCheck skips optional integrations when unset", async () =>
   const result = await runStorageHealthCheck();
   const slskd = result.sections.find((section) => section.id === "slskd");
   const navidrome = result.sections.find((section) => section.id === "navidrome");
+  const nativePlayback = result.sections.find((section) => section.id === "native-playback");
   assert.equal(slskd?.status, "skip");
   assert.equal(navidrome?.status, "skip");
+  assert.equal(nativePlayback?.status, "warn");
+  assert.match(nativePlayback?.steps[0]?.fix || "", /index refresh/i);
 });
 
 test("runStorageHealthCheck passes shared volume when dedicated browse roots exist", async () => {

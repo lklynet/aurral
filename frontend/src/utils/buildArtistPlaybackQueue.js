@@ -44,6 +44,7 @@ async function fetchReleaseGroupTracks(
       ? await getLibraryTracks(libraryAlbum.id, releaseGroupId, {
           ...context,
           albumTitle: libraryAlbum.title || context.albumTitle,
+          readPath: "canonical",
         })
       : await getReleaseGroupTracks(releaseGroupId, {
           artistMbid: artistMbid || "",
@@ -100,6 +101,7 @@ export async function buildArtistPlaybackQueue({
         tracks = await getLibraryTracks(album.id, album.mbid || album.foreignAlbumId, {
           artistName,
           albumTitle: album.title,
+          readPath: "canonical",
         });
         localCache[cacheKey] = tracks;
       }
