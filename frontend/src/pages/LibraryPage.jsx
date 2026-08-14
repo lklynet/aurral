@@ -1,564 +1,1312 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { getLibraryArtists } from "../utils/api/endpoints/library.js";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import {
+  ArrowDownAZ,
+  ArrowUpZA,
+  Grid3X3,
+  Heart,
+  List,
+  ListFilter,
+  Play,
+  RefreshCw,
+  Search,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
+
 import ArtistImage from "../components/ArtistImage";
-
-import { useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import { useAudioQueue } from "../contexts/audioQueueContext";
+import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { ArrowDown, ArrowUp, ChevronDown, LayoutGrid, List, Loader, Music, AlertCircle, Search } from "lucide-react";
-const PAGE_SIZE = 48;
-const ALPHABET = ["#", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
-const SORT_OPTIONS = [
-  { value: "name", label: "Name" },
-  { value: "added", label: "Date Added" },
-  { value: "albums", label: "Album Count" },
-];
+import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.js";
+import {
+  getCanonicalLibrary,
+  getLibraryFavorites,
+  updateLibraryFavorites,
+} from "../utils/api/endpoints/library.js";
+import { buildAuthenticatedApiUrl } from "../utils/api/core.js";
+import { navigateToLibraryAlbum } from "../utils/searchNavigation";
+import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
+import { libraryPreviewData, libraryPreviewFavorites } from "./libraryPreviewData";
 
-const getArtistName = (artist) =>
-  String(artist?.artistName || artist?.sortName || artist?.name || "").trim();
+const LIBRARY_VIEW_IDS = new Set(LIBRARY_VIEWS.map((view) => view.id));
 
-const getArtistRouteId = (artist) =>
-  String(artist?.mbid || "").trim();
+const text = (value) => String(value || "").trim();
 
-const letterKeyFor = (artist) => {
-  const letter = (getArtistName(artist)[0] || "#").toUpperCase();
-  return /^[A-Z]$/.test(letter) ? letter : "#";
+const metadataGenres = (entity) => {
+  const metadata = entity?.metadata || {};
+  return [metadata.genres, metadata.genre, metadata.common?.genre, metadata.tags?.genre]
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map(text)
+    .filter(Boolean)
+    .filter((value, index, values) => values.indexOf(value) === index);
 };
 
-const getAddedTime = (artist) => {
-  const time = Date.parse(artist?.added || artist?.addedAt || "");
-  return Number.isFinite(time) ? time : null;
+const hasGenre = (genre, ...entities) => {
+  if (!genre) return true;
+  const wanted = genre.toLocaleLowerCase();
+  return entities.flatMap(metadataGenres).some((value) => value.toLocaleLowerCase() === wanted);
 };
 
-const compareNullableNumbers = (left, right, sortDirection) => {
-  if (left === null && right === null) return 0;
-  if (left === null) return 1;
-  if (right === null) return -1;
-  const diff = left - right;
-  return sortDirection === "asc" ? diff : -diff;
+const yearOf = (value) => {
+  const match = /^(\d{4})/.exec(text(value));
+  return match ? match[1] : "";
 };
 
-const sortArtists = (items, sortKey, sortDirection) =>
-  [...items].sort((a, b) => {
-    let diff = 0;
-    if (sortKey === "name") {
-      diff = getArtistName(a).localeCompare(getArtistName(b));
-    } else if (sortKey === "added") {
-      diff = compareNullableNumbers(getAddedTime(a), getAddedTime(b), sortDirection);
-      if (diff !== 0) return diff;
-    } else if (sortKey === "albums") {
-      diff = (a.statistics?.albumCount || 0) - (b.statistics?.albumCount || 0);
-    }
-    if (diff !== 0) return sortDirection === "asc" ? diff : -diff;
-    return getArtistName(a).localeCompare(getArtistName(b));
-  });
+const favoriteId = (kind, entity) =>
+  kind + ":" + encodeURIComponent(text(entity?.identityKey));
+
+const firstAvailableFile = (track) =>
+  (track?.files || []).find((file) => file.available) || null;
+
+const formatDuration = (durationMs) => {
+  const seconds = Math.max(0, Math.floor(Number(durationMs || 0) / 1000));
+  if (!seconds) return "";
+  return (
+    Math.floor(seconds / 60) +
+    ":" +
+    String(seconds % 60).padStart(2, "0")
+  );
+};
+
+const entityMatches = (entity, query) => {
+  if (!query) return true;
+  return [entity?.name, entity?.title, entity?.artistName, entity?.albumArtist, entity?.albumName]
+    .some((value) => text(value).toLocaleLowerCase().includes(query));
+};
+
+function Cover({ src, label, round = false, compact = false }) {
+  if (src) {
+    return <img src={src} alt="" loading="lazy" decoding="async" />;
+  }
+
+  return (
+    <span
+      className={
+        "native-library-cover-fallback" +
+        (round ? " is-round" : "") +
+        (compact ? " is-compact" : "")
+      }
+      role="img"
+      aria-label={label || "Unknown artwork"}
+    >
+      {text(label).slice(0, 1).toUpperCase() || "—"}
+    </span>
+  );
+}
+
+function FavoriteButton({ active, pending, label, onClick, className = "" }) {
+  return (
+    <button
+      type="button"
+      className={"native-library-favorite " + className + (active ? " is-active" : "")}
+      onClick={onClick}
+      disabled={pending}
+      aria-label={active ? "Remove " + label + " from favorites" : "Add " + label + " to favorites"}
+      aria-pressed={active}
+      title={active ? "Remove from favorites" : "Add to favorites"}
+    >
+      <Heart aria-hidden="true" fill={active ? "currentColor" : "none"} />
+    </button>
+  );
+}
+
+function EmptyState({ title, message }) {
+  return (
+    <div className="native-library-state">
+      <strong>{title}</strong>
+      <span>{message}</span>
+    </div>
+  );
+}
 
 function LibraryPage() {
-  const [artists, setArtists] = useState([]);
+  const navigate = useNavigate();
+  const { section: routeSection } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { bootstrap } = useAuth();
+  const { showError } = useToast();
+  const { playQueue, currentTrack, isPlaying, isLoading, togglePlayPause, matchesSource } =
+    useAudioQueue();
+  const [library, setLibrary] = useState({ artists: [], albums: [], tracks: [] });
+  const [favoriteIds, setFavoriteIds] = useState(() => new Set());
+  const [query, setQuery] = useState("");
+  const [sortMode, setSortMode] = useState("name");
+  const [sortDirection, setSortDirection] = useState("asc");
+  const [viewMode, setViewMode] = useState("grid");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [selectedAlbumId, setSelectedAlbumId] = useState(null);
+  const [covers, setCovers] = useState({});
+  const [pendingFavorite, setPendingFavorite] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [sortKey, setSortKey] = useState("name");
-  const [sortDirection, setSortDirection] = useState("asc");
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [isPreviewLibrary, setIsPreviewLibrary] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
-  const [sortMenuOpen, setSortMenuOpen] = useState(false);
-  const [gridColumns, setGridColumns] = useState(() => {
-    const saved = localStorage.getItem("libraryGridColumns");
-    const val = parseInt(saved, 10);
-    return val >= 2 && val <= 10 ? val : 6;
-  });
-  const [viewMode, setViewMode] = useState(() =>
-    localStorage.getItem("libraryViewMode") || "grid"
+
+  const section = LIBRARY_VIEW_IDS.has(routeSection) ? routeSection : DEFAULT_LIBRARY_VIEW;
+  const tab = section === "home" || section === "album-artists" ? "artists" : section;
+  const selectedGenre = searchParams.get("genre") || "";
+  const forcePreview = import.meta.env.DEV && searchParams.get("preview") === "1";
+  const sectionLabel = LIBRARY_VIEWS.find((view) => view.id === section)?.label || "Library";
+  const librarySource = useMemo(() => ({ type: "native-library", id: "library" }), []);
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+
+  const artistsById = useMemo(
+    () => new Map(library.artists.map((artist) => [String(artist.id), artist])),
+    [library.artists],
   );
-  const [activeLetter, setActiveLetter] = useState(null);
-  const activeLetterRef = useRef(null);
-  const sentinelRef = useRef(null);
-  const toolbarRef = useRef(null);
-  const navigate = useNavigate();
+  const albumsById = useMemo(
+    () => new Map(library.albums.map((album) => [String(album.id), album])),
+    [library.albums],
+  );
+  const tracksById = useMemo(
+    () => new Map(library.tracks.map((track) => [String(track.id), track])),
+    [library.tracks],
+  );
 
   useDocumentTitle("Library");
 
-  const selectedSort = SORT_OPTIONS.find((option) => option.value === sortKey) || SORT_OPTIONS[0];
-  const SortDirectionIcon = sortDirection === "asc" ? ArrowUp : ArrowDown;
+  useEffect(() => {
+    setQuery("");
+    setSortMode("name");
+    setSortDirection("asc");
+    setViewMode(section === "tracks" || section === "genres" ? "list" : "grid");
+    setSearchOpen(false);
+    setFiltersOpen(false);
+    setSelectedAlbumId(null);
+  }, [section]);
 
   useEffect(() => {
     const controller = new AbortController();
-    const fetchArtists = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await getLibraryArtists({ signal: controller.signal });
+    setLoading(true);
+    setError(null);
+    setIsPreviewLibrary(false);
+
+    if (forcePreview) {
+      setLibrary(libraryPreviewData);
+      setFavoriteIds(new Set(libraryPreviewFavorites));
+      setIsPreviewLibrary(true);
+      setLoading(false);
+      return () => controller.abort();
+    }
+
+    Promise.all([
+      getCanonicalLibrary({ signal: controller.signal }),
+      getLibraryFavorites({ signal: controller.signal }),
+    ])
+      .then(([nextLibrary, starred]) => {
+        if (controller.signal.aborted) return;
+        const normalizedLibrary = {
+          artists: Array.isArray(nextLibrary?.artists) ? nextLibrary.artists : [],
+          albums: Array.isArray(nextLibrary?.albums) ? nextLibrary.albums : [],
+          tracks: Array.isArray(nextLibrary?.tracks) ? nextLibrary.tracks : [],
+        };
+        const usePreview =
+          import.meta.env.DEV &&
+          normalizedLibrary.artists.length === 0 &&
+          normalizedLibrary.albums.length === 0 &&
+          normalizedLibrary.tracks.length === 0;
+        setLibrary(usePreview ? libraryPreviewData : normalizedLibrary);
+        setIsPreviewLibrary(usePreview);
+        const nextFavorites = new Set(
+          ["artist", "album", "song"].flatMap((kind) =>
+            (Array.isArray(starred?.[kind]) ? starred[kind] : []).map((entry) => entry.id),
+          ),
+        );
+        setFavoriteIds(usePreview ? new Set(libraryPreviewFavorites) : nextFavorites);
+      })
+      .catch((requestError) => {
         if (!controller.signal.aborted) {
-          setArtists(data);
+          setError(
+            requestError.response?.data?.message ||
+              requestError.response?.data?.error ||
+              "Failed to load the canonical library",
+          );
         }
-      } catch (err) {
-        if (!controller.signal.aborted) {
-          setError(err.response?.data?.message || "Failed to fetch artists from library");
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    };
-    fetchArtists();
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
     return () => controller.abort();
-  }, [retryKey]);
+  }, [forcePreview, retryKey]);
 
-  useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-  }, [searchTerm, sortKey, sortDirection]);
+  const getAlbumTracks = useCallback(
+    (album) => album?.trackIds?.map((id) => tracksById.get(String(id))).filter(Boolean) || [],
+    [tracksById],
+  );
 
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (toolbarRef.current && !toolbarRef.current.contains(event.target)) {
-        setSortMenuOpen(false);
-      }
-    };
-    const handleKeyDown = (event) => {
-      if (event.key === "Escape") {
-        setSortMenuOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", handleClickOutside);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, []);
+  const getAlbumForTrack = useCallback(
+    (track) => (track?.albums?.[0] ? albumsById.get(String(track.albums[0].albumId)) : null),
+    [albumsById],
+  );
 
-  const onSentinel = useCallback((entries) => {
-    if (entries[0].isIntersecting) {
-      setVisibleCount((prev) => prev + PAGE_SIZE);
-    }
-  }, []);
+  const getArtistForAlbum = useCallback(
+    (album) => (album ? artistsById.get(String(album.artistId)) : null),
+    [artistsById],
+  );
 
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(onSentinel, { rootMargin: "200px" });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [onSentinel, loading, error]);
-
-  const handleSortOptionClick = useCallback(
-    (option) => {
-      if (sortKey === option.value) {
-        setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
-        setSortMenuOpen(false);
-        return;
-      }
-      setSortKey(option.value);
-      setSortMenuOpen(false);
+  const albumAvailability = useCallback(
+    (album) => {
+      const tracks = getAlbumTracks(album);
+      const total = tracks.length || (album?.trackIds || []).length;
+      const available = tracks.filter((track) => firstAvailableFile(track)).length;
+      return { total, available };
     },
-    [sortKey],
+    [getAlbumTracks],
   );
 
-  const filteredArtists = useMemo(() => {
-    let filtered = artists;
-
-    if (searchTerm.trim()) {
-      const normalizedSearch = searchTerm.trim().toLowerCase();
-      filtered = filtered.filter((artist) =>
-        getArtistName(artist).toLowerCase().includes(normalizedSearch),
-      );
-    }
-
-    return sortArtists(filtered, sortKey, sortDirection);
-  }, [artists, searchTerm, sortKey, sortDirection]);
-
-  const visibleArtists = useMemo(
-    () => filteredArtists.slice(0, visibleCount),
-    [filteredArtists, visibleCount],
+  const filteredArtists = useMemo(
+    () =>
+      library.artists.filter(
+        (artist) =>
+          hasGenre(selectedGenre, artist) && entityMatches(artist, normalizedQuery),
+      ),
+    [library.artists, normalizedQuery, selectedGenre],
   );
 
-  const groupedArtists = useMemo(() => {
-    if (viewMode !== "list") return null;
-    const groups = new Map();
-    for (const artist of visibleArtists) {
-      const key = letterKeyFor(artist);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(artist);
-    }
-    return [...groups.entries()].sort(([a], [b]) => {
-      if (a === "#" && b === "#") return 0;
-      if (a === "#") return -1;
-      if (b === "#") return 1;
-      return a.localeCompare(b);
+  const filteredAlbums = useMemo(
+    () =>
+      library.albums.filter((album) => {
+        const artist = getArtistForAlbum(album);
+        return (
+          hasGenre(selectedGenre, artist, album) &&
+          entityMatches({ ...album, artistName: artist?.name }, normalizedQuery)
+        );
+      }),
+    [getArtistForAlbum, library.albums, normalizedQuery, selectedGenre],
+  );
+
+  const filteredTracks = useMemo(
+    () =>
+      library.tracks.filter((track) => {
+        const album = getAlbumForTrack(track);
+        const artist = getArtistForAlbum(album);
+        return (
+          hasGenre(selectedGenre, artist, album, track) &&
+          entityMatches(
+            {
+              ...track,
+              albumName: album?.title,
+              artistName: artist?.name || track.artistName,
+            },
+            normalizedQuery,
+          )
+        );
+      }),
+    [getAlbumForTrack, getArtistForAlbum, library.tracks, normalizedQuery, selectedGenre],
+  );
+
+  const genreStats = useMemo(() => {
+    const stats = new Map();
+    const add = (genre, kind) => {
+      const entry = stats.get(genre) || { name: genre, artists: 0, albums: 0, tracks: 0 };
+      entry[kind] += 1;
+      stats.set(genre, entry);
+    };
+    library.artists.forEach((artist) =>
+      metadataGenres(artist).forEach((genre) => add(genre, "artists")),
+    );
+    library.albums.forEach((album) =>
+      metadataGenres(album).forEach((genre) => add(genre, "albums")),
+    );
+    library.tracks.forEach((track) =>
+      metadataGenres(track).forEach((genre) => add(genre, "tracks")),
+    );
+    return [...stats.values()].sort((left, right) => left.name.localeCompare(right.name));
+  }, [library.albums, library.artists, library.tracks]);
+
+  const visibleGenreStats = useMemo(
+    () =>
+      genreStats.filter(
+        (genre) =>
+          !normalizedQuery ||
+          genre.name.toLocaleLowerCase().includes(normalizedQuery),
+      ),
+    [genreStats, normalizedQuery],
+  );
+
+  const favoriteArtists = useMemo(
+    () =>
+      library.artists.filter(
+        (artist) =>
+          favoriteIds.has(favoriteId("artist", artist)) &&
+          entityMatches(artist, normalizedQuery),
+      ),
+    [favoriteIds, library.artists, normalizedQuery],
+  );
+
+  const favoriteAlbums = useMemo(
+    () =>
+      library.albums.filter((album) => {
+        const artist = getArtistForAlbum(album);
+        return (
+          favoriteIds.has(favoriteId("album", album)) &&
+          entityMatches({ ...album, artistName: artist?.name }, normalizedQuery)
+        );
+      }),
+    [favoriteIds, getArtistForAlbum, library.albums, normalizedQuery],
+  );
+
+  const favoriteTracks = useMemo(
+    () =>
+      library.tracks.filter((track) => {
+        const album = getAlbumForTrack(track);
+        const artist = getArtistForAlbum(album);
+        return (
+          favoriteIds.has(favoriteId("song", track)) &&
+          entityMatches(
+            {
+              ...track,
+              albumName: album?.title,
+              artistName: artist?.name || track.artistName,
+            },
+            normalizedQuery,
+          )
+        );
+      }),
+    [favoriteIds, getAlbumForTrack, getArtistForAlbum, library.tracks, normalizedQuery],
+  );
+
+  const sortedArtists = useMemo(() => {
+    const items = [...filteredArtists];
+    items.sort((left, right) => text(left.name).localeCompare(text(right.name)));
+    return sortDirection === "asc" ? items : items.reverse();
+  }, [filteredArtists, sortDirection]);
+
+  const sortedAlbums = useMemo(() => {
+    const items = [...filteredAlbums];
+    items.sort((left, right) => {
+      if (sortMode === "newest") {
+        return text(right.releaseDate).localeCompare(text(left.releaseDate));
+      }
+      if (sortMode === "artist") {
+        return text(getArtistForAlbum(left)?.name).localeCompare(
+          text(getArtistForAlbum(right)?.name),
+        );
+      }
+      return text(left.title).localeCompare(text(right.title));
     });
-  }, [visibleArtists, viewMode]);
+    return sortDirection === "asc" ? items : items.reverse();
+  }, [filteredAlbums, getArtistForAlbum, sortDirection, sortMode]);
 
-  const presentLetters = useMemo(() => {
-    if (viewMode !== "list") return null;
-    return new Set(filteredArtists.map(letterKeyFor));
-  }, [filteredArtists, viewMode]);
-
-  const pendingLetterRef = useRef(null);
-
-  const scrollToLetter = useCallback(
-    (letter) => {
-      const target = document.getElementById(`library-group-${letter}`);
-      if (target) {
-        target.scrollIntoView({ behavior: "smooth" });
-        return;
+  const sortedTracks = useMemo(() => {
+    const items = [...filteredTracks];
+    items.sort((left, right) => {
+      if (sortMode === "artist") {
+        return text(getArtistForAlbum(getAlbumForTrack(left))?.name).localeCompare(
+          text(getArtistForAlbum(getAlbumForTrack(right))?.name),
+        );
       }
-      const index = filteredArtists.findIndex((artist) => letterKeyFor(artist) === letter);
-      if (index === -1) return;
-      pendingLetterRef.current = letter;
-      setVisibleCount(Math.ceil((index + 1) / PAGE_SIZE) * PAGE_SIZE);
-    },
-    [filteredArtists],
+      return text(left.title).localeCompare(text(right.title));
+    });
+    return sortDirection === "asc" ? items : items.reverse();
+  }, [filteredTracks, getAlbumForTrack, getArtistForAlbum, sortDirection, sortMode]);
+
+  const sortedGenres = useMemo(() => {
+    const items = [...visibleGenreStats].sort((left, right) =>
+      left.name.localeCompare(right.name),
+    );
+    return sortDirection === "asc" ? items : items.reverse();
+  }, [sortDirection, visibleGenreStats]);
+
+  const homeAlbums = useMemo(
+    () =>
+      [...library.albums]
+        .sort((left, right) => text(right.releaseDate).localeCompare(text(left.releaseDate)))
+        .slice(0, 12),
+    [library.albums],
+  );
+  const homeTracks = library.tracks.slice(0, 12);
+  const selectedAlbum =
+    selectedAlbumId == null ? null : albumsById.get(String(selectedAlbumId)) || null;
+  const selectedAlbumTracks = useMemo(
+    () => getAlbumTracks(selectedAlbum),
+    [getAlbumTracks, selectedAlbum],
   );
 
-  useEffect(() => {
-    const letter = pendingLetterRef.current;
-    if (!letter) return;
-    pendingLetterRef.current = null;
-    document.getElementById(`library-group-${letter}`)?.scrollIntoView({ behavior: "smooth" });
-  }, [groupedArtists]);
+  const coverItems = useMemo(() => {
+    const items = library.albums
+      .map((album) => ({
+        mbid: album.mbid || album.releaseGroupMbid,
+        artistName: getArtistForAlbum(album)?.name || album.albumArtist,
+        albumTitle: album.title,
+      }))
+      .filter((item) => item.mbid);
+    return items
+      .filter(
+        (item, index, values) =>
+          values.findIndex((candidate) => candidate.mbid === item.mbid) === index,
+      )
+      .slice(0, 80);
+  }, [getArtistForAlbum, library.albums]);
 
   useEffect(() => {
-    if (viewMode !== "list" || !groupedArtists) return;
-
-    const handleScroll = () => {
-      const headers = document.querySelectorAll(".library-page__list-letter");
-      let active = null;
-      for (const h of headers) {
-        if (h.getBoundingClientRect().top <= 140) active = h.textContent.trim();
-      }
-      if (active !== activeLetterRef.current) {
-        activeLetterRef.current = active;
-        setActiveLetter(active);
-      }
+    if (!coverItems.length) return undefined;
+    let cancelled = false;
+    getReleaseGroupCoversBatch(coverItems)
+      .then((result) => {
+        if (cancelled) return;
+        const next = {};
+        coverItems.forEach((item) => {
+          if (result?.[item.mbid]?.image) next[item.mbid] = result[item.mbid].image;
+        });
+        if (Object.keys(next).length) setCovers((current) => ({ ...current, ...next }));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
     };
+  }, [coverItems]);
 
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    handleScroll();
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [viewMode, groupedArtists]);
+  const getAlbumCover = useCallback(
+    (album) => covers[album?.mbid || album?.releaseGroupMbid] || "",
+    [covers],
+  );
 
-  const navigateToArtist = useCallback(
-    (artist) => {
-      const routeId = getArtistRouteId(artist);
-      if (!routeId) return;
-      navigate(`/artist/${encodeURIComponent(routeId)}`, {
-        state: {
-          artistName: getArtistName(artist),
-          inLibrary: true,
-          libraryArtist: artist,
-        },
+  const buildPlayableTrack = useCallback(
+    (track) => {
+      const album = getAlbumForTrack(track);
+      const artist = getArtistForAlbum(album);
+      const file = firstAvailableFile(track);
+      return {
+        id: track.id,
+        title: track.title,
+        artist: artist?.name || track.artistName || "Unknown Artist",
+        album: album?.title || "Unknown Album",
+        src:
+          file?.previewUrl ||
+          (file
+            ? buildAuthenticatedApiUrl(
+                "/library/canonical-stream/" + encodeURIComponent(track.id),
+              )
+            : ""),
+        streamFormat: file?.format || null,
+        quality: file?.quality || null,
+        artistMbid: artist?.mbid || null,
+        albumMbid: album?.mbid || album?.releaseGroupMbid || null,
+        artwork: getAlbumCover(album),
+      };
+    },
+    [getAlbumCover, getAlbumForTrack, getArtistForAlbum],
+  );
+
+  const playTracks = useCallback(
+    (tracks, startTrack = null, shuffle = false) => {
+      const playable = tracks.map(buildPlayableTrack).filter((track) => track.src);
+      if (!playable.length) {
+        showError("No playable files are available in this selection.");
+        return;
+      }
+      const startIndex = startTrack
+        ? Math.max(
+            0,
+            playable.findIndex((track) => String(track.id) === String(startTrack.id)),
+          )
+        : 0;
+      playQueue(playable, {
+        startIndex: startIndex < 0 ? 0 : startIndex,
+        shuffle,
+        source: librarySource,
+        updateShufflePreference: false,
       });
     },
-    [navigate],
+    [buildPlayableTrack, librarySource, playQueue, showError],
   );
 
-  const artistCountLabel = loading
-    ? "Loading..."
-    : `${artists.length} artist${artists.length !== 1 ? "s" : ""} in your collection`;
+  const toggleFavorite = useCallback(
+    async (kind, entity) => {
+      const id = favoriteId(kind, entity);
+      if (!id || id.endsWith(":")) return;
+      const nextStarred = !favoriteIds.has(id);
+      if (isPreviewLibrary) {
+        setFavoriteIds((current) => {
+          const next = new Set(current);
+          if (nextStarred) next.add(id);
+          else next.delete(id);
+          return next;
+        });
+        return;
+      }
+      const previous = favoriteIds;
+      setPendingFavorite(id);
+      setFavoriteIds((current) => {
+        const next = new Set(current);
+        if (nextStarred) next.add(id);
+        else next.delete(id);
+        return next;
+      });
+      try {
+        const starred = await updateLibraryFavorites([id], nextStarred);
+        setFavoriteIds(
+          new Set(
+            ["artist", "album", "song"].flatMap((group) =>
+              (Array.isArray(starred?.[group]) ? starred[group] : []).map(
+                (entry) => entry.id,
+              ),
+            ),
+          ),
+        );
+      } catch (requestError) {
+        setFavoriteIds(previous);
+        showError(requestError.response?.data?.message || "Failed to update favorites");
+      } finally {
+        setPendingFavorite(null);
+      }
+    },
+    [favoriteIds, isPreviewLibrary, showError],
+  );
 
-  return (
-    <div className="library-page">
-      <header className="library-page__header">
-        <h1 className="page-title">Your Library</h1>
-        <p className="page-subtitle">{artistCountLabel}</p>
+  const playTrack = useCallback(
+    (track, context) => {
+      const playable = buildPlayableTrack(track);
+      if (!playable.src) return;
+      if (
+        String(currentTrack?.id) === String(playable.id) &&
+        matchesSource(librarySource)
+      ) {
+        togglePlayPause();
+        return;
+      }
+      playTracks(context || [track], track);
+    },
+    [
+      buildPlayableTrack,
+      currentTrack?.id,
+      librarySource,
+      matchesSource,
+      playTracks,
+      togglePlayPause,
+    ],
+  );
 
-        <div ref={toolbarRef} className="library-page__toolbar global-search">
-          <div className="global-search__box">
-            <div className="global-search__scope-wrap">
+  const handleArtistOpen = (artist) => {
+    if (!artist?.mbid) return;
+    navigate("/artist/" + encodeURIComponent(artist.mbid), {
+      state: { artistName: artist.name, inLibrary: true, libraryArtist: artist },
+    });
+  };
+
+  const handleAlbumOpen = (album) => {
+    const artist = getArtistForAlbum(album);
+    if (artist?.mbid && (album?.releaseGroupMbid || album?.mbid)) {
+      navigateToLibraryAlbum(navigate, album, {
+        artistMbid: artist.mbid,
+        artistName: artist.name,
+        coverUrl: getAlbumCover(album),
+      });
+      return;
+    }
+    setSelectedAlbumId(album?.id || null);
+  };
+
+  const favoriteCount =
+    favoriteArtists.length + favoriteAlbums.length + favoriteTracks.length;
+  const activeCount =
+    selectedAlbum != null
+      ? selectedAlbumTracks.length
+      : section === "home"
+        ? library.artists.length + library.albums.length + library.tracks.length
+        : section === "favorites"
+          ? favoriteCount
+          : tab === "artists"
+            ? sortedArtists.length
+            : tab === "albums"
+              ? sortedAlbums.length
+              : tab === "tracks"
+                ? sortedTracks.length
+                : sortedGenres.length;
+  const sortOptions =
+    section === "albums"
+      ? [
+          { value: "name", label: "Name" },
+          { value: "artist", label: "Artist" },
+          { value: "newest", label: "Newest" },
+        ]
+      : section === "tracks"
+        ? [
+            { value: "name", label: "Name" },
+            { value: "artist", label: "Artist" },
+          ]
+        : section === "artists" || section === "album-artists"
+          ? [{ value: "name", label: "Name" }]
+          : section === "genres"
+            ? [{ value: "name", label: "Name" }]
+            : [];
+
+  const collectionTracks = useMemo(() => {
+    if (selectedAlbum) return selectedAlbumTracks;
+    if (section === "favorites") return favoriteTracks;
+    if (section === "albums") return sortedAlbums.flatMap(getAlbumTracks);
+    if (section === "tracks") return sortedTracks;
+    if (section === "genres" && selectedGenre) return filteredTracks;
+    return library.tracks;
+  }, [
+    favoriteTracks,
+    filteredTracks,
+    getAlbumTracks,
+    library.tracks,
+    section,
+    selectedAlbum,
+    selectedAlbumTracks,
+    selectedGenre,
+    sortedAlbums,
+    sortedTracks,
+  ]);
+
+  const collectionPlayable = collectionTracks.some((track) => firstAvailableFile(track));
+
+  const updateGenreFilter = (genre) => {
+    const next = new URLSearchParams(searchParams);
+    if (genre) next.set("genre", genre);
+    else next.delete("genre");
+    setSearchParams(next);
+  };
+
+  const renderTrackList = (tracks, label) => (
+    <div className="native-library-track-list" role="table" aria-label={label}>
+      <div className="native-library-track native-library-track--heading" role="row">
+        <span />
+        <span>#</span>
+        <span />
+        <span>Title</span>
+        <span>Artist</span>
+        <span>Album</span>
+        <span>Time</span>
+        <span />
+      </div>
+      {tracks.map((track, index) => {
+        const album = getAlbumForTrack(track);
+        const artist = getArtistForAlbum(album);
+        const file = firstAvailableFile(track);
+        const active =
+          String(currentTrack?.id) === String(track.id) &&
+          matchesSource(librarySource);
+        const artistName = artist?.name || track.artistName || "Unknown Artist";
+        const albumName = album?.title || "Unknown Album";
+        return (
+          <div
+            className={"native-library-track" + (active ? " is-active" : "")}
+            key={track.id}
+            role="row"
+          >
+            <button
+              type="button"
+              className="native-library-track__play"
+              onClick={() => playTrack(track, tracks)}
+              disabled={!file || (active && isLoading)}
+              aria-label={(active && isPlaying ? "Pause " : "Play ") + track.title}
+            >
+              {active && isPlaying ? (
+                <span aria-hidden="true">Ⅱ</span>
+              ) : (
+                <Play aria-hidden="true" fill="currentColor" />
+              )}
+            </button>
+            <span className="native-library-track__number" aria-hidden="true">
+              {index + 1}
+            </span>
+            {album ? (
               <button
                 type="button"
-                onClick={() => setSortMenuOpen((open) => !open)}
-                className={`global-search__scope-button library-page__sort-button${sortMenuOpen ? " is-open" : ""}`}
-                aria-haspopup="listbox"
-                aria-expanded={sortMenuOpen}
-                aria-controls="library-sort-menu"
-                aria-label="Sort library"
+                className="native-library-track__cover"
+                onClick={() => handleAlbumOpen(album)}
+                aria-label={"Open " + albumName}
               >
-                <span className="library-page__sort-label">{selectedSort.label}</span>
-                <SortDirectionIcon className="artist-icon-xs library-page__sort-direction" />
-                <ChevronDown
-                  className={`artist-icon-sm${sortMenuOpen ? " artist-chevron--open" : ""}`}
-                />
+                <Cover src={getAlbumCover(album)} label={albumName} compact />
               </button>
-
-              {sortMenuOpen && (
-                <div
-                  id="library-sort-menu"
-                  className="artist-options-menu library-page__sort-menu"
-                  role="listbox"
-                  aria-label="Library sort options"
-                >
-                  {SORT_OPTIONS.map((option) => {
-                    const active = sortKey === option.value;
-                    const DirectionIcon = sortDirection === "asc" ? ArrowUp : ArrowDown;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => handleSortOptionClick(option)}
-                        className={`artist-menu-item${active ? " is-active" : ""}`}
-                        role="option"
-                        aria-selected={active}
-                      >
-                        <span>{option.label}</span>
-                        <span>{active && <DirectionIcon className="artist-icon-xs" />}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="global-search__divider" />
-
-            <div className="global-search__input-wrap">
-              <Search className="global-search__icon" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder=""
-                className="global-search__input"
-                autoComplete="off"
-                aria-label="Search library"
-              />
-              {!searchTerm && <div className="global-search__placeholder">Search library...</div>}
-            </div>
-
-          </div>
-
-          <div className="library-page__view-controls">
-            {viewMode === "grid" && (
-              <input
-                type="range"
-                min="2"
-                max="10"
-                value={gridColumns}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  setGridColumns(val);
-                  localStorage.setItem("libraryGridColumns", String(val));
-                }}
-                className="library-page__grid-slider"
-                aria-label="Grid columns"
-                title={`${gridColumns} columns`}
-              />
+            ) : (
+              <span className="native-library-track__cover">
+                <Cover label={albumName} compact />
+              </span>
             )}
             <button
               type="button"
-              onClick={() => {
-                const next = viewMode === "grid" ? "list" : "grid";
-                setViewMode(next);
-                localStorage.setItem("libraryViewMode", next);
-              }}
-              className="btn btn-icon-square library-page__view-toggle"
-              aria-label={viewMode === "grid" ? "Switch to list view" : "Switch to grid view"}
-              title={viewMode === "grid" ? "List view" : "Grid view"}
+              className="native-library-track__title"
+              onClick={() => playTrack(track, tracks)}
+              title={track.title || "Unknown Track"}
             >
-              {viewMode === "grid" ? <List className="artist-icon-sm" /> : <LayoutGrid className="artist-icon-sm" />}
+              <span>{track.title || "Unknown Track"}</span>
+              <small>{artistName}</small>
+            </button>
+            {artist?.mbid ? (
+              <button
+                type="button"
+                className="native-library-track__link native-library-track__artist"
+                onClick={() => handleArtistOpen(artist)}
+              >
+                {artistName}
+              </button>
+            ) : (
+              <span className="native-library-track__link native-library-track__artist">{artistName}</span>
+            )}
+            {album ? (
+              <button
+                type="button"
+                className="native-library-track__link native-library-track__album"
+                onClick={() => handleAlbumOpen(album)}
+              >
+                {albumName}
+              </button>
+            ) : (
+              <span className="native-library-track__link native-library-track__album">{albumName}</span>
+            )}
+            <span className={"native-library-track__time" + (!file ? " is-missing" : "")}>
+              {file ? formatDuration(file.durationMs) : "Unavailable"}
+            </span>
+            <FavoriteButton
+              className="native-library-track__favorite"
+              active={favoriteIds.has(favoriteId("song", track))}
+              pending={pendingFavorite === favoriteId("song", track)}
+              label={track.title || "track"}
+              onClick={() => toggleFavorite("song", track)}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const renderArtistCard = (artist) => (
+    <article className="native-library-card native-library-card--artist" key={artist.id}>
+      <button
+        type="button"
+        className="native-library-card__cover native-library-card__cover--round"
+        onClick={() => handleArtistOpen(artist)}
+        disabled={!artist.mbid}
+        aria-label={"Open " + (artist.name || "artist")}
+      >
+        {artist.mbid ? (
+          <ArtistImage
+            mbid={artist.mbid}
+            artistName={artist.name}
+            alt={artist.name || ""}
+            className="native-library-artist-image"
+            showLoading={false}
+            enablePreviewPlayback={false}
+            isInLibrary
+          />
+        ) : (
+          <Cover label={artist.name} round />
+        )}
+      </button>
+      <div className="native-library-card__body">
+        <div className="native-library-card__title-row">
+          <button
+            type="button"
+            className="native-library-card__title"
+            onClick={() => handleArtistOpen(artist)}
+            disabled={!artist.mbid}
+            title={artist.name}
+          >
+            {artist.name || "Unknown Artist"}
+          </button>
+          <FavoriteButton
+            active={favoriteIds.has(favoriteId("artist", artist))}
+            pending={pendingFavorite === favoriteId("artist", artist)}
+            label={artist.name || "artist"}
+            onClick={() => toggleFavorite("artist", artist)}
+          />
+        </div>
+        <span className="native-library-card__meta">
+          {artist.albumIds?.length || 0} album{artist.albumIds?.length === 1 ? "" : "s"}
+        </span>
+      </div>
+    </article>
+  );
+
+  const renderAlbumCard = (album) => {
+    const artist = getArtistForAlbum(album);
+    const albumTracks = getAlbumTracks(album);
+    const availability = albumAvailability(album);
+    const meta =
+      availability.total && availability.available < availability.total
+        ? availability.available + "/" + availability.total + " available"
+        : (yearOf(album.releaseDate) ? yearOf(album.releaseDate) + " · " : "") +
+          (availability.total || 0) +
+          " tracks";
+    return (
+      <article className="native-library-card" key={album.id}>
+        <div className="native-library-card__cover-wrap">
+          <button
+            type="button"
+            className="native-library-card__cover"
+            onClick={() => handleAlbumOpen(album)}
+            aria-label={"Open " + (album.title || "album")}
+          >
+            <Cover src={getAlbumCover(album)} label={album.title} />
+          </button>
+          <button
+            type="button"
+            className="native-library-card__play"
+            onClick={() => playTracks(albumTracks)}
+            disabled={!albumTracks.some((track) => firstAvailableFile(track))}
+            aria-label={"Play " + (album.title || "album")}
+          >
+            <Play aria-hidden="true" fill="currentColor" />
+          </button>
+        </div>
+        <div className="native-library-card__body">
+          <div className="native-library-card__title-row">
+            <button
+              type="button"
+              className="native-library-card__title"
+              onClick={() => handleAlbumOpen(album)}
+              title={album.title}
+            >
+              {album.title || "Unknown Album"}
+            </button>
+            <FavoriteButton
+              active={favoriteIds.has(favoriteId("album", album))}
+              pending={pendingFavorite === favoriteId("album", album)}
+              label={album.title || "album"}
+              onClick={() => toggleFavorite("album", album)}
+            />
+          </div>
+          {artist?.mbid ? (
+            <button
+              type="button"
+              className="native-library-card__artist"
+              onClick={() => handleArtistOpen(artist)}
+            >
+              {artist.name}
+            </button>
+          ) : (
+            <span className="native-library-card__artist">
+              {artist?.name || album.albumArtist || "Unknown Artist"}
+            </span>
+          )}
+          <span className="native-library-card__meta">{meta}</span>
+        </div>
+      </article>
+    );
+  };
+
+  const renderSectionHeader = (title, count, path = "") => (
+    <div className="native-library-section-heading">
+      <div>
+        <h2>{title}</h2>
+        {count != null && <span>{count}</span>}
+      </div>
+      {path && (
+        <button type="button" onClick={() => navigate(path)}>
+          View all
+        </button>
+      )}
+    </div>
+  );
+
+  const renderHome = () => (
+    <div className="native-library-home">
+      {homeAlbums.length > 0 && (
+        <section className="native-library-section">
+          {renderSectionHeader("Recently added", library.albums.length, "/library/albums")}
+          <div className="native-library-grid">{homeAlbums.map(renderAlbumCard)}</div>
+        </section>
+      )}
+      {homeTracks.length > 0 && (
+        <section className="native-library-section">
+          {renderSectionHeader("Tracks", library.tracks.length, "/library/tracks")}
+          {renderTrackList(homeTracks, "Library tracks")}
+        </section>
+      )}
+    </div>
+  );
+
+  const renderFavorites = () => {
+    if (!favoriteCount) {
+      return (
+        <EmptyState
+          title="No favorites"
+          message="Artists, albums, and tracks you favorite will appear here."
+        />
+      );
+    }
+    return (
+      <div className="native-library-favorites">
+        {favoriteArtists.length > 0 && (
+          <section className="native-library-section">
+            {renderSectionHeader("Artists", favoriteArtists.length)}
+            <div className="native-library-grid native-library-grid--artists">
+              {favoriteArtists.map(renderArtistCard)}
+            </div>
+          </section>
+        )}
+        {favoriteAlbums.length > 0 && (
+          <section className="native-library-section">
+            {renderSectionHeader("Albums", favoriteAlbums.length)}
+            <div className="native-library-grid">{favoriteAlbums.map(renderAlbumCard)}</div>
+          </section>
+        )}
+        {favoriteTracks.length > 0 && (
+          <section className="native-library-section">
+            {renderSectionHeader("Tracks", favoriteTracks.length)}
+            {renderTrackList(favoriteTracks, "Favorite tracks")}
+          </section>
+        )}
+      </div>
+    );
+  };
+
+  const renderGenres = () => (
+    <div className="native-library-genre-list" role="table" aria-label="Library genres">
+      <div className="native-library-genre-row native-library-genre-row--heading" role="row">
+        <span>Genre</span>
+        <span>Artists</span>
+        <span>Albums</span>
+        <span>Tracks</span>
+      </div>
+      {sortedGenres.map((genre) => (
+        <button
+          type="button"
+          className="native-library-genre-row"
+          key={genre.name}
+          onClick={() =>
+            navigate("/library/albums?genre=" + encodeURIComponent(genre.name))
+          }
+          role="row"
+        >
+          <strong>{genre.name}</strong>
+          <span>{genre.artists}</span>
+          <span>{genre.albums}</span>
+          <span>{genre.tracks}</span>
+        </button>
+      ))}
+    </div>
+  );
+
+  const renderAlbumDetail = () => {
+    const artist = getArtistForAlbum(selectedAlbum);
+    const availability = albumAvailability(selectedAlbum);
+    return (
+      <section className="native-library-album-detail">
+        <button
+          type="button"
+          className="native-library-back"
+          onClick={() => setSelectedAlbumId(null)}
+        >
+          Back to {sectionLabel}
+        </button>
+        <div className="native-library-album-detail__header">
+          <div className="native-library-album-detail__cover">
+            <Cover src={getAlbumCover(selectedAlbum)} label={selectedAlbum.title} />
+          </div>
+          <div>
+            <p className="native-library-kicker">Album</p>
+            <h2>{selectedAlbum.title}</h2>
+            {artist?.mbid ? (
+              <button
+                type="button"
+                className="native-library-card__artist"
+                onClick={() => handleArtistOpen(artist)}
+              >
+                {artist.name}
+              </button>
+            ) : (
+              <p>{artist?.name || selectedAlbum.albumArtist || "Unknown Artist"}</p>
+            )}
+            <p className="native-library-card__meta">
+              {yearOf(selectedAlbum.releaseDate)
+                ? yearOf(selectedAlbum.releaseDate) + " · "
+                : ""}
+              {availability.available}/{availability.total} available
+            </p>
+            <button
+              type="button"
+              className="native-library-page-play"
+              onClick={() => playTracks(selectedAlbumTracks)}
+              disabled={!selectedAlbumTracks.some((track) => firstAvailableFile(track))}
+            >
+              <Play aria-hidden="true" fill="currentColor" /> Play
             </button>
           </div>
         </div>
-      </header>
+        {renderTrackList(selectedAlbumTracks, selectedAlbum.title + " tracks")}
+      </section>
+    );
+  };
 
-      {loading && (
-        <div className="artist-loading">
-          <Loader className="artist-spinner artist-spinner--large animate-spin" />
-        </div>
-      )}
+  const content = selectedAlbum
+    ? renderAlbumDetail()
+    : section === "home"
+      ? renderHome()
+      : section === "favorites"
+        ? renderFavorites()
+        : tab === "artists"
+          ? (
+            <div
+              className={
+                "native-library-grid native-library-grid--artists" +
+                (viewMode === "list" ? " is-list" : "")
+              }
+            >
+              {sortedArtists.map(renderArtistCard)}
+            </div>
+          )
+          : tab === "albums"
+            ? (
+              <div
+                className={
+                  "native-library-grid" + (viewMode === "list" ? " is-list" : "")
+                }
+              >
+                {sortedAlbums.map(renderAlbumCard)}
+              </div>
+            )
+            : tab === "tracks"
+              ? renderTrackList(sortedTracks, "Library tracks")
+              : renderGenres();
 
-      {error && (
-        <div className="artist-error-panel" role="alert">
-          <AlertCircle className="artist-error-icon" aria-hidden="true" />
-          <h2 className="artist-error-title">Error Loading Library</h2>
-          <p className="artist-error-copy">{error}</p>
-          <button
-            type="button"
-            onClick={() => setRetryKey((k) => k + 1)}
-            className="btn btn-secondary btn--bold btn-min-h library-page__retry-button"
-          >
-            Try Again
-          </button>
-        </div>
-      )}
+  const providerWarning = bootstrap?.lidarr?.circuitOpen === true;
+  const pageTitle =
+    selectedAlbum ? selectedAlbum.title : section === "home" ? "Library" : sectionLabel;
+  const pageCount =
+    selectedAlbum != null
+      ? selectedAlbumTracks.length
+      : section === "home"
+        ? library.artists.length + library.albums.length + library.tracks.length
+        : activeCount;
+  const showToolbar = !selectedAlbum && section !== "home";
+  const hasActiveFilters = Boolean(selectedGenre);
 
-      {!loading && !error && artists.length === 0 && (
-        <div className="search-empty-panel">
-          <div className="search-empty-panel__icon" aria-hidden="true">
-            <Music className="artist-icon-lg" />
+  return (
+    <main className="library-page native-library-page">
+      <header className="native-library-header">
+        <div className="native-library-title-row">
+          <div className="native-library-title">
+            <button
+              type="button"
+              className="native-library-title-play"
+              onClick={() => playTracks(collectionTracks)}
+              disabled={!collectionPlayable}
+              aria-label={"Play " + pageTitle}
+            >
+              <Play aria-hidden="true" fill="currentColor" />
+            </button>
+            <h1 className="page-title">
+              {pageTitle}
+              {pageCount != null && (
+                <span className="native-library-count">{pageCount}</span>
+              )}
+            </h1>
           </div>
-          <h2 className="search-empty-panel__title">No Artists in Library</h2>
-          <p className="search-empty-panel__message">
-            Your library is empty. Search and add artists in Lidarr.
-          </p>
-          <button
-            type="button"
-            onClick={() => navigate("/search")}
-            className="btn btn-secondary btn--bold btn-min-h library-page__empty-action"
-          >
-            Search for Artists
-          </button>
+          <div className="native-library-header-actions">
+            {showToolbar ? (
+              <button
+                type="button"
+                className={`native-library-icon-button${searchOpen ? " is-active" : ""}`}
+                onClick={() => setSearchOpen((value) => !value)}
+                aria-label={searchOpen ? "Close search" : "Search " + sectionLabel.toLocaleLowerCase()}
+                aria-pressed={searchOpen}
+                title={searchOpen ? "Close search" : "Search"}
+              >
+                <Search aria-hidden="true" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="native-library-icon-button"
+                onClick={() => setRetryKey((value) => value + 1)}
+                aria-label="Refresh library"
+                title="Refresh"
+              >
+                <RefreshCw aria-hidden="true" />
+              </button>
+            )}
+          </div>
         </div>
-      )}
-
-      {!loading && !error && filteredArtists.length > 0 && (
-        <section className="library-page__content">
-          {searchTerm && (
-            <p className="artist-count library-page__result-count">
-              Showing {filteredArtists.length.toLocaleString()} of {artists.length.toLocaleString()}{" "}
-              artists
-            </p>
-          )}
-
-          <div
-            className={viewMode === "list" ? "library-page__list" : "artist-albums-grid"}
-            style={viewMode === "grid" ? { gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` } : undefined}
-          >
-            {viewMode === "list" && groupedArtists
-              ? <>
-                  <nav className="library-page__alphabet" aria-label="Jump to letter">
-                    {ALPHABET.map((letter) => {
-                      const isActive = activeLetter === letter;
-                      const isPresent = presentLetters?.has(letter) ?? false;
-                      return (
-                        <button
-                          key={letter}
-                          type="button"
-                          className={`library-page__alphabet-letter${isActive ? " is-active" : ""}${!isPresent ? " is-missing" : ""}`}
-                          onClick={() => scrollToLetter(letter)}
-                          disabled={!isPresent}
-                          aria-label={`Jump to ${letter}`}
-                        >
-                          {letter}
-                        </button>
-                      );
-                    })}
-                  </nav>
-                  {groupedArtists.map(([letter, group]) => (
-                  <div key={letter} id={`library-group-${letter}`} className="library-page__list-group">
-                    <span className="library-page__list-letter">{letter}</span>
-                    <div className="library-page__list-items">
-                      {group.map((artist) => {
-                        const artistName = getArtistName(artist) || "Unknown Artist";
-                        const routeId = getArtistRouteId(artist);
-                        const monitorOption =
-                          artist.addOptions?.monitor ||
-                          artist.monitorNewItems ||
-                          artist.monitorOption ||
-                          "none";
-                        const isMonitored = artist.monitored && monitorOption !== "none";
-                        return (
-                          <button
-                            type="button"
-                            key={artist.id}
-                            className="artist-release-card"
-                            onClick={() => navigateToArtist(artist)}
-                            disabled={!routeId}
-                            aria-label={`Open ${artistName}`}
-                          >
-                            <div className="artist-release-card__cover">
-                              <ArtistImage
-                                mbid={routeId}
-                                artistName={artistName}
-                                alt={artistName}
-                                className="artist-image-fill"
-                                showLoading={false}
-                                enablePreviewPlayback
-                                isInLibrary
-                              />
-                              {isMonitored && (
-                                <span
-                                  className="library-page__monitored-dot artist-status-dot artist-status-dot--complete"
-                                  title="Monitored"
-                                />
-                              )}
-                            </div>
-                            <span className="artist-release-card__title" title={artistName}>
-                              {artistName}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
+        {showToolbar && (
+          <>
+            <div className="native-library-toolbar">
+              {searchOpen && (
+                <label className="native-library-search">
+                  <Search aria-hidden="true" />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={"Search " + sectionLabel.toLocaleLowerCase()}
+                    aria-label={"Search " + sectionLabel.toLocaleLowerCase()}
+                    autoFocus
+                  />
+                  {query && (
+                    <button type="button" onClick={() => setQuery("")} aria-label="Clear search">
+                      <X aria-hidden="true" />
+                    </button>
+                  )}
+                </label>
+              )}
+              {sortOptions.length > 0 && (
+                <>
+                  <label className="native-library-sort">
+                    <span className="sr-only">Sort {sectionLabel.toLocaleLowerCase()} by</span>
+                    <select
+                      value={sortMode}
+                      onChange={(event) => setSortMode(event.target.value)}
+                      aria-label={"Sort " + sectionLabel.toLocaleLowerCase()}
+                    >
+                      {sortOptions.map((option) => (
+                        <option value={option.value} key={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <span className="native-library-toolbar-divider" aria-hidden="true" />
+                  <button
+                    type="button"
+                    className="native-library-icon-button"
+                    onClick={() =>
+                      setSortDirection((value) => (value === "asc" ? "desc" : "asc"))
+                    }
+                    aria-label={sortDirection === "asc" ? "Sort descending" : "Sort ascending"}
+                    title={sortDirection === "asc" ? "Descending" : "Ascending"}
+                  >
+                    {sortDirection === "asc" ? (
+                      <ArrowDownAZ aria-hidden="true" />
+                    ) : (
+                      <ArrowUpZA aria-hidden="true" />
+                    )}
+                  </button>
                 </>
-              : visibleArtists.map((artist) => {
-              const artistName = getArtistName(artist) || "Unknown Artist";
-              const routeId = getArtistRouteId(artist);
-              const monitorOption =
-                artist.addOptions?.monitor ||
-                artist.monitorNewItems ||
-                artist.monitorOption ||
-                "none";
-              const isMonitored = artist.monitored && monitorOption !== "none";
-
-              return (
+              )}
+              {section !== "genres" && (
                 <button
                   type="button"
-                  key={artist.id}
-                  className="artist-release-card"
-                  onClick={() => navigateToArtist(artist)}
-                  disabled={!routeId}
-                  aria-label={`Open ${artistName}`}
+                  className={`native-library-icon-button${hasActiveFilters ? " is-active" : ""}`}
+                  onClick={() => setFiltersOpen((value) => !value)}
+                  aria-label="Filter library"
+                  aria-pressed={filtersOpen}
+                  title="Filters"
                 >
-                  <div className="artist-release-card__cover">
-                    <ArtistImage
-                      mbid={routeId}
-                      artistName={artistName}
-                      alt={artistName}
-                      className="artist-image-fill"
-                      showLoading={false}
-                      enablePreviewPlayback
-                      isInLibrary
-                    />
-                    {isMonitored && (
-                      <span
-                        className="library-page__monitored-dot artist-status-dot artist-status-dot--complete"
-                        title="Monitored"
-                      />
-                    )}
-                  </div>
-
-                  <span className="artist-release-card__title" title={artistName}>
-                    {artistName}
-                  </span>
+                  <ListFilter aria-hidden="true" />
                 </button>
-              );
-            })}
-          </div>
-
-          {visibleCount < filteredArtists.length && (
-            <div ref={sentinelRef} className="search-load-more">
-              <span className="search-load-more__inner">
-                <Loader className="artist-spinner animate-spin" />
-                Loading...
-              </span>
+              )}
+              <button
+                type="button"
+                className="native-library-icon-button"
+                onClick={() => setRetryKey((value) => value + 1)}
+                aria-label="Refresh library"
+                title="Refresh"
+              >
+                <RefreshCw aria-hidden="true" />
+              </button>
+              <span className="native-library-toolbar-spacer" aria-hidden="true" />
+              {(tab === "artists" || tab === "albums") && (
+                <div className="native-library-view-toggle" aria-label="Library view">
+                  <button
+                    type="button"
+                    className={`native-library-icon-button${viewMode === "grid" ? " is-active" : ""}`}
+                    onClick={() => setViewMode("grid")}
+                    aria-label="Grid view"
+                    title="Grid view"
+                    aria-pressed={viewMode === "grid"}
+                  >
+                    <Grid3X3 aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className={`native-library-icon-button${viewMode === "list" ? " is-active" : ""}`}
+                    onClick={() => setViewMode("list")}
+                    aria-label="List view"
+                    title="List view"
+                    aria-pressed={viewMode === "list"}
+                  >
+                    <List aria-hidden="true" />
+                  </button>
+                </div>
+              )}
+              {section !== "genres" && (
+                <button
+                  type="button"
+                  className={`native-library-icon-button${filtersOpen ? " is-active" : ""}`}
+                  onClick={() => setFiltersOpen((value) => !value)}
+                  aria-label="Library filter options"
+                  aria-pressed={filtersOpen}
+                  title="Filter options"
+                >
+                  <SlidersHorizontal aria-hidden="true" />
+                </button>
+              )}
             </div>
-          )}
-        </section>
-      )}
+            {filtersOpen && section !== "genres" && (
+              <div className="native-library-filter-panel">
+                <label>
+                  <span>Genre</span>
+                  <select
+                    value={selectedGenre}
+                    onChange={(event) => updateGenreFilter(event.target.value)}
+                    aria-label="Filter by genre"
+                  >
+                    <option value="">All genres</option>
+                    {genreStats.map((genre) => (
+                      <option value={genre.name} key={genre.name}>
+                        {genre.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {selectedGenre && (
+                  <button
+                    type="button"
+                    className="native-library-filter-reset"
+                    onClick={() => updateGenreFilter("")}
+                  >
+                    <X aria-hidden="true" />
+                    Clear
+                  </button>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </header>
 
-      {!loading && !error && artists.length > 0 && filteredArtists.length === 0 && (
-        <div className="search-empty-panel">
-          <div className="search-empty-panel__icon" aria-hidden="true">
-            <Music className="artist-icon-lg" />
-          </div>
-          <h2 className="search-empty-panel__title">No Artists Found</h2>
-          <p className="search-empty-panel__message">
-            No artists match your search &quot;{searchTerm}&quot;
-          </p>
+      {providerWarning && (
+        <p className="native-library-notice" role="status">
+          Lidarr is unavailable. Showing the last indexed library.
+        </p>
+      )}
+      {loading && (
+        <div className="native-library-state" role="status">
+          Loading library…
+        </div>
+      )}
+      {!loading && error && (
+        <div className="native-library-state" role="alert">
+          <strong>Library unavailable</strong>
+          <span>{error}</span>
           <button
             type="button"
-            onClick={() => setSearchTerm("")}
-            className="btn btn-secondary btn--bold btn-min-h library-page__empty-action"
+            className="native-library-state__action"
+            onClick={() => setRetryKey((value) => value + 1)}
           >
-            Clear Search
+            Try again
           </button>
         </div>
       )}
-    </div>
+      {!loading && !error && activeCount === 0 && !selectedAlbum && (
+        <EmptyState
+          title={
+            query || selectedGenre
+              ? "No matches"
+              : section === "favorites"
+                ? "No favorites"
+                : "Your library is empty"
+          }
+          message={
+            query || selectedGenre
+              ? "Try a different search or clear the filter."
+              : "Indexed music will appear here when the library is ready."
+          }
+        />
+      )}
+      {!loading && !error && (activeCount > 0 || selectedAlbum) && (
+        <div className="native-library-content">{content}</div>
+      )}
+    </main>
   );
 }
 

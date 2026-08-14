@@ -1,0 +1,122 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  cleanupIsolatedState,
+  resetDatabase,
+  setupIsolatedBackend,
+} from "../helpers/backendTestHarness.js";
+
+const [isolatedState, { db }, { userOps }, libraryService, libraryStore] =
+  await setupIsolatedBackend(
+    "canonical-favorites-route",
+    "backend/config/db-sqlite.js",
+    "backend/db/helpers/index.js",
+    "backend/services/subsonicLibraryService.js",
+    "backend/services/libraryMediaStore.js",
+  );
+
+const { registerCanonical } = await import(
+  "../../backend/routes/library/handlers/canonical.js"
+);
+const {
+  linkLibraryAlbumTrack,
+  upsertLibraryAlbum,
+  upsertLibraryArtist,
+  upsertLibraryMediaFile,
+  upsertLibraryTrack,
+} = libraryStore;
+
+let user;
+let artist;
+
+test.before(() => {
+  resetDatabase(db);
+  user = userOps.getUserById(userOps.createUser("native", "hash").id);
+  artist = upsertLibraryArtist({
+    identityKey: "favorite-artist",
+    mbid: "11111111-1111-4111-8111-111111111111",
+    name: "Favorite Artist",
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: "favorite-album",
+    mbid: "22222222-2222-4222-8222-222222222222",
+    artistId: artist.id,
+    title: "Favorite Album",
+    albumArtist: artist.name,
+  });
+  const track = upsertLibraryTrack({
+    identityKey: "favorite-track",
+    mbid: "33333333-3333-4333-8333-333333333333",
+    title: "Favorite Track",
+    artistName: artist.name,
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    source: "aurral",
+    path: "/library/Favorite Artist/Favorite Album/01 Favorite Track.flac",
+    format: "flac",
+    available: true,
+  });
+});
+
+test.after(async () => {
+  await cleanupIsolatedState(isolatedState);
+});
+
+function getRoute(path) {
+  const routes = new Map();
+  registerCanonical({
+    get(routePath, ...handlers) {
+      routes.set(`GET ${routePath}`, handlers.at(-1));
+    },
+    post(routePath, ...handlers) {
+      routes.set(`POST ${routePath}`, handlers.at(-1));
+    },
+  });
+  return routes.get(path);
+}
+
+function responseFor() {
+  return {
+    body: null,
+    statusCode: 200,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(value) {
+      this.body = value;
+      return this;
+    },
+  };
+}
+
+test("native favorites reuse Subsonic star identity and return current favorites", () => {
+  const target = `artist:${encodeURIComponent(artist.identity_key)}`;
+  const postResponse = responseFor();
+  getRoute("POST /favorites")(
+    { user, body: { ids: [target], starred: true } },
+    postResponse,
+  );
+
+  assert.equal(postResponse.statusCode, 200);
+  assert.equal(postResponse.body.artist[0].id, target);
+
+  const getResponse = responseFor();
+  getRoute("GET /favorites")({ user }, getResponse);
+  assert.deepEqual(getResponse.body.artist.map((entry) => entry.id), [target]);
+});
+
+test("native favorites rejects unknown targets without changing stars", () => {
+  const response = responseFor();
+  getRoute("POST /favorites")(
+    { user, body: { ids: ["album:missing"], starred: true } },
+    response,
+  );
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.body.error, "Invalid favorite target");
+  assert.equal(libraryService.getStarred(user).artist.length, 1);
+});

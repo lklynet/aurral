@@ -76,7 +76,7 @@ export function buildLibraryAlbumNavigationItem(
   return {
     type: "album",
     id: releaseGroupMbid,
-    title: libraryAlbum.albumName || "",
+    title: libraryAlbum.albumName || libraryAlbum.title || "",
     artistMbid,
     artistName: artistName || libraryAlbum.artistName || "",
     releaseDate: libraryAlbum.releaseDate || "",

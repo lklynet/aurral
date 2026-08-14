@@ -20,6 +20,7 @@ import {
   DEFAULT_ACTIVITY_VIEW,
   buildActivityPath,
 } from "../navigation/activityNavConfig";
+import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
 import {
   getDiscoverArtistPath,
@@ -76,6 +77,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
   const activeDiscoverRecentPath =
     getDiscoverArtistPath(currentDiscoverPath) || currentDiscoverPath;
   const isOnSettings = location.pathname.startsWith("/settings");
+  const isOnLibrary = location.pathname === "/library" || location.pathname.startsWith("/library/");
   const isOnShows = location.pathname.startsWith("/shows");
   const isOnNews = location.pathname.startsWith("/discover/news");
   const isOnActivity =
@@ -97,6 +99,12 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
     const segment = location.pathname.replace(/^\/shows\/?/, "").split("/")[0];
     return segment || DEFAULT_SHOWS_FILTER;
   }, [isOnShows, location.pathname]);
+
+  const activeLibraryView = useMemo(() => {
+    if (!isOnLibrary) return null;
+    const segment = location.pathname.replace(/^\/library\/?/, "").split("/")[0];
+    return LIBRARY_VIEWS.some((view) => view.id === segment) ? segment : DEFAULT_LIBRARY_VIEW;
+  }, [isOnLibrary, location.pathname]);
 
   const activeActivityView = useMemo(() => {
     if (!isOnActivity) return null;
@@ -143,13 +151,14 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
       if (item.section === "discover") {
         return isDiscoverSectionActive;
       }
+      if (item.section === "library") return isOnLibrary;
       if (item.section === "shows") return isOnShows;
       if (item.section === "news") return isOnNews;
       if (item.section === "activity") return isOnActivity;
       if (item.path === "/discover" && location.pathname === "/") return true;
       return location.pathname === item.path;
     },
-    [isDiscoverSectionActive, isOnActivity, isOnNews, isOnShows, location.pathname],
+    [isDiscoverSectionActive, isOnActivity, isOnLibrary, isOnNews, isOnShows, location.pathname],
   );
 
   const navItems = useMemo(() => {
@@ -161,7 +170,13 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
         section: "discover",
         subnav: discoverRecentPages,
       },
-      { path: "/library", label: "Library", icon: Library },
+      {
+        path: "/library",
+        label: "Library",
+        icon: Library,
+        section: "library",
+        subnav: LIBRARY_VIEWS,
+      },
       ...(ticketmasterConfigured
         ? [
             {
@@ -276,9 +291,10 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
         {item.subnav.map((entry) => {
           const active = activeId === entry.id;
           const targetPath =
-            item.section === "activity"
+            entry.path ||
+            (item.section === "activity"
               ? buildActivityPath(entry.id)
-              : `${item.basePath}/${entry.id}`;
+              : `${item.basePath}/${entry.id}`);
           const showReviewAlert = item.section === "activity" && entry.id === "review" && hasReviewAlert;
           return (
             <Link
@@ -369,11 +385,13 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
               const activeSubnavId =
                 item.section === "discover"
                   ? discoverRecentPages.find((entry) => entry.path === activeDiscoverRecentPath)?.id
-                  : item.section === "shows"
-                    ? activeShowsFilter
-                    : item.section === "activity"
-                      ? activeActivityView
-                      : null;
+                  : item.section === "library"
+                    ? activeLibraryView
+                    : item.section === "shows"
+                      ? activeShowsFilter
+                      : item.section === "activity"
+                        ? activeActivityView
+                        : null;
 
               return (
                 <div key={item.path} className={getNavGroupClassName(item, active)}>

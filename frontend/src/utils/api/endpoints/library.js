@@ -14,6 +14,21 @@ const SLOW_LIBRARY_REQUEST_TIMEOUT_MS = 90000;
 export const getLibraryArtists = (options = {}) =>
   getData("/library/artists", options);
 
+export const getCanonicalLibrary = (options = {}) =>
+  getData("/library/canonical", {
+    params: {
+      source: options.source || "all",
+      availableOnly: options.availableOnly === true ? "true" : "false",
+    },
+    signal: options.signal,
+  });
+
+export const getLibraryFavorites = (options = {}) =>
+  getData("/library/favorites", { signal: options.signal });
+
+export const updateLibraryFavorites = (ids, starred) =>
+  postData("/library/favorites", { ids, starred });
+
 export const getLibraryArtist = async (mbid) => {
   const artist = await getData(`/library/artists/${mbid}`);
   if (artist && !artist.foreignArtistId) {
