@@ -9,7 +9,7 @@ Navidrome must be able to read and scan the Aurral download tree for that destin
 
 This is a filesystem connection as well as an API connection. A successful **Test connection** only proves that Aurral can reach the Navidrome API.
 
-Aurral also exposes an authenticated Subsonic server at `/rest/*.view`. It supports XML and JSON browsing, canonical artist/album/song search, artwork, and direct streaming with byte ranges. Completed flow entries and accessible shared-playlist entries are exposed as read-only playlist items through `getPlaylists` and `getPlaylist`; the endpoint does not create or update playlists, transcode audio, or write to the canonical library. Navidrome remains optional for clients that connect directly to Aurral.
+Aurral also exposes an authenticated Subsonic server at `/rest/*.view`. It supports XML and JSON browsing, canonical artist/album/song search, artwork, direct streaming with byte ranges, and user-scoped favorites through `getStarred`, `star`, and `unstar`. Completed flow entries and accessible shared-playlist entries are exposed as read-only playlist items through `getPlaylists` and `getPlaylist`; the endpoint does not create or update playlists, transcode audio, or write to the canonical library. Navidrome remains optional for clients that connect directly to Aurral.
 
 ## Connect a Subsonic client
 

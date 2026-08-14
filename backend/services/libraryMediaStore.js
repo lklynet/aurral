@@ -1,4 +1,5 @@
 import { db, dbHelpers } from "../config/db-sqlite.js";
+import { invalidateCanonicalLibraryCache } from "./libraryQueryService.js";
 
 const now = () => Date.now();
 
@@ -73,6 +74,7 @@ export function upsertLibraryArtist({ identityKey, mbid = null, name, sortName =
        metadata_json = COALESCE(excluded.metadata_json, library_artists.metadata_json),
        updated_at = excluded.updated_at`,
   ).run(key, mbid || null, artistName, sortName || null, stringify(metadata), timestamp, timestamp);
+  invalidateCanonicalLibraryCache();
   return db.prepare("SELECT * FROM library_artists WHERE identity_key = ?").get(key);
 }
 
@@ -117,6 +119,7 @@ export function upsertLibraryAlbum({
     timestamp,
     timestamp,
   );
+  invalidateCanonicalLibraryCache();
   return db.prepare("SELECT * FROM library_albums WHERE identity_key = ?").get(key);
 }
 
@@ -141,6 +144,7 @@ export function upsertLibraryTrack({
        metadata_json = COALESCE(excluded.metadata_json, library_tracks.metadata_json),
        updated_at = excluded.updated_at`,
   ).run(key, mbid || null, trackTitle, artistName || null, stringify(metadata), timestamp, timestamp);
+  invalidateCanonicalLibraryCache();
   return db.prepare("SELECT * FROM library_tracks WHERE identity_key = ?").get(key);
 }
 
@@ -150,6 +154,7 @@ export function linkLibraryAlbumTrack({ albumId, trackId, discNumber = 1, trackN
       (album_id, track_id, disc_number, track_number, created_at)
      VALUES (?, ?, ?, ?, ?)`,
   ).run(Number(albumId), Number(trackId), Number(discNumber) || 1, Number(trackNumber) || 0, now());
+  invalidateCanonicalLibraryCache();
 }
 
 export function upsertLibraryMediaFile({
@@ -199,6 +204,7 @@ export function upsertLibraryMediaFile({
     timestamp,
     timestamp,
   );
+  invalidateCanonicalLibraryCache();
 }
 
 export function markUnseenFilesUnavailable(scanId, source) {
@@ -207,6 +213,7 @@ export function markUnseenFilesUnavailable(scanId, source) {
      SET available = 0, updated_at = ?
      WHERE source = ? AND (last_seen_scan_id IS NULL OR last_seen_scan_id != ?)`,
   ).run(now(), normalizeText(source), Number(scanId));
+  invalidateCanonicalLibraryCache();
 }
 
 export async function withLibraryScan(source, rootPath, run) {

@@ -19,6 +19,8 @@ import {
   resolveArtworkUrl,
   resolveStreamPath,
   searchLibrary,
+  star,
+  unstar,
 } from "../services/subsonicLibraryService.js";
 
 const SUBSONIC_VERSION = "1.16.1";
@@ -269,8 +271,18 @@ async function handleSubsonicRequest(req, res) {
   if (method === "getplaylists") {
     return sendResponse(res, format, "ok", null, { playlists: { playlist: getFlowPlaylists(user) } });
   }
-  if (method === "getstarred") {
-    return sendResponse(res, format, "ok", null, { starred: getStarred() });
+  if (method === "getstarred" || method === "getstarred2") {
+    return sendResponse(res, format, "ok", null, {
+      [method === "getstarred" ? "starred" : "starred2"]: getStarred(user),
+    });
+  }
+  if (method === "star" || method === "unstar") {
+    const changed = method === "star"
+      ? star(user, getParameter(req, "id"))
+      : unstar(user, getParameter(req, "id"));
+    return changed
+      ? sendResponse(res, format)
+      : sendError(res, format, 70, "Requested data was not found");
   }
   if (method === "gettopsongs") {
     const artist = String(getParameter(req, "artist") || "").trim();

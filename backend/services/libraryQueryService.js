@@ -1,6 +1,7 @@
 import { db, dbHelpers } from "../config/db-sqlite.js";
 
 const SOURCES = new Set(["aurral", "lidarr"]);
+const libraryCache = new Map();
 
 const parseJson = (value) => {
   if (!value) return null;
@@ -25,6 +26,9 @@ function createEntity(map, id, value) {
 
 export function getCanonicalLibrary({ source = null, availableOnly = false } = {}) {
   const sourceFilter = normalizeSource(source);
+  const cacheKey = `${sourceFilter || "all"}:${availableOnly === true ? "available" : "all"}`;
+  const cached = libraryCache.get(cacheKey);
+  if (cached) return cached;
   const conditions = [];
   const parameters = [];
 
@@ -165,11 +169,17 @@ export function getCanonicalLibrary({ source = null, availableOnly = false } = {
     track.files.sort((left, right) => left.path.localeCompare(right.path));
   }
 
-  return {
+  const library = {
     artists: [...artists.values()],
     albums: [...albums.values()],
     tracks: [...tracks.values()],
   };
+  libraryCache.set(cacheKey, library);
+  return library;
+}
+
+export function invalidateCanonicalLibraryCache() {
+  libraryCache.clear();
 }
 
 export { normalizeSource };

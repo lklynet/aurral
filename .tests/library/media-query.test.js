@@ -69,6 +69,7 @@ test("getCanonicalLibrary merges sources and preserves normalized hierarchy", as
     });
 
     const all = getCanonicalLibrary();
+    assert.strictEqual(getCanonicalLibrary(), all);
     assert.equal(all.artists.length, 1);
     assert.equal(all.albums.length, 1);
     assert.equal(all.tracks.length, 1);

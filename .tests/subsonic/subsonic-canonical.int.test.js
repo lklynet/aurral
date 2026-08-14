@@ -175,6 +175,16 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.equal(song.path, song.id);
   assert.deepEqual(song.artists, [{ id: artist.id, name: "Canonical Artist" }]);
 
+  assert.equal(responseJson(await request("star", { id: song.id })).status, "ok");
+  assert.equal(responseJson(await request("getStarred")).starred.song[0].id, song.id);
+  assert.equal(responseJson(await request("getStarred2")).starred2.song[0].id, song.id);
+  userOps.createUser("bob", hashPassword("bob-password"), "user");
+  assert.deepEqual(
+    responseJson(await request("getStarred", { u: "bob", p: "bob-password" })).starred,
+    { album: [], artist: [], song: [] },
+  );
+  assert.equal(responseJson(await request("unstar", { id: song.id })).status, "ok");
+
   const missingArtist = await request("getTopSongs", { artist: "   " });
   assert.equal(responseJson(missingArtist).error.code, 10);
 });

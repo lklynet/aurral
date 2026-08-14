@@ -1,4 +1,5 @@
 import { dbOps } from "../db/helpers/index.js";
+import { db } from "../config/db-sqlite.js";
 import { getCanonicalLibrary } from "./libraryQueryService.js";
 import { fetchReleaseGroupCoverUrl } from "./releaseGroupCoverService.js";
 import { getArtistImage } from "./imageService.js";
@@ -224,7 +225,7 @@ function toPlaylistSong(playlist, kind, job) {
   const artist = protocolArtist(null, job.artistName || "Unknown Artist");
   const format = String(job.finalPath || "").split(".").pop()?.toLowerCase() || "mp3";
   const id = idFor(kind === "flow" ? "flow-song" : "shared-song", `${playlist.id}:${job.id}`);
-  const albumMbid = String(job.albumMbid || job.releaseGroupMbid || "").trim();
+  const albumMbid = String(job.releaseGroupMbid || job.albumMbid || "").trim();
   return {
     id,
     parent: idFor(kind, playlist.id),
@@ -465,8 +466,50 @@ export function getGenres() {
   return [...genres.values()].sort((left, right) => left.value.localeCompare(right.value));
 }
 
-export function getStarred() {
-  return { album: [], artist: [], song: [] };
+const getStarsStmt = db.prepare(
+  "SELECT entity_kind, entity_key FROM subsonic_stars WHERE user_id = ? ORDER BY created_at, entity_kind, entity_key",
+);
+const addStarStmt = db.prepare(
+  "INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (?, ?, ?, ?)",
+);
+const removeStarStmt = db.prepare(
+  "DELETE FROM subsonic_stars WHERE user_id = ? AND entity_kind = ? AND entity_key = ?",
+);
+
+const starTarget = (value) => {
+  const parsed = parseId(value);
+  return parsed && ["artist", "album", "song"].includes(parsed.kind) ? parsed : null;
+};
+
+export function star(user, value) {
+  const parsed = starTarget(value);
+  if (!parsed || !user?.id) return false;
+  const library = readLibrary();
+  if (!findCanonical(library, parsed)) return false;
+  addStarStmt.run(user.id, parsed.kind, parsed.key, Date.now());
+  return true;
+}
+
+export function unstar(user, value) {
+  const parsed = starTarget(value);
+  if (!parsed || !user?.id) return false;
+  removeStarStmt.run(user.id, parsed.kind, parsed.key);
+  return true;
+}
+
+export function getStarred(user) {
+  const starred = { album: [], artist: [], song: [] };
+  if (!user?.id) return starred;
+  const library = readLibrary();
+  for (const row of getStarsStmt.all(user.id)) {
+    const parsed = { kind: row.entity_kind, key: row.entity_key };
+    const entity = findCanonical(library, parsed);
+    if (!entity) continue;
+    if (parsed.kind === "artist") starred.artist.push(toArtistSummary(entity));
+    if (parsed.kind === "album") starred.album.push(toAlbumSummary(library, entity));
+    if (parsed.kind === "song") starred.song.push(toSong(library, entity));
+  }
+  return starred;
 }
 
 export function getArtistInfo(value) {
