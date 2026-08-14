@@ -79,9 +79,10 @@ const artists = await response.json();
 
 ## Cross-origin requests
 
-If a browser loads Aurral from another origin, set `CORS_ORIGIN`. Use commas to
-separate each permitted origin. By default, Aurral does not permit cross-origin
-requests.
+If a browser loads Aurral's JSON API from another origin, set `CORS_ORIGIN`. Use
+commas to separate each permitted origin. By default, Aurral does not permit
+cross-origin JSON API requests. The authenticated Subsonic API at `/rest` is
+available to browser Subsonic clients such as Feishin without this setting.
 
 The current CORS preflight allows the `Content-Type` and `Authorization`
 headers. It does not allow the `X-Api-Key` header. For a cross-origin browser

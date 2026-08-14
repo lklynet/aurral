@@ -13,7 +13,7 @@ Aurral also exposes an authenticated Subsonic server at `/rest/*.view`. It suppo
 
 ## Connect a Subsonic client
 
-Point the client at the Aurral URL and use the Aurral account from onboarding. If the client is served from another browser origin, add that exact origin to Aurral's `CORS_ORIGIN` environment variable and recreate the Aurral container. Feishin can connect with its default token authentication when you use that configured account. Feishin can also use password authentication when you set `LEGACY_AUTHENTICATION=true` in Feishin's environment, not Aurral's. When Feishin locks server settings, also set `SERVER_LOCK=true` in Feishin's environment.
+Point the client at the Aurral URL and use the Aurral account from onboarding. Aurral enables browser Subsonic clients on `/rest` without an additional CORS setting. Feishin can connect with its default token authentication when you use that configured account. Feishin can also use password authentication when you set `LEGACY_AUTHENTICATION=true` in Feishin's environment, not Aurral's. When Feishin locks server settings, also set `SERVER_LOCK=true` in Feishin's environment.
 
 Aurral accepts password authentication for every Aurral user. Token authentication is limited to the configured account because Aurral stores other user passwords as one-way hashes.
 

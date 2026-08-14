@@ -61,7 +61,20 @@ const allowedCorsOrigins = String(process.env.CORS_ORIGIN || "")
   .map((v) => v.trim())
   .filter(Boolean);
 
+const isSubsonicRequest = (req) => req.path === "/rest" || req.path.startsWith("/rest/");
+
 function corsMiddleware(req, res, next) {
+  if (isSubsonicRequest(req)) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    if (req.method === "OPTIONS") {
+      res.status(204).end();
+      return;
+    }
+    next();
+    return;
+  }
   if (allowedCorsOrigins.length === 0) {
     if (req.method === "OPTIONS") {
       res.status(403).end();

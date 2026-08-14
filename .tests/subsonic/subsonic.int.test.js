@@ -45,7 +45,7 @@ test.before(async () => {
   resetDatabase(db);
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
   userOps.createUser("alice", hashPassword("password123"), "user");
-  aurral = await startServerProcess();
+  aurral = await startServerProcess({ extraEnv: { CORS_ORIGIN: "" } });
 });
 
 test.after(async () => {
@@ -73,6 +73,23 @@ test("authenticates an Aurral user and returns JSON or XML envelopes", async () 
   assert.match(xml.contentType, /application\/xml/);
   assert.match(xml.body, /<subsonic-response[^>]+status="ok"/);
   assert.match(xml.body, /xmlns="http:\/\/subsonic\.org\/restapi"/);
+});
+
+test("allows browser Subsonic clients without CORS configuration", async () => {
+  const response = await fetch(subsonicUrl("ping", { f: "json" }), {
+    headers: { Origin: "http://feishin.example" },
+  });
+  assert.equal(response.headers.get("access-control-allow-origin"), "*");
+
+  const preflight = await fetch(subsonicUrl("ping", { f: "json" }), {
+    method: "OPTIONS",
+    headers: {
+      Origin: "http://feishin.example",
+      "Access-Control-Request-Method": "GET",
+    },
+  });
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get("access-control-allow-origin"), "*");
 });
 
 test("returns the Subsonic invalid-credentials error", async () => {

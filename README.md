@@ -58,7 +58,6 @@ services:
     environment:
       - PUID=1000
       - PGID=1000
-      - CORS_ORIGIN=${CORS_ORIGIN:-}
     volumes:
       - ${MEDIA_ROOT:-/srv/media}:/data
       - ./config:/config
