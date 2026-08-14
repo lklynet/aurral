@@ -259,6 +259,8 @@ function AppContent() {
                       <Route path="/discover/playlists/:presetId" element={<DiscoverPlaylistDetailPage />} />
                       <Route path="/discover/playlists" element={<DiscoverPlaylistsPage />} />
                       <Route path="/discover/news" element={<NewsPage />} />
+                      <Route path="/library/album/:albumId" element={<LibraryPage />} />
+                      <Route path="/library/artist/:artistId" element={<LibraryPage />} />
                       <Route path="/library/:section?" element={<LibraryPage />} />
                       <Route
                         path="/playlists"

@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowDownAZ,
+  ArrowLeft,
   ArrowUpZA,
+  ExternalLink,
   Grid3X3,
   Heart,
   List,
@@ -70,6 +72,16 @@ const formatDuration = (durationMs) => {
   );
 };
 
+const formatLongDuration = (durationMs) => {
+  const seconds = Math.max(0, Math.floor(Number(durationMs || 0) / 1000));
+  if (!seconds) return "";
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  return hours
+    ? hours + "h " + (minutes % 60) + "m"
+    : minutes + "m " + (seconds % 60) + "s";
+};
+
 const entityMatches = (entity, query) => {
   if (!query) return true;
   return [entity?.name, entity?.title, entity?.artistName, entity?.albumArtist, entity?.albumName]
@@ -123,7 +135,11 @@ function EmptyState({ title, message }) {
 
 function LibraryPage() {
   const navigate = useNavigate();
-  const { section: routeSection } = useParams();
+  const {
+    section: routeSection,
+    albumId: routeAlbumId,
+    artistId: routeArtistId,
+  } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const { bootstrap } = useAuth();
   const { showError } = useToast();
@@ -137,7 +153,6 @@ function LibraryPage() {
   const [viewMode, setViewMode] = useState("grid");
   const [searchOpen, setSearchOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [selectedAlbumId, setSelectedAlbumId] = useState(null);
   const [covers, setCovers] = useState({});
   const [pendingFavorite, setPendingFavorite] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -146,9 +161,11 @@ function LibraryPage() {
   const [retryKey, setRetryKey] = useState(0);
 
   const section = LIBRARY_VIEW_IDS.has(routeSection) ? routeSection : DEFAULT_LIBRARY_VIEW;
+  const isDetail = Boolean(routeAlbumId || routeArtistId);
   const tab = section === "home" || section === "album-artists" ? "artists" : section;
   const selectedGenre = searchParams.get("genre") || "";
   const forcePreview = import.meta.env.DEV && searchParams.get("preview") === "1";
+  const previewQuery = forcePreview ? "?preview=1" : "";
   const sectionLabel = LIBRARY_VIEWS.find((view) => view.id === section)?.label || "Library";
   const librarySource = useMemo(() => ({ type: "native-library", id: "library" }), []);
   const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -175,7 +192,6 @@ function LibraryPage() {
     setViewMode(section === "tracks" || section === "genres" ? "list" : "grid");
     setSearchOpen(false);
     setFiltersOpen(false);
-    setSelectedAlbumId(null);
   }, [section]);
 
   useEffect(() => {
@@ -420,12 +436,8 @@ function LibraryPage() {
     [library.albums],
   );
   const homeTracks = library.tracks.slice(0, 12);
-  const selectedAlbum =
-    selectedAlbumId == null ? null : albumsById.get(String(selectedAlbumId)) || null;
-  const selectedAlbumTracks = useMemo(
-    () => getAlbumTracks(selectedAlbum),
-    [getAlbumTracks, selectedAlbum],
-  );
+  const libraryAlbum = routeAlbumId ? albumsById.get(String(routeAlbumId)) || null : null;
+  const libraryArtist = routeArtistId ? artistsById.get(String(routeArtistId)) || null : null;
 
   const coverItems = useMemo(() => {
     const items = library.albums
@@ -583,6 +595,13 @@ function LibraryPage() {
   );
 
   const handleArtistOpen = (artist) => {
+    if (!artist?.id) return;
+    navigate("/library/artist/" + encodeURIComponent(artist.id) + previewQuery, {
+      state: { artistName: artist.name, libraryArtist: artist },
+    });
+  };
+
+  const handleDiscoverArtistOpen = (artist) => {
     if (!artist?.mbid) return;
     navigate("/artist/" + encodeURIComponent(artist.mbid), {
       state: { artistName: artist.name, inLibrary: true, libraryArtist: artist },
@@ -590,6 +609,13 @@ function LibraryPage() {
   };
 
   const handleAlbumOpen = (album) => {
+    if (!album?.id) return;
+    navigate("/library/album/" + encodeURIComponent(album.id) + previewQuery, {
+      state: { albumTitle: album.title, libraryAlbum: album },
+    });
+  };
+
+  const handleDiscoverAlbumOpen = (album) => {
     const artist = getArtistForAlbum(album);
     if (artist?.mbid && (album?.releaseGroupMbid || album?.mbid)) {
       navigateToLibraryAlbum(navigate, album, {
@@ -597,27 +623,23 @@ function LibraryPage() {
         artistName: artist.name,
         coverUrl: getAlbumCover(album),
       });
-      return;
     }
-    setSelectedAlbumId(album?.id || null);
   };
 
   const favoriteCount =
     favoriteArtists.length + favoriteAlbums.length + favoriteTracks.length;
   const activeCount =
-    selectedAlbum != null
-      ? selectedAlbumTracks.length
-      : section === "home"
-        ? library.artists.length + library.albums.length + library.tracks.length
-        : section === "favorites"
-          ? favoriteCount
-          : tab === "artists"
-            ? sortedArtists.length
-            : tab === "albums"
-              ? sortedAlbums.length
-              : tab === "tracks"
-                ? sortedTracks.length
-                : sortedGenres.length;
+    section === "home"
+      ? library.artists.length + library.albums.length + library.tracks.length
+      : section === "favorites"
+        ? favoriteCount
+        : tab === "artists"
+          ? sortedArtists.length
+          : tab === "albums"
+            ? sortedAlbums.length
+            : tab === "tracks"
+              ? sortedTracks.length
+              : sortedGenres.length;
   const sortOptions =
     section === "albums"
       ? [
@@ -637,7 +659,7 @@ function LibraryPage() {
             : [];
 
   const collectionTracks = useMemo(() => {
-    if (selectedAlbum) return selectedAlbumTracks;
+    if (libraryAlbum) return getAlbumTracks(libraryAlbum);
     if (section === "favorites") return favoriteTracks;
     if (section === "albums") return sortedAlbums.flatMap(getAlbumTracks);
     if (section === "tracks") return sortedTracks;
@@ -647,10 +669,9 @@ function LibraryPage() {
     favoriteTracks,
     filteredTracks,
     getAlbumTracks,
+    libraryAlbum,
     library.tracks,
     section,
-    selectedAlbum,
-    selectedAlbumTracks,
     selectedGenre,
     sortedAlbums,
     sortedTracks,
@@ -731,7 +752,7 @@ function LibraryPage() {
               <span>{track.title || "Unknown Track"}</span>
               <small>{artistName}</small>
             </button>
-            {artist?.mbid ? (
+            {artist ? (
               <button
                 type="button"
                 className="native-library-track__link native-library-track__artist"
@@ -775,7 +796,6 @@ function LibraryPage() {
         type="button"
         className="native-library-card__cover native-library-card__cover--round"
         onClick={() => handleArtistOpen(artist)}
-        disabled={!artist.mbid}
         aria-label={"Open " + (artist.name || "artist")}
       >
         {artist.mbid ? (
@@ -798,7 +818,6 @@ function LibraryPage() {
             type="button"
             className="native-library-card__title"
             onClick={() => handleArtistOpen(artist)}
-            disabled={!artist.mbid}
             title={artist.name}
           >
             {artist.name || "Unknown Artist"}
@@ -865,7 +884,7 @@ function LibraryPage() {
               onClick={() => toggleFavorite("album", album)}
             />
           </div>
-          {artist?.mbid ? (
+          {artist ? (
             <button
               type="button"
               className="native-library-card__artist"
@@ -977,60 +996,218 @@ function LibraryPage() {
     </div>
   );
 
-  const renderAlbumDetail = () => {
-    const artist = getArtistForAlbum(selectedAlbum);
-    const availability = albumAvailability(selectedAlbum);
+  const renderLibraryAlbumDetail = () => {
+    if (!libraryAlbum) return null;
+    const artist = getArtistForAlbum(libraryAlbum);
+    const albumTracks = getAlbumTracks(libraryAlbum);
+    const availability = albumAvailability(libraryAlbum);
+    const durationMs = albumTracks.reduce(
+      (total, track) => total + Number(firstAvailableFile(track)?.durationMs || 0),
+      0,
+    );
     return (
-      <section className="native-library-album-detail">
+      <section className="native-library-detail">
         <button
           type="button"
           className="native-library-back"
-          onClick={() => setSelectedAlbumId(null)}
+          onClick={() => navigate("/library/albums" + previewQuery)}
         >
-          Back to {sectionLabel}
+          <ArrowLeft aria-hidden="true" /> Back to Albums
         </button>
-        <div className="native-library-album-detail__header">
-          <div className="native-library-album-detail__cover">
-            <Cover src={getAlbumCover(selectedAlbum)} label={selectedAlbum.title} />
+        <div className="native-library-detail__hero">
+          <div className="native-library-detail__cover">
+            <Cover src={getAlbumCover(libraryAlbum)} label={libraryAlbum.title} />
           </div>
-          <div>
+          <div className="native-library-detail__body">
             <p className="native-library-kicker">Album</p>
-            <h2>{selectedAlbum.title}</h2>
-            {artist?.mbid ? (
+            <h2>{libraryAlbum.title || "Unknown Album"}</h2>
+            {artist ? (
               <button
                 type="button"
-                className="native-library-card__artist"
+                className="native-library-detail__artist"
                 onClick={() => handleArtistOpen(artist)}
               >
                 {artist.name}
               </button>
             ) : (
-              <p>{artist?.name || selectedAlbum.albumArtist || "Unknown Artist"}</p>
+              <p>{libraryAlbum.albumArtist || "Unknown Artist"}</p>
             )}
-            <p className="native-library-card__meta">
-              {yearOf(selectedAlbum.releaseDate)
-                ? yearOf(selectedAlbum.releaseDate) + " · "
-                : ""}
-              {availability.available}/{availability.total} available
+            <p className="native-library-detail__meta">
+              {[yearOf(libraryAlbum.releaseDate), availability.total + " tracks", formatLongDuration(durationMs)]
+                .filter(Boolean)
+                .join(" · ")}
             </p>
-            <button
-              type="button"
-              className="native-library-page-play"
-              onClick={() => playTracks(selectedAlbumTracks)}
-              disabled={!selectedAlbumTracks.some((track) => firstAvailableFile(track))}
-            >
-              <Play aria-hidden="true" fill="currentColor" /> Play
-            </button>
+            <div className="native-library-detail__actions">
+              <button
+                type="button"
+                className="native-library-page-play"
+                onClick={() => playTracks(albumTracks)}
+                disabled={!albumTracks.some((track) => firstAvailableFile(track))}
+              >
+                <Play aria-hidden="true" fill="currentColor" /> Play
+              </button>
+              <FavoriteButton
+                active={favoriteIds.has(favoriteId("album", libraryAlbum))}
+                pending={pendingFavorite === favoriteId("album", libraryAlbum)}
+                label={libraryAlbum.title || "album"}
+                onClick={() => toggleFavorite("album", libraryAlbum)}
+              />
+              {artist?.mbid && (libraryAlbum.releaseGroupMbid || libraryAlbum.mbid) && (
+                <button
+                  type="button"
+                  className="native-library-detail__discover"
+                  onClick={() => handleDiscoverAlbumOpen(libraryAlbum)}
+                >
+                  <ExternalLink aria-hidden="true" /> Discover
+                </button>
+              )}
+            </div>
           </div>
         </div>
-        {renderTrackList(selectedAlbumTracks, selectedAlbum.title + " tracks")}
+        <section className="native-library-detail__section">
+          <div className="native-library-detail__section-heading">
+            <h3>Tracks</h3>
+            <span>{availability.total}</span>
+          </div>
+          {renderTrackList(albumTracks, libraryAlbum.title + " tracks")}
+        </section>
       </section>
     );
   };
 
-  const content = selectedAlbum
-    ? renderAlbumDetail()
-    : section === "home"
+  const renderLibraryArtistDetail = () => {
+    if (!libraryArtist) return null;
+    const artistAlbums = library.albums.filter(
+      (album) => String(album.artistId) === String(libraryArtist.id),
+    );
+    const artistTracks = artistAlbums.flatMap(getAlbumTracks);
+    return (
+      <section className="native-library-detail">
+        <button
+          type="button"
+          className="native-library-back"
+          onClick={() => navigate("/library/artists" + previewQuery)}
+        >
+          <ArrowLeft aria-hidden="true" /> Back to Artists
+        </button>
+        <div className="native-library-detail__hero native-library-detail__hero--artist">
+          <div className="native-library-detail__cover">
+            {libraryArtist.mbid ? (
+              <ArtistImage
+                mbid={libraryArtist.mbid}
+                artistName={libraryArtist.name}
+                alt={libraryArtist.name || ""}
+                className="native-library-detail__artist-image"
+                showLoading={false}
+                enablePreviewPlayback={false}
+                isInLibrary
+              />
+            ) : (
+              <Cover label={libraryArtist.name} />
+            )}
+          </div>
+          <div className="native-library-detail__body">
+            <p className="native-library-kicker">Artist</p>
+            <h2>{libraryArtist.name || "Unknown Artist"}</h2>
+            <p className="native-library-detail__meta">
+              {artistAlbums.length} album{artistAlbums.length === 1 ? "" : "s"}
+            </p>
+            <div className="native-library-detail__actions">
+              <button
+                type="button"
+                className="native-library-page-play"
+                onClick={() => playTracks(artistTracks)}
+                disabled={!artistTracks.some((track) => firstAvailableFile(track))}
+              >
+                <Play aria-hidden="true" fill="currentColor" /> Play
+              </button>
+              <FavoriteButton
+                active={favoriteIds.has(favoriteId("artist", libraryArtist))}
+                pending={pendingFavorite === favoriteId("artist", libraryArtist)}
+                label={libraryArtist.name || "artist"}
+                onClick={() => toggleFavorite("artist", libraryArtist)}
+              />
+              {libraryArtist.mbid && (
+                <button
+                  type="button"
+                  className="native-library-detail__discover"
+                  onClick={() => handleDiscoverArtistOpen(libraryArtist)}
+                >
+                  <ExternalLink aria-hidden="true" /> Discover
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+        <section className="native-library-detail__section">
+          <div className="native-library-detail__section-heading">
+            <h3>Albums</h3>
+            <span>{artistAlbums.length}</span>
+          </div>
+          {artistAlbums.length ? (
+            <div className="native-library-grid">{artistAlbums.map(renderAlbumCard)}</div>
+          ) : (
+            <EmptyState title="No albums" message="No indexed albums belong to this artist." />
+          )}
+        </section>
+        <section className="native-library-detail__section">
+          <div className="native-library-detail__section-heading">
+            <h3>Tracks</h3>
+            <span>{artistTracks.length}</span>
+          </div>
+          {artistTracks.length ? (
+            renderTrackList(artistTracks, libraryArtist.name + " tracks")
+          ) : (
+            <EmptyState title="No tracks" message="No indexed tracks belong to this artist." />
+          )}
+        </section>
+      </section>
+    );
+  };
+
+  const renderLibraryDetail = () =>
+    libraryAlbum ? renderLibraryAlbumDetail() : renderLibraryArtistDetail();
+
+  const providerWarning = bootstrap?.lidarr?.circuitOpen === true;
+
+  if (isDetail) {
+    return (
+      <main className="library-page native-library-page">
+        {providerWarning && (
+          <p className="native-library-notice" role="status">
+            Lidarr is unavailable. Showing the last indexed library.
+          </p>
+        )}
+        {loading && (
+          <div className="native-library-state" role="status">
+            Loading library…
+          </div>
+        )}
+        {!loading && error && (
+          <div className="native-library-state" role="alert">
+            <strong>Library unavailable</strong>
+            <span>{error}</span>
+            <button
+              type="button"
+              className="native-library-state__action"
+              onClick={() => setRetryKey((value) => value + 1)}
+            >
+              Try again
+            </button>
+          </div>
+        )}
+        {!loading && !error && !libraryAlbum && !libraryArtist && (
+          <EmptyState title="Not found" message="This library item is no longer indexed." />
+        )}
+        {!loading && !error && (libraryAlbum || libraryArtist) && (
+          <div className="native-library-content">{renderLibraryDetail()}</div>
+        )}
+      </main>
+    );
+  }
+
+  const content =
+    section === "home"
       ? renderHome()
       : section === "favorites"
         ? renderFavorites()
@@ -1059,16 +1236,12 @@ function LibraryPage() {
               ? renderTrackList(sortedTracks, "Library tracks")
               : renderGenres();
 
-  const providerWarning = bootstrap?.lidarr?.circuitOpen === true;
-  const pageTitle =
-    selectedAlbum ? selectedAlbum.title : section === "home" ? "Library" : sectionLabel;
+  const pageTitle = section === "home" ? "Library" : sectionLabel;
   const pageCount =
-    selectedAlbum != null
-      ? selectedAlbumTracks.length
-      : section === "home"
-        ? library.artists.length + library.albums.length + library.tracks.length
-        : activeCount;
-  const showToolbar = !selectedAlbum && section !== "home";
+    section === "home"
+      ? library.artists.length + library.albums.length + library.tracks.length
+      : activeCount;
+  const showToolbar = section !== "home";
   const hasActiveFilters = Boolean(selectedGenre);
 
   return (
@@ -1287,7 +1460,7 @@ function LibraryPage() {
           </button>
         </div>
       )}
-      {!loading && !error && activeCount === 0 && !selectedAlbum && (
+      {!loading && !error && activeCount === 0 && (
         <EmptyState
           title={
             query || selectedGenre
@@ -1303,7 +1476,7 @@ function LibraryPage() {
           }
         />
       )}
-      {!loading && !error && (activeCount > 0 || selectedAlbum) && (
+      {!loading && !error && activeCount > 0 && (
         <div className="native-library-content">{content}</div>
       )}
     </main>
