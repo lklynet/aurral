@@ -740,8 +740,8 @@ export function SettingsUsersTab({
                             return;
                           }
                           setSavingEdit(true);
-                          try {
-                            await updateUser(editUser.id, {
+                          const applyEdit = () =>
+                            updateUser(editUser.id, {
                               ...(editPassword ? { password: editPassword } : {}),
                               permissions: editPermissions,
                               status: editStatus,
@@ -749,14 +749,23 @@ export function SettingsUsersTab({
                                 ? { allowIdentityAdoption: editAllowAdoption }
                                 : {}),
                             });
+                          try {
+                            try {
+                              await applyEdit();
+                            } catch (err) {
+                              if (!isReauthRequiredError(err) || !(await promptReauth())) throw err;
+                              await applyEdit();
+                            }
                             showSuccess("User updated");
                             setEditUser(null);
                             await refreshUsers();
                             await refreshSettingsData();
                           } catch (err) {
-                            showError(
-                              err.response?.data?.error || err.message || "Failed to update",
-                            );
+                            if (!isReauthRequiredError(err)) {
+                              showError(
+                                err.response?.data?.error || err.message || "Failed to update",
+                              );
+                            }
                           } finally {
                             setSavingEdit(false);
                           }
