@@ -447,6 +447,7 @@ export function FlowTracksPanel({
   showPlaybackControls = true,
   hideAlbumColumn = false,
   hideStatusColumn = false,
+  hideQualityColumn = false,
   allowBulkEdit = false,
   onBulkDelete,
   onBulkReSearch,
@@ -796,9 +797,11 @@ export function FlowTracksPanel({
                     className="flow-page__tracks-table-status-head"
                   />
                 )}
-                <th className="flow-page__tracks-table-quality-head" scope="col">
-                  Quality
-                </th>
+                {hideQualityColumn ? null : (
+                  <th className="flow-page__tracks-table-quality-head" scope="col">
+                    Quality
+                  </th>
+                )}
                 <th
                   className="flow-page__tracks-table-actions-head"
                   aria-hidden="true"
@@ -830,7 +833,7 @@ export function FlowTracksPanel({
                 const isReSearching = reSearchingTrackIds[track.id] === true;
                 const isDeleting = deletingTrackId === track.id;
                 const isCurrent = track.id === currentTrackId && isCurrentPlaying;
-                const quality = getTrackQualityMeta(track);
+                const quality = hideQualityColumn ? null : getTrackQualityMeta(track);
                 return (
                   <tr
                     key={track.id}
@@ -920,14 +923,16 @@ export function FlowTracksPanel({
                         <TrackStatusDot status={track.status} />
                       </td>
                     )}
-                    <td className="flow-page__tracks-table-quality-cell">
-                      <span className="flow-page__tracks-table-cell-text">{quality.label}</span>
-                      {quality.state ? (
-                        <span className={`flow-page__quality-state flow-page__quality-state--${track.qualityState}`}>
-                          {quality.state}
-                        </span>
-                      ) : null}
-                    </td>
+                    {hideQualityColumn ? null : (
+                      <td className="flow-page__tracks-table-quality-cell">
+                        <span className="flow-page__tracks-table-cell-text">{quality.label}</span>
+                        {quality.state ? (
+                          <span className={`flow-page__quality-state flow-page__quality-state--${track.qualityState}`}>
+                            {quality.state}
+                          </span>
+                        ) : null}
+                      </td>
+                    )}
                     <td className="flow-page__tracks-table-actions-cell">
                       {editMode ? null : (
                       <div className="flow-page__tracks-actions">

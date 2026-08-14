@@ -7538,8 +7538,7 @@ textarea {
   line-height: 1;
 }
 
-.native-library-section-heading button,
-.native-library-back {
+.native-library-section-heading button {
   border: 0;
   padding: 0.25rem 0;
   background: transparent;
@@ -7550,9 +7549,7 @@ textarea {
 }
 
 .native-library-section-heading button:hover,
-.native-library-section-heading button:focus-visible,
-.native-library-back:hover,
-.native-library-back:focus-visible {
+.native-library-section-heading button:focus-visible {
   color: var(--aurral-text);
 }
 
@@ -7784,6 +7781,33 @@ textarea {
 .native-library-section-heading span {
   color: var(--aurral-text-subtle);
   font-size: 0.68rem;
+}
+
+.native-library-genre-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.native-library-genre-card {
+  display: flex;
+  min-width: 0;
+  min-height: 2.4rem;
+  align-items: center;
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--aurral-radius-sm);
+  background: var(--aurral-surface-raised);
+  color: var(--aurral-text-muted);
+  font-size: 0.74rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.native-library-genre-card:hover,
+.native-library-genre-card:focus-visible {
+  background: var(--aurral-surface-hover);
+  color: var(--aurral-text);
 }
 
 .native-library-grid {
@@ -8171,7 +8195,7 @@ button.native-library-card__artist:focus-visible {
 .native-library-track__time {
   color: var(--aurral-text-subtle);
   font-variant-numeric: tabular-nums;
-  text-align: right;
+  text-align: center;
 }
 
 .native-library-track__time.is-missing {
@@ -8446,18 +8470,6 @@ button.native-library-genre-row:focus-visible {
   font-size: 0.68rem;
 }
 
-.native-library-back {
-  justify-self: start;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-
-.native-library-back svg {
-  width: 0.8rem;
-  height: 0.8rem;
-}
-
 :where(
   .native-library-page button,
   .native-library-page input,
@@ -8549,6 +8561,10 @@ button.native-library-genre-row:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .native-library-genre-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .native-library-grid.is-list .native-library-card {
     grid-template-columns: 3rem minmax(0, 1fr);
   }
@@ -8587,7 +8603,8 @@ button.native-library-genre-row:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .native-library-card__play {
+  .native-library-card__play,
+  .native-library-genre-card {
     transition: none;
   }
 }

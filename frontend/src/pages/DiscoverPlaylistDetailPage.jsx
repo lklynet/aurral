@@ -327,6 +327,7 @@ export default function DiscoverPlaylistDetailPage() {
         showPlaybackControls={false}
         hideAlbumColumn={!hasAlbumMetadata}
         hideStatusColumn
+        hideQualityColumn
         emptyMessage="No tracks in this playlist."
         playlistTriggerVariant="expand"
         playlists={sharedPlaylists}

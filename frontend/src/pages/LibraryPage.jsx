@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowDownAZ,
   ArrowLeft,
@@ -570,11 +570,27 @@ function LibraryPage() {
         .slice(0, 12),
     [library.albums],
   );
+  const homeGenres = useMemo(
+    () =>
+      [...genreStats]
+        .sort(
+          (left, right) =>
+            right.tracks - left.tracks ||
+            right.albums - left.albums ||
+            left.name.localeCompare(right.name),
+        )
+        .slice(0, 12),
+    [genreStats],
+  );
   const homeTracks = library.tracks.slice(0, 12);
   const libraryAlbum = routeAlbumId ? albumsById.get(String(routeAlbumId)) || null : null;
   const libraryArtist = routeArtistId ? artistsById.get(String(routeArtistId)) || null : null;
   useDocumentTitle(
-    isDetail ? libraryAlbum?.title || libraryArtist?.name || "Library" : "Library",
+    isDetail
+      ? libraryAlbum?.title || libraryArtist?.name || "Library"
+      : section === "albums" && selectedGenre
+        ? selectedGenre
+        : "Library",
   );
 
   const coverItems = useMemo(() => {
@@ -847,7 +863,7 @@ function LibraryPage() {
         <span>Title</span>
         <span>Artist</span>
         <span>Album</span>
-        <span>Time</span>
+        <span className="native-library-track__time">Time</span>
         <span />
       </div>
       <div role="list" aria-label={label}>
@@ -1057,7 +1073,7 @@ function LibraryPage() {
     );
   };
 
-  const renderSectionHeader = (title, count, path = "") => (
+  const renderSectionHeader = (title, count, path = "", actionLabel = "View all") => (
     <div className="native-library-section-heading">
       <div>
         <h2>{title}</h2>
@@ -1065,7 +1081,7 @@ function LibraryPage() {
       </div>
       {path && (
         <button type="button" onClick={() => navigate(path)}>
-          View all
+          {actionLabel}
         </button>
       )}
     </div>
@@ -1073,6 +1089,26 @@ function LibraryPage() {
 
   const renderHome = () => (
     <div className="native-library-home">
+      {homeGenres.length > 0 && (
+        <section className="native-library-section">
+          {renderSectionHeader("Genres", null, "/library/genres" + previewQuery, "View more")}
+          <div className="native-library-genre-grid">
+            {homeGenres.map((genre) => (
+              <Link
+                className="native-library-genre-card"
+                key={genre.name}
+                to={
+                  "/library/albums?genre=" +
+                  encodeURIComponent(genre.name) +
+                  (forcePreview ? "&preview=1" : "")
+                }
+              >
+                {genre.name}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
       {homeAlbums.length > 0 && (
         <section className="native-library-section">
           {renderSectionHeader("Recently added", library.albums.length, "/library/albums")}
@@ -1166,13 +1202,6 @@ function LibraryPage() {
     );
     return (
       <section className="native-library-detail">
-        <button
-          type="button"
-          className="native-library-back"
-          onClick={() => navigate("/library/albums" + previewQuery)}
-        >
-          <ArrowLeft aria-hidden="true" /> Back to Albums
-        </button>
         <div className="native-library-detail__hero">
           <div className="native-library-detail__cover">
             <Cover src={getAlbumCover(libraryAlbum)} label={libraryAlbum.title} />
@@ -1242,13 +1271,6 @@ function LibraryPage() {
     const artistTracks = artistAlbums.flatMap(getAlbumTracks);
     return (
       <section className="native-library-detail">
-        <button
-          type="button"
-          className="native-library-back"
-          onClick={() => navigate("/library/artists" + previewQuery)}
-        >
-          <ArrowLeft aria-hidden="true" /> Back to Artists
-        </button>
         <div className="native-library-detail__hero native-library-detail__hero--artist">
           <div className="native-library-detail__cover">
             {libraryArtist.mbid ? (
@@ -1400,7 +1422,12 @@ function LibraryPage() {
               ? renderTrackList(sortedTracks, "Library tracks")
               : renderGenres();
 
-  const pageTitle = section === "home" ? "Library" : sectionLabel;
+  const pageTitle =
+    section === "home"
+      ? "Library"
+      : section === "albums" && selectedGenre
+        ? selectedGenre
+        : sectionLabel;
   const totalPages =
     pageData?.kind === tab ? Math.ceil(pageData.total / pageData.pageSize) : 0;
   const pageCount =
