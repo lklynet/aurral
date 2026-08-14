@@ -211,17 +211,18 @@ const toArtistSummary = (artist) => {
   };
 };
 
+const indexLibrary = (library) => ({
+  ...library,
+  artistsById: new Map(library.artists.map((artist) => [artist.id, artist])),
+  albumsById: new Map(library.albums.map((album) => [album.id, album])),
+  tracksById: new Map(library.tracks.map((track) => [track.id, track])),
+  artistsByIdentity: new Map(library.artists.map((artist) => [artist.identityKey, artist])),
+  albumsByIdentity: new Map(library.albums.map((album) => [album.identityKey, album])),
+  tracksByIdentity: new Map(library.tracks.map((track) => [track.identityKey, track])),
+});
+
 function readLibrary() {
-  const library = getCanonicalLibrary({ availableOnly: false });
-  return {
-    ...library,
-    artistsById: new Map(library.artists.map((artist) => [artist.id, artist])),
-    albumsById: new Map(library.albums.map((album) => [album.id, album])),
-    tracksById: new Map(library.tracks.map((track) => [track.id, track])),
-    artistsByIdentity: new Map(library.artists.map((artist) => [artist.identityKey, artist])),
-    albumsByIdentity: new Map(library.albums.map((album) => [album.identityKey, album])),
-    tracksByIdentity: new Map(library.tracks.map((track) => [track.identityKey, track])),
-  };
+  return indexLibrary(getCanonicalLibrary({ availableOnly: false }));
 }
 
 function findCanonical(library, parsed) {
@@ -562,11 +563,11 @@ export function unstarMany(user, values) {
   return true;
 }
 
-export function getStarred(user) {
+const starredRows = (user) => (user?.id ? getStarsStmt.all(user.id) : []);
+
+const buildStarred = (library, rows) => {
   const starred = { album: [], artist: [], song: [] };
-  if (!user?.id) return starred;
-  const library = readLibrary();
-  for (const row of getStarsStmt.all(user.id)) {
+  for (const row of rows) {
     const parsed = { kind: row.entity_kind, key: row.entity_key };
     const entity = findCanonical(library, parsed);
     if (!entity) continue;
@@ -575,6 +576,18 @@ export function getStarred(user) {
     if (parsed.kind === "song") starred.song.push(toSong(library, entity));
   }
   return starred;
+};
+
+export function getStarredWithLibrary(user) {
+  const rows = starredRows(user);
+  const library = getCanonicalLibrary({
+    favoriteKeys: rows.map((row) => ({ kind: row.entity_kind, key: row.entity_key })),
+  });
+  return { starred: buildStarred(indexLibrary(library), rows), library };
+}
+
+export function getStarred(user) {
+  return getStarredWithLibrary(user).starred;
 }
 
 export function getArtistInfo(value) {

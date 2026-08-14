@@ -59,6 +59,29 @@ test.before(() => {
     format: "flac",
     available: true,
   });
+  const otherArtist = upsertLibraryArtist({
+    identityKey: "other-artist",
+    name: "Other Artist",
+  });
+  const otherAlbum = upsertLibraryAlbum({
+    identityKey: "other-album",
+    artistId: otherArtist.id,
+    title: "Other Album",
+    albumArtist: otherArtist.name,
+  });
+  const otherTrack = upsertLibraryTrack({
+    identityKey: "other-track",
+    title: "Other Track",
+    artistName: otherArtist.name,
+  });
+  linkLibraryAlbumTrack({ albumId: otherAlbum.id, trackId: otherTrack.id, trackNumber: 1 });
+  upsertLibraryMediaFile({
+    trackId: otherTrack.id,
+    source: "aurral",
+    path: "/library/Other Artist/Other Album/01 Other Track.flac",
+    format: "flac",
+    available: true,
+  });
 });
 
 test.after(async () => {
@@ -109,6 +132,15 @@ test("native favorites reuse Subsonic star identity and return current favorites
   assert.deepEqual(getResponse.body.artist.map((entry) => entry.id), [target]);
 });
 
+test("native favorites include the canonical favorite subset", () => {
+  const response = responseFor();
+  getRoute("GET /favorites")({ user }, response);
+
+  assert.deepEqual(response.body.library.artists.map((entry) => entry.name), ["Favorite Artist"]);
+  assert.deepEqual(response.body.library.albums.map((entry) => entry.title), ["Favorite Album"]);
+  assert.deepEqual(response.body.library.tracks.map((entry) => entry.title), ["Favorite Track"]);
+});
+
 test("canonical library pages return bounded collection responses", () => {
   const response = responseFor();
   getRoute("GET /canonical")(
@@ -120,7 +152,7 @@ test("canonical library pages return bounded collection responses", () => {
   assert.equal(response.body.kind, "tracks");
   assert.equal(response.body.page, 1);
   assert.equal(response.body.pageSize, 1);
-  assert.equal(response.body.total, 1);
+  assert.equal(response.body.total, 2);
   assert.equal(response.body.items.length, 1);
   assert.equal(response.body.items[0].artistName, "Favorite Artist");
 });

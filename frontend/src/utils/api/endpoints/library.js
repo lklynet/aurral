@@ -6,10 +6,12 @@ import {
   libraryLookupCache,
   setLibraryLookupCacheEntry,
   buildAuthenticatedApiUrl,
+  getRequestToken,
 } from "../core.js";
 
 const buildStreamUrl = (path) => buildAuthenticatedApiUrl(path);
 const SLOW_LIBRARY_REQUEST_TIMEOUT_MS = 90000;
+const LIBRARY_FAVORITES_CACHE_TTL_MS = 30000;
 
 export const getLibraryArtists = (options = {}) =>
   getData("/library/artists", options);
@@ -43,11 +45,46 @@ export const getCanonicalLibraryPage = (options = {}) =>
     signal: options.signal,
   });
 
-export const getLibraryFavorites = (options = {}) =>
-  getData("/library/favorites", { signal: options.signal });
+let libraryFavoritesCache = null;
+let libraryFavoritesRequest = null;
 
-export const updateLibraryFavorites = (ids, starred) =>
-  postData("/library/favorites", { ids, starred });
+export const getLibraryFavorites = () => {
+  const token = getRequestToken();
+  if (
+    libraryFavoritesCache?.token === token &&
+    Date.now() < libraryFavoritesCache.expiresAt
+  ) {
+    return Promise.resolve(libraryFavoritesCache.data);
+  }
+  if (libraryFavoritesRequest?.token === token) return libraryFavoritesRequest.promise;
+  let promise;
+  promise = getData("/library/favorites")
+    .then((data) => {
+      if (getRequestToken() === token) {
+        libraryFavoritesCache = {
+          token,
+          data,
+          expiresAt: Date.now() + LIBRARY_FAVORITES_CACHE_TTL_MS,
+        };
+      }
+      return data;
+    })
+    .finally(() => {
+      if (libraryFavoritesRequest?.promise === promise) libraryFavoritesRequest = null;
+    });
+  libraryFavoritesRequest = { token, promise };
+  return promise;
+};
+
+export const updateLibraryFavorites = async (ids, starred) => {
+  const data = await postData("/library/favorites", { ids, starred });
+  libraryFavoritesCache = {
+    token: getRequestToken(),
+    data,
+    expiresAt: Date.now() + LIBRARY_FAVORITES_CACHE_TTL_MS,
+  };
+  return data;
+};
 
 export const getLibraryArtist = async (mbid) => {
   const artist = await getData(`/library/artists/${mbid}`);

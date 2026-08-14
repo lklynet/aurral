@@ -5,7 +5,11 @@ import {
   getCanonicalLibrary,
   getCanonicalLibraryPage,
 } from "../../../services/libraryQueryService.js";
-import { getStarred, starMany, unstarMany } from "../../../services/subsonicLibraryService.js";
+import {
+  getStarredWithLibrary,
+  starMany,
+  unstarMany,
+} from "../../../services/subsonicLibraryService.js";
 
 const isFilesystemPathKey = (key) => key.toLowerCase().endsWith("path");
 
@@ -92,7 +96,8 @@ export function registerCanonical(router) {
   });
 
   router.get("/favorites", requireAuth, noCache, (req, res) => {
-    res.json(getStarred(req.user));
+    const { starred, library } = getStarredWithLibrary(req.user);
+    res.json({ ...starred, library: toPublicLibrary(library) });
   });
 
   router.post("/favorites", requireAuth, noCache, (req, res) => {
@@ -109,7 +114,8 @@ export function registerCanonical(router) {
     if (!changed) {
       return res.status(400).json({ error: "Invalid favorite target" });
     }
-    return res.json(getStarred(req.user));
+    const { starred, library } = getStarredWithLibrary(req.user);
+    return res.json({ ...starred, library: toPublicLibrary(library) });
   });
 }
 

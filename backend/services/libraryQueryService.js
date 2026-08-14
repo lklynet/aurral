@@ -27,11 +27,21 @@ function createEntity(map, id, value) {
   return map.get(id);
 }
 
-export function getCanonicalLibrary({ source = null, availableOnly = false } = {}) {
+export function getCanonicalLibrary({ source = null, availableOnly = false, favoriteKeys = null } = {}) {
   const sourceFilter = normalizeSource(source);
   const cacheKey = `${sourceFilter || "all"}:${availableOnly === true ? "available" : "all"}`;
-  const cached = libraryCache.get(cacheKey);
-  if (cached) return cached;
+  const favoriteTargets = Array.isArray(favoriteKeys)
+    ? favoriteKeys.filter((target) =>
+        target && ["artist", "album", "song"].includes(target.kind) && String(target.key || "").trim(),
+      )
+    : null;
+  if (favoriteTargets && favoriteTargets.length === 0) {
+    return { artists: [], albums: [], tracks: [] };
+  }
+  if (!favoriteTargets) {
+    const cached = libraryCache.get(cacheKey);
+    if (cached) return cached;
+  }
   const conditions = [];
   const parameters = [];
 
@@ -40,6 +50,33 @@ export function getCanonicalLibrary({ source = null, availableOnly = false } = {
     parameters.push(sourceFilter);
   }
   if (availableOnly === true) conditions.push("media.available = 1");
+  if (favoriteTargets) {
+    const targetQueries = [];
+    const add = (query, kind) => {
+      const keys = favoriteTargets
+        .filter((target) => target.kind === kind)
+        .map((target) => String(target.key).trim());
+      if (!keys.length) return;
+      targetQueries.push(query.replace("?", keys.map(() => "?").join(",")));
+      parameters.push(...keys);
+    };
+    add("SELECT id FROM library_tracks WHERE identity_key IN (?)", "song");
+    add(
+      "SELECT album_track.track_id FROM library_album_tracks AS album_track " +
+        "JOIN library_albums AS album ON album.id = album_track.album_id " +
+        "WHERE album.identity_key IN (?)",
+      "album",
+    );
+    add(
+      "SELECT album_track.track_id FROM library_album_tracks AS album_track " +
+        "JOIN library_albums AS album ON album.id = album_track.album_id " +
+        "JOIN library_artists AS artist ON artist.id = album.artist_id " +
+        "WHERE artist.identity_key IN (?)",
+      "artist",
+    );
+    if (!targetQueries.length) return { artists: [], albums: [], tracks: [] };
+    conditions.push(`media.track_id IN (${targetQueries.join(" UNION ")})`);
+  }
 
   const rows = db
     .prepare(
@@ -177,7 +214,7 @@ export function getCanonicalLibrary({ source = null, availableOnly = false } = {
     albums: [...albums.values()],
     tracks: [...tracks.values()],
   };
-  libraryCache.set(cacheKey, library);
+  if (!favoriteTargets) libraryCache.set(cacheKey, library);
   return library;
 }
 

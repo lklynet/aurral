@@ -24,7 +24,6 @@ import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.js";
 import {
-  getCanonicalLibrary,
   getCanonicalLibraryPage,
   getLibraryFavorites,
   updateLibraryFavorites,
@@ -277,7 +276,7 @@ function LibraryPage() {
             }),
           ])
       : section === "favorites"
-        ? getCanonicalLibrary({ signal: controller.signal })
+        ? getLibraryFavorites()
       : section === "home"
         ? Promise.all([
             getCanonicalLibraryPage({
@@ -305,10 +304,16 @@ function LibraryPage() {
             signal: controller.signal,
           });
 
-    Promise.all([pageRequest, getLibraryFavorites({ signal: controller.signal })])
+    const favoritesRequest = section === "favorites"
+      ? Promise.resolve(null)
+      : getLibraryFavorites();
+
+    Promise.all([pageRequest, favoritesRequest])
       .then(([nextData, starred]) => {
         if (controller.signal.aborted) return;
-        const pageResults = Array.isArray(nextData) ? nextData : [nextData];
+        const pageResults = section === "favorites"
+          ? [nextData?.library || { artists: [], albums: [], tracks: [] }]
+          : Array.isArray(nextData) ? nextData : [nextData];
         const normalizedLibrary = pageResults.reduce(
           (result, page) => {
             ["artists", "albums", "tracks"].forEach((kind) => {
@@ -347,9 +352,12 @@ function LibraryPage() {
         }
         setLibrary(usePreview ? libraryPreviewData : normalizedLibrary);
         setIsPreviewLibrary(usePreview);
+        const favoriteData = section === "favorites" ? nextData : starred;
         const nextFavorites = new Set(
           ["artist", "album", "song"].flatMap((kind) =>
-            (Array.isArray(starred?.[kind]) ? starred[kind] : []).map((entry) => entry.id),
+            (Array.isArray(favoriteData?.[kind]) ? favoriteData[kind] : []).map(
+              (entry) => entry.id,
+            ),
           ),
         );
         setFavoriteIds(usePreview ? new Set(libraryPreviewFavorites) : nextFavorites);
