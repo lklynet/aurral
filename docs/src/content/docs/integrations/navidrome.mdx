@@ -3,7 +3,7 @@ title: Navidrome
 description: Connect Navidrome to play Aurral downloads and generated playlists.
 ---
 
-Navidrome is optional. Aurral can browse and play indexed media in the app without Navidrome. Aurral
+Navidrome is optional. Aurral can browse and play indexed media in the app without Navidrome when the canonical file is readable. Aurral
 also creates and updates Navidrome playlists through the Subsonic API when Navidrome is configured.
 Navidrome must be able to read and scan the Aurral download tree for that destination.
 
@@ -13,7 +13,7 @@ Aurral also exposes an authenticated Subsonic server at `/rest/*.view`. It suppo
 
 ## Connect a Subsonic client
 
-Point the client at the Aurral URL and use the Aurral account from onboarding. Feishin can connect with its default token authentication when you use that configured account. Feishin can also use password authentication with `LEGACY_AUTHENTICATION=true`.
+Point the client at the Aurral URL and use the Aurral account from onboarding. Feishin can connect with its default token authentication when you use that configured account. Feishin can also use password authentication when you set `LEGACY_AUTHENTICATION=true` in Feishin's environment, not Aurral's. When Feishin locks server settings, also set `SERVER_LOCK=true` in Feishin's environment.
 
 Aurral accepts password authentication for every Aurral user. Token authentication is limited to the configured account because Aurral stores other user passwords as one-way hashes.
 

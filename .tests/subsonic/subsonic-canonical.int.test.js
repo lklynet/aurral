@@ -156,6 +156,9 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.equal(song.contentType, "audio/flac");
   assert.equal(song.path, song.id);
   assert.deepEqual(song.artists, [{ id: artist.id, name: "Canonical Artist" }]);
+
+  const missingArtist = await request("getTopSongs", { artist: "   " });
+  assert.equal(responseJson(missingArtist).error.code, 10);
 });
 
 test("accepts Subsonic token auth for the configured Aurral account", async () => {

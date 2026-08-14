@@ -859,8 +859,14 @@ async function checkNativePlaybackSection() {
   const sample = tracks.slice(0, PLAYLIST_FILE_HEALTH_SAMPLE_LIMIT);
   const missing = [];
   for (const track of sample) {
-    const file = track.files?.find((entry) => entry.available);
-    if (!file?.path || !(await checkPathReadable(file.path, file.source))) {
+    let readable = false;
+    for (const file of track.files || []) {
+      if (file.available && file.path && (await checkPathReadable(file.path, file.source))) {
+        readable = true;
+        break;
+      }
+    }
+    if (!readable) {
       missing.push(track.title || "Unknown Track");
     }
   }

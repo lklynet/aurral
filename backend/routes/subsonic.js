@@ -274,9 +274,11 @@ async function handleSubsonicRequest(req, res) {
     return sendResponse(res, format, "ok", null, { starred: getStarred() });
   }
   if (method === "gettopsongs") {
+    const artist = String(getParameter(req, "artist") || "").trim();
+    if (!artist) return sendError(res, format, 10, "Required parameter is missing: artist");
     return sendResponse(res, format, "ok", null, {
       topSongs: {
-        song: getTopSongs(getParameter(req, "artist"), { count: getParameter(req, "count") }),
+        song: getTopSongs(artist, { count: getParameter(req, "count") }),
       },
     });
   }

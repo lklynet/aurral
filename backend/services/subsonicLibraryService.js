@@ -375,18 +375,69 @@ export function getAlbumList(options = {}) {
   if (type === "byYear" || options.fromYear || options.toYear) {
     const fromYear = Number.parseInt(options.fromYear, 10);
     const toYear = Number.parseInt(options.toYear, 10);
+    const lowerYear = Number.isFinite(fromYear) && Number.isFinite(toYear)
+      ? Math.min(fromYear, toYear)
+      : fromYear;
+    const upperYear = Number.isFinite(fromYear) && Number.isFinite(toYear)
+      ? Math.max(fromYear, toYear)
+      : toYear;
     albums = albums.filter((album) => {
       const releaseYear = year(album.releaseDate) || 0;
-      return (!Number.isFinite(fromYear) || releaseYear >= fromYear) &&
-        (!Number.isFinite(toYear) || releaseYear <= toYear);
+      return (!Number.isFinite(lowerYear) || releaseYear >= lowerYear) &&
+        (!Number.isFinite(upperYear) || releaseYear <= upperYear);
     });
   }
 
-  albums.sort((left, right) =>
+  const values = new Map(albums.map((album) => [album.id, albumData(library, album).value]));
+  const compareName = (left, right) =>
     `${left.title}\u0000${left.albumArtist}`.localeCompare(
       `${right.title}\u0000${right.albumArtist}`,
-    ),
-  );
+    );
+  const compareArtist = (left, right) =>
+    `${left.albumArtist}\u0000${left.title}`.localeCompare(
+      `${right.albumArtist}\u0000${right.title}`,
+    );
+  const compareReleaseDate = (left, right) => {
+    const leftDate = Date.parse(String(left.releaseDate || ""));
+    const rightDate = Date.parse(String(right.releaseDate || ""));
+    if (!Number.isFinite(leftDate) && !Number.isFinite(rightDate)) return compareName(left, right);
+    if (!Number.isFinite(leftDate)) return 1;
+    if (!Number.isFinite(rightDate)) return -1;
+    return rightDate - leftDate || compareName(left, right);
+  };
+  const compareYear = (left, right) => {
+    const leftYear = year(left.releaseDate) || 0;
+    const rightYear = year(right.releaseDate) || 0;
+    return leftYear - rightYear || compareName(left, right);
+  };
+  const compareGenre = (left, right) =>
+    `${values.get(left.id)?.genre || ""}\u0000${left.title}`.localeCompare(
+      `${values.get(right.id)?.genre || ""}\u0000${right.title}`,
+    );
+
+  if (type === "random") {
+    for (let index = albums.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [albums[index], albums[swapIndex]] = [albums[swapIndex], albums[index]];
+    }
+  } else if (type === "newest" || type === "recent") {
+    albums.sort(compareReleaseDate);
+  } else if (type === "alphabeticalByArtist") {
+    albums.sort(compareArtist);
+  } else if (type === "byYear") {
+    const fromYear = Number.parseInt(options.fromYear, 10);
+    const toYear = Number.parseInt(options.toYear, 10);
+    albums.sort((left, right) => {
+      const comparison = compareYear(left, right);
+      return Number.isFinite(fromYear) && Number.isFinite(toYear) && fromYear > toYear
+        ? -comparison
+        : comparison;
+    });
+  } else if (type === "byGenre") {
+    albums.sort(compareGenre);
+  } else {
+    albums.sort(compareName);
+  }
   const offset = normalizeOffset(options.offset);
   const size = normalizeLimit(options.size);
   return albums.slice(offset, offset + size).map((album) => toAlbumSummary(library, album));
@@ -420,7 +471,24 @@ export function getArtistInfo(value) {
 }
 
 export function getTopSongs(artist, options = {}) {
-  return searchLibrary(artist, { songCount: options.count }).song;
+  const target = String(artist || "").trim();
+  if (!target) return [];
+  const library = readLibrary();
+  const normalizedTarget = target.toLocaleLowerCase();
+  const artistRecord = library.artists.find(
+    (entry) =>
+      entry.identityKey === target || entry.name.toLocaleLowerCase() === normalizedTarget,
+  );
+  if (!artistRecord) return [];
+  const tracks = library.tracks.filter((track) => {
+    const album = findAlbumForTrack(library, track);
+    const trackArtist = findArtistForAlbum(library, album);
+    return (
+      trackArtist?.id === artistRecord.id ||
+      String(track.artistName || "").trim().toLocaleLowerCase() === normalizedTarget
+    );
+  });
+  return tracks.slice(0, normalizeLimit(options.count)).map((track) => toSong(library, track));
 }
 
 export function getFlowPlaylists(user) {
