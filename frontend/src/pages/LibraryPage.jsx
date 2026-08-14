@@ -182,8 +182,6 @@ function LibraryPage() {
     [library.tracks],
   );
 
-  useDocumentTitle("Library");
-
   useEffect(() => {
     setQuery("");
     setSortMode("name");
@@ -437,6 +435,9 @@ function LibraryPage() {
   const homeTracks = library.tracks.slice(0, 12);
   const libraryAlbum = routeAlbumId ? albumsById.get(String(routeAlbumId)) || null : null;
   const libraryArtist = routeArtistId ? artistsById.get(String(routeArtistId)) || null : null;
+  useDocumentTitle(
+    isDetail ? libraryAlbum?.title || libraryArtist?.name || "Library" : "Library",
+  );
 
   const coverItems = useMemo(() => {
     const items = library.albums
@@ -595,9 +596,7 @@ function LibraryPage() {
 
   const handleArtistOpen = (artist) => {
     if (!artist?.id) return;
-    navigate("/library/artist/" + encodeURIComponent(artist.id) + previewQuery, {
-      state: { artistName: artist.name, libraryArtist: artist },
-    });
+    navigate("/library/artist/" + encodeURIComponent(artist.id) + previewQuery);
   };
 
   const handleDiscoverArtistOpen = (artist) => {
@@ -609,9 +608,7 @@ function LibraryPage() {
 
   const handleAlbumOpen = (album) => {
     if (!album?.id) return;
-    navigate("/library/album/" + encodeURIComponent(album.id) + previewQuery, {
-      state: { albumTitle: album.title, libraryAlbum: album },
-    });
+    navigate("/library/album/" + encodeURIComponent(album.id) + previewQuery);
   };
 
   const handleDiscoverAlbumOpen = (album) => {
@@ -1178,33 +1175,38 @@ function LibraryPage() {
     libraryAlbum ? renderLibraryAlbumDetail() : renderLibraryArtistDetail();
 
   const providerWarning = bootstrap?.lidarr?.circuitOpen === true;
+  const renderStatus = () => (
+    <>
+      {providerWarning && (
+        <p className="native-library-notice" role="status">
+          Lidarr is unavailable. Showing the last indexed library.
+        </p>
+      )}
+      {loading && (
+        <div className="native-library-state" role="status">
+          Loading library…
+        </div>
+      )}
+      {!loading && error && (
+        <div className="native-library-state" role="alert">
+          <strong>Library unavailable</strong>
+          <span>{error}</span>
+          <button
+            type="button"
+            className="native-library-state__action"
+            onClick={() => setRetryKey((value) => value + 1)}
+          >
+            Try again
+          </button>
+        </div>
+      )}
+    </>
+  );
 
   if (isDetail) {
     return (
       <main className="library-page native-library-page">
-        {providerWarning && (
-          <p className="native-library-notice" role="status">
-            Lidarr is unavailable. Showing the last indexed library.
-          </p>
-        )}
-        {loading && (
-          <div className="native-library-state" role="status">
-            Loading library…
-          </div>
-        )}
-        {!loading && error && (
-          <div className="native-library-state" role="alert">
-            <strong>Library unavailable</strong>
-            <span>{error}</span>
-            <button
-              type="button"
-              className="native-library-state__action"
-              onClick={() => setRetryKey((value) => value + 1)}
-            >
-              Try again
-            </button>
-          </div>
-        )}
+        {renderStatus()}
         {!loading && !error && !libraryAlbum && !libraryArtist && (
           <EmptyState title="Not found" message="This library item is no longer indexed." />
         )}
@@ -1434,29 +1436,7 @@ function LibraryPage() {
         )}
       </header>
 
-      {providerWarning && (
-        <p className="native-library-notice" role="status">
-          Lidarr is unavailable. Showing the last indexed library.
-        </p>
-      )}
-      {loading && (
-        <div className="native-library-state" role="status">
-          Loading library…
-        </div>
-      )}
-      {!loading && error && (
-        <div className="native-library-state" role="alert">
-          <strong>Library unavailable</strong>
-          <span>{error}</span>
-          <button
-            type="button"
-            className="native-library-state__action"
-            onClick={() => setRetryKey((value) => value + 1)}
-          >
-            Try again
-          </button>
-        </div>
-      )}
+      {renderStatus()}
       {!loading && !error && activeCount === 0 && (
         <EmptyState
           title={
