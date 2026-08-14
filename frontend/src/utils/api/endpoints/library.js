@@ -68,22 +68,29 @@ export const clearCanonicalLibraryPageCache = () => libraryPageCache.clear();
 
 let libraryFavoritesCache = null;
 let libraryFavoritesRequest = null;
+let libraryFavoritesGeneration = 0;
 
 export const getLibraryFavorites = () => {
   const token = getRequestToken();
+  const generation = libraryFavoritesGeneration;
   if (
     libraryFavoritesCache?.token === token &&
+    libraryFavoritesCache?.generation === generation &&
     Date.now() < libraryFavoritesCache.expiresAt
   ) {
     return Promise.resolve(libraryFavoritesCache.data);
   }
-  if (libraryFavoritesRequest?.token === token) return libraryFavoritesRequest.promise;
+  if (
+    libraryFavoritesRequest?.token === token &&
+    libraryFavoritesRequest?.generation === generation
+  ) return libraryFavoritesRequest.promise;
   let promise;
   promise = getData("/library/favorites")
     .then((data) => {
-      if (getRequestToken() === token) {
+      if (getRequestToken() === token && libraryFavoritesGeneration === generation) {
         libraryFavoritesCache = {
           token,
+          generation,
           data,
           expiresAt: Date.now() + LIBRARY_FAVORITES_CACHE_TTL_MS,
         };
@@ -93,21 +100,24 @@ export const getLibraryFavorites = () => {
     .finally(() => {
       if (libraryFavoritesRequest?.promise === promise) libraryFavoritesRequest = null;
     });
-  libraryFavoritesRequest = { token, promise };
+  libraryFavoritesRequest = { token, generation, promise };
   return promise;
 };
 
 export const updateLibraryFavorites = async (ids, starred) => {
   const token = getRequestToken();
+  const generation = ++libraryFavoritesGeneration;
   const data = await postData("/library/favorites", { ids, starred });
-  if (getRequestToken() === token) {
-    libraryFavoritesCache = {
-      token,
-      data,
-      expiresAt: Date.now() + LIBRARY_FAVORITES_CACHE_TTL_MS,
-    };
-  } else {
-    libraryFavoritesCache = null;
+  if (libraryFavoritesGeneration === generation) {
+    libraryFavoritesGeneration += 1;
+    libraryFavoritesCache = getRequestToken() === token
+      ? {
+        token,
+        generation: libraryFavoritesGeneration,
+        data,
+        expiresAt: Date.now() + LIBRARY_FAVORITES_CACHE_TTL_MS,
+      }
+      : null;
   }
   clearCanonicalLibraryPageCache();
   return data;

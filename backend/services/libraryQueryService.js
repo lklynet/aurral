@@ -479,7 +479,7 @@ function getPageLibrary(kind, ids, sourceFilter, availableOnly) {
   return buildLibraryFromRows(rows);
 }
 
-function getAlbumStats(albumIds, sourceFilter, availableOnly) {
+function getAlbumStats(albumIds, sourceFilter) {
   if (!albumIds.length) return new Map();
   const conditions = [`album_track.album_id IN (${albumIds.map(() => "?").join(",")})`];
   const parameters = [...albumIds];
@@ -487,7 +487,6 @@ function getAlbumStats(albumIds, sourceFilter, availableOnly) {
     conditions.push("media.source = ?");
     parameters.push(sourceFilter);
   }
-  if (availableOnly === true) conditions.push("media.available = 1");
   const rows = db.prepare(
     `SELECT
        album_track.album_id AS album_id,
@@ -589,7 +588,6 @@ export function getCanonicalLibraryPage({
   const albumStats = getAlbumStats(
     library.albums.map((album) => album.id),
     sourceFilter,
-    availableOnly,
   );
   const collection = ids
     .map((id) => library[normalizedKind].find((entity) => String(entity.id) === String(id)))

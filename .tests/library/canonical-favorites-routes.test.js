@@ -72,7 +72,7 @@ test.before(() => {
     source: "aurral",
     path: "/library/Favorite Artist/Favorite Album/02 Favorite Track Two.flac",
     format: "flac",
-    available: true,
+    available: false,
   });
   const otherArtist = upsertLibraryArtist({
     identityKey: "other-artist",
@@ -175,8 +175,16 @@ test("canonical library pages return bounded collection responses", () => {
   assert.equal(response.body.items.length, 1);
   assert.equal(response.body.items[0].artistName, "Favorite Artist");
   assert.equal(response.body.albums[0].trackCount, 2);
-  assert.equal(response.body.albums[0].availableTrackCount, 2);
+  assert.equal(response.body.albums[0].availableTrackCount, 1);
   assert.equal(response.body.hasMore, true);
+
+  const availableResponse = responseFor();
+  getRoute("GET /canonical")(
+    { user, query: { kind: "albums", page: "1", pageSize: "1", availableOnly: "true" } },
+    availableResponse,
+  );
+  assert.equal(availableResponse.body.items[0].trackCount, 2);
+  assert.equal(availableResponse.body.items[0].availableTrackCount, 1);
 
   const artistResponse = responseFor();
   getRoute("GET /canonical")(
