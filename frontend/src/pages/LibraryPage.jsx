@@ -12,7 +12,6 @@ import {
   Play,
   RefreshCw,
   Search,
-  SlidersHorizontal,
   X,
 } from "lucide-react";
 
@@ -630,7 +629,7 @@ function LibraryPage() {
     favoriteArtists.length + favoriteAlbums.length + favoriteTracks.length;
   const activeCount =
     section === "home"
-      ? library.artists.length + library.albums.length + library.tracks.length
+      ? library.albums.length + library.tracks.length
       : section === "favorites"
         ? favoriteCount
         : tab === "artists"
@@ -687,8 +686,11 @@ function LibraryPage() {
   };
 
   const renderTrackList = (tracks, label) => (
-    <div className="native-library-track-list" role="table" aria-label={label}>
-      <div className="native-library-track native-library-track--heading" role="row">
+    <div className="native-library-track-list">
+      <div
+        className="native-library-track native-library-track--heading"
+        aria-hidden="true"
+      >
         <span />
         <span>#</span>
         <span />
@@ -698,7 +700,8 @@ function LibraryPage() {
         <span>Time</span>
         <span />
       </div>
-      {tracks.map((track, index) => {
+      <div role="list" aria-label={label}>
+        {tracks.map((track, index) => {
         const album = getAlbumForTrack(track);
         const artist = getArtistForAlbum(album);
         const file = firstAvailableFile(track);
@@ -711,7 +714,7 @@ function LibraryPage() {
           <div
             className={"native-library-track" + (active ? " is-active" : "")}
             key={track.id}
-            role="row"
+            role="listitem"
           >
             <button
               type="button"
@@ -785,8 +788,9 @@ function LibraryPage() {
               onClick={() => toggleFavorite("song", track)}
             />
           </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 
@@ -970,29 +974,34 @@ function LibraryPage() {
   };
 
   const renderGenres = () => (
-    <div className="native-library-genre-list" role="table" aria-label="Library genres">
-      <div className="native-library-genre-row native-library-genre-row--heading" role="row">
+    <div className="native-library-genre-list">
+      <div
+        className="native-library-genre-row native-library-genre-row--heading"
+        aria-hidden="true"
+      >
         <span>Genre</span>
         <span>Artists</span>
         <span>Albums</span>
         <span>Tracks</span>
       </div>
-      {sortedGenres.map((genre) => (
-        <button
-          type="button"
-          className="native-library-genre-row"
-          key={genre.name}
-          onClick={() =>
-            navigate("/library/albums?genre=" + encodeURIComponent(genre.name))
-          }
-          role="row"
-        >
-          <strong>{genre.name}</strong>
-          <span>{genre.artists}</span>
-          <span>{genre.albums}</span>
-          <span>{genre.tracks}</span>
-        </button>
-      ))}
+      <div role="list" aria-label="Library genres">
+        {sortedGenres.map((genre) => (
+          <div role="listitem" key={genre.name}>
+            <button
+              type="button"
+              className="native-library-genre-row"
+              onClick={() =>
+                navigate("/library/albums?genre=" + encodeURIComponent(genre.name))
+              }
+            >
+              <strong>{genre.name}</strong>
+              <span>{genre.artists}</span>
+              <span>{genre.albums}</span>
+              <span>{genre.tracks}</span>
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 
@@ -1239,7 +1248,7 @@ function LibraryPage() {
   const pageTitle = section === "home" ? "Library" : sectionLabel;
   const pageCount =
     section === "home"
-      ? library.artists.length + library.albums.length + library.tracks.length
+      ? library.albums.length + library.tracks.length
       : activeCount;
   const showToolbar = section !== "home";
   const hasActiveFilters = Boolean(selectedGenre);
@@ -1390,18 +1399,6 @@ function LibraryPage() {
                     <List aria-hidden="true" />
                   </button>
                 </div>
-              )}
-              {section !== "genres" && (
-                <button
-                  type="button"
-                  className={`native-library-icon-button${filtersOpen ? " is-active" : ""}`}
-                  onClick={() => setFiltersOpen((value) => !value)}
-                  aria-label="Library filter options"
-                  aria-pressed={filtersOpen}
-                  title="Filter options"
-                >
-                  <SlidersHorizontal aria-hidden="true" />
-                </button>
               )}
             </div>
             {filtersOpen && section !== "genres" && (

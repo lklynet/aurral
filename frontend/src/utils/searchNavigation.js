@@ -71,7 +71,8 @@ export function buildLibraryAlbumNavigationItem(
   libraryAlbum,
   { artistMbid, artistName, coverUrl = "" } = {},
 ) {
-  const releaseGroupMbid = libraryAlbum?.mbid || libraryAlbum?.foreignAlbumId || null;
+  const releaseGroupMbid =
+    libraryAlbum?.releaseGroupMbid || libraryAlbum?.mbid || libraryAlbum?.foreignAlbumId || null;
   if (!releaseGroupMbid || !artistMbid) return null;
   return {
     type: "album",
