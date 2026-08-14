@@ -7466,6 +7466,10 @@ textarea {
   border-bottom: 1px solid var(--aurral-border);
 }
 
+.native-library-header--home {
+  border-bottom: 0;
+}
+
 .native-library-title-row {
   display: flex;
   min-height: 3rem;

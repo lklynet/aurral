@@ -1493,7 +1493,7 @@ function LibraryPage() {
 
   return (
     <main className="library-page native-library-page">
-      <header className="native-library-header">
+      <header className={`native-library-header${section === "home" ? " native-library-header--home" : ""}`}>
         <div className="native-library-title-row">
           <div className="native-library-title">
             <TooltipButton
