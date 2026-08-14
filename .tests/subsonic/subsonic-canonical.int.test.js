@@ -248,11 +248,11 @@ test("emits schema-compatible XML for strict Subsonic clients", async () => {
   const artistsXml = await request("getArtists", { f: "xml" });
   assert.doesNotMatch(artistsXml.body, /<(?:albumArtists|genres)(?:\s|>)/);
 
-  const artist = responseJson(await request("getArtists")).artists.index[0].artist[0];
+  const artist = responseJson(await request("getArtists", { f: "json" })).artists.index[0].artist[0];
   const artistDetailXml = await request("getArtist", { f: "xml", id: artist.id });
   assert.doesNotMatch(artistDetailXml.body, /<(?:artists|albumArtists|genres)(?:\s|>)/);
 
-  const album = responseJson(await request("getArtist", { id: artist.id })).artist.album[0];
+  const album = responseJson(await request("getArtist", { f: "json", id: artist.id })).artist.album[0];
   const albumXml = await request("getAlbum", { f: "xml", id: album.id });
   assert.doesNotMatch(albumXml.body, /<(?:artists|albumArtists|genres)(?:\s|>)/);
 
@@ -261,6 +261,7 @@ test("emits schema-compatible XML for strict Subsonic clients", async () => {
 
   const directoryXml = await request("getMusicDirectory", { f: "xml", id: "1" });
   assert.match(directoryXml.body, /<directory[^>]*id="1"[^>]*name="Aurral"/);
+  assert.match(directoryXml.body, /parent="1"/);
 });
 
 test("accepts Subsonic token auth for the configured Aurral account", async () => {
