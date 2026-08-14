@@ -390,12 +390,21 @@ if (!userColumns.includes("needs_identity_migration")) {
     tryAddColumn(
       "ALTER TABLE users ADD COLUMN needs_identity_migration INTEGER NOT NULL DEFAULT 0",
     );
-    db.exec("UPDATE users SET needs_identity_migration = 1");
+    db.exec(`
+      UPDATE users SET needs_identity_migration = 1
+      WHERE id NOT IN (SELECT DISTINCT user_id FROM user_identities)
+    `);
   })();
 }
 if (!userColumns.includes("allow_identity_adoption")) {
   tryAddColumn("ALTER TABLE users ADD COLUMN allow_identity_adoption INTEGER NOT NULL DEFAULT 0");
 }
+
+db.exec(`
+  UPDATE users SET needs_identity_migration = 0, allow_identity_adoption = 0
+  WHERE needs_identity_migration = 1
+    AND id IN (SELECT DISTINCT user_id FROM user_identities)
+`);
 
 db.exec(`
   UPDATE users
