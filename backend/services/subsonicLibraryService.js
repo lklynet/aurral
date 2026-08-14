@@ -6,6 +6,7 @@ import { getArtistImage } from "./imageService.js";
 import { buildImageProxyUrl, warmPublicImageUrl } from "./imageProxyService.js";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 import { flowPlaylistConfig } from "./weeklyFlow/weeklyFlowPlaylistConfig.js";
+import { playlistManager } from "./weeklyFlow/weeklyFlowPlaylistManager.js";
 import { hasPermission } from "../middleware/auth.js";
 
 const idFor = (kind, key) => `${kind}:${encodeURIComponent(String(key))}`;
@@ -53,9 +54,14 @@ const genreNames = (value) =>
 
 const entityGenres = (entity) => {
   const metadata = entity?.metadata || {};
-  return genreNames(
-    metadata.common?.genre || metadata.genre || metadata.tags?.genre,
-  );
+  return [
+    metadata.genres,
+    metadata.common?.genre,
+    metadata.genre,
+    metadata.tags?.genre,
+  ]
+    .flatMap(genreNames)
+    .filter((genre, index, values) => values.indexOf(genre) === index);
 };
 
 const visibleFlows = (user) =>
@@ -89,7 +95,7 @@ const coverArtForAlbum = (album) => idFor("album", album.identityKey);
 const toSong = (library, track, album = findAlbumForTrack(library, track)) => {
   const artist = findArtistForAlbum(library, album);
   const file = firstFile(track);
-  const genres = entityGenres(track);
+  const genres = [...new Set([...entityGenres(artist), ...entityGenres(track)])];
   const relation = track.albums?.find((entry) => entry.albumId === album?.id);
   const artistValue = protocolArtist(artist, track.artistName || "Unknown Artist");
   const format = String(file?.format || "mp3").toLowerCase();
@@ -131,6 +137,7 @@ const albumData = (library, album) => {
   const tracks = albumTracks(library, album);
   const artistValue = protocolArtist(artist, album.albumArtist || "Unknown Artist");
   const genres = [
+    ...entityGenres(artist),
     ...entityGenres(album),
     ...tracks.flatMap((track) => entityGenres(track)),
   ].filter((genre, index, values) => values.indexOf(genre) === index);
@@ -172,21 +179,33 @@ const toAlbum = (library, album) => {
 
 const toArtist = (library, artist) => {
   const albums = artistAlbums(library, artist);
-  return {
+  const genres = entityGenres(artist);
+  const value = {
     id: idFor("artist", artist.identityKey),
     name: artist.name,
     coverArt: idFor("artist", artist.identityKey),
     albumCount: albums.length,
     album: albums.map((album) => toAlbumSummary(library, album)),
   };
+  if (genres.length) {
+    value.genre = genres[0];
+    value.genres = genres.map((name) => ({ name }));
+  }
+  return value;
 };
 
-const toArtistSummary = (artist) => ({
-  id: idFor("artist", artist.identityKey),
-  name: artist.name,
-  coverArt: idFor("artist", artist.identityKey),
-  albumCount: artist.albumIds.length,
-});
+const toArtistSummary = (artist) => {
+  const genres = entityGenres(artist);
+  return {
+    id: idFor("artist", artist.identityKey),
+    name: artist.name,
+    coverArt: idFor("artist", artist.identityKey),
+    albumCount: artist.albumIds.length,
+    ...(genres.length
+      ? { genre: genres[0], genres: genres.map((name) => ({ name })) }
+      : {}),
+  };
+};
 
 function readLibrary() {
   const library = getCanonicalLibrary({ availableOnly: false });
@@ -269,6 +288,12 @@ const flowJobs = (flow) =>
   downloadTracker
     .getByPlaylistType(flow.id)
     .filter((job) => job.status === "done" && job.finalPath);
+
+const playlistCoverArt = (jobs, kind, playlistId) => {
+  const job = jobs.find((entry) => entry.releaseGroupMbid || entry.albumMbid);
+  const albumMbid = String(job?.releaseGroupMbid || job?.albumMbid || "").trim();
+  return albumMbid ? idFor("album", `release-group:${albumMbid}`) : idFor(kind, playlistId);
+};
 
 export function listArtists() {
   const library = readLibrary();
@@ -453,14 +478,20 @@ export function getGenres() {
   const genres = new Map();
   for (const album of library.albums) {
     const tracks = albumTracks(library, album);
+    const artistGenres = entityGenres(findArtistForAlbum(library, album));
+    const albumMetadataGenres = entityGenres(album);
     const albumGenres = [
+      ...artistGenres,
       ...entityGenres(album),
       ...tracks.flatMap((track) => entityGenres(track)),
     ];
     for (const name of new Set(albumGenres)) {
       const value = genres.get(name) || { albumCount: 0, songCount: 0, value: name };
       value.albumCount += 1;
-      value.songCount += tracks.filter((track) => entityGenres(track).includes(name)).length;
+      value.songCount +=
+        artistGenres.includes(name) || albumMetadataGenres.includes(name)
+          ? tracks.length
+          : tracks.filter((track) => entityGenres(track).includes(name)).length;
       genres.set(name, value);
     }
   }
@@ -545,6 +576,7 @@ export function getFlowPlaylists(user) {
       id: idFor("flow", flow.id),
       name: flow.name,
       owner: user.username,
+      coverArt: playlistCoverArt(jobs, "flow", flow.id),
       songCount: jobs.length,
       duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
       public: false,
@@ -560,6 +592,7 @@ export function getFlowPlaylists(user) {
       id: idFor("shared", playlist.id),
       name: playlist.name,
       owner: user.username,
+      coverArt: playlistCoverArt(jobs, "shared", playlist.id),
       songCount: jobs.length,
       duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
       public: false,
@@ -582,6 +615,7 @@ export function getFlowPlaylist(value, user) {
     id: idFor(kind, playlist.id),
     name: playlist.name,
     owner: user.username,
+    coverArt: playlistCoverArt(jobs, kind, playlist.id),
     songCount: jobs.length,
     duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
     public: false,
@@ -670,6 +704,13 @@ export async function resolveArtworkUrl(value) {
   const artwork = await warmPublicImageUrl(result.imageUrl, LIBRARY_IMAGE_PROFILE);
   if (artwork) dbOps.setImage(`rg:${cacheId}`, artwork);
   return artwork;
+}
+
+export async function resolvePlaylistArtwork(value, user) {
+  const parsed = parseId(value);
+  if (!parsed || !["flow", "shared"].includes(parsed.kind)) return null;
+  const playlist = playlistFromId(user, value);
+  return playlist ? playlistManager.resolveArtworkFile(playlist.id) : null;
 }
 
 export { idFor, parseId };

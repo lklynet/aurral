@@ -17,6 +17,8 @@ Point the client at the Aurral URL and use the Aurral account from onboarding. A
 
 Use the Aurral URL as the Feishin server URL. Set the server type to `Subsonic`. Feishin then shows canonical tracks, flow playlists, and shared playlists that the account can access. A playlist entry remains playable while its canonical file is readable.
 
+The native Subsonic responses include playlist artwork through `getPlaylists`, `getPlaylist`, and `getCoverArt`. They also expose genres from canonical artist, album, and track metadata through artist, album, song, and `getGenres` responses. The native path does not fetch metadata from a provider while browsing.
+
 Aurral accepts password authentication for every Aurral user. Token authentication is limited to the configured account because Aurral stores other user passwords as one-way hashes.
 
 See [Filesystem and mounts](/getting-started/storage/) for the complete layout. The recommended Docker setup mounts the same host media root at `/data` in Aurral and Navidrome:

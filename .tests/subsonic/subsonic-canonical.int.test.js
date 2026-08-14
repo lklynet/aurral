@@ -11,7 +11,7 @@ import {
   startServerProcess,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidarrLibrary }, { flowPlaylistConfig }, { downloadTracker }, { resolveArtworkUrl }, { warmImageProxy }] =
+const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidarrLibrary }, { flowPlaylistConfig }, { downloadTracker }, { resolveArtworkUrl }, { warmImageProxy }, { playlistManager }] =
   await setupIsolatedBackend(
     "subsonic-canonical",
     "backend/config/db-sqlite.js",
@@ -19,10 +19,11 @@ const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidar
     "backend/middleware/passwordHash.js",
     "backend/services/libraryLidarrIndexer.js",
     "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
-    "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
-    "backend/services/subsonicLibraryService.js",
-    "backend/services/imageProxyService.js",
-  );
+  "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+  "backend/services/subsonicLibraryService.js",
+  "backend/services/imageProxyService.js",
+  "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
+);
 
 let aurral;
 let fixtureRoot;
@@ -76,6 +77,7 @@ test.before(async () => {
         artistName: "Canonical Artist",
         sortName: "Canonical Artist",
         foreignArtistId: "11111111-1111-4111-8111-111111111111",
+        genres: ["Rock"],
       }],
       getAllAlbums: async () => [{
         id: 2,
@@ -128,6 +130,15 @@ test.before(async () => {
     durationMs: 1000,
   }, sharedPlaylist.id);
   downloadTracker.setDone(sharedJobId, fixturePath);
+  await mkdir(playlistManager.libraryRoot, { recursive: true });
+  await writeFile(
+    path.join(playlistManager.libraryRoot, `${playlistManager.getPlaylistName(flow.id)}.webp`),
+    "flow-artwork",
+  );
+  await writeFile(
+    path.join(playlistManager.libraryRoot, `${playlistManager.getPlaylistName(sharedPlaylist.id)}.webp`),
+    "shared-artwork",
+  );
   aurral = await startServerProcess();
 });
 
@@ -146,6 +157,7 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   const artistsResult = responseJson(await request("getArtists"));
   const artist = artistsResult.artists.index[0].artist[0];
   assert.match(artist.id, /^artist:/);
+  assert.equal(artist.genre, "Rock");
   assert.equal(artistsResult.artists.ignoredArticles, "The El La Los Las Le Les");
   const artistsXml = await request("getArtists", { f: "xml" });
   assert.match(artistsXml.body, /<artists[^>]*><index name="C"><artist id="artist:/);
@@ -156,7 +168,9 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.equal(typeof indexes.indexes.lastModified, "number");
   const albumList = responseJson(await request("getAlbumList2", { type: "newest", size: 10 }));
   assert.equal(albumList.albumList2.album[0].title, "Canonical Album");
-  assert.deepEqual(responseJson(await request("getGenres")).genres.genre, []);
+  assert.deepEqual(responseJson(await request("getGenres")).genres.genre, [
+    { albumCount: 1, songCount: 1, value: "Rock" },
+  ]);
   assert.deepEqual(responseJson(await request("getStarred")).starred, {
     album: [],
     artist: [],
@@ -166,6 +180,7 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   const albumResult = responseJson(await request("getArtist", { id: artist.id }));
   const album = albumResult.artist.album[0];
   assert.match(album.id, /^album:/);
+  assert.equal(album.genre, "Rock");
   assert.deepEqual(responseJson(await request("getArtistInfo", { id: artist.id })).artistInfo.similarArtist, []);
   assert.equal(responseJson(await request("getTopSongs", { artist: "Canonical Artist" })).topSongs.song[0].title, "Canonical Song");
 
@@ -174,6 +189,7 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.match(song.id, /^song:/);
   assert.equal(responseJson(await request("getSong", { id: song.id })).song.title, "Canonical Song");
   assert.equal(song.contentType, "audio/flac");
+  assert.equal(song.genre, "Rock");
   assert.equal(song.path, song.id);
   assert.deepEqual(song.artists, [{ id: artist.id, name: "Canonical Artist" }]);
 
@@ -206,9 +222,14 @@ test("searches canonical records and exposes flow entries as playlist items", as
   const playlists = responseJson(await request("getPlaylists"));
   const flow = playlists.playlists.playlist.find((entry) => entry.name === "Canonical Flow");
   assert.ok(flow);
+  assert.equal(flow.coverArt, flow.id);
   const playlist = responseJson(await request("getPlaylist", { id: flow.id }));
   assert.equal(playlist.playlist.entry[0].title, "Flow Song");
   assert.equal(playlist.playlist.public, false);
+  assert.equal(playlist.playlist.coverArt, flow.coverArt);
+  const artwork = await request("getCoverArt", { id: flow.coverArt });
+  assert.equal(artwork.response.status, 200);
+  assert.equal(artwork.body, "flow-artwork");
 });
 
 test("accepts Feishin's empty search request for the tracks view", async () => {
@@ -226,10 +247,14 @@ test("exposes owned static playlists and keeps their entries playable", async ()
   const shared = playlists.find((entry) => entry.name === "Canonical Shared");
   assert.ok(shared);
   assert.equal(shared.songCount, 1);
+  assert.equal(shared.coverArt, shared.id);
 
   const playlist = responseJson(await request("getPlaylist", { id: shared.id })).playlist;
   assert.equal(playlist.entry[0].title, "Flow Song");
   assert.match(playlist.entry[0].id, /^shared-song:/);
+  const artwork = await request("getCoverArt", { id: shared.coverArt });
+  assert.equal(artwork.response.status, 200);
+  assert.equal(artwork.body, "shared-artwork");
 
   const song = responseJson(await request("getSong", { id: playlist.entry[0].id })).song;
   assert.equal(song.title, "Flow Song");

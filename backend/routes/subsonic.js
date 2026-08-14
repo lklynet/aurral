@@ -16,6 +16,7 @@ import {
   getStarred,
   getTopSongs,
   listArtists,
+  resolvePlaylistArtwork,
   resolveArtworkUrl,
   resolveStreamPath,
   searchLibrary,
@@ -306,6 +307,11 @@ async function handleSubsonicRequest(req, res) {
     return streamed || res.headersSent ? undefined : handleBinaryError(res, "Track file missing");
   }
   if (method === "getcoverart") {
+    const playlistArtwork = await resolvePlaylistArtwork(getParameter(req, "id"), user);
+    if (playlistArtwork) {
+      res.set("Cache-Control", "private, max-age=86400");
+      return res.sendFile(playlistArtwork.safePath);
+    }
     const artworkUrl = await resolveArtworkUrl(getParameter(req, "id"));
     if (!artworkUrl) return handleBinaryError(res, "Cover art not found");
     res.set("Cache-Control", "public, max-age=31536000, immutable");
