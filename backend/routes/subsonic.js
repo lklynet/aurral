@@ -307,7 +307,9 @@ async function handleSubsonicRequest(req, res) {
   }
   if (method === "getcoverart") {
     const artworkUrl = await resolveArtworkUrl(getParameter(req, "id"));
-    return artworkUrl ? res.redirect(302, artworkUrl) : handleBinaryError(res, "Cover art not found");
+    if (!artworkUrl) return handleBinaryError(res, "Cover art not found");
+    res.set("Cache-Control", "public, max-age=31536000, immutable");
+    return res.redirect(302, artworkUrl);
   }
   return sendError(res, format, 0, `Unsupported request: ${method}`);
 }

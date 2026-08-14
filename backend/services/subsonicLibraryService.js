@@ -3,12 +3,13 @@ import { db } from "../config/db-sqlite.js";
 import { getCanonicalLibrary } from "./libraryQueryService.js";
 import { fetchReleaseGroupCoverUrl } from "./releaseGroupCoverService.js";
 import { getArtistImage } from "./imageService.js";
-import { buildImageProxyUrl } from "./imageProxyService.js";
+import { buildImageProxyUrl, warmPublicImageUrl } from "./imageProxyService.js";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 import { flowPlaylistConfig } from "./weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { hasPermission } from "../middleware/auth.js";
 
 const idFor = (kind, key) => `${kind}:${encodeURIComponent(String(key))}`;
+const LIBRARY_IMAGE_PROFILE = "library";
 
 const parseId = (value) => {
   const match = /^(artist|album|song|flow|flow-song|shared|shared-song):(.+)$/.exec(String(value || ""));
@@ -602,30 +603,62 @@ export function resolveStreamPath(value, user) {
   return file?.available && file.path ? file.path : null;
 }
 
-const cachedArtworkUrl = (key) => {
+const cachedArtworkUrl = async (key) => {
   const cached = dbOps.getImage(key);
   if (!cached?.imageUrl || cached.imageUrl === "NOT_FOUND") return null;
-  return buildImageProxyUrl(cached.imageUrl);
+  const artwork = await warmPublicImageUrl(cached.imageUrl, LIBRARY_IMAGE_PROFILE);
+  if (artwork && artwork !== cached.imageUrl) dbOps.setImage(key, artwork);
+  return artwork || buildImageProxyUrl(cached.imageUrl);
 };
 
 export async function resolveArtworkUrl(value) {
-  const library = readLibrary();
   const parsed = parseId(value);
+  if (!parsed) return null;
+
+  if (parsed.kind === "album" && parsed.key.startsWith("release-group:")) {
+    const releaseGroupMbid = parsed.key.slice("release-group:".length);
+    const cacheKey = `rg:${releaseGroupMbid}`;
+    const cached = await cachedArtworkUrl(cacheKey);
+    if (cached) return cached;
+    const result = await fetchReleaseGroupCoverUrl(releaseGroupMbid);
+    if (!result?.imageUrl) return null;
+    const artwork = await warmPublicImageUrl(result.imageUrl, LIBRARY_IMAGE_PROFILE);
+    if (artwork) dbOps.setImage(cacheKey, artwork);
+    return artwork;
+  }
+
+  const library = readLibrary();
   const entity = findCanonical(library, parsed);
   if (!entity) return null;
 
   if (parsed.kind === "artist") {
-    const cached = cachedArtworkUrl(entity.mbid || entity.identityKey);
+    const artistCacheKey = entity.mbid || entity.identityKey;
+    const cached = await cachedArtworkUrl(artistCacheKey);
     if (cached) return cached;
-    if (!entity.mbid) return null;
-    const result = await getArtistImage(entity.mbid, { artistName: entity.name });
-    return result?.url ? buildImageProxyUrl(result.url) : null;
+    const albums = artistAlbums(library, entity);
+    for (const album of albums) {
+      const cacheId = album.releaseGroupMbid || album.mbid;
+      const albumArtwork = cacheId ? await cachedArtworkUrl(`rg:${cacheId}`) : null;
+      if (albumArtwork) {
+        dbOps.setImage(artistCacheKey, albumArtwork);
+        return albumArtwork;
+      }
+    }
+    if (entity.mbid) {
+      const result = await getArtistImage(entity.mbid, { artistName: entity.name });
+      if (result?.url) {
+        const artwork = await warmPublicImageUrl(result.url, LIBRARY_IMAGE_PROFILE);
+        if (artwork) dbOps.setImage(artistCacheKey, artwork);
+        return artwork;
+      }
+    }
+    return null;
   }
 
   const album = parsed.kind === "album" ? entity : findAlbumForTrack(library, entity);
   if (!album) return null;
   const cacheId = album.releaseGroupMbid || album.mbid;
-  const cached = cacheId ? cachedArtworkUrl(`rg:${cacheId}`) : null;
+  const cached = cacheId ? await cachedArtworkUrl(`rg:${cacheId}`) : null;
   if (cached) return cached;
   if (!cacheId) return null;
   const artist = findArtistForAlbum(library, album);
@@ -633,7 +666,10 @@ export async function resolveArtworkUrl(value) {
     artistName: artist?.name || album.albumArtist || "",
     albumTitle: album.title,
   });
-  return result?.imageUrl ? buildImageProxyUrl(result.imageUrl) : null;
+  if (!result?.imageUrl) return null;
+  const artwork = await warmPublicImageUrl(result.imageUrl, LIBRARY_IMAGE_PROFILE);
+  if (artwork) dbOps.setImage(`rg:${cacheId}`, artwork);
+  return artwork;
 }
 
 export { idFor, parseId };

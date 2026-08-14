@@ -18,7 +18,9 @@ const MAX_SOURCE_IMAGE_PIXELS = 40_000_000;
 const IMAGE_PROFILES = {
   card: { maxPx: 512, maxBytes: 150 * 1024, quality: 70 },
   artist: { maxPx: 2048, maxBytes: 2 * 1024 * 1024, quality: 82 },
+  library: { maxPx: 512, maxBytes: 150 * 1024, quality: 70 },
 };
+const isPersistentProfile = (profile) => profile === "library";
 // ponytail: FIFO by mtime, touch on serve for LRU; raise/env only if disk pressure complains
 const IMAGE_PROXY_MAX_BYTES = (() => {
   const parsed = Number(process.env.AURRAL_IMAGE_PROXY_MAX_BYTES);
@@ -261,13 +263,14 @@ const pruneImageProxyCacheToLimit = async () => {
     return;
   }
 
-  let total = entries.reduce((sum, entry) => sum + entry.bytes, 0);
+  const evictableEntries = entries.filter((entry) => !isPersistentProfile(entry.profile));
+  let total = evictableEntries.reduce((sum, entry) => sum + entry.bytes, 0);
   if (total <= IMAGE_PROXY_MAX_BYTES) return;
 
-  entries.sort(
+  evictableEntries.sort(
     (a, b) => a.mtimeMs - b.mtimeMs || a.cacheKey.localeCompare(b.cacheKey),
   );
-  for (const entry of entries) {
+  for (const entry of evictableEntries) {
     if (total <= IMAGE_PROXY_MAX_BYTES) break;
     await removeCacheEntryFromDisk(
       entry.cacheKey,
@@ -804,7 +807,7 @@ export const handleImageProxyRequest = async (req, res) => {
   }
 
   res.set("Content-Type", cached.meta.contentType || "image/jpeg");
-  res.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+  res.set("Cache-Control", "public, max-age=31536000, immutable");
   touchCacheEntry(cached.imagePath);
   return res.sendFile(path.basename(cached.imagePath), {
     root: IMAGE_PROXY_DIR,

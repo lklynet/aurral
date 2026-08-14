@@ -11,7 +11,7 @@ import {
   startServerProcess,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidarrLibrary }, { flowPlaylistConfig }, { downloadTracker }] =
+const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidarrLibrary }, { flowPlaylistConfig }, { downloadTracker }, { resolveArtworkUrl }, { warmImageProxy }] =
   await setupIsolatedBackend(
     "subsonic-canonical",
     "backend/config/db-sqlite.js",
@@ -20,6 +20,8 @@ const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidar
     "backend/services/libraryLidarrIndexer.js",
     "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
     "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+    "backend/services/subsonicLibraryService.js",
+    "backend/services/imageProxyService.js",
   );
 
 let aurral;
@@ -338,4 +340,56 @@ test("returns the canonical artwork redirect contract", async () => {
   const result = await request("getCoverArt", { id: artist.id }, { redirect: "manual" });
   assert.equal(result.response.status, 302);
   assert.match(result.response.headers.get("location"), /image-proxy/);
+  assert.equal(result.response.headers.get("cache-control"), "public, max-age=31536000, immutable");
+});
+
+test("resolves playlist release-group artwork without a canonical album row", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () =>
+    new Response(
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ),
+      { headers: { "content-type": "image/png" } },
+    );
+  try {
+    const cached = await warmImageProxy("https://images.example/playlist.webp");
+    const releaseGroupId = "44444444-4444-4444-8444-444444444444";
+    dbOps.setImage(`rg:${releaseGroupId}`, cached.localUrl);
+
+    const artwork = await resolveArtworkUrl(
+      `album:${encodeURIComponent(`release-group:${releaseGroupId}`)}`,
+    );
+    const libraryArtwork = await warmImageProxy(cached.localUrl, "library");
+    assert.equal(artwork, libraryArtwork.localUrl);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("uses cached album artwork for artist artwork", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () =>
+    new Response(
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ),
+      { headers: { "content-type": "image/png" } },
+    );
+  try {
+    const artist = db.prepare("SELECT mbid, identity_key FROM library_artists LIMIT 1").get();
+    const album = db.prepare("SELECT mbid, release_group_mbid FROM library_albums LIMIT 1").get();
+    const cacheId = album.release_group_mbid || album.mbid;
+    const cached = await warmImageProxy(`https://images.example/artist-album-${cacheId}.png`);
+    dbOps.deleteImage(artist.mbid);
+    dbOps.setImage(`rg:${cacheId}`, cached.localUrl);
+
+    const artwork = await resolveArtworkUrl(`artist:${encodeURIComponent(artist.identity_key)}`);
+    const libraryArtwork = await warmImageProxy(cached.localUrl, "library");
+    assert.equal(artwork, libraryArtwork.localUrl);
+  } finally {
+    global.fetch = originalFetch;
+  }
 });

@@ -200,3 +200,42 @@ test("image proxy cache prunes oldest entries over the size cap", async () => {
     await fs.rm(dataDir, { recursive: true, force: true });
   }
 });
+
+test("image proxy keeps library artwork outside the FIFO cap", async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-image-library-cap-"));
+  const previousDataDir = process.env.AURRAL_DATA_DIR;
+  const previousMaxBytes = process.env.AURRAL_IMAGE_PROXY_MAX_BYTES;
+  const originalFetch = global.fetch;
+  process.env.AURRAL_DATA_DIR = dataDir;
+  process.env.AURRAL_IMAGE_PROXY_MAX_BYTES = String(200 * 1024);
+  try {
+    const sharp = (await import("sharp")).default;
+    const { warmImageProxy } = await import(
+      `../backend/services/imageProxyService.js?library-cap-test=${Date.now()}`
+    );
+    const noise = Buffer.alloc(512 * 512 * 3);
+    for (let i = 0; i < noise.length; i += 1) {
+      noise[i] = (i * 37 + (i % 251) * 13) % 256;
+    }
+
+    global.fetch = async () =>
+      new Response(
+        await sharp(noise, { raw: { width: 512, height: 512, channels: 3 } }).png().toBuffer(),
+        { headers: { "content-type": "image/png" } },
+      );
+    const libraryImage = await warmImageProxy("https://images.example/library.png", "library");
+
+    for (let i = 0; i < 6; i += 1) {
+      await warmImageProxy(`https://images.example/fifo-${i}.png`);
+    }
+
+    assert.equal(await fs.access(libraryImage.imagePath).then(() => true, () => false), true);
+  } finally {
+    global.fetch = originalFetch;
+    if (previousDataDir === undefined) delete process.env.AURRAL_DATA_DIR;
+    else process.env.AURRAL_DATA_DIR = previousDataDir;
+    if (previousMaxBytes === undefined) delete process.env.AURRAL_IMAGE_PROXY_MAX_BYTES;
+    else process.env.AURRAL_IMAGE_PROXY_MAX_BYTES = previousMaxBytes;
+    await fs.rm(dataDir, { recursive: true, force: true });
+  }
+});
