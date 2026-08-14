@@ -13,6 +13,7 @@ import {
   getGenres,
   getMusicDirectory,
   getSong,
+  getSongsByGenre,
   getStarred,
   getTopSongs,
   listArtists,
@@ -230,6 +231,18 @@ async function handleSubsonicRequest(req, res) {
   }
   if (method === "getgenres") {
     return sendResponse(res, format, "ok", null, { genres: { genre: getGenres() } });
+  }
+  if (method === "getsongsbygenre") {
+    const genre = getParameter(req, "genre").trim();
+    if (!genre) return sendError(res, format, 10, "Required parameter is missing: genre");
+    return sendResponse(res, format, "ok", null, {
+      songsByGenre: {
+        song: getSongsByGenre(genre, {
+          count: getParameter(req, "count"),
+          offset: getParameter(req, "offset"),
+        }),
+      },
+    });
   }
   if (method === "getartists" || method === "getindexes") {
     const indexes = groupArtists(listArtists());

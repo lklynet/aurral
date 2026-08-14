@@ -95,7 +95,11 @@ const coverArtForAlbum = (album) => idFor("album", album.identityKey);
 const toSong = (library, track, album = findAlbumForTrack(library, track)) => {
   const artist = findArtistForAlbum(library, album);
   const file = firstFile(track);
-  const genres = [...new Set([...entityGenres(artist), ...entityGenres(track)])];
+  const genres = [...new Set([
+    ...entityGenres(artist),
+    ...entityGenres(album),
+    ...entityGenres(track),
+  ])];
   const relation = track.albums?.find((entry) => entry.albumId === album?.id);
   const artistValue = protocolArtist(artist, track.artistName || "Unknown Artist");
   const format = String(file?.format || "mp3").toLowerCase();
@@ -289,11 +293,7 @@ const flowJobs = (flow) =>
     .getByPlaylistType(flow.id)
     .filter((job) => job.status === "done" && job.finalPath);
 
-const playlistCoverArt = (jobs, kind, playlistId) => {
-  const job = jobs.find((entry) => entry.releaseGroupMbid || entry.albumMbid);
-  const albumMbid = String(job?.releaseGroupMbid || job?.albumMbid || "").trim();
-  return albumMbid ? idFor("album", `release-group:${albumMbid}`) : idFor(kind, playlistId);
-};
+const playlistCoverArt = (kind, playlistId) => idFor(kind, playlistId);
 
 export function listArtists() {
   const library = readLibrary();
@@ -473,6 +473,24 @@ export function getAlbumList(options = {}) {
   return albums.slice(offset, offset + size).map((album) => toAlbumSummary(library, album));
 }
 
+export function getSongsByGenre(genre, options = {}) {
+  const target = String(genre || "").trim().toLocaleLowerCase();
+  if (!target) return [];
+  const library = readLibrary();
+  const tracks = library.tracks.filter((track) => {
+    const album = findAlbumForTrack(library, track);
+    const artist = findArtistForAlbum(library, album);
+    return [
+      ...entityGenres(artist),
+      ...entityGenres(album),
+      ...entityGenres(track),
+    ].some((value) => value.toLocaleLowerCase() === target);
+  });
+  const offset = normalizeOffset(options.offset);
+  const size = normalizeLimit(options.count);
+  return tracks.slice(offset, offset + size).map((track) => toSong(library, track));
+}
+
 export function getGenres() {
   const library = readLibrary();
   const genres = new Map();
@@ -590,7 +608,7 @@ export function getFlowPlaylists(user) {
       id: idFor("flow", flow.id),
       name: flow.name,
       owner: user.username,
-      coverArt: playlistCoverArt(jobs, "flow", flow.id),
+      coverArt: playlistCoverArt("flow", flow.id),
       songCount: jobs.length,
       duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
       public: false,
@@ -606,7 +624,7 @@ export function getFlowPlaylists(user) {
       id: idFor("shared", playlist.id),
       name: playlist.name,
       owner: user.username,
-      coverArt: playlistCoverArt(jobs, "shared", playlist.id),
+      coverArt: playlistCoverArt("shared", playlist.id),
       songCount: jobs.length,
       duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
       public: false,
@@ -629,7 +647,7 @@ export function getFlowPlaylist(value, user) {
     id: idFor(kind, playlist.id),
     name: playlist.name,
     owner: user.username,
-    coverArt: playlistCoverArt(jobs, kind, playlist.id),
+    coverArt: playlistCoverArt(kind, playlist.id),
     songCount: jobs.length,
     duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
     public: false,

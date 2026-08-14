@@ -114,6 +114,7 @@ test.before(async () => {
   const jobId = downloadTracker.addJob({
     artistName: "Flow Artist",
     albumName: "Flow Album",
+    albumMbid: "flow-album-mbid",
     trackName: "Flow Song",
     durationMs: 1000,
   }, flow.id);
@@ -131,6 +132,7 @@ test.before(async () => {
   const sharedJobId = downloadTracker.addJob({
     artistName: "Flow Artist",
     albumName: "Flow Album",
+    albumMbid: "shared-album-mbid",
     trackName: "Flow Song",
     durationMs: 1000,
   }, sharedPlaylist.id);
@@ -176,6 +178,12 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.deepEqual(responseJson(await request("getGenres")).genres.genre, [
     { albumCount: 1, songCount: 1, value: "Rock" },
   ]);
+  const songsByGenre = responseJson(await request("getSongsByGenre", {
+    genre: "Rock",
+    count: 10,
+    offset: 0,
+  }));
+  assert.equal(songsByGenre.songsByGenre.song[0].title, "Canonical Song");
   assert.deepEqual(responseJson(await request("getStarred")).starred, {
     album: [],
     artist: [],
