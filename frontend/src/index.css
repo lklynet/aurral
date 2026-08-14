@@ -7595,7 +7595,6 @@ textarea {
   gap: 0.2rem;
   margin-top: 0.7rem;
   padding: 0.35rem 0 0.4rem;
-  border-top: 1px solid var(--aurral-border);
 }
 
 .native-library-search {
@@ -8004,7 +8003,7 @@ button.native-library-card__artist:focus-visible {
 
 .native-library-grid.is-list {
   grid-template-columns: 1fr;
-  gap: 0;
+  gap: 0.15rem;
 }
 
 .native-library-grid.is-list .native-library-card {
@@ -8013,7 +8012,6 @@ button.native-library-card__artist:focus-visible {
   align-items: center;
   gap: 0.7rem;
   padding: 0.45rem 0;
-  border-bottom: 1px solid var(--aurral-border);
 }
 
 .native-library-grid.is-list .native-library-card__cover {
@@ -8050,7 +8048,6 @@ button.native-library-card__artist:focus-visible {
   align-items: center;
   gap: 0.55rem;
   padding: 0.3rem 0.45rem;
-  border-bottom: 1px solid var(--aurral-border);
   color: var(--aurral-text-muted);
   font-size: 0.74rem;
 }
@@ -8210,7 +8207,6 @@ button.native-library-card__artist:focus-visible {
   min-height: 2.7rem;
   padding: 0.35rem 0.55rem;
   border: 0;
-  border-bottom: 1px solid var(--aurral-border);
   background: transparent;
   color: var(--aurral-text-muted);
   font: inherit;
@@ -8311,8 +8307,6 @@ button.native-library-genre-row:focus-visible {
   grid-template-columns: minmax(12rem, 18rem) minmax(0, 1fr);
   align-items: end;
   gap: 1.5rem;
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid var(--aurral-border);
 }
 
 .native-library-detail__cover {
