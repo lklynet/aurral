@@ -905,7 +905,7 @@ function LibraryPage() {
         aria-hidden="true"
       >
         <span />
-        <span>#</span>
+        <span className="native-library-track__number">#</span>
         <span />
         <span>Title</span>
         <span>Artist</span>
