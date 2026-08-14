@@ -63,7 +63,7 @@ The approval is used up by that first sign-in, and the badge clears.
 
 Approve accounts before telling users the upgrade is live. If someone signs in with SSO before their account is approved, their identity is bound to the new empty account and later approval has no effect.
 
-To recover, delete the new duplicate account (the one with a `-2` suffix), approve the original, and have the user sign in again.
+To recover, delete the new duplicate account (Aurral appends the first available numeric suffix, for example `-2`, `-3`, and so on, to the username), approve the original, and have the user sign in again.
 
 The protected recovery admin can never be claimed this way.
 

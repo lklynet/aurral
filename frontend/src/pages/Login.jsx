@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { getAppBasePath } from "../utils/basePath.js";
-import { setStoredAuth } from "../utils/api/core.js";
+import { clearAuthStorage, setStoredAuth } from "../utils/api/core.js";
 import { startPlexLoginPin, completePlexLogin } from "../utils/api/endpoints/auth.js";
 
 const buildApiUrl = (path) => {
@@ -90,7 +90,11 @@ const Login = () => {
         return;
       }
       setStoredAuth({ token: result.token });
-      await refreshAuth();
+      const refreshed = await refreshAuth();
+      if (!refreshed) {
+        clearAuthStorage();
+        setError("Signed in with Plex, but couldn't load your account. Please try again.");
+      }
     } finally {
       setPlexConnecting(false);
     }

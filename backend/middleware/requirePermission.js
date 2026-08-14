@@ -23,19 +23,21 @@ export function requireAdmin(req, res, next) {
   next();
 }
 
+export function isRecentlyAuthenticated(req, maxAgeMinutes = DEFAULT_REAUTH_MAX_AGE_MINUTES) {
+  const token = getBearerToken(req);
+  if (!token) return true;
+  const session = getSessionByToken(token);
+  if (!session) return false;
+  const ageMs = Date.now() - session.reauthenticatedAt;
+  return ageMs <= maxAgeMinutes * 60 * 1000;
+}
+
 export function requireRecentAuth(maxAgeMinutes = DEFAULT_REAUTH_MAX_AGE_MINUTES) {
   return (req, res, next) => {
     if (!req.user) {
       return sendUnauthorizedResponse(req, res);
     }
-    const token = getBearerToken(req);
-    if (!token) return next();
-    const session = getSessionByToken(token);
-    if (!session) {
-      return sendUnauthorizedResponse(req, res);
-    }
-    const ageMs = Date.now() - session.reauthenticatedAt;
-    if (ageMs > maxAgeMinutes * 60 * 1000) {
+    if (!isRecentlyAuthenticated(req, maxAgeMinutes)) {
       return res.status(401).json({
         error: "reauth_required",
         message: "Please confirm your credentials to continue",

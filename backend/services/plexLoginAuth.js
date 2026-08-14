@@ -37,7 +37,7 @@ function setTransactionCookie(req, res, value, maxAge) {
   ];
   if (secure) attributes.push("Secure");
   if (maxAge != null) attributes.push(`Max-Age=${maxAge}`);
-  res.setHeader("Set-Cookie", attributes.join("; "));
+  res.append("Set-Cookie", attributes.join("; "));
 }
 
 function clearTransactionCookie(req, res) {

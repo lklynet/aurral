@@ -745,7 +745,7 @@ export function SettingsUsersTab({
                               ...(editPassword ? { password: editPassword } : {}),
                               permissions: editPermissions,
                               status: editStatus,
-                              ...(editUser.needsIdentityMigration && !editUser.isProtected
+                              ...(ssoEnabled && editUser.needsIdentityMigration && !editUser.isProtected
                                 ? { allowIdentityAdoption: editAllowAdoption }
                                 : {}),
                             });
@@ -834,7 +834,7 @@ export function SettingsUsersTab({
                                   <option value="disabled">Disabled</option>
                                 </SettingsSelect>
                               </SettingsArrFormGroup>
-                              {editUser.needsIdentityMigration && !editUser.isProtected ? (
+                              {ssoEnabled && editUser.needsIdentityMigration && !editUser.isProtected ? (
                                 <SettingsArrFormGroup
                                   label="Claim by SSO sign-in"
                                   help="This account predates SSO identity linking, so it has no linked sign-in identity. If it belonged to an SSO user, turn this on and have them sign in with SSO once - that sign-in takes over this account and keeps its flows, history, and settings. Leave it off and their SSO sign-in creates a separate new account instead. Only enable this if you know who owns this account."

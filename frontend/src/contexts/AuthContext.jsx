@@ -40,7 +40,7 @@ export const AuthProvider = ({ children }) => {
         setIsAuthenticated(false);
         setUser(null);
         setIsLoading(false);
-        return;
+        return true;
       }
 
       const isRequired = bootstrap.authRequired;
@@ -50,7 +50,7 @@ export const AuthProvider = ({ children }) => {
         setUser(bootstrap.user);
         setIsAuthenticated(true);
         setIsLoading(false);
-        return;
+        return true;
       }
 
       if (!isRequired) {
@@ -70,7 +70,7 @@ export const AuthProvider = ({ children }) => {
         );
         setIsAuthenticated(true);
         setIsLoading(false);
-        return;
+        return true;
       }
 
       const { token } = getStoredAuth();
@@ -88,12 +88,14 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
         setIsAuthenticated(false);
       }
+      return true;
     } catch {
       if (shouldResetAuthAfterBootstrapFailure(authResolvedRef.current)) {
         setBootstrap(null);
         setUser(null);
         setIsAuthenticated(false);
       }
+      return false;
     } finally {
       setIsLoading(false);
     }

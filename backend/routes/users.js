@@ -1,7 +1,12 @@
 import express from "express";
 import { userOps, dbOps } from "../db/helpers/index.js";
 import { hashPassword, verifyPassword } from "../middleware/passwordHash.js";
-import { requireAuth, requireAdmin, requireRecentAuth } from "../middleware/requirePermission.js";
+import {
+  requireAuth,
+  requireAdmin,
+  requireRecentAuth,
+  isRecentlyAuthenticated,
+} from "../middleware/requirePermission.js";
 import { reconcileLocalNetworkBypassSetting } from "../middleware/auth.js";
 import { requirePasswordStrength } from "../middleware/auth.js";
 import { deleteSessionsByUserId } from "../config/session-helpers.js";
@@ -295,6 +300,12 @@ router.patch("/:id", requireAuth, async (req, res) => {
     }
     const updates = {};
     if (password) {
+      if (!isSelf && !isRecentlyAuthenticated(req)) {
+        return res.status(401).json({
+          error: "reauth_required",
+          message: "Please confirm your credentials to continue",
+        });
+      }
       const passwordValidation = requirePasswordStrength(password);
       if (!passwordValidation.valid) {
         return res.status(400).json({ error: passwordValidation.error });

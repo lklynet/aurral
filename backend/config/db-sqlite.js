@@ -386,8 +386,12 @@ if (!userColumns.includes("has_local_password")) {
   tryAddColumn("ALTER TABLE users ADD COLUMN has_local_password INTEGER NOT NULL DEFAULT 0");
 }
 if (!userColumns.includes("needs_identity_migration")) {
-  tryAddColumn("ALTER TABLE users ADD COLUMN needs_identity_migration INTEGER NOT NULL DEFAULT 0");
-  db.exec("UPDATE users SET needs_identity_migration = 1");
+  db.transaction(() => {
+    tryAddColumn(
+      "ALTER TABLE users ADD COLUMN needs_identity_migration INTEGER NOT NULL DEFAULT 0",
+    );
+    db.exec("UPDATE users SET needs_identity_migration = 1");
+  })();
 }
 if (!userColumns.includes("allow_identity_adoption")) {
   tryAddColumn("ALTER TABLE users ADD COLUMN allow_identity_adoption INTEGER NOT NULL DEFAULT 0");
