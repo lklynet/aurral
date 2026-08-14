@@ -235,6 +235,34 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.equal(responseJson(missingArtist).error.code, 10);
 });
 
+test("emits schema-compatible XML for strict Subsonic clients", async () => {
+  const userXml = await request("getUser", { f: "xml" });
+  assert.match(userXml.body, /<subsonic-response xmlns="http:\/\/subsonic\.org\/restapi" status="ok" version="1\.16\.1">/);
+  assert.match(userXml.body, /videoConversionRole="false"/);
+  assert.match(userXml.body, /<folder>1<\/folder>/);
+  assert.doesNotMatch(userXml.body, /\stype="Aurral"|\sserverVersion=/);
+
+  const foldersXml = await request("getMusicFolders", { f: "xml" });
+  assert.match(foldersXml.body, /<musicFolder id="1" name="Aurral"\/>/);
+
+  const artistsXml = await request("getArtists", { f: "xml" });
+  assert.doesNotMatch(artistsXml.body, /<(?:albumArtists|genres)(?:\s|>)/);
+
+  const artist = responseJson(await request("getArtists")).artists.index[0].artist[0];
+  const artistDetailXml = await request("getArtist", { f: "xml", id: artist.id });
+  assert.doesNotMatch(artistDetailXml.body, /<(?:artists|albumArtists|genres)(?:\s|>)/);
+
+  const album = responseJson(await request("getArtist", { id: artist.id })).artist.album[0];
+  const albumXml = await request("getAlbum", { f: "xml", id: album.id });
+  assert.doesNotMatch(albumXml.body, /<(?:artists|albumArtists|genres)(?:\s|>)/);
+
+  const genresXml = await request("getGenres", { f: "xml" });
+  assert.match(genresXml.body, /<genre albumCount="1" songCount="1">Rock<\/genre>/);
+
+  const directoryXml = await request("getMusicDirectory", { f: "xml", id: "1" });
+  assert.match(directoryXml.body, /<directory[^>]*id="1"[^>]*name="Aurral"/);
+});
+
 test("accepts Subsonic token auth for the configured Aurral account", async () => {
   const salt = "canonical-salt";
   const token = createHash("md5").update(`password123${salt}`).digest("hex");

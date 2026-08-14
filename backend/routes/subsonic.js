@@ -71,6 +71,8 @@ function responseAttributes(status) {
   };
 }
 
+const XML_OMIT_FIELDS = new Set(["albumArtists", "artists", "genres"]);
+
 function renderXmlElement(name, value) {
   if (Array.isArray(value)) return value.map((entry) => renderXmlElement(name, entry)).join("");
   if (value == null) return "";
@@ -78,19 +80,22 @@ function renderXmlElement(name, value) {
     return `<${name}>${escapeXml(value)}</${name}>`;
   }
 
+  const text = name === "genre" && Object.hasOwn(value, "value") ? value.value : null;
   const attributes = [];
   const children = [];
   for (const [key, entry] of Object.entries(value)) {
+    if (XML_OMIT_FIELDS.has(key) || (name === "genre" && key === "value")) continue;
     if (entry == null || entry === undefined) continue;
     if (typeof entry === "object") children.push(renderXmlElement(key, entry));
     else attributes.push(`${key}="${escapeXml(entry)}"`);
   }
   const opening = `<${name}${attributes.length ? ` ${attributes.join(" ")}` : ""}>`;
-  return children.length ? `${opening}${children.join("")}</${name}>` : opening.slice(0, -1) + "/>";
+  const body = [text == null ? "" : escapeXml(text), ...children].join("");
+  return body ? `${opening}${body}</${name}>` : opening.slice(0, -1) + "/>";
 }
 
 function renderXml({ status, data = {}, error }) {
-  const attributes = Object.entries(responseAttributes(status))
+  const attributes = Object.entries({ status, version: SUBSONIC_VERSION })
     .map(([key, value]) => `${key}="${escapeXml(value)}"`)
     .join(" ");
   const body = error
@@ -195,7 +200,7 @@ async function handleSubsonicRequest(req, res) {
         commentRole: false,
         coverArtRole: true,
         downloadRole: true,
-        folder: ["root"],
+        folder: [1],
         jukeboxRole: false,
         playlistRole: Boolean(req.user.permissions?.accessFlow),
         podcastRole: false,
@@ -204,6 +209,7 @@ async function handleSubsonicRequest(req, res) {
         shareRole: false,
         streamRole: true,
         uploadRole: false,
+        videoConversionRole: false,
       },
     });
   }
@@ -212,7 +218,7 @@ async function handleSubsonicRequest(req, res) {
   }
   if (method === "getmusicfolders") {
     return sendResponse(res, format, "ok", null, {
-      musicFolders: { musicFolder: [{ id: "root", name: APP_NAME }] },
+      musicFolders: { musicFolder: [{ id: 1, name: APP_NAME }] },
     });
   }
   if (method === "getalbumlist2") {
