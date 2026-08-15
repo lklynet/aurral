@@ -749,6 +749,9 @@ export const updateDiscoveryCache = async (options = {}) => {
     discoveryCache.isUpdating = false;
     clearDiscoveryUpdateProgress();
 
+    const listeningHistoryUsersConfigured = userOps
+      .getAllListeningHistoryUsers()
+      .some((user) => hasListenHistoryProfile(getListenHistoryProfile(user)));
     if (listeningHistoryUsersConfigured) {
       emitDiscoveryDataUpdate(discoveryData, {
         progressMessage: "Discovery refresh completed",
