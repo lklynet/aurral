@@ -157,6 +157,7 @@ export const requestUserDiscoveryRefresh = (
   const operationId = enqueueDiscoveryUserRefreshJob({
     listenHistoryProfile: profile,
     feedbackUserId,
+    localOnly,
     requestedAt: Date.now(),
     reason: "manual",
   });

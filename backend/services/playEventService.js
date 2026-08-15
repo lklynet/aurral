@@ -1,15 +1,8 @@
 import { db } from "../config/db-sqlite.js";
-import { logger } from "./logger.js";
-import { enqueuePlayEventDelivery } from "./honkerDb.js";
+import { getHonkerDb, getPlayEventOutbox } from "./honkerDb.js";
 import { scrobbleConnectionStore } from "./scrobbleConnectionStore.js";
-import { normalizeKoitoBaseUrl } from "./koitoClient.js";
+import { getKoitoListenBrainzBaseUrl } from "./koitoClient.js";
 
-const insertEventStmt = db.prepare(`
-  INSERT INTO play_events
-    (user_id, track_id, title, artist, album, artist_mbid, album_mbid, track_mbid,
-     duration_ms, played_at, source, created_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
 const getEventStmt = db.prepare("SELECT * FROM play_events WHERE id = ?");
 const getHistoryStmt = db.prepare(
   "SELECT * FROM play_events WHERE user_id = ? ORDER BY played_at DESC, id DESC LIMIT ? OFFSET ?",
@@ -70,33 +63,41 @@ export const recordPlayEvent = (userId, input = {}) => {
   const playedAt = Number.isFinite(playedAtValue)
     ? (playedAtValue < 10_000_000_000 ? Math.trunc(playedAtValue * 1000) : Math.trunc(playedAtValue))
     : Date.now();
-  const result = insertEventStmt.run(
-    userId,
-    trackId,
-    title,
-    artist,
-    text(input.album, 500) || null,
-    text(input.artistMbid, 100) || null,
-    text(input.albumMbid, 100) || null,
-    text(input.trackMbid, 100) || null,
-    positiveInt(input.durationMs),
-    playedAt,
-    text(input.source, 50) || "unknown",
-    Date.now(),
-  );
-  const event = toPublicEvent(getEventStmt.get(result.lastInsertRowid));
   const providers = new Set(Object.keys(scrobbleConnectionStore.getConnections(userId)));
-  for (const provider of providers) {
-    try {
-      enqueuePlayEventDelivery({ eventId: event.id, userId, provider });
-    } catch (error) {
-      logger.warn("play-events", "Could not enqueue scrobble delivery", {
-        userId,
-        provider,
-        error: error?.message || String(error),
-      });
+  const honker = getHonkerDb();
+  const tx = honker.transaction();
+  let eventId;
+  try {
+    const rows = tx.query(`
+      INSERT INTO play_events
+        (user_id, track_id, title, artist, album, artist_mbid, album_mbid, track_mbid,
+         duration_ms, played_at, source, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      RETURNING id
+    `, [
+      userId,
+      trackId,
+      title,
+      artist,
+      text(input.album, 500) || null,
+      text(input.artistMbid, 100) || null,
+      text(input.albumMbid, 100) || null,
+      text(input.trackMbid, 100) || null,
+      positiveInt(input.durationMs),
+      playedAt,
+      text(input.source, 50) || "unknown",
+      Date.now(),
+    ]);
+    eventId = rows[0]?.id;
+    for (const provider of providers) {
+      getPlayEventOutbox().enqueueTx(tx, { eventId, userId, provider });
     }
+    tx.commit();
+  } catch (error) {
+    try { tx.rollback(); } catch {}
+    throw error;
   }
+  const event = toPublicEvent(getEventStmt.get(eventId));
   return event;
 };
 
@@ -118,7 +119,7 @@ export const deliverPlayEvent = async ({ eventId, userId, provider }) => {
     const { listenbrainzSubmit } = await import("./apiClients/listenbrainz.js");
     await listenbrainzSubmit({
       token: connection.token,
-      baseUrl: normalizeKoitoBaseUrl(connection.baseUrl || ""),
+      baseUrl: getKoitoListenBrainzBaseUrl(connection.baseUrl || ""),
       event,
     });
     return;

@@ -191,8 +191,8 @@ async function handleSubsonicRequest(req, res) {
     return sendError(
       res,
       format,
-      token && salt ? 41 : 40,
-      token && salt ? "Token authentication failed" : "Wrong username or password",
+      password ? 40 : 41,
+      password ? "Wrong username or password" : "Token authentication failed",
     );
   }
   req.user = user;

@@ -39,6 +39,11 @@ export function normalizeKoitoBaseUrl(baseUrl) {
   }
 }
 
+export function getKoitoListenBrainzBaseUrl(baseUrl) {
+  const normalized = normalizeKoitoBaseUrl(baseUrl);
+  return normalized ? `${normalized}/apis/listenbrainz` : "";
+}
+
 export function getKoitoPeriod(discoveryPeriod) {
   if (!discoveryPeriod || discoveryPeriod === "none") return null;
   return KOITO_PERIOD_BY_DISCOVERY_PERIOD[discoveryPeriod] || "month";

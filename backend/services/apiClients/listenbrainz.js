@@ -14,6 +14,18 @@ const LISTENBRAINZ_MAX_RETRIES = 2;
 const listenbrainzInflightRequests = new Map();
 const listenbrainzErrorLogAt = new Map();
 
+const normalizeListenbrainzBaseUrl = (baseUrl) => {
+  const candidate = String(baseUrl || "").trim().replace(/\/+$/, "") || LISTENBRAINZ_API;
+  try {
+    const parsed = new URL(candidate);
+    return ["http:", "https:"].includes(parsed.protocol) && parsed.host
+      ? candidate
+      : LISTENBRAINZ_API;
+  } catch {
+    return LISTENBRAINZ_API;
+  }
+};
+
 const listenbrainzWrite = async (baseUrl, path, { token, data } = {}) => {
   const response = await listenbrainzLimiter.schedule(() =>
     axios.post(`${String(baseUrl).replace(/\/+$/, "")}${path}`, data, {
@@ -25,9 +37,10 @@ const listenbrainzWrite = async (baseUrl, path, { token, data } = {}) => {
   return response.data;
 };
 
-export const listenbrainzValidateToken = async (token) => {
+export const listenbrainzValidateToken = async (token, baseUrl = LISTENBRAINZ_API) => {
+  const root = normalizeListenbrainzBaseUrl(baseUrl);
   const response = await listenbrainzLimiter.schedule(() =>
-    axios.get(`${LISTENBRAINZ_API}/1/validate-token`, {
+    axios.get(`${root}/1/validate-token`, {
       headers: { Authorization: `Token ${String(token || "").trim()}` },
       timeout: LISTENBRAINZ_TIMEOUT_MS,
       validateStatus: (status) => status >= 200 && status < 300,
@@ -37,10 +50,15 @@ export const listenbrainzValidateToken = async (token) => {
 };
 
 export const listenbrainzSubmit = async ({ token, baseUrl = LISTENBRAINZ_API, event }) => {
+  const root = normalizeListenbrainzBaseUrl(baseUrl);
+  const listenedAt = Math.floor(Number(event?.playedAt) / 1000);
+  if (!Number.isFinite(listenedAt) || listenedAt <= 0) {
+    throw new Error("listenbrainzSubmit requires a numeric playedAt timestamp");
+  }
   const payload = {
     listen_type: "single",
     payload: [{
-      listened_at: Math.floor(Number(event.playedAt) / 1000),
+      listened_at: listenedAt,
       track_metadata: {
         artist_name: event.artist,
         track_name: event.title,
@@ -55,7 +73,7 @@ export const listenbrainzSubmit = async ({ token, baseUrl = LISTENBRAINZ_API, ev
       },
     }],
   };
-  return listenbrainzWrite(`${String(baseUrl).replace(/\/+$/, "")}/1`, "/submit-listens", {
+  return listenbrainzWrite(`${root}/1`, "/submit-listens", {
     token,
     data: payload,
   });

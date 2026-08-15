@@ -12,7 +12,8 @@ for recommendations and discovery data, and uses both values to connect Last.fm 
 
 ## Scrobbling
 
-Open **Settings > Playback > Scrobbling** and enable **Last.fm**.
+Open **Settings > Playback > Scrobbling**, enable **Last.fm**, select **Connect Last.fm account**,
+and complete the authorization in the Last.fm window.
 
 Aurral copies Navidrome's Last.fm flow directly: it uses the API key and API secret from
 **Settings > Connect**, then stores each user's Last.fm session key. Navidrome is not required.
@@ -26,6 +27,10 @@ Aurral combines local play events with external history when a user selects Last
 or Koito.
 
 Aurral records local plays from the built-in player and Subsonic clients before it contacts Last.fm. A Last.fm outage does not remove local history or stop playback.
+
+Local plays are queued before provider delivery. Delivery is at least once: temporary failures are
+retried, so a provider can receive a duplicate scrobble attempt. Aurral's local history is retained
+regardless of provider delivery results.
 
 ![Aurral profile listening history](../../../assets/screenshots/profile-listening.webp)
 

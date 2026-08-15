@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   startPlexAuth,
@@ -69,6 +69,7 @@ export function SettingsPlaybackSection({
   const [listenBrainzToken, setListenBrainzToken] = useState("");
   const [koitoToken, setKoitoToken] = useState("");
   const [koitoUrl, setKoitoUrl] = useState("");
+  const lastfmPollRef = useRef(null);
 
   const navidrome = settings.integrations?.navidrome || {};
   const plex = settings.integrations?.plex || {};
@@ -81,7 +82,11 @@ export function SettingsPlaybackSection({
   const refreshScrobbleStatus = () => getScrobbleStatus().then(setScrobbleStatus).catch(() => {});
 
   useEffect(() => {
-    getScrobbleStatus().then(setScrobbleStatus).catch(() => {});
+    refreshScrobbleStatus();
+    return () => {
+      if (lastfmPollRef.current) window.clearInterval(lastfmPollRef.current);
+      lastfmPollRef.current = null;
+    };
   }, []);
 
   const closeModal = () => {
@@ -300,6 +305,8 @@ export function SettingsPlaybackSection({
       return;
     }
     try {
+      if (lastfmPollRef.current) window.clearInterval(lastfmPollRef.current);
+      lastfmPollRef.current = null;
       const result = await getLastfmScrobbleLink();
       if (!result.authorizeUrl) {
         showError("Could not start Last.fm linking.");
@@ -314,9 +321,11 @@ export function SettingsPlaybackSection({
         showError("Allow popups to link Last.fm.");
         return;
       }
-      const timer = window.setInterval(() => {
-        if (popup.closed) {
-          window.clearInterval(timer);
+      const deadline = Date.now() + 3 * 60 * 1000;
+      lastfmPollRef.current = window.setInterval(() => {
+        if (popup.closed || Date.now() >= deadline) {
+          window.clearInterval(lastfmPollRef.current);
+          lastfmPollRef.current = null;
           refreshScrobbleStatus();
         }
       }, 500);

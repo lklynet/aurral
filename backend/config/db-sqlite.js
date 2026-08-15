@@ -76,6 +76,19 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS lastfm_link_states (
+    token_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    browser_nonce_hash TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    consumed_at INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_lastfm_link_states_expiry
+    ON lastfm_link_states(expires_at);
+
   CREATE TABLE IF NOT EXISTS subsonic_stars (
     user_id INTEGER NOT NULL,
     entity_kind TEXT NOT NULL,

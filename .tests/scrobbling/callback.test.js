@@ -3,14 +3,14 @@ import test from "node:test";
 
 import { callbackUrl } from "../../backend/routes/scrobbling.js";
 
-test("Last.fm callback uses the forwarded host and preserves signed state", () => {
+test("Last.fm callback uses the request host and preserves signed state", () => {
   const request = {
     protocol: "http",
     get(name) {
       return {
-        host: "localhost:3001",
-        "x-forwarded-host": "192.168.4.115:3009",
-        "x-forwarded-proto": "http",
+        host: "192.168.4.115:3009",
+        "x-forwarded-host": "attacker.example",
+        "x-forwarded-proto": "https",
       }[String(name).toLowerCase()] || undefined;
     },
   };

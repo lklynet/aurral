@@ -5,14 +5,24 @@ import { decryptWithKey, encryptWithKey } from "../config/encryption.js";
 const SETTINGS_KEY = "scrobbleConnections";
 const PROVIDERS = new Set(["lastfm", "listenbrainz", "koito"]);
 const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
+const insertSettingStmt = db.prepare(
+  "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+);
 const upsertSettingStmt = db.prepare(
   "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
 );
-const getEncryptionKey = () => {
+const ensureEncryptionKey = db.transaction(() => {
   const stored = getSettingStmt.get("_encryptionKey")?.value;
-  if (stored) return Buffer.from(stored, "base64");
-  const key = crypto.randomBytes(32);
-  upsertSettingStmt.run("_encryptionKey", key.toString("base64"));
+  if (!stored) {
+    insertSettingStmt.run("_encryptionKey", crypto.randomBytes(32).toString("base64"));
+  }
+  const persisted = getSettingStmt.get("_encryptionKey")?.value;
+  if (!persisted) throw new Error("Scrobble encryption key could not be initialized");
+  return Buffer.from(persisted, "base64");
+});
+const getEncryptionKey = () => {
+  const key = ensureEncryptionKey();
+  if (key.length !== 32) throw new Error("Scrobble encryption key is invalid");
   return key;
 };
 
@@ -56,8 +66,9 @@ export const scrobbleConnectionStore = {
   },
 
   getPublicStatus(userId) {
+    const connections = this.getConnections(userId);
     return Object.fromEntries([...PROVIDERS].map((provider) => {
-      const connection = this.getConnection(userId, provider);
+      const connection = connections[provider];
       return [provider, connection
         ? { connected: true, displayName: connection.displayName, connectedAt: connection.connectedAt }
         : { connected: false, displayName: null, connectedAt: null }];
