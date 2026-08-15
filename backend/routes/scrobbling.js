@@ -28,9 +28,10 @@ const verifyLinkToken = (token) => {
   return Math.trunc(Number(userId));
 };
 
-const callbackUrl = (req, token) => {
+export const callbackUrl = (req, token) => {
   const protocol = String(req.get("x-forwarded-proto") || req.protocol).split(",")[0].trim();
-  return `${protocol}://${req.get("host")}/api/scrobbling/lastfm/link/callback?uid=${encode(token)}`;
+  const host = String(req.get("x-forwarded-host") || req.get("host")).split(",")[0].trim();
+  return `${protocol}://${host}/api/scrobbling/lastfm/link/callback?uid=${encode(token)}`;
 };
 
 router.get("/status", requireAuth, (req, res) => {
@@ -56,7 +57,8 @@ router.get("/lastfm/link/callback", async (req, res) => {
   try {
     const userId = verifyLinkToken(req.query.uid);
     const token = String(req.query.token || "").trim();
-    if (!userId || !token) return res.status(400).send("Invalid Last.fm link request");
+    if (!userId) return res.status(400).send("Invalid Last.fm link state");
+    if (!token) return res.status(400).send("Last.fm did not return an authorization token");
     const session = await lastfmGetSession(token);
     const key = session?.session?.key;
     if (!key) return res.status(400).send("Last.fm did not return a session");

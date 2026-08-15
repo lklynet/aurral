@@ -64,6 +64,7 @@ export default defineConfig(({ mode }) => {
         "/api": {
           target: "http://localhost:3001",
           changeOrigin: true,
+          xfwd: true,
           secure: false,
           ws: true,
           timeout: 60000,
@@ -72,6 +73,7 @@ export default defineConfig(({ mode }) => {
         "/sso/callback": {
           target: "http://localhost:3001",
           changeOrigin: true,
+          xfwd: true,
           secure: false,
         },
         "/ws": {
