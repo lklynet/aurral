@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { callbackUrl } from "../../backend/routes/scrobbling.js";
 
-test("Last.fm callback uses the forwarded public host", () => {
+test("Last.fm callback uses the forwarded host and preserves signed state", () => {
   const request = {
     protocol: "http",
     get(name) {
@@ -15,8 +15,8 @@ test("Last.fm callback uses the forwarded public host", () => {
     },
   };
 
-  assert.equal(
-    new URL(callbackUrl(request, "state-token")).origin,
-    "http://192.168.4.115:3009",
-  );
+  const callback = new URL(callbackUrl(request, "encoded-payload.signature"));
+
+  assert.equal(callback.origin, "http://192.168.4.115:3009");
+  assert.equal(callback.searchParams.get("uid"), "encoded-payload.signature");
 });

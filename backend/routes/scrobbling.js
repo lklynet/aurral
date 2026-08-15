@@ -31,7 +31,7 @@ const verifyLinkToken = (token) => {
 export const callbackUrl = (req, token) => {
   const protocol = String(req.get("x-forwarded-proto") || req.protocol).split(",")[0].trim();
   const host = String(req.get("x-forwarded-host") || req.get("host")).split(",")[0].trim();
-  return `${protocol}://${host}/api/scrobbling/lastfm/link/callback?uid=${encode(token)}`;
+  return `${protocol}://${host}/api/scrobbling/lastfm/link/callback?uid=${encodeURIComponent(token)}`;
 };
 
 router.get("/status", requireAuth, (req, res) => {
