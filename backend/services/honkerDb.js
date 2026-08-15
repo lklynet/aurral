@@ -15,6 +15,7 @@ export const HONKER_QUEUE_NAMES = [
   "discovery-playlist-build",
   "discovery-user-refresh",
   "_outbox:notifications",
+  "_outbox:play-events",
 ];
 
 function resolveHonkerDbPath() {
@@ -26,6 +27,7 @@ function resolveHonkerDbPath() {
 let honkerDb = null;
 let openedHonkerDbPath = null;
 let notificationOutbox = null;
+let playEventOutbox = null;
 let honkerSchedulerStarted = false;
 let honkerSchedulerAbort = null;
 let honkerSchedulerPromise = null;
@@ -322,6 +324,30 @@ export function enqueueNotification(payload) {
     .catch((err) => { console.warn(err); });  return jobId;
 }
 
+export function getPlayEventOutbox() {
+  if (!playEventOutbox) {
+    playEventOutbox = getHonkerDb().outbox(
+      "play-events",
+      async (payload, job) => {
+        const { deliverPlayEvent } = await import("./playEventService.js");
+        const { withJobHeartbeat } = await import("./honkerWorkerRuntime.js");
+        const outbox = getPlayEventOutbox();
+        await withJobHeartbeat(job, outbox.queue, () => deliverPlayEvent(payload));
+      },
+      { visibilityTimeoutS: 120, maxAttempts: 5, baseBackoffS: 30 },
+    );
+  }
+  return playEventOutbox;
+}
+
+export function enqueuePlayEventDelivery(payload) {
+  const jobId = getPlayEventOutbox().enqueue(payload);
+  import("./playEventOutboxWorker.js")
+    .then(({ startPlayEventOutboxWorker }) => startPlayEventOutboxWorker())
+    .catch((err) => { console.warn(err); });
+  return jobId;
+}
+
 export function bootstrapHonkerSchedules() {
   const scheduler = getHonkerDb().scheduler();
   const canonicalByName = new Map(SCHEDULED_SYSTEM_TASKS.map((task) => [task.name, task]));
@@ -436,6 +462,7 @@ export function closeHonkerDb() {
     reset();
   }
   notificationOutbox = null;
+  playEventOutbox = null;
 }
 
 export function isHonkerLockHeld(name) {
@@ -553,6 +580,9 @@ export function sweepAllHonkerQueues() {
 export function getHonkerQueueByName(queueName) {
   if (queueName === "_outbox:notifications") {
     return getNotificationOutbox().queue;
+  }
+  if (queueName === "_outbox:play-events") {
+    return getPlayEventOutbox().queue;
   }
   return queueByName.get(queueName)?.getQueue() ?? null;
 }

@@ -40,7 +40,7 @@ export const defaultData = {
       },
       lastfm: {
         apiKey: "",
-        username: "",
+        apiSecret: "",
         discoveryPeriod: "1month",
         discoveryAutoRefreshHours: 168,
         discoveryRecommendationsPerRefresh: 200,

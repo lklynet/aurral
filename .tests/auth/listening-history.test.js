@@ -117,7 +117,7 @@ test("legacy lastfm_username still resolves as a lastfm profile", () => {
   assert.equal(stored?.lastfmUsername, "legacybob");
 });
 
-test("resolveListenHistorySettings falls back to integrations default username", () => {
+test("resolveListenHistorySettings does not use a global username", () => {
   const settings = {
     integrations: {
       lastfm: {
@@ -128,9 +128,18 @@ test("resolveListenHistorySettings falls back to integrations default username",
   };
   assert.deepEqual(resolveListenHistorySettings({}, settings), {
     listenHistoryProvider: "lastfm",
-    listenHistoryUsername: "leefamous",
+    listenHistoryUsername: null,
     listenHistoryUrl: null,
-    lastfmUsername: "leefamous",
+    lastfmUsername: null,
+  });
+});
+
+test("local history is a valid profile without an external identity", () => {
+  assert.deepEqual(resolveListenHistorySettings({ listenHistoryProvider: "local" }), {
+    listenHistoryProvider: "local",
+    listenHistoryUsername: null,
+    listenHistoryUrl: null,
+    lastfmUsername: null,
   });
 });
 

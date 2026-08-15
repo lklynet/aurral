@@ -1,7 +1,6 @@
 import express from "express";
 import { dbOps, userOps } from "../db/helpers/index.js";
 import { hashPassword } from "../middleware/passwordHash.js";
-import { getDefaultListenHistoryProfile } from "../services/listeningHistory.js";
 import { defaultData } from "../config/constants.js";
 import { requirePasswordStrength, reconcileLocalNetworkBypassSetting } from "../middleware/auth.js";
 import { validateDownloadFolderPath } from "../services/downloadFolderConfig.js";
@@ -180,11 +179,7 @@ router.post("/complete", async (req, res) => {
     const authPasswordFinal = integrations?.general?.authPassword || "";
     if (authPasswordFinal && userOps.getAllUsers().length === 0) {
       const hash = hashPassword(authPasswordFinal);
-      const created = userOps.createUser(authUserFinal, hash, "admin", null);
-      const initialListenHistory = getDefaultListenHistoryProfile(nextSettings);
-      if (created && initialListenHistory) {
-        userOps.updateUser(created.id, initialListenHistory);
-      }
+      userOps.createUser(authUserFinal, hash, "admin", null);
     }
 
     reconcileLocalNetworkBypassSetting();

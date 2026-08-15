@@ -90,7 +90,6 @@ export const normalizeSettings = (savedSettings) => {
       },
       lastfm: {
         apiKey: "",
-        username: "",
         discoveryPeriod: "1month",
         discoveryAutoRefreshHours: normalizedAutoRefreshHours,
         discoveryRecommendationsPerRefresh: normalizedRecommendationsPerRefresh,

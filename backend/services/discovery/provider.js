@@ -9,7 +9,6 @@ import {
 } from "../apiClients/index.js";
 import { logger } from "../logger.js";
 import {
-  getDefaultListenHistoryProfile,
   getListenHistoryCacheNamespace,
   getListenHistoryProfile,
   hasListenHistoryProfile,
@@ -65,35 +64,18 @@ import {
 } from "./persistence.js";
 import { buildTasteProfile, collectSeedTagsAndGenres } from "./tasteProfile.js";
 import { buildRecommendationsFromSeeds } from "./recommendations.js";
+import { getTopPlayedArtists } from "../playEventService.js";
 
 export { DISCOVERY_QUALITY_ENRICHED };
 
 const pendingUserDiscoveryProfiles = new Map();
 
-const hasListeningHistoryUsers = () => {
-  const defaultProfile = getDefaultListenHistoryProfile(dbOps.getSettings());
-  const globalNamespace = defaultProfile
-    ? getListenHistoryCacheNamespace(defaultProfile)
-    : null;
-  return userOps.getAllListeningHistoryUsers().some((user) => {
-    const profile = getListenHistoryProfile(user);
-    if (!hasListenHistoryProfile(profile)) return false;
-    if (globalNamespace && getListenHistoryCacheNamespace(profile) === globalNamespace) return false;
-    return true;
-  });
-};
-
 const collectListeningHistoryRefreshProfiles = () => {
-  const defaultProfile = getDefaultListenHistoryProfile(dbOps.getSettings());
-  const globalNamespace = defaultProfile
-    ? getListenHistoryCacheNamespace(defaultProfile)
-    : null;
   const profiles = new Map();
   for (const user of userOps.getAllListeningHistoryUsers()) {
     const profile = getListenHistoryProfile(user);
     const cacheNamespace = getListenHistoryCacheNamespace(profile);
     if (!cacheNamespace || !hasListenHistoryProfile(profile)) continue;
-    if (globalNamespace && cacheNamespace === globalNamespace) continue;
     profiles.set(cacheNamespace, {
       profile,
       feedbackUserId: user.id || null,
@@ -128,6 +110,7 @@ const enqueueListeningHistoryUserRefreshes = ({
       {
         listenHistoryProfile: entry.profile,
         feedbackUserId: entry.feedbackUserId || null,
+        localOnly: entry.localOnly === true,
         requestedAt: Date.now(),
         reason,
       },
@@ -143,7 +126,7 @@ const enqueueListeningHistoryUserRefreshes = ({
 
 export const requestUserDiscoveryRefresh = (
   listenHistoryProfile,
-  { feedbackUserId = null } = {},
+  { feedbackUserId = null, localOnly = false } = {},
 ) => {
   const profile = getListenHistoryProfile(listenHistoryProfile);
   const cacheNamespace = getListenHistoryCacheNamespace(profile);
@@ -154,11 +137,13 @@ export const requestUserDiscoveryRefresh = (
     pendingUserDiscoveryProfiles.set(cacheNamespace, {
       profile,
       feedbackUserId,
+      localOnly,
     });
     enqueueDiscoveryUserRefreshJob(
       {
         listenHistoryProfile: profile,
         feedbackUserId,
+        localOnly,
         requestedAt: Date.now(),
         reason: "global_refresh_in_progress",
       },
@@ -524,35 +509,6 @@ export const updateDiscoveryCache = async (options = {}) => {
     );
 
     const historyArtists = [];
-    const defaultListenHistoryProfile = getDefaultListenHistoryProfile(
-      dbOps.getSettings(),
-    );
-    const discoveryPeriod = getLastfmDiscoveryPeriod();
-    const listeningHistoryUsersConfigured = hasListeningHistoryUsers();
-    if (
-      defaultListenHistoryProfile &&
-      discoveryPeriod !== "none" &&
-      !listeningHistoryUsersConfigured
-    ) {
-      try {
-        const fetched = await fetchListenHistoryArtists(
-          defaultListenHistoryProfile,
-          discoveryPeriod,
-          lastfmHealth,
-        );
-        historyArtists.push(
-          ...fetched.map((artist) => ({
-            ...artist,
-            source: defaultListenHistoryProfile.listenHistoryProvider,
-          })),
-        );
-      } catch (error) {
-        logger.warn(
-          'discovery',
-          `[Discovery] Failed to load default listening history for ${defaultListenHistoryProfile.listenHistoryUsername}: ${error.message}`,
-        );
-      }
-    }
 
     const profileSampleSeedCount = selectDiscoverySeedSample(
       buildDiscoverySeedList({
@@ -887,7 +843,7 @@ export const updateUserDiscoveryCache = async (
   options = {},
 ) => {
   const { withHonkerLock } = await import("../honkerDb.js");
-  const { duringGlobalRefresh = false } = options;
+  const { duringGlobalRefresh = false, localOnly = false } = options;
   const profile = getListenHistoryProfile(listenHistoryProfile);
   const cacheNamespace = getListenHistoryCacheNamespace(profile);
   if (!cacheNamespace) return null;
@@ -911,11 +867,13 @@ export const updateUserDiscoveryCache = async (
     pendingUserDiscoveryProfiles.set(cacheNamespace, {
       profile,
       feedbackUserId: options.feedbackUserId || null,
+      localOnly,
     });
     enqueueDiscoveryUserRefreshJob(
       {
         listenHistoryProfile: profile,
         feedbackUserId: options.feedbackUserId || null,
+        localOnly,
         requestedAt: Date.now(),
         reason: "global_refresh_in_progress",
       },
@@ -949,7 +907,7 @@ export const updateUserDiscoveryCache = async (
     const discoveryPeriod = getLastfmDiscoveryPeriod();
     const historyArtists = [];
 
-    if (discoveryPeriod !== "none") {
+    if (!localOnly && discoveryPeriod !== "none") {
       logger.info(
         'discovery',
         `[Discovery] Fetching ${profile.listenHistoryProvider} top artists for ${profile.listenHistoryUsername} (period: ${discoveryPeriod})...`,
@@ -978,6 +936,15 @@ export const updateUserDiscoveryCache = async (
       }
     }
 
+    if (options.feedbackUserId) {
+      historyArtists.push(
+        ...getTopPlayedArtists(options.feedbackUserId, { limit: 50 }).map((artist) => ({
+          ...artist,
+          source: "local",
+        })),
+      );
+    }
+
     const recommendationRunStartedAt = new Date().toISOString();
     const discoveryRunId = createDiscoveryRunId();
     const feedback = options.feedbackUserId
@@ -989,7 +956,7 @@ export const updateUserDiscoveryCache = async (
     const globalTopTags = globalCache.topTags || [];
     const globalTopGenres = globalCache.topGenres || [];
 
-    if (globalPool.length === 0) {
+    if (globalPool.length === 0 && historyArtists.length === 0) {
       logger.info(
         'discovery',
         `[Discovery] Per-user refresh skipped for ${profile.listenHistoryUsername}: global pool is empty.`,
@@ -1006,9 +973,31 @@ export const updateUserDiscoveryCache = async (
       return null;
     }
 
-    let recommendationsArray = [];
-    recommendationsArray = mergeRetainedRecommendationPool({
-      freshRecommendations: recommendationsArray,
+    const personalSeeds = buildDiscoverySeedList({
+      libraryArtists: [],
+      historyArtists,
+    });
+    let freshRecommendations = [];
+    if (personalSeeds.length > 0) {
+      const rawRecommendations = await buildRecommendationsFromSeeds({
+        seeds: personalSeeds,
+        existingArtistKeys,
+        lastfmHealth,
+        profileTagWeights: new Map(),
+        seedTagMap: new Map(),
+        discoveryMode: getDiscoveryMode(),
+        includeCandidateTagHydration: false,
+        includeSecondHop: true,
+      });
+      freshRecommendations = await resolveRecommendationCandidates(
+        rawRecommendations,
+        existingArtistKeys,
+        40,
+        { resolveLimit: getDiscoveryRecommendationsPerRefresh() },
+      );
+    }
+    const recommendationsArray = mergeRetainedRecommendationPool({
+      freshRecommendations: freshRecommendations.length ? freshRecommendations : globalPool,
       existingRecommendations:
         dbOps.getDiscoveryCache(cacheNamespace).recommendations || [],
       existingArtistKeys,

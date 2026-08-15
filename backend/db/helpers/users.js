@@ -183,7 +183,7 @@ export const userOps = {
         : existing.listenHistoryUrl,
     );
     const resolvedUsername =
-      listenHistoryProvider === "koito" ? null : listenHistoryUsername;
+      ["koito", "local"].includes(listenHistoryProvider) ? null : listenHistoryUsername;
     const resolvedUrl =
       listenHistoryProvider === "koito" ? listenHistoryUrl : null;
     const lastfmUsername =

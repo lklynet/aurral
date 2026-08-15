@@ -2,7 +2,6 @@ import { useState, useRef } from "react";
 import { testGotifyConnection } from "../../../utils/api/endpoints/settings.js";
 
 import { Plus, Trash2, GripVertical } from "lucide-react";
-import { Link } from "react-router-dom";
 import { SettingsInput, SettingsTextarea } from "./SettingsField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
 import {
@@ -116,7 +115,6 @@ export function SettingsConnectTab({
       setTestingGotify(false);
     }
   };
-
   const addWebhook = () => {
     if (webhooks.length >= 5) return;
     updateWebhooks([...webhooks, { url: "", body: null, headers: [] }]);
@@ -192,9 +190,15 @@ export function SettingsConnectTab({
             />
             <IntegrationCard
               title="Last.fm"
-              subtitle="Listening history API"
+              subtitle="Recommendations and scrobbling"
               status={getConfiguredStatus(lastfmConfigured)}
-              meta={lastfm.username || "Admin default"}
+              meta={
+                lastfm.apiKey && lastfm.apiSecret
+                  ? "API key and secret configured"
+                  : lastfm.apiKey
+                    ? "API secret required for scrobbling"
+                    : "API key required"
+              }
               onClick={() => setActiveModal("lastfm")}
             />
             <IntegrationCard
@@ -547,13 +551,10 @@ export function SettingsConnectTab({
       {activeModal === "lastfm" && (
         <SettingsIntegrationModal title="Last.fm" onClose={() => setActiveModal(null)}>
           <SettingsModalIntro>
-            Admin default API key and username. Users can override listening history in{" "}
-            <Link to="/profile" className="settings-page__link">
-              Profile
-            </Link>
-            .
+            Aurral uses the API key for recommendations and discovery data. The API secret is also
+            required to connect a Last.fm account for scrobbling in Playback.
           </SettingsModalIntro>
-          <SettingsModalSection title="Credentials">
+          <SettingsModalSection title="API">
             <SettingsModalField label="API key">
               <SettingsInput
                 type="password"
@@ -563,13 +564,13 @@ export function SettingsConnectTab({
                 onChange={(e) => updateLastfm({ apiKey: e.target.value })}
               />
             </SettingsModalField>
-            <SettingsModalField label="Default username">
+            <SettingsModalField label="API secret">
               <SettingsInput
-                type="text"
-                placeholder="Your Last.fm username"
+                type="password"
+                placeholder="Last.fm API secret"
                 autoComplete="off"
-                value={lastfm.username || ""}
-                onChange={(e) => updateLastfm({ username: e.target.value })}
+                value={lastfm.apiSecret || ""}
+                onChange={(e) => updateLastfm({ apiSecret: e.target.value })}
               />
             </SettingsModalField>
           </SettingsModalSection>

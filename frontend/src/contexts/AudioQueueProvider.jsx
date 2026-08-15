@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { useAudioPlayerContext } from "react-use-audio-player";
 import { getFormatLoadAttempts, getHowlerFormat, normalizeQueueTrack } from "../utils/audioQueue";
 import { AudioQueueContext } from "./audioQueueContext";
+import { recordPlayEvent } from "../utils/api/endpoints/auth";
 
 const SHARED_VOLUME_KEY = "aurral.preview.volume";
 const SHARED_VOLUME_EVENT = "aurral:shared-volume-change";
@@ -205,6 +206,20 @@ export function AudioQueueProvider({ children }) {
       onend: () => {
         const cur = stateRef.current;
         if (cur.currentIndex < 0) return;
+        if (track.recordHistory) {
+          recordPlayEvent({
+            trackId: track.id,
+            title: track.title,
+            artist: track.artist,
+            album: track.album,
+            artistMbid: track.artistMbid,
+            albumMbid: track.albumMbid,
+            trackMbid: track.trackMbid,
+            durationMs: track.durationMs,
+            playedAt: Date.now(),
+            source: "native-player",
+          }).catch(() => {});
+        }
 
         if (cur.repeatMode === "one") {
           loadedSignatureRef.current = null;

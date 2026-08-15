@@ -67,6 +67,9 @@ export function normalizeQueueTrack(track, overrides = {}) {
     streamFormat: resolveTrackStreamFormat(track),
     quality: track?.quality ?? overrides.quality ?? null,
     finalPath: track?.finalPath ?? overrides.finalPath ?? null,
+    durationMs: track?.durationMs ?? overrides.durationMs ?? null,
+    recordHistory: track?.recordHistory === true || overrides.recordHistory === true,
+    trackMbid: track?.trackMbid ?? overrides.trackMbid ?? null,
     ...overrides,
   };
   return {
@@ -77,6 +80,8 @@ export function normalizeQueueTrack(track, overrides = {}) {
       String(
         merged.albumMbid ?? track?.albumMbid ?? track?.releaseGroupMbid ?? track?.albumId ?? "",
       ).trim() || null,
+    trackMbid: String(merged.trackMbid ?? "").trim() || null,
+    recordHistory: merged.recordHistory === true,
   };
 }
 
@@ -91,6 +96,9 @@ export function normalizeFlowTrack(track) {
     streamFormat: track.streamFormat,
     artistMbid: track.artistMbid,
     albumMbid: track.albumMbid,
+    trackMbid: track.trackMbid || track.mbid,
+    durationMs: track.durationMs,
+    recordHistory: true,
   });
 }
 

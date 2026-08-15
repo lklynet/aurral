@@ -77,17 +77,6 @@ function getLocalBypassStatus(status) {
   }
 }
 
-function formatListenHistory(user) {
-  if (!user.listenHistoryUsername && !user.listenHistoryUrl) {
-    return "—";
-  }
-  if (user.listenHistoryProvider === "koito") {
-    return `Koito: ${user.listenHistoryUrl}`;
-  }
-  const provider = user.listenHistoryProvider === "listenbrainz" ? "ListenBrainz" : "Last.fm";
-  return `${provider}: ${user.listenHistoryUsername}`;
-}
-
 function formatPlexLink(user) {
   const plexLink = user.plexLink;
   if (plexLink?.connected) {
@@ -333,7 +322,6 @@ export function SettingsUsersTab({
                   <tr>
                     <th scope="col">Username</th>
                     <th scope="col">Role</th>
-                    <th scope="col">Listening history</th>
                     <th scope="col">Plex</th>
                     <th scope="col" className="arr-table__actions-head">
                       <span className="sr-only">Actions</span>
@@ -343,11 +331,11 @@ export function SettingsUsersTab({
                 <tbody>
                   {loadingUsers ? (
                     <tr className="arr-table__empty-row">
-                      <td colSpan={5}>Loading users…</td>
+                      <td colSpan={4}>Loading users…</td>
                     </tr>
                   ) : usersList.length === 0 ? (
                     <tr className="arr-table__empty-row">
-                      <td colSpan={5}>No users configured.</td>
+                      <td colSpan={4}>No users configured.</td>
                     </tr>
                   ) : (
                     usersList.map((user) => (
@@ -361,9 +349,6 @@ export function SettingsUsersTab({
                           >
                             {user.role}
                           </span>
-                        </td>
-                        <td>
-                          <span className="arr-table__path">{formatListenHistory(user)}</span>
                         </td>
                         <td>
                           <span className="arr-table__path">{formatPlexLink(user)}</span>

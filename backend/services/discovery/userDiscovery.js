@@ -23,7 +23,6 @@ import {
 import {
   getListenHistoryCacheNamespace,
   getListenHistoryProfile,
-  getDefaultListenHistoryProfile,
   hasListenHistoryProfile,
 } from "../listeningHistory.js";
 import { enqueueDiscoveryRefresh } from "./refreshScheduler.js";
@@ -35,25 +34,28 @@ import {
   DISCOVERY_REVALIDATE_COOLDOWN_MS,
   getDiscoveryStaleMs,
 } from "../../routes/discovery/handlers/utils.js";
+import { getTopPlayedArtists } from "../playEventService.js";
 
 export async function getUserDiscovery(userId, limit = 50, offset = 0) {
   const hasLastfmKey = !!getLastfmApiKey();
   const libraryArtists = await libraryManager.getAllArtists();
 
   const reqUser = userOps.getUserById(userId);
-  const listenHistoryProfile = getListenHistoryProfile(reqUser || {});
+  const externalListenHistoryProfile = getListenHistoryProfile(reqUser || {});
+  const localHistoryArtists = getTopPlayedArtists(userId, { limit: 50 });
+  const localOnlyProfile = externalListenHistoryProfile.listenHistoryProvider === "local";
+  const hasExternalListenHistory =
+    !localOnlyProfile && hasListenHistoryProfile(externalListenHistoryProfile);
+  const hasLocalListenHistory = localOnlyProfile || localHistoryArtists.length > 0;
+  const listenHistoryProfile = hasExternalListenHistory
+    ? externalListenHistoryProfile
+    : hasLocalListenHistory
+      ? { listenHistoryProvider: "lastfm", listenHistoryUsername: `__aurral_local_${userId}` }
+      : externalListenHistoryProfile;
+  const localOnly = !hasExternalListenHistory && hasLocalListenHistory;
   const userCacheNamespace =
     getListenHistoryCacheNamespace(listenHistoryProfile);
-  const defaultProfile = getDefaultListenHistoryProfile(dbOps.getSettings());
-  const globalNamespace = defaultProfile
-    ? getListenHistoryCacheNamespace(defaultProfile)
-    : null;
-  const identityMatches = userCacheNamespace && globalNamespace && userCacheNamespace === globalNamespace;
-  const effectiveCacheNamespace = identityMatches
-    ? null
-    : hasLastfmKey
-      ? userCacheNamespace
-      : null;
+  const effectiveCacheNamespace = hasLastfmKey ? userCacheNamespace : null;
 
   if (
     hasListenHistoryProfile(listenHistoryProfile) &&
@@ -65,6 +67,7 @@ export async function getUserDiscovery(userId, limit = 50, offset = 0) {
     if (staleness > staleMs) {
       requestUserDiscoveryRefresh(listenHistoryProfile, {
         feedbackUserId: userId || null,
+        localOnly,
       }).catch((err) => {
         logger.error("discovery", `On-demand refresh for ${listenHistoryProfile.listenHistoryProvider}:${listenHistoryProfile.listenHistoryUsername} failed`, { error: err.message });
       });
@@ -149,6 +152,19 @@ export async function getUserDiscovery(userId, limit = 50, offset = 0) {
     recommendations: globalTop,
     feedback,
   });
+  const localBasedOn = localHistoryArtists.map((artist) => ({
+    name: artist.artistName,
+    id: artist.mbid,
+    source: "local",
+    profileBucket: null,
+  }));
+  const seenBasedOn = new Set((basedOn || []).map((artist) => `${artist.id || ""}:${artist.name || ""}`));
+  basedOn = [...(basedOn || []), ...localBasedOn.filter((artist) => {
+    const key = `${artist.id || ""}:${artist.name || ""}`;
+    if (seenBasedOn.has(key)) return false;
+    seenBasedOn.add(key);
+    return true;
+  })];
   fallbackGenres = (Array.isArray(fallbackGenres) ? fallbackGenres : []).map((section) => ({
     ...section,
     artists: filterBlockedArtistsForUser(userId || "global", section?.artists || []),

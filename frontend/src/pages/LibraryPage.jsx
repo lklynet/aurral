@@ -701,6 +701,9 @@ function LibraryPage() {
         quality: file?.quality || null,
         artistMbid: artist?.mbid || null,
         albumMbid: album?.mbid || album?.releaseGroupMbid || null,
+        trackMbid: track.mbid || track.trackMbid || null,
+        durationMs: Number(track.durationMs || file?.durationMs || 0) || null,
+        recordHistory: true,
         artwork: getAlbumCover(album),
       };
     },

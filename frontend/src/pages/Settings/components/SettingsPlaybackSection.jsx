@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   startPlexAuth,
   checkPlexAuth,
@@ -8,6 +9,13 @@ import {
   testPlaybackConnection,
   syncPlexNow,
 } from "../../../utils/api/endpoints/settings.js";
+import {
+  getLastfmScrobbleLink,
+  getScrobbleStatus,
+  linkKoito,
+  linkListenBrainz,
+  unlinkScrobbleProvider,
+} from "../../../utils/api/endpoints/auth.js";
 import { getConfiguredStatus } from "../utils/integrationStatus";
 
 import {
@@ -26,9 +34,12 @@ import {
 } from "./arr/SettingsArrLayout";
 import {
   SettingsModalActions,
+  SettingsModalCallout,
   SettingsModalField,
   SettingsModalIntro,
   SettingsModalSection,
+  SettingsModalToggle,
+  SettingsModalToggleGroup,
 } from "./SettingsModalLayout";
 import {
   pickBestPlexConnection,
@@ -54,6 +65,10 @@ export function SettingsPlaybackSection({
   const [libraryAccessCheck, setLibraryAccessCheck] = useState(null);
   const [plexPathPickerOpen, setPlexPathPickerOpen] = useState(false);
   const [plexLibraryPathPickerOpen, setPlexLibraryPathPickerOpen] = useState(false);
+  const [scrobbleStatus, setScrobbleStatus] = useState(null);
+  const [listenBrainzToken, setListenBrainzToken] = useState("");
+  const [koitoToken, setKoitoToken] = useState("");
+  const [koitoUrl, setKoitoUrl] = useState("");
 
   const navidrome = settings.integrations?.navidrome || {};
   const plex = settings.integrations?.plex || {};
@@ -62,6 +77,12 @@ export function SettingsPlaybackSection({
   const plexToken = plex.token;
   const pathMappings = Array.isArray(settings.pathMappings) ? settings.pathMappings : [];
   const plexLibraryMapping = pathMappings.find((entry) => entry?.source === "plex") || null;
+
+  const refreshScrobbleStatus = () => getScrobbleStatus().then(setScrobbleStatus).catch(() => {});
+
+  useEffect(() => {
+    getScrobbleStatus().then(setScrobbleStatus).catch(() => {});
+  }, []);
 
   const closeModal = () => {
     setActiveModal(null);
@@ -273,6 +294,84 @@ export function SettingsPlaybackSection({
     }
   };
 
+  const handleLastfmLink = async () => {
+    if (scrobbleStatus?.lastfm?.configured !== true) {
+      setActiveModal("lastfm");
+      return;
+    }
+    try {
+      const result = await getLastfmScrobbleLink();
+      if (!result.authorizeUrl) {
+        showError("Could not start Last.fm linking.");
+        return;
+      }
+      const popup = window.open(
+        result.authorizeUrl,
+        "aurral-lastfm-link",
+        "popup,width=600,height=700",
+      );
+      if (!popup) {
+        showError("Allow popups to link Last.fm.");
+        return;
+      }
+      const timer = window.setInterval(() => {
+        if (popup.closed) {
+          window.clearInterval(timer);
+          refreshScrobbleStatus();
+        }
+      }, 500);
+    } catch (error) {
+      showError(error.response?.data?.error || error.message || "Could not start Last.fm linking");
+    }
+  };
+
+  const handleListenBrainzLink = async () => {
+    try {
+      await linkListenBrainz(listenBrainzToken);
+      setListenBrainzToken("");
+      refreshScrobbleStatus();
+      showSuccess("ListenBrainz connected.");
+    } catch (error) {
+      showError(error.response?.data?.error || error.message || "Could not connect ListenBrainz");
+    }
+  };
+
+  const handleKoitoLink = async () => {
+    try {
+      await linkKoito(koitoToken, koitoUrl);
+      setKoitoToken("");
+      refreshScrobbleStatus();
+      showSuccess("Koito connected.");
+    } catch (error) {
+      showError(error.response?.data?.error || error.message || "Could not connect Koito");
+    }
+  };
+
+  const handleUnlink = async (provider) => {
+    try {
+      await unlinkScrobbleProvider(provider);
+      setActiveModal(null);
+      refreshScrobbleStatus();
+      showSuccess(
+        `${provider === "lastfm" ? "Last.fm" : provider === "listenbrainz" ? "ListenBrainz" : "Koito"} disconnected.`,
+      );
+    } catch (error) {
+      showError(error.response?.data?.error || error.message || "Could not disconnect provider");
+    }
+  };
+
+  const handleScrobbleToggle = (provider, enabled) => {
+    if (enabled) {
+      if (provider === "lastfm" && scrobbleStatus?.lastfm?.configured !== true) {
+        setActiveModal("lastfm");
+        return;
+      }
+      setActiveModal(provider);
+    } else {
+      void handleUnlink(provider);
+    }
+  };
+
   const handleSyncPlex = async () => {
     if (hasUnsavedChanges) {
       const saved = await handleSaveSettings?.();
@@ -328,6 +427,127 @@ export function SettingsPlaybackSection({
           />
         </SettingsArrCardGrid>
       </SettingsArrFieldSet>
+
+      <SettingsArrFieldSet legend="Scrobbling">
+        <div className="arr-info">
+          Send completed local plays to your connected listening services. Aurral uses the same
+          provider flows as Navidrome; a Navidrome connection is not required.
+        </div>
+        <SettingsModalToggleGroup>
+          {["lastfm", "listenbrainz", "koito"].map((provider) => {
+            const status = scrobbleStatus?.[provider];
+            const label = provider === "lastfm"
+              ? status?.displayName
+                ? `Last.fm — ${status.displayName}`
+                : "Last.fm"
+              : provider === "listenbrainz"
+                ? "ListenBrainz"
+                : "Koito";
+            return (
+              <SettingsModalToggle
+                key={provider}
+                label={label}
+                checked={status?.connected === true}
+                disabled={!status}
+                onChange={(event) => handleScrobbleToggle(provider, event.target.checked)}
+              />
+            );
+          })}
+        </SettingsModalToggleGroup>
+        {scrobbleStatus && scrobbleStatus.lastfm?.configured !== true ? (
+          <SettingsModalCallout>
+            Last.fm API key and secret are required before connecting an account. Add them in{" "}
+            <Link to="/settings/connect" className="settings-page__link">
+              Settings → Connect → Last.fm
+            </Link>
+            .
+          </SettingsModalCallout>
+        ) : null}
+      </SettingsArrFieldSet>
+
+      {activeModal === "lastfm" && (
+        <SettingsIntegrationModal title="Last.fm scrobbling" onClose={closeModal}>
+          <SettingsModalIntro>
+            Link the Last.fm account that receives completed local plays. Aurral runs the same
+            Last.fm flow Navidrome uses; Navidrome is not required.
+          </SettingsModalIntro>
+          {scrobbleStatus?.lastfm?.configured !== true ? (
+            <SettingsModalCallout>
+              Last.fm API key and secret are required first. Add them in{" "}
+              <Link to="/settings/connect" className="settings-page__link">
+                Settings → Connect → Last.fm
+              </Link>
+              .
+            </SettingsModalCallout>
+          ) : null}
+          <SettingsModalActions>
+            {scrobbleStatus?.lastfm?.configured === true ? (
+              <button type="button" className="arr-btn arr-btn--secondary" onClick={handleLastfmLink}>
+                {scrobbleStatus?.lastfm?.connected ? "Relink Last.fm" : "Connect Last.fm account"}
+              </button>
+            ) : null}
+            {scrobbleStatus?.lastfm?.connected ? (
+              <button type="button" className="arr-btn arr-btn--ghost" onClick={() => handleUnlink("lastfm")}>
+                Disconnect
+              </button>
+            ) : null}
+          </SettingsModalActions>
+        </SettingsIntegrationModal>
+      )}
+
+      {activeModal === "listenbrainz" && (
+        <SettingsIntegrationModal title="ListenBrainz scrobbling" onClose={closeModal}>
+          <SettingsModalIntro>
+            Enter a ListenBrainz user token. Aurral validates and stores it directly; Navidrome is
+            not required.
+          </SettingsModalIntro>
+          <SettingsModalSection title="Connection">
+            <SettingsModalField label="User token">
+              <SettingsInput
+                type="password"
+                placeholder="ListenBrainz user token"
+                autoComplete="off"
+                value={listenBrainzToken}
+                onChange={(event) => setListenBrainzToken(event.target.value)}
+              />
+            </SettingsModalField>
+          </SettingsModalSection>
+          <SettingsModalActions>
+            <button type="button" className="arr-btn arr-btn--secondary" disabled={!listenBrainzToken} onClick={handleListenBrainzLink}>
+              Connect ListenBrainz
+            </button>
+            {scrobbleStatus?.listenbrainz?.connected ? (
+              <button type="button" className="arr-btn arr-btn--ghost" onClick={() => handleUnlink("listenbrainz")}>
+                Disconnect
+              </button>
+            ) : null}
+          </SettingsModalActions>
+        </SettingsIntegrationModal>
+      )}
+
+      {activeModal === "koito" && (
+        <SettingsIntegrationModal title="Koito scrobbling" onClose={closeModal}>
+          <SettingsModalIntro>Koito accepts the ListenBrainz submission format and API key.</SettingsModalIntro>
+          <SettingsModalSection title="Connection">
+            <SettingsModalField label="Koito URL">
+              <SettingsInput type="url" placeholder="https://koito.example.com" value={koitoUrl} onChange={(event) => setKoitoUrl(event.target.value)} />
+            </SettingsModalField>
+            <SettingsModalField label="API key">
+              <SettingsInput type="password" placeholder="Koito API key" autoComplete="off" value={koitoToken} onChange={(event) => setKoitoToken(event.target.value)} />
+            </SettingsModalField>
+          </SettingsModalSection>
+          <SettingsModalActions>
+            <button type="button" className="arr-btn arr-btn--secondary" disabled={!koitoToken} onClick={handleKoitoLink}>
+              Connect Koito
+            </button>
+            {scrobbleStatus?.koito?.connected ? (
+              <button type="button" className="arr-btn arr-btn--ghost" onClick={() => handleUnlink("koito")}>
+                Disconnect
+              </button>
+            ) : null}
+          </SettingsModalActions>
+        </SettingsIntegrationModal>
+      )}
 
       {activeModal === "navidrome" && (
         <SettingsIntegrationModal

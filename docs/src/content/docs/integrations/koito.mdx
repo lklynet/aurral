@@ -9,17 +9,22 @@ Aurral can use your Koito data for personalized discovery. You do not need Last.
 
 ## Per-user setup
 
-Each user must set a Koito instance URL:
+Each user must set a Koito instance URL and API key:
 
 1. Open **Profile > Listening history**.
 2. Select **Koito**.
 3. Enter a base URL that Aurral can reach.
+4. Open **Settings > Playback > Scrobbling > Koito**.
+5. Enter the Koito API key and select **Connect Koito**.
 
 For example, enter `https://koito.example.com:4110`.
 
 ![Aurral profile listening history](../../../assets/screenshots/profile-listening.webp)
 
 Aurral reads your top artists from the Koito chart API. Aurral uses these artists for recommendations and discover playlists.
+
+Aurral sends completed local plays to Koito through its ListenBrainz-compatible `submit-listens`
+endpoint. A provider outage does not remove local history.
 
 The Aurral server must be able to reach Koito.
 
@@ -34,7 +39,7 @@ The Aurral server must be able to reach Koito.
 | Provider     | Admin setup                        | User setup                  |
 | ------------ | ---------------------------------- | --------------------------- |
 | Last.fm      | API key in **Settings > Connect**  | Username in **Profile**     |
-| ListenBrainz | None                               | Username in **Profile**     |
-| Koito        | None                               | Instance URL in **Profile** |
+| ListenBrainz | None                               | Username in **Profile**; token in **Settings > Playback > Scrobbling** |
+| Koito        | None                               | Instance URL and history choice in **Profile**; API key in **Settings > Playback > Scrobbling** |
 
 Last.fm still supplies tags and similar-artist discovery when you configure an API key. Koito supplies listening-history context only.

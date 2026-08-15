@@ -63,6 +63,7 @@ export function SettingsAccountTab({
   }
 
   const profileSummary = (() => {
+    if (listenHistoryProvider === "local") return "Local only";
     if (listenHistoryProvider === "koito" && listenHistoryUrl) {
       return `Koito: ${listenHistoryUrl}`;
     }
@@ -150,8 +151,16 @@ export function SettingsAccountTab({
               <SettingsSelect
                 id="profile-history-provider"
                 value={listenHistoryProvider}
-                onChange={(e) => setListenHistoryProvider(e.target.value)}
+                onChange={(e) => {
+                  const provider = e.target.value;
+                  setListenHistoryProvider(provider);
+                  if (provider === "local") {
+                    setListenHistoryUsername("");
+                    setListenHistoryUrl("");
+                  }
+                }}
               >
+                <option value="local">Local only</option>
                 <option value="lastfm">Last.fm</option>
                 <option value="listenbrainz">ListenBrainz</option>
                 <option value="koito">Koito</option>
@@ -160,7 +169,14 @@ export function SettingsAccountTab({
                 Select the service that supplies your listening history for personalized discovery.
               </p>
             </div>
-            {listenHistoryProvider === "koito" ? (
+            {listenHistoryProvider === "local" ? (
+              <div className="profile-settings__field">
+                <p className="settings-page__hint">
+                  Use Aurral play events for personalized recommendations. Aurral will not read
+                  listening history from an external service.
+                </p>
+              </div>
+            ) : listenHistoryProvider === "koito" ? (
               <div className="profile-settings__field">
                 <label className="profile-settings__label" htmlFor="profile-history-url">
                   Koito URL
@@ -197,8 +213,8 @@ export function SettingsAccountTab({
                   onChange={(e) => setListenHistoryUsername(e.target.value)}
                 />
                 <p className="settings-page__hint">
-                  Connect Last.fm or ListenBrainz for personalized discovery recommendations. Admin
-                  API defaults are in{" "}
+                  Aurral uses the profile selected above for personalized discovery recommendations.
+                  Configure the Last.fm API key in{" "}
                   <Link to="/settings/connect" className="settings-page__link">
                     Settings → Connect
                   </Link>

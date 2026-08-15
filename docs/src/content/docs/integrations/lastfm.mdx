@@ -5,13 +5,27 @@ description: Personalized discovery, tags, and listening history.
 
 You can use Aurral without Last.fm. A Last.fm API key improves recommendations, tags, and discover playlists.
 
-## Server setup
+## Recommendations
 
-Add your Last.fm API key in **Settings > Connect > Last.fm**.
+Add your Last.fm API key and API secret in **Settings > Connect > Last.fm**. Aurral uses the key
+for recommendations and discovery data, and uses both values to connect Last.fm scrobbling.
+
+## Scrobbling
+
+Open **Settings > Playback > Scrobbling** and enable **Last.fm**.
+
+Aurral copies Navidrome's Last.fm flow directly: it uses the API key and API secret from
+**Settings > Connect**, then stores each user's Last.fm session key. Navidrome is not required.
 
 ## Per-user listening history
 
-Each user sets a Last.fm username in **Profile**. Aurral uses the username to make personal recommendations.
+Each user selects a history source in **Profile**. Select **Last.fm** and enter a Last.fm username
+to read external history. Select **Local only** to use only Aurral play events.
+
+Aurral combines local play events with external history when a user selects Last.fm, ListenBrainz,
+or Koito.
+
+Aurral records local plays from the built-in player and Subsonic clients before it contacts Last.fm. A Last.fm outage does not remove local history or stop playback.
 
 ![Aurral profile listening history](../../../assets/screenshots/profile-listening.webp)
 
@@ -19,4 +33,5 @@ Each user sets a Last.fm username in **Profile**. Aurral uses the username to ma
 
 Admins set the refresh interval and discovery mode in **Settings > Discover**. The available modes are Safer, Balanced, and Deeper.
 
-If Last.fm is unavailable, Aurral can use ListenBrainz or [Koito](/integrations/koito/) listening history when users have them configured.
+If Last.fm is unavailable, Aurral can use ListenBrainz or [Koito](/integrations/koito/) history
+when the user selects that provider in **Profile**.

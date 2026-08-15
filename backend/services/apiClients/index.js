@@ -1,5 +1,6 @@
 export {
   getLastfmApiKey,
+  getLastfmApiSecret,
   getTicketmasterApiKey,
   getNewsSettings,
   normalizeNewsFeeds,
@@ -22,9 +23,13 @@ export {
   musicbrainzResolveArtistMbidByName,
 } from "./musicbrainz.js";
 
-export { lastfmRequest } from "./lastfm.js";
+export { lastfmRequest, lastfmGetSession, lastfmScrobble } from "./lastfm.js";
 
-export { listenbrainzRequest } from "./listenbrainz.js";
+export {
+  listenbrainzRequest,
+  listenbrainzSubmit,
+  listenbrainzValidateToken,
+} from "./listenbrainz.js";
 
 export {
   getDeezerArtistById,

@@ -43,6 +43,14 @@ const buildListenHistoryUpdates = (body, existing) => {
         : existing.listenHistoryProvider,
   );
 
+  if (provider === "local") {
+    return {
+      listenHistoryProvider: "local",
+      listenHistoryUsername: null,
+      listenHistoryUrl: null,
+    };
+  }
+
   if (provider === "koito") {
     const rawUrl = hasListenHistoryUrlUpdate ? body.listenHistoryUrl : existing.listenHistoryUrl;
     const trimmedUrl = normalizeListenHistoryUrl(rawUrl);

@@ -1,7 +1,6 @@
 import crypto from "crypto";
 import os from "os";
 import { dbOps, userOps } from "../db/helpers/index.js";
-import { getDefaultListenHistoryProfile } from "../services/listeningHistory.js";
 import { createSession, getSessionByToken } from "../config/session-helpers.js";
 import { hashPassword, verifyPassword, needsRehash } from "./passwordHash.js";
 
@@ -510,11 +509,7 @@ function migrateLegacyAdmin() {
   const authPassword = settings.integrations?.general?.authPassword;
   if (!onboardingComplete || !authPassword) return;
   const hash = hashPassword(authPassword);
-  const created = userOps.createUser(authUser, hash, "admin", null);
-  const initialListenHistory = getDefaultListenHistoryProfile(settings);
-  if (created && initialListenHistory) {
-    userOps.updateUser(created.id, initialListenHistory);
-  }
+  userOps.createUser(authUser, hash, "admin", null);
 }
 
 export function resolveUser(username, password) {
@@ -682,6 +677,7 @@ export const authMiddleware = (req, res, next) => {
       req.path === "/api/auth/login" ||
       req.path === "/api/auth/oidc/login" ||
       req.path === "/api/auth/oidc/exchange"
+      || (req.method === "GET" && req.path === "/api/scrobbling/lastfm/link/callback")
     ) {
       return next();
     }

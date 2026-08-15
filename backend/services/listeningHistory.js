@@ -1,4 +1,4 @@
-export const LISTEN_HISTORY_PROVIDERS = ["lastfm", "listenbrainz", "koito"];
+export const LISTEN_HISTORY_PROVIDERS = ["local", "lastfm", "listenbrainz", "koito"];
 export const DEFAULT_LISTEN_HISTORY_PROVIDER = "lastfm";
 
 const CACHE_PREFIX_BY_PROVIDER = {
@@ -58,7 +58,7 @@ export function getListenHistoryProfile(source = {}) {
 
   return {
     listenHistoryProvider: provider,
-    listenHistoryUsername: provider === "koito" ? null : username,
+    listenHistoryUsername: provider === "koito" || provider === "local" ? null : username,
     listenHistoryUrl: provider === "koito" ? url : null,
     lastfmUsername: provider === "lastfm" ? username : null,
   };
@@ -66,6 +66,7 @@ export function getListenHistoryProfile(source = {}) {
 
 export function hasListenHistoryProfile(profile) {
   const normalized = getListenHistoryProfile(profile);
+  if (normalized.listenHistoryProvider === "local") return true;
   if (normalized.listenHistoryProvider === "koito") {
     return !!normalized.listenHistoryUrl;
   }
@@ -84,6 +85,7 @@ export function listenHistoryProfilesEqual(a, b) {
 
 export function getListenHistoryCacheNamespace(profile) {
   const normalized = getListenHistoryProfile(profile);
+  if (normalized.listenHistoryProvider === "local") return null;
   if (normalized.listenHistoryProvider === "koito") {
     if (!normalized.listenHistoryUrl) return null;
     return `${CACHE_PREFIX_BY_PROVIDER.koito}:${normalized.listenHistoryUrl}`;
@@ -93,16 +95,7 @@ export function getListenHistoryCacheNamespace(profile) {
   return prefix ? `${prefix}:${normalized.listenHistoryUsername}` : null;
 }
 
-export function getDefaultListenHistoryProfile(settings) {
-  const username = String(settings?.integrations?.lastfm?.username || "").trim();
-  if (!username) return null;
-  return {
-    listenHistoryProvider: "lastfm",
-    listenHistoryUsername: username,
-  };
-}
-
-export function resolveListenHistorySettings(user = {}, settings = null) {
+export function resolveListenHistorySettings(user = {}) {
   const profile = getListenHistoryProfile(user);
   if (hasListenHistoryProfile(profile)) {
     return {
@@ -110,15 +103,6 @@ export function resolveListenHistorySettings(user = {}, settings = null) {
       listenHistoryUsername: profile.listenHistoryUsername,
       listenHistoryUrl: profile.listenHistoryUrl,
       lastfmUsername: profile.lastfmUsername,
-    };
-  }
-  const defaultProfile = settings ? getDefaultListenHistoryProfile(settings) : null;
-  if (defaultProfile) {
-    return {
-      listenHistoryProvider: defaultProfile.listenHistoryProvider,
-      listenHistoryUsername: defaultProfile.listenHistoryUsername,
-      listenHistoryUrl: null,
-      lastfmUsername: defaultProfile.listenHistoryUsername,
     };
   }
   return {

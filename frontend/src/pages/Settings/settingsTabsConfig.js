@@ -150,10 +150,11 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   playback: {
-    sections: ["Playback Servers", "Cover Art", "Connection", "Account", "Aurral Library Path", "Main library (optional)", "Sync"],
+    sections: ["Playback Servers", "Scrobbling", "Cover Art", "Connection", "Account", "Aurral Library Path", "Main library (optional)", "Sync"],
     services: {
       Navidrome: "Subsonic music server",
       Plex: "Plexamp music server",
+      Scrobbling: "Last.fm ListenBrainz Koito completed plays",
     },
     fields: {
       "Server URL": "playback server address host connection",
@@ -166,13 +167,16 @@ const SETTINGS_SEARCH_METADATA = {
       "Include tracks from an existing library": "Plex main library",
       "Local path for this library (optional)": "Plex path mapping",
       Sync: "Navidrome scan playlists Plex refresh",
+      "Last.fm": "scrobbling OAuth account",
+      ListenBrainz: "scrobbling user token",
+      Koito: "scrobbling API key URL",
     },
   },
   connect: {
     sections: ["Connections", "Webhooks", "Notification Events", "Inbox"],
     services: {
       Gotify: "push notifications mobile alerts",
-      "Last.fm": "listening history API",
+      "Last.fm": "recommendations API key secret scrobbling",
       Ticketmaster: "local shows events",
       Inbox: "library updates releases shows news discoveries",
       Webhooks: "notifications HTTP callbacks",
@@ -180,8 +184,8 @@ const SETTINGS_SEARCH_METADATA = {
     fields: {
       "Server URL": "Gotify address host connection",
       "Application token": "Gotify credentials API",
-      "API key": "Last.fm credentials",
-      "Default username": "Last.fm account listening history",
+      "API key": "Last.fm recommendations and scrobbling credentials",
+      "API secret": "Last.fm scrobbling credentials",
       "Consumer key": "Ticketmaster API credentials",
       "Search radius (miles)": "local shows concerts distance",
       "Local discovery": "Ticketmaster shows concerts artists",

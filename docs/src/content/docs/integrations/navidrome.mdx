@@ -19,7 +19,23 @@ Use the Aurral URL as the Feishin server URL. Set the server type to `Subsonic`.
 
 The native Subsonic responses include playlist artwork through `getPlaylists`, `getPlaylist`, and `getCoverArt`. They also expose genres from canonical artist, album, and track metadata through artist, album, song, and `getGenres` responses. The native path does not fetch metadata from a provider while browsing.
 
-Aurral accepts password authentication for every Aurral user. Token authentication is limited to the configured account because Aurral stores other user passwords as one-way hashes.
+## Submit play history
+
+Aurral reports `scrobble.view` submissions from Subsonic clients as local play events. The endpoint accepts repeated `id` and `time` parameters and follows the Subsonic `submission` flag. A successful submission records local history before Aurral delivers the play to any configured scrobbling provider.
+
+Aurral exposes `scrobblingEnabled=true` from `getuser.view`. This reports that the server supports the scrobble endpoint. It does not require a provider connection.
+
+The built-in Aurral player records completed library tracks through the same local play-event path. Aurral keeps local history when Last.fm, ListenBrainz, or Koito is unavailable.
+
+## Navidrome-compatible scrobbling
+
+Open **Settings > Playback > Scrobbling** to connect Last.fm or ListenBrainz. Aurral copies
+Navidrome's provider flows directly, so a Navidrome connection is not required for scrobbling.
+
+Aurral uses the Last.fm API key and API secret from **Settings > Connect > Last.fm**. It validates
+ListenBrainz tokens directly. Completed plays are submitted from Aurral to the selected provider.
+
+Navidrome remains an independent playback and playlist destination.
 
 See [Filesystem and mounts](/getting-started/storage/) for the complete layout. The recommended Docker setup mounts the same host media root at `/data` in Aurral and Navidrome:
 

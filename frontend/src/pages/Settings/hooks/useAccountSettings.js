@@ -122,7 +122,7 @@ export function useAccountSettings(authUser, showError) {
           updateMyListeningHistory(authUser.id, {
             listenHistoryProvider: saveDraft.provider,
             listenHistoryUsername:
-              saveDraft.provider === "koito" ? null : saveDraft.username || null,
+              ["koito", "local"].includes(saveDraft.provider) ? null : saveDraft.username || null,
             listenHistoryUrl: saveDraft.provider === "koito" ? saveDraft.url || null : null,
           }),
           updateMyLidarrPreferences({

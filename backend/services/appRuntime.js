@@ -8,6 +8,7 @@ import {
 import { startSystemTaskWorker } from "./systemTaskWorker.js";
 import { startLibraryScanWorker } from "./libraryScanWorker.js";
 import { startNotificationOutboxWorker } from "./notificationOutboxWorker.js";
+import { startPlayEventOutboxWorker } from "./playEventOutboxWorker.js";
 import { startSlskdOrchestratorWorker } from "./slskdOrchestratorWorker.js";
 import { startDiscoveryRefreshWorker } from "./discoveryRefreshWorker.js";
 import { startDiscoveryPlaylistBuildWorker } from "./discoveryPlaylistBuildWorker.js";
@@ -33,6 +34,7 @@ const WORKER_STARTS = {
   "system-task": startSystemTaskWorker,
   "library-scan": startLibraryScanWorker,
   "_outbox:notifications": startNotificationOutboxWorker,
+  "_outbox:play-events": startPlayEventOutboxWorker,
   "slskd-pipeline": startSlskdOrchestratorWorker,
   "discovery-refresh": startDiscoveryRefreshWorker,
   "discovery-playlist-build": startDiscoveryPlaylistBuildWorker,

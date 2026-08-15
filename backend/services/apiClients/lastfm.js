@@ -1,10 +1,11 @@
 import axios from "../../../lib/axiosFetch.js";
 import https from "https";
+import { createHash } from "node:crypto";
 import createRateLimiter from "./rateLimiter.js";
 import createCache from "./simpleCache.js";
 import { logger } from "../logger.js";
 import { LASTFM_API } from "../../config/constants.js";
-import { getLastfmApiKey } from "./config.js";
+import { getLastfmApiKey, getLastfmApiSecret } from "./config.js";
 import { runSharedInflight } from "../sharedInflight.js";
 
 const lastfmCache = createCache(300);
@@ -25,6 +26,45 @@ const LASTFM_MAX_RETRIES = 2;
 
 const lastfmInflightRequests = new Map();
 const lastfmErrorLogAt = new Map();
+
+const signedLastfmRequest = async (method, params = {}) => {
+  const apiKey = getLastfmApiKey();
+  const apiSecret = getLastfmApiSecret();
+  if (!apiKey || !apiSecret) throw new Error("Last.fm API credentials are not configured");
+  const signedParams = { ...params, api_key: apiKey, method };
+  const signature = Object.keys(signedParams)
+    .sort()
+    .map((key) => `${key}${signedParams[key]}`)
+    .join("");
+  signedParams.api_sig = createHash("md5").update(`${signature}${apiSecret}`).digest("hex");
+  const response = await lastfmLimiter.schedule(() =>
+    axios.post(LASTFM_API, new URLSearchParams({ ...signedParams, format: "json" }), {
+      timeout: LASTFM_TIMEOUT_MS,
+      httpsAgent: lastfmHttpsAgent,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      validateStatus: (status) => status >= 200 && status < 300,
+    }),
+  );
+  if (response.data?.error) {
+    throw new Error(response.data.message || `Last.fm request failed (${response.data.error})`);
+  }
+  return response.data;
+};
+
+export const lastfmGetSession = (token) =>
+  signedLastfmRequest("auth.getSession", { token: String(token || "").trim() });
+
+export const lastfmScrobble = (event, sessionKey) =>
+  signedLastfmRequest("track.scrobble", {
+    sk: sessionKey,
+    artist: event.artist,
+    track: event.title,
+    timestamp: Math.floor(Number(event.playedAt) / 1000),
+    ...(event.album ? { album: event.album } : {}),
+    ...(event.artistMbid ? { artist_mbid: event.artistMbid } : {}),
+    ...(event.trackMbid ? { mbid: event.trackMbid } : {}),
+    ...(event.durationMs ? { duration: Math.round(event.durationMs / 1000) } : {}),
+  });
 
 export async function lastfmRequest(method, params = {}, options = {}) {
   const apiKey = getLastfmApiKey();

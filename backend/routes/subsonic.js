@@ -24,6 +24,7 @@ import {
   starMany,
   unstarMany,
 } from "../services/subsonicLibraryService.js";
+import { recordPlayEvent } from "../services/playEventService.js";
 
 const SUBSONIC_VERSION = "1.16.1";
 const SUBSONIC_NAMESPACE = "http://subsonic.org/restapi";
@@ -186,7 +187,14 @@ async function handleSubsonicRequest(req, res) {
       ? null
       : resolveUser(getParameter(req, "u"), decodedPassword)
     : resolveSubsonicTokenUser(getParameter(req, "u"), token, salt);
-  if (!user) return sendError(res, format, 40, "Wrong username or password");
+  if (!user) {
+    return sendError(
+      res,
+      format,
+      token && salt ? 41 : 40,
+      token && salt ? "Token authentication failed" : "Wrong username or password",
+    );
+  }
   req.user = user;
 
   const method = String(req.params.method || "").replace(/\.view$/i, "").toLowerCase();
@@ -204,7 +212,7 @@ async function handleSubsonicRequest(req, res) {
         jukeboxRole: false,
         playlistRole: Boolean(req.user.permissions?.accessFlow),
         podcastRole: false,
-        scrobblingEnabled: false,
+        scrobblingEnabled: true,
         settingsRole: isAdmin,
         shareRole: false,
         streamRole: true,
@@ -212,6 +220,28 @@ async function handleSubsonicRequest(req, res) {
         videoConversionRole: false,
       },
     });
+  }
+  if (method === "scrobble") {
+    const ids = getParameters(req, ["id"]);
+    if (ids.length === 0) return sendError(res, format, 10, "Required parameter is missing: id");
+    const times = getParameters(req, ["time"]);
+    const submission = !["false", "0", "no"].includes(getParameter(req, "submission").toLowerCase());
+    if (submission) {
+      ids.forEach((id, index) => {
+        const song = getSong(id, user);
+        if (!song) return;
+        recordPlayEvent(user.id, {
+          trackId: song.id,
+          title: song.title,
+          artist: song.artist,
+          album: song.album,
+          durationMs: Number(song.duration || 0) * 1000,
+          playedAt: times[index] || undefined,
+          source: "subsonic",
+        });
+      });
+    }
+    return sendResponse(res, format);
   }
   if (method === "getlicense") {
     return sendResponse(res, format, "ok", null, { license: { valid: true } });

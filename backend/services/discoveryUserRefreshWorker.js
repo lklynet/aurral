@@ -22,6 +22,7 @@ async function processDiscoveryUserRefresh(payload = {}) {
   }
   await updateUserDiscoveryCache(profile, {
     feedbackUserId: payload?.feedbackUserId || null,
+    localOnly: payload?.localOnly === true,
   });
   return { refreshed: true };
 }

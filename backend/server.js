@@ -39,6 +39,8 @@ import lidarrFeedRouter from "./routes/lidarrFeed.js";
 import inboxRouter from "./routes/inbox.js";
 import newsRouter from "./routes/news.js";
 import subsonicRouter from "./routes/subsonic.js";
+import scrobblingRouter from "./routes/scrobbling.js";
+import playEventsRouter from "./routes/playEvents.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -217,6 +219,8 @@ app.use("/api/weekly-flow", (req, res) => {
   res.redirect(308, target);
 });
 app.use("/api/auth", authRouter);
+app.use("/api/scrobbling", scrobblingRouter);
+app.use("/api/play-events", playEventsRouter);
 app.use("/api/image-proxy", imageProxyRouter);
 app.use("/rest", subsonicRouter);
 
