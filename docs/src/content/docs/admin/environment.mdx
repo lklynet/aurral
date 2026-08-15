@@ -24,6 +24,7 @@ Use the web UI for most settings. Use these variables for Docker deployment sett
 | Variable | Purpose |
 | -------- | ------- |
 | `TRUST_PROXY` | Set when Aurral is behind a reverse proxy. |
+| `AURRAL_PUBLIC_URL` | Canonical public origin for OAuth callbacks (for example, `https://aurral.example.com`). |
 | `AUTH_PROXY_ENABLED` | Enable reverse-proxy authentication. Default header `x-forwarded-user`. |
 | `AUTH_PROXY_HEADER` | Custom header that contains the authenticated username. |
 | `AUTH_PROXY_DOMAIN` | Origin of your forwardAuth login page (for example, `https://auth.example.com`). Aurral adds it to the `connect-src` content security policy so pages can reach your authentication origin. |

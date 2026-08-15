@@ -18,6 +18,7 @@ const {
   discoveryNeedsRefresh,
   enqueueDiscoveryRefresh,
   markDiscoveryRefreshDequeued,
+  recoverDeadDiscoveryRefresh,
   scheduleNextDiscoveryRefresh,
 } = refreshScheduler;
 const { getDiscoveryCache } = discoveryIndex;
@@ -122,6 +123,30 @@ test("enqueueDiscoveryRefresh treats force as success when already updating", ()
   const result = enqueueDiscoveryRefresh({ reason: "manual", force: true });
   assert.equal(result.enqueued, true);
   assert.equal(result.reason, "already_updating");
+});
+
+test("recoverDeadDiscoveryRefresh clears jobs and locks owned by dead local workers", () => {
+  clearDiscoveryRefreshJobs();
+  const workerId = "aurral-99999999";
+  const lock = honkerDbModule.getHonkerDb().tryLock(
+    "discovery-global-refresh",
+    workerId,
+    3600,
+  );
+  assert.ok(lock);
+  const jobId = honkerDbModule.getDiscoveryRefreshQueue().enqueue({ reason: "manual" });
+  const claimed = honkerDbModule.getDiscoveryRefreshQueue().claimOne(workerId);
+  assert.equal(claimed?.id, jobId);
+
+  assert.equal(recoverDeadDiscoveryRefresh(), true);
+  assert.equal(
+    honkerDbModule.getHonkerDb().query(
+      "SELECT COUNT(*) AS count FROM _honker_live WHERE id = ?",
+      [jobId],
+    )[0]?.count,
+    0,
+  );
+  assert.equal(honkerDbModule.isHonkerLockHeld("discovery-global-refresh"), false);
 });
 
 test("enqueueDiscoveryRefresh deduplicates when refresh queue lock is held", () => {

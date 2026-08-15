@@ -18,6 +18,61 @@ const DISCOVERY_GLOBAL_REFRESH_LOCK = "discovery-global-refresh";
 
 let discoveryRefreshQueued = false;
 
+function isWorkerAlive(workerId) {
+  const match = /^aurral-(\d+)$/.exec(String(workerId || ""));
+  if (!match) return true;
+  try {
+    process.kill(Number(match[1]), 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+}
+
+export function recoverDeadDiscoveryRefresh() {
+  const honker = getHonkerDb();
+  let liveRows;
+  let lockRows;
+  try {
+    liveRows = honker.query(`
+      SELECT id, worker_id
+      FROM _honker_live
+      WHERE queue = 'discovery-refresh'
+        AND state = 'processing'
+    `);
+    lockRows = honker.query(
+      "SELECT owner FROM _honker_locks WHERE name = ?",
+      [DISCOVERY_GLOBAL_REFRESH_LOCK],
+    );
+  } catch {
+    return false;
+  }
+
+  const deadJobs = liveRows.filter((row) => !isWorkerAlive(row.worker_id));
+  const deadLocks = lockRows.filter((row) => !isWorkerAlive(row.owner));
+  if (!deadJobs.length && !deadLocks.length) return false;
+
+  const queue = getDiscoveryRefreshQueue();
+  for (const row of deadJobs) {
+    try {
+      queue.cancel(row.id);
+    } catch {}
+  }
+  for (const row of deadLocks) {
+    const tx = honker.transaction();
+    try {
+      tx.query(
+        "SELECT honker_lock_release(?, ?)",
+        [DISCOVERY_GLOBAL_REFRESH_LOCK, row.owner],
+      );
+      tx.commit();
+    } catch {
+      try { tx.rollback(); } catch {}
+    }
+  }
+  return true;
+}
+
 function parseQueuedPayload(payload) {
   try {
     return JSON.parse(String(payload || "{}"));
@@ -121,6 +176,12 @@ export function enqueueDiscoveryRefresh(options = {}) {
   } = options;
   const cache = getDiscoveryCache();
 
+  if (!scheduleOnly && force && recoverDeadDiscoveryRefresh()) {
+    discoveryRefreshQueued = false;
+    cache.isUpdating = false;
+    clearDiscoveryUpdateProgress();
+  }
+
   if (!scheduleOnly) {
     if (isHonkerLockHeld(DISCOVERY_GLOBAL_REFRESH_LOCK)) {
       if (force) {
@@ -187,6 +248,7 @@ export async function enqueueDiscoveryRefreshIfNeeded(options = {}) {
 }
 
 export async function bootstrapDiscoveryRefresh() {
+  recoverDeadDiscoveryRefresh();
   const cache = getDiscoveryCache();
   if (
     !isHonkerLockHeld("discovery-global-refresh") &&

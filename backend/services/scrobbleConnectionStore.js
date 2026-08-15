@@ -45,6 +45,7 @@ const normalize = (provider, raw) => {
   return {
     provider,
     token,
+    connectionRevision: String(raw.connectionRevision || raw.connectedAt || "").trim() || null,
     displayName: String(raw.displayName || "").trim() || null,
     baseUrl: String(raw.baseUrl || "").trim() || null,
     connectedAt: Number(raw.connectedAt) || null,
@@ -84,6 +85,7 @@ export const scrobbleConnectionStore = {
     store[key] = store[key] || {};
     store[key][provider] = {
       token: encryptToken(safeToken),
+      connectionRevision: crypto.randomUUID(),
       displayName: String(displayName || "").trim() || null,
       baseUrl: String(baseUrl || "").trim() || null,
       connectedAt: Date.now(),

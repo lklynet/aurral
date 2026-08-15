@@ -63,7 +63,7 @@ export const recordPlayEvent = (userId, input = {}) => {
   const playedAt = Number.isFinite(playedAtValue)
     ? (playedAtValue < 10_000_000_000 ? Math.trunc(playedAtValue * 1000) : Math.trunc(playedAtValue))
     : Date.now();
-  const providers = new Set(Object.keys(scrobbleConnectionStore.getConnections(userId)));
+  const connections = scrobbleConnectionStore.getConnections(userId);
   const honker = getHonkerDb();
   const tx = honker.transaction();
   let eventId;
@@ -89,8 +89,13 @@ export const recordPlayEvent = (userId, input = {}) => {
       Date.now(),
     ]);
     eventId = rows[0]?.id;
-    for (const provider of providers) {
-      getPlayEventOutbox().enqueueTx(tx, { eventId, userId, provider });
+    for (const [provider, connection] of Object.entries(connections)) {
+      getPlayEventOutbox().enqueueTx(tx, {
+        eventId,
+        userId,
+        provider,
+        connectionRevision: connection.connectionRevision,
+      });
     }
     tx.commit();
   } catch (error) {
@@ -101,21 +106,21 @@ export const recordPlayEvent = (userId, input = {}) => {
   return event;
 };
 
-export const deliverPlayEvent = async ({ eventId, userId, provider }) => {
+export const deliverPlayEvent = async ({ eventId, userId, provider, connectionRevision }) => {
   const event = toPublicEvent(getEventStmt.get(eventId));
   const connection = scrobbleConnectionStore.getConnection(userId, provider);
-  if (!event) return;
-  if (provider === "lastfm" && connection) {
+  if (!event || !connection || !connectionRevision || connection.connectionRevision !== connectionRevision) return;
+  if (provider === "lastfm") {
     const { lastfmScrobble } = await import("./apiClients/lastfm.js");
     await lastfmScrobble(event, connection.token);
     return;
   }
-  if (provider === "listenbrainz" && connection) {
+  if (provider === "listenbrainz") {
     const { listenbrainzSubmit } = await import("./apiClients/listenbrainz.js");
     await listenbrainzSubmit({ token: connection.token, event });
     return;
   }
-  if (provider === "koito" && connection) {
+  if (provider === "koito") {
     const { listenbrainzSubmit } = await import("./apiClients/listenbrainz.js");
     await listenbrainzSubmit({
       token: connection.token,

@@ -95,7 +95,7 @@ const setLinkCookie = (res, req, value, maxAge = Math.floor(LASTFM_LINK_TTL_MS /
     "SameSite=Lax",
   ];
   if (req.protocol === "https") attributes.push("Secure");
-  res.setHeader("Set-Cookie", `${LASTFM_LINK_COOKIE}=${encodeURIComponent(value)}; ${attributes.join("; ")}`);
+  res.append("Set-Cookie", `${LASTFM_LINK_COOKIE}=${encodeURIComponent(value)}; ${attributes.join("; ")}`);
 };
 
 const normalizeLinkToken = (value) => {
@@ -104,6 +104,15 @@ const normalizeLinkToken = (value) => {
 };
 
 export const callbackUrl = (req, token) => {
+  const configuredOrigin = String(process.env.AURRAL_PUBLIC_URL || "").trim();
+  if (configuredOrigin) {
+    try {
+      const url = new URL(configuredOrigin);
+      if (["http:", "https:"].includes(url.protocol) && !url.username && !url.password) {
+        return `${url.origin}/api/scrobbling/lastfm/link/callback?uid=${encodeURIComponent(token)}`;
+      }
+    } catch {}
+  }
   const protocol = String(req.protocol || "http").trim();
   const host = String(req.get("host") || "").trim();
   return `${protocol}://${host}/api/scrobbling/lastfm/link/callback?uid=${encodeURIComponent(token)}`;
