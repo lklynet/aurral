@@ -25,7 +25,7 @@ const library = {
     {
       id: 2,
       identityKey: "release-group:album-1",
-      mbid: "album-1",
+      mbid: "release-1",
       releaseGroupMbid: "album-1",
       artistId: 1,
       title: "Root Album",
@@ -67,6 +67,7 @@ test("canonical read model maps the existing root to Library-shaped records", ()
   assert.deepEqual(findCanonicalTracksForAlbum(result.tracks, 2).map((track) => track.trackName), [
     "Root Track",
   ]);
+  assert.equal(result.albums[0].mbid, "release-1");
   assert.equal(result.albums[0].releaseGroupMbid, "album-1");
   assert.equal(result.albums[0].statistics.sizeOnDisk, 123);
   assert.equal(result.artists[0].statistics.sizeOnDisk, 123);
