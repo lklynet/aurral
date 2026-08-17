@@ -30,6 +30,7 @@ const root = process.env.WEEKLY_FLOW_FOLDER;
 test.beforeEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
   resetDatabase(db);
+  downloadTracker.clearAll();
   dbOps.updateSettings({
     integrations: {},
     flows: [],
@@ -83,7 +84,13 @@ test("migrates permanent tracks, isolates active flows, and removes unkept flow 
     { artistName: "Artist", albumName: "Album", trackName: "Flow Track" },
     flow.id,
   );
-  downloadTracker.setDone(permanentJobId, permanentSource);
+  downloadTracker.setDone(permanentJobId, permanentSource, "Album", "/remote/Track.flac");
+  downloadTracker.updateQuality(permanentJobId, {
+    tier: "lossless",
+    format: "FLAC",
+    checkedAt: 123,
+  });
+  const permanentCompletedAt = downloadTracker.getJob(permanentJobId).completedAt;
   downloadTracker.setDone(flowJobId, flowSource);
 
   const result = await migrateAurralDownloadFolder({
@@ -96,7 +103,11 @@ test("migrates permanent tracks, isolates active flows, and removes unkept flow 
   assert.equal(result.migrated, 2);
   assert.equal(result.flowMigrated, 1);
   assert.equal(result.removed, 1);
-  assert.equal(downloadTracker.getJob(permanentJobId).finalPath, permanentDestination);
+  const permanentJob = downloadTracker.getJob(permanentJobId);
+  assert.equal(permanentJob.finalPath, permanentDestination);
+  assert.equal(permanentJob.externalPath, "/remote/Track.flac");
+  assert.equal(permanentJob.completedAt, permanentCompletedAt);
+  assert.equal(permanentJob.qualityTier, "lossless");
   assert.equal(downloadTracker.getJob(flowJobId).finalPath, flowDestination);
   await assert.doesNotReject(() => fs.access(permanentDestination));
   await assert.doesNotReject(() => fs.access(flowDestination));
@@ -149,6 +160,40 @@ test("retains a failed item and completes it safely on retry", async () => {
   assert.equal(third.migrated, 0);
 });
 
+test("does not reuse a same-name destination with different content", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Collision" });
+  const source = path.join(
+    root,
+    "aurral-weekly-flow",
+    playlist.id,
+    "Artist",
+    "Album",
+    "Track.flac",
+  );
+  const existing = path.join(root, "Artist", "Album", "Track.mp3");
+  await fs.mkdir(path.dirname(source), { recursive: true });
+  await fs.mkdir(path.dirname(existing), { recursive: true });
+  await fs.writeFile(source, "source-content");
+  await fs.writeFile(existing, "different");
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", albumName: "Album", trackName: "Track" },
+    playlist.id,
+  );
+  downloadTracker.setDone(jobId, source);
+
+  const result = await migrateAurralDownloadFolder({
+    root,
+    indexDestination: async ({ targetPath }) => {
+      assert.equal(targetPath, path.join(root, "Artist", "Album", "Track.flac"));
+    },
+  });
+
+  assert.equal(result.migrated, 1);
+  assert.equal(await fs.readFile(existing, "utf8"), "different");
+  assert.equal(await fs.readFile(path.join(root, "Artist", "Album", "Track.flac"), "utf8"), "source-content");
+  await assert.rejects(() => fs.access(source));
+});
+
 test("retains partial and ambiguous files instead of guessing", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Review" });
   const partial = path.join(
@@ -176,10 +221,20 @@ test("retains partial and ambiguous files instead of guessing", async () => {
 
   const result = await migrateAurralDownloadFolder({
     root,
+    metadataReader: async () => ({
+      common: {
+        albumartist: "Unknown Artist",
+        album: "Unknown Album",
+        title: "Unknown Track",
+      },
+    }),
   });
 
   assert.equal(result.retained, 2);
   assert.equal(result.status, "needs-review");
+  const state = dbOps.getJSONSetting("aurralDownloadFolderMigration");
+  assert.equal(state.items[partial].reason, "partial file");
+  assert.equal(state.items[ambiguous].reason, "ambiguous media identity");
   await assert.doesNotReject(() => fs.access(partial));
   await assert.doesNotReject(() => fs.access(ambiguous));
 });

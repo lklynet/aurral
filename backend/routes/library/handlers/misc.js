@@ -6,6 +6,7 @@ import { libraryManager } from "../../../services/libraryManager.js";
 import { normalizePercentOfTracks } from "../../../services/lidarrAlbumStats.js";
 import { logger } from "../../../services/logger.js";
 import { getCanonicalLibraryReadModel } from "../../../services/canonicalLibraryReadAdapter.js";
+import { getCanonicalLibraryPage } from "../../../services/libraryQueryService.js";
 
 const canonicalAlbumLookup = (albums, reference) =>
   albums.find((album) =>
@@ -14,22 +15,35 @@ const canonicalAlbumLookup = (albums, reference) =>
     ),
   );
 
-const canonicalAlbumResult = (album) => ({
+const canonicalAlbumResult = (album, ownedTrackMbids = []) => ({
   inLibrary: true,
   canonicalInLibrary: true,
   canonicalAlbumId: String(album.canonicalId ?? album.id),
   canonicalArtistId: String(album.artistId),
   libraryAlbumId: String(album.providerId ?? album.id),
   libraryArtistId: String(album.providerArtistId ?? album.artistId),
-  status: album.available ? "available" : "partial",
+  status:
+    Number(album.statistics?.trackCount || 0) > Number(album.statistics?.trackFileCount || 0)
+      ? "partial"
+      : album.available
+        ? "available"
+        : "partial",
   monitored: album.monitored,
   percentOfTracks: Number(album.statistics?.percentOfTracks || 0),
   sizeOnDisk: Number(album.statistics?.sizeOnDisk || 0),
   trackCount: Number(album.statistics?.trackCount || 0),
   trackFileCount: Number(album.statistics?.trackFileCount || 0),
+  ownedTrackMbids,
   albumName: String(album.albumName || album.title || "").trim(),
   releaseDate: String(album.releaseDate || "").trim(),
 });
+
+const ownedLidarrTrackMbids = (tracks) =>
+  (Array.isArray(tracks) ? tracks : [])
+    .filter((track) => track?.hasFile === true || track?.path || track?.trackFile?.path)
+    .map((track) => track?.mbid || track?.foreignRecordingId || track?.foreignTrackId)
+    .map((mbid) => String(mbid || "").trim())
+    .filter(Boolean);
 
 const toLibraryArtist = (artist) => ({
   ...artist,
@@ -143,7 +157,39 @@ export function registerMisc(router) {
       const results = {};
       for (const foreignAlbumId of wanted) {
         const album = canonicalAlbumLookup(canonicalAlbums, foreignAlbumId);
-        if (album) results[foreignAlbumId] = canonicalAlbumResult(album);
+        if (album) {
+          const albumPage = getCanonicalLibraryPage({
+            source: "all",
+            availableOnly: false,
+            kind: "tracks",
+            albumId: album.id,
+            page: 1,
+            pageSize: 100,
+          });
+          const albumStats = albumPage.albums[0];
+          const ownedTrackMbids = albumPage.tracks
+            .filter((track) => track.available && track.mbid)
+            .map((track) => String(track.mbid).trim())
+            .filter(Boolean);
+          results[foreignAlbumId] = canonicalAlbumResult(
+            albumStats
+              ? {
+                  ...album,
+                  available: albumStats.availableTrackCount > 0,
+                  statistics: {
+                    ...album.statistics,
+                    trackCount: albumStats.trackCount,
+                    trackFileCount: albumStats.availableTrackCount,
+                    percentOfTracks:
+                      albumStats.trackCount > 0
+                        ? (albumStats.availableTrackCount / albumStats.trackCount) * 100
+                        : 0,
+                  },
+                }
+              : album,
+            ownedTrackMbids,
+          );
+        }
       }
 
       const missing = wanted.filter((foreignAlbumId) => !results[foreignAlbumId]);
@@ -176,6 +222,8 @@ export function registerMisc(router) {
         const album = result.value;
         if (!album) continue;
 
+        const albumTracks = album.id ? await libraryManager.getTracks(album.id) : [];
+
         const percentOfTracks = normalizePercentOfTracks(album?.statistics?.percentOfTracks);
         const sizeOnDisk = Number(album?.statistics?.sizeOnDisk || 0);
         const trackCount = Number(album?.statistics?.trackCount || 0);
@@ -195,6 +243,7 @@ export function registerMisc(router) {
           sizeOnDisk,
           trackCount,
           trackFileCount,
+          ownedTrackMbids: ownedLidarrTrackMbids(albumTracks),
           albumName: String(album?.title || "").trim(),
           releaseDate: String(album?.releaseDate || "").trim(),
         };

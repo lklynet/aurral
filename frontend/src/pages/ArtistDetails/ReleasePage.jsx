@@ -5,6 +5,7 @@ import {
 } from "../../utils/api/endpoints/playlists.js";
 import {
   getDownloadStatus,
+  downloadTrackToLibrary,
   lookupAlbumsInLibraryBatch,
   requestAlbumFromSearch,
 } from "../../utils/api/endpoints/library.js";
@@ -120,6 +121,7 @@ function ReleasePage() {
     loadSharedPlaylists,
   } = useSharedPlaylists();
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
+  const [libraryTrackSavingKey, setLibraryTrackSavingKey] = useState("");
   const downloadStatusPollInFlightRef = useRef(false);
 
   const [heroColor, setHeroColor] = useState(null);
@@ -443,6 +445,32 @@ function ReleasePage() {
     [buildReleaseTrackPayload, saveTrackToPlaylist],
   );
 
+  const handleReleaseTrackAddToLibrary = useCallback(
+    async (track) => {
+      const payload = buildReleaseTrackPayload(track);
+      const savingKey = String(track?.id ?? track?.mbid ?? "");
+      setLibraryTrackSavingKey(savingKey);
+      try {
+        const result = await downloadTrackToLibrary(payload);
+        showSuccess(
+          result?.alreadyOwned
+            ? `${payload.trackName} is already in your library`
+            : `Added ${payload.trackName} to your library`,
+        );
+      } catch (err) {
+        showError(
+          err.response?.data?.message ||
+            err.response?.data?.error ||
+            err.message ||
+            "Failed to add track to library",
+        );
+      } finally {
+        setLibraryTrackSavingKey("");
+      }
+    },
+    [buildReleaseTrackPayload, showError, showSuccess],
+  );
+
   const handleAlbumAction = useCallback(async () => {
     if (!releaseMbid || requestingAlbum) return;
     setRequestingAlbum(true);
@@ -630,6 +658,10 @@ function ReleasePage() {
             label: releaseTitle,
           }}
           onAddTrackToPlaylist={handleReleaseTrackAdd}
+          onAddTrackToLibrary={handleReleaseTrackAddToLibrary}
+          libraryTrackSavingKey={libraryTrackSavingKey}
+          ownedTrackMbids={libraryInfo?.ownedTrackMbids}
+          albumComplete={isComplete}
           resolveMembershipTrack={buildReleaseTrackPayload}
           playlists={sharedPlaylists}
           playlistsLoading={playlistModalLoading}

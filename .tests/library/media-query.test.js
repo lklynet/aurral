@@ -266,6 +266,58 @@ test("canonical album track pages keep the selected album relationship", () => {
   }
 });
 
+test("canonical album track pages include indexed tracks without media", () => {
+  const key = `query-album-missing-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({ identityKey: `${key}:artist`, name: "Partial Fixture" });
+  const album = upsertLibraryAlbum({
+    identityKey: `${key}:album`,
+    artistId: artist.id,
+    title: "Partial Album",
+  });
+  const ownedTrack = upsertLibraryTrack({
+    identityKey: `${key}:owned-track`,
+    mbid: `${key}-owned`,
+    title: "Owned Track",
+    artistName: "Partial Fixture",
+  });
+  const missingTrack = upsertLibraryTrack({
+    identityKey: `${key}:missing-track`,
+    mbid: `${key}-missing`,
+    title: "Missing Track",
+    artistName: "Partial Fixture",
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: ownedTrack.id, trackNumber: 1 });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: missingTrack.id, trackNumber: 2 });
+  const ownedPath = `/tmp/${key}/owned.flac`;
+  upsertLibraryMediaFile({
+    trackId: ownedTrack.id,
+    albumId: album.id,
+    source: "aurral",
+    path: ownedPath,
+  });
+
+  try {
+    const page = getCanonicalLibraryPage({
+      source: "aurral",
+      kind: "tracks",
+      albumId: album.id,
+      page: 1,
+      pageSize: 10,
+    });
+    assert.deepEqual(page.items.map((track) => track.title), ["Owned Track", "Missing Track"]);
+    assert.equal(page.items[0].files.length, 1);
+    assert.deepEqual(page.items[1].files, []);
+    assert.equal(page.albums[0].trackCount, 2);
+    assert.equal(page.albums[0].availableTrackCount, 1);
+  } finally {
+    db.prepare("DELETE FROM library_media_files WHERE path = ?").run(ownedPath);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
+    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(ownedTrack.id, missingTrack.id);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  }
+});
+
 test("canonical library responses do not expose filesystem paths", () => {
   const response = toPublicLibrary({
     artists: [{ metadata: { path: "/music/private", tags: { genre: "rock" } } }],

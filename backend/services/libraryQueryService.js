@@ -125,26 +125,34 @@ function buildLibraryFromRows(rows) {
       });
     }
 
-    if (!artist.sources.includes(row.media_source)) artist.sources.push(row.media_source);
-    if (!album.sources.includes(row.media_source)) album.sources.push(row.media_source);
-    if (!track.sources.includes(row.media_source)) track.sources.push(row.media_source);
+    if (row.media_id != null) {
+      if (row.media_source && !artist.sources.includes(row.media_source)) {
+        artist.sources.push(row.media_source);
+      }
+      if (row.media_source && !album.sources.includes(row.media_source)) {
+        album.sources.push(row.media_source);
+      }
+      if (row.media_source && !track.sources.includes(row.media_source)) {
+        track.sources.push(row.media_source);
+      }
 
-    const file = {
-      id: row.media_id,
-      source: row.media_source,
-      path: row.media_path,
-      format: row.media_format,
-      size: row.media_size,
-      mtimeMs: row.media_mtime_ms,
-      durationMs: row.media_duration_ms,
-      quality: parseJson(row.media_quality_json),
-      available: Boolean(row.media_available),
-    };
-    if (!track.files.some((entry) => entry.id === file.id)) track.files.push(file);
-    if (file.available) {
-      artist.available = true;
-      album.available = true;
-      track.available = true;
+      const file = {
+        id: row.media_id,
+        source: row.media_source,
+        path: row.media_path,
+        format: row.media_format,
+        size: row.media_size,
+        mtimeMs: row.media_mtime_ms,
+        durationMs: row.media_duration_ms,
+        quality: parseJson(row.media_quality_json),
+        available: Boolean(row.media_available),
+      };
+      if (!track.files.some((entry) => entry.id === file.id)) track.files.push(file);
+      if (file.available) {
+        artist.available = true;
+        album.available = true;
+        track.available = true;
+      }
     }
   }
 
@@ -518,23 +526,83 @@ function getPageLibrary(kind, ids, sourceFilter, availableOnly, albumId = null) 
   return buildLibraryFromRows(rows);
 }
 
+function getAlbumTrackLibrary(albumId, sourceFilter) {
+  const conditions = ["album.id = ?"];
+  const parameters = [];
+  const mediaConditions = [
+    "media.track_id = track.id",
+    albumMediaCondition("media", "album_track"),
+  ];
+  if (sourceFilter) {
+    mediaConditions.push("media.source = ?");
+    parameters.push(sourceFilter);
+  }
+  parameters.push(Number(albumId));
+  const rows = db.prepare(
+    `${CANONICAL_SELECT}
+     FROM library_tracks AS track
+     JOIN library_album_tracks AS album_track ON album_track.track_id = track.id
+     JOIN library_albums AS album ON album.id = album_track.album_id
+     JOIN library_artists AS artist ON artist.id = album.artist_id
+     LEFT JOIN library_media_files AS media ON ${mediaConditions.join(" AND ")}
+     WHERE ${conditions.join(" AND ")}
+     ORDER BY album_track.disc_number, album_track.track_number,
+       track.title COLLATE NOCASE, media.path COLLATE NOCASE`,
+  ).all(...parameters);
+  return buildLibraryFromRows(rows);
+}
+
+function getAlbumTrackPage(albumId, sourceFilter, page, currentPageSize) {
+  const library = getAlbumTrackLibrary(albumId, sourceFilter);
+  const album = library.albums[0] || null;
+  const artist = album
+    ? library.artists.find((candidate) => candidate.id === album.artistId) || null
+    : null;
+  const tracks = library.tracks;
+  const availableTrackCount = tracks.filter((track) => track.available).length;
+  const pageItems = tracks.slice((page - 1) * currentPageSize, page * currentPageSize);
+  const albums = album
+    ? [{
+        ...album,
+        trackCount: tracks.length,
+        availableTrackCount,
+      }]
+    : [];
+  return {
+    kind: "tracks",
+    page,
+    pageSize: currentPageSize,
+    total: tracks.length,
+    hasMore: page * currentPageSize < tracks.length,
+    items: pageItems,
+    artists: artist ? [artist] : [],
+    albums,
+    tracks: pageItems,
+    genres: getCanonicalGenreStats({ sourceFilter, availableOnly: false }),
+  };
+}
+
 function getAlbumStats(albumIds, sourceFilter) {
   if (!albumIds.length) return new Map();
   const conditions = [`album_track.album_id IN (${albumIds.map(() => "?").join(",")})`];
-  const parameters = [...albumIds];
+  const parameters = [];
+  const mediaConditions = [
+    "media.track_id = album_track.track_id",
+    albumMediaCondition("media", "album_track"),
+  ];
   if (sourceFilter) {
-    conditions.push("media.source = ?");
+    mediaConditions.push("media.source = ?");
     parameters.push(sourceFilter);
   }
+  parameters.push(...albumIds);
   const rows = db.prepare(
     `SELECT
        album_track.album_id AS album_id,
        COUNT(DISTINCT album_track.track_id) AS track_count,
        COUNT(DISTINCT CASE WHEN media.available = 1 THEN album_track.track_id END) AS available_track_count
      FROM library_album_tracks AS album_track
-     JOIN library_media_files AS media
-       ON media.track_id = album_track.track_id
-       AND ${albumMediaCondition("media", "album_track")}
+     LEFT JOIN library_media_files AS media
+       ON ${mediaConditions.join(" AND ")}
      WHERE ${conditions.join(" AND ")}
      GROUP BY album_track.album_id`,
   ).all(...parameters);
@@ -593,6 +661,10 @@ export function getCanonicalLibraryPage({
       tracks: [],
       genres: getCanonicalGenreStats({ sourceFilter, availableOnly }),
     };
+  }
+
+  if (normalizedKind === "tracks" && albumId && availableOnly !== true) {
+    return getAlbumTrackPage(albumId, sourceFilter, currentPage, currentPageSize);
   }
 
   const queryDefinition = buildPageQuery({

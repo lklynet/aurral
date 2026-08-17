@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { ChevronRight, Loader, Plus } from "lucide-react";
+import { ChevronRight, Loader, MoreHorizontal, Plus } from "lucide-react";
 import AddActionButton from "../../../components/AddActionButton";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 
@@ -236,6 +236,8 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
     triggerLabel = "Add to playlist",
     triggerVariant = "expand",
     icon: TriggerIcon = Plus,
+    onAddToLibrary,
+    librarySaving = false,
     onLoadPlaylists,
     onSelect,
     onOpenChange,
@@ -244,6 +246,7 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
   ref,
 ) {
   const [open, setOpen] = useState(false);
+  const [openSubmenu, setOpenSubmenu] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
   const menuRef = useRef(null);
   const buttonRef = useRef(null);
@@ -253,10 +256,12 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
     const handlePointerDown = (event) => {
       if (menuRef.current?.contains(event.target)) return;
       setOpen(false);
+      setOpenSubmenu(false);
       onOpenChange?.(false);
     };
     const handleViewportChange = () => {
       setOpen(false);
+      setOpenSubmenu(false);
       onOpenChange?.(false);
     };
     document.addEventListener("pointerdown", handlePointerDown);
@@ -288,6 +293,7 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
 
   const closeMenu = () => {
     setOpen(false);
+    setOpenSubmenu(false);
     onOpenChange?.(false);
   };
 
@@ -311,6 +317,7 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
   };
 
   const showTrigger = triggerVariant !== "hidden";
+  const isKebab = triggerVariant === "kebab";
   const triggerClassName = `btn btn-secondary btn-icon btn-xs${open ? " btn-neutral-active" : ""}`;
   const menuClassName = [
     "artist-playlist-menu",
@@ -323,7 +330,7 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
   return (
     <div className="artist-relative" ref={menuRef}>
       {showTrigger ? (
-        triggerVariant === "compact" ? (
+        isKebab || triggerVariant === "compact" ? (
           <button
             ref={buttonRef}
             type="button"
@@ -337,6 +344,8 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
           >
             {saving ? (
               <Loader className="artist-icon-xs animate-spin" />
+            ) : isKebab ? (
+              <MoreHorizontal className="artist-icon-xs" />
             ) : (
               <TriggerIcon className="artist-icon-xs" />
             )}
@@ -364,16 +373,55 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
           }}
           onClick={(event) => event.stopPropagation()}
         >
-          <TrackPlaylistPickerContent
-            track={track}
-            playlists={playlists}
-            loading={loading}
-            saving={saving}
-            error={error}
-            defaultNewPlaylistName={defaultNewPlaylistName}
-            excludedPlaylistIds={excludedPlaylistIds}
-            onSelect={handleSelect}
-          />
+          {isKebab ? (
+            <>
+              {onSelect ? (
+                <TrackPlaylistSubmenu
+                  label="+ Add to playlist"
+                  icon={Plus}
+                  track={track}
+                  playlists={playlists}
+                  loading={loading}
+                  saving={saving}
+                  error={error}
+                  defaultNewPlaylistName={defaultNewPlaylistName}
+                  excludedPlaylistIds={excludedPlaylistIds}
+                  onSelect={onSelect}
+                  onClose={closeMenu}
+                  toggleOnClick
+                  isOpen={openSubmenu}
+                  onToggle={() => setOpenSubmenu((current) => !current)}
+                />
+              ) : null}
+              {onAddToLibrary ? (
+                <button
+                  type="button"
+                  className="artist-menu-item"
+                  onClick={async () => {
+                    await onAddToLibrary?.(track);
+                    closeMenu();
+                  }}
+                  disabled={saving || librarySaving || disabled}
+                >
+                  <span className="artist-menu-item__main">
+                    <Plus className="artist-icon-sm" />
+                    + Add to library
+                  </span>
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <TrackPlaylistPickerContent
+              track={track}
+              playlists={playlists}
+              loading={loading}
+              saving={saving}
+              error={error}
+              defaultNewPlaylistName={defaultNewPlaylistName}
+              excludedPlaylistIds={excludedPlaylistIds}
+              onSelect={handleSelect}
+            />
+          )}
         </div>
       ) : null}
     </div>

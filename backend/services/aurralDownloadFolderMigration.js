@@ -173,30 +173,47 @@ async function resolveJobSourcePath(finalPath, rootPath) {
 async function collectLegacyFiles(rootPath, knownIds) {
   const roots = LEGACY_PLAYLIST_ROOTS.map((name) => path.join(rootPath, name));
   for (const id of knownIds) roots.push(path.join(rootPath, id));
+  const resolvedRoot = path.resolve(rootPath);
   const files = [];
   for (const candidateRoot of [...new Set(roots)]) {
-    if (!isPathInsideRoot(candidateRoot, rootPath)) continue;
-    await walkFiles(candidateRoot, files);
+    const resolvedCandidate = path.resolve(candidateRoot);
+    if (resolvedCandidate === resolvedRoot || !isPathInsideRoot(resolvedCandidate, resolvedRoot)) {
+      continue;
+    }
+    await walkFiles(resolvedCandidate, files);
   }
   return [...new Set(files.map((filePath) => path.resolve(filePath)))].sort();
 }
 
-async function findExistingDestination(targetPath) {
+async function findExistingDestination(targetPath, sourceSize = null) {
   const directory = path.dirname(targetPath);
   const baseName = path.basename(targetPath, path.extname(targetPath)).toLowerCase();
+  const targetExtension = path.extname(targetPath).toLowerCase();
   const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => []);
-  const match = entries.find(
+  const candidates = entries.filter(
     (entry) =>
       entry.isFile() &&
       AUDIO_EXTENSIONS.has(path.extname(entry.name).toLowerCase()) &&
       path.basename(entry.name, path.extname(entry.name)).toLowerCase() === baseName,
   );
-  return match ? path.join(directory, match.name) : null;
+  candidates.sort(
+    (left, right) =>
+      Number(path.extname(right.name).toLowerCase() === targetExtension) -
+      Number(path.extname(left.name).toLowerCase() === targetExtension),
+  );
+  for (const entry of candidates) {
+    const candidatePath = path.join(directory, entry.name);
+    if (sourceSize === null) return candidatePath;
+    const stat = await fs.stat(candidatePath).catch(() => null);
+    if (stat?.isFile() && stat.size === sourceSize) return candidatePath;
+  }
+  return null;
 }
 
 async function copyWithoutRemovingSource(sourcePath, targetPath) {
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
-  const existing = await findExistingDestination(targetPath);
+  const sourceStat = await fs.stat(sourcePath);
+  const existing = await findExistingDestination(targetPath, sourceStat.size);
   if (existing) return existing;
   const temporary = path.join(
     path.dirname(targetPath),
@@ -236,12 +253,7 @@ async function removeSource(sourcePath, rootPath) {
 
 function updateJobPaths(jobs, destination) {
   for (const job of jobs) {
-    downloadTracker.setDone(
-      job.id,
-      destination,
-      job.albumName || null,
-      job.externalPath || null,
-    );
+    downloadTracker.updateFinalPath(job.id, destination);
   }
 }
 
@@ -288,7 +300,7 @@ async function resolveIdentity(sourcePath, rootPath, playlistId, jobs, metadataR
 }
 
 async function defaultIndexDestination({ rootPath, targetPath, metadataReader }) {
-  await scanMusicRoot({ rootPath, source: "aurral", metadataReader });
+  await scanMusicRoot({ rootPath, source: "aurral", filePaths: [targetPath], metadataReader });
   const media = getLibraryMediaFile({ source: "aurral", path: targetPath });
   if (!media?.available) {
     throw new Error("Destination was not indexed as available Aurral media");
@@ -358,10 +370,11 @@ export async function migrateAurralDownloadFolder(options = {}) {
     ...flowPlaylistConfig.getSharedPlaylists().map((playlist) => String(playlist.id)),
   ]);
   const files = await collectLegacyFiles(rootPath, knownIds);
+  const fileSet = new Set(files);
   const jobsByPath = new Map();
   for (const job of jobs) {
     const sourcePath = await resolveJobSourcePath(job.finalPath, rootPath);
-    if (!sourcePath || !files.includes(sourcePath)) continue;
+    if (!sourcePath || !fileSet.has(sourcePath)) continue;
     const matches = jobsByPath.get(sourcePath) || [];
     matches.push(job);
     jobsByPath.set(sourcePath, matches);
@@ -456,12 +469,11 @@ export async function migrateAurralDownloadFolder(options = {}) {
 
     try {
       let committedPath = destination;
-      let destinationExists = false;
-      try {
-        destinationExists = (await fs.stat(destination)).isFile();
-      } catch {}
+      const destinationStat = await fs.stat(destination).catch(() => null);
+      const destinationMatches =
+        destinationStat?.isFile() && destinationStat.size === stat.size;
       if (
-        !destinationExists ||
+        !destinationMatches ||
         (previous.status !== "copied" && previous.status !== "indexed" && previous.status !== "referenced")
       ) {
         committedPath = await copyWithoutRemovingSource(sourcePath, destination);
@@ -522,7 +534,7 @@ export async function migrateAurralDownloadFolder(options = {}) {
   }
 
   for (const [sourcePath, item] of Object.entries(state.items)) {
-    if (item?.status !== "referenced" || files.includes(sourcePath)) continue;
+    if (item?.status !== "referenced" || fileSet.has(sourcePath)) continue;
     state.items[sourcePath] = { ...item, status: "complete", updatedAt: Date.now() };
   }
   state.status = result.failed || result.retained ? "needs-review" : "complete";

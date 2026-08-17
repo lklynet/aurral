@@ -22,6 +22,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useSharedPlaylists } from "../hooks/useSharedPlaylists";
 import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.js";
@@ -33,10 +34,19 @@ import {
   requestLibraryRefresh,
   updateLibraryFavorites,
 } from "../utils/api/endpoints/library.js";
+import {
+  addSharedPlaylistTracks,
+  createSharedPlaylist,
+} from "../utils/api/endpoints/playlists.js";
 import { buildAuthenticatedApiUrl } from "../utils/api/core.js";
 import { navigateToLibraryAlbum } from "../utils/searchNavigation";
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { libraryPreviewData, libraryPreviewFavorites } from "./libraryPreviewData";
+import { TrackPlaylistMenu } from "./ArtistDetails/components/TrackPlaylistMenu";
+import {
+  buildSharedPlaylistTrackPayload,
+  reserveUniquePlaylistName,
+} from "./ArtistDetails/utils";
 
 const LIBRARY_VIEW_IDS = new Set(LIBRARY_VIEWS.map((view) => view.id));
 
@@ -187,6 +197,14 @@ function LibraryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { bootstrap } = useAuth();
   const { showError, showSuccess } = useToast();
+  const {
+    sharedPlaylists,
+    setSharedPlaylists,
+    playlistsLoading,
+    playlistsError,
+    setPlaylistsError,
+    loadSharedPlaylists,
+  } = useSharedPlaylists();
   const { playQueue, currentTrack, isPlaying, isLoading, togglePlayPause, matchesSource } =
     useAudioQueue();
   const [library, setLibrary] = useState({ artists: [], albums: [], tracks: [], genres: [] });
@@ -209,6 +227,7 @@ function LibraryPage() {
   const [pageData, setPageData] = useState(null);
   const albumTrackCacheRef = useRef(new Map());
   const refreshAttemptRef = useRef(0);
+  const [playlistSavingKey, setPlaylistSavingKey] = useState("");
 
   const handleLibraryScanMessage = useCallback((message) => {
     if (message?.type !== "library_scan_completed") return;
@@ -502,6 +521,77 @@ function LibraryPage() {
   const getArtistForAlbum = useCallback(
     (album) => (album ? artistsById.get(String(album.artistId)) : null),
     [artistsById],
+  );
+
+  const getDefaultTrackPlaylistName = useCallback(
+    (track) =>
+      reserveUniquePlaylistName(
+        sharedPlaylists,
+        `${getArtistForAlbum(getAlbumForTrack(track))?.name || track?.artistName || "Artist"} Picks`,
+      ),
+    [getAlbumForTrack, getArtistForAlbum, sharedPlaylists],
+  );
+
+  const addLibraryTrackToPlaylist = useCallback(
+    async (track, target) => {
+      const album = getAlbumForTrack(track);
+      const artist = getArtistForAlbum(album);
+      const payload = buildSharedPlaylistTrackPayload({
+        artistName: artist?.name || track?.artistName || "",
+        trackName: track?.title || "",
+        albumName: album?.title || "",
+        artistMbid: artist?.mbid || "",
+        albumMbid: album?.mbid || album?.releaseGroupMbid || "",
+        trackMbid: track?.mbid || "",
+        releaseYear: yearOf(album?.releaseDate),
+        durationMs: firstAvailableFile(track)?.durationMs || track?.durationMs,
+      });
+      if (!payload.artistName || !payload.trackName) {
+        showError("Track details are incomplete");
+        return;
+      }
+      const key = String(track?.id || "");
+      setPlaylistSavingKey(key);
+      setPlaylistsError("");
+      try {
+        if (target?.mode === "new") {
+          const name =
+            String(target?.name || "").trim() ||
+            getDefaultTrackPlaylistName(track);
+          await createSharedPlaylist({ name, tracks: [payload] });
+          showSuccess(`Track saved to ${name}`);
+        } else {
+          const playlist = sharedPlaylists.find(
+            (candidate) => candidate.id === target?.playlistId,
+          );
+          await addSharedPlaylistTracks(target?.playlistId, { tracks: [payload] });
+          showSuccess(`Track added to ${playlist?.name || "playlist"}`);
+        }
+        const nextPlaylists = await loadSharedPlaylists();
+        if (nextPlaylists) setSharedPlaylists(nextPlaylists);
+      } catch (requestError) {
+        const message =
+          requestError.response?.data?.message ||
+          requestError.response?.data?.error ||
+          requestError.message ||
+          "Failed to save track to playlist";
+        setPlaylistsError(message);
+        showError(message);
+      } finally {
+        setPlaylistSavingKey("");
+      }
+    },
+    [
+      getAlbumForTrack,
+      getArtistForAlbum,
+      getDefaultTrackPlaylistName,
+      loadSharedPlaylists,
+      setPlaylistsError,
+      setSharedPlaylists,
+      sharedPlaylists,
+      showError,
+      showSuccess,
+    ],
   );
 
   const albumAvailability = useCallback(
@@ -976,6 +1066,7 @@ function LibraryPage() {
         <span>Album</span>
         <span className="native-library-track__time">Time</span>
         <span />
+        <span />
       </div>
       <div role="list" aria-label={label}>
         {tracks.map((track, index) => {
@@ -989,7 +1080,11 @@ function LibraryPage() {
         const albumName = album?.title || "Unknown Album";
         return (
           <div
-            className={"native-library-track" + (active ? " is-active" : "")}
+            className={
+              "native-library-track" +
+              (active ? " is-active" : "") +
+              (file ? "" : " is-missing")
+            }
             key={track.id}
             role="listitem"
           >
@@ -1057,6 +1152,17 @@ function LibraryPage() {
             <span className={"native-library-track__time" + (!file ? " is-missing" : "")}>
               {file ? formatDuration(file.durationMs) : "Unavailable"}
             </span>
+            <TrackPlaylistMenu
+              track={track}
+              playlists={sharedPlaylists}
+              loading={playlistsLoading}
+              saving={playlistSavingKey === String(track.id)}
+              error={playlistsError}
+              defaultNewPlaylistName={getDefaultTrackPlaylistName(track)}
+              onLoadPlaylists={loadSharedPlaylists}
+              triggerVariant="compact"
+              onSelect={(target) => addLibraryTrackToPlaylist(track, target)}
+            />
             <FavoriteButton
               className="native-library-track__favorite"
               active={favoriteIds.has(favoriteId("song", track))}

@@ -140,8 +140,9 @@ function readLibrarySidebarCollapsed() {
   }
 }
 
-function FlowPage() {
-  useDocumentTitle("Playlists");
+function FlowPage({ mode = "all" }) {
+  const fixedLibraryFilter = mode === "flows" ? "flows" : mode === "playlists" ? "playlists" : null;
+  useDocumentTitle(mode === "flows" ? "Flows" : "Playlists");
   const navigate = useNavigate();
   const location = useLocation();
   const {
@@ -157,7 +158,7 @@ function FlowPage() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [confirmDisable, setConfirmDisable] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
-  const [libraryFilter, setLibraryFilter] = useState("all");
+  const [libraryFilter, setLibraryFilter] = useState(fixedLibraryFilter || "all");
   const [libraryCollapsed, setLibraryCollapsed] = useState(readLibrarySidebarCollapsed);
   const [detailTab, setDetailTab] = useState("tracks");
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
@@ -201,6 +202,10 @@ function FlowPage() {
   const { showSuccess, showError } = useToast();
   const disabledFlowSources = status?.capabilities?.unavailableSources || {};
   const canCreateGeneratedFlow = Object.keys(disabledFlowSources).length === 0;
+
+  useEffect(() => {
+    if (fixedLibraryFilter) setLibraryFilter(fixedLibraryFilter);
+  }, [fixedLibraryFilter]);
 
   useEffect(() => {
     if (!selectedId || !status?.flows?.length) return;
@@ -523,15 +528,16 @@ function FlowPage() {
     return [...shared, ...generated];
   }, [sharedPlaylists, effectiveFlowList]);
 
+  const activeLibraryFilter = fixedLibraryFilter || libraryFilter;
   const filteredCollection = useMemo(() => {
-    if (libraryFilter === "playlists") {
+    if (activeLibraryFilter === "playlists") {
       return collection.filter((entry) => entry.kind === "shared");
     }
-    if (libraryFilter === "flows") {
+    if (activeLibraryFilter === "flows") {
       return collection.filter((entry) => entry.kind === "flow");
     }
     return collection;
-  }, [collection, libraryFilter]);
+  }, [activeLibraryFilter, collection]);
 
   const selectedEntry = useMemo(
     () => collection.find((entry) => entry.id === selectedId) || null,
@@ -1776,7 +1782,7 @@ function FlowPage() {
             >
               <LibrarySidebarToggleIcon collapsed={libraryCollapsed} />
             </button>
-            <h1 className="flow-page__library-title">Playlists</h1>
+            <h1 className="flow-page__library-title">{mode === "flows" ? "Flows" : "Playlists"}</h1>
             <FlowLibraryCreateMenu
               onImport={() => setImportModalOpen(true)}
               onNewPlaylist={handleOpenCreatePlaylist}
@@ -1784,38 +1790,43 @@ function FlowPage() {
               creatingPlaylist={creatingPlaylist}
               creatingFlow={creating}
               canCreateFlow={canCreateGeneratedFlow}
+              showPlaylists={mode !== "flows"}
+              showFlows={mode !== "playlists"}
+              showImport={mode !== "flows"}
               compact={libraryCollapsed}
             />
           </div>
-          <div
-            className="artist-segmented flow-page__library-filters"
-            role="group"
-            aria-label="Library filter"
-          >
-            {[
-              { id: "all", label: "All" },
-              { id: "playlists", label: "Playlists" },
-              { id: "flows", label: "Flows" },
-            ].map((filter) => {
-              const isActive = libraryFilter === filter.id;
-              return (
-                <button
-                  key={filter.id}
-                  type="button"
-                  className={`artist-segmented-button flow-page__library-filter${isActive ? " is-active" : ""}`}
-                  aria-pressed={isActive}
-                  onClick={() => setLibraryFilter(filter.id)}
-                >
-                  {filter.label}
-                </button>
-              );
-            })}
-          </div>
+          {!fixedLibraryFilter ? (
+            <div
+              className="artist-segmented flow-page__library-filters"
+              role="group"
+              aria-label="Library filter"
+            >
+              {[
+                { id: "all", label: "All" },
+                { id: "playlists", label: "Playlists" },
+                { id: "flows", label: "Flows" },
+              ].map((filter) => {
+                const isActive = libraryFilter === filter.id;
+                return (
+                  <button
+                    key={filter.id}
+                    type="button"
+                    className={`artist-segmented-button flow-page__library-filter${isActive ? " is-active" : ""}`}
+                    aria-pressed={isActive}
+                    onClick={() => setLibraryFilter(filter.id)}
+                  >
+                    {filter.label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
           <div className="flow-page__library-list">
             {filteredCollection.length === 0 ? (
               <FlowEmptyState
                 canCreate={canCreateGeneratedFlow}
-                libraryFilter={libraryFilter}
+                libraryFilter={activeLibraryFilter}
                 variant={isMobileLayout ? "full" : "compact"}
                 onImport={() => setImportModalOpen(true)}
                 onNewPlaylist={handleOpenCreatePlaylist}
@@ -1883,7 +1894,7 @@ function FlowPage() {
               filteredCollection.length === 0 ? (
                 <FlowEmptyState
                   canCreate={canCreateGeneratedFlow}
-                  libraryFilter={libraryFilter}
+                  libraryFilter={activeLibraryFilter}
                   variant="full"
                   onImport={() => setImportModalOpen(true)}
                   onNewPlaylist={handleOpenCreatePlaylist}

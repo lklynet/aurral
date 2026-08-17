@@ -3574,6 +3574,12 @@ textarea {
   white-space: nowrap;
 }
 
+.artist-track-title--owned {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .artist-track-subtitle {
   margin: 0.125rem 0 0;
   overflow: hidden;
@@ -8066,7 +8072,7 @@ button.native-library-card__artist:focus-visible {
 }
 
 .native-library-track {
-  --native-library-track-columns: 2rem 2rem 2.35rem minmax(12rem, 1.4fr) minmax(8rem, 1fr) minmax(8rem, 1fr) 4.5rem 1.7rem;
+  --native-library-track-columns: 2rem 2rem 2.35rem minmax(12rem, 1.4fr) minmax(8rem, 1fr) minmax(8rem, 1fr) 4.5rem 1.7rem 1.7rem;
 
   display: grid;
   min-width: 44rem;
@@ -8096,6 +8102,16 @@ button.native-library-card__artist:focus-visible {
 
 .native-library-track.is-active .native-library-track__title > span {
   color: var(--aurral-accent);
+}
+
+.native-library-track.is-missing {
+  color: var(--aurral-text-subtle);
+  opacity: 0.68;
+}
+
+.native-library-track.is-missing .native-library-track__title > span,
+.native-library-track.is-missing .native-library-track__link {
+  color: var(--aurral-text-muted);
 }
 
 .native-library-track__play,
@@ -8519,7 +8535,7 @@ button.native-library-genre-row:focus-visible {
   }
 
   .native-library-track {
-    --native-library-track-columns: 2rem 2.2rem 2.35rem minmax(10rem, 1fr) 4.5rem 1.7rem;
+    --native-library-track-columns: 2rem 2.2rem 2.35rem minmax(10rem, 1fr) 4.5rem 1.7rem 1.7rem;
 
     min-width: 32rem;
   }
@@ -8582,7 +8598,7 @@ button.native-library-genre-row:focus-visible {
   }
 
   .native-library-track {
-    --native-library-track-columns: 1.8rem 2.15rem minmax(0, 1fr) 3.8rem 1.7rem;
+    --native-library-track-columns: 1.8rem 2.15rem minmax(0, 1fr) 3.8rem 1.7rem 1.7rem;
 
     min-width: 0;
     gap: 0.4rem;

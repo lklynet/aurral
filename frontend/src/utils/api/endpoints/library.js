@@ -250,6 +250,9 @@ export const downloadAlbum = (artistId, albumId, options = {}) =>
     artistName: options.artistName,
   });
 
+export const downloadTrackToLibrary = (track) =>
+  postData("/library/downloads/track", track);
+
 export const triggerAlbumSearch = (albumId) =>
   postData("/library/downloads/album/search", {
     albumId,

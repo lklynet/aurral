@@ -668,6 +668,14 @@ export class WeeklyFlowDownloadTracker {
     return changed;
   }
 
+  updateFinalPath(id, finalPath) {
+    const job = this.jobs.get(id);
+    if (!job || job.status !== "done") return false;
+    job.finalPath = finalPath;
+    this._update(job);
+    return true;
+  }
+
   updateMetadata(id, metadata = {}) {
     const job = this.jobs.get(id);
     if (!job || !metadata || typeof metadata !== "object") return false;
@@ -1017,6 +1025,7 @@ export class WeeklyFlowDownloadTracker {
       updatePlaylistTypeStmt.run(toId, toId, fromId);
       for (const job of this.jobs.values()) {
         if (job.playlistType === fromId) {
+          job.playlistId = toId;
           job.playlistType = toId;
           count += 1;
         }

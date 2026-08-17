@@ -3,7 +3,8 @@ title: Playlists overview
 description: Flows, static imports, and how they differ.
 ---
 
-The **Playlists** page contains flows and imported playlists. Both types use the Aurral folder under `aurral-weekly-flow`.
+Static playlists appear under **Library > Playlists**. Flows appear separately
+under **Flows** because their downloaded media is temporary.
 
 Aurral does not write these files to your main music library.
 
@@ -34,13 +35,20 @@ Flows can expose a **Lidarr import URL** so Lidarr polls the current flow trackl
 
 ## Where files go
 
-Generated playlists go under your Downloads Folder path. Set this path in **Settings > Download Clients**. Usually, the path is:
+Static playlist membership is stored as canonical track references. Permanent
+Aurral tracks use the canonical `artist/album/track` layout under the configured
+Aurral download folder. Set this path in **Settings > Download Clients**.
+
+Flow media is temporary and lives under `.flows` below that root. Usually, the
+legacy playlist folder was:
 
 ```text
-/data/downloads/aurral/aurral-weekly-flow/<playlist-id>/
+/data/downloads/aurral/aurral-weekly-flow/
 ```
 
-Navidrome scans that tree, then Aurral creates playlists through the Subsonic API. Plex can index the track folders and create playlists for Plexamp.
+The one-time upgrade migration moves legacy Aurral files into the canonical
+layout and keeps the Lidarr-owned root unchanged. Navidrome and Plex can use
+the roots they are configured to scan.
 
 See [Navidrome](/integrations/navidrome/) and [Plex](/integrations/plex/) for playback setup.
 

@@ -200,8 +200,8 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
           ]
         : []),
       {
-        path: "/playlists",
-        label: "Playlists",
+        path: "/flows",
+        label: "Flows",
         icon: AudioWaveform,
         permission: "accessFlow",
       },
