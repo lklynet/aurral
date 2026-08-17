@@ -95,8 +95,6 @@ test("approving a reviewed download commits it inside the managed playlist libra
   const payload = await response.json();
   const expectedPath = path.join(
     process.env.DOWNLOAD_FOLDER,
-    "aurral-weekly-flow",
-    playlistId,
     "Artist",
     "Album",
     "Track.flac",

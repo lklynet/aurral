@@ -286,3 +286,14 @@ export function getLibrarySnapshot() {
     files: db.prepare("SELECT * FROM library_media_files ORDER BY path").all(),
   };
 }
+
+export function getLibraryMediaFile({ source, path }) {
+  return db
+    .prepare(
+      `SELECT *
+       FROM library_media_files
+       WHERE source = ? AND path = ?
+       LIMIT 1`,
+    )
+    .get(normalizeText(source), normalizeText(path));
+}

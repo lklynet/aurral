@@ -2,7 +2,6 @@ import { randomUUID } from "crypto";
 import { db } from "../../config/db-sqlite.js";
 import { enqueuePipelineJob } from "../honkerDb.js";
 import { isAnyDownloadSourceConfigured } from "../downloadSourceService.js";
-import { buildPlaylistDestination } from "../playlistPaths.js";
 import {
   normalizePositiveInteger,
   normalizeStringList,
@@ -10,6 +9,10 @@ import {
   sanitizePathPart,
   stringifyStringListJson,
 } from "../playlistDownloadUtils.js";
+import {
+  buildAurralTrackDestination,
+} from "../playlistPaths.js";
+import { flowPlaylistConfig } from "./weeklyFlowPlaylistConfig.js";
 
 const parseDeniedSources = (raw) => {
   if (!raw) return [];
@@ -209,6 +212,7 @@ function buildPipelinePayload(job) {
   const playlistId = job.playlistId || job.playlistType;
   const artistDir = sanitizePathPart(job.artistName, "Unknown Artist");
   const albumDir = sanitizePathPart(job.albumName, "Unknown Album");
+  const ephemeral = Boolean(flowPlaylistConfig.getFlow(String(job.playlistType || "").trim()));
   return {
     phase: "search",
     jobId: job.id,
@@ -228,7 +232,7 @@ function buildPipelinePayload(job) {
       artistAliases: job.artistAliases || [],
     },
     attempt: 0,
-    destination: buildPlaylistDestination(playlistId, artistDir, albumDir),
+    destination: buildAurralTrackDestination(playlistId, artistDir, albumDir, { ephemeral }),
     upgrade: Boolean(job.upgradeForJobId),
     upgradeForJobId: job.upgradeForJobId || null,
     allowedSources: job.upgradeForJobId ? ["slskd", "usenet"] : null,

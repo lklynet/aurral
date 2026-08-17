@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { parseFile } from "music-metadata";
 import { dbOps } from "../db/helpers/index.js";
-import { resolvePlaylistRoot, isPathInsideRoot, PLAYLIST_LIBRARY_DIR } from "./playlistPaths.js";
+import { resolvePlaylistRoot, isPathInsideRoot } from "./playlistPaths.js";
 import { getEnabledDownloadSources } from "./downloadSourceService.js";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 import {
@@ -22,8 +22,7 @@ export function getQualityProfile() {
 
 export function isAurralOwnedPath(filePath) {
   if (!filePath) return false;
-  const libraryRoot = path.join(resolvePlaylistRoot(), PLAYLIST_LIBRARY_DIR);
-  return isPathInsideRoot(path.resolve(filePath), path.resolve(libraryRoot));
+  return isPathInsideRoot(path.resolve(filePath), path.resolve(resolvePlaylistRoot()));
 }
 
 export function decorateJobQuality(job, profile = getQualityProfile()) {

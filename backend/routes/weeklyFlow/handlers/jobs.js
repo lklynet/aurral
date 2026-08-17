@@ -18,7 +18,7 @@ import {
   getAccessibleSharedPlaylist,
 } from "./utils.js";
 import {
-  buildPlaylistDestination,
+  buildAurralTrackDestination,
   resolvePlaylistRoot,
 } from "../../../services/playlistPaths.js";
 import {
@@ -216,7 +216,9 @@ export function registerJobs(router) {
     const ext = path.extname(sourcePath).toLowerCase();
     const albumDir = sanitizePathPart(job.albumName, "Unknown Album");
     const artistDir = sanitizePathPart(job.artistName, "Unknown Artist");
-    const destination = buildPlaylistDestination(job.playlistType, artistDir, albumDir);
+    const destination = buildAurralTrackDestination(job.playlistType, artistDir, albumDir, {
+      ephemeral: Boolean(flowPlaylistConfig.getFlow(job.playlistType)),
+    });
     const finalDir = joinUnderRoot(playlistRoot, destination);
     const finalName = `${sanitizePathPart(job.trackName, "Unknown Track")}${ext || ".mp3"}`;
     const finalPath = path.join(finalDir, finalName);
