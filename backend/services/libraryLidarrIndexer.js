@@ -5,7 +5,7 @@ import {
   buildIdentityKey,
   linkLibraryAlbumTrack,
   markUnseenFilesUnavailable,
-  removeLibraryAlbumTracksWithoutAurralMedia,
+  removeLibraryAlbumTracksWithoutMedia,
   upsertLibraryAlbum,
   upsertLibraryArtist,
   upsertLibraryMediaFile,
@@ -178,6 +178,7 @@ export async function indexLidarrLibrary({ client } = {}) {
         }
         upsertLibraryMediaFile({
           trackId: trackRecord.id,
+          albumId: albumRecord.id,
           source: "lidarr",
           path: resolvedFile.localPath,
           format: path.extname(resolvedFile.localPath).slice(1).toLowerCase(),
@@ -195,7 +196,7 @@ export async function indexLidarrLibrary({ client } = {}) {
         albumFilesIndexed === 0 &&
         Number(album.statistics?.sizeOnDisk || 0) === 0
       ) {
-        removeLibraryAlbumTracksWithoutAurralMedia(albumRecord.id);
+        removeLibraryAlbumTracksWithoutMedia(albumRecord.id, "lidarr");
       }
     }
     if (result.filesFailed === 0 && result.filesIndexed > 0) {

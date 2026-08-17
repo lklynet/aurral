@@ -239,6 +239,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS library_media_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     track_id INTEGER NOT NULL,
+    album_id INTEGER,
     source TEXT NOT NULL,
     path TEXT NOT NULL,
     format TEXT,
@@ -384,6 +385,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_honker_task_runs_job ON honker_task_runs(job_id, queue);
 `);
 
+tryAddColumn("ALTER TABLE library_media_files ADD COLUMN album_id INTEGER");
+
 function hasUniqueIndex(columns) {
   return db.prepare("PRAGMA index_list(library_media_files)").all().some((index) => {
     if (!index.unique) return false;
@@ -402,6 +405,7 @@ if (hasUniqueIndex(["path"])) {
       CREATE TABLE library_media_files_v3 (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         track_id INTEGER NOT NULL,
+        album_id INTEGER,
         source TEXT NOT NULL,
         path TEXT NOT NULL,
         format TEXT,
@@ -418,9 +422,9 @@ if (hasUniqueIndex(["path"])) {
       );
 
       INSERT INTO library_media_files_v3
-        (id, track_id, source, path, format, size, mtime_ms, duration_ms, quality_json,
+        (id, track_id, album_id, source, path, format, size, mtime_ms, duration_ms, quality_json,
          available, last_seen_scan_id, created_at, updated_at)
-      SELECT id, track_id, source, path, format, size, mtime_ms, duration_ms, quality_json,
+      SELECT id, track_id, album_id, source, path, format, size, mtime_ms, duration_ms, quality_json,
         available, last_seen_scan_id, created_at, updated_at
       FROM library_media_files;
 
@@ -440,6 +444,11 @@ if (hasUniqueIndex(["path"])) {
       ON library_media_files (last_seen_scan_id);
   `);
 }
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_library_media_files_album_source_available
+    ON library_media_files (album_id, source, available);
+`);
 
 const duplicateLidarrArtistIds = db
   .prepare(

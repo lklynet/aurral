@@ -171,11 +171,13 @@ test("canonical newest ordering follows library arrival time", () => {
   linkLibraryAlbumTrack({ albumId: newAlbum.id, trackId: newTrack.id, trackNumber: 1 });
   upsertLibraryMediaFile({
     trackId: oldTrack.id,
+    albumId: oldAlbum.id,
     source: "aurral",
     path: `/tmp/${key}/old.flac`,
   });
   upsertLibraryMediaFile({
     trackId: newTrack.id,
+    albumId: newAlbum.id,
     source: "aurral",
     path: `/tmp/${key}/new.flac`,
   });
@@ -234,6 +236,7 @@ test("canonical album track pages keep the selected album relationship", () => {
   linkLibraryAlbumTrack({ albumId: selectedAlbum.id, trackId: track.id, trackNumber: 1 });
   upsertLibraryMediaFile({
     trackId: track.id,
+    albumId: selectedAlbum.id,
     source: "aurral",
     path: `/tmp/${key}/track.flac`,
   });

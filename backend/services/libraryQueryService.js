@@ -60,9 +60,14 @@ const CANONICAL_SELECT = `SELECT
   media.quality_json AS media_quality_json,
   media.available AS media_available`;
 
+const albumMediaCondition = (mediaAlias, albumTrackAlias) =>
+  `(${mediaAlias}.album_id = ${albumTrackAlias}.album_id OR ${mediaAlias}.album_id IS NULL)`;
+
 const CANONICAL_FROM = `FROM library_media_files AS media
   JOIN library_tracks AS track ON track.id = media.track_id
-  JOIN library_album_tracks AS album_track ON album_track.track_id = track.id
+  JOIN library_album_tracks AS album_track
+    ON album_track.track_id = track.id
+    AND ${albumMediaCondition("media", "album_track")}
   JOIN library_albums AS album ON album.id = album_track.album_id
   JOIN library_artists AS artist ON artist.id = album.artist_id`;
 
@@ -288,7 +293,8 @@ const recentMediaOrder = (kind, sourceFilter, availableOnly, direction) => {
       SELECT MAX(page_media.created_at)
       FROM library_album_tracks AS page_album_track
       JOIN library_media_files AS page_media ON page_media.track_id = page_album_track.track_id
-      WHERE page_album_track.album_id = album.id${mediaFilter}
+      WHERE page_album_track.album_id = album.id
+        AND ${albumMediaCondition("page_media", "page_album_track")}${mediaFilter}
     ), 0) ${orderDirection}, album.title COLLATE NOCASE ${direction === "desc" ? "DESC" : "ASC"}`;
   }
   return `COALESCE((
@@ -309,7 +315,9 @@ const pageMediaExists = (kind, sourceFilter, availableOnly) => {
         FROM library_albums AS page_album
         JOIN library_album_tracks AS page_album_track ON page_album_track.album_id = page_album.id
         JOIN library_media_files AS page_media ON page_media.track_id = page_album_track.track_id
-        WHERE page_album.artist_id = artist.id AND ${conditionSql}
+        WHERE page_album.artist_id = artist.id
+          AND ${albumMediaCondition("page_media", "page_album_track")}
+          AND ${conditionSql}
       )`,
       parameters,
     };
@@ -320,7 +328,9 @@ const pageMediaExists = (kind, sourceFilter, availableOnly) => {
         SELECT 1
         FROM library_album_tracks AS page_album_track
         JOIN library_media_files AS page_media ON page_media.track_id = page_album_track.track_id
-        WHERE page_album_track.album_id = album.id AND ${conditionSql}
+        WHERE page_album_track.album_id = album.id
+          AND ${albumMediaCondition("page_media", "page_album_track")}
+          AND ${conditionSql}
       )`,
       parameters,
     };
@@ -522,7 +532,9 @@ function getAlbumStats(albumIds, sourceFilter) {
        COUNT(DISTINCT album_track.track_id) AS track_count,
        COUNT(DISTINCT CASE WHEN media.available = 1 THEN album_track.track_id END) AS available_track_count
      FROM library_album_tracks AS album_track
-     JOIN library_media_files AS media ON media.track_id = album_track.track_id
+     JOIN library_media_files AS media
+       ON media.track_id = album_track.track_id
+       AND ${albumMediaCondition("media", "album_track")}
      WHERE ${conditions.join(" AND ")}
      GROUP BY album_track.album_id`,
   ).all(...parameters);

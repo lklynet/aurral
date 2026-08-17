@@ -190,6 +190,7 @@ export async function scanMusicRoot({
           });
           upsertLibraryMediaFile({
             trackId: track.id,
+            albumId: album.id,
             source,
             path: filePath,
             format: path.extname(filePath).slice(1).toLowerCase(),

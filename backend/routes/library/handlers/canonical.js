@@ -79,7 +79,7 @@ export function registerCanonical(router) {
     });
   });
 
-  router.get("/refresh/:jobId", requireAuth, (req, res) => {
+  router.get("/refresh/:jobId", requireAuth, noCache, (req, res) => {
     const status = getLibraryScanStatus(req.params.jobId);
     if (!status || status.status === "unknown") {
       return res.status(404).json({ error: "Library scan not found" });

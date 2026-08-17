@@ -93,8 +93,15 @@ export async function refreshLibraryFileWatcher({ logger = console } = {}) {
 export async function startLibraryFileWatcher({ logger = console } = {}) {
   if (watcherStarted) return false;
   watcherStarted = true;
-  await refreshLibraryFileWatcher({ logger });
-  return true;
+  try {
+    await refreshLibraryFileWatcher({ logger });
+    return true;
+  } catch (error) {
+    watcherStarted = false;
+    activeWatcher?.close();
+    activeWatcher = null;
+    throw error;
+  }
 }
 
 export function stopLibraryFileWatcher() {

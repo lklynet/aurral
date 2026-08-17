@@ -155,7 +155,12 @@ export function startBackgroundWorkers({ logger = console } = {}) {
     });
   enqueueHonkerStartupTasks();
   startWorkerSupervisor();
-  void startLibraryFileWatcher({ logger });
+  void startLibraryFileWatcher({ logger }).catch((error) => {
+    logger.warn?.(
+      "[AppRuntime] Failed to start library file watcher:",
+      error?.message || error,
+    );
+  });
   return true;
 }
 

@@ -5,7 +5,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { db } from "../../backend/config/db-sqlite.js";
-import { getLibrarySnapshot } from "../../backend/services/libraryMediaStore.js";
+import { getCanonicalLibraryPage } from "../../backend/services/libraryQueryService.js";
+import {
+  getLibrarySnapshot,
+  linkLibraryAlbumTrack,
+  upsertLibraryAlbum,
+  upsertLibraryArtist,
+  upsertLibraryMediaFile,
+  upsertLibraryTrack,
+} from "../../backend/services/libraryMediaStore.js";
 import { scanMusicRoot } from "../../backend/services/libraryFileScanner.js";
 import { indexLidarrLibrary } from "../../backend/services/libraryLidarrIndexer.js";
 import { scanConfiguredLibrary } from "../../backend/services/libraryIndexService.js";
@@ -257,7 +265,34 @@ test("indexLidarrLibrary does not reuse a file from another album", async () => 
   const secondAlbumMbid = "33333333-3333-4333-8333-333333333333";
   const recordingMbid = "44444444-4444-4444-8444-444444444444";
   const trackFileId = artistId + 10;
+  const aurralPath = path.join(root, "Aurral/Eve 6/01 Showerhead.flac");
   try {
+    const artist = upsertLibraryArtist({
+      identityKey: `mbid:${artistMbid}`,
+      mbid: artistMbid,
+      name: "Eve 6",
+    });
+    const album = upsertLibraryAlbum({
+      identityKey: `release-group:${secondAlbumMbid}`,
+      mbid: secondAlbumMbid,
+      releaseGroupMbid: secondAlbumMbid,
+      artistId: artist.id,
+      title: "Inside Out",
+    });
+    const track = upsertLibraryTrack({
+      identityKey: `recording:${recordingMbid}`,
+      mbid: recordingMbid,
+      title: "Showerhead",
+      artistName: "Eve 6",
+    });
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+    upsertLibraryMediaFile({
+      trackId: track.id,
+      albumId: album.id,
+      source: "aurral",
+      path: aurralPath,
+    });
+
     await indexLidarrLibrary({
       client: {
         isConfigured: () => true,
@@ -304,15 +339,27 @@ test("indexLidarrLibrary does not reuse a file from another album", async () => 
        JOIN library_album_tracks AS album_track ON album_track.album_id = album.id
        LEFT JOIN library_media_files AS media
          ON media.track_id = album_track.track_id
+        AND media.album_id = album_track.album_id
         AND media.source = 'lidarr'
         AND media.available = 1
        WHERE album.identity_key IN (?, ?)
        GROUP BY album.id
        ORDER BY album.title`,
     ).all(`release-group:${firstAlbumMbid}`, `release-group:${secondAlbumMbid}`);
-    assert.deepEqual(albumRows, [{ title: "Eve 6", files: 1 }]);
+    assert.deepEqual(albumRows, [
+      { title: "Eve 6", files: 1 },
+      { title: "Inside Out", files: 0 },
+    ]);
+    const lidarrPage = getCanonicalLibraryPage({
+      source: "lidarr",
+      kind: "albums",
+      page: 1,
+      pageSize: 10,
+    });
+    assert.deepEqual(lidarrPage.items.map((item) => item.title), ["Eve 6"]);
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE source = 'lidarr' AND path = ?").run(filePath);
+    db.prepare("DELETE FROM library_media_files WHERE source = 'aurral' AND path = ?").run(aurralPath);
     const albumRows = db.prepare(
       "SELECT id FROM library_albums WHERE identity_key IN (?, ?)",
     ).all(`release-group:${firstAlbumMbid}`, `release-group:${secondAlbumMbid}`);

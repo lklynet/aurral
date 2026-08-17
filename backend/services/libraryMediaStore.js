@@ -168,7 +168,8 @@ export function linkLibraryAlbumTrack({ albumId, trackId, discNumber = 1, trackN
   invalidateLibraryCache();
 }
 
-export function removeLibraryAlbumTracksWithoutAurralMedia(albumId) {
+export function removeLibraryAlbumTracksWithoutMedia(albumId, source) {
+  const mediaSource = normalizeText(source);
   db.prepare(
     `DELETE FROM library_album_tracks
      WHERE album_id = ?
@@ -176,15 +177,25 @@ export function removeLibraryAlbumTracksWithoutAurralMedia(albumId) {
          SELECT 1
          FROM library_media_files AS media
          WHERE media.track_id = library_album_tracks.track_id
-           AND media.source = 'aurral'
+           AND media.album_id = library_album_tracks.album_id
+           AND media.source = ?
+           AND media.available = 1
+       )
+       AND NOT EXISTS (
+         SELECT 1
+         FROM library_media_files AS media
+         WHERE media.track_id = library_album_tracks.track_id
+           AND media.album_id = library_album_tracks.album_id
+           AND media.source != ?
            AND media.available = 1
        )`,
-  ).run(Number(albumId));
+  ).run(Number(albumId), mediaSource, mediaSource);
   invalidateLibraryCache();
 }
 
 export function upsertLibraryMediaFile({
   trackId,
+  albumId = null,
   source,
   path,
   format = null,
@@ -200,13 +211,17 @@ export function upsertLibraryMediaFile({
   if (!Number.isSafeInteger(Number(trackId)) || !fileSource || !filePath) {
     throw new Error("Library media file trackId, source, and path are required");
   }
+  const normalizedAlbumId = Number.isSafeInteger(Number(albumId)) && Number(albumId) > 0
+    ? Number(albumId)
+    : null;
   const timestamp = now();
   db.prepare(
     `INSERT INTO library_media_files
-      (track_id, source, path, format, size, mtime_ms, duration_ms, quality_json, available, last_seen_scan_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (track_id, album_id, source, path, format, size, mtime_ms, duration_ms, quality_json, available, last_seen_scan_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(source, path) DO UPDATE SET
        track_id = excluded.track_id,
+       album_id = COALESCE(excluded.album_id, library_media_files.album_id),
        source = excluded.source,
        format = excluded.format,
        size = excluded.size,
@@ -218,6 +233,7 @@ export function upsertLibraryMediaFile({
        updated_at = excluded.updated_at`,
   ).run(
     Number(trackId),
+    normalizedAlbumId,
     fileSource,
     filePath,
     format || null,
