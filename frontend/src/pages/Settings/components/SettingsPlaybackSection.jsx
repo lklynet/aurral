@@ -59,6 +59,7 @@ export function SettingsPlaybackSection({
   const [plexConnecting, setPlexConnecting] = useState(false);
   const [testingPlex, setTestingPlex] = useState(false);
   const [testingNavidrome, setTestingNavidrome] = useState(false);
+  const [testStatus, setTestStatus] = useState(null);
   const [syncingPlex, setSyncingPlex] = useState(false);
   const [plexServers, setPlexServers] = useState([]);
   const [plexLibraries, setPlexLibraries] = useState([]);
@@ -70,6 +71,10 @@ export function SettingsPlaybackSection({
   const [koitoToken, setKoitoToken] = useState("");
   const [koitoUrl, setKoitoUrl] = useState("");
   const lastfmPollRef = useRef(null);
+
+  useEffect(() => {
+    setTestStatus(null);
+  }, [activeModal]);
 
   const navidrome = settings.integrations?.navidrome || {};
   const plex = settings.integrations?.plex || {};
@@ -257,6 +262,7 @@ export function SettingsPlaybackSection({
 
   const handleTestPlex = async () => {
     if (!plex.url || !plex.token) {
+      setTestStatus({ tone: "error", message: "Connect to Plex and select a server first." });
       showError("Connect to Plex and select a server first");
       return;
     }
@@ -264,14 +270,17 @@ export function SettingsPlaybackSection({
     try {
       const result = await testPlaybackConnection("plex", plex);
       if (result.success) {
+        setTestStatus({ tone: "success", message: "Connected." });
         showSuccess(`Plex connection successful!${result.version ? ` (v${result.version})` : ""}`);
         if (result.machineIdentifier) {
           updatePlex({ machineIdentifier: result.machineIdentifier });
         }
       } else {
+        setTestStatus({ tone: "error", message: "Connection failed. Check Plex settings and retry." });
         showError(`Connection failed: ${result.message || result.error}`);
       }
     } catch (err) {
+      setTestStatus({ tone: "error", message: "Connection failed. Check Plex settings and retry." });
       const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
       showError(`Connection failed: ${errorMsg}`);
     } finally {
@@ -281,6 +290,7 @@ export function SettingsPlaybackSection({
 
   const handleTestNavidrome = async () => {
     if (!navidrome.url || !navidrome.username || !navidrome.password) {
+      setTestStatus({ tone: "error", message: "Enter the URL and credentials first." });
       showError("Enter Navidrome URL, username, and password first");
       return;
     }
@@ -290,8 +300,10 @@ export function SettingsPlaybackSection({
         await handleSaveSettings();
       }
       await testPlaybackConnection("navidrome", navidrome);
+      setTestStatus({ tone: "success", message: "Connected." });
       showSuccess("Navidrome connection OK");
     } catch (err) {
+      setTestStatus({ tone: "error", message: "Connection failed. Check the URL and credentials, then retry." });
       const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
       showError(`Navidrome connection failed: ${errorMsg}`);
     } finally {
@@ -415,9 +427,9 @@ export function SettingsPlaybackSection({
 
   return (
     <>
-      <SettingsArrFieldSet legend="Playback Servers">
+      <SettingsArrFieldSet legend="Playback servers">
         <div className="arr-info">
-          Servers Aurral writes playlists to for in-app and external playback.
+          Where Aurral writes playlists.
         </div>
         <SettingsArrCardGrid>
           <IntegrationCard
@@ -439,8 +451,7 @@ export function SettingsPlaybackSection({
 
       <SettingsArrFieldSet legend="Scrobbling">
         <div className="arr-info">
-          Send completed local plays to your connected listening services. Aurral uses the same
-          provider flows as Navidrome; a Navidrome connection is not required.
+          Send completed local plays to listening services. Navidrome is not required.
         </div>
         <SettingsModalToggleGroup>
           {["lastfm", "listenbrainz", "koito"].map((provider) => {
@@ -477,8 +488,7 @@ export function SettingsPlaybackSection({
       {activeModal === "lastfm" && (
         <SettingsIntegrationModal title="Last.fm scrobbling" onClose={closeModal}>
           <SettingsModalIntro>
-            Link the Last.fm account that receives completed local plays. Aurral runs the same
-            Last.fm flow Navidrome uses; Navidrome is not required.
+            API key powers discovery. API secret is required for scrobbling.
           </SettingsModalIntro>
           {scrobbleStatus?.lastfm?.configured !== true ? (
             <SettingsModalCallout>
@@ -507,8 +517,7 @@ export function SettingsPlaybackSection({
       {activeModal === "listenbrainz" && (
         <SettingsIntegrationModal title="ListenBrainz scrobbling" onClose={closeModal}>
           <SettingsModalIntro>
-            Enter a ListenBrainz user token. Aurral validates and stores it directly; Navidrome is
-            not required.
+            Enter a user token. Navidrome is not required.
           </SettingsModalIntro>
           <SettingsModalSection title="Connection">
             <SettingsModalField label="User token">
@@ -536,7 +545,7 @@ export function SettingsPlaybackSection({
 
       {activeModal === "koito" && (
         <SettingsIntegrationModal title="Koito scrobbling" onClose={closeModal}>
-          <SettingsModalIntro>Koito accepts the ListenBrainz submission format and API key.</SettingsModalIntro>
+          <SettingsModalIntro>Koito uses the ListenBrainz format.</SettingsModalIntro>
           <SettingsModalSection title="Connection">
             <SettingsModalField label="Koito URL">
               <SettingsInput type="url" placeholder="https://koito.example.com" value={koitoUrl} onChange={(event) => setKoitoUrl(event.target.value)} />
@@ -562,6 +571,7 @@ export function SettingsPlaybackSection({
         <SettingsIntegrationModal
           title="Subsonic / Navidrome"
           onClose={closeModal}
+          testStatus={testStatus}
           footerActions={
             <button
               type="button"
@@ -588,6 +598,7 @@ export function SettingsPlaybackSection({
         <SettingsIntegrationModal
           title="Plex"
           onClose={closeModal}
+          testStatus={testStatus}
           footerActions={
             <button
               type="button"
@@ -601,9 +612,7 @@ export function SettingsPlaybackSection({
           }
         >
           <SettingsModalIntro>
-            Sign in with your Plex account to let Aurral create a dedicated music library pointed at
-            your flow downloads and build a playlist for each flow. Playlists appear in Plex and
-            Plexamp.
+            Connect Plex to create a library and playlists for Aurral flows.
           </SettingsModalIntro>
 
           <SettingsModalSection title="Account">
@@ -669,15 +678,13 @@ export function SettingsPlaybackSection({
             )}
           </SettingsModalSection>
 
-          <SettingsModalSection title="Aurral Library Path">
+          <SettingsModalSection title="Aurral library path">
             <SettingsModalField
               label="Plex Aurral Library path (optional)"
               hint={
                 <>
-                  Only needed if Plex runs in a different container/host than Aurral. Enter the
-                  downloads folder path as the <strong>Plex server</strong> sees it — Aurral appends{" "}
-                  <code>/aurral-weekly-flow</code>. Leave blank to use Aurral&apos;s own download
-                  path.
+                  Only needed when Plex sees downloads at a different path. Enter the Plex-side
+                  path; Aurral appends <code>/aurral-weekly-flow</code>.
                 </>
               }
             >
@@ -719,9 +726,8 @@ export function SettingsPlaybackSection({
               label="Include tracks from an existing library"
               hint={
                 <>
-                  If a flow includes songs you already have in another Plex library — like the
-                  one Lidarr manages — Aurral needs this library selected to reuse those songs in
-                  Plex playlists; without it, the tracks are silently left out of the playlist.
+                  Include an existing Plex library so playlists can reuse tracks already in your
+                  Lidarr library.
                 </>
               }
             >
@@ -770,10 +776,7 @@ export function SettingsPlaybackSection({
                 label="Local path for this library (optional)"
                 hint={
                   <>
-                    Plex reports this library&apos;s files at{" "}
-                    <code>{libraryAccessCheck?.reportedPath || plexLibraryMapping?.remote}</code>.
-                    Enter that same folder as <strong>Aurral</strong> sees it. Leave blank to
-                    remove this mapping.
+                    Enter the same path as Aurral sees it; leave blank to remove the mapping.
                   </>
                 }
               >
@@ -823,9 +826,7 @@ export function SettingsPlaybackSection({
               </button>
             </SettingsModalActions>
             <p className="settings-modal__hint">
-              Creates an &quot;Aurral&quot; music library pointed at your downloads, scans it, and
-              builds a playlist per flow. The Plex server must be able to read the same downloads
-              path Aurral writes to. Changes save automatically before syncing.
+              Creates the Aurral library and flow playlists, then scans Plex. Saves before syncing.
             </p>
           </SettingsModalSection>
         </SettingsIntegrationModal>

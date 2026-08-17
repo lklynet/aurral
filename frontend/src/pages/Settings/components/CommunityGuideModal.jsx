@@ -20,10 +20,10 @@ export function CommunityGuideModal({ show, onClose, onApply }) {
         tabIndex={-1}
       >
         <h3 id={titleId} className="settings-page__modal-title">
-          Apply Davo&apos;s Recommended Settings
+          Apply recommended settings
         </h3>
         <p className="settings-page__modal-copy">
-          This will apply Davo&apos;s Community Lidarr Guide settings to your Lidarr instance:
+          Apply Davo&apos;s Community Lidarr Guide settings to your Lidarr instance:
         </p>
         <ul className="settings-page__modal-list">
           <li>Update quality definitions for FLAC and FLAC 24bit</li>
@@ -41,15 +41,14 @@ export function CommunityGuideModal({ show, onClose, onApply }) {
             className="settings-page__link"
           >
             Read the full guide
-          </a>{" "}
-          for more details on these settings.
+          </a>
         </p>
         <div className="settings-page__modal-actions">
           <button type="button" onClick={onClose} className="btn btn-secondary">
             Cancel
           </button>
           <button type="button" onClick={onApply} className="btn btn-primary">
-            Apply Settings
+            Apply settings
           </button>
         </div>
       </div>

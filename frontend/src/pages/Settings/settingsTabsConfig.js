@@ -15,14 +15,14 @@ import {
 
 export const SETTINGS_TABS = [
   { id: "system", label: "System", icon: Monitor },
-  { id: "storage-health", label: "Storage Health", icon: HardDrive },
+  { id: "storage-health", label: "Storage health", icon: HardDrive },
   { id: "tasks", label: "Tasks", icon: ListChecks },
   { id: "lidarr", label: "Lidarr", icon: Server },
   { id: "indexers", label: "Indexers", icon: DatabaseSearch },
-  { id: "download-clients", label: "Download Clients", icon: Download },
+  { id: "download-clients", label: "Download clients", icon: Download },
   { id: "playback", label: "Playback", icon: Music },
   { id: "connect", label: "Connect", icon: Bell },
-  { id: "rss-news", label: "RSS News", icon: Rss },
+  { id: "rss-news", label: "RSS news", icon: Rss },
   { id: "discover", label: "Discover", icon: Compass },
   { id: "metadata", label: "Metadata", icon: Database, hidden: true },
   { id: "users", label: "Users", icon: Users },
@@ -32,7 +32,7 @@ export const SETTINGS_NAV_TABS = SETTINGS_TABS.filter((tab) => !tab.hidden);
 
 const SETTINGS_SEARCH_METADATA = {
   system: {
-    sections: ["Runtime", "Data", "Display", "API Key", "More Info"],
+    sections: ["Runtime", "Data", "Display", "API key", "More info"],
     services: {
       Runtime: "version uptime host platform",
       Database: "sqlite data runtime",
@@ -51,7 +51,7 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   "storage-health": {
-    sections: ["Health", "Disk Space", "Storage Health"],
+    sections: ["Health", "Disk space", "Storage health"],
     services: {
       Storage: "disk filesystem paths data directory",
       Downloads: "download paths free space",
@@ -98,7 +98,7 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   indexers: {
-    sections: ["General", "Connection", "Indexing", "Priority", "Details"],
+    sections: ["Connection", "Indexing", "Priority", "Details"],
     services: {
       Prowlarr: "indexer manager search",
       Usenet: "audio indexers",
@@ -116,7 +116,7 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   "download-clients": {
-    sections: ["Quality Profile", "Downloads Folder", "Remote Path Mappings", "General", "Connection", "Behavior", "Downloads", "Advanced"],
+    sections: ["Quality profile", "Downloads folder", "Remote path mappings", "Connection", "Behavior", "Downloads", "Advanced"],
     services: {
       slskd: "Soulseek download client",
       "yt-dlp": "YouTube web download client",
@@ -124,7 +124,7 @@ const SETTINGS_SEARCH_METADATA = {
       SABnzbd: "Usenet download client",
     },
     fields: {
-      "Quality Profile": "default acceptable allowed formats rank preference cutoff upgrades",
+      "Quality profile": "default acceptable allowed formats rank preference cutoff upgrades",
       Qualities: "FLAC MP3 M4A 128 192 256 320 bitrate hi-res standard allowed cutoff drag rank",
       "Automatic upgrades": "upgrade searches Flow Static tracks",
       "Upgrade interval": "days between checks",
@@ -150,7 +150,7 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   playback: {
-    sections: ["Playback Servers", "Scrobbling", "Cover Art", "Connection", "Account", "Aurral Library Path", "Main library (optional)", "Sync"],
+    sections: ["Playback servers", "Scrobbling", "Cover art", "Connection", "Account", "Aurral library path", "Main library (optional)", "Sync"],
     services: {
       Navidrome: "Subsonic music server",
       Plex: "Plexamp music server",
@@ -173,7 +173,7 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   connect: {
-    sections: ["Connections", "Webhooks", "Notification Events", "Inbox"],
+    sections: ["Connections", "Webhooks", "Notification events", "Inbox"],
     services: {
       Gotify: "push notifications mobile alerts",
       "Last.fm": "recommendations API key secret scrobbling",
@@ -198,22 +198,22 @@ const SETTINGS_SEARCH_METADATA = {
       "Weekly flow finished": "notification event webhook Gotify",
       "Request made": "notification event webhook Gotify",
       "Request available": "notification event webhook Gotify",
-      "Enable Inbox": "inbox on off",
+      "Enable inbox": "inbox on off",
       "Upcoming releases": "inbox albums",
       "Upcoming shows": "inbox concerts events",
-      "Library Artist news": "inbox RSS",
-      "Recommended Artist news": "inbox RSS",
+      "Library artist news": "inbox RSS",
+      "Recommended artist news": "inbox RSS",
       Discoveries: "inbox recommendations",
     },
   },
   "rss-news": {
-    sections: ["RSS News", "Custom feeds", "Feed groups"],
+    sections: ["RSS news", "Custom feeds", "Feed groups"],
     services: {
       News: "RSS articles artists library recommendations",
       Feeds: "music news sources custom feeds",
     },
     fields: {
-      "Enable RSS News": "news on off",
+      "Enable RSS news": "news on off",
       "Add RSS feed": "custom source",
       "Feed name": "custom RSS source",
       "Feed URL": "custom RSS address",
@@ -221,7 +221,7 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   discover: {
-    sections: ["Discovery Behavior", "Cache Status"],
+    sections: ["Discovery behavior", "Cache status"],
     services: {
       "Last.fm": "recommendations listening history",
       ListenBrainz: "recommendations discovery fallback",
@@ -239,7 +239,7 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   metadata: {
-    sections: ["Metadata Server"],
+    sections: ["Metadata server"],
     services: {
       BrainzMash: "MusicBrainz metadata provider",
     },
@@ -248,7 +248,7 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   users: {
-    sections: ["Change Password", "Local Network Auto-login", "Users"],
+    sections: ["Change password", "Local network auto-login", "Users"],
     services: {
       Authentication: "login password security",
       Permissions: "roles access control",

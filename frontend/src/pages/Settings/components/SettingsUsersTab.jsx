@@ -197,7 +197,7 @@ export function SettingsUsersTab({
   return (
     <div className="arr-page">
       {authUser?.role !== "admin" ? (
-        <SettingsArrFieldSet legend="Change Password">
+        <SettingsArrFieldSet legend="Change password">
           <form
             className="arr-form"
             onSubmit={async (event) => {
@@ -275,7 +275,7 @@ export function SettingsUsersTab({
         </SettingsArrFieldSet>
       ) : (
         <>
-          <SettingsArrFieldSet legend="Local Network Auto-login">
+          <SettingsArrFieldSet legend="Local network auto-login">
             <SettingsArrFormGroup
               label="Auto-login"
               help={`${localBypassStatus.title}. ${localBypassStatus.detail}`}
@@ -713,7 +713,7 @@ export function SettingsUsersTab({
                                 />
                               </SettingsArrFormGroup>
                               <SettingsArrFormGroup
-                                label="Plex Account"
+                                label="Plex account"
                                 help="Link this user to a Plex Home managed user so their flow and playlists are created under that Plex account."
                               >
                                 <AdminPlexLinkField

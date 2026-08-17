@@ -1,12 +1,18 @@
+import { useId } from "react";
+
 export function SettingsArrFieldSet({ legend, actions = null, children }) {
+  const headingId = useId();
+
   return (
-    <fieldset className="arr-fieldset">
+    <section className="arr-fieldset" aria-labelledby={headingId}>
       <div className="arr-fieldset__head">
-        <legend className="arr-fieldset__legend">{legend}</legend>
+        <h2 id={headingId} className="arr-fieldset__legend">
+          {legend}
+        </h2>
         {actions ? <div className="arr-fieldset__actions">{actions}</div> : null}
       </div>
       <div className="arr-fieldset__body">{children}</div>
-    </fieldset>
+    </section>
   );
 }
 

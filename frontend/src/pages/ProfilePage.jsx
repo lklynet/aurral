@@ -30,8 +30,13 @@ function ProfilePage() {
           <h1 className="page-title">Profile</h1>
           <p className="page-subtitle">Personal listening history and library defaults</p>
         </div>
-        <span className="profile-page__save-state" aria-live="polite">
-          {account.saving ? "Saving…" : "Saved automatically"}
+        <span
+          className={`profile-page__save-state${account.saving ? " is-saving" : ""}`}
+          aria-live="polite"
+          aria-busy={account.saving}
+          aria-hidden={!account.saving}
+        >
+          {account.saving ? "Saving…" : null}
         </span>
       </div>
 

@@ -104,10 +104,9 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
   return (
     <div className={`settings-page__section${className ? ` ${className}` : ""}`}>
       <div className="settings-page__section-intro">
-        <h3 className="settings-page__section-title">Plex Account</h3>
+        <h3 className="settings-page__section-title">Plex account</h3>
         <p className="settings-page__section-note">
-          Link your own Plex.tv account (e.g. if an admin invited you as a friend to their Plex
-          server) so your flow and shared playlists are created under your own Plex login.
+          Link your Plex account so flows and shared playlists use your login.
         </p>
       </div>
 

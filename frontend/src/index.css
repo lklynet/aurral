@@ -9145,16 +9145,6 @@ button.native-library-genre-row:focus-visible {
   line-height: 1.5;
 }
 
-.settings-page__modal-reminder {
-  margin: 0;
-  padding: 0.5rem 0.75rem;
-  color: var(--aurral-text-muted);
-  font-size: 0.75rem;
-  line-height: 1.45;
-  background: color-mix(in srgb, var(--aurral-text) 4%, transparent);
-  border-radius: var(--aurral-radius-sm);
-}
-
 .settings-page__advanced-toggle-row {
   display: flex;
   justify-content: flex-start;
@@ -9605,34 +9595,6 @@ button.native-library-genre-row:focus-visible {
   height: 0.9rem;
 }
 
-.settings-page__section--sponsor {
-  padding: 1rem 1.125rem;
-  margin-bottom: 2rem;
-  border-radius: var(--aurral-radius-sm);
-  background: var(--aurral-surface-raised);
-}
-
-.settings-page__section--sponsor .settings-page__section-header {
-  margin-bottom: 0.5rem;
-}
-
-.settings-page__sponsor-icon {
-  width: 1rem;
-  height: 1rem;
-  color: var(--aurral-text-muted);
-}
-
-.settings-page__sponsor-copy {
-  margin: 0 0 0.875rem;
-  color: var(--aurral-text-muted);
-  font-size: 0.875rem;
-  line-height: 1.55;
-}
-
-.settings-page__sponsor-cta {
-  width: fit-content;
-}
-
 .settings-page__link {
   color: var(--aurral-text-muted);
   text-decoration: underline;
@@ -9683,11 +9645,6 @@ button.native-library-genre-row:focus-visible {
   flex-shrink: 0;
   margin-bottom: 0;
   padding: 1rem 1.125rem 0;
-}
-
-.settings-page__modal--integration .settings-page__modal-reminder {
-  flex-shrink: 0;
-  margin: 0.625rem 1.125rem 0;
 }
 
 .settings-page__modal-body {
@@ -12475,6 +12432,7 @@ button.native-library-genre-row:focus-visible {
 }
 
 .profile-page__header {
+  position: relative;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -12489,10 +12447,17 @@ button.native-library-genre-row:focus-visible {
 }
 
 .profile-page__save-state {
+  position: absolute;
+  top: 0.25rem;
+  right: 0;
   flex-shrink: 0;
-  padding-top: 0.25rem;
   color: var(--aurral-text-subtle);
   font-size: 0.75rem;
+  visibility: hidden;
+}
+
+.profile-page__save-state.is-saving {
+  visibility: visible;
 }
 
 .profile-settings {

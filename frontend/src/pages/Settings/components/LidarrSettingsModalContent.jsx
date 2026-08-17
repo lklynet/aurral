@@ -41,6 +41,7 @@ export function LidarrSettingsSection({
   showInfo,
 }) {
   const [lidarrTestLatencyMs, setLidarrTestLatencyMs] = useState(null);
+  const [lidarrTestStatus, setLidarrTestStatus] = useState(null);
 
   const safeLidarrRootFolders = Array.isArray(lidarrRootFolders) ? lidarrRootFolders : [];
   const safeLidarrProfiles = Array.isArray(lidarrProfiles) ? lidarrProfiles : [];
@@ -65,16 +66,19 @@ export function LidarrSettingsSection({
     const url = settings.integrations?.lidarr?.url;
     const apiKey = settings.integrations?.lidarr?.apiKey;
     if (!url || !apiKey) {
+      setLidarrTestStatus({ tone: "error", message: "Enter the URL and API key." });
       showError("Please enter both URL and API key");
       return;
     }
     setTestingLidarr(true);
     setLidarrTestLatencyMs(null);
+    setLidarrTestStatus(null);
     const startTime = performance.now();
     try {
       const result = await testLidarrConnection(url, apiKey);
       setLidarrTestLatencyMs(Math.round(performance.now() - startTime));
       if (result.success) {
+        setLidarrTestStatus({ tone: "success", message: "Connected." });
         showSuccess(`Lidarr connection successful! (${result.instanceName || "Lidarr"})`);
         setLoadingLidarrRootFolders(true);
         setLoadingLidarrProfiles(true);
@@ -115,12 +119,14 @@ export function LidarrSettingsSection({
           setLoadingLidarrTags(false);
         }
       } else {
+        setLidarrTestStatus({ tone: "error", message: "Connection failed. Check the URL and API key, then retry." });
         showError(
           `Connection failed: ${result.message || result.error}${result.details ? `\n${result.details}` : ""}`,
         );
       }
     } catch (err) {
       setLidarrTestLatencyMs(Math.round(performance.now() - startTime));
+      setLidarrTestStatus({ tone: "error", message: "Connection failed. Check the URL and API key, then retry." });
       const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
       showError(`Connection failed: ${errorMsg}`);
     } finally {
@@ -192,9 +198,6 @@ export function LidarrSettingsSection({
         <div className="settings-page__section-header">
           <div className="settings-page__section-intro">
             <h3 className="settings-page__section-title">Lidarr</h3>
-            <p className="settings-page__section-note">
-              Connect Aurral to your Lidarr instance and configure library defaults.
-            </p>
           </div>
         </div>
       </div>
@@ -230,11 +233,19 @@ export function LidarrSettingsSection({
             >
               {testingLidarr ? "Testing..." : "Test connection"}
             </button>
+            {lidarrTestStatus ? (
+              <span
+                className={`arr-test-result arr-test-result--${lidarrTestStatus.tone}`}
+                role={lidarrTestStatus.tone === "error" ? "alert" : "status"}
+              >
+                {lidarrTestStatus.message}
+              </span>
+            ) : null}
           </>
         }
       >
         <div className="arr-info">
-          Music library manager. File access, mounts, and path mappings are checked in{" "}
+          Music library manager. Path access and mappings are checked in{" "}
           <Link to="/settings/system" className="arr-link">
             System
           </Link>
@@ -250,13 +261,14 @@ export function LidarrSettingsSection({
             value={settings.integrations?.lidarr?.url || ""}
             onChange={(e) => {
               setLidarrTestLatencyMs(null);
+              setLidarrTestStatus(null);
               updateLidarr({ url: e.target.value });
             }}
           />
         </SettingsArrFormGroup>
 
         <SettingsArrFormGroup
-          label="API Key"
+          label="API key"
           labelFor="lidarr-api-key"
           help={
             <>
@@ -275,6 +287,7 @@ export function LidarrSettingsSection({
             value={settings.integrations?.lidarr?.apiKey || ""}
             onChange={(e) => {
               setLidarrTestLatencyMs(null);
+              setLidarrTestStatus(null);
               updateLidarr({ apiKey: e.target.value });
             }}
           />
@@ -297,7 +310,10 @@ export function LidarrSettingsSection({
       </SettingsArrFieldSet>
 
       <SettingsArrFieldSet legend="Defaults">
-        <SettingsArrFormGroup label="Default Root Folder" labelFor="lidarr-root-folder">
+        <p className="arr-form-help">
+          Users can override the root folder and quality profile in Profile.
+        </p>
+        <SettingsArrFormGroup label="Default root folder" labelFor="lidarr-root-folder">
           <SettingsSelect
             id="lidarr-root-folder"
             value={settings.integrations?.lidarr?.rootFolderPath || ""}
@@ -319,13 +335,9 @@ export function LidarrSettingsSection({
               </option>
             ))}
           </SettingsSelect>
-          <p className="settings-page__section-note">
-            Users can set their own default in Profile → Library Defaults, which overrides
-            this instance-wide setting.
-          </p>
         </SettingsArrFormGroup>
 
-        <SettingsArrFormGroup label="Default Quality Profile" labelFor="lidarr-quality-profile">
+        <SettingsArrFormGroup label="Default quality profile" labelFor="lidarr-quality-profile">
           <SettingsSelect
             id="lidarr-quality-profile"
             value={
@@ -353,13 +365,9 @@ export function LidarrSettingsSection({
               </option>
             ))}
           </SettingsSelect>
-          <p className="settings-page__section-note">
-            Users can set their own default in Profile → Library Defaults, which overrides
-            this instance-wide setting.
-          </p>
         </SettingsArrFormGroup>
 
-        <SettingsArrFormGroup label="Default Metadata Profile" labelFor="lidarr-metadata-profile">
+        <SettingsArrFormGroup label="Default metadata profile" labelFor="lidarr-metadata-profile">
           <SettingsSelect
             id="lidarr-metadata-profile"
             value={
@@ -417,23 +425,23 @@ export function LidarrSettingsSection({
           </SettingsSelect>
         </SettingsArrFormGroup>
 
-        <SettingsArrFormGroup label="Default Monitoring Option" labelFor="lidarr-monitor-option">
+        <SettingsArrFormGroup label="Default monitoring option" labelFor="lidarr-monitor-option">
           <SettingsSelect
             id="lidarr-monitor-option"
             value={settings.integrations?.lidarr?.defaultMonitorOption || "none"}
             onChange={(e) => updateLidarr({ defaultMonitorOption: e.target.value })}
           >
-            <option value="none">None (Artist Only)</option>
-            <option value="existing">Existing Albums</option>
-            <option value="all">All Albums</option>
-            <option value="future">Future Albums</option>
-            <option value="missing">Missing Albums</option>
-            <option value="latest">Latest Album</option>
-            <option value="first">First Album</option>
+            <option value="none">None (artist only)</option>
+            <option value="existing">Existing albums</option>
+            <option value="all">All albums</option>
+            <option value="future">Future albums</option>
+            <option value="missing">Missing albums</option>
+            <option value="latest">Latest album</option>
+            <option value="first">First album</option>
           </SettingsSelect>
         </SettingsArrFormGroup>
 
-        <SettingsArrFormGroup label="Search on Add">
+        <SettingsArrFormGroup label="Search on add">
           <PillToggle
             className="settings-toggle"
             checked={settings.integrations?.lidarr?.searchOnAdd || false}
@@ -456,7 +464,7 @@ export function LidarrSettingsSection({
           disabled={applyingCommunityGuide || !health?.lidarrConfigured}
           className="arr-btn arr-btn--primary"
         >
-          {applyingCommunityGuide ? "Applying..." : "Apply Davo's Recommended Settings"}
+          {applyingCommunityGuide ? "Applying..." : "Apply recommended settings"}
         </button>
         <p className="arr-form-help arr-form-help--spaced">
           Creates quality profile, updates quality definitions, adds custom formats, and updates

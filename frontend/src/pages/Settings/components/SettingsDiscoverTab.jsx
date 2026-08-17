@@ -90,14 +90,13 @@ export function SettingsDiscoverTab({
         {showLastfmDiscoverBanner && (
           <div className="settings-page__banner">
             <div className="settings-page__banner-copy">
-              <p className="settings-page__banner-title">Optional Last.fm upgrade</p>
+              <p className="settings-page__banner-title">Last.fm recommendations</p>
               <p className="settings-page__banner-text">
-                Add a free Last.fm API key in{" "}
+                Add a Last.fm API key in{" "}
                 <Link to="/settings/connect" className="arr-link">
                   Connect
                 </Link>{" "}
-                to unlock personalized recommendations, similar artists, tag search, and custom
-                weekly flows.
+                  for personalized recommendations, tags, and weekly flows.
               </p>
             </div>
             <button
@@ -109,25 +108,24 @@ export function SettingsDiscoverTab({
                   localStorage.setItem(LASTFM_DISCOVER_BANNER_KEY, "1");
                 } catch {}
               }}
-              aria-label="Dismiss Last.fm upgrade reminder"
+              aria-label="Dismiss Last.fm recommendations"
             >
               <X className="artist-icon-sm" />
             </button>
           </div>
         )}
 
-        <SettingsArrFieldSet legend="Discovery Behavior">
+        <SettingsArrFieldSet legend="Discovery behavior">
           <div className="arr-info">
-            Controls how often Aurral refreshes recommendations and flows. Listening history API
-            keys are configured in{" "}
+            Use{" "}
             <Link to="/settings/connect" className="arr-link">
               Connect
             </Link>
-            ; per-user accounts are in{" "}
+            {" "}for API keys and{" "}
             <Link to="/profile" className="arr-link">
               Profile
             </Link>
-            .
+            {" "}for personal accounts.
           </div>
 
           <SettingsArrFormGroup label="Auto-refresh frequency" labelFor="discover-refresh">
@@ -154,9 +152,8 @@ export function SettingsDiscoverTab({
               labelFor="discover-mode"
               help={
                 <>
-                  <strong>Safer</strong> favors more obvious recommendations.{" "}
-                  <strong>Balanced</strong> mixes familiar artists with exploration.{" "}
-                  <strong>Deeper</strong> pushes further beyond obvious similar artists.
+                  Safer favors familiar recommendations. Balanced mixes familiarity and exploration.
+                  Deeper goes further beyond similar artists.
                 </>
               }
             >
@@ -179,7 +176,7 @@ export function SettingsDiscoverTab({
               <SettingsArrFormGroup
                 label="Recommended artists"
                 labelFor="discover-recommendations"
-                help="Number of recommended artists generated on each refresh."
+                help="Artists generated per refresh."
               >
                 <SettingsInput
                   id="discover-recommendations"
@@ -201,7 +198,7 @@ export function SettingsDiscoverTab({
               </SettingsArrFormGroup>
               <SettingsArrFormGroup
                 label="Recommended playlists"
-                help="Generate personalized playlists (Discover Weekly, Trending Mix, Library Blend, Listening History, Release Radar). When disabled, only editorial playlists are shown."
+                help="Personalized playlists; off shows editorial playlists only."
               >
                 <PillToggle
                   className="settings-toggle"
@@ -219,7 +216,7 @@ export function SettingsDiscoverTab({
         </SettingsArrFieldSet>
 
         <SettingsArrFieldSet
-          legend="Cache Status"
+          legend="Cache status"
           actions={
             <>
               <button
@@ -232,7 +229,7 @@ export function SettingsDiscoverTab({
                   className={`artist-icon-xs${refreshingDiscovery ? " animate-spin" : ""}`}
                   aria-hidden
                 />
-                {refreshingDiscovery ? "Refreshing…" : "Refresh Discovery"}
+                {refreshingDiscovery ? "Refreshing…" : "Refresh discovery"}
               </button>
               <button
                 type="button"
@@ -244,7 +241,7 @@ export function SettingsDiscoverTab({
                   className={`artist-icon-xs${clearingCache ? " animate-spin" : ""}`}
                   aria-hidden
                 />
-                {clearingCache ? "Clearing…" : "Clear Image Cache"}
+                {clearingCache ? "Clearing…" : "Clear image cache"}
               </button>
             </>
           }

@@ -18,12 +18,13 @@ export function IntegrationCard({ title, subtitle, status, meta, onClick }) {
         {meta ? <span className="arr-card__meta">{meta}</span> : null}
       </span>
       <span className="arr-card__side">
-        <span
-          className={`arr-card__status arr-card__status--${statusTone(status.className)}`}
-          role="img"
-          aria-label={status.label}
-          title={status.label}
-        />
+        <span className="arr-card__status-wrap">
+          <span
+            className={`arr-card__status arr-card__status--${statusTone(status.className)}`}
+            aria-hidden="true"
+          />
+          <span className="arr-card__status-label">{status.label}</span>
+        </span>
         <Pencil className="artist-icon-sm" aria-hidden />
       </span>
     </button>
@@ -34,10 +35,9 @@ export function SettingsIntegrationModal({
   title,
   children,
   onClose,
-  saveReminder = true,
   wide = true,
   footerActions = null,
-  showDone = true,
+  testStatus = null,
 }) {
   const titleId = useId();
   const { dialogRef, handleBackdropClick } = useModalDialog({
@@ -67,21 +67,25 @@ export function SettingsIntegrationModal({
             onClick={onClose}
             aria-label="Close"
           >
-            <X className="artist-icon-md" />
+            <X className="artist-icon-md" aria-hidden="true" />
           </button>
         </div>
-        {saveReminder ? (
-          <p className="settings-page__modal-reminder">
-            Changes save automatically.
-          </p>
-        ) : null}
         <div className="settings-page__modal-body">
           <div className="settings-modal">{children}</div>
         </div>
-        <div className="settings-page__modal-actions">
-          {footerActions}
-          {showDone ? <button type="button" className="arr-btn arr-btn--primary" onClick={onClose}>Done</button> : null}
-        </div>
+        {footerActions || testStatus ? (
+          <div className="settings-page__modal-actions">
+            {testStatus ? (
+              <p
+                className={`settings-page__modal-result settings-page__modal-result--${testStatus.tone}`}
+                role={testStatus.tone === "error" ? "alert" : "status"}
+              >
+                {testStatus.message}
+              </p>
+            ) : null}
+            {footerActions}
+          </div>
+        ) : null}
       </div>
     </div>
   );

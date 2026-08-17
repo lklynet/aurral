@@ -213,9 +213,9 @@ function ScheduledTable({ scheduled = [], loading = false }) {
           <tr>
             <th scope="col">Name</th>
             <th scope="col">Interval</th>
-            <th scope="col">Last Execution</th>
-            <th scope="col">Last Duration</th>
-            <th scope="col">Next Execution</th>
+            <th scope="col">Last run</th>
+            <th scope="col">Duration</th>
+            <th scope="col">Next run</th>
             <th scope="col">Result</th>
           </tr>
         </thead>
@@ -281,7 +281,7 @@ function WorkersTable({ workers = [], loading = false, showAllWorkers = false })
             <th scope="col">Queued</th>
             <th scope="col">Scheduled</th>
             <th scope="col">Failed</th>
-            <th scope="col">Last Run</th>
+            <th scope="col">Last run</th>
           </tr>
         </thead>
         <tbody>

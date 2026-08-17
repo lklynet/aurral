@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { testNzbgetConnection, testSabnzbdConnection, testSlskdConnection, testYtdlpConnection } from "../../../utils/api/endpoints/settings.js";
 
 import { Plus, RefreshCw, Trash2, Wrench } from "lucide-react";
@@ -65,8 +65,13 @@ export function SettingsDownloadClientsSection({
   const [testingYtdlp, setTestingYtdlp] = useState(false);
   const [testingNzbget, setTestingNzbget] = useState(false);
   const [testingSabnzbd, setTestingSabnzbd] = useState(false);
+  const [testStatus, setTestStatus] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [mappingModal, setMappingModal] = useState(null);
+
+  useEffect(() => {
+    setTestStatus(null);
+  }, [activeModal]);
 
   const integrations = settings.integrations || {};
   const slskd = integrations.slskd || {};
@@ -148,6 +153,7 @@ export function SettingsDownloadClientsSection({
 
   const handleTestNzbget = async () => {
     if (!nzbgetEnabled || !nzbget.url) {
+      setTestStatus({ tone: "error", message: "Enable NZBGet and enter the server URL." });
       showError("Enable NZBGet and enter the server URL first");
       return;
     }
@@ -155,8 +161,10 @@ export function SettingsDownloadClientsSection({
     try {
       await handleSaveSettings();
       const result = await testNzbgetConnection();
+      setTestStatus({ tone: "success", message: "Connected." });
       showSuccess(result.message || "NZBGet connection OK");
     } catch (error) {
+      setTestStatus({ tone: "error", message: "Connection failed. Check the settings and retry." });
       showError(
         error.response?.data?.message ||
           error.response?.data?.error ||
@@ -170,6 +178,7 @@ export function SettingsDownloadClientsSection({
 
   const handleTestSabnzbd = async () => {
     if (!sabnzbdEnabled || !sabnzbd.url || !sabnzbd.apiKey) {
+      setTestStatus({ tone: "error", message: "Enable SABnzbd and enter the URL and API key." });
       showError("Enable SABnzbd and enter the server URL and API key first");
       return;
     }
@@ -177,8 +186,10 @@ export function SettingsDownloadClientsSection({
     try {
       await handleSaveSettings();
       const result = await testSabnzbdConnection();
+      setTestStatus({ tone: "success", message: "Connected." });
       showSuccess(result.message || "SABnzbd connection OK");
     } catch (error) {
+      setTestStatus({ tone: "error", message: "Connection failed. Check the settings and retry." });
       showError(
         error.response?.data?.message ||
           error.response?.data?.error ||
@@ -192,6 +203,7 @@ export function SettingsDownloadClientsSection({
 
   const handleTestSlskd = async () => {
     if (!slskd.url || !slskd.apiKey) {
+      setTestStatus({ tone: "error", message: "Enter the slskd URL and API key." });
       showError("Enter slskd URL and API key first");
       return;
     }
@@ -201,14 +213,18 @@ export function SettingsDownloadClientsSection({
       const result = await testSlskdConnection();
       if (result.success || result.ok) {
         if (result.warning || result.soulseekConnected === false) {
+          setTestStatus({ tone: "warning", message: "API reachable, but Soulseek is not connected." });
           showInfo(result.message || "slskd API is reachable, but Soulseek is not connected");
         } else {
+          setTestStatus({ tone: "success", message: "Connected." });
           showSuccess(result.message || "slskd connection OK");
         }
       } else {
+        setTestStatus({ tone: "error", message: "Connection failed. Check the settings and retry." });
         showError(result.message || "slskd connection failed");
       }
     } catch (error) {
+      setTestStatus({ tone: "error", message: "Connection failed. Check the settings and retry." });
       showError(
         error.response?.data?.message ||
           error.response?.data?.error ||
@@ -225,8 +241,10 @@ export function SettingsDownloadClientsSection({
     try {
       await handleSaveSettings();
       const result = await testYtdlpConnection();
+      setTestStatus({ tone: "success", message: "Connected." });
       showSuccess(result.message || "yt-dlp OK");
     } catch (error) {
+      setTestStatus({ tone: "error", message: "Connection failed. Check the settings and retry." });
       showError(
         error.response?.data?.message ||
           error.response?.data?.error ||
@@ -244,9 +262,6 @@ export function SettingsDownloadClientsSection({
         <div className="settings-page__section-header">
           <div className="settings-page__section-intro">
             <h3 className="settings-page__section-title">Download clients</h3>
-            <p className="settings-page__section-note">
-              Clients Aurral sends playlist and flow downloads to.
-            </p>
           </div>
         </div>
         <div className="settings-page__integration-card-grid">
@@ -281,9 +296,9 @@ export function SettingsDownloadClientsSection({
         </div>
       </div>
 
-      <SettingsArrFieldSet legend="Quality Profile">
+      <SettingsArrFieldSet legend="Quality profile">
         <div className="arr-info">
-          Choose acceptable formats, rank them by preference, and set the upgrade cutoff.
+          Choose formats, order, and upgrade cutoff.
         </div>
         <IntegrationCard
           title="Default"
@@ -294,7 +309,7 @@ export function SettingsDownloadClientsSection({
         />
       </SettingsArrFieldSet>
 
-      <SettingsArrFieldSet legend="Downloads Folder">
+      <SettingsArrFieldSet legend="Downloads folder">
         <SettingsArrFormGroup
           label="Path"
           labelFor="download-clients-download-folder"
@@ -314,10 +329,9 @@ export function SettingsDownloadClientsSection({
         </SettingsArrFormGroup>
       </SettingsArrFieldSet>
 
-      <SettingsArrFieldSet legend="Remote Path Mappings">
+      <SettingsArrFieldSet legend="Remote path mappings">
         <div className="arr-info">
-          Remote path mappings are rarely required. If Aurral and your download clients share the
-          same container mounts, match paths instead of adding mappings here.
+          Only needed when client and Aurral paths differ. Shared mounts need no mapping.
         </div>
 
         <div className="arr-table-wrap">
@@ -325,8 +339,8 @@ export function SettingsDownloadClientsSection({
             <thead>
               <tr>
                 <th scope="col">Source</th>
-                <th scope="col">Remote Path</th>
-                <th scope="col">Local Path</th>
+                <th scope="col">Remote path</th>
+                <th scope="col">Local path</th>
                 <th scope="col" className="arr-table__actions-head">
                   <span className="sr-only">Actions</span>
                 </th>
@@ -389,7 +403,7 @@ export function SettingsDownloadClientsSection({
       {mappingModal ? (
         <PathMappingModal
           title={
-            mappingModal.mode === "edit" ? "Edit Remote Path Mapping" : "Add Remote Path Mapping"
+            mappingModal.mode === "edit" ? "Edit remote path mapping" : "Add remote path mapping"
           }
           initialValue={
             mappingModal.mode === "edit" && mappingModal.index != null
@@ -413,6 +427,7 @@ export function SettingsDownloadClientsSection({
         <SettingsIntegrationModal
           title="slskd"
           onClose={() => setActiveModal(null)}
+          testStatus={testStatus}
           footerActions={
             <button
               type="button"
@@ -425,13 +440,11 @@ export function SettingsDownloadClientsSection({
             </button>
           }
         >
-          <SettingsModalSection title="General">
-            <SettingsModalToggle
-              label="Enable slskd"
-              checked={slskdEnabled}
-              onChange={(event) => updateIntegration("slskd", { enabled: event.target.checked })}
-            />
-          </SettingsModalSection>
+          <SettingsModalToggle
+            label="Enable slskd"
+            checked={slskdEnabled}
+            onChange={(event) => updateIntegration("slskd", { enabled: event.target.checked })}
+          />
 
           <SettingsModalSection title="Connection">
             <SettingsModalField label="Server URL">
@@ -484,6 +497,7 @@ export function SettingsDownloadClientsSection({
         <SettingsIntegrationModal
           title="yt-dlp"
           onClose={() => setActiveModal(null)}
+          testStatus={testStatus}
           footerActions={
             <button
               type="button"
@@ -496,13 +510,11 @@ export function SettingsDownloadClientsSection({
             </button>
           }
         >
-          <SettingsModalSection title="General">
-            <SettingsModalToggle
-              label="Enable yt-dlp"
-              checked={ytdlpEnabled}
-              onChange={(event) => updateIntegration("ytdlp", { enabled: event.target.checked })}
-            />
-          </SettingsModalSection>
+          <SettingsModalToggle
+            label="Enable yt-dlp"
+            checked={ytdlpEnabled}
+            onChange={(event) => updateIntegration("ytdlp", { enabled: event.target.checked })}
+          />
 
           <SettingsModalSection title="Behavior">
             <SettingsModalField label="Source priority">
@@ -524,7 +536,7 @@ export function SettingsDownloadClientsSection({
             <SettingsModalField
               label="Staging path"
               htmlFor="ytdlp-staging-path"
-              hint="Temporary and reviewable downloads stay here until Aurral imports them into the Downloads Folder."
+              hint="Temporary downloads stay here until imported."
             >
               <DownloadFolderField
                 id="ytdlp-staging-path"
@@ -541,6 +553,7 @@ export function SettingsDownloadClientsSection({
         <SettingsIntegrationModal
           title="NZBGet"
           onClose={() => setActiveModal(null)}
+          testStatus={testStatus}
           footerActions={
             <button
               type="button"
@@ -553,13 +566,11 @@ export function SettingsDownloadClientsSection({
             </button>
           }
         >
-          <SettingsModalSection title="General">
-            <SettingsModalToggle
-              label="Enable NZBGet"
-              checked={nzbgetEnabled}
-              onChange={(event) => updateIntegration("nzbget", { enabled: event.target.checked })}
-            />
-          </SettingsModalSection>
+          <SettingsModalToggle
+            label="Enable NZBGet"
+            checked={nzbgetEnabled}
+            onChange={(event) => updateIntegration("nzbget", { enabled: event.target.checked })}
+          />
 
           <SettingsModalSection title="Connection">
             <SettingsModalField label="Server URL">
@@ -668,6 +679,7 @@ export function SettingsDownloadClientsSection({
         <SettingsIntegrationModal
           title="SABnzbd"
           onClose={() => setActiveModal(null)}
+          testStatus={testStatus}
           footerActions={
             <button
               type="button"
@@ -680,13 +692,11 @@ export function SettingsDownloadClientsSection({
             </button>
           }
         >
-          <SettingsModalSection title="General">
-            <SettingsModalToggle
-              label="Enable SABnzbd"
-              checked={sabnzbdEnabled}
-              onChange={(event) => updateIntegration("sabnzbd", { enabled: event.target.checked })}
-            />
-          </SettingsModalSection>
+          <SettingsModalToggle
+            label="Enable SABnzbd"
+            checked={sabnzbdEnabled}
+            onChange={(event) => updateIntegration("sabnzbd", { enabled: event.target.checked })}
+          />
 
           <SettingsModalSection title="Connection">
             <SettingsModalField label="Server URL">
