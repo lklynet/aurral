@@ -59,6 +59,7 @@ const buildAlbum = (album, artists, tracks) => {
     artistMbid: artist?.mbid || null,
     artistName: artist?.name || album.albumArtist,
     mbid: album.mbid || album.releaseGroupMbid,
+    releaseGroupMbid: album.releaseGroupMbid || null,
     foreignAlbumId: album.mbid || album.releaseGroupMbid || album.identityKey,
     albumName: album.title,
     title: album.title,

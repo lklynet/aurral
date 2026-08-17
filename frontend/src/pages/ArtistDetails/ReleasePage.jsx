@@ -576,7 +576,7 @@ function ReleasePage() {
             <p className="artist-card-meta release-page__meta">{releaseMeta}</p>
           ) : null}
           <div className="release-page__actions">
-            {libraryInfo?.canonicalInLibrary && libraryInfo?.canonicalAlbumId ? (
+            {libraryInfo?.canonicalInLibrary ? (
               <button
                 type="button"
                 className="btn btn-surface btn-sm release-page__external-link"

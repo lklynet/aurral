@@ -22,6 +22,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.js";
 import {
   getCanonicalLibraryPage,
@@ -170,6 +171,7 @@ function EmptyState({ title, message }) {
 
 function LibraryPage() {
   const navigate = useNavigate();
+  const navigateToDiscover = useDiscoverNavigation();
   const {
     section: routeSection,
     albumId: routeAlbumId,
@@ -1516,7 +1518,7 @@ function LibraryPage() {
                 type="button"
                 className="btn btn-surface btn-sm"
                 onClick={() =>
-                  navigate(
+                  navigateToDiscover(
                     "/search?q=" +
                       encodeURIComponent("#" + selectedGenre) +
                       "&type=tag",

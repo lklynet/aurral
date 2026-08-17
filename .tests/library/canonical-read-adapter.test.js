@@ -67,6 +67,7 @@ test("canonical read model maps the existing root to Library-shaped records", ()
   assert.deepEqual(findCanonicalTracksForAlbum(result.tracks, 2).map((track) => track.trackName), [
     "Root Track",
   ]);
+  assert.equal(result.albums[0].releaseGroupMbid, "album-1");
   assert.equal(result.albums[0].statistics.sizeOnDisk, 123);
   assert.equal(result.artists[0].statistics.sizeOnDisk, 123);
   assert.equal(result.tracks[0].path, "/music/Root Artist/Root Album/01 Root Track.flac");
