@@ -405,6 +405,16 @@ export function registerGeneral(router) {
       }
 
       dbOps.updateSettings(updatedSettings);
+      try {
+        const { refreshLibraryFileWatcher } = await import(
+          "../../../services/libraryFileWatcher.js"
+        );
+        await refreshLibraryFileWatcher();
+      } catch (error) {
+        logger.warn("settings", "Failed to refresh library file watcher:", {
+          message: error.message,
+        });
+      }
       if (
         qualityProfile !== undefined &&
         JSON.stringify(updatedSettings.qualityProfile) !==

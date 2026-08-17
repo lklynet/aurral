@@ -17,6 +17,10 @@ import { startWeeklyFlowOperationWorker } from "./weeklyFlow/weeklyFlowOperation
 import { startWeeklyFlowPlaylistRetryWorker } from "./weeklyFlow/weeklyFlowPlaylistRetryWorker.js";
 import { startWeeklyFlowPlaylistReserveBuildWorker } from "./weeklyFlow/weeklyFlowPlaylistReserveBuildWorker.js";
 import { startPlaylistMbidEnrichmentWorker } from "./playlistMbidEnrichmentWorker.js";
+import {
+  startLibraryFileWatcher,
+  stopLibraryFileWatcher,
+} from "./libraryFileWatcher.js";
 import { registerHonkerShutdownHandler } from "./honkerWorkerRuntime.js";
 import { HONKER_QUEUE_NAMES } from "./honkerDb.js";
 
@@ -119,6 +123,7 @@ function stopWorkerSupervisor() {
 
 registerHonkerShutdownHandler(() => {
   stopWorkerSupervisor();
+  stopLibraryFileWatcher();
 });
 
 export function startBackgroundWorkers({ logger = console } = {}) {
@@ -150,6 +155,7 @@ export function startBackgroundWorkers({ logger = console } = {}) {
     });
   enqueueHonkerStartupTasks();
   startWorkerSupervisor();
+  void startLibraryFileWatcher({ logger });
   return true;
 }
 

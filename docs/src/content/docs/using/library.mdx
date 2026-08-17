@@ -20,7 +20,35 @@ when a canonical identifier is available. Tracks without an available file
 stay visible but cannot play. The page reports stale library data, partial or
 missing files, provider health problems, and empty results.
 
-Navidrome remains optional. Lidarr remains the required library provider.
+Navidrome remains optional. Lidarr remains the library provider when it is
+configured.
+
+## When new files appear
+
+Aurral keeps the canonical library in its own database. It scans the Aurral
+root and the root folders reported by Lidarr. The scan records the provider
+identities, album and track metadata, and the readable media files that belong
+to them.
+
+When Lidarr imports a download, or a file changes in the Aurral root, Aurral's
+filesystem watcher queues a scan. The watcher waits briefly for a file move or
+rename to finish and ignores `_playlists`, `_staging`, `_fallback`, hidden
+folders, and `aurral-weekly-flow`.
+
+When the scan completes, an open Library page reloads its canonical records
+automatically. The home page and **Newest** album or track sorting use the time
+the media first entered Aurral's canonical library, not the album's original
+release date.
+
+Use the **Refresh** button in Library when you need to check immediately. The
+button starts a scan, waits for it to finish, and reloads the page from the
+updated canonical records. The scheduled scan remains as a fallback and runs
+every 15 minutes.
+
+If Discover says an album is in Lidarr but Library does not show it, check the
+Lidarr path mapping first. Aurral must be able to read the path Lidarr reports.
+Then use **Refresh** in Library. See [Filesystem and mounts](/getting-started/storage/)
+and [Lidarr library access](/integrations/lidarr/#library-access-check).
 
 Use the search field in the toolbar to filter the current section.
 

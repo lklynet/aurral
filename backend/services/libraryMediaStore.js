@@ -168,6 +168,21 @@ export function linkLibraryAlbumTrack({ albumId, trackId, discNumber = 1, trackN
   invalidateLibraryCache();
 }
 
+export function removeLibraryAlbumTracksWithoutAurralMedia(albumId) {
+  db.prepare(
+    `DELETE FROM library_album_tracks
+     WHERE album_id = ?
+       AND NOT EXISTS (
+         SELECT 1
+         FROM library_media_files AS media
+         WHERE media.track_id = library_album_tracks.track_id
+           AND media.source = 'aurral'
+           AND media.available = 1
+       )`,
+  ).run(Number(albumId));
+  invalidateLibraryCache();
+}
+
 export function upsertLibraryMediaFile({
   trackId,
   source,

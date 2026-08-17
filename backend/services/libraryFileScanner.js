@@ -35,6 +35,11 @@ const EXCLUDED_DIRECTORIES = new Set([
   "aurral-weekly-flow",
 ]);
 
+export function isLibraryScanExcludedDirectory(name) {
+  const value = String(name || "");
+  return EXCLUDED_DIRECTORIES.has(value) || value.startsWith(".");
+}
+
 const text = (value) => String(value || "").trim();
 
 const first = (value) => (Array.isArray(value) ? value[0] : value);
@@ -126,7 +131,7 @@ async function* walkAudioFiles(rootPath) {
   const entries = await fs.readdir(rootPath, { withFileTypes: true });
   for (const entry of entries) {
     if (entry.isDirectory()) {
-      if (EXCLUDED_DIRECTORIES.has(entry.name) || entry.name.startsWith(".")) continue;
+      if (isLibraryScanExcludedDirectory(entry.name)) continue;
       yield* walkAudioFiles(path.join(rootPath, entry.name));
       continue;
     }

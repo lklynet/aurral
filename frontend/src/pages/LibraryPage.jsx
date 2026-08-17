@@ -23,10 +23,14 @@ import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
+import { useWebSocketChannel } from "../hooks/useWebSocket";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.js";
 import {
+  clearCanonicalLibraryPageCache,
   getCanonicalLibraryPage,
+  getLibraryRefreshStatus,
   getLibraryFavorites,
+  requestLibraryRefresh,
   updateLibraryFavorites,
 } from "../utils/api/endpoints/library.js";
 import { buildAuthenticatedApiUrl } from "../utils/api/core.js";
@@ -85,6 +89,9 @@ const formatLongDuration = (durationMs) => {
 };
 
 const TOP_ARTIST_TRACK_LIMIT = 10;
+const LIBRARY_REFRESH_TIMEOUT_MS = 120000;
+
+const wait = (durationMs) => new Promise((resolve) => setTimeout(resolve, durationMs));
 
 const trackRating = (track) => {
   const value = track?.rating ?? track?.metadata?.rating ?? track?.metadata?.tags?.rating;
@@ -179,7 +186,7 @@ function LibraryPage() {
   } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const { bootstrap } = useAuth();
-  const { showError } = useToast();
+  const { showError, showSuccess } = useToast();
   const { playQueue, currentTrack, isPlaying, isLoading, togglePlayPause, matchesSource } =
     useAudioQueue();
   const [library, setLibrary] = useState({ artists: [], albums: [], tracks: [], genres: [] });
@@ -197,11 +204,62 @@ function LibraryPage() {
   const [error, setError] = useState(null);
   const [isPreviewLibrary, setIsPreviewLibrary] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const [pageIndex, setPageIndex] = useState(1);
   const [pageData, setPageData] = useState(null);
   const albumTrackCacheRef = useRef(new Map());
+  const refreshAttemptRef = useRef(0);
+
+  const handleLibraryScanMessage = useCallback((message) => {
+    if (message?.type !== "library_scan_completed") return;
+    clearCanonicalLibraryPageCache();
+    albumTrackCacheRef.current.clear();
+    setRetryKey((value) => value + 1);
+  }, []);
+
+  useWebSocketChannel("library", handleLibraryScanMessage);
 
   const pageSize = 100;
+
+  useEffect(() => () => {
+    refreshAttemptRef.current += 1;
+  }, []);
+
+  const refreshLibrary = useCallback(async () => {
+    if (refreshing) return;
+    const attempt = refreshAttemptRef.current + 1;
+    refreshAttemptRef.current = attempt;
+    setRefreshing(true);
+    try {
+      clearCanonicalLibraryPageCache();
+      const queued = await requestLibraryRefresh();
+      const jobId = queued?.jobId;
+      if (!jobId) throw new Error("Library refresh did not start");
+
+      const deadline = Date.now() + LIBRARY_REFRESH_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        const status = await getLibraryRefreshStatus(jobId);
+        if (refreshAttemptRef.current !== attempt) return;
+        if (status.status === "completed") {
+          clearCanonicalLibraryPageCache();
+          setRetryKey((value) => value + 1);
+          showSuccess("Library refreshed");
+          return;
+        }
+        if (status.status === "failed") {
+          throw new Error(status.error || "Library refresh failed");
+        }
+        await wait(750);
+      }
+      throw new Error("Library refresh timed out");
+    } catch (requestError) {
+      if (refreshAttemptRef.current === attempt) {
+        showError(requestError.response?.data?.message || requestError.message || "Library refresh failed");
+      }
+    } finally {
+      if (refreshAttemptRef.current === attempt) setRefreshing(false);
+    }
+  }, [refreshing, showError, showSuccess]);
 
   const section = LIBRARY_VIEW_IDS.has(routeSection) ? routeSection : DEFAULT_LIBRARY_VIEW;
   const isDetail = Boolean(routeAlbumId || routeArtistId);
@@ -288,6 +346,7 @@ function LibraryPage() {
               kind: "tracks",
               page: 1,
               pageSize: 12,
+              sort: "newest",
             }),
           ])
         : getCanonicalLibraryPage({
@@ -1422,9 +1481,10 @@ function LibraryPage() {
           <button
             type="button"
             className="native-library-state__action"
-            onClick={() => setRetryKey((value) => value + 1)}
+            onClick={refreshLibrary}
+            disabled={refreshing}
           >
-            Try again
+            {refreshing ? "Refreshing…" : "Refresh library"}
           </button>
         </div>
       )}
@@ -1542,8 +1602,9 @@ function LibraryPage() {
             ) : (
               <TooltipButton
                 className="native-library-icon-button"
-                onClick={() => setRetryKey((value) => value + 1)}
-                label="Refresh"
+                onClick={refreshLibrary}
+                disabled={refreshing}
+                label={refreshing ? "Refreshing library…" : "Refresh"}
                 aria-label="Refresh library"
               >
                 <RefreshCw aria-hidden="true" />
@@ -1631,8 +1692,9 @@ function LibraryPage() {
               )}
               <TooltipButton
                 className="native-library-icon-button"
-                onClick={() => setRetryKey((value) => value + 1)}
-                label="Refresh"
+                onClick={refreshLibrary}
+                disabled={refreshing}
+                label={refreshing ? "Refreshing library…" : "Refresh"}
                 aria-label="Refresh library"
               >
                 <RefreshCw aria-hidden="true" />

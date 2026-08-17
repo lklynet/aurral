@@ -273,6 +273,31 @@ const mediaSourceClause = (sourceFilter, alias = "page_media") => {
   return { conditions, parameters };
 };
 
+const recentMediaFilter = (sourceFilter, availableOnly, alias = "page_media") => {
+  const conditions = [];
+  if (sourceFilter) conditions.push(`${alias}.source = '${sourceFilter}'`);
+  if (availableOnly === true) conditions.push(`${alias}.available = 1`);
+  return conditions.length ? ` AND ${conditions.join(" AND ")}` : "";
+};
+
+const recentMediaOrder = (kind, sourceFilter, availableOnly, direction) => {
+  const orderDirection = direction === "desc" ? "ASC" : "DESC";
+  const mediaFilter = recentMediaFilter(sourceFilter, availableOnly);
+  if (kind === "albums") {
+    return `COALESCE((
+      SELECT MAX(page_media.created_at)
+      FROM library_album_tracks AS page_album_track
+      JOIN library_media_files AS page_media ON page_media.track_id = page_album_track.track_id
+      WHERE page_album_track.album_id = album.id${mediaFilter}
+    ), 0) ${orderDirection}, album.title COLLATE NOCASE ${direction === "desc" ? "DESC" : "ASC"}`;
+  }
+  return `COALESCE((
+    SELECT MAX(page_media.created_at)
+    FROM library_media_files AS page_media
+    WHERE page_media.track_id = track.id${mediaFilter}
+  ), 0) ${orderDirection}, track.title COLLATE NOCASE ${direction === "desc" ? "DESC" : "ASC"}`;
+};
+
 const pageMediaExists = (kind, sourceFilter, availableOnly) => {
   const { conditions, parameters } = mediaSourceClause(sourceFilter);
   if (availableOnly === true) conditions.push("page_media.available = 1");
@@ -411,8 +436,8 @@ function buildPageQuery({
 
   const orderDirection = direction === "desc" ? "DESC" : "ASC";
   let orderBy;
-  if (sort === "newest" && kind === "albums") {
-    orderBy = `coalesce(album.release_date, '') ${direction === "desc" ? "ASC" : "DESC"}, album.title COLLATE NOCASE ${orderDirection}`;
+  if (sort === "newest" && (kind === "albums" || kind === "tracks")) {
+    orderBy = recentMediaOrder(kind, sourceFilter, availableOnly, direction);
   } else if (sort === "artist" && kind !== "artists") {
     orderBy = `artist.name COLLATE NOCASE ${orderDirection}, ${kind === "albums" ? "album.title" : "track.title"} COLLATE NOCASE ${orderDirection}`;
   } else if (kind === "artists") {
@@ -458,7 +483,7 @@ function getCanonicalGenreStats({ sourceFilter, availableOnly }) {
   return stats;
 }
 
-function getPageLibrary(kind, ids, sourceFilter, availableOnly) {
+function getPageLibrary(kind, ids, sourceFilter, availableOnly, albumId = null) {
   if (!ids.length) return { artists: [], albums: [], tracks: [] };
   const alias = kind === "artists" ? "artist" : kind === "albums" ? "album" : "track";
   const conditions = [`${alias}.id IN (${ids.map(() => "?").join(",")})`];
@@ -468,6 +493,10 @@ function getPageLibrary(kind, ids, sourceFilter, availableOnly) {
     parameters.push(sourceFilter);
   }
   if (availableOnly === true) conditions.push("media.available = 1");
+  if (kind === "tracks" && albumId) {
+    conditions.push("album.id = ?");
+    parameters.push(Number(albumId));
+  }
   const rows = db.prepare(
     `${CANONICAL_SELECT}
      ${CANONICAL_FROM}
@@ -582,7 +611,7 @@ export function getCanonicalLibraryPage({
     currentPageSize,
     (currentPage - 1) * currentPageSize,
   ).map((row) => row.page_id);
-  const library = getPageLibrary(normalizedKind, ids, sourceFilter, availableOnly);
+  const library = getPageLibrary(normalizedKind, ids, sourceFilter, availableOnly, albumId);
   const artistsById = new Map(library.artists.map((artist) => [String(artist.id), artist]));
   const albumsById = new Map(library.albums.map((album) => [String(album.id), album]));
   const albumStats = getAlbumStats(

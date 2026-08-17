@@ -66,6 +66,11 @@ export const getCanonicalLibraryPage = (options = {}) => {
 
 export const clearCanonicalLibraryPageCache = () => libraryPageCache.clear();
 
+export const requestLibraryRefresh = () => postData("/library/refresh", {});
+
+export const getLibraryRefreshStatus = (jobId) =>
+  getData(`/library/refresh/${encodeURIComponent(jobId)}`);
+
 let libraryFavoritesCache = null;
 let libraryFavoritesRequest = null;
 let libraryFavoritesGeneration = 0;

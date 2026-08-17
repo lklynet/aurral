@@ -11,6 +11,10 @@ import {
   starMany,
   unstarMany,
 } from "../../../services/subsonicLibraryService.js";
+import {
+  getLibraryScanStatus,
+  scheduleLibraryScan,
+} from "../../../services/libraryScanWorker.js";
 
 const isFilesystemPathKey = (key) => key.toLowerCase().endsWith("path");
 
@@ -66,6 +70,23 @@ export function toPublicLibraryPage(page, favoriteKeys = null) {
 }
 
 export function registerCanonical(router) {
+  router.post("/refresh", requireAuth, (_req, res) => {
+    const jobId = scheduleLibraryScan({ force: true });
+    res.status(202).json({
+      queued: true,
+      jobId,
+      status: getLibraryScanStatus(jobId),
+    });
+  });
+
+  router.get("/refresh/:jobId", requireAuth, (req, res) => {
+    const status = getLibraryScanStatus(req.params.jobId);
+    if (!status || status.status === "unknown") {
+      return res.status(404).json({ error: "Library scan not found" });
+    }
+    return res.json(status);
+  });
+
   router.get("/canonical", noCache, (req, res) => {
     try {
       const favoriteKeys = req.user ? getStarredIdentityKeys(req.user) : null;

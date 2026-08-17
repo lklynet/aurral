@@ -1,7 +1,9 @@
 import createHonkerWorker from "./honkerWorkerFactory.js";
+import { db } from "../config/db-sqlite.js";
 import { dbOps } from "../db/helpers/index.js";
 import { enqueueLibraryScanJob, getLibraryScanQueue } from "./honkerDb.js";
 import { isHonkerDatabaseClosedError } from "./honkerWorkerRuntime.js";
+import { websocketService } from "./websocketService.js";
 
 const WORKER_NAME = "library-scan";
 const LIBRARY_SCAN_REGISTRY_KEY = "pendingLibraryScanJob";
@@ -39,6 +41,36 @@ export function scheduleLibraryScan({ force = false } = {}) {
   return jobId;
 }
 
+export function getLibraryScanStatus(jobId) {
+  const normalizedJobId = Number(jobId);
+  if (!Number.isSafeInteger(normalizedJobId) || normalizedJobId <= 0) return null;
+
+  const job = getLibraryScanQueue().getJob(normalizedJobId);
+  if (job) {
+    return {
+      jobId: normalizedJobId,
+      status: job.state === "processing" ? "running" : "queued",
+      error: null,
+    };
+  }
+
+  const run = db
+    .prepare(
+      `SELECT status, error
+       FROM honker_task_runs
+       WHERE queue = 'library-scan' AND job_id = ?
+       ORDER BY id DESC
+       LIMIT 1`,
+    )
+    .get(normalizedJobId);
+  if (!run) return { jobId: normalizedJobId, status: "unknown", error: null };
+  return {
+    jobId: normalizedJobId,
+    status: run.status === "failed" ? "failed" : "completed",
+    error: run.error || null,
+  };
+}
+
 let databaseClosed = false;
 
 const {
@@ -64,6 +96,7 @@ const {
     await scanConfiguredLibrary({ lidarrClient });
     const { playlistManager } = await import("./weeklyFlow/weeklyFlowPlaylistManager.js");
     await playlistManager.scanLibrary();
+    websocketService.broadcast("library", { type: "library_scan_completed" });
   },
   resolveRetry(error, job) {
     const message = error?.message || String(error);
