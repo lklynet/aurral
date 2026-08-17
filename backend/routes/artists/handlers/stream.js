@@ -16,12 +16,40 @@ import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
 import {
   attachCachedCoverUrls,
 } from "../../../services/releaseGroupCoverService.js";
+import {
+  findCanonicalAlbumsForArtist,
+  findCanonicalArtist,
+  getCanonicalLibraryReadModel,
+} from "../../../services/canonicalLibraryReadAdapter.js";
 import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.js";
 import {
   getArtistTagPayload,
   buildArtistBase,
   extractLastfmImageUrl,
 } from "../shared/transform.js";
+
+const toLibraryArtist = (artist) => ({
+  ...artist,
+  id: artist.providerId ?? artist.id,
+  canonicalId: String(artist.canonicalId ?? artist.id),
+  foreignArtistId: artist.foreignArtistId || artist.mbid,
+  added: artist.addedAt,
+});
+
+const toLibraryAlbum = (album) => ({
+  ...album,
+  id: album.providerId ?? album.id,
+  artistId: album.providerArtistId ?? album.artistId,
+  canonicalId: String(album.canonicalId ?? album.id),
+  foreignAlbumId: album.foreignAlbumId || album.mbid,
+  title: album.albumName,
+  albumType: "Album",
+  statistics: album.statistics || {
+    trackCount: 0,
+    sizeOnDisk: 0,
+    percentOfTracks: 0,
+  },
+});
 
 export function registerStream(router) {
   router.get("/:mbid/stream", noCache, async (req, res) => {
@@ -113,6 +141,27 @@ export function registerStream(router) {
         );
 
         const libraryTask = (async () => {
+          const canonical = getCanonicalLibraryReadModel({
+            source: "all",
+            availableOnly: false,
+          });
+          const canonicalArtist =
+            findCanonicalArtist(canonical.artists, resolvedMbid) ||
+            findCanonicalArtist(canonical.artists, mbid);
+          if (canonicalArtist) {
+            if (isClientConnected()) {
+              sendSSE(res, "library", {
+                exists: true,
+                canonical: true,
+                artist: toLibraryArtist(canonicalArtist),
+                albums: findCanonicalAlbumsForArtist(canonical.albums, canonicalArtist.id).map(
+                  toLibraryAlbum,
+                ),
+              });
+            }
+            return;
+          }
+
           const { lidarrClient } = await import("../../../services/lidarrClient.js");
           const { libraryManager } = await import("../../../services/libraryManager.js");
 

@@ -11,7 +11,7 @@ export function registerArtists(router) {
   router.get("/artists", cacheMiddleware(120), async (req, res) => {
     try {
       if (req.query.readPath === "canonical") {
-        const { artists } = getCanonicalLibraryReadModel({ source: req.query.source || "lidarr" });
+        const { artists } = getCanonicalLibraryReadModel({ source: req.query.source || "all" });
         const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10000, 1), 10000);
         const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
         return res.json(artists.slice(offset, offset + limit).map((artist) => ({

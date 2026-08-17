@@ -5,7 +5,6 @@ import {
 } from "../../utils/api/endpoints/playlists.js";
 import {
   getDownloadStatus,
-  getLibraryTracks,
   lookupAlbumsInLibraryBatch,
   requestAlbumFromSearch,
 } from "../../utils/api/endpoints/library.js";
@@ -17,9 +16,8 @@ import {
 import { useSharedPlaylists } from "../../hooks/useSharedPlaylists";
 import { useWebSocketChannel } from "../../hooks/useWebSocket";
 
-import { Link, useLocation, useParams } from "react-router-dom";
-import { CornerUpLeft, ExternalLink, Music } from "lucide-react";
-import SearchLibraryCheck from "../../components/SearchLibraryCheck";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { CornerUpLeft, ExternalLink, Library, Music } from "lucide-react";
 import AddActionButton from "../../components/AddActionButton";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
@@ -88,6 +86,7 @@ const ACTIVE_DOWNLOAD_STATUSES = new Set([
 function ReleasePage() {
   const { mbid: artistMbid, releaseMbid } = useParams();
   const { state: locationState } = useLocation();
+  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const { hasPermission } = useAuth();
   const canAddAlbum = hasPermission("addAlbum");
@@ -189,6 +188,9 @@ function ReleasePage() {
   ]
     .filter(Boolean)
     .join(" · ");
+  const libraryPath = libraryInfo?.canonicalAlbumId
+    ? `/library/album/${encodeURIComponent(libraryInfo.canonicalAlbumId)}`
+    : `/library/albums?query=${encodeURIComponent(releaseTitle)}`;
 
   useEffect(() => {
     setCoverUrl(release._coverUrl || "");
@@ -328,12 +330,9 @@ function ReleasePage() {
           releaseType: release["primary-type"] || "",
           releaseDate: release["first-release-date"] || "",
           deezerAlbumId: release._deezerAlbumId || "",
-          readPath: "canonical",
         };
 
-        const nextTracks = libraryInfo?.libraryAlbumId
-          ? await getLibraryTracks(libraryInfo.libraryAlbumId, releaseMbid, context)
-          : await getReleaseGroupTracks(releaseMbid, context);
+        const nextTracks = await getReleaseGroupTracks(releaseMbid, context);
 
         if (!cancelled) {
           setTracks(Array.isArray(nextTracks) ? nextTracks : []);
@@ -359,8 +358,6 @@ function ReleasePage() {
     artistName,
     release,
     releaseMbid,
-    libraryInfo?.libraryAlbumId,
-    isComplete,
     showError,
   ]);
 
@@ -579,11 +576,15 @@ function ReleasePage() {
             <p className="artist-card-meta release-page__meta">{releaseMeta}</p>
           ) : null}
           <div className="release-page__actions">
-            {isComplete ? (
-              <span className="release-page__library-status" title="In library">
-                <SearchLibraryCheck />
-                <span>In library</span>
-              </span>
+            {libraryInfo?.canonicalInLibrary && libraryInfo?.canonicalAlbumId ? (
+              <button
+                type="button"
+                className="btn btn-surface btn-sm release-page__external-link"
+                onClick={() => navigate(libraryPath)}
+              >
+                <Library className="artist-icon-sm" />
+                Open in library
+              </button>
             ) : libraryDisplay.label ? (
               <span
                 className={`release-page__library-status release-page__library-status--${libraryDisplay.kind}`}

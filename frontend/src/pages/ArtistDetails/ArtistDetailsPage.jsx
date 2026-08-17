@@ -216,12 +216,7 @@ function ArtistDetailsPage() {
     locationState,
   });
 
-  const preview = usePreviewPlayer(mbid, artistNameFromNav, artist, {
-    existsInLibrary,
-    libraryArtist,
-    libraryAlbums,
-    downloadStatuses: library.downloadStatuses || {},
-  });
+  const preview = usePreviewPlayer(mbid, artistNameFromNav, artist);
   const {
     previewTracks,
     loadingPreview,

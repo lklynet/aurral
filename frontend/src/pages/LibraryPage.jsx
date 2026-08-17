@@ -1296,7 +1296,7 @@ function LibraryPage() {
                   className="native-library-detail__discover"
                   onClick={() => handleDiscoverAlbumOpen(libraryAlbum)}
                 >
-                  <ExternalLink aria-hidden="true" /> Discover
+                  <ExternalLink aria-hidden="true" /> Explore in Discover
                 </button>
               )}
             </div>
@@ -1365,7 +1365,7 @@ function LibraryPage() {
                   className="native-library-detail__discover"
                   onClick={() => handleDiscoverArtistOpen(libraryArtist)}
                 >
-                  <ExternalLink aria-hidden="true" /> Discover
+                  <ExternalLink aria-hidden="true" /> Explore in Discover
                 </button>
               )}
             </div>
@@ -1511,6 +1511,22 @@ function LibraryPage() {
             </h1>
           </div>
           <div className="native-library-header-actions">
+            {selectedGenre && (
+              <button
+                type="button"
+                className="btn btn-surface btn-sm"
+                onClick={() =>
+                  navigate(
+                    "/search?q=" +
+                      encodeURIComponent("#" + selectedGenre) +
+                      "&type=tag",
+                  )
+                }
+              >
+                <ExternalLink aria-hidden="true" />
+                Explore in Discover
+              </button>
+            )}
             {showToolbar ? (
               <TooltipButton
                 className={`native-library-icon-button${searchOpen ? " is-active" : ""}`}

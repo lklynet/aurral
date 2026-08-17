@@ -261,15 +261,22 @@ export function useArtistDetailsStream(
         setExistsInLibrary(lookup.exists);
         if (!lookup.exists || !lookup.artist) return;
 
-        const fullArtist = await getLibraryArtist(
-          lookup.artist.mbid || lookup.artist.foreignArtistId,
-        ).catch((err) => {
-          console.error("Failed to fetch full artist details:", err);
-          return lookup.artist;
-        });
+        const fullArtist = lookup.canonical
+          ? lookup.artist
+          : await getLibraryArtist(lookup.artist.mbid || lookup.artist.foreignArtistId).catch(
+              (err) => {
+                console.error("Failed to fetch full artist details:", err);
+                return lookup.artist;
+              },
+            );
         if (!isCurrentRequest()) return;
 
         setLibraryArtist(fullArtist);
+
+        if (lookup.canonical) {
+          setLibraryAlbums(Array.isArray(lookup.albums) ? lookup.albums : []);
+          return;
+        }
 
         const artistId = fullArtist.id || lookup.artist.id;
         if (!artistId) return;

@@ -45,7 +45,7 @@ export function registerTracks(router) {
 
       if (req.query.readPath === "canonical") {
         const canonicalLibrary = getCanonicalLibrary({
-          source: req.query.source || "lidarr",
+          source: req.query.source || "all",
           availableOnly: true,
         });
         const { albums, tracks } = buildCanonicalLibraryReadModel(canonicalLibrary);
