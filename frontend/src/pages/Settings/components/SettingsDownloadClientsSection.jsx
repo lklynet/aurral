@@ -98,7 +98,8 @@ export function SettingsDownloadClientsSection({
   const nzbgetEnabled = nzbget.enabled === true;
   const sabnzbdEnabled = sabnzbd.enabled === true;
 
-  const updateIntegration = (key, patch) =>
+  const updateIntegration = (key, patch) => {
+    setTestStatus(null);
     updateSettings({
       ...settings,
       integrations: {
@@ -109,6 +110,7 @@ export function SettingsDownloadClientsSection({
         },
       },
     });
+  };
 
   const updatePathMappings = (nextMappings) => {
     updateSettings({
@@ -152,6 +154,7 @@ export function SettingsDownloadClientsSection({
   };
 
   const handleTestNzbget = async () => {
+    setTestStatus(null);
     if (!nzbgetEnabled || !nzbget.url) {
       setTestStatus({ tone: "error", message: "Enable NZBGet and enter the server URL." });
       showError("Enable NZBGet and enter the server URL first");
@@ -177,6 +180,7 @@ export function SettingsDownloadClientsSection({
   };
 
   const handleTestSabnzbd = async () => {
+    setTestStatus(null);
     if (!sabnzbdEnabled || !sabnzbd.url || !sabnzbd.apiKey) {
       setTestStatus({ tone: "error", message: "Enable SABnzbd and enter the URL and API key." });
       showError("Enable SABnzbd and enter the server URL and API key first");
@@ -202,6 +206,7 @@ export function SettingsDownloadClientsSection({
   };
 
   const handleTestSlskd = async () => {
+    setTestStatus(null);
     if (!slskd.url || !slskd.apiKey) {
       setTestStatus({ tone: "error", message: "Enter the slskd URL and API key." });
       showError("Enter slskd URL and API key first");
@@ -237,6 +242,7 @@ export function SettingsDownloadClientsSection({
   };
 
   const handleTestYtdlp = async () => {
+    setTestStatus(null);
     setTestingYtdlp(true);
     try {
       await handleSaveSettings();

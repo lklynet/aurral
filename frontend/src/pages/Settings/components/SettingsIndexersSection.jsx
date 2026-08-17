@@ -39,7 +39,8 @@ export function SettingsIndexersSection({
     setTestStatus(null);
   }, [activeModal]);
 
-  const updateIntegration = (key, patch) =>
+  const updateIntegration = (key, patch) => {
+    setTestStatus(null);
     updateSettings({
       ...settings,
       integrations: {
@@ -50,6 +51,7 @@ export function SettingsIndexersSection({
         },
       },
     });
+  };
 
   const loadProwlarrIndexers = async ({ quiet = false } = {}) => {
     if (!health?.prowlarrConfigured) {
@@ -130,6 +132,7 @@ export function SettingsIndexersSection({
   };
 
   const handleTestProwlarr = async () => {
+    setTestStatus(null);
     if (!prowlarrEnabled || !prowlarr.url || !prowlarr.apiKey) {
       setTestStatus({ tone: "error", message: "Enable Prowlarr and enter the URL and API key." });
       showError("Enable Prowlarr and enter URL and API key first");

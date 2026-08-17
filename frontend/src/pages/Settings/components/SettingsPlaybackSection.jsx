@@ -99,7 +99,8 @@ export function SettingsPlaybackSection({
     setPlexPathPickerOpen(false);
   };
 
-  const updateNavidrome = (patch) =>
+  const updateNavidrome = (patch) => {
+    setTestStatus(null);
     updateSettings({
       ...settings,
       integrations: {
@@ -107,8 +108,10 @@ export function SettingsPlaybackSection({
         navidrome: { ...navidrome, ...patch },
       },
     });
+  };
 
-  const updatePlex = (patch) =>
+  const updatePlex = (patch) => {
+    setTestStatus(null);
     updateSettings({
       ...settings,
       integrations: {
@@ -116,6 +119,7 @@ export function SettingsPlaybackSection({
         plex: { ...plex, ...patch },
       },
     });
+  };
 
   const updatePlexLibraryLocalPath = (localPath) => {
     const trimmed = String(localPath || "").trim();
@@ -261,6 +265,7 @@ export function SettingsPlaybackSection({
   };
 
   const handleTestPlex = async () => {
+    setTestStatus(null);
     if (!plex.url || !plex.token) {
       setTestStatus({ tone: "error", message: "Connect to Plex and select a server first." });
       showError("Connect to Plex and select a server first");
@@ -270,11 +275,11 @@ export function SettingsPlaybackSection({
     try {
       const result = await testPlaybackConnection("plex", plex);
       if (result.success) {
-        setTestStatus({ tone: "success", message: "Connected." });
         showSuccess(`Plex connection successful!${result.version ? ` (v${result.version})` : ""}`);
         if (result.machineIdentifier) {
           updatePlex({ machineIdentifier: result.machineIdentifier });
         }
+        setTestStatus({ tone: "success", message: "Connected." });
       } else {
         setTestStatus({ tone: "error", message: "Connection failed. Check Plex settings and retry." });
         showError(`Connection failed: ${result.message || result.error}`);
@@ -289,6 +294,7 @@ export function SettingsPlaybackSection({
   };
 
   const handleTestNavidrome = async () => {
+    setTestStatus(null);
     if (!navidrome.url || !navidrome.username || !navidrome.password) {
       setTestStatus({ tone: "error", message: "Enter the URL and credentials first." });
       showError("Enter Navidrome URL, username, and password first");

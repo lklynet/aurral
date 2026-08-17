@@ -62,7 +62,8 @@ export function SettingsConnectTab({
     });
   };
 
-  const updateGotify = (patch) =>
+  const updateGotify = (patch) => {
+    setTestStatus(null);
     updateSettings({
       ...settings,
       integrations: {
@@ -70,6 +71,7 @@ export function SettingsConnectTab({
         gotify: { ...gotify, ...patch },
       },
     });
+  };
 
   const updateLastfm = (patch) =>
     updateSettings({
@@ -103,6 +105,7 @@ export function SettingsConnectTab({
   }, [activeModal]);
 
   const handleTestGotify = async () => {
+    setTestStatus(null);
     const url = gotify.url;
     const token = gotify.token;
     if (!url || !token) {
