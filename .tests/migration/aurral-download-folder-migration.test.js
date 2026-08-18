@@ -160,7 +160,7 @@ test("retains a failed item and completes it safely on retry", async () => {
   assert.equal(third.migrated, 0);
 });
 
-test("does not reuse a same-name destination with different content", async () => {
+test("retains a same-size canonical destination with different content", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Collision" });
   const source = path.join(
     root,
@@ -170,11 +170,11 @@ test("does not reuse a same-name destination with different content", async () =
     "Album",
     "Track.flac",
   );
-  const existing = path.join(root, "Artist", "Album", "Track.mp3");
+  const existing = path.join(root, "Artist", "Album", "Track.flac");
   await fs.mkdir(path.dirname(source), { recursive: true });
   await fs.mkdir(path.dirname(existing), { recursive: true });
   await fs.writeFile(source, "source-content");
-  await fs.writeFile(existing, "different");
+  await fs.writeFile(existing, "target-content");
   const jobId = downloadTracker.addJob(
     { artistName: "Artist", albumName: "Album", trackName: "Track" },
     playlist.id,
@@ -188,10 +188,11 @@ test("does not reuse a same-name destination with different content", async () =
     },
   });
 
-  assert.equal(result.migrated, 1);
-  assert.equal(await fs.readFile(existing, "utf8"), "different");
-  assert.equal(await fs.readFile(path.join(root, "Artist", "Album", "Track.flac"), "utf8"), "source-content");
-  await assert.rejects(() => fs.access(source));
+  assert.equal(result.migrated, 0);
+  assert.equal(result.failed, 1);
+  assert.equal(result.status, "needs-review");
+  assert.equal(await fs.readFile(existing, "utf8"), "target-content");
+  assert.equal(await fs.readFile(source, "utf8"), "source-content");
 });
 
 test("retains partial and ambiguous files instead of guessing", async () => {

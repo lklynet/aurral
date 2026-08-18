@@ -186,3 +186,78 @@ test("canonical album lookup reports partial ownership and the complete track co
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   }
 });
+
+test("canonical album lookup includes owned tracks after the first track page", async () => {
+  const key = `album-lookup-pagination-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({
+    identityKey: `${key}:artist`,
+    name: "Paginated Lookup Artist",
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: `${key}:album`,
+    mbid: `${key}-album`,
+    artistId: artist.id,
+    title: "Paginated Lookup Album",
+  });
+  const trackIds = [];
+  const ownedTrack = upsertLibraryTrack({
+    identityKey: `${key}:owned-track`,
+    mbid: `${key}-owned`,
+    title: "Track 101",
+    artistName: artist.name,
+  });
+  for (let index = 1; index <= 100; index += 1) {
+    const track = upsertLibraryTrack({
+      identityKey: `${key}:track-${index}`,
+      mbid: `${key}-track-${index}`,
+      title: `Track ${String(index).padStart(3, "0")}`,
+      artistName: artist.name,
+    });
+    trackIds.push(track.id);
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: index });
+  }
+  trackIds.push(ownedTrack.id);
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: ownedTrack.id, trackNumber: 101 });
+  const ownedPath = `/tmp/${key}/owned.flac`;
+  upsertLibraryMediaFile({
+    trackId: ownedTrack.id,
+    albumId: album.id,
+    source: "aurral",
+    path: ownedPath,
+  });
+
+  const routes = new Map();
+  registerMisc({
+    get() {},
+    post(path, handler) {
+      routes.set(path, handler);
+    },
+  });
+  let body;
+  const response = {
+    status() {
+      return this;
+    },
+    json(value) {
+      body = value;
+      return this;
+    },
+  };
+
+  try {
+    await routes.get("/albums/lookup/batch")(
+      { body: { mbids: [album.mbid] } },
+      response,
+    );
+    const result = body?.[album.mbid];
+    assert.equal(result?.trackCount, 101);
+    assert.equal(result?.trackFileCount, 1);
+    assert.deepEqual(result?.ownedTrackMbids, [ownedTrack.mbid]);
+  } finally {
+    db.prepare("DELETE FROM library_media_files WHERE path = ?").run(ownedPath);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
+    db.prepare(`DELETE FROM library_tracks WHERE id IN (${trackIds.map(() => "?").join(",")})`).run(...trackIds);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  }
+});

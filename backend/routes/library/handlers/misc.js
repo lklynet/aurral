@@ -167,10 +167,26 @@ export function registerMisc(router) {
             pageSize: 100,
           });
           const albumStats = albumPage.albums[0];
-          const ownedTrackMbids = albumPage.tracks
-            .filter((track) => track.available && track.mbid)
-            .map((track) => String(track.mbid).trim())
-            .filter(Boolean);
+          const ownedTrackMbids = [];
+          let trackPage = albumPage;
+          while (trackPage) {
+            ownedTrackMbids.push(
+              ...trackPage.tracks
+                .filter((track) => track.available && track.mbid)
+                .map((track) => String(track.mbid).trim())
+                .filter(Boolean),
+            );
+            trackPage = trackPage.hasMore
+              ? getCanonicalLibraryPage({
+                  source: "all",
+                  availableOnly: false,
+                  kind: "tracks",
+                  albumId: album.id,
+                  page: trackPage.page + 1,
+                  pageSize: 100,
+                })
+              : null;
+          }
           results[foreignAlbumId] = canonicalAlbumResult(
             albumStats
               ? {

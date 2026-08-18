@@ -1,3 +1,5 @@
+import { createReadStream, constants as fsConstants } from "fs";
+import { createHash } from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import { parseFile } from "music-metadata";
@@ -185,10 +187,27 @@ async function collectLegacyFiles(rootPath, knownIds) {
   return [...new Set(files.map((filePath) => path.resolve(filePath)))].sort();
 }
 
-async function findExistingDestination(targetPath, sourceSize = null) {
+async function fileDigest(filePath) {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(filePath)) hash.update(chunk);
+  return hash.digest("hex");
+}
+
+async function filesMatch(leftPath, rightPath) {
+  const [leftStat, rightStat] = await Promise.all([fs.stat(leftPath), fs.stat(rightPath)]);
+  if (!leftStat.isFile() || !rightStat.isFile() || leftStat.size !== rightStat.size) return false;
+  const [leftDigest, rightDigest] = await Promise.all([
+    fileDigest(leftPath),
+    fileDigest(rightPath),
+  ]);
+  return leftDigest === rightDigest;
+}
+
+async function findExistingDestination(targetPath, sourcePath) {
   const directory = path.dirname(targetPath);
   const baseName = path.basename(targetPath, path.extname(targetPath)).toLowerCase();
   const targetExtension = path.extname(targetPath).toLowerCase();
+  const sourceStat = await fs.stat(sourcePath);
   const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => []);
   const candidates = entries.filter(
     (entry) =>
@@ -203,17 +222,27 @@ async function findExistingDestination(targetPath, sourceSize = null) {
   );
   for (const entry of candidates) {
     const candidatePath = path.join(directory, entry.name);
-    if (sourceSize === null) return candidatePath;
     const stat = await fs.stat(candidatePath).catch(() => null);
-    if (stat?.isFile() && stat.size === sourceSize) return candidatePath;
+    if (
+      stat?.isFile() &&
+      stat.size === sourceStat.size &&
+      (await filesMatch(sourcePath, candidatePath))
+    ) {
+      return candidatePath;
+    }
   }
   return null;
 }
 
 async function copyWithoutRemovingSource(sourcePath, targetPath) {
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
-  const sourceStat = await fs.stat(sourcePath);
-  const existing = await findExistingDestination(targetPath, sourceStat.size);
+  const targetStat = await fs.stat(targetPath).catch(() => null);
+  if (targetStat?.isFile()) {
+    if (await filesMatch(sourcePath, targetPath)) return targetPath;
+    throw new Error("Canonical destination conflicts with source content");
+  }
+  if (targetStat) throw new Error("Canonical destination is not a file");
+  const existing = await findExistingDestination(targetPath, sourcePath);
   if (existing) return existing;
   const temporary = path.join(
     path.dirname(targetPath),
@@ -228,7 +257,10 @@ async function copyWithoutRemovingSource(sourcePath, targetPath) {
     if (sourceStat.size !== temporaryStat.size) {
       throw new Error("Migration copy did not match source size");
     }
-    await fs.rename(temporary, targetPath);
+    await fs.copyFile(temporary, targetPath, fsConstants.COPYFILE_EXCL);
+    if (!(await filesMatch(sourcePath, targetPath))) {
+      throw new Error("Migration copy content did not match source");
+    }
     return targetPath;
   } finally {
     await fs.rm(temporary, { force: true }).catch(() => {});
@@ -471,7 +503,12 @@ export async function migrateAurralDownloadFolder(options = {}) {
       let committedPath = destination;
       const destinationStat = await fs.stat(destination).catch(() => null);
       const destinationMatches =
-        destinationStat?.isFile() && destinationStat.size === stat.size;
+        destinationStat?.isFile() &&
+        destinationStat.size === stat.size &&
+        (await filesMatch(sourcePath, destination));
+      if (destinationStat?.isFile() && !destinationMatches) {
+        throw new Error("Canonical destination conflicts with source content");
+      }
       if (
         !destinationMatches ||
         (previous.status !== "copied" && previous.status !== "indexed" && previous.status !== "referenced")

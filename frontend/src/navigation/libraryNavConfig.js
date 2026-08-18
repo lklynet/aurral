@@ -7,5 +7,5 @@ export const LIBRARY_VIEWS = [
   { id: "album-artists", label: "Album Artists", path: "/library/album-artists" },
   { id: "artists", label: "Artists", path: "/library/artists" },
   { id: "genres", label: "Genres", path: "/library/genres" },
-  { id: "playlists", label: "Playlists", path: "/library/playlists" },
+  { id: "playlists", label: "Playlists", path: "/library/playlists", permission: "accessFlow" },
 ];

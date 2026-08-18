@@ -455,7 +455,9 @@ function ReleasePage() {
         showSuccess(
           result?.alreadyOwned
             ? `${payload.trackName} is already in your library`
-            : `Added ${payload.trackName} to your library`,
+            : result?.queued
+              ? `Queued ${payload.trackName} for your library`
+              : `Added ${payload.trackName} to your library`,
         );
       } catch (err) {
         showError(

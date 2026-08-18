@@ -526,7 +526,11 @@ function getPageLibrary(kind, ids, sourceFilter, availableOnly, albumId = null) 
   return buildLibraryFromRows(rows);
 }
 
-function getAlbumTrackLibrary(albumId, sourceFilter) {
+function getAlbumTrackLibrary(
+  albumId,
+  sourceFilter,
+  { query = "", genre = "", sort = "album", direction = "asc", artistId = null } = {},
+) {
   const conditions = ["album.id = ?"];
   const parameters = [];
   const mediaConditions = [
@@ -538,6 +542,35 @@ function getAlbumTrackLibrary(albumId, sourceFilter) {
     parameters.push(sourceFilter);
   }
   parameters.push(Number(albumId));
+  if (artistId) {
+    conditions.push("artist.id = ?");
+    parameters.push(Number(artistId));
+  }
+  if (query) {
+    const pattern = `%${escapeLike(query)}%`;
+    conditions.push(`(${[
+      "track.title",
+      "track.artist_name",
+      "album.title",
+      "album.album_artist",
+      "artist.name",
+    ].map((field) => `lower(coalesce(${field}, '')) LIKE ? ESCAPE '\\'`).join(" OR ")})`);
+    parameters.push(...["track.title", "track.artist_name", "album.title", "album.album_artist", "artist.name"]
+      .map(() => pattern));
+  }
+  if (genre) {
+    const predicate = genrePredicate(["artist", "album", "track"], genre);
+    conditions.push(predicate.sql);
+    parameters.push(...predicate.parameters);
+  }
+  const orderDirection = direction === "desc" ? "DESC" : "ASC";
+  const orderBy = sort === "album"
+    ? "album_track.disc_number ASC, album_track.track_number ASC"
+    : sort === "newest"
+      ? recentMediaOrder("tracks", sourceFilter, false, direction)
+    : sort === "artist"
+      ? `artist.name COLLATE NOCASE ${orderDirection}, track.title COLLATE NOCASE ${orderDirection}`
+      : `track.title COLLATE NOCASE ${orderDirection}`;
   const rows = db.prepare(
     `${CANONICAL_SELECT}
      FROM library_tracks AS track
@@ -546,20 +579,21 @@ function getAlbumTrackLibrary(albumId, sourceFilter) {
      JOIN library_artists AS artist ON artist.id = album.artist_id
      LEFT JOIN library_media_files AS media ON ${mediaConditions.join(" AND ")}
      WHERE ${conditions.join(" AND ")}
-     ORDER BY album_track.disc_number, album_track.track_number,
-       track.title COLLATE NOCASE, media.path COLLATE NOCASE`,
+     ORDER BY ${orderBy}, album_track.disc_number, album_track.track_number,
+       media.path COLLATE NOCASE`,
   ).all(...parameters);
   return buildLibraryFromRows(rows);
 }
 
-function getAlbumTrackPage(albumId, sourceFilter, page, currentPageSize) {
-  const library = getAlbumTrackLibrary(albumId, sourceFilter);
-  const album = library.albums[0] || null;
+function getAlbumTrackPage(albumId, sourceFilter, page, currentPageSize, options = {}) {
+  const completeLibrary = getAlbumTrackLibrary(albumId, sourceFilter);
+  const library = getAlbumTrackLibrary(albumId, sourceFilter, options);
+  const album = completeLibrary.albums[0] || null;
   const artist = album
-    ? library.artists.find((candidate) => candidate.id === album.artistId) || null
+    ? completeLibrary.artists.find((candidate) => candidate.id === album.artistId) || null
     : null;
   const tracks = library.tracks;
-  const availableTrackCount = tracks.filter((track) => track.available).length;
+  const availableTrackCount = completeLibrary.tracks.filter((track) => track.available).length;
   const pageItems = tracks.slice((page - 1) * currentPageSize, page * currentPageSize);
   const albums = album
     ? [{
@@ -620,7 +654,7 @@ export function getCanonicalLibraryPage({
   pageSize: requestedPageSize = DEFAULT_PAGE_SIZE,
   query = "",
   genre = "",
-  sort = "name",
+  sort = null,
   direction = "asc",
   artistId = null,
   albumId = null,
@@ -633,6 +667,9 @@ export function getCanonicalLibraryPage({
   const normalizedQuery = text(query).toLocaleLowerCase();
   const normalizedGenre = text(genre);
   const normalizedDirection = text(direction).toLocaleLowerCase();
+  const normalizedSort =
+    text(sort).toLocaleLowerCase() ||
+    (normalizedKind === "tracks" && albumId ? "album" : "name");
   const currentPage = pageNumber(page);
   const currentPageSize = pageSize(requestedPageSize);
 
@@ -664,7 +701,13 @@ export function getCanonicalLibraryPage({
   }
 
   if (normalizedKind === "tracks" && albumId && availableOnly !== true) {
-    return getAlbumTrackPage(albumId, sourceFilter, currentPage, currentPageSize);
+    return getAlbumTrackPage(albumId, sourceFilter, currentPage, currentPageSize, {
+      query: normalizedQuery,
+      genre: normalizedGenre,
+      sort: normalizedSort,
+      direction: normalizedDirection,
+      artistId,
+    });
   }
 
   const queryDefinition = buildPageQuery({
@@ -673,7 +716,7 @@ export function getCanonicalLibraryPage({
     availableOnly,
     query: normalizedQuery,
     genre: normalizedGenre,
-    sort: text(sort).toLocaleLowerCase(),
+    sort: normalizedSort,
     direction: normalizedDirection,
     artistId,
     albumId,

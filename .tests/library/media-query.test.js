@@ -285,6 +285,7 @@ test("canonical album track pages include indexed tracks without media", () => {
     mbid: `${key}-missing`,
     title: "Missing Track",
     artistName: "Partial Fixture",
+    metadata: { genres: ["Electronic"] },
   });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: ownedTrack.id, trackNumber: 1 });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: missingTrack.id, trackNumber: 2 });
@@ -309,6 +310,29 @@ test("canonical album track pages include indexed tracks without media", () => {
     assert.deepEqual(page.items[1].files, []);
     assert.equal(page.albums[0].trackCount, 2);
     assert.equal(page.albums[0].availableTrackCount, 1);
+
+    const filtered = getCanonicalLibraryPage({
+      kind: "tracks",
+      albumId: album.id,
+      page: 1,
+      pageSize: 10,
+      query: "missing",
+      genre: "electronic",
+      sort: "name",
+      direction: "desc",
+    });
+    assert.deepEqual(filtered.items.map((track) => track.title), ["Missing Track"]);
+
+    const artistScoped = getCanonicalLibraryPage({
+      kind: "tracks",
+      albumId: album.id,
+      artistId: artist.id,
+      page: 1,
+      pageSize: 10,
+      sort: "name",
+      direction: "desc",
+    });
+    assert.deepEqual(artistScoped.items.map((track) => track.title), ["Owned Track", "Missing Track"]);
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path = ?").run(ownedPath);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);

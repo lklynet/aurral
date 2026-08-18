@@ -326,11 +326,12 @@ export function registerDownloads(router) {
     try {
       const canonical = getCanonicalLibrary({ source: "all", availableOnly: false });
       const alreadyOwned = canonical.tracks.some((candidate) => {
-        const sameMbid = track.trackMbid && candidate.mbid === track.trackMbid;
-        const sameDetails =
+        if (!candidate.files.some((file) => file.available)) return false;
+        if (track.trackMbid) return candidate.mbid === track.trackMbid;
+        return (
           candidate.artistName?.toLocaleLowerCase() === track.artistName.toLocaleLowerCase() &&
-          candidate.title?.toLocaleLowerCase() === track.trackName.toLocaleLowerCase();
-        return (sameMbid || sameDetails) && candidate.files.some((file) => file.available);
+          candidate.title?.toLocaleLowerCase() === track.trackName.toLocaleLowerCase()
+        );
       });
       if (alreadyOwned) return res.json({ success: true, alreadyOwned: true, queued: false });
 
@@ -339,7 +340,7 @@ export function registerDownloads(router) {
       );
       const existingJob = downloadTracker.getAll().find((job) => {
         if (job.playlistType !== "library" || job.status === "failed") return false;
-        if (track.trackMbid && job.trackMbid) return job.trackMbid === track.trackMbid;
+        if (track.trackMbid) return job.trackMbid === track.trackMbid;
         return (
           job.artistName?.toLocaleLowerCase() === track.artistName.toLocaleLowerCase() &&
           job.trackName?.toLocaleLowerCase() === track.trackName.toLocaleLowerCase()

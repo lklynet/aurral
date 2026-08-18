@@ -103,8 +103,11 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
   const activeLibraryView = useMemo(() => {
     if (!isOnLibrary) return null;
     const segment = location.pathname.replace(/^\/library\/?/, "").split("/")[0];
-    return LIBRARY_VIEWS.some((view) => view.id === segment) ? segment : DEFAULT_LIBRARY_VIEW;
-  }, [isOnLibrary, location.pathname]);
+    const visibleViews = LIBRARY_VIEWS.filter(
+      (view) => !view.permission || user?.role === "admin" || !!user?.permissions?.[view.permission],
+    );
+    return visibleViews.some((view) => view.id === segment) ? segment : DEFAULT_LIBRARY_VIEW;
+  }, [isOnLibrary, location.pathname, user]);
 
   const activeActivityView = useMemo(() => {
     if (!isOnActivity) return null;
@@ -162,6 +165,9 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
   );
 
   const navItems = useMemo(() => {
+    const libraryViews = LIBRARY_VIEWS.filter(
+      (view) => !view.permission || user?.role === "admin" || !!user?.permissions?.[view.permission],
+    );
     const items = [
       {
         path: "/discover",
@@ -175,7 +181,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
         label: "Library",
         icon: Library,
         section: "library",
-        subnav: LIBRARY_VIEWS,
+        subnav: libraryViews,
       },
       ...(ticketmasterConfigured
         ? [
