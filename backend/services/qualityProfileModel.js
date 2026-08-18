@@ -174,6 +174,8 @@ export function classifyAdvertisedQuality(fileName, bitrate = null) {
   return null;
 }
 
+const NEVER_TIERED_ADVERTISED_EXTENSION = /\.(?:opus|ogg|oga|wma|wav|aiff?|ape|mpc|ac3|dts|mka)\s*$/i;
+
 export function orderAdvertisedQualityCandidates(
   entries,
   { profile, currentTier = null, upgrade = false, readName, readBitrate } = {},
@@ -181,14 +183,21 @@ export function orderAdvertisedQualityCandidates(
   const normalized = normalizeQualityProfile(profile);
   const enabled = new Set(normalized.enabled);
   return (Array.isArray(entries) ? entries : [])
-    .map((entry, index) => ({
-      entry,
-      index,
-      tier: classifyAdvertisedQuality(readName?.(entry), readBitrate?.(entry)),
-    }))
-    .filter(({ tier }) =>
-      !tier || enabled.has(tier) && (!upgrade || isQualityUpgrade({ tier }, currentTier, normalized)),
-    )
+    .map((entry, index) => {
+      const name = readName?.(entry);
+      return {
+        entry,
+        index,
+        name,
+        tier: classifyAdvertisedQuality(name, readBitrate?.(entry)),
+      };
+    })
+    .filter(({ tier, name }) => {
+      if (!tier) {
+        return !NEVER_TIERED_ADVERTISED_EXTENSION.test(String(name || "").trim());
+      }
+      return enabled.has(tier) && (!upgrade || isQualityUpgrade({ tier }, currentTier, normalized));
+    })
     .sort((left, right) => {
       if (!left.tier && !right.tier) return left.index - right.index;
       if (!left.tier) return 1;

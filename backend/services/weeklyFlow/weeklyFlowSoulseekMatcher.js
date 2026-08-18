@@ -179,11 +179,42 @@ function joinSearchParts(...parts) {
     .join(" ");
 }
 
+export function stripVersionSuffix(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const stripped = text
+    .replace(
+      /\s+(?:-|–|—)\s+[^-–—]*\b(?:mix|edit|version|remaster(?:ed)?|radio|extended|instrumental|acoustic|live|demo|mono|stereo)\b[^-–—]*$/i,
+      "",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  return stripped || text;
+}
+
+function stripTrailingWordPeriods(value) {
+  const text = String(value || "").trim();
+  const cleaned = text
+    .split(/\s+/)
+    .map((word) => word.replace(/\.+$/, ""))
+    .filter(Boolean)
+    .join(" ");
+  return cleaned || text;
+}
+
 function buildPrimaryTrackTierQueries(ctx) {
   const queries = [];
   const primaryTrack = ctx.trackVariants[0] || ctx.trackName;
   if (!ctx.artistName || !primaryTrack) return queries;
   queries.push(joinSearchParts(ctx.artistName, primaryTrack));
+  const strippedTrack = stripVersionSuffix(primaryTrack);
+  if (strippedTrack.toLowerCase() !== primaryTrack.toLowerCase()) {
+    queries.push(joinSearchParts(ctx.artistName, strippedTrack));
+  }
+  const cleanedArtist = stripTrailingWordPeriods(ctx.artistName);
+  if (cleanedArtist.toLowerCase() !== ctx.artistName.toLowerCase()) {
+    queries.push(joinSearchParts(cleanedArtist, strippedTrack));
+  }
   if (ctx.releaseYear) {
     queries.push(joinSearchParts(ctx.artistName, primaryTrack, ctx.releaseYear));
   }
@@ -243,11 +274,14 @@ export function buildFlowSearchTiers(context) {
   if (albumTrack.length > 0) {
     tiers.push({ tier: 2, name: "album_track", queries: albumTrack });
   }
-  if (tiers.length === 0) {
-    const primaryTrack = buildPrimaryTrackTierQueries(ctx);
-    if (primaryTrack.length > 0) {
-      tiers.push({ tier: 0, name: "primary_track", queries: primaryTrack });
-    }
+  const priorQueries = new Set(
+    tiers.flatMap((tier) => tier.queries.map((query) => query.toLowerCase())),
+  );
+  const primaryTrack = buildPrimaryTrackTierQueries(ctx).filter(
+    (query) => !priorQueries.has(query.toLowerCase()),
+  );
+  if (primaryTrack.length > 0) {
+    tiers.push({ tier: tiers.length === 0 ? 0 : 3, name: "primary_track", queries: primaryTrack });
   }
   return tiers;
 }
