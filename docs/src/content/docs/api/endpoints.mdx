@@ -47,8 +47,9 @@ credential.
 | WebSocket | `/ws` | Status, download, discovery, flow, and playlist updates |
 
 The WebSocket accepts `subscribe`, `unsubscribe`, and `ping` JSON messages.
-Subscriptions use the `status`, `downloads`, `discovery`, `weekly-flow`, and
-`playlists` channels.
+Subscriptions use the `status`, `downloads`, `discovery`, `library`,
+`weekly-flow`, and `playlists` channels. The `library` channel sends a
+`library_scan_completed` message after Aurral refreshes its canonical library.
 
 For local password authentication, connect with the session token as
 `/ws?token=SESSION_TOKEN`. Aurral also accepts reverse-proxy identity and LAN
@@ -72,6 +73,8 @@ instance API key for WebSocket connections.
 | `PUT` | `/api/library/albums/:id` | Update an album |
 | `DELETE` | `/api/library/albums/:id` | Delete an album |
 | `GET` | `/api/library/tracks` | List album tracks |
+| `POST` | `/api/library/refresh` | Queue a canonical library scan |
+| `GET` | `/api/library/refresh/:jobId` | Read canonical library scan status |
 | `GET` | `/api/library/playback-queue` | Build the playback queue |
 | `GET` | `/api/library/stream/:songId` | Stream a library song |
 | `GET` | `/api/library/file-stream/:albumId/:trackId` | Stream an album track file |

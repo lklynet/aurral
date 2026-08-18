@@ -76,23 +76,38 @@ async function processSystemTask(payload = {}) {
     }
     case "playlist-startup-migration": {
       const [
-        { migrateLegacyPaths, resolvePlaylistRoot },
+        { migrateAurralDownloadFolder },
         trackerModule,
         { playlistManager },
         { repairYtdlpMetadata },
       ] = await Promise.all([
-        import("./playlistPaths.js"),
+        import("./aurralDownloadFolderMigration.js"),
         import("./weeklyFlow/weeklyFlowDownloadTracker.js"),
         import("./weeklyFlow/weeklyFlowPlaylistManager.js"),
         import("./playlistDownloadUtils.js"),
       ]);
-      const result = await migrateLegacyPaths(
-        resolvePlaylistRoot(),
-        trackerModule.downloadTracker,
-      );
-      if (result.migrated > 0) {
+      let result = {
+        migrated: 0,
+        flowMigrated: 0,
+        removed: 0,
+        retained: 0,
+        failed: 0,
+      };
+      try {
+        result = await migrateAurralDownloadFolder();
+      } catch (error) {
+        console.error(`[Playlists] Aurral download folder migration failed: ${error.message}`);
+      }
+      const flowMigrated = result.flowMigrated || 0;
+      const permanentMigrated = (result.migrated || 0) - flowMigrated;
+      if (result.migrated > 0 || result.removed > 0) {
         console.log(
-          `[Playlists] Migrated ${result.migrated} legacy track paths to ${resolvePlaylistRoot()}`,
+          `[Playlists] Migrated ${permanentMigrated} permanent track(s) and ${flowMigrated} flow track(s), and removed ${result.removed} unkept flow file(s)`,
+        );
+      }
+      if (result.retained > 0 || result.failed > 0) {
+        console.warn(
+          `[Playlists] Retained ${result.retained} item(s) and failed ${result.failed} migration item(s) for review`,
         );
       }
       const metadataRepair = await repairYtdlpMetadata(

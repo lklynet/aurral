@@ -5,6 +5,7 @@ import {
   buildIdentityKey,
   linkLibraryAlbumTrack,
   markUnseenFilesUnavailable,
+  removeLibraryAlbumTracksWithoutMedia,
   upsertLibraryAlbum,
   upsertLibraryArtist,
   upsertLibraryMediaFile,
@@ -33,12 +34,14 @@ function buildFileIndex(files) {
 }
 
 function resolveTrackFile(track, fileIndex, album) {
+  if (track?.albumId != null && String(track.albumId) !== String(album?.id)) return null;
   const file =
     fileIndex.get(`file:${track?.trackFileId}`) ||
     fileIndex.get(`track:${track?.id}`) ||
     track?.trackFile ||
     track?.file ||
     null;
+  if (file?.albumId != null && String(file.albumId) !== String(album?.id)) return null;
   const externalPath =
     track?.path ||
     file?.path ||
@@ -92,12 +95,11 @@ export async function indexLidarrLibrary({ client } = {}) {
     };
   });
   const tracksByAlbumId = new Map();
-  const allFiles = [];
+  const filesByAlbumId = new Map();
   for (const albumData of albumTrackData) {
     if (albumData.albumId) tracksByAlbumId.set(albumData.albumId, albumData.tracks);
-    allFiles.push(...albumData.files);
+    if (albumData.albumId) filesByAlbumId.set(albumData.albumId, buildFileIndex(albumData.files));
   }
-  const fileIndex = buildFileIndex(allFiles);
   const rootPath = (Array.isArray(rootFolders) ? rootFolders : [])
     .map((folder) => text(folder?.path))
     .filter(Boolean)
@@ -139,6 +141,7 @@ export async function indexLidarrLibrary({ client } = {}) {
         releaseDate: album.releaseDate || null,
         metadata: album,
       });
+      let albumFilesIndexed = 0;
 
       for (const track of tracksByAlbumId.get(String(album.id)) || []) {
         const trackProviderId = text(track.foreignRecordingId || track.foreignTrackId);
@@ -161,7 +164,11 @@ export async function indexLidarrLibrary({ client } = {}) {
           trackNumber,
         });
 
-        const resolvedFile = resolveTrackFile(track, fileIndex, album);
+        const resolvedFile = resolveTrackFile(
+          track,
+          filesByAlbumId.get(String(album.id)) || new Map(),
+          album,
+        );
         if (!resolvedFile) continue;
         result.filesSeen += 1;
         const stat = await readFileStats(resolvedFile.localPath);
@@ -171,6 +178,7 @@ export async function indexLidarrLibrary({ client } = {}) {
         }
         upsertLibraryMediaFile({
           trackId: trackRecord.id,
+          albumId: albumRecord.id,
           source: "lidarr",
           path: resolvedFile.localPath,
           format: path.extname(resolvedFile.localPath).slice(1).toLowerCase(),
@@ -182,6 +190,13 @@ export async function indexLidarrLibrary({ client } = {}) {
           scanId,
         });
         result.filesIndexed += 1;
+        albumFilesIndexed += 1;
+      }
+      if (
+        albumFilesIndexed === 0 &&
+        Number(album.statistics?.sizeOnDisk || 0) === 0
+      ) {
+        removeLibraryAlbumTracksWithoutMedia(albumRecord.id, "lidarr");
       }
     }
     if (result.filesFailed === 0 && result.filesIndexed > 0) {

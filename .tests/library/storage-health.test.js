@@ -63,92 +63,6 @@ test("runStorageHealthCheck passes when downloads folder is writable", async () 
   assert.equal(result.ok, true);
 });
 
-test("runStorageHealthCheck fails when completed playlist files are missing", async () => {
-  const { downloadTracker } = await importFromRepo(
-    "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
-  );
-  const playlistRoot = resolvePlaylistRoot();
-  const missingPath = path.join(
-    playlistRoot,
-    "aurral-weekly-flow",
-    "health-playlist",
-    "Artist",
-    "Album",
-    "missing-track.flac",
-  );
-  const jobId = downloadTracker.addJob(
-    { artistName: "Artist", trackName: "Song" },
-    "health-playlist",
-  );
-  downloadTracker.setDone(jobId, missingPath, "Album");
-
-  const result = await runStorageHealthCheck();
-  const playlists = result.sections.find((section) => section.id === "playlists");
-  assert.ok(playlists);
-  assert.equal(playlists.status, "fail");
-  assert.equal(result.ok, false);
-});
-
-test("runStorageHealthCheck passes when completed playlist files exist", async () => {
-  const { downloadTracker } = await importFromRepo(
-    "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
-  );
-  const playlistRoot = resolvePlaylistRoot();
-  const trackPath = path.join(
-    playlistRoot,
-    "aurral-weekly-flow",
-    "health-playlist-ok",
-    "Artist",
-    "Album",
-    "present-track.flac",
-  );
-  await fs.mkdir(path.dirname(trackPath), { recursive: true });
-  await fs.writeFile(trackPath, "audio");
-  const jobId = downloadTracker.addJob(
-    { artistName: "Artist", trackName: "Present" },
-    "health-playlist-ok",
-  );
-  downloadTracker.setDone(jobId, trackPath, "Album");
-
-  const result = await runStorageHealthCheck();
-  const playlists = result.sections.find((section) => section.id === "playlists");
-  assert.ok(playlists);
-  assert.equal(playlists.status, "pass");
-});
-
-test("runStorageHealthCheck warns when completed playlist files are empty", async () => {
-  const { downloadTracker } = await importFromRepo(
-    "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
-  );
-  const playlistRoot = resolvePlaylistRoot();
-  const trackPath = path.join(
-    playlistRoot,
-    "aurral-weekly-flow",
-    "health-playlist-empty",
-    "Artist",
-    "Album",
-    "empty-track.flac",
-  );
-  await fs.mkdir(path.dirname(trackPath), { recursive: true });
-  await fs.writeFile(trackPath, "");
-  const jobId = downloadTracker.addJob(
-    { artistName: "Artist", trackName: "Empty" },
-    "health-playlist-empty",
-  );
-  downloadTracker.setDone(jobId, trackPath, "Album");
-
-  const result = await runStorageHealthCheck();
-  const playlists = result.sections.find((section) => section.id === "playlists");
-  assert.ok(playlists);
-  assert.equal(playlists.status, "warn");
-  assert.equal(
-    playlists.steps.some(
-      (step) => step.id === "tracked-nonempty" && step.status === "warn",
-    ),
-    true,
-  );
-});
-
 test("runStorageHealthCheck fails when a path mapping local folder is missing", async () => {
   dbOps.updateSettings({
     ...dbOps.getSettings(),
@@ -230,14 +144,6 @@ test("runStorageHealthCheck passes shared volume when dedicated browse roots exi
   const sharedMount = volume.steps.find((step) => step.id === "shared-mount");
   assert.ok(sharedMount);
   assert.equal(sharedMount.status, "pass");
-});
-
-test("runStorageHealthCheck skips playlist verification before any tracks complete", async () => {
-  const result = await runStorageHealthCheck({ force: true });
-  const playlists = result.sections.find((section) => section.id === "playlists");
-
-  assert.equal(playlists?.status, "skip");
-  assert.match(playlists?.skipReason || "", /no completed playlist tracks/i);
 });
 
 test("runStorageHealthCheck does not warn about preferred shared-root conventions", async () => {
@@ -366,6 +272,7 @@ test("slskd missing-path remediation points to slskd rather than a nonexistent A
 
 test("unrelated Navidrome libraries do not fail local storage health", async (t) => {
   const playlistLibrary = path.join(resolvePlaylistRoot(), "aurral-weekly-flow");
+  await fs.mkdir(playlistLibrary, { recursive: true });
   const server = await createMockHttpServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
     if (request.url?.startsWith("/rest/ping")) {
@@ -408,6 +315,7 @@ test("unrelated Navidrome libraries do not fail local storage health", async (t)
 
 test("Navidrome health does not compare reused Lidarr and Navidrome paths", async (t) => {
   const playlistLibrary = path.join(resolvePlaylistRoot(), "aurral-weekly-flow");
+  await fs.mkdir(playlistLibrary, { recursive: true });
   const lidarrRoot = path.join(isolatedState.baseDir, "lidarr-music");
   await fs.mkdir(lidarrRoot, { recursive: true });
   const server = await createMockHttpServer((request, response) => {

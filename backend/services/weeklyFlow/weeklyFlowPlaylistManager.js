@@ -10,6 +10,7 @@ import {
   writeGeneratedPlaylistArtwork,
 } from "../playlistArtworkGenerator.js";
 import {
+  AURRAL_FLOWS_DIR,
   PLAYLIST_LIBRARY_DIR,
   resolvePlaylistRoot,
 } from "../playlistPaths.js";
@@ -294,6 +295,10 @@ export class WeeklyFlowPlaylistManager {
           weeklyFlowRoot: this.weeklyFlowRoot,
         });
         await fs.rm(playlistDir, { recursive: true, force: true });
+        await fs.rm(path.join(this.weeklyFlowRoot, AURRAL_FLOWS_DIR, playlistType), {
+          recursive: true,
+          force: true,
+        });
         console.log(`[WeeklyFlowPlaylistManager] Deleted files for ${playlistType}`);
       } catch (error) {
         console.warn(

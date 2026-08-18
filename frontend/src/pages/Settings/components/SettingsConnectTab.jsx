@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { testGotifyConnection } from "../../../utils/api/endpoints/settings.js";
 
 import { Plus, Trash2, GripVertical } from "lucide-react";
@@ -30,6 +30,7 @@ export function SettingsConnectTab({
   showError,
 }) {
   const [activeModal, setActiveModal] = useState(null);
+  const [testStatus, setTestStatus] = useState(null);
   const gotify = settings.integrations?.gotify || {};
   const lastfm = settings.integrations?.lastfm || {};
   const ticketmaster = settings.integrations?.ticketmaster || {};
@@ -61,7 +62,8 @@ export function SettingsConnectTab({
     });
   };
 
-  const updateGotify = (patch) =>
+  const updateGotify = (patch) => {
+    setTestStatus(null);
     updateSettings({
       ...settings,
       integrations: {
@@ -69,6 +71,7 @@ export function SettingsConnectTab({
         gotify: { ...gotify, ...patch },
       },
     });
+  };
 
   const updateLastfm = (patch) =>
     updateSettings({
@@ -97,18 +100,26 @@ export function SettingsConnectTab({
   const [dragIdx, setDragIdx] = useState(null);
   const allowDragRef = useRef(null);
 
+  useEffect(() => {
+    setTestStatus(null);
+  }, [activeModal]);
+
   const handleTestGotify = async () => {
+    setTestStatus(null);
     const url = gotify.url;
     const token = gotify.token;
     if (!url || !token) {
-      showError("Enter Gotify URL and token first");
+      setTestStatus({ tone: "error", message: "Enter the Gotify URL and token." });
+      showError("Enter the Gotify URL and token first");
       return;
     }
     setTestingGotify(true);
     try {
       await testGotifyConnection(url, token);
+      setTestStatus({ tone: "success", message: "Test notification sent." });
       showSuccess("Test notification sent.");
     } catch (err) {
+      setTestStatus({ tone: "error", message: "Test failed. Check the URL and token, then retry." });
       const msg = err.response?.data?.message || err.response?.data?.error || err.message;
       showError(`Gotify test failed: ${msg}`);
     } finally {
@@ -177,9 +188,6 @@ export function SettingsConnectTab({
     <div className="arr-page">
       <form onSubmit={handleSave} className="arr-form" autoComplete="off">
         <SettingsArrFieldSet legend="Connections">
-          <div className="arr-info">
-            External services Aurral integrates with for notifications and discovery data.
-          </div>
           <SettingsArrCardGrid>
             <IntegrationCard
               title="Gotify"
@@ -380,7 +388,7 @@ export function SettingsConnectTab({
           ))}
         </SettingsArrFieldSet>
 
-        <SettingsArrFieldSet legend="Notification Events">
+        <SettingsArrFieldSet legend="Notification events">
           <SettingsArrFormGroup label="Discover updated">
             <PillToggle
               checked={webhookEvents.notifyDiscoveryUpdated || false}
@@ -428,10 +436,7 @@ export function SettingsConnectTab({
         </SettingsArrFieldSet>
 
         <SettingsArrFieldSet legend="Inbox">
-          <div className="arr-info">
-            Choose which library-based updates appear in the inbox dropdown.
-          </div>
-          <SettingsArrFormGroup label="Enable Inbox" labelFor="inbox-enabled">
+          <SettingsArrFormGroup label="Enable inbox" labelFor="inbox-enabled">
             <PillToggle
               id="inbox-enabled"
               checked={inbox.enabled !== false}
@@ -457,7 +462,7 @@ export function SettingsConnectTab({
               onChange={(e) => updateInbox({ shows: e.target.checked })}
             />
           </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Library Artist news" labelFor="inbox-news">
+          <SettingsArrFormGroup label="Library artist news" labelFor="inbox-news">
             <PillToggle
               id="inbox-news"
               checked={inbox.news !== false}
@@ -465,7 +470,7 @@ export function SettingsConnectTab({
               onChange={(e) => updateInbox({ news: e.target.checked })}
             />
           </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Recommended Artist news" labelFor="inbox-recommended-news">
+          <SettingsArrFormGroup label="Recommended artist news" labelFor="inbox-recommended-news">
             <PillToggle
               id="inbox-recommended-news"
               checked={inbox.recommendedNews === true}
@@ -490,6 +495,7 @@ export function SettingsConnectTab({
         <SettingsIntegrationModal
           title="Gotify"
           onClose={() => setActiveModal(null)}
+          testStatus={testStatus}
           footerActions={
             <button
               type="button"

@@ -6,12 +6,14 @@ import {
   matchesActivityView,
   normalizeActivityView,
   buildActivityPath,
+  buildWantedPath,
 } from "../../frontend/src/navigation/activityNavConfig.js";
 
 test("normalizeActivityView falls back to queue", () => {
   assert.equal(normalizeActivityView(undefined), "queue");
   assert.equal(normalizeActivityView("bogus"), "queue");
-  assert.equal(normalizeActivityView("review"), "review");
+  assert.equal(normalizeActivityView("review"), "queue");
+  assert.equal(normalizeActivityView("missing"), "missing");
 });
 
 test("buildActivityPath normalizes invalid views", () => {
@@ -19,15 +21,19 @@ test("buildActivityPath normalizes invalid views", () => {
   assert.equal(buildActivityPath("nope"), "/activity/queue");
 });
 
-test("blocked items with inQueue only appear in review", () => {
+test("wanted links share one page route", () => {
+  assert.equal(buildWantedPath("missing"), "/activity/missing");
+  assert.equal(buildWantedPath("cutoff"), "/activity/missing?tab=cutoff");
+});
+
+test("blocked items with inQueue appear in the combined queue", () => {
   const blocked = {
     status: "blocked",
     inQueue: true,
     kind: "track_download",
   };
-  assert.equal(isActivityQueueItem(blocked), false);
-  assert.equal(matchesActivityView(blocked, "queue"), false);
-  assert.equal(matchesActivityView(blocked, "review"), true);
+  assert.equal(isActivityQueueItem(blocked), true);
+  assert.equal(matchesActivityView(blocked, "queue"), true);
   assert.equal(matchesActivityView(blocked, "history"), false);
 });
 
@@ -36,6 +42,11 @@ test("processing items appear in queue not history", () => {
   assert.equal(matchesActivityView(active, "queue"), true);
   assert.equal(matchesActivityView(active, "review"), false);
   assert.equal(matchesActivityView(active, "history"), false);
+});
+
+test("missing is a separate operation view", () => {
+  const failed = { status: "failed", inQueue: false };
+  assert.equal(matchesActivityView(failed, "missing"), false);
 });
 
 test("completed items appear in history", () => {

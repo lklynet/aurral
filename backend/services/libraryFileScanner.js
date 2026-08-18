@@ -35,6 +35,11 @@ const EXCLUDED_DIRECTORIES = new Set([
   "aurral-weekly-flow",
 ]);
 
+export function isLibraryScanExcludedDirectory(name) {
+  const value = String(name || "");
+  return EXCLUDED_DIRECTORIES.has(value) || value.startsWith(".");
+}
+
 const text = (value) => String(value || "").trim();
 
 const first = (value) => (Array.isArray(value) ? value[0] : value);
@@ -126,7 +131,7 @@ async function* walkAudioFiles(rootPath) {
   const entries = await fs.readdir(rootPath, { withFileTypes: true });
   for (const entry of entries) {
     if (entry.isDirectory()) {
-      if (EXCLUDED_DIRECTORIES.has(entry.name) || entry.name.startsWith(".")) continue;
+      if (isLibraryScanExcludedDirectory(entry.name)) continue;
       yield* walkAudioFiles(path.join(rootPath, entry.name));
       continue;
     }
@@ -139,14 +144,29 @@ async function* walkAudioFiles(rootPath) {
 export async function scanMusicRoot({
   rootPath,
   source = "aurral",
+  filePaths = null,
   metadataReader = parseFile,
 } = {}) {
   const resolvedRoot = path.resolve(String(rootPath || ""));
   await fs.mkdir(resolvedRoot, { recursive: true });
+  const requestedFiles = Array.isArray(filePaths)
+    ? [...new Set(filePaths.map((filePath) => path.resolve(String(filePath || ""))))].filter(
+        (filePath) => {
+          const relative = path.relative(resolvedRoot, filePath);
+          return (
+            relative &&
+            !relative.startsWith("..") &&
+            !path.isAbsolute(relative) &&
+            AUDIO_EXTENSIONS.has(path.extname(filePath).toLowerCase())
+          );
+        },
+      )
+    : null;
   const result = { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   const scanResult = await withLibraryScan(source, resolvedRoot, (scanId) => {
     const run = async () => {
-      for await (const filePath of walkAudioFiles(resolvedRoot)) {
+      const files = requestedFiles || walkAudioFiles(resolvedRoot);
+      for await (const filePath of files) {
         result.filesSeen += 1;
         try {
           const [metadata, stat] = await Promise.all([
@@ -185,6 +205,7 @@ export async function scanMusicRoot({
           });
           upsertLibraryMediaFile({
             trackId: track.id,
+            albumId: album.id,
             source,
             path: filePath,
             format: path.extname(filePath).slice(1).toLowerCase(),
@@ -199,7 +220,7 @@ export async function scanMusicRoot({
           result.filesFailed += 1;
         }
       }
-      if (result.filesFailed === 0) markUnseenFilesUnavailable(scanId, source);
+      if (!requestedFiles && result.filesFailed === 0) markUnseenFilesUnavailable(scanId, source);
       return result;
     };
     return run();

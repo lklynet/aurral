@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { User, Heart, LogOut, ExternalLink } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import TooltipButton from "./TooltipButton";
 
 function GitHubIcon({ className = "" }) {
   return (
@@ -40,19 +41,17 @@ function UserProfileMenu() {
 
   return (
     <div ref={menuRef} className="app-profile-menu">
-      <button
-        type="button"
+      <TooltipButton
+        label="User menu"
         onClick={() => setMenuOpen((open) => !open)}
         className={`app-header-link app-profile-menu__trigger${menuOpen ? " is-open" : ""}`}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        aria-label="User menu"
-        title="User menu"
       >
         <span className="app-profile-menu__icon" aria-hidden="true">
           <User />
         </span>
-      </button>
+      </TooltipButton>
 
       {menuOpen && (
         <div className="app-profile-menu__dropdown" role="menu">

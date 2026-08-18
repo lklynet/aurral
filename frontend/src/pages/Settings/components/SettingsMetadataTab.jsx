@@ -13,7 +13,7 @@ export function SettingsMetadataTab({
     <form onSubmit={handleSaveSettings} className="settings-page__form" autoComplete="off">
       <div className="settings-page__section">
         <div className="settings-page__section-header">
-          <h3 className="settings-page__section-title">Metadata Server</h3>
+          <h3 className="settings-page__section-title">Metadata server</h3>
           {health?.metadataConfigured && (
             <span className="settings-page__status">
               <CheckCircle className="settings-page__status-icon" />

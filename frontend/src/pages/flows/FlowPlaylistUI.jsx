@@ -60,6 +60,9 @@ export function FlowLibraryCreateMenu({
   creatingPlaylist = false,
   creatingFlow = false,
   canCreateFlow = true,
+  showPlaylists = true,
+  showFlows = true,
+  showImport = true,
   compact = false,
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -73,7 +76,7 @@ export function FlowLibraryCreateMenu({
         type="button"
         className="flow-page__library-create-btn"
         onClick={() => setIsOpen((prev) => !prev)}
-        aria-label="Create playlist or flow"
+        aria-label={showFlows ? "Create playlist or flow" : "Create playlist"}
         aria-expanded={isOpen}
         aria-haspopup="menu"
       >
@@ -88,9 +91,12 @@ export function FlowLibraryCreateMenu({
             aria-label="Close menu"
           />
           <div className="flow-page__library-create-menu" role="menu" aria-label="Create and import">
-            <p className="flow-page__library-create-menu-label">Create</p>
-            <div className="flow-page__library-create-primary">
-              <button
+            {showPlaylists || showFlows ? (
+              <p className="flow-page__library-create-menu-label">Create</p>
+            ) : null}
+            {showPlaylists || (showFlows && canCreateFlow) ? (
+              <div className="flow-page__library-create-primary">
+              {showPlaylists ? <button
                 type="button"
                 role="menuitem"
                 className="flow-page__library-create-action flow-page__library-create-action--playlist"
@@ -111,8 +117,8 @@ export function FlowLibraryCreateMenu({
                     Curate and play your own track list
                   </span>
                 </span>
-              </button>
-              {canCreateFlow ? (
+              </button> : null}
+              {showFlows && canCreateFlow ? (
                 <button
                   type="button"
                   role="menuitem"
@@ -139,11 +145,12 @@ export function FlowLibraryCreateMenu({
                   </span>
                 </button>
               ) : null}
-            </div>
-            <p className="flow-page__library-create-menu-label flow-page__library-create-menu-label--import">
+              </div>
+            ) : null}
+            {showImport ? <p className="flow-page__library-create-menu-label flow-page__library-create-menu-label--import">
               Import
-            </p>
-            <div className="flow-page__library-create-primary">
+            </p> : null}
+            {showImport ? <div className="flow-page__library-create-primary">
               <button
                 type="button"
                 role="menuitem"
@@ -166,7 +173,7 @@ export function FlowLibraryCreateMenu({
                   </span>
                 </span>
               </button>
-            </div>
+            </div> : null}
           </div>
         </>
       ) : null}
@@ -191,7 +198,10 @@ export function PlaylistLibraryItem({
     entry.kind === "flow"
       ? getFlowDisplayTrackCount(entry, stats)
       : getSharedPlaylistTrackCount(entry, stats);
-  const trackLabel = formatTrackCountLabel(trackCount, stats);
+  const trackLabel =
+    entry.kind === "flow"
+      ? formatTrackCountLabel(trackCount, stats)
+      : `${trackCount} ${trackCount === 1 ? "track" : "tracks"}`;
   const baseTypeLabel =
     entry.kind === "flow" ? (entry.enabled === true ? "Flow" : "Flow draft") : "Playlist";
   const showOwner =

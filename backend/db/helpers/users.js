@@ -36,6 +36,7 @@ const DEFAULT_PERMISSIONS = {
   changeMonitoring: false,
   deleteArtist: false,
   deleteAlbum: false,
+  deleteTrack: false,
 };
 
 export const userOps = {

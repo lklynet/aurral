@@ -5,7 +5,7 @@ import {
 } from "../../utils/api/endpoints/playlists.js";
 import {
   getDownloadStatus,
-  getLibraryTracks,
+  downloadTrackToLibrary,
   lookupAlbumsInLibraryBatch,
   requestAlbumFromSearch,
 } from "../../utils/api/endpoints/library.js";
@@ -17,9 +17,8 @@ import {
 import { useSharedPlaylists } from "../../hooks/useSharedPlaylists";
 import { useWebSocketChannel } from "../../hooks/useWebSocket";
 
-import { Link, useLocation, useParams } from "react-router-dom";
-import { CornerUpLeft, ExternalLink, Music } from "lucide-react";
-import SearchLibraryCheck from "../../components/SearchLibraryCheck";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { CornerUpLeft, ExternalLink, Library, Music } from "lucide-react";
 import AddActionButton from "../../components/AddActionButton";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
@@ -88,6 +87,7 @@ const ACTIVE_DOWNLOAD_STATUSES = new Set([
 function ReleasePage() {
   const { mbid: artistMbid, releaseMbid } = useParams();
   const { state: locationState } = useLocation();
+  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const { hasPermission } = useAuth();
   const canAddAlbum = hasPermission("addAlbum");
@@ -121,6 +121,7 @@ function ReleasePage() {
     loadSharedPlaylists,
   } = useSharedPlaylists();
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
+  const [libraryTrackSavingKey, setLibraryTrackSavingKey] = useState("");
   const downloadStatusPollInFlightRef = useRef(false);
 
   const [heroColor, setHeroColor] = useState(null);
@@ -189,6 +190,9 @@ function ReleasePage() {
   ]
     .filter(Boolean)
     .join(" · ");
+  const libraryPath = libraryInfo?.canonicalAlbumId
+    ? `/library/album/${encodeURIComponent(libraryInfo.canonicalAlbumId)}`
+    : `/library/albums?query=${encodeURIComponent(releaseTitle)}`;
 
   useEffect(() => {
     setCoverUrl(release._coverUrl || "");
@@ -328,12 +332,9 @@ function ReleasePage() {
           releaseType: release["primary-type"] || "",
           releaseDate: release["first-release-date"] || "",
           deezerAlbumId: release._deezerAlbumId || "",
-          readPath: "canonical",
         };
 
-        const nextTracks = libraryInfo?.libraryAlbumId
-          ? await getLibraryTracks(libraryInfo.libraryAlbumId, releaseMbid, context)
-          : await getReleaseGroupTracks(releaseMbid, context);
+        const nextTracks = await getReleaseGroupTracks(releaseMbid, context);
 
         if (!cancelled) {
           setTracks(Array.isArray(nextTracks) ? nextTracks : []);
@@ -359,8 +360,6 @@ function ReleasePage() {
     artistName,
     release,
     releaseMbid,
-    libraryInfo?.libraryAlbumId,
-    isComplete,
     showError,
   ]);
 
@@ -444,6 +443,34 @@ function ReleasePage() {
       return saveTrackToPlaylist(payload, target, savingKey);
     },
     [buildReleaseTrackPayload, saveTrackToPlaylist],
+  );
+
+  const handleReleaseTrackAddToLibrary = useCallback(
+    async (track) => {
+      const payload = buildReleaseTrackPayload(track);
+      const savingKey = String(track?.id ?? track?.mbid ?? "");
+      setLibraryTrackSavingKey(savingKey);
+      try {
+        const result = await downloadTrackToLibrary(payload);
+        showSuccess(
+          result?.alreadyOwned
+            ? `${payload.trackName} is already in your library`
+            : result?.queued
+              ? `Queued ${payload.trackName} for your library`
+              : `Added ${payload.trackName} to your library`,
+        );
+      } catch (err) {
+        showError(
+          err.response?.data?.message ||
+            err.response?.data?.error ||
+            err.message ||
+            "Failed to add track to library",
+        );
+      } finally {
+        setLibraryTrackSavingKey("");
+      }
+    },
+    [buildReleaseTrackPayload, showError, showSuccess],
   );
 
   const handleAlbumAction = useCallback(async () => {
@@ -579,11 +606,15 @@ function ReleasePage() {
             <p className="artist-card-meta release-page__meta">{releaseMeta}</p>
           ) : null}
           <div className="release-page__actions">
-            {isComplete ? (
-              <span className="release-page__library-status" title="In library">
-                <SearchLibraryCheck />
-                <span>In library</span>
-              </span>
+            {libraryInfo?.canonicalInLibrary ? (
+              <button
+                type="button"
+                className="btn btn-surface btn-sm release-page__external-link"
+                onClick={() => navigate(libraryPath)}
+              >
+                <Library className="artist-icon-sm" />
+                Open in library
+              </button>
             ) : libraryDisplay.label ? (
               <span
                 className={`release-page__library-status release-page__library-status--${libraryDisplay.kind}`}
@@ -629,6 +660,9 @@ function ReleasePage() {
             label: releaseTitle,
           }}
           onAddTrackToPlaylist={handleReleaseTrackAdd}
+          onAddTrackToLibrary={handleReleaseTrackAddToLibrary}
+          libraryTrackSavingKey={libraryTrackSavingKey}
+          ownedTrackMbids={libraryInfo?.ownedTrackMbids}
           resolveMembershipTrack={buildReleaseTrackPayload}
           playlists={sharedPlaylists}
           playlistsLoading={playlistModalLoading}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { Loader } from "lucide-react";
+import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import { TrackPlayButton } from "./TrackPlayButton";
 import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
 import { ArtistTrackListToolbar } from "./ArtistTrackListToolbar";
@@ -16,6 +17,9 @@ export function ArtistDetailsReleaseTrackList({
   artistMbid = "",
   playbackSource = null,
   onAddTrackToPlaylist,
+  onAddTrackToLibrary,
+  libraryTrackSavingKey,
+  ownedTrackMbids = [],
   resolveMembershipTrack,
   playlists,
   playlistsLoading,
@@ -26,6 +30,7 @@ export function ArtistDetailsReleaseTrackList({
   highlightTrackId = null,
 }) {
   const rowRefs = useRef({});
+  const ownedTrackSet = new Set((Array.isArray(ownedTrackMbids) ? ownedTrackMbids : []).map(String));
   const normalizeTrack = useCallback(
     (track, index) =>
       normalizePreviewTrack(
@@ -150,6 +155,9 @@ export function ArtistDetailsReleaseTrackList({
                     .toString()
                     .padStart(2, "0")}`
                 : "";
+              const isOwned = [track.mbid, track.recordingId, track.id]
+                .filter(Boolean)
+                .some((identity) => ownedTrackSet.has(String(identity)));
               return (
                 <div
                   key={currentTrackId}
@@ -171,8 +179,9 @@ export function ArtistDetailsReleaseTrackList({
                   ) : (
                     <span />
                   )}
-                  <span className="artist-track-title">
-                    {track.title || track.trackName || "Unknown Track"}
+                  <span className={`artist-track-title${isOwned ? " artist-track-title--owned" : ""}`}>
+                    {isOwned ? <SearchLibraryCheck size="discover" /> : null}
+                    <span>{track.title || track.trackName || "Unknown Track"}</span>
                   </span>
                   {onAddTrackToPlaylist ? (
                     <TrackPlaylistMenu
@@ -185,6 +194,13 @@ export function ArtistDetailsReleaseTrackList({
                       error={playlistError}
                       defaultNewPlaylistName={getDefaultPlaylistName?.(track, release)}
                       onLoadPlaylists={onLoadPlaylists}
+                      triggerVariant="kebab"
+                      librarySaving={libraryTrackSavingKey === currentTrackId}
+                      onAddToLibrary={
+                        onAddTrackToLibrary && !isOwned
+                          ? () => onAddTrackToLibrary(track, release)
+                          : null
+                      }
                       onSelect={(target) => onAddTrackToPlaylist(track, release, target)}
                     />
                   ) : null}

@@ -33,6 +33,15 @@ Aurral tests file access at paths that Lidarr reports. If the test fails, mount 
 
 The check samples a track from an artist inside a root folder. It falls back to an artist outside them and then reports that the artist was left behind by a root folder change.
 
+After Lidarr imports a file, Aurral watches the configured Lidarr root folders
+and queues a canonical library scan. Aurral does not need a second import step
+in Lidarr. The file must still be readable at the path Lidarr reports.
+
+If the file does not appear in **Library**, use the **Refresh** button there.
+Refresh waits for the canonical scan to finish. If it still does not appear,
+run **Test library access** and check [Filesystem and mounts](/getting-started/storage/)
+for a path mismatch.
+
 See [Library access fails on a folder that is not your root folder](/admin/troubleshooting/#library-access-fails-on-a-folder-that-is-not-your-root-folder).
 
 In mixed Windows and Docker setups, **Test library access** shows the exact path that Lidarr reports. If that path differs from the path inside Aurral, add a mapping under **Settings > Download Clients > Remote Path Mappings** with **Source** set to **Lidarr**.

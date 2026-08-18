@@ -1,7 +1,8 @@
 import { libraryManager } from "../../../services/libraryManager.js";
 import { cacheMiddleware } from "../../../middleware/cache.js";
 import { noCache } from "../../../middleware/cache.js";
-import { verifyTokenAuth } from "../../../middleware/auth.js";
+import { hasPermission, verifyTokenAuth } from "../../../middleware/auth.js";
+import { requireAuth } from "../../../middleware/requirePermission.js";
 import { getAlbumTracksByAlbumMbid } from "../../../services/providers/brainzmashProvider.js";
 import { enrichTracksWithDeezerPreviews } from "../../../services/apiClients/index.js";
 import fsp from "fs/promises";
@@ -26,7 +27,54 @@ const canReadAudioFile = async (filePath) => {
   }
 };
 
+const requireTrackDeletion = (req, res, next) => {
+  if (hasPermission(req.user, "deleteTrack") || hasPermission(req.user, "deleteAlbum")) {
+    return next();
+  }
+  return res.status(403).json({
+    error: "Forbidden",
+    message: "Permission required: deleteTrack or deleteAlbum",
+  });
+};
+
 export function registerTracks(router) {
+  router.delete(
+    "/tracks/:id",
+    requireAuth,
+    requireTrackDeletion,
+    async (req, res) => {
+      try {
+        const result = await libraryManager.deleteTrack(req.params.id);
+        if (!result?.success) {
+          if (result?.code === "not_found") {
+            return res.status(404).json({
+              error: "Track not found",
+              message: "The track or its file no longer exists.",
+            });
+          }
+          if (result?.code === "lidarr_unavailable") {
+            return res.status(503).json({
+              error: "Lidarr unavailable",
+              message: "Lidarr is not available. Try again later.",
+            });
+          }
+          logger.error("library", `Track deletion failed: ${String(result?.error || "Unknown error")}`);
+          return res.status(500).json({
+            error: "Failed to delete track",
+            message: "Failed to delete track",
+          });
+        }
+        return res.json({ success: true, message: "Track deleted successfully" });
+      } catch (error) {
+        logger.error("library", `Track deletion threw: ${error.message}`);
+        return res.status(500).json({
+          error: "Failed to delete track",
+          message: "Failed to delete track",
+        });
+      }
+    },
+  );
+
   router.get("/playback-queue", cacheMiddleware(120), async (req, res) => {
     try {
       const tracks = await libraryManager.getPlaybackQueue();
@@ -45,7 +93,7 @@ export function registerTracks(router) {
 
       if (req.query.readPath === "canonical") {
         const canonicalLibrary = getCanonicalLibrary({
-          source: req.query.source || "lidarr",
+          source: req.query.source || "all",
           availableOnly: true,
         });
         const { albums, tracks } = buildCanonicalLibraryReadModel(canonicalLibrary);

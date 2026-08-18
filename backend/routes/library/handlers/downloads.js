@@ -8,6 +8,7 @@ import {
   albumHasTrackFiles,
 } from "../../../services/albumSearchState.js";
 import { logger } from "../../../services/logger.js";
+import { getCanonicalLibrary } from "../../../services/libraryQueryService.js";
 
 const STALE_GRABBED_MS = 15 * 60 * 1000;
 const DOWNLOAD_STATUS_CACHE_MS = 5000;
@@ -16,6 +17,11 @@ let allDownloadStatusesCache = {
   statuses: null,
   pending: null,
 };
+
+const invalidateActivityRequestsCache = () =>
+  import("../../requests.js")
+    .then(({ invalidateRequestsCache }) => invalidateRequestsCache())
+    .catch(() => {});
 
 export const getDownloadStatusesForAlbumIds = async (
   albumIdArrayInput,
@@ -303,6 +309,115 @@ export const getAllDownloadStatuses = async () => {
 };
 
 export function registerDownloads(router) {
+  router.post("/downloads/track", requireAuth, requirePermission("addAlbum"), async (req, res) => {
+    const body = req.body || {};
+    const track = {
+      artistName: String(body.artistName || "").trim(),
+      trackName: String(body.trackName || "").trim(),
+      albumName: String(body.albumName || "").trim() || null,
+      artistMbid: String(body.artistMbid || "").trim() || null,
+      albumMbid: String(body.albumMbid || "").trim() || null,
+      trackMbid: String(body.trackMbid || "").trim() || null,
+      releaseYear: String(body.releaseYear || "").trim() || null,
+      durationMs: body.durationMs,
+      trackNumber: body.trackNumber,
+      albumTrackCount: body.albumTrackCount,
+      albumTrackTitles: body.albumTrackTitles,
+    };
+    if (!track.artistName || !track.trackName) {
+      return res.status(400).json({ error: "artistName and trackName are required" });
+    }
+
+    try {
+      const canonical = getCanonicalLibrary({ source: "all", availableOnly: false });
+      const alreadyOwned = canonical.tracks.some((candidate) => {
+        if (!candidate.files.some((file) => file.available)) return false;
+        if (track.trackMbid) return candidate.mbid === track.trackMbid;
+        return (
+          candidate.artistName?.toLocaleLowerCase() === track.artistName.toLocaleLowerCase() &&
+          candidate.title?.toLocaleLowerCase() === track.trackName.toLocaleLowerCase()
+        );
+      });
+      if (alreadyOwned) return res.json({ success: true, alreadyOwned: true, queued: false });
+
+      const { downloadTracker } = await import(
+        "../../../services/weeklyFlow/weeklyFlowDownloadTracker.js"
+      );
+      const existingJob = downloadTracker.getAll().find((job) => {
+        if (job.playlistType !== "library" || ["failed", "done"].includes(job.status)) {
+          return false;
+        }
+        if (track.trackMbid) return job.trackMbid === track.trackMbid;
+        return (
+          job.artistName?.toLocaleLowerCase() === track.artistName.toLocaleLowerCase() &&
+          job.trackName?.toLocaleLowerCase() === track.trackName.toLocaleLowerCase()
+        );
+      });
+      if (existingJob) {
+        if (existingJob.status !== "done") {
+          const { recordTrackJobQueued } = await import(
+            "../../../services/aurralHistoryService.js"
+          );
+          recordTrackJobQueued(existingJob);
+          await invalidateActivityRequestsCache();
+        }
+        return res.status(202).json({
+          success: true,
+          queued: existingJob.status !== "done",
+          jobId: existingJob.id,
+          alreadyQueued: true,
+        });
+      }
+
+      const jobId = downloadTracker.addJob(track, "library");
+      if (!jobId) return res.status(400).json({ error: "Track details are incomplete" });
+
+      const { weeklyFlowWorker } = await import(
+        "../../../services/weeklyFlow/weeklyFlowWorker.js"
+      );
+      try {
+        const { normalizeExistingFileMode, reuseTrackForPlaylist } = await import(
+          "../../../services/weeklyFlow/weeklyFlowFileReuse.js"
+        );
+        const reuse = await reuseTrackForPlaylist(track, "library", {
+          existingFileMode: normalizeExistingFileMode(
+            weeklyFlowWorker.getWorkerSettings().existingFileMode,
+          ),
+          weeklyFlowRoot: weeklyFlowWorker.weeklyFlowRoot,
+          existingJobId: jobId,
+          targetPlaylistType: "library",
+          skipHistory: true,
+        });
+        if (reuse.reused) {
+          return res.status(202).json({
+            success: true,
+            queued: false,
+            reused: true,
+            jobId,
+          });
+        }
+      } catch (error) {
+        logger.warn("library", "Track reuse failed; leaving acquisition queued", {
+          error: error.message,
+        });
+      }
+
+      const { recordTrackJobQueued } = await import(
+        "../../../services/aurralHistoryService.js"
+      );
+      recordTrackJobQueued(downloadTracker.getJob(jobId));
+      await invalidateActivityRequestsCache();
+      await weeklyFlowWorker.start();
+      return res.status(202).json({ success: true, queued: true, jobId });
+    } catch (error) {
+      logger.error("library", "Failed to queue track acquisition", error.message);
+      return res.status(500).json({
+        error: "Failed to queue track acquisition",
+        message: error.message,
+      });
+    }
+  });
+
   router.post("/downloads/album", requireAuth, requirePermission("addAlbum"), async (req, res) => {
     try {
       const { albumId } = req.body;

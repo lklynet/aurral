@@ -66,6 +66,11 @@ export const getCanonicalLibraryPage = (options = {}) => {
 
 export const clearCanonicalLibraryPageCache = () => libraryPageCache.clear();
 
+export const requestLibraryRefresh = () => postData("/library/refresh", {});
+
+export const getLibraryRefreshStatus = (jobId) =>
+  getData(`/library/refresh/${encodeURIComponent(jobId)}`);
+
 let libraryFavoritesCache = null;
 let libraryFavoritesRequest = null;
 let libraryFavoritesGeneration = 0;
@@ -173,6 +178,9 @@ export const deleteAlbumFromLibrary = (id, deleteFiles = false) =>
     params: { deleteFiles },
   });
 
+export const deleteTrackFromLibrary = (id) =>
+  deleteData(`/library/tracks/${encodeURIComponent(id)}`);
+
 export const getLibraryAlbums = async (artistId) => {
   const data = await getData("/library/albums", {
     params: { artistId },
@@ -244,6 +252,9 @@ export const downloadAlbum = (artistId, albumId, options = {}) =>
     artistMbid: options.artistMbid,
     artistName: options.artistName,
   });
+
+export const downloadTrackToLibrary = (track) =>
+  postData("/library/downloads/track", track);
 
 export const triggerAlbumSearch = (albumId) =>
   postData("/library/downloads/album/search", {

@@ -65,6 +65,7 @@ export const AuthProvider = ({ children }) => {
               changeMonitoring: true,
               deleteArtist: true,
               deleteAlbum: true,
+              deleteTrack: true,
             },
           },
         );

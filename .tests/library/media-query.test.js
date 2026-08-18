@@ -7,11 +7,17 @@ import path from "node:path";
 import { db } from "../../backend/config/db-sqlite.js";
 import { scanMusicRoot } from "../../backend/services/libraryFileScanner.js";
 import { indexLidarrLibrary } from "../../backend/services/libraryLidarrIndexer.js";
-import { getCanonicalLibrary } from "../../backend/services/libraryQueryService.js";
+import {
+  getCanonicalLibrary,
+  getCanonicalLibraryPage,
+} from "../../backend/services/libraryQueryService.js";
 import { toPublicLibrary } from "../../backend/routes/library/handlers/canonical.js";
 import {
   linkLibraryAlbumTrack,
+  upsertLibraryArtist,
   upsertLibraryAlbum,
+  upsertLibraryMediaFile,
+  upsertLibraryTrack,
 } from "../../backend/services/libraryMediaStore.js";
 
 const metadata = {
@@ -134,6 +140,206 @@ test("getCanonicalLibrary deduplicates a file shared by multiple album relations
 
 test("getCanonicalLibrary rejects unknown source filters", () => {
   assert.throws(() => getCanonicalLibrary({ source: "plex" }), /Unsupported library source/);
+});
+
+test("canonical newest ordering follows library arrival time", () => {
+  const key = `query-newest-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({ identityKey: `${key}:artist`, name: "Newest Fixture" });
+  const oldAlbum = upsertLibraryAlbum({
+    identityKey: `${key}:old-album`,
+    artistId: artist.id,
+    title: "Old Album",
+    releaseDate: "2020-01-01",
+  });
+  const newAlbum = upsertLibraryAlbum({
+    identityKey: `${key}:new-album`,
+    artistId: artist.id,
+    title: "Recently Added",
+    releaseDate: "1990-01-01",
+  });
+  const oldTrack = upsertLibraryTrack({
+    identityKey: `${key}:old-track`,
+    title: "Old Track",
+    artistName: "Newest Fixture",
+  });
+  const newTrack = upsertLibraryTrack({
+    identityKey: `${key}:new-track`,
+    title: "New Track",
+    artistName: "Newest Fixture",
+  });
+  linkLibraryAlbumTrack({ albumId: oldAlbum.id, trackId: oldTrack.id, trackNumber: 1 });
+  linkLibraryAlbumTrack({ albumId: newAlbum.id, trackId: newTrack.id, trackNumber: 1 });
+  upsertLibraryMediaFile({
+    trackId: oldTrack.id,
+    albumId: oldAlbum.id,
+    source: "aurral",
+    path: `/tmp/${key}/old.flac`,
+  });
+  upsertLibraryMediaFile({
+    trackId: newTrack.id,
+    albumId: newAlbum.id,
+    source: "aurral",
+    path: `/tmp/${key}/new.flac`,
+  });
+  const now = Date.now();
+  db.prepare("UPDATE library_media_files SET created_at = ? WHERE path = ?").run(
+    now - 60_000,
+    `/tmp/${key}/old.flac`,
+  );
+  db.prepare("UPDATE library_media_files SET created_at = ? WHERE path = ?").run(
+    now,
+    `/tmp/${key}/new.flac`,
+  );
+
+  try {
+    const page = getCanonicalLibraryPage({
+      source: "aurral",
+      kind: "albums",
+      page: 1,
+      pageSize: 2,
+      sort: "newest",
+    });
+    assert.deepEqual(page.items.map((item) => item.title), ["Recently Added", "Old Album"]);
+  } finally {
+    db.prepare("DELETE FROM library_media_files WHERE path LIKE ?").run(`/tmp/${key}/%`);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (?, ?)").run(
+      oldAlbum.id,
+      newAlbum.id,
+    );
+    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(oldTrack.id, newTrack.id);
+    db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)").run(oldAlbum.id, newAlbum.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  }
+});
+
+test("canonical album track pages keep the selected album relationship", () => {
+  const key = `query-album-scope-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({ identityKey: `${key}:artist`, name: "Eve 6" });
+  const firstAlbum = upsertLibraryAlbum({
+    identityKey: `${key}:first-album`,
+    artistId: artist.id,
+    title: "Eve 6",
+    releaseDate: "1998",
+  });
+  const selectedAlbum = upsertLibraryAlbum({
+    identityKey: `${key}:selected-album`,
+    artistId: artist.id,
+    title: "Inside Out",
+    releaseDate: "1998",
+  });
+  const track = upsertLibraryTrack({
+    identityKey: `${key}:track`,
+    title: "Showerhead",
+    artistName: "Eve 6",
+  });
+  linkLibraryAlbumTrack({ albumId: firstAlbum.id, trackId: track.id, trackNumber: 1 });
+  linkLibraryAlbumTrack({ albumId: selectedAlbum.id, trackId: track.id, trackNumber: 1 });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: selectedAlbum.id,
+    source: "aurral",
+    path: `/tmp/${key}/track.flac`,
+  });
+
+  try {
+    const page = getCanonicalLibraryPage({
+      source: "aurral",
+      kind: "tracks",
+      albumId: selectedAlbum.id,
+      page: 1,
+      pageSize: 10,
+    });
+    assert.deepEqual(page.items[0].albums.map((entry) => entry.albumId), [selectedAlbum.id]);
+    assert.deepEqual(page.albums.map((album) => album.title), ["Inside Out"]);
+  } finally {
+    db.prepare("DELETE FROM library_media_files WHERE path = ?").run(`/tmp/${key}/track.flac`);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (?, ?)").run(
+      firstAlbum.id,
+      selectedAlbum.id,
+    );
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)").run(
+      firstAlbum.id,
+      selectedAlbum.id,
+    );
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  }
+});
+
+test("canonical album track pages include indexed tracks without media", () => {
+  const key = `query-album-missing-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({ identityKey: `${key}:artist`, name: "Partial Fixture" });
+  const album = upsertLibraryAlbum({
+    identityKey: `${key}:album`,
+    artistId: artist.id,
+    title: "Partial Album",
+  });
+  const ownedTrack = upsertLibraryTrack({
+    identityKey: `${key}:owned-track`,
+    mbid: `${key}-owned`,
+    title: "Owned Track",
+    artistName: "Partial Fixture",
+  });
+  const missingTrack = upsertLibraryTrack({
+    identityKey: `${key}:missing-track`,
+    mbid: `${key}-missing`,
+    title: "Missing Track",
+    artistName: "Partial Fixture",
+    metadata: { genres: ["Electronic"] },
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: ownedTrack.id, trackNumber: 1 });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: missingTrack.id, trackNumber: 2 });
+  const ownedPath = `/tmp/${key}/owned.flac`;
+  upsertLibraryMediaFile({
+    trackId: ownedTrack.id,
+    albumId: album.id,
+    source: "aurral",
+    path: ownedPath,
+  });
+
+  try {
+    const page = getCanonicalLibraryPage({
+      source: "aurral",
+      kind: "tracks",
+      albumId: album.id,
+      page: 1,
+      pageSize: 10,
+    });
+    assert.deepEqual(page.items.map((track) => track.title), ["Owned Track", "Missing Track"]);
+    assert.equal(page.items[0].files.length, 1);
+    assert.deepEqual(page.items[1].files, []);
+    assert.equal(page.albums[0].trackCount, 2);
+    assert.equal(page.albums[0].availableTrackCount, 1);
+
+    const filtered = getCanonicalLibraryPage({
+      kind: "tracks",
+      albumId: album.id,
+      page: 1,
+      pageSize: 10,
+      query: "missing",
+      genre: "electronic",
+      sort: "name",
+      direction: "desc",
+    });
+    assert.deepEqual(filtered.items.map((track) => track.title), ["Missing Track"]);
+
+    const artistScoped = getCanonicalLibraryPage({
+      kind: "tracks",
+      albumId: album.id,
+      artistId: artist.id,
+      page: 1,
+      pageSize: 10,
+      sort: "name",
+      direction: "desc",
+    });
+    assert.deepEqual(artistScoped.items.map((track) => track.title), ["Owned Track", "Missing Track"]);
+  } finally {
+    db.prepare("DELETE FROM library_media_files WHERE path = ?").run(ownedPath);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
+    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(ownedTrack.id, missingTrack.id);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  }
 });
 
 test("canonical library responses do not expose filesystem paths", () => {

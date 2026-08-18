@@ -1,7 +1,12 @@
 export const ACTIVITY_VIEWS = [
   { id: "queue", label: "Queue" },
-  { id: "review", label: "Review" },
   { id: "history", label: "History" },
+  { id: "missing", label: "Missing" },
+];
+
+export const WANTED_VIEWS = [
+  { id: "missing", label: "Missing", path: "/activity/missing" },
+  { id: "cutoff", label: "Cutoff unmet", path: "/activity/missing?tab=cutoff" },
 ];
 
 export const DEFAULT_ACTIVITY_VIEW = "queue";
@@ -12,8 +17,8 @@ export function normalizeActivityView(view) {
 }
 
 export function isActivityQueueItem(request) {
-  if (request?.status === "blocked") return false;
   return (
+    request?.status === "blocked" ||
     request?.inQueue === true ||
     request?.status === "processing" ||
     request?.status === "pending"
@@ -22,11 +27,16 @@ export function isActivityQueueItem(request) {
 
 export function matchesActivityView(request, view) {
   if (view === "queue") return isActivityQueueItem(request);
-  if (view === "review") return request?.status === "blocked";
+  if (view === "review") return false;
+  if (view === "missing") return false;
   return !isActivityQueueItem(request) && request?.status !== "blocked";
 }
 
 export function buildActivityPath(view) {
   const nextView = normalizeActivityView(view);
   return `/activity/${nextView}`;
+}
+
+export function buildWantedPath(view = "missing") {
+  return WANTED_VIEWS.find((entry) => entry.id === view)?.path || WANTED_VIEWS[0].path;
 }

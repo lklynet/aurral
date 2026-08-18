@@ -3,23 +3,35 @@ title: Activity
 description: Track active downloads, Lidarr requests, and Aurral playlist jobs.
 ---
 
-Activity replaces the older Requests and Downloads views. It has three tabs:
+Activity replaces the older Requests and Downloads views. It has two views:
 
-- **Queue**: album requests and downloads in progress
-- **Review**: downloaded tracks that need your approval
+- **Queue**: album requests, downloads in progress, and tracks waiting for review
 - **History**: completed, denied, and failed events
+
+The **Wanted** section combines Aurral-owned tracks that need another search with
+files that do not meet the configured quality cutoff.
+
+Use the **Missing** and **Cutoff unmet** links under **Wanted** to switch between
+those two filters.
 
 ![Aurral activity timeline](../../../assets/screenshots/history.webp)
 
-Use **Queue** to see active downloads and processes.
+Use **Queue** to see active downloads and processes. Review items stay in this list because they are queued for your decision.
 
-Use **Review** when you must listen to a track before import. Use **History** to see completed and failed events.
+Use the review controls in **Queue** when you must listen to a track before import. Use **History** to see completed and failed events.
 
 Each review row shows the requested track, artist, album, and remote file path. It also shows the match scores and duration.
 
 Aurral keeps a possible match for review if the duration is not correct. It does not immediately try another source.
 
 When an album request fails in Lidarr, you can retry the search from History when the entry supports it.
+
+Use the search action on a Wanted row to re-search a failed Aurral operation or
+search for a quality upgrade. These actions apply across flows and static
+playlists.
+
+Use the info action on any activity or Wanted row to inspect the operation
+details without leaving the page.
 
 Album requests store the requester. Activity can show the requester, and external tools can filter requests by user.
 

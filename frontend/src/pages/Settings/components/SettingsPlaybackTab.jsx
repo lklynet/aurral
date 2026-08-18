@@ -33,11 +33,11 @@ export function SettingsPlaybackTab({
           showInfo={showInfo}
         />
 
-        <SettingsArrFieldSet legend="Cover Art">
+        <SettingsArrFieldSet legend="Cover art">
           <SettingsArrFormGroup
             label="Generated cover style"
             labelFor="playlist-artwork-style"
-            help="Photo texture uses a random image from picsum with stylized typography. Aurral generated uses abstract palette covers."
+            help="Photo texture uses a photo background. Aurral generated uses abstract palette covers."
           >
             <SettingsSelect
               id="playlist-artwork-style"

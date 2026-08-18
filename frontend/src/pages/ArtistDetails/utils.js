@@ -248,8 +248,10 @@ export const resolveReleaseLibraryDisplay = (libraryInfo, downloadStatus) => {
   const percent = Number(libraryInfo.percentOfTracks || 0);
   const sizeOnDisk = Number(libraryInfo.sizeOnDisk || 0);
   const trackFileCount = Number(libraryInfo.trackFileCount || 0);
+  const trackCount = Number(libraryInfo.trackCount || 0);
   const hasFiles = sizeOnDisk > 0 || trackFileCount > 0;
-  const isComplete = hasFiles;
+  const isComplete =
+    trackCount > 0 ? percent >= 100 || trackFileCount >= trackCount : hasFiles;
 
   if (isComplete) {
     return withAction({

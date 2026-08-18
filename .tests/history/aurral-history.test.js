@@ -14,7 +14,12 @@ const [isolatedState, { db }, historyModule] = await setupIsolatedBackend(
   "backend/services/aurralHistoryService.js",
 );
 
-const { upsertAurralHistory, getAurralHistoryRequests, recordTrackJobBlocked } = historyModule;
+const {
+  upsertAurralHistory,
+  getAurralHistoryRequests,
+  recordTrackJobBlocked,
+  recordTrackJobQueued,
+} = historyModule;
 const { downloadTracker } = await importFromRepo(
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
 );
@@ -166,6 +171,26 @@ test("getAurralHistoryRequests reconciles completed download jobs", async () => 
   assert.equal(entry?.status, "completed");
   assert.equal(entry?.statusLabel, "Downloaded");
   assert.equal(entry?.inQueue, false);
+});
+
+test("queued library track jobs appear in activity immediately", async () => {
+  const jobId = downloadTracker.addJob(
+    {
+      artistName: "Artist",
+      trackName: "Queued Song",
+      albumName: "Album",
+      trackMbid: "track-mbid",
+    },
+    "library",
+  );
+
+  recordTrackJobQueued(downloadTracker.getJob(jobId));
+
+  const entry = (await getAurralHistoryRequests()).find((item) => item.jobId === jobId);
+  assert.equal(entry?.status, "processing");
+  assert.equal(entry?.statusLabel, "Searching");
+  assert.equal(entry?.inQueue, true);
+  assert.equal(entry?.trackName, "Queued Song");
 });
 
 test("getAurralHistoryRequests fails stale active download history", async () => {

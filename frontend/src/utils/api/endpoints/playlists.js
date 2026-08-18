@@ -59,6 +59,9 @@ export const getFlowJobs = (flowId, limit = null, options = {}) => {
   });
 };
 
+export const getAllFlowJobs = (options = {}) =>
+  getData("/playlists/jobs", options);
+
 export const createFlow = (payload) => postData("/playlists/flows", payload);
 
 export const updateFlow = (flowId, payload) =>

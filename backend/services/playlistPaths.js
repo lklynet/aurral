@@ -8,6 +8,7 @@ import {
 import { commitImportToPlaylistLibrary } from "./playlistDownloadUtils.js";
 
 export const PLAYLIST_LIBRARY_DIR = "aurral-weekly-flow";
+export const AURRAL_FLOWS_DIR = ".flows";
 const LEGACY_LIBRARY_DIR = "aurral-weekly-flow";
 const PREVIOUS_V2_LIBRARY_DIR = "aurral-playlists";
 const LEGACY_DOCKER_PLAYLIST_ROOT = "/app/downloads";
@@ -64,6 +65,17 @@ export function buildPlaylistDestination(playlistId, artistDir, albumDir) {
     String(artistDir || "Unknown Artist"),
     String(albumDir || "Unknown Album"),
   );
+}
+
+export function buildAurralTrackDestination(
+  playlistId,
+  artistDir,
+  albumDir,
+  { ephemeral = false } = {},
+) {
+  const destination = [String(artistDir || "Unknown Artist"), String(albumDir || "Unknown Album")];
+  if (ephemeral) destination.unshift(AURRAL_FLOWS_DIR, String(playlistId || ""));
+  return path.posix.join(...destination);
 }
 
 export function isPathInsideRoot(candidatePath, rootPath) {

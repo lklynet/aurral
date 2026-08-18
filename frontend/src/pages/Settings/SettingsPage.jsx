@@ -3,7 +3,6 @@ import { Navigate, useParams } from "react-router-dom";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
-import SettingsMetadataSponsorSection from "../../components/SettingsMetadataSponsorSection";
 import { useSettingsData } from "./hooks/useSettingsData";
 import { useSettingsTabs } from "./hooks/useSettingsTabs";
 import { useSettingsUsers } from "./hooks/useSettingsUsers";
@@ -207,16 +206,13 @@ function SettingsPage() {
         );
       case "metadata":
         return (
-          <>
-            <SettingsMetadataSponsorSection />
-            <SettingsMetadataTab
-              settings={data.settings}
-              updateSettings={data.updateSettings}
-              health={data.health}
-              handleSaveSettings={data.handleSaveSettings}
-              hidePanelHeader
-            />
-          </>
+          <SettingsMetadataTab
+            settings={data.settings}
+            updateSettings={data.updateSettings}
+            health={data.health}
+            handleSaveSettings={data.handleSaveSettings}
+            hidePanelHeader
+          />
         );
       case "users":
         return (
@@ -303,6 +299,17 @@ function SettingsPage() {
               activeTab={tabs.activeTab}
               onSelectTab={handleTabSelect}
             />
+            {tabs.activeTab !== "tasks" ? (
+              <div
+                className={`settings-arr__save-state${data.saving ? " is-saving" : ""}`}
+                role="status"
+                aria-live="polite"
+                aria-busy={data.saving}
+                aria-hidden={!data.saving}
+              >
+                {data.saving ? "Saving…" : null}
+              </div>
+            ) : null}
 
             {renderTabContent()}
           </div>

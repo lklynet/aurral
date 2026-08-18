@@ -22,7 +22,7 @@ export function registerAlbums(router) {
       }
 
       if (req.query.readPath === "canonical") {
-        const { albums } = getCanonicalLibraryReadModel({ source: req.query.source || "lidarr" });
+        const { albums } = getCanonicalLibraryReadModel({ source: req.query.source || "all" });
         return res.json(findCanonicalAlbumsForArtist(albums, artistId));
       }
 

@@ -1,21 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { getArtistPreview } from "../../../utils/api/endpoints/artists.js";
-import { buildArtistPlaybackQueue } from "../../../utils/buildArtistPlaybackQueue";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
 
-export function usePreviewPlayer(
-  mbid,
-  artistNameFromNav,
-  artist,
-  {
-    existsInLibrary = false,
-    libraryArtist = null,
-    libraryAlbums = [],
-    downloadStatuses = {},
-    albumTracks = {},
-  } = {},
-) {
+export function usePreviewPlayer(mbid, artistNameFromNav, artist) {
   const [previewTracks, setPreviewTracks] = useState([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [buildingQueue, setBuildingQueue] = useState(false);
@@ -31,7 +19,6 @@ export function usePreviewPlayer(
   } = useAudioQueue();
 
   const artistName = artistNameFromNav || artist?.name || "";
-  const releaseGroups = artist?.["release-groups"] || [];
   const artistSource = mbid ? { type: "artist-all", id: mbid, label: artistName } : null;
   const isArtistQueue = matchesSource(artistSource);
   const playingPreviewId = isArtistQueue && currentTrack?.id ? currentTrack.id : null;
@@ -91,17 +78,9 @@ export function usePreviewPlayer(
 
     setBuildingQueue(true);
     try {
-      const tracks = await buildArtistPlaybackQueue({
-        artistName,
-        artistMbid: mbid,
-        previewTracks: getPlayableTracks(),
-        existsInLibrary,
-        libraryArtist,
-        libraryAlbums,
-        downloadStatuses,
-        albumTracksCache: albumTracks,
-        releaseGroups,
-      });
+      const tracks = getPlayableTracks().map((track) =>
+        normalizePreviewTrack(track, artistName, { artistMbid: mbid }),
+      );
       if (tracks.length === 0) return;
       playQueue(tracks, {
         source: artistSource,

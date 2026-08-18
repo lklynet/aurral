@@ -48,8 +48,8 @@ function DiskSpaceTable({ entries = [] }) {
           <tr>
             <th scope="col">Location</th>
             <th scope="col">Role</th>
-            <th scope="col">Free Space</th>
-            <th scope="col">Total Space</th>
+            <th scope="col">Free space</th>
+            <th scope="col">Total space</th>
             <th scope="col">Used</th>
           </tr>
         </thead>
@@ -91,24 +91,22 @@ function DiskSpaceTable({ entries = [] }) {
   );
 }
 
-function SystemSection({ title, description, children }) {
+function SystemSection({ title, children }) {
   return (
     <section className="settings-system__section">
       <div className="settings-system__section-header">
         <h2 className="settings-system__section-title">{title}</h2>
-        {description ? <p className="settings-system__section-description">{description}</p> : null}
       </div>
       <div className="settings-system__rows">{children}</div>
     </section>
   );
 }
 
-function SystemRow({ label, description, children }) {
+function SystemRow({ label, children }) {
   return (
     <div className="settings-system__row">
       <div className="settings-system__copy">
         <div className="settings-system__label">{label}</div>
-        {description ? <p className="settings-system__description">{description}</p> : null}
       </div>
       <div className="settings-system__value">{children ?? "—"}</div>
     </div>
@@ -189,17 +187,11 @@ export function SettingsStorageHealthSection({
 
   return (
     <>
-      <SettingsArrFieldSet legend="Health">
-        <StorageHealthSummary result={healthResult} loading={checkingHealth} />
-      </SettingsArrFieldSet>
-
-      <SettingsArrFieldSet legend="Disk Space">
-        <DiskSpaceTable entries={system.diskSpace || []} />
-      </SettingsArrFieldSet>
-
       <SettingsArrFieldSet
-        legend="Storage Health"
-        actions={
+        legend="Storage health"
+      >
+        <div className="settings-storage-health__toolbar">
+          <p className="arr-form-help">Checks configured library, download, and playback paths.</p>
           <button
             type="button"
             className="arr-btn"
@@ -207,16 +199,15 @@ export function SettingsStorageHealthSection({
             disabled={checkingHealth}
           >
             <RefreshCw className={`artist-icon-sm${checkingHealth ? " animate-spin" : ""}`} />
-            {checkingHealth ? "Checking…" : "Run Checks"}
+            {checkingHealth ? "Checking…" : "Run checks"}
           </button>
-        }
-      >
-        <p className="arr-form-help">
-          Verifies that Aurral can access configured library paths, transfer completed downloads,
-          and emit paths that playback servers can scan. Matching container paths are simplest,
-          but narrower mounts and remote path mappings are supported.
-        </p>
+        </div>
+        <StorageHealthSummary result={healthResult} loading={checkingHealth} />
         <StorageHealthDashboard result={healthResult} loading={checkingHealth} showSummary={false} />
+      </SettingsArrFieldSet>
+
+      <SettingsArrFieldSet legend="Disk space">
+        <DiskSpaceTable entries={system.diskSpace || []} />
       </SettingsArrFieldSet>
     </>
   );
@@ -231,7 +222,6 @@ export function SettingsSystemSection({ health }) {
       <div className="settings-system__intro">
         <div>
           <h1 className="settings-system__title">System</h1>
-          <p className="settings-system__intro-text">A quick overview of the running Aurral app.</p>
         </div>
         <div className={`settings-system__status${runtimeReady ? " is-ready" : ""}`}>
           <span className="settings-system__status-dot" aria-hidden />
@@ -239,45 +229,42 @@ export function SettingsSystemSection({ health }) {
         </div>
       </div>
 
-      <SystemSection
-        title="Runtime"
-        description="The process and environment currently running Aurral."
-      >
-        <SystemRow label="Version" description="Current application build">
+      <SystemSection title="Runtime">
+        <SystemRow label="Version">
           {system.version || health?.appVersion}
         </SystemRow>
-        <SystemRow label="Uptime" description="Time since the application started">
+        <SystemRow label="Uptime">
           {formatUptime(system.uptimeSeconds)}
         </SystemRow>
-        <SystemRow label="Environment" description="Runtime mode and host">
+        <SystemRow label="Environment">
           {system.mode && system.hostname ? `${system.mode} · ${system.hostname}` : null}
         </SystemRow>
-        <SystemRow label="Platform" description="Node.js runtime and operating system">
+        <SystemRow label="Platform">
           {system.nodeVersion && system.platform && system.arch
             ? `Node ${system.nodeVersion} · ${system.platform} ${system.arch}`
             : null}
         </SystemRow>
-        <SystemRow label="Container" description="Whether Aurral is running in Docker">
+        <SystemRow label="Container">
           {system.docker == null ? null : system.docker ? "Docker" : "Host process"}
         </SystemRow>
       </SystemSection>
 
-      <SystemSection title="Data" description="Where Aurral stores its application data.">
-        <SystemRow label="Database" description="Database engine and version">
+      <SystemSection title="Data">
+        <SystemRow label="Database">
           {system.database?.label}
         </SystemRow>
-        <SystemRow label="App data" description="Application data directory">
+        <SystemRow label="App data">
           <code>{system.dataDir}</code>
         </SystemRow>
-        <SystemRow label="Database path" description="Active SQLite database file">
+        <SystemRow label="Database path">
           <code>{system.databasePath}</code>
         </SystemRow>
-        <SystemRow label="Startup directory" description="Directory used to start Aurral">
+        <SystemRow label="Startup directory">
           <code>{system.startupDirectory}</code>
         </SystemRow>
       </SystemSection>
 
-      <SystemSection title="More info" description="Useful links for the Aurral project.">
+      <SystemSection title="More info">
         {(system.links || []).map((link) => (
           <SystemRow key={link.label} label={link.label}>
             <a href={link.url} target="_blank" rel="noopener noreferrer" className="arr-link">

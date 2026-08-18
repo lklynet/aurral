@@ -17,15 +17,24 @@ const buildArtist = (artist, albums) => {
   const artistAlbums = albums.filter((album) => album.artistId === artist.id);
   const trackCount = artistAlbums.reduce((count, album) => count + album.trackIds.length, 0);
   const sizeOnDisk = artistAlbums.reduce((total, album) => total + album.statistics.sizeOnDisk, 0);
+  const providerId = artist.metadata?.id ?? null;
   return {
     id: artist.id,
+    canonicalId: artist.id,
+    providerId,
     mbid: artist.mbid,
     foreignArtistId: artist.mbid || artist.identityKey,
     artistName: artist.name,
     name: artist.name,
     sortName: artist.sortName,
     addedAt: null,
-    monitored: false,
+    monitored: Boolean(artist.metadata?.monitored),
+    monitorOption:
+      artist.metadata?.monitorOption ||
+      artist.metadata?.addOptions?.monitor ||
+      artist.metadata?.monitor ||
+      "none",
+    addOptions: artist.metadata?.addOptions || null,
     statistics: {
       albumCount: artistAlbums.length,
       trackCount,
@@ -45,20 +54,27 @@ const buildAlbum = (album, artists, tracks) => {
     const file = firstAvailableFile(track);
     return total + Number(file?.size || 0);
   }, 0);
+  const trackFileCount = albumTracks.filter((track) => track.available).length;
+  const providerId = album.metadata?.id ?? null;
   return {
     id: album.id,
+    canonicalId: album.id,
+    providerId,
+    providerArtistId: album.metadata?.artistId ?? null,
     artistId: album.artistId,
     artistMbid: artist?.mbid || null,
     artistName: artist?.name || album.albumArtist,
     mbid: album.mbid || album.releaseGroupMbid,
+    releaseGroupMbid: album.releaseGroupMbid || null,
     foreignAlbumId: album.mbid || album.releaseGroupMbid || album.identityKey,
     albumName: album.title,
     title: album.title,
     releaseDate: album.releaseDate,
     addedAt: null,
-    monitored: false,
+    monitored: Boolean(album.metadata?.monitored),
     statistics: {
       trackCount: albumTracks.length,
+      trackFileCount,
       sizeOnDisk,
       percentOfTracks:
         albumTracks.length > 0 && albumTracks.every((track) => track.available) ? 100 : 0,

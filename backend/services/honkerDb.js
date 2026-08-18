@@ -288,6 +288,7 @@ const libraryScan = registerQueue({
   name: "library-scan",
   visibilityTimeoutS: 600,
   maxAttempts: 3,
+  skipInTest: true,
   workerModule: "./libraryScanWorker.js",
   workerStartFn: "startLibraryScanWorker",
 });
