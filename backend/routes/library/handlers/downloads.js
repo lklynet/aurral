@@ -347,6 +347,12 @@ export function registerDownloads(router) {
         );
       });
       if (existingJob) {
+        if (existingJob.status !== "done") {
+          const { recordTrackJobQueued } = await import(
+            "../../../services/aurralHistoryService.js"
+          );
+          recordTrackJobQueued(existingJob);
+        }
         return res.status(202).json({
           success: true,
           queued: existingJob.status !== "done",
@@ -388,6 +394,10 @@ export function registerDownloads(router) {
         });
       }
 
+      const { recordTrackJobQueued } = await import(
+        "../../../services/aurralHistoryService.js"
+      );
+      recordTrackJobQueued(downloadTracker.getJob(jobId));
       await weeklyFlowWorker.start();
       return res.status(202).json({ success: true, queued: true, jobId });
     } catch (error) {

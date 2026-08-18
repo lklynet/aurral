@@ -800,6 +800,12 @@ export const recordTrackJobSearching = (job) =>
     title: `Searching ${resolveDownloadClientLabel(job?.downloadSource, job?.downloadClient)} for ${job?.trackName || "track"}`,
   });
 
+export const recordTrackJobQueued = (job) => {
+  const jobId = String(job?.id || "").trim();
+  if (!jobId || dbOps.getAurralHistoryById(stableId("track_download", jobId))) return null;
+  return recordTrackJobSearching(job);
+};
+
 export const recordTrackJobDownloading = (job) =>
   recordTrackJob(job, {
     status: "processing",

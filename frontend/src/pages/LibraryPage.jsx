@@ -35,6 +35,7 @@ import {
   getCanonicalLibraryPage,
   getLibraryRefreshStatus,
   getLibraryFavorites,
+  getRequests,
   downloadTrackToLibrary,
   requestLibraryRefresh,
   updateLibraryFavorites,
@@ -113,6 +114,49 @@ const formatLongDuration = (durationMs) => {
   return hours
     ? hours + "h " + (minutes % 60) + "m"
     : minutes + "m " + (seconds % 60) + "s";
+};
+
+const TRACK_DOWNLOAD_ACTIVE_STATUSES = new Set([
+  "submitting",
+  "pending",
+  "processing",
+  "searching",
+  "downloading",
+  "moving",
+  "blocked",
+  "completed",
+]);
+
+const trackDownloadActionLabel = (status) => ({
+  submitting: "Adding to search queue…",
+  pending: "Queued for search",
+  processing: "Searching for track…",
+  searching: "Searching for track…",
+  downloading: "Downloading track…",
+  moving: "Adding to library…",
+  blocked: "Needs review",
+  completed: "Downloaded; waiting for library refresh",
+  failed: "Retry download track",
+}[status] || "Download track");
+
+const activityDownloadStatus = (request) => {
+  if (request?.status === "failed") return "failed";
+  if (request?.status === "completed") return "completed";
+  if (request?.status === "blocked") return "blocked";
+  const label = text(request?.statusLabel).toLocaleLowerCase();
+  if (label.includes("download")) return "downloading";
+  if (label.includes("moving")) return "moving";
+  if (request?.status === "pending") return "pending";
+  return "searching";
+};
+
+const trackDownloadIdentity = (track, fallbackTitle = "") =>
+  String(track?.id || track?.mbid || track?.trackMbid || track?.title || fallbackTitle);
+
+const sameTrackText = (left, right) => {
+  const first = text(left).toLocaleLowerCase();
+  const second = text(right).toLocaleLowerCase();
+  return Boolean(first) && Boolean(second) && first === second;
 };
 
 const TOP_ARTIST_TRACK_LIMIT = 10;
@@ -245,7 +289,7 @@ function LibraryPage() {
   const albumTrackCacheRef = useRef(new Map());
   const refreshAttemptRef = useRef(0);
   const [playlistSavingKey, setPlaylistSavingKey] = useState("");
-  const [trackDownloadKey, setTrackDownloadKey] = useState("");
+  const [trackDownloadStates, setTrackDownloadStates] = useState({});
 
   const handleLibraryScanMessage = useCallback((message) => {
     if (message?.type !== "library_scan_completed") return;
@@ -662,10 +706,24 @@ function LibraryPage() {
         showError("Track details are incomplete");
         return;
       }
-      const key = String(track?.id || track?.mbid || payload.trackMbid || payload.trackName);
-      setTrackDownloadKey(key);
+      const key = trackDownloadIdentity(track, payload.trackName);
+      setTrackDownloadStates((current) => ({
+        ...current,
+        [key]: { jobId: null, status: "submitting" },
+      }));
       try {
         const result = await downloadTrackToLibrary(payload);
+        if (result?.alreadyOwned) {
+          setTrackDownloadStates(({ [key]: _, ...rest }) => rest);
+        } else {
+          setTrackDownloadStates((current) => ({
+            ...current,
+            [key]: {
+              jobId: result?.jobId || null,
+              status: result?.reused ? "moving" : "searching",
+            },
+          }));
+        }
         showSuccess(
           result?.alreadyOwned
             ? `${payload.trackName} is already in your library`
@@ -674,14 +732,13 @@ function LibraryPage() {
               : `Added ${payload.trackName} to your library`,
         );
       } catch (requestError) {
+        setTrackDownloadStates(({ [key]: _, ...rest }) => rest);
         showError(
           requestError.response?.data?.message ||
             requestError.response?.data?.error ||
             requestError.message ||
             "Failed to add track to library",
         );
-      } finally {
-        setTrackDownloadKey("");
       }
     },
     [getAlbumForTrack, getArtistForAlbum, isPreviewLibrary, showError, showSuccess],
@@ -886,6 +943,95 @@ function LibraryPage() {
     if (!libraryAlbum || isPreviewLibrary) return;
     loadAlbumTracks(libraryAlbum).catch(() => {});
   }, [isPreviewLibrary, libraryAlbum, loadAlbumTracks]);
+
+  useEffect(() => {
+    if (!libraryAlbum || isPreviewLibrary) return undefined;
+    const tracks = getAlbumTracks(libraryAlbum);
+    if (!tracks.length) return undefined;
+    let cancelled = false;
+
+    getRequests()
+      .then((requests) => {
+        if (cancelled) return;
+        const activeRequests = (Array.isArray(requests) ? requests : []).filter(
+          (request) =>
+            request?.kind === "track_download" &&
+            request?.playlistId === "library" &&
+            ["pending", "processing", "blocked"].includes(request?.status),
+        );
+        const nextStates = {};
+        for (const track of tracks) {
+          if (firstAvailableFile(track)) continue;
+          const request = activeRequests.find(
+            (candidate) =>
+              sameTrackText(candidate.trackName, track.title) &&
+              sameTrackText(candidate.artistName, track.artistName || libraryAlbum.albumArtist) &&
+              (!candidate.albumName || sameTrackText(candidate.albumName, libraryAlbum.title)),
+          );
+          if (request?.jobId) {
+            nextStates[trackDownloadIdentity(track)] = {
+              jobId: request.jobId,
+              status: activityDownloadStatus(request),
+            };
+          }
+        }
+        setTrackDownloadStates((current) => {
+          const next = { ...current };
+          for (const track of tracks) {
+            const key = trackDownloadIdentity(track);
+            if (nextStates[key]) next[key] = nextStates[key];
+            else if (next[key]?.status !== "submitting") delete next[key];
+          }
+          return next;
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getAlbumTracks, isPreviewLibrary, libraryAlbum, library.tracks]);
+
+  useEffect(() => {
+    const hasPollingState = Object.values(trackDownloadStates).some(
+      (state) => state?.jobId && state.status !== "completed" && TRACK_DOWNLOAD_ACTIVE_STATUSES.has(state.status),
+    );
+    if (!hasPollingState) return undefined;
+    let cancelled = false;
+    const sync = async () => {
+      try {
+        const requests = await getRequests();
+        if (cancelled) return;
+        const requestsByJobId = new Map(
+          (Array.isArray(requests) ? requests : [])
+            .filter((request) => request?.jobId)
+            .map((request) => [String(request.jobId), request]),
+        );
+        setTrackDownloadStates((current) => {
+          let changed = false;
+          const next = { ...current };
+          Object.entries(current).forEach(([key, state]) => {
+            if (!state?.jobId) return;
+            const request = requestsByJobId.get(String(state.jobId));
+            if (!request) return;
+            const status = activityDownloadStatus(request);
+            if (status !== state.status) {
+              next[key] = { ...state, status };
+              changed = true;
+            }
+          });
+          return changed ? next : current;
+        });
+      } catch {}
+    };
+    sync();
+    const interval = setInterval(sync, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [trackDownloadStates]);
+
   useDocumentTitle(
     isDetail
       ? libraryAlbum?.title || libraryArtist?.name || "Library"
@@ -1176,7 +1322,10 @@ function LibraryPage() {
         const album = getAlbumForTrack(track);
         const artist = getArtistForAlbum(album);
         const file = firstAvailableFile(track);
-        const downloadKey = String(track?.id || track?.mbid || track?.trackMbid || track?.title || "");
+        const downloadKey = trackDownloadIdentity(track);
+        const downloadState = trackDownloadStates[downloadKey];
+        const downloadPending = TRACK_DOWNLOAD_ACTIVE_STATUSES.has(downloadState?.status);
+        const downloadLabel = trackDownloadActionLabel(downloadState?.status);
         const active =
           String(currentTrack?.id) === String(track.id) &&
           matchesSource(librarySource);
@@ -1264,11 +1413,11 @@ function LibraryPage() {
               <TooltipButton
                 className="native-library-track__download"
                 onClick={() => downloadMissingTrack(track)}
-                disabled={trackDownloadKey === downloadKey}
-                label="Download track"
-                aria-label="Download track"
+                disabled={downloadPending}
+                label={downloadLabel}
+                aria-label={downloadLabel}
               >
-                {trackDownloadKey === downloadKey ? (
+                {downloadPending ? (
                   <RefreshCw className="animate-spin" aria-hidden="true" />
                 ) : (
                   <Download aria-hidden="true" />
