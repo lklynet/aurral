@@ -116,6 +116,22 @@ function isFlowPlaylistType(playlistType) {
   return Boolean(flowPlaylistConfig.getFlow(String(playlistType || "").trim()));
 }
 
+function tracksShareLibraryMembership(left, right) {
+  const leftTrackMbid = String(left?.trackMbid || "").trim();
+  const rightTrackMbid = String(right?.trackMbid || "").trim();
+  if (leftTrackMbid && rightTrackMbid && leftTrackMbid !== rightTrackMbid) return false;
+
+  const leftAlbumMbid = String(left?.albumMbid || "").trim();
+  const rightAlbumMbid = String(right?.albumMbid || "").trim();
+  if (leftAlbumMbid && rightAlbumMbid && leftAlbumMbid !== rightAlbumMbid) return false;
+
+  const leftAlbumName = normalizeText(left?.albumName);
+  const rightAlbumName = normalizeText(right?.albumName);
+  if (leftAlbumName && rightAlbumName && leftAlbumName !== rightAlbumName) return false;
+
+  return tracksShareMembership(left, right);
+}
+
 async function findAurralSource(track, options = {}) {
   const weeklyFlowRoot = path.resolve(options.weeklyFlowRoot || resolveWeeklyFlowRoot());
   const targetPlaylistType = String(options.targetPlaylistType || "").trim();
@@ -129,7 +145,10 @@ async function findAurralSource(track, options = {}) {
     if (!job || job.status !== "done") continue;
     if (excludeJobIds.has(String(job.id || ""))) continue;
     if (!job.finalPath || typeof job.finalPath !== "string") continue;
-    if (!tracksShareMembership(track, job)) continue;
+    const matches = targetPlaylistType === "library"
+      ? tracksShareLibraryMembership(track, job)
+      : tracksShareMembership(track, job);
+    if (!matches) continue;
     if (targetPlaylistType && String(job.playlistType || "") === targetPlaylistType) {
       continue;
     }
@@ -335,7 +354,7 @@ function rankAlbums(albums, track) {
   });
 }
 
-function findMatchingTrack(tracks, track) {
+function findMatchingTrack(tracks, track, strictAlbum = false) {
   const trackMbid = String(track?.trackMbid || "").trim();
   if (trackMbid) {
     const match = tracks.find(
@@ -345,6 +364,7 @@ function findMatchingTrack(tracks, track) {
         String(entry?.foreignTrackId || "").trim() === trackMbid,
     );
     if (match) return match;
+    if (strictAlbum) return null;
   }
   const trackKey = normalizeText(track?.trackName);
   if (!trackKey) return null;
@@ -353,7 +373,8 @@ function findMatchingTrack(tracks, track) {
   );
 }
 
-async function findLidarrSource(track) {
+async function findLidarrSource(track, options = {}) {
+  const strictAlbum = options.targetPlaylistType === "library";
   let artists = [];
   try {
     artists = await libraryManager.getAllArtists();
@@ -386,7 +407,21 @@ async function findLidarrSource(track) {
   }
 
   let foundTitleOnAnyAlbum = false;
-  for (const album of rankAlbums(Array.isArray(albums) ? albums : [], track)) {
+  const rankedAlbums = rankAlbums(Array.isArray(albums) ? albums : [], track);
+  const albumsToCheck = strictAlbum
+    ? rankedAlbums.filter((album) => {
+        const albumMbid = String(track?.albumMbid || "").trim();
+        if (albumMbid) {
+          return (
+            String(album?.mbid || "").trim() === albumMbid ||
+            String(album?.foreignAlbumId || "").trim() === albumMbid
+          );
+        }
+        const albumName = normalizeText(track?.albumName);
+        return !albumName || normalizeText(album?.albumName || album?.title) === albumName;
+      })
+    : rankedAlbums;
+  for (const album of albumsToCheck) {
     let tracks = [];
     try {
       tracks = await libraryManager.getTracks(album.id);
@@ -394,7 +429,11 @@ async function findLidarrSource(track) {
       console.warn("[WeeklyFlowReuse] Failed to inspect Lidarr tracks:", error.message);
       continue;
     }
-    const matchedTrack = findMatchingTrack(Array.isArray(tracks) ? tracks : [], track);
+    const matchedTrack = findMatchingTrack(
+      Array.isArray(tracks) ? tracks : [],
+      track,
+      strictAlbum,
+    );
     if (!matchedTrack) continue;
     foundTitleOnAnyAlbum = true;
     if (matchedTrack.hasFile !== true || !matchedTrack.path) {
@@ -433,7 +472,7 @@ export async function resolveReusableTrackSource(track, options = {}) {
   }
   const aurralSource = await findAurralSource(track, options);
   if (aurralSource) return { source: aurralSource, reason: null };
-  const lidarrSource = await findLidarrSource(track);
+  const lidarrSource = await findLidarrSource(track, options);
   if (lidarrSource) return { source: lidarrSource, reason: null };
   return { source: null, reason: "No reusable Aurral or Lidarr file found" };
 }
@@ -443,7 +482,7 @@ export async function resolveRepairTrackSource(track, options = {}) {
   if (mode === "download") {
     return { source: null, reason: "Existing file reuse is disabled" };
   }
-  const lidarrSource = await findLidarrSource(track);
+  const lidarrSource = await findLidarrSource(track, options);
   if (lidarrSource) return { source: lidarrSource, reason: null };
   const aurralSource = await findAurralSource(track, options);
   if (aurralSource) return { source: aurralSource, reason: null };

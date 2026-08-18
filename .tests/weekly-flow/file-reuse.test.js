@@ -100,6 +100,42 @@ test("reuseTrackForPlaylist references a completed Aurral track path", async () 
   assert.equal(downloadTracker.getJob(result.jobId)?.finalPath, sourcePath);
 });
 
+test("library reuse does not cross album boundaries for the same track title", async () => {
+  const sourceTrack = {
+    artistName: "Amigo the Devil",
+    trackName: "Hell and You",
+    albumName: "Everything is Fine",
+    albumMbid: "everything-is-fine",
+    trackMbid: "everything-track",
+  };
+  const sourcePath = path.join(
+    weeklyFlowRoot,
+    "aurral-weekly-flow",
+    "source-playlist",
+    "Amigo the Devil",
+    "Everything is Fine",
+    "Hell and You.flac",
+  );
+  await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+  await fs.writeFile(sourcePath, "audio");
+  const sourceJobId = downloadTracker.addJob(sourceTrack, "source-playlist");
+  downloadTracker.setDone(sourceJobId, sourcePath, sourceTrack.albumName);
+
+  const result = await reuseTrackForPlaylist(
+    {
+      artistName: "Amigo the Devil",
+      trackName: "Hell and You",
+      albumName: "Volume 1",
+      albumMbid: "volume-1",
+      trackMbid: "volume-1-track",
+    },
+    "library",
+    { existingFileMode: "reuse", weeklyFlowRoot },
+  );
+
+  assert.equal(result.reused, false);
+});
+
 test("reuseTrackForPlaylist does not inspect sources when reuse is disabled", async () => {
   const result = await reuseTrackForPlaylist(
     { artistName: "Artist", trackName: "Song", albumName: "Album" },

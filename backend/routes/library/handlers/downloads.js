@@ -344,7 +344,9 @@ export function registerDownloads(router) {
         "../../../services/weeklyFlow/weeklyFlowDownloadTracker.js"
       );
       const existingJob = downloadTracker.getAll().find((job) => {
-        if (job.playlistType !== "library" || job.status === "failed") return false;
+        if (job.playlistType !== "library" || ["failed", "done"].includes(job.status)) {
+          return false;
+        }
         if (track.trackMbid) return job.trackMbid === track.trackMbid;
         return (
           job.artistName?.toLocaleLowerCase() === track.artistName.toLocaleLowerCase() &&
