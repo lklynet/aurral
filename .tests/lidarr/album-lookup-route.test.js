@@ -6,6 +6,7 @@ import { registerMisc } from "../../backend/routes/library/handlers/misc.js";
 import { libraryManager } from "../../backend/services/libraryManager.js";
 import { lidarrClient } from "../../backend/services/lidarrClient.js";
 import { logger } from "../../backend/services/logger.js";
+import { invalidateCanonicalLibraryCache } from "../../backend/services/libraryQueryService.js";
 import {
   linkLibraryAlbumTrack,
   upsertLibraryAlbum,
@@ -259,5 +260,6 @@ test("canonical album lookup includes owned tracks after the first track page", 
     db.prepare(`DELETE FROM library_tracks WHERE id IN (${trackIds.map(() => "?").join(",")})`).run(...trackIds);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    invalidateCanonicalLibraryCache();
   }
 });
