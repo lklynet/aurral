@@ -2,6 +2,10 @@ import path from "path";
 import { parseFile } from "music-metadata";
 import { validateParsedQuality } from "../qualityProfileService.js";
 import {
+  getAdvertisedQualityRank,
+  isAdvertisedQualityEligible,
+} from "../qualityProfileModel.js";
+import {
   normalizeTitle as normalizeTitleBase,
   scoreTextMatch as scoreTextMatchBase,
   getYear,
@@ -706,7 +710,59 @@ function groupFlowSearchResults(results) {
   return grouped;
 }
 
-function pickBestTrackCandidate(trackCandidates) {
+function readCandidateFileName(entry) {
+  return entry?.raw?.file;
+}
+
+function readCandidateBitrate(entry) {
+  return entry?.raw?.bitrate ?? entry?.raw?.bitRate;
+}
+
+function readQualityAdmissionOptions(options = {}) {
+  const profile = options?.qualityProfile;
+  if (!profile) return null;
+  return {
+    profile,
+    currentTier: options?.currentTier || null,
+    upgrade: options?.upgrade === true,
+  };
+}
+
+function hasProfileAdmissibleCandidate(entries, options = {}) {
+  const qualityOptions = readQualityAdmissionOptions(options);
+  if (!qualityOptions) return true;
+  return entries.some(
+    (entry) =>
+      entry.preDownloadValid &&
+      isAdvertisedQualityEligible(
+        readCandidateFileName(entry),
+        readCandidateBitrate(entry),
+        qualityOptions,
+      ),
+  );
+}
+
+function pickBestTrackCandidate(trackCandidates, options = {}) {
+  const profile = options?.qualityProfile;
+  if (profile) {
+    const qualityOptions = readQualityAdmissionOptions(options);
+    const admissible = trackCandidates
+      .filter(
+        (entry) =>
+          entry.preDownloadValid &&
+          isAdvertisedQualityEligible(
+            readCandidateFileName(entry),
+            readCandidateBitrate(entry),
+            qualityOptions,
+          ),
+      )
+      .sort(
+        (left, right) =>
+          getAdvertisedQualityRank(readCandidateFileName(left), readCandidateBitrate(left), profile) -
+          getAdvertisedQualityRank(readCandidateFileName(right), readCandidateBitrate(right), profile),
+      );
+    if (admissible.length > 0) return admissible[0];
+  }
   return (
     trackCandidates.find((entry) => entry.preDownloadValid) ||
     trackCandidates.find((entry) => entry.isLikelyMatch) ||
@@ -879,14 +935,14 @@ export function rankFlowSearchResults(results, context, options = {}) {
     .sort((left, right) => {
       const scoreDiff = right.folderScores.score - left.folderScores.score;
       if (scoreDiff !== 0) return scoreDiff;
-      const leftTrack = pickBestTrackCandidate(left.trackCandidates);
-      const rightTrack = pickBestTrackCandidate(right.trackCandidates);
+      const leftTrack = pickBestTrackCandidate(left.trackCandidates, options);
+      const rightTrack = pickBestTrackCandidate(right.trackCandidates, options);
       return Number(rightTrack?.score || 0) - Number(leftTrack?.score || 0);
     });
 
   const ranked = [];
   for (const entry of fittingFolders) {
-    const best = pickBestTrackCandidate(entry.trackCandidates);
+    const best = pickBestTrackCandidate(entry.trackCandidates, options);
     if (best) {
       ranked.push({
         ...best,
@@ -895,7 +951,7 @@ export function rankFlowSearchResults(results, context, options = {}) {
       });
     }
   }
-  if (ranked.length > 0) {
+  if (ranked.length > 0 && hasProfileAdmissibleCandidate(ranked, options)) {
     return ranked;
   }
 

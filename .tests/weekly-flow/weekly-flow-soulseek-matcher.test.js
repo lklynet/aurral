@@ -621,3 +621,88 @@ test("validateDownloadedTrack scores path segments without weak-word inflation",
   );
   assert.ok(weak.scores.artist < 92);
 });
+
+test("rankFlowSearchResults prefers the profile-eligible file inside a release folder", () => {
+  const folder = "Shared\\El Canto Del Loco\\Por Mi y por Todos Mis Companeros (2009)";
+  const results = [
+    result({
+      user: "peer",
+      file: `${folder}\\04 - El Canto Del Loco - Aunque Tu No Lo Sepas.flac`,
+      bitrate: null,
+      size: 30000000,
+    }),
+    result({
+      user: "peer",
+      file: `${folder}\\04 - El Canto Del Loco - Aunque Tu No Lo Sepas.mp3`,
+      bitrate: 320,
+      size: 9000000,
+    }),
+  ];
+  const track = {
+    artistName: "El Canto Del Loco",
+    trackName: "Aunque Tu No Lo Sepas",
+    albumName: "Por Mi y por Todos Mis Companeros",
+    releaseYear: "2009",
+    artistAliases: [],
+  };
+  const profile = { enabled: ["mp3-320"], cutoff: "mp3-320" };
+
+  // preferredFormat flac makes the FLAC win on match score, which is what the
+  // folder pick used to go by; the profile cannot accept it, so the track died
+  // at the quality filter with the eligible mp3 sitting in the same folder.
+  const withProfile = rankFlowSearchResults(results, track, {
+    ...rankOpts,
+    preferredFormat: "flac",
+    qualityProfile: profile,
+  });
+  assert.ok(withProfile.length > 0);
+  assert.ok(
+    withProfile[0].raw.file.endsWith(".mp3"),
+    `expected the profile-eligible mp3 to win, got ${withProfile[0].raw.file}`,
+  );
+
+  const withoutProfile = rankFlowSearchResults(results, track, {
+    ...rankOpts,
+    preferredFormat: "flac",
+  });
+  assert.ok(
+    withoutProfile[0].raw.file.endsWith(".flac"),
+    "without a profile the format preference should still decide",
+  );
+});
+
+test("rankFlowSearchResults falls back to flat ranking when no folder candidate fits the profile", () => {
+  const folder = "Shared\\El Canto Del Loco\\Por Mi y por Todos Mis Companeros (2009)";
+  const results = [
+    result({
+      user: "folderPeer",
+      file: `${folder}\\04 - El Canto Del Loco - Aunque Tu No Lo Sepas.flac`,
+      bitrate: null,
+      size: 30000000,
+    }),
+    result({
+      user: "loosePeer",
+      file: "Music\\Spanish Hits\\El Canto Del Loco - Aunque Tu No Lo Sepas.mp3",
+      bitrate: 320,
+      size: 9000000,
+    }),
+  ];
+  const track = {
+    artistName: "El Canto Del Loco",
+    trackName: "Aunque Tu No Lo Sepas",
+    albumName: "Por Mi y por Todos Mis Companeros",
+    releaseYear: "2009",
+    artistAliases: [],
+  };
+  const profile = { enabled: ["mp3-320", "m4a-320"], cutoff: "mp3-320" };
+
+  const ranked = rankFlowSearchResults(results, track, {
+    ...rankOpts,
+    preferredFormat: "mp3",
+    qualityProfile: profile,
+  });
+  assert.ok(
+    ranked.some((entry) => entry.raw.file.endsWith(".mp3")),
+    "expected the profile-eligible file outside the album folder to be reachable",
+  );
+});
