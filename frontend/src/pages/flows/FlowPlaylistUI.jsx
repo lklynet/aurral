@@ -198,7 +198,10 @@ export function PlaylistLibraryItem({
     entry.kind === "flow"
       ? getFlowDisplayTrackCount(entry, stats)
       : getSharedPlaylistTrackCount(entry, stats);
-  const trackLabel = formatTrackCountLabel(trackCount, stats);
+  const trackLabel =
+    entry.kind === "flow"
+      ? formatTrackCountLabel(trackCount, stats)
+      : `${trackCount} ${trackCount === 1 ? "track" : "tracks"}`;
   const baseTypeLabel =
     entry.kind === "flow" ? (entry.enabled === true ? "Flow" : "Flow draft") : "Playlist";
   const showOwner =

@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUpZA,
+  Download,
   ExternalLink,
   Grid3X3,
   Heart,
@@ -31,6 +32,7 @@ import {
   getCanonicalLibraryPage,
   getLibraryRefreshStatus,
   getLibraryFavorites,
+  downloadTrackToLibrary,
   requestLibraryRefresh,
   updateLibraryFavorites,
 } from "../utils/api/endpoints/library.js";
@@ -77,6 +79,17 @@ const favoriteId = (kind, entity) =>
 
 const firstAvailableFile = (track) =>
   (track?.files || []).find((file) => file.available) || null;
+
+const trackDurationMs = (track) => {
+  const fileDurationMs = (track?.files || []).find((file) => Number(file?.durationMs) > 0)
+    ?.durationMs;
+  if (fileDurationMs != null) return fileDurationMs;
+  if (Number(track?.durationMs) > 0) return track.durationMs;
+  const metadataDurationMs = Number(track?.metadata?.durationMs);
+  if (metadataDurationMs > 0) return metadataDurationMs;
+  const metadataDurationSeconds = Number(track?.metadata?.duration);
+  return metadataDurationSeconds > 0 ? Math.round(metadataDurationSeconds * 1000) : null;
+};
 
 const formatDuration = (durationMs) => {
   const seconds = Math.max(0, Math.floor(Number(durationMs || 0) / 1000));
@@ -228,6 +241,7 @@ function LibraryPage() {
   const albumTrackCacheRef = useRef(new Map());
   const refreshAttemptRef = useRef(0);
   const [playlistSavingKey, setPlaylistSavingKey] = useState("");
+  const [trackDownloadKey, setTrackDownloadKey] = useState("");
 
   const handleLibraryScanMessage = useCallback((message) => {
     if (message?.type !== "library_scan_completed") return;
@@ -349,6 +363,7 @@ function LibraryPage() {
               artistId: routeArtistId,
               page: 1,
               pageSize,
+              availableOnly: true,
             }),
           ])
       : section === "favorites"
@@ -366,6 +381,7 @@ function LibraryPage() {
               page: 1,
               pageSize: 12,
               sort: "newest",
+              availableOnly: true,
             }),
           ])
         : getCanonicalLibraryPage({
@@ -376,6 +392,7 @@ function LibraryPage() {
             genre: selectedGenre,
             sort: sortMode,
             direction: sortDirection,
+            availableOnly: tab === "tracks",
           });
 
     const favoritesRequest = Promise.resolve(null);
@@ -544,7 +561,7 @@ function LibraryPage() {
         albumMbid: album?.mbid || album?.releaseGroupMbid || "",
         trackMbid: track?.mbid || "",
         releaseYear: yearOf(album?.releaseDate),
-        durationMs: firstAvailableFile(track)?.durationMs || track?.durationMs,
+        durationMs: trackDurationMs(track),
       });
       if (!payload.artistName || !payload.trackName) {
         showError("Track details are incomplete");
@@ -594,6 +611,50 @@ function LibraryPage() {
     ],
   );
 
+  const downloadMissingTrack = useCallback(
+    async (track) => {
+      if (!track || firstAvailableFile(track) || isPreviewLibrary) return;
+      const album = getAlbumForTrack(track);
+      const artist = getArtistForAlbum(album);
+      const payload = {
+        artistName: artist?.name || track?.artistName || "",
+        trackName: track?.title || track?.trackName || "",
+        albumName: album?.title || track?.albumName || "",
+        artistMbid: artist?.mbid || track?.artistMbid || "",
+        albumMbid: album?.mbid || album?.releaseGroupMbid || track?.albumMbid || "",
+        trackMbid: track?.mbid || track?.trackMbid || "",
+        releaseYear: yearOf(album?.releaseDate),
+        durationMs: trackDurationMs(track),
+      };
+      if (!payload.artistName || !payload.trackName) {
+        showError("Track details are incomplete");
+        return;
+      }
+      const key = String(track?.id || track?.mbid || payload.trackMbid || payload.trackName);
+      setTrackDownloadKey(key);
+      try {
+        const result = await downloadTrackToLibrary(payload);
+        showSuccess(
+          result?.alreadyOwned
+            ? `${payload.trackName} is already in your library`
+            : result?.queued
+              ? `Queued ${payload.trackName} for your library`
+              : `Added ${payload.trackName} to your library`,
+        );
+      } catch (requestError) {
+        showError(
+          requestError.response?.data?.message ||
+            requestError.response?.data?.error ||
+            requestError.message ||
+            "Failed to add track to library",
+        );
+      } finally {
+        setTrackDownloadKey("");
+      }
+    },
+    [getAlbumForTrack, getArtistForAlbum, isPreviewLibrary, showError, showSuccess],
+  );
+
   const albumAvailability = useCallback(
     (album) => {
       const tracks = getAlbumTracks(album);
@@ -627,9 +688,14 @@ function LibraryPage() {
     [getArtistForAlbum, library.albums, normalizedQuery, selectedGenre],
   );
 
+  const ownedLibraryTracks = useMemo(
+    () => library.tracks.filter((track) => firstAvailableFile(track)),
+    [library.tracks],
+  );
+
   const filteredTracks = useMemo(
     () =>
-      library.tracks.filter((track) => {
+      ownedLibraryTracks.filter((track) => {
         const album = getAlbumForTrack(track);
         const artist = getArtistForAlbum(album);
         return (
@@ -644,7 +710,7 @@ function LibraryPage() {
           )
         );
       }),
-    [getAlbumForTrack, getArtistForAlbum, library.tracks, normalizedQuery, selectedGenre],
+    [getAlbumForTrack, getArtistForAlbum, normalizedQuery, ownedLibraryTracks, selectedGenre],
   );
 
   const genreStats = useMemo(() => {
@@ -661,11 +727,11 @@ function LibraryPage() {
     library.albums.forEach((album) =>
       metadataGenres(album).forEach((genre) => add(genre, "albums")),
     );
-    library.tracks.forEach((track) =>
+    ownedLibraryTracks.forEach((track) =>
       metadataGenres(track).forEach((genre) => add(genre, "tracks")),
     );
     return [...stats.values()].sort((left, right) => left.name.localeCompare(right.name));
-  }, [library.albums, library.artists, library.genres, library.tracks]);
+  }, [library.albums, library.artists, library.genres, ownedLibraryTracks]);
 
   const visibleGenreStats = useMemo(
     () =>
@@ -701,7 +767,7 @@ function LibraryPage() {
 
   const favoriteTracks = useMemo(
     () =>
-      library.tracks.filter((track) => {
+      ownedLibraryTracks.filter((track) => {
         const album = getAlbumForTrack(track);
         const artist = getArtistForAlbum(album);
         return (
@@ -716,7 +782,7 @@ function LibraryPage() {
           )
         );
       }),
-    [favoriteIds, getAlbumForTrack, getArtistForAlbum, library.tracks, normalizedQuery],
+    [favoriteIds, getAlbumForTrack, getArtistForAlbum, normalizedQuery, ownedLibraryTracks],
   );
 
   const sortedArtists = useMemo(() => {
@@ -780,7 +846,7 @@ function LibraryPage() {
         .slice(0, 12),
     [genreStats],
   );
-  const homeTracks = library.tracks.slice(0, 12);
+  const homeTracks = ownedLibraryTracks.slice(0, 12);
   const libraryAlbum = routeAlbumId ? albumsById.get(String(routeAlbumId)) || null : null;
   const libraryArtist = routeArtistId ? artistsById.get(String(routeArtistId)) || null : null;
   useDocumentTitle(
@@ -993,7 +1059,7 @@ function LibraryPage() {
     favoriteArtists.length + favoriteAlbums.length + favoriteTracks.length;
   const activeCount =
     section === "home"
-      ? pageData?.total ?? library.albums.length + library.tracks.length
+          ? pageData?.total ?? library.albums.length + ownedLibraryTracks.length
       : section === "favorites"
         ? favoriteCount
         : pageData?.kind === tab
@@ -1029,13 +1095,13 @@ function LibraryPage() {
     if (section === "albums") return sortedAlbums.flatMap(getAlbumTracks);
     if (section === "tracks") return sortedTracks;
     if (section === "genres" && selectedGenre) return filteredTracks;
-    return library.tracks;
+      return ownedLibraryTracks;
   }, [
     favoriteTracks,
     filteredTracks,
     getAlbumTracks,
     libraryAlbum,
-    library.tracks,
+    ownedLibraryTracks,
     section,
     selectedGenre,
     sortedAlbums,
@@ -1073,6 +1139,7 @@ function LibraryPage() {
         const album = getAlbumForTrack(track);
         const artist = getArtistForAlbum(album);
         const file = firstAvailableFile(track);
+        const downloadKey = String(track?.id || track?.mbid || track?.trackMbid || track?.title || "");
         const active =
           String(currentTrack?.id) === String(track.id) &&
           matchesSource(librarySource);
@@ -1088,19 +1155,23 @@ function LibraryPage() {
             key={track.id}
             role="listitem"
           >
-            <TooltipButton
-              className="native-library-track__play"
-              onClick={() => playTrack(track, tracks)}
-              disabled={!file || (active && isLoading)}
-              label={(active && isPlaying ? "Pause " : "Play ") + track.title}
-              aria-label={(active && isPlaying ? "Pause " : "Play ") + track.title}
-            >
-              {active && isPlaying ? (
-                <span aria-hidden="true">Ⅱ</span>
-              ) : (
-                <Play aria-hidden="true" fill="currentColor" />
-              )}
-            </TooltipButton>
+            {file ? (
+              <TooltipButton
+                className="native-library-track__play"
+                onClick={() => playTrack(track, tracks)}
+                disabled={active && isLoading}
+                label={(active && isPlaying ? "Pause " : "Play ") + track.title}
+                aria-label={(active && isPlaying ? "Pause " : "Play ") + track.title}
+              >
+                {active && isPlaying ? (
+                  <span aria-hidden="true">Ⅱ</span>
+                ) : (
+                  <Play aria-hidden="true" fill="currentColor" />
+                )}
+              </TooltipButton>
+            ) : (
+              <span aria-hidden="true" />
+            )}
             <span className="native-library-track__number" aria-hidden="true">
               {index + 1}
             </span>
@@ -1150,8 +1221,25 @@ function LibraryPage() {
               <span className="native-library-track__link native-library-track__album">{albumName}</span>
             )}
             <span className={"native-library-track__time" + (!file ? " is-missing" : "")}>
-              {file ? formatDuration(file.durationMs) : "Unavailable"}
+              {formatDuration(trackDurationMs(track)) || "Unavailable"}
             </span>
+            {!file ? (
+              <TooltipButton
+                className="native-library-track__download"
+                onClick={() => downloadMissingTrack(track)}
+                disabled={trackDownloadKey === downloadKey}
+                label="Download track"
+                aria-label="Download track"
+              >
+                {trackDownloadKey === downloadKey ? (
+                  <RefreshCw className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <Download aria-hidden="true" />
+                )}
+              </TooltipButton>
+            ) : (
+              <span />
+            )}
             <TrackPlaylistMenu
               track={track}
               playlists={sharedPlaylists}
@@ -1334,7 +1422,7 @@ function LibraryPage() {
       )}
       {homeTracks.length > 0 && (
         <section className="native-library-section">
-          {renderSectionHeader("Tracks", library.tracks.length, "/library/tracks")}
+          {renderSectionHeader("Tracks", ownedLibraryTracks.length, "/library/tracks")}
           {renderTrackList(homeTracks, "Library tracks")}
         </section>
       )}
@@ -1653,7 +1741,7 @@ function LibraryPage() {
       : 0;
   const pageCount =
     section === "home"
-      ? pageData?.total ?? library.albums.length + library.tracks.length
+      ? pageData?.total ?? library.albums.length + ownedLibraryTracks.length
       : activeCount;
   const showToolbar = section !== "home";
   const hasActiveFilters = Boolean(selectedGenre);

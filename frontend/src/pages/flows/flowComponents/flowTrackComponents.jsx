@@ -18,6 +18,7 @@ import { Link } from "react-router-dom";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { normalizeFlowTrack } from "../../../utils/audioQueue";
 import { TrackPlaylistMenu, TrackPlaylistSubmenu } from "../../ArtistDetails/components/TrackPlaylistMenu";
+import { PlaylistArtworkThumb } from "./PlaylistArtworkThumb.jsx";
 
 function getTrackStatusMeta(status) {
   switch (String(status || "").toLowerCase()) {
@@ -53,6 +54,12 @@ function getTrackQualityMeta(track) {
     external: "External",
   }[track.qualityState] || "");
   return { label, state };
+}
+
+function formatTrackDuration(durationMs) {
+  const seconds = Math.max(0, Math.floor(Number(durationMs || 0) / 1000));
+  if (!seconds) return "—";
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 function BulkPlaylistAction({
@@ -445,6 +452,10 @@ export function FlowTracksPanel({
   onReSearchTrack,
   playbackSource = null,
   showPlaybackControls = true,
+  trackTitleLabel = "Song",
+  showTrackArtwork = false,
+  artworkByAlbumMbid = {},
+  showDuration = false,
   hideAlbumColumn = false,
   hideStatusColumn = false,
   hideQualityColumn = false,
@@ -761,8 +772,11 @@ export function FlowTracksPanel({
                     className="flow-page__tracks-table-index"
                   />
                 )}
+                {showTrackArtwork ? (
+                  <th className="flow-page__tracks-table-artwork" aria-hidden="true" />
+                ) : null}
                 <FlowTracksSortHeader
-                  label="Song"
+                  label={trackTitleLabel}
                   sortKey="song"
                   activeSortKey={sortKey}
                   sortDirection={sortDirection}
@@ -787,6 +801,11 @@ export function FlowTracksPanel({
                     className="flow-page__tracks-table-album"
                   />
                 )}
+                {showDuration ? (
+                  <th className="flow-page__tracks-table-duration" scope="col">
+                    Time
+                  </th>
+                ) : null}
                 {hideStatusColumn ? null : (
                   <FlowTracksSortHeader
                     label={<span className="sr-only">Status</span>}
@@ -834,6 +853,11 @@ export function FlowTracksPanel({
                 const isDeleting = deletingTrackId === track.id;
                 const isCurrent = track.id === currentTrackId && isCurrentPlaying;
                 const quality = hideQualityColumn ? null : getTrackQualityMeta(track);
+                const artworkUrl =
+                  track.artworkUrl ||
+                  track.coverUrl ||
+                  artworkByAlbumMbid[String(track.albumMbid || "")] ||
+                  "";
                 return (
                   <tr
                     key={track.id}
@@ -882,6 +906,15 @@ export function FlowTracksPanel({
                         trackDisplayNumber
                       )}
                     </td>
+                    {showTrackArtwork ? (
+                      <td className="flow-page__tracks-table-artwork">
+                        <PlaylistArtworkThumb
+                          artworkUrl={artworkUrl}
+                          name={track.albumName || track.trackName}
+                          className="flow-page__tracks-table-artwork-thumb"
+                        />
+                      </td>
+                    ) : null}
                     <td
                       className="flow-page__tracks-table-song"
                       title={track.trackName}
@@ -918,6 +951,11 @@ export function FlowTracksPanel({
                         </span>
                       </td>
                     )}
+                    {showDuration ? (
+                      <td className="flow-page__tracks-table-duration">
+                        {formatTrackDuration(track.durationMs)}
+                      </td>
+                    ) : null}
                     {hideStatusColumn ? null : (
                       <td className="flow-page__tracks-table-status-cell">
                         <TrackStatusDot status={track.status} />

@@ -8073,7 +8073,7 @@ button.native-library-card__artist:focus-visible {
 }
 
 .native-library-track {
-  --native-library-track-columns: 2rem 2rem 2.35rem minmax(12rem, 1.4fr) minmax(8rem, 1fr) minmax(8rem, 1fr) 4.5rem 1.7rem 1.7rem;
+  --native-library-track-columns: 2rem 2rem 2.35rem minmax(12rem, 1.4fr) minmax(8rem, 1fr) minmax(8rem, 1fr) 4.5rem 1.7rem 1.7rem 1.7rem;
 
   display: grid;
   min-width: 44rem;
@@ -8222,6 +8222,34 @@ button.native-library-card__artist:focus-visible {
 .native-library-track__time.is-missing {
   color: var(--aurral-text-muted);
   font-size: 0.65rem;
+}
+
+.native-library-track__download {
+  display: inline-flex;
+  width: 1.5rem;
+  height: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--aurral-text-muted);
+  cursor: pointer;
+}
+
+.native-library-track__download:hover,
+.native-library-track__download:focus-visible {
+  color: var(--aurral-text);
+}
+
+.native-library-track__download:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.native-library-track__download svg {
+  width: 0.85rem;
+  height: 0.85rem;
 }
 
 .native-library-track__favorite {
@@ -8536,7 +8564,7 @@ button.native-library-genre-row:focus-visible {
   }
 
   .native-library-track {
-    --native-library-track-columns: 2rem 2.2rem 2.35rem minmax(10rem, 1fr) 4.5rem 1.7rem 1.7rem;
+    --native-library-track-columns: 2rem 2.2rem 2.35rem minmax(10rem, 1fr) 4.5rem 1.7rem 1.7rem 1.7rem;
 
     min-width: 32rem;
   }
@@ -8599,7 +8627,7 @@ button.native-library-genre-row:focus-visible {
   }
 
   .native-library-track {
-    --native-library-track-columns: 1.8rem 2.15rem minmax(0, 1fr) 3.8rem 1.7rem 1.7rem;
+    --native-library-track-columns: 1.8rem 2.15rem minmax(0, 1fr) 3.8rem 1.7rem 1.7rem 1.7rem;
 
     min-width: 0;
     gap: 0.4rem;
@@ -9885,14 +9913,14 @@ button.native-library-genre-row:focus-visible {
   display: flex;
   min-height: 0;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 
 .flow-page__library-head {
   display: flex;
   align-items: center;
-  gap: 0.625rem;
-  padding-inline: 0.375rem;
+  gap: 0.5rem;
+  padding-inline: 0.25rem;
 }
 
 .flow-page__library-collapse {
@@ -9928,7 +9956,7 @@ button.native-library-genre-row:focus-visible {
   min-width: 0;
   flex: 1;
   color: var(--aurral-text);
-  font-size: 1.125rem;
+  font-size: 1rem;
   font-weight: 800;
   line-height: 1.2;
 }
@@ -9945,8 +9973,8 @@ button.native-library-genre-row:focus-visible {
 
 .flow-page__library-create-btn {
   display: inline-flex;
-  width: 2.75rem;
-  height: 2.75rem;
+  width: 2.25rem;
+  height: 2.25rem;
   align-items: center;
   justify-content: center;
   padding: 0;
@@ -9974,8 +10002,8 @@ button.native-library-genre-row:focus-visible {
 }
 
 .flow-page__library-create-icon {
-  width: 1.375rem;
-  height: 1.375rem;
+  width: 1.125rem;
+  height: 1.125rem;
   stroke-width: 2.75;
 }
 
@@ -10139,9 +10167,9 @@ button.native-library-genre-row:focus-visible {
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.125rem;
   overflow: auto;
-  padding: 0.375rem;
+  padding: 0.25rem;
   background: var(--aurral-surface);
   border-radius: var(--aurral-radius);
 }
@@ -10150,7 +10178,7 @@ button.native-library-genre-row:focus-visible {
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 0.375rem;
+  gap: 0.25rem;
   padding: 0;
   background: transparent;
   color: inherit;
@@ -10164,8 +10192,8 @@ button.native-library-genre-row:focus-visible {
   min-width: 0;
   flex: 1;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.625rem;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
   border: 0;
   border-radius: var(--aurral-radius-sm);
   background: transparent;
@@ -10188,9 +10216,9 @@ button.native-library-genre-row:focus-visible {
   background: var(--aurral-surface-raised);
 }
 
-.flow-page__library-item-artwork {
-  width: 3rem;
-  height: 3rem;
+.flow-page__library-item .flow-page__library-item-artwork.flow-page__artwork {
+  width: 2.5rem;
+  height: 2.5rem;
 }
 
 .flow-page__library-item-body {
@@ -10216,7 +10244,7 @@ button.native-library-genre-row:focus-visible {
 
 .flow-page__library-item-type {
   color: var(--aurral-text-muted);
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
 }
 
 .flow-page__library-item-activity {
@@ -10233,7 +10261,7 @@ button.native-library-genre-row:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--aurral-text);
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   font-weight: 700;
 }
 
@@ -10241,8 +10269,8 @@ button.native-library-genre-row:focus-visible {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 0.375rem;
-  padding-right: 0.5rem;
+  gap: 0.25rem;
+  padding-right: 0.375rem;
 }
 
 .flow-page__library-item-meta {
@@ -10250,7 +10278,7 @@ button.native-library-genre-row:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--aurral-text-muted);
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
 }
 
 .flow-page__detail {
@@ -10263,6 +10291,78 @@ button.native-library-genre-row:focus-visible {
   padding: 1.25rem 1.5rem 1.5rem;
   background: var(--aurral-surface);
   border-radius: var(--aurral-radius);
+}
+
+.flow-page--playlists .flow-page__library-list {
+  padding: 0.125rem;
+  background: transparent;
+}
+
+.flow-page--playlists .flow-page__detail {
+  gap: 1.25rem;
+  padding: 0.5rem 1.25rem 1.5rem;
+  background: transparent;
+  border-radius: 0;
+}
+
+.flow-page--playlists .flow-page__detail-hero {
+  margin: 0;
+  padding: 0.75rem 0 1rem;
+  background: transparent;
+  border-bottom: 1px solid var(--aurral-border);
+  border-radius: 0;
+}
+
+.flow-page--playlists .flow-page__detail-artwork.flow-page__artwork {
+  width: 5rem;
+  height: 5rem;
+}
+
+.flow-page--playlists .flow-page__detail-title--hero {
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  letter-spacing: -0.04em;
+}
+
+.flow-page--playlists .flow-page__tracks {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.flow-page--playlists .flow-page__tracks-toolbar {
+  padding: 0 0 0.625rem;
+}
+
+.flow-page--playlists .flow-page__tracks-toolbar .btn-accent {
+  background: var(--aurral-text);
+  color: var(--aurral-surface);
+}
+
+.flow-page--playlists .flow-page__tracks-table-head th {
+  padding: 0.45rem 0.75rem;
+}
+
+.flow-page--playlists .flow-page__tracks-table-row td {
+  padding: 0.4rem 0.75rem;
+}
+
+.flow-page--playlists .flow-page__tracks-table-artwork {
+  width: 3rem;
+  padding: 0.35rem 0.5rem;
+}
+
+.flow-page--playlists .flow-page__tracks-table-artwork .flow-page__tracks-table-artwork-thumb {
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 0.2rem;
+}
+
+.flow-page--playlists .flow-page__tracks-table-duration {
+  width: 4.5rem;
+  color: var(--aurral-text-subtle);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .flow-page__detail--empty {
@@ -11295,6 +11395,26 @@ button.native-library-genre-row:focus-visible {
   padding: 0.5rem 0.25rem;
   text-align: center;
   vertical-align: middle;
+}
+
+.flow-page__tracks-table-artwork {
+  width: 3.35rem;
+  padding: 0.5rem;
+  vertical-align: middle;
+}
+
+.flow-page__tracks-table-artwork-thumb {
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 0.2rem;
+}
+
+.flow-page__tracks-table-duration {
+  width: 4.5rem;
+  color: var(--aurral-text-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .flow-page__track-status-dot {
