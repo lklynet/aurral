@@ -2,6 +2,7 @@ import { libraryManager } from "../../../services/libraryManager.js";
 import { cacheMiddleware } from "../../../middleware/cache.js";
 import { noCache } from "../../../middleware/cache.js";
 import { verifyTokenAuth } from "../../../middleware/auth.js";
+import { requireAuth, requirePermission } from "../../../middleware/requirePermission.js";
 import { getAlbumTracksByAlbumMbid } from "../../../services/providers/brainzmashProvider.js";
 import { enrichTracksWithDeezerPreviews } from "../../../services/apiClients/index.js";
 import fsp from "fs/promises";
@@ -27,6 +28,31 @@ const canReadAudioFile = async (filePath) => {
 };
 
 export function registerTracks(router) {
+  if (typeof router.delete === "function") {
+    router.delete(
+      "/tracks/:id",
+      requireAuth,
+      requirePermission("deleteAlbum"),
+      async (req, res) => {
+        try {
+          const result = await libraryManager.deleteTrack(req.params.id);
+          if (!result?.success) {
+            return res.status(503).json({
+              error: result?.error || "Failed to delete track",
+              message: result?.error || "Failed to delete track",
+            });
+          }
+          return res.json({ success: true, message: "Track deleted successfully" });
+        } catch (error) {
+          return res.status(500).json({
+            error: "Failed to delete track",
+            message: error.message,
+          });
+        }
+      },
+    );
+  }
+
   router.get("/playback-queue", cacheMiddleware(120), async (req, res) => {
     try {
       const tracks = await libraryManager.getPlaybackQueue();

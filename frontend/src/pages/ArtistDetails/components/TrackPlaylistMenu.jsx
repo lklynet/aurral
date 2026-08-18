@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { ChevronRight, Loader, MoreHorizontal, Plus } from "lucide-react";
+import { ChevronRight, Loader, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import AddActionButton from "../../../components/AddActionButton";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import TooltipButton from "../../../components/TooltipButton";
@@ -219,6 +219,77 @@ export function TrackPlaylistSubmenu({
           excludedPlaylistIds={excludedPlaylistIds}
           onSelect={handleSelect}
         />
+      </div>
+    </div>
+  );
+}
+
+export function TrackPlaylistRemoveSubmenu({
+  track = null,
+  playlists = [],
+  saving = false,
+  error = "",
+  onSelect,
+  onClose,
+  toggleOnClick = false,
+  isOpen = false,
+  onToggle,
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const submenuOpen = typeof onToggle === "function" ? isOpen : internalOpen;
+  const removablePlaylists = playlists
+    .map((playlist) => {
+      const entry = (Array.isArray(playlist?.trackEntries) ? playlist.trackEntries : []).find(
+        (candidate) => trackMatchesStoredIdentity(candidate?.identity, track),
+      );
+      return entry ? { playlist, jobId: entry.id } : null;
+    })
+    .filter(Boolean);
+
+  if (!removablePlaylists.length) return null;
+
+  const handleSelect = async (playlistId, jobId) => {
+    await onSelect?.({ playlistId, jobId });
+    onClose?.();
+  };
+
+  return (
+    <div className={`artist-menu-submenu${toggleOnClick && submenuOpen ? " is-open" : ""}`}>
+      <button
+        type="button"
+        className="artist-menu-item artist-menu-submenu__trigger"
+        role="menuitem"
+        aria-expanded={toggleOnClick ? submenuOpen : undefined}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (toggleOnClick) {
+            if (onToggle) onToggle();
+            else setInternalOpen((value) => !value);
+          }
+        }}
+      >
+        <span className="artist-menu-item__main">
+          <Trash2 className="artist-icon-sm" />
+          Remove from playlist
+        </span>
+        <ChevronRight
+          className={`artist-icon-sm${toggleOnClick && submenuOpen ? " artist-chevron--open" : ""}`}
+          aria-hidden="true"
+        />
+      </button>
+      <div className="artist-menu-submenu__panel">
+        {removablePlaylists.map(({ playlist, jobId }) => (
+          <button
+            type="button"
+            className="artist-menu-item artist-menu-item--danger"
+            key={playlist.id}
+            onClick={() => handleSelect(playlist.id, jobId)}
+            disabled={saving}
+          >
+            {playlist.name}
+          </button>
+        ))}
+        {error ? <div className="artist-error-text">{error}</div> : null}
       </div>
     </div>
   );

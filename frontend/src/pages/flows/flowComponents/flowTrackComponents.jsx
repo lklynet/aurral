@@ -6,7 +6,6 @@ import {
   Pause,
   Shuffle,
   Search,
-  MoreHorizontal,
   ArrowUp,
   ArrowDown,
   Plus,
@@ -18,6 +17,7 @@ import { Link } from "react-router-dom";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { normalizeFlowTrack } from "../../../utils/audioQueue";
 import { TrackPlaylistMenu, TrackPlaylistSubmenu } from "../../ArtistDetails/components/TrackPlaylistMenu";
+import { LibraryItemMenu } from "../../../components/LibraryItemMenu";
 import { PlaylistArtworkThumb } from "./PlaylistArtworkThumb.jsx";
 
 function getTrackStatusMeta(status) {
@@ -187,185 +187,84 @@ function FlowTrackKebabMenu({
   onDelete,
   playlistMenuProps = null,
 }) {
-  const [isOpen, setIsOpen] = useState(false);
   const [openSubmenu, setOpenSubmenu] = useState(null);
-  const [menuPosition, setMenuPosition] = useState(null);
-  const menuRef = useRef(null);
-  const triggerRef = useRef(null);
-  const onLoadPlaylistsRef = useRef(playlistMenuProps?.onLoadPlaylists);
-  onLoadPlaylistsRef.current = playlistMenuProps?.onLoadPlaylists;
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setIsOpen(false);
-        setOpenSubmenu(null);
-        setMenuPosition(null);
-      }
-    };
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    onLoadPlaylistsRef.current?.();
-  }, [isOpen]);
-
-  const close = () => {
-    setIsOpen(false);
-    setOpenSubmenu(null);
-    setMenuPosition(null);
-  };
   const trackLabel = track?.trackName || "track";
-  const openMenu = () => {
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (rect) {
-      const menuWidth = 216;
-      const viewportPadding = 12;
-      setMenuPosition({
-        top: rect.bottom + 8,
-        left: Math.min(
-          Math.max(viewportPadding, rect.right - menuWidth),
-          window.innerWidth - menuWidth - viewportPadding,
-        ),
-      });
-    }
-    setIsOpen(true);
-  };
-
+  const actionItems = [
+    canReSearch
+      ? {
+          id: "re-search",
+          label: track.status === "done" ? "Search for upgrade" : "Re-search",
+          icon: Search,
+          disabled: isReSearching,
+          onSelect: () => onReSearch?.(track),
+        }
+      : null,
+    canDelete
+      ? {
+          id: "remove",
+          label: "Remove from playlist",
+          icon: Trash2,
+          danger: true,
+          disabled: isDeleting,
+          onSelect: () => onDelete?.(track),
+        }
+      : null,
+  ].filter(Boolean);
+  const additionalItemsAfter = canReSearch ? "re-search" : "remove";
   return (
-    <div
-      className={`flow-page__track-menu${isOpen ? " is-open" : ""}`}
-      ref={menuRef}
-    >
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          if (isOpen) {
-            close();
-            return;
-          }
-          openMenu();
-        }}
-        className="btn btn-secondary btn-icon btn-xs flow-page__track-menu-trigger"
-        aria-label={`Options for ${trackLabel}`}
-        title={`Options for ${trackLabel}`}
-        aria-expanded={isOpen}
-        aria-haspopup="menu"
-      >
-        <MoreHorizontal className="artist-icon-xs" />
-      </button>
-      {isOpen ? (
+    <LibraryItemMenu
+      label={trackLabel}
+      items={actionItems}
+      additionalItemsAfter={additionalItemsAfter}
+      onMenuOpen={() => {
+        setOpenSubmenu(null);
+        playlistMenuProps?.onLoadPlaylists?.();
+      }}
+      renderAdditionalItems={({ closeMenu }) => (
         <>
-          <button
-            type="button"
-            className="artist-backdrop-button"
-            onClick={close}
-            aria-label="Close track menu"
-          />
-          <div
-            className="artist-floating-menu flow-page__track-menu-dropdown"
-            style={{
-              top: menuPosition?.top ?? 0,
-              left: menuPosition?.left ?? 0,
-            }}
-            role="menu"
-          >
-            {canReSearch ? (
-              <button
-                type="button"
-                role="menuitem"
-                className="artist-menu-item"
-                disabled={isReSearching}
-                onClick={() => {
-                  onReSearch?.(track);
-                  close();
-                }}
-              >
-                <span className="artist-menu-item__main">
-                  {isReSearching ? (
-                    <Loader2 className="artist-icon-sm animate-spin" />
-                  ) : (
-                    <Search className="artist-icon-sm" />
-                  )}
-                  {track.status === "done" ? "Search for upgrade" : "Re-search"}
-                </span>
-              </button>
-            ) : null}
-            {playlistMenuProps?.onAddTrackToPlaylist ? (
-              <TrackPlaylistSubmenu
-                label="Add to playlist"
-                icon={Plus}
-                track={playlistMenuProps.track}
-                playlists={playlistMenuProps.playlists}
-                loading={playlistMenuProps.loading}
-                saving={playlistMenuProps.saving}
-                error={playlistMenuProps.error}
-                defaultNewPlaylistName={playlistMenuProps.defaultNewPlaylistName}
-                excludedPlaylistIds={playlistMenuProps.excludedPlaylistIds}
-                onSelect={playlistMenuProps.onAddTrackToPlaylist}
-                onClose={close}
-                toggleOnClick
-                isOpen={openSubmenu === "add"}
-                onToggle={() =>
-                  setOpenSubmenu((current) =>
-                    current === "add" ? null : "add",
-                  )
-                }
-              />
-            ) : null}
-            {playlistMenuProps?.onMoveTrackToPlaylist ? (
-              <TrackPlaylistSubmenu
-                label="Move to playlist"
-                icon={ListMusic}
-                track={playlistMenuProps.track}
-                playlists={playlistMenuProps.playlists}
-                loading={playlistMenuProps.loading}
-                saving={playlistMenuProps.saving}
-                error={playlistMenuProps.error}
-                defaultNewPlaylistName={playlistMenuProps.defaultNewPlaylistName}
-                excludedPlaylistIds={playlistMenuProps.excludedPlaylistIds}
-                onSelect={playlistMenuProps.onMoveTrackToPlaylist}
-                onClose={close}
-                toggleOnClick
-                isOpen={openSubmenu === "move"}
-                onToggle={() =>
-                  setOpenSubmenu((current) =>
-                    current === "move" ? null : "move",
-                  )
-                }
-              />
-            ) : null}
-            {canDelete ? (
-              <button
-                type="button"
-                role="menuitem"
-                className="artist-menu-item artist-menu-item--danger"
-                disabled={isDeleting}
-                onClick={() => {
-                  onDelete?.(track);
-                  close();
-                }}
-              >
-                <span className="artist-menu-item__main">
-                  {isDeleting ? (
-                    <Loader2 className="artist-icon-sm animate-spin" />
-                  ) : (
-                    <Trash2 className="artist-icon-sm" />
-                  )}
-                  Remove from playlist
-                </span>
-              </button>
-            ) : null}
-          </div>
+          {playlistMenuProps?.onAddTrackToPlaylist ? (
+            <TrackPlaylistSubmenu
+              label="Add to playlist"
+              icon={Plus}
+              track={playlistMenuProps.track}
+              playlists={playlistMenuProps.playlists}
+              loading={playlistMenuProps.loading}
+              saving={playlistMenuProps.saving}
+              error={playlistMenuProps.error}
+              defaultNewPlaylistName={playlistMenuProps.defaultNewPlaylistName}
+              excludedPlaylistIds={playlistMenuProps.excludedPlaylistIds}
+              onSelect={playlistMenuProps.onAddTrackToPlaylist}
+              onClose={closeMenu}
+              toggleOnClick
+              isOpen={openSubmenu === "add"}
+              onToggle={() =>
+                setOpenSubmenu((current) => (current === "add" ? null : "add"))
+              }
+            />
+          ) : null}
+          {playlistMenuProps?.onMoveTrackToPlaylist ? (
+            <TrackPlaylistSubmenu
+              label="Move to playlist"
+              icon={ListMusic}
+              track={playlistMenuProps.track}
+              playlists={playlistMenuProps.playlists}
+              loading={playlistMenuProps.loading}
+              saving={playlistMenuProps.saving}
+              error={playlistMenuProps.error}
+              defaultNewPlaylistName={playlistMenuProps.defaultNewPlaylistName}
+              excludedPlaylistIds={playlistMenuProps.excludedPlaylistIds}
+              onSelect={playlistMenuProps.onMoveTrackToPlaylist}
+              onClose={closeMenu}
+              toggleOnClick
+              isOpen={openSubmenu === "move"}
+              onToggle={() =>
+                setOpenSubmenu((current) => (current === "move" ? null : "move"))
+              }
+            />
+          ) : null}
         </>
-      ) : null}
-    </div>
+      )}
+    />
   );
 }
 
@@ -375,7 +274,7 @@ function TrackStatusDot({ status }) {
   const normalized = String(status || "").toLowerCase();
   const isLinkable = normalized !== "done";
   if (isLinkable) {
-    const targetPath = normalized === "blocked" ? "/activity/review" : "/activity/queue";
+    const targetPath = "/activity/queue";
     return (
       <Link
         to={targetPath}
@@ -863,6 +762,7 @@ export function FlowTracksPanel({
                   <tr
                     key={track.id}
                     className={`flow-page__tracks-table-row${isCurrent ? " is-current" : ""}`}
+                    data-library-menu-target={useTrackContextMenu ? "true" : undefined}
                   >
                     <td className="flow-page__tracks-table-index">
                       {editMode ? (

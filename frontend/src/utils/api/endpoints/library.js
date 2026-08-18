@@ -178,6 +178,9 @@ export const deleteAlbumFromLibrary = (id, deleteFiles = false) =>
     params: { deleteFiles },
   });
 
+export const deleteTrackFromLibrary = (id) =>
+  deleteData(`/library/tracks/${id}`);
+
 export const getLibraryAlbums = async (artistId) => {
   const data = await getData("/library/albums", {
     params: { artistId },

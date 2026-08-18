@@ -11,13 +11,18 @@ import {
   Heart,
   List,
   ListFilter,
+  Pause,
   Play,
+  Radio,
   RefreshCw,
   Search,
+  Trash2,
+  UserRound,
   X,
 } from "lucide-react";
 
 import ArtistImage from "../components/ArtistImage";
+import { LibraryItemMenu, LibraryItemSubmenu } from "../components/LibraryItemMenu";
 import TooltipButton from "../components/TooltipButton";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
@@ -32,24 +37,35 @@ import {
 } from "../utils/api/endpoints/artists.js";
 import {
   clearCanonicalLibraryPageCache,
+  deleteAlbumFromLibrary,
+  deleteArtistFromLibrary,
+  deleteTrackFromLibrary,
   getCanonicalLibraryPage,
   getLibraryRefreshStatus,
   getLibraryFavorites,
   getRequests,
   downloadTrackToLibrary,
   requestLibraryRefresh,
+  updateLibraryArtist,
   updateLibraryFavorites,
 } from "../utils/api/endpoints/library.js";
 import {
   addSharedPlaylistTracks,
   createSharedPlaylist,
+  deleteSharedPlaylistTrack,
 } from "../utils/api/endpoints/playlists.js";
 import { buildAuthenticatedApiUrl } from "../utils/api/core.js";
 import { mergeAlbumMetadataTracks } from "../utils/libraryTrackHydration.js";
 import { navigateToLibraryAlbum } from "../utils/searchNavigation";
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { libraryPreviewData, libraryPreviewFavorites } from "./libraryPreviewData";
-import { TrackPlaylistMenu } from "./ArtistDetails/components/TrackPlaylistMenu";
+import {
+  TrackPlaylistRemoveSubmenu,
+  TrackPlaylistSubmenu,
+} from "./ArtistDetails/components/TrackPlaylistMenu";
+import { DeleteAlbumModal } from "./ArtistDetails/components/DeleteAlbumModal";
+import { DeleteArtistModal } from "./ArtistDetails/components/DeleteArtistModal";
+import { DeleteTrackModal } from "./ArtistDetails/components/DeleteTrackModal";
 import {
   buildSharedPlaylistTrackPayload,
   reserveUniquePlaylistName,
@@ -256,7 +272,7 @@ function LibraryPage() {
     artistId: routeArtistId,
   } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { bootstrap } = useAuth();
+  const { bootstrap, hasPermission } = useAuth();
   const { showError, showSuccess } = useToast();
   const {
     sharedPlaylists,
@@ -290,6 +306,9 @@ function LibraryPage() {
   const refreshAttemptRef = useRef(0);
   const [playlistSavingKey, setPlaylistSavingKey] = useState("");
   const [trackDownloadStates, setTrackDownloadStates] = useState({});
+  const [libraryRemoval, setLibraryRemoval] = useState(null);
+  const [deleteFiles, setDeleteFiles] = useState(false);
+  const [deletingLibraryEntity, setDeletingLibraryEntity] = useState(false);
 
   const handleLibraryScanMessage = useCallback((message) => {
     if (message?.type !== "library_scan_completed") return;
@@ -686,6 +705,191 @@ function LibraryPage() {
       showSuccess,
     ],
   );
+
+  const removeLibraryTrackFromPlaylist = useCallback(
+    async (track, target) => {
+      if (!target?.playlistId || !target?.jobId) return;
+      const key = String(track?.id || "");
+      setPlaylistSavingKey(key);
+      setPlaylistsError("");
+      try {
+        await deleteSharedPlaylistTrack(target.playlistId, target.jobId);
+        showSuccess(`Removed ${track?.title || "track"} from playlist`);
+        const nextPlaylists = await loadSharedPlaylists();
+        if (nextPlaylists) setSharedPlaylists(nextPlaylists);
+      } catch (requestError) {
+        const message =
+          requestError.response?.data?.message ||
+          requestError.response?.data?.error ||
+          requestError.message ||
+          "Failed to remove track from playlist";
+        setPlaylistsError(message);
+        showError(message);
+      } finally {
+        setPlaylistSavingKey("");
+      }
+    },
+    [loadSharedPlaylists, setPlaylistsError, setSharedPlaylists, showError, showSuccess],
+  );
+
+  const canDeleteArtist = hasPermission("deleteArtist");
+  const canDeleteAlbum = hasPermission("deleteAlbum");
+  const canChangeMonitoring = hasPermission("changeMonitoring");
+
+  const openLibraryRemoval = useCallback((kind, entity) => {
+    setDeleteFiles(false);
+    setLibraryRemoval({ kind, entity });
+  }, []);
+
+  const removeLocalLibraryEntity = useCallback((removal) => {
+    if (!removal?.entity) return;
+    const entityId = String(removal.entity.id);
+    setLibrary((current) => {
+      if (removal.kind === "artist") {
+        const removedAlbumIds = new Set(
+          current.albums
+            .filter((album) => String(album.artistId) === entityId)
+            .map((album) => String(album.id)),
+        );
+        return {
+          ...current,
+          artists: current.artists.filter((artist) => String(artist.id) !== entityId),
+          albums: current.albums.filter((album) => !removedAlbumIds.has(String(album.id))),
+          tracks: current.tracks.filter(
+            (track) =>
+              String(track.artistId) !== entityId &&
+              !removedAlbumIds.has(String(track.albumId)) &&
+              !(track.albums || []).some((relation) => removedAlbumIds.has(String(relation.albumId))),
+          ),
+        };
+      }
+      if (removal.kind === "album") {
+        return {
+          ...current,
+          albums: current.albums.filter((album) => String(album.id) !== entityId),
+          tracks: current.tracks.filter(
+            (track) =>
+              String(track.albumId) !== entityId &&
+              !(track.albums || []).some((relation) => String(relation.albumId) === entityId),
+          ),
+        };
+      }
+      return {
+        ...current,
+        tracks: current.tracks.filter((track) => String(track.id) !== entityId),
+      };
+    });
+    clearCanonicalLibraryPageCache();
+    albumTrackCacheRef.current.clear();
+  }, []);
+
+  const handleLibraryRemovalConfirm = useCallback(async () => {
+    if (!libraryRemoval?.entity || deletingLibraryEntity) return;
+    const removal = libraryRemoval;
+    const entity = removal.entity;
+    setDeletingLibraryEntity(true);
+    try {
+      if (!isPreviewLibrary) {
+        if (removal.kind === "artist") {
+          await deleteArtistFromLibrary(entity.mbid, deleteFiles);
+        } else if (removal.kind === "album") {
+          await deleteAlbumFromLibrary(entity.providerId || entity.id, deleteFiles);
+        } else {
+          await deleteTrackFromLibrary(entity.id);
+        }
+      }
+      removeLocalLibraryEntity(removal);
+      setLibraryRemoval(null);
+      showSuccess(
+        removal.kind === "artist"
+          ? "Artist removed from library"
+          : removal.kind === "album"
+            ? "Album removed from library"
+            : "Track deleted",
+      );
+      if (
+        (removal.kind === "artist" && String(routeArtistId) === String(entity.id)) ||
+        (removal.kind === "album" && String(routeAlbumId) === String(entity.id))
+      ) {
+        navigate(
+          removal.kind === "artist"
+            ? "/library/artists" + previewQuery
+            : "/library/albums" + previewQuery,
+        );
+      }
+    } catch (requestError) {
+      showError(
+        requestError.response?.data?.message ||
+          requestError.response?.data?.error ||
+          requestError.message ||
+          "Failed to update library",
+      );
+    } finally {
+      setDeletingLibraryEntity(false);
+    }
+  }, [
+    deleteFiles,
+    deletingLibraryEntity,
+    isPreviewLibrary,
+    libraryRemoval,
+    navigate,
+    previewQuery,
+    removeLocalLibraryEntity,
+    routeAlbumId,
+    routeArtistId,
+    showError,
+    showSuccess,
+  ]);
+
+  const updateArtistMonitoring = useCallback(
+    async (artist, monitorOption) => {
+      if (!artist?.mbid || !canChangeMonitoring) return;
+      try {
+        if (!isPreviewLibrary) {
+          await updateLibraryArtist(artist.mbid, {
+            monitored: true,
+            monitorOption,
+            addOptions: { ...(artist.addOptions || {}), monitor: monitorOption },
+          });
+        }
+        setLibrary((current) => ({
+          ...current,
+          artists: current.artists.map((entry) =>
+            String(entry.id) === String(artist.id)
+              ? { ...entry, monitored: true, monitorOption }
+              : entry,
+          ),
+        }));
+        showSuccess(`Artist monitoring set to ${monitorOption}`);
+      } catch (requestError) {
+        showError(
+          requestError.response?.data?.message ||
+            requestError.response?.data?.error ||
+            requestError.message ||
+            "Failed to update artist monitoring",
+        );
+      }
+    },
+    [canChangeMonitoring, isPreviewLibrary, showError, showSuccess],
+  );
+
+  const artistMonitorItems = (artist) => {
+    const currentOption = artist?.monitorOption || artist?.addOptions?.monitor || "none";
+    return [
+      ["none", "None (artist only)"],
+      ["existing", "Existing albums"],
+      ["all", "All albums"],
+      ["future", "Future albums"],
+      ["missing", "Missing albums"],
+      ["latest", "Latest album"],
+      ["first", "First album"],
+    ].map(([value, label]) => ({
+      id: value,
+      label,
+      selected: currentOption === value,
+      onSelect: () => updateArtistMonitoring(artist, value),
+    }));
+  };
 
   const downloadMissingTrack = useCallback(
     async (track) => {
@@ -1319,28 +1523,92 @@ function LibraryPage() {
       </div>
       <div role="list" aria-label={label}>
         {tracks.map((track, index) => {
-        const album = getAlbumForTrack(track);
-        const artist = getArtistForAlbum(album);
-        const file = firstAvailableFile(track);
-        const downloadKey = trackDownloadIdentity(track);
-        const downloadState = trackDownloadStates[downloadKey];
-        const downloadPending = TRACK_DOWNLOAD_ACTIVE_STATUSES.has(downloadState?.status);
-        const downloadLabel = trackDownloadActionLabel(downloadState?.status);
-        const active =
-          String(currentTrack?.id) === String(track.id) &&
-          matchesSource(librarySource);
-        const artistName = artist?.name || track.artistName || "Unknown Artist";
-        const albumName = album?.title || "Unknown Album";
-        return (
-          <div
-            className={
-              "native-library-track" +
-              (active ? " is-active" : "") +
-              (file ? "" : " is-missing")
-            }
-            key={track.id}
-            role="listitem"
-          >
+          const album = getAlbumForTrack(track);
+          const artist = getArtistForAlbum(album);
+          const file = firstAvailableFile(track);
+          const downloadKey = trackDownloadIdentity(track);
+          const downloadState = trackDownloadStates[downloadKey];
+          const downloadPending = TRACK_DOWNLOAD_ACTIVE_STATUSES.has(downloadState?.status);
+          const downloadLabel = trackDownloadActionLabel(downloadState?.status);
+          const active =
+            String(currentTrack?.id) === String(track.id) &&
+            matchesSource(librarySource);
+          const artistName = artist?.name || track.artistName || "Unknown Artist";
+          const albumName = album?.title || "Unknown Album";
+          const isFavorite = favoriteIds.has(favoriteId("song", track));
+          const trackMenuItems = [
+            {
+              id: "play",
+              label: active && isPlaying ? "Pause" : "Play",
+              icon: active && isPlaying ? Pause : Play,
+              onSelect: () => playTrack(track, tracks),
+              disabled: !file || (active && isLoading),
+            },
+            {
+              id: "favorite",
+              label: isFavorite ? "Remove from favorites" : "Add to favorites",
+              icon: Heart,
+              selected: isFavorite,
+              separatorBefore: true,
+              onSelect: () => toggleFavorite("song", track),
+            },
+            ...(!file
+              ? [
+                  {
+                    id: "download",
+                    label: downloadLabel,
+                    icon: Download,
+                    separatorBefore: true,
+                    onSelect: () => downloadMissingTrack(track),
+                    disabled: isPreviewLibrary || downloadPending,
+                  },
+                ]
+              : []),
+            ...(album
+              ? [
+                  {
+                    id: "album",
+                    label: "Go to album",
+                    icon: ExternalLink,
+                    separatorBefore: true,
+                    onSelect: () => handleAlbumOpen(album),
+                  },
+                ]
+              : []),
+            ...(artist
+              ? [
+                  {
+                    id: "artist",
+                    label: "Go to artist",
+                    icon: UserRound,
+                    onSelect: () => handleArtistOpen(artist),
+                  },
+                ]
+              : []),
+            ...(file && canDeleteAlbum
+              ? [
+                  {
+                    id: "delete",
+                    label: "Delete track file",
+                    icon: Trash2,
+                    danger: true,
+                    separatorBefore: true,
+                    onSelect: () => openLibraryRemoval("track", track),
+                  },
+                ]
+              : []),
+          ];
+          return (
+            <div
+              className={
+                "native-library-track" +
+                (active ? " is-active" : "") +
+                (file ? "" : " is-missing")
+              }
+              data-library-menu-target
+              key={track.id}
+              role="listitem"
+            >
             {file ? (
               <TooltipButton
                 className="native-library-track__play"
@@ -1426,16 +1694,36 @@ function LibraryPage() {
             ) : (
               <span />
             )}
-            <TrackPlaylistMenu
-              track={track}
-              playlists={sharedPlaylists}
-              loading={playlistsLoading}
-              saving={playlistSavingKey === String(track.id)}
-              error={playlistsError}
-              defaultNewPlaylistName={getDefaultTrackPlaylistName(track)}
-              onLoadPlaylists={loadSharedPlaylists}
-              triggerVariant="compact"
-              onSelect={(target) => addLibraryTrackToPlaylist(track, target)}
+            <LibraryItemMenu
+              label={track.title || "Track"}
+              items={trackMenuItems}
+              additionalItemsAfter="play"
+              onMenuOpen={loadSharedPlaylists}
+              renderAdditionalItems={({ closeMenu }) => (
+                <>
+                  <div className="native-library-item-menu__separator" />
+                  <TrackPlaylistSubmenu
+                    label="Add to playlist"
+                    track={track}
+                    playlists={sharedPlaylists}
+                    loading={playlistsLoading}
+                    saving={playlistSavingKey === String(track.id)}
+                    error={playlistsError}
+                    defaultNewPlaylistName={getDefaultTrackPlaylistName(track)}
+                    onSelect={(target) => addLibraryTrackToPlaylist(track, target)}
+                    onClose={closeMenu}
+                  />
+                  <TrackPlaylistRemoveSubmenu
+                    track={track}
+                    playlists={sharedPlaylists}
+                    saving={playlistSavingKey === String(track.id)}
+                    error={playlistsError}
+                    onSelect={(target) => removeLibraryTrackFromPlaylist(track, target)}
+                    onClose={closeMenu}
+                    toggleOnClick
+                  />
+                </>
+              )}
             />
             <FavoriteButton
               className="native-library-track__favorite"
@@ -1444,58 +1732,120 @@ function LibraryPage() {
               label={track.title || "track"}
               onClick={() => toggleFavorite("song", track)}
             />
-          </div>
+            </div>
           );
         })}
       </div>
     </div>
   );
 
-  const renderArtistCard = (artist) => (
-    <article className="native-library-card native-library-card--artist" key={artist.id}>
-      <button
-        type="button"
-        className="native-library-card__cover native-library-card__cover--round"
-        onClick={() => handleArtistOpen(artist)}
-        aria-label={"Open " + (artist.name || "artist")}
+  const renderArtistCard = (artist) => {
+    const isFavorite = favoriteIds.has(favoriteId("artist", artist));
+    return (
+      <article
+        className="native-library-card native-library-card--artist"
+        data-library-menu-target
+        key={artist.id}
       >
-        {artist.mbid ? (
-          <ArtistImage
-            mbid={artist.mbid}
-            artistName={artist.name}
-            alt={artist.name || ""}
-            className="native-library-artist-image"
-            showLoading={false}
-            enablePreviewPlayback={false}
-            isInLibrary
-          />
-        ) : (
-          <Cover label={artist.name} round />
-        )}
-      </button>
-      <div className="native-library-card__body">
-        <div className="native-library-card__title-row">
+        <div className="native-library-card__cover-wrap">
           <button
             type="button"
-            className="native-library-card__title"
+            className="native-library-card__cover native-library-card__cover--round"
             onClick={() => handleArtistOpen(artist)}
-            title={artist.name}
+            aria-label={"Open " + (artist.name || "artist")}
           >
-            {artist.name || "Unknown Artist"}
+            {artist.mbid ? (
+              <ArtistImage
+                mbid={artist.mbid}
+                artistName={artist.name}
+                alt={artist.name || ""}
+                className="native-library-artist-image"
+                showLoading={false}
+                enablePreviewPlayback={false}
+                isInLibrary
+              />
+            ) : (
+              <Cover label={artist.name} round />
+            )}
           </button>
-          <FavoriteButton
-            active={favoriteIds.has(favoriteId("artist", artist))}
-            pending={Boolean(pendingFavorite)}
-            label={artist.name || "artist"}
-            onClick={() => toggleFavorite("artist", artist)}
+          <LibraryItemMenu
+            label={artist.name || "Artist"}
+            items={[
+              {
+                id: "open",
+                label: "Open artist",
+                icon: UserRound,
+                onSelect: () => handleArtistOpen(artist),
+              },
+              {
+                id: "favorite",
+                label: isFavorite ? "Remove from favorites" : "Add to favorites",
+                icon: Heart,
+                selected: isFavorite,
+                separatorBefore: true,
+                onSelect: () => toggleFavorite("artist", artist),
+              },
+              ...(canDeleteArtist && artist.mbid
+                ? [
+                    {
+                      id: "delete",
+                      label: "Remove from library",
+                      icon: Trash2,
+                      danger: true,
+                      separatorBefore: true,
+                      onSelect: () => openLibraryRemoval("artist", artist),
+                    },
+                  ]
+                : []),
+              {
+                id: "discover",
+                label: "Explore in Discover",
+                icon: ExternalLink,
+                separatorBefore: true,
+                onSelect: () => handleDiscoverArtistOpen(artist),
+                disabled: !artist.mbid,
+              },
+            ]}
+            additionalItemsAfter="favorite"
+            renderAdditionalItems={({ closeMenu }) =>
+              canChangeMonitoring && artist.mbid ? (
+                <>
+                  <div className="native-library-item-menu__separator" />
+                  <LibraryItemSubmenu
+                    label="Monitoring"
+                    icon={Radio}
+                    items={artistMonitorItems(artist)}
+                    onClose={closeMenu}
+                  />
+                </>
+              ) : null
+            }
           />
         </div>
-        <span className="native-library-card__meta">
-          {artist.albumIds?.length || 0} album{artist.albumIds?.length === 1 ? "" : "s"}
-        </span>
-      </div>
-    </article>
-  );
+        <div className="native-library-card__body">
+          <div className="native-library-card__title-row">
+            <button
+              type="button"
+              className="native-library-card__title"
+              onClick={() => handleArtistOpen(artist)}
+              title={artist.name}
+            >
+              {artist.name || "Unknown Artist"}
+            </button>
+            <FavoriteButton
+              active={isFavorite}
+              pending={Boolean(pendingFavorite)}
+              label={artist.name || "artist"}
+              onClick={() => toggleFavorite("artist", artist)}
+            />
+          </div>
+          <span className="native-library-card__meta">
+            {artist.albumIds?.length || 0} album{artist.albumIds?.length === 1 ? "" : "s"}
+          </span>
+        </div>
+      </article>
+    );
+  };
 
   const renderAlbumCard = (album) => {
     const artist = getArtistForAlbum(album);
@@ -1507,8 +1857,9 @@ function LibraryPage() {
         : (yearOf(album.releaseDate) ? yearOf(album.releaseDate) + " · " : "") +
           (availability.total || 0) +
           " tracks";
+    const isFavorite = favoriteIds.has(favoriteId("album", album));
     return (
-      <article className="native-library-card" key={album.id}>
+      <article className="native-library-card" data-library-menu-target key={album.id}>
         <div className="native-library-card__cover-wrap">
           <button
             type="button"
@@ -1527,6 +1878,63 @@ function LibraryPage() {
           >
             <Play aria-hidden="true" fill="currentColor" />
           </TooltipButton>
+          <LibraryItemMenu
+            label={album.title || "Album"}
+            items={[
+              {
+                id: "play",
+                label: "Play album",
+                icon: Play,
+                onSelect: () => playAlbum(album),
+                disabled: !albumTracks.length && !album.trackCount && !album.trackIds?.length,
+              },
+              {
+                id: "open",
+                label: "Open album",
+                icon: ExternalLink,
+                onSelect: () => handleAlbumOpen(album),
+              },
+              {
+                id: "favorite",
+                label: isFavorite ? "Remove from favorites" : "Add to favorites",
+                icon: Heart,
+                selected: isFavorite,
+                separatorBefore: true,
+                onSelect: () => toggleFavorite("album", album),
+              },
+              ...(artist
+                ? [
+                    {
+                      id: "artist",
+                      label: "Go to artist",
+                      icon: UserRound,
+                      separatorBefore: true,
+                      onSelect: () => handleArtistOpen(artist),
+                    },
+                  ]
+                : []),
+              ...(canDeleteAlbum && album.providerId
+                ? [
+                    {
+                      id: "delete",
+                      label: "Remove from library",
+                      icon: Trash2,
+                      danger: true,
+                      separatorBefore: true,
+                      onSelect: () => openLibraryRemoval("album", album),
+                    },
+                  ]
+                : []),
+              {
+                id: "discover",
+                label: "Explore in Discover",
+                icon: ExternalLink,
+                separatorBefore: true,
+                onSelect: () => handleDiscoverAlbumOpen(album),
+                disabled: !artist?.mbid || !(album.releaseGroupMbid || album.mbid),
+              },
+            ]}
+          />
         </div>
         <div className="native-library-card__body">
           <div className="native-library-card__title-row">
@@ -1539,7 +1947,7 @@ function LibraryPage() {
               {album.title || "Unknown Album"}
             </button>
             <FavoriteButton
-              active={favoriteIds.has(favoriteId("album", album))}
+              active={isFavorite}
               pending={Boolean(pendingFavorite)}
               label={album.title || "album"}
               onClick={() => toggleFavorite("album", album)}
@@ -1693,7 +2101,7 @@ function LibraryPage() {
     );
     return (
       <section className="native-library-detail">
-        <div className="native-library-detail__hero">
+        <div className="native-library-detail__hero" data-library-menu-target>
           <div className="native-library-detail__cover">
             <Cover src={getAlbumCover(libraryAlbum)} label={libraryAlbum.title} />
           </div>
@@ -1731,6 +2139,59 @@ function LibraryPage() {
                 label={libraryAlbum.title || "album"}
                 onClick={() => toggleFavorite("album", libraryAlbum)}
               />
+              <LibraryItemMenu
+                label={libraryAlbum.title || "Album"}
+                items={[
+                  {
+                    id: "play",
+                    label: "Play album",
+                    icon: Play,
+                    onSelect: () => playTracks(albumTracks),
+                    disabled: !albumTracks.some((track) => firstAvailableFile(track)),
+                  },
+                  {
+                    id: "favorite",
+                    label: favoriteIds.has(favoriteId("album", libraryAlbum))
+                      ? "Remove from favorites"
+                      : "Add to favorites",
+                    icon: Heart,
+                    selected: favoriteIds.has(favoriteId("album", libraryAlbum)),
+                    separatorBefore: true,
+                    onSelect: () => toggleFavorite("album", libraryAlbum),
+                  },
+                  ...(canDeleteAlbum && libraryAlbum.providerId
+                    ? [
+                        {
+                          id: "delete",
+                          label: "Remove from library",
+                          icon: Trash2,
+                          danger: true,
+                          separatorBefore: true,
+                          onSelect: () => openLibraryRemoval("album", libraryAlbum),
+                        },
+                      ]
+                    : []),
+                  ...(artist
+                    ? [
+                        {
+                          id: "artist",
+                          label: "Go to artist",
+                          icon: UserRound,
+                          separatorBefore: true,
+                          onSelect: () => handleArtistOpen(artist),
+                        },
+                      ]
+                    : []),
+                  {
+                    id: "discover",
+                    label: "Explore in Discover",
+                    icon: ExternalLink,
+                    separatorBefore: true,
+                    onSelect: () => handleDiscoverAlbumOpen(libraryAlbum),
+                    disabled: !artist?.mbid || !(libraryAlbum.releaseGroupMbid || libraryAlbum.mbid),
+                  },
+                ]}
+              />
               {artist?.mbid && (libraryAlbum.releaseGroupMbid || libraryAlbum.mbid) && (
                 <button
                   type="button"
@@ -1763,7 +2224,10 @@ function LibraryPage() {
     const artistTopTracks = topArtistTracks(artistTracks, albumsById);
     return (
       <section className="native-library-detail">
-        <div className="native-library-detail__hero native-library-detail__hero--artist">
+        <div
+          className="native-library-detail__hero native-library-detail__hero--artist"
+          data-library-menu-target
+        >
           <div className="native-library-detail__cover">
             {libraryArtist.mbid ? (
               <ArtistImage
@@ -1799,6 +2263,62 @@ function LibraryPage() {
                 pending={Boolean(pendingFavorite)}
                 label={libraryArtist.name || "artist"}
                 onClick={() => toggleFavorite("artist", libraryArtist)}
+              />
+              <LibraryItemMenu
+                label={libraryArtist.name || "Artist"}
+                items={[
+                  {
+                    id: "play",
+                    label: "Play artist",
+                    icon: Play,
+                    onSelect: () => playTracks(artistTracks),
+                    disabled: !artistTracks.some((track) => firstAvailableFile(track)),
+                  },
+                  {
+                    id: "favorite",
+                    label: favoriteIds.has(favoriteId("artist", libraryArtist))
+                      ? "Remove from favorites"
+                      : "Add to favorites",
+                    icon: Heart,
+                    selected: favoriteIds.has(favoriteId("artist", libraryArtist)),
+                    separatorBefore: true,
+                    onSelect: () => toggleFavorite("artist", libraryArtist),
+                  },
+                  ...(canDeleteArtist && libraryArtist.mbid
+                    ? [
+                        {
+                          id: "delete",
+                          label: "Remove from library",
+                          icon: Trash2,
+                          danger: true,
+                          separatorBefore: true,
+                          onSelect: () => openLibraryRemoval("artist", libraryArtist),
+                        },
+                      ]
+                    : []),
+                  {
+                    id: "discover",
+                    label: "Explore in Discover",
+                    icon: ExternalLink,
+                    separatorBefore: true,
+                    onSelect: () => handleDiscoverArtistOpen(libraryArtist),
+                    disabled: !libraryArtist.mbid,
+                  },
+                ]}
+                additionalItemsAfter="favorite"
+                renderAdditionalItems={({ closeMenu }) =>
+                  canChangeMonitoring && libraryArtist.mbid ? (
+                    <>
+                      <div className="native-library-item-menu__separator" />
+                      <LibraryItemSubmenu
+                        label="Monitoring"
+                        icon={Radio}
+                        items={artistMonitorItems(libraryArtist)}
+                        onClose={closeMenu}
+                      />
+                    </>
+                  ) : null
+                }
               />
               {libraryArtist.mbid && (
                 <button
@@ -1841,6 +2361,37 @@ function LibraryPage() {
   const renderLibraryDetail = () =>
     libraryAlbum ? renderLibraryAlbumDetail() : renderLibraryArtistDetail();
 
+  const renderLibraryModals = () => (
+    <>
+      <DeleteArtistModal
+        show={libraryRemoval?.kind === "artist"}
+        artistName={libraryRemoval?.entity?.name}
+        libraryArtistName={libraryRemoval?.entity?.artistName}
+        deleteFiles={deleteFiles}
+        onDeleteFilesChange={setDeleteFiles}
+        onCancel={() => setLibraryRemoval(null)}
+        onConfirm={handleLibraryRemovalConfirm}
+        deleting={deletingLibraryEntity}
+      />
+      <DeleteAlbumModal
+        show={libraryRemoval?.kind === "album"}
+        title={libraryRemoval?.entity?.title || libraryRemoval?.entity?.albumName}
+        deleteFiles={deleteFiles}
+        onDeleteFilesChange={setDeleteFiles}
+        onCancel={() => setLibraryRemoval(null)}
+        onConfirm={handleLibraryRemovalConfirm}
+        removing={deletingLibraryEntity}
+      />
+      <DeleteTrackModal
+        show={libraryRemoval?.kind === "track"}
+        title={libraryRemoval?.entity?.title || libraryRemoval?.entity?.trackName}
+        onCancel={() => setLibraryRemoval(null)}
+        onConfirm={handleLibraryRemovalConfirm}
+        deleting={deletingLibraryEntity}
+      />
+    </>
+  );
+
   const providerWarning = bootstrap?.lidarr?.circuitOpen === true;
   const renderStatus = () => (
     <>
@@ -1874,6 +2425,7 @@ function LibraryPage() {
   if (isDetail) {
     return (
       <main className="library-page native-library-page">
+        {renderLibraryModals()}
         {renderStatus()}
         {!loading && !error && !libraryAlbum && !libraryArtist && (
           <EmptyState title="Not found" message="This library item is no longer indexed." />
@@ -1934,6 +2486,7 @@ function LibraryPage() {
 
   return (
     <main className="library-page native-library-page">
+      {renderLibraryModals()}
       <header className={`native-library-header${section === "home" ? " native-library-header--home" : ""}`}>
         <div className="native-library-title-row">
           <div className="native-library-title">

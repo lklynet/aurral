@@ -1,64 +1,59 @@
 import {
-  Loader,
-  Clock,
-  CheckCircle2,
   AlertCircle,
+  CheckCircle2,
+  Clock,
+  Eye,
+  Info,
+  Loader,
+  Pause,
+  Play,
   RotateCcw,
   XCircle,
-  Play,
-  Pause,
-  Eye,
 } from "lucide-react";
+import TooltipButton from "../../components/TooltipButton";
 import { formatReviewReasonSummary, formatTimelineTime } from "./activityListUtils";
 
-function RequestStatusBadge({ request }) {
+function getStatusMeta(request) {
   if (request.status === "completed" || request.status === "available") {
-    return (
-      <span className="requests-page__badge requests-page__badge--success">
-        <CheckCircle2 className="artist-icon-xs" />
-        {request.statusLabel || "Done"}
-      </span>
-    );
+    return { icon: CheckCircle2, label: request.statusLabel || "Done", tone: "success" };
   }
-
   if (request.status === "failed") {
-    return (
-      <span className="requests-page__badge requests-page__badge--failed">
-        <AlertCircle className="artist-icon-xs" />
-        {request.statusLabel || "Failed"}
-      </span>
-    );
+    return { icon: AlertCircle, label: request.statusLabel || "Failed", tone: "failed" };
   }
-
   if (request.status === "blocked") {
-    return (
-      <span className="requests-page__badge requests-page__badge--review">
-        <Eye className="artist-icon-xs" />
-        {request.statusLabel || "Review"}
-      </span>
-    );
+    return { icon: Eye, label: request.statusLabel || "Needs review", tone: "review" };
   }
-
   if (request.status === "processing" || request.status === "pending") {
-    return (
-      <span className="requests-page__badge requests-page__badge--active">
-        <Loader className="artist-icon-xs animate-spin" />
-        {request.statusLabel || "In progress"}
-      </span>
-    );
+    return {
+      icon: Loader,
+      label: request.statusLabel || "In progress",
+      tone: "active",
+      spinning: true,
+    };
   }
+  return { icon: Clock, label: request.statusLabel || "Requested", tone: "pending" };
+}
 
+function getRequestTitle(request) {
   return (
-    <span className="requests-page__badge requests-page__badge--pending">
-      <Clock className="artist-icon-xs" />
-      {request.statusLabel || "Requested"}
-    </span>
+    String(request.trackName || "").trim() ||
+    String(request.albumName || "").trim() ||
+    String(request.name || "").trim() ||
+    String(request.title || "").trim() ||
+    "Activity"
   );
+}
+
+function getRequestMeta(request, title) {
+  const artist = String(request.artistName || "").trim();
+  const album = String(request.albumName || "").trim();
+  const isTrack = Boolean(request.trackName);
+  const values = [artist, isTrack && album !== title ? album : null].filter(Boolean);
+  return values.join(" · ") || String(request.subtitle || "").trim() || "Aurral activity";
 }
 
 export default function ActivityRequestRow({
   request,
-  rowIndex = 0,
   reSearchingAlbumIds,
   approvingJobId,
   denyingJobId,
@@ -70,6 +65,7 @@ export default function ActivityRequestRow({
   onApprove,
   onDeny,
   onPreview,
+  onInfo,
 }) {
   const isSlskd = request.source === "slskd";
   const isUsenet = request.source === "nzbget" || request.source === "sabnzbd";
@@ -79,38 +75,21 @@ export default function ActivityRequestRow({
   const isAurral = request.source === "aurral" && !isTrackDownload;
   const isActivity = request.type === "activity";
   const isAlbum = request.type === "album";
-  const usesTitleSubtitle = isTrackDownload || isAurral || isActivity;
   const isBlockedTrack =
     request.kind === "track_download" && request.status === "blocked" && !!request.jobId;
   const trackName =
     String(request.trackName || "").trim() ||
     request.title?.replace(/^Review needed for /, "") ||
     "track";
-  const displayName = isBlockedTrack
-    ? trackName
-    : usesTitleSubtitle
-      ? request.title
-      : isAlbum
-        ? request.albumName
-        : request.name;
-  const rowArtistName = request.artistName || null;
-  const rowAlbumName = String(request.albumName || "").trim() || null;
-  const requesterName = String(request.requestedBy?.username || "").trim() || null;
-  const metaLine = usesTitleSubtitle ? request.subtitle || null : rowArtistName;
-  const reviewReasonSummary = isBlockedTrack
-    ? formatReviewReasonSummary(request.subtitle)
-    : null;
-  const displayMetaLine = isBlockedTrack
-    ? null
-    : [metaLine, requesterName].filter(Boolean).join(" · ");
-  const reviewIdentityLine = isBlockedTrack
-    ? [rowArtistName, rowAlbumName, requesterName].filter(Boolean).join(" · ")
-    : null;
+  const displayTitle = getRequestTitle(request);
+  const displayMeta = getRequestMeta(request, displayTitle);
   const artistMbid = isAlbum ? request.artistMbid : request.mbid;
   const canNavigate =
     ((isSlskd || isUsenet || isYtdlp) && request.playlistId) ||
     ((isAurral || isActivity) && request.href) ||
     (artistMbid && artistMbid !== "null" && artistMbid !== "undefined");
+  const status = getStatusMeta(request);
+  const StatusIcon = status.icon;
   const timelineTime = formatTimelineTime(request.requestedAt);
   const canReSearch =
     request.canReSearch === true && request.albumId && !reSearchingAlbumIds[request.albumId];
@@ -119,160 +98,112 @@ export default function ActivityRequestRow({
   const isDenying = denyingJobId === request.jobId;
   const isThisPlaying = currentTrack?.id === String(request.jobId) && isPlaying;
   const jobError = jobErrors[request.jobId];
-  const displayRequest =
-    isReSearching && request.status === "failed"
-      ? {
-          ...request,
-          status: "processing",
-          statusLabel: "Searching",
-        }
-      : request;
+  const reviewReasonSummary = isBlockedTrack
+    ? formatReviewReasonSummary(request.subtitle)
+    : null;
+  const rowLabel = `${displayTitle}${displayMeta ? `, ${displayMeta}` : ""}`;
+
+  const navigate = () => {
+    if (!canNavigate) return;
+    onNavigate(request, {
+      isSlskd,
+      isUsenet,
+      isAurral,
+      isAlbum,
+      artistMbid,
+      artistName: request.artistName || null,
+      displayName: displayTitle,
+    });
+  };
 
   return (
     <article
-      className={`requests-page__row${rowIndex % 2 === 1 ? " requests-page__row--alt" : ""}${canNavigate ? " is-clickable" : ""}${isBlockedTrack ? " requests-page__row--review" : ""}`}
-      onClick={() => {
-        if (!canNavigate) return;
-        onNavigate(request, {
-          isSlskd,
-          isUsenet,
-          isAurral,
-          isAlbum,
-          artistMbid,
-          artistName: rowArtistName,
-          displayName,
-        });
+      className={`activity-row${canNavigate ? " is-clickable" : ""}`}
+      onClick={navigate}
+      onKeyDown={(event) => {
+        if (canNavigate && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          navigate();
+        }
       }}
+      tabIndex={canNavigate ? 0 : undefined}
+      aria-label={canNavigate ? `Open ${rowLabel}` : undefined}
     >
-      <div className="requests-page__details">
-        <h3 className="requests-page__item-title" title={displayName}>
-          {displayName}
-        </h3>
-        {isBlockedTrack ? (
-          <div className="requests-page__review-lines">
-            {(timelineTime || reviewIdentityLine) && (
-              <div className="requests-page__meta">
-                {timelineTime && (
-                  <time className="requests-page__meta-time" dateTime={request.requestedAt}>
-                    {timelineTime}
-                  </time>
-                )}
-                {timelineTime && reviewIdentityLine && (
-                  <span className="requests-page__meta-separator" aria-hidden="true">
-                    ·
-                  </span>
-                )}
-                {reviewIdentityLine && (
-                  <span className="artist-truncate" title={reviewIdentityLine}>
-                    {reviewIdentityLine}
-                  </span>
-                )}
-              </div>
-            )}
-            {request.sourceFilename && (
-              <div className="requests-page__review-path" title={request.sourceFilename}>
-                {request.sourceFilename}
-              </div>
-            )}
-            {reviewReasonSummary && (
-              <div className="requests-page__review-reason" title={request.subtitle || reviewReasonSummary}>
-                {reviewReasonSummary}
-              </div>
-            )}
-          </div>
-        ) : (
-          (timelineTime || displayMetaLine) && (
-            <div className="requests-page__meta">
-              {timelineTime && (
-                <time className="requests-page__meta-time" dateTime={request.requestedAt}>
-                  {timelineTime}
-                </time>
-              )}
-              {timelineTime && displayMetaLine && (
-                <span className="requests-page__meta-separator" aria-hidden="true">
-                  ·
-                </span>
-              )}
-              {displayMetaLine && (
-                <span className="artist-truncate" title={displayMetaLine}>
-                  {displayMetaLine}
-                </span>
-              )}
-            </div>
-          )
-        )}
+      <span
+        className={`activity-row__status activity-row__status--${status.tone}`}
+        title={status.label}
+        aria-label={status.label}
+      >
+        <StatusIcon className={status.spinning ? "animate-spin" : ""} aria-hidden="true" />
+      </span>
+      <div className="activity-row__details">
+        <h2 className="activity-row__title" title={displayTitle}>
+          {displayTitle}
+        </h2>
+        <p className="activity-row__meta" title={displayMeta}>
+          {displayMeta}
+        </p>
+        {reviewReasonSummary ? (
+          <p className="activity-row__hint" title={request.subtitle || reviewReasonSummary}>
+            {reviewReasonSummary}
+          </p>
+        ) : null}
+        {request.sourceFilename ? (
+          <p className="activity-row__hint" title={request.sourceFilename}>
+            {request.sourceFilename}
+          </p>
+        ) : null}
       </div>
-
-      <div className="requests-page__status" onClick={(event) => event.stopPropagation()}>
-        <RequestStatusBadge request={displayRequest} />
-        <div className="requests-page__actions">
-          {isBlockedTrack && (
-            <>
-              <button
-                type="button"
-                className="btn btn-secondary btn--icon requests-page__action"
-                aria-label={isThisPlaying ? "Pause preview" : "Play preview"}
-                title={isThisPlaying ? "Pause" : "Preview"}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onPreview(request.jobId, trackName, rowArtistName);
-                }}
-              >
-                {isThisPlaying ? (
-                  <Pause className="artist-icon-xs" />
-                ) : (
-                  <Play className="artist-icon-xs" />
-                )}
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary btn--icon requests-page__action"
-                aria-label="Approve track"
-                title="Approve"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onApprove(request.jobId);
-                }}
-                disabled={isApproving || isDenying}
-              >
-                {isApproving ? (
-                  <Loader className="artist-icon-xs animate-spin" />
-                ) : (
-                  <CheckCircle2 className="artist-icon-xs" />
-                )}
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary btn--icon requests-page__action"
-                aria-label="Deny track"
-                title="Deny"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onDeny(request.jobId);
-                }}
-                disabled={isApproving || isDenying}
-              >
-                {isDenying ? (
-                  <Loader className="artist-icon-xs animate-spin" />
-                ) : (
-                  <XCircle className="artist-icon-xs" />
-                )}
-              </button>
-            </>
-          )}
-          {jobError && <span className="requests-page__inline-error">{jobError}</span>}
-          {canReSearch && (
-            <button
-              type="button"
-              className="btn btn-secondary btn--icon requests-page__action"
-              aria-label={`Re-search ${request.albumName || displayName}`}
-              title="Re-search"
-              onClick={() => onReSearch(request)}
+      <span className="activity-row__status-label">{status.label}</span>
+      <time className="activity-row__time" dateTime={request.requestedAt || undefined}>
+        {timelineTime}
+      </time>
+      <div className="activity-row__actions" onClick={(event) => event.stopPropagation()}>
+        {isBlockedTrack ? (
+          <>
+            <TooltipButton
+              className="native-library-icon-button"
+              onClick={() => onPreview(request.jobId, trackName, request.artistName)}
+              label={isThisPlaying ? "Pause preview" : "Preview track"}
             >
-              <RotateCcw className="artist-icon-xs" />
-            </button>
-          )}
-        </div>
+              {isThisPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+            </TooltipButton>
+            <TooltipButton
+              className="native-library-icon-button"
+              onClick={() => onApprove(request.jobId)}
+              disabled={isApproving || isDenying}
+              label="Approve track"
+            >
+              {isApproving ? <Loader className="animate-spin" aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
+            </TooltipButton>
+            <TooltipButton
+              className="native-library-icon-button"
+              onClick={() => onDeny(request.jobId)}
+              disabled={isApproving || isDenying}
+              label="Deny track"
+            >
+              {isDenying ? <Loader className="animate-spin" aria-hidden="true" /> : <XCircle aria-hidden="true" />}
+            </TooltipButton>
+          </>
+        ) : null}
+        {jobError ? <span className="activity-row__error" role="alert">{jobError}</span> : null}
+        {canReSearch ? (
+          <TooltipButton
+            className="native-library-icon-button"
+            onClick={() => onReSearch(request)}
+            disabled={isReSearching}
+            label={isReSearching ? "Re-searching" : "Re-search"}
+          >
+            <RotateCcw className={isReSearching ? "animate-spin" : ""} aria-hidden="true" />
+          </TooltipButton>
+        ) : null}
+        <TooltipButton
+          className="native-library-icon-button"
+          onClick={() => onInfo?.(request)}
+          label={`Show ${displayTitle} details`}
+        >
+          <Info aria-hidden="true" />
+        </TooltipButton>
       </div>
     </article>
   );

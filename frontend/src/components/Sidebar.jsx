@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Activity,
   AudioWaveform,
+  AlertTriangle,
   Ban,
   Library,
   Newspaper,
@@ -19,6 +20,8 @@ import {
   ACTIVITY_VIEWS,
   DEFAULT_ACTIVITY_VIEW,
   buildActivityPath,
+  buildWantedPath,
+  WANTED_VIEWS,
 } from "../navigation/activityNavConfig";
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
@@ -80,8 +83,10 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
   const isOnLibrary = location.pathname === "/library" || location.pathname.startsWith("/library/");
   const isOnShows = location.pathname.startsWith("/shows");
   const isOnNews = location.pathname.startsWith("/discover/news");
+  const isOnWanted = location.pathname.startsWith("/activity/missing");
   const isOnActivity =
-    location.pathname.startsWith("/activity") || location.pathname.startsWith("/history");
+    !isOnWanted &&
+    (location.pathname.startsWith("/activity") || location.pathname.startsWith("/history"));
 
   const settingsTabs = useMemo(() => {
     if (!canAccessSettings) return [];
@@ -122,6 +127,11 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
     return segment || DEFAULT_ACTIVITY_VIEW;
   }, [isOnActivity, location.pathname]);
 
+  const activeWantedView = useMemo(() => {
+    if (!isOnWanted) return null;
+    return new URLSearchParams(location.search).get("tab") === "cutoff" ? "cutoff" : "missing";
+  }, [isOnWanted, location.search]);
+
   const positionSidebarTooltip = useCallback((event) => {
     const link = event.currentTarget;
     const rect = link.getBoundingClientRect();
@@ -158,10 +168,11 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
       if (item.section === "shows") return isOnShows;
       if (item.section === "news") return isOnNews;
       if (item.section === "activity") return isOnActivity;
+      if (item.section === "wanted") return isOnWanted;
       if (item.path === "/discover" && location.pathname === "/") return true;
       return location.pathname === item.path;
     },
-    [isDiscoverSectionActive, isOnActivity, isOnLibrary, isOnNews, isOnShows, location.pathname],
+    [isDiscoverSectionActive, isOnActivity, isOnLibrary, isOnNews, isOnShows, isOnWanted, location.pathname],
   );
 
   const navItems = useMemo(() => {
@@ -217,7 +228,15 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
         label: "Activity",
         icon: Activity,
         section: "activity",
-        subnav: ACTIVITY_VIEWS,
+        subnav: ACTIVITY_VIEWS.filter((view) => view.id !== "missing"),
+      },
+      {
+        path: buildWantedPath(),
+        label: "Wanted",
+        icon: AlertTriangle,
+        section: "wanted",
+        subnav: WANTED_VIEWS,
+        permission: "accessFlow",
       },
       { path: "/blocklist", label: "Blocklist", icon: Ban },
     ];
@@ -301,7 +320,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
             (item.section === "activity"
               ? buildActivityPath(entry.id)
               : `${item.basePath}/${entry.id}`);
-          const showReviewAlert = item.section === "activity" && entry.id === "review" && hasReviewAlert;
+          const showReviewAlert = item.section === "activity" && entry.id === "queue" && hasReviewAlert;
           return (
             <Link
               key={entry.id}
@@ -393,11 +412,13 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
                   ? discoverRecentPages.find((entry) => entry.path === activeDiscoverRecentPath)?.id
                   : item.section === "library"
                     ? activeLibraryView
-                    : item.section === "shows"
-                      ? activeShowsFilter
-                      : item.section === "activity"
-                        ? activeActivityView
-                        : null;
+                      : item.section === "shows"
+                        ? activeShowsFilter
+                        : item.section === "activity"
+                          ? activeActivityView
+                          : item.section === "wanted"
+                            ? activeWantedView
+                          : null;
 
               return (
                 <div key={item.path} className={getNavGroupClassName(item, active)}>

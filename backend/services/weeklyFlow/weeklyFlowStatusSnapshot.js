@@ -68,6 +68,18 @@ function collectPlaylistTrackIdentities(playlist) {
   return identities;
 }
 
+function collectPlaylistTrackEntries(playlist) {
+  const playlistId = String(playlist?.id || "");
+  if (!playlistId) return [];
+  return downloadTracker
+    .getByPlaylistType(playlistId)
+    .map((job) => ({
+      id: job.id,
+      identity: buildSharedTrackIdentity(job),
+    }))
+    .filter((entry) => entry.identity);
+}
+
 function buildOwnerMap(flows, sharedPlaylists) {
   const ownerIds = new Set();
   for (const item of [
@@ -120,6 +132,7 @@ export function getWeeklyFlowStatusSnapshot({
       createdAt: playlist.createdAt,
       trackCount: jobTotal > 0 ? jobTotal : playlist.trackCount,
       trackIdentities: collectPlaylistTrackIdentities(playlist),
+      trackEntries: collectPlaylistTrackEntries(playlist),
       importSource: playlist.importSource
         ? {
             provider: playlist.importSource.provider,

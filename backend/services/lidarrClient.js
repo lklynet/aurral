@@ -1433,6 +1433,12 @@ export class LidarrClient {
     return this.request(`/album/${albumId}${query}`, "DELETE");
   }
 
+  async deleteTrackFile(trackFileId) {
+    const result = await this.request(`/trackfile/${trackFileId}`, "DELETE");
+    this._albumCache.clear();
+    return result;
+  }
+
   async getQualityProfiles(skipConfigUpdate = false) {
     return this.request("/qualityprofile", "GET", null, skipConfigUpdate);
   }

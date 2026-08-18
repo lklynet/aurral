@@ -2,6 +2,10 @@ import path from "path";
 import { UUID_REGEX } from "../../lib/uuid.js";
 import { dbOps, userOps } from "../db/helpers/index.js";
 import { hasPermission } from "../middleware/auth.js";
+import {
+  getCanonicalLibrary,
+  invalidateCanonicalLibraryCache,
+} from "./libraryQueryService.js";
 const normalizeTypeName = (value) =>
   String(value || "")
     .toLowerCase()
@@ -1511,6 +1515,49 @@ export class LibraryManager {
       return { success: true };
     } catch (error) {
       logger.error('library', `[LibraryManager] Failed to delete album from Lidarr: ${error.message}`);      return { success: false, error: error.message };
+    }
+  }
+
+  async deleteTrack(id) {
+    const lidarr = await getLidarrClient();
+    if (!lidarr || !lidarr.isConfigured()) {
+      return { success: false, error: "Lidarr is not configured" };
+    }
+    try {
+      const library = getCanonicalLibrary({ source: "lidarr", availableOnly: false });
+      const track = library.tracks.find((entry) => String(entry.id) === String(id));
+      if (!track) return { success: false, error: "Track not found" };
+
+      const metadata = track.metadata || {};
+      let trackFileId = Number(
+        metadata.trackFileId || metadata.trackFile?.id || metadata.file?.id,
+      );
+      if (!Number.isFinite(trackFileId)) {
+        const album = library.albums.find((entry) =>
+          track.albums.some((relation) => String(relation.albumId) === String(entry.id)),
+        );
+        const lidarrAlbumId = Number(album?.metadata?.id);
+        if (Number.isFinite(lidarrAlbumId)) {
+          const lidarrTracks = await lidarr.getTracksByAlbumId(lidarrAlbumId);
+          const match = lidarrTracks.find((entry) =>
+            [entry.id, entry.foreignRecordingId, entry.foreignTrackId].some(
+              (candidate) =>
+                String(candidate ?? "") === String(metadata.id ?? track.mbid ?? ""),
+            ),
+          );
+          trackFileId = Number(match?.trackFileId);
+        }
+      }
+      if (!Number.isFinite(trackFileId)) {
+        return { success: false, error: "Track file not found in Lidarr" };
+      }
+
+      await lidarr.deleteTrackFile(trackFileId);
+      invalidateCanonicalLibraryCache();
+      return { success: true };
+    } catch (error) {
+      logger.error('library', `[LibraryManager] Failed to delete track file: ${error.message}`);
+      return { success: false, error: error.message };
     }
   }
 
