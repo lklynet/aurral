@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { useAudioQueue } from "../contexts/audioQueueContext";
+import TooltipButton from "./TooltipButton";
 
 function formatTime(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -129,68 +130,52 @@ function GlobalPlayerBar() {
 
         <div className="global-player__main">
           <div className="global-player__controls">
-            <button
-              type="button"
+            <TooltipButton
+              label={isShuffleEnabled ? "Disable shuffle" : "Enable shuffle"}
               onClick={toggleShuffle}
               className={`btn btn-secondary btn-sm btn-icon global-player__control global-player__shuffle${isShuffleEnabled ? " is-active" : ""}`}
-              aria-label={isShuffleEnabled ? "Disable shuffle" : "Enable shuffle"}
-              title={isShuffleEnabled ? "Disable shuffle" : "Enable shuffle"}
             >
               <Shuffle className="artist-icon-sm" />
-            </button>
-            <button
-              type="button"
+            </TooltipButton>
+            <TooltipButton
+              label="Previous track"
               onClick={playPrevious}
               className="btn btn-secondary btn-sm btn-icon global-player__control"
-              aria-label="Previous track"
-              title="Previous track"
             >
               <SkipBack className="artist-icon-sm" />
-            </button>
-            <button
-              type="button"
+            </TooltipButton>
+            <TooltipButton
+              label={isPlaying ? "Pause" : "Play"}
               onClick={togglePlayPause}
               className="btn btn-accent btn-sm btn-icon global-player__control global-player__control--primary"
-              aria-label={isPlaying ? "Pause" : "Play"}
-              title={isPlaying ? "Pause" : "Play"}
               disabled={isLoading}
             >
               {isPlaying ? <Pause className="artist-icon-sm" /> : <Play className="artist-icon-sm" />}
-            </button>
-            <button
-              type="button"
+            </TooltipButton>
+            <TooltipButton
+              label="Next track"
               onClick={playNext}
               className="btn btn-secondary btn-sm btn-icon global-player__control"
-              aria-label="Next track"
-              title="Next track"
             >
               <SkipForward className="artist-icon-sm" />
-            </button>
-            <button
-              type="button"
+            </TooltipButton>
+            <TooltipButton
+              label={
+                repeatMode === "one"
+                  ? "Repeat one track"
+                  : repeatMode === "all"
+                    ? "Repeat all tracks"
+                    : "Enable repeat"
+              }
               onClick={toggleRepeat}
               className={`btn btn-secondary btn-sm btn-icon global-player__control global-player__repeat${repeatMode !== "off" ? " is-active" : ""}`}
-              aria-label={
-                repeatMode === "one"
-                  ? "Repeat one track"
-                  : repeatMode === "all"
-                    ? "Repeat all tracks"
-                    : "Enable repeat"
-              }
-              title={
-                repeatMode === "one"
-                  ? "Repeat one track"
-                  : repeatMode === "all"
-                    ? "Repeat all tracks"
-                    : "Enable repeat"
-              }
             >
               {repeatMode === "one" ? (
                 <Repeat1 className="artist-icon-sm" />
               ) : (
                 <Repeat className="artist-icon-sm" />
               )}
-            </button>
+            </TooltipButton>
           </div>
 
           <div className="global-player__progress-wrap">
@@ -219,19 +204,17 @@ function GlobalPlayerBar() {
         </div>
 
         <div className="global-player__side">
-          <button
-            type="button"
+          <TooltipButton
+            label={volumePercent <= 0 ? "Unmute" : "Mute"}
             onClick={handleToggleMute}
             className="btn btn-ghost btn-icon btn-xs global-player__volume-toggle"
-            aria-label={volumePercent <= 0 ? "Unmute" : "Mute"}
-            title={volumePercent <= 0 ? "Unmute" : "Mute"}
           >
             {volumePercent <= 0 ? (
               <VolumeX className="artist-icon-sm" />
             ) : (
               <Volume2 className="artist-icon-sm" />
             )}
-          </button>
+          </TooltipButton>
           <input
             type="range"
             min="0"
@@ -243,15 +226,13 @@ function GlobalPlayerBar() {
             style={{ "--volume-percent": `${volumePercent}%` }}
             aria-label="Volume"
           />
-          <button
-            type="button"
+          <TooltipButton
+            label="Close player"
             onClick={clearQueue}
             className="btn btn-ghost btn-icon btn-xs global-player__close"
-            aria-label="Close player"
-            title="Close player"
           >
             <X className="artist-icon-sm" />
-          </button>
+          </TooltipButton>
         </div>
       </div>
     </div>

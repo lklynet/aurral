@@ -17,6 +17,7 @@ import GlobalSearch from "./GlobalSearch";
 import GlobalPlayerBar from "./GlobalPlayerBar";
 import UserProfileMenu from "./UserProfileMenu";
 import InboxMenu from "./InboxMenu";
+import TooltipButton from "./TooltipButton";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { DEFAULT_SETTINGS_TAB } from "../pages/Settings/settingsTabsConfig";
@@ -408,15 +409,14 @@ function Layout({ children, headerActions }) {
         }${isPlayerActive ? " app-content--player-active" : ""}`}
       >
         <header className="app-topbar">
-          <button
+          <TooltipButton
+            label={sidebarMode === "icons" ? "Expand sidebar" : "Collapse to icons"}
             type="button"
             onClick={toggleSidebarPin}
             className="app-nav-toggle"
-            aria-label={sidebarMode === "icons" ? "Expand sidebar" : "Collapse to icons"}
-            title={sidebarMode === "icons" ? "Expand sidebar" : "Collapse to icons"}
           >
             <Menu aria-hidden="true" />
-          </button>
+          </TooltipButton>
 
           <GlobalSearch settingsMode={isSettingsRoute} />
 

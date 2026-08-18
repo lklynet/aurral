@@ -25,10 +25,6 @@ import {
 } from "../navigation/activityNavConfig";
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
-import {
-  getDiscoverArtistPath,
-  getDiscoverRecentPageLinkState,
-} from "../utils/discoverRecentNavigation";
 import { useStorageHealth } from "../hooks/useStorageHealth";
 import SidebarStageBackdrop, {
   getSidebarStageBackdropEnabled,
@@ -58,11 +54,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
   );
   const [ticketmasterConfigured, setTicketmasterConfigured] = useState(true);
   const [newsConfigured, setNewsConfigured] = useState(true);
-  const {
-    recentPages: discoverRecentPages,
-    clearRecentPages,
-    isDiscoverSectionActive,
-  } = useDiscoverRecent();
+  const { isDiscoverSectionActive } = useDiscoverRecent();
 
   useEffect(() => {
     setShowStageBackdrop(getSidebarStageBackdropEnabled(user?.id));
@@ -76,9 +68,6 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
   }, [user?.id]);
 
   const isIcons = mode === "icons" && isDesktop;
-  const currentDiscoverPath = `${location.pathname}${location.search}`;
-  const activeDiscoverRecentPath =
-    getDiscoverArtistPath(currentDiscoverPath) || currentDiscoverPath;
   const isOnSettings = location.pathname.startsWith("/settings");
   const isOnLibrary = location.pathname === "/library" || location.pathname.startsWith("/library/");
   const isOnShows = location.pathname.startsWith("/shows");
@@ -185,7 +174,6 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
         label: "Discover",
         icon: Sparkles,
         section: "discover",
-        subnav: discoverRecentPages,
       },
       {
         path: "/library",
@@ -244,7 +232,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
       (item) =>
         !item.permission || user?.role === "admin" || !!user?.permissions?.[item.permission],
     );
-  }, [discoverRecentPages, newsConfigured, ticketmasterConfigured, user]);
+  }, [newsConfigured, ticketmasterConfigured, user]);
 
   const translateClass = mode === "hidden" ? "-translate-x-full" : "translate-x-0";
 
@@ -284,29 +272,6 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
           >
             Trending
           </Link>
-          {item.subnav.length > 0 && <hr className="sidebar-subnav-separator" />}
-          {item.subnav.slice(0, 3).map((entry) => {
-            const active = activeId === entry.id;
-            return (
-              <Link
-                key={entry.id}
-                to={entry.path}
-                state={getDiscoverRecentPageLinkState(entry)}
-                className={`sidebar-subnav-link sidebar-subnav-link--recent${
-                  active ? " is-active" : ""
-                }`}
-                aria-current={active ? "page" : undefined}
-                title={entry.label}
-              >
-                <span className="sidebar-subnav-link__text">{entry.label}</span>
-              </Link>
-            );
-          })}
-          {item.subnav.length > 0 && (
-            <button type="button" className="sidebar-subnav-action" onClick={clearRecentPages}>
-              Clear recent
-            </button>
-          )}
         </nav>
       );
     }
@@ -408,17 +373,15 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
               const active = isNavItemActive(item);
               const showActivityDot = item.section === "activity" && hasReviewAlert;
               const activeSubnavId =
-                item.section === "discover"
-                  ? discoverRecentPages.find((entry) => entry.path === activeDiscoverRecentPath)?.id
-                  : item.section === "library"
-                    ? activeLibraryView
-                      : item.section === "shows"
-                        ? activeShowsFilter
-                        : item.section === "activity"
-                          ? activeActivityView
-                          : item.section === "wanted"
-                            ? activeWantedView
-                          : null;
+                item.section === "library"
+                  ? activeLibraryView
+                  : item.section === "shows"
+                    ? activeShowsFilter
+                    : item.section === "activity"
+                      ? activeActivityView
+                      : item.section === "wanted"
+                        ? activeWantedView
+                        : null;
 
               return (
                 <div key={item.path} className={getNavGroupClassName(item, active)}>

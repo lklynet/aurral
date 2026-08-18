@@ -1,3 +1,4 @@
+import path from "node:path";
 import { verifyTokenAuth } from "../../../middleware/auth.js";
 import { ensureDiscoverArtworkForPreset } from "../../../services/discovery/playlistArtworkBuilder.js";
 
@@ -14,7 +15,10 @@ export function registerArtwork(router) {
       }
       res.type(artwork.contentType);
       res.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
-      res.sendFile(artwork.safePath);
+      res.sendFile(path.basename(artwork.safePath), {
+        root: path.dirname(artwork.safePath),
+        dotfiles: "allow",
+      });
     } catch (error) {
       res.status(500).json({ error: "Failed to load artwork", message: error.message });
     }

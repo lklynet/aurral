@@ -2,15 +2,26 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import fs from "node:fs/promises";
+import express from "express";
 
 import {
-  setupIsolatedBackend,
+  applyIsolatedBackendEnv,
   cleanupIsolatedState,
+  createIsolatedStateDir,
+  importFromRepo,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, playlistArtworkBuilder] = await setupIsolatedBackend(
+const isolatedState = await createIsolatedStateDir(
   "discover-playlist-artwork",
-  "backend/services/discovery/playlistArtworkBuilder.js",
+  { dataDirRelativePath: path.join(".state", "aurral") },
+);
+applyIsolatedBackendEnv(isolatedState);
+
+const [playlistArtworkBuilder, { registerArtwork }] = await Promise.all(
+  [
+    "backend/services/discovery/playlistArtworkBuilder.js",
+    "backend/routes/discovery/handlers/artwork.js",
+  ].map(importFromRepo),
 );
 
 const { pruneObsoleteDiscoverArtwork } = playlistArtworkBuilder;
@@ -44,4 +55,29 @@ test("prunes obsolete discover playlist artwork files", async () => {
   await assert.rejects(() => fs.access(path.join(artworkDir, "obsolete.jpg")));
   await assert.rejects(() => fs.access(path.join(artworkDir, "obsolete.webp")));
   await assert.rejects(() => fs.access(path.join(artworkDir, "obsolete.png")));
+});
+
+test("serves discover playlist artwork from a hidden data directory", async () => {
+  const artworkDir = path.join(isolatedState.dataDir, "discover-artwork");
+  await fs.mkdir(artworkDir, { recursive: true });
+  await fs.writeFile(path.join(artworkDir, "focused-rock.jpg"), "artwork");
+
+  const app = express();
+  const router = express.Router();
+  registerArtwork(router);
+  app.use("/api/discover", router);
+
+  const server = await new Promise((resolve) => {
+    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
+  });
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${server.address().port}/api/discover/artwork/focused-rock`,
+    );
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "image/jpeg");
+    assert.equal(await response.text(), "artwork");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });

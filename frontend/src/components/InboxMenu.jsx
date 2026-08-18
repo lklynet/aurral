@@ -17,6 +17,7 @@ import {
 import { readStoredNearbyLocation } from "../pages/discoverUtils.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { useToast } from "../contexts/ToastContext";
+import TooltipButton from "./TooltipButton";
 
 const ITEM_ICONS = {
   release: Music2,
@@ -262,36 +263,34 @@ function InboxMenu() {
 
   return (
     <div ref={menuRef} className="app-inbox-menu">
-      <button
-        type="button"
+      <TooltipButton
+        label={unreadCount ? "Inbox, unread notifications" : "Inbox"}
         className={`app-header-link app-inbox-menu__trigger${open ? " is-open" : ""}${unreadCount > 0 ? " has-unread" : ""}`}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={unreadCount ? "Inbox, unread notifications" : "Inbox"}
         onClick={() => {
           setOpen((current) => !current);
           if (!open) void loadInbox();
         }}
       >
         <Inbox aria-hidden="true" />
-      </button>
+      </TooltipButton>
 
       {open ? (
         <div className="app-inbox-menu__dropdown" role="menu">
           <div className="app-inbox-menu__header">
             <span>Inbox</span>
             <span className="app-inbox-menu__header-actions">
-              <button
-                type="button"
+              <TooltipButton
+                label="Filter inbox"
                 className={`app-inbox-menu__header-action${filter !== "all" ? " is-active" : ""}`}
                 aria-label="Filter inbox"
                 aria-haspopup="menu"
                 aria-expanded={filterOpen}
-                title="Filter inbox"
                 onClick={() => setFilterOpen((current) => !current)}
               >
                 <SlidersHorizontal aria-hidden="true" />
-              </button>
+              </TooltipButton>
               {unreadCount > 0 ? (
                 <button type="button" className="app-inbox-menu__read-all" onClick={handleReadAll}>
                   Mark all as read
