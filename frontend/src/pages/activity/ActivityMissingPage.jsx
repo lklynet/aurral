@@ -150,6 +150,7 @@ export default function ActivityMissingPage() {
   const activeTab = searchParams.get("tab") === "cutoff" ? "cutoff" : "missing";
   const showingCutoff = activeTab === "cutoff";
   const filterPlaceholder = showingCutoff ? "Filter cutoff unmet" : "Filter missing tracks";
+  const hasFilter = filterValue.trim().length > 0;
 
   useEffect(() => {
     setVisibleCount(WANTED_PAGE_SIZE);
@@ -166,13 +167,26 @@ export default function ActivityMissingPage() {
           .filter((job) => job?.upgradeForJobId && ["pending", "downloading"].includes(job.status))
           .map((job) => String(job.upgradeForJobId)),
       );
-      setJobs(
-        (Array.isArray(allJobs) ? allJobs : [])
+      const nextJobs = (Array.isArray(allJobs) ? allJobs : [])
           .filter((job) => isMissingAurralJob(job) || isCutoffUnmetAurralJob(job))
           .map((job) => ({ ...job, upgradeQueued: upgradeJobIds.has(String(job.id)) }))
-          .sort(sortMissingJobs),
-      );
-      setActionStates({});
+          .sort(sortMissingJobs);
+      setJobs(nextJobs);
+      const jobsByKey = new Map(nextJobs.map((job) => [getMissingJobKey(job), job]));
+      setActionStates((current) => {
+        const next = {};
+        for (const [id, state] of Object.entries(current)) {
+          if (state === "working") {
+            next[id] = state;
+            continue;
+          }
+          if (jobsByKey.get(id)?.upgradeQueued) next[id] = "queued";
+        }
+        for (const job of nextJobs) {
+          if (job.upgradeQueued) next[getMissingJobKey(job)] = "queued";
+        }
+        return next;
+      });
       setPlaylistInfo(toPlaylistInfo(status));
     } catch (requestError) {
       setError(
@@ -219,6 +233,11 @@ export default function ActivityMissingPage() {
           : reSearchFlowTrack;
         await reSearch(job.playlistType, job.id);
         setJobs((current) => current.filter((entry) => getMissingJobKey(entry) !== id));
+        setActionStates((current) => {
+          const next = { ...current };
+          delete next[id];
+          return next;
+        });
         showSuccess(`Re-searching ${job.trackName || "track"}`);
       } else {
         await searchTrackUpgrade(job.playlistType, job.id);
@@ -283,12 +302,18 @@ export default function ActivityMissingPage() {
             <CheckCircle2 className="artist-icon-lg" />
           </div>
           <h2 className="search-empty-panel__title">
-            {showingCutoff ? "No cutoff gaps" : "No missing tracks"}
+            {hasFilter
+              ? "No tracks match your filter"
+              : showingCutoff
+                ? "No cutoff gaps"
+                : "No missing tracks"}
           </h2>
           <p className="search-empty-panel__message">
-            {showingCutoff
-              ? "Every Aurral-owned file currently meets the configured quality cutoff."
-              : "Every Aurral operation currently has a track available or in progress."}
+            {hasFilter
+              ? `${showingCutoff ? "No cutoff-unmet" : "No missing"} tracks match your filter.`
+              : showingCutoff
+                ? "Every Aurral-owned file currently meets the configured quality cutoff."
+                : "Every Aurral operation currently has a track available or in progress."}
           </p>
         </div>
       ) : null}
