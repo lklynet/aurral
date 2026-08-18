@@ -189,7 +189,9 @@ export function SettingsStorageHealthSection({
     <>
       <SettingsArrFieldSet
         legend="Storage health"
-        actions={
+      >
+        <div className="settings-storage-health__toolbar">
+          <p className="arr-form-help">Checks configured library, download, and playback paths.</p>
           <button
             type="button"
             className="arr-btn"
@@ -199,10 +201,8 @@ export function SettingsStorageHealthSection({
             <RefreshCw className={`artist-icon-sm${checkingHealth ? " animate-spin" : ""}`} />
             {checkingHealth ? "Checking…" : "Run checks"}
           </button>
-        }
-      >
+        </div>
         <StorageHealthSummary result={healthResult} loading={checkingHealth} />
-        <p className="arr-form-help">Checks configured library, download, and playback paths.</p>
         <StorageHealthDashboard result={healthResult} loading={checkingHealth} showSummary={false} />
       </SettingsArrFieldSet>
 

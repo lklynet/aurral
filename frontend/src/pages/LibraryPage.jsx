@@ -26,7 +26,10 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useSharedPlaylists } from "../hooks/useSharedPlaylists";
 import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
-import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.js";
+import {
+  getReleaseGroupCoversBatch,
+  getReleaseGroupTracks,
+} from "../utils/api/endpoints/artists.js";
 import {
   clearCanonicalLibraryPageCache,
   getCanonicalLibraryPage,
@@ -41,6 +44,7 @@ import {
   createSharedPlaylist,
 } from "../utils/api/endpoints/playlists.js";
 import { buildAuthenticatedApiUrl } from "../utils/api/core.js";
+import { mergeAlbumMetadataTracks } from "../utils/libraryTrackHydration.js";
 import { navigateToLibraryAlbum } from "../utils/searchNavigation";
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { libraryPreviewData, libraryPreviewFavorites } from "./libraryPreviewData";
@@ -511,7 +515,27 @@ function LibraryPage() {
       page: 1,
       pageSize,
     });
-    const tracks = Array.isArray(page?.items) ? page.items : [];
+    const ownedTracks = Array.isArray(page?.items) ? page.items : [];
+    let tracks = ownedTracks;
+    const pageArtist = page?.artists?.[0] || null;
+    const releaseGroupMbid = album?.releaseGroupMbid || null;
+    if (releaseGroupMbid) {
+      try {
+        const metadataTracks = await getReleaseGroupTracks(releaseGroupMbid, {
+          artistMbid: album?.artistMbid || pageArtist?.mbid || "",
+          artistName:
+            album?.artistName || pageArtist?.name || album?.albumArtist || "",
+          albumTitle: album?.title || album?.albumName || "",
+          releaseDate: album?.releaseDate || "",
+        });
+        tracks = mergeAlbumMetadataTracks(
+          ownedTracks,
+          metadataTracks,
+          album,
+          pageArtist,
+        );
+      } catch {}
+    }
     albumTrackCacheRef.current.set(cacheKey, tracks);
     setLibrary((current) => {
       const merge = (kind) => [
@@ -523,7 +547,15 @@ function LibraryPage() {
       return {
         ...current,
         artists: merge("artists"),
-        albums: merge("albums"),
+        albums: merge("albums").map((entity) =>
+          String(entity.id) === String(album.id)
+            ? {
+                ...entity,
+                trackCount: tracks.length,
+                availableTrackCount: tracks.filter((track) => firstAvailableFile(track)).length,
+              }
+            : entity,
+        ),
         tracks: merge("tracks"),
       };
     });
@@ -849,6 +881,11 @@ function LibraryPage() {
   const homeTracks = ownedLibraryTracks.slice(0, 12);
   const libraryAlbum = routeAlbumId ? albumsById.get(String(routeAlbumId)) || null : null;
   const libraryArtist = routeArtistId ? artistsById.get(String(routeArtistId)) || null : null;
+
+  useEffect(() => {
+    if (!libraryAlbum || isPreviewLibrary) return;
+    loadAlbumTracks(libraryAlbum).catch(() => {});
+  }, [isPreviewLibrary, libraryAlbum, loadAlbumTracks]);
   useDocumentTitle(
     isDetail
       ? libraryAlbum?.title || libraryArtist?.name || "Library"

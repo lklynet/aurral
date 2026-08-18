@@ -11706,7 +11706,8 @@ button.native-library-genre-row:focus-visible {
   background: var(--aurral-surface-hover);
 }
 
-.flow-page__tracks-artist-link {
+.flow-page__tracks-artist-link,
+.flow-page__tracks-album-link {
   display: block;
   width: 100%;
   max-width: 100%;
@@ -11718,7 +11719,8 @@ button.native-library-genre-row:focus-visible {
   transition: color 0.18s ease;
 }
 
-.flow-page__tracks-artist-link:hover {
+.flow-page__tracks-artist-link:hover,
+.flow-page__tracks-album-link:hover {
   color: var(--aurral-text);
   text-decoration: underline;
 }

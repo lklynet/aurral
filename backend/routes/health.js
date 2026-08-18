@@ -25,7 +25,7 @@ import {
 } from "../services/discovery/index.js";
 import { getCachedArtistCount } from "../services/libraryManager.js";
 import { logger } from "../services/logger.js";
-import { PLAYLIST_LIBRARY_DIR, resolvePlaylistRoot } from "../services/playlistPaths.js";
+import { resolvePlaylistRoot } from "../services/playlistPaths.js";
 import { getFilesystemBrowseRoots } from "../services/downloadFolderConfig.js";
 import { dbOps } from "../db/helpers/index.js";
 import { db } from "../config/db-sqlite.js";
@@ -152,10 +152,6 @@ async function computeDiskSpacePayload(settings) {
     { location: dataDir, role: "App data" },
     { location: path.dirname(dbPath), role: "Database" },
     { location: downloadRoot, role: "Downloads" },
-    {
-      location: path.join(downloadRoot, PLAYLIST_LIBRARY_DIR),
-      role: "Playlist library",
-    },
     ...getFilesystemBrowseRoots().map((location) => ({
       location,
       role: "Browse root",

@@ -42,6 +42,10 @@ import {
 import { getPlaylistRunActivity } from "./flows/flowRunActivity";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.js";
 import {
+  lookupAlbumsInLibraryBatch,
+  lookupArtistInLibrary,
+} from "../utils/api/endpoints/library.js";
+import {
   PlaylistLibraryItem,
   PlaylistDetailHero,
   FlowDetailTabs,
@@ -1111,11 +1115,45 @@ function FlowPage({ mode = "all" }) {
     }
   };
 
-  const handleNavigateArtist = (track) => {
+  const handleNavigateArtist = async (track) => {
     if (!track?.artistMbid) return;
-    navigate(`/artist/${track.artistMbid}`, {
-      state: { artistName: track.artistName },
-    });
+    if (selectedIsFlow) {
+      navigate(`/artist/${track.artistMbid}`, {
+        state: { artistName: track.artistName },
+      });
+      return;
+    }
+    try {
+      const lookup = await lookupArtistInLibrary(track.artistMbid);
+      const canonicalId = lookup?.artist?.canonicalId;
+      if (canonicalId) {
+        navigate(`/library/artist/${encodeURIComponent(canonicalId)}`);
+      }
+    } catch {}
+  };
+
+  const handleNavigateAlbum = async (track) => {
+    if (!track?.albumMbid) return;
+    if (selectedIsFlow && track.artistMbid) {
+      navigate(`/artist/${track.artistMbid}/release/${track.albumMbid}`, {
+        state: {
+          artistName: track.artistName,
+          focusReleaseGroupMbid: track.albumMbid,
+          focusReleaseGroup: {
+            id: track.albumMbid,
+            title: track.albumName || "",
+          },
+        },
+      });
+      return;
+    }
+    try {
+      const lookup = await lookupAlbumsInLibraryBatch([track.albumMbid]);
+      const canonicalId = lookup?.[track.albumMbid]?.canonicalAlbumId;
+      if (canonicalId) {
+        navigate(`/library/album/${encodeURIComponent(canonicalId)}`);
+      }
+    } catch {}
   };
 
   const handleBulkDelete = async (tracks) => {
@@ -1565,6 +1603,7 @@ function FlowPage({ mode = "all" }) {
                 : (track, target) => handleMoveTrackToPlaylist(track, target, selectedPlaylist.id)
             }
             onNavigateArtist={handleNavigateArtist}
+            onNavigateAlbum={handleNavigateAlbum}
             trackTitleLabel={selectedIsFlow ? "Song" : "Title"}
             showTrackArtwork={!selectedIsFlow}
             artworkByAlbumMbid={trackArtworkByAlbumMbid}

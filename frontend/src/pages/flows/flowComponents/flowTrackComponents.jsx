@@ -449,6 +449,7 @@ export function FlowTracksPanel({
   onAddTrackToPlaylist,
   onMoveTrackToPlaylist,
   onNavigateArtist,
+  onNavigateAlbum,
   onReSearchTrack,
   playbackSource = null,
   showPlaybackControls = true,
@@ -946,9 +947,19 @@ export function FlowTracksPanel({
                         className="flow-page__tracks-table-album"
                         title={track.albumName || "Unknown Album"}
                       >
-                        <span className="flow-page__tracks-table-cell-text">
-                          {track.albumName || "Unknown Album"}
-                        </span>
+                        {track.albumMbid && typeof onNavigateAlbum === "function" ? (
+                          <button
+                            type="button"
+                            onClick={() => onNavigateAlbum(track)}
+                            className="flow-page__tracks-album-link"
+                          >
+                            {track.albumName || "Unknown Album"}
+                          </button>
+                        ) : (
+                          <span className="flow-page__tracks-table-cell-text">
+                            {track.albumName || "Unknown Album"}
+                          </span>
+                        )}
                       </td>
                     )}
                     {showDuration ? (

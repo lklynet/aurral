@@ -651,6 +651,18 @@
   display: block;
 }
 
+.settings-storage-health__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.settings-storage-health__toolbar .arr-form-help {
+  margin: 0;
+}
+
 .arr-health__loading {
   margin: 0;
   color: var(--arr-text-muted);
@@ -2228,6 +2240,11 @@
     position: static;
     flex-wrap: wrap;
     margin: -0.25rem 0.75rem 0.625rem;
+  }
+
+  .settings-storage-health__toolbar {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .settings-arr__toolbar {
