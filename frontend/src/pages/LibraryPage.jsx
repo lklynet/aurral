@@ -950,7 +950,7 @@ function LibraryPage() {
     if (!tracks.length) return undefined;
     let cancelled = false;
 
-    getRequests()
+    getRequests({ refresh: true })
       .then((requests) => {
         if (cancelled) return;
         const activeRequests = (Array.isArray(requests) ? requests : []).filter(
@@ -1000,7 +1000,7 @@ function LibraryPage() {
     let cancelled = false;
     const sync = async () => {
       try {
-        const requests = await getRequests();
+        const requests = await getRequests({ refresh: true });
         if (cancelled) return;
         const requestsByJobId = new Map(
           (Array.isArray(requests) ? requests : [])

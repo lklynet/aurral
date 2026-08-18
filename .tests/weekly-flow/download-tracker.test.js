@@ -9,15 +9,17 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps }, trackerModule, qualityProfileService] = await setupIsolatedBackend(
+const [isolatedState, { db }, { dbOps }, trackerModule, qualityProfileService, workerModule] = await setupIsolatedBackend(
   "download-tracker",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
   "backend/services/qualityProfileService.js",
+  "backend/services/weeklyFlow/weeklyFlowWorker.js",
 );
 
 const { WeeklyFlowDownloadTracker } = trackerModule;
+const { WeeklyFlowWorker } = workerModule;
 
 test.beforeEach(async () => {
   await resetDatabase(db);
@@ -46,6 +48,19 @@ test("getNextPendingMatching skips future-dated retry jobs and returns ready wor
   );
 
   assert.equal(ready?.id, secondId);
+});
+
+test("worker does not select a job that is already active", () => {
+  const tracker = trackerModule.downloadTracker;
+  const worker = new WeeklyFlowWorker(isolatedState.baseDir);
+  const jobId = tracker.addJob(
+    { artistName: "Artist", trackName: "Library Song" },
+    "library",
+  );
+
+  assert.equal(worker._getNextReadyPendingJob()?.id, jobId);
+  worker.activeJobs.set(jobId, { promise: Promise.resolve() });
+  assert.equal(worker._getNextReadyPendingJob(), null);
 });
 
 test("persists enriched album context for slskd matching", () => {

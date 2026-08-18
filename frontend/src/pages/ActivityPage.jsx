@@ -113,7 +113,7 @@ function ActivityPage() {
     }
 
     try {
-      const data = await getRequests({ refresh });
+      const data = await getRequests({ refresh: refresh || isListLikeView });
       setRequests((previous) => mergeActivityRequests(previous, data));
       setError(null);
     } catch {
@@ -126,7 +126,7 @@ function ActivityPage() {
         setLoading(false);
       }
     }
-  }, []);
+  }, [isListLikeView]);
 
   const refreshFromStatusEvent = useCallback(() => {
     if (document.hidden) return;

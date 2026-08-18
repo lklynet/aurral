@@ -18,6 +18,11 @@ let allDownloadStatusesCache = {
   pending: null,
 };
 
+const invalidateActivityRequestsCache = () =>
+  import("../../requests.js")
+    .then(({ invalidateRequestsCache }) => invalidateRequestsCache())
+    .catch(() => {});
+
 export const getDownloadStatusesForAlbumIds = async (
   albumIdArrayInput,
   snapshot = null,
@@ -352,6 +357,7 @@ export function registerDownloads(router) {
             "../../../services/aurralHistoryService.js"
           );
           recordTrackJobQueued(existingJob);
+          await invalidateActivityRequestsCache();
         }
         return res.status(202).json({
           success: true,
@@ -398,6 +404,7 @@ export function registerDownloads(router) {
         "../../../services/aurralHistoryService.js"
       );
       recordTrackJobQueued(downloadTracker.getJob(jobId));
+      await invalidateActivityRequestsCache();
       await weeklyFlowWorker.start();
       return res.status(202).json({ success: true, queued: true, jobId });
     } catch (error) {

@@ -255,7 +255,10 @@ export class WeeklyFlowWorker {
   }
 
   _getNextReadyPendingJob(lastPlaylistType = null) {
-    return downloadTracker.getNextPendingMatching(() => true, lastPlaylistType);
+    return downloadTracker.getNextPendingMatching(
+      (job) => !this.activeJobs.has(job.id),
+      lastPlaylistType,
+    );
   }
 
   getWorkerSettings() {
@@ -691,6 +694,9 @@ export class WeeklyFlowWorker {
             console.error(`[WeeklyFlowWorker] Error processing job ${job.id}:`, error.message);
             this._recordPlaylistTerminalFailure(job.playlistType, job);
             downloadTracker.setFailed(job.id, error.message);
+            import("../aurralHistoryService.js")
+              .then(({ recordTrackJobFailed }) => recordTrackJobFailed(job, error.message))
+              .catch(() => {});
             await this.checkPlaylistComplete(job.playlistType);
           })
           .finally(() => {
@@ -801,7 +807,9 @@ export class WeeklyFlowWorker {
       if (!isAnyDownloadSourceConfigured()) {
         throw new Error(getDownloadSourceNotConfiguredMessage());
       }
-      downloadTracker.enqueueDownloadPipeline(job.id);
+      if (!downloadTracker.enqueueDownloadPipeline(job.id)) {
+        throw new Error("Failed to enqueue the download pipeline");
+      }
       return;
     } catch (error) {
       const cpuDelta = process.cpuUsage(perfStartCpu);
