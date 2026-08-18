@@ -24,6 +24,7 @@ export function LibraryItemSubmenu({
     try {
       await item.onSelect?.();
       onClose?.();
+    } catch {
     } finally {
       setPendingAction("");
     }
@@ -103,16 +104,19 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
   const registeredCloserRef = useRef(null);
 
   const closeMenu = useCallback((restoreFocus = true) => {
+    const registeredCloser = registeredCloserRef.current;
+    const ownsActiveMenu =
+      registeredCloser !== null && activeMenuCloser === registeredCloser;
     setOpen(false);
     setAnchor(null);
     setPosition(null);
     setSubmenuSide("right");
     setPendingAction("");
-    if (activeMenuCloser === registeredCloserRef.current) {
+    if (ownsActiveMenu) {
       activeMenuCloser = null;
       registeredCloserRef.current = null;
     }
-    if (restoreFocus) {
+    if (restoreFocus && ownsActiveMenu) {
       window.requestAnimationFrame(() => triggerRef.current?.focus());
     }
   }, []);

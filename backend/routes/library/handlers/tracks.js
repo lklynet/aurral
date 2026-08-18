@@ -33,7 +33,7 @@ const requireTrackDeletion = (req, res, next) => {
   }
   return res.status(403).json({
     error: "Forbidden",
-    message: "Permission required: deleteTrack",
+    message: "Permission required: deleteTrack or deleteAlbum",
   });
 };
 
