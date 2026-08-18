@@ -132,4 +132,15 @@ test("getAdvertisedQualityRank orders by profile position and sinks unknown tier
   const rankUnknown = getAdvertisedQualityRank("Song.opus", null, profile);
   assert.ok(rank320 < rank192);
   assert.ok(rank192 < rankUnknown);
+
+  // A configured order must win over the default one.
+  const reversed = normalizeQualityProfile({
+    order: ["mp3-192", "mp3-320"],
+    enabled: ["mp3-320", "mp3-192"],
+    cutoff: "mp3-192",
+  });
+  assert.ok(
+    getAdvertisedQualityRank("Song 192kbps.mp3", null, reversed) <
+      getAdvertisedQualityRank("Song 320kbps.mp3", null, reversed),
+  );
 });
