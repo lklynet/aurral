@@ -42,9 +42,15 @@ import {
 import { getPlaylistRunActivity } from "./flows/flowRunActivity";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.js";
 import {
+  getCanonicalLibraryPage,
   lookupAlbumsInLibraryBatch,
   lookupArtistInLibrary,
 } from "../utils/api/endpoints/library.js";
+import {
+  canonicalLibraryId,
+  findCanonicalAlbumByName,
+  findCanonicalArtistByName,
+} from "../utils/libraryTrackNavigation.js";
 import {
   PlaylistLibraryItem,
   PlaylistDetailHero,
@@ -1123,13 +1129,25 @@ function FlowPage({ mode = "all" }) {
       });
       return;
     }
+    let canonicalId = null;
     try {
       const lookup = await lookupArtistInLibrary(track.artistMbid);
-      const canonicalId = lookup?.artist?.canonicalId;
-      if (canonicalId) {
-        navigate(`/library/artist/${encodeURIComponent(canonicalId)}`);
-      }
+      canonicalId = lookup?.artist?.canonicalId || null;
     } catch {}
+    if (!canonicalId && track.artistName) {
+      try {
+        const page = await getCanonicalLibraryPage({
+          kind: "artists",
+          page: 1,
+          pageSize: 100,
+          query: track.artistName,
+        });
+        canonicalId = canonicalLibraryId(
+          findCanonicalArtistByName(page?.items, track.artistName),
+        );
+      } catch {}
+    }
+    if (canonicalId) navigate(`/library/artist/${encodeURIComponent(canonicalId)}`);
   };
 
   const handleNavigateAlbum = async (track) => {
@@ -1147,13 +1165,25 @@ function FlowPage({ mode = "all" }) {
       });
       return;
     }
+    let canonicalId = null;
     try {
       const lookup = await lookupAlbumsInLibraryBatch([track.albumMbid]);
-      const canonicalId = lookup?.[track.albumMbid]?.canonicalAlbumId;
-      if (canonicalId) {
-        navigate(`/library/album/${encodeURIComponent(canonicalId)}`);
-      }
+      canonicalId = lookup?.[track.albumMbid]?.canonicalAlbumId || null;
     } catch {}
+    if (!canonicalId && track.albumName) {
+      try {
+        const page = await getCanonicalLibraryPage({
+          kind: "albums",
+          page: 1,
+          pageSize: 100,
+          query: track.albumName,
+        });
+        canonicalId = canonicalLibraryId(
+          findCanonicalAlbumByName(page?.items, track.albumName, track.artistName),
+        );
+      } catch {}
+    }
+    if (canonicalId) navigate(`/library/album/${encodeURIComponent(canonicalId)}`);
   };
 
   const handleBulkDelete = async (tracks) => {

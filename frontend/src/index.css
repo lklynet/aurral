@@ -8086,6 +8086,11 @@ button.native-library-card__artist:focus-visible {
   font-size: 0.74rem;
 }
 
+.native-library-track:has(.artist-playlist-menu) {
+  position: relative;
+  z-index: 1;
+}
+
 .native-library-track--heading {
   min-height: 2rem;
   border-bottom: 0;
