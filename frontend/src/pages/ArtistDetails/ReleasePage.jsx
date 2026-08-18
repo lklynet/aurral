@@ -663,7 +663,6 @@ function ReleasePage() {
           onAddTrackToLibrary={handleReleaseTrackAddToLibrary}
           libraryTrackSavingKey={libraryTrackSavingKey}
           ownedTrackMbids={libraryInfo?.ownedTrackMbids}
-          albumComplete={isComplete}
           resolveMembershipTrack={buildReleaseTrackPayload}
           playlists={sharedPlaylists}
           playlistsLoading={playlistModalLoading}

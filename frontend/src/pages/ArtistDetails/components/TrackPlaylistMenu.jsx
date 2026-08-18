@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import { ChevronRight, Loader, MoreHorizontal, Plus } from "lucide-react";
 import AddActionButton from "../../../components/AddActionButton";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
+import TooltipButton from "../../../components/TooltipButton";
 
 function normalizeTrackForSharedIdentity(track) {
   if (!track || typeof track !== "object" || Array.isArray(track)) {
@@ -331,12 +332,12 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
     <div className="artist-relative" ref={menuRef}>
       {showTrigger ? (
         isKebab || triggerVariant === "compact" ? (
-          <button
+          <TooltipButton
             ref={buttonRef}
             type="button"
             className={triggerClassName}
             onClick={handleOpen}
-            title={triggerLabel}
+            label={triggerLabel}
             aria-label={triggerLabel}
             aria-haspopup="menu"
             aria-expanded={open}
@@ -349,7 +350,7 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
             ) : (
               <TriggerIcon className="artist-icon-xs" />
             )}
-          </button>
+          </TooltipButton>
         ) : (
           <AddActionButton
             ref={buttonRef}
@@ -377,7 +378,7 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
             <>
               {onSelect ? (
                 <TrackPlaylistSubmenu
-                  label="+ Add to playlist"
+                  label="Add to playlist"
                   icon={Plus}
                   track={track}
                   playlists={playlists}
@@ -405,7 +406,7 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
                 >
                   <span className="artist-menu-item__main">
                     <Plus className="artist-icon-sm" />
-                    + Add to library
+                    Add to library
                   </span>
                 </button>
               ) : null}

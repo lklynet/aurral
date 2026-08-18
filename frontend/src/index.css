@@ -3091,7 +3091,8 @@ textarea {
 }
 
 .artist-menu-submenu:hover .artist-menu-submenu__panel,
-.artist-menu-submenu:focus-within .artist-menu-submenu__panel {
+.artist-menu-submenu:focus-within .artist-menu-submenu__panel,
+.artist-menu-submenu.is-open .artist-menu-submenu__panel {
   display: block;
 }
 
@@ -4639,7 +4640,7 @@ textarea {
   z-index: 50;
   width: 16rem;
   padding: 0.25rem;
-  overflow: hidden;
+  overflow: visible;
   background: var(--aurral-surface-popover);
   border-radius: var(--aurral-radius-sm);
 }

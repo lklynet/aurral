@@ -20,7 +20,6 @@ export function ArtistDetailsReleaseTrackList({
   onAddTrackToLibrary,
   libraryTrackSavingKey,
   ownedTrackMbids = [],
-  albumComplete = false,
   resolveMembershipTrack,
   playlists,
   playlistsLoading,
@@ -156,8 +155,9 @@ export function ArtistDetailsReleaseTrackList({
                     .toString()
                     .padStart(2, "0")}`
                 : "";
-              const isOwned = ownedTrackSet.has(String(track.mbid || track.id || ""));
-              const showOwned = !albumComplete && isOwned;
+              const isOwned = [track.mbid, track.recordingId, track.id]
+                .filter(Boolean)
+                .some((identity) => ownedTrackSet.has(String(identity)));
               return (
                 <div
                   key={currentTrackId}
@@ -179,8 +179,8 @@ export function ArtistDetailsReleaseTrackList({
                   ) : (
                     <span />
                   )}
-                  <span className={`artist-track-title${showOwned ? " artist-track-title--owned" : ""}`}>
-                    {showOwned ? <SearchLibraryCheck size="discover" /> : null}
+                  <span className={`artist-track-title${isOwned ? " artist-track-title--owned" : ""}`}>
+                    {isOwned ? <SearchLibraryCheck size="discover" /> : null}
                     <span>{track.title || track.trackName || "Unknown Track"}</span>
                   </span>
                   {onAddTrackToPlaylist ? (
