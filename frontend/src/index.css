@@ -7574,6 +7574,11 @@ textarea {
   font-size: 0.76rem;
 }
 
+.native-library-search input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 .native-library-search input::placeholder {
   color: var(--aurral-text-subtle);
 }

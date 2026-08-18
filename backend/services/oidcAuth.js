@@ -135,6 +135,22 @@ export function resolveOidcUsername(claims = {}) {
   return "";
 }
 
+async function fetchEffectiveClaims(oidc, tokens, claims) {
+  if (!claims.sub || !tokens.access_token) return claims;
+
+  try {
+    const userInfo = await client.fetchUserInfo(oidc, tokens.access_token, claims.sub);
+    const effectiveClaims = { ...claims, ...userInfo };
+    const groupsClaim = getGroupsClaim();
+    if (groupsClaim) {
+      effectiveClaims[groupsClaim] = claims[groupsClaim];
+    }
+    return effectiveClaims;
+  } catch {
+    return claims;
+  }
+}
+
 async function getDiscoveryConfig() {
   const config = getRequiredConfig();
   if (!config) {
@@ -228,7 +244,8 @@ export async function handleOidcCallback(req) {
     idTokenExpected: true,
   });
 
-  const claims = tokens.claims() || {};
+  const claims = await fetchEffectiveClaims(oidc, tokens, tokens.claims() || {});
+
   const username = resolveOidcUsername(claims);
   if (!username) {
     throw Object.assign(new Error("OIDC identity did not include a usable username"), {

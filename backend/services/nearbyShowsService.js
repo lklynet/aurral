@@ -350,6 +350,35 @@ const buildShowRecord = (event, artist) => {
   };
 };
 
+export const groupShowsByEvent = (shows) => {
+  const groups = new Map();
+  for (const [index, show] of (Array.isArray(shows) ? shows : []).entries()) {
+    const eventId = String(show?.ticketmasterEventId || show?.id || "").trim();
+    const key = eventId ? `event:${eventId}` : `show:${index}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = { ...show, artistNames: [], artistKeys: new Set() };
+      groups.set(key, group);
+    }
+
+    const artistNames = Array.isArray(show?.artistNames)
+      ? show.artistNames
+      : [show?.artistName];
+    for (const value of artistNames) {
+      const name = String(value || "").trim();
+      const artistKey = normalizeArtistKey(name) || name.toLowerCase();
+      if (!name || group.artistKeys.has(artistKey)) continue;
+      group.artistKeys.add(artistKey);
+      group.artistNames.push(name);
+    }
+  }
+
+  return [...groups.values()].map(({ artistKeys: _artistKeys, ...show }) => ({
+    ...show,
+    artistName: show.artistNames[0] || show.artistName || null,
+  }));
+};
+
 const buildArtistMap = (artists, sourceType) => {
   const map = new Map();
   for (const artist of artists || []) {
@@ -433,14 +462,19 @@ export const getNearbyShows = async ({
     }
   }
 
-  sortShows(libraryShows);
-  sortShows(recommendedShows);
+  const groupedShows = groupShowsByEvent([...libraryShows, ...recommendedShows]);
+  const groupedLibraryShows = groupShowsByEvent(libraryShows);
+  const groupedRecommendedShows = groupShowsByEvent(recommendedShows);
+
+  sortShows(groupedShows);
+  sortShows(groupedLibraryShows);
+  sortShows(groupedRecommendedShows);
 
   return {
     location,
-    shows: [...libraryShows, ...recommendedShows].slice(0, resolvedLimit),
-    libraryShows: libraryShows.slice(0, resolvedLimit),
-    recommendedShows: recommendedShows.slice(0, resolvedLimit),
-    total: libraryShows.length + recommendedShows.length,
+    shows: groupedShows.slice(0, resolvedLimit),
+    libraryShows: groupedLibraryShows.slice(0, resolvedLimit),
+    recommendedShows: groupedRecommendedShows.slice(0, resolvedLimit),
+    total: groupedShows.length,
   };
 };

@@ -158,8 +158,11 @@ async function buildShowItems(userId, now, req, zipCode, libraryArtists) {
     const key = String(show?.ticketmasterEventId || show?.id || "").trim();
     if (!key) continue;
     const current = grouped.get(key) || { ...show, artistNames: [] };
-    if (show.artistName && !current.artistNames.includes(show.artistName)) {
-      current.artistNames.push(show.artistName);
+    const artistNames = Array.isArray(show.artistNames) ? show.artistNames : [show.artistName];
+    for (const artistName of artistNames) {
+      if (artistName && !current.artistNames.includes(artistName)) {
+        current.artistNames.push(artistName);
+      }
     }
     grouped.set(key, current);
   }

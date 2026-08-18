@@ -38,7 +38,7 @@ const completeOnboarding = () => dbOps.updateSettings({ onboardingComplete: true
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const oidcKey = { ...publicKey.export({ format: "jwk" }), kid: "test-key", use: "sig", alg: "RS256" };
 
-const createIdToken = (issuer, nonce) => {
+const createIdToken = (issuer, nonce, claimOverrides = {}) => {
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const header = encode({ alg: "RS256", kid: oidcKey.kid, typ: "JWT" });
   const payload = encode({
@@ -49,6 +49,7 @@ const createIdToken = (issuer, nonce) => {
     nonce,
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 300,
+    ...claimOverrides,
   });
   const input = `${header}.${payload}`;
   const signature = createSign("RSA-SHA256").update(input).sign(privateKey).toString("base64url");
@@ -82,30 +83,38 @@ function enableOidcEnv(overrides = {}) {
   Object.assign(process.env, overrides);
 }
 
-async function createPendingOidcLogin() {
+async function createPendingOidcLogin({ idTokenClaims = {}, userInfo = null, userInfoError = false } = {}) {
   let issuer;
   let nonce;
   const discoveryServer = await createMockHttpServer((request, response) => {
-    response.writeHead(200, { "content-type": "application/json" });
     if (request.url === "/jwks") {
+      response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ keys: [oidcKey] }));
       return;
     }
     if (request.method === "POST" && request.url === "/token") {
+      response.writeHead(200, { "content-type": "application/json" });
       response.end(
         JSON.stringify({
           access_token: "access-token",
           token_type: "Bearer",
-          id_token: createIdToken(issuer, nonce),
+          id_token: createIdToken(issuer, nonce, idTokenClaims),
         }),
       );
       return;
     }
+    if (request.url === "/userinfo") {
+      response.writeHead(userInfoError ? 500 : 200, { "content-type": "application/json" });
+      response.end(JSON.stringify(userInfoError ? { error: "userinfo_unavailable" } : userInfo));
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/json" });
     response.end(
       JSON.stringify({
         issuer,
         authorization_endpoint: `${issuer}authorize`,
         token_endpoint: `${issuer}token`,
+        ...(userInfo ? { userinfo_endpoint: `${issuer}userinfo` } : {}),
         jwks_uri: `${issuer}jwks`,
       }),
     );
@@ -254,6 +263,75 @@ test("OIDC callback issues a cookie-bound one-time session exchange", async () =
       () => exchangeOidcCallback(callback.code, { headers: { cookie: pending.cookie } }),
       { status: 400, message: "OIDC login session expired" },
     );
+  } finally {
+    await pending.close();
+  }
+});
+
+test("OIDC callback combines UserInfo with ID-token claims", async () => {
+  process.env.OIDC_GROUPS_CLAIM = "groups";
+  process.env.OIDC_ADMIN_GROUPS = "aurral-admins";
+  const pending = await createPendingOidcLogin({
+    idTokenClaims: { preferred_username: undefined, groups: ["aurral-admins"] },
+    userInfo: {
+      sub: "oidc-subject",
+      preferred_username: "userinfo-user",
+      groups: ["regular-users"],
+    },
+  });
+
+  try {
+    const callback = await handleOidcCallback({
+      query: { state: pending.state, code: "authorization-code" },
+      headers: { cookie: pending.cookie },
+      ip: "127.0.0.1",
+    });
+    assert.equal(callback.user.username, "userinfo-user");
+    assert.equal(callback.user.role, "admin");
+  } finally {
+    await pending.close();
+  }
+});
+
+test("OIDC callback falls back to ID-token claims when UserInfo fails", async () => {
+  const pending = await createPendingOidcLogin({
+    idTokenClaims: { preferred_username: "id-token-user" },
+    userInfo: { sub: "oidc-subject" },
+    userInfoError: true,
+  });
+
+  try {
+    const callback = await handleOidcCallback({
+      query: { state: pending.state, code: "authorization-code" },
+      headers: { cookie: pending.cookie },
+      ip: "127.0.0.1",
+    });
+    assert.equal(callback.user.username, "id-token-user");
+  } finally {
+    await pending.close();
+  }
+});
+
+test("OIDC groups claim ignores UserInfo-only admin groups", async () => {
+  process.env.OIDC_GROUPS_CLAIM = "groups";
+  process.env.OIDC_ADMIN_GROUPS = "aurral-admins";
+  const pending = await createPendingOidcLogin({
+    idTokenClaims: { preferred_username: "id-token-user" },
+    userInfo: {
+      sub: "oidc-subject",
+      preferred_username: "userinfo-user",
+      groups: ["aurral-admins"],
+    },
+  });
+
+  try {
+    const callback = await handleOidcCallback({
+      query: { state: pending.state, code: "authorization-code" },
+      headers: { cookie: pending.cookie },
+      ip: "127.0.0.1",
+    });
+    assert.equal(callback.user.username, "userinfo-user");
+    assert.equal(callback.user.role, "user");
   } finally {
     await pending.close();
   }
