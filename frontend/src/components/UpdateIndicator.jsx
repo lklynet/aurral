@@ -5,6 +5,7 @@ import {
   normalizeReleaseVersion,
   selectNightlyUpdate,
 } from "../../../lib/release-version";
+import TooltipButton from "./TooltipButton";
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const NIGHTLY_CHECK_INTERVAL_MS = 2 * 60 * 60 * 1000;
@@ -179,16 +180,15 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
 
   return (
     <div ref={indicatorRef} className="app-update-indicator">
-      <button
-        type="button"
+      <TooltipButton
+        label={updateLabel}
         className={`app-header-link app-update-indicator__trigger is-available${menuOpen ? " is-open" : ""}`}
         onClick={() => setMenuOpen((open) => !open)}
-        aria-label={updateLabel}
         aria-haspopup="dialog"
         aria-expanded={menuOpen}
       >
         <Download aria-hidden="true" />
-      </button>
+      </TooltipButton>
 
       {menuOpen && (
         <div className="app-update-indicator__popover" role="dialog" aria-label="Update preview">

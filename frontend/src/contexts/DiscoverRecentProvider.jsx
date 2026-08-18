@@ -26,6 +26,7 @@ function isDiscoverHomePath(pathname) {
 
 function isDiscoverBrowsePath(pathname) {
   if (!pathname) return false;
+  if (pathname === "/discover/news" || pathname.startsWith("/discover/news/")) return false;
   if (pathname.startsWith("/artist/")) return true;
   if (pathname.startsWith("/discover/")) return true;
   if (pathname === "/search") return true;
