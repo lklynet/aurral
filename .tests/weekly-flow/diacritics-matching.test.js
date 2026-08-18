@@ -22,6 +22,14 @@ test("foldDiacritics maps accented and special letters to their base form", () =
   assert.equal(foldDiacritics("Nothing to fold"), "Nothing to fold");
 });
 
+test("foldDiacritics folds sharp s in both cases", () => {
+  // The fold runs before lowercasing, so the capital form needs its own mapping.
+  assert.equal(foldDiacritics("Straße"), "Strasse");
+  assert.equal(foldDiacritics("STRAẞE"), "STRASSE");
+  assert.equal(getNormalizedText("STRAẞE"), "strasse");
+  assert.equal(artistNamesMatch("STRASSE", "STRAẞE"), true);
+});
+
 test("foldDiacritics handles letters that carry no combining mark", () => {
   assert.equal(foldDiacritics("Sinéad Ó'Connor"), "Sinead O'Connor");
   assert.equal(foldDiacritics("Anastacia — Größe"), "Anastacia — Grosse");

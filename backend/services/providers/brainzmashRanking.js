@@ -14,6 +14,7 @@ const UNDECOMPOSED_LETTERS = {
   þ: "th",
   Þ: "TH",
   ß: "ss",
+  ẞ: "SS",
 };
 
 export function foldDiacritics(value) {
@@ -21,7 +22,7 @@ export function foldDiacritics(value) {
     .normalize("NFD")
     .replace(/(\p{Script=Latin})\p{M}+/gu, "$1")
     .normalize("NFC")
-    .replace(/[øØæÆœŒđĐðÐłŁþÞß]/g, (letter) => UNDECOMPOSED_LETTERS[letter]);
+    .replace(/[øØæÆœŒđĐðÐłŁþÞßẞ]/g, (letter) => UNDECOMPOSED_LETTERS[letter]);
 }
 
 function normalizeText(value) {
