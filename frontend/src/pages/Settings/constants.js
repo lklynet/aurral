@@ -18,6 +18,7 @@ export const GRANULAR_PERMISSIONS = {
   changeMonitoring: false,
   deleteArtist: false,
   deleteAlbum: false,
+  deleteTrack: false,
 };
 
 export const granularPerms = [
@@ -27,4 +28,5 @@ export const granularPerms = [
   { key: "changeMonitoring", label: "Change artist monitoring" },
   { key: "deleteArtist", label: "Delete artists" },
   { key: "deleteAlbum", label: "Delete albums" },
+  { key: "deleteTrack", label: "Delete tracks" },
 ];

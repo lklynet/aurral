@@ -1521,20 +1521,21 @@ export class LibraryManager {
   async deleteTrack(id) {
     const lidarr = await getLidarrClient();
     if (!lidarr || !lidarr.isConfigured()) {
-      return { success: false, error: "Lidarr is not configured" };
+      return { success: false, code: "lidarr_unavailable", error: "Lidarr is not configured" };
     }
     try {
       const library = getCanonicalLibrary({ source: "lidarr", availableOnly: false });
       const track = library.tracks.find((entry) => String(entry.id) === String(id));
-      if (!track) return { success: false, error: "Track not found" };
+      if (!track) return { success: false, code: "not_found", error: "Track not found" };
 
       const metadata = track.metadata || {};
       let trackFileId = Number(
         metadata.trackFileId || metadata.trackFile?.id || metadata.file?.id,
       );
       if (!Number.isFinite(trackFileId)) {
+        const trackAlbums = Array.isArray(track.albums) ? track.albums : [];
         const album = library.albums.find((entry) =>
-          track.albums.some((relation) => String(relation.albumId) === String(entry.id)),
+          trackAlbums.some((relation) => String(relation.albumId) === String(entry.id)),
         );
         const lidarrAlbumId = Number(album?.metadata?.id);
         if (Number.isFinite(lidarrAlbumId)) {
@@ -1549,7 +1550,11 @@ export class LibraryManager {
         }
       }
       if (!Number.isFinite(trackFileId)) {
-        return { success: false, error: "Track file not found in Lidarr" };
+        return {
+          success: false,
+          code: "not_found",
+          error: "Track file not found in Lidarr",
+        };
       }
 
       await lidarr.deleteTrackFile(trackFileId);
@@ -1557,7 +1562,13 @@ export class LibraryManager {
       return { success: true };
     } catch (error) {
       logger.error('library', `[LibraryManager] Failed to delete track file: ${error.message}`);
-      return { success: false, error: error.message };
+      const status = error?.response?.status;
+      const code = status === 404
+        ? "not_found"
+        : !error?.response || status >= 500
+          ? "lidarr_unavailable"
+          : "failed";
+      return { success: false, code, error: error.message };
     }
   }
 

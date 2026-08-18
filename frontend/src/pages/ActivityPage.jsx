@@ -104,6 +104,7 @@ function ActivityPage() {
     () => [...filteredRequests].sort(compareActivityRequests),
     [filteredRequests],
   );
+  const hasActivityFilter = filterValue.trim().length > 0;
 
   const visibleRequests = useMemo(
     () => sortedRequests.slice(0, visibleCount),
@@ -149,6 +150,15 @@ function ActivityPage() {
       }
     }
   }, [isListLikeView]);
+
+  const handleManualRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await fetchRequests({ silent: true, refresh: true });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchRequests]);
 
   const refreshFromStatusEvent = useCallback(() => {
     if (document.hidden || isMissingView) return;
@@ -384,14 +394,7 @@ function ActivityPage() {
         <ActivityToolbar
           filterValue={filterValue}
           onFilterChange={setFilterValue}
-          onRefresh={async () => {
-            setRefreshing(true);
-            try {
-              await fetchRequests({ silent: true, refresh: true });
-            } finally {
-              setRefreshing(false);
-            }
-          }}
+          onRefresh={handleManualRefresh}
           refreshing={refreshing}
         />
         <div className="artist-loading">
@@ -407,14 +410,7 @@ function ActivityPage() {
       <ActivityToolbar
         filterValue={filterValue}
         onFilterChange={setFilterValue}
-        onRefresh={async () => {
-          setRefreshing(true);
-          try {
-            await fetchRequests({ silent: true, refresh: true });
-          } finally {
-            setRefreshing(false);
-          }
-        }}
+        onRefresh={handleManualRefresh}
         refreshing={refreshing}
       />
 
@@ -439,9 +435,15 @@ function ActivityPage() {
             <div className="search-empty-panel__icon" aria-hidden="true">
               <Music className="artist-icon-lg" />
             </div>
-            <h2 className="search-empty-panel__title">{emptyState.title}</h2>
-            <p className="search-empty-panel__message">{emptyState.message}</p>
-            {isQueueView && (
+            <h2 className="search-empty-panel__title">
+              {hasActivityFilter ? "No matches" : emptyState.title}
+            </h2>
+            <p className="search-empty-panel__message">
+              {hasActivityFilter
+                ? "No activity matches the current filter."
+                : emptyState.message}
+            </p>
+            {isQueueView && !hasActivityFilter && (
               <button
                 type="button"
                 onClick={() => navigate("/")}

@@ -244,6 +244,7 @@ function buildPermissions(role, permissions) {
       changeMonitoring: true,
       deleteArtist: true,
       deleteAlbum: true,
+      deleteTrack: true,
     };
   }
   return {
@@ -572,6 +573,7 @@ function legacyAuth(username, password) {
       changeMonitoring: true,
       deleteArtist: true,
       deleteAlbum: true,
+      deleteTrack: true,
     },
   };
 }

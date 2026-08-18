@@ -179,7 +179,7 @@ export const deleteAlbumFromLibrary = (id, deleteFiles = false) =>
   });
 
 export const deleteTrackFromLibrary = (id) =>
-  deleteData(`/library/tracks/${id}`);
+  deleteData(`/library/tracks/${encodeURIComponent(id)}`);
 
 export const getLibraryAlbums = async (artistId) => {
   const data = await getData("/library/albums", {

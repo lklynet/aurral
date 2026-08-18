@@ -73,11 +73,21 @@ function collectPlaylistTrackEntries(playlist) {
   if (!playlistId) return [];
   return downloadTracker
     .getByPlaylistType(playlistId)
+    .filter((job) =>
+      [
+        job?.artistName,
+        job?.trackName,
+        job?.albumName,
+        job?.artistMbid,
+        job?.albumMbid,
+        job?.trackMbid,
+        job?.releaseYear,
+      ].some((value) => String(value ?? "").trim()),
+    )
     .map((job) => ({
       id: job.id,
       identity: buildSharedTrackIdentity(job),
-    }))
-    .filter((entry) => entry.identity);
+    }));
 }
 
 function buildOwnerMap(flows, sharedPlaylists) {

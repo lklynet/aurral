@@ -734,6 +734,7 @@ function LibraryPage() {
 
   const canDeleteArtist = hasPermission("deleteArtist");
   const canDeleteAlbum = hasPermission("deleteAlbum");
+  const canDeleteTrack = hasPermission("deleteTrack") || canDeleteAlbum;
   const canChangeMonitoring = hasPermission("changeMonitoring");
 
   const openLibraryRemoval = useCallback((kind, entity) => {
@@ -1585,7 +1586,7 @@ function LibraryPage() {
                   },
                 ]
               : []),
-            ...(file && canDeleteAlbum
+            ...(file && canDeleteTrack
               ? [
                   {
                     id: "delete",

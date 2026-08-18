@@ -117,18 +117,7 @@ export default function ActivityRequestRow({
   };
 
   return (
-    <article
-      className={`activity-row${canNavigate ? " is-clickable" : ""}`}
-      onClick={navigate}
-      onKeyDown={(event) => {
-        if (canNavigate && (event.key === "Enter" || event.key === " ")) {
-          event.preventDefault();
-          navigate();
-        }
-      }}
-      tabIndex={canNavigate ? 0 : undefined}
-      aria-label={canNavigate ? `Open ${rowLabel}` : undefined}
-    >
+    <article className="activity-row">
       <span
         className={`activity-row__status activity-row__status--${status.tone}`}
         title={status.label}
@@ -137,8 +126,20 @@ export default function ActivityRequestRow({
         <StatusIcon className={status.spinning ? "animate-spin" : ""} aria-hidden="true" />
       </span>
       <div className="activity-row__details">
-        <h2 className="activity-row__title" title={displayTitle}>
-          {displayTitle}
+        <h2 className="activity-row__title">
+          {canNavigate ? (
+            <button
+              type="button"
+              className="activity-row__title-button"
+              title={displayTitle}
+              aria-label={`Open ${rowLabel}`}
+              onClick={navigate}
+            >
+              {displayTitle}
+            </button>
+          ) : (
+            displayTitle
+          )}
         </h2>
         <p className="activity-row__meta" title={displayMeta}>
           {displayMeta}
@@ -153,6 +154,7 @@ export default function ActivityRequestRow({
             {request.sourceFilename}
           </p>
         ) : null}
+        {jobError ? <span className="activity-row__error" role="alert">{jobError}</span> : null}
       </div>
       <span className="activity-row__status-label">{status.label}</span>
       <time className="activity-row__time" dateTime={request.requestedAt || undefined}>
@@ -186,7 +188,6 @@ export default function ActivityRequestRow({
             </TooltipButton>
           </>
         ) : null}
-        {jobError ? <span className="activity-row__error" role="alert">{jobError}</span> : null}
         {canReSearch ? (
           <TooltipButton
             className="native-library-icon-button"

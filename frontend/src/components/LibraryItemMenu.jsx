@@ -55,15 +55,16 @@ export function LibraryItemSubmenu({
         {items.map((item) => {
           const ItemIcon = item.icon;
           const isPending = pendingAction === item.id;
+          const isToggle = typeof item.selected === "boolean";
           return (
             <button
               type="button"
-              role="menuitem"
+              role={isToggle ? "menuitemcheckbox" : "menuitem"}
               className={`artist-menu-item${item.danger ? " artist-menu-item--danger" : ""}${item.selected ? " is-selected" : ""}`}
               key={item.id}
               onClick={(event) => handleAction(event, item)}
               disabled={item.disabled || !!pendingAction}
-              aria-pressed={item.selected || undefined}
+              aria-checked={isToggle ? item.selected : undefined}
             >
               <span className="artist-menu-item__main">
                 {isPending ? (
@@ -99,7 +100,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
   const menuRootRef = useRef(null);
   const menuRef = useRef(null);
   const triggerRef = useRef(null);
-  const closeMenuRef = useRef(null);
+  const registeredCloserRef = useRef(null);
 
   const closeMenu = useCallback((restoreFocus = true) => {
     setOpen(false);
@@ -107,17 +108,21 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     setPosition(null);
     setSubmenuSide("right");
     setPendingAction("");
-    if (activeMenuCloser === closeMenuRef.current) activeMenuCloser = null;
+    if (activeMenuCloser === registeredCloserRef.current) {
+      activeMenuCloser = null;
+      registeredCloserRef.current = null;
+    }
     if (restoreFocus) {
       window.requestAnimationFrame(() => triggerRef.current?.focus());
     }
   }, []);
-  closeMenuRef.current = closeMenu;
 
   const openMenu = useCallback(
     (nextAnchor) => {
       activeMenuCloser?.();
-      activeMenuCloser = () => closeMenu(false);
+      const closer = () => closeMenu(false);
+      registeredCloserRef.current = closer;
+      activeMenuCloser = closer;
       setAnchor(nextAnchor);
       setSubmenuSide("right");
       setPosition({
@@ -184,7 +189,10 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
 
   useEffect(() => {
     return () => {
-      if (activeMenuCloser === closeMenuRef.current) activeMenuCloser = null;
+      if (activeMenuCloser === registeredCloserRef.current) {
+        activeMenuCloser = null;
+        registeredCloserRef.current = null;
+      }
     };
   }, []);
 
@@ -230,8 +238,9 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     setPendingAction(item.id);
     try {
       await item.onSelect?.(event);
-      closeMenu();
+    } catch {
     } finally {
+      closeMenu();
       setPendingAction("");
     }
   };
@@ -241,16 +250,17 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
       {items.map((item) => {
         const Icon = item.icon;
         const isPending = pendingAction === item.id;
+        const isToggle = typeof item.selected === "boolean";
         return (
           <div key={item.id}>
             {item.separatorBefore ? <div className="native-library-item-menu__separator" /> : null}
             <button
               type="button"
-              role="menuitem"
+              role={isToggle ? "menuitemcheckbox" : "menuitem"}
               className={`artist-menu-item${item.danger ? " artist-menu-item--danger" : ""}${item.selected ? " is-selected" : ""}`}
               onClick={(event) => handleAction(event, item)}
               disabled={item.disabled || !!pendingAction}
-              aria-pressed={item.selected || undefined}
+              aria-checked={isToggle ? item.selected : undefined}
             >
               <span className="artist-menu-item__main">
                 {isPending ? (

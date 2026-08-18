@@ -54,6 +54,9 @@ test("canonical track reads remove nested filesystem paths", async () => {
 
     const routes = new Map();
     registerTracks({
+      delete(routePath, ...handlers) {
+        routes.set(routePath, handlers.at(-1));
+      },
       get(routePath, ...handlers) {
         routes.set(routePath, handlers.at(-1));
       },

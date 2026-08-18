@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   isCutoffUnmetAurralJob,
+  getMissingJobKey,
   isMissingAurralJob,
   sortMissingJobs,
 } from "../../frontend/src/pages/activity/activityMissingUtils.js";
@@ -32,4 +33,8 @@ test("missing activity sorts newest operations first", () => {
   assert.ok(
     sortMissingJobs({ createdAt: 20, trackName: "A" }, { createdAt: 10, trackName: "B" }) < 0,
   );
+  assert.ok(
+    sortMissingJobs({ createdAt: 10, trackName: "A" }, { createdAt: 10, trackName: "B" }) < 0,
+  );
+  assert.equal(getMissingJobKey({ id: "job-42" }), "job-42");
 });

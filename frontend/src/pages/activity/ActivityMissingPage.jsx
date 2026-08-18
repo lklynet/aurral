@@ -28,6 +28,8 @@ import {
   sortMissingJobs,
 } from "./activityMissingUtils.js";
 
+const WANTED_PAGE_SIZE = 25;
+
 const toPlaylistInfo = (status) => {
   const entries = [
     ...(Array.isArray(status?.flows) ? status.flows : []).map((entry) => ({
@@ -42,9 +44,16 @@ const toPlaylistInfo = (status) => {
   return new Map(entries.map((entry) => [String(entry.id), entry]));
 };
 
+const toJobDate = (value) => {
+  if (value == null || (typeof value === "string" && !value.trim())) return null;
+  const numericValue = Number(value);
+  const date = new Date(Number.isFinite(numericValue) ? numericValue : value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
 const formatJobDate = (value) => {
-  const date = new Date(Number(value));
-  if (Number.isNaN(date.getTime())) return "";
+  const date = toJobDate(value);
+  if (!date) return "";
   return formatDateTime(date, {
     month: "short",
     day: "numeric",
@@ -88,7 +97,7 @@ function MissingJobRow({ job, playlist, actionState, onAction, onInfo }) {
         </p>
       </div>
       <span className="activity-row__status-label">{statusLabel}</span>
-      <time className="activity-row__time" dateTime={job.createdAt ? new Date(Number(job.createdAt)).toISOString() : undefined}>
+      <time className="activity-row__time" dateTime={toJobDate(job.createdAt)?.toISOString()}>
         {formatJobDate(job.createdAt)}
       </time>
       <div className="activity-row__actions">
@@ -136,10 +145,15 @@ export default function ActivityMissingPage() {
   const [filterValue, setFilterValue] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(WANTED_PAGE_SIZE);
   const [error, setError] = useState("");
   const activeTab = searchParams.get("tab") === "cutoff" ? "cutoff" : "missing";
   const showingCutoff = activeTab === "cutoff";
   const filterPlaceholder = showingCutoff ? "Filter cutoff unmet" : "Filter missing tracks";
+
+  useEffect(() => {
+    setVisibleCount(WANTED_PAGE_SIZE);
+  }, [activeTab]);
 
   const loadJobs = useCallback(async ({ silent = false } = {}) => {
     if (silent) setRefreshing(true);
@@ -189,6 +203,8 @@ export default function ActivityMissingPage() {
         .includes(query);
     });
   }, [filterValue, jobs, showingCutoff]);
+  const pagedJobs = visibleJobs.slice(0, visibleCount);
+  const hasMoreJobs = visibleCount < visibleJobs.length;
 
   const handleAction = async (job) => {
     const id = getMissingJobKey(job);
@@ -279,7 +295,7 @@ export default function ActivityMissingPage() {
 
       {!error && visibleJobs.length > 0 ? (
         <div className="activity-list">
-          {visibleJobs.map((job) => (
+          {pagedJobs.map((job) => (
             <MissingJobRow
               key={getMissingJobKey(job)}
               job={job}
@@ -289,6 +305,17 @@ export default function ActivityMissingPage() {
               onInfo={setInfoJob}
             />
           ))}
+          {hasMoreJobs ? (
+            <div className="activity-list__load-more">
+              <button
+                type="button"
+                className="btn btn-secondary btn--bold btn-min-h"
+                onClick={() => setVisibleCount((count) => count + WANTED_PAGE_SIZE)}
+              >
+                Load more
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
       <ActivityInfoModal item={infoJob} onClose={() => setInfoJob(null)} />
