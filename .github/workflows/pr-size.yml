@@ -1,0 +1,61 @@
+name: Label PR size
+
+on:
+  pull_request_target:
+    branches: ["main"]
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
+
+permissions:
+  contents: read
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    concurrency:
+      group: pr-size-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Label pull request size
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          changed_lines="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --jq '.additions + .deletions')"
+          if [ "${changed_lines}" -lt 10 ]; then
+            size_label=size:XS
+          elif [ "${changed_lines}" -lt 30 ]; then
+            size_label=size:S
+          elif [ "${changed_lines}" -lt 100 ]; then
+            size_label=size:M
+          elif [ "${changed_lines}" -lt 500 ]; then
+            size_label=size:L
+          elif [ "${changed_lines}" -lt 1000 ]; then
+            size_label=size:XL
+          else
+            size_label=size:XXL
+          fi
+
+          current_labels="$(gh api "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --jq '.[].name')"
+          while IFS= read -r label; do
+            [ -z "${label}" ] && continue
+            gh api \
+              --method DELETE \
+              "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels/${label}" \
+              >/dev/null
+          done < <(printf '%s\n' "${current_labels}" | grep -E '^size:(XS|S|M|L|XL|XXL)$' || true)
+
+          gh api \
+            --method POST \
+            "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" \
+            -f "labels[]=${size_label}" \
+            >/dev/null
+
+          echo "PR #${PR_NUMBER}: ${changed_lines} changed lines -> ${size_label}"
