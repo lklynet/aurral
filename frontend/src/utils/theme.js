@@ -3,7 +3,6 @@ export const THEME_APPEARANCE_STORAGE_KEY = "aurralThemeAppearance:v1";
 export const CUSTOM_THEMES_STORAGE_KEY = "aurralThemes:v1";
 export const THEME_FILE_VERSION = 1;
 export const DEFAULT_THEME_ID = "aurral";
-export const THEME_PREFERENCES = ["system", "light", "dark"];
 export const THEME_APPEARANCES = ["system", "light", "dark"];
 
 export const THEME_COLOR_ROLES = [
@@ -46,22 +45,6 @@ function clamp(value, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value));
 }
 
-function parseAlpha(value) {
-  if (typeof value !== "string") return null;
-  const parsed = value.trim().endsWith("%")
-    ? Number.parseFloat(value) / 100
-    : Number.parseFloat(value);
-  return Number.isFinite(parsed) ? clamp(parsed) : null;
-}
-
-function parseChannel(value) {
-  if (typeof value !== "string") return null;
-  const parsed = value.trim().endsWith("%")
-    ? (Number.parseFloat(value) / 100) * 255
-    : Number.parseFloat(value);
-  return Number.isFinite(parsed) ? clamp(parsed, 0, 255) : null;
-}
-
 function parseHexColor(value) {
   const hex = value.trim().replace(/^#/, "");
   if (!/^(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i.test(hex)) return null;
@@ -79,113 +62,10 @@ function parseHexColor(value) {
   };
 }
 
-function parseRgbFunction(value) {
-  const match = /^rgba?\((.*)\)$/i.exec(value.trim());
-  if (!match) return null;
-  const raw = match[1].trim();
-  const slashParts = raw.split("/");
-  const channels = slashParts[0]
-    .replace(/,/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
-  let alphaValue = slashParts[1];
-  if (channels.length === 4 && alphaValue === undefined) alphaValue = channels.pop();
-  if (channels.length !== 3) return null;
-  const [r, g, b] = channels.map(parseChannel);
-  const a = alphaValue === undefined ? 1 : parseAlpha(alphaValue);
-  return [r, g, b, a].every((channel) => channel !== null) ? { r, g, b, a } : null;
-}
-
-function parseHslFunction(value) {
-  const match = /^hsla?\((.*)\)$/i.exec(value.trim());
-  if (!match) return null;
-  const raw = match[1].trim();
-  const slashParts = raw.split("/");
-  const channels = slashParts[0]
-    .replace(/,/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
-  let alphaValue = slashParts[1];
-  if (channels.length === 4 && alphaValue === undefined) alphaValue = channels.pop();
-  if (channels.length !== 3 || !channels[1].endsWith("%") || !channels[2].endsWith("%")) {
-    return null;
-  }
-  const hue = Number.parseFloat(channels[0]);
-  const saturation = Number.parseFloat(channels[1]) / 100;
-  const lightness = Number.parseFloat(channels[2]) / 100;
-  const alpha = alphaValue === undefined ? 1 : parseAlpha(alphaValue);
-  if (![hue, saturation, lightness, alpha].every(Number.isFinite)) return null;
-
-  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
-  const section = (((hue % 360) + 360) % 360) / 60;
-  const x = chroma * (1 - Math.abs((section % 2) - 1));
-  const matchRgb =
-    section < 1
-      ? [chroma, x, 0]
-      : section < 2
-        ? [x, chroma, 0]
-        : section < 3
-          ? [0, chroma, x]
-          : section < 4
-            ? [0, x, chroma]
-            : section < 5
-              ? [x, 0, chroma]
-              : [chroma, 0, x];
-  const offset = lightness - chroma / 2;
-  return {
-    r: (matchRgb[0] + offset) * 255,
-    g: (matchRgb[1] + offset) * 255,
-    b: (matchRgb[2] + offset) * 255,
-    a: alpha,
-  };
-}
-
-function decodeGamma(value) {
-  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-}
-
-function encodeGamma(value) {
-  const clamped = clamp(value);
-  return clamped <= 0.0031308 ? clamped * 12.92 : 1.055 * clamped ** (1 / 2.4) - 0.055;
-}
-
-function parseColorFunction(value) {
-  const match = /^color\(\s*(display-p3|srgb)\s+([^)]*)\)$/i.exec(value.trim());
-  if (!match) return null;
-  const [channelPart, alphaPart] = match[2].split("/");
-  const channels = channelPart.trim().split(/\s+/).map((part) =>
-    part.endsWith("%") ? Number.parseFloat(part) / 100 : Number.parseFloat(part),
-  );
-  const alpha = alphaPart === undefined ? 1 : parseAlpha(alphaPart.trim());
-  if (channels.length !== 3 || !channels.every(Number.isFinite) || !Number.isFinite(alpha)) return null;
-  if (match[1].toLowerCase() === "srgb") {
-    return { r: channels[0] * 255, g: channels[1] * 255, b: channels[2] * 255, a: alpha };
-  }
-  const linear = channels.map(decodeGamma);
-  const srgb = [
-    1.2249401762805 * linear[0] - 0.2249401762805 * linear[1],
-    -0.042056961239 * linear[0] + 1.042056961239 * linear[1],
-    -0.0196375547643 * linear[0] - 0.0786360655012 * linear[1] + 1.0982736202656 * linear[2],
-  ];
-  return {
-    r: encodeGamma(srgb[0]) * 255,
-    g: encodeGamma(srgb[1]) * 255,
-    b: encodeGamma(srgb[2]) * 255,
-    a: alpha,
-  };
-}
-
 export function parseThemeColor(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
-  if (!trimmed || trimmed.toLowerCase() === "transparent") return null;
-  return trimmed.startsWith("#")
-    ? parseHexColor(trimmed)
-    : trimmed.toLowerCase().startsWith("rgb")
-      ? parseRgbFunction(trimmed)
-      : trimmed.toLowerCase().startsWith("hsl")
-        ? parseHslFunction(trimmed)
-        : parseColorFunction(trimmed);
+  return trimmed.startsWith("#") ? parseHexColor(trimmed) : null;
 }
 
 function channelToHex(value) {
@@ -200,10 +80,6 @@ function rgbaToHex(color) {
 export function normalizeThemeColor(value) {
   const parsed = parseThemeColor(value);
   return parsed ? rgbaToHex(parsed) : null;
-}
-
-export function themeColorToHex(value) {
-  return normalizeThemeColor(value);
 }
 
 function colorToRgb(value, fallback = { r: 0, g: 0, b: 0, a: 1 }) {
@@ -418,7 +294,6 @@ export function parseThemeFile(value) {
     appearance: value.appearance,
     colors,
     ...(Object.keys(variants).length ? { variants } : {}),
-    ...(value.managed === true ? { managed: true } : {}),
   };
 }
 
@@ -430,7 +305,6 @@ function storedThemeFile(theme) {
     appearance: theme.appearance,
     colors: theme.colors,
     ...(theme.variants ? { variants: theme.variants } : {}),
-    ...(theme.managed ? { managed: true } : {}),
   };
 }
 
@@ -517,11 +391,6 @@ export function getThemeDefinition(themeId) {
   return BUILT_IN_THEMES.find((theme) => theme.id === themeId) || getCustomThemes().find((theme) => theme.id === themeId) || null;
 }
 
-export function normalizeThemePreference(value) {
-  if (THEME_PREFERENCES.includes(value)) return value;
-  return getThemeDefinition(value) ? value : "system";
-}
-
 function readStoredValue(key) {
   try {
     return globalThis.localStorage?.getItem(key) || null;
@@ -532,20 +401,15 @@ function readStoredValue(key) {
 
 export function getThemeSettings() {
   const storedTheme = readStoredValue(THEME_STORAGE_KEY);
-  if (THEME_PREFERENCES.includes(storedTheme)) return { themeId: DEFAULT_THEME_ID, appearance: storedTheme };
+  if (THEME_APPEARANCES.includes(storedTheme)) return { themeId: DEFAULT_THEME_ID, appearance: storedTheme };
   const themeId = getThemeDefinition(storedTheme) ? storedTheme : DEFAULT_THEME_ID;
   const storedAppearance = readStoredValue(THEME_APPEARANCE_STORAGE_KEY);
   return { themeId, appearance: isThemeMode(storedAppearance) ? storedAppearance : "system" };
 }
 
-export function getThemePreference() {
-  const stored = readStoredValue(THEME_STORAGE_KEY);
-  return stored && (THEME_PREFERENCES.includes(stored) || getThemeDefinition(stored)) ? stored : "system";
-}
-
 function writeThemeSettings(themeId, appearance) {
   try {
-    if (themeId === DEFAULT_THEME_ID && THEME_PREFERENCES.includes(appearance)) {
+    if (themeId === DEFAULT_THEME_ID && THEME_APPEARANCES.includes(appearance)) {
       globalThis.localStorage?.setItem(THEME_STORAGE_KEY, appearance);
       globalThis.localStorage?.removeItem(THEME_APPEARANCE_STORAGE_KEY);
     } else {
@@ -607,12 +471,6 @@ export function setThemeSelection(themeId, appearance = "system") {
   return settings;
 }
 
-export function setThemePreference(value) {
-  if (THEME_PREFERENCES.includes(value)) return setThemeSelection(DEFAULT_THEME_ID, value).appearance;
-  if (getThemeDefinition(value)) return setThemeSelection(value, getThemeSettings().appearance).themeId;
-  return setThemeSelection(DEFAULT_THEME_ID, "system").appearance;
-}
-
 let initialized = false;
 
 export function initializeTheme() {
@@ -637,15 +495,4 @@ export function initializeTheme() {
       }
     });
   }
-}
-
-export function createUniqueThemeName(theme, existing = [...BUILT_IN_THEMES, ...getCustomThemes()]) {
-  const occupied = new Set(existing.map((item) => item.id));
-  if (!occupied.has(theme.id)) return theme;
-  for (let index = 2; index < 100; index += 1) {
-    const label = `${theme.label} ${index}`.slice(0, 48);
-    const candidate = { ...theme, id: themeIdFromName(label), label };
-    if (!occupied.has(candidate.id)) return candidate;
-  }
-  throw new Error(`Too many copies of "${theme.label}".`);
 }

@@ -1,8 +1,8 @@
 import {
   createThemeColors,
+  normalizeThemeColor,
   parseThemeColor,
   parseThemeFile,
-  themeColorToHex,
   THEME_FILE_VERSION,
 } from "./theme.js";
 
@@ -193,12 +193,12 @@ function terminalColors(value) {
   if (!isRecord(value)) throw new Error("Terminal.sexy schemes must contain a JSON object.");
   if (!Array.isArray(value.color) || value.color.length < 16) throw new Error("That terminal.sexy scheme has no complete ANSI palette.");
   const colors = value.color.map((color, index) => {
-    const normalized = themeColorToHex(color);
+    const normalized = normalizeThemeColor(color);
     if (!normalized) throw new Error(`That terminal.sexy scheme has an invalid color at index ${index}.`);
     return normalized;
   });
-  const background = themeColorToHex(value.background);
-  const foreground = themeColorToHex(value.foreground);
+  const background = normalizeThemeColor(value.background);
+  const foreground = normalizeThemeColor(value.foreground);
   if (!background || !foreground) throw new Error("That terminal.sexy scheme has no valid foreground and background colors.");
   return { colors, background, foreground };
 }
@@ -224,7 +224,6 @@ export function parseTerminalSexyTheme(value, sourceName = "") {
       success: ansi[2],
       info: ansi[6],
     }),
-    managed: true,
   });
 }
 
@@ -259,6 +258,5 @@ export async function importTerminalSexyTheme(scheme, { signal } = {}) {
     appearance,
     colors: primary.theme.colors,
     ...(Object.keys(variants).length ? { variants } : {}),
-    managed: true,
   });
 }

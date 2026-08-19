@@ -13,10 +13,7 @@ import {
   invalidateThemeCaches,
   replaceCustomTheme,
   THEME_STORAGE_KEY,
-  getThemePreference,
-  normalizeThemePreference,
   setThemeSelection,
-  setThemePreference,
 } from "../../frontend/src/utils/theme.js";
 import { parseTerminalSexyTheme } from "../../frontend/src/utils/terminalSexyThemes.js";
 
@@ -27,15 +24,6 @@ test.afterEach(() => {
   globalThis.document = originalDocument;
   globalThis.localStorage = originalLocalStorage;
   invalidateThemeCaches();
-});
-
-test("theme preferences default invalid stored values to system", () => {
-  assert.equal(normalizeThemePreference("light"), "light");
-  assert.equal(normalizeThemePreference("dark"), "dark");
-  assert.equal(normalizeThemePreference("sepia"), "system");
-
-  globalThis.localStorage = { getItem: () => "sepia" };
-  assert.equal(getThemePreference(), "system");
 });
 
 test("Aurral keeps the original light and dark palettes", () => {
@@ -96,11 +84,11 @@ test("theme preferences persist explicit themes and clear the system override", 
     setItem: (key, value) => stored.set(key, value),
   };
 
-  assert.equal(setThemePreference("light"), "light");
+  setThemeSelection("aurral", "light");
   assert.equal(attributes.get("data-theme"), "light");
   assert.equal(stored.get(THEME_STORAGE_KEY), "light");
 
-  assert.equal(setThemePreference("system"), "system");
+  setThemeSelection("aurral", "system");
   assert.equal(attributes.has("data-theme"), false);
   assert.equal(stored.get(THEME_STORAGE_KEY), "system");
 });

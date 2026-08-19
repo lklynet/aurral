@@ -7,7 +7,6 @@ import {
   applyThemePreview,
   applyThemeSelection,
   BUILT_IN_THEMES,
-  createUniqueThemeName,
   getCustomThemes,
   getThemeColorsForMode,
   getThemeSettings,
@@ -37,33 +36,6 @@ function previewMode(theme, mode) {
   if (mode === "dark" && getThemeColorsForMode(theme, "dark")) return "dark";
   if (mode === "light" && getThemeColorsForMode(theme, "light")) return "light";
   return theme.appearance;
-}
-
-function ModePreviewPane() {
-  return (
-    <>
-      <span className="theme-settings__mode-preview-sidebar">
-        <span />
-        <span />
-        <span />
-        <span />
-      </span>
-      <span className="theme-settings__mode-preview-main">
-        <span className="theme-settings__mode-preview-toolbar" />
-        <span className="theme-settings__mode-preview-line" />
-        <span className="theme-settings__mode-preview-line is-short" />
-        <span className="theme-settings__mode-preview-composer">
-          <span />
-          <b />
-        </span>
-      </span>
-      <span className="theme-settings__mode-preview-panel">
-        <span />
-        <span />
-        <span />
-      </span>
-    </>
-  );
 }
 
 function ModePreview({ appearance }) {
@@ -98,7 +70,9 @@ function ModePreview({ appearance }) {
       }}
       aria-hidden="true"
     >
-      {appearance === "system" ? <ModePreviewPane /> : <span className="theme-settings__mode-preview-pane"><ModePreviewPane /></span>}
+      <span className="theme-settings__mode-preview-sidebar" />
+      <span className="theme-settings__mode-preview-main" />
+      <span className="theme-settings__mode-preview-panel" />
     </span>
   );
 }
@@ -207,15 +181,6 @@ function SchemeCard({ scheme, theme, mode, active, loading, installing, installB
         </button>
       </div>
     </article>
-  );
-}
-
-function LoadingSchemeCard() {
-  return (
-    <div className="theme-settings__scheme-card is-loading" aria-hidden="true">
-      <span className="theme-settings__swatch is-loading" />
-      <span className="theme-settings__loading-copy" />
-    </div>
   );
 }
 
@@ -520,8 +485,7 @@ export function ThemeSettings({ showSuccess, showError }) {
     setTerminalSexyError("");
     try {
       const theme = themeCacheRef.current.get(scheme.id) || await importTerminalSexyTheme(scheme);
-      const unique = createUniqueThemeName(theme, [...BUILT_IN_THEMES, ...getCustomThemes()]);
-      const installed = installCustomTheme(unique);
+      const installed = installCustomTheme(theme);
       clearPreview();
       setThemeSelection(installed.id, settings.appearance);
       setTerminalSexySearchOpen(false);
@@ -560,13 +524,9 @@ export function ThemeSettings({ showSuccess, showError }) {
 
   return (
     <div className="theme-settings">
-      <p className="theme-settings__description">Choose a theme, preview terminal.sexy schemes, and add the ones you want to keep.</p>
-
       <section className="theme-settings__section" aria-labelledby="theme-mode-heading">
         <div className="theme-settings__section-heading">
-          <div>
-            <h4 id="theme-mode-heading">Color scheme</h4>
-          </div>
+          <h4 id="theme-mode-heading">Color scheme</h4>
         </div>
         <div className="theme-settings__mode-grid" aria-label="Color scheme mode">
           {APPEARANCE_OPTIONS.map((option) => (
@@ -582,9 +542,7 @@ export function ThemeSettings({ showSuccess, showError }) {
 
       <section className="theme-settings__section" aria-labelledby="theme-themes-heading">
         <div className="theme-settings__section-heading">
-          <div>
-            <h4 id="theme-themes-heading">Themes</h4>
-          </div>
+          <h4 id="theme-themes-heading">Themes</h4>
           <div className="theme-settings__section-actions">
             {featuredThemes === null ? <span className="theme-settings__section-status" role="status">Loading schemes…</span> : null}
             <button type="button" className="btn btn-secondary" onClick={openSearch}>
@@ -602,7 +560,7 @@ export function ThemeSettings({ showSuccess, showError }) {
               onSelect={() => handleSelect(theme.id)}
             />
           ))}
-          {featuredThemes === null ? Array.from({ length: 5 }, (_, index) => <LoadingSchemeCard key={index} />) : featuredThemes.map((scheme) => (
+          {featuredThemes ? featuredThemes.map((scheme) => (
             <ThemeCard
               key={scheme.id}
               theme={scheme.theme}
@@ -611,7 +569,7 @@ export function ThemeSettings({ showSuccess, showError }) {
               mode={settings.appearance}
               onSelect={() => handleFeaturedThemeSelect(scheme)}
             />
-          ))}
+          )) : null}
           {customThemes.filter((theme) => !featuredThemeIds.has(theme.id)).map((theme) => (
             <ThemeCard
               key={theme.id}
