@@ -7875,12 +7875,29 @@ textarea {
 
 .native-library-item-menu__panel .artist-menu-submenu__panel {
   right: auto;
-  left: calc(100% + 0.5rem);
+  left: calc(100% + 0.125rem);
 }
 
 .native-library-item-menu__panel.is-submenu-left .artist-menu-submenu__panel {
-  right: calc(100% + 0.5rem);
+  right: calc(100% + 0.125rem);
   left: auto;
+}
+
+@media (min-width: 768px) {
+  .native-library-item-menu__panel .artist-menu-submenu__panel {
+    display: block;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 120ms ease, visibility 0s linear 120ms;
+  }
+
+  .native-library-item-menu__panel .artist-menu-submenu:hover .artist-menu-submenu__panel,
+  .native-library-item-menu__panel .artist-menu-submenu:focus-within .artist-menu-submenu__panel,
+  .native-library-item-menu__panel .artist-menu-submenu.is-open .artist-menu-submenu__panel {
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+  }
 }
 
 .native-library-item-menu__panel :focus-visible {
