@@ -140,7 +140,7 @@ function ThemeSwatch({ colors, loading = false }) {
   );
 }
 
-function ThemeCard({ theme, active, mode, custom, onSelect, onRemove }) {
+function ThemeCard({ theme, active, mode, custom, metaLabel, onSelect, onRemove }) {
   const colors = getThemeColorsForMode(theme, previewMode(theme, mode)) || theme.colors;
   return (
     <div className={`theme-settings__card${active ? " is-active" : ""}${custom ? " is-custom" : ""}`}>
@@ -153,7 +153,7 @@ function ThemeCard({ theme, active, mode, custom, onSelect, onRemove }) {
         <ThemeSwatch colors={colors} />
         <span className="theme-settings__card-copy">
           <span className="theme-settings__card-label">{theme.label}</span>
-          <span className="theme-settings__card-meta">{custom ? "Added" : "Built in"}</span>
+          <span className="theme-settings__card-meta">{metaLabel || (custom ? "Added" : "Built in")}</span>
         </span>
         {active ? <Check className="theme-settings__active-icon" aria-hidden="true" /> : null}
       </button>
@@ -606,6 +606,7 @@ export function ThemeSettings({ showSuccess, showError }) {
             <ThemeCard
               key={scheme.id}
               theme={scheme.theme}
+              metaLabel="terminal.sexy"
               active={settings.themeId === scheme.theme.id && !terminalSexyPreviewing}
               mode={settings.appearance}
               onSelect={() => handleFeaturedThemeSelect(scheme)}
