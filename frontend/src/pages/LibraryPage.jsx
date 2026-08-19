@@ -70,6 +70,7 @@ import {
   buildSharedPlaylistTrackPayload,
   reserveUniquePlaylistName,
 } from "./ArtistDetails/utils";
+import { useResponsiveReleaseLimit } from "./ArtistDetails/hooks/useResponsiveReleaseLimit";
 
 const LIBRARY_VIEW_IDS = new Set(LIBRARY_VIEWS.map((view) => view.id));
 
@@ -309,6 +310,9 @@ function LibraryPage() {
   const [libraryRemoval, setLibraryRemoval] = useState(null);
   const [deleteFiles, setDeleteFiles] = useState(false);
   const [deletingLibraryEntity, setDeletingLibraryEntity] = useState(false);
+  const [homeAlbumsGridRef, homeAlbumColumns] = useResponsiveReleaseLimit({
+    cardMinWidth: 152,
+  });
 
   const handleLibraryScanMessage = useCallback((message) => {
     if (message?.type !== "library_scan_completed") return;
@@ -440,7 +444,7 @@ function LibraryPage() {
             getCanonicalLibraryPage({
               kind: "albums",
               page: 1,
-              pageSize: 12,
+              pageSize,
               sort: "newest",
             }),
             getCanonicalLibraryPage({
@@ -1125,8 +1129,8 @@ function LibraryPage() {
     () =>
       [...library.albums]
         .sort((left, right) => text(right.releaseDate).localeCompare(text(left.releaseDate)))
-        .slice(0, 12),
-    [library.albums],
+        .slice(0, Math.max(2, homeAlbumColumns) * 2),
+    [homeAlbumColumns, library.albums],
   );
   const homeGenres = useMemo(
     () =>
@@ -2011,8 +2015,10 @@ function LibraryPage() {
       )}
       {homeAlbums.length > 0 && (
         <section className="native-library-section">
-          {renderSectionHeader("Recently added", library.albums.length, "/library/albums")}
-          <div className="native-library-grid">{homeAlbums.map(renderAlbumCard)}</div>
+          {renderSectionHeader("Recently added", homeAlbums.length, "/library/albums")}
+          <div ref={homeAlbumsGridRef} className="native-library-grid">
+            {homeAlbums.map(renderAlbumCard)}
+          </div>
         </section>
       )}
       {homeTracks.length > 0 && (

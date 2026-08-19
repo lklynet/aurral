@@ -827,7 +827,7 @@ textarea {
   flex: 1;
   min-height: 0;
   border: 0;
-  border-radius: var(--aurral-radius);
+  border-radius: var(--aurral-radius) 0 0 0;
   background: var(--aurral-surface);
   overflow: hidden;
 }
@@ -836,7 +836,7 @@ textarea {
   width: 100%;
   height: 100%;
   padding: var(--aurral-space-page);
-  border-radius: var(--aurral-radius);
+  border-radius: var(--aurral-radius) 0 0 0;
   background: var(--aurral-surface);
   overflow-y: auto;
   overflow-x: hidden;
@@ -2460,6 +2460,35 @@ textarea {
 }
 
 @media (min-width: 768px) {
+  .app-topbar {
+    min-height: 3rem;
+    padding-bottom: 0.25rem;
+  }
+
+  .global-search__box,
+  .global-search__input {
+    min-height: 2.5rem;
+  }
+
+  .global-search__input-wrap--unified {
+    padding-inline: 0;
+  }
+
+  .global-search__input-wrap--unified .global-search__input {
+    padding: 0 0.75rem 0 2.25rem;
+  }
+
+  .global-search__icon {
+    left: 0.75rem;
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+
+  .global-search__placeholder {
+    padding-right: 0.75rem;
+    padding-left: 2.25rem;
+  }
+
   .app-nav-toggle {
     display: inline-flex;
   }
@@ -2469,7 +2498,7 @@ textarea {
   }
 
   .app-content {
-    padding: var(--aurral-space-outer) var(--aurral-space-outer) var(--aurral-space-outer) 0;
+    padding: var(--aurral-space-outer) 0 0;
   }
 
   .app-content--sidebar-full,
@@ -13751,7 +13780,12 @@ button.native-library-genre-row:focus-visible {
 }
 
 .app-content--player-active {
-  padding-bottom: 0.25rem;
+  padding-bottom: 0;
+}
+
+.app-content--player-active .app-main-wrap,
+.app-content--player-active .app-main {
+  border-radius: var(--aurral-radius) 0 0 var(--aurral-radius);
 }
 
 @media (max-width: 1023px) {
