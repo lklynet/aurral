@@ -442,6 +442,7 @@ export function ThemeSettings({ showSuccess, showError }) {
   const closeSearch = () => {
     searchAbortRef.current?.abort();
     searchAbortRef.current = null;
+    clearPreview();
     setTerminalSexySearching(false);
     setTerminalSexyError("");
     setTerminalSexyResults(null);
@@ -534,6 +535,18 @@ export function ThemeSettings({ showSuccess, showError }) {
     }
   };
 
+  const handleFeaturedThemeSelect = (scheme) => {
+    const existing = getCustomThemes().find((theme) => theme.id === scheme.theme.id);
+    try {
+      const installed = existing || installCustomTheme(scheme.theme);
+      clearPreview();
+      setThemeSelection(installed.id, settings.appearance);
+    } catch (selectError) {
+      const message = selectError instanceof Error ? selectError.message : `Could not select ${scheme.label}.`;
+      showError?.(message);
+    }
+  };
+
   const handleRemove = (theme) => {
     if (!window.confirm(`Remove the added theme “${theme.label}”?`)) return;
     clearPreview();
@@ -543,6 +556,7 @@ export function ThemeSettings({ showSuccess, showError }) {
 
   const isInstalled = (scheme) => customThemes.some((theme) => theme.id === scheme.id);
   const isPreviewing = (scheme) => terminalSexyPreviewing?.schemeId === scheme.id;
+  const featuredThemeIds = new Set((featuredThemes || []).map((scheme) => scheme.theme?.id).filter(Boolean));
 
   return (
     <div className="theme-settings">
@@ -588,22 +602,16 @@ export function ThemeSettings({ showSuccess, showError }) {
               onSelect={() => handleSelect(theme.id)}
             />
           ))}
-          {featuredThemes === null ? Array.from({ length: 5 }, (_, index) => <LoadingSchemeCard key={index} />) : featuredThemes.filter((scheme) => !isInstalled(scheme)).map((scheme) => (
-            <SchemeCard
+          {featuredThemes === null ? Array.from({ length: 5 }, (_, index) => <LoadingSchemeCard key={index} />) : featuredThemes.map((scheme) => (
+            <ThemeCard
               key={scheme.id}
-              scheme={scheme}
               theme={scheme.theme}
+              active={settings.themeId === scheme.theme.id && !terminalSexyPreviewing}
               mode={settings.appearance}
-              active={isPreviewing(scheme)}
-              loading={terminalSexyLoading === scheme.id}
-              installing={terminalSexyInstalling === scheme.id}
-              installBusy={Boolean(terminalSexyInstalling)}
-              installed={false}
-              onPreview={() => void handleTerminalSexyPreview(scheme)}
-              onAdd={() => void handleTerminalSexyInstall(scheme)}
+              onSelect={() => handleFeaturedThemeSelect(scheme)}
             />
           ))}
-          {customThemes.map((theme) => (
+          {customThemes.filter((theme) => !featuredThemeIds.has(theme.id)).map((theme) => (
             <ThemeCard
               key={theme.id}
               theme={theme}
@@ -618,7 +626,6 @@ export function ThemeSettings({ showSuccess, showError }) {
         {featuredError ? <p className="theme-settings__error" role="alert">{featuredError}</p> : null}
       </section>
 
-      {terminalSexyPreviewing ? <p className="theme-settings__preview-note" role="status">Previewing {terminalSexyPreviewing.label}. Add it to keep this theme.</p> : null}
       <SchemeSearchModal
         open={terminalSexySearchOpen}
         query={terminalSexyQuery}
