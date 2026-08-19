@@ -621,3 +621,136 @@ test("validateDownloadedTrack scores path segments without weak-word inflation",
   );
   assert.ok(weak.scores.artist < 92);
 });
+
+test("rankFlowSearchResults accepts a candidate whose advertised duration matches", () => {
+  const ranked = rankFlowSearchResults(
+    [result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 224 })],
+    {
+      artistName: "Massive Attack",
+      trackName: "Teardrop",
+      albumName: "Mezzanine",
+      durationMs: 226000,
+    },
+    rankOpts,
+  );
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].preDownloadValid, true);
+  assert.equal(ranked[0].preDownloadRejectReason, null);
+  assert.equal(ranked[0].breakdown.advertisedDurationMs, 224000);
+});
+
+test("rankFlowSearchResults rejects a strong title match whose advertised duration is off", () => {
+  const ranked = rankFlowSearchResults(
+    [result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 340 })],
+    {
+      artistName: "Massive Attack",
+      trackName: "Teardrop",
+      albumName: "Mezzanine",
+      durationMs: 226000,
+    },
+    rankOpts,
+  );
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].preDownloadValid, false);
+  assert.equal(ranked[0].preDownloadRejectReason, "advertised-duration-mismatch");
+});
+
+test("rankFlowSearchResults ignores duration when the file advertises none", () => {
+  const ranked = rankFlowSearchResults(
+    [result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3" })],
+    {
+      artistName: "Massive Attack",
+      trackName: "Teardrop",
+      albumName: "Mezzanine",
+      durationMs: 226000,
+    },
+    rankOpts,
+  );
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].preDownloadValid, true);
+  assert.equal(ranked[0].breakdown.advertisedDurationMs, null);
+});
+
+test("rankFlowSearchResults ignores advertised duration when the track has none expected", () => {
+  const ranked = rankFlowSearchResults(
+    [result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 340 })],
+    {
+      artistName: "Massive Attack",
+      trackName: "Teardrop",
+      albumName: "Mezzanine",
+    },
+    rankOpts,
+  );
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].preDownloadValid, true);
+});
+
+test("rankFlowSearchResults keeps advertised duration within the 18 percent window", () => {
+  const ranked = rankFlowSearchResults(
+    [result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 199 })],
+    {
+      artistName: "Massive Attack",
+      trackName: "Teardrop",
+      albumName: "Mezzanine",
+      durationMs: 226000,
+    },
+    rankOpts,
+  );
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].preDownloadValid, true);
+});
+
+test("rankFlowSearchResults keeps the correct-duration file over a longer off-duration copy in the same folder", () => {
+  const ranked = rankFlowSearchResults(
+    [
+      result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.flac", length: 420, speed: 9000000 }),
+      result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 226, speed: 700000 }),
+    ],
+    {
+      artistName: "Massive Attack",
+      trackName: "Teardrop",
+      albumName: "Mezzanine",
+      durationMs: 226000,
+    },
+    rankOpts,
+  );
+  // With albumName set, ranking returns one best candidate per folder. Without the
+  // gate the longer .flac wins (preferred format, faster peer) even though it is the
+  // wrong duration; the gate rejects it, so the correct .mp3 is chosen instead.
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].preDownloadValid, true);
+  assert.match(ranked[0].raw.file, /\/Teardrop\.mp3$/);
+  assert.equal(ranked[0].breakdown.advertisedDurationMs, 226000);
+});
+
+test("rankFlowSearchResults anchors the base tolerance boundary at 25 seconds", () => {
+  const track = { artistName: "Massive Attack", trackName: "Teardrop", albumName: "Mezzanine", durationMs: 100000 };
+  const atEdge = rankFlowSearchResults(
+    [result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 75 })],
+    track,
+    rankOpts,
+  );
+  assert.equal(atEdge[0].preDownloadValid, true);
+  const pastEdge = rankFlowSearchResults(
+    [result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 74 })],
+    track,
+    rankOpts,
+  );
+  assert.equal(pastEdge[0].preDownloadValid, false);
+  assert.equal(pastEdge[0].preDownloadRejectReason, "advertised-duration-mismatch");
+});
+
+test("validateDownloadedTrack does not gate on the advertised length after download", async () => {
+  const checked = await validateDownloadedTrack(
+    "/tmp/does-not-exist.mp3",
+    { raw: { file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 9999 } },
+    {
+      artistName: "Massive Attack",
+      trackName: "Teardrop",
+      albumName: "Mezzanine",
+      durationMs: 226000,
+    },
+  );
+  assert.notEqual(checked.scores.matchReason, "advertised-duration-mismatch");
+  assert.equal(checked.scores.matchReason, null);
+});
