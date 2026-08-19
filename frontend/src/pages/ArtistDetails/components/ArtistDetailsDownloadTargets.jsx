@@ -48,7 +48,7 @@ export function ArtistDetailsDownloadTargets({
   playbackSource = null,
   onAddTrackToPlaylist,
   onAddTrackToLibrary,
-  libraryTrackSavingKey,
+  libraryTrackSavingKeys,
   resolveMembershipTrack,
   playlists,
   playlistsLoading,
@@ -292,7 +292,7 @@ export function ArtistDetailsDownloadTargets({
                             playlists={playlists}
                             loading={playlistsLoading}
                             saving={playlistSavingKey === currentTrackId}
-                            librarySaving={libraryTrackSavingKey === currentTrackId}
+                            librarySaving={libraryTrackSavingKeys?.has(currentTrackId)}
                             error={playlistError}
                             defaultNewPlaylistName={getDefaultPlaylistName?.(
                               track,
@@ -305,6 +305,7 @@ export function ArtistDetailsDownloadTargets({
                                     onAddTrackToLibrary(
                                       track,
                                       missingReleasePick.releaseGroup,
+                                      currentTrackId,
                                     )
                                 : null
                             }

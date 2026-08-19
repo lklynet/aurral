@@ -82,7 +82,7 @@ function ArtistDetailsPage() {
     loadSharedPlaylists,
   } = useSharedPlaylists();
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
-  const [libraryTrackSavingKey, setLibraryTrackSavingKey] = useState("");
+  const [libraryTrackSavingKeys, setLibraryTrackSavingKeys] = useState(() => new Set());
   const [visibleReleaseGroupCoverIds, setVisibleReleaseGroupCoverIds] = useState([]);
   const [visibleAppearsOnCoverIds, setVisibleAppearsOnCoverIds] = useState([]);
   const [visibleLibraryCoverIds, setVisibleLibraryCoverIds] = useState([]);
@@ -412,12 +412,17 @@ function ArtistDetailsPage() {
     return saveTrackToPlaylist(payload, target, savingKey);
   };
 
-  const handleTrackAddToLibrary = async (track, releaseGroup = null) => {
+  const handleTrackAddToLibrary = async (track, releaseGroup = null, trackKey = null) => {
     const payload = releaseGroup
       ? buildReleaseTrackPayload(track, releaseGroup)
       : buildPreviewTrackPayload(track);
-    const savingKey = String(track?.id ?? track?.mbid ?? track?.title ?? "");
-    setLibraryTrackSavingKey(savingKey);
+    if (!payload?.artistName || !payload?.trackName) {
+      showError("Track details are incomplete");
+      return false;
+    }
+    const savingKey = String(trackKey ?? track?.id ?? track?.mbid ?? track?.title ?? "");
+    if (!savingKey) return false;
+    setLibraryTrackSavingKeys((current) => new Set(current).add(savingKey));
     try {
       const result = await downloadTrackToLibrary(payload);
       showSuccess(
@@ -435,7 +440,11 @@ function ArtistDetailsPage() {
           "Failed to add track to library",
       );
     } finally {
-      setLibraryTrackSavingKey("");
+      setLibraryTrackSavingKeys((current) => {
+        const next = new Set(current);
+        next.delete(savingKey);
+        return next;
+      });
     }
   };
 
@@ -512,7 +521,7 @@ function ArtistDetailsPage() {
         handlePreviewPlay={handlePreviewPlay}
         onAddTrackToPlaylist={handlePreviewTrackAdd}
         onAddTrackToLibrary={handleTrackAddToLibrary}
-        libraryTrackSavingKey={libraryTrackSavingKey}
+        libraryTrackSavingKeys={libraryTrackSavingKeys}
         resolveMembershipTrack={buildPreviewTrackPayload}
         playlists={sharedPlaylists}
         playlistsLoading={playlistModalLoading}
@@ -536,7 +545,7 @@ function ArtistDetailsPage() {
         artistName={artistDisplayName}
         onAddTrackToPlaylist={handleReleaseTrackAdd}
         onAddTrackToLibrary={handleTrackAddToLibrary}
-        libraryTrackSavingKey={libraryTrackSavingKey}
+        libraryTrackSavingKeys={libraryTrackSavingKeys}
         resolveMembershipTrack={buildReleaseTrackPayload}
         playlists={sharedPlaylists}
         playlistsLoading={playlistModalLoading}
