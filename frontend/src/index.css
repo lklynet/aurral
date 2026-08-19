@@ -8840,6 +8840,10 @@ button.native-library-genre-row:focus-visible {
   min-width: 0;
 }
 
+.activity-toolbar__group--end {
+  margin-left: auto;
+}
+
 .activity-toolbar__filter {
   display: flex;
   width: min(20rem, 45vw);

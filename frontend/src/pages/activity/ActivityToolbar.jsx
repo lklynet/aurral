@@ -7,6 +7,7 @@ export default function ActivityToolbar({
   onFilterChange,
   onRefresh,
   refreshing = false,
+  action = null,
   placeholder = "Filter activity",
 }) {
   const [filterOpen, setFilterOpen] = useState(Boolean(filterValue));
@@ -22,18 +23,20 @@ export default function ActivityToolbar({
 
   return (
     <div className="activity-toolbar">
-      <div className="activity-toolbar__group">
-        <TooltipButton
-          className="native-library-icon-button"
-          onClick={onRefresh}
-          disabled={refreshing}
-          label={refreshing ? "Refreshing" : "Refresh"}
-          aria-label="Refresh activity"
-        >
-          <RefreshCw className={refreshing ? "animate-spin" : ""} aria-hidden="true" />
-        </TooltipButton>
-      </div>
-      <div className="activity-toolbar__group">
+      {onRefresh ? (
+        <div className="activity-toolbar__group">
+          <TooltipButton
+            className="native-library-icon-button"
+            onClick={onRefresh}
+            disabled={refreshing}
+            label={refreshing ? "Refreshing" : "Refresh"}
+            aria-label="Refresh activity"
+          >
+            <RefreshCw className={refreshing ? "animate-spin" : ""} aria-hidden="true" />
+          </TooltipButton>
+        </div>
+      ) : null}
+      <div className="activity-toolbar__group activity-toolbar__group--end">
         {filterOpen ? (
           <label className="activity-toolbar__filter">
             <Search aria-hidden="true" />
@@ -61,6 +64,7 @@ export default function ActivityToolbar({
         >
           <Search aria-hidden="true" />
         </TooltipButton>
+        {action}
       </div>
     </div>
   );
