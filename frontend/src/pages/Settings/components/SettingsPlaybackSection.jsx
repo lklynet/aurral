@@ -690,7 +690,7 @@ export function SettingsPlaybackSection({
               hint={
                 <>
                   Only needed when Plex sees downloads at a different path. Enter the Plex-side
-                  path; Aurral appends <code>/aurral-weekly-flow</code>.
+                  path to the Aurral Downloads Folder.
                 </>
               }
             >

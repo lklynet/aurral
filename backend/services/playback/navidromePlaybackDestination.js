@@ -54,6 +54,7 @@ export class NavidromePlaybackDestination {
     this.name = "Navidrome";
     this.weeklyFlowRoot = resolvePlaylistRoot(weeklyFlowRoot);
     this.playlistLibraryRoot = path.join(this.weeklyFlowRoot, PLAYLIST_LIBRARY_DIR);
+    this.mediaLibraryRoot = this.weeklyFlowRoot;
     this.libraryRoot = path.join(this.playlistLibraryRoot, "_playlists");
     this.client = client;
     this._configKey = "";
@@ -335,7 +336,7 @@ export class NavidromePlaybackDestination {
       await fs.mkdir(this.libraryRoot, { recursive: true });
       if (this.isConfigured()) {
         await this.client.ensureWeeklyFlowLibrary(
-          this.playlistLibraryRoot.replace(/\\/g, "/").replace(/\/+$/, ""),
+          this.mediaLibraryRoot.replace(/\\/g, "/").replace(/\/+$/, ""),
         );
         await this._loadPlaylists(true);
       }

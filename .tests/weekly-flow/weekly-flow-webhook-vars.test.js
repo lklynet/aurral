@@ -99,7 +99,7 @@ test("weekly flow completion sends display name and track library path", async (
     assert.deepEqual(requests, [
       {
         name: "Late Night",
-        path: path.join(playlistManager.playlistLibraryRoot, playlist.id),
+        path: playlistManager.weeklyFlowRoot,
       },
     ]);
     assert.doesNotMatch(requests[0].path, /_playlists/);
