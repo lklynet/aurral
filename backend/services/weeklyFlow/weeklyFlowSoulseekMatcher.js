@@ -728,18 +728,49 @@ function readQualityAdmissionOptions(options = {}) {
   };
 }
 
+function candidateSourceKey(entry) {
+  return `${String(entry?.raw?.user || "")}\0${String(entry?.raw?.file || "")}`;
+}
+
+function isProfileAdmissibleCandidate(entry, qualityOptions) {
+  if (!entry.preDownloadValid) return false;
+  return isAdvertisedQualityEligible(
+    readCandidateFileName(entry),
+    readCandidateBitrate(entry),
+    qualityOptions,
+  );
+}
+
+// One candidate per fitting folder is not always enough: the orchestrator needs a
+// few admissible candidates before it stops searching, and eligible files whose
+// folder never passes the fitting heuristics used to be dropped on the floor. Keep
+// the folder picks in front and append what the flat ranking would have offered,
+// reusing the candidates already built for the folder pass.
+function mergeAdmissibleFlatCandidates(folderRanked, folderEntries, options) {
+  const qualityOptions = readQualityAdmissionOptions(options);
+  // Without a profile there is no admission rule to widen the pool against, so the
+  // caller keeps the candidate set it had before.
+  if (!qualityOptions) return folderRanked;
+  const seen = new Set(folderRanked.map(candidateSourceKey));
+  const extras = [];
+  for (const entry of folderEntries) {
+    for (const candidate of entry.trackCandidates) {
+      const key = candidateSourceKey(candidate);
+      if (seen.has(key)) continue;
+      if (!isProfileAdmissibleCandidate(candidate, qualityOptions)) continue;
+      seen.add(key);
+      extras.push(candidate);
+    }
+  }
+  if (extras.length === 0) return folderRanked;
+  extras.sort((left, right) => right.score - left.score);
+  return [...folderRanked, ...extras];
+}
+
 function hasProfileAdmissibleCandidate(entries, options = {}) {
   const qualityOptions = readQualityAdmissionOptions(options);
   if (!qualityOptions) return true;
-  return entries.some(
-    (entry) =>
-      entry.preDownloadValid &&
-      isAdvertisedQualityEligible(
-        readCandidateFileName(entry),
-        readCandidateBitrate(entry),
-        qualityOptions,
-      ),
-  );
+  return entries.some((entry) => isProfileAdmissibleCandidate(entry, qualityOptions));
 }
 
 function pickBestTrackCandidate(trackCandidates, options = {}) {
@@ -951,8 +982,11 @@ export function rankFlowSearchResults(results, context, options = {}) {
       });
     }
   }
-  if (ranked.length > 0 && hasProfileAdmissibleCandidate(ranked, options)) {
-    return ranked;
+  if (ranked.length > 0) {
+    const merged = mergeAdmissibleFlatCandidates(ranked, folderEntries, options);
+    if (hasProfileAdmissibleCandidate(merged, options)) {
+      return merged;
+    }
   }
 
   return rankFlowSearchResultsFlat(results, context, options);
