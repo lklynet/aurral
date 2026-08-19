@@ -444,17 +444,14 @@ test("creates durable Subsonic playlists around one promoted library job", async
   await stat(libraryJobs[0].finalPath);
 });
 
-test("failed Subsonic playlist creation removes the empty shared playlist", async () => {
-  const flow = responseJson(await request("getPlaylists")).playlists.playlist.find(
-    (entry) => entry.name === "Canonical Flow",
-  );
-  const flowSong = responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry[0];
+test("failed Subsonic playlist creation rolls back its playlist and jobs", async () => {
+  const canonicalSong = responseJson(await request("search3", { query: "Canonical Song" })).searchResult3.song[0];
   const user = userOps.getUserByUsername("alice");
   const originalUpdate = flowPlaylistConfig.updateSharedPlaylist;
   flowPlaylistConfig.updateSharedPlaylist = () => null;
   try {
     assert.equal(
-      createSubsonicPlaylist(user, { name: "Failed Subsonic Playlist", songIds: [flowSong.id] }),
+      createSubsonicPlaylist(user, { name: "Failed Subsonic Playlist", songIds: [canonicalSong.id] }),
       null,
     );
     assert.equal(
@@ -462,6 +459,12 @@ test("failed Subsonic playlist creation removes the empty shared playlist", asyn
         (playlist) => playlist.name === "Failed Subsonic Playlist",
       ),
       false,
+    );
+    assert.equal(
+      db.prepare(
+        "SELECT id FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ? LIMIT 1",
+      ).get("library", "Canonical Song"),
+      undefined,
     );
   } finally {
     flowPlaylistConfig.updateSharedPlaylist = originalUpdate;

@@ -684,7 +684,7 @@ const normalizeSharedPlaylistId = (value) => {
   return parsed?.kind === "shared" ? parsed.key : String(value || "").trim();
 };
 
-const canonicalizePlaylistTracks = (tracks) => {
+const canonicalizePlaylistTracks = (tracks, createdJobIds = null) => {
   const normalized = [];
   for (const track of Array.isArray(tracks) ? tracks : []) {
     const candidate = normalizeSharedTrack(track);
@@ -694,7 +694,7 @@ const canonicalizePlaylistTracks = (tracks) => {
       : null;
     const jobId = existingJob && isSameTrack(existingJob, candidate)
       ? existingJob.id
-      : ensureLibraryJob(candidate);
+      : ensureLibraryJob(candidate, createdJobIds);
     if (!jobId) return null;
     normalized.push(toCanonicalPlaylistTrack(candidate, jobId));
   }
@@ -703,12 +703,20 @@ const canonicalizePlaylistTracks = (tracks) => {
 
 const replaceSubsonicPlaylistTracks = (user, playlist, tracks, updates = {}) => {
   if (!playlist || !flowPlaylistConfig.canUserAccessSharedPlaylist(user, playlist)) return null;
-  const canonicalTracks = canonicalizePlaylistTracks(tracks);
-  if (!canonicalTracks) return null;
+  const createdJobIds = [];
+  const canonicalTracks = canonicalizePlaylistTracks(tracks, createdJobIds);
+  if (!canonicalTracks) {
+    for (const jobId of createdJobIds) downloadTracker.removeJob(jobId);
+    return null;
+  }
   const updated = flowPlaylistConfig.updateSharedPlaylist(playlist.id, {
     ...updates,
     tracks: canonicalTracks,
   });
+  if (!updated) {
+    for (const jobId of createdJobIds) downloadTracker.removeJob(jobId);
+    return null;
+  }
   removeLegacyPlaylistJobs(playlist.id);
   refreshSubsonicPlaylist(playlist.id);
   return updated;
