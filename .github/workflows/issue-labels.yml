@@ -1,0 +1,78 @@
+name: Sync labels
+
+on:
+  issues:
+    types: [opened]
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/release.yml"
+      - ".github/workflows/issue-labels.yml"
+      - ".github/workflows/pr-size.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    if: github.event_name != 'issues'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Sync managed labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          while IFS='|' read -r name color description; do
+            gh label create "$name" \
+              --repo "$REPOSITORY" \
+              --color "$color" \
+              --description "$description" \
+              --force
+          done <<'LABELS'
+          bug|d73a4a|Something is broken or behaving incorrectly.
+          enhancement|a2eeef|Requested improvement or new capability.
+          documentation|0075ca|Documentation needs correction or improvement.
+          needs-triage|fbca04|Issue needs maintainer review and initial categorization.
+          dependencies|0366d6|Dependency update or maintenance work.
+          skip-changelog|ededed|Do not include this change in release notes.
+          in-progress|5319e7|A linked issue has an open pull request under review.
+          nightly|0e8a16|The change is available in nightly but not in a stable release.
+          released|5319e7|The change is included in a stable release.
+          release-readiness|fbca04|Tracks testing for the next stable release.
+          release-ready|0e8a16|The current nightly candidate passed release checks.
+          size:XS|0e8a16|0-9 changed lines.
+          size:S|5ebd3e|10-29 changed lines.
+          size:M|fbca04|30-99 changed lines.
+          size:L|fe7d37|100-499 changed lines.
+          size:XL|d93f0b|500-999 changed lines.
+          size:XXL|b60205|1,000 or more changed lines.
+          LABELS
+
+  triage:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Mark new issue for triage
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api \
+            --method POST \
+            "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/labels" \
+            -f "labels[]=needs-triage" \
+            >/dev/null

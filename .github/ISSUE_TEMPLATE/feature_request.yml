@@ -1,0 +1,65 @@
+name: Feature request
+description: Suggest a focused improvement to Aurral.
+title: "[Feature]: "
+labels:
+  - enhancement
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to propose new behavior for Aurral.
+        Do not start implementation until a maintainer approves the direction.
+        You can also discuss the idea with developers and testers in the [Aurral Discord](https://discord.gg/cpPYfgVURJ).
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and did not find an existing request for this idea.
+          required: true
+        - label: I have described one focused feature or improvement.
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: Which part of Aurral would this change affect?
+      options:
+        - Discovery and recommendations
+        - Search, library, or playback
+        - Flows, playlists, or downloads
+        - Lidarr or another integration
+        - Authentication, users, or permissions
+        - Docker, storage, or upgrades
+        - User interface
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What problem would this feature solve, and who experiences it?
+      placeholder: Describe the current limitation or repeated task.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the smallest useful behavior you want Aurral to support.
+      placeholder: Explain what a user should be able to do after this change.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and context
+      description: What workarounds, related projects, screenshots, or examples should we consider?

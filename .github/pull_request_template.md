@@ -1,24 +1,38 @@
-## Summary
+<!--
+Before opening this pull request:
+- Keep it to one focused change.
+- Get approval before implementing a new feature. Link the feature request or include the Discord context in the Why section.
+- Do not bundle unrelated fixes, refactors, formatting changes, dependency updates, or extra features.
+Large or bundled pull requests may be closed or returned for splitting.
+-->
 
-<!-- What changed, and why? -->
+## What changed
 
-<!-- Use a Conventional Commit title (`feat:`, `fix:`, etc.); merged commit subjects drive release version suggestions. -->
+<!-- Describe the change clearly and keep the scope tight. -->
 
-## Linked issues
+<!-- Use a Conventional Commit title (`feat:`, `fix:`, `docs:`, and so on). Aurral uses the title to apply release labels. -->
 
-<!-- Use Fixes #123 or Closes #123 to link. Issues stay open until the change ships in a stable release; merging only puts the fix on nightly. -->
+## Why
 
-## Validation
+<!-- Explain the problem this solves and why the change belongs in Aurral. -->
 
-- [ ] CI passes
-- [ ] Tested using the `ghcr.io/lklynet/aurral:pr-<number>` preview image, or not required
-- [ ] Upgrade, migration, and rollback notes are updated where applicable
+## Scope checklist
 
-## Test plan
+- [ ] This pull request has one clear purpose
+- [ ] I kept unrelated fixes, refactors, formatting changes, dependency updates, and features out of this pull request
+- [ ] If this adds a feature, I linked the approved feature request or included the Discord context in the Why section
 
-- Affected area(s): <!-- e.g. authentication, Docker/upgrade, flows, integrations, UI, docs -->
-- Automated coverage: <!-- tests added or existing tests that cover this change -->
-- Manual steps and expected result: <!-- what should a reviewer or nightly tester exercise? -->
+## Linked issue
+
+<!-- Link the related issue when one exists. Use Fixes #123 or Closes #123 when this pull request should close it. Merging puts the change on nightly first; linked issues stay open until a stable release includes it. -->
+
+## UI changes
+
+<!-- If this pull request changes the UI, include clear before-and-after screenshots. Delete this section if it does not apply. -->
+
+## Testing
+
+<!-- List automated checks and manual validation. State which applicable checks were not run and why. -->
 
 ## Release impact
 

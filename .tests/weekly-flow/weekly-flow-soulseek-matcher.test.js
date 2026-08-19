@@ -477,6 +477,231 @@ const rankFlowCases = [
     },
   },
   {
+    name: "rankFlowSearchResults reads the artist from the filename when the folder hides it",
+    results: [
+      result({
+        user: "compilationUser",
+        file: "Various\\Top 100 Hits of 2004\\82. Marlow Vance - Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Marlow Vance",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 100);
+      assert.equal(ranked[0].preDownloadValid, true);
+    },
+  },
+  {
+    name: "rankFlowSearchResults still rejects a filename naming a different artist",
+    results: [
+      result({
+        user: "compilationUser",
+        file: "Various\\Top 100 Hits of 2004\\82. Priya Raman - Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Marlow Vance",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 0);
+      assert.equal(ranked[0].preDownloadValid, false);
+      assert.equal(ranked[0].preDownloadRejectReason, "weak-artist-match");
+    },
+  },
+  {
+    name: "rankFlowSearchResults does not credit an artist segment that only shares a word",
+    results: [
+      result({
+        user: "compilationUser",
+        file: "Various\\Top 100 Hits of 2004\\82. Marlow Sinclair - Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Marlow Vance",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 0);
+      assert.equal(ranked[0].preDownloadValid, false);
+      assert.equal(ranked[0].preDownloadRejectReason, "weak-artist-match");
+    },
+  },
+  {
+    name: "rankFlowSearchResults keeps a numeric artist name without a leading track number",
+    results: [
+      result({
+        user: "compilationUser",
+        file: "Various\\Club Hits\\50 Cent - In Da Club.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "50 Cent",
+      trackName: "In Da Club",
+      albumName: "Album Name",
+      releaseYear: "2003",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 100);
+      assert.equal(ranked[0].preDownloadValid, true);
+    },
+  },
+  {
+    name: "rankFlowSearchResults keeps an artist name that starts with digits",
+    results: [
+      result({
+        user: "compilationUser",
+        file: "Various\\Club Hits\\07. 50 Cent - In Da Club.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "50 Cent",
+      trackName: "In Da Club",
+      albumName: "Album Name",
+      releaseYear: "2003",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 100);
+      assert.equal(ranked[0].preDownloadValid, true);
+    },
+  },
+  {
+    name: "rankFlowSearchResults only credits the leading filename segment as the artist",
+    results: [
+      result({
+        user: "compilationUser",
+        file: "Various\\Hits\\Other Artist - Marlow Vance - Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Marlow Vance",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 0);
+      assert.equal(ranked[0].preDownloadValid, false);
+      assert.equal(ranked[0].preDownloadRejectReason, "weak-artist-match");
+    },
+  },
+  {
+    name: "rankFlowSearchResults does not read an artist from a title - artist filename",
+    results: [
+      result({
+        user: "ripUser",
+        file: "Various\\Rips\\Wide Awake Tonight - Marlow Vance.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Marlow Vance",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 0);
+      assert.equal(ranked[0].preDownloadValid, false);
+    },
+  },
+  {
+    name: "rankFlowSearchResults rejects a filename naming a different artist even in an album-matching folder",
+    results: [
+      result({
+        user: "albumUser",
+        file: "Some Person\\Album Name (2004)\\05. Other Artist - Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Marlow Vance",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 0);
+      assert.equal(ranked[0].breakdown.albumScore >= 35, true);
+      assert.equal(ranked[0].preDownloadValid, false);
+      assert.equal(ranked[0].preDownloadRejectReason, "weak-artist-match");
+    },
+  },
+  {
+    name: "rankFlowSearchResults keeps the folder artist score when the filename names someone else",
+    results: [
+      result({
+        user: "albumUser",
+        file: "Marlow Vance\\Album Name (2004)\\03 - Guest Person - Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Marlow Vance",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 100);
+      assert.equal(ranked[0].preDownloadValid, true);
+    },
+  },
+  {
+    name: "rankFlowSearchResults does not read an artist from a filename without the artist - title shape",
+    results: [
+      result({
+        user: "compilationUser",
+        file: "Various\\Top 100 Hits of 2004\\82. Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Marlow Vance",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 0);
+      assert.equal(ranked[0].preDownloadValid, false);
+    },
+  },
+  {
     name: "rankFlowSearchResults does not treat live as a variant in ordinary title words",
     results: [
       {
