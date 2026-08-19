@@ -26,6 +26,7 @@ export function ArtistContextMenu({
   isInLibrary = false,
   canAddArtist = false,
   onAddToLibrary,
+  onOpenInLibrary,
   onFeedback,
   feedbackUsed = {},
   className = "",
@@ -40,6 +41,14 @@ export function ArtistContextMenu({
   const closeMenuRef = useRef(null);
   const labelName = artistName || artist?.name || artist?.artistName || "artist";
   const isInlineActions = menuLayout === "inline";
+  const hasLibraryItem =
+    (canAddArtist && onAddToLibrary) || (isInLibrary && onOpenInLibrary);
+  const libraryAction = isInLibrary ? onOpenInLibrary : onAddToLibrary;
+  const libraryLabel = isInLibrary
+    ? onOpenInLibrary
+      ? "Open in library"
+      : "In library"
+    : "Add to library";
 
   const closeMenu = useCallback(() => {
     setShowMenu(false);
@@ -59,10 +68,10 @@ export function ArtistContextMenu({
 
   const estimateMenuHeight = useCallback(() => {
     let items = 0;
-    if (canAddArtist && onAddToLibrary) items += 1;
+    if (hasLibraryItem) items += 1;
     if (onFeedback) items += 3;
     return Math.max(items, 1) * 42 + 8;
-  }, [canAddArtist, onAddToLibrary, onFeedback]);
+  }, [hasLibraryItem, onFeedback]);
 
   const updateMenuPosition = useCallback(() => {
     const button = menuButtonRef.current;
@@ -184,7 +193,7 @@ export function ArtistContextMenu({
     setPendingAction(null);
   };
 
-  const showMenuTrigger = (canAddArtist && onAddToLibrary) || onFeedback;
+  const showMenuTrigger = hasLibraryItem || onFeedback;
 
   if (!showMenuTrigger) return null;
 
@@ -195,11 +204,11 @@ export function ArtistContextMenu({
         style={{ position: "relative", flexShrink: 0 }}
         onClick={(event) => event.stopPropagation()}
       >
-        {canAddArtist && onAddToLibrary && (
+        {hasLibraryItem && (
           <TooltipButton
-            label={isInLibrary ? "In library" : "Add to library"}
-            onClick={(event) => handleAction(event, "library", onAddToLibrary)}
-            disabled={isInLibrary || !!pendingAction}
+            label={libraryLabel}
+            onClick={(event) => handleAction(event, "library", libraryAction)}
+            disabled={!libraryAction || !!pendingAction}
             className={`btn btn-icon-square artist-context-menu__inline-action${isInLibrary ? " is-selected" : ""}`}
           >
             {pendingAction === "library" ? (
@@ -285,14 +294,14 @@ export function ArtistContextMenu({
               }}
               onClick={(event) => event.stopPropagation()}
             >
-              {canAddArtist && onAddToLibrary && (
+              {hasLibraryItem && (
                 <button
                   type="button"
-                  onClick={(event) => handleAction(event, "library", onAddToLibrary)}
-                  disabled={isInLibrary || !!pendingAction}
+                  onClick={(event) => handleAction(event, "library", libraryAction)}
+                  disabled={!libraryAction || !!pendingAction}
                   className="artist-menu-item--discover"
-                  aria-label={isInLibrary ? "In library" : "Add to library"}
-                  title={isInLibrary ? "In library" : "Add to library"}
+                  aria-label={libraryLabel}
+                  title={libraryLabel}
                 >
                   <div className="artist-menu-item__main--discover">
                     {pendingAction === "library" ? (
@@ -301,7 +310,7 @@ export function ArtistContextMenu({
                       <Library className="artist-icon-sm" />
                     )}
                     <span className="artist-menu-item__text--discover">
-                      {isInLibrary ? "In Library" : "Add to Library"}
+                      {libraryLabel}
                     </span>
                   </div>
                 </button>

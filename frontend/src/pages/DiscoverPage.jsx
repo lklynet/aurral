@@ -392,8 +392,10 @@ function DiscoverPage() {
         const canonicalId = lookup?.artist?.canonicalId;
         if (!canonicalId) throw new Error("Library artist was not found");
         navigate(`/library/artist/${encodeURIComponent(canonicalId)}`);
+        return true;
       } catch (requestError) {
         showError(requestError?.message || "Failed to open artist in library");
+        return false;
       }
     },
     [navigate, showError],

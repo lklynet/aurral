@@ -1,7 +1,7 @@
 import { memo, useCallback, useState, useEffect } from "react";
 import { getReleaseGroupCover, getArtistCover } from "../utils/api/endpoints/artists.js";
 
-import { Library, Music } from "lucide-react";
+import { Music } from "lucide-react";
 import ArtistImage from "../components/ArtistImage";
 import AddActionButton from "../components/AddActionButton";
 import { ArtistContextMenu } from "../components/ArtistContextMenu";
@@ -84,7 +84,6 @@ export const ArtistCard = memo(
     const navigateTo = artist.navigateTo || artist.id;
     const hasValidMbid = navigateTo && navigateTo !== "null" && navigateTo !== "undefined";
     const artistMetaText = getRecommendationReason(artist);
-    const [openingInLibrary, setOpeningInLibrary] = useState(false);
     const handleClick = useCallback(() => {
       if (hasValidMbid) {
         onNavigate(`/artist/${navigateTo}`, {
@@ -95,20 +94,6 @@ export const ArtistCard = memo(
         });
       }
     }, [navigateTo, hasValidMbid, artist.name, isInLibrary, onNavigate]);
-    const handleOpenInLibrary = useCallback(
-      async (event) => {
-        event.stopPropagation();
-        if (!onOpenInLibrary || openingInLibrary) return;
-        setOpeningInLibrary(true);
-        try {
-          await onOpenInLibrary(artist);
-        } finally {
-          setOpeningInLibrary(false);
-        }
-      },
-      [artist, onOpenInLibrary, openingInLibrary],
-    );
-
     return (
       <div
         role="button"
@@ -130,21 +115,6 @@ export const ArtistCard = memo(
             enablePreviewPlayback={hasValidMbid}
             isInLibrary={isInLibrary}
           />
-          {isInLibrary && onOpenInLibrary && (
-            <div
-              className="artist-discover-card__action"
-              onClick={(event) => event.stopPropagation()}
-              role="none"
-            >
-              <AddActionButton
-                Icon={Library}
-                label={`Open ${artist.name} in library`}
-                onClick={handleOpenInLibrary}
-                isLoading={openingInLibrary}
-                disabled={openingInLibrary}
-              />
-            </div>
-          )}
         </div>
 
         <div className="artist-discover-card__content">
@@ -175,6 +145,7 @@ export const ArtistCard = memo(
               isInLibrary={isInLibrary}
               canAddArtist={canAddArtist}
               onAddToLibrary={onAddToLibrary}
+              onOpenInLibrary={onOpenInLibrary}
               onFeedback={onFeedback}
               feedbackUsed={feedbackUsed}
             />
