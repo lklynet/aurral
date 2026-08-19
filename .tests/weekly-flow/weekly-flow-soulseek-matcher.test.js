@@ -477,6 +477,138 @@ const rankFlowCases = [
     },
   },
   {
+    name: "rankFlowSearchResults scores filenames against the version-suffix-stripped title",
+    results: [
+      result({
+        user: "labelledUser",
+        file: "Artist Name\\Album Name (2004)\\11 - Correct Track (Radio Edit).mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Artist Name",
+      trackName: "Correct Track - Radio Edit",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      trackNumber: 11,
+      albumTrackCount: 13,
+      durationMs: 226000,
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].preDownloadValid, true);
+      assert.equal(ranked[0].preDownloadRejectReason, null);
+    },
+  },
+  {
+    name: "rankFlowSearchResults accepts candidates that do not declare the requested mix variant",
+    results: [
+      result({
+        user: "albumUser",
+        file: "Artist Name\\Album Name (2004)\\11 - Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Artist Name",
+      trackName: "Wide Awake Tonight - Radio Edit",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      trackNumber: 11,
+      albumTrackCount: 13,
+      durationMs: 226000,
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].preDownloadValid, true);
+      assert.equal(ranked[0].preDownloadRejectReason, null);
+      assert.equal(ranked[0].breakdown.variantHardMismatch, false);
+    },
+  },
+  {
+    name: "rankFlowSearchResults still rejects candidates declaring a different mix variant",
+    results: [
+      result({
+        user: "extendedUser",
+        file: "Artist Name\\Album Name (2004)\\11 - Wide Awake Tonight (Extended Mix).mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Artist Name",
+      trackName: "Wide Awake Tonight - Radio Edit",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      trackNumber: 11,
+      albumTrackCount: 13,
+      durationMs: 226000,
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].preDownloadValid, false);
+      assert.equal(ranked[0].preDownloadRejectReason, "variant-mismatch");
+      assert.equal(ranked[0].breakdown.variantHardMismatch, true);
+    },
+  },
+  {
+    name: "rankFlowSearchResults still rejects mix variants when the requested track is plain",
+    results: [
+      result({
+        user: "extendedUser",
+        file: "Artist Name\\Album Name (2004)\\11 - Wide Awake Tonight (Extended Mix).mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Artist Name",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      trackNumber: 11,
+      albumTrackCount: 13,
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].preDownloadValid, false);
+      assert.equal(ranked[0].preDownloadRejectReason, "variant-mismatch");
+    },
+  },
+  {
+    name: "rankFlowSearchResults ranks a declared mix variant above one that omits it",
+    results: [
+      result({
+        user: "silentUser",
+        file: "Artist Name\\Album Name (2004)\\11 - Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+      result({
+        user: "labelledUser",
+        file: "Artist Name\\Album Name (2004)\\11 - Wide Awake Tonight (Radio Edit).mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Artist Name",
+      trackName: "Wide Awake Tonight - Radio Edit",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      trackNumber: 11,
+      albumTrackCount: 13,
+      durationMs: 226000,
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 2);
+      assert.equal(ranked[0].raw.user, "labelledUser");
+      assert.equal(ranked[0].preDownloadValid, true);
+      assert.equal(ranked[1].preDownloadValid, true);
+    },
+  },
+  {
     name: "rankFlowSearchResults does not treat live as a variant in ordinary title words",
     results: [
       {
@@ -592,6 +724,26 @@ test("validateDownloadedTrack scores identity before final quality admission", a
   assert.notEqual(accepted.scores.matchReason, "pre-download-trusted");
   assert.equal(accepted.scores.preDownloadValid, true);
   assert.ok(accepted.scores.title >= 82);
+});
+
+test("validateDownloadedTrack accepts a remote filename that omits the requested version suffix", async () => {
+  const validated = await validateDownloadedTrack(
+    "/tmp/does-not-exist.mp3",
+    {
+      preDownloadValid: true,
+      raw: { file: "Artist Name\\Album Name (2004)\\11 - Correct Track.mp3" },
+    },
+    {
+      artistName: "Artist Name",
+      trackName: "Correct Track - Radio Edit",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      trackNumber: 11,
+      durationMs: 226000,
+    },
+  );
+  assert.ok(validated.scores.title >= 82);
+  assert.match(validated.reason, /^quality-unknown:/);
 });
 
 test("validateDownloadedTrack scores path segments without weak-word inflation", async () => {

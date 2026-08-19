@@ -428,9 +428,11 @@ function scoreVariantCompatibility(expectedTitle, actualTitle) {
       score -= 95;
       hardMismatch = true;
     }
-  } else if (expected.mixVariant || actual.mixVariant) {
+  } else if (actual.mixVariant) {
     score -= 95;
     hardMismatch = true;
+  } else if (expected.mixVariant) {
+    score -= 25;
   }
 
   if (expected.monoStereo && actual.monoStereo) {
@@ -447,6 +449,14 @@ function scoreVariantCompatibility(expectedTitle, actualTitle) {
     score,
     hardMismatch,
   };
+}
+
+function scoreRequestedTitle(value, context) {
+  const trackName = String(context?.trackName || "");
+  const direct = scoreTextMatch(value, trackName);
+  const stripped = stripVersionSuffix(trackName);
+  if (!stripped || stripped.toLowerCase() === trackName.toLowerCase()) return direct;
+  return Math.max(direct, scoreTextMatch(value, stripped));
 }
 
 function extractTrackNumber(value) {
@@ -749,8 +759,8 @@ function buildGroupCandidate(group, context, options = {}) {
     const ext = getFileExtension(String(item?.file || ""));
     const baseName = getFileBaseName(String(item?.file || ""));
     const titleScore = Math.max(
-      scoreTextMatch(baseName, context?.trackName),
-      scoreTextMatch(getFileName(String(item?.file || "")), context?.trackName),
+      scoreRequestedTitle(baseName, context),
+      scoreRequestedTitle(getFileName(String(item?.file || "")), context),
     );
     const variantMatch = scoreVariantCompatibility(context?.trackName, baseName);
     const variantScore = variantMatch.score;
@@ -980,9 +990,9 @@ export async function validateDownloadedTrack(filePath, candidate, context) {
   const albumFromTags = metadata?.album || "";
   const albumName = readComparableAlbumName(context);
   const titleScore = Math.max(
-    scoreTextMatch(titleFromTags, context?.trackName),
-    scoreTextMatch(remoteBaseName, context?.trackName),
-    scoreTextMatch(stripLeadingTrackNumber(remoteBaseName), context?.trackName),
+    scoreRequestedTitle(titleFromTags, context),
+    scoreRequestedTitle(remoteBaseName, context),
+    scoreRequestedTitle(stripLeadingTrackNumber(remoteBaseName), context),
   );
   const artistScore = Math.max(
     0,
