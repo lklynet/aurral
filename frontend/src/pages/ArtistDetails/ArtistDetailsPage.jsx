@@ -7,7 +7,10 @@ import {
   getSimilarArtistsForArtist,
   updateArtistOverrides,
 } from "../../utils/api/endpoints/artists.js";
-import { addArtistToLibrary } from "../../utils/api/endpoints/library.js";
+import {
+  addArtistToLibrary,
+  downloadTrackToLibrary,
+} from "../../utils/api/endpoints/library.js";
 import {
   addSharedPlaylistTracks,
   createSharedPlaylist,
@@ -79,6 +82,7 @@ function ArtistDetailsPage() {
     loadSharedPlaylists,
   } = useSharedPlaylists();
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
+  const [libraryTrackSavingKey, setLibraryTrackSavingKey] = useState("");
   const [visibleReleaseGroupCoverIds, setVisibleReleaseGroupCoverIds] = useState([]);
   const [visibleAppearsOnCoverIds, setVisibleAppearsOnCoverIds] = useState([]);
   const [visibleLibraryCoverIds, setVisibleLibraryCoverIds] = useState([]);
@@ -408,6 +412,33 @@ function ArtistDetailsPage() {
     return saveTrackToPlaylist(payload, target, savingKey);
   };
 
+  const handleTrackAddToLibrary = async (track, releaseGroup = null) => {
+    const payload = releaseGroup
+      ? buildReleaseTrackPayload(track, releaseGroup)
+      : buildPreviewTrackPayload(track);
+    const savingKey = String(track?.id ?? track?.mbid ?? track?.title ?? "");
+    setLibraryTrackSavingKey(savingKey);
+    try {
+      const result = await downloadTrackToLibrary(payload);
+      showSuccess(
+        result?.alreadyOwned
+          ? `${payload.trackName} is already in your library`
+          : result?.queued
+            ? `Queued ${payload.trackName} for your library`
+            : `Added ${payload.trackName} to your library`,
+      );
+    } catch (err) {
+      showError(
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          err.message ||
+          "Failed to add track to library",
+      );
+    } finally {
+      setLibraryTrackSavingKey("");
+    }
+  };
+
   if (loading) {
     return (
       <div className="artist-loading">
@@ -480,6 +511,8 @@ function ArtistDetailsPage() {
         isArtistPlaybackActive={isArtistPlaybackActive}
         handlePreviewPlay={handlePreviewPlay}
         onAddTrackToPlaylist={handlePreviewTrackAdd}
+        onAddTrackToLibrary={handleTrackAddToLibrary}
+        libraryTrackSavingKey={libraryTrackSavingKey}
         resolveMembershipTrack={buildPreviewTrackPayload}
         playlists={sharedPlaylists}
         playlistsLoading={playlistModalLoading}
@@ -502,6 +535,8 @@ function ArtistDetailsPage() {
         playbackSource={playbackSource}
         artistName={artistDisplayName}
         onAddTrackToPlaylist={handleReleaseTrackAdd}
+        onAddTrackToLibrary={handleTrackAddToLibrary}
+        libraryTrackSavingKey={libraryTrackSavingKey}
         resolveMembershipTrack={buildReleaseTrackPayload}
         playlists={sharedPlaylists}
         playlistsLoading={playlistModalLoading}

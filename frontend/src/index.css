@@ -3605,7 +3605,7 @@ textarea {
 .artist-pick-panel__tracks-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 0.75rem;
   margin-bottom: 0.5rem;
 }
@@ -3629,14 +3629,6 @@ textarea {
   border-color: transparent;
   background: var(--aurral-surface-hover);
   color: var(--aurral-text);
-}
-
-.artist-pick-panel__tracks-label {
-  color: var(--aurral-text-muted);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .artist-pick-panel__show-all {

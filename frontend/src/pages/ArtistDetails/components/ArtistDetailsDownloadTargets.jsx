@@ -47,6 +47,8 @@ export function ArtistDetailsDownloadTargets({
   artistName = "",
   playbackSource = null,
   onAddTrackToPlaylist,
+  onAddTrackToLibrary,
+  libraryTrackSavingKey,
   resolveMembershipTrack,
   playlists,
   playlistsLoading,
@@ -210,7 +212,6 @@ export function ArtistDetailsDownloadTargets({
             </div>
             <div className="artist-pick-panel__content">
               <div className="artist-min-0">
-                <div className="artist-eyebrow">Aurral Pick</div>
                 <h2 className="artist-pick-title">{missingReleasePick.title}</h2>
                 <div className="artist-meta-line">
                   {missingReleasePick.year && <span>{missingReleasePick.year}</span>}
@@ -246,7 +247,6 @@ export function ArtistDetailsDownloadTargets({
             ) : tracks.length ? (
               <>
                 <div className="artist-pick-panel__tracks-header">
-                  <span className="artist-pick-panel__tracks-label">Preview tracks</span>
                   <ArtistTrackListToolbar
                     disabled={toolbarDisabled}
                     isPlaying={isListPlaying}
@@ -288,15 +288,26 @@ export function ArtistDetailsDownloadTargets({
                                 ? resolveMembershipTrack(track, missingReleasePick.releaseGroup)
                                 : track
                             }
+                            triggerVariant="kebab"
                             playlists={playlists}
                             loading={playlistsLoading}
                             saving={playlistSavingKey === currentTrackId}
+                            librarySaving={libraryTrackSavingKey === currentTrackId}
                             error={playlistError}
                             defaultNewPlaylistName={getDefaultPlaylistName?.(
                               track,
                               missingReleasePick.releaseGroup,
                             )}
                             onLoadPlaylists={onLoadPlaylists}
+                            onAddToLibrary={
+                              onAddTrackToLibrary
+                                ? () =>
+                                    onAddTrackToLibrary(
+                                      track,
+                                      missingReleasePick.releaseGroup,
+                                    )
+                                : null
+                            }
                             onSelect={(target) =>
                               onAddTrackToPlaylist(track, missingReleasePick.releaseGroup, target)
                             }
