@@ -30,6 +30,10 @@ Large or bundled pull requests may be closed or returned for splitting.
 
 <!-- If this pull request changes the UI, include clear before-and-after screenshots. Delete this section if it does not apply. -->
 
+## Testing
+
+<!-- List automated checks and manual validation. State which applicable checks were not run and why. -->
+
 ## Release impact
 
 - [ ] Major: incompatible change
