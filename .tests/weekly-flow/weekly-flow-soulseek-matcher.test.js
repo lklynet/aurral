@@ -499,6 +499,7 @@ const rankFlowCases = [
       assert.equal(ranked.length, 1);
       assert.equal(ranked[0].preDownloadValid, true);
       assert.equal(ranked[0].preDownloadRejectReason, null);
+      assert.ok(ranked[0].breakdown.titleScore >= 82);
     },
   },
   {

@@ -451,6 +451,14 @@ function scoreVariantCompatibility(expectedTitle, actualTitle) {
   };
 }
 
+function mergeVariantMatches(primary, secondary) {
+  if (!secondary) return primary;
+  return {
+    score: Math.max(primary.score, secondary.score),
+    hardMismatch: primary.hardMismatch || secondary.hardMismatch,
+  };
+}
+
 function scoreRequestedTitle(value, context) {
   const trackName = String(context?.trackName || "");
   const direct = scoreTextMatch(value, trackName);
@@ -1004,7 +1012,10 @@ export async function validateDownloadedTrack(filePath, candidate, context) {
     : 0;
   const yearScore = scoreYearMatch(remoteFilename, context?.releaseYear);
   const yearMismatch = hasConflictingYear(remoteFilename, context?.releaseYear);
-  const variantMatch = scoreVariantCompatibility(context?.trackName, remoteBaseName);
+  const variantMatch = mergeVariantMatches(
+    scoreVariantCompatibility(context?.trackName, remoteBaseName),
+    titleFromTags ? scoreVariantCompatibility(context?.trackName, titleFromTags) : null,
+  );
   const filenameTrackNumber = extractTrackNumber(remoteBaseName);
   const actualTrackNumber =
     filenameTrackNumber != null
