@@ -5,12 +5,14 @@ import {
   clearTerminalSexyCatalogCache,
   groupTerminalSexyCatalog,
   importTerminalSexyTheme,
+  loadTerminalSexyCatalog,
   normalizeTerminalSexyCatalog,
   searchTerminalSexyThemes,
   selectTerminalSexyFeaturedThemes,
 } from "../../frontend/src/utils/terminalSexyThemes.js";
 
 const originalFetch = globalThis.fetch;
+const originalSetTimeout = globalThis.setTimeout;
 
 const scheme = {
   name: "Solarized Dark",
@@ -24,6 +26,7 @@ const scheme = {
 
 test.afterEach(() => {
   globalThis.fetch = originalFetch;
+  globalThis.setTimeout = originalSetTimeout;
   clearTerminalSexyCatalogCache();
 });
 
@@ -79,4 +82,65 @@ test("terminal.sexy schemes can be searched and imported with variants", async (
   assert.equal(theme.appearance, "light");
   assert.equal(theme.colors.chrome, "#fdf6e3");
   assert.equal(theme.variants.dark.chrome, "#002b36");
+});
+
+test("paired terminal.sexy sources keep their declared light and dark modes", async () => {
+  const measuredDark = { ...scheme, name: "Measured dark light source", background: "#101010" };
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/base16/solarized.dark.json")) return new Response(JSON.stringify(scheme));
+    if (url.endsWith("/base16/solarized.light.json")) return new Response(JSON.stringify(measuredDark));
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+
+  const theme = await importTerminalSexyTheme({
+    id: "terminal-sexy-solarized",
+    label: "solarized",
+    sources: {
+      dark: { path: "base16/solarized.dark" },
+      light: { path: "base16/solarized.light" },
+    },
+  });
+
+  assert.equal(theme.appearance, "light");
+  assert.equal(theme.colors.chrome, "#101010");
+  assert.equal(theme.variants.dark.chrome, "#002b36");
+});
+
+test("terminal.sexy catalog failures do not poison later retries", async () => {
+  let attempts = 0;
+  globalThis.fetch = async () => {
+    attempts += 1;
+    if (attempts === 1) return new Response("unavailable", { status: 503 });
+    return new Response(JSON.stringify(["base16/solarized.dark"]));
+  };
+
+  await assert.rejects(loadTerminalSexyCatalog(), /unavailable/);
+  const catalog = await loadTerminalSexyCatalog();
+  assert.equal(catalog[0].path, "base16/solarized.dark");
+  assert.equal(attempts, 2);
+});
+
+test("terminal.sexy catalog rejects malformed and oversized responses", async () => {
+  globalThis.fetch = async () => new Response("not json");
+  await assert.rejects(loadTerminalSexyCatalog(), /unavailable/);
+
+  clearTerminalSexyCatalogCache();
+  globalThis.fetch = async () => new Response(JSON.stringify(["x".repeat(256 * 1024)]));
+  await assert.rejects(loadTerminalSexyCatalog(), /unavailable/);
+});
+
+test("terminal.sexy catalog requests abort when they exceed the timeout", async () => {
+  let requestSignal;
+  globalThis.setTimeout = (callback) => {
+    callback();
+    return 1;
+  };
+  globalThis.fetch = async (_input, options) => {
+    requestSignal = options.signal;
+    throw new Error("aborted");
+  };
+
+  await assert.rejects(loadTerminalSexyCatalog(), /unavailable/);
+  assert.equal(requestSignal.aborted, true);
 });

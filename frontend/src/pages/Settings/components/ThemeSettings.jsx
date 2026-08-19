@@ -551,7 +551,7 @@ export function ThemeSettings({ showSuccess, showError }) {
     if (!window.confirm(`Remove the added theme “${theme.label}”?`)) return;
     clearPreview();
     removeCustomTheme(theme.id);
-    if (settings.themeId === theme.id) setThemeSelection("aurral", "system");
+    if (settings.themeId === theme.id) setThemeSelection(BUILT_IN_THEMES[0].id, settings.appearance);
   };
 
   const isInstalled = (scheme) => customThemes.some((theme) => theme.id === scheme.id);

@@ -17,6 +17,7 @@ export const TERMINAL_SEXY_FEATURED_PATHS = [
 
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const MAX_RESULTS = 24;
+const REQUEST_TIMEOUT_MS = 15_000;
 
 let catalogPromise = null;
 
@@ -99,6 +100,8 @@ export function groupTerminalSexyCatalog(catalog) {
 }
 
 export function selectTerminalSexyFeaturedThemes(catalog, limit = TERMINAL_SEXY_FEATURED_PATHS.length) {
+  const max = Math.max(0, limit);
+  if (!max) return [];
   const groups = groupTerminalSexyCatalog(catalog);
   const byPath = new Map(groups.flatMap((group) => Object.values(group.sources).map((scheme) => [scheme.path, group])));
   const preferred = TERMINAL_SEXY_FEATURED_PATHS.flatMap((path) => {
@@ -106,7 +109,15 @@ export function selectTerminalSexyFeaturedThemes(catalog, limit = TERMINAL_SEXY_
     return scheme ? [scheme] : [];
   });
   const fallback = groups.filter((scheme) => scheme.sources.dark || scheme.appearance !== "light");
-  return [...preferred, ...fallback, ...groups].filter((scheme, index, all) => all.indexOf(scheme) === index).slice(0, limit);
+  const selected = [];
+  const seen = new Set();
+  for (const group of [...preferred, ...fallback, ...groups]) {
+    if (seen.has(group)) continue;
+    seen.add(group);
+    selected.push(group);
+    if (selected.length >= max) break;
+  }
+  return selected;
 }
 
 function schemeUrl(path) {
@@ -116,22 +127,30 @@ function schemeUrl(path) {
 }
 
 async function fetchJson(url, signal, message) {
+  const controller = new AbortController();
+  const abortRequest = () => controller.abort();
+  if (signal?.aborted) controller.abort();
+  else signal?.addEventListener("abort", abortRequest, { once: true });
+  const timeoutId = setTimeout(abortRequest, REQUEST_TIMEOUT_MS);
   let response;
   try {
-    response = await fetch(url, { signal });
+    response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(message);
+    const contentLength = Number(response.headers?.get?.("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > MAX_RESPONSE_BYTES) throw new Error(message);
+    const text = await response.text();
+    if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES) throw new Error(message);
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      throw new Error(message, { cause: error });
+    }
   } catch (error) {
     if (signal?.aborted) throw error;
     throw new Error(message, { cause: error });
-  }
-  if (!response.ok) throw new Error(message);
-  const contentLength = Number(response.headers?.get?.("content-length"));
-  if (Number.isFinite(contentLength) && contentLength > MAX_RESPONSE_BYTES) throw new Error(message);
-  const text = await response.text();
-  if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES) throw new Error(message);
-  try {
-    return JSON.parse(text);
-  } catch (error) {
-    throw new Error(message, { cause: error });
+  } finally {
+    clearTimeout(timeoutId);
+    signal?.removeEventListener("abort", abortRequest);
   }
 }
 
@@ -210,24 +229,35 @@ export function parseTerminalSexyTheme(value, sourceName = "") {
 }
 
 export async function importTerminalSexyTheme(scheme, { signal } = {}) {
-  const sources = scheme?.sources ? Object.values(scheme.sources) : [scheme];
-  const themes = await Promise.all(sources.map(async (source) => {
+  const sources = scheme?.sources ? Object.entries(scheme.sources) : [[null, scheme]];
+  const themes = await Promise.all(sources.map(async ([sourceMode, source]) => {
     const path = source?.path || source;
     const value = await fetchJson(schemeUrl(path), signal, "That terminal.sexy scheme is unavailable right now.");
-    return parseTerminalSexyTheme(value, safeSchemePath(path) || "");
+    return {
+      sourceMode,
+      theme: parseTerminalSexyTheme(value, safeSchemePath(path) || ""),
+    };
   }));
-  const primary = themes.find((theme) => theme.appearance === "light") || themes[0];
+  const primary = scheme?.sources
+    ? themes.find(({ sourceMode }) => sourceMode === "light")
+      || themes.find(({ sourceMode }) => sourceMode === "dark")
+      || themes[0]
+    : themes[0];
+  const appearance = scheme?.sources && (primary.sourceMode === "light" || primary.sourceMode === "dark")
+    ? primary.sourceMode
+    : primary.theme.appearance;
   const variants = Object.fromEntries(
     themes
-      .filter((theme) => theme.appearance !== primary.appearance)
-      .map((theme) => [theme.appearance, theme.colors]),
+      .filter(({ sourceMode, theme }) => theme !== primary.theme && (sourceMode === "light" || sourceMode === "dark"))
+      .map(({ sourceMode, theme }) => [sourceMode, theme.colors])
+      .filter(([mode]) => mode !== appearance),
   );
   return parseThemeFile({
     version: THEME_FILE_VERSION,
-    id: scheme?.id || primary.id,
-    name: scheme?.label || primary.label,
-    appearance: primary.appearance,
-    colors: primary.colors,
+    id: scheme?.id || primary.theme.id,
+    name: scheme?.label || primary.theme.label,
+    appearance,
+    colors: primary.theme.colors,
     ...(Object.keys(variants).length ? { variants } : {}),
     managed: true,
   });

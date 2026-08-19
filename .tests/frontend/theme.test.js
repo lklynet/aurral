@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { runInNewContext } from "node:vm";
 
 import {
   applyThemePreview,
@@ -187,4 +189,41 @@ test("custom themes persist and restore their selected mode", () => {
 
   setThemeSelection(theme.id, "dark");
   assert.deepEqual(getThemeSettings(), { themeId: theme.id, appearance: "dark" });
+});
+
+test("theme bootstrap restores a saved custom palette before app startup", async () => {
+  const source = await readFile(new URL("../../frontend/public/theme.js", import.meta.url), "utf8");
+  const values = new Map();
+  const dataset = {};
+  const storage = new Map([
+    [THEME_STORAGE_KEY, "terminal-sexy-custom"],
+    ["aurralThemeAppearance:v1", "dark"],
+    [CUSTOM_THEMES_STORAGE_KEY, JSON.stringify([{
+      version: 1,
+      id: "terminal-sexy-custom",
+      name: "Custom",
+      appearance: "light",
+      colors: { chrome: "#eeeeee", surface: "#ffffff", accent: "#315fcb" },
+      variants: { dark: { chrome: "#101010", surface: "#181818", accent: "#6cc5ff" } },
+    }])],
+  ]);
+
+  runInNewContext(source, {
+    localStorage: { getItem: (key) => storage.get(key) ?? null },
+    matchMedia: () => ({ matches: false }),
+    document: {
+      documentElement: {
+        dataset,
+        style: {
+          setProperty: (name, value) => values.set(name, value),
+          removeProperty: () => {},
+        },
+      },
+    },
+  });
+
+  assert.equal(dataset.theme, "dark");
+  assert.equal(dataset.themeId, "terminal-sexy-custom");
+  assert.equal(values.get("--aurral-chrome"), "#101010");
+  assert.equal(values.get("--aurral-accent"), "#6cc5ff");
 });
