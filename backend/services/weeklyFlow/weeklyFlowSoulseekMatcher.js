@@ -569,6 +569,32 @@ function pickBestArtistScore(context, text) {
   return candidates.reduce((best, entry) => Math.max(best, scoreAgainstPath(text, entry)), 0);
 }
 
+function splitArtistTitleSegments(text) {
+  return String(text || "")
+    .split(/\s+(?:-|–|—)\s+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function readSegmentsArtistTitle(context, segments) {
+  if (segments.length < 2) return null;
+  const artistScore = pickBestArtistScore(context, segments[0]);
+  if (artistScore < 92) return null;
+  return { artistScore, title: segments[segments.length - 1] };
+}
+
+function readFileNameArtistTitle(context, filePath) {
+  const baseName = getFileBaseName(filePath);
+  // Try the basename both as-is and with a leading track number removed. The
+  // strip helps "07. Artist - Title", but it also eats the digits of a numeric
+  // artist ("50 Cent - ..."), so keep whichever parse names the artist best.
+  return [stripLeadingTrackNumber(baseName), baseName].reduce((best, text) => {
+    const parsed = readSegmentsArtistTitle(context, splitArtistTitleSegments(text));
+    if (parsed && (!best || parsed.artistScore > best.artistScore)) return parsed;
+    return best;
+  }, null);
+}
+
 function collectArtistTags(common) {
   return [
     common?.artist,
@@ -722,7 +748,7 @@ function buildGroupCandidate(group, context, options = {}) {
     return [];
   }
   const {
-    artistScore,
+    artistScore: folderArtistScore,
     albumScore,
     yearScore,
     yearMismatch,
@@ -748,9 +774,12 @@ function buildGroupCandidate(group, context, options = {}) {
   for (const item of files) {
     const ext = getFileExtension(String(item?.file || ""));
     const baseName = getFileBaseName(String(item?.file || ""));
+    const fileNameParts = readFileNameArtistTitle(context, String(item?.file || ""));
+    const artistScore = Math.max(folderArtistScore, fileNameParts?.artistScore || 0);
     const titleScore = Math.max(
       scoreTextMatch(baseName, context?.trackName),
       scoreTextMatch(getFileName(String(item?.file || "")), context?.trackName),
+      fileNameParts ? scoreTextMatch(fileNameParts.title, context?.trackName) : 0,
     );
     const variantMatch = scoreVariantCompatibility(context?.trackName, baseName);
     const variantScore = variantMatch.score;
