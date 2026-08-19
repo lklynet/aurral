@@ -182,7 +182,8 @@ test("mixed reuse seeding keeps import job order", async () => {
 test("flow refresh clears playback before downloads finish", async () => {
   const originalBuildPlan = playlistSource.buildFlowRunPlan;
   const originalRefresh = playlistManager.refreshPlaylist;
-  const refreshed = [];
+  const originalScheduleNextRun = flowPlaylistConfig.scheduleNextRun;
+  const events = [];
   try {
     dbOps.updateSettings({
       ...dbOps.getSettings(),
@@ -204,18 +205,26 @@ test("flow refresh clears playback before downloads finish", async () => {
       diagnostics: { targets: { primary: 0 }, achieved: { primary: 0, reserve: 0 } },
     });
     playlistManager.refreshPlaylist = async (playlistId) => {
-      refreshed.push(playlistId);
+      await new Promise((resolve) => setImmediate(resolve));
+      events.push(["refresh", playlistId]);
+    };
+    flowPlaylistConfig.scheduleNextRun = (playlistId) => {
+      events.push(["schedule", playlistId]);
     };
 
     await processWeeklyFlowOperation({
-      kind: "manual-start-flow",
+      kind: "scheduled-flow-refresh",
       flowId: flow.id,
     });
 
-    assert.deepEqual(refreshed, [flow.id]);
+    assert.deepEqual(events, [
+      ["refresh", flow.id],
+      ["schedule", flow.id],
+    ]);
   } finally {
     playlistSource.buildFlowRunPlan = originalBuildPlan;
     playlistManager.refreshPlaylist = originalRefresh;
+    flowPlaylistConfig.scheduleNextRun = originalScheduleNextRun;
     weeklyFlowWorker.stop();
   }
 });
