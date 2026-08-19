@@ -472,22 +472,32 @@ test("failed Subsonic playlist creation rolls back its playlist and jobs", async
 });
 
 test("malformed Subsonic settings do not crash the settings update", async () => {
-  const disable = await apiFetch("/api/settings", {
-    method: "POST",
-    body: JSON.stringify({ subsonic: { favoriteAutoKeep: false } }),
-  });
-  assert.equal(disable.status, 200);
-  const response = await apiFetch("/api/settings", {
-    method: "POST",
-    body: JSON.stringify({ subsonic: null }),
-  });
-  assert.equal(response.status, 200);
-  assert.equal(dbOps.getSettings().subsonic.favoriteAutoKeep, false);
-  const restore = await apiFetch("/api/settings", {
-    method: "POST",
-    body: JSON.stringify({ subsonic: { favoriteAutoKeep: true } }),
-  });
-  assert.equal(restore.status, 200);
+  const initialFavoriteAutoKeep = dbOps.getSettings().subsonic.favoriteAutoKeep;
+  try {
+    const disable = await apiFetch("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ subsonic: { favoriteAutoKeep: false } }),
+    });
+    assert.equal(disable.status, 200);
+    assert.equal((await (await apiFetch("/api/settings")).json()).subsonic.favoriteAutoKeep, false);
+    const response = await apiFetch("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ subsonic: null }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal((await (await apiFetch("/api/settings")).json()).subsonic.favoriteAutoKeep, false);
+    const partial = await apiFetch("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ subsonic: {} }),
+    });
+    assert.equal(partial.status, 200);
+    assert.equal((await (await apiFetch("/api/settings")).json()).subsonic.favoriteAutoKeep, false);
+  } finally {
+    await apiFetch("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ subsonic: { favoriteAutoKeep: initialFavoriteAutoKeep } }),
+    });
+  }
 });
 
 test("favorites can keep Flow tracks and respect the auto-keep setting", async () => {

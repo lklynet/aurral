@@ -348,7 +348,11 @@ export function registerGeneral(router) {
             ? {
                 ...(currentSettings.subsonic || defaultData.settings.subsonic),
                 ...normalizedSubsonic,
-                favoriteAutoKeep: normalizedSubsonic.favoriteAutoKeep !== false,
+                favoriteAutoKeep:
+                  normalizedSubsonic.favoriteAutoKeep !== undefined
+                    ? normalizedSubsonic.favoriteAutoKeep !== false
+                    : (currentSettings.subsonic || defaultData.settings.subsonic)
+                        .favoriteAutoKeep !== false,
               }
             : currentSettings.subsonic || defaultData.settings.subsonic,
         rootFolderPath:
