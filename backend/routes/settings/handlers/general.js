@@ -325,7 +325,7 @@ export function registerGeneral(router) {
       const normalizedSubsonic =
         subsonic && typeof subsonic === "object" && !Array.isArray(subsonic)
           ? subsonic
-          : {};
+          : null;
       const updatedSettings = {
         ...currentSettings,
         dateTimeFormat:
@@ -344,7 +344,7 @@ export function registerGeneral(router) {
               )
             : currentSettings.qualityProfile,
         subsonic:
-          subsonic !== undefined
+          normalizedSubsonic !== null
             ? {
                 ...(currentSettings.subsonic || defaultData.settings.subsonic),
                 ...normalizedSubsonic,
