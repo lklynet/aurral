@@ -370,7 +370,7 @@ test("notifyWeeklyFlowDone uses display name and track library path placeholders
     });
 
     const playlistId = "c0c01bc3-72ca-4110-8ab6-681f132a6e63";
-    const flowPath = `/data/downloads/aurral-weekly-flow/${playlistId}`;
+    const flowPath = `/data/downloads/aurral/.flows/${playlistId}`;
     await notifyWeeklyFlowDone(
       playlistId,
       { completed: 3, failed: 1 },

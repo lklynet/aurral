@@ -125,7 +125,7 @@ test("ensures the Navidrome library without creating an M3U playlist", async () 
     { ok: true },
   );
 
-  assert.deepEqual(client.calls.ensured, [destination.playlistLibraryRoot.replace(/\\/g, "/")]);
+  assert.deepEqual(client.calls.ensured, [destination.mediaLibraryRoot.replace(/\\/g, "/")]);
   await assert.rejects(
     fs.access(path.join(destination.libraryRoot, "jody - Morning Mix.m3u")),
   );

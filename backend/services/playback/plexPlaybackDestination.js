@@ -7,7 +7,7 @@ import { plexConnectionStore } from "../plex/plexConnectionStore.js";
 import { plexPlaylistPointerStore } from "../plex/plexPlaylistPointerStore.js";
 import { getPathMappings, resolveLocalPath } from "../pathMappings.js";
 import {
-  PLAYLIST_LIBRARY_DIR,
+  AURRAL_FLOWS_DIR,
   isPathInsideRoot,
   resolvePlaylistRoot,
 } from "../playlistPaths.js";
@@ -39,7 +39,7 @@ export class PlexPlaybackDestination {
     this.key = "plex";
     this.name = "Plex";
     this.weeklyFlowRoot = resolvePlaylistRoot(weeklyFlowRoot);
-    this.playlistLibraryRoot = path.join(this.weeklyFlowRoot, PLAYLIST_LIBRARY_DIR);
+    this.playlistLibraryRoot = this.weeklyFlowRoot;
     this.client = client;
     this._configKey = "";
     this._downloadsPath = "";
@@ -82,8 +82,7 @@ export class PlexPlaybackDestination {
 
   _libraryPath() {
     const override = String(this._downloadsPath || "").trim();
-    if (!override) return this.playlistLibraryRoot.replace(/\\/g, "/").replace(/\/+$/, "");
-    return `${override.replace(/\\/g, "/").replace(/\/+$/, "")}/${PLAYLIST_LIBRARY_DIR}`;
+    return (override || this.weeklyFlowRoot).replace(/\\/g, "/").replace(/\/+$/, "");
   }
 
   async testConnection() {
@@ -269,21 +268,33 @@ export class PlexPlaybackDestination {
 
   _relativeManagedPath(file) {
     const normalized = String(file || "").replace(/\\/g, "/");
-    const marker = `/${PLAYLIST_LIBRARY_DIR}/`;
-    const index = normalized.indexOf(marker);
-    if (index < 0) return null;
-    const segments = normalized.slice(index + marker.length).split("/");
-    segments.shift();
-    return segments.join("/") || null;
+    const root = this._libraryPath();
+    const marker = `${root}/`;
+    if (!normalized.startsWith(marker)) return null;
+    const relative = normalized.slice(marker.length);
+    const normalizedRelative = path.posix.normalize(relative);
+    if (
+      !normalizedRelative ||
+      normalizedRelative === "." ||
+      normalizedRelative === ".." ||
+      normalizedRelative.startsWith("../") ||
+      path.posix.isAbsolute(normalizedRelative)
+    ) {
+      return null;
+    }
+    return normalizedRelative;
   }
 
   async _resolveRatingKeys(snapshot) {
-    const managedByRelative = new Map();
+    const managedByPath = new Map();
     for (const track of this._libraryTracks || []) {
-      const relative = this._relativeManagedPath(track.files?.[0]);
-      if (!relative) continue;
-      if (!managedByRelative.has(relative)) managedByRelative.set(relative, []);
-      managedByRelative.get(relative).push(track);
+      for (const file of track.files || []) {
+        const relative = this._relativeManagedPath(file);
+        if (!relative) continue;
+        const localPath = path.resolve(this.weeklyFlowRoot, relative);
+        if (!managedByPath.has(localPath)) managedByPath.set(localPath, []);
+        managedByPath.get(localPath).push(track);
+      }
     }
     const mainByPath = new Map();
     const mappings = getPathMappings("plex");
@@ -295,36 +306,20 @@ export class PlexPlaybackDestination {
       }
     }
     const keys = [];
-    const entityRoot = path.join(this.playlistLibraryRoot, snapshot.entityId);
     for (const track of snapshot.tracks) {
       const localPath = path.resolve(track.path);
-      if (!isPathInsideRoot(localPath, this.playlistLibraryRoot)) {
-        const ratingKey = mainByPath.get(localPath);
-        if (ratingKey) keys.push(ratingKey);
-        continue;
-      }
-      const relative = path.relative(entityRoot, localPath).replace(/\\/g, "/");
-      const group = managedByRelative.get(relative) || [];
-      const own = group.find((candidate) =>
-        candidate.files?.some((file) =>
-          String(file).replace(/\\/g, "/").includes(`/${snapshot.entityId}/`),
-        ),
-      );
-      const ratingKey = (own || group[0])?.ratingKey;
+      const ratingKey = managedByPath.get(localPath)?.[0]?.ratingKey || mainByPath.get(localPath);
       if (ratingKey) keys.push(ratingKey);
     }
-    for (const [relative, group] of managedByRelative) {
+    const entityRoot = path.join(this.weeklyFlowRoot, AURRAL_FLOWS_DIR, snapshot.entityId);
+    for (const [localPath, group] of managedByPath) {
+      if (!isPathInsideRoot(localPath, entityRoot)) continue;
       try {
-        await fs.access(path.join(entityRoot, relative));
+        await fs.access(localPath);
       } catch {
         continue;
       }
-      const own = group.find((candidate) =>
-        candidate.files?.some((file) =>
-          String(file).replace(/\\/g, "/").includes(`/${snapshot.entityId}/`),
-        ),
-      );
-      const ratingKey = (own || group[0])?.ratingKey;
+      const ratingKey = group[0]?.ratingKey;
       if (ratingKey) keys.push(ratingKey);
     }
     return [...new Set(keys.map(String))];

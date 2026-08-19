@@ -63,10 +63,10 @@ volumes:
 5. Enter the Navidrome URL, username, and password. Select **Test connection**, then save.
 6. Run a flow or update a playlist so Aurral can create or update the **Aurral Playlists** library and request a Navidrome scan.
 
-Aurral creates the **Aurral Playlists** library at:
+Aurral creates the **Aurral Playlists** library at the Downloads Folder root:
 
 ```text
-/data/downloads/aurral/aurral-weekly-flow
+/data/downloads/aurral
 ```
 
 You do not normally need to create this library manually in Navidrome. The library can be empty until a track finishes downloading. Wait for the scan after the first completed track.
@@ -93,7 +93,7 @@ Aurral also uploads its generated playlist artwork to API playlists and updates 
 
 If a new track is not indexed, Aurral publishes the indexed tracks and adds the missing track during the next scan catch-up. If no tracks are indexed yet, it keeps a temporary M3U fallback until Navidrome can resolve at least one track. Navidrome scans the **Aurral Playlists** library, not only your main Lidarr library. If the library appears but has no tracks:
 
-- confirm that a track exists under `aurral-weekly-flow`;
+- confirm that a permanent track exists under the Downloads Folder or a flow track exists under `.flows`;
 - confirm that the Navidrome library path points to that folder;
 - run a Navidrome scan or save the Aurral Navidrome settings;
 - wait for the scan to finish.

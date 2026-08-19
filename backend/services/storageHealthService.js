@@ -10,7 +10,7 @@ import { sabnzbdClient } from "./sabnzbdClient.js";
 import { NavidromeClient } from "./navidrome.js";
 import { PlexClient } from "./plex.js";
 import { runLidarrLibraryAccessTest } from "./lidarrLibraryAccessTest.js";
-import { PLAYLIST_LIBRARY_DIR, resolvePlaylistRoot } from "./playlistPaths.js";
+import { resolvePlaylistRoot } from "./playlistPaths.js";
 import {
   getPathMappings,
   looksLikeExternalOnlyPath,
@@ -736,10 +736,7 @@ async function checkNavidromeSection() {
     return buildSection("navidrome", "Navidrome playback", steps);
   }
 
-  const expectedLibraryPath = path
-    .join(resolvePlaylistRoot(), PLAYLIST_LIBRARY_DIR)
-    .replace(/\\/g, "/")
-    .replace(/\/+$/, "");
+  const expectedLibraryPath = resolvePlaylistRoot().replace(/\\/g, "/").replace(/\/+$/, "");
   const expectedLibraryCandidates = [expectedLibraryPath];
 
   let libraries = [];
@@ -866,10 +863,6 @@ async function checkNativePlaybackSection() {
   ]);
 }
 
-function appendPortablePath(basePath, child) {
-  return `${String(basePath || "").trim().replace(/\\/g, "/").replace(/\/+$/, "")}/${child}`;
-}
-
 function getPlexLibraryLocations(libraries) {
   return (Array.isArray(libraries) ? libraries : []).flatMap((library) => {
     const locations = Array.isArray(library?.Location)
@@ -925,18 +918,18 @@ async function checkPlexSection() {
   }
 
   const configuredBase = String(plex.downloadsPath || "").trim() || resolvePlaylistRoot();
-  const expectedPath = appendPortablePath(configuredBase, PLAYLIST_LIBRARY_DIR);
+  const expectedPath = configuredBase.replace(/\\/g, "/").replace(/\/+$/, "");
   const locations = getPlexLibraryLocations(libraries);
   const coveringLocation = locations.find((location) => pathCoversPrefix(location, expectedPath));
   if (coveringLocation) {
     steps.push(
-      healthStep("aurral-library", "pass", "Plex scans the Aurral playlist folder", {
+      healthStep("aurral-library", "pass", "Plex scans the Aurral download folder", {
         detail: `${expectedPath} (library: ${coveringLocation})`,
       }),
     );
   } else {
     steps.push(
-      healthStep("aurral-library", "warn", "Plex scans the Aurral playlist folder", {
+      healthStep("aurral-library", "warn", "Plex scans the Aurral download folder", {
         detail: expectedPath,
         fix: "Confirm Plex Aurral Library path is the path the Plex server uses for Aurral's downloads, save settings, then run Sync to Plex so Aurral can create or repair its library.",
       }),

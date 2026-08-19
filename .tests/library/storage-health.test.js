@@ -364,7 +364,7 @@ test("Navidrome health does not compare reused Lidarr and Navidrome paths", asyn
 });
 
 test("configured Plex is included and validates its Aurral library path", async (t) => {
-  const expectedPath = path.join(resolvePlaylistRoot(), "aurral-weekly-flow");
+  const expectedPath = resolvePlaylistRoot();
   const server = await createMockHttpServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
     if (request.url?.startsWith("/identity")) {
@@ -396,8 +396,8 @@ test("configured Plex is included and validates its Aurral library path", async 
 });
 
 test("POSIX library paths remain case-sensitive", async (t) => {
-  const expectedPath = path.join(resolvePlaylistRoot(), "aurral-weekly-flow");
-  const wrongCasePath = expectedPath.replace(/aurral-weekly-flow$/, "AURRAL-WEEKLY-FLOW");
+  const expectedPath = resolvePlaylistRoot();
+  const wrongCasePath = expectedPath.toUpperCase();
   const server = await createMockHttpServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
     if (request.url?.startsWith("/rest/ping")) {
