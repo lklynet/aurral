@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -26,6 +26,7 @@ const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidar
 );
 
 let aurral;
+let authToken;
 let fixtureRoot;
 let fixturePath;
 let sharedPlaylist;
@@ -57,8 +58,29 @@ async function request(method, params = {}, options = {}) {
   };
 }
 
+async function apiFetch(pathname, options = {}) {
+  return fetch(`http://127.0.0.1:${aurral.port}${pathname}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.headers || {}),
+    },
+  });
+}
+
 function responseJson(result) {
   return JSON.parse(result.body)["subsonic-response"];
+}
+
+async function waitFor(check, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = await check();
+    if (value) return value;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error("Timed out waiting for Subsonic mutation");
 }
 
 test.before(async () => {
@@ -137,6 +159,17 @@ test.before(async () => {
     durationMs: 1000,
   }, sharedPlaylist.id);
   downloadTracker.setDone(sharedJobId, fixturePath);
+  const favoriteFlow = flowPlaylistConfig.createFlow({ name: "Favorite Toggle Flow", size: 1 });
+  const favoritePath = path.join(fixtureRoot, "Favorite Artist", "Favorite Album", "Favorite Song.flac");
+  await mkdir(path.dirname(favoritePath), { recursive: true });
+  await writeFile(favoritePath, "favorite");
+  const favoriteJobId = downloadTracker.addJob({
+    artistName: "Favorite Artist",
+    albumName: "Favorite Album",
+    trackName: "Favorite Song",
+    durationMs: 1000,
+  }, favoriteFlow.id);
+  downloadTracker.setDone(favoriteJobId, favoritePath);
   await mkdir(playlistManager.libraryRoot, { recursive: true });
   await writeFile(
     path.join(playlistManager.libraryRoot, `${playlistManager.getPlaylistName(flow.id)}.webp`),
@@ -147,6 +180,13 @@ test.before(async () => {
     "shared-artwork",
   );
   aurral = await startServerProcess();
+  const login = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "alice", password: "password123" }),
+  });
+  authToken = (await login.json()).token;
+  assert.equal(login.status, 200);
 });
 
 test.after(async () => {
@@ -328,6 +368,81 @@ test("does not expose another user's static playlist", async () => {
     p: "bob-password",
   }));
   assert.deepEqual(result.error, { code: 70, message: "Requested data was not found" });
+});
+
+test("creates durable Subsonic playlists around one promoted library job", async () => {
+  const flow = responseJson(await request("getPlaylists")).playlists.playlist.find(
+    (entry) => entry.name === "Canonical Flow",
+  );
+  const flowPlaylist = responseJson(await request("getPlaylist", { id: flow.id })).playlist;
+  const flowSong = flowPlaylist.entry[0];
+
+  const firstCreate = responseJson(await request("createPlaylist", {
+    name: "Subsonic Keep One",
+    songId: flowSong.id,
+  }));
+  const first = firstCreate.playlist;
+  assert.equal(first.name, "Subsonic Keep One");
+  const jobIdFromSong = (songId) =>
+    decodeURIComponent(songId.slice("shared-song:".length)).split(":").at(-1);
+  const canonicalJobId = jobIdFromSong(first.entry[0].id);
+
+  const second = responseJson(await request("createPlaylist", {
+    name: "Subsonic Keep Two",
+    songId: flowSong.id,
+  })).playlist;
+  assert.equal(jobIdFromSong(second.entry[0].id), canonicalJobId);
+
+  await waitFor(() => db.prepare(
+    "SELECT status FROM playlist_download_jobs WHERE id = ?",
+  ).get(canonicalJobId)?.status === "done");
+  const firstReady = await waitFor(async () => {
+    const result = responseJson(await request("getPlaylist", { id: first.id }));
+    return result.playlist?.entry?.[0];
+  });
+  assert.equal(firstReady.id, responseJson(await request("getPlaylist", { id: first.id })).playlist.entry[0].id);
+  const stream = await request("stream", { id: firstReady.id });
+  assert.equal(stream.response.status, 200);
+  assert.equal(stream.body, "0123456789");
+
+  const libraryJobs = db.prepare(
+    "SELECT id, final_path AS finalPath FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ?",
+  ).all("library", "Flow Song");
+  assert.equal(libraryJobs.length, 1);
+
+  const removed = responseJson(await request("updatePlaylist", {
+    playlistId: first.id,
+    songIndexToRemove: "0",
+  }));
+  assert.equal(removed.status, "ok");
+  const secondEntry = responseJson(await request("getPlaylist", { id: second.id })).playlist.entry[0];
+  assert.equal((await request("stream", { id: secondEntry.id })).response.status, 200);
+  await stat(libraryJobs[0].finalPath);
+
+  assert.equal(responseJson(await request("deletePlaylist", { id: second.id })).status, "ok");
+  await stat(libraryJobs[0].finalPath);
+});
+
+test("favorites can keep Flow tracks and respect the auto-keep setting", async () => {
+  const flow = responseJson(await request("getPlaylists")).playlists.playlist.find(
+    (entry) => entry.name === "Favorite Toggle Flow",
+  );
+  const entry = responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry[0];
+
+  const saveSettings = (subsonic) => apiFetch("/api/settings", {
+    method: "POST",
+    body: JSON.stringify({ subsonic }),
+  });
+  assert.equal((await saveSettings({ favoriteAutoKeep: false })).status, 200);
+  assert.equal(responseJson(await request("star", { id: entry.id })).status, "ok");
+  assert.equal(
+    Boolean(db.prepare(
+      "SELECT 1 FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ? LIMIT 1",
+    ).get("library", "Favorite Song")),
+    false,
+  );
+  assert.equal(responseJson(await request("getStarred")).starred.song[0].id, entry.id);
+  assert.equal((await saveSettings({ favoriteAutoKeep: true })).status, 200);
 });
 
 test("streams canonical files with full and range responses", async () => {

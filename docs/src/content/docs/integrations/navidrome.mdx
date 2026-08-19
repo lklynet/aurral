@@ -9,7 +9,11 @@ Navidrome must be able to read and scan the Aurral download tree for that destin
 
 This is a filesystem connection as well as an API connection. A successful **Test connection** only proves that Aurral can reach the Navidrome API.
 
-Aurral also exposes an authenticated Subsonic server at `/rest/*.view`. It supports XML and JSON browsing, canonical artist/album/song search, artwork, direct streaming with byte ranges, and user-scoped favorites through `getStarred`, `star`, and `unstar`. Completed flow entries and accessible shared-playlist entries are exposed as read-only playlist items through `getPlaylists` and `getPlaylist`; the endpoint does not create or update playlists, transcode audio, or write to the canonical library. Navidrome remains optional for clients that connect directly to Aurral.
+Aurral also exposes an authenticated Subsonic server at `/rest/*.view`. It supports XML and JSON browsing, canonical artist, album, and song search, artwork, direct streaming with byte ranges, user-scoped favorites, and playlist changes through `createPlaylist`, `updatePlaylist`, and `deletePlaylist`. Flow entries and accessible shared-playlist entries are available through `getPlaylists` and `getPlaylist`. Navidrome remains optional for clients that connect directly to Aurral.
+
+When a Subsonic client adds a Flow or shared-playlist entry to a playlist, Aurral stores a reference to one canonical library acquisition job. The acquisition runs in the background. Multiple playlists that add the same track share that job. Removing a playlist entry removes only that playlist reference. It does not delete the canonical media file.
+
+Favoriting a Flow or shared-playlist entry uses the same canonical acquisition by default. To keep the favorite without acquiring the track, turn off **Favorite Flow tracks** in **Settings > System > Subsonic**. This setting does not change favorites for tracks that already exist in the canonical library.
 
 ## Connect a Subsonic client
 

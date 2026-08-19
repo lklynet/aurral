@@ -21,6 +21,7 @@ import {
   commitImportToPlaylistLibrary,
   joinUnderRoot,
   sanitizePathPart,
+  writeAudioMetadata,
 } from "./playlistDownloadUtils.js";
 import {
   getPayloadCandidate,
@@ -416,6 +417,7 @@ async function handleUsenetFinalize(payload, helpers) {
   const finalDir = joinUnderRoot(playlistRoot, destination);
   const finalName = `${sanitizePathPart(job.trackName, "Unknown Track")}${ext || ".mp3"}`;
   const finalPath = path.join(finalDir, finalName);
+  await writeAudioMetadata(found.filePath, resolvedTrack);
   const committedFinalPath = await commitImportToPlaylistLibrary(
     found.filePath,
     finalPath,

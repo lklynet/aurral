@@ -5,6 +5,7 @@ import fs from "fs/promises";
 import { parseFile } from "music-metadata";
 
 const execFileAsync = promisify(execFile);
+const AURRAL_IDENTITY_PREFIX = "AURRAL_IDS=";
 
 export function sanitizePathPart(value, fallback = "Unknown") {
   const text = String(value || "")
@@ -37,6 +38,30 @@ export function parseStringListJson(value) {
 export function stringifyStringListJson(value) {
   const normalized = normalizeStringList(value);
   return normalized.length > 0 ? JSON.stringify(normalized) : null;
+}
+
+export function buildAurralIdentityComment(metadata = {}) {
+  const identity = Object.fromEntries(
+    ["artistMbid", "albumMbid", "trackMbid"]
+      .map((key) => [key, String(metadata?.[key] || "").trim()])
+      .filter(([, value]) => value),
+  );
+  return Object.keys(identity).length > 0
+    ? `${AURRAL_IDENTITY_PREFIX}${JSON.stringify(identity)}`
+    : null;
+}
+
+export function parseAurralIdentityComment(value) {
+  const comments = Array.isArray(value) ? value : [value];
+  for (const entry of comments) {
+    const text = String(typeof entry === "object" ? entry?.text || "" : entry || "").trim();
+    if (!text.startsWith(AURRAL_IDENTITY_PREFIX)) continue;
+    try {
+      const parsed = JSON.parse(text.slice(AURRAL_IDENTITY_PREFIX.length));
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  return null;
 }
 
 export function buildResolvedPlaylistTrack(job, payloadTrack = {}) {
@@ -140,6 +165,13 @@ export async function writeAudioMetadata(filePath, metadata = {}) {
     ["artist", metadata.artistName],
     ["album_artist", metadata.artistName],
     ["album", metadata.albumName],
+    ["musicbrainz_artistid", metadata.artistMbid],
+    ["musicbrainz_albumartistid", metadata.artistMbid],
+    ["musicbrainz_albumid", metadata.albumMbid],
+    ["musicbrainz_releasegroupid", metadata.albumMbid],
+    ["musicbrainz_recordingid", metadata.trackMbid],
+    ["musicbrainz_trackid", metadata.trackMbid],
+    ["comment", buildAurralIdentityComment(metadata)],
     ["date", metadata.releaseYear],
     ["track", normalizePositiveInteger(metadata.trackNumber)],
   ].filter(([, value]) => value != null && String(value).trim());
@@ -194,8 +226,32 @@ export async function repairYtdlpMetadata(jobs = []) {
         [common.albumartist, job.artistName],
         [common.album, job.albumName],
       ].filter(([, value]) => String(value || "").trim());
+      const embeddedIdentity = parseAurralIdentityComment(common.comment) || {};
+      const expectedIdentity = [
+        [
+          common.musicbrainz_albumartistid ||
+            common.musicbrainz_artistid ||
+            embeddedIdentity.artistMbid,
+          job.artistMbid,
+        ],
+        [
+          common.musicbrainz_releasegroupid ||
+            common.musicbrainz_albumid ||
+            embeddedIdentity.albumMbid,
+          job.albumMbid,
+        ],
+        [
+          common.musicbrainz_recordingid ||
+            common.musicbrainz_trackid ||
+            embeddedIdentity.trackMbid,
+          job.trackMbid,
+        ],
+      ].filter(([, value]) => String(value || "").trim());
       if (
         expected.every(
+          ([actual, value]) => String(actual || "").trim() === String(value).trim(),
+        ) &&
+        expectedIdentity.every(
           ([actual, value]) => String(actual || "").trim() === String(value).trim(),
         )
       ) {

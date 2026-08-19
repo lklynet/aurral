@@ -131,6 +131,7 @@ export const dbOps = {
     const sharedPlaylists = readStoredSettingJson("sharedPlaylists", [
       "sharedFlowPlaylists",
     ]);
+    const subsonic = readStoredSettingJson("subsonic") || {};
     const playlistWorker = normalizePlaylistWorkerSettings(
       readStoredSettingJson("playlistWorker", ["weeklyFlowWorker"]),
     );
@@ -174,6 +175,9 @@ export const dbOps = {
       releaseTypes: releaseTypes || [],
       flows: flows || null,
       sharedPlaylists: sharedPlaylists || null,
+      subsonic: {
+        favoriteAutoKeep: subsonic.favoriteAutoKeep !== false,
+      },
       playlistWorker,
       playlistArtwork,
       inbox: {
@@ -318,6 +322,14 @@ export const dbOps = {
         upsertSettingStmt.run(
           "sharedPlaylists",
           dbHelpers.stringifyJSON(settings.sharedPlaylists),
+        );
+      }
+      if (settings.subsonic !== undefined) {
+        upsertSettingStmt.run(
+          "subsonic",
+          dbHelpers.stringifyJSON({
+            favoriteAutoKeep: settings.subsonic.favoriteAutoKeep !== false,
+          }),
         );
       }
       if (settings.playlistWorker !== undefined) {

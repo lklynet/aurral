@@ -1,7 +1,7 @@
 import express from "express";
 
 import { APP_NAME, APP_VERSION } from "../config/constants.js";
-import { resolveSubsonicTokenUser, resolveUser } from "../middleware/auth.js";
+import { hasPermission, resolveSubsonicTokenUser, resolveUser } from "../middleware/auth.js";
 import { streamAudioFile } from "../services/audioFileStream.js";
 import {
   getAlbum,
@@ -17,11 +17,14 @@ import {
   getStarred,
   getTopSongs,
   listArtists,
+  createSubsonicPlaylist,
+  deleteSubsonicPlaylist,
   resolvePlaylistArtwork,
   resolveArtworkUrl,
   resolveStreamPath,
   searchLibrary,
   starMany,
+  updateSubsonicPlaylist,
   unstarMany,
 } from "../services/subsonicLibraryService.js";
 import { recordPlayEvent } from "../services/playEventService.js";
@@ -210,7 +213,7 @@ async function handleSubsonicRequest(req, res) {
         downloadRole: true,
         folder: [1],
         jukeboxRole: false,
-        playlistRole: Boolean(req.user.permissions?.accessFlow),
+        playlistRole: hasPermission(req.user, "accessFlow"),
         podcastRole: false,
         scrobblingEnabled: true,
         settingsRole: isAdmin,
@@ -329,6 +332,37 @@ async function handleSubsonicRequest(req, res) {
   if (method === "getplaylists") {
     return sendResponse(res, format, "ok", null, { playlists: { playlist: getFlowPlaylists(user) } });
   }
+  if (method === "createplaylist") {
+    const playlistId = getParameter(req, "playlistId");
+    const name = getParameter(req, "name");
+    if (!playlistId && !name) {
+      return sendError(res, format, 10, "Required parameter is missing: name");
+    }
+    try {
+      const playlist = playlistId
+        ? updateSubsonicPlaylist(user, {
+            playlistId,
+            name: name || undefined,
+            comment: Object.hasOwn(req.query || {}, "comment")
+              ? getParameter(req, "comment")
+              : undefined,
+            songIdsToAdd: getParameters(req, ["songId"]),
+          })
+        : createSubsonicPlaylist(user, {
+            name,
+            songIds: getParameters(req, ["songId"]),
+          });
+      if (!playlist) return sendError(res, format, 70, "Requested data was not found");
+      return sendResponse(res, format, "ok", null, {
+        playlist: getFlowPlaylist(`shared:${encodeURIComponent(playlist.id)}`, user),
+      });
+    } catch (error) {
+      if (error?.code === "SHARED_PLAYLIST_NAME_CONFLICT") {
+        return sendError(res, format, 50, error.message);
+      }
+      return sendError(res, format, 0, "Failed to update playlist");
+    }
+  }
   if (method === "getstarred" || method === "getstarred2") {
     return sendResponse(res, format, "ok", null, {
       [method === "getstarred" ? "starred" : "starred2"]: getStarred(user),
@@ -356,6 +390,39 @@ async function handleSubsonicRequest(req, res) {
     const playlist = getFlowPlaylist(getParameter(req, "id"), user);
     return playlist
       ? sendResponse(res, format, "ok", null, { playlist })
+      : sendError(res, format, 70, "Requested data was not found");
+  }
+  if (method === "updateplaylist") {
+    const playlistId = getParameter(req, "playlistId");
+    if (!playlistId) return sendError(res, format, 10, "Required parameter is missing: playlistId");
+    const songIndexesToRemove = getParameters(req, ["songIndexToRemove"])
+      .map((value) => Number.parseInt(value, 10))
+      .filter((value) => Number.isInteger(value) && value >= 0);
+    try {
+      const playlist = updateSubsonicPlaylist(user, {
+        playlistId,
+        name: Object.hasOwn(req.query || {}, "name") ? getParameter(req, "name") : undefined,
+        comment: Object.hasOwn(req.query || {}, "comment")
+          ? getParameter(req, "comment")
+          : undefined,
+        songIdsToAdd: getParameters(req, ["songIdToAdd"]),
+        songIndexesToRemove,
+      });
+      return playlist
+        ? sendResponse(res, format)
+        : sendError(res, format, 70, "Requested data was not found");
+    } catch (error) {
+      if (error?.code === "SHARED_PLAYLIST_NAME_CONFLICT") {
+        return sendError(res, format, 50, error.message);
+      }
+      return sendError(res, format, 0, "Failed to update playlist");
+    }
+  }
+  if (method === "deleteplaylist") {
+    const playlistId = getParameter(req, "id");
+    if (!playlistId) return sendError(res, format, 10, "Required parameter is missing: id");
+    return deleteSubsonicPlaylist(user, playlistId)
+      ? sendResponse(res, format)
       : sendError(res, format, 70, "Requested data was not found");
   }
   if (method === "stream" || method === "download") {

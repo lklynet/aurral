@@ -23,6 +23,9 @@ export const normalizeDateTimeFormat = (value) =>
 export const defaultData = {
   settings: {
     dateTimeFormat: "browser",
+    subsonic: {
+      favoriteAutoKeep: true,
+    },
     integrations: {
       navidrome: {
         url: "",

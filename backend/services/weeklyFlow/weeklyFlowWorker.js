@@ -803,6 +803,13 @@ export class WeeklyFlowWorker {
           };
           return;
         }
+        if (reuse.deferred) {
+          downloadTracker.deferPendingToBack(job.id, reuse.reason, {
+            keepRetryTier: true,
+          });
+          this._scheduleProcessIn(JOB_COOLDOWN_MS);
+          return;
+        }
       }
       if (!isAnyDownloadSourceConfigured()) {
         throw new Error(getDownloadSourceNotConfiguredMessage());

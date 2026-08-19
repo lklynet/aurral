@@ -43,6 +43,9 @@ test("yt-dlp output receives Aurral's canonical Navidrome tags", async () => {
     trackName: "Bonzo Goes to Bitburg",
     artistName: "Ramones",
     albumName: "Animal Boy",
+    artistMbid: "11111111-1111-4111-8111-111111111111",
+    albumMbid: "22222222-2222-4222-8222-222222222222",
+    trackMbid: "33333333-3333-4333-8333-333333333333",
     releaseYear: "1986",
     trackNumber: 5,
   });
@@ -54,6 +57,14 @@ test("yt-dlp output receives Aurral's canonical Navidrome tags", async () => {
   assert.equal(common.album, "Animal Boy");
   assert.equal(common.year, 1986);
   assert.equal(common.track.no, 5);
+  assert.equal(
+    common.comment?.some((entry) =>
+      String(entry?.text || entry).includes(
+        'AURRAL_IDS={"artistMbid":"11111111-1111-4111-8111-111111111111","albumMbid":"22222222-2222-4222-8222-222222222222","trackMbid":"33333333-3333-4333-8333-333333333333"}',
+      ),
+    ),
+    true,
+  );
 });
 
 test("startup repair tags existing completed yt-dlp M4As", async () => {
@@ -66,6 +77,9 @@ test("startup repair tags existing completed yt-dlp M4As", async () => {
       trackName: "Dead And Lovely",
       artistName: "Tom Waits",
       albumName: "Real Gone (Original Version)",
+      artistMbid: "44444444-4444-4444-8444-444444444444",
+      albumMbid: "55555555-5555-4555-8555-555555555555",
+      trackMbid: "66666666-6666-4666-8666-666666666666",
       releaseYear: "2004",
       trackNumber: 2,
     },

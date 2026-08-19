@@ -12,6 +12,7 @@ import {
   upsertLibraryTrack,
   withLibraryScan,
 } from "./libraryMediaStore.js";
+import { parseAurralIdentityComment } from "./playlistDownloadUtils.js";
 
 const AUDIO_EXTENSIONS = new Set([
   ".aac",
@@ -52,6 +53,32 @@ const numberPart = (value, fallback = 0) => {
 const normalizeMbid = (value) => text(first(value)) || null;
 
 const normalizeMetadata = (metadata) => metadata?.common || {};
+
+const applyMetadataEnrichment = (metadata, enrichment = null) => {
+  const common = { ...normalizeMetadata(metadata) };
+  const embedded = parseAurralIdentityComment(common.comment);
+  if ((!enrichment || typeof enrichment !== "object") && !embedded) return metadata;
+  const trusted = { ...(embedded || {}), ...(enrichment || {}) };
+  const fallbackFields = {
+    albumartist: trusted.artistName,
+    artist: trusted.artistName,
+    album: trusted.albumName,
+    title: trusted.trackName,
+    date: trusted.releaseYear,
+    track: trusted.trackNumber,
+    musicbrainz_artistid: trusted.artistMbid,
+    musicbrainz_albumartistid: trusted.artistMbid,
+    musicbrainz_albumid: trusted.albumMbid,
+    musicbrainz_releasegroupid: trusted.albumMbid,
+    musicbrainz_recordingid: trusted.trackMbid,
+    musicbrainz_trackid: trusted.trackMbid,
+  };
+  for (const [key, value] of Object.entries(fallbackFields)) {
+    if (value == null || String(value).trim() === "") continue;
+    if (common[key] == null || String(common[key]).trim() === "") common[key] = value;
+  }
+  return { ...(metadata || {}), common };
+};
 
 function readPathFallback(filePath, rootPath) {
   const relative = path.relative(rootPath, filePath);
@@ -146,6 +173,7 @@ export async function scanMusicRoot({
   source = "aurral",
   filePaths = null,
   metadataReader = parseFile,
+  metadataEnricher = null,
 } = {}) {
   const resolvedRoot = path.resolve(String(rootPath || ""));
   await fs.mkdir(resolvedRoot, { recursive: true });
@@ -173,7 +201,13 @@ export async function scanMusicRoot({
             metadataReader(filePath, { skipCovers: true }),
             fs.stat(filePath),
           ]);
-          const record = buildMetadataRecord(metadata, filePath, resolvedRoot);
+          const enrichedMetadata = applyMetadataEnrichment(
+            metadata,
+            typeof metadataEnricher === "function"
+              ? await metadataEnricher(metadata, filePath)
+              : null,
+          );
+          const record = buildMetadataRecord(enrichedMetadata, filePath, resolvedRoot);
           const artist = upsertLibraryArtist({
             identityKey: record.artistKey,
             mbid: record.artistMbid,

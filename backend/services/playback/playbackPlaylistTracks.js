@@ -20,12 +20,21 @@ async function isFile(filePath) {
 
 export async function collectPlaybackPlaylistTracks(entityId, options = {}) {
   const weeklyFlowRoot = path.resolve(options.weeklyFlowRoot || resolvePlaylistRoot());
-  const jobs = downloadTracker
-    .getByPlaylistType(entityId)
+  const playlist = flowPlaylistConfig.getSharedPlaylist(entityId);
+  const referencedJobs = (playlist?.tracks || [])
+    .map((track) => (track?.canonicalJobId ? downloadTracker.getJob(track.canonicalJobId) : null))
+    .filter(Boolean);
+  const jobs = [
+    ...referencedJobs,
+    ...downloadTracker.getByPlaylistType(entityId),
+  ]
+    .filter((job, index, values) =>
+      values.findIndex((candidate) => candidate.id === job.id) === index,
+    )
     .filter((job) => job?.status === "done" && typeof job?.finalPath === "string");
   const orderedJobs = orderJobsBySharedPlaylistTracks(
     jobs,
-    flowPlaylistConfig.getSharedPlaylist(entityId)?.tracks,
+    playlist?.tracks,
   );
   const tracks = [];
   for (const job of orderedJobs) {

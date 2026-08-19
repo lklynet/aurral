@@ -37,6 +37,9 @@ export const normalizeSettings = (savedSettings) => {
   return {
     ...savedSettings,
     dateTimeFormat: normalizeDateTimeFormat(savedSettings.dateTimeFormat),
+    subsonic: {
+      favoriteAutoKeep: savedSettings.subsonic?.favoriteAutoKeep !== false,
+    },
     downloadFolderPath: String(savedSettings.downloadFolderPath || "").trim(),
     pathMappings: Array.isArray(savedSettings.pathMappings) ? savedSettings.pathMappings : [],
     playlistArtwork: {

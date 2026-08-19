@@ -116,6 +116,11 @@ function isFlowPlaylistType(playlistType) {
   return Boolean(flowPlaylistConfig.getFlow(String(playlistType || "").trim()));
 }
 
+function isCanonicalPlaylistType(playlistType) {
+  const key = String(playlistType || "").trim();
+  return key === "library" || Boolean(flowPlaylistConfig.getSharedPlaylist(key));
+}
+
 function tracksShareLibraryMembership(left, right) {
   const leftTrackMbid = String(left?.trackMbid || "").trim();
   const rightTrackMbid = String(right?.trackMbid || "").trim();
@@ -192,7 +197,7 @@ export async function adoptFileIntoPlaylist(sourcePath, targetPlaylistType, week
   if (!safeTarget || !(await fileExists(resolvedSource))) return null;
 
   const knownFlow = isFlowPlaylistType(safeTarget);
-  const knownPlaylist = Boolean(flowPlaylistConfig.getSharedPlaylist(safeTarget));
+  const knownPlaylist = isCanonicalPlaylistType(safeTarget);
   const canonical = knownFlow || knownPlaylist;
   const ephemeral = knownFlow;
   const targetRoot = ephemeral
@@ -768,15 +773,42 @@ export async function reuseTrackForPlaylist(track, playlistType, options = {}) {
     return { reused: false, reason: "Existing file reuse is disabled" };
   }
   const weeklyFlowRoot = path.resolve(options.weeklyFlowRoot || resolveWeeklyFlowRoot());
+  const targetPlaylistType = String(options.targetPlaylistType || playlistType || "").trim();
+  if (targetPlaylistType === "library") {
+    const excluded = new Set(
+      (Array.isArray(options.excludeJobIds) ? options.excludeJobIds : [])
+        .map((id) => String(id || "").trim())
+        .filter(Boolean),
+    );
+    const activeSource = downloadTracker.getAll().find(
+      (job) =>
+        job &&
+        (job.status === "pending" || job.status === "downloading") &&
+        !excluded.has(String(job.id || "")) &&
+        job.playlistType !== "library" &&
+        tracksShareLibraryMembership(track, job),
+    );
+    if (activeSource) {
+      return {
+        reused: false,
+        deferred: true,
+        sourceJobId: activeSource.id,
+        reason: "Waiting for an existing acquisition",
+      };
+    }
+  }
   const { source, reason } = await resolveReusableTrackSource(track, {
     ...options,
     existingFileMode: mode,
     weeklyFlowRoot,
-    targetPlaylistType: playlistType,
+    targetPlaylistType,
   });
   if (!source) return { reused: false, reason };
 
-  const finalPath = path.resolve(source.sourcePath);
+  const finalPath =
+    targetPlaylistType === "library" && source.sourceType === "aurral"
+      ? await adoptFileIntoPlaylist(source.sourcePath, "library", weeklyFlowRoot, { track })
+      : path.resolve(source.sourcePath);
   if (!(await fileExists(finalPath))) {
     return { reused: false, reason: "Source file is missing" };
   }

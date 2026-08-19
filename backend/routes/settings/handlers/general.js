@@ -92,6 +92,7 @@ export function registerGeneral(router) {
       const {
         quality,
         qualityProfile,
+        subsonic,
         releaseTypes,
         integrations,
         rootFolderPath,
@@ -338,6 +339,14 @@ export function registerGeneral(router) {
                 integrations?.slskd,
               )
             : currentSettings.qualityProfile,
+        subsonic:
+          subsonic !== undefined
+            ? {
+                ...(currentSettings.subsonic || defaultData.settings.subsonic),
+                ...subsonic,
+                favoriteAutoKeep: subsonic.favoriteAutoKeep !== false,
+              }
+            : currentSettings.subsonic || defaultData.settings.subsonic,
         rootFolderPath:
           rootFolderPath !== undefined
             ? rootFolderPath

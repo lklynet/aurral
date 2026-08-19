@@ -25,6 +25,9 @@ import {
 
 const defaultSettings = {
   dateTimeFormat: "browser",
+  subsonic: {
+    favoriteAutoKeep: true,
+  },
   rootFolderPath: "",
   downloadFolderPath: "",
   pathMappings: [],

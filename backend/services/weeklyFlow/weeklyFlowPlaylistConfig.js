@@ -295,6 +295,7 @@ export const normalizeSharedTrack = (track) => {
     ? track.artistAliases.map((entry) => String(entry || "").trim()).filter(Boolean)
     : [];
   const reason = String(track.reason ?? "").trim();
+  const canonicalJobId = String(track.canonicalJobId ?? track.libraryJobId ?? "").trim();
   return {
     artistName,
     trackName,
@@ -306,6 +307,7 @@ export const normalizeSharedTrack = (track) => {
     durationMs,
     artistAliases,
     reason: reason || null,
+    ...(canonicalJobId ? { canonicalJobId } : {}),
   };
 };
 

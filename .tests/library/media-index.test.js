@@ -143,6 +143,87 @@ test("scanMusicRoot derives stable fallback records when tags are missing", asyn
   }
 });
 
+test("scanMusicRoot applies trusted job metadata when file tags omit identities", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-job-metadata-"));
+  const source = `test-job-metadata-${process.pid}`;
+  let filePath;
+  try {
+    filePath = await createAudioFile(root, "Aurral Artist/Aurral Album/01 Track.flac");
+    await scanMusicRoot({
+      rootPath: root,
+      source,
+      metadataReader: async () => ({ common: {}, format: {} }),
+      metadataEnricher: () => ({
+        artistMbid: "11111111-1111-4111-8111-111111111111",
+        albumMbid: "22222222-2222-4222-8222-222222222222",
+        trackMbid: "33333333-3333-4333-8333-333333333333",
+        artistName: "Aurral Artist",
+        albumName: "Aurral Album",
+        trackName: "Track",
+      }),
+    });
+    const indexed = db.prepare(
+      `SELECT artist.mbid AS artistMbid, album.release_group_mbid AS releaseGroupMbid,
+        track.mbid AS trackMbid
+       FROM library_media_files AS media
+       JOIN library_tracks AS track ON track.id = media.track_id
+       JOIN library_album_tracks AS album_track ON album_track.track_id = track.id
+       JOIN library_albums AS album ON album.id = album_track.album_id
+       JOIN library_artists AS artist ON artist.id = album.artist_id
+       WHERE media.source = ? AND media.path = ?`,
+    ).get(source, filePath);
+
+    assert.deepEqual(indexed, {
+      artistMbid: "11111111-1111-4111-8111-111111111111",
+      releaseGroupMbid: "22222222-2222-4222-8222-222222222222",
+      trackMbid: "33333333-3333-4333-8333-333333333333",
+    });
+  } finally {
+    if (filePath) deleteIndexedFile(source, filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("scanMusicRoot reads Aurral identity markers from portable comments", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-comment-metadata-"));
+  const source = `test-comment-metadata-${process.pid}`;
+  let filePath;
+  try {
+    filePath = await createAudioFile(root, "Aurral Artist/Aurral Album/01 Track.flac");
+    await scanMusicRoot({
+      rootPath: root,
+      source,
+      metadataReader: async () => ({
+        common: {
+          comment: [{
+            text: 'AURRAL_IDS={"artistMbid":"11111111-1111-4111-1111-111111111111","albumMbid":"22222222-2222-2222-2222-222222222222","trackMbid":"33333333-3333-3333-3333-333333333333"}',
+          }],
+        },
+        format: {},
+      }),
+    });
+    const indexed = db.prepare(
+      `SELECT artist.mbid AS artistMbid, album.release_group_mbid AS releaseGroupMbid,
+        track.mbid AS trackMbid
+       FROM library_media_files AS media
+       JOIN library_tracks AS track ON track.id = media.track_id
+       JOIN library_album_tracks AS album_track ON album_track.track_id = track.id
+       JOIN library_albums AS album ON album.id = album_track.album_id
+       JOIN library_artists AS artist ON artist.id = album.artist_id
+       WHERE media.source = ? AND media.path = ?`,
+    ).get(source, filePath);
+
+    assert.deepEqual(indexed, {
+      artistMbid: "11111111-1111-4111-1111-111111111111",
+      releaseGroupMbid: "22222222-2222-2222-2222-222222222222",
+      trackMbid: "33333333-3333-3333-3333-333333333333",
+    });
+  } finally {
+    if (filePath) deleteIndexedFile(source, filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a successful rescan marks removed files unavailable without removing media records", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-reconcile-"));
   const source = `test-reconcile-${process.pid}`;

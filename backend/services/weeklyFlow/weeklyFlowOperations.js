@@ -96,11 +96,21 @@ const sharedPlaylistTracksMatchJobs = (playlist, jobs) => {
   return unmatchedJobs.size === 0;
 };
 
+const getSharedPlaylistJobs = (playlist) => {
+  const referencedJobs = (playlist?.tracks || [])
+    .map((track) => (track?.canonicalJobId ? downloadTracker.getJob(track.canonicalJobId) : null))
+    .filter(Boolean);
+  const jobs = [...referencedJobs, ...downloadTracker.getByPlaylistType(playlist?.id)];
+  return jobs.filter(
+    (job, index, values) => values.findIndex((candidate) => candidate.id === job.id) === index,
+  );
+};
+
 const syncSharedPlaylistConfigFromJobs = async (playlistId) => {
   const safePlaylistId = String(playlistId || "").trim();
   const playlist = flowPlaylistConfig.getSharedPlaylist(safePlaylistId);
   if (!playlist) return null;
-  const jobs = downloadTracker.getByPlaylistType(safePlaylistId);
+  const jobs = getSharedPlaylistJobs(playlist);
   if (sharedPlaylistTracksMatchJobs(playlist, jobs)) {
     return playlist;
   }
@@ -118,6 +128,13 @@ const queueTracksForPlaylist = async (tracks, playlistId) => {
   const jobIds = [];
   const createdJobIds = [];
   for (const track of normalizeTrackList(tracks)) {
+    const canonicalJob = track.canonicalJobId
+      ? downloadTracker.getJob(track.canonicalJobId)
+      : null;
+    if (canonicalJob && tracksShareMembership(canonicalJob, track)) {
+      reusedJobIds.push(canonicalJob.id);
+      continue;
+    }
     const jobId = downloadTracker.addJob(track, playlistId);
     if (!jobId) continue;
     createdJobIds.push(jobId);
@@ -148,7 +165,11 @@ const filterTracksMissingDownloadJobs = (tracks, playlistId) => {
   const missing = [];
   const queued = [];
   for (const track of normalizeTrackList(tracks)) {
+    const canonicalJob = track.canonicalJobId
+      ? downloadTracker.getJob(track.canonicalJobId)
+      : null;
     const duplicate =
+      Boolean(canonicalJob && tracksShareMembership(canonicalJob, track)) ||
       existingJobs.some((job) => tracksShareMembership(job, track)) ||
       queued.some((entry) => tracksShareMembership(entry, track));
     if (duplicate) continue;

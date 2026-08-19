@@ -30,6 +30,7 @@ import {
   commitImportToPlaylistLibrary,
   joinUnderRoot,
   sanitizePathPart,
+  writeAudioMetadata,
 } from "./playlistDownloadUtils.js";
 import {
   getPayloadCandidate,
@@ -1023,13 +1024,14 @@ async function handleFinalize(payload) {
   const finalDir = joinUnderRoot(playlistRoot, destination);
   const finalName = `${sanitizePathPart(job.trackName, "Unknown Track")}${ext || ".mp3"}`;
   const finalPath = path.join(finalDir, finalName);
+  const resolvedTrack = {
+    ...buildResolvedTrack(job, payload.track),
+    upgradeForJobId: payload.upgradeForJobId || null,
+  };
   const validation = await validateDownloadedTrack(
     sourcePath,
     candidate,
-    {
-      ...buildResolvedTrack(job, payload.track),
-      upgradeForJobId: payload.upgradeForJobId || null,
-    },
+    resolvedTrack,
   );
   if (!validation.valid) {
     logger.warn("slskd", "slskd download validation failed", {
@@ -1080,6 +1082,7 @@ async function handleFinalize(payload) {
       : null;    if (nextPayload) return nextPayload;
     return failOrTryNextSource(payload, job, validation.reason || "Download validation failed");
   }
+  await writeAudioMetadata(sourcePath, resolvedTrack);
   import("./aurralHistoryService.js")
     .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
     .catch((err) => { logger.warn("slskd", "Failed to record track job moving", { jobId: job.id, error: err?.message || String(err) }); });

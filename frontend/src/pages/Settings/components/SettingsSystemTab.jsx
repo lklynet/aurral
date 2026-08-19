@@ -3,6 +3,7 @@ import { AlertCircle, Check, Copy, RotateCcw } from "lucide-react";
 import { getApiKey, rotateApiKey } from "../../../utils/api/endpoints/auth";
 import { SettingsSystemSection } from "./SettingsStorageSection";
 import { SettingsSelect } from "./SettingsField";
+import PillToggle from "../../../components/PillToggle";
 import { setDateTimeFormat } from "../../../utils/dateTime.js";
 
 export function SettingsSystemTab({ health, settings, updateSettings, showSuccess, showError }) {
@@ -85,6 +86,40 @@ export function SettingsSystemTab({ health, settings, updateSettings, showSucces
               <option value="day-first">14:30 09/08/2026</option>
               <option value="year-first">2026/08/09 14:30</option>
             </SettingsSelect>
+          </div>
+        </div>
+      </section>
+
+      <section className="settings-system__section">
+        <div className="settings-system__section-header">
+          <h2 className="settings-system__section-title">Subsonic</h2>
+        </div>
+        <div className="settings-system__rows">
+          <div className="settings-system__row">
+            <div className="settings-system__copy">
+              <label className="settings-system__label" htmlFor="subsonic-favorite-auto-keep">
+                Favorite Flow tracks
+              </label>
+              <p className="settings-system__description">
+                Keep a Flow track in the permanent Library when a Subsonic client favorites it.
+              </p>
+            </div>
+            <div className="settings-system__value">
+              <PillToggle
+                id="subsonic-favorite-auto-keep"
+                checked={settings.subsonic?.favoriteAutoKeep !== false}
+                onChange={(event) =>
+                  updateSettings({
+                    ...settings,
+                    subsonic: {
+                      ...(settings.subsonic || {}),
+                      favoriteAutoKeep: event.target.checked,
+                    },
+                  })
+                }
+                aria-label="Keep Flow tracks when favorited through Subsonic"
+              />
+            </div>
           </div>
         </div>
       </section>
