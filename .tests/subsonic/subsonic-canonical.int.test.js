@@ -11,7 +11,7 @@ import {
   startServerProcess,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidarrLibrary }, { flowPlaylistConfig }, { downloadTracker }, { resolveArtworkUrl }, { warmImageProxy }, { playlistManager }] =
+const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidarrLibrary }, { flowPlaylistConfig }, { downloadTracker }, { resolveArtworkUrl, createSubsonicPlaylist }, { warmImageProxy }, { playlistManager }] =
   await setupIsolatedBackend(
     "subsonic-canonical",
     "backend/config/db-sqlite.js",
@@ -353,6 +353,19 @@ test("exposes owned static playlists and keeps their entries playable", async ()
   assert.equal(artwork.response.status, 200);
   assert.equal(artwork.body, "shared-artwork");
 
+  const pendingJobId = downloadTracker.addJob({
+    artistName: "Pending Artist",
+    albumName: "Pending Album",
+    trackName: "Pending Song",
+    durationMs: 1000,
+  }, sharedPlaylist.id);
+  try {
+    const refreshed = responseJson(await request("getPlaylist", { id: shared.id })).playlist;
+    assert.equal(refreshed.entry.some((entry) => entry.title === "Pending Song"), false);
+  } finally {
+    downloadTracker.removeJob(pendingJobId);
+  }
+
   const song = responseJson(await request("getSong", { id: playlist.entry[0].id })).song;
   assert.equal(song.title, "Flow Song");
   const stream = await request("stream", { id: song.id });
@@ -381,16 +394,24 @@ test("creates durable Subsonic playlists around one promoted library job", async
     name: "Subsonic Keep One",
     songId: flowSong.id,
   }));
-  const first = firstCreate.playlist;
+  const firstId = firstCreate.playlist.id;
+  const first = await waitFor(async () => {
+    const playlist = responseJson(await request("getPlaylist", { id: firstId })).playlist;
+    return playlist.entry?.[0] ? playlist : null;
+  });
   assert.equal(first.name, "Subsonic Keep One");
   const jobIdFromSong = (songId) =>
     decodeURIComponent(songId.slice("shared-song:".length)).split(":").at(-1);
   const canonicalJobId = jobIdFromSong(first.entry[0].id);
 
-  const second = responseJson(await request("createPlaylist", {
+  const secondCreate = responseJson(await request("createPlaylist", {
     name: "Subsonic Keep Two",
     songId: flowSong.id,
-  })).playlist;
+  }));
+  const second = await waitFor(async () => {
+    const playlist = responseJson(await request("getPlaylist", { id: secondCreate.playlist.id })).playlist;
+    return playlist.entry?.[0] ? playlist : null;
+  });
   assert.equal(jobIdFromSong(second.entry[0].id), canonicalJobId);
 
   await waitFor(() => db.prepare(
@@ -423,6 +444,39 @@ test("creates durable Subsonic playlists around one promoted library job", async
   await stat(libraryJobs[0].finalPath);
 });
 
+test("failed Subsonic playlist creation removes the empty shared playlist", async () => {
+  const flow = responseJson(await request("getPlaylists")).playlists.playlist.find(
+    (entry) => entry.name === "Canonical Flow",
+  );
+  const flowSong = responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry[0];
+  const user = userOps.getUserByUsername("alice");
+  const originalUpdate = flowPlaylistConfig.updateSharedPlaylist;
+  flowPlaylistConfig.updateSharedPlaylist = () => null;
+  try {
+    assert.equal(
+      createSubsonicPlaylist(user, { name: "Failed Subsonic Playlist", songIds: [flowSong.id] }),
+      null,
+    );
+    assert.equal(
+      flowPlaylistConfig.getSharedPlaylistsForUser(user).some(
+        (playlist) => playlist.name === "Failed Subsonic Playlist",
+      ),
+      false,
+    );
+  } finally {
+    flowPlaylistConfig.updateSharedPlaylist = originalUpdate;
+  }
+});
+
+test("malformed Subsonic settings do not crash the settings update", async () => {
+  const response = await apiFetch("/api/settings", {
+    method: "POST",
+    body: JSON.stringify({ subsonic: null }),
+  });
+  assert.equal(response.status, 200);
+  assert.equal(dbOps.getSettings().subsonic.favoriteAutoKeep, true);
+});
+
 test("favorites can keep Flow tracks and respect the auto-keep setting", async () => {
   const flow = responseJson(await request("getPlaylists")).playlists.playlist.find(
     (entry) => entry.name === "Favorite Toggle Flow",
@@ -443,6 +497,14 @@ test("favorites can keep Flow tracks and respect the auto-keep setting", async (
   );
   assert.equal(responseJson(await request("getStarred")).starred.song[0].id, entry.id);
   assert.equal((await saveSettings({ favoriteAutoKeep: true })).status, 200);
+  assert.equal(responseJson(await request("unstar", { id: entry.id })).status, "ok");
+  assert.equal(responseJson(await request("star", { id: entry.id })).status, "ok");
+  const autoKeepJob = db.prepare(
+    "SELECT id FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ? LIMIT 1",
+  ).get("library", "Favorite Song");
+  assert.ok(autoKeepJob);
+  downloadTracker.removeJob(autoKeepJob.id);
+  assert.equal(responseJson(await request("unstar", { id: entry.id })).status, "ok");
 });
 
 test("streams canonical files with full and range responses", async () => {

@@ -634,7 +634,7 @@ const findAvailableCanonicalFile = (track) => {
   return file?.available && file.path ? { file, albumName: findAlbumForTrack(library, candidate)?.title } : null;
 };
 
-const ensureLibraryJob = (track) => {
+const ensureLibraryJob = (track, createdJobIds = null) => {
   const existing = findLibraryJob(track);
   if (existing) {
     if (existing.status === "failed") {
@@ -648,6 +648,7 @@ const ensureLibraryJob = (track) => {
 
   const jobId = downloadTracker.addJob(track, "library");
   if (!jobId) return null;
+  if (createdJobIds) createdJobIds.push(jobId);
   const owned = findAvailableCanonicalFile(track);
   if (owned) {
     downloadTracker.setDone(jobId, owned.file.path, owned.albumName || track.albumName || null);
@@ -725,11 +726,13 @@ export function createSubsonicPlaylist(user, { name, songIds = [] } = {}) {
     ownerUserId: user.id,
     tracks: [],
   });
-  return replaceSubsonicPlaylistTracks(
+  const updated = replaceSubsonicPlaylistTracks(
     user,
     playlist,
     resolved.map((entry) => entry.track),
   );
+  if (!updated) flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+  return updated;
 }
 
 export function updateSubsonicPlaylist(
@@ -796,8 +799,12 @@ export function starMany(user, values) {
       : !findCanonical(library, target),
   )) return false;
   if (favoriteAutoKeepEnabled()) {
+    const createdJobIds = [];
     for (const entry of playlistSongs.filter(Boolean)) {
-      if (!ensureLibraryJob(entry.track)) return false;
+      if (!ensureLibraryJob(entry.track, createdJobIds)) {
+        for (const jobId of createdJobIds) downloadTracker.removeJob(jobId);
+        return false;
+      }
     }
   }
   const addStars = db.transaction(() => {
@@ -931,9 +938,7 @@ export function getFlowPlaylist(value, user) {
   const kind = parsed?.kind === "shared" ? "shared" : "flow";
   const playlist = playlistFromId(user, value);
   if (!playlist) return null;
-  const jobs = flowJobs(playlist, {
-    includePending: parsed?.kind === "shared",
-  });
+  const jobs = flowJobs(playlist);
   return {
     id: idFor(kind, playlist.id),
     name: playlist.name,

@@ -322,6 +322,10 @@ export function registerGeneral(router) {
       if (mergedIntegrations?.coverArtArchive) {
         delete mergedIntegrations.coverArtArchive;
       }
+      const normalizedSubsonic =
+        subsonic && typeof subsonic === "object" && !Array.isArray(subsonic)
+          ? subsonic
+          : {};
       const updatedSettings = {
         ...currentSettings,
         dateTimeFormat:
@@ -343,8 +347,8 @@ export function registerGeneral(router) {
           subsonic !== undefined
             ? {
                 ...(currentSettings.subsonic || defaultData.settings.subsonic),
-                ...subsonic,
-                favoriteAutoKeep: subsonic.favoriteAutoKeep !== false,
+                ...normalizedSubsonic,
+                favoriteAutoKeep: normalizedSubsonic.favoriteAutoKeep !== false,
               }
             : currentSettings.subsonic || defaultData.settings.subsonic,
         rootFolderPath:
