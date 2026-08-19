@@ -129,7 +129,7 @@ if (process.env.OIDC_ENABLED === "true" && !isOidcEnabled()) {
   );
 }
 
-const connectSrcDirectives = ["'self'", "ws:", "wss:", "https://api.github.com"];
+const connectSrcDirectives = ["'self'", "ws:", "wss:", "https://api.github.com", "https://raw.githubusercontent.com"];
 if (process.env.AUTH_PROXY_DOMAIN) {
   connectSrcDirectives.push(process.env.AUTH_PROXY_DOMAIN);
 }
