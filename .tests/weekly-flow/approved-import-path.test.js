@@ -18,6 +18,7 @@ const [
   { flowPlaylistConfig },
   { playlistManager },
   { weeklyFlowWorker },
+  honkerDb,
   { registerJobs },
 ] = await setupIsolatedBackend(
   "approved-import-path",
@@ -27,6 +28,7 @@ const [
   "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
   "backend/services/weeklyFlow/weeklyFlowWorker.js",
+  "backend/services/honkerDb.js",
   "backend/routes/weeklyFlow/handlers/jobs.js",
 );
 
@@ -173,9 +175,21 @@ test("search all stays within the requesting user's playlist access", async () =
     { artistName: "Artist", trackName: "Missing", albumName: "Album" },
     ownedPlaylistId,
   );
+  const otherJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Private", albumName: "Album" },
+    otherPlaylistId,
+  );
   downloadTracker.setFailed(jobId, "No source");
+  downloadTracker.setFailed(otherJobId, "No source");
 
   const originalStart = weeklyFlowWorker.start;
+  const systemTaskQueue = honkerDb.getSystemTaskQueue();
+  const originalEnqueue = systemTaskQueue.enqueue;
+  const enqueuedTasks = [];
+  systemTaskQueue.enqueue = (payload, options) => {
+    enqueuedTasks.push({ payload, options });
+    return originalEnqueue.call(systemTaskQueue, payload, options);
+  };
   weeklyFlowWorker.start = async () => {};
   requestUser = { role: "user", id: 7 };
   try {
@@ -184,13 +198,26 @@ test("search all stays within the requesting user's playlist access", async () =
     assert.equal(missingResponse.status, 200, JSON.stringify(missingPayload));
     assert.equal(missingPayload.requeued, 1);
     assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
+    assert.equal(downloadTracker.getJob(otherJobId)?.status, "failed");
 
     const upgradeResponse = await fetch(`${baseUrl}/quality-upgrades`, { method: "POST" });
     const upgradePayload = await upgradeResponse.json();
     assert.equal(upgradeResponse.status, 200, JSON.stringify(upgradePayload));
     assert.equal(upgradePayload.scheduled, true);
     assert.equal(upgradePayload.playlistCount, 1);
+    assert.deepEqual(enqueuedTasks, [
+      {
+        payload: {
+          kind: "quality-upgrade-check",
+          force: true,
+          playlistId: ownedPlaylistId,
+          limit: 500,
+        },
+        options: { priority: -10, runAt: null },
+      },
+    ]);
   } finally {
+    systemTaskQueue.enqueue = originalEnqueue;
     weeklyFlowWorker.start = originalStart;
     requestUser = { role: "admin" };
   }
