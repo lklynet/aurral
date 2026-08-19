@@ -265,6 +265,7 @@ async function runFlowSeed({
     const seeded = await weeklyFlowWorker.seedFlowRun(safeFlowId, latestFlow, {
       size: effectiveSize,
     });
+    await playlistManager.refreshPlaylist(safeFlowId);
     if (scheduleNext) {
       flowPlaylistConfig.scheduleNextRun(safeFlowId);
     }

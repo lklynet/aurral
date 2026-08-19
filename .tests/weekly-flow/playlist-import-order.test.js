@@ -17,6 +17,8 @@ const [
   playlistConfigModule,
   operationsModule,
   workerModule,
+  playlistSourceModule,
+  playlistManagerModule,
 ] = await setupIsolatedBackend(
   "playlist-import-order",
   "backend/config/db-sqlite.js",
@@ -25,6 +27,8 @@ const [
   "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
   "backend/services/weeklyFlow/weeklyFlowOperations.js",
   "backend/services/weeklyFlow/weeklyFlowWorker.js",
+  "backend/services/weeklyFlow/weeklyFlowPlaylistSource.js",
+  "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
 );
 
 const { downloadTracker } = trackerModule;
@@ -35,6 +39,8 @@ const {
 } = playlistConfigModule;
 const { appendSharedPlaylistTracks, processWeeklyFlowOperation } = operationsModule;
 const { weeklyFlowWorker } = workerModule;
+const { playlistSource } = playlistSourceModule;
+const { playlistManager } = playlistManagerModule;
 
 const weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER;
 
@@ -169,6 +175,47 @@ test("mixed reuse seeding keeps import job order", async () => {
     );
   } finally {
     weeklyFlowWorker.start = originalStart;
+    weeklyFlowWorker.stop();
+  }
+});
+
+test("flow refresh clears playback before downloads finish", async () => {
+  const originalBuildPlan = playlistSource.buildFlowRunPlan;
+  const originalRefresh = playlistManager.refreshPlaylist;
+  const refreshed = [];
+  try {
+    dbOps.updateSettings({
+      ...dbOps.getSettings(),
+      integrations: {
+        lastfm: { apiKey: "test" },
+        slskd: { enabled: true, url: "http://slskd", apiKey: "test" },
+      },
+    });
+    const flow = flowPlaylistConfig.createFlow({
+      name: "Refresh Before Download",
+      mix: { discover: 100, mix: 0, trending: 0, focus: 0 },
+      size: 1,
+      scheduleDays: [1],
+    });
+    flowPlaylistConfig.setEnabled(flow.id, true);
+    playlistSource.buildFlowRunPlan = async () => ({
+      primaryTracks: [],
+      reserveTracks: [],
+      diagnostics: { targets: { primary: 0 }, achieved: { primary: 0, reserve: 0 } },
+    });
+    playlistManager.refreshPlaylist = async (playlistId) => {
+      refreshed.push(playlistId);
+    };
+
+    await processWeeklyFlowOperation({
+      kind: "manual-start-flow",
+      flowId: flow.id,
+    });
+
+    assert.deepEqual(refreshed, [flow.id]);
+  } finally {
+    playlistSource.buildFlowRunPlan = originalBuildPlan;
+    playlistManager.refreshPlaylist = originalRefresh;
     weeklyFlowWorker.stop();
   }
 });

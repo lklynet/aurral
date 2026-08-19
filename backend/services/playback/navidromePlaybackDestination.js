@@ -443,22 +443,18 @@ export class NavidromePlaybackDestination {
 
     let playlist = null;
     if (pointer) {
-      if (songIds.length) {
-        for (const delayMs of [0, 250, 1000, 2000]) {
-          if (delayMs) await wait(delayMs);
-          try {
-            await this.client.updatePlaylist(pointer.playlistId, {
-              name: current,
-              songIds,
-            });
-            playlist = { id: pointer.playlistId };
-            break;
-          } catch (error) {
-            if (Number(error?.code) !== 70) throw error;
-          }
+      for (const delayMs of [0, 250, 1000, 2000]) {
+        if (delayMs) await wait(delayMs);
+        try {
+          await this.client.updatePlaylist(pointer.playlistId, {
+            name: current,
+            songIds,
+          });
+          playlist = { id: pointer.playlistId };
+          break;
+        } catch (error) {
+          if (Number(error?.code) !== 70) throw error;
         }
-      } else {
-        playlist = { id: pointer.playlistId };
       }
       if (!playlist) {
         navidromePlaylistPointerStore.deletePointer(snapshot.entityId, targetKey);
