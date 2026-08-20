@@ -168,6 +168,32 @@ export const previewSpotifyPlaylist = (playlistId) =>
 export const importSpotifyPlaylist = (payload) =>
   postData("/playlists/import/spotify", payload);
 
+export const getListenBrainzPlaylists = () =>
+  getData("/playlists/import/listenbrainz/playlists");
+
+export const previewListenBrainzPlaylist = (playlistId, playlistType = null) =>
+  postData("/playlists/import/listenbrainz/preview", {
+    playlistId,
+    ...(playlistType ? { playlistType } : {}),
+  });
+
+export const importListenBrainzPlaylist = (payload) =>
+  postData("/playlists/import/listenbrainz", payload);
+
+export const getLastfmPlaylists = (username = "") =>
+  getData("/playlists/import/lastfm/playlists", {
+    params: username ? { username } : undefined,
+  });
+
+export const previewLastfmPlaylist = (playlistId, username = "") =>
+  postData("/playlists/import/lastfm/preview", {
+    playlistId,
+    username,
+  });
+
+export const importLastfmPlaylist = (payload) =>
+  postData("/playlists/import/lastfm", payload);
+
 export const syncSharedPlaylistImport = (playlistId) =>
   postData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/sync`);
 

@@ -444,6 +444,9 @@ export function normalizeImportSource(value) {
   return {
     provider,
     externalId: String(value.externalId || "").trim() || null,
+    ...(provider === "lastfm-station"
+      ? { externalUsername: String(value.externalUsername || "").trim() || null }
+      : {}),
     externalName: String(value.externalName || "").trim() || null,
     syncEnabled: hasSync,
     syncIntervalHours: hasSync

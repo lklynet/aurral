@@ -1,16 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileJson, Loader2, Music2, Upload } from "lucide-react";
+import { Link } from "react-router-dom";
 import { ModalShell } from "../../../components/PlaylistModals";
 import {
   completeSpotifyOAuth,
   disconnectSpotify,
+  getListenBrainzPlaylists,
+  getLastfmPlaylists,
   getSpotifyImportStatus,
   getSpotifyPlaylists,
   importSharedPlaylist,
+  importListenBrainzPlaylist,
+  importLastfmPlaylist,
   importSpotifyPlaylist,
+  previewListenBrainzPlaylist,
+  previewLastfmPlaylist,
   previewSpotifyPlaylist,
   startSpotifyOAuth,
 } from "../../../utils/api/endpoints/playlists.js";
+import { getMyListeningHistory, getScrobbleStatus } from "../../../utils/api/endpoints/auth.js";
 import { getAppBasePath, normalizeBasePathWithTrailingSlash } from "../../../utils/basePath";
 import { parseFlowImportFile, reserveUniqueFlowName, normalizeNameKey } from "../flowPageUtils";
 
@@ -23,6 +31,15 @@ const SYNC_INTERVAL_OPTIONS = [
 ];
 
 const SPOTIFY_OAUTH_BROADCAST_CHANNEL = "aurral-spotify-oauth";
+
+function getPlaylistMeta(playlist) {
+  const parts = [
+    playlist?.trackCount != null ? `${playlist.trackCount} tracks` : "Playlist",
+  ];
+  if (playlist?.sourceType === "lastfm-station") parts.push("Updates from Last.fm");
+  else if (playlist?.sourceType) parts.push("Updates weekly");
+  return parts.join(" · ");
+}
 
 function tokensFromHandoffPayload(payload) {
   const accessToken = String(payload?.access_token || "").trim();
@@ -115,6 +132,13 @@ export function PlaylistImportModal({
   const [source, setSource] = useState("spotify");
   const [spotifyStatus, setSpotifyStatus] = useState({ connected: false, displayName: null });
   const [spotifyLoading, setSpotifyLoading] = useState(false);
+  const [listenBrainzStatus, setListenBrainzStatus] = useState({ connected: false, displayName: null });
+  const [listenBrainzLoading, setListenBrainzLoading] = useState(false);
+  const [lastfmUsername, setLastfmUsername] = useState("");
+  const [lastfmUsernameInput, setLastfmUsernameInput] = useState("");
+  const [lastfmProfileChecked, setLastfmProfileChecked] = useState(false);
+  const [lastfmProfileLoading, setLastfmProfileLoading] = useState(false);
+  const [lastfmLoading, setLastfmLoading] = useState(false);
   const [playlists, setPlaylists] = useState([]);
   const [playlistQuery, setPlaylistQuery] = useState("");
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
@@ -138,6 +162,9 @@ export function PlaylistImportModal({
 
   const resetState = useCallback(() => {
     setSource("spotify");
+    setLastfmUsername("");
+    setLastfmUsernameInput("");
+    setLastfmProfileChecked(false);
     setPlaylists([]);
     setPlaylistQuery("");
     setSelectedPlaylist(null);
@@ -149,6 +176,14 @@ export function PlaylistImportModal({
     setPreviewSkipped(0);
     setJsonReview(null);
   }, []);
+
+  const selectSource = (nextSource) => {
+    setSource(nextSource);
+    setPlaylists([]);
+    setPlaylistQuery("");
+    setSelectedPlaylist(null);
+    setPlaylistName("");
+  };
 
   useEffect(() => {
     if (!open) {
@@ -189,6 +224,89 @@ export function PlaylistImportModal({
     loadSpotifyPlaylists();
   }, [open, source, spotifyStatus.connected, loadSpotifyPlaylists]);
 
+  const loadListenBrainzPlaylists = useCallback(async () => {
+    setListenBrainzLoading(true);
+    try {
+      const statusPayload = await getScrobbleStatus();
+      const status = statusPayload?.listenbrainz || { connected: false };
+      setListenBrainzStatus(status);
+      if (!status.connected) {
+        setPlaylists([]);
+        return;
+      }
+      const payload = await getListenBrainzPlaylists();
+      setPlaylists(Array.isArray(payload?.playlists) ? payload.playlists : []);
+      if (payload?.user) {
+        setListenBrainzStatus((prev) => ({ ...prev, connected: true, displayName: payload.user }));
+      }
+    } catch (error) {
+      setListenBrainzStatus({ connected: false, displayName: null });
+      setPlaylists([]);
+      showError?.(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Failed to load ListenBrainz playlists",
+      );
+    } finally {
+      setListenBrainzLoading(false);
+    }
+  }, [showError]);
+
+  const loadLastfmPlaylists = useCallback(async (requestedUsername) => {
+    const username = String(requestedUsername || "").trim();
+    if (!username) return;
+    setLastfmProfileChecked(true);
+    setLastfmLoading(true);
+    try {
+      const payload = await getLastfmPlaylists(username);
+      setLastfmUsername(username);
+      setLastfmUsernameInput(username);
+      setPlaylists(Array.isArray(payload?.playlists) ? payload.playlists : []);
+    } catch (error) {
+      setPlaylists([]);
+      showError?.(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Failed to load Last.fm stations",
+      );
+    } finally {
+      setLastfmLoading(false);
+    }
+  }, [showError]);
+
+  useEffect(() => {
+    if (!open || source !== "listenbrainz") return;
+    loadListenBrainzPlaylists();
+  }, [open, source, loadListenBrainzPlaylists]);
+
+  useEffect(() => {
+    if (!open || source !== "lastfm") return;
+    if (lastfmUsername || lastfmProfileChecked) {
+      if (lastfmUsername) loadLastfmPlaylists(lastfmUsername);
+      return;
+    }
+    let cancelled = false;
+    setLastfmProfileLoading(true);
+    getMyListeningHistory()
+      .then((payload) => {
+        if (cancelled) return;
+        const username =
+          payload?.listenHistoryProvider === "lastfm"
+            ? String(payload?.listenHistoryUsername || "").trim()
+            : "";
+        setLastfmUsernameInput(username);
+        if (username) setLastfmUsername(username);
+        setLastfmProfileChecked(true);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLastfmProfileLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, source, lastfmProfileChecked, lastfmUsername, loadLastfmPlaylists]);
+
   useEffect(() => {
     if (!selectedPlaylist?.id) {
       setPreviewTracks([]);
@@ -200,7 +318,15 @@ export function PlaylistImportModal({
     setPreviewLoading(true);
     (async () => {
       try {
-        const payload = await previewSpotifyPlaylist(selectedPlaylist.id);
+        const payload =
+          source === "spotify"
+            ? await previewSpotifyPlaylist(selectedPlaylist.id)
+            : source === "listenbrainz"
+              ? await previewListenBrainzPlaylist(
+                  selectedPlaylist.id,
+                  selectedPlaylist.sourceType,
+                )
+              : await previewLastfmPlaylist(selectedPlaylist.id, lastfmUsername);
         if (cancelled) return;
         setPreviewTrackCount(Number(payload?.trackCount || 0));
         setPreviewSkipped(Number(payload?.skipped || 0));
@@ -216,7 +342,7 @@ export function PlaylistImportModal({
     return () => {
       cancelled = true;
     };
-  }, [selectedPlaylist, showError]);
+  }, [lastfmUsername, selectedPlaylist, showError, source]);
 
   const filteredPlaylists = useMemo(() => {
     const query = playlistQuery.trim().toLowerCase();
@@ -281,7 +407,7 @@ export function PlaylistImportModal({
     }
   };
 
-  const handleImportSpotify = async () => {
+  const handleImportExternal = async () => {
     if (!selectedPlaylist?.id || importing) return;
     const baseName = String(playlistName || selectedPlaylist.name || "").trim();
     if (!baseName) {
@@ -290,17 +416,29 @@ export function PlaylistImportModal({
     }
     const reservedNames = new Set(reservedNameKeys);
     const finalName = reserveUniqueFlowName(reservedNames, baseName);
+    const isListenBrainz = source === "listenbrainz";
+    const isLastfm = source === "lastfm";
+    const providerLabel = isListenBrainz ? "ListenBrainz" : isLastfm ? "Last.fm" : "Spotify";
     setImporting(true);
     try {
-      await importSpotifyPlaylist({
+      const importPlaylist = isListenBrainz
+        ? importListenBrainzPlaylist
+        : isLastfm
+          ? importLastfmPlaylist
+          : importSpotifyPlaylist;
+      await importPlaylist({
         playlistId: selectedPlaylist.id,
+        ...(isListenBrainz && selectedPlaylist.sourceType
+          ? { playlistType: selectedPlaylist.sourceType }
+          : {}),
+        ...(isLastfm ? { username: lastfmUsername } : {}),
         externalName: selectedPlaylist.name,
         name: finalName,
         syncEnabled: syncIntervalHours > 0,
         syncIntervalHours,
         keepRemovedTracks,
       });
-      showSuccess?.(`Imported ${finalName} from Spotify`);
+      showSuccess?.(`Imported ${finalName} from ${providerLabel}`);
       onImported?.();
       onClose?.();
     } catch (error) {
@@ -308,7 +446,7 @@ export function PlaylistImportModal({
         error?.response?.data?.message ||
           error?.response?.data?.error ||
           error?.message ||
-          "Failed to import Spotify playlist",
+          `Failed to import ${providerLabel} playlist`,
       );
     } finally {
       setImporting(false);
@@ -360,8 +498,10 @@ export function PlaylistImportModal({
     }
   };
 
-  const canImportSpotify = selectedPlaylist?.id && previewTrackCount > 0 && !previewLoading;
+  const canImportExternal = selectedPlaylist?.id && previewTrackCount > 0 && !previewLoading;
   const canImportJson = Boolean(jsonReview?.flows?.length);
+  const externalSource =
+    source === "listenbrainz" ? "ListenBrainz" : source === "lastfm" ? "Last.fm" : "Spotify";
 
   return (
     <ModalShell
@@ -369,8 +509,12 @@ export function PlaylistImportModal({
       title="Import playlist"
       description={
         source === "spotify"
-          ? "Connect Spotify, pick a playlist, and Aurral will queue downloads."
-          : "Import a JSON tracklist exported from Aurral or another tool."
+          ? "Pick a Spotify playlist to queue downloads and optionally sync it."
+          : source === "listenbrainz"
+            ? "Pick a playlist to queue downloads. Weekly playlists use the latest week."
+            : source === "lastfm"
+              ? "Pick a Last.fm station to queue downloads and optionally sync it."
+            : "Import a JSON tracklist from Aurral or another tool."
       }
       onClose={onClose}
       disableClose={importing}
@@ -384,12 +528,12 @@ export function PlaylistImportModal({
           >
             Cancel
           </button>
-          {source === "spotify" ? (
+          {source !== "json" ? (
             <button
               type="button"
-              onClick={handleImportSpotify}
+              onClick={handleImportExternal}
               className="btn btn-primary btn-sm"
-              disabled={importing || !canImportSpotify}
+              disabled={importing || !canImportExternal}
             >
               {importing ? <Loader2 className="artist-icon-sm animate-spin" /> : <Music2 className="artist-icon-sm" />}
               Import playlist
@@ -416,13 +560,15 @@ export function PlaylistImportModal({
         >
           {[
             { id: "spotify", label: "Spotify" },
+            { id: "lastfm", label: "Last.fm" },
+            { id: "listenbrainz", label: "ListenBrainz" },
             { id: "json", label: "JSON file" },
           ].map((option) => (
             <button
               key={option.id}
               type="button"
               className={`artist-segmented-button${source === option.id ? " is-active" : ""}`}
-              onClick={() => setSource(option.id)}
+              onClick={() => selectSource(option.id)}
               disabled={importing}
             >
               {option.label}
@@ -430,9 +576,9 @@ export function PlaylistImportModal({
           ))}
         </div>
 
-        {source === "spotify" ? (
+        {source !== "json" ? (
           <div className="playlist-import__spotify">
-            {!spotifyStatus.connected ? (
+            {source === "spotify" && !spotifyStatus.connected ? (
               <div className="playlist-import__empty">
                 <div className="playlist-import__empty-icon" aria-hidden="true">
                   <Music2 />
@@ -451,20 +597,102 @@ export function PlaylistImportModal({
                   Connect Spotify
                 </button>
               </div>
+            ) : source === "listenbrainz" && !listenBrainzStatus.connected ? (
+              <div className="playlist-import__empty">
+                <div className="playlist-import__empty-icon" aria-hidden="true">
+                  <Music2 />
+                </div>
+                <p className="playlist-import__empty-title">Connect ListenBrainz first</p>
+                <p className="playlist-import__empty-copy">
+                  Link your ListenBrainz user token in Settings to import your playlists.
+                </p>
+                <Link
+                  to="/settings/playback"
+                  className="btn btn-primary btn-sm"
+                  onClick={onClose}
+                >
+                  Open ListenBrainz settings
+                </Link>
+              </div>
+            ) : source === "lastfm" && !lastfmUsername ? (
+              <div className="playlist-import__lastfm-setup">
+                <div>
+                  <p className="playlist-import__empty-title">Enter your Last.fm username</p>
+                  <p className="playlist-import__empty-copy">
+                    Aurral will load your Library, Mix, and Recommended stations.
+                  </p>
+                </div>
+                <div className="playlist-modal__fields">
+                  <label className="playlist-import__field-label" htmlFor="playlist-import-lastfm-username">
+                    Last.fm username
+                  </label>
+                  <input
+                    id="playlist-import-lastfm-username"
+                    type="text"
+                    className="input"
+                    value={lastfmUsernameInput}
+                    onChange={(event) => setLastfmUsernameInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") loadLastfmPlaylists(lastfmUsernameInput);
+                    }}
+                    autoComplete="off"
+                    disabled={lastfmProfileLoading || lastfmLoading || importing}
+                  />
+                  <p className="settings-page__hint">
+                    Saved with the imported playlist for future syncs.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => loadLastfmPlaylists(lastfmUsernameInput)}
+                  disabled={lastfmProfileLoading || lastfmLoading || !lastfmUsernameInput.trim() || importing}
+                >
+                  {lastfmProfileLoading || lastfmLoading ? (
+                    <Loader2 className="artist-icon-sm animate-spin" />
+                  ) : null}
+                  Load stations
+                </button>
+              </div>
             ) : (
               <>
                 <div className="playlist-import__account">
+                  <span className="playlist-import__account-status" aria-hidden="true" />
                   <span className="playlist-import__account-label">
-                    Signed in as <strong>{spotifyStatus.displayName || "Spotify"}</strong>
+                    Signed in as <strong>
+                      {(source === "spotify"
+                        ? spotifyStatus
+                        : source === "listenbrainz"
+                          ? listenBrainzStatus
+                          : { displayName: lastfmUsername }
+                      ).displayName || externalSource}
+                    </strong>
                   </span>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={handleDisconnectSpotify}
-                    disabled={spotifyLoading || importing}
-                  >
-                    Disconnect
-                  </button>
+                  {source === "spotify" ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={handleDisconnectSpotify}
+                      disabled={spotifyLoading || importing}
+                    >
+                      Disconnect
+                    </button>
+                  ) : source === "lastfm" ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => {
+                        setLastfmUsername("");
+                        setLastfmUsernameInput("");
+                        setLastfmProfileChecked(true);
+                        setPlaylists([]);
+                        setSelectedPlaylist(null);
+                      }}
+                      disabled={lastfmLoading || importing}
+                    >
+                      Change
+                    </button>
+                  ) : null}
                 </div>
 
                 {selectedPlaylist ? (
@@ -472,7 +700,7 @@ export function PlaylistImportModal({
                     <div className="playlist-import__selected-copy">
                       <span className="playlist-import__selected-name">{selectedPlaylist.name}</span>
                       <span className="playlist-import__selected-meta">
-                        {selectedPlaylist.trackCount} on Spotify
+                        {getPlaylistMeta(selectedPlaylist)}
                       </span>
                     </div>
                     <button
@@ -490,13 +718,17 @@ export function PlaylistImportModal({
                       id="playlist-import-search"
                       type="search"
                       className="input playlist-import__search"
-                      placeholder="Search your playlists"
+                      placeholder="Search playlists"
                       value={playlistQuery}
                       onChange={(event) => setPlaylistQuery(event.target.value)}
-                      disabled={importing || spotifyLoading}
+                      disabled={importing || spotifyLoading || listenBrainzLoading || lastfmLoading}
                     />
-                    <div className="playlist-import__playlist-list" role="listbox" aria-label="Spotify playlists">
-                      {spotifyLoading && playlists.length === 0 ? (
+                    <div className="playlist-import__playlist-list" role="listbox" aria-label={`${externalSource} playlists`}>
+                      {(source === "spotify"
+                        ? spotifyLoading
+                        : source === "listenbrainz"
+                          ? listenBrainzLoading
+                          : lastfmLoading) && playlists.length === 0 ? (
                         <div className="playlist-import__list-status">
                           <Loader2 className="artist-icon-sm animate-spin" />
                           <span>Loading playlists…</span>
@@ -509,14 +741,14 @@ export function PlaylistImportModal({
                             key={playlist.id}
                             type="button"
                             role="option"
-                            aria-selected={false}
+                            aria-selected={selectedPlaylist?.id === playlist.id}
                             className="playlist-import__playlist-option"
                             onClick={() => handleSelectPlaylist(playlist)}
                             disabled={importing}
                           >
                             <span className="playlist-import__playlist-name">{playlist.name}</span>
-                            <span className="flow-page__badge flow-page__badge--count">
-                              {playlist.trackCount} on Spotify
+                            <span className="playlist-import__playlist-meta">
+                              {getPlaylistMeta(playlist)}
                             </span>
                           </button>
                         ))
@@ -527,37 +759,39 @@ export function PlaylistImportModal({
 
                 {selectedPlaylist ? (
                   <div className="playlist-import__config">
-                    <div className="playlist-modal__fields">
-                      <label className="playlist-import__field-label" htmlFor="playlist-import-name">
-                        Name in Aurral
-                      </label>
-                      <input
-                        id="playlist-import-name"
-                        type="text"
-                        className="input"
-                        value={playlistName}
-                        onChange={(event) => setPlaylistName(event.target.value)}
-                        disabled={importing}
-                      />
-                    </div>
+                    <div className="playlist-import__config-fields">
+                      <div className="playlist-modal__fields">
+                        <label className="playlist-import__field-label" htmlFor="playlist-import-name">
+                          Name in Aurral
+                        </label>
+                        <input
+                          id="playlist-import-name"
+                          type="text"
+                          className="input"
+                          value={playlistName}
+                          onChange={(event) => setPlaylistName(event.target.value)}
+                          disabled={importing}
+                        />
+                      </div>
 
-                    <div className="playlist-modal__fields">
-                      <label className="playlist-import__field-label" htmlFor="playlist-import-interval">
-                        Sync
-                      </label>
-                      <select
-                        id="playlist-import-interval"
-                        className="input"
-                        value={syncIntervalHours}
-                        onChange={(event) => setSyncIntervalHours(Number(event.target.value))}
-                        disabled={importing}
-                      >
-                        {SYNC_INTERVAL_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="playlist-modal__fields">
+                        <label className="playlist-import__field-label" htmlFor="playlist-import-interval">
+                          Sync
+                        </label>
+                        <select
+                          id="playlist-import-interval"
+                          className="input"
+                          value={syncIntervalHours}
+                          onChange={(event) => setSyncIntervalHours(Number(event.target.value))}
+                          disabled={importing}
+                        >
+                          {SYNC_INTERVAL_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
 
                     <label className="playlist-import__retention">
@@ -573,7 +807,7 @@ export function PlaylistImportModal({
                           Keep removed tracks in library
                         </span>
                         <span className="playlist-import__retention-help">
-                          Spotify removals leave the downloaded file available in Aurral.
+                          {externalSource} removals leave the downloaded file available in Aurral.
                         </span>
                       </span>
                     </label>
@@ -598,8 +832,11 @@ export function PlaylistImportModal({
                           </div>
                           {previewSkipped > 0 ? (
                             <p className="playlist-import__summary-copy">
-                              Spotify also lists unavailable entries, podcast episodes, and duplicates
-                              Aurral cannot download.
+                              {externalSource === "Spotify"
+                                ? "Spotify also lists unavailable entries, podcast episodes, and duplicates Aurral cannot download."
+                                : externalSource === "Last.fm"
+                                  ? "Some Last.fm entries are missing the artist or track data Aurral needs."
+                                  : "Some ListenBrainz entries are missing the artist or track data Aurral needs."}
                             </p>
                           ) : null}
                           {previewTracks.length > 0 ? (

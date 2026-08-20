@@ -2,11 +2,11 @@ import { buildSpotifyOAuthUrl, SPOTIFY_API_BASE } from "../../../services/spotif
 import { spotifyConnectionStore } from "../../../services/spotify/spotifyConnectionStore.js";
 import { spotifyClient } from "../../../services/spotify/spotifyClient.js";
 import { logger } from "../../../services/logger.js";
-import { parseSpotifyPlaylistItems } from "../../../services/importLists/spotifyTracks.js";
+import {
+  enqueueImportedPlaylist,
+  fetchImportedPlaylistTracks,
+} from "../../../services/importLists/importPlaylist.js";
 import { syncSharedPlaylistImport } from "../../../services/importLists/importListSync.js";
-import { normalizeImportSource } from "../../../services/weeklyFlow/weeklyFlowPlaylistConfig.js";
-import { weeklyFlowOperationQueue } from "../../../services/weeklyFlow/weeklyFlowOperationQueue.js";
-import { randomUUID } from "crypto";
 import { getAccessibleSharedPlaylist } from "./utils.js";
 
 const parseExpiresAt = (value) => {
@@ -104,8 +104,11 @@ export function registerSpotifyImport(router) {
       if (!playlistId) {
         return res.status(400).json({ error: "playlistId is required" });
       }
-      const items = await spotifyClient.listPlaylistTracks(req.user.id, playlistId);
-      const { tracks, stats } = parseSpotifyPlaylistItems(items);
+      const { tracks, stats } = await fetchImportedPlaylistTracks({
+        provider: "spotify-playlist",
+        userId: req.user.id,
+        externalId: playlistId,
+      });
       const skipped =
         stats.unavailable + stats.podcast + stats.incomplete + stats.duplicate;
       res.json({
@@ -138,28 +141,22 @@ export function registerSpotifyImport(router) {
       if (!name) {
         return res.status(400).json({ error: "name is required" });
       }
-      const items = await spotifyClient.listPlaylistTracks(req.user.id, playlistId);
-      const tracks = parseSpotifyPlaylistItems(items).tracks;
-      const safePlaylistId = randomUUID();
-      const importSource = normalizeImportSource({
+      const { tracks } = await fetchImportedPlaylistTracks({
         provider: "spotify-playlist",
+        userId: req.user.id,
         externalId: playlistId,
-        externalName: externalName || name,
-        syncEnabled,
-        syncIntervalHours: syncEnabled ? syncIntervalHours : 0,
-        keepRemovedTracks,
-        lastSyncAt: Date.now(),
-        lastSyncTrackCount: tracks.length,
       });
-      const result = await weeklyFlowOperationQueue.enqueuePayload({
-        kind: "shared-playlist-create",
-        label: "shared-playlist:create",
-        playlistId: safePlaylistId,
+      const result = await enqueueImportedPlaylist({
+        ownerUserId: req.user.id,
         name,
         sourceName: "Spotify",
+        provider: "spotify-playlist",
+        externalId: playlistId,
+        externalName,
         tracks,
-        ownerUserId: req.user.id,
-        importSource,
+        syncEnabled,
+        syncIntervalHours,
+        keepRemovedTracks,
       });
       res.json({
         success: true,

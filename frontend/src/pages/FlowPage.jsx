@@ -98,6 +98,12 @@ const SYNC_INTERVAL_OPTIONS = [
 
 const FLOW_MOBILE_LAYOUT_QUERY = "(max-width: 767px)";
 
+function getImportedProviderLabel(provider) {
+  if (String(provider || "").startsWith("listenbrainz-")) return "ListenBrainz";
+  if (provider === "lastfm-station") return "Last.fm";
+  return "Spotify";
+}
+
 function useFlowMobileLayout() {
   const [isMobileLayout, setIsMobileLayout] = useState(() =>
     typeof window !== "undefined" && typeof window.matchMedia === "function"
@@ -1109,9 +1115,10 @@ function FlowPage({ mode = "all" }) {
     }
   };
 
-  const handleSyncSpotifyPlaylist = async (playlist) => {
+  const handleSyncImportedPlaylist = async (playlist) => {
     if (!playlist?.id || syncingImportPlaylistId) return;
     setSyncingImportPlaylistId(playlist.id);
+    const providerLabel = getImportedProviderLabel(playlist.importSource?.provider);
     try {
       const result = await syncSharedPlaylistImport(playlist.id);
       if (result?.skipped) {
@@ -1120,8 +1127,8 @@ function FlowPage({ mode = "all" }) {
         const queued = Number(result?.tracksQueued || 0);
         showSuccess(
           queued > 0
-            ? `Synced ${queued} new track${queued !== 1 ? "s" : ""} from Spotify`
-            : "Spotify playlist synced",
+            ? `Synced ${queued} new track${queued !== 1 ? "s" : ""} from ${providerLabel}`
+            : `${providerLabel} playlist synced`,
         );
       }
       await fetchStatus();
@@ -1133,7 +1140,7 @@ function FlowPage({ mode = "all" }) {
     }
   };
 
-  const handleUpdateSpotifySyncInterval = async (playlist, syncIntervalHours) => {
+  const handleUpdateImportedSyncInterval = async (playlist, syncIntervalHours) => {
     if (!playlist?.id || updatingSyncIntervalPlaylistId) return;
     const current = playlist.importSource?.syncIntervalHours ?? 0;
     if (syncIntervalHours === current) return;
@@ -1154,7 +1161,7 @@ function FlowPage({ mode = "all" }) {
     }
   };
 
-  const handleUpdateSpotifyRetention = async (playlist, keepRemovedTracks) => {
+  const handleUpdateImportedRetention = async (playlist, keepRemovedTracks) => {
     if (!playlist?.id || updatingSyncIntervalPlaylistId) return;
     const current = playlist.importSource?.keepRemovedTracks !== false;
     if (keepRemovedTracks === current) return;
@@ -1639,12 +1646,17 @@ function FlowPage({ mode = "all" }) {
         </>
       ) : selectedPlaylist ? (
         <>
-          {selectedPlaylist?.importSource?.provider === "spotify-playlist" ? (
+          {[
+            "spotify-playlist",
+            "listenbrainz-playlist",
+            "listenbrainz-createdfor",
+            "lastfm-station",
+          ].includes(selectedPlaylist?.importSource?.provider) ? (
             <>
               <button
                 type="button"
                 className="artist-menu-item"
-                onClick={() => handleSyncSpotifyPlaylist(selectedPlaylist)}
+                onClick={() => handleSyncImportedPlaylist(selectedPlaylist)}
                 disabled={syncingImportPlaylistId === selectedPlaylist.id}
               >
                 <span className="artist-menu-item__main">
@@ -1672,7 +1684,7 @@ function FlowPage({ mode = "all" }) {
                   className="flow-page__menu-sync-select"
                   value={selectedPlaylist.importSource?.syncIntervalHours ?? 0}
                   onChange={(event) =>
-                    handleUpdateSpotifySyncInterval(
+                    handleUpdateImportedSyncInterval(
                       selectedPlaylist,
                       Number(event.target.value),
                     )
@@ -1697,10 +1709,10 @@ function FlowPage({ mode = "all" }) {
                 <PillToggle
                   checked={selectedPlaylist.importSource?.keepRemovedTracks !== false}
                   onChange={(event) =>
-                    handleUpdateSpotifyRetention(selectedPlaylist, event.target.checked)
+                    handleUpdateImportedRetention(selectedPlaylist, event.target.checked)
                   }
                   disabled={updatingSyncIntervalPlaylistId === selectedPlaylist.id}
-                  aria-label="Keep removed Spotify tracks in library"
+                  aria-label={`Keep removed ${getImportedProviderLabel(selectedPlaylist.importSource?.provider)} tracks in library`}
                 />
               </div>
               <div className="flow-page__menu-divider" />

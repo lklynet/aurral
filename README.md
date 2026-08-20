@@ -26,7 +26,7 @@ Aurral is the Lidarr companion for self-hosted music discovery. Best-in-class re
 - **Discover**: Best-in-class personalized recommendations, trends, tags, recent releases, discover playlists, and nearby shows.
 - **Search**: Find artists and albums, preview tracks, and add to Lidarr with your defaults.
 - **Library**: Browse and search artists already in Lidarr.
-- **Playlists**: Run scheduled flows, adopt discover playlists like Release Radar, import spotify playlists, and convert flows to fixed tracklists.
+- **Playlists**: Run scheduled flows, adopt discover playlists like Release Radar, import Spotify, Last.fm, or ListenBrainz playlists, and convert flows to fixed tracklists.
 - **Activity**: Queue and history for Lidarr requests, yt-dlp / slskd / Usenet downloads, plus Wanted actions for Aurral playlist jobs.
 - **Integrations**: Lidarr, Last.fm, ListenBrainz, Koito, yt-dlp, slskd, SABnzbd/NZBGet, Navidrome, Plex, Ticketmaster, Gotify, and webhooks.
 - **Playback**: Stream through API-synced Navidrome or Plex/Plexamp playlists from a dedicated download folder.

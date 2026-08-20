@@ -75,7 +75,7 @@ export function FlowEmptyState({
               className="btn btn-primary btn--bold btn-min-h"
             >
               <ListMusic className="artist-icon-sm" />
-              {creatingPlaylist ? "Creating..." : "New Playlist"}
+              {creatingPlaylist ? "Creating…" : "New playlist"}
             </button>
           ) : null}
           {copy.showFlowAction ? (
@@ -86,7 +86,7 @@ export function FlowEmptyState({
               className="btn btn-secondary btn--bold btn-min-h"
             >
               <Sparkles className="artist-icon-sm" />
-              {creatingFlow ? "Creating..." : "New Flow"}
+              {creatingFlow ? "Creating…" : "New flow"}
             </button>
           ) : null}
           {copy.showImportAction ? (
@@ -104,7 +104,7 @@ export function FlowEmptyState({
               to="/settings"
               className="btn btn-primary btn--bold btn-min-h"
             >
-              Open Settings
+              Open settings
             </Link>
           ) : null}
         </div>

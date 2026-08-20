@@ -79,12 +79,20 @@ export const listenbrainzSubmit = async ({ token, baseUrl = LISTENBRAINZ_API, ev
   });
 };
 
-export async function listenbrainzRequest(path, params = {}) {
-  const cacheKey = `lb:${path}:${JSON.stringify(params)}`;
-  const cached = listenbrainzCache.get(cacheKey);
-  if (cached !== undefined) return cached;
-  const inflight = listenbrainzInflightRequests.get(cacheKey);
-  if (inflight) return inflight;
+export async function listenbrainzRequest(
+  path,
+  params = {},
+  { token = null, baseUrl = LISTENBRAINZ_API } = {},
+) {
+  const root = normalizeListenbrainzBaseUrl(baseUrl);
+  const isAuthenticated = Boolean(String(token || "").trim());
+  const cacheKey = isAuthenticated ? null : `lb:${path}:${JSON.stringify(params)}`;
+  if (cacheKey) {
+    const cached = listenbrainzCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+    const inflight = listenbrainzInflightRequests.get(cacheKey);
+    if (inflight) return inflight;
+  }
 
   const requestPromise = (async () => {
     const isRetryable = (error) => {
@@ -118,15 +126,18 @@ export async function listenbrainzRequest(path, params = {}) {
     ) {
       try {
         const response = await listenbrainzLimiter.schedule(() =>
-          axios.get(`${LISTENBRAINZ_API}${path}`, {
+          axios.get(`${root}${path}`, {
             params,
+            ...(isAuthenticated
+              ? { headers: { Authorization: `Token ${String(token).trim()}` } }
+              : {}),
             timeout: LISTENBRAINZ_TIMEOUT_MS,
             validateStatus: (status) =>
               (status >= 200 && status < 300) || status === 204,
           }),
         );
         const payload = response.status === 204 ? null : response.data;
-        listenbrainzCache.set(cacheKey, payload);
+        if (cacheKey) listenbrainzCache.set(cacheKey, payload);
         return payload;
       } catch (error) {
         lastError = error;
@@ -153,11 +164,11 @@ export async function listenbrainzRequest(path, params = {}) {
     throw lastError;
   })();
 
-  listenbrainzInflightRequests.set(cacheKey, requestPromise);
+  if (cacheKey) listenbrainzInflightRequests.set(cacheKey, requestPromise);
   try {
     return await requestPromise;
   } finally {
-    listenbrainzInflightRequests.delete(cacheKey);
+    if (cacheKey) listenbrainzInflightRequests.delete(cacheKey);
   }
 }
 

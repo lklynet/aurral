@@ -244,6 +244,22 @@ The repeated `playlists` segment in
 | `POST` | `/api/playlists/import/spotify/preview` | Preview a Spotify import |
 | `POST` | `/api/playlists/import/spotify` | Import Spotify playlists |
 
+### ListenBrainz import
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/playlists/import/listenbrainz/playlists` | List playlists for the linked ListenBrainz account |
+| `POST` | `/api/playlists/import/listenbrainz/preview` | Preview a ListenBrainz import |
+| `POST` | `/api/playlists/import/listenbrainz` | Import a ListenBrainz playlist |
+
+### Last.fm import
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/playlists/import/lastfm/playlists` | List Last.fm Library, Mix, and Recommended stations |
+| `POST` | `/api/playlists/import/lastfm/preview` | Preview a Last.fm station import |
+| `POST` | `/api/playlists/import/lastfm` | Import a Last.fm station |
+
 ## Lidarr feed
 
 | Method | Path | Purpose |

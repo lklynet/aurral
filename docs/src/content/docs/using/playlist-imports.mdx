@@ -1,14 +1,14 @@
 ---
 title: Playlist imports
-description: Spotify connect, JSON formats, retries, and file reuse.
+description: Spotify, Last.fm, and ListenBrainz imports, JSON formats, retries, and file reuse.
 ---
 
 Imported playlists are separate from flows.
 
 - They do not regenerate from flow settings.
-- Spotify imports can synchronize on their own schedule.
+- Spotify, Last.fm, and ListenBrainz imports can synchronize on their own schedule.
 - They do not use source mix, focus filters, or deep dive.
-- Spotify imports keep their playlist membership equal to Spotify.
+- Synced imports keep their playlist membership equal to the provider.
 - JSON imports keep the exact imported tracklist.
 - They can reuse completed Aurral tracks or existing Lidarr files when worker settings allow.
 
@@ -35,6 +35,33 @@ Choose **None** for a fixed tracklist. You can change the schedule later from th
 Aurral stores the connection for each user. Use **Disconnect** in the import modal to revoke access.
 
 Allow the OAuth pop-up window if your browser blocks it. The Aurral origin must provide `oauth.html`.
+
+## Last.fm import
+
+The Last.fm tab offers three current stations: **Library**, **Mix**, and **Recommended**. If Last.fm is selected as your listening-history provider in your profile, Aurral reuses that username. Otherwise, enter your Last.fm username in the import modal. Aurral saves the username with the imported playlist for future syncs.
+
+1. Open the create menu.
+2. Select **Import playlist**.
+3. Select **Last.fm**.
+4. Enter your username if Aurral does not find it in your profile.
+5. Select a station.
+6. Start the import.
+
+Last.fm syncs fetch the current station again, so a synced **Library**, **Mix**, or **Recommended** playlist follows Last.fm as it changes. Choose **None** for a fixed tracklist. **Keep removed tracks in library** works the same way as Spotify and ListenBrainz imports.
+
+## ListenBrainz import
+
+Link ListenBrainz in **Settings > Playback** before you import a playlist. Aurral uses the ListenBrainz user token you already use for scrobbling.
+
+The import menu lists your owned playlists and two current generated choices: **Weekly Jams** and **Weekly Exploration**. Dated recommendation snapshots from **Created for you** are left out of the menu.
+
+1. Open the create menu.
+2. Select **Import playlist**.
+3. Select **ListenBrainz**.
+4. Select a playlist.
+5. Start the import.
+
+**Weekly Jams** and **Weekly Exploration** are selectors rather than dated playlists. Aurral resolves the newest matching ListenBrainz playlist when it previews, imports, or syncs, so their schedule follows future generated playlists. Other owned playlists sync the specific playlist you selected. Choose **None** for a fixed tracklist. All ListenBrainz imports support **Keep removed tracks in library**.
 
 ### Manual CSV import
 

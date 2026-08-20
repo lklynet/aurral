@@ -21,6 +21,8 @@ const [
   playlistManagerModule,
   spotifyClientModule,
   importSyncModule,
+  listenbrainzPlaylistsModule,
+  lastfmStationsModule,
 ] = await setupIsolatedBackend(
   "playlist-import-order",
   "backend/config/db-sqlite.js",
@@ -33,6 +35,8 @@ const [
   "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
   "backend/services/spotify/spotifyClient.js",
   "backend/services/importLists/importListSync.js",
+  "backend/services/importLists/listenbrainzPlaylists.js",
+  "backend/services/importLists/lastfmStations.js",
 );
 
 const { downloadTracker } = trackerModule;
@@ -46,6 +50,8 @@ const { weeklyFlowWorker } = workerModule;
 const { playlistSource } = playlistSourceModule;
 const { playlistManager } = playlistManagerModule;
 const { spotifyClient } = spotifyClientModule;
+const { listenbrainzPlaylistClient } = listenbrainzPlaylistsModule;
+const { lastfmStationClient } = lastfmStationsModule;
 const { syncSharedPlaylistImport } = importSyncModule;
 
 const weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER;
@@ -352,6 +358,110 @@ test("replacing a shared playlist removes Spotify tracks and honors file retenti
     assert.deepEqual(flowPlaylistConfig.getSharedPlaylist(deletePlaylist.id).tracks, []);
     await assert.rejects(fs.access(deletePath));
   } finally {
+    weeklyFlowWorker.start = originalStart;
+    weeklyFlowWorker.stop();
+  }
+});
+
+test("ListenBrainz sync uses the shared import update path", async () => {
+  const originalStart = weeklyFlowWorker.start;
+  const originalGetGeneratedPlaylistTracks =
+    listenbrainzPlaylistClient.getGeneratedPlaylistTracks;
+  weeklyFlowWorker.start = async () => false;
+  try {
+    const playlist = flowPlaylistConfig.createSharedPlaylist({
+      name: "ListenBrainz Mix",
+      ownerUserId: 7,
+      tracks: [{ artistName: "Old Artist", trackName: "Old Song" }],
+      importSource: {
+        provider: "listenbrainz-createdfor",
+        externalId: "weekly-jams",
+        syncEnabled: true,
+        syncIntervalHours: 24,
+      },
+    });
+    listenbrainzPlaylistClient.getGeneratedPlaylistTracks = async () => ({
+      tracks: [{ artistName: "New Artist", trackName: "New Song" }],
+      stats: { incomplete: 0, duplicate: 0 },
+    });
+
+    await syncSharedPlaylistImport({
+      playlistId: playlist.id,
+      user: { id: 7 },
+      force: true,
+    });
+
+    assert.deepEqual(flowPlaylistConfig.getSharedPlaylist(playlist.id).tracks, [
+      {
+        artistName: "New Artist",
+        trackName: "New Song",
+        albumName: null,
+        artistMbid: null,
+        albumMbid: null,
+        trackMbid: null,
+        releaseYear: null,
+        durationMs: null,
+        artistAliases: [],
+        reason: null,
+      },
+    ]);
+  } finally {
+    listenbrainzPlaylistClient.getGeneratedPlaylistTracks = originalGetGeneratedPlaylistTracks;
+    weeklyFlowWorker.start = originalStart;
+    weeklyFlowWorker.stop();
+  }
+});
+
+test("Last.fm station sync refreshes the saved station and username", async () => {
+  const originalStart = weeklyFlowWorker.start;
+  const originalGetStationTracks = lastfmStationClient.getStationTracks;
+  weeklyFlowWorker.start = async () => false;
+  try {
+    const playlist = flowPlaylistConfig.createSharedPlaylist({
+      name: "Last.fm Mix",
+      ownerUserId: 7,
+      tracks: [{ artistName: "Old Artist", trackName: "Old Song" }],
+      importSource: {
+        provider: "lastfm-station",
+        externalId: "mix",
+        externalUsername: "station-user",
+        syncEnabled: true,
+        syncIntervalHours: 24,
+      },
+    });
+    let requested;
+    lastfmStationClient.getStationTracks = async (userId, station, username) => {
+      requested = { userId, station, username };
+      return {
+        tracks: [{ artistName: "New Artist", trackName: "New Song" }],
+        stats: { incomplete: 0, duplicate: 0 },
+      };
+    };
+
+    await syncSharedPlaylistImport({
+      playlistId: playlist.id,
+      user: { id: 7 },
+      force: true,
+    });
+
+    assert.deepEqual(requested, {
+      userId: 7,
+      station: "mix",
+      username: "station-user",
+    });
+    assert.deepEqual(
+      flowPlaylistConfig.getSharedPlaylist(playlist.id).tracks.map(({ artistName, trackName }) => ({
+        artistName,
+        trackName,
+      })),
+      [{ artistName: "New Artist", trackName: "New Song" }],
+    );
+    assert.equal(
+      flowPlaylistConfig.getSharedPlaylist(playlist.id).importSource.externalUsername,
+      "station-user",
+    );
+  } finally {
+    lastfmStationClient.getStationTracks = originalGetStationTracks;
     weeklyFlowWorker.start = originalStart;
     weeklyFlowWorker.stop();
   }

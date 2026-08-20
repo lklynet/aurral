@@ -10,6 +10,7 @@ export function ModalShell({
   children,
   footer,
   disableClose = false,
+  className = "",
 }) {
   const titleId = useId();
   const descriptionId = useId();
@@ -24,7 +25,7 @@ export function ModalShell({
     <div className="playlist-modal-backdrop" onClick={handleBackdropClick}>
       <div
         ref={dialogRef}
-        className="playlist-modal"
+        className={`playlist-modal${className ? ` ${className}` : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -93,8 +94,9 @@ export function CreatePlaylistModal({
   return (
     <ModalShell
       open={open}
-      title="New Playlist"
-      description="Create a manual playlist you can build up track by track."
+      className="playlist-modal--create"
+      title="New playlist"
+      description="Create a playlist you can build up track by track."
       onClose={onClose}
       disableClose={saving}
       footer={
@@ -118,14 +120,17 @@ export function CreatePlaylistModal({
             ) : (
               <Plus className="artist-icon-sm" />
             )}
-            Create Playlist
+            Create playlist
           </button>
         </>
       }
     >
       <div className="playlist-modal__fields">
-        <label className="artist-field-label">Playlist Name</label>
+        <label className="artist-field-label" htmlFor="create-playlist-name">
+          Playlist name
+        </label>
         <input
+          id="create-playlist-name"
           type="text"
           value={name}
           onChange={(event) => {

@@ -1,14 +1,16 @@
 import {
   ArrowRight,
   Clock,
+  ChevronDown,
   ListMusic,
   Loader2,
   Plus,
   Sparkles,
   Upload,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import PillToggle from "../../components/PillToggle";
+import TooltipButton from "../../components/TooltipButton";
 import { PlaylistArtworkThumb } from "./flowComponents/PlaylistArtworkThumb.jsx";
 import {
   formatTrackCountLabel,
@@ -67,21 +69,56 @@ export function FlowLibraryCreateMenu({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const close = () => setIsOpen(false);
+  const triggerLabel = showFlows ? "Create playlist or flow" : "Create playlist";
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setIsOpen(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
+
+  const triggerContent = (
+    <>
+      <Plus className="flow-page__library-create-icon" aria-hidden="true" />
+      {!compact ? <span className="flow-page__library-create-label">New</span> : null}
+      {!compact ? (
+        <ChevronDown
+          className={`flow-page__library-create-chevron${isOpen ? " is-open" : ""}`}
+          aria-hidden="true"
+        />
+      ) : null}
+    </>
+  );
 
   return (
     <div
       className={`flow-page__library-create${compact ? " is-compact" : ""}${isOpen ? " is-open" : ""}`}
     >
-      <button
-        type="button"
-        className="flow-page__library-create-btn"
-        onClick={() => setIsOpen((prev) => !prev)}
-        aria-label={showFlows ? "Create playlist or flow" : "Create playlist"}
-        aria-expanded={isOpen}
-        aria-haspopup="menu"
-      >
-        <Plus className="flow-page__library-create-icon" aria-hidden="true" />
-      </button>
+      {compact ? (
+        <TooltipButton
+          label={triggerLabel}
+          className="flow-page__library-create-btn"
+          onClick={() => setIsOpen((prev) => !prev)}
+          aria-expanded={isOpen}
+          aria-haspopup="menu"
+        >
+          {triggerContent}
+        </TooltipButton>
+      ) : (
+        <button
+          type="button"
+          className="flow-page__library-create-btn"
+          onClick={() => setIsOpen((prev) => !prev)}
+          aria-label={triggerLabel}
+          aria-expanded={isOpen}
+          aria-haspopup="menu"
+        >
+          {triggerContent}
+        </button>
+      )}
       {isOpen ? (
         <>
           <button
@@ -111,10 +148,7 @@ export function FlowLibraryCreateMenu({
                 </span>
                 <span className="flow-page__library-create-action-copy">
                   <span className="flow-page__library-create-action-title">
-                    {creatingPlaylist ? "Creating playlist..." : "New playlist"}
-                  </span>
-                  <span className="flow-page__library-create-action-desc">
-                    Curate and play your own track list
+                    {creatingPlaylist ? "Creating playlist…" : "New playlist"}
                   </span>
                 </span>
               </button> : null}
@@ -137,10 +171,7 @@ export function FlowLibraryCreateMenu({
                   </span>
                   <span className="flow-page__library-create-action-copy">
                     <span className="flow-page__library-create-action-title">
-                      {creatingFlow ? "Creating flow..." : "New flow"}
-                    </span>
-                    <span className="flow-page__library-create-action-desc">
-                      Auto-updating playlist from your recipe
+                      {creatingFlow ? "Creating flow…" : "New flow"}
                     </span>
                   </span>
                 </button>
@@ -168,9 +199,6 @@ export function FlowLibraryCreateMenu({
                 </span>
                 <span className="flow-page__library-create-action-copy">
                   <span className="flow-page__library-create-action-title">Import playlist</span>
-                  <span className="flow-page__library-create-action-desc">
-                    From Spotify or a JSON export
-                  </span>
                 </span>
               </button>
             </div> : null}
@@ -210,7 +238,9 @@ export function PlaylistLibraryItem({
   const showSyncedBadge =
     entry.kind === "shared" &&
     entry.importSource?.syncEnabled === true &&
-    entry.importSource?.provider === "spotify-playlist";
+    ["spotify-playlist", "listenbrainz-playlist", "listenbrainz-createdfor", "lastfm-station"].includes(
+      entry.importSource?.provider,
+    );
 
   return (
     <div
