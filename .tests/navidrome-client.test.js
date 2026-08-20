@@ -381,6 +381,60 @@ test("reuses one native login while paging the song index", async () => {
   assert.equal(loginCount, 1);
 });
 
+test("refreshes a cached native token after a 401", async () => {
+  const originalFetch = globalThis.fetch;
+  let loginCount = 0;
+  let requestCount = 0;
+  globalThis.fetch = async (url, options = {}) => {
+    const request = new URL(url);
+    if (request.pathname === "/auth/login") {
+      loginCount += 1;
+      return jsonResponse({ token: loginCount === 1 ? "stale-token" : "fresh-token" });
+    }
+    requestCount += 1;
+    if (requestCount === 1) return new Response(null, { status: 401 });
+    assert.equal(options.headers["X-ND-Authorization"], "Bearer fresh-token");
+    return jsonResponse({ ok: true });
+  };
+
+  try {
+    const client = new NavidromeClient("http://navidrome.test", "user", "password");
+    assert.deepEqual(await client._nativeRequest("GET", "/api/library"), { ok: true });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(loginCount, 2);
+  assert.equal(requestCount, 2);
+});
+
+test("refreshes a cached native token after a 401 during artwork upload", async () => {
+  const originalFetch = globalThis.fetch;
+  let loginCount = 0;
+  let artworkAttempts = 0;
+  globalThis.fetch = async (url, options = {}) => {
+    const request = new URL(url);
+    if (request.pathname === "/auth/login") {
+      loginCount += 1;
+      return jsonResponse({ token: loginCount === 1 ? "stale-token" : "fresh-token" });
+    }
+    artworkAttempts += 1;
+    if (artworkAttempts === 1) return new Response(null, { status: 401 });
+    assert.equal(options.headers["X-ND-Authorization"], "Bearer fresh-token");
+    return new Response(null, { status: 204 });
+  };
+
+  try {
+    await new NavidromeClient("http://navidrome.test", "user", "password")
+      .uploadPlaylistArtwork("playlist-1", Buffer.from("image"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(loginCount, 2);
+  assert.equal(artworkAttempts, 2);
+});
+
 test("uploads playlist artwork through the native API", async () => {
   const originalFetch = globalThis.fetch;
   const requests = [];

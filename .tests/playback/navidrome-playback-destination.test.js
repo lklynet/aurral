@@ -724,6 +724,72 @@ test("publishes resolved songs and catches up when Navidrome indexes the rest", 
   await assert.rejects(fs.access(path.join(destination.libraryRoot, "Catch-up.m3u")));
 });
 
+test("serializes playlist deletion behind an in-flight catch-up", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Delete during catch-up" });
+  const songs = { Ready: { id: "ready-song" } };
+  const client = createClient({ songs });
+  const events = [];
+  const updatePlaylist = client.updatePlaylist.bind(client);
+  const deletePlaylist = client.deletePlaylist.bind(client);
+  client.updatePlaylist = async (...args) => {
+    events.push("update");
+    return updatePlaylist(...args);
+  };
+  client.deletePlaylist = async (...args) => {
+    events.push("delete");
+    return deletePlaylist(...args);
+  };
+  let releaseLookup;
+  const lookupGate = new Promise((resolve) => {
+    releaseLookup = resolve;
+  });
+  let lookupStartedResolve;
+  const lookupStarted = new Promise((resolve) => {
+    lookupStartedResolve = resolve;
+  });
+  let lookupStartedDone = false;
+  lookupStarted.then(() => {
+    lookupStartedDone = true;
+  });
+  let blockMissing = false;
+  client.findSong = async (title) => {
+    if (title === "Missing" && blockMissing) {
+      blockMissing = false;
+      lookupStartedResolve();
+      await lookupGate;
+    }
+    return songs[title] || null;
+  };
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+  const scheduleCatchup = destination._scheduleCatchup.bind(destination);
+  destination._scheduleCatchup = () => {};
+  const snapshot = createPlaybackPlaylistSnapshot({
+    entityId: playlist.id,
+    displayName: playlist.name,
+    tracks: [
+      { path: "/music/ready.flac", title: "Ready", artist: "Artist" },
+      { path: "/music/missing.flac", title: "Missing", artist: "Artist" },
+    ],
+  });
+
+  await destination.publishPlaylist(snapshot);
+  destination._scheduleCatchup = scheduleCatchup;
+  songs.Missing = { id: "missing-song" };
+  blockMissing = true;
+  scheduleCatchup([0]);
+  while (!lookupStartedDone) await new Promise((resolve) => setTimeout(resolve, 1));
+
+  const deletePromise = destination.deletePlaylist(snapshot);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(events, []);
+  releaseLookup();
+
+  assert.deepEqual(await deletePromise, { ok: true });
+  while (destination._catchupRunning) await new Promise((resolve) => setTimeout(resolve, 1));
+  assert.deepEqual(events, ["update", "delete"]);
+  assert.equal(navidromePlaylistPointerStore.getPointer(playlist.id, "global"), null);
+});
+
 test("updates a stored playlist ID without relying on the playlist list", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Stored" });
   const client = createClient({ songs: { Song: { id: "song-1" } } });

@@ -507,18 +507,22 @@ export class NavidromePlaybackDestination {
     return playbackOperationSuccess();
   }
 
+  async _runPlaylistOperation(key, operation) {
+    const previous = this._publishInFlight.get(key) || Promise.resolve();
+    const queued = previous.catch(() => {}).then(operation);
+    this._publishInFlight.set(key, queued);
+    try {
+      return await queued;
+    } finally {
+      if (this._publishInFlight.get(key) === queued) this._publishInFlight.delete(key);
+    }
+  }
+
   async publishPlaylist(value) {
     try {
       const snapshot = createPlaybackPlaylistSnapshot(value);
       const key = `${snapshot.entityId}:${this._targetKey(snapshot.ownerUserId)}`;
-      const previous = this._publishInFlight.get(key) || Promise.resolve();
-      const operation = previous.catch(() => {}).then(() => this._publishPlaylist(snapshot));
-      this._publishInFlight.set(key, operation);
-      try {
-        return await operation;
-      } finally {
-        if (this._publishInFlight.get(key) === operation) this._publishInFlight.delete(key);
-      }
+      return await this._runPlaylistOperation(key, () => this._publishPlaylist(snapshot));
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_PUBLISH_FAILED",
@@ -534,32 +538,35 @@ export class NavidromePlaybackDestination {
       const names = this._getNamesForIdentity(identity);
       if (!names) return playbackOperationSuccess();
       const targetKey = this._targetKey(identity.ownerUserId);
-      const pointer = navidromePlaylistPointerStore.getPointer(identity.entityId, targetKey);
-      let pointerError = null;
-      let pointerResolved = !pointer;
-      if (pointer && this.isConfigured()) {
-        try {
-          await this.client.deletePlaylist(pointer.playlistId);
-          pointerResolved = true;
-        } catch (error) {
-          pointerError = error;
+      const key = `${identity.entityId}:${targetKey}`;
+      return await this._runPlaylistOperation(key, async () => {
+        const pointer = navidromePlaylistPointerStore.getPointer(identity.entityId, targetKey);
+        let pointerError = null;
+        let pointerResolved = !pointer;
+        if (pointer && this.isConfigured()) {
+          try {
+            await this.client.deletePlaylist(pointer.playlistId);
+            pointerResolved = true;
+          } catch (error) {
+            pointerError = error;
+          }
         }
-      }
-      if (pointerResolved) {
-        navidromePlaylistPointerStore.deletePointer(identity.entityId, targetKey);
-      }
-      this._pendingSnapshots.delete(`${identity.entityId}:${targetKey}`);
-      this._syncHashes.delete(`${identity.entityId}:${targetKey}`);
-      this._playlists = null;
-      await this._deleteNativePlaylists([names.current, ...names.legacy]);
-      await this._deleteFiles([names.current], PLAYLIST_FILE_EXTENSIONS);
-      await this._deleteFiles(names.legacy, [
-        ...PLAYLIST_FILE_EXTENSIONS,
-        ...ARTWORK_FILE_EXTENSIONS,
-        ARTWORK_SUPPRESS_SUFFIX,
-      ]);
-      if (pointerError) throw pointerError;
-      return playbackOperationSuccess();
+        if (pointerResolved) {
+          navidromePlaylistPointerStore.deletePointer(identity.entityId, targetKey);
+        }
+        this._pendingSnapshots.delete(key);
+        this._syncHashes.delete(key);
+        this._playlists = null;
+        await this._deleteNativePlaylists([names.current, ...names.legacy]);
+        await this._deleteFiles([names.current], PLAYLIST_FILE_EXTENSIONS);
+        await this._deleteFiles(names.legacy, [
+          ...PLAYLIST_FILE_EXTENSIONS,
+          ...ARTWORK_FILE_EXTENSIONS,
+          ARTWORK_SUPPRESS_SUFFIX,
+        ]);
+        if (pointerError) throw pointerError;
+        return playbackOperationSuccess();
+      });
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_DELETE_FAILED",
@@ -593,6 +600,8 @@ export class NavidromePlaybackDestination {
           await wait(delayMs, undefined, { ref: false });
           if (!this.isConfigured() || !this._pendingSnapshots.size) break;
           for (const snapshot of [...this._pendingSnapshots.values()]) {
+            const key = `${snapshot.entityId}:${this._targetKey(snapshot.ownerUserId)}`;
+            if (this._pendingSnapshots.get(key) !== snapshot) continue;
             await this.publishPlaylist(snapshot);
           }
         }
