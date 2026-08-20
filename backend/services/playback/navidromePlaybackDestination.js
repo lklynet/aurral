@@ -442,6 +442,10 @@ export class NavidromePlaybackDestination {
       this._pendingSnapshots.set(`${snapshot.entityId}:${targetKey}`, snapshot);
       return playbackOperationSuccess();
     }
+    if (pointer && hasUnresolvedSongs) {
+      this._pendingSnapshots.set(`${snapshot.entityId}:${targetKey}`, snapshot);
+      return playbackOperationSuccess();
+    }
 
     let playlist = null;
     let artworkNeedsUpload = false;
