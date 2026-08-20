@@ -477,6 +477,139 @@ const rankFlowCases = [
     },
   },
   {
+    name: "rankFlowSearchResults scores filenames against the version-suffix-stripped title",
+    results: [
+      result({
+        user: "labelledUser",
+        file: "Artist Name\\Album Name (2004)\\11 - Correct Track (Radio Edit).mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Artist Name",
+      trackName: "Correct Track - Radio Edit",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      trackNumber: 11,
+      albumTrackCount: 13,
+      durationMs: 226000,
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].preDownloadValid, true);
+      assert.equal(ranked[0].preDownloadRejectReason, null);
+      assert.ok(ranked[0].breakdown.titleScore >= 82);
+    },
+  },
+  {
+    name: "rankFlowSearchResults accepts candidates that do not declare the requested mix variant",
+    results: [
+      result({
+        user: "albumUser",
+        file: "Artist Name\\Album Name (2004)\\11 - Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Artist Name",
+      trackName: "Wide Awake Tonight - Radio Edit",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      trackNumber: 11,
+      albumTrackCount: 13,
+      durationMs: 226000,
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].preDownloadValid, true);
+      assert.equal(ranked[0].preDownloadRejectReason, null);
+      assert.equal(ranked[0].breakdown.variantHardMismatch, false);
+    },
+  },
+  {
+    name: "rankFlowSearchResults still rejects candidates declaring a different mix variant",
+    results: [
+      result({
+        user: "extendedUser",
+        file: "Artist Name\\Album Name (2004)\\11 - Wide Awake Tonight (Extended Mix).mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Artist Name",
+      trackName: "Wide Awake Tonight - Radio Edit",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      trackNumber: 11,
+      albumTrackCount: 13,
+      durationMs: 226000,
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].preDownloadValid, false);
+      assert.equal(ranked[0].preDownloadRejectReason, "variant-mismatch");
+      assert.equal(ranked[0].breakdown.variantHardMismatch, true);
+    },
+  },
+  {
+    name: "rankFlowSearchResults still rejects mix variants when the requested track is plain",
+    results: [
+      result({
+        user: "extendedUser",
+        file: "Artist Name\\Album Name (2004)\\11 - Wide Awake Tonight (Extended Mix).mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Artist Name",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      trackNumber: 11,
+      albumTrackCount: 13,
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].preDownloadValid, false);
+      assert.equal(ranked[0].preDownloadRejectReason, "variant-mismatch");
+    },
+  },
+  {
+    name: "rankFlowSearchResults ranks a declared mix variant above one that omits it",
+    results: [
+      result({
+        user: "silentUser",
+        file: "Artist Name\\Album Name (2004)\\11 - Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+      result({
+        user: "labelledUser",
+        file: "Artist Name\\Album Name (2004)\\11 - Wide Awake Tonight (Radio Edit).mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Artist Name",
+      trackName: "Wide Awake Tonight - Radio Edit",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      trackNumber: 11,
+      albumTrackCount: 13,
+      durationMs: 226000,
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 2);
+      assert.equal(ranked[0].raw.user, "labelledUser");
+      assert.equal(ranked[0].preDownloadValid, true);
+      assert.equal(ranked[1].preDownloadValid, true);
+    },
+  },
+  {
     name: "rankFlowSearchResults reads the artist from the filename when the folder hides it",
     results: [
       result({
@@ -819,6 +952,26 @@ test("validateDownloadedTrack scores identity before final quality admission", a
   assert.ok(accepted.scores.title >= 82);
 });
 
+test("validateDownloadedTrack accepts a remote filename that omits the requested version suffix", async () => {
+  const validated = await validateDownloadedTrack(
+    "/tmp/does-not-exist.mp3",
+    {
+      preDownloadValid: true,
+      raw: { file: "Artist Name\\Album Name (2004)\\11 - Correct Track.mp3" },
+    },
+    {
+      artistName: "Artist Name",
+      trackName: "Correct Track - Radio Edit",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      trackNumber: 11,
+      durationMs: 226000,
+    },
+  );
+  assert.ok(validated.scores.title >= 82);
+  assert.match(validated.reason, /^quality-unknown:/);
+});
+
 test("validateDownloadedTrack scores path segments without weak-word inflation", async () => {
   const good = await validateDownloadedTrack(
     "/tmp/does-not-exist.mp3",
@@ -845,6 +998,206 @@ test("validateDownloadedTrack scores path segments without weak-word inflation",
     },
   );
   assert.ok(weak.scores.artist < 92);
+});
+
+test("rankFlowSearchResults prefers the profile-eligible file inside a release folder", () => {
+  const folder = "Shared\\El Canto Del Loco\\Por Mi y por Todos Mis Companeros (2009)";
+  const results = [
+    result({
+      user: "peer",
+      file: `${folder}\\04 - El Canto Del Loco - Aunque Tu No Lo Sepas.flac`,
+      bitrate: null,
+      size: 30000000,
+    }),
+    result({
+      user: "peer",
+      file: `${folder}\\04 - El Canto Del Loco - Aunque Tu No Lo Sepas.mp3`,
+      bitrate: 320,
+      size: 9000000,
+    }),
+  ];
+  const track = {
+    artistName: "El Canto Del Loco",
+    trackName: "Aunque Tu No Lo Sepas",
+    albumName: "Por Mi y por Todos Mis Companeros",
+    releaseYear: "2009",
+    artistAliases: [],
+  };
+  const profile = { enabled: ["mp3-320"], cutoff: "mp3-320" };
+
+  // preferredFormat flac makes the FLAC win on match score, which is what the
+  // folder pick used to go by; the profile cannot accept it, so the track died
+  // at the quality filter with the eligible mp3 sitting in the same folder.
+  const withProfile = rankFlowSearchResults(results, track, {
+    ...rankOpts,
+    preferredFormat: "flac",
+    qualityProfile: profile,
+  });
+  assert.ok(withProfile.length > 0);
+  assert.ok(
+    withProfile[0].raw.file.endsWith(".mp3"),
+    `expected the profile-eligible mp3 to win, got ${withProfile[0].raw.file}`,
+  );
+
+  const withoutProfile = rankFlowSearchResults(results, track, {
+    ...rankOpts,
+    preferredFormat: "flac",
+  });
+  assert.ok(
+    withoutProfile[0].raw.file.endsWith(".flac"),
+    "without a profile the format preference should still decide",
+  );
+});
+
+test("rankFlowSearchResults falls back to flat ranking when no folder candidate fits the profile", () => {
+  const folder = "Shared\\El Canto Del Loco\\Por Mi y por Todos Mis Companeros (2009)";
+  const results = [
+    result({
+      user: "folderPeer",
+      file: `${folder}\\04 - El Canto Del Loco - Aunque Tu No Lo Sepas.flac`,
+      bitrate: null,
+      size: 30000000,
+    }),
+    result({
+      user: "loosePeer",
+      file: "Music\\Spanish Hits\\El Canto Del Loco - Aunque Tu No Lo Sepas.mp3",
+      bitrate: 320,
+      size: 9000000,
+    }),
+  ];
+  const track = {
+    artistName: "El Canto Del Loco",
+    trackName: "Aunque Tu No Lo Sepas",
+    albumName: "Por Mi y por Todos Mis Companeros",
+    releaseYear: "2009",
+    artistAliases: [],
+  };
+  const profile = { enabled: ["mp3-320", "m4a-320"], cutoff: "mp3-320" };
+
+  const ranked = rankFlowSearchResults(results, track, {
+    ...rankOpts,
+    preferredFormat: "mp3",
+    qualityProfile: profile,
+  });
+  assert.ok(
+    ranked.some((entry) => entry.raw.file.endsWith(".mp3")),
+    "expected the profile-eligible file outside the album folder to be reachable",
+  );
+});
+
+test("rankFlowSearchResults keeps eligible candidates outside the fitting folders", () => {
+  const album = "Por Mi y por Todos Mis Companeros";
+  const titles = [
+    "Aunque Tu No Lo Sepas",
+    "Zapatillas",
+    "La Madre de Jose",
+    "Puede Ser",
+    "Peter Pan",
+    "Besos",
+    "Volveras",
+    "Son Suenos",
+    "El Chico",
+    "Contigo",
+    "Insoportable",
+    "A Ti",
+  ];
+  const albumFolder = titles.map((title, index) =>
+    result({
+      user: "albumPeer",
+      file: `Peer1\\El Canto Del Loco\\${album} (2009)\\${String(index + 1).padStart(2, "0")} - ${title}.mp3`,
+      bitrate: 320,
+      size: 9000000,
+    }),
+  );
+  // Single-file folders: the track itself validates, but the folder never passes
+  // the fitting heuristics, so its candidate used to be dropped on the floor.
+  const loose = [
+    result({
+      user: "loosePeerA",
+      file: `PeerA\\${album}\\01 - Aunque Tu No Lo Sepas.mp3`,
+      bitrate: 320,
+      size: 9100000,
+    }),
+    result({
+      user: "loosePeerB",
+      file: `PeerB\\${album}\\Aunque Tu No Lo Sepas.mp3`,
+      bitrate: 320,
+      size: 9200000,
+    }),
+  ];
+  const track = {
+    artistName: "El Canto Del Loco",
+    trackName: "Aunque Tu No Lo Sepas",
+    albumName: album,
+    releaseYear: "2009",
+    artistAliases: [],
+    albumTrackCount: 12,
+    albumTrackTitles: titles,
+    trackNumber: 1,
+  };
+
+  const ranked = rankFlowSearchResults([...albumFolder, ...loose], track, {
+    ...rankOpts,
+    preferredFormat: "mp3",
+    qualityProfile: { enabled: ["mp3-320"], cutoff: "mp3-320" },
+  });
+
+  // The orchestrator waits for several admissible candidates before it stops
+  // searching, so one pick per fitting folder is not enough on its own.
+  const users = ranked.filter((entry) => entry.preDownloadValid).map((entry) => entry.raw.user);
+  assert.deepEqual(users, ["albumPeer", "loosePeerA", "loosePeerB"]);
+  assert.equal(ranked[0].releaseFolderFit, true, "folder priority must be preserved");
+  assert.deepEqual([...new Set(users)], users, "candidates must not be duplicated");
+});
+
+test("rankFlowSearchResults leaves the candidate set alone when no profile is given", () => {
+  const album = "Por Mi y por Todos Mis Companeros";
+  const titles = [
+    "Aunque Tu No Lo Sepas",
+    "Zapatillas",
+    "La Madre de Jose",
+    "Puede Ser",
+    "Peter Pan",
+    "Besos",
+    "Volveras",
+    "Son Suenos",
+    "El Chico",
+    "Contigo",
+    "Insoportable",
+    "A Ti",
+  ];
+  const albumFolder = titles.map((title, index) =>
+    result({
+      user: "albumPeer",
+      file: `Peer1\\El Canto Del Loco\\${album} (2009)\\${String(index + 1).padStart(2, "0")} - ${title}.mp3`,
+      bitrate: 320,
+      size: 9000000,
+    }),
+  );
+  const nonFitting = result({
+    user: "loosePeer",
+    file: `PeerA\\${album}\\01 - Aunque Tu No Lo Sepas.mp3`,
+    bitrate: 320,
+    size: 9100000,
+  });
+  const track = {
+    artistName: "El Canto Del Loco",
+    trackName: "Aunque Tu No Lo Sepas",
+    albumName: album,
+    releaseYear: "2009",
+    artistAliases: [],
+    albumTrackCount: 12,
+    albumTrackTitles: titles,
+    trackNumber: 1,
+  };
+
+  const ranked = rankFlowSearchResults([...albumFolder, nonFitting], track, {
+    ...rankOpts,
+    preferredFormat: "mp3",
+  });
+
+  const users = ranked.filter((entry) => entry.preDownloadValid).map((entry) => entry.raw.user);
+  assert.deepEqual(users, ["albumPeer"], "no profile means the folder pass decides alone");
 });
 
 test("rankFlowSearchResults accepts a candidate whose advertised duration matches", () => {

@@ -444,6 +444,7 @@ export class NavidromePlaybackDestination {
     }
 
     let playlist = null;
+    let artworkNeedsUpload = false;
     if (pointer) {
       for (const delayMs of [0, 250, 1000, 2000]) {
         if (delayMs) await wait(delayMs);
@@ -472,6 +473,7 @@ export class NavidromePlaybackDestination {
         await this.client.updatePlaylist(playlist.id, { name: current, songIds });
       } else {
         playlist = await this.client.createPlaylist(current, songIds);
+        artworkNeedsUpload = true;
       }
     }
     if (!playlist?.id) throw new Error("Navidrome did not return a playlist ID");
@@ -479,7 +481,7 @@ export class NavidromePlaybackDestination {
       playlistId: playlist.id,
       title: current,
     });
-    await this._uploadPlaylistArtwork(snapshot, playlist.id);
+    if (artworkNeedsUpload) await this._uploadPlaylistArtwork(snapshot, playlist.id);
     if (hasUnresolvedSongs) {
       this._pendingSnapshots.set(`${snapshot.entityId}:${targetKey}`, snapshot);
       return playbackOperationSuccess();

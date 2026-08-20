@@ -195,6 +195,37 @@ test("uploads generated artwork for API playlists", async () => {
   }]);
 });
 
+test("does not re-upload artwork when republishing an existing API playlist", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Existing Art" });
+  const client = createClient({
+    playlists: [{ id: "existing", name: playlist.name }],
+    songs: { Song: { id: "song-1" } },
+  });
+  navidromePlaylistPointerStore.setPointer(playlist.id, "global", {
+    playlistId: "existing",
+    title: playlist.name,
+  });
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+  await fs.mkdir(destination.libraryRoot, { recursive: true });
+  await fs.writeFile(path.join(destination.libraryRoot, "Existing Art.webp"), "image");
+
+  const result = await destination.publishPlaylist(
+    createPlaybackPlaylistSnapshot({
+      entityId: playlist.id,
+      displayName: playlist.name,
+      tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
+    }),
+  );
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(client.calls.updated, [{
+    id: "existing",
+    name: playlist.name,
+    songIds: ["song-1"],
+  }]);
+  assert.deepEqual(client.calls.artwork, []);
+});
+
 test("syncs and clears artwork for an existing API playlist", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Artwork Sync" });
   const client = createClient({ songs: { Song: { id: "song-1" } } });

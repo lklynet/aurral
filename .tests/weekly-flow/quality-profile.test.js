@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import {
   classifyAudioQuality,
   createDefaultQualityProfile,
+  getAdvertisedQualityRank,
   getQualityState,
+  isAdvertisedQualityEligible,
   isQualityUpgrade,
   normalizeQualityProfile,
   orderAdvertisedQualityCandidates,
@@ -106,4 +108,39 @@ test("orderAdvertisedQualityCandidates drops formats that can never satisfy a ti
     },
   );
   assert.deepEqual(ordered, ["Song 320kbps.mp3", "Mystery Song.mp3"]);
+});
+
+test("isAdvertisedQualityEligible mirrors the candidate filter", () => {
+  const profile = normalizeQualityProfile({
+    enabled: ["mp3-320", "m4a-320"],
+    cutoff: "mp3-320",
+  });
+  assert.equal(isAdvertisedQualityEligible("Song 320kbps.mp3", null, { profile }), true);
+  assert.equal(isAdvertisedQualityEligible("Song 128kbps.mp3", null, { profile }), false);
+  assert.equal(isAdvertisedQualityEligible("Song.flac", null, { profile }), false);
+  assert.equal(isAdvertisedQualityEligible("Song.opus", null, { profile }), false);
+  assert.equal(isAdvertisedQualityEligible("Mystery Song.mp3", null, { profile }), true);
+});
+
+test("getAdvertisedQualityRank orders by profile position and sinks unknown tiers", () => {
+  const profile = normalizeQualityProfile({
+    enabled: ["mp3-320", "mp3-192"],
+    cutoff: "mp3-320",
+  });
+  const rank320 = getAdvertisedQualityRank("Song 320kbps.mp3", null, profile);
+  const rank192 = getAdvertisedQualityRank("Song 192kbps.mp3", null, profile);
+  const rankUnknown = getAdvertisedQualityRank("Song.opus", null, profile);
+  assert.ok(rank320 < rank192);
+  assert.ok(rank192 < rankUnknown);
+
+  // A configured order must win over the default one.
+  const reversed = normalizeQualityProfile({
+    order: ["mp3-192", "mp3-320"],
+    enabled: ["mp3-320", "mp3-192"],
+    cutoff: "mp3-192",
+  });
+  assert.ok(
+    getAdvertisedQualityRank("Song 192kbps.mp3", null, reversed) <
+      getAdvertisedQualityRank("Song 320kbps.mp3", null, reversed),
+  );
 });
