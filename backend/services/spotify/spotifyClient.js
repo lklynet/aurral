@@ -10,19 +10,33 @@ const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 export const SPOTIFY_AUTH_REQUIRED_CODE = "SPOTIFY_AUTH_REQUIRED";
 const playlistTrackCache = createCache(2 * 60, 200);
 const playlistTrackInflight = new Map();
+const playlistTrackGeneration = new Map();
 const tokenRefreshInflight = new Map();
 
-const playlistTrackCacheKey = (userId, playlistId) =>
-  `${String(userId)}:${String(playlistId)}`;
+const getPlaylistTrackGeneration = (userId) =>
+  playlistTrackGeneration.get(String(userId)) || 0;
 
-const invalidateConnection = (userId) => {
-  spotifyConnectionStore.clearConnection(userId);
-  playlistTrackCache.flushAll();
-  playlistTrackInflight.clear();
-  const error = new Error("Spotify connection expired");
+const bumpPlaylistTrackGeneration = (userId) => {
+  const key = String(userId);
+  const generation = getPlaylistTrackGeneration(key) + 1;
+  playlistTrackGeneration.set(key, generation);
+  return generation;
+};
+
+const playlistTrackCacheKey = (userId, playlistId) =>
+  `${String(userId)}:${getPlaylistTrackGeneration(userId)}:${String(playlistId)}`;
+
+const createAuthRequiredError = (message) => {
+  const error = new Error(message);
   error.code = SPOTIFY_AUTH_REQUIRED_CODE;
   error.statusCode = 401;
   return error;
+};
+
+const invalidateConnection = (userId) => {
+  spotifyConnectionStore.clearConnection(userId);
+  bumpPlaylistTrackGeneration(userId);
+  return createAuthRequiredError("Spotify connection expired");
 };
 
 async function renewAccessToken(refreshToken, signal) {
@@ -68,10 +82,7 @@ const refreshConnection = (userId, refreshToken, { force = false } = {}) =>
 async function getValidConnection(userId) {
   let connection = spotifyConnectionStore.getConnection(userId);
   if (!connection) {
-    const error = new Error("Spotify is not connected");
-    error.code = SPOTIFY_AUTH_REQUIRED_CODE;
-    error.statusCode = 401;
-    throw error;
+    throw createAuthRequiredError("Spotify is not connected");
   }
   if (connection.expiresAt - TOKEN_REFRESH_BUFFER_MS > Date.now()) {
     return connection;
@@ -168,6 +179,8 @@ export const spotifyClient = {
   },
 
   async listPlaylistTracks(userId, playlistId, { forceRefresh = false } = {}) {
+    await getValidConnection(userId);
+    const generation = getPlaylistTrackGeneration(userId);
     const cacheKey = playlistTrackCacheKey(userId, playlistId);
     if (!forceRefresh) {
       const cached = playlistTrackCache.get(cacheKey);
@@ -187,6 +200,9 @@ export const spotifyClient = {
         },
       },
     ).then((items) => {
+      if (getPlaylistTrackGeneration(userId) !== generation) {
+        throw createAuthRequiredError("Spotify connection expired");
+      }
       playlistTrackCache.set(cacheKey, items);
       return items;
     });
@@ -200,7 +216,11 @@ export const spotifyClient = {
     }
   },
 
-  clearPlaylistTrackCache() {
+  clearPlaylistTrackCache(userId) {
+    if (userId != null) {
+      bumpPlaylistTrackGeneration(userId);
+      return;
+    }
     playlistTrackCache.flushAll();
     playlistTrackInflight.clear();
   },

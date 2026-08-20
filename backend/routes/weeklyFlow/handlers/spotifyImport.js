@@ -99,7 +99,7 @@ export function registerSpotifyImport(router) {
 
   router.delete("/import/spotify", (req, res) => {
     spotifyConnectionStore.clearConnection(req.user.id);
-    spotifyClient.clearPlaylistTrackCache();
+    spotifyClient.clearPlaylistTrackCache(req.user.id);
     res.json({ connected: false });
   });
 
