@@ -150,6 +150,7 @@ export function getWeeklyFlowStatusSnapshot({
             syncIntervalHours: playlist.importSource.syncEnabled
               ? playlist.importSource.syncIntervalHours
               : 0,
+            keepRemovedTracks: playlist.importSource.keepRemovedTracks !== false,
           }
         : null,
     };

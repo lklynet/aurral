@@ -99,8 +99,17 @@ async function request(config) {
       const error = new Error(`Request failed with status code ${res.status}`);
       error.response = response;
       if (res.status === 401 && !isAuthEndpoint) {
-        clearAuthStorage();
-        if (!data?.error) reauthenticateThroughProxy();
+        const isAurralAuthError =
+          data?.error === "Unauthorized" ||
+          data?.code === "AUTH_REQUIRED" ||
+          data?.code === "SESSION_INVALID";
+        if (isAurralAuthError) {
+          clearAuthStorage();
+        } else if (data?.error && typeof data.error === "object") {
+          reauthenticateThroughProxy();
+        } else if (!data?.error) {
+          reauthenticateThroughProxy();
+        }
       }
       throw error;
     }

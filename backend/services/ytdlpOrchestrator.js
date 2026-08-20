@@ -181,14 +181,14 @@ async function handleYtdlpFinalize(payload, helpers) {
     resolvedTrack,
   );
   if (!validation.valid) {
-    if (
-      blockPipelineJobForReview({
-        downloadTracker,
-        job,
-        validation,
-        sourcePath: filePath,
-      })
-    ) {
+    const reviewable =
+      validation.blocked || validation.scores?.matchReason === "weak-title-match";
+    if (reviewable && blockPipelineJobForReview({
+      downloadTracker,
+      job,
+      validation: { ...validation, blocked: true },
+      sourcePath: filePath,
+    })) {
       return null;
     }
     await fs.rm(filePath, { force: true }).catch(() => {});

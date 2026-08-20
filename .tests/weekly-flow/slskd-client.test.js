@@ -489,3 +489,36 @@ test("cleanupAfterRun removes Aurral-owned searches and transfers", async () => 
     await mock.close();
   }
 });
+
+test("flattenSearchResults preserves the slskd-advertised length in seconds", () => {
+  const results = slskdClient.flattenSearchResults({
+    responses: [
+      {
+        username: "peerOne",
+        files: [
+          { filename: "Artist/Album/01 - Track.mp3", size: 8000000, length: 226 },
+          { filename: "Artist/Album/02 - NoLength.mp3", size: 7000000 },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(results.length, 2);
+  assert.equal(results[0].length, 226);
+  assert.equal(results[1].length, null);
+});
+
+test("flattenSearchResults does not fall back to length when size is absent", () => {
+  const results = slskdClient.flattenSearchResults({
+    responses: [
+      {
+        username: "peerOne",
+        files: [{ filename: "Artist/Album/03 - Sizeless.mp3", length: 226 }],
+      },
+    ],
+  });
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].size, 0);
+  assert.equal(results[0].length, 226);
+});

@@ -36,6 +36,7 @@ import {
 import authRouter from "./routes/auth.js";
 import imageProxyRouter from "./routes/imageProxy.js";
 import lidarrFeedRouter from "./routes/lidarrFeed.js";
+import lidarrWebhookRouter from "./routes/lidarrWebhook.js";
 import inboxRouter from "./routes/inbox.js";
 import newsRouter from "./routes/news.js";
 import subsonicRouter from "./routes/subsonic.js";
@@ -129,7 +130,7 @@ if (process.env.OIDC_ENABLED === "true" && !isOidcEnabled()) {
   );
 }
 
-const connectSrcDirectives = ["'self'", "ws:", "wss:", "https://api.github.com"];
+const connectSrcDirectives = ["'self'", "ws:", "wss:", "https://api.github.com", "https://raw.githubusercontent.com"];
 if (process.env.AUTH_PROXY_DOMAIN) {
   connectSrcDirectives.push(process.env.AUTH_PROXY_DOMAIN);
 }
@@ -209,6 +210,7 @@ app.use("/api/library", libraryRouter);
 app.use("/api/discover", discoveryRouter);
 app.use("/api/inbox", inboxRouter);
 app.use("/api/news", newsRouter);
+app.use("/api/webhooks/lidarr", lidarrWebhookRouter);
 app.use("/api/requests", requestsRouter);
 app.use("/api/health", healthRouter);
 app.use("/api/filesystem", filesystemRouter);

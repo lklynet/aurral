@@ -38,6 +38,13 @@ import {
   queueQualityUpgrade,
 } from "../../../services/qualityProfileService.js";
 
+const getAccessiblePlaylistIds = (user) => [
+  ...new Set([
+    ...flowPlaylistConfig.getFlowsForUser(user),
+    ...flowPlaylistConfig.getSharedPlaylistsForUser(user),
+  ].map((playlist) => playlist.id)),
+];
+
 export function registerJobs(router) {
   router.get("/status", noCache, (req, res) => {
     res.json(getWeeklyFlowStatusSnapshot({ user: req.user }));
@@ -72,6 +79,37 @@ export function registerJobs(router) {
     );
     const profile = getQualityProfile();
     res.json(jobs.map((job) => decorateJobQuality(job, profile)));
+  });
+
+  router.post("/research-missing", async (req, res) => {
+    try {
+      let requeued = 0;
+      for (const playlistId of getAccessiblePlaylistIds(req.user)) {
+        requeued += await weeklyFlowWorker.researchMissingTracks(playlistId);
+      }
+      return res.json({ success: true, requeued });
+    } catch (error) {
+      return res.status(500).json({
+        error: "Failed to re-search missing tracks",
+        message: error.message,
+      });
+    }
+  });
+
+  router.post("/quality-upgrades", (req, res) => {
+    const playlistIds = getAccessiblePlaylistIds(req.user);
+    for (const playlistId of playlistIds) {
+      enqueueSystemTaskJob(
+        { kind: "quality-upgrade-check", force: true, playlistId, limit: 500 },
+        { priority: -10 },
+      );
+    }
+    return res.json({
+      success: true,
+      queued: 0,
+      scheduled: true,
+      playlistCount: playlistIds.length,
+    });
   });
 
   router.post("/quality-upgrades/:playlistId/:jobId", async (req, res) => {

@@ -37,6 +37,23 @@ After Lidarr imports a file, Aurral watches the configured Lidarr root folders
 and queues a canonical library scan. Aurral does not need a second import step
 in Lidarr. The file must still be readable at the path Lidarr reports.
 
+## Request availability notifications
+
+To send **Request available** notifications as soon as Lidarr imports an album,
+add an outgoing webhook in **Lidarr > Settings > Connect**:
+
+1. Add a **Webhook** connection.
+2. Set the URL to `https://aurral.example.com/api/webhooks/lidarr` using the
+   address that Lidarr can reach.
+3. Enable the **On Import** event.
+4. Add a custom `X-Api-Key` header containing the Aurral API key from
+   **Settings > System**.
+
+Aurral acknowledges other Lidarr webhook events but only changes request
+history for the import (`Download`) event of an album that was requested in
+Aurral. The existing Gotify and webhook notification switches still control
+which notifications are sent.
+
 If the file does not appear in **Library**, use the **Refresh** button there.
 Refresh waits for the canonical scan to finish. If it still does not appear,
 run **Test library access** and check [Filesystem and mounts](/getting-started/storage/)

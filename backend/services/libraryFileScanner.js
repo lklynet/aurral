@@ -31,6 +31,7 @@ const AUDIO_EXTENSIONS = new Set([
 const EXCLUDED_DIRECTORIES = new Set([
   ".git",
   "_fallback",
+  "_flows",
   "_playlists",
   "_staging",
   "aurral-weekly-flow",

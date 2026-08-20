@@ -411,3 +411,26 @@ test("removePlaylistFileIfUnshared relocates when another playlist still referen
   assert.equal(downloadTracker.getJob(sharedJobId)?.finalPath, expectedPath);
   assert.equal(await fs.readFile(expectedPath, "utf8"), "audio");
 });
+
+test("removePlaylistFileIfUnshared preserves external files during shared cleanup", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "External" });
+  const track = {
+    artistName: "Aphex Twin",
+    trackName: "External Xtal",
+    albumName: "Selected Ambient Works",
+  };
+  const externalPath = path.join(weeklyFlowRoot, "external-xtal.flac");
+  await fs.mkdir(path.dirname(externalPath), { recursive: true });
+  await fs.writeFile(externalPath, "audio");
+  const jobId = downloadTracker.addJob(track, playlist.id);
+  downloadTracker.setDone(jobId, externalPath, track.albumName, "/music/External Xtal.flac");
+
+  const result = await removePlaylistFileIfUnshared(externalPath, playlist.id, {
+    weeklyFlowRoot,
+    excludeJobIds: [jobId],
+    deleteIfUnshared: true,
+  });
+
+  assert.equal(result.action, "skipped");
+  await fs.access(externalPath);
+});

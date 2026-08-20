@@ -1,5 +1,6 @@
 import axios from "../../lib/axiosFetch.js";
 import crypto from "crypto";
+import { AURRAL_FLOWS_DIR, LEGACY_AURRAL_FLOWS_DIR } from "./playlistPaths.js";
 
 const PLEX_TV = "https://plex.tv";
 const PLEX_AUTH_APP = "https://app.plex.tv";
@@ -248,6 +249,12 @@ export class PlexClient {
   async ensureWeeklyFlowLibrary(libraryPath) {
     if (!this.isConfigured()) return null;
     const name = "Aurral";
+    const flowRoot = libraryPath.replace(/\/+$/, "");
+    const locations = [
+      libraryPath,
+      `${flowRoot}/${AURRAL_FLOWS_DIR}`,
+      `${flowRoot}/${LEGACY_AURRAL_FLOWS_DIR}`,
+    ];
     // Also match the legacy "Aurral Flow" name so existing libraries are reused
     // and renamed rather than duplicated.
     const findExisting = (libs) =>
@@ -255,7 +262,7 @@ export class PlexClient {
         (lib) =>
           lib.title === name ||
           lib.title === "Aurral Flow" ||
-          (lib.Location || []).some((loc) => loc.path === libraryPath),
+          (lib.Location || []).some((loc) => locations.includes(loc.path)),
       );
 
     const existing = findExisting(await this.getLibraries());
@@ -263,11 +270,13 @@ export class PlexClient {
       // Reconcile name + folder so a rename or a changed downloads-path setting
       // actually takes effect (Plex keeps the originals otherwise).
       const currentLocations = (existing.Location || []).map((loc) => loc.path).filter(Boolean);
-      const locationOk = currentLocations.length === 1 && currentLocations[0] === libraryPath;
+      const locationOk =
+        currentLocations.length === locations.length &&
+        locations.every((location) => currentLocations.includes(location));
       const nameOk = existing.title === name;
       if (!locationOk || !nameOk) {
         try {
-          await this.editLibrary(existing.key, { name, locations: [libraryPath] });
+          await this.editLibrary(existing.key, { name, locations });
           return findExisting(await this.getLibraries()) || existing;
         } catch (err) {
           console.warn(
@@ -283,17 +292,15 @@ export class PlexClient {
     // is inconsistent across versions, so we create then re-read the section
     // list to resolve the new library (and its `key`) reliably.
     try {
-      await this.request("/library/sections", {
-        method: "POST",
-        params: {
-          name,
-          type: MUSIC_SECTION_TYPE,
-          agent: MUSIC_AGENT,
-          scanner: MUSIC_SCANNER,
-          language: "en-US",
-          location: libraryPath,
-        },
+      const params = new URLSearchParams({
+        name,
+        type: MUSIC_SECTION_TYPE,
+        agent: MUSIC_AGENT,
+        scanner: MUSIC_SCANNER,
+        language: "en-US",
       });
+      for (const location of locations) params.append("location", location);
+      await this.request(`/library/sections?${params.toString()}`, { method: "POST" });
     } catch (err) {
       const detail = err?.response?.data || err.message;
       const status = err?.response?.status;

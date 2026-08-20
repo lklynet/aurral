@@ -12,14 +12,14 @@ Aurral does not write these files to your main music library.
 
 ## Flows compared with static playlists
 
-|           | Flows                                  | Static playlists                 |
-| --------- | -------------------------------------- | -------------------------------- |
-| Tracklist | Regenerates on a schedule              | Fixed from import or export      |
-| Downloads | Can generate replacement picks         | Keeps the exact imported tracks  |
-| Controls  | Schedule, source mix, focus, deep dive | None of the flow controls        |
-| Worker    | Shared download worker                 | Shared download worker           |
+|           | Flows                                  | Static playlists                         |
+| --------- | -------------------------------------- | ----------------------------------------- |
+| Tracklist | Regenerates on a schedule              | Fixed from import or follows Spotify      |
+| Downloads | Can generate replacement picks         | Keeps the exact imported tracks           |
+| Controls  | Schedule, source mix, focus, deep dive | Import, sync, and retention settings      |
+| Worker    | Shared download worker                 | Shared download worker                    |
 
-Flows refresh on a schedule and use your flow settings. Static playlists come from Spotify, JSON files, or exported flow tracklists.
+Flows refresh on a schedule and use your flow settings. Static playlists come from Spotify, JSON files, or exported flow tracklists. Spotify playlists follow Spotify membership during sync; their removed-track file-retention setting is available in the import flow and playlist menu.
 
 Flow names and static playlist names must be unique across both types. Aurral uses the same bare name for Navidrome and Plex playlists.
 
@@ -39,7 +39,7 @@ Static playlist membership is stored as canonical track references. Permanent
 Aurral tracks use the canonical `artist/album/track` layout under the configured
 Aurral download folder. Set this path in **Settings > Download Clients**.
 
-Flow media is temporary and lives under `.flows` below that root. Usually, the
+Flow media is temporary and lives under `_flows` below that root. Usually, the
 legacy playlist folder was:
 
 ```text

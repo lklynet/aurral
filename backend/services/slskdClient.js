@@ -120,7 +120,7 @@ function readSearchResponses(searchData) {
 
 function normalizeSearchFile(file, user, response = null, fromLockedList = false) {
   const filename = String(readProperty(file, "filename", "Filename", "file", "File") || "").trim();
-  const size = Number(readProperty(file, "size", "Size", "length", "Length") || 0);
+  const size = Number(readProperty(file, "size", "Size") || 0);
   const responseUser = readProperty(response, "username", "Username");
   const resolvedUser = String(
     user || responseUser || readProperty(file, "user", "User") || "",
@@ -129,6 +129,9 @@ function normalizeSearchFile(file, user, response = null, fromLockedList = false
   const locked =
     fromLockedList || readProperty(file, "isLocked", "IsLocked", "locked", "Locked") === true;
   const bitRate = readProperty(file, "bitRate", "BitRate", "bitrate") ?? null;
+  const advertisedLength = Number(readProperty(file, "length", "Length"));
+  const length =
+    Number.isFinite(advertisedLength) && advertisedLength > 0 ? advertisedLength : null;
   return {
     user: resolvedUser,
     file: filename,
@@ -143,6 +146,7 @@ function normalizeSearchFile(file, user, response = null, fromLockedList = false
     ),
     bitRate,
     bitrate: bitRate,
+    length,
     extension: readProperty(file, "extension", "Extension") ?? null,
     locked,
     isLocked: locked,

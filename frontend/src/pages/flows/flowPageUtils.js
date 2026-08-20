@@ -9,6 +9,7 @@ export const NEW_FLOW_TEMPLATE = {
   size: DEFAULT_SIZE,
   mix: DEFAULT_MIX,
   deepDive: false,
+  recordHistory: true,
   yearFrom: null,
   yearTo: null,
   tags: [],
@@ -276,6 +277,7 @@ export const flowToForm = (flow) => {
     size: Number.isFinite(size) && size > 0 ? Math.round(size) : DEFAULT_SIZE,
     mix,
     deepDive: flow?.deepDive === true,
+    recordHistory: flow?.recordHistory !== false,
     yearFrom: yearFrom == null ? "" : String(yearFrom),
     yearTo: yearTo == null ? "" : String(yearTo),
     includeTags: tagsList.join(", "),
@@ -318,6 +320,7 @@ export const buildFlowFromForm = (draft) => {
     tags: includeTags,
     relatedArtists: includeRelatedArtists,
     deepDive: draft?.deepDive === true,
+    recordHistory: draft?.recordHistory !== false,
     yearFrom,
     yearTo,
     scheduleDays,
@@ -349,6 +352,7 @@ const normalizeDraftForCompare = (draft) => {
     includeTags: normalizeList(draft?.includeTags),
     includeRelatedArtists: normalizeList(draft?.includeRelatedArtists),
     deepDive: draft?.deepDive === true,
+    recordHistory: draft?.recordHistory !== false,
     yearFrom,
     yearTo,
     scheduleDays: normalizeScheduleDays(draft?.scheduleDays),
@@ -364,6 +368,7 @@ export const isFlowDirty = (flow, draft) => {
 
 const normalizeScheduleDraftForCompare = (draft) => ({
   size: Number(draft?.size ?? 0),
+  recordHistory: draft?.recordHistory !== false,
   scheduleDays: normalizeScheduleDays(draft?.scheduleDays),
   scheduleTime: normalizeScheduleTime(draft?.scheduleTime),
 });
@@ -390,6 +395,7 @@ export const buildScheduleOnlyFlowFromForm = (flow, draft, { sizeError, extra = 
     tags: normalizeFlowEntryList(flow?.tags),
     relatedArtists: normalizeFlowEntryList(flow?.relatedArtists),
     deepDive: flow?.deepDive === true,
+    recordHistory: draft?.recordHistory !== false,
     yearFrom: flow?.yearFrom ?? null,
     yearTo: flow?.yearTo ?? null,
     scheduleDays,

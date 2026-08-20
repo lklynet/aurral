@@ -7,14 +7,16 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps }, playlistConfigModule] =
+const [isolatedState, { db }, { dbOps }, playlistConfigModule, flowHandlerUtils] =
   await setupIsolatedBackend(
     "playlist-config",
     "backend/config/db-sqlite.js",
     "backend/db/helpers/index.js",
     "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
+    "backend/routes/weeklyFlow/handlers/utils.js",
   );
-const { flowPlaylistConfig, tracksShareMembership } = playlistConfigModule;
+const { flowPlaylistConfig, normalizeImportSource, tracksShareMembership } = playlistConfigModule;
+const { validateFlowPayload } = flowHandlerUtils;
 
 test.beforeEach(() => {
   resetDatabase(db);
@@ -54,6 +56,39 @@ test("creates flows with normalized scheduling and enforces unique names", () =>
       }),
     /already exists/,
   );
+});
+
+test("defaults listening history on and persists a flow opt-out", () => {
+  const flow = flowPlaylistConfig.createFlow({
+    name: "No History",
+    size: 20,
+  });
+
+  assert.equal(flow.recordHistory, true);
+
+  const updated = flowPlaylistConfig.updateFlow(flow.id, {
+    recordHistory: false,
+  });
+
+  assert.equal(updated?.recordHistory, false);
+  assert.equal(flowPlaylistConfig.getFlow(flow.id)?.recordHistory, false);
+});
+
+test("rejects non-boolean listening history payloads", () => {
+  dbOps.updateSettings({ integrations: { lastfm: { apiKey: "test" } } });
+  const payload = {
+    name: "Validated History",
+    size: 20,
+    mix: { discover: 100 },
+    scheduleDays: [1],
+  };
+
+  assert.equal(
+    validateFlowPayload({ ...payload, recordHistory: "false" }),
+    "recordHistory must be a boolean",
+  );
+  assert.equal(validateFlowPayload({ ...payload, recordHistory: false }), null);
+  assert.equal(validateFlowPayload(payload), null);
 });
 
 test("stores and swaps optional release year range", () => {
@@ -231,6 +266,22 @@ test("updates shared playlists and keeps summaries in sync", () => {
   assert.equal(updated?.tracks?.length, 1);
   assert.equal(summary?.name, "Gym Mix Updated");
   assert.equal(summary?.trackCount, 1);
+});
+
+test("defaults Spotify removed-track retention on and preserves an explicit opt-out", () => {
+  const source = normalizeImportSource({
+    provider: "spotify-playlist",
+    externalId: "playlist-id",
+    syncEnabled: true,
+    syncIntervalHours: 24,
+  });
+  const optedOut = normalizeImportSource({
+    ...source,
+    keepRemovedTracks: false,
+  });
+
+  assert.equal(source.keepRemovedTracks, true);
+  assert.equal(optedOut.keepRemovedTracks, false);
 });
 
 test("preserves rich track metadata when shared playlists are updated", () => {

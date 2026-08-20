@@ -62,6 +62,9 @@ export const getFlowJobs = (flowId, limit = null, options = {}) => {
 export const getAllFlowJobs = (options = {}) =>
   getData("/playlists/jobs", options);
 
+export const reSearchAllMissingTracks = () =>
+  postData("/playlists/research-missing");
+
 export const createFlow = (payload) => postData("/playlists/flows", payload);
 
 export const updateFlow = (flowId, payload) =>
@@ -133,6 +136,8 @@ export const searchTrackUpgrade = (playlistId, jobId) =>
 
 export const searchPlaylistUpgrades = (playlistId) =>
   postData(`/playlists/quality-upgrades/${encodeURIComponent(playlistId)}`);
+
+export const searchAllUpgrades = () => postData("/playlists/quality-upgrades");
 
 export const approveBlockedJob = (jobId) =>
   postData(`/playlists/jobs/${jobId}/approve`);

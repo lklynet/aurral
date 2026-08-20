@@ -17,6 +17,8 @@ const [
   { downloadTracker },
   { flowPlaylistConfig },
   { playlistManager },
+  { weeklyFlowWorker },
+  honkerDb,
   { registerJobs },
 ] = await setupIsolatedBackend(
   "approved-import-path",
@@ -25,13 +27,16 @@ const [
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
+  "backend/services/weeklyFlow/weeklyFlowWorker.js",
+  "backend/services/honkerDb.js",
   "backend/routes/weeklyFlow/handlers/jobs.js",
 );
 
 const app = express();
 app.use(express.json());
+let requestUser = { role: "admin" };
 app.use((req, _res, next) => {
-  req.user = { role: "admin" };
+  req.user = requestUser;
   next();
 });
 const router = express.Router();
@@ -149,4 +154,71 @@ test("reports when an upgrade search is already queued for a track", async () =>
   assert.equal(second.status, 200, JSON.stringify(payload));
   assert.equal(payload.alreadyQueued, true);
   assert.equal(payload.queued, 0);
+});
+
+test("search all stays within the requesting user's playlist access", async () => {
+  const ownedPlaylistId = "c0de1f39-226f-4ab8-8f37-09d8adf47b5a";
+  const otherPlaylistId = "a2b9ae35-7fb7-474e-a0d4-8ac4bdb8d9e6";
+  flowPlaylistConfig.createSharedPlaylist({
+    id: ownedPlaylistId,
+    name: "Owned wanted",
+    ownerUserId: 7,
+    tracks: [{ artistName: "Artist", trackName: "Missing", albumName: "Album" }],
+  });
+  flowPlaylistConfig.createSharedPlaylist({
+    id: otherPlaylistId,
+    name: "Other wanted",
+    ownerUserId: 8,
+    tracks: [{ artistName: "Artist", trackName: "Private", albumName: "Album" }],
+  });
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Missing", albumName: "Album" },
+    ownedPlaylistId,
+  );
+  const otherJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Private", albumName: "Album" },
+    otherPlaylistId,
+  );
+  downloadTracker.setFailed(jobId, "No source");
+  downloadTracker.setFailed(otherJobId, "No source");
+
+  const originalStart = weeklyFlowWorker.start;
+  const systemTaskQueue = honkerDb.getSystemTaskQueue();
+  const originalEnqueue = systemTaskQueue.enqueue;
+  const enqueuedTasks = [];
+  systemTaskQueue.enqueue = (payload, options) => {
+    enqueuedTasks.push({ payload, options });
+    return enqueuedTasks.length;
+  };
+  weeklyFlowWorker.start = async () => {};
+  requestUser = { role: "user", id: 7 };
+  try {
+    const missingResponse = await fetch(`${baseUrl}/research-missing`, { method: "POST" });
+    const missingPayload = await missingResponse.json();
+    assert.equal(missingResponse.status, 200, JSON.stringify(missingPayload));
+    assert.equal(missingPayload.requeued, 1);
+    assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
+    assert.equal(downloadTracker.getJob(otherJobId)?.status, "failed");
+
+    const upgradeResponse = await fetch(`${baseUrl}/quality-upgrades`, { method: "POST" });
+    const upgradePayload = await upgradeResponse.json();
+    assert.equal(upgradeResponse.status, 200, JSON.stringify(upgradePayload));
+    assert.equal(upgradePayload.scheduled, true);
+    assert.equal(upgradePayload.playlistCount, 1);
+    assert.deepEqual(enqueuedTasks, [
+      {
+        payload: {
+          kind: "quality-upgrade-check",
+          force: true,
+          playlistId: ownedPlaylistId,
+          limit: 500,
+        },
+        options: { priority: -10, runAt: null },
+      },
+    ]);
+  } finally {
+    systemTaskQueue.enqueue = originalEnqueue;
+    weeklyFlowWorker.start = originalStart;
+    requestUser = { role: "admin" };
+  }
 });

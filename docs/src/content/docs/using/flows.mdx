@@ -4,7 +4,7 @@ description: Schedule, source mix, focus, and flow generation behavior.
 ---
 
 Flows are dynamic discovery features. They regenerate on their schedule and
-download temporary files under `.flows` in the Aurral root. Aurral can send
+download temporary files under `_flows` in the Aurral root. Aurral can send
 their playlist references to Navidrome or Plex without making the files part of
 the permanent Library.
 
@@ -24,6 +24,10 @@ A flow has three layers:
 - **Update days** selects the days when the flow can run.
 - **Update hour** chooses the hour for those runs.
 - A flow starts only when you enable it. A disabled flow keeps its settings but does not run.
+
+## Listening history
+
+**Record listening history** controls playback from the flow in Aurral's built-in player. Turn it off to keep the flow out of future recommendations and connected scrobblers. Aurral keeps plays recorded before you changed the setting.
 
 ## Source mix
 

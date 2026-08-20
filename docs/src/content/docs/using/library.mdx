@@ -30,7 +30,7 @@ configured.
 
 Permanent Aurral tracks use the canonical `artist/album/track` layout under
 the configured Aurral download folder. Flow media is temporary and lives under
-`.flows`; it is not added to the canonical Library. Static playlist membership
+`_flows`; it is not added to the canonical Library. Static playlist membership
 is stored by Aurral's Subsonic model, so deleting a playlist does not delete a
 canonical track.
 
@@ -49,7 +49,7 @@ to them.
 When Lidarr imports a download, or a file changes in the Aurral root, Aurral's
 filesystem watcher queues a scan. The watcher waits briefly for a file move or
 rename to finish and ignores `_playlists`, `_staging`, `_fallback`, hidden
-folders, `.flows`, and the legacy `aurral-weekly-flow` tree.
+folders, `_flows`, the legacy `.flows` tree, and the legacy `aurral-weekly-flow` tree.
 
 When the scan completes, an open Library page reloads its canonical records
 automatically. The home page and **Newest** album or track sorting use the time

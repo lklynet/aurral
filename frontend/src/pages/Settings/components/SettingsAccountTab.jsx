@@ -1,12 +1,9 @@
 import { useState } from "react";
 import { resetDiscoveryFeedback } from "../../../utils/api/endpoints/discovery.js";
-import {
-  getThemePreference,
-  setThemePreference,
-} from "../../../utils/theme.js";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import PillToggle from "../../../components/PillToggle";
 import { PlexSelfLinkSection } from "./PlexSelfLinkSection";
+import { ThemeSettings } from "./ThemeSettings";
 
 import { Link } from "react-router-dom";
 import { RotateCcw } from "lucide-react";
@@ -35,7 +32,6 @@ export function SettingsAccountTab({
   setSidebarArtEnabled,
 }) {
   const [resettingTastes, setResettingTastes] = useState(false);
-  const [theme, setTheme] = useState(getThemePreference);
 
   const handleResetDiscoveryTastes = async () => {
     if (resettingTastes) return;
@@ -91,25 +87,9 @@ export function SettingsAccountTab({
           <div className="settings-page__section-intro">
             <h3 className="settings-page__section-title">Appearance</h3>
           </div>
-          <fieldset className="settings-page__fields profile-settings__fields">
-            <div className="profile-settings__field">
-              <label className="profile-settings__label" htmlFor="profile-theme">
-                Theme
-              </label>
-              <SettingsSelect
-                id="profile-theme"
-                value={theme}
-                onChange={(event) => setTheme(setThemePreference(event.target.value))}
-              >
-                <option value="system">System</option>
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-              </SettingsSelect>
-              <p className="settings-page__hint">
-                System follows the appearance setting of your device.
-              </p>
-            </div>
-            {profileVariant && showSidebarArt ? (
+          <ThemeSettings showSuccess={showSuccess} showError={showError} />
+          {profileVariant && showSidebarArt ? (
+            <fieldset className="settings-page__fields profile-settings__fields">
               <div className="profile-settings__field">
                 <label className="profile-settings__label" htmlFor="profile-sidebar-art">
                   Environment art
@@ -124,8 +104,8 @@ export function SettingsAccountTab({
                   Show the nightly or preview environment art in the sidebar.
                 </p>
               </div>
-            ) : null}
-          </fieldset>
+            </fieldset>
+          ) : null}
         </div>
 
         <div className="settings-page__section profile-settings__section">

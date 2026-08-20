@@ -477,6 +477,231 @@ const rankFlowCases = [
     },
   },
   {
+    name: "rankFlowSearchResults reads the artist from the filename when the folder hides it",
+    results: [
+      result({
+        user: "compilationUser",
+        file: "Various\\Top 100 Hits of 2004\\82. Marlow Vance - Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Marlow Vance",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 100);
+      assert.equal(ranked[0].preDownloadValid, true);
+    },
+  },
+  {
+    name: "rankFlowSearchResults still rejects a filename naming a different artist",
+    results: [
+      result({
+        user: "compilationUser",
+        file: "Various\\Top 100 Hits of 2004\\82. Priya Raman - Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Marlow Vance",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 0);
+      assert.equal(ranked[0].preDownloadValid, false);
+      assert.equal(ranked[0].preDownloadRejectReason, "weak-artist-match");
+    },
+  },
+  {
+    name: "rankFlowSearchResults does not credit an artist segment that only shares a word",
+    results: [
+      result({
+        user: "compilationUser",
+        file: "Various\\Top 100 Hits of 2004\\82. Marlow Sinclair - Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Marlow Vance",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 0);
+      assert.equal(ranked[0].preDownloadValid, false);
+      assert.equal(ranked[0].preDownloadRejectReason, "weak-artist-match");
+    },
+  },
+  {
+    name: "rankFlowSearchResults keeps a numeric artist name without a leading track number",
+    results: [
+      result({
+        user: "compilationUser",
+        file: "Various\\Club Hits\\50 Cent - In Da Club.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "50 Cent",
+      trackName: "In Da Club",
+      albumName: "Album Name",
+      releaseYear: "2003",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 100);
+      assert.equal(ranked[0].preDownloadValid, true);
+    },
+  },
+  {
+    name: "rankFlowSearchResults keeps an artist name that starts with digits",
+    results: [
+      result({
+        user: "compilationUser",
+        file: "Various\\Club Hits\\07. 50 Cent - In Da Club.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "50 Cent",
+      trackName: "In Da Club",
+      albumName: "Album Name",
+      releaseYear: "2003",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 100);
+      assert.equal(ranked[0].preDownloadValid, true);
+    },
+  },
+  {
+    name: "rankFlowSearchResults only credits the leading filename segment as the artist",
+    results: [
+      result({
+        user: "compilationUser",
+        file: "Various\\Hits\\Other Artist - Marlow Vance - Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Marlow Vance",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 0);
+      assert.equal(ranked[0].preDownloadValid, false);
+      assert.equal(ranked[0].preDownloadRejectReason, "weak-artist-match");
+    },
+  },
+  {
+    name: "rankFlowSearchResults does not read an artist from a title - artist filename",
+    results: [
+      result({
+        user: "ripUser",
+        file: "Various\\Rips\\Wide Awake Tonight - Marlow Vance.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Marlow Vance",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 0);
+      assert.equal(ranked[0].preDownloadValid, false);
+    },
+  },
+  {
+    name: "rankFlowSearchResults rejects a filename naming a different artist even in an album-matching folder",
+    results: [
+      result({
+        user: "albumUser",
+        file: "Some Person\\Album Name (2004)\\05. Other Artist - Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Marlow Vance",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 0);
+      assert.equal(ranked[0].breakdown.albumScore >= 35, true);
+      assert.equal(ranked[0].preDownloadValid, false);
+      assert.equal(ranked[0].preDownloadRejectReason, "weak-artist-match");
+    },
+  },
+  {
+    name: "rankFlowSearchResults keeps the folder artist score when the filename names someone else",
+    results: [
+      result({
+        user: "albumUser",
+        file: "Marlow Vance\\Album Name (2004)\\03 - Guest Person - Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Marlow Vance",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 100);
+      assert.equal(ranked[0].preDownloadValid, true);
+    },
+  },
+  {
+    name: "rankFlowSearchResults does not read an artist from a filename without the artist - title shape",
+    results: [
+      result({
+        user: "compilationUser",
+        file: "Various\\Top 100 Hits of 2004\\82. Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track: {
+      artistName: "Marlow Vance",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      artistAliases: [],
+    },
+    assertRanked(ranked) {
+      assert.equal(ranked.length, 1);
+      assert.equal(ranked[0].breakdown.artistScore, 0);
+      assert.equal(ranked[0].preDownloadValid, false);
+    },
+  },
+  {
     name: "rankFlowSearchResults does not treat live as a variant in ordinary title words",
     results: [
       {
@@ -820,4 +1045,137 @@ test("rankFlowSearchResults leaves the candidate set alone when no profile is gi
 
   const users = ranked.filter((entry) => entry.preDownloadValid).map((entry) => entry.raw.user);
   assert.deepEqual(users, ["albumPeer"], "no profile means the folder pass decides alone");
+});
+
+test("rankFlowSearchResults accepts a candidate whose advertised duration matches", () => {
+  const ranked = rankFlowSearchResults(
+    [result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 224 })],
+    {
+      artistName: "Massive Attack",
+      trackName: "Teardrop",
+      albumName: "Mezzanine",
+      durationMs: 226000,
+    },
+    rankOpts,
+  );
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].preDownloadValid, true);
+  assert.equal(ranked[0].preDownloadRejectReason, null);
+  assert.equal(ranked[0].breakdown.advertisedDurationMs, 224000);
+});
+
+test("rankFlowSearchResults rejects a strong title match whose advertised duration is off", () => {
+  const ranked = rankFlowSearchResults(
+    [result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 340 })],
+    {
+      artistName: "Massive Attack",
+      trackName: "Teardrop",
+      albumName: "Mezzanine",
+      durationMs: 226000,
+    },
+    rankOpts,
+  );
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].preDownloadValid, false);
+  assert.equal(ranked[0].preDownloadRejectReason, "advertised-duration-mismatch");
+});
+
+test("rankFlowSearchResults ignores duration when the file advertises none", () => {
+  const ranked = rankFlowSearchResults(
+    [result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3" })],
+    {
+      artistName: "Massive Attack",
+      trackName: "Teardrop",
+      albumName: "Mezzanine",
+      durationMs: 226000,
+    },
+    rankOpts,
+  );
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].preDownloadValid, true);
+  assert.equal(ranked[0].breakdown.advertisedDurationMs, null);
+});
+
+test("rankFlowSearchResults ignores advertised duration when the track has none expected", () => {
+  const ranked = rankFlowSearchResults(
+    [result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 340 })],
+    {
+      artistName: "Massive Attack",
+      trackName: "Teardrop",
+      albumName: "Mezzanine",
+    },
+    rankOpts,
+  );
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].preDownloadValid, true);
+});
+
+test("rankFlowSearchResults keeps advertised duration within the 18 percent window", () => {
+  const ranked = rankFlowSearchResults(
+    [result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 199 })],
+    {
+      artistName: "Massive Attack",
+      trackName: "Teardrop",
+      albumName: "Mezzanine",
+      durationMs: 226000,
+    },
+    rankOpts,
+  );
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].preDownloadValid, true);
+});
+
+test("rankFlowSearchResults keeps the correct-duration file over a longer off-duration copy in the same folder", () => {
+  const ranked = rankFlowSearchResults(
+    [
+      result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.flac", length: 420, speed: 9000000 }),
+      result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 226, speed: 700000 }),
+    ],
+    {
+      artistName: "Massive Attack",
+      trackName: "Teardrop",
+      albumName: "Mezzanine",
+      durationMs: 226000,
+    },
+    rankOpts,
+  );
+  // With albumName set, ranking returns one best candidate per folder. Without the
+  // gate the longer .flac wins (preferred format, faster peer) even though it is the
+  // wrong duration; the gate rejects it, so the correct .mp3 is chosen instead.
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].preDownloadValid, true);
+  assert.match(ranked[0].raw.file, /\/Teardrop\.mp3$/);
+  assert.equal(ranked[0].breakdown.advertisedDurationMs, 226000);
+});
+
+test("rankFlowSearchResults anchors the base tolerance boundary at 25 seconds", () => {
+  const track = { artistName: "Massive Attack", trackName: "Teardrop", albumName: "Mezzanine", durationMs: 100000 };
+  const atEdge = rankFlowSearchResults(
+    [result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 75 })],
+    track,
+    rankOpts,
+  );
+  assert.equal(atEdge[0].preDownloadValid, true);
+  const pastEdge = rankFlowSearchResults(
+    [result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 74 })],
+    track,
+    rankOpts,
+  );
+  assert.equal(pastEdge[0].preDownloadValid, false);
+  assert.equal(pastEdge[0].preDownloadRejectReason, "advertised-duration-mismatch");
+});
+
+test("validateDownloadedTrack does not gate on the advertised length after download", async () => {
+  const checked = await validateDownloadedTrack(
+    "/tmp/does-not-exist.mp3",
+    { raw: { file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 9999 } },
+    {
+      artistName: "Massive Attack",
+      trackName: "Teardrop",
+      albumName: "Mezzanine",
+      durationMs: 226000,
+    },
+  );
+  assert.notEqual(checked.scores.matchReason, "advertised-duration-mismatch");
+  assert.equal(checked.scores.matchReason, null);
 });

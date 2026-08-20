@@ -136,13 +136,20 @@ test("recovers a managed-user token and retries with the stored client identifie
 });
 
 test("resolves managed and reused Lidarr paths to private Plex rating keys", async () => {
-  const destination = makeDestination({ mainLibrarySectionId: "9" });
+  const destination = makeDestination({ downloadsPath: "/data", mainLibrarySectionId: "9" });
   const managedPath = path.join(
-    destination.playlistLibraryRoot,
+    destination.weeklyFlowRoot,
+    "_flows",
     "flow-1",
     "Artist",
     "Album",
     "Managed.flac",
+  );
+  const canonicalPath = path.join(
+    destination.playlistLibraryRoot,
+    "Artist",
+    "Album",
+    "Canonical.flac",
   );
   const reusedRoot = path.join(weeklyFlowRoot, "..", "lidarr");
   const reusedPath = path.join(reusedRoot, "Artist", "Reused.flac");
@@ -154,8 +161,9 @@ test("resolves managed and reused Lidarr paths to private Plex rating keys", asy
   destination._libraryTracks = [
     {
       ratingKey: "101",
-      files: ["/data/aurral-weekly-flow/another-flow/Artist/Album/Managed.flac"],
+      files: ["/data/_flows/flow-1/Artist/Album/Managed.flac"],
     },
+    { ratingKey: "102", files: ["/data/Artist/Album/Canonical.flac"] },
   ];
   destination._mainLibraryTracks = [
     { ratingKey: "202", files: ["/music/Artist/Reused.flac"] },
@@ -166,19 +174,21 @@ test("resolves managed and reused Lidarr paths to private Plex rating keys", asy
       snapshot({
         tracks: [
           { path: managedPath, title: "Managed", artist: "Artist" },
+          { path: canonicalPath, title: "Canonical", artist: "Artist" },
           { path: reusedPath, title: "Reused", artist: "Artist" },
         ],
       }),
     ),
-    ["101", "202"],
+    ["101", "102", "202"],
   );
 });
 
 test("reuses a Lidarr file linked into the entity folder without a main Plex library", async () => {
-  const destination = makeDestination();
+  const destination = makeDestination({ downloadsPath: "/data" });
   const reusedPath = path.join(weeklyFlowRoot, "..", "lidarr", "Artist", "Track.flac");
   const linkedPath = path.join(
-    destination.playlistLibraryRoot,
+    destination.weeklyFlowRoot,
+    "_flows",
     "flow-1",
     "Artist",
     "Album",
@@ -189,7 +199,7 @@ test("reuses a Lidarr file linked into the entity folder without a main Plex lib
   await fs.writeFile(reusedPath, "track");
   await fs.symlink(reusedPath, linkedPath);
   destination._libraryTracks = [
-    { ratingKey: "303", files: ["/data/aurral-weekly-flow/flow-1/Artist/Album/Track.flac"] },
+    { ratingKey: "303", files: ["/data/_flows/flow-1/Artist/Album/Track.flac"] },
   ];
   destination._mainLibraryTracks = [];
 
@@ -202,16 +212,17 @@ test("reuses a Lidarr file linked into the entity folder without a main Plex lib
 });
 
 test("upserts from the entity-owner pointer and stores the returned pointer privately", async () => {
-  const destination = makeDestination();
+  const destination = makeDestination({ downloadsPath: "/data" });
   const trackPath = path.join(
-    destination.playlistLibraryRoot,
+    destination.weeklyFlowRoot,
+    "_flows",
     "flow-1",
     "Artist",
     "Album",
     "Track.flac",
   );
   destination._libraryTracks = [
-    { ratingKey: "101", files: ["/data/aurral-weekly-flow/flow-1/Artist/Album/Track.flac"] },
+    { ratingKey: "101", files: ["/data/_flows/flow-1/Artist/Album/Track.flac"] },
   ];
   destination._mainLibraryTracks = [];
   plexPlaylistPointerStore.setPointer("flow-1", "global", {
@@ -291,11 +302,43 @@ test("ensures and scans the Plex library through the adapter", async () => {
   assert.deepEqual(await destination.ensureLibrary(), { ok: true });
   assert.deepEqual(await destination.requestScan(), { ok: true });
   assert.deepEqual(calls, [
-    ["ensure", "/downloads/aurral-weekly-flow"],
+    ["ensure", "/downloads"],
     ["tracks", "7"],
     ["tracks", "7"],
     ["scan", "7"],
   ]);
+});
+
+test("configures Plex with the canonical root and explicit flow location", async () => {
+  const client = new PlexClient("http://plex.local:32400", "admin-token", "admin-client");
+  const root = "/downloads/aurral";
+  const calls = [];
+  let reads = 0;
+  mock.method(client, "getLibraries", async () => {
+    reads += 1;
+    return reads === 1
+      ? []
+      : [{
+          key: "7",
+          title: "Aurral",
+          Location: [
+            { path: `${root}/.flows` },
+            { path: root },
+          ],
+        }];
+  });
+  mock.method(client, "request", async (requestPath, options) => {
+    calls.push({ requestPath, options });
+    return {};
+  });
+
+  assert.equal((await client.ensureWeeklyFlowLibrary(root)).key, "7");
+  assert.equal(calls.length, 1);
+  assert.equal(
+    calls[0].requestPath,
+    `/library/sections?name=Aurral&type=artist&agent=tv.plex.agents.music&scanner=Plex+Music&language=en-US&location=${encodeURIComponent(root)}&location=${encodeURIComponent(`${root}/_flows`)}&location=${encodeURIComponent(`${root}/.flows`)}`,
+  );
+  assert.equal(calls[0].options.method, "POST");
 });
 
 test("keeps Navidrome and Plex failures isolated when both destinations are configured", async (t) => {

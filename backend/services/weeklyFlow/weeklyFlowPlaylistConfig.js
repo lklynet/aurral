@@ -241,6 +241,7 @@ const normalizeFlow = (flow) => {
         ? Math.trunc(Number(flow.ownerUserId))
         : null,
     enabled: flow?.enabled === true,
+    recordHistory: flow?.recordHistory !== false,
     scheduleDays: normalizeScheduleDays(flow?.scheduleDays),
     scheduleTime: normalizeScheduleTime(flow?.scheduleTime),
     deepDive: flow?.deepDive === true,
@@ -448,6 +449,7 @@ export function normalizeImportSource(value) {
     syncIntervalHours: hasSync
       ? Math.min(Math.max(Math.round(syncIntervalHours), 1), 168)
       : 0,
+    keepRemovedTracks: value.keepRemovedTracks !== false,
     lastSyncAt: Number.isFinite(lastSyncAt) && lastSyncAt > 0 ? lastSyncAt : null,
     lastSyncError: String(value.lastSyncError || "").trim() || null,
     lastSyncTrackCount:
@@ -693,6 +695,7 @@ export const flowPlaylistConfig = {
     mix,
     size,
     deepDive,
+    recordHistory,
     yearFrom,
     yearTo,
     tags,
@@ -725,6 +728,7 @@ export const flowPlaylistConfig = {
       type,
       tag,
       description,
+      recordHistory,
       scheduleDays,
       scheduleTime,
       ownerUserId,
@@ -764,6 +768,10 @@ export const flowPlaylistConfig = {
       scheduleDays: updates?.scheduleDays ?? current.scheduleDays,
       scheduleTime: updates?.scheduleTime ?? current.scheduleTime,
       deepDive: typeof updates?.deepDive === "boolean" ? updates.deepDive : current.deepDive,
+      recordHistory:
+        typeof updates?.recordHistory === "boolean"
+          ? updates.recordHistory
+          : current.recordHistory,
       yearFrom,
       yearTo,
       enabled: current.enabled,

@@ -34,7 +34,7 @@ volumes:
 8. Select **Test connection**.
 9. After a flow downloads tracks, select **Sync to Plex now**.
 
-Aurral registers the library at `<plex-visible-downloads>/aurral-weekly-flow`. Track files are in flow subfolders under that path.
+Aurral registers the library at `<plex-visible-downloads>`. Permanent tracks are in `artist/album/track` folders. Temporary flow tracks are under `_flows/<flow-id>`.
 
 You do not need to create this library manually in Plex. The library can be empty until a flow finishes downloading tracks. Plex can take several minutes to scan the files.
 
@@ -55,7 +55,9 @@ Leave this field blank when Aurral and Plex use the same filesystem view. They c
 
 Set **Plex Aurral Library path** if Plex uses a different mount prefix than Aurral.
 
-Enter the downloads folder as Plex sees it. Aurral adds `/aurral-weekly-flow` when it creates the library.
+Enter the Downloads Folder as Plex sees it. Aurral uses that path as the library root.
+
+Aurral also adds the `_flows` directory as an explicit second Plex library location. It keeps the legacy `.flows` location during migration.
 
 | Aurral writes to            | Plex sees                      | Plex Aurral Library path |
 | --------------------------- | ------------------------------ | ------------------------- |
@@ -64,7 +66,7 @@ Enter the downloads folder as Plex sees it. Aurral adds `/aurral-weekly-flow` wh
 
 **Browse** shows folders as Aurral sees them. If Plex's mount differs, type Plex's path manually as Plex sees it. The folder must also exist inside the Plex container.
 
-**Plex Aurral Library path** matches the Plex and Aurral library roots. Navidrome library paths are configured in Navidrome.
+**Plex Aurral Library path** matches the Plex-side and Aurral Downloads Folder roots. Navidrome library paths are configured in Navidrome.
 
 ## Reusing tracks from an existing library
 

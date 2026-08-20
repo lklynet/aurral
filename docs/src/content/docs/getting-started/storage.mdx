@@ -58,9 +58,9 @@ If a service uses a separate path for its own database or configuration, keep th
 
 1. Aurral asks a download client to find the track.
 2. The download client writes the completed file under `/data/downloads/...`.
-3. Aurral reads that file and moves it to `/data/downloads/aurral/aurral-weekly-flow/...`.
-4. Aurral writes a playlist file next to the downloaded tracks.
-5. Navidrome scans `/data/downloads/aurral/aurral-weekly-flow` and can play the tracks.
+3. Aurral imports the file into its Downloads Folder. Permanent tracks use `artist/album/track`; flow tracks use `_flows/<flow-id>/artist/album/track`.
+4. Aurral writes playlist sidecars under `aurral-weekly-flow/_playlists`.
+5. Navidrome scans the Downloads Folder and can play the tracks.
 
 If Aurral writes a file as `/data/downloads/aurral/track.flac` but Navidrome sees the same host folder as `/downloads/track.flac`, Navidrome cannot open the path in Aurral's playlist file. The API connection can still work, but the playlist will be empty or the tracks will not play. Use matching container paths, or follow [When paths cannot match](#when-paths-cannot-match).
 
@@ -86,7 +86,9 @@ Choose one directory on the Docker host as the media root. The example uses `/sr
     |-- slskd/complete/             # optional Soulseek completed files
     |-- usenet/complete/            # optional SABnzbd or NZBGet files
     \-- aurral/                     # Aurral Downloads Folder
-        \-- aurral-weekly-flow/     # generated tracks and playlists
+        |-- Artist/Album/track      # permanent canonical tracks
+        |-- _flows/flow-id/...      # temporary flow tracks
+        \-- aurral-weekly-flow/     # playlist sidecars
 ```
 
 Use the same host directory in every media-service mount:
@@ -157,7 +159,7 @@ After you add the mounts, use the container paths shown below.
 | slskd | Completed download folder | `/data/downloads/slskd/complete` |
 | SABnzbd or NZBGet | Completed download folder | `/data/downloads/usenet/complete` |
 | Aurral | **Settings > Download Clients > Downloads Folder > Path** | `/data/downloads/aurral` |
-| Navidrome | Aurral playlist library | Aurral creates `/data/downloads/aurral/aurral-weekly-flow` through the API. |
+| Navidrome | Aurral library | Aurral creates `/data/downloads/aurral` through the API. |
 | Plex | Aurral library | Aurral creates the library through the API at the path Plex uses for the Aurral Downloads Folder. |
 
 The exact download-client folder names are not important. The important rules are:
@@ -189,10 +191,11 @@ Use these checks in order:
 3. **Output check:** after a flow or playlist downloads a track, the file must exist under:
 
    ```text
-   /data/downloads/aurral/aurral-weekly-flow/
+   /data/downloads/aurral/Artist/Album/Track.flac
+   /data/downloads/aurral/_flows/<flow-id>/Artist/Album/Track.flac
    ```
 
-4. **Playback check:** Navidrome or Plex must have that folder in its own filesystem and must scan it.
+4. **Playback check:** Navidrome or Plex must have the Downloads Folder in its own filesystem and must scan it.
 
 If the API check passes but the file check fails, do not change the API URL. Fix the volume mapping, permissions, or path mapping.
 
@@ -232,7 +235,7 @@ This is also separate from Aurral's Remote Path Mappings.
 
 1. Open **Settings > Playback > Plex**.
 2. Set **Plex Aurral Library path** to the Downloads Folder path as Plex sees it.
-3. Do not include `/aurral-weekly-flow`; Aurral adds that folder.
+3. Enter the Downloads Folder path only. Do not add `/aurral-weekly-flow`.
 4. After the settings save automatically, select **Sync to Plex now**.
 
 Example:

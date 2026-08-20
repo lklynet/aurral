@@ -1,0 +1,117 @@
+name: Bug report
+description: Report broken behavior, regressions, crashes, or reliability problems in Aurral.
+title: "[Bug]: "
+labels:
+  - bug
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for one broken behavior, regression, crash, or reliability problem.
+        Search existing issues first. Use the feature request form for new behavior.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I removed passwords, tokens, private URLs, and other secrets from the report.
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: Which part of Aurral is affected?
+      options:
+        - Discovery and recommendations
+        - Search, library, or playback
+        - Flows, playlists, or downloads
+        - Lidarr or another integration
+        - Authentication, users, or permissions
+        - Docker, storage, or upgrades
+        - User interface
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Give the shortest reliable sequence that reproduces the problem.
+      placeholder: |
+        1. Start Aurral with ...
+        2. Open ...
+        3. Select ...
+        4. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect Aurral to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What did Aurral do instead?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      description: How does this affect your use of Aurral?
+      options:
+        - Blocks use of Aurral
+        - Causes a major failure or frequent errors
+        - Causes a minor or occasional problem
+        - Cosmetic or documentation issue
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Aurral version or image tag
+      description: Include the release version, Docker tag, nightly tag, or commit if known.
+      placeholder: latest, nightly, or 1.2.3
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include your OS, browser, deployment method, and relevant integration versions.
+      placeholder: Docker Compose on Debian 13, Firefox 142, Lidarr 3.x
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or stack traces
+      description: Include only the useful lines. Remove secrets and private paths.
+      render: shell
+
+  - type: upload
+    id: attachments
+    attributes:
+      label: Screenshots or supporting files
+      description: Add screenshots, recordings, or small reproduction files when they help explain the problem. Remove secrets first.
+    validations:
+      required: false
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround
+      description: If you found a temporary workaround, describe it here.
