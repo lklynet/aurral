@@ -1,9 +1,54 @@
 import { isVerboseConsoleEnabled } from "../config/constants.js";
 
-let verboseEnabled = isVerboseConsoleEnabled();
+const verboseEnabled = isVerboseConsoleEnabled();
+
+const DEFAULT_VISIBLE_MESSAGES = [
+  /Server running on port \d+/,
+  /Port \d+ is already in use\./,
+  /Frontend not built\./,
+  /Uncaught Exception:/,
+  /Unhandled Rejection:/,
+  /Server error:/,
+];
+
+const messageText = (args) =>
+  args
+    .map((value) =>
+      value instanceof Error ? value.message : typeof value === "string" ? value : "",
+    )
+    .filter(Boolean)
+    .join(" ");
+
+export const shouldEmitDefaultConsoleMessage = (method, args = []) => {
+  if (method === "debug") return false;
+  if (method === "warn" || method === "error") return true;
+  return DEFAULT_VISIBLE_MESSAGES.some((pattern) =>
+    pattern.test(messageText(args)),
+  );
+};
+
+function patchDefaultConsole() {
+  if (verboseEnabled || !String(process.argv[1] || "").endsWith("/server.js")) return;
+  if (globalThis.__aurralDefaultConsolePatched) return;
+  globalThis.__aurralDefaultConsolePatched = true;
+
+  for (const method of ["log", "info", "debug"]) {
+    const original = console[method].bind(console);
+    console[method] = (...args) => {
+      if (shouldEmitDefaultConsoleMessage(method, args)) original(...args);
+    };
+  }
+}
+
+patchDefaultConsole();
 
 function log(level, category, message, data = {}) {
-  if (level === "debug" && !verboseEnabled) return;
+  if (!verboseEnabled && level === "debug") return;
+  if (
+    !verboseEnabled &&
+    level === "info" &&
+    !DEFAULT_VISIBLE_MESSAGES.some((pattern) => pattern.test(String(message)))
+  ) return;
   const line = `[${level}] [${category}] ${message}`;
   const keys = Object.keys(data).length;
   if (level === "error") {

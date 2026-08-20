@@ -1,5 +1,6 @@
 import axios from "../../lib/axiosFetch.js";
 import crypto from "crypto";
+import { logger } from "./logger.js";
 
 const LEGACY_LIBRARY_DIR = "aurral-weekly-flow";
 const PLAYLIST_LIBRARY_NAME = "Aurral Playlists";
@@ -387,10 +388,12 @@ export class NavidromeClient {
 
       return this.createLibrary(name, normalizedPath);
     } catch (err) {
-      console.warn(
-        "[Navidrome] ensureWeeklyFlowLibrary failed:",
-        err?.response?.data?.error || err.message,
-      );
+      const message = err?.response?.data?.error || err.message;
+      if (err?.response?.status === 429) {
+        logger.debug("navidrome", "Navidrome library setup was rate limited", { message });
+      } else {
+        logger.warn("navidrome", "Navidrome library setup failed", { message });
+      }
       return null;
     }
   }

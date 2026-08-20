@@ -3,6 +3,7 @@ import path from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { userOps } from "../../db/helpers/index.js";
 import { NavidromeClient } from "../navidrome.js";
+import { logger } from "../logger.js";
 import { navidromePlaylistPointerStore } from "../navidrome/navidromePlaylistPointerStore.js";
 import {
   AURRAL_FLOWS_DIR,
@@ -212,10 +213,9 @@ export class NavidromePlaybackDestination {
           contentType,
         );
       } catch (error) {
-        console.warn(
-          "[NavidromePlaybackDestination] Failed to upload playlist artwork:",
-          error?.message,
-        );
+        logger.debug("playback", "Failed to upload optional Navidrome playlist artwork", {
+          message: error?.message || String(error),
+        });
       }
       return;
     }
