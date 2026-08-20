@@ -111,6 +111,29 @@ test("Lidarr Download webhook ignores unrelated albums", () => {
   assert.equal(entry.status_label, "Searching");
 });
 
+test("Lidarr Download webhook matches a request through its album metadata", () => {
+  upsertAurralHistory({
+    referenceId: "artist-mbid",
+    kind: "album_requested",
+    title: "Requested Blue Train",
+    status: "processing",
+    statusLabel: "Searching",
+    metadata: { albumId: 42, albumName: "Blue Train" },
+  });
+
+  const response = createResponse();
+  handleLidarrWebhook(
+    { body: { eventType: "Download", album: { id: 42, title: "Blue Train" } } },
+    response,
+  );
+
+  assert.deepEqual(response.result.body, { handled: true });
+  const entry = db
+    .prepare("SELECT status_label FROM aurral_history WHERE id = ?")
+    .get("aurral-album_requested-artist-mbid");
+  assert.equal(entry.status_label, "Downloaded");
+});
+
 test("Lidarr non-download events are acknowledged without changing history", () => {
   const response = createResponse();
   handleLidarrWebhook({ body: { eventType: "Test" } }, response);

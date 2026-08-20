@@ -396,9 +396,19 @@ export const recordAlbumImportCompleted = ({
   const normalizedAlbumId = String(albumId ?? "").trim();
   if (!normalizedAlbumId) return null;
 
-  const existing = dbOps.getAurralHistoryById(
+  const stableEntry = dbOps.getAurralHistoryById(
     stableId("album_requested", normalizedAlbumId),
   );
+  const existing =
+    stableEntry?.kind === "album_requested"
+      ? stableEntry
+      : dbOps
+          .getAurralHistory({ since: Date.now() - MAX_AGE_MS, limit: 300 })
+          .find(
+            (entry) =>
+              entry.kind === "album_requested" &&
+              String(entry.metadata?.albumId ?? "").trim() === normalizedAlbumId,
+          );
   if (!existing || existing.kind !== "album_requested") return null;
   if (existing.statusLabel === "Downloaded") return existing;
 
