@@ -207,6 +207,7 @@ const resolveZipLocation = async (zipCode) => {
         if (place) {
           const location = {
             source: "zip",
+            resolved: true,
             postalCode: normalizedZip,
             city: place["place name"] || null,
             region: place.state || null,
@@ -242,6 +243,7 @@ const resolveZipLocation = async (zipCode) => {
       const address = result.address || {};
       const location = {
         source: "zip",
+        resolved: true,
         postalCode: normalizedZip,
         city: address.city || address.town || address.village || null,
         region: address.state || null,
@@ -279,6 +281,7 @@ const resolveIpLocation = async (ipAddress) => {
     }
     const location = {
       source: "ip",
+      resolved: true,
       postalCode: sanitizeZipCode(response.data?.postal),
       city: response.data?.city || null,
       region: response.data?.region || null,
@@ -421,6 +424,7 @@ export const getNearbyShows = async ({
     location =
       (await resolveZipLocation(sanitizedZipCode)) || {
         source: "zip",
+        resolved: false,
         postalCode: sanitizedZipCode,
         city: null,
         region: null,
@@ -432,6 +436,16 @@ export const getNearbyShows = async ({
       };
   } else {
     location = await resolveIpLocation(getForwardedIp(req));
+  }
+
+  if (location.resolved === false) {
+    return {
+      location,
+      shows: [],
+      libraryShows: [],
+      recommendedShows: [],
+      total: 0,
+    };
   }
 
   const events = await fetchTicketmasterEvents({ location, radiusMiles });
