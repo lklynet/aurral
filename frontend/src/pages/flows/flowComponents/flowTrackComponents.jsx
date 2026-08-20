@@ -1,5 +1,7 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import {
+  ExternalLink,
+  Heart,
   Loader2,
   ListMusic,
   Play,
@@ -11,6 +13,7 @@ import {
   Plus,
   Trash2,
   Pencil,
+  UserRound,
 } from "lucide-react";
 import { getFlowTrackDisplayNumber, sortFlowTracks } from "../../../utils/flowTrackSort";
 import { Link } from "react-router-dom";
@@ -179,6 +182,16 @@ function FlowTrackPlaylistMenus({
 
 function FlowTrackKebabMenu({
   track,
+  canPlay = false,
+  isPlaying = false,
+  onPlay,
+  onAddToLibrary,
+  isAddingToLibrary = false,
+  isFavorite = false,
+  isFavoritePending = false,
+  onToggleFavorite,
+  onNavigateAlbum,
+  onNavigateArtist,
   canReSearch,
   isReSearching,
   canDelete,
@@ -189,7 +202,55 @@ function FlowTrackKebabMenu({
 }) {
   const [openSubmenu, setOpenSubmenu] = useState(null);
   const trackLabel = track?.trackName || "track";
+  const canNavigateAlbum = Boolean(track?.albumMbid && onNavigateAlbum);
+  const canNavigateArtist = Boolean(track?.artistMbid && onNavigateArtist);
   const actionItems = [
+    onPlay
+      ? {
+          id: "play",
+          label: isPlaying ? "Pause" : "Play",
+          icon: isPlaying ? Pause : Play,
+          disabled: !canPlay,
+          onSelect: () => onPlay(track),
+        }
+      : null,
+    onAddToLibrary
+      ? {
+          id: "add-library",
+          label: "Add to library",
+          icon: Plus,
+          disabled: isAddingToLibrary,
+          onSelect: () => onAddToLibrary(track),
+        }
+      : null,
+    onToggleFavorite
+      ? {
+          id: "favorite",
+          label: isFavorite ? "Remove from favorites" : "Add to favorites",
+          icon: Heart,
+          selected: isFavorite,
+          separatorBefore: true,
+          disabled: isFavoritePending,
+          onSelect: () => onToggleFavorite?.(track),
+        }
+      : null,
+    canNavigateAlbum
+      ? {
+          id: "album",
+          label: "Go to album",
+          icon: ExternalLink,
+          separatorBefore: true,
+          onSelect: () => onNavigateAlbum(track),
+        }
+      : null,
+    canNavigateArtist
+      ? {
+          id: "artist",
+          label: "Go to artist",
+          icon: UserRound,
+          onSelect: () => onNavigateArtist(track),
+        }
+      : null,
     canReSearch
       ? {
           id: "re-search",
@@ -210,7 +271,11 @@ function FlowTrackKebabMenu({
         }
       : null,
   ].filter(Boolean);
-  const additionalItemsAfter = canReSearch ? "re-search" : "remove";
+  const additionalItemsAfter = onAddToLibrary
+    ? "add-library"
+    : canReSearch
+      ? "re-search"
+      : "remove";
   return (
     <LibraryItemMenu
       label={trackLabel}
@@ -223,24 +288,27 @@ function FlowTrackKebabMenu({
       renderAdditionalItems={({ closeMenu }) => (
         <>
           {playlistMenuProps?.onAddTrackToPlaylist ? (
-            <TrackPlaylistSubmenu
-              label="Add to playlist"
-              icon={Plus}
-              track={playlistMenuProps.track}
-              playlists={playlistMenuProps.playlists}
-              loading={playlistMenuProps.loading}
-              saving={playlistMenuProps.saving}
-              error={playlistMenuProps.error}
-              defaultNewPlaylistName={playlistMenuProps.defaultNewPlaylistName}
-              excludedPlaylistIds={playlistMenuProps.excludedPlaylistIds}
-              onSelect={playlistMenuProps.onAddTrackToPlaylist}
-              onClose={closeMenu}
-              toggleOnClick
-              isOpen={openSubmenu === "add"}
-              onToggle={() =>
-                setOpenSubmenu((current) => (current === "add" ? null : "add"))
-              }
-            />
+            <>
+              <div className="native-library-item-menu__separator" />
+              <TrackPlaylistSubmenu
+                label="Add to playlist"
+                icon={Plus}
+                track={playlistMenuProps.track}
+                playlists={playlistMenuProps.playlists}
+                loading={playlistMenuProps.loading}
+                saving={playlistMenuProps.saving}
+                error={playlistMenuProps.error}
+                defaultNewPlaylistName={playlistMenuProps.defaultNewPlaylistName}
+                excludedPlaylistIds={playlistMenuProps.excludedPlaylistIds}
+                onSelect={playlistMenuProps.onAddTrackToPlaylist}
+                onClose={closeMenu}
+                toggleOnClick
+                isOpen={openSubmenu === "add"}
+                onToggle={() =>
+                  setOpenSubmenu((current) => (current === "add" ? null : "add"))
+                }
+              />
+            </>
           ) : null}
           {playlistMenuProps?.onMoveTrackToPlaylist ? (
             <TrackPlaylistSubmenu
@@ -347,6 +415,12 @@ export function FlowTracksPanel({
   onDeleteTrack,
   onAddTrackToPlaylist,
   onMoveTrackToPlaylist,
+  onAddTrackToLibrary,
+  libraryTrackSavingKey = "",
+  getTrackFavoriteId,
+  favoriteTrackIds = new Set(),
+  favoriteTrackSavingKey = "",
+  onToggleFavorite,
   onNavigateArtist,
   onNavigateAlbum,
   onReSearchTrack,
@@ -449,6 +523,7 @@ export function FlowTracksPanel({
   };
 
   const isSourceActive = matchesSource(playbackSource);
+  const recordHistory = playbackSource?.recordHistory !== false;
   const currentTrackId =
     isSourceActive && activeTrack?.id ? activeTrack.id : null;
   const isCurrentPlaying = isSourceActive && isPlaying;
@@ -461,7 +536,9 @@ export function FlowTracksPanel({
       togglePlayPause();
       return;
     }
-    const queueTracks = playableTracks.map((track) => normalizeFlowTrack(track));
+    const queueTracks = playableTracks.map((track) =>
+      normalizeFlowTrack(track, { recordHistory }),
+    );
     playQueue(queueTracks, {
       source: playbackSource,
       shuffle: false,
@@ -470,7 +547,9 @@ export function FlowTracksPanel({
 
   const handleShufflePlay = () => {
     if (playableTracks.length === 0) return;
-    const queueTracks = playableTracks.map((track) => normalizeFlowTrack(track));
+    const queueTracks = playableTracks.map((track) =>
+      normalizeFlowTrack(track, { recordHistory }),
+    );
     playQueue(queueTracks, {
       source: playbackSource,
       shuffle: true,
@@ -479,14 +558,16 @@ export function FlowTracksPanel({
 
   const handlePlayTrack = (track) => {
     if (!track?.streamUrl) return;
-    const normalized = normalizeFlowTrack(track);
+    const normalized = normalizeFlowTrack(track, { recordHistory });
     if (currentTrackId === track.id && isSourceActive) {
       togglePlayPause();
       return;
     }
     playTrack(normalized, {
       source: playbackSource,
-      queue: playableTracks.map((entry) => normalizeFlowTrack(entry)),
+      queue: playableTracks.map((entry) =>
+        normalizeFlowTrack(entry, { recordHistory }),
+      ),
       shuffle: isShuffleEnabled,
     });
   };
@@ -752,6 +833,7 @@ export function FlowTracksPanel({
                 const isReSearching = reSearchingTrackIds[track.id] === true;
                 const isDeleting = deletingTrackId === track.id;
                 const isCurrent = track.id === currentTrackId && isCurrentPlaying;
+                const trackFavoriteId = getTrackFavoriteId?.(track) || "";
                 const quality = hideQualityColumn ? null : getTrackQualityMeta(track);
                 const artworkUrl =
                   track.artworkUrl ||
@@ -903,6 +985,16 @@ export function FlowTracksPanel({
                             useTrackContextMenu ? (
                               <FlowTrackKebabMenu
                                 track={track}
+                                canPlay={canPlay}
+                                isPlaying={isCurrent}
+                                onPlay={handlePlayTrack}
+                                onAddToLibrary={onAddTrackToLibrary}
+                                isAddingToLibrary={libraryTrackSavingKey === String(track.id)}
+                                isFavorite={favoriteTrackIds.has(trackFavoriteId)}
+                                isFavoritePending={favoriteTrackSavingKey === trackFavoriteId}
+                                onToggleFavorite={onToggleFavorite}
+                                onNavigateAlbum={onNavigateAlbum}
+                                onNavigateArtist={onNavigateArtist}
                                 canReSearch={canReSearch}
                                 isReSearching={isReSearching}
                                 canDelete={canDelete}

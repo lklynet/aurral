@@ -56,6 +56,22 @@ test("creates flows with normalized scheduling and enforces unique names", () =>
   );
 });
 
+test("defaults listening history on and persists a flow opt-out", () => {
+  const flow = flowPlaylistConfig.createFlow({
+    name: "No History",
+    size: 20,
+  });
+
+  assert.equal(flow.recordHistory, true);
+
+  const updated = flowPlaylistConfig.updateFlow(flow.id, {
+    recordHistory: false,
+  });
+
+  assert.equal(updated?.recordHistory, false);
+  assert.equal(flowPlaylistConfig.getFlow(flow.id)?.recordHistory, false);
+});
+
 test("stores and swaps optional release year range", () => {
   const flow = flowPlaylistConfig.createFlow({
     name: "Eighties",

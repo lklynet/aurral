@@ -1181,6 +1181,28 @@ textarea {
   user-select: none;
 }
 
+.sidebar-stage-backdrop::before,
+.sidebar-stage-backdrop::after {
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+  content: "";
+}
+
+.sidebar-stage-backdrop::before {
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: 6%;
+  background: linear-gradient(to right, transparent, var(--aurral-chrome));
+}
+
+.sidebar-stage-backdrop::after {
+  inset-inline: 0;
+  inset-block-end: 0;
+  height: 16%;
+  background: linear-gradient(to bottom, transparent, var(--aurral-chrome));
+}
+
 .sidebar-stage-backdrop__art {
   display: block;
   width: 100%;
@@ -10426,19 +10448,19 @@ button.native-library-genre-row:focus-visible {
   border-radius: var(--aurral-radius);
 }
 
-.flow-page--playlists .flow-page__library-list {
+.flow-page--library .flow-page__library-list {
   padding: 0.125rem;
   background: transparent;
 }
 
-.flow-page--playlists .flow-page__detail {
+.flow-page--library .flow-page__detail {
   gap: 1.25rem;
   padding: 0.5rem 1.25rem 1.5rem;
   background: transparent;
   border-radius: 0;
 }
 
-.flow-page--playlists .flow-page__detail-hero {
+.flow-page--library .flow-page__detail-hero {
   margin: 0;
   padding: 0.75rem 0 1rem;
   background: transparent;
@@ -10446,51 +10468,51 @@ button.native-library-genre-row:focus-visible {
   border-radius: 0;
 }
 
-.flow-page--playlists .flow-page__detail-artwork.flow-page__artwork {
+.flow-page--library .flow-page__detail-artwork.flow-page__artwork {
   width: 5rem;
   height: 5rem;
 }
 
-.flow-page--playlists .flow-page__detail-title--hero {
+.flow-page--library .flow-page__detail-title--hero {
   font-size: clamp(1.75rem, 4vw, 2.75rem);
   letter-spacing: -0.04em;
 }
 
-.flow-page--playlists .flow-page__tracks {
+.flow-page--library .flow-page__tracks {
   background: transparent;
   border: 0;
   border-radius: 0;
 }
 
-.flow-page--playlists .flow-page__tracks-toolbar {
+.flow-page--library .flow-page__tracks-toolbar {
   padding: 0 0 0.625rem;
 }
 
-.flow-page--playlists .flow-page__tracks-toolbar .btn-accent {
+.flow-page--library .flow-page__tracks-toolbar .btn-accent {
   background: var(--aurral-text);
   color: var(--aurral-surface);
 }
 
-.flow-page--playlists .flow-page__tracks-table-head th {
+.flow-page--library .flow-page__tracks-table-head th {
   padding: 0.45rem 0.75rem;
 }
 
-.flow-page--playlists .flow-page__tracks-table-row td {
+.flow-page--library .flow-page__tracks-table-row td {
   padding: 0.4rem 0.75rem;
 }
 
-.flow-page--playlists .flow-page__tracks-table-artwork {
+.flow-page--library .flow-page__tracks-table-artwork {
   width: 3rem;
   padding: 0.35rem 0.5rem;
 }
 
-.flow-page--playlists .flow-page__tracks-table-artwork .flow-page__tracks-table-artwork-thumb {
+.flow-page--library .flow-page__tracks-table-artwork .flow-page__tracks-table-artwork-thumb {
   width: 2.35rem;
   height: 2.35rem;
   border-radius: 0.2rem;
 }
 
-.flow-page--playlists .flow-page__tracks-table-duration {
+.flow-page--library .flow-page__tracks-table-duration {
   width: 4.5rem;
   color: var(--aurral-text-subtle);
   font-variant-numeric: tabular-nums;
@@ -10956,6 +10978,44 @@ button.native-library-genre-row:focus-visible {
 .flow-page__schedule-row .flow-page__field--schedule-days {
   flex: 1 1 16rem;
   min-width: 0;
+}
+
+.flow-page__history-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--aurral-border);
+}
+
+.flow-page__history-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+}
+
+.flow-page__history-description {
+  max-width: 38rem;
+  margin: 0;
+  color: var(--aurral-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.flow-page__history-control {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.flow-page__history-state {
+  min-width: 1.75rem;
+  color: var(--aurral-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: right;
 }
 
 .flow-page__field {

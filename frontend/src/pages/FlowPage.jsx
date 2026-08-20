@@ -43,8 +43,11 @@ import { getPlaylistRunActivity } from "./flows/flowRunActivity";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.js";
 import {
   getCanonicalLibraryPage,
+  getLibraryFavorites,
   lookupAlbumsInLibraryBatch,
   lookupArtistInLibrary,
+  updateLibraryFavorites,
+  downloadTrackToLibrary,
 } from "../utils/api/endpoints/library.js";
 import {
   canonicalLibraryId,
@@ -149,6 +152,12 @@ function readLibrarySidebarCollapsed() {
   }
 }
 
+const playlistTrackFavoriteId = (entry, track) => {
+  const kind = entry?.kind === "flow" ? "flow-song" : entry?.kind === "shared" ? "shared-song" : "";
+  if (!kind || !entry?.id || !track?.id) return "";
+  return `${kind}:${encodeURIComponent(`${entry.id}:${track.id}`)}`;
+};
+
 function FlowPage({ mode = "all" }) {
   const fixedLibraryFilter = mode === "flows" ? "flows" : mode === "playlists" ? "playlists" : null;
   useDocumentTitle(mode === "flows" ? "Flows" : "Playlists");
@@ -206,6 +215,9 @@ function FlowPage({ mode = "all" }) {
   const [createPlaylistError, setCreatePlaylistError] = useState("");
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
   const [playlistMenuError, setPlaylistMenuError] = useState("");
+  const [libraryTrackSavingKey, setLibraryTrackSavingKey] = useState("");
+  const [favoriteTrackIds, setFavoriteTrackIds] = useState(() => new Set());
+  const [favoriteTrackSavingKey, setFavoriteTrackSavingKey] = useState("");
   const playlistsLoading = false;
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
@@ -215,6 +227,25 @@ function FlowPage({ mode = "all" }) {
   useEffect(() => {
     if (fixedLibraryFilter) setLibraryFilter(fixedLibraryFilter);
   }, [fixedLibraryFilter]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getLibraryFavorites()
+      .then((data) => {
+        if (cancelled) return;
+        setFavoriteTrackIds(
+          new Set(
+            (Array.isArray(data?.song) ? data.song : [])
+              .map((entry) => String(entry?.id || "").trim())
+              .filter(Boolean),
+          ),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedId || !status?.flows?.length) return;
@@ -1186,6 +1217,82 @@ function FlowPage({ mode = "all" }) {
     if (canonicalId) navigate(`/library/album/${encodeURIComponent(canonicalId)}`);
   };
 
+  const handleAddTrackToLibrary = async (track) => {
+    const payload = {
+      artistName: String(track?.artistName || "").trim(),
+      trackName: String(track?.trackName || "").trim(),
+      albumName: String(track?.albumName || "").trim() || null,
+      artistMbid: String(track?.artistMbid || "").trim() || null,
+      albumMbid: String(track?.albumMbid || "").trim() || null,
+      trackMbid: String(track?.trackMbid || "").trim() || null,
+      releaseYear: track?.releaseYear || null,
+      durationMs: track?.durationMs || null,
+      trackNumber: track?.trackNumber,
+      albumTrackCount: track?.albumTrackCount,
+      albumTrackTitles: track?.albumTrackTitles,
+    };
+    if (!payload.artistName || !payload.trackName || libraryTrackSavingKey) {
+      if (!payload.artistName || !payload.trackName) showError("Track details are incomplete");
+      return;
+    }
+    const savingKey = String(track?.id || `${payload.artistName}:${payload.trackName}`);
+    setLibraryTrackSavingKey(savingKey);
+    try {
+      const result = await downloadTrackToLibrary(payload);
+      showSuccess(
+        result?.alreadyOwned
+          ? `${payload.trackName} is already in your library`
+          : result?.queued
+            ? `Queued ${payload.trackName} for your library`
+            : `Added ${payload.trackName} to your library`,
+      );
+    } catch (err) {
+      showError(
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          err.message ||
+          "Failed to add track to library",
+      );
+    } finally {
+      setLibraryTrackSavingKey("");
+    }
+  };
+
+  const handleToggleTrackFavorite = async (track) => {
+    const id = playlistTrackFavoriteId(selectedEntry, track);
+    if (!id || favoriteTrackSavingKey) return;
+    const nextStarred = !favoriteTrackIds.has(id);
+    const previous = favoriteTrackIds;
+    setFavoriteTrackSavingKey(id);
+    setFavoriteTrackIds((current) => {
+      const next = new Set(current);
+      if (nextStarred) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    try {
+      const starred = await updateLibraryFavorites([id], nextStarred);
+      setFavoriteTrackIds(
+        new Set(
+          (Array.isArray(starred?.song) ? starred.song : [])
+            .map((entry) => String(entry?.id || "").trim())
+            .filter(Boolean),
+        ),
+      );
+      showSuccess(nextStarred ? "Added to favorites" : "Removed from favorites");
+    } catch (err) {
+      setFavoriteTrackIds(previous);
+      showError(
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          err.message ||
+          "Failed to update favorites",
+      );
+    } finally {
+      setFavoriteTrackSavingKey("");
+    }
+  };
+
   const handleBulkDelete = async (tracks) => {
     if (!selectedPlaylist) return;
     setBulkActionLoading(true);
@@ -1320,6 +1427,7 @@ function FlowPage({ mode = "all" }) {
         type: selectedIsFlow ? "flow" : "playlist",
         id: selectedEntry.id,
         label: selectedFlow?.name || selectedPlaylist?.name || selectedEntry.name || "Playlist",
+        recordHistory: selectedIsFlow ? selectedFlow?.recordHistory !== false : true,
       }
     : null;
   const flowEnabled = selectedFlow?.enabled === true;
@@ -1601,7 +1709,7 @@ function FlowPage({ mode = "all" }) {
                   : "Enable this flow to generate tracks."
                 : "No tracks in this playlist yet."
             }
-            useTrackContextMenu={!selectedIsFlow}
+            useTrackContextMenu
             allowBulkEdit={!selectedIsFlow}
             bulkActionLoading={bulkActionLoading}
             onBulkDelete={selectedIsFlow ? undefined : handleBulkDelete}
@@ -1632,6 +1740,12 @@ function FlowPage({ mode = "all" }) {
                 ? undefined
                 : (track, target) => handleMoveTrackToPlaylist(track, target, selectedPlaylist.id)
             }
+            onAddTrackToLibrary={handleAddTrackToLibrary}
+            libraryTrackSavingKey={libraryTrackSavingKey}
+            getTrackFavoriteId={(track) => playlistTrackFavoriteId(selectedEntry, track)}
+            favoriteTrackIds={favoriteTrackIds}
+            favoriteTrackSavingKey={favoriteTrackSavingKey}
+            onToggleFavorite={handleToggleTrackFavorite}
             onNavigateArtist={handleNavigateArtist}
             onNavigateAlbum={handleNavigateAlbum}
             trackTitleLabel={selectedIsFlow ? "Song" : "Title"}
@@ -1639,7 +1753,7 @@ function FlowPage({ mode = "all" }) {
             artworkByAlbumMbid={trackArtworkByAlbumMbid}
             showDuration={!selectedIsFlow}
             hideStatusColumn={!selectedIsFlow}
-            hideQualityColumn={!selectedIsFlow}
+            hideQualityColumn
           />
         ) : null}
         {detailTab === "recipe" && selectedIsFlow && simpleDraft ? (
@@ -1768,7 +1882,7 @@ function FlowPage({ mode = "all" }) {
   ) : null;
 
   return (
-    <div className={`flow-page${mode === "playlists" ? " flow-page--playlists" : ""}`}>
+    <div className={`flow-page${mode === "playlists" || mode === "flows" ? " flow-page--library" : ""}`}>
       <div
         className={`flow-page__shell${!isMobileLayout && libraryCollapsed ? " flow-page__shell--library-collapsed" : ""}`}
       >

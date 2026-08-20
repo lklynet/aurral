@@ -1,4 +1,5 @@
 import { ChevronDown } from "lucide-react";
+import PillToggle from "../../../components/PillToggle";
 import {
   MixSlider,
   getFocusDraftValidation,
@@ -116,6 +117,30 @@ export function FlowScheduleFields({
               );
             })}
           </div>
+        </div>
+      </div>
+      <div className="flow-page__history-setting">
+        <div className="flow-page__history-copy">
+          <div className="flow-page__field-label">Record listening history</div>
+          <p className="flow-page__history-description">
+            When off, tracks from this flow will not affect future recommendations or connected
+            scrobblers.
+          </p>
+        </div>
+        <div className="flow-page__history-control">
+          <span className="flow-page__history-state" aria-hidden="true">
+            {draft?.recordHistory !== false ? "On" : "Off"}
+          </span>
+          <PillToggle
+            checked={draft?.recordHistory !== false}
+            aria-label={`Record listening history ${draft?.recordHistory !== false ? "on" : "off"}`}
+            onChange={(event) =>
+              updateDraft((prev) => ({
+                ...prev,
+                recordHistory: event.target.checked,
+              }))
+            }
+          />
         </div>
       </div>
     </div>
