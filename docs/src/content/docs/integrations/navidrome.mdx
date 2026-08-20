@@ -33,8 +33,8 @@ The built-in Aurral player records completed library tracks through the same loc
 
 ## Scrobbling without Navidrome
 
-Open **Settings > Playback > Scrobbling** to connect Last.fm or ListenBrainz. Aurral copies
-Navidrome's provider flows directly, so a Navidrome connection is not required for scrobbling.
+Open **Settings > Playback > Scrobbling** to connect Last.fm or ListenBrainz. Aurral submits
+provider events directly, so a Navidrome connection is not required for scrobbling.
 
 Aurral uses the Last.fm API key and API secret from **Settings > Connect > Last.fm**. It validates
 ListenBrainz tokens directly. Completed plays are submitted from Aurral to the selected provider.
@@ -69,8 +69,7 @@ Aurral creates the **Aurral Playlists** library at the Downloads Folder root:
 /data/downloads/aurral
 ```
 
-Flow files live under `_flows`, which is visible to Navidrome scanners. Existing
-installations migrate the old `.flows` directory to `_flows` at startup.
+Flow files live under `_flows`, which is visible to Navidrome scanners.
 
 You do not normally need to create this library manually in Navidrome. The library can be empty until a track finishes downloading. Wait for the scan after the first completed track.
 
@@ -101,22 +100,6 @@ If a new track is not indexed, Aurral leaves it out until Navidrome scans it; it
 - run a Navidrome scan or save the Aurral Navidrome settings;
 - wait for the scan to finish.
 
-## Upgrade from M3U playlists
-
-Aurral adopts a matching Navidrome playlist that was imported from an old M3U file. It keeps the native playlist ID, updates its ordered tracks through the API, and then removes the legacy file. It also removes obsolete duplicate names.
-
-If the old file is already gone, Aurral can recover the imported playlist from Navidrome's import comment during its next playlist publish. It also rejects an imported playlist whose comment belongs to a different Aurral playlist.
-
-If migration does not finish:
-
-1. Keep the existing Navidrome playlist and M3U file.
-2. Make sure that Navidrome has indexed every track.
-3. Run a full Navidrome scan.
-4. Edit and save the Aurral playlist to retry migration.
-5. Confirm that the same Navidrome playlist updates and the legacy file disappears.
-
-To roll back, stop Aurral and deploy the previous exact image. Restore the previous Aurral data and legacy playlist files from the same backup. Do not delete or rename the Navidrome playlist before recovery completes.
-
 ## Remove missing tracks
 
 For Navidrome, set this environment variable if you want it to remove old files:
@@ -125,7 +108,7 @@ For Navidrome, set this environment variable if you want it to remove old files:
 ND_SCANNER_PURGEMISSING=always
 ```
 
-This removes old flow entries after a flow changes.
+This removes any missing Navidrome files, including flow entries, after a scan.
 
 :::caution
 `ND_SCANNER_PURGEMISSING=always` also removes other missing Navidrome files. It can remove their ratings, play counts, and playlist entries. Use it only when missing files will not return.

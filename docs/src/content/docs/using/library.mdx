@@ -37,11 +37,6 @@ Static playlist membership is stored by Aurral's Subsonic model, so deleting a
 playlist does not delete a canonical track. A Subsonic favorite can also
 promote a Flow track when **Favorite Flow tracks** is enabled in **Settings > System > Subsonic**.
 
-When upgrading from an older Aurral installation, the one-time migration moves
-legacy playlist-folder files into this layout and moves `.flows` files to
-`_flows`. It resumes after a restart and keeps ambiguous, partial, or failed
-items for review. It never changes the Lidarr-owned root.
-
 ## When new files appear
 
 Aurral keeps the canonical library in its own database. It scans the Aurral
@@ -52,7 +47,7 @@ to them.
 When Lidarr imports a download, or a file changes in the Aurral root, Aurral's
 filesystem watcher queues a scan. The watcher waits briefly for a file move or
 rename to finish and ignores `_playlists`, `_staging`, `_fallback`, hidden
-folders, `_flows`, the legacy `.flows` tree, and the legacy `aurral-weekly-flow` tree.
+folders, `_flows`, and `aurral-weekly-flow`.
 
 When the scan completes, an open Library page reloads its canonical records
 automatically. The home page and **Newest** album or track sorting use the time

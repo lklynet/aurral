@@ -39,16 +39,8 @@ Static playlist membership is stored as canonical track references. Aurral-owned
 permanent tracks use the canonical `artist/album/track` layout under the
 configured Aurral download folder. Set this path in **Settings > Download clients**.
 
-Flow media is temporary and lives under `_flows` below that root. Usually, the
-legacy playlist folder was:
-
-```text
-/data/downloads/aurral/aurral-weekly-flow/
-```
-
-The one-time upgrade migration moves legacy Aurral files into the canonical
-layout and moves legacy `.flows` files to `_flows`. It keeps the Lidarr-owned
-root unchanged. Navidrome and Plex can use the roots they are configured to scan.
+Flow media is temporary and lives under `_flows` below that root. Navidrome and
+Plex can use the roots they are configured to scan.
 
 See [Navidrome](/integrations/navidrome/) and [Plex](/integrations/plex/) for playback setup.
 

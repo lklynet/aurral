@@ -15,17 +15,11 @@ For the complete mount model, follow [Filesystem and mounts](/getting-started/st
 | `/data` (or Lidarr's media root) | Shared library and downloads. Mount the same host media root here in Aurral, Lidarr, download clients, and playback servers.                                                      |
 | Downloads Folder                 | Aurral-owned permanent tracks, temporary Flow tracks, imported playlists, and playlist artwork. Set in **Settings > Download clients > Downloads Folder > Path** (for example `/data/downloads/aurral`). |
 
-:::note
-`/config` replaces the older `/app/backend/data` path from Aurral v1. At startup, Aurral automatically detects existing databases in either location.
-:::
-
 ## Back up your data
 
 - Back up the mounted `/config` folder.
 - Back up the Downloads Folder if you want to keep generated playlists after a rebuild.
 - Back up the Compose file and the environment file that contains your host paths.
-
-The Downloads Folder migration can move older Aurral files into the canonical layout. Keep both `/config` and the Downloads Folder backed up until the migration finishes.
 
 yt-dlp stages downloads in `/config/_staging` by default. You can mount another persistent path and select it under **Settings > Download clients > yt-dlp > Staging path**. Keep it outside media-server libraries to avoid scanner activity while files are incomplete.
 

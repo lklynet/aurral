@@ -103,6 +103,9 @@ instance API key for WebSocket connections.
 | `POST` | `/api/library/downloads/album` | Monitor an album and optionally run the configured search |
 | `POST` | `/api/library/downloads/album/search` | Trigger a Lidarr album search |
 
+`POST /api/library/downloads/track` requires an authenticated user with the
+`addAlbum` permission.
+
 ## Artist metadata
 
 | Method | Path | Purpose |
@@ -295,6 +298,9 @@ The repeated `playlists` segment in
 | `GET` | `/api/users/plex-link/home-users` | List Plex home users |
 | `POST` | `/api/users/:id/plex-link/managed` | Link a managed Plex user |
 | `DELETE` | `/api/users/:id/plex-link` | Remove a managed Plex link |
+
+The current-user Plex-link routes require authentication. The Plex home-user
+and managed-link routes require administrator access.
 
 ## Administration and settings
 

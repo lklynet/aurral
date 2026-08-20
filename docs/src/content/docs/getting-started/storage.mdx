@@ -59,7 +59,7 @@ If a service uses a separate path for its own database or configuration, keep th
 1. Aurral asks a download client to find the track.
 2. The download client writes the completed file under `/data/downloads/...`.
 3. Aurral imports the file into its Downloads Folder. Permanent tracks use `artist/album/track`; flow tracks use `_flows/<flow-id>/artist/album/track`.
-4. Aurral stores playlist artwork and legacy sidecars under `aurral-weekly-flow/_playlists`. This folder is not part of the canonical Library.
+4. Aurral stores playlist artwork and sidecars under `aurral-weekly-flow/_playlists`. This folder is not part of the canonical Library.
 5. Navidrome scans the Downloads Folder and can play the tracks.
 
 If Aurral writes a file as `/data/downloads/aurral/track.flac` but Navidrome sees the same host folder as `/downloads/track.flac`, Navidrome cannot open the path in Aurral's playlist file. The API connection can still work, but the playlist will be empty or the tracks will not play. Use matching container paths, or follow [When paths cannot match](#when-paths-cannot-match).
@@ -198,10 +198,6 @@ Use these checks in order:
 4. **Playback check:** Navidrome or Plex must have the Downloads Folder in its own filesystem and must scan it.
 
 If the API check passes but the file check fails, do not change the API URL. Fix the volume mapping, permissions, or path mapping.
-
-:::note
-Upgrades from older Nightly builds migrate legacy playlist files into the canonical layout and move flow files from `.flows` to `_flows`. The migration does not change the Lidarr-owned root. Keep `/config` and the Downloads Folder backed up until the migration finishes.
-:::
 
 ## When paths cannot match
 
