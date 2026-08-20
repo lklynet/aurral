@@ -1000,6 +1000,206 @@ test("validateDownloadedTrack scores path segments without weak-word inflation",
   assert.ok(weak.scores.artist < 92);
 });
 
+test("rankFlowSearchResults prefers the profile-eligible file inside a release folder", () => {
+  const folder = "Shared\\El Canto Del Loco\\Por Mi y por Todos Mis Companeros (2009)";
+  const results = [
+    result({
+      user: "peer",
+      file: `${folder}\\04 - El Canto Del Loco - Aunque Tu No Lo Sepas.flac`,
+      bitrate: null,
+      size: 30000000,
+    }),
+    result({
+      user: "peer",
+      file: `${folder}\\04 - El Canto Del Loco - Aunque Tu No Lo Sepas.mp3`,
+      bitrate: 320,
+      size: 9000000,
+    }),
+  ];
+  const track = {
+    artistName: "El Canto Del Loco",
+    trackName: "Aunque Tu No Lo Sepas",
+    albumName: "Por Mi y por Todos Mis Companeros",
+    releaseYear: "2009",
+    artistAliases: [],
+  };
+  const profile = { enabled: ["mp3-320"], cutoff: "mp3-320" };
+
+  // preferredFormat flac makes the FLAC win on match score, which is what the
+  // folder pick used to go by; the profile cannot accept it, so the track died
+  // at the quality filter with the eligible mp3 sitting in the same folder.
+  const withProfile = rankFlowSearchResults(results, track, {
+    ...rankOpts,
+    preferredFormat: "flac",
+    qualityProfile: profile,
+  });
+  assert.ok(withProfile.length > 0);
+  assert.ok(
+    withProfile[0].raw.file.endsWith(".mp3"),
+    `expected the profile-eligible mp3 to win, got ${withProfile[0].raw.file}`,
+  );
+
+  const withoutProfile = rankFlowSearchResults(results, track, {
+    ...rankOpts,
+    preferredFormat: "flac",
+  });
+  assert.ok(
+    withoutProfile[0].raw.file.endsWith(".flac"),
+    "without a profile the format preference should still decide",
+  );
+});
+
+test("rankFlowSearchResults falls back to flat ranking when no folder candidate fits the profile", () => {
+  const folder = "Shared\\El Canto Del Loco\\Por Mi y por Todos Mis Companeros (2009)";
+  const results = [
+    result({
+      user: "folderPeer",
+      file: `${folder}\\04 - El Canto Del Loco - Aunque Tu No Lo Sepas.flac`,
+      bitrate: null,
+      size: 30000000,
+    }),
+    result({
+      user: "loosePeer",
+      file: "Music\\Spanish Hits\\El Canto Del Loco - Aunque Tu No Lo Sepas.mp3",
+      bitrate: 320,
+      size: 9000000,
+    }),
+  ];
+  const track = {
+    artistName: "El Canto Del Loco",
+    trackName: "Aunque Tu No Lo Sepas",
+    albumName: "Por Mi y por Todos Mis Companeros",
+    releaseYear: "2009",
+    artistAliases: [],
+  };
+  const profile = { enabled: ["mp3-320", "m4a-320"], cutoff: "mp3-320" };
+
+  const ranked = rankFlowSearchResults(results, track, {
+    ...rankOpts,
+    preferredFormat: "mp3",
+    qualityProfile: profile,
+  });
+  assert.ok(
+    ranked.some((entry) => entry.raw.file.endsWith(".mp3")),
+    "expected the profile-eligible file outside the album folder to be reachable",
+  );
+});
+
+test("rankFlowSearchResults keeps eligible candidates outside the fitting folders", () => {
+  const album = "Por Mi y por Todos Mis Companeros";
+  const titles = [
+    "Aunque Tu No Lo Sepas",
+    "Zapatillas",
+    "La Madre de Jose",
+    "Puede Ser",
+    "Peter Pan",
+    "Besos",
+    "Volveras",
+    "Son Suenos",
+    "El Chico",
+    "Contigo",
+    "Insoportable",
+    "A Ti",
+  ];
+  const albumFolder = titles.map((title, index) =>
+    result({
+      user: "albumPeer",
+      file: `Peer1\\El Canto Del Loco\\${album} (2009)\\${String(index + 1).padStart(2, "0")} - ${title}.mp3`,
+      bitrate: 320,
+      size: 9000000,
+    }),
+  );
+  // Single-file folders: the track itself validates, but the folder never passes
+  // the fitting heuristics, so its candidate used to be dropped on the floor.
+  const loose = [
+    result({
+      user: "loosePeerA",
+      file: `PeerA\\${album}\\01 - Aunque Tu No Lo Sepas.mp3`,
+      bitrate: 320,
+      size: 9100000,
+    }),
+    result({
+      user: "loosePeerB",
+      file: `PeerB\\${album}\\Aunque Tu No Lo Sepas.mp3`,
+      bitrate: 320,
+      size: 9200000,
+    }),
+  ];
+  const track = {
+    artistName: "El Canto Del Loco",
+    trackName: "Aunque Tu No Lo Sepas",
+    albumName: album,
+    releaseYear: "2009",
+    artistAliases: [],
+    albumTrackCount: 12,
+    albumTrackTitles: titles,
+    trackNumber: 1,
+  };
+
+  const ranked = rankFlowSearchResults([...albumFolder, ...loose], track, {
+    ...rankOpts,
+    preferredFormat: "mp3",
+    qualityProfile: { enabled: ["mp3-320"], cutoff: "mp3-320" },
+  });
+
+  // The orchestrator waits for several admissible candidates before it stops
+  // searching, so one pick per fitting folder is not enough on its own.
+  const users = ranked.filter((entry) => entry.preDownloadValid).map((entry) => entry.raw.user);
+  assert.deepEqual(users, ["albumPeer", "loosePeerA", "loosePeerB"]);
+  assert.equal(ranked[0].releaseFolderFit, true, "folder priority must be preserved");
+  assert.deepEqual([...new Set(users)], users, "candidates must not be duplicated");
+});
+
+test("rankFlowSearchResults leaves the candidate set alone when no profile is given", () => {
+  const album = "Por Mi y por Todos Mis Companeros";
+  const titles = [
+    "Aunque Tu No Lo Sepas",
+    "Zapatillas",
+    "La Madre de Jose",
+    "Puede Ser",
+    "Peter Pan",
+    "Besos",
+    "Volveras",
+    "Son Suenos",
+    "El Chico",
+    "Contigo",
+    "Insoportable",
+    "A Ti",
+  ];
+  const albumFolder = titles.map((title, index) =>
+    result({
+      user: "albumPeer",
+      file: `Peer1\\El Canto Del Loco\\${album} (2009)\\${String(index + 1).padStart(2, "0")} - ${title}.mp3`,
+      bitrate: 320,
+      size: 9000000,
+    }),
+  );
+  const nonFitting = result({
+    user: "loosePeer",
+    file: `PeerA\\${album}\\01 - Aunque Tu No Lo Sepas.mp3`,
+    bitrate: 320,
+    size: 9100000,
+  });
+  const track = {
+    artistName: "El Canto Del Loco",
+    trackName: "Aunque Tu No Lo Sepas",
+    albumName: album,
+    releaseYear: "2009",
+    artistAliases: [],
+    albumTrackCount: 12,
+    albumTrackTitles: titles,
+    trackNumber: 1,
+  };
+
+  const ranked = rankFlowSearchResults([...albumFolder, nonFitting], track, {
+    ...rankOpts,
+    preferredFormat: "mp3",
+  });
+
+  const users = ranked.filter((entry) => entry.preDownloadValid).map((entry) => entry.raw.user);
+  assert.deepEqual(users, ["albumPeer"], "no profile means the folder pass decides alone");
+});
+
 test("rankFlowSearchResults accepts a candidate whose advertised duration matches", () => {
   const ranked = rankFlowSearchResults(
     [result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 224 })],
