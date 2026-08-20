@@ -19,7 +19,7 @@ Aurral does not write these files to your main music library.
 | Controls  | Schedule, source mix, focus, deep dive | Import, sync, and retention settings      |
 | Worker    | Shared download worker                 | Shared download worker                    |
 
-Flows refresh on a schedule and use your flow settings. Static playlists come from Spotify, ListenBrainz, JSON files, or exported flow tracklists. Synced imports follow provider membership; their removed-track file-retention setting is available in the import flow and playlist menu.
+Flows refresh on a schedule and use your flow settings. Static playlists come from Spotify, Last.fm, ListenBrainz, JSON files, or exported flow tracklists. Synced imports follow provider membership; their removed-track file-retention setting is available in the import flow and playlist menu.
 
 Flow names and static playlist names must be unique across both types. Aurral uses the same bare name for Navidrome and Plex playlists.
 
@@ -29,7 +29,7 @@ Select **Re-search missing** from the playlist menu to try the track again.
 
 ## Import and Lidarr sync
 
-Use **Import playlist** for Spotify, ListenBrainz, or a JSON tracklist. Connect Spotify in the import flow. Connect ListenBrainz in **Settings > Playback**. See [Playlist imports](/using/playlist-imports/).
+Use **Import playlist** for Spotify, Last.fm, ListenBrainz, or a JSON tracklist. Connect Spotify in the import flow. Connect ListenBrainz in **Settings > Playback**; configure a Last.fm username in **Profile**. See [Playlist imports](/using/playlist-imports/).
 
 Flows can expose a **Lidarr import URL** so Lidarr polls the current flow tracklist as a custom import list. See [Lidarr: Import list feeds](/integrations/lidarr/#import-list-feeds).
 
@@ -107,4 +107,4 @@ yt-dlp can supply an acceptable first file. Aurral does not use yt-dlp for upgra
 ## Next steps
 
 - [Flows](/using/flows/): schedule, source mix, focus, and generation behavior
-- [Playlist imports](/using/playlist-imports/): Spotify and ListenBrainz imports, JSON formats, retries, and file reuse
+- [Playlist imports](/using/playlist-imports/): Spotify, Last.fm, and ListenBrainz imports, JSON formats, retries, and file reuse

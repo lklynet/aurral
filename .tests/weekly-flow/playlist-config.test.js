@@ -284,6 +284,18 @@ test("defaults Spotify removed-track retention on and preserves an explicit opt-
   assert.equal(optedOut.keepRemovedTracks, false);
 });
 
+test("rejects unsupported playlist import providers", () => {
+  assert.equal(
+    normalizeImportSource({
+      provider: "unknown-provider",
+      externalId: "playlist-id",
+      syncEnabled: true,
+      syncIntervalHours: 24,
+    }),
+    null,
+  );
+});
+
 test("preserves rich track metadata when shared playlists are updated", () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({
     name: "Metadata Mix",

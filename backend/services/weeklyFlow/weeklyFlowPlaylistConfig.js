@@ -5,6 +5,12 @@ import { getDiscoverPlaylistPreset } from "../../config/discoverPlaylistPresets.
 import { EDITORIAL_PLAYLIST_POOL } from "../../config/editorialPlaylistPresets.js";
 
 const LEGACY_TYPES = ["discover", "mix", "trending"];
+export const IMPORT_SOURCE_PROVIDERS = new Set([
+  "spotify-playlist",
+  "listenbrainz-playlist",
+  "listenbrainz-createdfor",
+  "lastfm-station",
+]);
 const DEFAULT_MIX = { discover: 34, mix: 33, trending: 33, focus: 0 };
 export const DEFAULT_SIZE = 30;
 const DEFAULT_SCHEDULE_TIME = "00:00";
@@ -434,7 +440,7 @@ export const filterMissingSharedTracks = (existingTracks, incomingTracks) => {
 export function normalizeImportSource(value) {
   if (!value || typeof value !== "object") return null;
   const provider = String(value.provider || "").trim();
-  if (!provider) return null;
+  if (!IMPORT_SOURCE_PROVIDERS.has(provider)) return null;
   const syncIntervalHours = Number(value.syncIntervalHours);
   const lastSyncAt = Number(value.lastSyncAt);
   const hasSync =

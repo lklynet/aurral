@@ -92,6 +92,9 @@ export const lastfmStationClient = {
 
   async getStationTracks(userId, stationId, requestedUsername) {
     const username = resolveUsername(userId, requestedUsername);
-    return requestStation(username, normalizeLastfmStation(stationId));
+    return {
+      ...(await requestStation(username, normalizeLastfmStation(stationId))),
+      user: username,
+    };
   },
 };

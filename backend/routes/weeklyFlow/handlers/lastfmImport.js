@@ -15,7 +15,10 @@ const getPlaylistImport = (body) => ({
 export function registerLastfmImport(router) {
   router.get("/import/lastfm/playlists", async (req, res) => {
     try {
-      res.json(await lastfmStationClient.listPlaylists(req.user.id, req.query?.username));
+      const requestedUsername = Array.isArray(req.query?.username)
+        ? req.query.username[0]
+        : req.query?.username;
+      res.json(await lastfmStationClient.listPlaylists(req.user.id, requestedUsername));
     } catch (error) {
       res.status(getErrorStatus(error)).json({
         error: "Failed to fetch Last.fm stations",
@@ -56,7 +59,7 @@ export function registerLastfmImport(router) {
         return res.status(400).json({ error: "playlistId is required" });
       }
       if (!name) return res.status(400).json({ error: "name is required" });
-      const { tracks } = await fetchImportedPlaylistTracks({
+      const { tracks, user } = await fetchImportedPlaylistTracks({
         userId: req.user.id,
         ...playlistImport,
       });
@@ -65,6 +68,7 @@ export function registerLastfmImport(router) {
         name,
         sourceName: "Last.fm",
         ...playlistImport,
+        externalUsername: playlistImport.externalUsername || user || "",
         externalName,
         tracks,
         syncEnabled,

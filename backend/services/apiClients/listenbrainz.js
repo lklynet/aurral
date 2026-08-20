@@ -86,7 +86,7 @@ export async function listenbrainzRequest(
 ) {
   const root = normalizeListenbrainzBaseUrl(baseUrl);
   const isAuthenticated = Boolean(String(token || "").trim());
-  const cacheKey = isAuthenticated ? null : `lb:${path}:${JSON.stringify(params)}`;
+  const cacheKey = isAuthenticated ? null : `lb:${root}:${path}:${JSON.stringify(params)}`;
   if (cacheKey) {
     const cached = listenbrainzCache.get(cacheKey);
     if (cached !== undefined) return cached;

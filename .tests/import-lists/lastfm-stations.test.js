@@ -103,5 +103,6 @@ test("lastfmStationClient reuses a Last.fm username from the profile", async (t)
   const result = await lastfmStationClient.getStationTracks(user.id, "library");
 
   assert.equal(result.tracks.length, 1);
+  assert.equal(result.user, "profile-lastfm");
   assert.equal(new URL(requestedUrl).pathname, "/player/station/user/profile-lastfm/library");
 });

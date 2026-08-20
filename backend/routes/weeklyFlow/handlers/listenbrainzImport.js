@@ -31,6 +31,9 @@ export function registerListenBrainzImport(router) {
   router.post("/import/listenbrainz/preview", async (req, res) => {
     try {
       const playlistImport = getPlaylistImport(req.body);
+      if (!playlistImport.externalId) {
+        return res.status(400).json({ error: "playlistId is required" });
+      }
       const { tracks, stats } = await fetchImportedPlaylistTracks({
         userId: req.user.id,
         ...playlistImport,
@@ -57,6 +60,9 @@ export function registerListenBrainzImport(router) {
       const keepRemovedTracks = req.body?.keepRemovedTracks !== false;
       const syncEnabled =
         req.body?.syncEnabled === false ? false : syncIntervalHours > 0;
+      if (!playlistImport.externalId) {
+        return res.status(400).json({ error: "playlistId is required" });
+      }
       if (!name) return res.status(400).json({ error: "name is required" });
       const { tracks } = await fetchImportedPlaylistTracks({
         userId: req.user.id,

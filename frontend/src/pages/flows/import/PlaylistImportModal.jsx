@@ -154,6 +154,7 @@ export function PlaylistImportModal({
   const [jsonReview, setJsonReview] = useState(null);
   const sourceRef = useRef(source);
   const sourceRequestIdRef = useRef(0);
+  const loadedLastfmUsernameRef = useRef("");
 
   const reservedNameKeys = useMemo(
     () =>
@@ -166,6 +167,7 @@ export function PlaylistImportModal({
   const resetState = useCallback(() => {
     sourceRef.current = "spotify";
     sourceRequestIdRef.current += 1;
+    loadedLastfmUsernameRef.current = "";
     setSource("spotify");
     setLastfmUsername("");
     setLastfmUsernameInput("");
@@ -185,6 +187,7 @@ export function PlaylistImportModal({
   const selectSource = (nextSource) => {
     sourceRef.current = nextSource;
     sourceRequestIdRef.current += 1;
+    loadedLastfmUsernameRef.current = "";
     setSource(nextSource);
     setPlaylists([]);
     setPlaylistQuery("");
@@ -242,9 +245,13 @@ export function PlaylistImportModal({
   }, [open, source, spotifyStatus.connected, loadSpotifyPlaylists]);
 
   const loadListenBrainzPlaylists = useCallback(async () => {
+    const requestId = sourceRequestIdRef.current;
+    const isCurrent = () =>
+      sourceRef.current === "listenbrainz" && requestId === sourceRequestIdRef.current;
     setListenBrainzLoading(true);
     try {
       const statusPayload = await getScrobbleStatus();
+      if (!isCurrent()) return;
       const status = statusPayload?.listenbrainz || { connected: false };
       setListenBrainzStatus(status);
       if (!status.connected) {
@@ -252,11 +259,13 @@ export function PlaylistImportModal({
         return;
       }
       const payload = await getListenBrainzPlaylists();
+      if (!isCurrent()) return;
       setPlaylists(Array.isArray(payload?.playlists) ? payload.playlists : []);
       if (payload?.user) {
         setListenBrainzStatus((prev) => ({ ...prev, connected: true, displayName: payload.user }));
       }
     } catch (error) {
+      if (!isCurrent()) return;
       setListenBrainzStatus({ connected: false, displayName: null });
       setPlaylists([]);
       showError?.(
@@ -265,21 +274,29 @@ export function PlaylistImportModal({
           "Failed to load ListenBrainz playlists",
       );
     } finally {
-      setListenBrainzLoading(false);
+      if (isCurrent()) setListenBrainzLoading(false);
     }
   }, [showError]);
 
   const loadLastfmPlaylists = useCallback(async (requestedUsername) => {
     const username = String(requestedUsername || "").trim();
     if (!username) return;
+    if (loadedLastfmUsernameRef.current === username) return;
+    const requestId = sourceRequestIdRef.current;
+    const isCurrent = () =>
+      sourceRef.current === "lastfm" && requestId === sourceRequestIdRef.current;
+    loadedLastfmUsernameRef.current = username;
     setLastfmProfileChecked(true);
     setLastfmLoading(true);
     try {
       const payload = await getLastfmPlaylists(username);
+      if (!isCurrent()) return;
       setLastfmUsername(username);
       setLastfmUsernameInput(username);
       setPlaylists(Array.isArray(payload?.playlists) ? payload.playlists : []);
     } catch (error) {
+      if (!isCurrent()) return;
+      loadedLastfmUsernameRef.current = "";
       setPlaylists([]);
       showError?.(
         error?.response?.data?.message ||
@@ -287,7 +304,7 @@ export function PlaylistImportModal({
           "Failed to load Last.fm stations",
       );
     } finally {
-      setLastfmLoading(false);
+      if (isCurrent()) setLastfmLoading(false);
     }
   }, [showError]);
 
@@ -705,6 +722,7 @@ export function PlaylistImportModal({
                       type="button"
                       className="btn btn-ghost btn-sm"
                       onClick={() => {
+                        loadedLastfmUsernameRef.current = "";
                         setLastfmUsername("");
                         setLastfmUsernameInput("");
                         setLastfmProfileChecked(true);
