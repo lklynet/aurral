@@ -178,19 +178,23 @@ test("a proxy 401 with a nested error body reauthenticates through the proxy", a
 test("a Spotify provider 401 does not drop the Aurral session", async (t) => {
   const vite = await withApiClient(t);
 
+  let reloads = 0;
   globalThis.sessionStorage = createStorage({ auth_token: "valid-token" });
   globalThis.localStorage = createStorage({ auth_token: "valid-token" });
   globalThis.window = {
     location: {
       origin: "https://aurral.example.com",
       pathname: "/discover",
-      reload: () => {},
+      reload: () => {
+        reloads += 1;
+      },
     },
   };
   globalThis.fetch = async () =>
     new Response(JSON.stringify({
-      error: "Failed to fetch Spotify playlists",
-      message: "Spotify is not connected",
+      error: "Spotify authentication required",
+      code: "SPOTIFY_AUTH_REQUIRED",
+      message: "Your Spotify connection expired. Connect Spotify again.",
     }), {
       status: 401,
       headers: { "content-type": "application/json" },
@@ -199,6 +203,7 @@ test("a Spotify provider 401 does not drop the Aurral session", async (t) => {
   const { default: api } = await vite.ssrLoadModule("/src/utils/api/core.js");
 
   await assert.rejects(api.get("/playlists/import/spotify/playlists"), /status code 401/);
+  assert.equal(reloads, 0);
   assert.equal(globalThis.localStorage.getItem("auth_token"), "valid-token");
   assert.equal(globalThis.sessionStorage.getItem("auth_token"), "valid-token");
 });
