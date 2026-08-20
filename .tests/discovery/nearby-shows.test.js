@@ -32,4 +32,6 @@ test("marks an unresolved postal code instead of returning a normal empty locati
   assert.equal(result.location.resolved, false);
   assert.equal(result.total, 0);
   assert.deepEqual(result.shows, []);
+  assert.deepEqual(result.libraryShows, []);
+  assert.deepEqual(result.recommendedShows, []);
 });
