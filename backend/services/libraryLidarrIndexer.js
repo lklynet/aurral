@@ -89,12 +89,30 @@ async function loadAlbumTrackData(client, albums, artistIds) {
       };
     });
 
-  if (typeof client.getAllTracks === "function" && typeof client.getAllTrackFiles === "function") {
+  if (
+    typeof client.getAllTracks === "function" &&
+    (typeof client.getTrackFilesByIds === "function" ||
+      typeof client.getAllTrackFiles === "function")
+  ) {
     try {
-      const [tracks, files] = await Promise.all([
-        client.getAllTracks({ artistIds, forceRefresh: true, throwOnError: true }),
-        client.getAllTrackFiles({ artistIds, forceRefresh: true, throwOnError: true }),
-      ]);
+      let tracks;
+      let files;
+      if (typeof client.getTrackFilesByIds === "function") {
+        tracks = await client.getAllTracks({
+          artistIds,
+          forceRefresh: true,
+          throwOnError: true,
+        });
+        files = await client.getTrackFilesByIds(
+          tracks.map((track) => track?.trackFileId),
+          { forceRefresh: true, throwOnError: true },
+        );
+      } else {
+        [tracks, files] = await Promise.all([
+          client.getAllTracks({ artistIds, forceRefresh: true, throwOnError: true }),
+          client.getAllTrackFiles({ artistIds, forceRefresh: true, throwOnError: true }),
+        ]);
+      }
       return buildBulkAlbumTrackData(albums, tracks, files);
     } catch {
       return loadPerAlbumTrackData();

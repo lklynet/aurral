@@ -106,6 +106,47 @@ test("bulk reads wait for active requests before failing", async () => {
   assert.deepEqual(started, artistIds.slice(0, 12));
 });
 
+test("bulk track-file reads use bounded repeated ID selectors", async (t) => {
+  const requests = [];
+  const server = http.createServer((request, response) => {
+    const url = new URL(request.url, "http://127.0.0.1");
+    requests.push(url.searchParams.getAll("trackFileIds").map(Number));
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end("[]");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const address = server.address();
+  const client = new LidarrClient();
+  client._holdConfig = true;
+  client.config = {
+    url: `http://127.0.0.1:${address.port}`,
+    apiKey: "test",
+    timeoutMs: 2000,
+    circuitDisabled: true,
+  };
+
+  await client.getTrackFilesByIds(
+    Array.from({ length: 401 }, (_, index) => index + 1),
+    { throwOnError: true },
+  );
+
+  assert.deepEqual(
+    requests.map((batch) => batch.length).sort((left, right) => left - right),
+    [1, 400],
+  );
+  assert.deepEqual(requests.flat().sort((left, right) => left - right), [
+    ...Array.from({ length: 401 }, (_, index) => index + 1),
+  ]);
+  client._httpAgent.destroy();
+  client._httpsAgent.destroy();
+  client._httpsInsecureAgent.destroy();
+});
+
 test("testConnection preserves Lidarr HTTP diagnostics", async (t) => {
   let status = 401;
   const server = http.createServer((_request, response) => {

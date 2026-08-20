@@ -1,3 +1,5 @@
+import { Readable } from "node:stream";
+
 import { noCache } from "../../../middleware/cache.js";
 import { requireAuth } from "../../../middleware/requirePermission.js";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
@@ -39,21 +41,49 @@ function getAlbumCoverUrl(album) {
 export const publicLibraryJsonReplacer = (key, value) =>
   isFilesystemPathKey(key) ? undefined : value;
 
+const publicEntity = (kind, entity, favoriteKeys) => favoriteKeys
+  ? { ...entity, userFavorite: favoriteKeys.has(`${kind}:${entity.identityKey}`) }
+  : entity;
+
+const publicAlbum = (album, favoriteKeys) => ({
+  ...album,
+  coverUrl: album.coverUrl || getAlbumCoverUrl(album),
+  ...(favoriteKeys
+    ? { userFavorite: favoriteKeys.has(`album:${album.identityKey}`) }
+    : {}),
+});
+
 export function buildPublicLibrary(library, favoriteKeys = null) {
-  const publicEntity = (kind, entity) => favoriteKeys
-    ? { ...entity, userFavorite: favoriteKeys.has(`${kind}:${entity.identityKey}`) }
-    : entity;
   return {
-    artists: library.artists.map((artist) => publicEntity("artist", artist)),
-    albums: library.albums.map((album) => ({
-      ...album,
-      coverUrl: album.coverUrl || getAlbumCoverUrl(album),
-      ...(favoriteKeys
-        ? { userFavorite: favoriteKeys.has(`album:${album.identityKey}`) }
-        : {}),
-    })),
-    tracks: library.tracks.map((track) => publicEntity("song", track)),
+    artists: library.artists.map((artist) => publicEntity("artist", artist, favoriteKeys)),
+    albums: library.albums.map((album) => publicAlbum(album, favoriteKeys)),
+    tracks: library.tracks.map((track) => publicEntity("song", track, favoriteKeys)),
   };
+}
+
+function* jsonArrayChunks(items, mapper) {
+  yield "[";
+  for (let index = 0; index < items.length; index += 1) {
+    if (index > 0) yield ",";
+    yield JSON.stringify(mapper(items[index]), publicLibraryJsonReplacer);
+  }
+  yield "]";
+}
+
+export function* publicLibraryJsonChunks(library, favoriteKeys = null) {
+  yield "{\"artists\":";
+  yield* jsonArrayChunks(
+    library.artists,
+    (artist) => publicEntity("artist", artist, favoriteKeys),
+  );
+  yield ",\"albums\":";
+  yield* jsonArrayChunks(library.albums, (album) => publicAlbum(album, favoriteKeys));
+  yield ",\"tracks\":";
+  yield* jsonArrayChunks(
+    library.tracks,
+    (track) => publicEntity("song", track, favoriteKeys),
+  );
+  yield "}";
 }
 
 function toPublicLibrary(library, favoriteKeys = null) {
@@ -120,7 +150,8 @@ export function registerCanonical(router) {
         source: req.query.source,
         availableOnly: req.query.availableOnly === "true",
       });
-      return res.type("json").send(toPublicLibraryJson(library, favoriteKeys));
+      res.type("json");
+      return Readable.from(publicLibraryJsonChunks(library, favoriteKeys)).pipe(res);
     } catch (error) {
       if (
         error.message.startsWith("Unsupported library source:") ||

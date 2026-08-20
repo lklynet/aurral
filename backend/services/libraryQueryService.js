@@ -287,14 +287,15 @@ const recentMediaOrder = (kind, sourceFilter, availableOnly, direction) => {
     return `COALESCE((
       SELECT MAX(page_media.created_at)
       FROM library_album_tracks AS page_album_track
-      JOIN library_media_files AS page_media ON page_media.track_id = page_album_track.track_id
+      JOIN library_media_files AS page_media INDEXED BY idx_library_media_files_track_source_available
+        ON page_media.track_id = page_album_track.track_id
       WHERE page_album_track.album_id = album.id
         AND ${albumMediaCondition("page_media", "page_album_track")}${mediaFilter}
     ), 0) ${orderDirection}, album.title COLLATE NOCASE ${direction === "desc" ? "DESC" : "ASC"}`;
   }
   return `COALESCE((
     SELECT MAX(page_media.created_at)
-    FROM library_media_files AS page_media
+    FROM library_media_files AS page_media INDEXED BY idx_library_media_files_track_source_available
     WHERE page_media.track_id = track.id${mediaFilter}
   ), 0) ${orderDirection}, track.title COLLATE NOCASE ${direction === "desc" ? "DESC" : "ASC"}`;
 };
@@ -309,7 +310,8 @@ const pageMediaExists = (kind, sourceFilter, availableOnly) => {
         SELECT 1
         FROM library_albums AS page_album
         JOIN library_album_tracks AS page_album_track ON page_album_track.album_id = page_album.id
-        JOIN library_media_files AS page_media ON page_media.track_id = page_album_track.track_id
+        JOIN library_media_files AS page_media INDEXED BY idx_library_media_files_track_source_available
+          ON page_media.track_id = page_album_track.track_id
         WHERE page_album.artist_id = artist.id
           AND ${albumMediaCondition("page_media", "page_album_track")}
           AND ${conditionSql}
@@ -322,7 +324,8 @@ const pageMediaExists = (kind, sourceFilter, availableOnly) => {
       sql: `EXISTS (
         SELECT 1
         FROM library_album_tracks AS page_album_track
-        JOIN library_media_files AS page_media ON page_media.track_id = page_album_track.track_id
+        JOIN library_media_files AS page_media INDEXED BY idx_library_media_files_track_source_available
+          ON page_media.track_id = page_album_track.track_id
         WHERE page_album_track.album_id = album.id
           AND ${albumMediaCondition("page_media", "page_album_track")}
           AND ${conditionSql}
@@ -332,7 +335,7 @@ const pageMediaExists = (kind, sourceFilter, availableOnly) => {
   }
   return {
     sql: `EXISTS (
-      SELECT 1 FROM library_media_files AS page_media
+      SELECT 1 FROM library_media_files AS page_media INDEXED BY idx_library_media_files_track_source_available
       WHERE page_media.track_id = track.id AND ${conditionSql}
     )`,
     parameters,

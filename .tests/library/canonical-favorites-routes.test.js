@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { Writable } from "node:stream";
 
 import {
   cleanupIsolatedState,
@@ -118,7 +119,17 @@ function getRoute(path) {
 }
 
 function responseFor() {
-  return {
+  const response = new Writable({
+    write(chunk, _encoding, callback) {
+      this.chunks.push(chunk.toString());
+      callback();
+    },
+  });
+  response.chunks = [];
+  response.on("finish", () => {
+    if (response.chunks.length > 0) response.body = JSON.parse(response.chunks.join(""));
+  });
+  Object.assign(response, {
     body: null,
     statusCode: 200,
     contentType: null,
@@ -138,7 +149,8 @@ function responseFor() {
       this.body = JSON.parse(value);
       return this;
     },
-  };
+  });
+  return response;
 }
 
 test("native favorites reuse Subsonic star identity and return current favorites", () => {
@@ -203,9 +215,10 @@ test("canonical library pages return bounded collection responses", () => {
   assert.equal(artistResponse.body.items[0].userFavorite, true);
 });
 
-test("unpaged canonical library responses keep paths private", () => {
+test("unpaged canonical library responses keep paths private", async () => {
   const response = responseFor();
-  getRoute("GET /canonical")({ user, query: {} }, response);
+  await getRoute("GET /canonical")({ user, query: {} }, response);
+  await new Promise((resolve) => response.once("finish", resolve));
 
   assert.equal(response.statusCode, 200);
   assert.equal(response.contentType, "json");

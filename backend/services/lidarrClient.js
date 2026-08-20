@@ -10,6 +10,7 @@ import { musicbrainzGetArtistIdentityByMbid } from "./apiClients/musicbrainz.js"
 const CIRCUIT_COOLDOWN_MS = 60000;
 const CIRCUIT_FAILURE_THRESHOLD = 3;
 const LIDARR_MAX_CONCURRENT = 12;
+export const LIDARR_TRACK_FILE_ID_BATCH_SIZE = 400;
 const LIDARR_ALBUM_LOOKUP_CONCURRENCY = 6;
 export const LIDARR_ALBUM_LOOKUP_BATCH_MAX = 100;
 const LIDARR_LIST_CACHE_MS = 30000;
@@ -56,6 +57,19 @@ function normalizeLidarrArtistIds(values) {
     ...new Set(
       (Array.isArray(values) ? values : [])
         .map(normalizeLidarrArtistId)
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function normalizeLidarrTrackFileIds(values) {
+  return [
+    ...new Set(
+      (Array.isArray(values) ? values : [])
+        .map((value) => {
+          const parsed = Number(value);
+          return Number.isSafeInteger(parsed) && parsed > 0 ? String(parsed) : null;
+        })
         .filter(Boolean),
     ),
   ];
@@ -1332,6 +1346,47 @@ export class LidarrClient {
           return [];
         },
         { stopOnError: true },
+      );
+      return results.flat();
+    } catch (error) {
+      if (throwOnError) throw error;
+      return [];
+    }
+  }
+
+  async getTrackFilesByIds(trackFileIds, options = {}) {
+    const { throwOnError = false, ...requestOptions } = options;
+    try {
+      const normalizedTrackFileIds = normalizeLidarrTrackFileIds(trackFileIds);
+      if (normalizedTrackFileIds.length === 0) return [];
+      const batches = [];
+      for (
+        let index = 0;
+        index < normalizedTrackFileIds.length;
+        index += LIDARR_TRACK_FILE_ID_BATCH_SIZE
+      ) {
+        batches.push(
+          normalizedTrackFileIds.slice(index, index + LIDARR_TRACK_FILE_ID_BATCH_SIZE),
+        );
+      }
+      const results = await mapWithConcurrency(
+        batches,
+        LIDARR_MAX_CONCURRENT,
+        async (batch) => {
+          const query = batch
+            .map((trackFileId) => `trackFileIds=${encodeURIComponent(trackFileId)}`)
+            .join("&");
+          const result = await this.request(
+            `/trackfile?${query}`,
+            "GET",
+            null,
+            false,
+            requestOptions,
+          );
+          if (Array.isArray(result)) return result;
+          if (result?.records && Array.isArray(result.records)) return result.records;
+          return [];
+        },
       );
       return results.flat();
     } catch (error) {

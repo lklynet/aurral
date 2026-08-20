@@ -368,10 +368,13 @@ test("indexLidarrLibrary uses bulk track reads when Lidarr provides them", async
           trackFileId: 810,
         }];
       },
-      getAllTrackFiles: async ({ artistIds }) => {
-        assert.deepEqual(artistIds, [707]);
+      getTrackFilesByIds: async (trackFileIds) => {
+        assert.deepEqual(trackFileIds, [810]);
         calls.push("files");
         return [{ id: 810, path: filePath, trackIds: [809], mediaInfo: { audioFormat: "FLAC" } }];
+      },
+      getAllTrackFiles: async () => {
+        throw new Error("artist-scoped file read should not run when ID batches exist");
       },
       getTracksByAlbumId: async () => {
         throw new Error("per-album track read should not run when bulk reads exist");
