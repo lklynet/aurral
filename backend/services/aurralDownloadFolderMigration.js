@@ -318,7 +318,9 @@ export async function migrateLegacyFlowFolder(options = {}) {
     try {
       const committedPath = await copyWithoutRemovingSource(sourcePath, destination);
       for (const job of jobsByPath.get(sourcePath) || []) {
-        downloadTracker.updateFinalPath(job.id, committedPath);
+        if (!downloadTracker.updateFinalPath(job.id, committedPath)) {
+          throw new Error(`Could not update tracker path for job ${job.id}`);
+        }
       }
       await removeSource(sourcePath, rootPath);
       result.migrated += 1;

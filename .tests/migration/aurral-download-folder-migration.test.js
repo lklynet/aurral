@@ -116,6 +116,25 @@ test("retains the legacy source when tracker updates fail", async () => {
   assert.equal(downloadTracker.getJob(jobId).finalPath, source);
 });
 
+test("retains the legacy source when tracker updates are not persisted", async () => {
+  const flow = flowPlaylistConfig.createFlow({ name: "Unpersisted Legacy Nightly", enabled: true });
+  const source = path.join(root, ".flows", flow.id, "Artist", "Album", "Flow Track.flac");
+  await fs.mkdir(path.dirname(source), { recursive: true });
+  await fs.writeFile(source, "flow audio");
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", albumName: "Album", trackName: "Flow Track" },
+    flow.id,
+  );
+  downloadTracker.setDone(jobId, source);
+  mock.method(downloadTracker, "updateFinalPath", () => false);
+
+  const result = await migrateLegacyFlowFolder({ root, logger: { warn() {} } });
+
+  assert.equal(result.failed, 1);
+  await assert.doesNotReject(() => fs.access(source));
+  assert.equal(downloadTracker.getJob(jobId).finalPath, source);
+});
+
 test("migrates permanent tracks, isolates active flows, and removes unkept flow files", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Saved" });
   const flow = flowPlaylistConfig.createFlow({ name: "Nightly", enabled: true });
