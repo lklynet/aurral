@@ -440,10 +440,12 @@ export class NavidromePlaybackDestination {
         "utf8",
       );
       this._pendingSnapshots.set(`${snapshot.entityId}:${targetKey}`, snapshot);
+      this._scheduleCatchup();
       return playbackOperationSuccess();
     }
     if (pointer && hasUnresolvedSongs) {
       this._pendingSnapshots.set(`${snapshot.entityId}:${targetKey}`, snapshot);
+      this._scheduleCatchup();
       return playbackOperationSuccess();
     }
 
@@ -488,6 +490,7 @@ export class NavidromePlaybackDestination {
     if (artworkNeedsUpload) await this._uploadPlaylistArtwork(snapshot, playlist.id);
     if (hasUnresolvedSongs) {
       this._pendingSnapshots.set(`${snapshot.entityId}:${targetKey}`, snapshot);
+      this._scheduleCatchup();
       return playbackOperationSuccess();
     }
     this._pendingSnapshots.delete(`${snapshot.entityId}:${targetKey}`);

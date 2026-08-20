@@ -702,14 +702,20 @@ test("publishes resolved songs and catches up when Navidrome indexes the rest", 
       { path: "/music/missing.flac", title: "Missing", artist: "Artist" },
     ],
   });
+  const scheduleCatchup = destination._scheduleCatchup.bind(destination);
+  let scheduleCalls = 0;
+  destination._scheduleCatchup = () => {
+    scheduleCalls += 1;
+  };
 
   await destination.publishPlaylist(snapshot);
   await assert.rejects(fs.access(path.join(destination.libraryRoot, "Catch-up.m3u")));
+  assert.equal(scheduleCalls, 1);
   assert.deepEqual(client.calls.created, [
     { name: "Catch-up", songIds: ["ready-song"] },
   ]);
   songs.Missing = { id: "missing-song" };
-  destination._scheduleCatchup([0]);
+  scheduleCatchup([0]);
   while (destination._catchupRunning) await new Promise((resolve) => setTimeout(resolve, 1));
 
   assert.deepEqual(client.calls.updated, [

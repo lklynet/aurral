@@ -106,12 +106,17 @@ export class NavidromeClient {
       .filter((libraryPath) => normalizedPath.startsWith(`${libraryPath}/`))
       .map((libraryPath) => normalizedPath.slice(libraryPath.length + 1));
     const indexedSongs = await this._getIndexedSongs();
-    const matchesPath = (song) => {
-      const songPath = normalizeLibraryPath(song.path).toLowerCase();
-      return songPath && (normalizedPath === songPath || relativePaths.includes(songPath));
-    };
-    const pathMatch = normalizedPath ? indexedSongs.find(matchesPath) : null;
-    if (pathMatch) return pathMatch;
+    const normalizeSongPath = (song) => normalizeLibraryPath(song.path).toLowerCase();
+    const exactPathMatch = normalizedPath
+      ? indexedSongs.find((song) => normalizeSongPath(song) === normalizedPath)
+      : null;
+    if (exactPathMatch) return exactPathMatch;
+
+    const relativeMatches = indexedSongs.filter((song) => {
+      const songPath = normalizeSongPath(song);
+      return songPath && relativePaths.includes(songPath);
+    });
+    if (relativeMatches.length === 1) return relativeMatches[0];
 
     const mbid = String(track.mbid || "").trim().toLowerCase();
     if (!mbid) return null;

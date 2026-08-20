@@ -282,6 +282,24 @@ test("matches Navidrome-relative paths under the configured library root", async
   assert.equal(musicSong.id, "music-relative-match");
 });
 
+test("prefers an exact absolute path over an earlier relative match", async () => {
+  const client = new NavidromeClient("http://navidrome.test", "user", "password");
+  client._libraryPaths = ["/data/music"];
+  client._getIndexedSongs = async () => [{
+    id: "relative-match",
+    path: "Artist/Album/track.flac",
+  }, {
+    id: "exact-match",
+    path: "/data/music/Artist/Album/track.flac",
+  }];
+
+  const song = await client.findSong("Track", "Artist", {
+    path: "/data/music/Artist/Album/track.flac",
+  });
+
+  assert.equal(song.id, "exact-match");
+});
+
 test("does not match a path suffix from another library", async () => {
   const client = new NavidromeClient("http://navidrome.test", "user", "password");
   client._getIndexedSongs = async () => [{
