@@ -209,7 +209,7 @@ test("does not re-upload artwork when republishing an existing API playlist", as
   await fs.mkdir(destination.libraryRoot, { recursive: true });
   await fs.writeFile(path.join(destination.libraryRoot, "Existing Art.webp"), "image");
 
-  await destination.publishPlaylist(
+  const result = await destination.publishPlaylist(
     createPlaybackPlaylistSnapshot({
       entityId: playlist.id,
       displayName: playlist.name,
@@ -217,6 +217,12 @@ test("does not re-upload artwork when republishing an existing API playlist", as
     }),
   );
 
+  assert.equal(result.ok, true);
+  assert.deepEqual(client.calls.updated, [{
+    id: "existing",
+    name: playlist.name,
+    songIds: ["song-1"],
+  }]);
   assert.deepEqual(client.calls.artwork, []);
 });
 
