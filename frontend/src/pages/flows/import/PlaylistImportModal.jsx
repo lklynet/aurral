@@ -224,18 +224,22 @@ export function PlaylistImportModal({
 
   const loadSpotifyPlaylists = useCallback(async () => {
     const requestId = sourceRequestIdRef.current;
+    const isCurrent = () =>
+      sourceRef.current === "spotify" && requestId === sourceRequestIdRef.current;
     setSpotifyLoading(true);
     try {
       const payload = await getSpotifyPlaylists();
+      if (!isCurrent()) return;
       setPlaylists(Array.isArray(payload?.playlists) ? payload.playlists : []);
       if (payload?.user) {
         setSpotifyStatus((prev) => ({ ...prev, connected: true, displayName: payload.user }));
       }
     } catch (error) {
+      if (!isCurrent()) return;
       handleSpotifyAuthRequired(error, requestId);
       showError?.(error?.response?.data?.message || error?.message || "Failed to load Spotify playlists");
     } finally {
-      setSpotifyLoading(false);
+      if (isCurrent()) setSpotifyLoading(false);
     }
   }, [handleSpotifyAuthRequired, showError]);
 
