@@ -243,23 +243,39 @@ export const wait = (delayMs) =>
       })
     : Promise.resolve();
 
-export const mapWithConcurrency = async (items, concurrency, worker) => {
+export const mapWithConcurrency = async (
+  items,
+  concurrency,
+  worker,
+  { stopOnError = false } = {},
+) => {
   const list = Array.isArray(items) ? items : [];
   const limit = Math.max(1, Number(concurrency) || 1);
   if (list.length === 0) return [];
   const results = new Array(list.length);
   let nextIndex = 0;
+  let failed = false;
+  let firstError;
   const runners = Array.from(
     { length: Math.min(limit, list.length) },
     async () => {
-      while (nextIndex < list.length) {
+      while (!failed && nextIndex < list.length) {
         const index = nextIndex;
         nextIndex += 1;
-        results[index] = await worker(list[index], index);
+        try {
+          results[index] = await worker(list[index], index);
+        } catch (error) {
+          if (!stopOnError) throw error;
+          if (!failed) {
+            failed = true;
+            firstError = error;
+          }
+        }
       }
     },
   );
   await Promise.all(runners);
+  if (failed) throw firstError;
   return results;
 };
 

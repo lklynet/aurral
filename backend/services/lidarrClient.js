@@ -1300,6 +1300,7 @@ export class LidarrClient {
           if (result?.records && Array.isArray(result.records)) return result.records;
           return [];
         },
+        { stopOnError: true },
       );
       return results.flat();
     } catch (error) {
@@ -1330,6 +1331,7 @@ export class LidarrClient {
           if (result?.records && Array.isArray(result.records)) return result.records;
           return [];
         },
+        { stopOnError: true },
       );
       return results.flat();
     } catch (error) {

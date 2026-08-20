@@ -59,6 +59,53 @@ test("bulk track reads use Lidarr artist selectors", async (t) => {
   client._httpsInsecureAgent.destroy();
 });
 
+test("bulk reads wait for active requests before failing", async () => {
+  const client = new LidarrClient();
+  const artistIds = Array.from({ length: 14 }, (_, index) => index + 1);
+  const started = [];
+  let releaseFailure;
+  let releasePending;
+  let resolveInitialRequests;
+  const failure = new Promise((resolve) => {
+    releaseFailure = resolve;
+  });
+  const pending = new Promise((resolve) => {
+    releasePending = resolve;
+  });
+  const initialRequests = new Promise((resolve) => {
+    resolveInitialRequests = resolve;
+  });
+
+  client.request = async (endpoint) => {
+    const artistId = Number(new URL(`http://localhost${endpoint}`).searchParams.get("artistId"));
+    started.push(artistId);
+    if (started.length === 12) resolveInitialRequests();
+    if (artistId === 1) {
+      await failure;
+      throw new Error("bulk track read failed");
+    }
+    if (artistId <= 12) await pending;
+    return [];
+  };
+
+  const read = client.getAllTracks({ artistIds, throwOnError: true });
+  await initialRequests;
+  releaseFailure();
+
+  let settled = false;
+  const rejection = read.catch((error) => {
+    settled = true;
+    throw error;
+  });
+  await delay(10);
+  assert.equal(settled, false);
+
+  releasePending();
+  await assert.rejects(rejection, /bulk track read failed/);
+  await delay(0);
+  assert.deepEqual(started, artistIds.slice(0, 12));
+});
+
 test("testConnection preserves Lidarr HTTP diagnostics", async (t) => {
   let status = 401;
   const server = http.createServer((_request, response) => {
