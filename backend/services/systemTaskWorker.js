@@ -74,12 +74,6 @@ async function processSystemTask(payload = {}) {
       await refreshLibraryNews();
       return;
     }
-    case "album-search-history-sync": {
-      const { lidarrClient } = await import("./lidarrClient.js");
-      const { syncAlbumSearchHistory } = await import("./aurralHistoryService.js");
-      await syncAlbumSearchHistory(lidarrClient);
-      return;
-    }
     case "playlist-startup-migration": {
       const [
         migrationModule,

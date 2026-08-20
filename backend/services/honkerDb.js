@@ -105,12 +105,6 @@ export const SCHEDULED_SYSTEM_TASKS = [
     schedule: "@every 15m",
     payload: { kind: "library-index-refresh" },
   },
-  {
-    name: "album-search-history-sync",
-    queue: "system-task",
-    schedule: "@every 1m",
-    payload: { kind: "album-search-history-sync" },
-  },
 ];
 
 const PIPELINE_PHASE_PRIORITY = {

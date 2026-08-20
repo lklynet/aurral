@@ -71,6 +71,28 @@ export function getLibraryScanStatus(jobId) {
   };
 }
 
+export async function processLibraryScan(helpers = {}) {
+  const lidarrClient =
+    helpers.lidarrClient ?? (await import("./lidarrClient.js")).lidarrClient;
+  const scanConfiguredLibrary =
+    helpers.scanConfiguredLibrary ??
+    (await import("./libraryIndexService.js")).scanConfiguredLibrary;
+  const syncAlbumSearchHistory =
+    helpers.syncAlbumSearchHistory ??
+    (await import("./aurralHistoryService.js")).syncAlbumSearchHistory;
+  let scanLibrary = helpers.scanLibrary;
+  if (!scanLibrary) {
+    const { playlistManager } = await import("./weeklyFlow/weeklyFlowPlaylistManager.js");
+    scanLibrary = playlistManager.scanLibrary.bind(playlistManager);
+  }
+  const broadcast = helpers.broadcast ?? websocketService.broadcast.bind(websocketService);
+
+  await scanConfiguredLibrary({ lidarrClient });
+  await syncAlbumSearchHistory(lidarrClient);
+  await scanLibrary();
+  broadcast("library", { type: "library_scan_completed" });
+}
+
 let databaseClosed = false;
 
 const {
@@ -90,14 +112,7 @@ const {
     clearScheduledLibraryScan(job.id);
     return true;
   },
-  processJob: async () => {
-    const { lidarrClient } = await import("./lidarrClient.js");
-    const { scanConfiguredLibrary } = await import("./libraryIndexService.js");
-    await scanConfiguredLibrary({ lidarrClient });
-    const { playlistManager } = await import("./weeklyFlow/weeklyFlowPlaylistManager.js");
-    await playlistManager.scanLibrary();
-    websocketService.broadcast("library", { type: "library_scan_completed" });
-  },
+  processJob: processLibraryScan,
   resolveRetry(error, job) {
     const message = error?.message || String(error);
     if (job.attempts >= 3) {

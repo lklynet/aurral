@@ -15,19 +15,6 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("schedules album search history reconciliation for headless availability notifications", () => {
-  const task = honkerDb.SCHEDULED_SYSTEM_TASKS.find(
-    (entry) => entry.name === "album-search-history-sync",
-  );
-
-  assert.deepEqual(task, {
-    name: "album-search-history-sync",
-    queue: "system-task",
-    schedule: "@every 1m",
-    payload: { kind: "album-search-history-sync" },
-  });
-});
-
 test("schedule bootstrap reconciles config without resetting next fire state", () => {
   honkerDb.bootstrapHonkerSchedules();
   const scheduler = honkerDb.getHonkerDb().scheduler();
