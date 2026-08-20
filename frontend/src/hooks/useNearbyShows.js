@@ -51,7 +51,11 @@ export function useNearbyShows({ enabled = true, limit } = {}) {
       .then((response) => {
         if (controller.signal.aborted) return;
         setData(response);
-        setError(null);
+        setError(
+          response?.location?.resolved === false
+            ? "We could not find that ZIP or postal code."
+            : null,
+        );
       })
       .catch((err) => {
         if (controller.signal.aborted) return;

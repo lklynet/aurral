@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import axios from "../../lib/axiosFetch.js";
 
-import { groupShowsByEvent } from "../../backend/services/nearbyShowsService.js";
+import { getNearbyShows, groupShowsByEvent } from "../../backend/services/nearbyShowsService.js";
 
 test("groups artists matched to the same Ticketmaster event", () => {
   const grouped = groupShowsByEvent([
@@ -18,4 +19,19 @@ test("groups artists matched to the same Ticketmaster event", () => {
       { id: "event-2", artistName: "Artist C", artistNames: ["Artist C"] },
     ],
   );
+});
+
+test("marks an unresolved postal code instead of returning a normal empty location", async (t) => {
+  t.mock.method(axios, "get", async (url) => {
+    assert.equal(url, "https://nominatim.openstreetmap.org/search");
+    return { data: [] };
+  });
+
+  const result = await getNearbyShows({ zipCode: "M5V" });
+
+  assert.equal(result.location.resolved, false);
+  assert.equal(result.total, 0);
+  assert.deepEqual(result.shows, []);
+  assert.deepEqual(result.libraryShows, []);
+  assert.deepEqual(result.recommendedShows, []);
 });
