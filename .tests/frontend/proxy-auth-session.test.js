@@ -142,6 +142,10 @@ test("a proxy 401 with a nested error body reauthenticates through the proxy", a
   const vite = await withApiClient(t);
 
   let reloads = 0;
+  let resolveReload;
+  const reloadCompleted = new Promise((resolve) => {
+    resolveReload = resolve;
+  });
   globalThis.sessionStorage = createStorage({ auth_token: "stale-token" });
   globalThis.localStorage = createStorage({ auth_token: "stale-token" });
   globalThis.window = {
@@ -150,6 +154,7 @@ test("a proxy 401 with a nested error body reauthenticates through the proxy", a
       pathname: "/discover",
       reload: () => {
         reloads += 1;
+        resolveReload();
       },
     },
   };
@@ -164,7 +169,7 @@ test("a proxy 401 with a nested error body reauthenticates through the proxy", a
   const { default: api } = await vite.ssrLoadModule("/src/utils/api/core.js");
 
   await assert.rejects(api.get("/playlists/import/spotify/playlists"), /status code 401/);
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  await reloadCompleted;
   assert.equal(reloads, 1);
   assert.equal(globalThis.localStorage.getItem("auth_token"), null);
   assert.equal(globalThis.sessionStorage.getItem("auth_token"), null);
