@@ -33,9 +33,10 @@ const createAuthRequiredError = (message) => {
   return error;
 };
 
-const invalidateConnection = (userId) => {
-  spotifyConnectionStore.clearConnection(userId);
-  bumpPlaylistTrackGeneration(userId);
+const invalidateConnection = (userId, expectedConnection) => {
+  if (spotifyConnectionStore.clearConnectionIfMatches(userId, expectedConnection)) {
+    bumpPlaylistTrackGeneration(userId);
+  }
   return createAuthRequiredError("Spotify connection expired");
 };
 
@@ -75,6 +76,14 @@ const refreshConnection = (userId, refreshToken, { force = false } = {}) =>
         return latest;
       }
       const renewed = await renewAccessToken(latest?.refreshToken || refreshToken, signal);
+      const current = spotifyConnectionStore.getConnection(userId);
+      if (!current) throw createAuthRequiredError("Spotify is not connected");
+      if (
+        current.accessToken !== latest?.accessToken ||
+        current.refreshToken !== latest?.refreshToken
+      ) {
+        return current;
+      }
       return spotifyConnectionStore.updateTokens(userId, renewed);
     },
   );
@@ -90,7 +99,7 @@ async function getValidConnection(userId) {
   try {
     return await refreshConnection(userId, connection.refreshToken);
   } catch (error) {
-    if (error?.statusCode === 401) throw invalidateConnection(userId);
+    if (error?.statusCode === 401) throw invalidateConnection(userId, connection);
     throw error;
   }
 }
@@ -110,16 +119,16 @@ async function spotifyRequest(userId, path, { searchParams, url: absoluteUrl } =
       Accept: "application/json",
     },
   });
+  let nextConnection = connection;
   if (response.status === 401) {
     const latest = spotifyConnectionStore.getConnection(userId);
-    let nextConnection;
     try {
       nextConnection =
         latest?.accessToken && latest.accessToken !== connection.accessToken
           ? latest
           : await refreshConnection(userId, connection.refreshToken, { force: true });
     } catch (error) {
-      if (error?.statusCode === 401) throw invalidateConnection(userId);
+      if (error?.statusCode === 401) throw invalidateConnection(userId, connection);
       throw error;
     }
     response = await fetch(url, {
@@ -131,7 +140,7 @@ async function spotifyRequest(userId, path, { searchParams, url: absoluteUrl } =
   }
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    if (response.status === 401) throw invalidateConnection(userId);
+    if (response.status === 401) throw invalidateConnection(userId, nextConnection);
     const error = new Error(body || `Spotify request failed (${response.status})`);
     error.statusCode = response.status;
     throw error;

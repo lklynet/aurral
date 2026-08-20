@@ -114,3 +114,55 @@ test("pending track requests cannot repopulate cache after invalidation", async 
   );
   assert.equal(requestCount, 3);
 });
+
+test("stale refresh failures cannot clear a newly connected account", async () => {
+  spotifyConnectionStore.saveConnection(7, {
+    accessToken: "old-access-token",
+    refreshToken: "old-refresh-token",
+    expiresAt: Date.now() + 60 * 60 * 1000,
+  });
+
+  let resolveRefresh;
+  let resolveRefreshStarted;
+  const refreshStarted = new Promise((resolve) => {
+    resolveRefreshStarted = resolve;
+  });
+  const pendingRefresh = new Promise((resolve) => {
+    resolveRefresh = resolve;
+  });
+  let requestCount = 0;
+  globalThis.fetch = async () => {
+    requestCount += 1;
+    if (requestCount === 1) {
+      return new Response(JSON.stringify({
+        error: { status: 401, message: "Missing/invalid/expired access token" },
+      }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    resolveRefreshStarted();
+    return pendingRefresh;
+  };
+
+  const request = spotifyClient.listPlaylists(7);
+  await refreshStarted;
+  spotifyConnectionStore.saveConnection(7, {
+    accessToken: "new-access-token",
+    refreshToken: "new-refresh-token",
+    expiresAt: Date.now() + 60 * 60 * 1000,
+  });
+  resolveRefresh(new Response(JSON.stringify({
+    error: { status: 401, message: "Missing/invalid/expired refresh token" },
+  }), {
+    status: 401,
+    headers: { "content-type": "application/json" },
+  }));
+
+  await assert.rejects(
+    request,
+    (error) => error?.code === "SPOTIFY_AUTH_REQUIRED" && error?.statusCode === 401,
+  );
+  assert.equal(spotifyConnectionStore.getConnection(7).refreshToken, "new-refresh-token");
+  assert.equal(requestCount, 2);
+});
