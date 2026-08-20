@@ -21,20 +21,21 @@ Complete [Filesystem and mounts](/getting-started/storage/) first. The short ver
 2. Open **Settings > Lidarr**.
 3. Enter the Lidarr URL that Aurral can reach. In one Docker Compose network this is often `http://lidarr:8686`.
 4. Enter the Lidarr API key and select **Test connection**.
-5. Open **Settings > Download Clients**.
+5. Open **Settings > Download clients**.
 6. Set **Downloads Folder > Path** to a writable path inside Aurral, such as `/data/downloads/aurral`.
-7. Open **Settings > System**, select **Run Checks** under **Storage Health**, and fix failed checks.
+7. Open **Settings > Storage health**, select **Run Checks**, and fix failed checks.
 8. Open **Settings > Lidarr** and select **Test library access**.
 9. Connect the download clients and playback server that you use. Navidrome and Plex are optional
-   destinations. Aurral can play indexed media in the app when the canonical file is readable.
+   destinations. Aurral can play indexed media in the built-in player when the canonical file is readable.
 
 The Lidarr connection test checks the API. The library-access and storage checks verify that Aurral
 can read the files and write the Downloads Folder. The **Aurral-native playback** check reports
-whether indexed media is ready to play.
+whether indexed media is ready to play. The built-in Subsonic service is available at `/rest` for
+compatible external players.
 
 ## Configure the other services
 
-- **Download clients:** Open **Settings > Download Clients**. Connect slskd, SABnzbd, or NZBGet and make sure their completed path is under the shared media mount. The built-in yt-dlp source needs no separate service.
+- **Download clients:** Open **Settings > Download clients**. Connect slskd, SABnzbd, or NZBGet and make sure their completed path is under the shared media mount. The built-in yt-dlp source needs no separate service.
 - **Navidrome:** Open **Settings > Playback > Navidrome** and connect it. Aurral creates its playlist library when a flow or playlist produces output. See [Navidrome](/integrations/navidrome/).
 - **Plex:** Open **Settings > Playback > Plex**, connect Plex, and select **Sync to Plex now** after a flow downloads tracks. See [Plex](/integrations/plex/).
 

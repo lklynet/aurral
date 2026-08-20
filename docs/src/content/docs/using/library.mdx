@@ -19,9 +19,11 @@ albums open listening-first library pages with their tracks, playback controls,
 and favorites. Those pages link to the full Discover artist or release page
 when a canonical identifier is available. Tracks without an available file
 stay visible but cannot play; missing album tracks are shown in a muted state.
-Use the track action menu to add a library track to a playlist. The page reports
-stale library data, partial or missing files, provider health problems, and empty
-results.
+Use the track action menu to add a library track to a playlist, remove it, or
+promote an Aurral-owned track into the permanent Library. Favorites are stored
+per user and work in both the built-in player and Subsonic clients. The page
+reports stale library data, partial or missing files, provider health problems,
+and empty results.
 
 Navidrome remains optional. Lidarr remains the library provider when it is
 configured.
@@ -30,14 +32,15 @@ configured.
 
 Permanent Aurral tracks use the canonical `artist/album/track` layout under
 the configured Aurral download folder. Flow media is temporary and lives under
-`_flows`; it is not added to the canonical Library. Static playlist membership
-is stored by Aurral's Subsonic model, so deleting a playlist does not delete a
-canonical track.
+`_flows`. It is not added to the canonical Library until you promote a track.
+Static playlist membership is stored by Aurral's Subsonic model, so deleting a
+playlist does not delete a canonical track. A Subsonic favorite can also
+promote a Flow track when **Favorite Flow tracks** is enabled in **Settings > System > Subsonic**.
 
 When upgrading from an older Aurral installation, the one-time migration moves
-legacy playlist-folder files into this layout. It resumes after a restart and
-keeps ambiguous, partial, or failed items for review. It never changes the
-Lidarr-owned root.
+legacy playlist-folder files into this layout and moves `.flows` files to
+`_flows`. It resumes after a restart and keeps ambiguous, partial, or failed
+items for review. It never changes the Lidarr-owned root.
 
 ## When new files appear
 

@@ -35,9 +35,9 @@ Flows can expose a **Lidarr import URL** so Lidarr polls the current flow trackl
 
 ## Where files go
 
-Static playlist membership is stored as canonical track references. Permanent
-Aurral tracks use the canonical `artist/album/track` layout under the configured
-Aurral download folder. Set this path in **Settings > Download Clients**.
+Static playlist membership is stored as canonical track references. Aurral-owned
+permanent tracks use the canonical `artist/album/track` layout under the
+configured Aurral download folder. Set this path in **Settings > Download clients**.
 
 Flow media is temporary and lives under `_flows` below that root. Usually, the
 legacy playlist folder was:
@@ -47,8 +47,8 @@ legacy playlist folder was:
 ```
 
 The one-time upgrade migration moves legacy Aurral files into the canonical
-layout and keeps the Lidarr-owned root unchanged. Navidrome and Plex can use
-the roots they are configured to scan.
+layout and moves legacy `.flows` files to `_flows`. It keeps the Lidarr-owned
+root unchanged. Navidrome and Plex can use the roots they are configured to scan.
 
 See [Navidrome](/integrations/navidrome/) and [Plex](/integrations/plex/) for playback setup.
 
@@ -58,7 +58,7 @@ See [Filesystem and mounts](/getting-started/storage/) for storage setup.
 
 ## Quality profile
 
-Open **Settings > Download Clients > Quality Profile** to set the audio quality rules for flows and static playlists.
+Open **Settings > Download clients > Quality profile** to set the audio quality rules for flows and static playlists.
 
 The profile is global. Only an administrator can change it.
 
@@ -85,7 +85,7 @@ The **Quality** column on the Playlists page shows the measured tier and its pro
 
 ## Track upgrades
 
-Aurral can upgrade files that it owns under the flow and static playlist folder. It does not change files from Lidarr or another external library.
+Aurral can upgrade files that it owns in the canonical Library or under `_flows`. It does not change files from Lidarr or another external library.
 
 Existing Aurral files stay available when they are below the new quality floor. Aurral replaces one only after it downloads and validates a better file. If more than one playlist uses the same file, Aurral updates all playlist references together.
 
@@ -98,7 +98,7 @@ If an upgrade search is already in the queue for a track, Aurral reports that st
 
 A user who can open the playlist can start these searches. Manual searches work when automatic upgrades are off.
 
-To schedule upgrades, enable **Automatic upgrades** in the Quality Profile. The default is off. Set the interval from 1 to 365 days. The default is 2 days for each track.
+To schedule upgrades, enable **Automatic upgrades** in the quality profile. The default is off. Set the interval from 1 to 365 days. The default is 2 days for each track.
 
 Upgrade jobs have a lower priority than missing-track downloads. Aurral uses slskd and Usenet for upgrades, in the configured source-priority order. It stops after the first source provides a valid, strictly better file. It waits for the next interval before it tries another automatic improvement for that track.
 

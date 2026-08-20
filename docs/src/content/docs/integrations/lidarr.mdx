@@ -3,7 +3,7 @@ title: Lidarr
 description: Connect Lidarr for library management, requests, and library file access.
 ---
 
-Aurral requires Lidarr. Aurral adds artists and albums, reads library state, and shows queue and history status through Lidarr.
+Aurral requires Lidarr in this release. Aurral adds artists and albums, reads library state, and shows queue and history status through Lidarr. Separate Aurral-only and split-root ownership modes are not part of this release.
 
 The Lidarr integration has two parts:
 
@@ -35,7 +35,9 @@ The check samples a track from an artist inside a root folder. It falls back to 
 
 After Lidarr imports a file, Aurral watches the configured Lidarr root folders
 and queues a canonical library scan. Aurral does not need a second import step
-in Lidarr. The file must still be readable at the path Lidarr reports.
+in Lidarr. The file must still be readable at the path Lidarr reports. The
+canonical Library uses the MusicBrainz and provider identities that Aurral reads
+from the file and from Lidarr.
 
 ## Request availability notifications
 
@@ -61,7 +63,7 @@ for a path mismatch.
 
 See [Library access fails on a folder that is not your root folder](/admin/troubleshooting/#library-access-fails-on-a-folder-that-is-not-your-root-folder).
 
-In mixed Windows and Docker setups, **Test library access** shows the exact path that Lidarr reports. If that path differs from the path inside Aurral, add a mapping under **Settings > Download Clients > Remote Path Mappings** with **Source** set to **Lidarr**.
+In mixed Windows and Docker setups, **Test library access** shows the exact path that Lidarr reports. If that path differs from the path inside Aurral, add a mapping under **Settings > Download clients > Remote Path Mappings** with **Source** set to **Lidarr**.
 
 This mapping only helps Aurral read Lidarr files. Navidrome must scan the corresponding Lidarr music folder before Aurral can add a reused song to an API playlist. See [Path mismatches](/getting-started/storage/#when-paths-cannot-match).
 

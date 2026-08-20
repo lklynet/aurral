@@ -6,6 +6,10 @@ description: This page explains Aurral authentication and HTTP API use for scrip
 Aurral provides a JSON HTTP API. The web interface uses this API. You can also
 use the API for scripts, dashboards, and homepage widgets.
 
+The JSON API and the authenticated Subsonic API are separate interfaces. Use
+the JSON API for Aurral-specific automation. Use `/rest` for a Subsonic player
+or client.
+
 :::caution
 The API does not have version numbers. Routes and response formats can change
 between Aurral releases. Use the same Aurral version for each integration. If
@@ -52,6 +56,8 @@ same-origin proxy keeps it out of visitors' browsers.
 | `GET /api/health` | Aurral, library, discovery, and system status | None |
 | `GET /api/library/artists` | Library artists | `limit` (1-10000), `offset` |
 | `GET /api/library/artists/:mbid` | One library artist | MusicBrainz artist ID in the path |
+| `GET /api/library/canonical` | Canonical artists, albums, and tracks | Optional `source`, `availableOnly`, or page filters |
+| `GET /api/library/favorites` | Current user's favorites and library | None |
 | `GET /api/library/albums` | Albums for an artist | Required `artistId` |
 | `GET /api/library/albums/:id` | One library album | Lidarr album ID in the path |
 | `GET /api/library/tracks` | Tracks for an album | `albumId` or `releaseGroupMbid` |
@@ -103,4 +109,5 @@ the key.
 
 The API key gives access to administration routes and routes that change data.
 Before you give the key to a third-party integration, read the endpoint
-reference.
+reference. The API key is not a Subsonic credential; Subsonic clients use the
+account password or token authentication described in the integration guide.

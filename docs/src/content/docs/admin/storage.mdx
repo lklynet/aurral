@@ -3,7 +3,7 @@ title: Storage and backups
 description: Aurral app data, shared media mounts, and what to back up.
 ---
 
-Aurral keeps app state and generated music separate. It also needs compatible filesystem views of Lidarr, your download clients, and Navidrome or Plex.
+Aurral keeps app state and managed media separate. It also needs compatible filesystem views of Lidarr, your download clients, and any playback server.
 
 For the complete mount model, follow [Filesystem and mounts](/getting-started/storage/). Use the Lidarr media root and set the Downloads Folder to a path inside Aurral, such as `/data/downloads/aurral`.
 
@@ -13,7 +13,7 @@ For the complete mount model, follow [Filesystem and mounts](/getting-started/st
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/config`                        | Database, settings, users, sessions, cache state, playlist jobs, and the default yt-dlp staging directory. Mount it with `./config:/config`. Do not share it with other apps. |
 | `/data` (or Lidarr's media root) | Shared library and downloads. Mount the same host media root here in Aurral, Lidarr, download clients, and playback servers.                                                      |
-| Downloads Folder                 | Generated flows, imported playlists, and playlist files. Set in **Settings > Download Clients > Downloads Folder > Path** (for example `/data/downloads/aurral`).          |
+| Downloads Folder                 | Aurral-owned permanent tracks, temporary Flow tracks, imported playlists, and playlist artwork. Set in **Settings > Download clients > Downloads Folder > Path** (for example `/data/downloads/aurral`). |
 
 :::note
 `/config` replaces the older `/app/backend/data` path from Aurral v1. At startup, Aurral automatically detects existing databases in either location.
@@ -25,10 +25,12 @@ For the complete mount model, follow [Filesystem and mounts](/getting-started/st
 - Back up the Downloads Folder if you want to keep generated playlists after a rebuild.
 - Back up the Compose file and the environment file that contains your host paths.
 
-yt-dlp stages downloads in `/config/_staging` by default. You can mount another persistent path and select it under **Settings > Download Clients > yt-dlp > Staging path**. Keep it outside media-server libraries to avoid scanner activity while files are incomplete.
+The Downloads Folder migration can move older Aurral files into the canonical layout. Keep both `/config` and the Downloads Folder backed up until the migration finishes.
+
+yt-dlp stages downloads in `/config/_staging` by default. You can mount another persistent path and select it under **Settings > Download clients > yt-dlp > Staging path**. Keep it outside media-server libraries to avoid scanner activity while files are incomplete.
 
 ## Library safety
 
 - Aurral does not write into your root music library.
 - Artist and album changes go through Lidarr.
-- Flows and imported playlists stay under Aurral's Downloads Folder path.
+- Aurral-owned media stays under the Downloads Folder path. Flow files use `_flows`; permanent tracks use the canonical `artist/album/track` layout.

@@ -7,7 +7,7 @@ yt-dlp is the built-in fallback download source. It searches YouTube for artist 
 
 yt-dlp extracts audio with ffmpeg. Aurral stages the audio outside your media paths, validates and tags it, and then imports it into your Downloads Folder.
 
-The default staging path is `/config/_staging`. To use another disk, mount it in the Aurral container and set **Settings > Download Clients > yt-dlp > Staging path**. Keep this path outside every media-server library.
+The default staging path is `/config/_staging`. To use another disk, mount it in the Aurral container and set **Settings > Download clients > yt-dlp > Staging path**. Keep this path outside every media-server library.
 
 You do not need a separate daemon. The Docker image includes `yt-dlp` and `ffmpeg`.
 
@@ -15,7 +15,7 @@ For a bare-metal installation, install both programs on the host. Make sure that
 
 ## Setup
 
-1. Open **Settings > Download Clients > yt-dlp**.
+1. Open **Settings > Download clients > yt-dlp**.
 2. Leave **Enable yt-dlp** on (default).
 3. If necessary, set **Source priority** or **Staging path**.
 4. Select **Test connection**.
@@ -33,7 +33,7 @@ Aurral ranks results by title, artist, duration, and noise filters. It skips kar
 
 Aurral validates downloaded audio with the same track validation that it uses for other sources.
 
-Aurral also applies the global Quality Profile. It rejects the final file if its measured M4A quality is not an enabled tier.
+Aurral also applies the global quality profile. It rejects the final file if its measured M4A quality is not an enabled tier.
 
 After validation, Aurral writes the playlist's title, artist, album, album artist, year, and track number into the audio file. This metadata lets tag-based libraries such as Navidrome organize yt-dlp downloads correctly.
 

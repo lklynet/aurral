@@ -27,9 +27,9 @@ services:
       - ./config:/config
 ```
 
-Replace `/srv/media` with the host directory that Lidarr already uses. Keep `:/data` as the container side of the mount if the other services use the recommended layout.
+Replace `/srv/media` with the host directory that Lidarr already uses. Keep `:/data` as the container side of the mount so every media service sees the same paths.
 
-For example, the host folder `/srv/media/downloads/aurral` is `/data/downloads/aurral` inside Aurral. Set the Downloads Folder to the container path in **Settings > Download Clients**, not to the host path.
+For example, the host folder `/srv/media/downloads/aurral` is `/data/downloads/aurral` inside Aurral. Set the Downloads Folder to the container path in **Settings > Download clients**, not to the host path.
 
 `/config` is only for Aurral. Do not share it with another service.
 
@@ -51,7 +51,7 @@ Continue with [First run](/getting-started/first-run/).
 | Tag | Contents | Use it when |
 | --- | --- | --- |
 | `latest` | The newest stable release | You want a tested release. |
-| `2.1.0`, `2.1`, `2` | An exact version, or the newest release in that line | You pin versions or need to roll back. |
+| `2.4.0`, `2.4`, `2` | An exact version, or the newest release in that line | You pin versions or need to roll back. |
 | `nightly` | Every change merged since the last release | You want fixes and features early and can report bugs. |
 | `pr-<number>` | The preview image for an open pull request | You were asked to test a proposed change. |
 
@@ -64,6 +64,8 @@ Non-stable channels also mark the sidebar.
 
 Nightly images currently support `linux/amd64` only. On ARM, use `latest` or a versioned stable tag.
 :::
+
+For the current Nightly scope, see the [GitHub issues](https://github.com/lklynet/aurral/issues). The latest **Release Readiness** issue is pinned at the top and lists what is currently in Nightly.
 
 ## Test a pull request preview
 

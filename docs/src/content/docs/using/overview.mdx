@@ -3,7 +3,7 @@ title: App overview
 description: Main sections of the Aurral interface.
 ---
 
-Aurral is a Lidarr companion for music discovery. It connects to your existing library.
+Aurral is a Lidarr companion for music discovery and playback. It connects to your existing library and keeps a canonical index of readable music.
 
 ## Main sections
 
@@ -23,11 +23,11 @@ The Inbox icon beside the profile menu collects library-based release updates, n
 
 ![Aurral search results](../../../assets/screenshots/search.webp)
 
-Use Search to find artists and albums. You can preview tracks, check library status, and add items to Lidarr.
+Use Search to find artists, albums, and tags. You can preview tracks, check library status, open a canonical Library page, and add items to Lidarr.
 
 ### Library
 
-Library shows the artists in Lidarr. It includes search, sort controls, artwork, monitoring status, and artist pages.
+Library shows the canonical music index built from readable Aurral and Lidarr files. It includes search, sort controls, artwork, favorites, playable tracks, missing-file states, and artist and album pages. Artist and album actions that change the managed library still go through Lidarr.
 
 ### Playlists and Flows
 
@@ -36,7 +36,7 @@ Library shows the artists in Lidarr. It includes search, sort controls, artwork,
 Library > Playlists contains static playlists, in-app playback, and their
 download status. Flows is a separate section for scheduled discovery mixes.
 
-Flows regenerate on a schedule. Static playlists keep fixed tracklists or synchronize with Spotify, Last.fm, or ListenBrainz.
+Flows regenerate on a schedule. Static playlists keep fixed tracklists or synchronize with Spotify, Last.fm, or ListenBrainz. You can play canonical Library tracks and accessible flow or playlist tracks in Aurral. Navidrome, Plex, and other Subsonic clients are optional destinations.
 
 ### Activity
 
@@ -77,15 +77,17 @@ Settings contains the admin configuration. The page has these tabs:
 
 | Tab                  | What it covers                                                      |
 | -------------------- | ------------------------------------------------------------------- |
-| **System**           | Runtime details, date and time format, and API access                |
-| **Tasks**            | Active and stale worker task management                             |
-| **Lidarr**           | Lidarr connection, profiles, tags, library access check             |
-| **Indexers**         | Prowlarr connection, indexer management, search priorities          |
-| **Download Clients** | yt-dlp, slskd, SABnzbd, NZBGet, source priority, format preferences |
-| **Playback**         | Navidrome and Plex                                                  |
+| **System**           | Runtime details, display format, Subsonic behavior, and API access |
+| **Storage health**   | Library, download, playback, and disk checks                       |
+| **Tasks**            | Scheduled jobs and worker management                                |
+| **Lidarr**           | Lidarr connection, profiles, tags, and library access               |
+| **Indexers**         | Prowlarr connection, indexer management, and search priorities     |
+| **Download clients** | yt-dlp, slskd, SABnzbd, NZBGet, source priority, and quality        |
+| **Playback**         | Navidrome, Plex, scrobbling, and cover art                          |
 | **Discover**         | Recommendation refresh, mode, and generated playlists              |
 | **Connect**          | Gotify, webhooks, Last.fm, Ticketmaster, and Inbox                  |
-| **Users**            | Accounts and permissions                                            |
+| **RSS news**         | RSS feeds and feed groups                                           |
+| **Users**            | Accounts, permissions, and Plex links                               |
 
 Settings and Profile changes save automatically after you edit them. Connection tests and sync
 actions remain separate actions.

@@ -30,6 +30,8 @@ can change Aurral, Lidarr, files, users, or external services.
 | `GET` | `/api/auth/me` | Current authenticated identity |
 | `GET` | `/api/auth/api-key` | Read or create the instance API key |
 | `POST` | `/api/auth/api-key/rotate` | Replace the instance API key |
+| `GET` | `/api/auth/oidc/login` | Start an OpenID Connect login |
+| `POST` | `/api/auth/oidc/exchange` | Exchange an OpenID Connect code for a session |
 
 The liveness, bootstrap, and health routes do not require authentication.
 Aurral returns detailed health fields only for a request with a valid
@@ -81,8 +83,12 @@ instance API key for WebSocket connections.
 | `GET` | `/api/library/tracks` | List album tracks |
 | `POST` | `/api/library/refresh` | Queue a canonical library scan |
 | `GET` | `/api/library/refresh/:jobId` | Read canonical library scan status |
+| `GET` | `/api/library/canonical` | Read the canonical artists, albums, and tracks |
+| `GET` | `/api/library/favorites` | Read the current user's library favorites |
+| `POST` | `/api/library/favorites` | Add or remove a library favorite |
 | `GET` | `/api/library/playback-queue` | Build the playback queue |
 | `GET` | `/api/library/stream/:songId` | Stream a library song |
+| `GET` | `/api/library/canonical-stream/:trackId` | Stream a canonical library track |
 | `GET` | `/api/library/file-stream/:albumId/:trackId` | Stream an album track file |
 | `GET` | `/api/library/rootfolder` | List Lidarr root-folder paths |
 | `GET` | `/api/library/lookup/:mbid` | Check whether an artist is in the library |
@@ -93,6 +99,7 @@ instance API key for WebSocket connections.
 | `GET` | `/api/library/downloads` | List download jobs |
 | `GET` | `/api/library/downloads/status` | Get statuses for the required `albumIds` query |
 | `GET` | `/api/library/downloads/status/all` | Get all download statuses |
+| `POST` | `/api/library/downloads/track` | Download or request a track |
 | `POST` | `/api/library/downloads/album` | Monitor an album and optionally run the configured search |
 | `POST` | `/api/library/downloads/album/search` | Trigger a Lidarr album search |
 
@@ -164,6 +171,7 @@ accept `releaseTypes` and `sort`. `GET /api/requests` accepts `refresh=true`.
 | `GET` | `/api/news` | Read recent news for the current user's library |
 | `GET` | `/api/news/preferences` | Read the current user's blocked publishers |
 | `PATCH` | `/api/news/preferences` | Replace the current user's blocked publishers |
+| `POST` | `/api/news/feeds/disable` | Disable a news feed |
 
 `/api/news` accepts an optional `limit` query parameter. News preferences are
 user-scoped; the `blockedPublishers` request field is an array of publisher
@@ -280,6 +288,13 @@ The repeated `playlists` segment in
 | `GET` | `/api/users/me/discover-layout` | Current user's discovery layout |
 | `PATCH` | `/api/users/me/discover-layout` | Update current user's discovery layout |
 | `POST` | `/api/users/me/password` | Change current user's password |
+| `GET` | `/api/users/me/plex-link/status` | Read the current user's Plex link |
+| `POST` | `/api/users/me/plex-link/oauth/pin` | Start Plex linking for the current user |
+| `POST` | `/api/users/me/plex-link/oauth/complete` | Complete Plex linking for the current user |
+| `DELETE` | `/api/users/me/plex-link` | Remove the current user's Plex link |
+| `GET` | `/api/users/plex-link/home-users` | List Plex home users |
+| `POST` | `/api/users/:id/plex-link/managed` | Link a managed Plex user |
+| `DELETE` | `/api/users/:id/plex-link` | Remove a managed Plex link |
 
 ## Administration and settings
 
@@ -310,8 +325,28 @@ Every route in this section requires an administrator.
 | `POST` | `/api/settings/plex/auth/check` | Check Plex authentication |
 | `POST` | `/api/settings/plex/resources` | List Plex resources |
 | `POST` | `/api/settings/plex/test` | Test Plex |
+| `GET` | `/api/settings/plex/libraries` | List Plex libraries |
+| `GET` | `/api/settings/plex/libraries/:sectionId/access-check` | Check access to a Plex library |
 | `POST` | `/api/settings/plex/sync` | Synchronize Plex |
 | `POST` | `/api/settings/navidrome/test` | Test Navidrome credentials |
+| `GET` | `/api/settings/playback` | Read playback settings |
+| `POST` | `/api/settings/playback/:key/test` | Test a playback integration |
+
+## Scrobbling and play events
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/scrobbling/status` | Read scrobbling provider status |
+| `GET` | `/api/scrobbling/lastfm/link` | Start or read Last.fm linking |
+| `GET` | `/api/scrobbling/lastfm/link/callback` | Complete Last.fm linking |
+| `DELETE` | `/api/scrobbling/lastfm/link` | Unlink Last.fm |
+| `GET` | `/api/scrobbling/listenbrainz/link` | Read ListenBrainz linking |
+| `PUT` | `/api/scrobbling/listenbrainz/link` | Link ListenBrainz |
+| `DELETE` | `/api/scrobbling/listenbrainz/link` | Unlink ListenBrainz |
+| `PUT` | `/api/scrobbling/koito/link` | Configure Koito |
+| `DELETE` | `/api/scrobbling/koito/link` | Unlink Koito |
+| `GET` | `/api/play-events` | Read local play history |
+| `POST` | `/api/play-events` | Record a local play event |
 
 ## Onboarding
 
@@ -340,3 +375,14 @@ require authentication. After onboarding, Aurral requires an administrator
 credential for filesystem routes. Aurral accepts the instance API key. Do not
 expose an Aurral server directly to the public internet. Some `/api` routes do
 not require an API key.
+
+## Subsonic
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` or `POST` | `/rest/:method.view` | Authenticated Subsonic API methods |
+
+The Subsonic API supports XML and JSON responses. Use the account's Subsonic
+credentials or token authentication; the instance API key is not a Subsonic
+credential. See [Navidrome and Subsonic](/integrations/navidrome/) for the
+supported client behavior.

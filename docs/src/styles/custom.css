@@ -107,6 +107,18 @@ body {
   padding-inline-start: 0.75rem;
 }
 
+site-search dialog .dialog-frame > div:not(.search-container) {
+  max-width: 36rem;
+  padding: 2rem;
+  color: var(--sl-color-gray-1);
+  line-height: 1.5;
+  text-align: center;
+}
+
+site-search dialog .dialog-frame > div:not(.search-container) p {
+  margin: 0;
+}
+
 main > .content-panel + .content-panel {
   border-top: 0;
 }

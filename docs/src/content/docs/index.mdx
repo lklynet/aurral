@@ -5,7 +5,7 @@ description: Install, configure, and use Aurral.
 
 import { Card, CardGrid } from "@astrojs/starlight/components";
 
-Aurral is a self-hosted companion for music discovery. It adds recommendations, requests, flows, and playlist downloads to a Lidarr-based music stack.
+Aurral is a self-hosted companion for music discovery and playback. It connects to Lidarr for library management, adds recommendations and requests, and downloads tracks for flows and imported playlists.
 
 ![Aurral Discover page](../../assets/screenshots/discover.webp)
 
@@ -16,11 +16,15 @@ Aurral is a self-hosted companion for music discovery. It adds recommendations, 
 3. [Complete first-run setup](/getting-started/first-run/).
 4. Connect the services that you use.
 
+:::note
+This release documents the Lidarr-connected workflow. Separate Aurral-only and split-root ownership modes are planned for a later release.
+:::
+
 ## How Aurral fits
 
 **Discover. Download. Listen.**
 
-Aurral manages discovery and generated playlists. Lidarr stores the permanent library state. Navidrome or Plex can play the audio files.
+Aurral reads your Lidarr library and keeps a canonical index of readable music. It manages flows and static playlists, and it can play canonical tracks in its built-in player. Navidrome, Plex, and Subsonic clients are optional playback destinations.
 
 ## Essential guides
 

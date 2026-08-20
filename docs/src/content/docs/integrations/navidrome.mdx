@@ -1,11 +1,11 @@
 ---
-title: Navidrome
-description: Connect Navidrome to play Aurral downloads and generated playlists.
+title: Navidrome and Subsonic
+description: Use Aurral's native Subsonic service or connect Navidrome for playback and playlists.
 ---
 
-Navidrome is optional. Aurral can browse and play indexed media in the app without Navidrome when the canonical file is readable. Aurral
-also creates and updates Navidrome playlists through the Subsonic API when Navidrome is configured.
-Navidrome must be able to read and scan the Aurral download tree for that destination.
+Navidrome is optional. Aurral can browse and play indexed media in the built-in player when the canonical file is readable. Aurral also exposes its own authenticated Subsonic service for compatible clients.
+
+Connect Navidrome when you want Navidrome's server, scanner, or ecosystem. Aurral creates and updates Navidrome playlists through the Subsonic API when Navidrome is configured. Navidrome must be able to read and scan the Aurral download tree for that destination.
 
 This is a filesystem connection as well as an API connection. A successful **Test connection** only proves that Aurral can reach the Navidrome API.
 
@@ -13,7 +13,7 @@ Aurral also exposes an authenticated Subsonic server at `/rest/*.view`. It suppo
 
 When a Subsonic client adds a Flow or shared-playlist entry to a playlist, Aurral stores a reference to one canonical library acquisition job. The acquisition runs in the background. Multiple playlists that add the same track share that job. Removing a playlist entry removes only that playlist reference. It does not delete the canonical media file.
 
-Favoriting a Flow or shared-playlist entry uses the same canonical acquisition by default. To keep the favorite without acquiring the track, turn off **Favorite Flow tracks** in **Settings > System > Subsonic**. This setting does not change favorites for tracks that already exist in the canonical library.
+Favoriting a Flow or shared-playlist entry uses the same canonical acquisition by default. To keep the favorite without acquiring the track, turn off **Favorite Flow tracks** in **Settings > System > Subsonic**. This setting does not change favorites for tracks that already exist in the canonical Library.
 
 ## Connect a Subsonic client
 
@@ -31,7 +31,7 @@ Aurral exposes `scrobblingEnabled=true` from `getuser.view`. This reports that t
 
 The built-in Aurral player records completed library tracks through the same local play-event path. Aurral keeps local history when Last.fm, ListenBrainz, or Koito is unavailable.
 
-## Navidrome-compatible scrobbling
+## Scrobbling without Navidrome
 
 Open **Settings > Playback > Scrobbling** to connect Last.fm or ListenBrainz. Aurral copies
 Navidrome's provider flows directly, so a Navidrome connection is not required for scrobbling.
@@ -39,7 +39,7 @@ Navidrome's provider flows directly, so a Navidrome connection is not required f
 Aurral uses the Last.fm API key and API secret from **Settings > Connect > Last.fm**. It validates
 ListenBrainz tokens directly. Completed plays are submitted from Aurral to the selected provider.
 
-Navidrome remains an independent playback and playlist destination.
+Navidrome remains an independent playback and playlist destination. Aurral's built-in player and native Subsonic clients use the same local play history.
 
 See [Filesystem and mounts](/getting-started/storage/) for the complete layout. The recommended Docker setup mounts the same host media root at `/data` in Aurral and Navidrome:
 
@@ -57,7 +57,7 @@ volumes:
 ## Setup
 
 1. Mount the same media root in Aurral and Navidrome at the same container path.
-2. Set Aurral's **Settings > Download Clients > Downloads Folder > Path** to a folder under that path, for example `/data/downloads/aurral`.
+2. Set Aurral's **Settings > Download clients > Downloads Folder > Path** to a folder under that path, for example `/data/downloads/aurral`.
 3. Make sure Navidrome can read both `/data/music` and `/data/downloads/aurral` if you want to play reused Lidarr tracks as well as new Aurral downloads.
 4. Open **Settings > Playback > Navidrome** in Aurral.
 5. Enter the Navidrome URL, username, and password. Select **Test connection**, then save.
@@ -74,7 +74,7 @@ installations migrate the old `.flows` directory to `_flows` at startup.
 
 You do not normally need to create this library manually in Navidrome. The library can be empty until a track finishes downloading. Wait for the scan after the first completed track.
 
-Navidrome must have permission to manage libraries through its API. If Aurral cannot create the library, use **Settings > System > Storage Health** for the exact path and error, then check the Navidrome account permissions and mount.
+Navidrome must have permission to manage libraries through its API. If Aurral cannot create the library, use **Settings > Storage health** for the exact path and error, then check the Navidrome account permissions and mount.
 
 ## Existing Lidarr library
 
@@ -119,7 +119,7 @@ To roll back, stop Aurral and deploy the previous exact image. Restore the previ
 
 ## Remove missing tracks
 
-For Weekly Flow, set this Navidrome environment variable:
+For Navidrome, set this environment variable if you want it to remove old files:
 
 ```bash
 ND_SCANNER_PURGEMISSING=always

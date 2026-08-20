@@ -10,22 +10,22 @@ slskd downloads flow and playlist tracks from Soulseek. Aurral can also use [Use
 ## Setup
 
 1. Mount the same media root in Aurral and slskd at the same container path. See [Filesystem and mounts](/getting-started/storage/).
-2. Connect slskd in **Settings > Download Clients > slskd**.
+2. Connect slskd in **Settings > Download clients > slskd**.
 
 Aurral uses the slskd API and reads the completed files from the path slskd reports. It then moves those files into your Downloads Folder path.
 
 If slskd runs on Windows and reports host paths, mount the parent folder into Aurral. For example, slskd can report `N:\...`.
 
-Then, add a path mapping under **Settings > Download Clients > Remote Path Mappings**.
+Then, add a path mapping under **Settings > Download clients > Remote Path Mappings**.
 
 ## Worker settings
 
-Open the **slskd** card in **Settings > Download Clients**. Set these options:
+Open the **slskd** card in **Settings > Download clients**. Set these options:
 
 - **Source priority**: order relative to Usenet (default `10`)
 - **Clean up after runs**: clear completed slskd jobs when a flow or playlist run finishes
 
-Use **Settings > Download Clients > Quality Profile** to select and order FLAC, MP3, and M4A quality tiers. Aurral uses this profile for new downloads and upgrades. See [Playlists: Quality profile](/using/playlists/#quality-profile).
+Use **Settings > Download clients > Quality profile** to select and order FLAC, MP3, and M4A quality tiers. Aurral uses this profile for new downloads and upgrades. See [Playlists: Quality profile](/using/playlists/#quality-profile).
 
 slskd can supply both missing tracks and upgrades. Aurral reads the completed file before it accepts the quality.
 

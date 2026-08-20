@@ -20,20 +20,20 @@ description: Common setup and runtime issues.
 
 ## Playlists do not download
 
-- Configure one or more download sources. Use **Settings > Download Clients** or **Settings > Indexers**.
+- Configure one or more download sources. Use **Settings > Download clients** or **Settings > Indexers**.
 - For yt-dlp, select **Test connection**.
 - Make sure that the host has `yt-dlp` and ffmpeg. The Docker image includes both programs.
 - For slskd, check the connection and the Soulseek login status.
 - For Usenet, enable the Prowlarr indexers.
 - Make sure that the Usenet client can reach completed files.
-- If FLAC matches are scarce, enable acceptable MP3 or M4A tiers in **Settings > Download Clients > Quality Profile**.
+- If FLAC matches are scarce, enable acceptable MP3 or M4A tiers in **Settings > Download clients > Quality profile**.
 - Make sure that the cutoff and tier order match the quality that you want.
-- Check job states on the Playlists page and **History**.
+- Check job states on the Playlists or Flows page and **Activity**.
 
 ## Files do not appear in Navidrome
 
 - Make sure that Aurral mounts the same media root as Lidarr ([Filesystem and mounts](/getting-started/storage/)).
-- Make sure that **Settings > Download Clients > Downloads Folder > Path** is under that mount.
+- Make sure that **Settings > Download clients > Downloads Folder > Path** is under that mount.
 - In **Settings > Playback > Navidrome**, test the Navidrome connection. Changes save automatically.
 - Make sure that Navidrome scans Aurral's downloads path and not only Lidarr's library.
 - Aurral's **Aurral Playlists** library can be empty until a flow finishes a download. Check for a file in the Downloads Folder or `_flows`, then wait for the Navidrome scan.
@@ -53,8 +53,8 @@ Completed slskd or Usenet files can also remain in their source folders. **Test 
 - After you change Compose `volumes` or `environment`, recreate the container: `docker compose up -d --force-recreate`.
 - Run **Settings > Lidarr > Test library access** to see the exact path Aurral cannot read.
 - If necessary, set `PATH_MAPPINGS=N:/ServerFolders/Music|/music` in the Compose file.
-- You can also add mappings under **Settings > Download Clients > Remote Path Mappings**.
-- For NZBGet on Windows, open **Settings > Download Clients > NZBGet**.
+- You can also add mappings under **Settings > Download clients > Remote Path Mappings**.
+- For NZBGet on Windows, open **Settings > Download clients > NZBGet**.
 - Set **Completed download path** if Aurral cannot detect the folder automatically.
 
 See [Filesystem and mounts: Windows and mixed Docker setups](/getting-started/storage/#windows-and-mixed-docker-setups).
@@ -85,7 +85,7 @@ See [Navidrome: Filesystem paths](/integrations/navidrome/#filesystem-paths).
 
 ## Plex playlists are empty or tracks are missing
 
-**Sync to Plex now** can succeed while the playlists have no tracks. The Aurral library can also stay empty after a scan.
+**Sync to Plex now** can succeed while the playlists have no tracks. The Aurral library can also stay empty while Plex is still scanning.
 
 - Make sure that Plex can read the flow download tree.
 - The Plex container or host must contain the Downloads Folder, including `<downloads>/artist/album/track` and `<downloads>/_flows/<flow-id>/...`.
