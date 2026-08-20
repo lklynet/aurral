@@ -60,7 +60,7 @@ jobs:
           provenance: mode=max
           sbom: true
           tags: ghcr.io/${{ github.repository }}:nightly
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           build-args: |
             APP_VERSION=${{ steps.version.outputs.value }}
             GITHUB_REPO=${{ github.repository }}
@@ -69,7 +69,6 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Update release readiness record
-        id: readiness
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NIGHTLY_VERSION: ${{ steps.version.outputs.value }}
@@ -80,12 +79,3 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NIGHTLY_VERSION: ${{ steps.version.outputs.value }}
         run: bash scripts/notify-github-status.sh nightly
-
-      - name: Notify Discord announcements channel
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DISCORD_WEBHOOK_ANNOUNCEMENTS: ${{ secrets.DISCORD_WEBHOOK_ANNOUNCEMENTS }}
-          READINESS_ISSUE: ${{ steps.readiness.outputs.readiness_issue }}
-          PULL_LIST: ${{ steps.readiness.outputs.pull_list }}
-          ISSUE_LIST: ${{ steps.readiness.outputs.issue_list }}
-        run: bash scripts/notify-discord.sh nightly

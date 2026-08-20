@@ -56,6 +56,12 @@ For local password authentication, connect with the session token as
 auto-login for WebSocket connections. Aurral does not currently accept the
 instance API key for WebSocket connections.
 
+## Incoming webhooks
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/webhooks/lidarr` | Receive Lidarr import events for requested albums |
+
 ## Library
 
 | Method | Path | Purpose |
@@ -184,6 +190,7 @@ prefix redirects to it with status `308`.
 | `GET` | `/api/playlists/status` | Flow worker and playlist status |
 | `GET` | `/api/playlists/jobs` | List flow jobs |
 | `GET` | `/api/playlists/jobs/:flowId` | List jobs for a flow or static playlist |
+| `POST` | `/api/playlists/research-missing` | Research all missing tracks in accessible operations |
 | `POST` | `/api/playlists/start/:flowId` | Run a flow |
 | `POST` | `/api/playlists/flows` | Create a flow |
 | `PUT` | `/api/playlists/flows/:flowId` | Update a flow |
@@ -208,6 +215,7 @@ prefix redirects to it with status `308`.
 | `POST` | `/api/playlists/shared-playlists/:playlistId/research-missing` | Research all missing tracks |
 | `POST` | `/api/playlists/quality-upgrades/:playlistId/:jobId` | Search for a track upgrade |
 | `POST` | `/api/playlists/quality-upgrades/:playlistId` | Search for playlist upgrades |
+| `POST` | `/api/playlists/quality-upgrades` | Search for upgrades in accessible operations |
 | `POST` | `/api/playlists/shared-playlists/:playlistId/sync` | Sync a shared playlist |
 | `PUT` | `/api/playlists/playlists/:playlistId/retry-cycle` | Pause or resume retries for a static playlist |
 | `POST` | `/api/playlists/jobs/:jobId/approve` | Approve a flow job |

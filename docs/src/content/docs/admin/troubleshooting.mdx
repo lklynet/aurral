@@ -36,7 +36,7 @@ description: Common setup and runtime issues.
 - Make sure that **Settings > Download Clients > Downloads Folder > Path** is under that mount.
 - In **Settings > Playback > Navidrome**, test the Navidrome connection. Changes save automatically.
 - Make sure that Navidrome scans Aurral's downloads path and not only Lidarr's library.
-- Aurral's **Aurral Playlists** library can be empty until a flow finishes a download. Check for a file under `aurral-weekly-flow`, then wait for the Navidrome scan.
+- Aurral's **Aurral Playlists** library can be empty until a flow finishes a download. Check for a file in the Downloads Folder or `_flows`, then wait for the Navidrome scan.
 - If the library is missing, check that the Navidrome account can manage libraries through its API.
 - Review the [Navidrome missing-track setting](/integrations/navidrome/#remove-missing-tracks).
 
@@ -88,7 +88,7 @@ See [Navidrome: Filesystem paths](/integrations/navidrome/#filesystem-paths).
 **Sync to Plex now** can succeed while the playlists have no tracks. The Aurral library can also stay empty after a scan.
 
 - Make sure that Plex can read the flow download tree.
-- The Plex container or host must contain this path: `<downloads>/aurral-weekly-flow/<flow-id>/...`.
+- The Plex container or host must contain the Downloads Folder, including `<downloads>/artist/album/track` and `<downloads>/_flows/<flow-id>/...`.
 - If Plex and Aurral use different mounts, set **Settings > Playback > Plex > Plex Aurral Library path** to the folder that Plex sees.
 - Leave **Plex Aurral Library path** blank if both apps use the same path prefix.
 - Make sure the Plex settings have finished saving automatically.

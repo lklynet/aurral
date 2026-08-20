@@ -16,8 +16,10 @@ import {
   getAllFlowJobs,
   getFlowStatus,
   reSearchFlowTrack,
+  reSearchAllMissingTracks,
   reSearchSharedPlaylistTrack,
   searchTrackUpgrade,
+  searchAllUpgrades,
 } from "../../utils/api/endpoints/playlists.js";
 import ActivityToolbar from "./ActivityToolbar";
 import ActivityInfoModal from "./ActivityInfoModal";
@@ -144,7 +146,7 @@ export default function ActivityMissingPage() {
   const [actionStates, setActionStates] = useState({});
   const [filterValue, setFilterValue] = useState("");
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [searchingAll, setSearchingAll] = useState(false);
   const [visibleCount, setVisibleCount] = useState(WANTED_PAGE_SIZE);
   const [error, setError] = useState("");
   const activeTab = searchParams.get("tab") === "cutoff" ? "cutoff" : "missing";
@@ -157,8 +159,7 @@ export default function ActivityMissingPage() {
   }, [activeTab]);
 
   const loadJobs = useCallback(async ({ silent = false } = {}) => {
-    if (silent) setRefreshing(true);
-    else setLoading(true);
+    if (!silent) setLoading(true);
     setError("");
     try {
       const [allJobs, status] = await Promise.all([getAllFlowJobs(), getFlowStatus()]);
@@ -196,8 +197,7 @@ export default function ActivityMissingPage() {
           "Failed to load wanted tracks",
       );
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -219,6 +219,9 @@ export default function ActivityMissingPage() {
   }, [filterValue, jobs, showingCutoff]);
   const pagedJobs = visibleJobs.slice(0, visibleCount);
   const hasMoreJobs = visibleCount < visibleJobs.length;
+  const hasWantedJobs = jobs.some((job) =>
+    showingCutoff ? isCutoffUnmetAurralJob(job) : isMissingAurralJob(job),
+  );
 
   const handleAction = async (job) => {
     const id = getMissingJobKey(job);
@@ -259,14 +262,69 @@ export default function ActivityMissingPage() {
     }
   };
 
+  const handleSearchAll = useCallback(async () => {
+    if (searchingAll || !hasWantedJobs) return;
+    setSearchingAll(true);
+    try {
+      const result = showingCutoff
+        ? await searchAllUpgrades()
+        : await reSearchAllMissingTracks();
+      if (showingCutoff) {
+        showSuccess("Cutoff upgrade search queued");
+      } else {
+        const requeued = Number(result?.requeued || 0);
+        showSuccess(
+          requeued > 0
+            ? `Re-searching ${requeued} missing track${requeued === 1 ? "" : "s"}`
+            : "No missing tracks to re-search",
+        );
+      }
+      await loadJobs({ silent: true });
+    } catch (requestError) {
+      showError(
+        requestError.response?.data?.message ||
+          requestError.response?.data?.error ||
+          requestError.message ||
+          (showingCutoff
+            ? "Failed to search for upgrades"
+            : "Failed to re-search missing tracks"),
+      );
+    } finally {
+      setSearchingAll(false);
+    }
+  }, [hasWantedJobs, loadJobs, searchingAll, showingCutoff, showError, showSuccess]);
+
+  const searchAllButton = (
+    <TooltipButton
+      className="native-library-icon-button"
+      onClick={handleSearchAll}
+      disabled={searchingAll || !hasWantedJobs}
+      aria-busy={searchingAll}
+      label={
+        searchingAll
+          ? "Searching all"
+          : showingCutoff
+            ? "Search all cutoff-unmet tracks"
+            : "Re-search all missing tracks"
+      }
+    >
+      {searchingAll ? (
+        <Loader className="animate-spin" aria-hidden="true" />
+      ) : showingCutoff ? (
+        <ArrowUpCircle aria-hidden="true" />
+      ) : (
+        <RotateCcw aria-hidden="true" />
+      )}
+    </TooltipButton>
+  );
+
   if (loading) {
     return (
       <div>
         <ActivityToolbar
           filterValue={filterValue}
           onFilterChange={setFilterValue}
-          onRefresh={() => loadJobs({ silent: true })}
-          refreshing={refreshing}
+          action={searchAllButton}
           placeholder={filterPlaceholder}
         />
         <div className="activity-page__loading">
@@ -281,8 +339,7 @@ export default function ActivityMissingPage() {
       <ActivityToolbar
         filterValue={filterValue}
         onFilterChange={setFilterValue}
-        onRefresh={() => loadJobs({ silent: true })}
-        refreshing={refreshing}
+        action={searchAllButton}
         placeholder={filterPlaceholder}
       />
       {error ? (

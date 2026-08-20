@@ -13,7 +13,10 @@ import {
   repairReusableTrackLinks,
   reuseTrackForPlaylist,
 } from "./weeklyFlowFileReuse.js";
-import { resolvePlaylistRoot as resolveWeeklyFlowRoot } from "../playlistPaths.js";
+import {
+  AURRAL_FLOWS_DIR,
+  resolvePlaylistRoot as resolveWeeklyFlowRoot,
+} from "../playlistPaths.js";
 import { startSlskdOrchestratorWorker } from "../slskdOrchestratorWorker.js";
 import { withHonkerLock } from "../honkerDb.js";
 import {
@@ -884,10 +887,9 @@ export class WeeklyFlowWorker {
             const completed = done;
             const flowName =
               playlistManager.getPlaylistName(playlistType) || playlistType;
-            const flowPath = path.join(
-              playlistManager.playlistLibraryRoot,
-              playlistType,
-            );
+            const flowPath = flowPlaylistConfig.getFlow(playlistType)
+              ? path.join(playlistManager.weeklyFlowRoot, AURRAL_FLOWS_DIR, playlistType)
+              : playlistManager.weeklyFlowRoot;
             const { notifyWeeklyFlowDone } = await import("../notificationService.js");
             notifyWeeklyFlowDone(
               playlistType,

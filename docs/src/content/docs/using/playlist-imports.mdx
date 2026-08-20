@@ -5,9 +5,11 @@ description: Spotify connect, JSON formats, retries, and file reuse.
 
 Imported playlists are separate from flows.
 
-- They do not regenerate on a schedule.
+- They do not regenerate from flow settings.
+- Spotify imports can synchronize on their own schedule.
 - They do not use source mix, focus filters, or deep dive.
-- They keep the exact imported tracklist.
+- Spotify imports keep their playlist membership equal to Spotify.
+- JSON imports keep the exact imported tracklist.
 - They can reuse completed Aurral tracks or existing Lidarr files when worker settings allow.
 
 ![Aurral playlist import](../../../assets/screenshots/playlist-import.webp)
@@ -24,11 +26,14 @@ The fastest path is in-app import on **Playlists**.
 6. Select a playlist.
 7. Start the import.
 
-You can set a display name and a synchronization schedule. Synchronization gets the Spotify tracklist again and queues new tracks.
+You can set a display name and a synchronization schedule. Synchronization gets the Spotify tracklist again, removes tracks that are no longer there, and queues new tracks, so the Aurral playlist count follows Spotify.
+
+By default, a track removed from Spotify is removed from the Aurral playlist but its downloaded file stays in the library. Turn off **Keep removed tracks in library** when importing, or from the playlist menu, to delete an Aurral-owned file when it is no longer used by another playlist. Lidarr or other external files are kept. This setting applies to future Spotify syncs.
 
 Choose **None** for a fixed tracklist. You can change the schedule later from the playlist menu.
 
 Aurral stores the connection for each user. Use **Disconnect** in the import modal to revoke access.
+If Spotify expires or revokes the connection, Aurral disconnects it and asks you to connect again.
 
 Allow the OAuth pop-up window if your browser blocks it. The Aurral origin must provide `oauth.html`.
 

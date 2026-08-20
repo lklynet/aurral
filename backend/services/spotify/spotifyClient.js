@@ -7,12 +7,38 @@ import createCache from "../apiClients/simpleCache.js";
 import { runSharedInflight } from "../sharedInflight.js";
 
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
+export const SPOTIFY_AUTH_REQUIRED_CODE = "SPOTIFY_AUTH_REQUIRED";
 const playlistTrackCache = createCache(2 * 60, 200);
 const playlistTrackInflight = new Map();
+const playlistTrackGeneration = new Map();
 const tokenRefreshInflight = new Map();
 
+const getPlaylistTrackGeneration = (userId) =>
+  playlistTrackGeneration.get(String(userId)) || 0;
+
+const bumpPlaylistTrackGeneration = (userId) => {
+  const key = String(userId);
+  const generation = getPlaylistTrackGeneration(key) + 1;
+  playlistTrackGeneration.set(key, generation);
+  return generation;
+};
+
 const playlistTrackCacheKey = (userId, playlistId) =>
-  `${String(userId)}:${String(playlistId)}`;
+  `${String(userId)}:${getPlaylistTrackGeneration(userId)}:${String(playlistId)}`;
+
+const createAuthRequiredError = (message) => {
+  const error = new Error(message);
+  error.code = SPOTIFY_AUTH_REQUIRED_CODE;
+  error.statusCode = 401;
+  return error;
+};
+
+const invalidateConnection = (userId, expectedConnection) => {
+  if (spotifyConnectionStore.clearConnectionIfMatches(userId, expectedConnection)) {
+    bumpPlaylistTrackGeneration(userId);
+  }
+  return createAuthRequiredError("Spotify connection expired");
+};
 
 async function renewAccessToken(refreshToken, signal) {
   const url = new URL(SPOTIFY_RENEW_URI);
@@ -20,7 +46,9 @@ async function renewAccessToken(refreshToken, signal) {
   const response = await fetch(url, { method: "GET", signal });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(body || `Spotify token refresh failed (${response.status})`);
+    const error = new Error(body || `Spotify token refresh failed (${response.status})`);
+    error.statusCode = response.status;
+    throw error;
   }
   const payload = await response.json();
   const accessToken = String(payload?.access_token || payload?.accessToken || "").trim();
@@ -48,6 +76,14 @@ const refreshConnection = (userId, refreshToken, { force = false } = {}) =>
         return latest;
       }
       const renewed = await renewAccessToken(latest?.refreshToken || refreshToken, signal);
+      const current = spotifyConnectionStore.getConnection(userId);
+      if (!current) throw createAuthRequiredError("Spotify is not connected");
+      if (
+        current.accessToken !== latest?.accessToken ||
+        current.refreshToken !== latest?.refreshToken
+      ) {
+        return current;
+      }
       return spotifyConnectionStore.updateTokens(userId, renewed);
     },
   );
@@ -55,14 +91,17 @@ const refreshConnection = (userId, refreshToken, { force = false } = {}) =>
 async function getValidConnection(userId) {
   let connection = spotifyConnectionStore.getConnection(userId);
   if (!connection) {
-    const error = new Error("Spotify is not connected");
-    error.statusCode = 401;
-    throw error;
+    throw createAuthRequiredError("Spotify is not connected");
   }
   if (connection.expiresAt - TOKEN_REFRESH_BUFFER_MS > Date.now()) {
     return connection;
   }
-  return refreshConnection(userId, connection.refreshToken);
+  try {
+    return await refreshConnection(userId, connection.refreshToken);
+  } catch (error) {
+    if (error?.statusCode === 401) throw invalidateConnection(userId, connection);
+    throw error;
+  }
 }
 
 async function spotifyRequest(userId, path, { searchParams, url: absoluteUrl } = {}) {
@@ -80,12 +119,18 @@ async function spotifyRequest(userId, path, { searchParams, url: absoluteUrl } =
       Accept: "application/json",
     },
   });
+  let nextConnection = connection;
   if (response.status === 401) {
     const latest = spotifyConnectionStore.getConnection(userId);
-    const nextConnection =
-      latest?.accessToken && latest.accessToken !== connection.accessToken
-        ? latest
-        : await refreshConnection(userId, connection.refreshToken, { force: true });
+    try {
+      nextConnection =
+        latest?.accessToken && latest.accessToken !== connection.accessToken
+          ? latest
+          : await refreshConnection(userId, connection.refreshToken, { force: true });
+    } catch (error) {
+      if (error?.statusCode === 401) throw invalidateConnection(userId, connection);
+      throw error;
+    }
     response = await fetch(url, {
       headers: {
         Authorization: `Bearer ${nextConnection.accessToken}`,
@@ -95,6 +140,7 @@ async function spotifyRequest(userId, path, { searchParams, url: absoluteUrl } =
   }
   if (!response.ok) {
     const body = await response.text().catch(() => "");
+    if (response.status === 401) throw invalidateConnection(userId, nextConnection);
     const error = new Error(body || `Spotify request failed (${response.status})`);
     error.statusCode = response.status;
     throw error;
@@ -142,6 +188,8 @@ export const spotifyClient = {
   },
 
   async listPlaylistTracks(userId, playlistId, { forceRefresh = false } = {}) {
+    await getValidConnection(userId);
+    const generation = getPlaylistTrackGeneration(userId);
     const cacheKey = playlistTrackCacheKey(userId, playlistId);
     if (!forceRefresh) {
       const cached = playlistTrackCache.get(cacheKey);
@@ -161,6 +209,9 @@ export const spotifyClient = {
         },
       },
     ).then((items) => {
+      if (getPlaylistTrackGeneration(userId) !== generation) {
+        throw createAuthRequiredError("Spotify connection expired");
+      }
       playlistTrackCache.set(cacheKey, items);
       return items;
     });
@@ -174,7 +225,11 @@ export const spotifyClient = {
     }
   },
 
-  clearPlaylistTrackCache() {
+  clearPlaylistTrackCache(userId) {
+    if (userId != null) {
+      bumpPlaylistTrackGeneration(userId);
+      return;
+    }
     playlistTrackCache.flushAll();
     playlistTrackInflight.clear();
   },

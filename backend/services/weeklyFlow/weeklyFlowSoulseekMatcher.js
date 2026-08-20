@@ -510,6 +510,22 @@ function scoreSiblingTrackConflict(baseName, context, titleScore) {
   return 0;
 }
 
+const DURATION_BASE_TOLERANCE_MS = 25000;
+
+// Base duration tolerance: a fixed 25s window, widened to 18% of the expected
+// duration for longer tracks. Shared so the pre-download gate and the base branch
+// of readDownloadDurationValidation stay identical. The post-download check also
+// has a relaxed branch (title and artist tags both >= 85) that this gate does not
+// apply on purpose: pre-download scores come from the filename, which is less
+// reliable than parsed tags, and the relaxed window is what lets a wrong version
+// of the same song through, which is exactly what we want to stop before a download.
+function isDurationWithinBaseTolerance(durationDiffMs, expectedDurationMs) {
+  return (
+    durationDiffMs <= DURATION_BASE_TOLERANCE_MS ||
+    durationDiffMs <= Math.max(12000, expectedDurationMs * 0.18)
+  );
+}
+
 function isStrongEnoughCandidate({
   titleScore,
   artistScore,
@@ -521,6 +537,7 @@ function isStrongEnoughCandidate({
   tracklistScore = 0,
   trackNumberMismatch,
   siblingTrackPenalty,
+  advertisedDurationMs = null,
   context,
 }) {
   if (variantMatch?.hardMismatch) {
@@ -566,6 +583,21 @@ function isStrongEnoughCandidate({
   ) {
     return { valid: false, reason: "weak-album-context" };
   }
+  // Reject candidates whose slskd-advertised duration is far from the expected
+  // one. Only fires when both durations are known, so files without an
+  // advertised length keep relying on the post-download duration check.
+  const expectedDurationMs = Number(context?.durationMs || 0);
+  if (
+    advertisedDurationMs != null &&
+    advertisedDurationMs > 0 &&
+    expectedDurationMs > 0 &&
+    !isDurationWithinBaseTolerance(
+      Math.abs(advertisedDurationMs - expectedDurationMs),
+      expectedDurationMs,
+    )
+  ) {
+    return { valid: false, reason: "advertised-duration-mismatch" };
+  }
   return { valid: true, reason: null };
 }
 
@@ -585,6 +617,32 @@ function pickBestArtistScore(context, text) {
     ...(Array.isArray(context?.artistAliases) ? context.artistAliases : []),
   ];
   return candidates.reduce((best, entry) => Math.max(best, scoreAgainstPath(text, entry)), 0);
+}
+
+function splitArtistTitleSegments(text) {
+  return String(text || "")
+    .split(/\s+(?:-|–|—)\s+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function readSegmentsArtistTitle(context, segments) {
+  if (segments.length < 2) return null;
+  const artistScore = pickBestArtistScore(context, segments[0]);
+  if (artistScore < 92) return null;
+  return { artistScore, title: segments[segments.length - 1] };
+}
+
+function readFileNameArtistTitle(context, filePath) {
+  const baseName = getFileBaseName(filePath);
+  // Try the basename both as-is and with a leading track number removed. The
+  // strip helps "07. Artist - Title", but it also eats the digits of a numeric
+  // artist ("50 Cent - ..."), so keep whichever parse names the artist best.
+  return [stripLeadingTrackNumber(baseName), baseName].reduce((best, text) => {
+    const parsed = readSegmentsArtistTitle(context, splitArtistTitleSegments(text));
+    if (parsed && (!best || parsed.artistScore > best.artistScore)) return parsed;
+    return best;
+  }, null);
 }
 
 function collectArtistTags(common) {
@@ -740,7 +798,7 @@ function buildGroupCandidate(group, context, options = {}) {
     return [];
   }
   const {
-    artistScore,
+    artistScore: folderArtistScore,
     albumScore,
     yearScore,
     yearMismatch,
@@ -766,9 +824,12 @@ function buildGroupCandidate(group, context, options = {}) {
   for (const item of files) {
     const ext = getFileExtension(String(item?.file || ""));
     const baseName = getFileBaseName(String(item?.file || ""));
+    const fileNameParts = readFileNameArtistTitle(context, String(item?.file || ""));
+    const artistScore = Math.max(folderArtistScore, fileNameParts?.artistScore || 0);
     const titleScore = Math.max(
       scoreRequestedTitle(baseName, context),
       scoreRequestedTitle(getFileName(String(item?.file || "")), context),
+      fileNameParts ? scoreRequestedTitle(fileNameParts.title, context) : 0,
     );
     const variantMatch = scoreVariantCompatibility(context?.trackName, baseName);
     const variantScore = variantMatch.score;
@@ -785,6 +846,11 @@ function buildGroupCandidate(group, context, options = {}) {
       Number(context?.trackNumber) !== Number(actualTrackNumber);
     const titleConfidenceScore = scoreTitleConfidence(titleScore);
     const siblingTrackPenalty = scoreSiblingTrackConflict(baseName, context, titleScore);
+    const advertisedDurationSeconds = Number(item?.length);
+    const advertisedDurationMs =
+      Number.isFinite(advertisedDurationSeconds) && advertisedDurationSeconds > 0
+        ? advertisedDurationSeconds * 1000
+        : null;
     const preDownloadCheck = isStrongEnoughCandidate({
       titleScore,
       artistScore,
@@ -796,6 +862,7 @@ function buildGroupCandidate(group, context, options = {}) {
       tracklistScore,
       trackNumberMismatch,
       siblingTrackPenalty,
+      advertisedDurationMs,
       context,
     });
     const formatScore = isPreferredFormat(ext, preferredFormat)
@@ -845,6 +912,7 @@ function buildGroupCandidate(group, context, options = {}) {
         titleConfidenceScore,
         siblingTrackPenalty,
         formatScore,
+        advertisedDurationMs,
         speed: Number(item?.speed || 0),
         slots: Number(item?.slots || 0),
         bitrate: Number(item?.bitrate || 0),
@@ -977,9 +1045,7 @@ function readDownloadDurationValidation(parsed, expectedDuration, titleScore = 0
     return { actualDurationMs, durationValid: durationDiffMs <= relaxedThreshold };
   }
 
-  const durationValid =
-    durationDiffMs <= 25000 ||
-    durationDiffMs <= Math.max(12000, expectedDuration * 0.18);
+  const durationValid = isDurationWithinBaseTolerance(durationDiffMs, expectedDuration);
   return { actualDurationMs, durationValid };
 }
 

@@ -287,7 +287,12 @@ export async function removePlaylistFileIfUnshared(finalPath, playlistId, option
     : flowPlaylistConfig.getSharedPlaylist(safePlaylistId)
       ? [path.resolve(weeklyFlowRoot)]
       : [path.resolve(weeklyFlowRoot, PLAYLIST_LIBRARY_DIR, safePlaylistId)];
-  if (flowPlaylistConfig.getSharedPlaylist(safePlaylistId)) return { action: "skipped" };
+  if (
+    flowPlaylistConfig.getSharedPlaylist(safePlaylistId) &&
+    options.deleteIfUnshared !== true
+  ) {
+    return { action: "skipped" };
+  }
   const resolved = path.resolve(remapLegacyWeeklyFlowPath(finalPath, weeklyFlowRoot));
   if (!playlistRoots.some((playlistRoot) => isPathInsideRoot(resolved, playlistRoot))) {
     return { action: "skipped" };
@@ -298,13 +303,21 @@ export async function removePlaylistFileIfUnshared(finalPath, playlistId, option
       .map((id) => String(id || "").trim())
       .filter(Boolean),
   );
-  const others = [];
+  const matchingJobs = [];
   for (const job of downloadTracker.getAll()) {
     if (!job || job.status !== "done" || typeof job.finalPath !== "string") continue;
-    if (excludeJobIds.has(String(job.id || ""))) continue;
     const current = path.resolve(remapLegacyWeeklyFlowPath(job.finalPath, weeklyFlowRoot));
-    if (current === resolved) others.push(job);
+    if (current === resolved) matchingJobs.push(job);
   }
+  if (matchingJobs.some((job) => job.externalPath)) return { action: "skipped" };
+  if (
+    options.deleteIfUnshared === true &&
+    typeof options.shouldDelete === "function" &&
+    !(await options.shouldDelete())
+  ) {
+    return { action: "skipped" };
+  }
+  const others = matchingJobs.filter((job) => !excludeJobIds.has(String(job.id || "")));
   if (others.length > 0) {
     const survivor = sortReusableJobs(others)[0];
     const nextPath = await adoptFileIntoPlaylist(

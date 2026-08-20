@@ -85,7 +85,7 @@ export function normalizeQueueTrack(track, overrides = {}) {
   };
 }
 
-export function normalizeFlowTrack(track) {
+export function normalizeFlowTrack(track, overrides = {}) {
   return normalizeQueueTrack({
     id: track.id,
     title: track.trackName,
@@ -98,8 +98,8 @@ export function normalizeFlowTrack(track) {
     albumMbid: track.albumMbid,
     trackMbid: track.trackMbid || track.mbid,
     durationMs: track.durationMs,
-    recordHistory: true,
-  });
+    recordHistory: track?.recordHistory !== false,
+  }, overrides);
 }
 
 export function normalizePreviewTrack(track, artistName, overrides = {}) {

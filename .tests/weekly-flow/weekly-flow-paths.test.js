@@ -17,6 +17,8 @@ const {
   remapLegacyPath: remapLegacyWeeklyFlowPath,
   resolveExistingTrackPath: resolveExistingWeeklyFlowTrackPath,
   migrateLegacyPaths,
+  AURRAL_FLOWS_DIR,
+  LEGACY_AURRAL_FLOWS_DIR,
 } = playlistPaths;
 
 test.after(async () => {
@@ -68,6 +70,15 @@ test("remapLegacyWeeklyFlowPath rewrites legacy roots and library dir names", ()
   assert.equal(
     remapLegacyWeeklyFlowPath(previousV2Path, "/data/downloads/tmp"),
     "/data/downloads/tmp/aurral-weekly-flow/playlist-id/Artist/Album/Track.flac",
+  );
+  assert.equal(AURRAL_FLOWS_DIR, "_flows");
+  assert.equal(LEGACY_AURRAL_FLOWS_DIR, ".flows");
+  assert.equal(
+    remapLegacyWeeklyFlowPath(
+      "/data/downloads/tmp/.flows/flow-id/Artist/Album/Track.flac",
+      "/data/downloads/tmp",
+    ),
+    "/data/downloads/tmp/_flows/flow-id/Artist/Album/Track.flac",
   );
 });
 

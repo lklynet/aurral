@@ -5,6 +5,7 @@ import { userOps } from "../../db/helpers/index.js";
 import { NavidromeClient } from "../navidrome.js";
 import { navidromePlaylistPointerStore } from "../navidrome/navidromePlaylistPointerStore.js";
 import {
+  AURRAL_FLOWS_DIR,
   PLAYLIST_LIBRARY_DIR,
   resolvePlaylistRoot,
 } from "../playlistPaths.js";
@@ -54,6 +55,7 @@ export class NavidromePlaybackDestination {
     this.name = "Navidrome";
     this.weeklyFlowRoot = resolvePlaylistRoot(weeklyFlowRoot);
     this.playlistLibraryRoot = path.join(this.weeklyFlowRoot, PLAYLIST_LIBRARY_DIR);
+    this.mediaLibraryRoot = this.weeklyFlowRoot;
     this.libraryRoot = path.join(this.playlistLibraryRoot, "_playlists");
     this.client = client;
     this._configKey = "";
@@ -333,9 +335,10 @@ export class NavidromePlaybackDestination {
   async ensureLibrary() {
     try {
       await fs.mkdir(this.libraryRoot, { recursive: true });
+      await fs.mkdir(path.join(this.weeklyFlowRoot, AURRAL_FLOWS_DIR), { recursive: true });
       if (this.isConfigured()) {
         await this.client.ensureWeeklyFlowLibrary(
-          this.playlistLibraryRoot.replace(/\\/g, "/").replace(/\/+$/, ""),
+          this.mediaLibraryRoot.replace(/\\/g, "/").replace(/\/+$/, ""),
         );
         await this._loadPlaylists(true);
       }
@@ -442,22 +445,18 @@ export class NavidromePlaybackDestination {
 
     let playlist = null;
     if (pointer) {
-      if (songIds.length) {
-        for (const delayMs of [0, 250, 1000, 2000]) {
-          if (delayMs) await wait(delayMs);
-          try {
-            await this.client.updatePlaylist(pointer.playlistId, {
-              name: current,
-              songIds,
-            });
-            playlist = { id: pointer.playlistId };
-            break;
-          } catch (error) {
-            if (Number(error?.code) !== 70) throw error;
-          }
+      for (const delayMs of [0, 250, 1000, 2000]) {
+        if (delayMs) await wait(delayMs);
+        try {
+          await this.client.updatePlaylist(pointer.playlistId, {
+            name: current,
+            songIds,
+          });
+          playlist = { id: pointer.playlistId };
+          break;
+        } catch (error) {
+          if (Number(error?.code) !== 70) throw error;
         }
-      } else {
-        playlist = { id: pointer.playlistId };
       }
       if (!playlist) {
         navidromePlaylistPointerStore.deletePointer(snapshot.entityId, targetKey);

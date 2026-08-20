@@ -1,6 +1,9 @@
 import { buildSpotifyOAuthUrl, SPOTIFY_API_BASE } from "../../../services/spotify/spotifyConfig.js";
 import { spotifyConnectionStore } from "../../../services/spotify/spotifyConnectionStore.js";
-import { spotifyClient } from "../../../services/spotify/spotifyClient.js";
+import {
+  SPOTIFY_AUTH_REQUIRED_CODE,
+  spotifyClient,
+} from "../../../services/spotify/spotifyClient.js";
 import { logger } from "../../../services/logger.js";
 import { parseSpotifyPlaylistItems } from "../../../services/importLists/spotifyTracks.js";
 import { syncSharedPlaylistImport } from "../../../services/importLists/importListSync.js";
@@ -20,6 +23,20 @@ const parseExpiresAt = (value) => {
   }
   return Date.now() + 3600 * 1000;
 };
+
+function sendSpotifyError(res, error, fallback) {
+  if (error?.code === SPOTIFY_AUTH_REQUIRED_CODE) {
+    return res.status(401).json({
+      error: "Spotify authentication required",
+      code: SPOTIFY_AUTH_REQUIRED_CODE,
+      message: "Your Spotify connection expired. Connect Spotify again.",
+    });
+  }
+  return res.status(error?.statusCode || 500).json({
+    error: fallback,
+    message: error?.message || "Unknown error",
+  });
+}
 
 export function registerSpotifyImport(router) {
   router.get("/import/spotify/status", (req, res) => {
@@ -82,7 +99,7 @@ export function registerSpotifyImport(router) {
 
   router.delete("/import/spotify", (req, res) => {
     spotifyConnectionStore.clearConnection(req.user.id);
-    spotifyClient.clearPlaylistTrackCache();
+    spotifyClient.clearPlaylistTrackCache(req.user.id);
     res.json({ connected: false });
   });
 
@@ -91,10 +108,7 @@ export function registerSpotifyImport(router) {
       const payload = await spotifyClient.listPlaylists(req.user.id);
       res.json(payload);
     } catch (error) {
-      res.status(error?.statusCode || 500).json({
-        error: "Failed to fetch Spotify playlists",
-        message: error?.message || "Unknown error",
-      });
+      sendSpotifyError(res, error, "Failed to fetch Spotify playlists");
     }
   });
 
@@ -114,10 +128,7 @@ export function registerSpotifyImport(router) {
         previewTracks: tracks.slice(0, 3),
       });
     } catch (error) {
-      res.status(error?.statusCode || 500).json({
-        error: "Failed to preview Spotify playlist",
-        message: error?.message || "Unknown error",
-      });
+      sendSpotifyError(res, error, "Failed to preview Spotify playlist");
     }
   });
 
@@ -127,6 +138,7 @@ export function registerSpotifyImport(router) {
       const name = String(req.body?.name || "").trim();
       const externalName = String(req.body?.externalName || "").trim();
       const syncIntervalHours = Number(req.body?.syncIntervalHours ?? 24);
+      const keepRemovedTracks = req.body?.keepRemovedTracks !== false;
       const syncEnabled =
         req.body?.syncEnabled === false
           ? false
@@ -146,6 +158,7 @@ export function registerSpotifyImport(router) {
         externalName: externalName || name,
         syncEnabled,
         syncIntervalHours: syncEnabled ? syncIntervalHours : 0,
+        keepRemovedTracks,
         lastSyncAt: Date.now(),
         lastSyncTrackCount: tracks.length,
       });
@@ -173,10 +186,7 @@ export function registerSpotifyImport(router) {
           message: error.message,
         });
       }
-      res.status(error?.statusCode || 500).json({
-        error: "Failed to import Spotify playlist",
-        message: error?.message || "Unknown error",
-      });
+      sendSpotifyError(res, error, "Failed to import Spotify playlist");
     }
   });
 

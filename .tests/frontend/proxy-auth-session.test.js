@@ -138,6 +138,76 @@ test("an unauthorized response drops the stored session without navigating away"
   assert.equal(reloads, 0);
 });
 
+test("a proxy 401 with a nested error body reauthenticates through the proxy", async (t) => {
+  const vite = await withApiClient(t);
+
+  let reloads = 0;
+  let resolveReload;
+  const reloadCompleted = new Promise((resolve) => {
+    resolveReload = resolve;
+  });
+  globalThis.sessionStorage = createStorage({ auth_token: "stale-token" });
+  globalThis.localStorage = createStorage({ auth_token: "stale-token" });
+  globalThis.window = {
+    location: {
+      origin: "https://aurral.example.com",
+      pathname: "/discover",
+      reload: () => {
+        reloads += 1;
+        resolveReload();
+      },
+    },
+  };
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({
+      error: { status: 401, message: "Missing/invalid/expired access token" },
+    }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    });
+
+  const { default: api } = await vite.ssrLoadModule("/src/utils/api/core.js");
+
+  await assert.rejects(api.get("/playlists/import/spotify/playlists"), /status code 401/);
+  await reloadCompleted;
+  assert.equal(reloads, 1);
+  assert.equal(globalThis.localStorage.getItem("auth_token"), null);
+  assert.equal(globalThis.sessionStorage.getItem("auth_token"), null);
+});
+
+test("a Spotify provider 401 does not drop the Aurral session", async (t) => {
+  const vite = await withApiClient(t);
+
+  let reloads = 0;
+  globalThis.sessionStorage = createStorage({ auth_token: "valid-token" });
+  globalThis.localStorage = createStorage({ auth_token: "valid-token" });
+  globalThis.window = {
+    location: {
+      origin: "https://aurral.example.com",
+      pathname: "/discover",
+      reload: () => {
+        reloads += 1;
+      },
+    },
+  };
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({
+      error: "Spotify authentication required",
+      code: "SPOTIFY_AUTH_REQUIRED",
+      message: "Your Spotify connection expired. Connect Spotify again.",
+    }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    });
+
+  const { default: api } = await vite.ssrLoadModule("/src/utils/api/core.js");
+
+  await assert.rejects(api.get("/playlists/import/spotify/playlists"), /status code 401/);
+  assert.equal(reloads, 0);
+  assert.equal(globalThis.localStorage.getItem("auth_token"), "valid-token");
+  assert.equal(globalThis.sessionStorage.getItem("auth_token"), "valid-token");
+});
+
 test("a proxy 401 without an Aurral error body reloads through the proxy", async (t) => {
   const vite = await withApiClient(t);
 

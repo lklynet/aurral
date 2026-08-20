@@ -31,7 +31,7 @@ Enter these values for each webhook:
 - **URL**: the endpoint to call (must start with `http://` or `https://`)
 - **Body**: optional JSON data. Use these placeholders:
   - `$flowName`: playlist display name
-  - `$flowPath`: on-disk playlist track folder under `aurral-weekly-flow` (not the `_playlists` artwork folder)
+  - `$flowPath`: on-disk Aurral media path. For a Flow, this is `_flows/<flow-id>`; for a static playlist, it is the Downloads Folder root.
   - `$albumName`, `$artistName`, `$username`, `$userId`, and `$event` for request events
 - **Headers**: optional key-value pairs
 

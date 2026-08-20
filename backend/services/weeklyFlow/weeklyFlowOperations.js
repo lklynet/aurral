@@ -265,6 +265,7 @@ async function runFlowSeed({
     const seeded = await weeklyFlowWorker.seedFlowRun(safeFlowId, latestFlow, {
       size: effectiveSize,
     });
+    await playlistManager.refreshPlaylist(safeFlowId);
     if (scheduleNext) {
       flowPlaylistConfig.scheduleNextRun(safeFlowId);
     }
@@ -449,7 +450,7 @@ export async function appendSharedPlaylistTracks({ playlistId, tracks = [] } = {
   };
 }
 
-async function updateSharedPlaylist({
+export async function updateSharedPlaylist({
   playlistId,
   name = null,
   tracks = [],
@@ -457,6 +458,8 @@ async function updateSharedPlaylist({
   hasTracksUpdate = false,
   hasImportSourceUpdate = false,
   importSource = null,
+  deleteUnsharedFiles = false,
+  mergeImportSource = false,
 } = {}) {
   const safePlaylistId = String(playlistId || "").trim();
   const currentPlaylist = flowPlaylistConfig.getSharedPlaylist(safePlaylistId);
@@ -466,18 +469,35 @@ async function updateSharedPlaylist({
     : String(currentPlaylist.name || "").trim();
   let playlist = null;
   let tracksQueued = 0;
-  const playlistUpdates = { name: safeName };
-  if (hasImportSourceUpdate) {
-    playlistUpdates.importSource = importSource;
-  }
   if (!hasTracksUpdate) {
-    playlist = flowPlaylistConfig.updateSharedPlaylist(safePlaylistId, playlistUpdates);
+    await withPlaylistMutation(safePlaylistId, async () => {
+      const lockedPlaylist = flowPlaylistConfig.getSharedPlaylist(safePlaylistId);
+      const lockedImportSource = lockedPlaylist?.importSource || currentPlaylist.importSource;
+      const importSourceToStore =
+        mergeImportSource && hasImportSourceUpdate
+          ? { ...lockedImportSource, ...(importSource || {}) }
+          : importSource;
+      playlist = flowPlaylistConfig.updateSharedPlaylist(safePlaylistId, {
+        ...(hasNameUpdate ? { name: safeName } : {}),
+        ...(hasImportSourceUpdate ? { importSource: importSourceToStore } : {}),
+      });
+    });
   } else {
     const normalizedTracks = filterBlockedPlaylistTracks(
       currentPlaylist.ownerUserId,
       normalizeTrackList(tracks),
     );
     await withPlaylistMutation(safePlaylistId, async () => {
+      const lockedPlaylist = flowPlaylistConfig.getSharedPlaylist(safePlaylistId);
+      const lockedImportSource = lockedPlaylist?.importSource || currentPlaylist.importSource;
+      const shouldDeleteUnsharedFiles =
+        deleteUnsharedFiles ||
+        (mergeImportSource && lockedImportSource?.keepRemovedTracks === false);
+      const shouldDeleteCurrentFiles = mergeImportSource
+        ? () =>
+            flowPlaylistConfig.getSharedPlaylist(safePlaylistId)?.importSource
+              ?.keepRemovedTracks === false
+        : null;
       const existingJobs = downloadTracker.getByPlaylistType(safePlaylistId);
       const reusableJobsByIdentity = new Map();
       for (const job of existingJobs) {
@@ -509,15 +529,22 @@ async function updateSharedPlaylist({
           await removePlaylistFileIfUnshared(job.finalPath, safePlaylistId, {
             weeklyFlowRoot: weeklyFlowWorker.weeklyFlowRoot,
             excludeJobIds: [job.id, ...matchedJobIds],
+            deleteIfUnshared: shouldDeleteUnsharedFiles,
+            shouldDelete: shouldDeleteCurrentFiles,
           });
         }
         downloadTracker.removeJob(job.id);
       }
 
+      const latestImportSource = flowPlaylistConfig.getSharedPlaylist(safePlaylistId)?.importSource;
+      const importSourceToStore =
+        mergeImportSource && hasImportSourceUpdate
+          ? { ...(latestImportSource || lockedImportSource), ...(importSource || {}) }
+          : importSource;
       playlist = flowPlaylistConfig.updateSharedPlaylist(safePlaylistId, {
-        name: safeName,
+        ...(hasNameUpdate ? { name: safeName } : {}),
         tracks: normalizedTracks,
-        ...(hasImportSourceUpdate ? { importSource } : {}),
+        ...(hasImportSourceUpdate ? { importSource: importSourceToStore } : {}),
       });
       const queued = await queueTracksForPlaylist(tracksNeedingWork, safePlaylistId);
       tracksQueued = queued.jobIds.length;
