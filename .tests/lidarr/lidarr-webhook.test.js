@@ -129,9 +129,12 @@ test("Lidarr Download webhook matches a request through its album metadata", () 
 
   assert.deepEqual(response.result.body, { handled: true });
   const entry = db
-    .prepare("SELECT status_label FROM aurral_history WHERE id = ?")
+    .prepare("SELECT status_label, metadata FROM aurral_history WHERE id = ?")
     .get("aurral-album_requested-artist-mbid");
   assert.equal(entry.status_label, "Downloaded");
+  const metadata = JSON.parse(entry.metadata);
+  assert.equal(metadata.albumId, "42");
+  assert.equal(metadata.albumName, "Blue Train");
 });
 
 test("Lidarr non-download events are acknowledged without changing history", () => {
