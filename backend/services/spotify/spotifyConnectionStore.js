@@ -107,4 +107,20 @@ export const spotifyConnectionStore = {
     writeStore(store);
     return true;
   },
+
+  clearConnectionIfMatches(userId, expected = {}) {
+    const store = readStore();
+    const key = userKey(userId);
+    const current = normalizeConnection(store[key] || null);
+    if (
+      !current ||
+      current.accessToken !== expected.accessToken ||
+      current.refreshToken !== expected.refreshToken
+    ) {
+      return false;
+    }
+    delete store[key];
+    writeStore(store);
+    return true;
+  },
 };
