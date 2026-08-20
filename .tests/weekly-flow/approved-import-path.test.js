@@ -188,7 +188,7 @@ test("search all stays within the requesting user's playlist access", async () =
   const enqueuedTasks = [];
   systemTaskQueue.enqueue = (payload, options) => {
     enqueuedTasks.push({ payload, options });
-    return originalEnqueue.call(systemTaskQueue, payload, options);
+    return enqueuedTasks.length;
   };
   weeklyFlowWorker.start = async () => {};
   requestUser = { role: "user", id: 7 };
