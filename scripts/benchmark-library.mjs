@@ -430,6 +430,14 @@ if (mode === "bulk") {
     return [];
   };
 } else {
+  client.getAllTracks = async () => {
+    calls.push({ method: "getAllTracks" });
+    return [{ id: 1, albumId: 1 }];
+  };
+  client.getAllTrackFiles = async () => {
+    calls.push({ method: "getAllTrackFiles" });
+    throw new Error("bulk track-file read failed");
+  };
   client.getTracksByAlbumId = async (albumId) => {
     calls.push({ method: "getTracksByAlbumId", albumId });
     return albumCall(albumId, "tracks");
@@ -514,7 +522,7 @@ async function main() {
       });
     }
     const expectedBulkIndexerCalls = 5;
-    const expectedFallbackIndexerCalls = 3 + options.indexerAlbums * 2;
+    const expectedFallbackIndexerCalls = 5 + options.indexerAlbums * 2;
     const adapter = fullReads["legacy-adapter"];
     const pageP95 = Object.fromEntries(
       Object.entries(pages).map(([name, value]) => [name, value.warm.p95Ms]),
