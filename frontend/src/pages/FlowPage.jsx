@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import { Check, Loader2, Play, FilePlus2, Download, Trash2, Search, RefreshCw, ClipboardCopy, ListMusic } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -218,6 +218,7 @@ function FlowPage({ mode = "all" }) {
   const [libraryTrackSavingKey, setLibraryTrackSavingKey] = useState("");
   const [favoriteTrackIds, setFavoriteTrackIds] = useState(() => new Set());
   const [favoriteTrackSavingKey, setFavoriteTrackSavingKey] = useState("");
+  const favoriteStateVersionRef = useRef(0);
   const playlistsLoading = false;
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
@@ -230,9 +231,10 @@ function FlowPage({ mode = "all" }) {
 
   useEffect(() => {
     let cancelled = false;
+    const requestVersion = favoriteStateVersionRef.current;
     getLibraryFavorites()
       .then((data) => {
-        if (cancelled) return;
+        if (cancelled || requestVersion !== favoriteStateVersionRef.current) return;
         setFavoriteTrackIds(
           new Set(
             (Array.isArray(data?.song) ? data.song : [])
@@ -1272,6 +1274,7 @@ function FlowPage({ mode = "all" }) {
     });
     try {
       const starred = await updateLibraryFavorites([id], nextStarred);
+      favoriteStateVersionRef.current += 1;
       setFavoriteTrackIds(
         new Set(
           (Array.isArray(starred?.song) ? starred.song : [])

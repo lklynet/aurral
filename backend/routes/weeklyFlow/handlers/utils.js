@@ -81,6 +81,7 @@ export const validateFlowPayload = ({
   tags,
   relatedArtists,
   scheduleDays,
+  recordHistory,
   yearFrom,
   yearTo,
 } = {}) => {
@@ -105,6 +106,9 @@ export const validateFlowPayload = ({
   }
   if (!Array.isArray(scheduleDays) || scheduleDays.length === 0) {
     return "scheduleDays must include at least one day";
+  }
+  if (recordHistory !== undefined && typeof recordHistory !== "boolean") {
+    return "recordHistory must be a boolean";
   }
   const hasYearFrom = yearFrom != null && String(yearFrom).trim() !== "";
   const hasYearTo = yearTo != null && String(yearTo).trim() !== "";

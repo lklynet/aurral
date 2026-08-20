@@ -7,14 +7,16 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps }, playlistConfigModule] =
+const [isolatedState, { db }, { dbOps }, playlistConfigModule, flowHandlerUtils] =
   await setupIsolatedBackend(
     "playlist-config",
     "backend/config/db-sqlite.js",
     "backend/db/helpers/index.js",
     "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
+    "backend/routes/weeklyFlow/handlers/utils.js",
   );
 const { flowPlaylistConfig, tracksShareMembership } = playlistConfigModule;
+const { validateFlowPayload } = flowHandlerUtils;
 
 test.beforeEach(() => {
   resetDatabase(db);
@@ -70,6 +72,23 @@ test("defaults listening history on and persists a flow opt-out", () => {
 
   assert.equal(updated?.recordHistory, false);
   assert.equal(flowPlaylistConfig.getFlow(flow.id)?.recordHistory, false);
+});
+
+test("rejects non-boolean listening history payloads", () => {
+  dbOps.updateSettings({ integrations: { lastfm: { apiKey: "test" } } });
+  const payload = {
+    name: "Validated History",
+    size: 20,
+    mix: { discover: 100 },
+    scheduleDays: [1],
+  };
+
+  assert.equal(
+    validateFlowPayload({ ...payload, recordHistory: "false" }),
+    "recordHistory must be a boolean",
+  );
+  assert.equal(validateFlowPayload({ ...payload, recordHistory: false }), null);
+  assert.equal(validateFlowPayload(payload), null);
 });
 
 test("stores and swaps optional release year range", () => {
