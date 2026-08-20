@@ -415,3 +415,83 @@ test("Spotify sync keeps a retention change made while Spotify is pending", asyn
     weeklyFlowWorker.stop();
   }
 });
+
+test("Spotify cleanup serializes retention updates with file removal", async () => {
+  const originalStart = weeklyFlowWorker.start;
+  const originalListPlaylistTracks = spotifyClient.listPlaylistTracks;
+  const originalRm = fs.rm;
+  let resolveRemovalStarted;
+  let releaseRemoval;
+  const removalStarted = new Promise((resolve) => {
+    resolveRemovalStarted = resolve;
+  });
+  const removalBlocked = new Promise((resolve) => {
+    releaseRemoval = resolve;
+  });
+  weeklyFlowWorker.start = async () => false;
+  try {
+    const track = {
+      artistName: "A",
+      trackName: "Cleanup",
+      albumName: "Album",
+    };
+    const playlist = flowPlaylistConfig.createSharedPlaylist({
+      name: "Serialized Retention",
+      ownerUserId: 7,
+      tracks: [track],
+      importSource: {
+        provider: "spotify-playlist",
+        externalId: "serialized-id",
+        syncEnabled: true,
+        syncIntervalHours: 24,
+        keepRemovedTracks: false,
+      },
+    });
+    await fs.mkdir(weeklyFlowRoot, { recursive: true });
+    const finalPath = path.join(weeklyFlowRoot, "serialized-retention.flac");
+    await fs.writeFile(finalPath, "audio");
+    const jobId = downloadTracker.addJob(track, playlist.id);
+    downloadTracker.setDone(jobId, finalPath, track.albumName);
+
+    spotifyClient.listPlaylistTracks = async () => [];
+    fs.rm = async (...args) => {
+      resolveRemovalStarted();
+      await removalBlocked;
+      return originalRm(...args);
+    };
+    const syncPromise = syncSharedPlaylistImport({
+      playlistId: playlist.id,
+      user: { id: 7 },
+      force: true,
+    });
+    await removalStarted;
+
+    let retentionUpdated = false;
+    const retentionPromise = updateSharedPlaylist({
+      playlistId: playlist.id,
+      hasImportSourceUpdate: true,
+      importSource: {
+        ...playlist.importSource,
+        keepRemovedTracks: true,
+      },
+    }).then(() => {
+      retentionUpdated = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(retentionUpdated, false);
+
+    releaseRemoval();
+    await syncPromise;
+    await retentionPromise;
+    assert.equal(
+      flowPlaylistConfig.getSharedPlaylist(playlist.id).importSource.keepRemovedTracks,
+      true,
+    );
+    await assert.rejects(fs.access(finalPath));
+  } finally {
+    fs.rm = originalRm;
+    spotifyClient.listPlaylistTracks = originalListPlaylistTracks;
+    weeklyFlowWorker.start = originalStart;
+    weeklyFlowWorker.stop();
+  }
+});

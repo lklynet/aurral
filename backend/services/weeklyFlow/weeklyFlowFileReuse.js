@@ -310,6 +310,13 @@ export async function removePlaylistFileIfUnshared(finalPath, playlistId, option
     if (current === resolved) matchingJobs.push(job);
   }
   if (matchingJobs.some((job) => job.externalPath)) return { action: "skipped" };
+  if (
+    options.deleteIfUnshared === true &&
+    typeof options.shouldDelete === "function" &&
+    !(await options.shouldDelete())
+  ) {
+    return { action: "skipped" };
+  }
   const others = matchingJobs.filter((job) => !excludeJobIds.has(String(job.id || "")));
   if (others.length > 0) {
     const survivor = sortReusableJobs(others)[0];
