@@ -1268,9 +1268,9 @@ export class LidarrClient {
     }
   }
 
-  async getAllTracks() {
+  async getAllTracks(options = {}) {
     try {
-      const result = await this.request("/track");
+      const result = await this.request("/track", "GET", null, false, options);
       if (Array.isArray(result)) return result;
       if (result?.records && Array.isArray(result.records)) return result.records;
       return [];
@@ -1279,9 +1279,9 @@ export class LidarrClient {
     }
   }
 
-  async getAllTrackFiles() {
+  async getAllTrackFiles(options = {}) {
     try {
-      const result = await this.request("/trackfile");
+      const result = await this.request("/trackfile", "GET", null, false, options);
       if (Array.isArray(result)) return result;
       if (result?.records && Array.isArray(result.records)) return result.records;
       return [];

@@ -33,6 +33,70 @@ function buildFileIndex(files) {
   return index;
 }
 
+function buildBulkAlbumTrackData(albums, tracks, files) {
+  const tracksByAlbumId = new Map();
+  const albumIdsByTrackId = new Map();
+  for (const track of Array.isArray(tracks) ? tracks : []) {
+    if (track?.albumId == null) continue;
+    const albumId = String(track.albumId);
+    const albumTracks = tracksByAlbumId.get(albumId) || [];
+    albumTracks.push(track);
+    tracksByAlbumId.set(albumId, albumTracks);
+    const trackAlbums = albumIdsByTrackId.get(String(track.id)) || new Set();
+    trackAlbums.add(albumId);
+    albumIdsByTrackId.set(String(track.id), trackAlbums);
+  }
+
+  const filesByAlbumId = new Map();
+  const addFile = (albumId, file) => {
+    const key = String(albumId);
+    const albumFiles = filesByAlbumId.get(key) || new Map();
+    const fileKey = file?.id != null ? `id:${file.id}` : `path:${file?.path || ""}`;
+    albumFiles.set(fileKey, file);
+    filesByAlbumId.set(key, albumFiles);
+  };
+  for (const file of Array.isArray(files) ? files : []) {
+    const albumIds = new Set();
+    if (file?.albumId != null) albumIds.add(String(file.albumId));
+    for (const trackId of [file?.trackId, ...(Array.isArray(file?.trackIds) ? file.trackIds : [])]) {
+      for (const albumId of albumIdsByTrackId.get(String(trackId)) || []) albumIds.add(albumId);
+    }
+    for (const albumId of albumIds) addFile(albumId, file);
+  }
+
+  return (Array.isArray(albums) ? albums : []).map((album) => {
+    const albumId = String(album?.id);
+    return {
+      albumId,
+      tracks: tracksByAlbumId.get(albumId) || [],
+      files: [...(filesByAlbumId.get(albumId)?.values() || [])],
+    };
+  });
+}
+
+async function loadAlbumTrackData(client, albums) {
+  if (typeof client.getAllTracks === "function" && typeof client.getAllTrackFiles === "function") {
+    const [tracks, files] = await Promise.all([
+      client.getAllTracks({ forceRefresh: true }),
+      client.getAllTrackFiles({ forceRefresh: true }),
+    ]);
+    return buildBulkAlbumTrackData(albums, tracks, files);
+  }
+
+  return mapWithConcurrency(albums, 4, async (album) => {
+    if (!album?.id) return { albumId: null, tracks: [], files: [] };
+    const [tracks, files] = await Promise.all([
+      client.getTracksByAlbumId(album.id),
+      client.getTrackFilesByAlbumId(album.id),
+    ]);
+    return {
+      albumId: String(album.id),
+      tracks: Array.isArray(tracks) ? tracks : [],
+      files: Array.isArray(files) ? files : [],
+    };
+  });
+}
+
 function resolveTrackFile(track, fileIndex, album) {
   if (track?.albumId != null && String(track.albumId) !== String(album?.id)) return null;
   const file =
@@ -82,18 +146,7 @@ export async function indexLidarrLibrary({ client } = {}) {
     return { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   }
   const artistById = new Map((Array.isArray(artists) ? artists : []).map((item) => [String(item.id), item]));
-  const albumTrackData = await mapWithConcurrency(albums, 4, async (album) => {
-    if (!album?.id) return { albumId: null, tracks: [], files: [] };
-    const [tracks, files] = await Promise.all([
-      client.getTracksByAlbumId(album.id),
-      client.getTrackFilesByAlbumId(album.id),
-    ]);
-    return {
-      albumId: String(album.id),
-      tracks: Array.isArray(tracks) ? tracks : [],
-      files: Array.isArray(files) ? files : [],
-    };
-  });
+  const albumTrackData = await loadAlbumTrackData(client, albums);
   const tracksByAlbumId = new Map();
   const filesByAlbumId = new Map();
   for (const albumData of albumTrackData) {

@@ -13,8 +13,8 @@ const recordMatches = (record, reference) => {
   );
 };
 
-const buildArtist = (artist, albums) => {
-  const artistAlbums = albums.filter((album) => album.artistId === artist.id);
+const buildArtist = (artist, albumsByArtistId) => {
+  const artistAlbums = albumsByArtistId.get(artist.id) || [];
   const trackCount = artistAlbums.reduce((count, album) => count + album.trackIds.length, 0);
   const sizeOnDisk = artistAlbums.reduce((total, album) => total + album.statistics.sizeOnDisk, 0);
   const providerId = artist.metadata?.id ?? null;
@@ -45,10 +45,10 @@ const buildArtist = (artist, albums) => {
   };
 };
 
-const buildAlbum = (album, artists, tracks) => {
-  const artist = artists.find((candidate) => candidate.id === album.artistId);
+const buildAlbum = (album, artistsById, tracksById) => {
+  const artist = artistsById.get(album.artistId);
   const albumTracks = album.trackIds
-    .map((trackId) => tracks.find((track) => track.id === trackId))
+    .map((trackId) => tracksById.get(trackId))
     .filter(Boolean);
   const sizeOnDisk = albumTracks.reduce((total, track) => {
     const file = firstAvailableFile(track);
@@ -79,7 +79,7 @@ const buildAlbum = (album, artists, tracks) => {
       percentOfTracks:
         albumTracks.length > 0 && albumTracks.every((track) => track.available) ? 100 : 0,
     },
-    trackIds: album.trackIds,
+    trackIds: [...album.trackIds],
     sources: album.sources,
     available: album.available,
   };
@@ -109,21 +109,20 @@ const buildTrack = (track, album) => {
 };
 
 export function buildCanonicalLibraryReadModel(library) {
-  const artists = library.artists.map((artist) => ({ ...artist }));
-  const albums = library.albums.map((album) => ({
-    ...album,
-    trackIds: [...album.trackIds],
-  }));
-  const tracks = library.tracks.map((track) => ({
-    ...track,
-    albums: [...track.albums],
-    files: [...track.files],
-  }));
-  const readAlbums = albums.map((album) => buildAlbum(album, artists, tracks));
-  const readArtists = artists.map((artist) => buildArtist(artist, readAlbums));
+  const { artists, albums, tracks } = library;
+  const artistsById = new Map(artists.map((artist) => [artist.id, artist]));
+  const tracksById = new Map(tracks.map((track) => [track.id, track]));
+  const readAlbums = albums.map((album) => buildAlbum(album, artistsById, tracksById));
+  const albumsByArtistId = new Map();
+  for (const album of readAlbums) {
+    const artistAlbums = albumsByArtistId.get(album.artistId) || [];
+    artistAlbums.push(album);
+    albumsByArtistId.set(album.artistId, artistAlbums);
+  }
+  const readArtists = artists.map((artist) => buildArtist(artist, albumsByArtistId));
   const readTracks = readAlbums.flatMap((album) =>
     album.trackIds
-      .map((trackId) => tracks.find((track) => track.id === trackId))
+      .map((trackId) => tracksById.get(trackId))
       .filter(Boolean)
       .map((track) => buildTrack(track, album)),
   );

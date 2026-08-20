@@ -221,16 +221,14 @@ export function getCanonicalLibrary({ source = null, availableOnly = false, favo
     conditions.push(`media.track_id IN (${targetQueries.join(" UNION ")})`);
   }
 
-  const rows = db
-    .prepare(
-      `${CANONICAL_SELECT}
-      ${CANONICAL_FROM}
-      ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
-      ORDER BY artist.sort_name COLLATE NOCASE, artist.name COLLATE NOCASE,
-        album.title COLLATE NOCASE, album_track.disc_number, album_track.track_number,
-        track.title COLLATE NOCASE, media.path COLLATE NOCASE`,
-    )
-    .all(...parameters);
+  const rows = db.prepare(
+    `${CANONICAL_SELECT}
+    ${CANONICAL_FROM}
+    ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
+    ORDER BY artist.sort_name COLLATE NOCASE, artist.name COLLATE NOCASE,
+      album.title COLLATE NOCASE, album_track.disc_number, album_track.track_number,
+      track.title COLLATE NOCASE, media.path COLLATE NOCASE`,
+  ).iterate(...parameters);
   const library = buildLibraryFromRows(rows);
   if (!favoriteTargets) libraryCache.set(cacheKey, library);
   return library;
@@ -247,23 +245,12 @@ const metadataGenres = (entity) => {
     .filter((value, index, values) => values.indexOf(value) === index);
 };
 
-const genreStatsFor = (library) => {
-  const stats = new Map();
-  const add = (genre, kind) => {
+const addGenreStats = (stats, metadata, kind) => {
+  metadataGenres({ metadata }).forEach((genre) => {
     const entry = stats.get(genre) || { name: genre, artists: 0, albums: 0, tracks: 0 };
     entry[kind] += 1;
     stats.set(genre, entry);
-  };
-  library.artists.forEach((artist) =>
-    metadataGenres(artist).forEach((genre) => add(genre, "artists")),
-  );
-  library.albums.forEach((album) =>
-    metadataGenres(album).forEach((genre) => add(genre, "albums")),
-  );
-  library.tracks.forEach((track) =>
-    metadataGenres(track).forEach((genre) => add(genre, "tracks")),
-  );
-  return [...stats.values()].sort((left, right) => left.name.localeCompare(right.name));
+  });
 };
 
 const pageNumber = (value) => Math.max(1, Number.parseInt(value, 10) || 1);
@@ -480,25 +467,28 @@ function getCanonicalGenreStats({ sourceFilter, availableOnly }) {
   const artistMedia = pageMediaExists("artists", sourceFilter, availableOnly);
   const albumMedia = pageMediaExists("albums", sourceFilter, availableOnly);
   const trackMedia = pageMediaExists("tracks", sourceFilter, availableOnly);
-  const artists = db.prepare(
+  const stats = new Map();
+  for (const row of db.prepare(
     `SELECT artist.metadata_json FROM library_artists AS artist WHERE ${artistMedia.sql}`,
-  ).all(...artistMedia.parameters);
-  const albums = db.prepare(
+  ).iterate(...artistMedia.parameters)) {
+    addGenreStats(stats, parseJson(row.metadata_json), "artists");
+  }
+  for (const row of db.prepare(
     `SELECT album.metadata_json
      FROM library_albums AS album
      JOIN library_artists AS artist ON artist.id = album.artist_id
      WHERE ${albumMedia.sql}`,
-  ).all(...albumMedia.parameters);
-  const tracks = db.prepare(
+  ).iterate(...albumMedia.parameters)) {
+    addGenreStats(stats, parseJson(row.metadata_json), "albums");
+  }
+  for (const row of db.prepare(
     `SELECT track.metadata_json FROM library_tracks AS track WHERE ${trackMedia.sql}`,
-  ).all(...trackMedia.parameters);
-  const stats = genreStatsFor({
-    artists: artists.map((row) => ({ metadata: parseJson(row.metadata_json) })),
-    albums: albums.map((row) => ({ metadata: parseJson(row.metadata_json) })),
-    tracks: tracks.map((row) => ({ metadata: parseJson(row.metadata_json) })),
-  });
-  genreStatsCache.set(cacheKey, stats);
-  return stats;
+  ).iterate(...trackMedia.parameters)) {
+    addGenreStats(stats, parseJson(row.metadata_json), "tracks");
+  }
+  const sortedStats = [...stats.values()].sort((left, right) => left.name.localeCompare(right.name));
+  genreStatsCache.set(cacheKey, sortedStats);
+  return sortedStats;
 }
 
 function getPageLibrary(kind, ids, sourceFilter, availableOnly, albumId = null) {
@@ -522,7 +512,7 @@ function getPageLibrary(kind, ids, sourceFilter, availableOnly, albumId = null) 
      ORDER BY artist.sort_name COLLATE NOCASE, artist.name COLLATE NOCASE,
        album.title COLLATE NOCASE, album_track.disc_number, album_track.track_number,
        track.title COLLATE NOCASE, media.path COLLATE NOCASE`,
-  ).all(...parameters);
+  ).iterate(...parameters);
   return buildLibraryFromRows(rows);
 }
 
@@ -581,7 +571,7 @@ function getAlbumTrackLibrary(
      WHERE ${conditions.join(" AND ")}
      ORDER BY ${orderBy}, album_track.disc_number, album_track.track_number,
        media.path COLLATE NOCASE`,
-  ).all(...parameters);
+  ).iterate(...parameters);
   return buildLibraryFromRows(rows);
 }
 

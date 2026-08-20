@@ -336,6 +336,66 @@ test("indexLidarrLibrary imports logical media and readable track files", async 
   }
 });
 
+test("indexLidarrLibrary uses bulk track reads when Lidarr provides them", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-bulk-index-"));
+  let filePath;
+  try {
+    filePath = await createAudioFile(root, "Bulk Artist/Bulk Album/01 Bulk Track.flac");
+    const calls = [];
+    const client = {
+      isConfigured: () => true,
+      request: async () => [{
+        id: 707,
+        artistName: "Bulk Artist",
+        foreignArtistId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      }],
+      getAllAlbums: async () => [{
+        id: 808,
+        artistId: 707,
+        title: "Bulk Album",
+        foreignAlbumId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        path: path.join(root, "Bulk Artist", "Bulk Album"),
+      }],
+      getAllTracks: async () => {
+        calls.push("tracks");
+        return [{
+          id: 809,
+          albumId: 808,
+          title: "Bulk Track",
+          trackNumber: 1,
+          foreignRecordingId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          trackFileId: 810,
+        }];
+      },
+      getAllTrackFiles: async () => {
+        calls.push("files");
+        return [{ id: 810, path: filePath, trackIds: [809], mediaInfo: { audioFormat: "FLAC" } }];
+      },
+      getTracksByAlbumId: async () => {
+        throw new Error("per-album track read should not run when bulk reads exist");
+      },
+      getTrackFilesByAlbumId: async () => {
+        throw new Error("per-album file read should not run when bulk reads exist");
+      },
+      getRootFolders: async () => [{ path: root }],
+    };
+
+    const result = await indexLidarrLibrary({ client });
+    const snapshot = getLibrarySnapshot();
+    const file = snapshot.files.find((entry) => entry.path === filePath);
+
+    assert.deepEqual(calls, ["tracks", "files"]);
+    assert.equal(result.filesIndexed, 1);
+    assert.equal(file?.source, "lidarr");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run(
+      "lidarr",
+      filePath,
+    );
+  }
+});
+
 test("indexLidarrLibrary does not reuse a file from another album", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-album-scope-"));
   const artistId = 10000 + (process.pid % 1000);
