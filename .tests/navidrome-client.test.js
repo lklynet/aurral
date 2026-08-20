@@ -174,43 +174,29 @@ test("batches large playlist replacement requests", async () => {
   assert.ok(urls.every((url) => url.toString().length < 8192));
 });
 
-test("prefers the exact path and metadata when duplicate songs match", async () => {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => jsonResponse({
-    "subsonic-response": {
-      status: "ok",
-      searchResult3: {
-        song: [
-          { id: "other", title: "Song", artist: "Artist", album: "Other", path: "Song.flac" },
-          {
-            id: "match",
-            title: "Song",
-            artist: "Artist",
-            album: "Album",
-            path: "Artist/Album/Song.flac",
-            duration: 240,
-          },
-        ],
-      },
+test("prefers the exact indexed path when duplicate songs match", async () => {
+  const client = new NavidromeClient("http://navidrome.test", "user", "password");
+  client._getIndexedSongs = async () => [
+    { id: "other", title: "Song", artist: "Artist", album: "Other", path: "Other/Song.flac" },
+    {
+      id: "match",
+      title: "Song",
+      artist: "Artist",
+      album: "Album",
+      path: "Artist/Album/Song.flac",
+      duration: 240,
     },
+  ];
+  const song = await client.findSong("Song", "Artist", {
+    album: "Album",
+    durationMs: 240000,
+    path: "/music/Artist/Album/Song.flac",
   });
-
-  let song;
-  try {
-    song = await new NavidromeClient("http://navidrome.test", "user", "password")
-      .findSong("Song", "Artist", {
-        album: "Album",
-        durationMs: 240000,
-        path: "/music/Artist/Album/Song.flac",
-      });
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
 
   assert.equal(song.id, "match");
 });
 
-test("matches metadata variants and falls back to title search", async () => {
+test("does not match an unindexed track from metadata search", async () => {
   const originalFetch = globalThis.fetch;
   const queries = [];
   globalThis.fetch = async (url) => {
@@ -246,11 +232,11 @@ test("matches metadata variants and falls back to title search", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(song.id, "variant");
-  assert.deepEqual(queries.filter(Boolean), ["The Goo Goo Dolls Slide", "Slide"]);
+  assert.equal(song, null);
+  assert.deepEqual(queries, []);
 });
 
-test("uses an indexed path before metadata matching", async () => {
+test("uses an indexed path without metadata matching", async () => {
   const client = new NavidromeClient("http://navidrome.test", "user", "password");
   client._getIndexedSongs = async () => [{
     id: "path-match",
@@ -267,6 +253,25 @@ test("uses an indexed path before metadata matching", async () => {
   });
 
   assert.equal(song.id, "path-match");
+});
+
+test("uses an exact indexed recording MBID when the path differs", async () => {
+  const client = new NavidromeClient("http://navidrome.test", "user", "password");
+  client._getIndexedSongs = async () => [{
+    id: "mbid-match",
+    musicBrainzId: "recording-mbid",
+    path: "Artist/Album/track.flac",
+  }];
+  client.request = async () => {
+    throw new Error("metadata search should not run");
+  };
+
+  const song = await client.findSong("Wanted title", "Wanted artist", {
+    mbid: "recording-mbid",
+    path: "/data/music/Other/track.flac",
+  });
+
+  assert.equal(song.id, "mbid-match");
 });
 
 test("uploads playlist artwork through the native API", async () => {

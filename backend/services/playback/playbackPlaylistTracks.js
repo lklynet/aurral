@@ -6,7 +6,7 @@ import {
 } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { downloadTracker } from "../weeklyFlow/weeklyFlowDownloadTracker.js";
 import {
-  remapLegacyPath,
+  resolveExistingTrackPath,
   resolvePlaylistRoot,
 } from "../playlistPaths.js";
 
@@ -38,10 +38,10 @@ export async function collectPlaybackPlaylistTracks(entityId, options = {}) {
   );
   const tracks = [];
   for (const job of orderedJobs) {
-    const localPath = path.resolve(remapLegacyPath(job.finalPath, weeklyFlowRoot));
-    if (!(await isFile(localPath))) continue;
+    const resolved = await resolveExistingTrackPath(job.finalPath, weeklyFlowRoot);
+    if (!resolved || !(await isFile(resolved.path))) continue;
     tracks.push({
-      path: localPath,
+      path: resolved.path,
       title: String(job.trackName || "").trim() || "Unknown Track",
       artist: String(job.artistName || "").trim() || "Unknown Artist",
       ...(job.albumName ? { album: job.albumName } : {}),

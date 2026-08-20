@@ -5,6 +5,7 @@ import { userOps } from "../../db/helpers/index.js";
 import { NavidromeClient } from "../navidrome.js";
 import { navidromePlaylistPointerStore } from "../navidrome/navidromePlaylistPointerStore.js";
 import {
+  AURRAL_FLOWS_DIR,
   PLAYLIST_LIBRARY_DIR,
   resolvePlaylistRoot,
 } from "../playlistPaths.js";
@@ -334,6 +335,7 @@ export class NavidromePlaybackDestination {
   async ensureLibrary() {
     try {
       await fs.mkdir(this.libraryRoot, { recursive: true });
+      await fs.mkdir(path.join(this.weeklyFlowRoot, AURRAL_FLOWS_DIR), { recursive: true });
       if (this.isConfigured()) {
         await this.client.ensureWeeklyFlowLibrary(
           this.mediaLibraryRoot.replace(/\\/g, "/").replace(/\/+$/, ""),

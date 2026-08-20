@@ -15,7 +15,7 @@ const [
   { dbOps },
   { flowPlaylistConfig },
   { downloadTracker },
-  { migrateAurralDownloadFolder },
+  { migrateAurralDownloadFolder, migrateLegacyFlowFolder },
 ] = await setupIsolatedBackend(
   "aurral-download-folder-migration",
   "backend/config/db-sqlite.js",
@@ -41,6 +41,44 @@ test.beforeEach(async () => {
 
 test.after(async () => {
   await cleanupIsolatedState(isolatedState);
+});
+
+test("moves legacy dot flow files into the visible flow directory", async () => {
+  const flow = flowPlaylistConfig.createFlow({ name: "Legacy Nightly", enabled: true });
+  const source = path.join(
+    root,
+    ".flows",
+    flow.id,
+    "Artist",
+    "Album",
+    "Flow Track.flac",
+  );
+  await fs.mkdir(path.dirname(source), { recursive: true });
+  await fs.writeFile(source, "flow audio");
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", albumName: "Album", trackName: "Flow Track" },
+    flow.id,
+  );
+  downloadTracker.setDone(jobId, source);
+
+  const result = await migrateLegacyFlowFolder({ root });
+  const destination = path.join(
+    root,
+    "_flows",
+    flow.id,
+    "Artist",
+    "Album",
+    "Flow Track.flac",
+  );
+
+  assert.equal(result.migrated, 1);
+  assert.equal(downloadTracker.getJob(jobId).finalPath, destination);
+  assert.equal(await fs.readFile(destination, "utf8"), "flow audio");
+  await assert.rejects(() => fs.access(source));
+
+  const retry = await migrateLegacyFlowFolder({ root });
+  assert.equal(retry.scanned, 0);
+  assert.equal(retry.migrated, 0);
 });
 
 test("migrates permanent tracks, isolates active flows, and removes unkept flow files", async () => {
@@ -99,7 +137,7 @@ test("migrates permanent tracks, isolates active flows, and removes unkept flow 
   });
 
   const permanentDestination = path.join(root, "Artist", "Album", "Track.flac");
-  const flowDestination = path.join(root, ".flows", flow.id, "Artist", "Album", "Flow Track.flac");
+  const flowDestination = path.join(root, "_flows", flow.id, "Artist", "Album", "Flow Track.flac");
   assert.equal(result.migrated, 2);
   assert.equal(result.flowMigrated, 1);
   assert.equal(result.removed, 1);

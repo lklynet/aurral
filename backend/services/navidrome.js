@@ -11,31 +11,6 @@ const NAVIDROME_RATE_LIMIT_MAX_DELAY_MS = 5_000;
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-function normalizeSearchText(value) {
-  return String(value || "")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim();
-}
-
-function titleForms(value) {
-  const normalized = normalizeSearchText(value);
-  const base = normalized.split(/\s+-\s+|\s+\(/, 1)[0].trim();
-  return new Set([normalized, base].filter(Boolean));
-}
-
-function artistForms(value) {
-  const normalized = normalizeSearchText(value);
-  return new Set([normalized, normalized.replace(/^the\s+/, "")].filter(Boolean));
-}
-
-function stripTrackPrefix(value) {
-  return String(value || "").replace(/^\s*\d{1,3}(?:[-_. ]+\d{1,3})?\s*[-_. ]+/, "");
-}
-
 function normalizeLibraryPath(value) {
   return String(value || "")
     .trim()
@@ -120,75 +95,21 @@ export class NavidromeClient {
     return this.request("ping");
   }
 
-  async findSong(title, artist, track = {}) {
+  async findSong(_title, _artist, track = {}) {
     const normalizedPath = String(track.path || "").replace(/\\/g, "/").toLowerCase();
-    if (normalizedPath) {
-      const indexedSongs = await this._getIndexedSongs();
-      const matchesPathSuffix = (songPath) => songPath
-        && (normalizedPath === songPath || normalizedPath.endsWith(`/${songPath}`));
-      const pathMatch = indexedSongs.find((song) => {
-        const songPath = String(song.path || "").replace(/\\/g, "/").toLowerCase();
-        return matchesPathSuffix(songPath);
-      });
-      if (pathMatch) return pathMatch;
-    }
-    const search = (query, songCount) => this.request("search3", {
-      query,
-      songCount,
-      artistCount: 0,
-      albumCount: 0,
-    });
-    const toList = (value) => {
-      if (!value) return [];
-      return Array.isArray(value) ? value : [value];
-    };
-    let data = await search(`${artist} ${title}`, 5);
-    let songs = toList(data.searchResult3?.song);
-    if (!songs.length) {
-      data = await search(title, 25);
-      songs = toList(data.searchResult3?.song);
-    }
-    if (!songs.length) {
-      data = await search(artist, 25);
-      songs = toList(data.searchResult3?.song);
-    }
-    const candidates = songs;
-    const fileName = normalizedPath.split("/").at(-1);
-    const album = String(track.album || "").toLowerCase();
-    const mbid = String(track.mbid || "").toLowerCase();
-    const duration = Number(track.durationMs) / 1000;
-    const wantedTitles = titleForms(title);
-    const wantedArtists = artistForms(artist);
-    const wantedAlbum = normalizeSearchText(album);
-    const wantedFileStem = normalizeSearchText(stripTrackPrefix(fileName?.replace(/\.[^.]+$/, "")));
-    const score = (song) => {
+    const indexedSongs = await this._getIndexedSongs();
+    const matchesPath = (song) => {
       const songPath = String(song.path || "").replace(/\\/g, "/").toLowerCase();
-      const candidateTitles = titleForms(song.title);
-      const candidateArtists = artistForms(song.artist);
-      const candidateAlbum = normalizeSearchText(song.album);
-      const candidateFileStem = normalizeSearchText(
-        stripTrackPrefix(songPath.split("/").at(-1)?.replace(/\.[^.]+$/, "")),
-      );
-      let value = 0;
-      if (mbid && String(song.musicBrainzId || "").toLowerCase() === mbid) value += 8;
-      if (songPath && (normalizedPath === songPath || normalizedPath.endsWith(`/${songPath}`))) value += 8;
-      else if (fileName && songPath.split("/").at(-1) === fileName) value += 4;
-      if (wantedTitles.has(normalizeSearchText(song.title))) value += 10;
-      else if ([...wantedTitles].some((form) => candidateTitles.has(form))) value += 7;
-      if ([...wantedArtists].some((form) => candidateArtists.has(form))) value += 6;
-      if (wantedAlbum && candidateAlbum === wantedAlbum) value += 3;
-      if (wantedFileStem && candidateFileStem && (
-        wantedFileStem === candidateFileStem
-        || wantedFileStem.startsWith(candidateFileStem)
-        || candidateFileStem.startsWith(wantedFileStem)
-      )) value += 6;
-      if (Number.isFinite(duration) && Math.abs(Number(song.duration) - duration) <= 2) value += 1;
-      return value;
+      return songPath && (normalizedPath === songPath || normalizedPath.endsWith(`/${songPath}`));
     };
-    return candidates
-      .map((song) => ({ song, score: score(song) }))
-      .filter(({ score: value }) => value >= 13)
-      .sort((a, b) => b.score - a.score)[0]?.song || null;
+    const pathMatch = normalizedPath ? indexedSongs.find(matchesPath) : null;
+    if (pathMatch) return pathMatch;
+
+    const mbid = String(track.mbid || "").trim().toLowerCase();
+    if (!mbid) return null;
+    return indexedSongs.find(
+      (song) => String(song.musicBrainzId || "").trim().toLowerCase() === mbid,
+    ) || null;
   }
 
   async searchSongsByArtist(artistName, limit = 5) {

@@ -34,7 +34,7 @@ volumes:
 8. Select **Test connection**.
 9. After a flow downloads tracks, select **Sync to Plex now**.
 
-Aurral registers the library at `<plex-visible-downloads>`. Permanent tracks are in `artist/album/track` folders. Temporary flow tracks are under `.flows/<flow-id>`.
+Aurral registers the library at `<plex-visible-downloads>`. Permanent tracks are in `artist/album/track` folders. Temporary flow tracks are under `_flows/<flow-id>`.
 
 You do not need to create this library manually in Plex. The library can be empty until a flow finishes downloading tracks. Plex can take several minutes to scan the files.
 
@@ -57,7 +57,7 @@ Set **Plex Aurral Library path** if Plex uses a different mount prefix than Aurr
 
 Enter the Downloads Folder as Plex sees it. Aurral uses that path as the library root.
 
-Aurral also adds the `.flows` directory as an explicit second Plex library location. Plex otherwise skips hidden directories below the library root, which would hide flow tracks from scans.
+Aurral also adds the `_flows` directory as an explicit second Plex library location. It keeps the legacy `.flows` location during migration.
 
 | Aurral writes to            | Plex sees                      | Plex Aurral Library path |
 | --------------------------- | ------------------------------ | ------------------------- |

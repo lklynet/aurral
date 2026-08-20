@@ -86,6 +86,7 @@ test("scanMusicRoot indexes tagged media and ignores Flow output", async () => {
     await createAudioFile(root, "_playlists/ignored.flac");
     await createAudioFile(root, "_staging/ignored.flac");
     await createAudioFile(root, "_fallback/ignored.flac");
+    await createAudioFile(root, "_flows/flow/ignored.flac");
     await createAudioFile(root, ".hidden/ignored.flac");
 
     const result = await scanMusicRoot({

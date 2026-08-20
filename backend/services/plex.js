@@ -1,5 +1,6 @@
 import axios from "../../lib/axiosFetch.js";
 import crypto from "crypto";
+import { AURRAL_FLOWS_DIR, LEGACY_AURRAL_FLOWS_DIR } from "./playlistPaths.js";
 
 const PLEX_TV = "https://plex.tv";
 const PLEX_AUTH_APP = "https://app.plex.tv";
@@ -248,7 +249,12 @@ export class PlexClient {
   async ensureWeeklyFlowLibrary(libraryPath) {
     if (!this.isConfigured()) return null;
     const name = "Aurral";
-    const locations = [libraryPath, `${libraryPath.replace(/\/+$/, "")}/.flows`];
+    const flowRoot = libraryPath.replace(/\/+$/, "");
+    const locations = [
+      libraryPath,
+      `${flowRoot}/${AURRAL_FLOWS_DIR}`,
+      `${flowRoot}/${LEGACY_AURRAL_FLOWS_DIR}`,
+    ];
     // Also match the legacy "Aurral Flow" name so existing libraries are reused
     // and renamed rather than duplicated.
     const findExisting = (libs) =>

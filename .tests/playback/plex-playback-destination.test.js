@@ -138,8 +138,8 @@ test("recovers a managed-user token and retries with the stored client identifie
 test("resolves managed and reused Lidarr paths to private Plex rating keys", async () => {
   const destination = makeDestination({ downloadsPath: "/data", mainLibrarySectionId: "9" });
   const managedPath = path.join(
-    destination.playlistLibraryRoot,
-    ".flows",
+    destination.weeklyFlowRoot,
+    "_flows",
     "flow-1",
     "Artist",
     "Album",
@@ -161,7 +161,7 @@ test("resolves managed and reused Lidarr paths to private Plex rating keys", asy
   destination._libraryTracks = [
     {
       ratingKey: "101",
-      files: ["/data/.flows/flow-1/Artist/Album/Managed.flac"],
+      files: ["/data/_flows/flow-1/Artist/Album/Managed.flac"],
     },
     { ratingKey: "102", files: ["/data/Artist/Album/Canonical.flac"] },
   ];
@@ -187,8 +187,8 @@ test("reuses a Lidarr file linked into the entity folder without a main Plex lib
   const destination = makeDestination({ downloadsPath: "/data" });
   const reusedPath = path.join(weeklyFlowRoot, "..", "lidarr", "Artist", "Track.flac");
   const linkedPath = path.join(
-    destination.playlistLibraryRoot,
-    ".flows",
+    destination.weeklyFlowRoot,
+    "_flows",
     "flow-1",
     "Artist",
     "Album",
@@ -199,7 +199,7 @@ test("reuses a Lidarr file linked into the entity folder without a main Plex lib
   await fs.writeFile(reusedPath, "track");
   await fs.symlink(reusedPath, linkedPath);
   destination._libraryTracks = [
-    { ratingKey: "303", files: ["/data/.flows/flow-1/Artist/Album/Track.flac"] },
+    { ratingKey: "303", files: ["/data/_flows/flow-1/Artist/Album/Track.flac"] },
   ];
   destination._mainLibraryTracks = [];
 
@@ -214,15 +214,15 @@ test("reuses a Lidarr file linked into the entity folder without a main Plex lib
 test("upserts from the entity-owner pointer and stores the returned pointer privately", async () => {
   const destination = makeDestination({ downloadsPath: "/data" });
   const trackPath = path.join(
-    destination.playlistLibraryRoot,
-    ".flows",
+    destination.weeklyFlowRoot,
+    "_flows",
     "flow-1",
     "Artist",
     "Album",
     "Track.flac",
   );
   destination._libraryTracks = [
-    { ratingKey: "101", files: ["/data/.flows/flow-1/Artist/Album/Track.flac"] },
+    { ratingKey: "101", files: ["/data/_flows/flow-1/Artist/Album/Track.flac"] },
   ];
   destination._mainLibraryTracks = [];
   plexPlaylistPointerStore.setPointer("flow-1", "global", {
@@ -336,7 +336,7 @@ test("configures Plex with the canonical root and explicit flow location", async
   assert.equal(calls.length, 1);
   assert.equal(
     calls[0].requestPath,
-    `/library/sections?name=Aurral&type=artist&agent=tv.plex.agents.music&scanner=Plex+Music&language=en-US&location=${encodeURIComponent(root)}&location=${encodeURIComponent(`${root}/.flows`)}`,
+    `/library/sections?name=Aurral&type=artist&agent=tv.plex.agents.music&scanner=Plex+Music&language=en-US&location=${encodeURIComponent(root)}&location=${encodeURIComponent(`${root}/_flows`)}&location=${encodeURIComponent(`${root}/.flows`)}`,
   );
   assert.equal(calls[0].options.method, "POST");
 });

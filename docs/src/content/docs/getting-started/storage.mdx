@@ -58,7 +58,7 @@ If a service uses a separate path for its own database or configuration, keep th
 
 1. Aurral asks a download client to find the track.
 2. The download client writes the completed file under `/data/downloads/...`.
-3. Aurral imports the file into its Downloads Folder. Permanent tracks use `artist/album/track`; flow tracks use `.flows/<flow-id>/artist/album/track`.
+3. Aurral imports the file into its Downloads Folder. Permanent tracks use `artist/album/track`; flow tracks use `_flows/<flow-id>/artist/album/track`.
 4. Aurral writes playlist sidecars under `aurral-weekly-flow/_playlists`.
 5. Navidrome scans the Downloads Folder and can play the tracks.
 
@@ -87,7 +87,7 @@ Choose one directory on the Docker host as the media root. The example uses `/sr
     |-- usenet/complete/            # optional SABnzbd or NZBGet files
     \-- aurral/                     # Aurral Downloads Folder
         |-- Artist/Album/track      # permanent canonical tracks
-        |-- .flows/flow-id/...      # temporary flow tracks
+        |-- _flows/flow-id/...      # temporary flow tracks
         \-- aurral-weekly-flow/     # playlist sidecars
 ```
 
@@ -192,7 +192,7 @@ Use these checks in order:
 
    ```text
    /data/downloads/aurral/Artist/Album/Track.flac
-   /data/downloads/aurral/.flows/<flow-id>/Artist/Album/Track.flac
+   /data/downloads/aurral/_flows/<flow-id>/Artist/Album/Track.flac
    ```
 
 4. **Playback check:** Navidrome or Plex must have the Downloads Folder in its own filesystem and must scan it.

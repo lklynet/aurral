@@ -13,6 +13,8 @@ import { getLibraryMediaFile } from "./libraryMediaStore.js";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 import { flowPlaylistConfig } from "./weeklyFlow/weeklyFlowPlaylistConfig.js";
 import {
+  AURRAL_FLOWS_DIR,
+  LEGACY_AURRAL_FLOWS_DIR,
   PLAYLIST_LIBRARY_DIR,
   buildAurralTrackDestination,
   isPathInsideRoot,
@@ -281,6 +283,61 @@ async function removeSource(sourcePath, rootPath) {
     }
     current = path.dirname(current);
   }
+}
+
+export async function migrateLegacyFlowFolder(options = {}) {
+  const rootPath = path.resolve(options.root || resolvePlaylistRoot());
+  const legacyRoot = path.join(rootPath, LEGACY_AURRAL_FLOWS_DIR);
+  const currentRoot = path.join(rootPath, AURRAL_FLOWS_DIR);
+  const logger = options.logger || console;
+  const files = await walkFiles(legacyRoot);
+  const jobsByPath = new Map();
+  for (const job of downloadTracker.getAll()) {
+    if (job?.status !== "done" || typeof job.finalPath !== "string") continue;
+    const finalPath = path.resolve(job.finalPath);
+    if (!isPathInsideRoot(finalPath, legacyRoot)) continue;
+    const matches = jobsByPath.get(finalPath) || [];
+    matches.push(job);
+    jobsByPath.set(finalPath, matches);
+  }
+  const result = {
+    status: "complete",
+    rootPath,
+    scanned: files.length,
+    migrated: 0,
+    retained: 0,
+    failed: 0,
+    failures: [],
+  };
+
+  for (const sourcePath of files) {
+    const destination = path.resolve(currentRoot, path.relative(legacyRoot, sourcePath));
+    try {
+      const destinationStat = await fs.stat(destination).catch(() => null);
+      if (destinationStat) {
+        if (!destinationStat.isFile() || !(await filesMatch(sourcePath, destination))) {
+          throw new Error("Canonical flow destination conflicts with source content");
+        }
+      } else {
+        await fs.mkdir(path.dirname(destination), { recursive: true });
+        await fs.rename(sourcePath, destination);
+      }
+      for (const job of jobsByPath.get(sourcePath) || []) {
+        downloadTracker.updateFinalPath(job.id, destination);
+      }
+      if (path.resolve(sourcePath) !== path.resolve(destination)) {
+        await removeSource(sourcePath, rootPath);
+      }
+      result.migrated += 1;
+    } catch (error) {
+      result.retained += 1;
+      result.failed += 1;
+      result.failures.push({ sourcePath, reason: error.message });
+      log(logger, "warn", `[AurralMigration] Retained ${sourcePath}: ${error.message}`);
+    }
+  }
+  if (result.failed > 0) result.status = "needs-review";
+  return result;
 }
 
 function updateJobPaths(jobs, destination) {
