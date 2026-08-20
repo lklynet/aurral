@@ -459,6 +459,7 @@ export async function updateSharedPlaylist({
   hasImportSourceUpdate = false,
   importSource = null,
   deleteUnsharedFiles = false,
+  mergeImportSource = false,
 } = {}) {
   const safePlaylistId = String(playlistId || "").trim();
   const currentPlaylist = flowPlaylistConfig.getSharedPlaylist(safePlaylistId);
@@ -468,7 +469,7 @@ export async function updateSharedPlaylist({
     : String(currentPlaylist.name || "").trim();
   let playlist = null;
   let tracksQueued = 0;
-  const playlistUpdates = { name: safeName };
+  const playlistUpdates = hasNameUpdate ? { name: safeName } : {};
   if (hasImportSourceUpdate) {
     playlistUpdates.importSource = importSource;
   }
@@ -480,6 +481,15 @@ export async function updateSharedPlaylist({
       normalizeTrackList(tracks),
     );
     await withPlaylistMutation(safePlaylistId, async () => {
+      const lockedPlaylist = flowPlaylistConfig.getSharedPlaylist(safePlaylistId);
+      const lockedImportSource = lockedPlaylist?.importSource || currentPlaylist.importSource;
+      const importSourceToStore =
+        mergeImportSource && hasImportSourceUpdate
+          ? { ...lockedImportSource, ...(importSource || {}) }
+          : importSource;
+      const shouldDeleteUnsharedFiles =
+        deleteUnsharedFiles ||
+        (mergeImportSource && lockedImportSource?.keepRemovedTracks === false);
       const existingJobs = downloadTracker.getByPlaylistType(safePlaylistId);
       const reusableJobsByIdentity = new Map();
       for (const job of existingJobs) {
@@ -511,16 +521,16 @@ export async function updateSharedPlaylist({
           await removePlaylistFileIfUnshared(job.finalPath, safePlaylistId, {
             weeklyFlowRoot: weeklyFlowWorker.weeklyFlowRoot,
             excludeJobIds: [job.id, ...matchedJobIds],
-            deleteIfUnshared: deleteUnsharedFiles,
+            deleteIfUnshared: shouldDeleteUnsharedFiles,
           });
         }
         downloadTracker.removeJob(job.id);
       }
 
       playlist = flowPlaylistConfig.updateSharedPlaylist(safePlaylistId, {
-        name: safeName,
+        ...(hasNameUpdate ? { name: safeName } : {}),
         tracks: normalizedTracks,
-        ...(hasImportSourceUpdate ? { importSource } : {}),
+        ...(hasImportSourceUpdate ? { importSource: importSourceToStore } : {}),
       });
       const queued = await queueTracksForPlaylist(tracksNeedingWork, safePlaylistId);
       tracksQueued = queued.jobIds.length;

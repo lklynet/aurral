@@ -19,6 +19,8 @@ const [
   workerModule,
   playlistSourceModule,
   playlistManagerModule,
+  spotifyClientModule,
+  importSyncModule,
 ] = await setupIsolatedBackend(
   "playlist-import-order",
   "backend/config/db-sqlite.js",
@@ -29,6 +31,8 @@ const [
   "backend/services/weeklyFlow/weeklyFlowWorker.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistSource.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
+  "backend/services/spotify/spotifyClient.js",
+  "backend/services/importLists/importListSync.js",
 );
 
 const { downloadTracker } = trackerModule;
@@ -41,6 +45,8 @@ const { appendSharedPlaylistTracks, processWeeklyFlowOperation, updateSharedPlay
 const { weeklyFlowWorker } = workerModule;
 const { playlistSource } = playlistSourceModule;
 const { playlistManager } = playlistManagerModule;
+const { spotifyClient } = spotifyClientModule;
+const { syncSharedPlaylistImport } = importSyncModule;
 
 const weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER;
 
@@ -346,6 +352,65 @@ test("replacing a shared playlist removes Spotify tracks and honors file retenti
     assert.deepEqual(flowPlaylistConfig.getSharedPlaylist(deletePlaylist.id).tracks, []);
     await assert.rejects(fs.access(deletePath));
   } finally {
+    weeklyFlowWorker.start = originalStart;
+    weeklyFlowWorker.stop();
+  }
+});
+
+test("Spotify sync keeps a retention change made while Spotify is pending", async () => {
+  const originalStart = weeklyFlowWorker.start;
+  const originalListPlaylistTracks = spotifyClient.listPlaylistTracks;
+  weeklyFlowWorker.start = async () => false;
+  try {
+    const track = {
+      artistName: "A",
+      trackName: "Removed",
+      albumName: "Album",
+    };
+    const playlist = flowPlaylistConfig.createSharedPlaylist({
+      name: "Pending Retention",
+      ownerUserId: 7,
+      tracks: [track],
+      importSource: {
+        provider: "spotify-playlist",
+        externalId: "pending-id",
+        syncEnabled: true,
+        syncIntervalHours: 24,
+      },
+    });
+    await fs.mkdir(weeklyFlowRoot, { recursive: true });
+    const finalPath = path.join(weeklyFlowRoot, "pending-retention.flac");
+    await fs.writeFile(finalPath, "audio");
+    const jobId = downloadTracker.addJob(track, playlist.id);
+    downloadTracker.setDone(jobId, finalPath, track.albumName);
+
+    let resolveSpotifyTracks;
+    spotifyClient.listPlaylistTracks = () =>
+      new Promise((resolve) => {
+        resolveSpotifyTracks = resolve;
+      });
+    const syncPromise = syncSharedPlaylistImport({
+      playlistId: playlist.id,
+      user: { id: 7 },
+      force: true,
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    flowPlaylistConfig.updateSharedPlaylist(playlist.id, {
+      importSource: {
+        ...playlist.importSource,
+        keepRemovedTracks: false,
+      },
+    });
+    resolveSpotifyTracks([]);
+    await syncPromise;
+
+    const updated = flowPlaylistConfig.getSharedPlaylist(playlist.id);
+    assert.equal(updated.importSource.keepRemovedTracks, false);
+    assert.equal(updated.tracks.length, 0);
+    await assert.rejects(fs.access(finalPath));
+  } finally {
+    spotifyClient.listPlaylistTracks = originalListPlaylistTracks;
     weeklyFlowWorker.start = originalStart;
     weeklyFlowWorker.stop();
   }

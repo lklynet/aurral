@@ -40,8 +40,7 @@ export async function syncSharedPlaylistImport({
       { forceRefresh: true },
     );
     const tracks = parseSpotifyPlaylistItems(items).tracks;
-    const nextImportSource = {
-      ...playlist.importSource,
+    const syncImportSource = {
       lastSyncAt: Date.now(),
       lastSyncError: null,
       lastSyncTrackCount: tracks.length,
@@ -51,8 +50,8 @@ export async function syncSharedPlaylistImport({
       tracks,
       hasTracksUpdate: true,
       hasImportSourceUpdate: true,
-      importSource: nextImportSource,
-      deleteUnsharedFiles: playlist.importSource.keepRemovedTracks === false,
+      importSource: syncImportSource,
+      mergeImportSource: true,
     });
     return {
       skipped: false,
@@ -61,9 +60,10 @@ export async function syncSharedPlaylistImport({
       tracksReused: Number(result?.tracksReused || 0),
     };
   } catch (error) {
+    const latestPlaylist = flowPlaylistConfig.getSharedPlaylist(playlist.id);
     flowPlaylistConfig.updateSharedPlaylist(playlist.id, {
       importSource: {
-        ...playlist.importSource,
+        ...(latestPlaylist?.importSource || playlist.importSource),
         lastSyncError: String(error?.message || "Spotify sync failed"),
       },
     });
