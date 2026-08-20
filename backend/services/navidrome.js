@@ -31,6 +31,7 @@ export class NavidromeClient {
     this.user = user;
     this.password = password;
     this._libraryPaths = [];
+    this._nativeTokenPromise = null;
     this._indexedSongsPromise = null;
   }
 
@@ -240,14 +241,21 @@ export class NavidromeClient {
 
   async _nativeLogin() {
     if (!this.isConfigured()) throw new Error("Navidrome not configured");
-    const { data } = await axios.post(
-      `${this.url}/auth/login`,
-      { username: this.user, password: this.password },
-      { headers: { "Content-Type": "application/json" } },
-    );
-    const token = data.token || data.Token;
-    if (!token) throw new Error("No token in login response");
-    return token;
+    if (!this._nativeTokenPromise) {
+      this._nativeTokenPromise = axios.post(
+        `${this.url}/auth/login`,
+        { username: this.user, password: this.password },
+        { headers: { "Content-Type": "application/json" } },
+      ).then(({ data }) => {
+        const token = data.token || data.Token;
+        if (!token) throw new Error("No token in login response");
+        return token;
+      }).catch((error) => {
+        this._nativeTokenPromise = null;
+        throw error;
+      });
+    }
+    return this._nativeTokenPromise;
   }
 
   async _nativeRequest(method, path, body = null) {
@@ -269,7 +277,7 @@ export class NavidromeClient {
       throw new Error(`Unsupported method: ${method}`);
     }
     const newToken = response.headers["x-nd-authorization"];
-    if (newToken) token = newToken;
+    if (newToken) this._nativeTokenPromise = Promise.resolve(newToken);
     return response.data;
   }
 

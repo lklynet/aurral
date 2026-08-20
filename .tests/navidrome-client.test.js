@@ -336,6 +336,33 @@ test("loads the complete indexed song list in pages", async () => {
   ]);
 });
 
+test("reuses one native login while paging the song index", async () => {
+  const originalFetch = globalThis.fetch;
+  let loginCount = 0;
+  globalThis.fetch = async (url) => {
+    const request = new URL(url);
+    if (request.pathname === "/auth/login") {
+      loginCount += 1;
+      return jsonResponse({ token: "native-token" });
+    }
+    const start = Number(request.searchParams.get("_start"));
+    return jsonResponse(start < 5_000
+      ? Array.from({ length: 1_000 }, (_, index) => ({ id: `song-${start + index}` }))
+      : [{ id: "last-song" }]);
+  };
+
+  let songs;
+  try {
+    songs = await new NavidromeClient("http://navidrome.test", "user", "password")
+      ._getIndexedSongs();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(songs.length, 5_001);
+  assert.equal(loginCount, 1);
+});
+
 test("uploads playlist artwork through the native API", async () => {
   const originalFetch = globalThis.fetch;
   const requests = [];
