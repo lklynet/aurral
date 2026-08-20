@@ -1269,23 +1269,27 @@ export class LidarrClient {
   }
 
   async getAllTracks(options = {}) {
+    const { throwOnError = false, ...requestOptions } = options;
     try {
-      const result = await this.request("/track", "GET", null, false, options);
+      const result = await this.request("/track", "GET", null, false, requestOptions);
       if (Array.isArray(result)) return result;
       if (result?.records && Array.isArray(result.records)) return result.records;
       return [];
-    } catch {
+    } catch (error) {
+      if (throwOnError) throw error;
       return [];
     }
   }
 
   async getAllTrackFiles(options = {}) {
+    const { throwOnError = false, ...requestOptions } = options;
     try {
-      const result = await this.request("/trackfile", "GET", null, false, options);
+      const result = await this.request("/trackfile", "GET", null, false, requestOptions);
       if (Array.isArray(result)) return result;
       if (result?.records && Array.isArray(result.records)) return result.records;
       return [];
-    } catch {
+    } catch (error) {
+      if (throwOnError) throw error;
       return [];
     }
   }

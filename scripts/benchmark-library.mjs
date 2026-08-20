@@ -46,6 +46,7 @@ Options:
   --repeats N                 Page samples per cold/warm group, default 3
   --indexer-albums N          Albums in the Lidarr call probe, default 1000
   --full-read-timeout-ms N    Timeout for full-read child probes, default 30000
+  --child-heap-mb N           Child heap cap in megabytes, default 2048
   --output PATH               JSON result path, default perf-results/library-<timestamp>.json
   --check                     Exit nonzero when the regression gate fails
 `);
@@ -65,6 +66,7 @@ Options:
     readOption(args, "full-read-timeout-ms", 30000),
     "full-read-timeout-ms",
   );
+  const childHeapMb = positiveInteger(readOption(args, "child-heap-mb", 2048), "child-heap-mb");
   const output = readOption(
     args,
     "output",
@@ -76,6 +78,7 @@ Options:
     repeats,
     indexerAlbums,
     fullReadTimeoutMs,
+    childHeapMb,
     output: path.isAbsolute(output) ? output : path.join(repoRoot, output),
     check: args.includes("--check"),
   };
@@ -263,12 +266,12 @@ function collectPageSamples(getPage, invalidate, repeats) {
   };
 }
 
-function runChild({ dataDir, dbPath, code, timeoutMs, env = {} }) {
+function runChild({ dataDir, dbPath, code, timeoutMs, heapMb, env = {} }) {
   return new Promise((resolve) => {
     const started = performance.now();
     const child = spawn(
       process.execPath,
-      ["--max-old-space-size=2048", "--input-type=module", "-e", code],
+      [`--max-old-space-size=${heapMb}`, "--input-type=module", "-e", code],
       {
         cwd: repoRoot,
         env: {
@@ -283,10 +286,21 @@ function runChild({ dataDir, dbPath, code, timeoutMs, env = {} }) {
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let settled = false;
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill("SIGKILL");
     }, timeoutMs);
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({
+        status: "failed",
+        elapsedMs: Number((performance.now() - started).toFixed(3)),
+        error: error.message,
+      });
+    });
     child.stdout.on("data", (chunk) => {
       stdout += chunk;
     });
@@ -294,6 +308,8 @@ function runChild({ dataDir, dbPath, code, timeoutMs, env = {} }) {
       stderr += chunk;
     });
     child.on("close", (codeValue, signal) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       const elapsedMs = Number((performance.now() - started).toFixed(3));
       if (timedOut) {
@@ -475,6 +491,7 @@ async function main() {
         dataDir,
         dbPath,
         timeoutMs: options.fullReadTimeoutMs,
+        heapMb: options.childHeapMb,
         code: fullReadCode,
         env: { AURRAL_BENCHMARK_MODE: mode },
       });
@@ -488,6 +505,7 @@ async function main() {
         dataDir: probeDir,
         dbPath: path.join(probeDir, "aurral.db"),
         timeoutMs: options.fullReadTimeoutMs,
+        heapMb: options.childHeapMb,
         code: indexerProbeCode,
         env: {
           AURRAL_BENCHMARK_INDEXER_ALBUMS: String(options.indexerAlbums),
@@ -502,11 +520,14 @@ async function main() {
       Object.entries(pages).map(([name, value]) => [name, value.warm.p95Ms]),
     );
     const checks = {
+      fullEndpointReadCompleted: fullReads["full-endpoint"].status === "completed",
       legacyReadCompleted: adapter.status === "completed",
       bulkIndexerCallCount: indexerProbes.bulk.status === "completed"
         && indexerProbes.bulk.callCount === expectedBulkIndexerCalls,
       fallbackIndexerCallCount: indexerProbes.fallback.status === "completed"
         && indexerProbes.fallback.callCount === expectedFallbackIndexerCalls,
+      fallbackIndexerConcurrency: indexerProbes.fallback.status === "completed"
+        && indexerProbes.fallback.maxActiveAlbums <= 4,
       pageWarmP95Under5s: Object.values(pageP95).every((value) => value < 5000),
     };
     output = {

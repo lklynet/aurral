@@ -75,26 +75,33 @@ function buildBulkAlbumTrackData(albums, tracks, files) {
 }
 
 async function loadAlbumTrackData(client, albums) {
+  const loadPerAlbumTrackData = () =>
+    mapWithConcurrency(albums, 4, async (album) => {
+      if (!album?.id) return { albumId: null, tracks: [], files: [] };
+      const [tracks, files] = await Promise.all([
+        client.getTracksByAlbumId(album.id),
+        client.getTrackFilesByAlbumId(album.id),
+      ]);
+      return {
+        albumId: String(album.id),
+        tracks: Array.isArray(tracks) ? tracks : [],
+        files: Array.isArray(files) ? files : [],
+      };
+    });
+
   if (typeof client.getAllTracks === "function" && typeof client.getAllTrackFiles === "function") {
-    const [tracks, files] = await Promise.all([
-      client.getAllTracks({ forceRefresh: true }),
-      client.getAllTrackFiles({ forceRefresh: true }),
-    ]);
-    return buildBulkAlbumTrackData(albums, tracks, files);
+    try {
+      const [tracks, files] = await Promise.all([
+        client.getAllTracks({ forceRefresh: true, throwOnError: true }),
+        client.getAllTrackFiles({ forceRefresh: true, throwOnError: true }),
+      ]);
+      return buildBulkAlbumTrackData(albums, tracks, files);
+    } catch {
+      return loadPerAlbumTrackData();
+    }
   }
 
-  return mapWithConcurrency(albums, 4, async (album) => {
-    if (!album?.id) return { albumId: null, tracks: [], files: [] };
-    const [tracks, files] = await Promise.all([
-      client.getTracksByAlbumId(album.id),
-      client.getTrackFilesByAlbumId(album.id),
-    ]);
-    return {
-      albumId: String(album.id),
-      tracks: Array.isArray(tracks) ? tracks : [],
-      files: Array.isArray(files) ? files : [],
-    };
-  });
+  return loadPerAlbumTrackData();
 }
 
 function resolveTrackFile(track, fileIndex, album) {
