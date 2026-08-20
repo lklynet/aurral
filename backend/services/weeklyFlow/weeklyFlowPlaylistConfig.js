@@ -449,6 +449,7 @@ export function normalizeImportSource(value) {
     syncIntervalHours: hasSync
       ? Math.min(Math.max(Math.round(syncIntervalHours), 1), 168)
       : 0,
+    keepRemovedTracks: value.keepRemovedTracks !== false,
     lastSyncAt: Number.isFinite(lastSyncAt) && lastSyncAt > 0 ? lastSyncAt : null,
     lastSyncError: String(value.lastSyncError || "").trim() || null,
     lastSyncTrackCount:

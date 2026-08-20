@@ -1154,6 +1154,28 @@ function FlowPage({ mode = "all" }) {
     }
   };
 
+  const handleUpdateSpotifyRetention = async (playlist, keepRemovedTracks) => {
+    if (!playlist?.id || updatingSyncIntervalPlaylistId) return;
+    const current = playlist.importSource?.keepRemovedTracks !== false;
+    if (keepRemovedTracks === current) return;
+    setUpdatingSyncIntervalPlaylistId(playlist.id);
+    try {
+      await updateSharedPlaylist(playlist.id, {
+        importSource: { keepRemovedTracks },
+      });
+      showSuccess(
+        keepRemovedTracks
+          ? "Removed tracks will stay in the library"
+          : "Removed tracks will be deleted when unshared",
+      );
+      await fetchStatus();
+    } catch (err) {
+      showError(getApiErrorMessage(err, "Failed to update removed-track setting"));
+    } finally {
+      setUpdatingSyncIntervalPlaylistId(null);
+    }
+  };
+
   const handleNavigateArtist = async (track) => {
     if (!track?.artistMbid) return;
     if (selectedIsFlow) {
@@ -1663,6 +1685,23 @@ function FlowPage({ mode = "all" }) {
                     </option>
                   ))}
                 </select>
+              </div>
+              <div
+                className="flow-page__menu-sync-toggle-row"
+                onClick={(event) => event.stopPropagation()}
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <span className="flow-page__menu-sync-label">
+                  Keep removed tracks in library
+                </span>
+                <PillToggle
+                  checked={selectedPlaylist.importSource?.keepRemovedTracks !== false}
+                  onChange={(event) =>
+                    handleUpdateSpotifyRetention(selectedPlaylist, event.target.checked)
+                  }
+                  disabled={updatingSyncIntervalPlaylistId === selectedPlaylist.id}
+                  aria-label="Keep removed Spotify tracks in library"
+                />
               </div>
               <div className="flow-page__menu-divider" />
             </>

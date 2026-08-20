@@ -15,7 +15,7 @@ const [isolatedState, { db }, { dbOps }, playlistConfigModule, flowHandlerUtils]
     "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
     "backend/routes/weeklyFlow/handlers/utils.js",
   );
-const { flowPlaylistConfig, tracksShareMembership } = playlistConfigModule;
+const { flowPlaylistConfig, normalizeImportSource, tracksShareMembership } = playlistConfigModule;
 const { validateFlowPayload } = flowHandlerUtils;
 
 test.beforeEach(() => {
@@ -266,6 +266,22 @@ test("updates shared playlists and keeps summaries in sync", () => {
   assert.equal(updated?.tracks?.length, 1);
   assert.equal(summary?.name, "Gym Mix Updated");
   assert.equal(summary?.trackCount, 1);
+});
+
+test("defaults Spotify removed-track retention on and preserves an explicit opt-out", () => {
+  const source = normalizeImportSource({
+    provider: "spotify-playlist",
+    externalId: "playlist-id",
+    syncEnabled: true,
+    syncIntervalHours: 24,
+  });
+  const optedOut = normalizeImportSource({
+    ...source,
+    keepRemovedTracks: false,
+  });
+
+  assert.equal(source.keepRemovedTracks, true);
+  assert.equal(optedOut.keepRemovedTracks, false);
 });
 
 test("preserves rich track metadata when shared playlists are updated", () => {

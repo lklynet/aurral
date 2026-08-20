@@ -11519,6 +11519,14 @@ button.native-library-genre-row:focus-visible {
   font-size: 0.75rem;
 }
 
+.flow-page__menu-sync-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+}
+
 .flow-page__menu-sync-select {
   width: 100%;
   height: 2.25rem;
@@ -12140,6 +12148,31 @@ button.native-library-genre-row:focus-visible {
 
 .playlist-import__config .input:focus-visible {
   border-color: var(--aurral-border-strong);
+}
+
+.playlist-import__retention {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.25rem 0;
+  cursor: pointer;
+}
+
+.playlist-import__retention-copy {
+  display: grid;
+  gap: 0.125rem;
+}
+
+.playlist-import__retention-title {
+  color: var(--aurral-text);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.playlist-import__retention-help {
+  color: var(--aurral-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
 }
 
 .playlist-import__summary {

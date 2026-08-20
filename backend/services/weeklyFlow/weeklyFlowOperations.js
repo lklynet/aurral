@@ -450,7 +450,7 @@ export async function appendSharedPlaylistTracks({ playlistId, tracks = [] } = {
   };
 }
 
-async function updateSharedPlaylist({
+export async function updateSharedPlaylist({
   playlistId,
   name = null,
   tracks = [],
@@ -458,6 +458,7 @@ async function updateSharedPlaylist({
   hasTracksUpdate = false,
   hasImportSourceUpdate = false,
   importSource = null,
+  deleteUnsharedFiles = false,
 } = {}) {
   const safePlaylistId = String(playlistId || "").trim();
   const currentPlaylist = flowPlaylistConfig.getSharedPlaylist(safePlaylistId);
@@ -510,6 +511,7 @@ async function updateSharedPlaylist({
           await removePlaylistFileIfUnshared(job.finalPath, safePlaylistId, {
             weeklyFlowRoot: weeklyFlowWorker.weeklyFlowRoot,
             excludeJobIds: [job.id, ...matchedJobIds],
+            deleteIfUnshared: deleteUnsharedFiles,
           });
         }
         downloadTracker.removeJob(job.id);

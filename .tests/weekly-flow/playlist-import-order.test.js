@@ -37,7 +37,7 @@ const {
   orderJobsBySharedPlaylistTracks,
   rebuildSharedPlaylistTracksFromJobs,
 } = playlistConfigModule;
-const { appendSharedPlaylistTracks, processWeeklyFlowOperation } = operationsModule;
+const { appendSharedPlaylistTracks, processWeeklyFlowOperation, updateSharedPlaylist } = operationsModule;
 const { weeklyFlowWorker } = workerModule;
 const { playlistSource } = playlistSourceModule;
 const { playlistManager } = playlistManagerModule;
@@ -278,6 +278,73 @@ test("deleting a track keeps remaining import order in config", async () => {
       jobsAfter.map((job) => job.trackName),
       ["One", "Three", "Four"],
     );
+  } finally {
+    weeklyFlowWorker.start = originalStart;
+    weeklyFlowWorker.stop();
+  }
+});
+
+test("replacing a shared playlist removes Spotify tracks and honors file retention", async () => {
+  const originalStart = weeklyFlowWorker.start;
+  weeklyFlowWorker.start = async () => false;
+  try {
+    const track = {
+      artistName: "A",
+      trackName: "Removed",
+      albumName: "Album",
+    };
+    const keepPlaylist = flowPlaylistConfig.createSharedPlaylist({
+      name: "Keep Removed",
+      tracks: [track],
+      importSource: {
+        provider: "spotify-playlist",
+        externalId: "keep-id",
+        syncEnabled: true,
+        syncIntervalHours: 24,
+      },
+    });
+    await fs.mkdir(weeklyFlowRoot, { recursive: true });
+    const keepPath = path.join(weeklyFlowRoot, "keep-removed.flac");
+    await fs.writeFile(keepPath, "audio");
+    const keepJobId = downloadTracker.addJob(track, keepPlaylist.id);
+    downloadTracker.setDone(keepJobId, keepPath, track.albumName);
+
+    await updateSharedPlaylist({
+      playlistId: keepPlaylist.id,
+      tracks: [],
+      hasTracksUpdate: true,
+      hasImportSourceUpdate: true,
+      importSource: keepPlaylist.importSource,
+    });
+    assert.deepEqual(flowPlaylistConfig.getSharedPlaylist(keepPlaylist.id).tracks, []);
+    await fs.access(keepPath);
+
+    const deletePlaylist = flowPlaylistConfig.createSharedPlaylist({
+      name: "Delete Removed",
+      tracks: [track],
+      importSource: {
+        provider: "spotify-playlist",
+        externalId: "delete-id",
+        syncEnabled: true,
+        syncIntervalHours: 24,
+        keepRemovedTracks: false,
+      },
+    });
+    const deletePath = path.join(weeklyFlowRoot, "delete-removed.flac");
+    await fs.writeFile(deletePath, "audio");
+    const deleteJobId = downloadTracker.addJob(track, deletePlaylist.id);
+    downloadTracker.setDone(deleteJobId, deletePath, track.albumName);
+
+    await updateSharedPlaylist({
+      playlistId: deletePlaylist.id,
+      tracks: [],
+      hasTracksUpdate: true,
+      hasImportSourceUpdate: true,
+      importSource: deletePlaylist.importSource,
+      deleteUnsharedFiles: true,
+    });
+    assert.deepEqual(flowPlaylistConfig.getSharedPlaylist(deletePlaylist.id).tracks, []);
+    await assert.rejects(fs.access(deletePath));
   } finally {
     weeklyFlowWorker.start = originalStart;
     weeklyFlowWorker.stop();

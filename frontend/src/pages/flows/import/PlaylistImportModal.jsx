@@ -120,6 +120,7 @@ export function PlaylistImportModal({
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
   const [playlistName, setPlaylistName] = useState("");
   const [syncIntervalHours, setSyncIntervalHours] = useState(24);
+  const [keepRemovedTracks, setKeepRemovedTracks] = useState(true);
   const [previewTracks, setPreviewTracks] = useState([]);
   const [previewTrackCount, setPreviewTrackCount] = useState(0);
   const [previewSkipped, setPreviewSkipped] = useState(0);
@@ -142,6 +143,7 @@ export function PlaylistImportModal({
     setSelectedPlaylist(null);
     setPlaylistName("");
     setSyncIntervalHours(24);
+    setKeepRemovedTracks(true);
     setPreviewTracks([]);
     setPreviewTrackCount(0);
     setPreviewSkipped(0);
@@ -296,6 +298,7 @@ export function PlaylistImportModal({
         name: finalName,
         syncEnabled: syncIntervalHours > 0,
         syncIntervalHours,
+        keepRemovedTracks,
       });
       showSuccess?.(`Imported ${finalName} from Spotify`);
       onImported?.();
@@ -556,6 +559,24 @@ export function PlaylistImportModal({
                         ))}
                       </select>
                     </div>
+
+                    <label className="playlist-import__retention">
+                      <input
+                        type="checkbox"
+                        checked={keepRemovedTracks}
+                        onChange={(event) => setKeepRemovedTracks(event.target.checked)}
+                        className="artist-checkbox"
+                        disabled={importing}
+                      />
+                      <span className="playlist-import__retention-copy">
+                        <span className="playlist-import__retention-title">
+                          Keep removed tracks in library
+                        </span>
+                        <span className="playlist-import__retention-help">
+                          Spotify removals leave the downloaded file available in Aurral.
+                        </span>
+                      </span>
+                    </label>
 
                     <div className="playlist-import__summary">
                       {previewLoading ? (

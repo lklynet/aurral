@@ -1,7 +1,7 @@
 import { flowPlaylistConfig } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { spotifyClient } from "../spotify/spotifyClient.js";
 import { parseSpotifyPlaylistItems } from "./spotifyTracks.js";
-import { appendSharedPlaylistTracks } from "../weeklyFlow/weeklyFlowOperations.js";
+import { updateSharedPlaylist } from "../weeklyFlow/weeklyFlowOperations.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -40,15 +40,19 @@ export async function syncSharedPlaylistImport({
       { forceRefresh: true },
     );
     const tracks = parseSpotifyPlaylistItems(items).tracks;
-    const result = await appendSharedPlaylistTracks({ playlistId: playlist.id, tracks });
     const nextImportSource = {
       ...playlist.importSource,
       lastSyncAt: Date.now(),
       lastSyncError: null,
       lastSyncTrackCount: tracks.length,
     };
-    flowPlaylistConfig.updateSharedPlaylist(playlist.id, {
+    const result = await updateSharedPlaylist({
+      playlistId: playlist.id,
+      tracks,
+      hasTracksUpdate: true,
+      hasImportSourceUpdate: true,
       importSource: nextImportSource,
+      deleteUnsharedFiles: playlist.importSource.keepRemovedTracks === false,
     });
     return {
       skipped: false,

@@ -127,6 +127,7 @@ export function registerSpotifyImport(router) {
       const name = String(req.body?.name || "").trim();
       const externalName = String(req.body?.externalName || "").trim();
       const syncIntervalHours = Number(req.body?.syncIntervalHours ?? 24);
+      const keepRemovedTracks = req.body?.keepRemovedTracks !== false;
       const syncEnabled =
         req.body?.syncEnabled === false
           ? false
@@ -146,6 +147,7 @@ export function registerSpotifyImport(router) {
         externalName: externalName || name,
         syncEnabled,
         syncIntervalHours: syncEnabled ? syncIntervalHours : 0,
+        keepRemovedTracks,
         lastSyncAt: Date.now(),
         lastSyncTrackCount: tracks.length,
       });
