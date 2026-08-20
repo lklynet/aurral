@@ -22,6 +22,43 @@ test("isCircuitOpen returns stale GET cache instead of throwing", async () => {
   assert.equal(artists[0].artistName, "Test");
 });
 
+test("bulk track reads use Lidarr artist selectors", async (t) => {
+  const requests = [];
+  const server = http.createServer((request, response) => {
+    requests.push(request.url);
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify([{ id: 1, albumId: 2 }]));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const address = server.address();
+  const client = new LidarrClient();
+  client._holdConfig = true;
+  client.config = {
+    url: `http://127.0.0.1:${address.port}`,
+    apiKey: "test",
+    timeoutMs: 2000,
+    circuitDisabled: true,
+  };
+
+  await client.getAllTracks({ artistIds: [7, 8], throwOnError: true });
+  await client.getAllTrackFiles({ artistIds: [7, 8], throwOnError: true });
+
+  assert.deepEqual(requests.sort(), [
+    "/api/v1/track?artistId=7",
+    "/api/v1/track?artistId=8",
+    "/api/v1/trackfile?artistId=7",
+    "/api/v1/trackfile?artistId=8",
+  ]);
+  client._httpAgent.destroy();
+  client._httpsAgent.destroy();
+  client._httpsInsecureAgent.destroy();
+});
+
 test("testConnection preserves Lidarr HTTP diagnostics", async (t) => {
   let status = 401;
   const server = http.createServer((_request, response) => {

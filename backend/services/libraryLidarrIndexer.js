@@ -74,7 +74,7 @@ function buildBulkAlbumTrackData(albums, tracks, files) {
   });
 }
 
-async function loadAlbumTrackData(client, albums) {
+async function loadAlbumTrackData(client, albums, artistIds) {
   const loadPerAlbumTrackData = () =>
     mapWithConcurrency(albums, 4, async (album) => {
       if (!album?.id) return { albumId: null, tracks: [], files: [] };
@@ -92,8 +92,8 @@ async function loadAlbumTrackData(client, albums) {
   if (typeof client.getAllTracks === "function" && typeof client.getAllTrackFiles === "function") {
     try {
       const [tracks, files] = await Promise.all([
-        client.getAllTracks({ forceRefresh: true, throwOnError: true }),
-        client.getAllTrackFiles({ forceRefresh: true, throwOnError: true }),
+        client.getAllTracks({ artistIds, forceRefresh: true, throwOnError: true }),
+        client.getAllTrackFiles({ artistIds, forceRefresh: true, throwOnError: true }),
       ]);
       return buildBulkAlbumTrackData(albums, tracks, files);
     } catch {
@@ -153,7 +153,11 @@ export async function indexLidarrLibrary({ client } = {}) {
     return { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   }
   const artistById = new Map((Array.isArray(artists) ? artists : []).map((item) => [String(item.id), item]));
-  const albumTrackData = await loadAlbumTrackData(client, albums);
+  const albumTrackData = await loadAlbumTrackData(
+    client,
+    albums,
+    (Array.isArray(artists) ? artists : []).map((artist) => artist?.id),
+  );
   const tracksByAlbumId = new Map();
   const filesByAlbumId = new Map();
   for (const albumData of albumTrackData) {

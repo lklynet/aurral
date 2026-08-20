@@ -356,7 +356,8 @@ test("indexLidarrLibrary uses bulk track reads when Lidarr provides them", async
         foreignAlbumId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
         path: path.join(root, "Bulk Artist", "Bulk Album"),
       }],
-      getAllTracks: async () => {
+      getAllTracks: async ({ artistIds }) => {
+        assert.deepEqual(artistIds, [707]);
         calls.push("tracks");
         return [{
           id: 809,
@@ -367,7 +368,8 @@ test("indexLidarrLibrary uses bulk track reads when Lidarr provides them", async
           trackFileId: 810,
         }];
       },
-      getAllTrackFiles: async () => {
+      getAllTrackFiles: async ({ artistIds }) => {
+        assert.deepEqual(artistIds, [707]);
         calls.push("files");
         return [{ id: 810, path: filePath, trackIds: [809], mediaInfo: { audioFormat: "FLAC" } }];
       },
