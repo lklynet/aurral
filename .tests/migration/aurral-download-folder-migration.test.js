@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import fs from "fs/promises";
 import path from "path";
@@ -43,6 +43,8 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
+test.afterEach(() => mock.restoreAll());
+
 test("moves legacy dot flow files into the visible flow directory", async () => {
   const flow = flowPlaylistConfig.createFlow({ name: "Legacy Nightly", enabled: true });
   const source = path.join(
@@ -59,7 +61,17 @@ test("moves legacy dot flow files into the visible flow directory", async () => 
     { artistName: "Artist", albumName: "Album", trackName: "Flow Track" },
     flow.id,
   );
-  downloadTracker.setDone(jobId, source);
+  downloadTracker.setDone(
+    jobId,
+    path.join(
+      "/app/downloads",
+      ".flows",
+      flow.id,
+      "Artist",
+      "Album",
+      "Flow Track.flac",
+    ),
+  );
 
   const result = await migrateLegacyFlowFolder({ root });
   const destination = path.join(
@@ -79,6 +91,29 @@ test("moves legacy dot flow files into the visible flow directory", async () => 
   const retry = await migrateLegacyFlowFolder({ root });
   assert.equal(retry.scanned, 0);
   assert.equal(retry.migrated, 0);
+});
+
+test("retains the legacy source when tracker updates fail", async () => {
+  const flow = flowPlaylistConfig.createFlow({ name: "Failed Legacy Nightly", enabled: true });
+  const source = path.join(root, ".flows", flow.id, "Artist", "Album", "Flow Track.flac");
+  await fs.mkdir(path.dirname(source), { recursive: true });
+  await fs.writeFile(source, "flow audio");
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", albumName: "Album", trackName: "Flow Track" },
+    flow.id,
+  );
+  downloadTracker.setDone(jobId, source);
+  mock.method(downloadTracker, "updateFinalPath", () => {
+    throw new Error("tracker unavailable");
+  });
+
+  const result = await migrateLegacyFlowFolder({ root, logger: { warn() {} } });
+  const destination = path.join(root, "_flows", flow.id, "Artist", "Album", "Flow Track.flac");
+
+  assert.equal(result.failed, 1);
+  await assert.doesNotReject(() => fs.access(source));
+  await assert.doesNotReject(() => fs.access(destination));
+  assert.equal(downloadTracker.getJob(jobId).finalPath, source);
 });
 
 test("migrates permanent tracks, isolates active flows, and removes unkept flow files", async () => {

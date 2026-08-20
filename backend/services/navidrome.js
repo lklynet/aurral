@@ -5,6 +5,7 @@ const LEGACY_LIBRARY_DIR = "aurral-weekly-flow";
 const PLAYLIST_LIBRARY_NAME = "Aurral Playlists";
 const LEGACY_LIBRARY_NAMES = new Set(["Aurral Weekly Flow"]);
 const PLAYLIST_SONG_BATCH_SIZE = 50;
+const NAVIDROME_SONG_PAGE_SIZE = 1_000;
 const NAVIDROME_RATE_LIMIT_RETRIES = 2;
 const NAVIDROME_RATE_LIMIT_DELAY_MS = 250;
 const NAVIDROME_RATE_LIMIT_MAX_DELAY_MS = 5_000;
@@ -100,7 +101,7 @@ export class NavidromeClient {
     const indexedSongs = await this._getIndexedSongs();
     const matchesPath = (song) => {
       const songPath = String(song.path || "").replace(/\\/g, "/").toLowerCase();
-      return songPath && (normalizedPath === songPath || normalizedPath.endsWith(`/${songPath}`));
+      return songPath && normalizedPath === songPath;
     };
     const pathMatch = normalizedPath ? indexedSongs.find(matchesPath) : null;
     if (pathMatch) return pathMatch;
@@ -268,8 +269,20 @@ export class NavidromeClient {
 
   async _getIndexedSongs() {
     if (!this._indexedSongsPromise) {
-      this._indexedSongsPromise = this._nativeRequest("GET", "/api/song?_start=0&_end=100000")
-        .then((songs) => (Array.isArray(songs) ? songs : []))
+      this._indexedSongsPromise = (async () => {
+        const songs = [];
+        for (let start = 0; ; ) {
+          const page = await this._nativeRequest(
+            "GET",
+            `/api/song?_start=${start}&_end=${start + NAVIDROME_SONG_PAGE_SIZE}`,
+          );
+          if (!Array.isArray(page) || page.length === 0) break;
+          songs.push(...page);
+          if (page.length < NAVIDROME_SONG_PAGE_SIZE) break;
+          start += page.length;
+        }
+        return songs;
+      })()
         .catch(() => {
           this._indexedSongsPromise = null;
           return [];

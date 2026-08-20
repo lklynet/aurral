@@ -177,13 +177,13 @@ test("batches large playlist replacement requests", async () => {
 test("prefers the exact indexed path when duplicate songs match", async () => {
   const client = new NavidromeClient("http://navidrome.test", "user", "password");
   client._getIndexedSongs = async () => [
-    { id: "other", title: "Song", artist: "Artist", album: "Other", path: "Other/Song.flac" },
+    { id: "other", title: "Song", artist: "Artist", album: "Other", path: "/music/Other/Song.flac" },
     {
       id: "match",
       title: "Song",
       artist: "Artist",
       album: "Album",
-      path: "Artist/Album/Song.flac",
+      path: "/music/Artist/Album/Song.flac",
       duration: 240,
     },
   ];
@@ -240,7 +240,7 @@ test("uses an indexed path without metadata matching", async () => {
   const client = new NavidromeClient("http://navidrome.test", "user", "password");
   client._getIndexedSongs = async () => [{
     id: "path-match",
-    path: "Artist/Album/track.flac",
+    path: "/data/music/Artist/Album/track.flac",
     title: "Different tag",
     artist: "Different artist",
   }];
@@ -253,6 +253,20 @@ test("uses an indexed path without metadata matching", async () => {
   });
 
   assert.equal(song.id, "path-match");
+});
+
+test("does not match a path suffix from another library", async () => {
+  const client = new NavidromeClient("http://navidrome.test", "user", "password");
+  client._getIndexedSongs = async () => [{
+    id: "other-library",
+    path: "/library/Artist/Album/track.flac",
+  }];
+
+  const song = await client.findSong("Track", "Artist", {
+    path: "/other-library/Artist/Album/track.flac",
+  });
+
+  assert.equal(song, null);
 });
 
 test("uses an exact indexed recording MBID when the path differs", async () => {
@@ -272,6 +286,27 @@ test("uses an exact indexed recording MBID when the path differs", async () => {
   });
 
   assert.equal(song.id, "mbid-match");
+});
+
+test("loads the complete indexed song list in pages", async () => {
+  const client = new NavidromeClient("http://navidrome.test", "user", "password");
+  const requests = [];
+  client._nativeRequest = async (_method, requestPath) => {
+    requests.push(requestPath);
+    const start = Number(new URL(`http://navidrome.test${requestPath}`).searchParams.get("_start"));
+    if (start === 0) return Array.from({ length: 1_000 }, (_, index) => ({ id: `song-${index}` }));
+    if (start === 1_000) return [{ id: "song-after-first-page" }];
+    return [];
+  };
+
+  const songs = await client._getIndexedSongs();
+
+  assert.equal(songs.length, 1_001);
+  assert.equal(songs.at(-1).id, "song-after-first-page");
+  assert.deepEqual(requests, [
+    "/api/song?_start=0&_end=1000",
+    "/api/song?_start=1000&_end=2000",
+  ]);
 });
 
 test("uploads playlist artwork through the native API", async () => {

@@ -294,11 +294,14 @@ export async function migrateLegacyFlowFolder(options = {}) {
   const jobsByPath = new Map();
   for (const job of downloadTracker.getAll()) {
     if (job?.status !== "done" || typeof job.finalPath !== "string") continue;
-    const finalPath = path.resolve(job.finalPath);
-    if (!isPathInsideRoot(finalPath, legacyRoot)) continue;
-    const matches = jobsByPath.get(finalPath) || [];
+    const canonicalPath = remapLegacyPath(job.finalPath, rootPath);
+    const relative = path.relative(currentRoot, canonicalPath);
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) continue;
+    const legacyPath = path.resolve(legacyRoot, relative);
+    if (!isPathInsideRoot(legacyPath, legacyRoot)) continue;
+    const matches = jobsByPath.get(legacyPath) || [];
     matches.push(job);
-    jobsByPath.set(finalPath, matches);
+    jobsByPath.set(legacyPath, matches);
   }
   const result = {
     status: "complete",
@@ -313,21 +316,11 @@ export async function migrateLegacyFlowFolder(options = {}) {
   for (const sourcePath of files) {
     const destination = path.resolve(currentRoot, path.relative(legacyRoot, sourcePath));
     try {
-      const destinationStat = await fs.stat(destination).catch(() => null);
-      if (destinationStat) {
-        if (!destinationStat.isFile() || !(await filesMatch(sourcePath, destination))) {
-          throw new Error("Canonical flow destination conflicts with source content");
-        }
-      } else {
-        await fs.mkdir(path.dirname(destination), { recursive: true });
-        await fs.rename(sourcePath, destination);
-      }
+      const committedPath = await copyWithoutRemovingSource(sourcePath, destination);
       for (const job of jobsByPath.get(sourcePath) || []) {
-        downloadTracker.updateFinalPath(job.id, destination);
+        downloadTracker.updateFinalPath(job.id, committedPath);
       }
-      if (path.resolve(sourcePath) !== path.resolve(destination)) {
-        await removeSource(sourcePath, rootPath);
-      }
+      await removeSource(sourcePath, rootPath);
       result.migrated += 1;
     } catch (error) {
       result.retained += 1;
