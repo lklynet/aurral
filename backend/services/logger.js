@@ -28,7 +28,7 @@ export const shouldEmitDefaultConsoleMessage = (method, args = []) => {
 };
 
 function patchDefaultConsole() {
-  if (verboseEnabled || !String(process.argv[1] || "").endsWith("/server.js")) return;
+  if (verboseEnabled || !/(?:^|[\\/])server\.js$/.test(String(process.argv[1] || ""))) return;
   if (globalThis.__aurralDefaultConsolePatched) return;
   globalThis.__aurralDefaultConsolePatched = true;
 

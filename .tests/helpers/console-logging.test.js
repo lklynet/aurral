@@ -49,11 +49,13 @@ test("regular logger hides routine info and debug output", async () => {
     error: console.error,
     warn: console.warn,
   };
+  const previousVerboseLogs = process.env.AURRAL_VERBOSE_LOGS;
   console.log = (...args) => output.push(["log", ...args]);
   console.error = (...args) => output.push(["error", ...args]);
   console.warn = (...args) => output.push(["warn", ...args]);
 
   try {
+    process.env.AURRAL_VERBOSE_LOGS = "";
     const { logger } = await import(
       `../../backend/services/logger.js?regular-test=${Date.now()}`
     );
@@ -64,6 +66,8 @@ test("regular logger hides routine info and debug output", async () => {
     assert.doesNotMatch(output.map((entry) => String(entry[1])).join("\n"), /routine info|debug detail/);
     assert.match(output.map((entry) => String(entry[1])).join("\n"), /important warning/);
   } finally {
+    if (previousVerboseLogs === undefined) delete process.env.AURRAL_VERBOSE_LOGS;
+    else process.env.AURRAL_VERBOSE_LOGS = previousVerboseLogs;
     console.log = original.log;
     console.error = original.error;
     console.warn = original.warn;
