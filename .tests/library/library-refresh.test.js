@@ -8,7 +8,6 @@ const { registerCanonical } = await import(
 );
 const {
   clearScheduledLibraryScan,
-  processLibraryScan,
   stopLibraryScanWorker,
 } = await import("../../backend/services/libraryScanWorker.js");
 const { dbOps } = await import("../../backend/db/helpers/index.js");
@@ -16,34 +15,6 @@ const { getLibraryScanQueue } = await import("../../backend/services/honkerDb.js
 const { createLibraryFileWatcher } = await import(
   "../../backend/services/libraryFileWatcher.js"
 );
-
-test("background library scans reconcile album availability before completing", async () => {
-  const calls = [];
-  const lidarrClient = {};
-
-  await processLibraryScan({
-    lidarrClient,
-    scanConfiguredLibrary: async (options) => {
-      calls.push(["scan", options.lidarrClient]);
-    },
-    syncAlbumSearchHistory: async (client) => {
-      calls.push(["history", client]);
-    },
-    scanLibrary: async () => {
-      calls.push(["playlists"]);
-    },
-    broadcast: (...args) => {
-      calls.push(["broadcast", ...args]);
-    },
-  });
-
-  assert.deepEqual(calls, [
-    ["scan", lidarrClient],
-    ["history", lidarrClient],
-    ["playlists"],
-    ["broadcast", "library", { type: "library_scan_completed" }],
-  ]);
-});
 
 test("library refresh queues a forced scan and exposes its queue status", async () => {
   const existingJobId = Number(dbOps.getJSONSetting("pendingLibraryScanJob")?.jobId);

@@ -387,6 +387,30 @@ const albumRequestReferenceId = (entry) => {
   return String(entry?.metadata?.albumId || entry?.metadata?.artistMbid || "").trim();
 };
 
+export const recordAlbumImportCompleted = ({
+  albumId,
+  albumName,
+  artistName,
+  artistMbid,
+} = {}) => {
+  const normalizedAlbumId = String(albumId ?? "").trim();
+  if (!normalizedAlbumId) return null;
+
+  const existing = dbOps.getAurralHistoryById(
+    stableId("album_requested", normalizedAlbumId),
+  );
+  if (!existing || existing.kind !== "album_requested") return null;
+  if (existing.statusLabel === "Downloaded") return existing;
+
+  return recordAlbumSearchCompleted({
+    albumId: normalizedAlbumId,
+    albumName: albumName || existing.metadata?.albumName,
+    artistName: artistName || existing.metadata?.artistName,
+    artistMbid: artistMbid || existing.metadata?.artistMbid,
+    referenceId: albumRequestReferenceId(existing),
+  });
+};
+
 const normalizeAlbumMatchText = (value) =>
   String(value || "")
     .toLowerCase()

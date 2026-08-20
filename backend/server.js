@@ -36,6 +36,7 @@ import {
 import authRouter from "./routes/auth.js";
 import imageProxyRouter from "./routes/imageProxy.js";
 import lidarrFeedRouter from "./routes/lidarrFeed.js";
+import lidarrWebhookRouter from "./routes/lidarrWebhook.js";
 import inboxRouter from "./routes/inbox.js";
 import newsRouter from "./routes/news.js";
 import subsonicRouter from "./routes/subsonic.js";
@@ -209,6 +210,7 @@ app.use("/api/library", libraryRouter);
 app.use("/api/discover", discoveryRouter);
 app.use("/api/inbox", inboxRouter);
 app.use("/api/news", newsRouter);
+app.use("/api/webhooks/lidarr", lidarrWebhookRouter);
 app.use("/api/requests", requestsRouter);
 app.use("/api/health", healthRouter);
 app.use("/api/filesystem", filesystemRouter);
