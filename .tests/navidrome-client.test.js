@@ -255,6 +255,33 @@ test("uses an indexed path without metadata matching", async () => {
   assert.equal(song.id, "path-match");
 });
 
+test("matches Navidrome-relative paths under the configured library root", async () => {
+  const client = new NavidromeClient("http://navidrome.test", "user", "password");
+  client._nativeRequest = async () => [
+    { id: "music-library", name: "Music Library", path: "/data/music" },
+    { id: "aurral-song", name: "Aurral Playlists", path: "/data/downloads/aurral" },
+  ];
+  await client.ensureWeeklyFlowLibrary("/data/downloads/aurral");
+  client._getIndexedSongs = async () => [{
+    id: "relative-match",
+    path: "The Rapture/Echoes/Echoes.flac",
+  }, {
+    id: "music-relative-match",
+    path: "Black Lips/Good Bad Not Evil/Black Lips_Good Bad Not Evil_08_Bad Kids.flac",
+  }];
+
+  const song = await client.findSong("Echoes", "The Rapture", {
+    path: "/data/downloads/aurral/The Rapture/Echoes/Echoes.flac",
+  });
+
+  assert.equal(song.id, "relative-match");
+  const musicSong = await client.findSong("Bad Kids", "Black Lips", {
+    path: "/data/music/Black Lips/Good Bad Not Evil/Black Lips_Good Bad Not Evil_08_Bad Kids.flac",
+  });
+
+  assert.equal(musicSong.id, "music-relative-match");
+});
+
 test("does not match a path suffix from another library", async () => {
   const client = new NavidromeClient("http://navidrome.test", "user", "password");
   client._getIndexedSongs = async () => [{

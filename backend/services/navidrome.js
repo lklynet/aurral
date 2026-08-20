@@ -30,6 +30,7 @@ export class NavidromeClient {
     this.url = url ? url.replace(/\/+$/, "") : null;
     this.user = user;
     this.password = password;
+    this._libraryPaths = [];
     this._indexedSongsPromise = null;
   }
 
@@ -98,11 +99,15 @@ export class NavidromeClient {
   }
 
   async findSong(_title, _artist, track = {}) {
-    const normalizedPath = String(track.path || "").replace(/\\/g, "/").toLowerCase();
+    const normalizedPath = normalizeLibraryPath(track.path).toLowerCase();
+    const relativePaths = this._libraryPaths
+      .map((libraryPath) => normalizeLibraryPath(libraryPath).toLowerCase())
+      .filter((libraryPath) => normalizedPath.startsWith(`${libraryPath}/`))
+      .map((libraryPath) => normalizedPath.slice(libraryPath.length + 1));
     const indexedSongs = await this._getIndexedSongs();
     const matchesPath = (song) => {
-      const songPath = String(song.path || "").replace(/\\/g, "/").toLowerCase();
-      return songPath && normalizedPath === songPath;
+      const songPath = normalizeLibraryPath(song.path).toLowerCase();
+      return songPath && (normalizedPath === songPath || relativePaths.includes(songPath));
     };
     const pathMatch = normalizedPath ? indexedSongs.find(matchesPath) : null;
     if (pathMatch) return pathMatch;
@@ -350,9 +355,14 @@ export class NavidromeClient {
     if (!this.isConfigured()) return null;
     const name = PLAYLIST_LIBRARY_NAME;
     const normalizedPath = normalizeLibraryPath(libraryPath);
+    this._libraryPaths = [normalizedPath];
     try {
       const libs = await this.getLibraries();
       const list = Array.isArray(libs) ? libs : [];
+      this._libraryPaths = [...new Set([
+        normalizedPath,
+        ...list.map((lib) => normalizeLibraryPath(lib.path)).filter(Boolean),
+      ])];
       const byPath = list.find((lib) => normalizeLibraryPath(lib.path) === normalizedPath);
       if (byPath) {
         if (byPath.name !== name) {
