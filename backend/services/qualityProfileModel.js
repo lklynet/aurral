@@ -176,12 +176,33 @@ export function classifyAdvertisedQuality(fileName, bitrate = null) {
 
 const NEVER_TIERED_ADVERTISED_EXTENSION = /\.(?:opus|ogg|oga|wma|wav|aiff?|ape|mpc|ac3|dts|mka)\s*$/i;
 
+export function isAdvertisedQualityEligible(
+  fileName,
+  bitrate,
+  { profile, currentTier = null, upgrade = false } = {},
+) {
+  const normalized = normalizeQualityProfile(profile);
+  const tier = classifyAdvertisedQuality(fileName, bitrate);
+  if (!tier) {
+    return !NEVER_TIERED_ADVERTISED_EXTENSION.test(String(fileName || "").trim());
+  }
+  return (
+    normalized.enabled.includes(tier) &&
+    (!upgrade || isQualityUpgrade({ tier }, currentTier, normalized))
+  );
+}
+
+export function getAdvertisedQualityRank(fileName, bitrate, profile) {
+  const normalized = normalizeQualityProfile(profile);
+  const index = normalized.order.indexOf(classifyAdvertisedQuality(fileName, bitrate));
+  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+}
+
 export function orderAdvertisedQualityCandidates(
   entries,
   { profile, currentTier = null, upgrade = false, readName, readBitrate } = {},
 ) {
   const normalized = normalizeQualityProfile(profile);
-  const enabled = new Set(normalized.enabled);
   return (Array.isArray(entries) ? entries : [])
     .map((entry, index) => {
       const name = readName?.(entry);
@@ -192,12 +213,13 @@ export function orderAdvertisedQualityCandidates(
         tier: classifyAdvertisedQuality(name, readBitrate?.(entry)),
       };
     })
-    .filter(({ tier, name }) => {
-      if (!tier) {
-        return !NEVER_TIERED_ADVERTISED_EXTENSION.test(String(name || "").trim());
-      }
-      return enabled.has(tier) && (!upgrade || isQualityUpgrade({ tier }, currentTier, normalized));
-    })
+    .filter(({ entry, name }) =>
+      isAdvertisedQualityEligible(name, readBitrate?.(entry), {
+        profile: normalized,
+        currentTier,
+        upgrade,
+      }),
+    )
     .sort((left, right) => {
       if (!left.tier && !right.tier) return left.index - right.index;
       if (!left.tier) return 1;
