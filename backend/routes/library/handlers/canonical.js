@@ -36,11 +36,14 @@ function getAlbumCoverUrl(album) {
   return /^https?:\/\//i.test(source || "") ? buildImageProxyUrl(source) : null;
 }
 
-function toPublicLibrary(library, favoriteKeys = null) {
+export const publicLibraryJsonReplacer = (key, value) =>
+  isFilesystemPathKey(key) ? undefined : value;
+
+export function buildPublicLibrary(library, favoriteKeys = null) {
   const publicEntity = (kind, entity) => favoriteKeys
     ? { ...entity, userFavorite: favoriteKeys.has(`${kind}:${entity.identityKey}`) }
     : entity;
-  return stripFilesystemPaths({
+  return {
     artists: library.artists.map((artist) => publicEntity("artist", artist)),
     albums: library.albums.map((album) => ({
       ...album,
@@ -50,7 +53,15 @@ function toPublicLibrary(library, favoriteKeys = null) {
         : {}),
     })),
     tracks: library.tracks.map((track) => publicEntity("song", track)),
-  });
+  };
+}
+
+function toPublicLibrary(library, favoriteKeys = null) {
+  return stripFilesystemPaths(buildPublicLibrary(library, favoriteKeys));
+}
+
+export function toPublicLibraryJson(library, favoriteKeys = null) {
+  return JSON.stringify(buildPublicLibrary(library, favoriteKeys), publicLibraryJsonReplacer);
 }
 
 export function toPublicLibraryPage(page, favoriteKeys = null) {
@@ -109,7 +120,7 @@ export function registerCanonical(router) {
         source: req.query.source,
         availableOnly: req.query.availableOnly === "true",
       });
-      return res.json(toPublicLibrary(library, favoriteKeys));
+      return res.type("json").send(toPublicLibraryJson(library, favoriteKeys));
     } catch (error) {
       if (
         error.message.startsWith("Unsupported library source:") ||

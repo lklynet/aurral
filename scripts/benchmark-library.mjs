@@ -342,7 +342,10 @@ const fullReadCode = `
 import { performance } from "node:perf_hooks";
 import { getCanonicalLibrary } from "./backend/services/libraryQueryService.js";
 import { getCanonicalLibraryReadModel } from "./backend/services/canonicalLibraryReadAdapter.js";
-import { toPublicLibrary } from "./backend/routes/library/handlers/canonical.js";
+import {
+  buildPublicLibrary,
+  publicLibraryJsonReplacer,
+} from "./backend/routes/library/handlers/canonical.js";
 
 const mode = process.env.AURRAL_BENCHMARK_MODE;
 let value;
@@ -357,12 +360,13 @@ if (mode === "legacy-adapter") {
   const raw = getCanonicalLibrary({ source: "lidarr", availableOnly: true });
   rawReadMs = performance.now() - rawStarted;
   const transformStarted = performance.now();
-  value = toPublicLibrary(raw);
+  value = buildPublicLibrary(raw);
   transformMs = performance.now() - transformStarted;
 }
 const readMs = rawReadMs + transformMs;
 const serializeStarted = performance.now();
-const jsonBytes = Buffer.byteLength(JSON.stringify(value));
+const jsonReplacer = mode === "full-endpoint" ? publicLibraryJsonReplacer : undefined;
+const jsonBytes = Buffer.byteLength(JSON.stringify(value, jsonReplacer));
 const serializeMs = performance.now() - serializeStarted;
 const memory = process.memoryUsage();
 const counts = {

@@ -121,12 +121,21 @@ function responseFor() {
   return {
     body: null,
     statusCode: 200,
+    contentType: null,
     status(code) {
       this.statusCode = code;
       return this;
     },
+    type(value) {
+      this.contentType = value;
+      return this;
+    },
     json(value) {
       this.body = value;
+      return this;
+    },
+    send(value) {
+      this.body = JSON.parse(value);
       return this;
     },
   };
@@ -192,6 +201,16 @@ test("canonical library pages return bounded collection responses", () => {
     artistResponse,
   );
   assert.equal(artistResponse.body.items[0].userFavorite, true);
+});
+
+test("unpaged canonical library responses keep paths private", () => {
+  const response = responseFor();
+  getRoute("GET /canonical")({ user, query: {} }, response);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.contentType, "json");
+  assert.equal(response.body.tracks[0].files[0].path, undefined);
+  assert.equal(response.body.tracks[0].title, "Favorite Track");
 });
 
 test("native favorites rejects unknown targets without changing stars", () => {
