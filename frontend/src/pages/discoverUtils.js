@@ -87,9 +87,37 @@ const readStoredAt = (key) => {
   }
 };
 
+const getStoredArraySourceKey = (primaryKey, fallbackKey) => {
+  try {
+    const primary = JSON.parse(localStorage.getItem(primaryKey) || "null");
+    if (Array.isArray(primary)) return primaryKey;
+    if (primaryKey === fallbackKey) return null;
+    const fallback = JSON.parse(localStorage.getItem(fallbackKey) || "null");
+    return Array.isArray(fallback) ? fallbackKey : null;
+  } catch {
+    return null;
+  }
+};
+
+const readStoredArray = (primaryKey, fallbackKey) => {
+  const sourceKey = getStoredArraySourceKey(primaryKey, fallbackKey);
+  if (!sourceKey) return null;
+  try {
+    return JSON.parse(localStorage.getItem(sourceKey) || "null");
+  } catch {
+    return null;
+  }
+};
+
+const readStoredArrayAt = (primaryKey, fallbackKey) => {
+  const sourceKey = getStoredArraySourceKey(primaryKey, fallbackKey);
+  return sourceKey ? readStoredAt(sourceKey) : 0;
+};
+
 const isStoredFresh = (key) => {
   const at = readStoredAt(key);
-  return at > 0 && Date.now() - at < DISCOVER_CACHE_FRESH_TTL_MS;
+  const age = Date.now() - at;
+  return at > 0 && age >= 0 && age < DISCOVER_CACHE_FRESH_TTL_MS;
 };
 
 export const isStoredRecentlyAddedFresh = (userId) =>
@@ -99,10 +127,10 @@ export const isStoredRecentReleasesFresh = (userId) =>
   isStoredFresh(getDiscoverRecentReleasesStorageKey(userId));
 
 export const getStoredRecentlyAddedAt = (userId) =>
-  readStoredAt(getDiscoverRecentlyAddedStorageKey(userId));
+  readStoredArrayAt(getDiscoverRecentlyAddedStorageKey(userId), DISCOVER_RECENTLY_ADDED_KEY);
 
 export const getStoredRecentReleasesAt = (userId) =>
-  readStoredAt(getDiscoverRecentReleasesStorageKey(userId));
+  readStoredArrayAt(getDiscoverRecentReleasesStorageKey(userId), DISCOVER_RECENT_RELEASES_KEY);
 
 export const readStoredNearbyLocation = () => {
   try {
@@ -128,18 +156,10 @@ export const writeStoredNearbyLocation = ({ mode, zip } = {}) => {
 };
 
 export const readStoredRecentlyAdded = (userId) => {
-  try {
-    const primaryKey = getDiscoverRecentlyAddedStorageKey(userId);
-    const primary = JSON.parse(localStorage.getItem(primaryKey) || "null");
-    if (Array.isArray(primary)) return primary;
-    if (primaryKey === DISCOVER_RECENTLY_ADDED_KEY) return null;
-    const fallback = JSON.parse(
-      localStorage.getItem(DISCOVER_RECENTLY_ADDED_KEY) || "null",
-    );
-    return Array.isArray(fallback) ? fallback : null;
-  } catch {
-    return null;
-  }
+  return readStoredArray(
+    getDiscoverRecentlyAddedStorageKey(userId),
+    DISCOVER_RECENTLY_ADDED_KEY,
+  );
 };
 
 export const writeStoredRecentlyAdded = (value, userId) => {
@@ -156,18 +176,10 @@ export const writeStoredRecentlyAdded = (value, userId) => {
 };
 
 export const readStoredRecentReleases = (userId) => {
-  try {
-    const primaryKey = getDiscoverRecentReleasesStorageKey(userId);
-    const primary = JSON.parse(localStorage.getItem(primaryKey) || "null");
-    if (Array.isArray(primary)) return primary;
-    if (primaryKey === DISCOVER_RECENT_RELEASES_KEY) return null;
-    const fallback = JSON.parse(
-      localStorage.getItem(DISCOVER_RECENT_RELEASES_KEY) || "null",
-    );
-    return Array.isArray(fallback) ? fallback : null;
-  } catch {
-    return null;
-  }
+  return readStoredArray(
+    getDiscoverRecentReleasesStorageKey(userId),
+    DISCOVER_RECENT_RELEASES_KEY,
+  );
 };
 
 export const writeStoredRecentReleases = (value, userId) => {

@@ -18,6 +18,9 @@ function areDraftsEqual(left, right) {
   );
 }
 
+export const isCurrentAccount = (activeAccountId, savedAccountId) =>
+  activeAccountId != null && activeAccountId === savedAccountId;
+
 export function useAccountSettings(authUser, showError) {
   const [listenHistoryProvider, setListenHistoryProvider] = useState("lastfm");
   const [listenHistoryUsername, setListenHistoryUsername] = useState("");
@@ -40,6 +43,8 @@ export function useAccountSettings(authUser, showError) {
   const currentDraftRef = useRef(null);
   const hasUnsavedChangesRef = useRef(false);
   const isListenHistoryValidRef = useRef(false);
+  const activeAccountIdRef = useRef(null);
+  const saveInFlightAccountIdRef = useRef(null);
   const hydratedHistoryAccountRef = useRef(null);
   const hydratedLidarrAccountRef = useRef(null);
 
@@ -79,6 +84,7 @@ export function useAccountSettings(authUser, showError) {
 
   hasUnsavedChangesRef.current = hasUnsavedChanges;
   isListenHistoryValidRef.current = isListenHistoryValid;
+  activeAccountIdRef.current = authUser?.id ?? null;
   const currentDraft = {
     provider: listenHistoryProvider,
     username: listenHistoryUsername.trim(),
@@ -128,15 +134,26 @@ export function useAccountSettings(authUser, showError) {
   }, [authUser?.id, lidarrQuery.data]);
 
   useEffect(() => {
+    saveQueuedRef.current = false;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    setSaving(false);
+  }, [authUser?.id]);
+
+  useEffect(() => {
     if (historyQuery.error || lidarrQuery.error) showError("Failed to load account settings");
   }, [historyQuery.error, lidarrQuery.error, showError]);
 
   const handleSave = useCallback(async () => {
     if (!authUser?.id) return;
-    if (saveInFlightRef.current) {
+    const saveAccountId = authUser.id;
+    if (saveInFlightRef.current && saveInFlightAccountIdRef.current === saveAccountId) {
       saveQueuedRef.current = true;
       return saveInFlightRef.current;
     }
+    saveQueuedRef.current = false;
 
     const saveDraft = currentDraftRef.current;
     if (saveDraft.provider === "koito" && !saveDraft.url) {
@@ -159,6 +176,7 @@ export function useAccountSettings(authUser, showError) {
             qualityProfileId: saveDraft.qualityProfileId ? Number(saveDraft.qualityProfileId) : null,
           }),
         ]);
+        if (!isCurrentAccount(activeAccountIdRef.current, saveAccountId)) return false;
         const isCurrentDraft = areDraftsEqual(currentDraftRef.current, saveDraft);
 
         setSavedListenHistoryProvider(saveDraft.provider);
@@ -187,26 +205,34 @@ export function useAccountSettings(authUser, showError) {
         succeeded = true;
         return true;
       } catch {
-        showError("Failed to save account settings");
+        if (isCurrentAccount(activeAccountIdRef.current, saveAccountId)) {
+          showError("Failed to save account settings");
+        }
         return false;
       }
     })();
 
     saveInFlightRef.current = request;
+    saveInFlightAccountIdRef.current = saveAccountId;
     try {
       return await request;
     } finally {
-      saveInFlightRef.current = null;
-      setSaving(false);
-      if (
-        (succeeded || saveQueuedRef.current) &&
-        !areDraftsEqual(currentDraftRef.current, saveDraft) &&
-        isListenHistoryValidRef.current
-      ) {
-        saveQueuedRef.current = false;
-        void handleSaveRef.current?.();
-      } else {
-        saveQueuedRef.current = false;
+      if (saveInFlightRef.current === request) {
+        saveInFlightRef.current = null;
+        saveInFlightAccountIdRef.current = null;
+        if (isCurrentAccount(activeAccountIdRef.current, saveAccountId)) {
+          setSaving(false);
+          if (
+            (succeeded || saveQueuedRef.current) &&
+            !areDraftsEqual(currentDraftRef.current, saveDraft) &&
+            isListenHistoryValidRef.current
+          ) {
+            saveQueuedRef.current = false;
+            void handleSaveRef.current?.();
+          } else {
+            saveQueuedRef.current = false;
+          }
+        }
       }
     }
   }, [authUser?.id, saveHistory, saveLidarr, showError]);
