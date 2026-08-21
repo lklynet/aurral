@@ -180,7 +180,7 @@ export async function processSystemTask(payload = {}) {
     }
     case "lidarr-retry": {
       const { libraryManager } = await import("./libraryManager.js");
-      await libraryManager.getAllArtists();
+      await libraryManager.getAllArtists({ forceRefresh: true });
       return;
     }
     default:

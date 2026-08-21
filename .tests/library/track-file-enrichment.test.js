@@ -1,11 +1,37 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildPlaybackQueueFromCanonicalLibrary,
   buildPlaybackQueueFromLidarrData,
   buildTrackFileIndex,
   enrichLidarrTrackWithFiles,
   albumNeedsTrackFiles,
 } from "../../backend/services/libraryManager.js";
+
+test("buildPlaybackQueueFromCanonicalLibrary uses indexed files without Lidarr reads", () => {
+  const queue = buildPlaybackQueueFromCanonicalLibrary({
+    artists: [{ id: 1, name: "Artist" }],
+    albums: [{ id: 2, artistId: 1, title: "Album", trackIds: [3] }],
+    tracks: [{
+      id: 3,
+      title: "Track",
+      artistName: "Artist",
+      albums: [{ albumId: 2, trackNumber: 4 }],
+      files: [{ albumId: 2, source: "lidarr", available: true, format: "flac" }],
+    }],
+  });
+
+  assert.deepEqual(queue, [{
+    id: "lib-1-2-3",
+    title: "Track",
+    artist: "Artist",
+    album: "Album",
+    streamPath: "/library/file-stream/2/3",
+    streamFormat: "flac",
+    quality: null,
+    trackNumber: 4,
+  }]);
+});
 
 test("buildTrackFileIndex maps trackFileId and trackIds", () => {
   const index = buildTrackFileIndex([

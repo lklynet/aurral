@@ -92,7 +92,10 @@ test("library refresh queues a forced scan and exposes its queue status", async 
     assert.equal(statusCode, 202);
     assert.equal(body.queued, true);
     assert.equal(body.status.status, "queued");
-    assert.deepEqual(JSON.parse(getLibraryScanQueue().getJob(body.jobId).payload), { force: true });
+    assert.deepEqual(JSON.parse(getLibraryScanQueue().getJob(body.jobId).payload), {
+      force: true,
+      includeLidarr: true,
+    });
     const jobId = body.jobId;
 
     body = undefined;
@@ -133,6 +136,24 @@ test("library scan scheduling keeps one live job and recovers stale registry ent
   }
 });
 
+test("a full refresh upgrades a pending local-only scan", () => {
+  const queue = getLibraryScanQueue();
+  clearScheduledLibraryScan();
+  let jobId;
+  try {
+    jobId = scheduleLibraryScan({ includeLidarr: false });
+    assert.deepEqual(JSON.parse(queue.getJob(jobId).payload), {
+      force: false,
+      includeLidarr: false,
+    });
+    assert.equal(scheduleLibraryScan({ includeLidarr: true }), jobId);
+    assert.equal(dbOps.getJSONSetting("pendingLibraryScanJob").includeLidarr, true);
+  } finally {
+    if (jobId) queue.cancel(jobId);
+    clearScheduledLibraryScan();
+  }
+});
+
 test("terminal library scan outcomes clear the persistent registry", () => {
   const queue = getLibraryScanQueue();
   let successJob;
@@ -155,6 +176,7 @@ test("terminal library scan outcomes clear the persistent registry", () => {
 test("library file watcher debounces library changes and ignores generated folders", async () => {
   let onChange;
   let scheduled = 0;
+  let changedRoots = [];
   const watcher = createLibraryFileWatcher({
     roots: [process.cwd()],
     debounceMs: 5,
@@ -162,8 +184,9 @@ test("library file watcher debounces library changes and ignores generated folde
       onChange = callback;
       return { close() {} };
     },
-    onChange: () => {
+    onChange: (roots) => {
       scheduled += 1;
+      changedRoots = roots;
     },
   });
 
@@ -171,6 +194,7 @@ test("library file watcher debounces library changes and ignores generated folde
   onChange("change", "Artist/Album/track.flac");
   await new Promise((resolve) => setTimeout(resolve, 15));
   assert.equal(scheduled, 1);
+  assert.deepEqual(changedRoots, [process.cwd()]);
 
   onChange("change", "aurral-weekly-flow/flow/track.flac");
   onChange("change", "_staging/track.flac");

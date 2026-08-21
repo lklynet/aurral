@@ -28,13 +28,17 @@ export function createLibraryFileWatcher({
 } = {}) {
   const watchers = [];
   let timer = null;
+  const changedRoots = new Set();
   const uniqueRoots = [...new Set(roots.map((root) => path.resolve(String(root || ""))).filter(Boolean))];
 
-  const scheduleChange = () => {
+  const scheduleChange = (root) => {
+    changedRoots.add(root);
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
-      onChange();
+      const roots = [...changedRoots];
+      changedRoots.clear();
+      onChange(roots);
     }, Math.max(0, Number(debounceMs) || 0));
     timer.unref?.();
   };
@@ -43,7 +47,7 @@ export function createLibraryFileWatcher({
     if (!fs.existsSync(root)) continue;
     try {
       const watcher = watchImpl(root, { recursive: true }, (_eventType, filename) => {
-        if (!isIgnoredChange(root, filename)) scheduleChange();
+        if (!isIgnoredChange(root, filename)) scheduleChange(root);
       });
       watchers.push(watcher);
     } catch (error) {
@@ -81,8 +85,12 @@ let activeWatcher = null;
 export async function refreshLibraryFileWatcher({ logger = console } = {}) {
   if (!watcherStarted) return false;
   activeWatcher?.close();
+  const playlistRoot = path.resolve(resolvePlaylistRoot());
   activeWatcher = createLibraryFileWatcher({
     roots: await resolveLibraryWatchRoots(),
+    onChange: (changedRoots) => scheduleLibraryScan({
+      includeLidarr: changedRoots.some((root) => path.resolve(root) !== playlistRoot),
+    }),
     onError: (error, root) => {
       logger.warn?.(`[Library] Failed to watch ${root}:`, error?.message || error);
     },

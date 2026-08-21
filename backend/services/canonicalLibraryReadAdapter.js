@@ -2,6 +2,7 @@ import {
   getCanonicalLibrary,
   getCanonicalLibraryForAlbumReferences,
   getCanonicalLibraryForArtists,
+  getCanonicalTrackPath,
 } from "./libraryQueryService.js";
 
 const readModelCache = new WeakMap();
@@ -18,8 +19,6 @@ const firstAvailableFile = (track, albumId) => {
     || unscoped[0]
     || null;
 };
-
-const firstReadableFile = (track) => (track?.files || []).find((file) => file.available) || null;
 
 const recordMatches = (record, reference) => {
   const value = String(reference ?? "").trim();
@@ -178,15 +177,7 @@ export function getCanonicalLibraryReadModelForAlbumReferences({
 }
 
 export function resolveCanonicalTrackPath(reference) {
-  const value = String(reference ?? "").trim();
-  if (!value) return null;
-  const library = getCanonicalLibrary({ availableOnly: false });
-  const track = library.tracks.find((candidate) =>
-    [candidate.id, candidate.identityKey, candidate.mbid].some(
-      (valueCandidate) => String(valueCandidate ?? "").trim() === value,
-    ),
-  );
-  return firstReadableFile(track)?.path || null;
+  return getCanonicalTrackPath(reference);
 }
 
 export function findCanonicalArtist(artists, reference) {

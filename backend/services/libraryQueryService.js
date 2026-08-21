@@ -221,6 +221,22 @@ export function getCanonicalArtistMbids({ source = null, availableOnly = false, 
   return new Set(rows.map((row) => row.mbid).filter(Boolean));
 }
 
+export function getCanonicalTrackPath(reference) {
+  const value = String(reference ?? "").trim();
+  if (!value) return null;
+  const selectPath = (condition) => db.prepare(
+    `SELECT media.path
+     FROM library_media_files AS media
+     JOIN library_tracks AS track ON track.id = media.track_id
+     WHERE media.available = 1
+       AND ${condition}
+     ORDER BY media.source = 'lidarr' DESC, media.path COLLATE NOCASE
+     LIMIT 1`,
+  ).get(value)?.path || null;
+  if (/^[1-9]\d*$/.test(value)) return selectPath("track.id = ?");
+  return selectPath("track.identity_key = ?") || selectPath("track.mbid = ?");
+}
+
 export function getCanonicalLibraryForArtists({
   source = null,
   availableOnly = false,

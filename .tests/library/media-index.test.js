@@ -18,6 +18,28 @@ import { scanMusicRoot } from "../../backend/services/libraryFileScanner.js";
 import { indexLidarrLibrary } from "../../backend/services/libraryLidarrIndexer.js";
 import { scanConfiguredLibrary } from "../../backend/services/libraryIndexService.js";
 
+test("a local-only configured scan does not contact Lidarr", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-local-only-scan-"));
+  let lidarrCalls = 0;
+  try {
+    const result = await scanConfiguredLibrary({
+      musicRoot: root,
+      includeLidarr: false,
+      lidarrClient: {
+        isConfigured: () => true,
+        request: async () => {
+          lidarrCalls += 1;
+          throw new Error("unexpected Lidarr request");
+        },
+      },
+    });
+    assert.equal(lidarrCalls, 0);
+    assert.equal(result.lidarr.skipped, true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 const metadata = {
   common: {
     albumartist: "Aurral Fixture",

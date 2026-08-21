@@ -13,6 +13,7 @@ import {
   getCanonicalLibraryForAlbumReferences,
   getCanonicalLibraryForArtists,
   getCanonicalLibraryPage,
+  getCanonicalTrackPath,
   invalidateCanonicalLibraryCache,
 } from "../../backend/services/libraryQueryService.js";
 import { toPublicLibrary } from "../../backend/routes/library/handlers/canonical.js";
@@ -49,6 +50,27 @@ async function createAudioFile(root, relativePath) {
   await writeFile(filePath, "fixture");
   return filePath;
 }
+
+test("getCanonicalTrackPath resolves one indexed track without building the library graph", () => {
+  const key = `query-track-path-${process.pid}-${Date.now()}`;
+  const track = upsertLibraryTrack({
+    identityKey: key,
+    mbid: `${key}-mbid`,
+    title: "Direct Path",
+    artistName: "Query Fixture",
+  });
+  const filePath = `/tmp/${key}.flac`;
+  upsertLibraryMediaFile({ trackId: track.id, source: "lidarr", path: filePath });
+
+  try {
+    assert.equal(getCanonicalTrackPath(track.id), filePath);
+    assert.equal(getCanonicalTrackPath(track.identity_key), filePath);
+    assert.equal(getCanonicalTrackPath(track.mbid), filePath);
+  } finally {
+    db.prepare("DELETE FROM library_media_files WHERE track_id = ?").run(track.id);
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+  }
+});
 
 test("getCanonicalLibrary merges sources and preserves normalized hierarchy", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-query-"));

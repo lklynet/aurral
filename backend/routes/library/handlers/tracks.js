@@ -250,6 +250,8 @@ export function registerTracks(router) {
     }
 
     try {
+      const canonicalPath = resolveCanonicalTrackPath(req.params.trackId);
+      if (canonicalPath && await streamAudioFile(req, res, canonicalPath)) return undefined;
       const tracks = await libraryManager.getTracks(req.params.albumId);
       const track = tracks.find((item) => String(item.id) === String(req.params.trackId));
       if (!track?.hasFile || !track.path) {

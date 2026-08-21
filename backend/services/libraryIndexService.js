@@ -32,7 +32,11 @@ function getAurralJobMetadataByPath() {
   return byPath;
 }
 
-export async function scanConfiguredLibrary({ musicRoot = resolvePlaylistRoot(), lidarrClient } = {}) {
+export async function scanConfiguredLibrary({
+  musicRoot = resolvePlaylistRoot(),
+  lidarrClient,
+  includeLidarr = true,
+} = {}) {
   const jobMetadataByPath = getAurralJobMetadataByPath();
   const local = await scanMusicRoot({
     rootPath: musicRoot,
@@ -40,16 +44,18 @@ export async function scanConfiguredLibrary({ musicRoot = resolvePlaylistRoot(),
     metadataEnricher: (_metadata, filePath) => jobMetadataByPath.get(path.resolve(filePath)),
   });
   let lidarr = { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
-  try {
-    lidarr = await indexLidarrLibrary({ client: lidarrClient });
-  } catch (error) {
-    lidarr = {
-      skipped: false,
-      error: error.message,
-      filesSeen: 0,
-      filesIndexed: 0,
-      filesFailed: 0,
-    };
+  if (includeLidarr) {
+    try {
+      lidarr = await indexLidarrLibrary({ client: lidarrClient });
+    } catch (error) {
+      lidarr = {
+        skipped: false,
+        error: error.message,
+        filesSeen: 0,
+        filesIndexed: 0,
+        filesFailed: 0,
+      };
+    }
   }
   return { local, lidarr };
 }

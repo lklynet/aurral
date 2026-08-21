@@ -30,18 +30,18 @@ import { mapWithConcurrency } from "./discovery/helpers.js";
 import { logger } from "./logger.js";
 import { runMonitoringRepairSequence } from "./libraryMonitoringRepair.js";
 const LIDARR_RETRY_MS = 60000;
+const ARTIST_LIST_CACHE_TTL_MS = 15 * 60 * 1000;
 const FULL_LIST_FALLBACK_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const TRACKS_CACHE_TTL_MS = 120000;
 const TRACKS_CACHE_MAX = 300;
-const PLAYBACK_QUEUE_CACHE_TTL_MS = 120000;
-const LIDARR_ARTIST_FETCH_BATCH = 20;
 
 let lidarrClient = null;
 let _cachedArtists = [];
 let _lastLidarrFailureAt = 0;
 let _lastFullArtistFetchAt = 0;
+let _artistsCachedAt = 0;
+let _artistsInflight = null;
 const _tracksCache = new Map();
-let _playbackQueueCache = null;
 const _artistMonitoringRepairs = new Map();
 const _albumAddInflight = new Map();
 const _artistMappingInflight = new Map();
@@ -174,38 +174,6 @@ function getMetadataProfileTypeName(item) {
   return "";
 }
 
-async function fetchLidarrCollectionForArtistIds(lidarr, artistIds, endpoint) {
-  const uniqueIds = [
-    ...new Set(
-      (Array.isArray(artistIds) ? artistIds : [])
-        .map((id) => Number(id))
-        .filter((id) => Number.isFinite(id)),
-    ),
-  ];
-  if (uniqueIds.length === 0) return [];
-
-  const results = [];
-  for (let i = 0; i < uniqueIds.length; i += LIDARR_ARTIST_FETCH_BATCH) {
-    const batch = uniqueIds.slice(i, i + LIDARR_ARTIST_FETCH_BATCH);
-    const batchResults = await Promise.all(
-      batch.map(async (artistId) => {
-        try {
-          const result = await lidarr.request(`${endpoint}?artistId=${artistId}`);
-          if (Array.isArray(result)) return result;
-          if (result?.records && Array.isArray(result.records)) {
-            return result.records;
-          }
-          return [];
-        } catch {
-          return [];
-        }
-      }),
-    );
-    results.push(...batchResults.flat());
-  }
-  return results;
-}
-
 export function buildPlaybackQueueFromLidarrData({
   artists = [],
   rawAlbums = [],
@@ -277,6 +245,44 @@ export function buildPlaybackQueueFromLidarrData({
   });
 
   return queue;
+}
+
+export function buildPlaybackQueueFromCanonicalLibrary({ artists = [], albums = [], tracks = [] } = {}) {
+  const artistsById = new Map(artists.map((artist) => [artist.id, artist]));
+  const tracksById = new Map(tracks.map((track) => [track.id, track]));
+  const queue = [];
+
+  for (const album of albums) {
+    const artist = artistsById.get(album.artistId);
+    for (const trackId of album.trackIds || []) {
+      const track = tracksById.get(trackId);
+      if (!track) continue;
+      const file = (track.files || []).find(
+        (entry) =>
+          entry.available &&
+          entry.source === "lidarr" &&
+          (entry.albumId == null || entry.albumId === album.id),
+      );
+      if (!file) continue;
+      const relation = (track.albums || []).find((entry) => entry.albumId === album.id);
+      queue.push({
+        id: `lib-${album.artistId}-${album.id}-${track.id}`,
+        title: track.title || "Unknown Track",
+        artist: artist?.name || track.artistName || "Unknown Artist",
+        album: album.title || "Unknown Album",
+        streamPath: `/library/file-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`,
+        streamFormat: file.format || null,
+        quality: file.quality?.quality?.name || file.quality?.audioFormat || null,
+        trackNumber: relation?.trackNumber || 0,
+      });
+    }
+  }
+
+  return queue.sort((left, right) =>
+    left.artist.localeCompare(right.artist) ||
+    left.album.localeCompare(right.album) ||
+    left.trackNumber - right.trackNumber,
+  );
 }
 
 export { buildTrackFileIndex, enrichLidarrTrackWithFiles, albumNeedsTrackFiles };
@@ -825,39 +831,60 @@ export class LibraryManager {
       });
   }
 
-  async getAllArtists() {
-    try {
-      const lidarr = await getLidarrClient();
-      if (!lidarr || !lidarr.isConfigured()) {
-        return _cachedArtists;
-      }
-      if (_lastLidarrFailureAt && Date.now() - _lastLidarrFailureAt < LIDARR_RETRY_MS) {
-        scheduleLidarrRetry();
-        return _cachedArtists;
-      }
-      try {
-        const lidarrArtists = await lidarr.request("/artist");
-        _lastLidarrFailureAt = 0;
-        if (!Array.isArray(lidarrArtists)) {
-          return _cachedArtists;
-        }
-        await this.backfillLidarrArtistMappings(lidarrArtists);
-        _cachedArtists = lidarrArtists.map((a) => this.mapLidarrArtist(a));
-        import("../../services/unifiedSearchService.js").then(({ clearSearchContextCache }) => clearSearchContextCache()).catch(() => {});
-        return _cachedArtists;
-      } catch (error) {
-        const wasHealthy = _lastLidarrFailureAt === 0;
-        _lastLidarrFailureAt = Date.now();
-        scheduleLidarrRetry();
-        if (wasHealthy) {
-          const msg = (error && error.message) || String(error);
-          logger.warn('library', `[LibraryManager] Lidarr unavailable: ${msg} - using cached artists (if any). Retrying every 60s.`);
-        }
-        return _cachedArtists;
-      }
-    } catch (_) {
+  async getAllArtists({ forceRefresh = false } = {}) {
+    if (
+      forceRefresh !== true &&
+      _cachedArtists.length > 0 &&
+      Date.now() - _artistsCachedAt < ARTIST_LIST_CACHE_TTL_MS
+    ) {
       return _cachedArtists;
     }
+    if (_artistsInflight) return _artistsInflight;
+
+    _artistsInflight = (async () => {
+      try {
+        const lidarr = await getLidarrClient();
+        if (!lidarr || !lidarr.isConfigured()) {
+          return _cachedArtists;
+        }
+        if (_lastLidarrFailureAt && Date.now() - _lastLidarrFailureAt < LIDARR_RETRY_MS) {
+          scheduleLidarrRetry();
+          return _cachedArtists;
+        }
+        try {
+          const lidarrArtists = await lidarr.request(
+            "/artist",
+            "GET",
+            null,
+            false,
+            { forceRefresh: forceRefresh === true },
+          );
+          _lastLidarrFailureAt = 0;
+          if (!Array.isArray(lidarrArtists)) {
+            return _cachedArtists;
+          }
+          await this.backfillLidarrArtistMappings(lidarrArtists);
+          _cachedArtists = lidarrArtists.map((a) => this.mapLidarrArtist(a));
+          _artistsCachedAt = Date.now();
+          import("../../services/unifiedSearchService.js").then(({ clearSearchContextCache }) => clearSearchContextCache()).catch(() => {});
+          return _cachedArtists;
+        } catch (error) {
+          const wasHealthy = _lastLidarrFailureAt === 0;
+          _lastLidarrFailureAt = Date.now();
+          scheduleLidarrRetry();
+          if (wasHealthy) {
+            const msg = (error && error.message) || String(error);
+            logger.warn('library', `[LibraryManager] Lidarr unavailable: ${msg} - using cached artists (if any). Retrying every 60s.`);
+          }
+          return _cachedArtists;
+        }
+      } catch (_) {
+        return _cachedArtists;
+      }
+    })().finally(() => {
+      _artistsInflight = null;
+    });
+    return _artistsInflight;
   }
 
   async getRecentArtists(limit = 25, poolSize = 100) {
@@ -1714,48 +1741,9 @@ export class LibraryManager {
   }
 
   async getPlaybackQueue() {
-    if (
-      _playbackQueueCache &&
-      _playbackQueueCache.expires > Date.now() &&
-      _playbackQueueCache.tracks.length > 0
-    ) {
-      return _playbackQueueCache.tracks;
-    }
-
-    const lidarr = await getLidarrClient();
-    if (!lidarr || !lidarr.isConfigured()) {
-      return [];
-    }
-
-    try {
-      const [artists, rawAlbums] = await Promise.all([
-        this.getAllArtists(),
-        lidarr.request("/album"),
-      ]);
-
-      const artistIds = artists.map((artist) => artist.id);
-      const [rawTracks, rawTrackFiles] = await Promise.all([
-        fetchLidarrCollectionForArtistIds(lidarr, artistIds, "/track"),
-        fetchLidarrCollectionForArtistIds(lidarr, artistIds, "/trackfile"),
-      ]);
-
-      const queue = buildPlaybackQueueFromLidarrData({
-        artists,
-        rawAlbums,
-        rawTracks,
-        rawTrackFiles,
-      });
-
-      if (queue.length > 0) {
-        _playbackQueueCache = {
-          tracks: queue,
-          expires: Date.now() + PLAYBACK_QUEUE_CACHE_TTL_MS,
-        };
-      }
-      return queue;
-    } catch (error) {
-      logger.error('library', `[LibraryManager] Failed to build playback queue: ${error.message}`);      return _playbackQueueCache?.tracks || [];
-    }
+    return buildPlaybackQueueFromCanonicalLibrary(
+      getCanonicalLibrary({ source: "lidarr", availableOnly: true }),
+    );
   }
 
   mapLidarrTrack(lidarrTrack, lidarrAlbum, trackNumber = 0, _albumIsComplete = false) {

@@ -172,7 +172,7 @@ export function useArtistDetailsLibrary({
           status &&
           ["downloading", "processing", "adding"].includes(status.status),
       );
-      return hasActiveDownloads ? 30_000 : 120_000;
+      return hasActiveDownloads ? 30_000 : false;
     },
     refetchIntervalInBackground: false,
   });
