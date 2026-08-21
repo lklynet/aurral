@@ -10,8 +10,13 @@ const albumFiles = (track, albumId) =>
   (track.files || []).filter((file) => file.albumId == null || file.albumId === albumId);
 
 const firstAvailableFile = (track, albumId) => {
-  const files = albumFiles(track, albumId);
-  return files.find((file) => file.available) || files[0] || null;
+  const albumSpecific = (track.files || []).filter((file) => file.albumId === albumId);
+  const unscoped = (track.files || []).filter((file) => file.albumId == null);
+  return albumSpecific.find((file) => file.available)
+    || unscoped.find((file) => file.available)
+    || albumSpecific[0]
+    || unscoped[0]
+    || null;
 };
 
 const firstReadableFile = (track) => (track?.files || []).find((file) => file.available) || null;

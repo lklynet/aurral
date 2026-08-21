@@ -98,7 +98,7 @@ export async function processSystemTask(payload = {}) {
         import("./playlistDownloadUtils.js"),
       ]);
       const { migrateAurralDownloadFolder, migrateLegacyFlowFolder } = migrationModule;
-      ensurePlaylistFilesystemLayout();
+      const layout = ensurePlaylistFilesystemLayout();
       let result = {
         migrated: 0,
         flowMigrated: 0,
@@ -159,6 +159,7 @@ export async function processSystemTask(payload = {}) {
         );
       }
       if (
+        layout.sidecarsMoved > 0 ||
         legacyFlowResult.migrated > 0 ||
         result.migrated > 0 ||
         result.removed > 0 ||

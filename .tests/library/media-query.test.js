@@ -16,7 +16,10 @@ import {
   invalidateCanonicalLibraryCache,
 } from "../../backend/services/libraryQueryService.js";
 import { toPublicLibrary } from "../../backend/routes/library/handlers/canonical.js";
-import { getCanonicalLibraryReadModelForAlbumReferences } from "../../backend/services/canonicalLibraryReadAdapter.js";
+import {
+  buildCanonicalLibraryReadModel,
+  getCanonicalLibraryReadModelForAlbumReferences,
+} from "../../backend/services/canonicalLibraryReadAdapter.js";
 import {
   linkLibraryAlbumTrack,
   upsertLibraryArtist,
@@ -336,6 +339,25 @@ test("album-reference reads preserve identity keys and album-specific ownership"
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
     invalidateCanonicalLibraryCache();
   }
+});
+
+test("album reads prefer an album-specific file over an earlier unscoped file", () => {
+  const readModel = buildCanonicalLibraryReadModel({
+    artists: [{ id: 1, name: "Artist", albumIds: [2], sources: ["aurral"] }],
+    albums: [{ id: 2, artistId: 1, title: "Album", trackIds: [3], sources: ["aurral"] }],
+    tracks: [{
+      id: 3,
+      title: "Track",
+      albums: [{ albumId: 2, trackNumber: 1 }],
+      files: [
+        { albumId: null, path: "/music/00-unscoped.flac", available: true },
+        { albumId: 2, path: "/music/01-album.flac", available: true },
+      ],
+      sources: ["aurral"],
+    }],
+  });
+
+  assert.equal(readModel.tracks[0].path, "/music/01-album.flac");
 });
 
 test("canonical newest ordering follows library arrival time", () => {
