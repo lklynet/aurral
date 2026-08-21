@@ -105,7 +105,7 @@ function ReleasePage() {
   const releaseDetailsQuery = useQuery({
     queryKey: queryKeys.releaseGroupDetails(releaseMbid),
     queryFn: ({ signal }) => getReleaseGroupDetails(releaseMbid, { signal }),
-    enabled: Boolean(releaseMbid) && (Boolean(release.title) || releaseDetailsQuery.isFetched),
+    enabled: Boolean(releaseMbid),
     staleTime: 5 * 60 * 1000,
   });
   const release = useMemo(

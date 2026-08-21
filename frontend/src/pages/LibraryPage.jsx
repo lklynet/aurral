@@ -103,6 +103,51 @@ const favoriteId = (kind, entity) =>
 const firstAvailableFile = (track) =>
   (track?.files || []).find((file) => file.available) || null;
 
+export const mergeAlbumTrackPageIntoLibrary = (current, page, albumId, tracks) => {
+  const merge = (kind) => {
+    const existing = current[kind] || [];
+    const merged = [
+      ...existing,
+      ...(Array.isArray(page?.[kind]) ? page[kind] : []),
+    ].filter((entity, index, values) =>
+      values.findIndex((candidate) => String(candidate.id) === String(entity.id)) === index,
+    );
+    return merged.length === existing.length &&
+      merged.every((entity, index) => entity === existing[index])
+      ? existing
+      : merged;
+  };
+  const artists = merge("artists");
+  const mergedAlbums = merge("albums");
+  const availableTrackCount = tracks.filter((track) => firstAvailableFile(track)).length;
+  let albumsChanged = mergedAlbums !== current.albums;
+  const albums = mergedAlbums.map((entity) => {
+    if (String(entity.id) !== String(albumId)) return entity;
+    if (
+      entity.trackCount === tracks.length &&
+      entity.availableTrackCount === availableTrackCount
+    ) {
+      return entity;
+    }
+    albumsChanged = true;
+    return {
+      ...entity,
+      trackCount: tracks.length,
+      availableTrackCount,
+    };
+  });
+  const nextTracks = merge("tracks");
+  if (artists === current.artists && !albumsChanged && nextTracks === current.tracks) {
+    return current;
+  }
+  return {
+    ...current,
+    artists,
+    albums,
+    tracks: nextTracks,
+  };
+};
+
 const trackDurationMs = (track) => {
   const fileDurationMs = (track?.files || []).find((file) => Number(file?.durationMs) > 0)
     ?.durationMs;
@@ -613,28 +658,7 @@ function LibraryPage() {
     });
     const tracks = result.tracks;
     const page = result.page;
-    setLibrary((current) => {
-      const merge = (kind) => [
-        ...(current[kind] || []),
-        ...(Array.isArray(page?.[kind]) ? page[kind] : []),
-      ].filter((entity, index, values) =>
-        values.findIndex((candidate) => String(candidate.id) === String(entity.id)) === index,
-      );
-      return {
-        ...current,
-        artists: merge("artists"),
-        albums: merge("albums").map((entity) =>
-          String(entity.id) === String(album.id)
-            ? {
-                ...entity,
-                trackCount: tracks.length,
-                availableTrackCount: tracks.filter((track) => firstAvailableFile(track)).length,
-              }
-            : entity,
-        ),
-        tracks: merge("tracks"),
-      };
-    });
+    setLibrary((current) => mergeAlbumTrackPageIntoLibrary(current, page, album.id, tracks));
     return tracks;
   }, []);
 
