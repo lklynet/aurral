@@ -572,12 +572,24 @@ async function deleteSharedPlaylistTrack({ playlistId, jobId } = {}) {
   const playlist = flowPlaylistConfig.getSharedPlaylist(safePlaylistId);
   if (!playlist) return { missingPlaylist: true };
   const job = downloadTracker.getJob(safeJobId);
-  if (!job || job.playlistType !== safePlaylistId) {
+  const isCanonicalReference =
+    job?.playlistType !== safePlaylistId &&
+    playlist.tracks?.some((track) => String(track?.canonicalJobId || "") === safeJobId);
+  if (!job || (job.playlistType !== safePlaylistId && !isCanonicalReference)) {
     return { missingJob: true };
   }
   await withPlaylistMutation(
     safePlaylistId,
     async () => {
+      if (isCanonicalReference) {
+        const updated = flowPlaylistConfig.updateSharedPlaylist(safePlaylistId, {
+          tracks: playlist.tracks.filter(
+            (track) => String(track?.canonicalJobId || "") !== safeJobId,
+          ),
+        });
+        if (!updated) throw new Error("Failed to update shared playlist");
+        return;
+      }
       if (job.status === "done" && typeof job.finalPath === "string") {
         await removePlaylistLocalTrackFile(job, safePlaylistId);
       }

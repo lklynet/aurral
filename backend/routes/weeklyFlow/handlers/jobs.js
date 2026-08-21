@@ -62,10 +62,29 @@ export function registerJobs(router) {
       rawLimit && Number.isFinite(parsedLimit) && parsedLimit > 0
         ? Math.floor(parsedLimit)
         : null;
-    let jobs = downloadTracker.getByPlaylistType(flowId, limit);
     const sharedPlaylist = flowPlaylistConfig.getSharedPlaylist(flowId);
-    if (sharedPlaylist?.tracks?.length && limit == null) {
-      jobs = orderJobsBySharedPlaylistTracks(jobs, sharedPlaylist.tracks);
+    const sharedTracks = sharedPlaylist?.tracks;
+    let jobs = downloadTracker.getByPlaylistType(
+      flowId,
+      sharedTracks?.length ? null : limit,
+    );
+    if (sharedTracks?.length) {
+      const referencedJobIds = new Set(
+        sharedTracks.map((track) => String(track?.canonicalJobId || "")).filter(Boolean),
+      );
+      const referencedJobs = [...referencedJobIds]
+        .map((jobId) => downloadTracker.getJob(jobId))
+        .filter(Boolean);
+      jobs = [...referencedJobs, ...jobs].filter(
+        (job, index, values) => values.findIndex((candidate) => candidate.id === job.id) === index,
+      );
+      jobs = orderJobsBySharedPlaylistTracks(jobs, sharedTracks);
+      if (limit != null) jobs = jobs.slice(0, limit);
+      jobs = jobs.map((job) =>
+        referencedJobIds.has(job.id) && job.playlistType !== flowId
+          ? { ...job, playlistId: flowId, playlistType: flowId }
+          : job,
+      );
     }
     const profile = getQualityProfile();
     res.json(filterJobsForUser(req.user, jobs).map((job) => decorateJobQuality(job, profile)));
