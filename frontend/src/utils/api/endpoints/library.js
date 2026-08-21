@@ -14,6 +14,11 @@ import {
 const buildStreamUrl = (path) => buildAuthenticatedApiUrl(path);
 const SLOW_LIBRARY_REQUEST_TIMEOUT_MS = 90000;
 
+const mergeSignals = (callerSignal, querySignal) => {
+  if (callerSignal && querySignal) return AbortSignal.any([callerSignal, querySignal]);
+  return callerSignal || querySignal;
+};
+
 export const getLibraryArtists = (options = {}) =>
   getData("/library/artists", options);
 
@@ -46,7 +51,7 @@ export const getCanonicalLibraryPage = (options = {}, { signal } = {}) => {
     queryKey: queryKeys.libraryCanonical(params),
     queryFn: ({ signal: querySignal }) => getData("/library/canonical", {
       params,
-      signal: signal ?? querySignal,
+      signal: mergeSignals(signal, querySignal),
     }),
     staleTime: 15_000,
   });
@@ -75,7 +80,7 @@ export const getLibraryFavorites = ({ signal } = {}) => {
   const generation = libraryFavoritesGeneration;
   return queryClient.fetchQuery({
     queryKey: queryKeys.libraryFavorites,
-    queryFn: ({ signal: querySignal }) => fetchLibraryFavorites({ signal: signal ?? querySignal }),
+    queryFn: ({ signal: querySignal }) => fetchLibraryFavorites({ signal: mergeSignals(signal, querySignal) }),
     staleTime: 30_000,
   }).then((data) => {
     if (generation !== libraryFavoritesGeneration && latestLibraryFavorites) {

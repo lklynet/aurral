@@ -91,7 +91,13 @@ export function LidarrSettingsSection({
           if (nextTags.length > 0) {
             showInfo(`Loaded ${nextTags.length} tag(s)`);
           }
-        } catch {
+        } catch (err) {
+          const errorMsg =
+            err.response?.data?.message ||
+            err.response?.data?.error ||
+            err.message ||
+            "Failed to load Lidarr resources";
+          showError(`Connected, but failed to load Lidarr resources: ${errorMsg}`);
         }
       } else {
         setLidarrTestStatus({ tone: "error", message: "Connection failed. Check the URL and API key, then retry." });

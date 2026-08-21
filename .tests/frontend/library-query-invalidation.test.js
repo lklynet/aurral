@@ -53,7 +53,7 @@ test("library requests forward caller cancellation", async (t) => {
   const { getCanonicalLibraryPage, getLibraryFavorites } = await vite.ssrLoadModule(
     "/src/utils/api/endpoints/library.js?library-request-cancellation-test",
   );
-  const { queryClient } = await vite.ssrLoadModule("/src/queryClient.js");
+  const { queryClient, queryKeys } = await vite.ssrLoadModule("/src/queryClient.js");
 
   const assertForwardedCancellation = async (load) => {
     const originalFetch = globalThis.fetch;
@@ -78,5 +78,35 @@ test("library requests forward caller cancellation", async (t) => {
     getCanonicalLibraryPage({ kind: "artists", page: 1, pageSize: 100 }, { signal }),
   );
   await assertForwardedCancellation((signal) => getLibraryFavorites({ signal }));
+
+  const assertQueryCancellation = async (load, queryKey) => {
+    const originalFetch = globalThis.fetch;
+    let requestSignal;
+    globalThis.fetch = (_url, init) => new Promise((_resolve, reject) => {
+      requestSignal = init.signal;
+      init.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+    });
+    try {
+      const request = load();
+      while (!requestSignal) await new Promise((resolve) => setImmediate(resolve));
+      await queryClient.cancelQueries({ queryKey, exact: true });
+      await assert.rejects(request);
+      assert.equal(requestSignal.aborted, true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  };
+
+  await assertQueryCancellation(
+    () => getCanonicalLibraryPage({ kind: "artists", page: 1, pageSize: 100 }),
+    queryKeys.libraryCanonical({
+      kind: "artists",
+      page: 1,
+      pageSize: 100,
+      source: "all",
+      availableOnly: "false",
+    }),
+  );
+  await assertQueryCancellation(() => getLibraryFavorites(), queryKeys.libraryFavorites);
   queryClient.clear();
 });
