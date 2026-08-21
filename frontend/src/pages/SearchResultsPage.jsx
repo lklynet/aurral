@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   addArtistToLibrary,
   lookupAlbumsInLibraryBatch,
@@ -29,7 +30,7 @@ import { useToast } from "../contexts/ToastContext";
 import { allReleaseTypes } from "./ArtistDetails/constants";
 import { readReleaseListViewMode, writeReleaseListViewMode } from "./ArtistDetails/utils";
 import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
-import { queryClient, queryKeys } from "../queryClient.js";
+import { queryKeys } from "../queryClient.js";
 import { useSharedPlaylists } from "../hooks/useSharedPlaylists";
 import { getArtistRecordId } from "../utils/artistTaste";
 import { getAlbumAddButtonLabel, isAlbumCompleteInLibrary, shouldTriggerAlbumSearch } from "../utils/albumAddAction";
@@ -70,6 +71,7 @@ const RECOMMENDED_SORT_OPTIONS = [
   { value: "relevance", label: "Relevance" },
   { value: "popularity", label: "Popularity" },
 ];
+const EMPTY_SEARCH_PAGES = [];
 
 const getRecommendedArtistName = (artist) => String(artist?.name || "").trim();
 
@@ -104,17 +106,9 @@ function SearchResultsPage() {
     rawFilter === "library" || rawFilter === "tracks"
       ? "all"
       : rawFilter;
-  const [results, setResults] = useState([]);
-  const [unifiedResults, setUnifiedResults] = useState(null);
-  const [fullList, setFullList] = useState(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState(null);
   const [artistImages, setArtistImages] = useState({});
   const [albumCovers, setAlbumCovers] = useState({});
-  const [hasMore, setHasMore] = useState(false);
-  const [searchTotalCount, setSearchTotalCount] = useState(0);
   const [lastfmConfigured, setLastfmConfigured] = useState(null);
   const [libraryLookup, setLibraryLookup] = useState({});
   const [albumLibraryLookup, setAlbumLibraryLookup] = useState({});
@@ -178,16 +172,6 @@ function SearchResultsPage() {
   const { lookup: artistFeedbackLookup, submitFeedback } = useArtistTasteFeedback();
   const canAddArtist = hasPermission("addArtist");
   const canAddAlbum = hasPermission("addAlbum");
-  const fetchSearchDiscovery = useCallback(
-    ({ offset = 0, limit } = {}) =>
-      queryClient.fetchQuery({
-        queryKey: queryKeys.searchDiscovery(offset, limit),
-        queryFn: ({ signal }) => getDiscovery({ offset, limit, signal }),
-        staleTime: 30_000,
-      }),
-    [],
-  );
-
   const updateAlbumSort = useCallback(
     (nextSort) => {
       const params = new URLSearchParams(searchParams);
@@ -248,152 +232,157 @@ function SearchResultsPage() {
     }
   }, [isTagSearch]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const performSearch = async () => {
-      setLibraryLookup({});
-      setAlbumLibraryLookup({});
-      setPendingAlbumIds({});
-      setAlbumCovers({});
-
+  const searchQueryKey = useMemo(() => {
+    if (normalizedType === "recommended" || normalizedType === "trending") {
+      return queryKeys.searchDiscovery(
+        0,
+        normalizedType === "recommended" ? PAGE_SIZE : undefined,
+      );
+    }
+    if (isUnifiedSearch) {
+      return queryKeys.searchUnified(trimmedQuery, "full", 20);
+    }
+    const searchTerm = isTagSearch ? trimmedQuery.replace(/^#/, "") : trimmedQuery;
+    return queryKeys.searchCatalog(searchTerm, normalizedType, {
+      limit: PAGE_SIZE,
+      offset: 0,
+      releaseTypes: isAlbumSearch ? allReleaseTypes : [],
+      sort: isAlbumSearch ? albumSort : undefined,
+    });
+  }, [albumSort, isAlbumSearch, isTagSearch, isUnifiedSearch, normalizedType, trimmedQuery]);
+  const searchQuery = useInfiniteQuery({
+    queryKey: searchQueryKey,
+    enabled: Boolean(
+      trimmedQuery || normalizedType === "recommended" || normalizedType === "trending",
+    ),
+    initialPageParam: 0,
+    queryFn: ({ pageParam, signal }) => {
       if (normalizedType === "recommended" || normalizedType === "trending") {
-        setLoading(true);
-        setError(null);
-        try {
-          const isRecommended = normalizedType === "recommended";
-          const data = await fetchSearchDiscovery();
-          const list =
-            isRecommended ? data.recommendations || [] : data.globalTop || [];
-          if (isRecommended) {
-            setResults(list);
-            setSearchTotalCount(data.recommendationCount ?? list.length);
-            setHasMore(false);
-          } else {
-            setFullList(list);
-            setResults(list);
-            setVisibleCount(PAGE_SIZE);
-            setHasMore(list.length > PAGE_SIZE);
-            setSearchTotalCount(list.length);
-          }
-          const imagesMap = {};
-          list.forEach((artist) => {
-            const artistId = getArtistRecordId(artist);
-            if ((artist.image || artist.imageUrl) && artistId) {
-              imagesMap[artistId] = artist.image || artist.imageUrl;
-            }
-          });
-          setArtistImages(imagesMap);
-        } catch (err) {
-          if (cancelled) return;
-          setError(err.response?.data?.message || "Failed to load. Please try again.");
-          setFullList(null);
-          setResults([]);
-        } finally {
-          if (!cancelled) setLoading(false);
-        }
-        return;
-      }
-
-      if (!trimmedQuery) {
-        setResults([]);
-        setUnifiedResults(null);
-        setFullList(null);
-        setHasMore(false);
-        setSearchTotalCount(0);
-        setLoading(false);
-        setError(null);
-        return;
-      }
-
-      if (isUnifiedSearch) {
-        setLoading(true);
-        setError(null);
-        setUnifiedResults(null);
-        setResults([]);
-        setFullList(null);
-        setHasMore(false);
-        setVisibleCount(PAGE_SIZE);
-        try {
-          const data = await searchUnified(trimmedQuery, {
-            mode: "full",
-            limit: 20,
-          });
-          if (cancelled) return;
-          setUnifiedResults(data);
-          setSearchTotalCount(
-            (data?.catalog?.artists?.length || 0) +
-              (data?.catalog?.albums?.length || 0) +
-              (data?.library?.tracks?.length || 0),
-          );
-          const imageMap = {};
-          for (const artist of data?.catalog?.artists || []) {
-            if (artist?.id && (artist.imageUrl || artist.image)) {
-              imageMap[artist.id] = artist.imageUrl || artist.image;
-            }
-          }
-          setArtistImages(imageMap);
-        } catch (err) {
-          if (cancelled) return;
-          setError(err.response?.data?.message || "Failed to search. Please try again.");
-          setUnifiedResults(null);
-        } finally {
-          if (!cancelled) setLoading(false);
-        }
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-      setVisibleCount(PAGE_SIZE);
-
-      try {
-        const searchQuery = isTagSearch ? trimmedQuery.replace(/^#/, "") : trimmedQuery;
-        const data = await searchCatalog(searchQuery, normalizedType, {
-          limit: PAGE_SIZE,
-          offset: 0,
-          releaseTypes: isAlbumSearch ? allReleaseTypes : [],
-          sort: isAlbumSearch ? albumSort : undefined,
+        return getDiscovery({
+          offset: pageParam,
+          limit: normalizedType === "recommended" ? PAGE_SIZE : undefined,
+          signal,
         });
-        if (cancelled) return;
-        const nextResults = isAlbumSearch
-          ? dedupeAlbums(data.items || [])
-          : dedupeArtists(data.items || []);
-        setResults(nextResults);
-        setFullList(null);
-        setSearchTotalCount(data?.count ?? nextResults.length);
-        setHasMore(data?.hasMore ?? (data?.count ?? nextResults.length) > nextResults.length);
-
-        if (!isAlbumSearch && nextResults.length > 0) {
-          const imagesMap = {};
-          nextResults.forEach((artist) => {
-            const artistId = getArtistRecordId(artist);
-            if ((artist.image || artist.imageUrl) && artistId) {
-              imagesMap[artistId] = artist.image || artist.imageUrl;
-            }
-          });
-          setArtistImages(imagesMap);
-        } else if (!isAlbumSearch) {
-          setArtistImages({});
-        }
-      } catch (err) {
-        if (cancelled) return;
-        setError(
-          err.response?.data?.message ||
-            `Failed to search ${isAlbumSearch ? "albums" : "artists"}. Please try again.`,
-        );
-        setResults([]);
-        setHasMore(false);
-      } finally {
-        if (!cancelled) setLoading(false);
       }
-    };
+      if (isUnifiedSearch) {
+        return searchUnified(trimmedQuery, {
+          mode: "full",
+          limit: 20,
+          signal,
+        });
+      }
+      const searchTerm = isTagSearch ? trimmedQuery.replace(/^#/, "") : trimmedQuery;
+      return searchCatalog(searchTerm, normalizedType, {
+        limit: PAGE_SIZE,
+        offset: pageParam,
+        releaseTypes: isAlbumSearch ? allReleaseTypes : [],
+        sort: isAlbumSearch ? albumSort : undefined,
+        signal,
+      });
+    },
+    getNextPageParam: (lastPage, pages) => {
+      if (normalizedType === "trending" || isUnifiedSearch) return undefined;
+      if (normalizedType === "recommended") {
+        const loaded = pages.reduce(
+          (count, page) => count + (page?.recommendations?.length || 0),
+          0,
+        );
+        const total = Number(lastPage?.recommendationCount || 0);
+        return loaded < total ? loaded : undefined;
+      }
+      const loaded = pages.reduce(
+        (count, page) => count + (page?.items?.length || 0),
+        0,
+      );
+      if (!lastPage?.items?.length) return undefined;
+      if (!lastPage?.hasMore && !(Number(lastPage?.count) > loaded)) return undefined;
+      return loaded;
+    },
+    staleTime: 30_000,
+  });
 
-    performSearch();
-    return () => {
-      cancelled = true;
+  const searchPages = searchQuery.data?.pages || EMPTY_SEARCH_PAGES;
+  const rawUnifiedResults = isUnifiedSearch ? searchPages[0] || null : null;
+  const rawResults = useMemo(() => {
+    if (normalizedType === "recommended") {
+      return searchPages.flatMap((page) => page?.recommendations || []);
+    }
+    if (normalizedType === "trending") {
+      return searchPages[0]?.globalTop || [];
+    }
+    const items = searchPages.flatMap((page) => page?.items || []);
+    return isAlbumSearch ? dedupeAlbums(items) : dedupeArtists(items);
+  }, [isAlbumSearch, normalizedType, searchPages]);
+  const withAlbumLibraryState = useCallback(
+    (album) => {
+      const match = album?.id ? albumLibraryLookup[album.id] : null;
+      return match && typeof match === "object" ? { ...album, ...match } : album;
+    },
+    [albumLibraryLookup],
+  );
+  const unifiedResults = useMemo(() => {
+    if (!rawUnifiedResults) return null;
+    return {
+      ...rawUnifiedResults,
+      top:
+        rawUnifiedResults.top?.type === "album"
+          ? withAlbumLibraryState(rawUnifiedResults.top)
+          : rawUnifiedResults.top,
+      catalog: rawUnifiedResults.catalog
+        ? {
+            ...rawUnifiedResults.catalog,
+            albums: (rawUnifiedResults.catalog.albums || []).map(withAlbumLibraryState),
+          }
+        : rawUnifiedResults.catalog,
     };
-  }, [trimmedQuery, normalizedType, isAlbumSearch, isTagSearch, isUnifiedSearch, albumSort, fetchSearchDiscovery]);
+  }, [rawUnifiedResults, withAlbumLibraryState]);
+  const results = useMemo(
+    () => (isAlbumSearch ? rawResults.map(withAlbumLibraryState) : rawResults),
+    [isAlbumSearch, rawResults, withAlbumLibraryState],
+  );
+  const fullList = normalizedType === "trending" ? rawResults : null;
+  const loading = searchQuery.isPending;
+  const loadingMore = searchQuery.isFetchingNextPage;
+  const { fetchNextPage } = searchQuery;
+  const error = searchQuery.error?.response?.data?.message ||
+    searchQuery.error?.message ||
+    null;
+  const searchTotalCount = isUnifiedSearch
+    ? (unifiedResults?.catalog?.artists?.length || 0) +
+      (unifiedResults?.catalog?.albums?.length || 0) +
+      (unifiedResults?.library?.tracks?.length || 0)
+    : normalizedType === "recommended"
+      ? Number(searchPages[searchPages.length - 1]?.recommendationCount || results.length)
+      : normalizedType === "trending"
+        ? results.length
+        : Number(searchPages[searchPages.length - 1]?.count ?? results.length);
+  const hasMore = normalizedType === "trending"
+    ? visibleCount < (fullList?.length || 0)
+    : searchQuery.hasNextPage === true;
+
+  useEffect(() => {
+    setLibraryLookup({});
+    setAlbumLibraryLookup({});
+    setPendingAlbumIds({});
+    setAlbumCovers({});
+    setVisibleCount(PAGE_SIZE);
+  }, [searchQueryKey]);
+
+  useEffect(() => {
+    const artists = isUnifiedSearch
+      ? unifiedResults?.catalog?.artists || []
+      : isAlbumSearch
+        ? []
+        : results;
+    const imagesMap = {};
+    artists.forEach((artist) => {
+      const artistId = getArtistRecordId(artist);
+      if (artistId && (artist.image || artist.imageUrl)) {
+        imagesMap[artistId] = artist.image || artist.imageUrl;
+      }
+    });
+    setArtistImages(imagesMap);
+  }, [isAlbumSearch, isUnifiedSearch, results, unifiedResults]);
 
   useEffect(() => {
     if (!isUnifiedSearch || !unifiedResults) return undefined;
@@ -683,37 +672,6 @@ function SearchResultsPage() {
           ...prev,
           ...resolvedLookup,
         }));
-
-        setUnifiedResults((prev) => {
-          if (!prev?.catalog?.albums) return prev;
-          const topAlbumMatch = prev.top?.type === "album" ? lookup[prev.top.id] : null;
-          return {
-            ...prev,
-            top: topAlbumMatch
-              ? {
-                  ...prev.top,
-                  inLibrary: !!topAlbumMatch.inLibrary,
-                  libraryAlbumId: topAlbumMatch.libraryAlbumId || prev.top.libraryAlbumId,
-                  libraryArtistId: topAlbumMatch.libraryArtistId || prev.top.libraryArtistId,
-                  status: topAlbumMatch.status || prev.top.status,
-                }
-              : prev.top,
-            catalog: {
-              ...prev.catalog,
-              albums: prev.catalog.albums.map((album) => {
-                const match = lookup[album.id];
-                if (!match) return album;
-                return {
-                  ...album,
-                  inLibrary: !!match.inLibrary,
-                  libraryAlbumId: match.libraryAlbumId || album.libraryAlbumId,
-                  libraryArtistId: match.libraryArtistId || album.libraryArtistId,
-                  status: match.status || album.status,
-                };
-              }),
-            },
-          };
-        });
       } catch {
         if (!cancelled) {
           setAlbumLibraryLookup((prev) => {
@@ -822,20 +780,6 @@ function SearchResultsPage() {
           ...prev,
           ...resolvedLookup,
         }));
-
-        setResults((prev) =>
-          prev.map((album) => {
-            const match = lookup[album.id];
-            if (!match) return album;
-            return {
-              ...album,
-              inLibrary: !!match.inLibrary,
-              libraryAlbumId: match.libraryAlbumId || album.libraryAlbumId,
-              libraryArtistId: match.libraryArtistId || album.libraryArtistId,
-              status: match.status || album.status,
-            };
-          }),
-        );
       } catch {
         if (!cancelled) {
           setAlbumLibraryLookup((prev) => {
@@ -861,85 +805,25 @@ function SearchResultsPage() {
   const loadMore = useCallback(async () => {
     if (loading || loadingMore || !hasMore) return;
 
-    if (normalizedType === "recommended") {
-      setLoadingMore(true);
-      try {
-        const data = await fetchSearchDiscovery({ offset: results.length, limit: PAGE_SIZE });
-        const newItems = data.recommendations || [];
-        setResults((prev) => [...prev, ...newItems]);
-        setSearchTotalCount(data.recommendationCount ?? 0);
-        setHasMore(
-          newItems.length === PAGE_SIZE &&
-            results.length + newItems.length < (data.recommendationCount ?? 0),
-        );
-        const imagesMap = {};
-        newItems.forEach((artist) => {
-          const artistId = getArtistRecordId(artist);
-          if ((artist.image || artist.imageUrl) && artistId) {
-            imagesMap[artistId] = artist.image || artist.imageUrl;
-          }
-        });
-        setArtistImages((prev) => ({ ...prev, ...imagesMap }));
-      } catch (err) {
-        console.warn("Failed to load more recommendations:", err);
-      } finally {
-        setLoadingMore(false);
-      }
-      return;
-    }
-
     if (normalizedType === "trending") {
-      const next = visibleCount + PAGE_SIZE;
       setVisibleCount((count) =>
         Math.min(count + PAGE_SIZE, fullList?.length ?? count + PAGE_SIZE),
       );
-      setHasMore((fullList?.length ?? 0) > next);
       return;
     }
 
-    setLoadingMore(true);
     try {
-      const searchQuery = isTagSearch ? trimmedQuery.replace(/^#/, "") : trimmedQuery;
-      const data = await searchCatalog(searchQuery, normalizedType, {
-        limit: PAGE_SIZE,
-        offset: results.length,
-        releaseTypes: isAlbumSearch ? allReleaseTypes : [],
-        sort: isAlbumSearch ? albumSort : undefined,
-      });
-      const newItems = data.items || [];
-      setSearchTotalCount(data?.count ?? searchTotalCount);
-      if (isAlbumSearch) {
-        setResults((prev) => dedupeAlbums([...prev, ...newItems]));
-      } else {
-        setResults((prev) => dedupeArtists([...prev, ...newItems]));
-        newItems.forEach((artist) => {
-          const artistId = getArtistRecordId(artist);
-          if ((artist.image || artist.imageUrl) && artistId) {
-            setArtistImages((prev) => ({
-              ...prev,
-              [artistId]: artist.image || artist.imageUrl,
-            }));
-          }
-        });
-      }
-      setHasMore(data?.hasMore ?? (data?.count ?? 0) > results.length + newItems.length);
-    } finally {
-      setLoadingMore(false);
+      await fetchNextPage();
+    } catch (err) {
+      console.warn("Failed to load more search results:", err);
     }
   }, [
     fullList,
     hasMore,
-    isAlbumSearch,
-    isTagSearch,
     loading,
     loadingMore,
     normalizedType,
-    results,
-    searchTotalCount,
-    trimmedQuery,
-    visibleCount,
-    albumSort,
-    fetchSearchDiscovery,
+    fetchNextPage,
   ]);
 
   const onSentinel = useCallback(
@@ -976,21 +860,10 @@ function SearchResultsPage() {
               libraryArtistId: result.artist?.id,
               status: result.status,
             };
-        setResults((prev) =>
-          prev.map((item) => (item.id === album.id ? { ...item, ...nextAlbum } : item)),
-        );
-        setUnifiedResults((prev) => {
-          if (!prev?.catalog?.albums) return prev;
-          return {
-            ...prev,
-            catalog: {
-              ...prev.catalog,
-              albums: prev.catalog.albums.map((item) =>
-                item.id === album.id ? { ...item, ...nextAlbum } : item,
-              ),
-            },
-          };
-        });
+        setAlbumLibraryLookup((prev) => ({
+          ...prev,
+          [album.id]: nextAlbum,
+        }));
         showSuccess(
           result?.queued
             ? `Adding ${album.title}...`

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Loader2, Play, FilePlus2, Download, Trash2, Search, RefreshCw, ClipboardCopy, ListMusic } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -229,9 +229,7 @@ function FlowPage({ mode = "all" }) {
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
   const [playlistMenuError, setPlaylistMenuError] = useState("");
   const [libraryTrackSavingKey, setLibraryTrackSavingKey] = useState("");
-  const [favoriteTrackIds, setFavoriteTrackIds] = useState(() => new Set());
   const [favoriteTrackSavingKey, setFavoriteTrackSavingKey] = useState("");
-  const favoriteStateVersionRef = useRef(0);
   const playlistsLoading = false;
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
@@ -251,32 +249,25 @@ function FlowPage({ mode = "all" }) {
     selectedTracksQuery.error?.response?.data?.message ||
     selectedTracksQuery.error?.message ||
     "";
+  const favoriteQuery = useQuery({
+    queryKey: queryKeys.libraryFavorites,
+    queryFn: ({ signal }) => getLibraryFavorites({ signal }),
+    staleTime: 30_000,
+  });
+  const favoriteTrackIds = useMemo(
+    () => new Set(
+      (Array.isArray(favoriteQuery.data?.song) ? favoriteQuery.data.song : [])
+        .map((entry) => String(entry?.id || "").trim())
+        .filter(Boolean),
+    ),
+    [favoriteQuery.data],
+  );
   const disabledFlowSources = status?.capabilities?.unavailableSources || {};
   const canCreateGeneratedFlow = Object.keys(disabledFlowSources).length === 0;
 
   useEffect(() => {
     if (fixedLibraryFilter) setLibraryFilter(fixedLibraryFilter);
   }, [fixedLibraryFilter]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const requestVersion = favoriteStateVersionRef.current;
-    getLibraryFavorites()
-      .then((data) => {
-        if (cancelled || requestVersion !== favoriteStateVersionRef.current) return;
-        setFavoriteTrackIds(
-          new Set(
-            (Array.isArray(data?.song) ? data.song : [])
-              .map((entry) => String(entry?.id || "").trim())
-              .filter(Boolean),
-          ),
-        );
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (!selectedId || !status?.flows?.length) return;
@@ -1290,27 +1281,22 @@ function FlowPage({ mode = "all" }) {
     const id = playlistTrackFavoriteId(selectedEntry, track);
     if (!id || favoriteTrackSavingKey) return;
     const nextStarred = !favoriteTrackIds.has(id);
-    const previous = favoriteTrackIds;
+    const favoriteQueryKey = queryKeys.libraryFavorites;
+    const previous = queryClient.getQueryData(favoriteQueryKey);
     setFavoriteTrackSavingKey(id);
-    setFavoriteTrackIds((current) => {
-      const next = new Set(current);
-      if (nextStarred) next.add(id);
-      else next.delete(id);
-      return next;
+    queryClient.setQueryData(favoriteQueryKey, (current = {}) => {
+      const songs = Array.isArray(current.song) ? current.song : [];
+      const withoutTrack = songs.filter((entry) => String(entry?.id || "") !== id);
+      return {
+        ...current,
+        song: nextStarred ? [...withoutTrack, { id }] : withoutTrack,
+      };
     });
     try {
-      const starred = await updateLibraryFavorites([id], nextStarred);
-      favoriteStateVersionRef.current += 1;
-      setFavoriteTrackIds(
-        new Set(
-          (Array.isArray(starred?.song) ? starred.song : [])
-            .map((entry) => String(entry?.id || "").trim())
-            .filter(Boolean),
-        ),
-      );
+      await updateLibraryFavorites([id], nextStarred);
       showSuccess(nextStarred ? "Added to favorites" : "Removed from favorites");
     } catch (err) {
-      setFavoriteTrackIds(previous);
+      queryClient.setQueryData(favoriteQueryKey, previous);
       showError(
         err.response?.data?.message ||
           err.response?.data?.error ||

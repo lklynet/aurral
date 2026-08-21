@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
 import {
@@ -40,6 +41,7 @@ import {
   getArtistAppearsOnPage,
   getReleaseGroupRatingsBatch,
 } from "../../utils/api/endpoints/artists.js";
+import { queryKeys } from "../../queryClient.js";
 
 const RELEASE_PAGE_SIZE = 24;
 
@@ -96,10 +98,9 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [visibleCoverIds, setVisibleCoverIds] = useState([]);
   const [visibleReleaseCount, setVisibleReleaseCount] = useState(RELEASE_PAGE_SIZE);
-  const [hasMoreAppearances, setHasMoreAppearances] = useState(true);
-  const [loadingMoreAppearances, setLoadingMoreAppearances] = useState(false);
   const toolbarRef = useRef(null);
   const requestedRatingIdsRef = useRef(new Set());
+  const appearsOnOffsetRef = useRef({ mbid: null, offset: null });
   const artistNameFromNav = state?.artistName || "";
   const canAddAlbum = hasPermission("addAlbum");
 
@@ -175,6 +176,37 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     () => filteredReleaseGroups.slice(0, visibleReleaseCount),
     [filteredReleaseGroups, visibleReleaseCount],
   );
+  if (!isAppearsOn || appearsOnOffsetRef.current.mbid !== mbid) {
+    appearsOnOffsetRef.current = { mbid: isAppearsOn ? mbid : null, offset: null };
+  }
+  if (isAppearsOn && appearsOnOffsetRef.current.offset == null && releaseGroups.length > 0) {
+    appearsOnOffsetRef.current.offset = releaseGroups.length;
+  }
+  const initialAppearsOnOffset = appearsOnOffsetRef.current.offset ?? releaseGroups.length;
+  const appearsOnQuery = useInfiniteQuery({
+    queryKey: queryKeys.artistAppearsOn(mbid),
+    enabled: false,
+    initialPageParam: initialAppearsOnOffset,
+    queryFn: ({ pageParam, signal }) =>
+      getArtistAppearsOnPage(mbid, {
+        offset: pageParam,
+        limit: RELEASE_PAGE_SIZE,
+        excludeIds: releaseGroups.map((item) => item.id).filter(Boolean),
+        signal,
+      }),
+    getNextPageParam: (lastPage, pages) => {
+      if (!lastPage?.hasMore || !lastPage?.items?.length) return undefined;
+      return initialAppearsOnOffset + pages.reduce(
+        (count, page) => count + (page?.items?.length || 0),
+        0,
+      );
+    },
+    staleTime: 30_000,
+  });
+  const hasMoreAppearances = isAppearsOn && (
+    !appearsOnQuery.data || appearsOnQuery.hasNextPage
+  );
+  const loadingMoreAppearances = appearsOnQuery.isFetchingNextPage;
 
   useArtistSearchFocus({
     navigate,
@@ -192,8 +224,6 @@ function ArtistReleaseListPage({ mode = "releases" }) {
 
   useEffect(() => {
     setVisibleReleaseCount(RELEASE_PAGE_SIZE);
-    setHasMoreAppearances(true);
-    setLoadingMoreAppearances(false);
     requestedRatingIdsRef.current = new Set();
   }, [isAppearsOn, mbid]);
 
@@ -239,15 +269,17 @@ function ArtistReleaseListPage({ mode = "releases" }) {
       setVisibleReleaseCount((current) => current + RELEASE_PAGE_SIZE);
       return;
     }
-    if (!isAppearsOn || !hasMoreAppearances || loadingMoreAppearances) return;
-
-    setLoadingMoreAppearances(true);
+    if (
+      !isAppearsOn ||
+      !hasMoreAppearances ||
+      loadingMoreAppearances
+    ) return;
+    if (appearsOnOffsetRef.current.offset == null) {
+      appearsOnOffsetRef.current.offset = initialAppearsOnOffset;
+    }
     try {
-      const data = await getArtistAppearsOnPage(mbid, {
-        offset: releaseGroups.length,
-        limit: RELEASE_PAGE_SIZE,
-        excludeIds: releaseGroups.map((item) => item.id).filter(Boolean),
-      });
+      const result = await appearsOnQuery.fetchNextPage();
+      const data = result.data?.pages?.at(-1);
       const items = Array.isArray(data?.items) ? data.items : [];
       if (items.length) {
         setArtist((previous) => {
@@ -262,19 +294,16 @@ function ArtistReleaseListPage({ mode = "releases" }) {
         });
         setVisibleReleaseCount((current) => current + items.length);
       }
-      setHasMoreAppearances(Boolean(data?.hasMore));
     } catch {
-      // Keep the button available so the user can retry a transient failure.
-    } finally {
-      setLoadingMoreAppearances(false);
+      return;
     }
   }, [
+    appearsOnQuery,
     filteredReleaseGroups.length,
     hasMoreAppearances,
+    initialAppearsOnOffset,
     isAppearsOn,
     loadingMoreAppearances,
-    mbid,
-    releaseGroups,
     setArtist,
     visibleReleaseCount,
   ]);

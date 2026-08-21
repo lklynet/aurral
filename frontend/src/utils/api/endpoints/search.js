@@ -3,13 +3,20 @@ import { queryClient, queryKeys } from "../../../queryClient.js";
 
 export const searchUnified = async (
   query,
-  { mode = "suggest", limit } = {},
+  { mode = "suggest", limit, signal } = {},
 ) => {
   const params = { q: query, mode };
   if (limit != null) {
     params.limit = limit;
   }
   const timeoutMs = mode === "full" ? 30000 : 12000;
+  if (signal) {
+    return getData("/search/unified", {
+      params,
+      timeout: timeoutMs,
+      signal,
+    });
+  }
   return queryClient.fetchQuery({
     queryKey: queryKeys.searchUnified(query, mode, limit),
     queryFn: ({ signal: querySignal }) =>
@@ -30,6 +37,7 @@ export const searchCatalog = async (
     offset = 0,
     releaseTypes = [],
     sort,
+    signal,
   } = {},
 ) => {
   const params = { q: query, scope, limit, offset };
@@ -42,6 +50,9 @@ export const searchCatalog = async (
     }
   }
   const queryOptions = { limit, offset, releaseTypes, sort };
+  if (signal) {
+    return getData("/search", { params, signal });
+  }
   return queryClient.fetchQuery({
     queryKey: queryKeys.searchCatalog(query, scope, queryOptions),
     queryFn: ({ signal: querySignal }) =>

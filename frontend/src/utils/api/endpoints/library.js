@@ -40,7 +40,10 @@ export const getCanonicalLibraryPage = (options = {}) => {
   );
   return queryClient.fetchQuery({
     queryKey: queryKeys.libraryCanonical(params),
-    queryFn: ({ signal }) => getData("/library/canonical", { params, signal }),
+    queryFn: ({ signal: querySignal }) => getData("/library/canonical", {
+      params,
+      signal: options.signal || querySignal,
+    }),
     staleTime: 15_000,
   });
 };
@@ -57,11 +60,13 @@ export const getLibraryRefreshStatus = (jobId) =>
 let libraryFavoritesGeneration = 0;
 let latestLibraryFavorites = null;
 
-export const getLibraryFavorites = () => {
+export const getLibraryFavorites = ({ signal } = {}) => {
   const generation = libraryFavoritesGeneration;
   return queryClient.fetchQuery({
     queryKey: queryKeys.libraryFavorites,
-    queryFn: ({ signal }) => getData("/library/favorites", { signal }),
+    queryFn: ({ signal: querySignal }) => getData("/library/favorites", {
+      signal: signal || querySignal,
+    }),
     staleTime: 30_000,
   }).then((data) => {
     if (generation !== libraryFavoritesGeneration && latestLibraryFavorites) {
@@ -158,9 +163,10 @@ export const deleteAlbumFromLibrary = (id, deleteFiles = false) =>
 export const deleteTrackFromLibrary = (id) =>
   deleteData(`/library/tracks/${encodeURIComponent(id)}`);
 
-export const getLibraryAlbums = async (artistId) => {
+export const getLibraryAlbums = async (artistId, { signal } = {}) => {
   const data = await getData("/library/albums", {
     params: { artistId },
+    signal,
   });
   return data.map((album) => ({
     ...album,
