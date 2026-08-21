@@ -412,6 +412,9 @@ test("creates durable Subsonic playlists around one promoted library job", async
     const playlist = responseJson(await request("getPlaylist", { id: secondCreate.playlist.id })).playlist;
     return playlist.entry?.[0] ? playlist : null;
   });
+  const secondAurralPlaylistId = decodeURIComponent(
+    secondCreate.playlist.id.slice("shared:".length),
+  );
   assert.equal(jobIdFromSong(second.entry[0].id), canonicalJobId);
 
   await waitFor(() => db.prepare(
@@ -431,6 +434,20 @@ test("creates durable Subsonic playlists around one promoted library job", async
   ).all("library", "Flow Song");
   assert.equal(libraryJobs.length, 1);
 
+  const aurralPlaylistId = decodeURIComponent(firstId.slice("shared:".length));
+  const aurralJobsResponse = await apiFetch(
+    `/api/playlists/jobs/${encodeURIComponent(aurralPlaylistId)}`,
+  );
+  assert.equal(aurralJobsResponse.status, 200);
+  const aurralJobs = await aurralJobsResponse.json();
+  assert.equal(aurralJobs.length, 1);
+  assert.equal(aurralJobs[0].id, canonicalJobId);
+  assert.equal(aurralJobs[0].playlistType, aurralPlaylistId);
+  assert.equal(
+    (await apiFetch(`/api/playlists/stream/${encodeURIComponent(canonicalJobId)}`)).status,
+    200,
+  );
+
   const removed = responseJson(await request("updatePlaylist", {
     playlistId: first.id,
     songIndexToRemove: "0",
@@ -438,6 +455,18 @@ test("creates durable Subsonic playlists around one promoted library job", async
   assert.equal(removed.status, "ok");
   const secondEntry = responseJson(await request("getPlaylist", { id: second.id })).playlist.entry[0];
   assert.equal((await request("stream", { id: secondEntry.id })).response.status, 200);
+  const removeCanonicalResponse = await apiFetch(
+    `/api/playlists/shared-playlists/${encodeURIComponent(secondAurralPlaylistId)}/tracks/${encodeURIComponent(canonicalJobId)}`,
+    { method: "DELETE" },
+  );
+  assert.equal(removeCanonicalResponse.status, 200);
+  await waitFor(async () => {
+    const response = await apiFetch(
+      `/api/playlists/jobs/${encodeURIComponent(secondAurralPlaylistId)}`,
+    );
+    const jobs = await response.json();
+    return jobs.length === 0 ? true : null;
+  });
   await stat(libraryJobs[0].finalPath);
 
   assert.equal(responseJson(await request("deletePlaylist", { id: second.id })).status, "ok");

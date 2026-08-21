@@ -11,6 +11,15 @@ import {
   AUDIO_CONTENT_TYPES,
   canAccessPlaylistType,
 } from "./utils.js";
+import { flowPlaylistConfig } from "../../../services/weeklyFlow/weeklyFlowPlaylistConfig.js";
+
+const canAccessJob = (user, job) =>
+  canAccessPlaylistType(user, job.playlistType) ||
+  flowPlaylistConfig.getSharedPlaylistsForUser(user).some((playlist) =>
+    playlist.tracks?.some(
+      (track) => String(track?.canonicalJobId || "") === String(job.id || ""),
+    ),
+  );
 
 export function registerStream(router) {
   router.get("/stream/:jobId", noCache, async (req, res) => {
@@ -29,7 +38,7 @@ export function registerStream(router) {
     if (!job) {
       return res.status(404).json({ error: "Track not found" });
     }
-    if (!canAccessPlaylistType(req.user, job.playlistType)) {
+    if (!canAccessJob(req.user, job)) {
       return res.status(404).json({ error: "Track not found" });
     }
     if (job.status !== "done" || !job.finalPath) {

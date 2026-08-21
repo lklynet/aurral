@@ -238,7 +238,10 @@ export function registerSharedPlaylists(router) {
           return res.status(404).json({ error: "Shared playlist not found" });
         }
         const job = downloadTracker.getJob(jobId);
-        if (!job || job.playlistType !== playlistId) {
+        const playlistReferencesJob = playlist.tracks?.some(
+          (track) => String(track?.canonicalJobId || "") === String(jobId || ""),
+        );
+        if (!job || (job.playlistType !== playlistId && !playlistReferencesJob)) {
           return res.status(404).json({ error: "Track not found" });
         }
         const result = await weeklyFlowOperationQueue.enqueuePayload({
