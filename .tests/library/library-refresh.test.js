@@ -7,7 +7,12 @@ const { registerCanonical } = await import(
   "../../backend/routes/library/handlers/canonical.js"
 );
 const {
+  claimScheduledLibraryScanJob,
   clearScheduledLibraryScan,
+  getScheduledLibraryScanJobId,
+  onLibraryScanFinalFailure,
+  onLibraryScanSuccess,
+  scheduleLibraryScan,
   stopLibraryScanWorker,
 } = await import("../../backend/services/libraryScanWorker.js");
 const { dbOps } = await import("../../backend/db/helpers/index.js");
@@ -64,6 +69,48 @@ test("library refresh queues a forced scan and exposes its queue status", async 
     clearScheduledLibraryScan();
     await new Promise((resolve) => setImmediate(resolve));
     await stopLibraryScanWorker();
+  }
+});
+
+test("library scan scheduling keeps one live job and recovers stale registry entries", () => {
+  const queue = getLibraryScanQueue();
+  clearScheduledLibraryScan();
+  let firstJob;
+  let secondJob;
+  try {
+    firstJob = scheduleLibraryScan();
+    const claimed = queue.claimOne("library-scan-test");
+    assert.equal(claimed?.id, firstJob);
+    assert.equal(claimScheduledLibraryScanJob(firstJob), true);
+    assert.equal(scheduleLibraryScan(), firstJob);
+
+    queue.cancel(firstJob);
+    secondJob = scheduleLibraryScan();
+    assert.notEqual(secondJob, firstJob);
+    assert.equal(getScheduledLibraryScanJobId(), secondJob);
+  } finally {
+    if (firstJob) queue.cancel(firstJob);
+    if (secondJob) queue.cancel(secondJob);
+    clearScheduledLibraryScan();
+  }
+});
+
+test("terminal library scan outcomes clear the persistent registry", () => {
+  const queue = getLibraryScanQueue();
+  let successJob;
+  let failedJob;
+  try {
+    successJob = scheduleLibraryScan();
+    onLibraryScanSuccess(null, { id: successJob });
+    assert.equal(getScheduledLibraryScanJobId(), null);
+
+    failedJob = scheduleLibraryScan();
+    onLibraryScanFinalFailure({ id: failedJob });
+    assert.equal(getScheduledLibraryScanJobId(), null);
+  } finally {
+    if (successJob) queue.cancel(successJob);
+    if (failedJob) queue.cancel(failedJob);
+    clearScheduledLibraryScan();
   }
 });
 

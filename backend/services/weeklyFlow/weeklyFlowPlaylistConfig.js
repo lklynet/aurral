@@ -24,6 +24,12 @@ const clampSize = (value) => {
   return Math.max(Math.round(n), 1);
 };
 
+const normalizeOwnerUserId = (value) => {
+  if (value == null) return null;
+  const userId = Number(value);
+  return Number.isSafeInteger(userId) && userId > 0 ? userId : null;
+};
+
 export const normalizeYearBound = (value) => {
   if (value == null || value === "") return null;
   const parsed = Number(value);
@@ -242,10 +248,7 @@ const normalizeFlow = (flow) => {
   return {
     id: flow?.id || randomUUID(),
     name: name || "Flow",
-    ownerUserId:
-      flow?.ownerUserId != null && Number.isFinite(Number(flow.ownerUserId))
-        ? Math.trunc(Number(flow.ownerUserId))
-        : null,
+    ownerUserId: normalizeOwnerUserId(flow?.ownerUserId),
     enabled: flow?.enabled === true,
     recordHistory: flow?.recordHistory !== false,
     scheduleDays: normalizeScheduleDays(flow?.scheduleDays),
@@ -475,10 +478,7 @@ const normalizeSharedPlaylist = (playlist) => {
   return {
     id: playlist?.id || randomUUID(),
     name: name || "Shared Playlist",
-    ownerUserId:
-      playlist?.ownerUserId != null && Number.isFinite(Number(playlist.ownerUserId))
-        ? Math.trunc(Number(playlist.ownerUserId))
-        : null,
+    ownerUserId: normalizeOwnerUserId(playlist?.ownerUserId),
     sourceName: String(playlist?.sourceName || "").trim() || null,
     sourceFlowId: String(playlist?.sourceFlowId || "").trim() || null,
     discoverPresetId: String(playlist?.discoverPresetId || "").trim() || null,
@@ -718,9 +718,12 @@ export const flowPlaylistConfig = {
     description = null,
   }) {
     const flows = getStoredFlows();
+    const normalizedOwnerUserId = normalizeOwnerUserId(ownerUserId);
     assertUniqueFlowName(
-      entitiesRelevantForNameCheck(flows, { ownerUserId }),
-      entitiesRelevantForNameCheck(getStoredSharedPlaylists(), { ownerUserId }),
+      entitiesRelevantForNameCheck(flows, { ownerUserId: normalizedOwnerUserId }),
+      entitiesRelevantForNameCheck(getStoredSharedPlaylists(), {
+        ownerUserId: normalizedOwnerUserId,
+      }),
       name,
     );
     const flow = normalizeFlow({
@@ -740,7 +743,7 @@ export const flowPlaylistConfig = {
       recordHistory,
       scheduleDays,
       scheduleTime,
-      ownerUserId,
+      ownerUserId: normalizedOwnerUserId,
       enabled: false,
       nextRunAt: null,
       lastRunAt: null,
@@ -898,15 +901,18 @@ export const flowPlaylistConfig = {
     description = null,
   }) {
     const playlists = getStoredSharedPlaylists();
+    const normalizedOwnerUserId = normalizeOwnerUserId(ownerUserId);
     assertUniqueSharedPlaylistName(
-      entitiesRelevantForNameCheck(playlists, { ownerUserId }),
-      entitiesRelevantForNameCheck(getStoredFlows(), { ownerUserId }),
+      entitiesRelevantForNameCheck(playlists, { ownerUserId: normalizedOwnerUserId }),
+      entitiesRelevantForNameCheck(getStoredFlows(), {
+        ownerUserId: normalizedOwnerUserId,
+      }),
       name,
     );
     const playlist = normalizeSharedPlaylist({
       id: String(id || "").trim() || randomUUID(),
       name,
-      ownerUserId,
+      ownerUserId: normalizedOwnerUserId,
       sourceName,
       sourceFlowId,
       discoverPresetId,

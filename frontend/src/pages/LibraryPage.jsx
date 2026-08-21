@@ -186,6 +186,14 @@ export const mergeAlbumTrackPageIntoLibrary = (current, page, albumId, tracks) =
   };
 };
 
+export const getCachedAlbumTracks = (album, tracksById) => {
+  const queryKey = queryKeys.libraryAlbumTracks(String(album?.id), album?.releaseGroupMbid);
+  const cached = queryClient.getQueryState(queryKey)?.isInvalidated
+    ? null
+    : queryClient.getQueryData(queryKey)?.tracks;
+  return cached || album?.trackIds?.map((id) => tracksById.get(String(id))).filter(Boolean) || [];
+};
+
 const trackDurationMs = (track) => {
   const fileDurationMs = (track?.files || []).find((file) => Number(file?.durationMs) > 0)
     ?.durationMs;
@@ -393,7 +401,10 @@ function LibraryPage() {
   const handleLibraryScanMessage = useCallback((message) => {
     if (message?.type !== "library_scan_completed") return;
     clearCanonicalLibraryPageCache();
-    queryClient.removeQueries({ queryKey: queryKeys.libraryAlbumTracksPrefix });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.libraryAlbumTracksPrefix,
+      refetchType: "none",
+    });
     void queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
     void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
   }, []);
@@ -423,7 +434,10 @@ function LibraryPage() {
         if (refreshAttemptRef.current !== attempt) return;
         if (status.status === "completed") {
           clearCanonicalLibraryPageCache();
-          queryClient.removeQueries({ queryKey: queryKeys.libraryAlbumTracksPrefix });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.libraryAlbumTracksPrefix,
+            refetchType: "none",
+          });
           void queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
           void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
           showSuccess("Library refreshed");
@@ -502,24 +516,21 @@ function LibraryPage() {
               albumId: routeAlbumId,
               page: 1,
               pageSize,
-              signal,
-            })
+            }, { signal })
           : await Promise.all([
               getCanonicalLibraryPage({
                 kind: "albums",
                 artistId: routeArtistId,
                 page: 1,
                 pageSize,
-                signal,
-              }),
+              }, { signal }),
               getCanonicalLibraryPage({
                 kind: "tracks",
                 artistId: routeArtistId,
                 page: 1,
                 pageSize,
                 availableOnly: true,
-                signal,
-              }),
+              }, { signal }),
             ])
         : section === "favorites"
           ? await getLibraryFavorites({ signal })
@@ -530,16 +541,14 @@ function LibraryPage() {
                   page: 1,
                   pageSize,
                   sort: "newest",
-                  signal,
-                }),
+                }, { signal }),
                 getCanonicalLibraryPage({
                   kind: "tracks",
                   page: 1,
                   pageSize: 12,
                   sort: "newest",
                   availableOnly: true,
-                  signal,
-                }),
+                }, { signal }),
               ])
             : await getCanonicalLibraryPage({
                 kind: tab,
@@ -550,8 +559,7 @@ function LibraryPage() {
                 sort: sortMode,
                 direction: sortDirection,
                 availableOnly: tab === "tracks",
-                signal,
-              });
+              }, { signal });
       const pageResults = section === "favorites"
         ? [nextData?.library || EMPTY_LIBRARY]
         : Array.isArray(nextData) ? nextData : [nextData];
@@ -609,6 +617,7 @@ function LibraryPage() {
   }, [isDetail, isPreviewLibrary, queryData, section]);
   const setLibrary = useCallback((updater) => {
     queryClient.setQueryData(libraryQueryKey, (current) => {
+      if (!current && !forcePreview) return current;
       const previous = current?.library || (forcePreview ? libraryPreviewData : EMPTY_LIBRARY);
       const next = typeof updater === "function" ? updater(previous) : updater;
       if (current && next === previous) return current;
@@ -641,12 +650,7 @@ function LibraryPage() {
   );
 
   const getAlbumTracks = useCallback(
-    (album) => {
-      const cached = queryClient.getQueryData(
-        queryKeys.libraryAlbumTracks(String(album?.id), album?.releaseGroupMbid),
-      )?.tracks;
-      return cached || album?.trackIds?.map((id) => tracksById.get(String(id))).filter(Boolean) || [];
-    },
+    (album) => getCachedAlbumTracks(album, tracksById),
     [tracksById],
   );
 
@@ -661,8 +665,7 @@ function LibraryPage() {
           albumId: album.id,
           page: 1,
           pageSize,
-          signal,
-        });
+        }, { signal });
         const ownedTracks = Array.isArray(page?.items) ? page.items : [];
         const pageArtist = page?.artists?.[0] || null;
         if (!releaseGroupMbid) return { tracks: ownedTracks, page };
@@ -852,7 +855,10 @@ function LibraryPage() {
       };
     });
     clearCanonicalLibraryPageCache();
-    queryClient.removeQueries({ queryKey: queryKeys.libraryAlbumTracksPrefix });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.libraryAlbumTracksPrefix,
+      refetchType: "none",
+    });
   }, [setLibrary]);
 
   const handleLibraryRemovalConfirm = useCallback(async () => {
@@ -1214,6 +1220,9 @@ function LibraryPage() {
   const homeTracks = ownedLibraryTracks.slice(0, 12);
   const libraryAlbum = routeAlbumId ? albumsById.get(String(routeAlbumId)) || null : null;
   const libraryArtist = routeArtistId ? artistsById.get(String(routeArtistId)) || null : null;
+  const hasMissingAlbumTracks = Boolean(
+    libraryAlbum && getAlbumTracks(libraryAlbum).some((track) => !firstAvailableFile(track)),
+  );
   const activityQueryKey = useMemo(
     () => queryKeys.libraryActivityRequests(user?.id),
     [user?.id],
@@ -1227,7 +1236,7 @@ function LibraryPage() {
   const activityQuery = useQuery({
     queryKey: activityQueryKey,
     queryFn: ({ signal }) => getRequests({ refresh: true, signal }),
-    enabled: Boolean(libraryAlbum && !isPreviewLibrary),
+    enabled: Boolean(libraryAlbum && !isPreviewLibrary && hasMissingAlbumTracks),
     staleTime: 0,
     refetchInterval: hasTrackDownloadPolling ? 4000 : false,
     refetchIntervalInBackground: false,
