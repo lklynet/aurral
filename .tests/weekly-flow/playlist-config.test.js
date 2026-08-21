@@ -58,6 +58,57 @@ test("creates flows with normalized scheduling and enforces unique names", () =>
   );
 });
 
+test("normalizes invalid playlist owners to null", () => {
+  const flow = flowPlaylistConfig.createFlow({ name: "Unowned Flow", ownerUserId: 0 });
+  const playlist = flowPlaylistConfig.createSharedPlaylist({
+    name: "Unowned Playlist",
+    ownerUserId: "0",
+  });
+  const fractional = flowPlaylistConfig.createFlow({
+    name: "Fractional Owner",
+    ownerUserId: 7.9,
+  });
+  const unsafe = flowPlaylistConfig.createFlow({
+    name: "Unsafe Owner",
+    ownerUserId: Number.MAX_SAFE_INTEGER + 1,
+  });
+  const unowned = flowPlaylistConfig.createFlow({ name: "Invalid Owner Conflict" });
+  const unownedPlaylist = flowPlaylistConfig.createSharedPlaylist({
+    name: "Invalid Playlist Owner Conflict",
+  });
+  const owned = flowPlaylistConfig.createFlow({ name: "Owned Flow", ownerUserId: 7 });
+
+  assert.equal(flow.ownerUserId, null);
+  assert.equal(playlist.ownerUserId, null);
+  assert.equal(fractional.ownerUserId, null);
+  assert.equal(unsafe.ownerUserId, null);
+  assert.equal(owned.ownerUserId, 7);
+  assert.throws(
+    () =>
+      flowPlaylistConfig.createFlow({
+        name: "Invalid Owner Conflict",
+        ownerUserId: "not-a-user",
+      }),
+    /already exists/,
+  );
+  assert.throws(
+    () =>
+      flowPlaylistConfig.createSharedPlaylist({
+        name: "Invalid Playlist Owner Conflict",
+        ownerUserId: "not-a-user",
+      }),
+    /already exists/,
+  );
+
+  flowPlaylistConfig.deleteFlow(flow.id);
+  flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+  flowPlaylistConfig.deleteFlow(fractional.id);
+  flowPlaylistConfig.deleteFlow(unsafe.id);
+  flowPlaylistConfig.deleteFlow(unowned.id);
+  flowPlaylistConfig.deleteSharedPlaylist(unownedPlaylist.id);
+  flowPlaylistConfig.deleteFlow(owned.id);
+});
+
 test("defaults listening history on and persists a flow opt-out", () => {
   const flow = flowPlaylistConfig.createFlow({
     name: "No History",

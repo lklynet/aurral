@@ -1,7 +1,13 @@
 import { QueryClient } from "@tanstack/react-query";
 
 const LIBRARY_CANONICAL_QUERY_KEY = ["library", "canonical"];
+const LIBRARY_VIEW_QUERY_KEY = ["library", "view"];
 const LIBRARY_ALBUM_TRACKS_QUERY_KEY = ["library", "tracks"];
+let libraryCanonicalGeneration = 0;
+
+export const bumpLibraryCanonicalGeneration = () => {
+  libraryCanonicalGeneration += 1;
+};
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,14 +28,22 @@ export const queryKeys = {
   appSettings: ["settings", "app"],
   playbackSettings: ["settings", "playback"],
   activityRequests: (userId) => ["activity", "requests", userId || null],
+  libraryActivityRequests: (userId) => ["library", "activity-requests", userId || null],
   inbox: (userId, zip, limit) => ["inbox", userId || null, zip || "", limit],
   listeningHistory: (userId) => ["auth", "listening-history", userId || null],
   lidarrPreferences: (userId) => ["auth", "lidarr-preferences", userId || null],
   libraryFavorites: ["library", "favorites"],
+  libraryAlbums: (artistId) => ["library", "albums", artistId || null],
+  libraryView: (options) => [...LIBRARY_VIEW_QUERY_KEY, options],
   libraryLookup: (id) => ["library", "lookup", id],
   libraryLookupBatch: (ids) => ["library", "lookup-batch", [...ids].sort()],
+  libraryViewPrefix: LIBRARY_VIEW_QUERY_KEY,
   libraryCanonicalPrefix: LIBRARY_CANONICAL_QUERY_KEY,
-  libraryCanonical: (options) => [...LIBRARY_CANONICAL_QUERY_KEY, options],
+  libraryCanonical: (options) => [
+    ...LIBRARY_CANONICAL_QUERY_KEY,
+    libraryCanonicalGeneration,
+    options,
+  ],
   libraryAlbumLookup: (ids) => ["library", "album-lookup", [...ids].sort()],
   libraryAlbumTracksPrefix: LIBRARY_ALBUM_TRACKS_QUERY_KEY,
   libraryAlbumTracks: (albumId, releaseGroupMbid) => [
@@ -46,6 +60,7 @@ export const queryKeys = {
   releaseGroupDetails: (id) => ["artists", "release-group", id],
   releaseGroupTracks: (id, context) => ["artists", "release-group-tracks", id, context],
   releaseGroupRatings: (ids) => ["artists", "release-group-ratings", [...ids].sort()],
+  artistAppearsOn: (mbid) => ["artists", "appears-on", mbid || null],
   downloadStatus: (ids) => ["library", "download-status", [...ids].sort()],
   searchCatalog: (query, scope, options) => ["search", scope, query, options],
   searchDiscovery: (offset, limit) => ["search", "discovery", offset || 0, limit || null],

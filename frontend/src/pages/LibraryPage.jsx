@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowDownAZ,
@@ -104,6 +105,43 @@ const favoriteId = (kind, entity) =>
 const firstAvailableFile = (track) =>
   (track?.files || []).find((file) => file.available) || null;
 
+const EMPTY_LIBRARY = { artists: [], albums: [], tracks: [], genres: [] };
+
+const normalizeLibraryPages = (pages) => pages.reduce(
+  (result, page) => {
+    ["artists", "albums", "tracks"].forEach((kind) => {
+      (Array.isArray(page?.[kind]) ? page[kind] : []).forEach((entity) => {
+        if (!result[kind].some((candidate) => String(candidate.id) === String(entity.id))) {
+          result[kind].push(entity);
+        }
+      });
+    });
+    if (Array.isArray(page?.genres) && page.genres.length > result.genres.length) {
+      result.genres = page.genres;
+    }
+    return result;
+  },
+  { artists: [], albums: [], tracks: [], genres: [] },
+);
+
+const favoriteIdsFromPages = (pages) => new Set(
+  ["artists", "albums", "tracks"].flatMap((kind) =>
+    pages
+      .flatMap((page) => (Array.isArray(page?.[kind]) ? page[kind] : []))
+      .filter((entity) => entity.userFavorite)
+      .map((entity) => favoriteId(
+        kind === "artists" ? "artist" : kind === "albums" ? "album" : "song",
+        entity,
+      )),
+  ),
+);
+
+const favoriteIdsFromFavorites = (favorites) => new Set(
+  ["artist", "album", "song"].flatMap((kind) =>
+    (Array.isArray(favorites?.[kind]) ? favorites[kind] : []).map((entry) => entry.id),
+  ),
+);
+
 export const mergeAlbumTrackPageIntoLibrary = (current, page, albumId, tracks) => {
   const merge = (kind) => {
     const existing = current[kind] || [];
@@ -147,6 +185,14 @@ export const mergeAlbumTrackPageIntoLibrary = (current, page, albumId, tracks) =
     albums,
     tracks: nextTracks,
   };
+};
+
+export const getCachedAlbumTracks = (album, tracksById) => {
+  const queryKey = queryKeys.libraryAlbumTracks(String(album?.id), album?.releaseGroupMbid);
+  const cached = queryClient.getQueryState(queryKey)?.isInvalidated
+    ? null
+    : queryClient.getQueryData(queryKey)?.tracks;
+  return cached || album?.trackIds?.map((id) => tracksById.get(String(id))).filter(Boolean) || [];
 };
 
 const trackDurationMs = (track) => {
@@ -320,7 +366,7 @@ function LibraryPage() {
     artistId: routeArtistId,
   } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { bootstrap, hasPermission } = useAuth();
+  const { bootstrap, hasPermission, user } = useAuth();
   const { showError, showSuccess } = useToast();
   const {
     sharedPlaylists,
@@ -332,8 +378,6 @@ function LibraryPage() {
   } = useSharedPlaylists();
   const { playQueue, currentTrack, isPlaying, isLoading, togglePlayPause, matchesSource } =
     useAudioQueue();
-  const [library, setLibrary] = useState({ artists: [], albums: [], tracks: [], genres: [] });
-  const [favoriteIds, setFavoriteIds] = useState(() => new Set());
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState("name");
   const [sortDirection, setSortDirection] = useState("asc");
@@ -343,13 +387,8 @@ function LibraryPage() {
   const [covers, setCovers] = useState({});
   const [pendingFavorite, setPendingFavorite] = useState(null);
   const favoriteMutationInFlightRef = useRef(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [isPreviewLibrary, setIsPreviewLibrary] = useState(false);
-  const [retryKey, setRetryKey] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [pageIndex, setPageIndex] = useState(1);
-  const [pageData, setPageData] = useState(null);
   const refreshAttemptRef = useRef(0);
   const [playlistSavingKey, setPlaylistSavingKey] = useState("");
   const [trackDownloadStates, setTrackDownloadStates] = useState({});
@@ -363,8 +402,12 @@ function LibraryPage() {
   const handleLibraryScanMessage = useCallback((message) => {
     if (message?.type !== "library_scan_completed") return;
     clearCanonicalLibraryPageCache();
-    queryClient.removeQueries({ queryKey: queryKeys.libraryAlbumTracksPrefix });
-    setRetryKey((value) => value + 1);
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.libraryAlbumTracksPrefix,
+      refetchType: "none",
+    });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
   }, []);
 
   useWebSocketChannel("library", handleLibraryScanMessage);
@@ -392,7 +435,12 @@ function LibraryPage() {
         if (refreshAttemptRef.current !== attempt) return;
         if (status.status === "completed") {
           clearCanonicalLibraryPageCache();
-          setRetryKey((value) => value + 1);
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.libraryAlbumTracksPrefix,
+            refetchType: "none",
+          });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
           showSuccess("Library refreshed");
           return;
         }
@@ -421,6 +469,174 @@ function LibraryPage() {
   const librarySource = useMemo(() => ({ type: "native-library", id: "library" }), []);
   const normalizedQuery = query.trim().toLocaleLowerCase();
 
+  useEffect(() => {
+    setQuery("");
+    setSortMode("name");
+    setSortDirection("asc");
+    setViewMode(section === "tracks" || section === "genres" ? "list" : "grid");
+    setSearchOpen(false);
+    setFiltersOpen(false);
+    setPageIndex(1);
+  }, [section]);
+
+  const libraryQueryKey = useMemo(
+    () => queryKeys.libraryView({
+      preview: forcePreview,
+      section,
+      tab,
+      albumId: routeAlbumId || null,
+      artistId: routeArtistId || null,
+      pageIndex,
+      query: normalizedQuery,
+      genre: selectedGenre,
+      sort: sortMode,
+      direction: sortDirection,
+    }),
+    [
+      forcePreview,
+      normalizedQuery,
+      pageIndex,
+      routeAlbumId,
+      routeArtistId,
+      section,
+      selectedGenre,
+      sortDirection,
+      sortMode,
+      tab,
+    ],
+  );
+  const libraryQuery = useQuery({
+    queryKey: libraryQueryKey,
+    enabled: !forcePreview,
+    staleTime: 15_000,
+    queryFn: async ({ signal }) => {
+      const nextData = isDetail
+        ? routeAlbumId
+          ? await getCanonicalLibraryPage({
+              kind: "tracks",
+              albumId: routeAlbumId,
+              page: 1,
+              pageSize,
+            }, { signal })
+          : await Promise.all([
+              getCanonicalLibraryPage({
+                kind: "albums",
+                artistId: routeArtistId,
+                page: 1,
+                pageSize,
+              }, { signal }),
+              getCanonicalLibraryPage({
+                kind: "tracks",
+                artistId: routeArtistId,
+                page: 1,
+                pageSize,
+                availableOnly: true,
+              }, { signal }),
+            ])
+        : section === "favorites"
+          ? await getLibraryFavorites({ signal })
+          : section === "home"
+            ? await Promise.all([
+                getCanonicalLibraryPage({
+                  kind: "albums",
+                  page: 1,
+                  pageSize,
+                  sort: "newest",
+                }, { signal }),
+                getCanonicalLibraryPage({
+                  kind: "tracks",
+                  page: 1,
+                  pageSize: 12,
+                  sort: "newest",
+                  availableOnly: true,
+                }, { signal }),
+              ])
+            : await getCanonicalLibraryPage({
+                kind: tab,
+                page: pageIndex,
+                pageSize,
+                query: normalizedQuery,
+                genre: selectedGenre,
+                sort: sortMode,
+                direction: sortDirection,
+                availableOnly: tab === "tracks",
+              }, { signal });
+      const pageResults = section === "favorites"
+        ? [nextData?.library || EMPTY_LIBRARY]
+        : Array.isArray(nextData) ? nextData : [nextData];
+      const normalizedLibrary = normalizeLibraryPages(pageResults);
+      const usePreview =
+        import.meta.env.DEV &&
+        pageResults.every((page) => Number(page?.total || 0) === 0) &&
+        !normalizedQuery &&
+        !selectedGenre &&
+        normalizedLibrary.artists.length === 0 &&
+        normalizedLibrary.albums.length === 0 &&
+        normalizedLibrary.tracks.length === 0;
+      return {
+        nextData,
+        pageResults,
+        isPreview: usePreview,
+        library: usePreview ? libraryPreviewData : normalizedLibrary,
+        favoriteIds: usePreview
+          ? new Set(libraryPreviewFavorites)
+          : section === "favorites"
+            ? favoriteIdsFromFavorites(nextData)
+            : favoriteIdsFromPages(pageResults),
+      };
+    },
+  });
+
+  const queryData = libraryQuery.data;
+  const isPreviewLibrary = forcePreview || queryData?.isPreview === true;
+  const library = queryData?.library || (forcePreview ? libraryPreviewData : EMPTY_LIBRARY);
+  const favoriteIds = useMemo(
+    () => queryData?.favoriteIds || (
+      isPreviewLibrary ? new Set(libraryPreviewFavorites) : new Set()
+    ),
+    [isPreviewLibrary, queryData?.favoriteIds],
+  );
+  const loading = !forcePreview && libraryQuery.isPending;
+  const error = forcePreview
+    ? null
+    : libraryQuery.error?.response?.data?.message ||
+      libraryQuery.error?.response?.data?.error ||
+      libraryQuery.error?.message ||
+      null;
+  const pageData = useMemo(() => {
+    if (!queryData || isPreviewLibrary || isDetail || section === "favorites") return null;
+    if (section === "home" && !Array.isArray(queryData.pageResults)) return null;
+    return section === "home"
+      ? {
+          kind: "home",
+          total: queryData.pageResults.reduce(
+            (count, page) => count + Number(page?.total || 0),
+            0,
+          ),
+        }
+      : queryData.nextData;
+  }, [isDetail, isPreviewLibrary, queryData, section]);
+  const setLibrary = useCallback((updater) => {
+    queryClient.setQueryData(libraryQueryKey, (current) => {
+      if (!current && !forcePreview) return current;
+      const previous = current?.library || (forcePreview ? libraryPreviewData : EMPTY_LIBRARY);
+      const next = typeof updater === "function" ? updater(previous) : updater;
+      if (current && next === previous) return current;
+      return { ...(current || {}), library: next };
+    });
+  }, [forcePreview, libraryQueryKey]);
+  const setFavoriteIds = useCallback((updater) => {
+    queryClient.setQueryData(libraryQueryKey, (current) => {
+      if (!current && !forcePreview) return current;
+      const previous = current?.favoriteIds || (
+        forcePreview ? new Set(libraryPreviewFavorites) : new Set()
+      );
+      const next = typeof updater === "function" ? updater(previous) : updater;
+      if (current && next === previous) return current;
+      return { ...(current || {}), favoriteIds: next };
+    });
+  }, [forcePreview, libraryQueryKey]);
+
   const artistsById = useMemo(
     () => new Map(library.artists.map((artist) => [String(artist.id), artist])),
     [library.artists],
@@ -434,188 +650,8 @@ function LibraryPage() {
     [library.tracks],
   );
 
-  useEffect(() => {
-    setQuery("");
-    setSortMode("name");
-    setSortDirection("asc");
-    setViewMode(section === "tracks" || section === "genres" ? "list" : "grid");
-    setSearchOpen(false);
-    setFiltersOpen(false);
-    setPageIndex(1);
-    setPageData(null);
-  }, [section]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-    setIsPreviewLibrary(false);
-
-    if (forcePreview) {
-      setLibrary(libraryPreviewData);
-      setFavoriteIds(new Set(libraryPreviewFavorites));
-      setIsPreviewLibrary(true);
-      setPageData(null);
-      setLoading(false);
-      return () => controller.abort();
-    }
-
-    const pageRequest = isDetail
-      ? routeAlbumId
-        ? getCanonicalLibraryPage({
-            kind: "tracks",
-            albumId: routeAlbumId,
-            page: 1,
-            pageSize,
-          })
-        : Promise.all([
-            getCanonicalLibraryPage({
-              kind: "albums",
-              artistId: routeArtistId,
-              page: 1,
-              pageSize,
-            }),
-            getCanonicalLibraryPage({
-              kind: "tracks",
-              artistId: routeArtistId,
-              page: 1,
-              pageSize,
-              availableOnly: true,
-            }),
-          ])
-      : section === "favorites"
-        ? getLibraryFavorites()
-      : section === "home"
-        ? Promise.all([
-            getCanonicalLibraryPage({
-              kind: "albums",
-              page: 1,
-              pageSize,
-              sort: "newest",
-            }),
-            getCanonicalLibraryPage({
-              kind: "tracks",
-              page: 1,
-              pageSize: 12,
-              sort: "newest",
-              availableOnly: true,
-            }),
-          ])
-        : getCanonicalLibraryPage({
-            kind: tab,
-            page: pageIndex,
-            pageSize,
-            query: normalizedQuery,
-            genre: selectedGenre,
-            sort: sortMode,
-            direction: sortDirection,
-            availableOnly: tab === "tracks",
-          });
-
-    const favoritesRequest = Promise.resolve(null);
-
-    Promise.all([pageRequest, favoritesRequest])
-      .then(([nextData, starred]) => {
-        if (controller.signal.aborted) return;
-        const pageResults = section === "favorites"
-          ? [nextData?.library || { artists: [], albums: [], tracks: [] }]
-          : Array.isArray(nextData) ? nextData : [nextData];
-        const normalizedLibrary = pageResults.reduce(
-          (result, page) => {
-            ["artists", "albums", "tracks"].forEach((kind) => {
-              (Array.isArray(page?.[kind]) ? page[kind] : []).forEach((entity) => {
-                if (!result[kind].some((candidate) => String(candidate.id) === String(entity.id))) {
-                  result[kind].push(entity);
-                }
-              });
-            });
-            if (Array.isArray(page?.genres) && page.genres.length > result.genres.length) {
-              result.genres = page.genres;
-            }
-            return result;
-          },
-          { artists: [], albums: [], tracks: [], genres: [] },
-        );
-        const usePreview =
-          import.meta.env.DEV &&
-          pageResults.every((page) => Number(page?.total || 0) === 0) &&
-          !normalizedQuery &&
-          !selectedGenre &&
-          normalizedLibrary.artists.length === 0 &&
-          normalizedLibrary.albums.length === 0 &&
-          normalizedLibrary.tracks.length === 0;
-        if (usePreview || isDetail || section === "favorites") {
-          setPageData(null);
-        } else {
-          setPageData(
-            section === "home"
-              ? {
-                  kind: "home",
-                  total: pageResults.reduce((count, page) => count + Number(page?.total || 0), 0),
-                }
-              : nextData,
-          );
-        }
-        setLibrary(usePreview ? libraryPreviewData : normalizedLibrary);
-        setIsPreviewLibrary(usePreview);
-        const favoriteData = section === "favorites" ? nextData : starred;
-        const nextFavorites = section === "favorites"
-          ? new Set(
-              ["artist", "album", "song"].flatMap((kind) =>
-                (Array.isArray(favoriteData?.[kind]) ? favoriteData[kind] : []).map(
-                  (entry) => entry.id,
-                ),
-              ),
-            )
-          : new Set(
-              ["artists", "albums", "tracks"].flatMap((kind) =>
-                pageResults
-                  .flatMap((page) => (Array.isArray(page?.[kind]) ? page[kind] : []))
-                  .filter((entity) => entity.userFavorite)
-                  .map((entity) => favoriteId(
-                    kind === "artists" ? "artist" : kind === "albums" ? "album" : "song",
-                    entity,
-                  )),
-              ),
-            );
-        setFavoriteIds(usePreview ? new Set(libraryPreviewFavorites) : nextFavorites);
-      })
-      .catch((requestError) => {
-        if (!controller.signal.aborted) {
-          setError(
-            requestError.response?.data?.message ||
-              requestError.response?.data?.error ||
-              "Failed to load the canonical library",
-          );
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-
-    return () => controller.abort();
-  }, [
-    forcePreview,
-    isDetail,
-    normalizedQuery,
-    pageIndex,
-    routeAlbumId,
-    routeArtistId,
-    retryKey,
-    section,
-    selectedGenre,
-    sortDirection,
-    sortMode,
-    tab,
-  ]);
-
   const getAlbumTracks = useCallback(
-    (album) => {
-      const cached = queryClient.getQueryData(
-        queryKeys.libraryAlbumTracks(String(album?.id), album?.releaseGroupMbid),
-      )?.tracks;
-      return cached || album?.trackIds?.map((id) => tracksById.get(String(id))).filter(Boolean) || [];
-    },
+    (album) => getCachedAlbumTracks(album, tracksById),
     [tracksById],
   );
 
@@ -624,13 +660,13 @@ function LibraryPage() {
     const releaseGroupMbid = album?.releaseGroupMbid || null;
     const result = await queryClient.fetchQuery({
       queryKey: queryKeys.libraryAlbumTracks(String(album.id), releaseGroupMbid),
-      queryFn: async () => {
+      queryFn: async ({ signal }) => {
         const page = await getCanonicalLibraryPage({
           kind: "tracks",
           albumId: album.id,
           page: 1,
           pageSize,
-        });
+        }, { signal });
         const ownedTracks = Array.isArray(page?.items) ? page.items : [];
         const pageArtist = page?.artists?.[0] || null;
         if (!releaseGroupMbid) return { tracks: ownedTracks, page };
@@ -641,6 +677,7 @@ function LibraryPage() {
               album?.artistName || pageArtist?.name || album?.albumArtist || "",
             albumTitle: album?.title || album?.albumName || "",
             releaseDate: album?.releaseDate || "",
+            signal,
           });
           return {
             tracks: mergeAlbumMetadataTracks(
@@ -661,7 +698,7 @@ function LibraryPage() {
     const page = result.page;
     setLibrary((current) => mergeAlbumTrackPageIntoLibrary(current, page, album.id, tracks));
     return tracks;
-  }, []);
+  }, [setLibrary]);
 
   const getAlbumForTrack = useCallback(
     (track) => (track?.albums?.[0] ? albumsById.get(String(track.albums[0].albumId)) : null),
@@ -819,8 +856,11 @@ function LibraryPage() {
       };
     });
     clearCanonicalLibraryPageCache();
-    queryClient.removeQueries({ queryKey: queryKeys.libraryAlbumTracksPrefix });
-  }, []);
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.libraryAlbumTracksPrefix,
+      refetchType: "none",
+    });
+  }, [setLibrary]);
 
   const handleLibraryRemovalConfirm = useCallback(async () => {
     if (!libraryRemoval?.entity || deletingLibraryEntity) return;
@@ -909,7 +949,7 @@ function LibraryPage() {
         );
       }
     },
-    [canChangeMonitoring, isPreviewLibrary, showError, showSuccess],
+    [canChangeMonitoring, isPreviewLibrary, setLibrary, showError, showSuccess],
   );
 
   const artistMonitorItems = (artist) => {
@@ -1181,6 +1221,27 @@ function LibraryPage() {
   const homeTracks = ownedLibraryTracks.slice(0, 12);
   const libraryAlbum = routeAlbumId ? albumsById.get(String(routeAlbumId)) || null : null;
   const libraryArtist = routeArtistId ? artistsById.get(String(routeArtistId)) || null : null;
+  const hasMissingAlbumTracks = Boolean(
+    libraryAlbum && getAlbumTracks(libraryAlbum).some((track) => !firstAvailableFile(track)),
+  );
+  const activityQueryKey = useMemo(
+    () => queryKeys.libraryActivityRequests(user?.id),
+    [user?.id],
+  );
+  const hasTrackDownloadPolling = Object.values(trackDownloadStates).some(
+    (state) =>
+      state?.jobId &&
+      state.status !== "completed" &&
+      TRACK_DOWNLOAD_ACTIVE_STATUSES.has(state.status),
+  );
+  const activityQuery = useQuery({
+    queryKey: activityQueryKey,
+    queryFn: ({ signal }) => getRequests({ refresh: true, signal }),
+    enabled: Boolean(libraryAlbum && !isPreviewLibrary && hasMissingAlbumTracks),
+    staleTime: 0,
+    refetchInterval: hasTrackDownloadPolling ? 4000 : false,
+    refetchIntervalInBackground: false,
+  });
 
   useEffect(() => {
     if (!libraryAlbum || isPreviewLibrary) return;
@@ -1191,89 +1252,51 @@ function LibraryPage() {
     if (!libraryAlbum || isPreviewLibrary) return undefined;
     const tracks = getAlbumTracks(libraryAlbum);
     if (!tracks.length) return undefined;
-    let cancelled = false;
-
-    getRequests({ refresh: true })
-      .then((requests) => {
-        if (cancelled) return;
-        const activeRequests = (Array.isArray(requests) ? requests : []).filter(
-          (request) =>
-            request?.kind === "track_download" &&
-            request?.playlistId === "library" &&
-            ["pending", "processing", "blocked"].includes(request?.status),
-        );
-        const nextStates = {};
-        for (const track of tracks) {
-          if (firstAvailableFile(track)) continue;
-          const request = activeRequests.find(
-            (candidate) =>
-              sameTrackText(candidate.trackName, track.title) &&
-              sameTrackText(candidate.artistName, track.artistName || libraryAlbum.albumArtist) &&
-              (!candidate.albumName || sameTrackText(candidate.albumName, libraryAlbum.title)),
-          );
-          if (request?.jobId) {
-            nextStates[trackDownloadIdentity(track)] = {
-              jobId: request.jobId,
-              status: activityDownloadStatus(request),
-            };
-          }
-        }
-        setTrackDownloadStates((current) => {
-          const next = { ...current };
-          for (const track of tracks) {
-            const key = trackDownloadIdentity(track);
-            if (nextStates[key]) next[key] = nextStates[key];
-            else if (next[key]?.status !== "submitting") delete next[key];
-          }
-          return next;
-        });
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, [getAlbumTracks, isPreviewLibrary, libraryAlbum, library.tracks]);
-
-  useEffect(() => {
-    const hasPollingState = Object.values(trackDownloadStates).some(
-      (state) => state?.jobId && state.status !== "completed" && TRACK_DOWNLOAD_ACTIVE_STATUSES.has(state.status),
+    if (!Array.isArray(activityQuery.data)) return undefined;
+    const requests = activityQuery.data;
+    const activeRequests = requests.filter(
+      (request) =>
+        request?.kind === "track_download" &&
+        request?.playlistId === "library" &&
+        ["pending", "processing", "blocked"].includes(request?.status),
     );
-    if (!hasPollingState) return undefined;
-    let cancelled = false;
-    const sync = async () => {
-      try {
-        const requests = await getRequests({ refresh: true });
-        if (cancelled) return;
-        const requestsByJobId = new Map(
-          (Array.isArray(requests) ? requests : [])
-            .filter((request) => request?.jobId)
-            .map((request) => [String(request.jobId), request]),
-        );
-        setTrackDownloadStates((current) => {
-          let changed = false;
-          const next = { ...current };
-          Object.entries(current).forEach(([key, state]) => {
-            if (!state?.jobId) return;
-            const request = requestsByJobId.get(String(state.jobId));
-            if (!request) return;
-            const status = activityDownloadStatus(request);
-            if (status !== state.status) {
-              next[key] = { ...state, status };
-              changed = true;
-            }
-          });
-          return changed ? next : current;
-        });
-      } catch {}
-    };
-    sync();
-    const interval = setInterval(sync, 4000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [trackDownloadStates]);
+    const nextStates = {};
+    const requestsByJobId = new Map(
+      requests
+        .filter((request) => request?.jobId)
+        .map((request) => [String(request.jobId), request]),
+    );
+    for (const track of tracks) {
+      if (firstAvailableFile(track)) continue;
+      const request = activeRequests.find(
+        (candidate) =>
+          sameTrackText(candidate.trackName, track.title) &&
+          sameTrackText(candidate.artistName, track.artistName || libraryAlbum.albumArtist) &&
+          (!candidate.albumName || sameTrackText(candidate.albumName, libraryAlbum.title)),
+      );
+      if (request?.jobId) {
+        nextStates[trackDownloadIdentity(track)] = {
+          jobId: request.jobId,
+          status: activityDownloadStatus(request),
+        };
+      }
+    }
+    setTrackDownloadStates((current) => {
+      const next = { ...current };
+      for (const track of tracks) {
+        const key = trackDownloadIdentity(track);
+        if (nextStates[key]) next[key] = nextStates[key];
+        else if (next[key]?.status !== "submitting") delete next[key];
+      }
+      Object.entries(current).forEach(([key, state]) => {
+        const request = state?.jobId ? requestsByJobId.get(String(state.jobId)) : null;
+        if (request && activityDownloadStatus(request) !== state.status) {
+          next[key] = { ...state, status: activityDownloadStatus(request) };
+        }
+      });
+      return next;
+    });
+  }, [activityQuery.data, getAlbumTracks, isPreviewLibrary, libraryAlbum, library.tracks]);
 
   useDocumentTitle(
     isDetail
@@ -1427,7 +1450,7 @@ function LibraryPage() {
         setPendingFavorite(null);
       }
     },
-    [favoriteIds, isPreviewLibrary, showError],
+    [favoriteIds, isPreviewLibrary, setFavoriteIds, showError],
   );
 
   const playTrack = useCallback(

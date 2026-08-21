@@ -11,7 +11,7 @@ test("album track hydration does not rewrite unchanged library state", async (t)
   });
   t.after(() => vite.close());
 
-  const { mergeAlbumTrackPageIntoLibrary } = await vite.ssrLoadModule(
+  const { getCachedAlbumTracks, mergeAlbumTrackPageIntoLibrary } = await vite.ssrLoadModule(
     "/src/pages/LibraryPage.jsx?album-cache-test",
   );
   const album = { id: 7, title: "Album", trackCount: 0, availableTrackCount: 0 };
@@ -27,4 +27,32 @@ test("album track hydration does not rewrite unchanged library state", async (t)
     mergeAlbumTrackPageIntoLibrary(hydrated, page, album.id, [track]),
     hydrated,
   );
+});
+
+test("invalidated album track caches fall back to the current library tracks", async (t) => {
+  const vite = await createServer({
+    root: "frontend",
+    server: { middlewareMode: true, hmr: false },
+    appType: "custom",
+    optimizeDeps: { noDiscovery: true },
+  });
+  t.after(() => vite.close());
+
+  const { getCachedAlbumTracks } = await vite.ssrLoadModule(
+    "/src/pages/LibraryPage.jsx?album-cache-removal-test",
+  );
+  const { queryClient, queryKeys } = await vite.ssrLoadModule("/src/queryClient.js");
+  const album = { id: 7, trackIds: [8, 9] };
+  const tracksById = new Map([
+    ["8", { id: 8 }],
+    ["9", { id: 9 }],
+  ]);
+  const queryKey = queryKeys.libraryAlbumTracks("7", null);
+  queryClient.setQueryData(queryKey, { tracks: [{ id: 8 }, { id: 9 }] });
+
+  queryClient.invalidateQueries({ queryKey, refetchType: "none" });
+  tracksById.delete("9");
+
+  assert.deepEqual(getCachedAlbumTracks(album, tracksById), [{ id: 8 }]);
+  queryClient.clear();
 });

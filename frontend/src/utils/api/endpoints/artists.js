@@ -37,13 +37,13 @@ export const getReleaseGroupDetails = (mbid, { signal } = {}) =>
 
 export const getArtistAppearsOnPage = (
   mbid,
-  { offset = 0, limit = 24, excludeIds = [] } = {},
+  { offset = 0, limit = 24, excludeIds = [], signal } = {},
 ) =>
   postData(`/artists/${mbid}/appears-on`, {
     offset,
     limit,
     excludeIds: Array.isArray(excludeIds) ? excludeIds : [],
-  });
+  }, { signal });
 
 export const getReleaseGroupRatingsBatch = (ids = []) => {
   const normalizedIds = [...new Set((Array.isArray(ids) ? ids : []).filter(Boolean))];
