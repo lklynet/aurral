@@ -596,6 +596,7 @@ function LibraryPage() {
       null;
   const pageData = useMemo(() => {
     if (!queryData || isPreviewLibrary || isDetail || section === "favorites") return null;
+    if (section === "home" && !Array.isArray(queryData.pageResults)) return null;
     return section === "home"
       ? {
           kind: "home",
@@ -616,6 +617,7 @@ function LibraryPage() {
   }, [forcePreview, libraryQueryKey]);
   const setFavoriteIds = useCallback((updater) => {
     queryClient.setQueryData(libraryQueryKey, (current) => {
+      if (!current && !forcePreview) return current;
       const previous = current?.favoriteIds || (
         forcePreview ? new Set(libraryPreviewFavorites) : new Set()
       );

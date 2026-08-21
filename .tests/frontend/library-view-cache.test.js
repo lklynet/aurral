@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createServer } from "vite";
 
-test("clearing canonical library pages preserves the mounted library view", async (t) => {
+test("clearing canonical pages preserves the mounted view during favorite updates", async (t) => {
   const vite = await createServer({
     root: "frontend",
     server: { middlewareMode: true, hmr: false },
@@ -19,7 +19,11 @@ test("clearing canonical library pages preserves the mounted library view", asyn
   );
   const viewKey = queryKeys.libraryView({ albumId: "7" });
   const canonicalKey = queryKeys.libraryCanonical({ kind: "tracks", albumId: "7" });
-  const view = { library: { albums: [{ id: 7 }], artists: [], tracks: [] } };
+  const view = {
+    pageResults: [{ total: 1 }],
+    library: { albums: [{ id: 7 }], artists: [], tracks: [] },
+    favoriteIds: new Set(),
+  };
   queryClient.setQueryData(viewKey, view);
   queryClient.setQueryData(canonicalKey, { items: [{ id: 8 }] });
 
@@ -27,5 +31,14 @@ test("clearing canonical library pages preserves the mounted library view", asyn
 
   assert.strictEqual(queryClient.getQueryData(viewKey), view);
   assert.equal(queryClient.getQueryData(canonicalKey), undefined);
+
+  const favoriteIds = new Set(["album:7"]);
+  queryClient.setQueryData(viewKey, (current) => ({
+    ...(current || {}),
+    favoriteIds,
+  }));
+  const updatedView = queryClient.getQueryData(viewKey);
+  assert.deepEqual(updatedView?.pageResults, view.pageResults);
+  assert.strictEqual(updatedView?.favoriteIds, favoriteIds);
   queryClient.clear();
 });
