@@ -3,17 +3,17 @@ import {
   AlertCircle,
   CheckCircle,
   Info,
-  LoaderCircle,
   TriangleAlert,
   X,
 } from "lucide-react";
+import { DotLoader } from "./DotLoader";
 
 const TOAST_ICONS = {
   success: CheckCircle,
   error: AlertCircle,
   info: Info,
   warning: TriangleAlert,
-  loading: LoaderCircle,
+  loading: DotLoader,
 };
 
 const TOAST_EXIT_DURATION = 180;

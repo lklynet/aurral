@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { testNzbgetConnection, testSabnzbdConnection, testSlskdConnection, testYtdlpConnection } from "../../../utils/api/endpoints/settings.js";
 
 import { Plus, RefreshCw, Trash2, Wrench } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 import DownloadFolderField from "../../../components/DownloadFolderField";
 import { SettingsInput } from "./SettingsField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
@@ -441,7 +442,11 @@ export function SettingsDownloadClientsSection({
               disabled={testingSlskd}
               onClick={handleTestSlskd}
             >
-              <RefreshCw className={`artist-icon-sm${testingSlskd ? " animate-spin" : ""}`} />
+              {testingSlskd ? (
+                <DotLoader size="sm" label={null} />
+              ) : (
+                <RefreshCw className="artist-icon-sm" aria-hidden />
+              )}
               {testingSlskd ? "Testing..." : "Test connection"}
             </button>
           }
@@ -511,7 +516,11 @@ export function SettingsDownloadClientsSection({
               disabled={testingYtdlp}
               onClick={handleTestYtdlp}
             >
-              <RefreshCw className={`artist-icon-sm${testingYtdlp ? " animate-spin" : ""}`} />
+              {testingYtdlp ? (
+                <DotLoader size="sm" label={null} />
+              ) : (
+                <RefreshCw className="artist-icon-sm" aria-hidden />
+              )}
               {testingYtdlp ? "Testing..." : "Test connection"}
             </button>
           }
@@ -567,7 +576,11 @@ export function SettingsDownloadClientsSection({
               disabled={testingNzbget}
               onClick={handleTestNzbget}
             >
-              <RefreshCw className={`artist-icon-sm${testingNzbget ? " animate-spin" : ""}`} />
+              {testingNzbget ? (
+                <DotLoader size="sm" label={null} />
+              ) : (
+                <RefreshCw className="artist-icon-sm" aria-hidden />
+              )}
               {testingNzbget ? "Testing..." : "Test connection"}
             </button>
           }
@@ -693,7 +706,11 @@ export function SettingsDownloadClientsSection({
               disabled={testingSabnzbd}
               onClick={handleTestSabnzbd}
             >
-              <RefreshCw className={`artist-icon-sm${testingSabnzbd ? " animate-spin" : ""}`} />
+              {testingSabnzbd ? (
+                <DotLoader size="sm" label={null} />
+              ) : (
+                <RefreshCw className="artist-icon-sm" aria-hidden />
+              )}
               {testingSabnzbd ? "Testing..." : "Test connection"}
             </button>
           }

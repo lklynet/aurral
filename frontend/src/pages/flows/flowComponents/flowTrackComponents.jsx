@@ -2,7 +2,6 @@ import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import {
   ExternalLink,
   Heart,
-  Loader2,
   ListMusic,
   Play,
   Pause,
@@ -15,6 +14,7 @@ import {
   Pencil,
   UserRound,
 } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 import { getFlowTrackDisplayNumber, sortFlowTracks } from "../../../utils/flowTrackSort";
 import { Link } from "react-router-dom";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
@@ -708,7 +708,7 @@ export function FlowTracksPanel({
       <div className="flow-page__tracks-body">
         {loading && (
           <div className="flow-page__tracks-loading">
-            <Loader2 className="artist-icon-sm animate-spin" />
+            <DotLoader size="sm" label={null} />
             Loading tracks...
           </div>
         )}
@@ -719,7 +719,7 @@ export function FlowTracksPanel({
           <div className="flow-page__tracks-empty">
             {activityHint ? (
               <>
-                <Loader2 className="artist-icon-sm animate-spin" />
+                <DotLoader size="sm" label={null} />
                 <span>{activityHint}</span>
               </>
             ) : (
@@ -1017,7 +1017,7 @@ export function FlowTracksPanel({
                                     disabled={isReSearching}
                                   >
                                     {isReSearching ? (
-                                      <Loader2 className="artist-icon-xs animate-spin" />
+                                      <DotLoader size="xs" label={null} />
                                     ) : (
                                       <Search className="artist-icon-xs" />
                                     )}
@@ -1033,7 +1033,7 @@ export function FlowTracksPanel({
                                     disabled={isDeleting}
                                   >
                                     {isDeleting ? (
-                                      <Loader2 className="artist-icon-xs animate-spin" />
+                                      <DotLoader size="xs" label={null} />
                                     ) : (
                                       <Trash2 className="artist-icon-xs" />
                                     )}

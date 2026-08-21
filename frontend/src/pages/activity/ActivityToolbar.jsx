@@ -1,6 +1,7 @@
 import { RefreshCw, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import TooltipButton from "../../components/TooltipButton";
+import { DotLoader } from "../../components/DotLoader";
 
 export default function ActivityToolbar({
   filterValue,
@@ -32,7 +33,11 @@ export default function ActivityToolbar({
             label={refreshing ? "Refreshing" : "Refresh"}
             aria-label="Refresh activity"
           >
-            <RefreshCw className={refreshing ? "animate-spin" : ""} aria-hidden="true" />
+            {refreshing ? (
+              <DotLoader size="sm" label={null} />
+            ) : (
+              <RefreshCw aria-hidden="true" />
+            )}
           </TooltipButton>
         </div>
       ) : null}

@@ -18,6 +18,7 @@ import {
   SettingsModalToggleGroup,
 } from "./SettingsModalLayout";
 import PillToggle from "../../../components/PillToggle";
+import { DotLoader } from "../../../components/DotLoader";
 import { getConfiguredStatus } from "../utils/integrationStatus";
 export function SettingsConnectTab({
   settings,
@@ -503,6 +504,7 @@ export function SettingsConnectTab({
               disabled={testingGotify || !gotify.url || !gotify.token}
               className="btn btn-secondary"
             >
+              {testingGotify ? <DotLoader size="sm" label={null} /> : null}
               {testingGotify ? "Sending..." : "Test notification"}
             </button>
           }

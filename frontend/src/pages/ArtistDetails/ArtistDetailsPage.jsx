@@ -25,7 +25,8 @@ import { useSharedPlaylists } from "../../hooks/useSharedPlaylists";
 
 import { useParams, useLocation } from "react-router-dom";
 import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
-import { Loader, Music, X } from "lucide-react";
+import { Music, X } from "lucide-react";
+import { DotLoader } from "../../components/DotLoader";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
@@ -451,7 +452,7 @@ function ArtistDetailsPage() {
   if (loading) {
     return (
       <div className="artist-loading">
-        <Loader className="artist-spinner artist-spinner--large animate-spin" />
+        <DotLoader size="2xl" label={null} />
       </div>
     );
   }
@@ -798,6 +799,7 @@ function EditArtistIdsModal({
             onClick={onSave}
             disabled={loading || saving}
           >
+            {saving ? <DotLoader size="sm" label={null} /> : null}
             {saving ? "Saving..." : "Save IDs"}
           </button>
         </div>

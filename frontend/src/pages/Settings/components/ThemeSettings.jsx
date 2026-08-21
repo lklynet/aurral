@@ -1,7 +1,8 @@
 import { createPortal } from "react-dom";
 import { useEffect, useId, useRef, useState } from "react";
-import { Check, Loader2, Monitor, Moon, Palette, Plus, Search, Sun, Trash2, X } from "lucide-react";
+import { Check, Monitor, Moon, Palette, Plus, Search, Sun, Trash2, X } from "lucide-react";
 import TooltipButton from "../../../components/TooltipButton.jsx";
+import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.js";
 import {
   applyThemePreview,
@@ -102,7 +103,9 @@ function ThemeSwatch({ colors, loading = false }) {
       style={colors ? { background: colors.surface, borderColor: colors.border } : undefined}
       aria-hidden="true"
     >
-      {colors ? (
+      {loading ? (
+        <DotLoader size="xs" label={null} />
+      ) : colors ? (
         <>
           <span className="theme-settings__swatch-bar" style={{ background: colors.chrome }} />
           <span className="theme-settings__swatch-line" style={{ background: colors.text }} />
@@ -176,7 +179,7 @@ function SchemeCard({ scheme, theme, mode, active, loading, installing, installB
           disabled={loading || installing || installBusy || installed}
           onClick={onAdd}
         >
-          {loading || installing ? <Loader2 className="theme-settings__spin" aria-hidden="true" /> : installed ? <Check aria-hidden="true" /> : <Plus aria-hidden="true" />}
+          {loading || installing ? <DotLoader size="sm" label={null} /> : installed ? <Check aria-hidden="true" /> : <Plus aria-hidden="true" />}
           {loading ? "Loading…" : installing ? "Adding…" : installed ? "Added" : "Add"}
         </button>
       </div>
@@ -244,12 +247,12 @@ function SchemeSearchModal({
             onChange={(event) => onQueryChange(event.target.value)}
           />
           <button type="submit" className="btn btn-secondary" disabled={!query.trim() || searching || Boolean(installing)}>
-            {searching ? <Loader2 className="theme-settings__spin" aria-hidden="true" /> : <Search aria-hidden="true" />} Search
+            {searching ? <DotLoader size="sm" label={null} /> : <Search aria-hidden="true" />} Search
           </button>
         </form>
         {previewing ? <p className="theme-settings__preview-note" role="status">Previewing {previewing.label}. Add it to keep this theme.</p> : null}
         {error ? <p className="theme-settings__error" role="alert">{error}</p> : null}
-        {searching ? <p className="theme-settings__status" role="status"><Loader2 className="theme-settings__spin" aria-hidden="true" /> Finding schemes…</p> : null}
+        {searching ? <p className="theme-settings__status" role="status"><DotLoader size="sm" label={null} /> Finding schemes…</p> : null}
         {results ? (
           results.length ? (
             <div className="theme-settings__grid">
@@ -544,7 +547,7 @@ export function ThemeSettings({ showSuccess, showError }) {
         <div className="theme-settings__section-heading">
           <h4 id="theme-themes-heading">Themes</h4>
           <div className="theme-settings__section-actions">
-            {featuredThemes === null ? <span className="theme-settings__section-status" role="status">Loading schemes…</span> : null}
+            {featuredThemes === null ? <span className="theme-settings__section-status" role="status"><DotLoader size="sm" label={null} /> Loading schemes…</span> : null}
             <button type="button" className="btn btn-secondary" onClick={openSearch}>
               <Search aria-hidden="true" /> Find a scheme
             </button>

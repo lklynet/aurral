@@ -4,6 +4,7 @@ import { browseFilesystem, ensureFilesystemPath } from "../utils/api/endpoints/a
 import { createPortal } from "react-dom";
 import { ArrowUp, Folder, X } from "lucide-react";
 import { useModalDialog } from "../hooks/useModalDialog.js";
+import { DotLoader } from "./DotLoader";
 function normalizeConfirmedPath(pathValue, browsePath) {
   const raw = String(pathValue ?? "").trim() || browsePath || "/";
   if (raw === "/") return "/";
@@ -206,7 +207,11 @@ export default function DownloadFolderPickerModal({
               ))}
             </tbody>
           </table>
-          {loading ? <p className="file-browser-modal__status">Loading folders...</p> : null}
+          {loading ? (
+            <p className="file-browser-modal__status">
+              <DotLoader size="sm" label={null} /> Loading folders...
+            </p>
+          ) : null}
           {!loading && !parentPath && entries.length === 0 ? (
             <p className="file-browser-modal__status">No subfolders here.</p>
           ) : null}

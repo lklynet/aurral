@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Ban, Library, Loader2, MoreVertical, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Ban, Library, MoreVertical, ThumbsDown, ThumbsUp } from "lucide-react";
 import { getDiscoveryFeedbackLabel } from "../utils/discoveryFeedback";
 import TooltipButton from "./TooltipButton";
+import { DotLoader } from "./DotLoader";
 
 const getMenuHorizontalAnchorRect = (button) => {
   const discoverCard = button.closest(".artist-discover-card");
@@ -212,7 +213,7 @@ export function ArtistContextMenu({
             className={`btn btn-icon-square artist-context-menu__inline-action${isInLibrary ? " is-selected" : ""}`}
           >
             {pendingAction === "library" ? (
-              <Loader2 className="artist-icon-sm animate-spin" />
+              <DotLoader size="sm" label={null} />
             ) : (
               <Library className="artist-icon-sm" />
             )}
@@ -227,7 +228,7 @@ export function ArtistContextMenu({
               className={`btn btn-icon-square artist-context-menu__inline-action${feedbackUsed.more_like_this ? " is-selected" : ""}`}
             >
               {pendingAction === "more_like_this" ? (
-                <Loader2 className="artist-icon-sm animate-spin" />
+                <DotLoader size="sm" label={null} />
               ) : (
                 <ThumbsUp className="artist-icon-sm" />
               )}
@@ -239,7 +240,7 @@ export function ArtistContextMenu({
               className={`btn btn-icon-square artist-context-menu__inline-action${feedbackUsed.less_like_this ? " is-selected" : ""}`}
             >
               {pendingAction === "less_like_this" ? (
-                <Loader2 className="artist-icon-sm animate-spin" />
+                <DotLoader size="sm" label={null} />
               ) : (
                 <ThumbsDown className="artist-icon-sm" />
               )}
@@ -251,7 +252,7 @@ export function ArtistContextMenu({
               className={`btn btn-icon-square artist-context-menu__inline-action artist-context-menu__inline-action--danger${feedbackUsed.block_artist ? " is-selected" : ""}`}
             >
               {pendingAction === "block_artist" ? (
-                <Loader2 className="artist-icon-sm animate-spin" />
+                <DotLoader size="sm" label={null} />
               ) : (
                 <Ban className="artist-icon-sm" />
               )}
@@ -305,7 +306,7 @@ export function ArtistContextMenu({
                 >
                   <div className="artist-menu-item__main--discover">
                     {pendingAction === "library" ? (
-                      <Loader2 className="artist-icon-sm animate-spin" />
+                      <DotLoader size="sm" label={null} />
                     ) : (
                       <Library className="artist-icon-sm" />
                     )}
@@ -327,7 +328,7 @@ export function ArtistContextMenu({
                   >
                     <div className="artist-menu-item__main--discover">
                       {pendingAction === "more_like_this" ? (
-                        <Loader2 className="artist-icon-sm animate-spin" />
+                        <DotLoader size="sm" label={null} />
                       ) : (
                         <ThumbsUp className="artist-icon-sm" />
                       )}
@@ -346,7 +347,7 @@ export function ArtistContextMenu({
                   >
                     <div className="artist-menu-item__main--discover">
                       {pendingAction === "less_like_this" ? (
-                        <Loader2 className="artist-icon-sm animate-spin" />
+                        <DotLoader size="sm" label={null} />
                       ) : (
                         <ThumbsDown className="artist-icon-sm" />
                       )}
@@ -365,7 +366,7 @@ export function ArtistContextMenu({
                   >
                     <div className="artist-menu-item__main--discover">
                       {pendingAction === "block_artist" ? (
-                        <Loader2 className="artist-icon-sm animate-spin" />
+                        <DotLoader size="sm" label={null} />
                       ) : (
                         <Ban className="artist-icon-sm" />
                       )}

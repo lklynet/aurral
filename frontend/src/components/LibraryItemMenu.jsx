@@ -1,7 +1,8 @@
 import { createPortal } from "react-dom";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
-import { ChevronRight, Loader2, MoreVertical } from "lucide-react";
+import { ChevronRight, MoreVertical } from "lucide-react";
 import TooltipButton from "./TooltipButton";
+import { DotLoader } from "./DotLoader";
 
 let activeMenuCloser = null;
 
@@ -69,7 +70,7 @@ export function LibraryItemSubmenu({
             >
               <span className="artist-menu-item__main">
                 {isPending ? (
-                  <Loader2 className="artist-icon-sm animate-spin" />
+                  <DotLoader size="sm" label={null} />
                 ) : ItemIcon ? (
                   <ItemIcon className="artist-icon-sm" />
                 ) : null}
@@ -268,7 +269,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
             >
               <span className="artist-menu-item__main">
                 {isPending ? (
-                  <Loader2 className="artist-icon-sm animate-spin" />
+                  <DotLoader size="sm" label={null} />
                 ) : Icon ? (
                   <Icon className="artist-icon-sm" />
                 ) : null}

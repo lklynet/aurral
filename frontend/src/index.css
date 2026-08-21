@@ -1,12 +1,3 @@
-@keyframes shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
 :root {
   color-scheme: dark;
   --font-sans: ui-sans-serif, system-ui, -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
@@ -755,14 +746,93 @@ textarea {
   display: none;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+.aurral-dot-loader {
+  display: inline-grid;
+  grid-template-columns: repeat(3, var(--aurral-dot-loader-tile-size));
+  grid-template-rows: repeat(3, var(--aurral-dot-loader-tile-size));
+  gap: var(--aurral-dot-loader-gap);
+  flex: 0 0 auto;
+  vertical-align: middle;
+  color: var(--aurral-text-muted);
+}
+
+.aurral-dot-loader__dot {
+  width: var(--aurral-dot-loader-tile-size);
+  height: var(--aurral-dot-loader-tile-size);
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.1;
+  animation: aurral-dot-loader-helix 2.6s ease-in-out infinite;
+}
+
+.aurral-dot-loader__dot:nth-child(1) {
+  animation-delay: -2.275s;
+}
+
+.aurral-dot-loader__dot:nth-child(2) {
+  animation-delay: 0s;
+}
+
+.aurral-dot-loader__dot:nth-child(3) {
+  animation-delay: -0.325s;
+}
+
+.aurral-dot-loader__dot:nth-child(4) {
+  animation-delay: -1.95s;
+}
+
+.aurral-dot-loader__dot:nth-child(5),
+.aurral-dot-loader__dot:nth-child(6) {
+  animation-delay: -0.65s;
+}
+
+.aurral-dot-loader__dot:nth-child(7) {
+  animation-delay: -1.625s;
+}
+
+.aurral-dot-loader__dot:nth-child(8) {
+  animation-delay: -1.3s;
+}
+
+.aurral-dot-loader__dot:nth-child(9) {
+  animation-delay: -0.975s;
+}
+
+@keyframes aurral-dot-loader-helix {
+  0%,
+  100% {
+    opacity: 0.1;
+  }
+
+  30% {
+    opacity: 0.95;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
+
+  80% {
+    opacity: 0.95;
   }
 }
 
-.animate-spin {
-  animation: spin 1s linear infinite;
+@media (prefers-reduced-motion: reduce) {
+  .aurral-dot-loader__dot {
+    animation: aurral-dot-loader-pulse 3s ease-in-out infinite;
+    animation-delay: 0s !important;
+  }
+}
+
+@keyframes aurral-dot-loader-pulse {
+  0%,
+  100% {
+    opacity: 0.22;
+  }
+
+  50% {
+    opacity: 0.9;
+  }
 }
 
 .artist-details-page button.btn-round-lg {
@@ -2183,10 +2253,6 @@ textarea {
   height: 1rem;
 }
 
-.app-toast--loading .app-toast__icon svg {
-  animation: spin 1s linear infinite;
-}
-
 .app-toast__content {
   display: flex;
   min-width: 0;
@@ -2743,17 +2809,6 @@ textarea {
   justify-content: center;
   align-items: center;
   padding: 5rem 0;
-}
-
-.artist-spinner {
-  width: 2rem;
-  height: 2rem;
-  color: var(--aurral-text-muted);
-}
-
-.artist-spinner--large {
-  width: 3rem;
-  height: 3rem;
 }
 
 .artist-empty-panel,
@@ -4903,8 +4958,7 @@ textarea {
   padding: 4rem 1.5rem;
 }
 
-.discover-recommended-status__icon,
-.discover-recommended-status__spinner {
+.discover-recommended-status__icon {
   display: flex;
   width: 4.5rem;
   height: 4.5rem;
@@ -4919,9 +4973,8 @@ textarea {
   border-radius: var(--aurral-radius-round);
 }
 
-.discover-recommended-status__spinner {
-  width: 2.5rem;
-  height: 2.5rem;
+.discover-recommended-status__loader {
+  margin-bottom: 1.25rem;
 }
 
 .discover-recommended-status__heading {
@@ -6082,12 +6135,6 @@ textarea {
   border-radius: var(--aurral-radius);
 }
 
-.artist-nearby-status__spinner {
-  width: 2rem;
-  height: 2rem;
-  color: var(--aurral-text-muted);
-}
-
 /* Nearby Configuration */
 
 .artist-nearby-location {
@@ -6392,11 +6439,8 @@ textarea {
   text-align: center;
 }
 
-.artist-spinner--discover {
-  width: 3rem;
-  height: 3rem;
+.aurral-dot-loader--discover {
   margin-bottom: 1rem;
-  color: var(--aurral-text-muted);
 }
 
 .artist-error-title--discover {
@@ -6791,14 +6835,9 @@ textarea {
 
   .sidebar-link__activity,
   .sidebar-subnav-link__alert,
-  .artist-image-shimmer,
   .onboarding-card-shell,
   .onboarding-card-shell::after {
     animation: none !important;
-  }
-
-  .artist-image-shimmer {
-    background-position: 50% 0;
   }
 
   .app-toast,
@@ -12765,19 +12804,6 @@ button.native-library-genre-row:focus-visible {
   min-height: 100vh;
 }
 
-.app-loading__spinner {
-  width: 2rem;
-  height: 2rem;
-  border-bottom: 2px solid var(--aurral-text-muted);
-  border-radius: var(--aurral-radius-round);
-  animation: spin 1s linear infinite;
-}
-
-.app-loading__spinner--lg {
-  width: 3rem;
-  height: 3rem;
-}
-
 .app-status-banner {
   display: flex;
   align-items: flex-start;
@@ -13405,19 +13431,6 @@ button.native-library-genre-row:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.artist-image-shimmer {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    110deg,
-    color-mix(in srgb, var(--aurral-text) 2%, transparent) 8%,
-    color-mix(in srgb, var(--aurral-text) 8%, transparent) 18%,
-    color-mix(in srgb, var(--aurral-text) 2%, transparent) 33%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.6s linear infinite;
 }
 
 .artist-image-media {

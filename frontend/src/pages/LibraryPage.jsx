@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 
 import ArtistImage from "../components/ArtistImage";
+import { DotLoader } from "../components/DotLoader";
 import { LibraryItemMenu, LibraryItemSubmenu } from "../components/LibraryItemMenu";
 import TooltipButton from "../components/TooltipButton";
 import { useAuth } from "../contexts/AuthContext";
@@ -1724,7 +1725,7 @@ function LibraryPage() {
                 aria-label={downloadLabel}
               >
                 {downloadPending ? (
-                  <RefreshCw className="animate-spin" aria-hidden="true" />
+                  <DotLoader size="sm" label={null} />
                 ) : (
                   <Download aria-hidden="true" />
                 )}
@@ -2442,7 +2443,8 @@ function LibraryPage() {
       )}
       {loading && (
         <div className="native-library-state" role="status">
-          Loading library…
+          <DotLoader size="xl" label={null} />
+          <span>Loading library…</span>
         </div>
       )}
       {!loading && error && (
@@ -2455,6 +2457,7 @@ function LibraryPage() {
             onClick={refreshLibrary}
             disabled={refreshing}
           >
+            {refreshing ? <DotLoader size="sm" label={null} /> : null}
             {refreshing ? "Refreshing…" : "Refresh library"}
           </button>
         </div>
@@ -2580,7 +2583,7 @@ function LibraryPage() {
                 label={refreshing ? "Refreshing library…" : "Refresh"}
                 aria-label="Refresh library"
               >
-                <RefreshCw aria-hidden="true" />
+                {refreshing ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
               </TooltipButton>
             )}
           </div>
@@ -2670,7 +2673,7 @@ function LibraryPage() {
                 label={refreshing ? "Refreshing library…" : "Refresh"}
                 aria-label="Refresh library"
               >
-                <RefreshCw aria-hidden="true" />
+                {refreshing ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
               </TooltipButton>
               <span className="native-library-toolbar-spacer" aria-hidden="true" />
               {(tab === "artists" || tab === "albums") && (

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { formatDateTime } from "../../../utils/dateTime.js";
+import { DotLoader } from "../../../components/DotLoader";
 
 const STATUS_LABELS = {
   pass: "PASS",
@@ -40,6 +41,7 @@ export function StorageHealthSummary({ result, loading = false }) {
             {loading ? "Checking" : "Pending"}
           </span>
           <span className="arr-health__summary-text">
+            {loading ? <DotLoader size="sm" label={null} /> : null}
             {loading ? "Checking storage access…" : "Run checks to review storage access."}
           </span>
         </div>
@@ -101,7 +103,9 @@ export function StorageHealthDashboard({ result, loading = false, showSummary = 
     if (loading) {
       return (
         <div className="arr-health" role="status">
-          <p className="arr-health__loading">Running storage checks…</p>
+          <p className="arr-health__loading">
+            <DotLoader size="sm" label={null} /> Running storage checks…
+          </p>
         </div>
       );
     }

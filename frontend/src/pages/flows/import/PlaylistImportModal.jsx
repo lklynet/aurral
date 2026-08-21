@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileJson, Loader2, Music2, Upload } from "lucide-react";
+import { FileJson, Music2, Upload } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ModalShell } from "../../../components/PlaylistModals";
+import { DotLoader } from "../../../components/DotLoader";
 import {
   completeSpotifyOAuth,
   disconnectSpotify,
@@ -579,7 +580,7 @@ export function PlaylistImportModal({
               className="btn btn-primary btn-sm"
               disabled={importing || !canImportExternal}
             >
-              {importing ? <Loader2 className="artist-icon-sm animate-spin" /> : <Music2 className="artist-icon-sm" />}
+              {importing ? <DotLoader size="sm" label={null} /> : <Music2 className="artist-icon-sm" />}
               Import playlist
             </button>
           ) : (
@@ -589,7 +590,7 @@ export function PlaylistImportModal({
               className="btn btn-primary btn-sm"
               disabled={importing || !canImportJson}
             >
-              {importing ? <Loader2 className="artist-icon-sm animate-spin" /> : <Upload className="artist-icon-sm" />}
+              {importing ? <DotLoader size="sm" label={null} /> : <Upload className="artist-icon-sm" />}
               Import JSON
             </button>
           )}
@@ -637,7 +638,7 @@ export function PlaylistImportModal({
                   onClick={handleConnectSpotify}
                   disabled={spotifyLoading || importing}
                 >
-                  {spotifyLoading ? <Loader2 className="artist-icon-sm animate-spin" /> : null}
+                  {spotifyLoading ? <DotLoader size="sm" label={null} /> : null}
                   Connect Spotify
                 </button>
               </div>
@@ -693,7 +694,7 @@ export function PlaylistImportModal({
                   disabled={lastfmProfileLoading || lastfmLoading || !lastfmUsernameInput.trim() || importing}
                 >
                   {lastfmProfileLoading || lastfmLoading ? (
-                    <Loader2 className="artist-icon-sm animate-spin" />
+                    <DotLoader size="sm" label={null} />
                   ) : null}
                   Load stations
                 </button>
@@ -775,7 +776,7 @@ export function PlaylistImportModal({
                           ? listenBrainzLoading
                           : lastfmLoading) && playlists.length === 0 ? (
                         <div className="playlist-import__list-status">
-                          <Loader2 className="artist-icon-sm animate-spin" />
+                          <DotLoader size="sm" label={null} />
                           <span>Loading playlists…</span>
                         </div>
                       ) : filteredPlaylists.length === 0 ? (
@@ -860,7 +861,7 @@ export function PlaylistImportModal({
                     <div className="playlist-import__summary">
                       {previewLoading ? (
                         <div className="playlist-import__list-status playlist-import__list-status--inline">
-                          <Loader2 className="artist-icon-sm animate-spin" />
+                          <DotLoader size="sm" label={null} />
                           <span>Counting importable tracks…</span>
                         </div>
                       ) : (

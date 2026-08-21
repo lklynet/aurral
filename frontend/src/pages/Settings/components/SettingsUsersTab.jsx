@@ -10,6 +10,7 @@ import { GRANULAR_PERMISSIONS, granularPerms } from "../constants";
 import { useModalDialog } from "../../../hooks/useModalDialog.js";
 import { AdminPlexLinkField } from "./AdminPlexLinkField";
 import { PlexSelfLinkSection } from "./PlexSelfLinkSection";
+import { DotLoader } from "../../../components/DotLoader";
 function getLocalBypassStatus(status) {
   if (!status) {
     return {
@@ -268,6 +269,7 @@ export function SettingsUsersTab({
                   changePwNew !== changePwConfirm
                 }
               >
+                {changingPassword ? <DotLoader size="sm" label={null} /> : null}
                 {changingPassword ? "Changing…" : "Change password"}
               </button>
             </div>
@@ -331,7 +333,9 @@ export function SettingsUsersTab({
                 <tbody>
                   {loadingUsers ? (
                     <tr className="arr-table__empty-row">
-                      <td colSpan={4}>Loading users…</td>
+                      <td colSpan={4}>
+                        <DotLoader size="sm" label={null} /> Loading users…
+                      </td>
                     </tr>
                   ) : usersList.length === 0 ? (
                     <tr className="arr-table__empty-row">
@@ -457,6 +461,7 @@ export function SettingsUsersTab({
                             }
                           }}
                         >
+                          {deletingUser ? <DotLoader size="sm" label={null} /> : null}
                           {deletingUser ? "Deleting…" : "Delete"}
                         </button>
                       </div>
@@ -571,6 +576,7 @@ export function SettingsUsersTab({
                             className="arr-btn arr-btn--primary"
                             disabled={creatingUser}
                           >
+                            {creatingUser ? <DotLoader size="sm" label={null} /> : null}
                             {creatingUser ? "Creating…" : "Create user"}
                           </button>
                         </div>
@@ -743,6 +749,7 @@ export function SettingsUsersTab({
                             className="arr-btn arr-btn--primary"
                             disabled={savingEdit}
                           >
+                            {savingEdit ? <DotLoader size="sm" label={null} /> : null}
                             {savingEdit ? "Saving…" : "Save"}
                           </button>
                         </div>

@@ -8,11 +8,11 @@ import { getMyDiscoverLayout, updateMyDiscoverLayout } from "../utils/api/endpoi
 
 import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import {
-  Loader,
   Music,
   Sparkles,
   LayoutTemplate,
 } from "lucide-react";
+import { DotLoader } from "../components/DotLoader";
 import DiscoveryStatusPill from "../components/DiscoveryStatusPill";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useAuth } from "../contexts/AuthContext";
@@ -596,7 +596,7 @@ function DiscoverPage() {
         >
           {newsLoading && newsArticles.length === 0 ? (
             <div className="discover-news-rail-status artist-discover-shelf-card--news-status">
-              Checking recent stories…
+              <DotLoader size="sm" label={null} /> Checking recent stories…
             </div>
           ) : newsArticles.length > 0 ? (
             newsArticles.slice(0, 12).map((article) => (
@@ -658,7 +658,7 @@ function DiscoverPage() {
             className={`discover-recommended-status${isUpdating ? " discover-recommended-status--loading" : ""}`}
           >
             {isUpdating ? (
-              <Loader className="discover-recommended-status__spinner animate-spin" />
+              <DotLoader size="2xl" label={null} className="discover-recommended-status__loader" />
             ) : (
               <div className="discover-recommended-status__icon" aria-hidden="true">
                 <Music className="artist-icon-lg" />
@@ -752,7 +752,7 @@ function DiscoverPage() {
         return (
           <section key="recommendedShows" className="artist-discover-section">
             <div className="artist-nearby-status artist-nearby-status--loading">
-              <Loader className="artist-nearby-status__spinner animate-spin" />
+              <DotLoader size="xl" label={null} />
             </div>
           </section>
         );
@@ -910,7 +910,7 @@ function DiscoverPage() {
   if (data === null && !error) {
     return (
       <div className="artist-loading--discover">
-        <Loader className="artist-spinner--discover animate-spin" />
+        <DotLoader size="2xl" label={null} className="aurral-dot-loader--discover" />
         <h2 className="artist-error-title--discover">Loading recommendations...</h2>
         <p className="artist-error-copy--discover">Recommendations will appear as they load.</p>
       </div>
@@ -920,7 +920,7 @@ function DiscoverPage() {
   if (isActuallyUpdating) {
     return (
       <div className="artist-loading--discover">
-        <Loader className="artist-spinner--discover animate-spin" />
+        <DotLoader size="2xl" label={null} className="aurral-dot-loader--discover" />
         <h2 className="artist-error-title--discover">
           {isListenBrainzFallback
             ? "Loading ListenBrainz discovery..."

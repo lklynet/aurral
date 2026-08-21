@@ -1,6 +1,7 @@
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { Loader, Music, MapPin, AlertCircle } from "lucide-react";
+import { Music, MapPin, AlertCircle } from "lucide-react";
+import { DotLoader } from "../components/DotLoader";
 import NearbyLocationControl from "../components/NearbyLocationControl";
 import ShowCard from "../components/ShowCard";
 import { PageSectionMobileNav } from "../components/PageSectionMobileNav";
@@ -114,7 +115,7 @@ function ShowsPage() {
         </div>
       ) : showsLoading ? (
         <div className="artist-loading">
-          <Loader className="artist-spinner artist-spinner--large animate-spin" />
+          <DotLoader size="2xl" label={null} />
         </div>
       ) : showsError ? (
         <div className="artist-error-panel" role="alert">

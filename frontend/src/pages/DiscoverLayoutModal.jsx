@@ -18,6 +18,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { GripVertical, X } from "lucide-react";
+import { DotLoader } from "../components/DotLoader";
 import { useModalDialog } from "../hooks/useModalDialog.js";
 
 const FALLBACK_GENRE_SECTION_PREFIX = "fallbackGenre:";
@@ -213,6 +214,7 @@ export function DiscoverLayoutModal({
               className="btn btn-secondary btn-sm artist-customize-modal__save"
               disabled={isSaving}
             >
+              {isSaving ? <DotLoader size="sm" label={null} /> : null}
               {isSaving ? "Saving..." : "Save Layout"}
             </button>
           </div>

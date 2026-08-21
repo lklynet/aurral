@@ -14,6 +14,7 @@ import { AudioQueueProvider } from "./contexts/AudioQueueProvider";
 import { AlertTriangle, XCircle } from "lucide-react";
 import ReloadPrompt from "./components/ReloadPrompt";
 import UpdateIndicator from "./components/UpdateIndicator";
+import { DotLoader } from "./components/DotLoader";
 import { useWebSocketChannel } from "./hooks/useWebSocket";
 import { buildActivityPath, DEFAULT_ACTIVITY_VIEW } from "./navigation/activityNavConfig";
 import { getBootstrapPollIntervalMs } from "./utils/requestScheduling.js";
@@ -52,13 +53,13 @@ const NewsPage = lazy(() => import("./pages/NewsPage"));
 
 const PageLoader = () => (
   <div className="app-loading">
-    <div className="app-loading__spinner" />
+    <DotLoader size="xl" />
   </div>
 );
 
 const ScreenLoader = () => (
   <div className="app-loading app-loading--screen">
-    <div className="app-loading__spinner app-loading__spinner--lg" />
+    <DotLoader size="2xl" />
   </div>
 );
 

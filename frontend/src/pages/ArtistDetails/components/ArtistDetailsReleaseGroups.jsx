@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useDiscoverNavigation } from "../../../hooks/useDiscoverNavigation";
-import { ArrowRight, Loader, Music, Star } from "lucide-react";
+import { ArrowRight, Music, Star } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import AddActionButton from "../../../components/AddActionButton";
 import { navigateToReleaseGroup } from "../../../utils/searchNavigation";
@@ -97,7 +98,7 @@ export function ArtistDetailsReleaseGroups({
         <div className="artist-min-0">
           <div className="artist-controls-row">
             <h2 className="artist-section-title">Discography</h2>
-            {loadingReleases && <Loader className="artist-icon-sm animate-spin" />}
+            {loadingReleases && <DotLoader size="sm" label={null} />}
           </div>
           <div className="artist-tabs">
             {viewModes.map((mode) => (

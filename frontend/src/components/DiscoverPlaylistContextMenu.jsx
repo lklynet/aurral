@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ListMusic, Loader2, MoreVertical, Plus, RefreshCw } from "lucide-react";
+import { ListMusic, MoreVertical, Plus, RefreshCw } from "lucide-react";
+import { DotLoader } from "./DotLoader";
 
 const getMenuHorizontalAnchorRect = (button) => {
   const discoverCard = button.closest(".artist-discover-card");
@@ -213,7 +214,7 @@ export function DiscoverPlaylistContextMenu({
       >
         {triggerVariant === "add" ? (
           isBusy ? (
-            <Loader2 className="artist-icon-md animate-spin" />
+            <DotLoader size="md" label={null} />
           ) : (
             <Plus className="artist-icon-md" />
           )
@@ -240,7 +241,7 @@ export function DiscoverPlaylistContextMenu({
               >
                 <div className="artist-menu-item__main--discover">
                   {pendingAction === "flow" || isAdoptingFlow ? (
-                    <Loader2 className="artist-icon-sm animate-spin" />
+                    <DotLoader size="sm" label={null} />
                   ) : (
                     <RefreshCw className="artist-icon-sm" />
                   )}
@@ -255,7 +256,7 @@ export function DiscoverPlaylistContextMenu({
               >
                 <div className="artist-menu-item__main--discover">
                   {pendingAction === "playlist" || isAdoptingPlaylist ? (
-                    <Loader2 className="artist-icon-sm animate-spin" />
+                    <DotLoader size="sm" label={null} />
                   ) : (
                     <ListMusic className="artist-icon-sm" />
                   )}

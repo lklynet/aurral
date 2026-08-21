@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
-import { Loader } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import { TrackPlayButton } from "./TrackPlayButton";
 import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
@@ -134,7 +134,7 @@ export function ArtistDetailsReleaseTrackList({
     <div className="artist-release-track-list">
       {loading ? (
         <div className="artist-loading">
-          <Loader className="artist-spinner animate-spin" />
+        <DotLoader size="xl" label={null} />
         </div>
       ) : tracks?.length ? (
         <>

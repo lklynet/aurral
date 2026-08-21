@@ -4,7 +4,8 @@ import { getSettingsTasks, clearSettingsStaleTasks } from "../../../utils/api/en
 import { queryClient, queryKeys } from "../../../queryClient.js";
 import { SettingsArrFieldSet } from "./arr/SettingsArrLayout";
 
-import { AlertCircle, Check, Clock, Loader2, XCircle } from "lucide-react";
+import { AlertCircle, Check, Clock, XCircle } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 const POLL_INTERVAL_MS = 5000;
 
 const relativeFormatter = new Intl.RelativeTimeFormat(undefined, {
@@ -27,7 +28,7 @@ const STATUS_META = {
   running: {
     label: "Running",
     tone: "active",
-    icon: Loader2,
+    spinning: true,
     title: null,
   },
   queued: {
@@ -118,16 +119,17 @@ function StatusBadge({ status }) {
     icon: AlertCircle,
     title: null,
   };
-  const Icon = meta.icon;
+  const Icon = meta.icon || AlertCircle;
   return (
     <span
       className={`arr-task-status arr-task-status--${meta.tone}`}
       title={meta.title || undefined}
     >
-      <Icon
-        className={`arr-task-status__icon${status === "running" ? " animate-spin" : ""}`}
-        aria-hidden
-      />
+      {meta.spinning ? (
+        <DotLoader size="sm" label={null} className="arr-task-status__icon" />
+      ) : (
+        <Icon className="arr-task-status__icon" aria-hidden />
+      )}
       {meta.label}
     </span>
   );
@@ -144,14 +146,20 @@ function EmptyRows({ colSpan }) {
 function LoadingRows({ colSpan }) {
   return (
     <tr className="arr-table__empty-row">
-      <td colSpan={colSpan}>Loading task data...</td>
+      <td colSpan={colSpan}>
+        <DotLoader size="sm" label={null} /> Loading task data...
+      </td>
     </tr>
   );
 }
 
 function TasksHealthSummary({ summary, loading, clearing = false, onClearStale }) {
   if (loading || !summary) {
-    return <div className="arr-info arr-info--tasks">Loading background task status...</div>;
+    return (
+      <div className="arr-info arr-info--tasks">
+        <DotLoader size="sm" label={null} /> Loading background task status...
+      </div>
+    );
   }
 
   const { healthy, activeCount, staleCount, failedCount, workersFailedCount, completedCount } =
@@ -199,6 +207,7 @@ function TasksHealthSummary({ summary, loading, clearing = false, onClearStale }
             onClick={onClearStale}
             disabled={clearing}
           >
+            {clearing ? <DotLoader size="sm" label={null} /> : null}
             {clearing ? "Clearing stuck jobs…" : "Clear stuck jobs"}
           </button>
         </div>

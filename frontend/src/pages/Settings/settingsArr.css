@@ -98,10 +98,6 @@
   height: 1.125rem;
 }
 
-.settings-arr__toolbar-icon--spin {
-  animation: spin 1s linear infinite;
-}
-
 .settings-arr__toolbar-label {
   margin-top: 0.125rem;
   font-size: 0.6875rem;

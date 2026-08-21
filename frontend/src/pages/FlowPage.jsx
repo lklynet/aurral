@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Loader2, Play, FilePlus2, Download, Trash2, Search, RefreshCw, ClipboardCopy, ListMusic } from "lucide-react";
+import { Check, Play, FilePlus2, Download, Trash2, Search, RefreshCw, ClipboardCopy, ListMusic } from "lucide-react";
+import { DotLoader } from "../components/DotLoader";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   getFlowJobs,
@@ -1436,7 +1437,7 @@ function FlowPage({ mode = "all" }) {
   if (loading && !status) {
     return (
       <div className="flow-page__loading">
-        <Loader2 className="artist-spinner artist-spinner--large" />
+        <DotLoader size="2xl" label={null} />
       </div>
     );
   }
@@ -1568,7 +1569,7 @@ function FlowPage({ mode = "all" }) {
           >
             <span className="artist-menu-item__main">
               {searchingUpgradePlaylistId === selectedFlow.id ? (
-                <Loader2 className="artist-icon-sm animate-spin" />
+                <DotLoader size="sm" label={null} />
               ) : (
                 <Search className="artist-icon-sm" />
               )}
@@ -1583,7 +1584,7 @@ function FlowPage({ mode = "all" }) {
           >
             <span className="artist-menu-item__main">
               {rerunningId === selectedFlow.id ? (
-                <Loader2 className="artist-icon-sm animate-spin" />
+                <DotLoader size="sm" label={null} />
               ) : (
                 <Play className="artist-icon-sm" />
               )}
@@ -1658,7 +1659,7 @@ function FlowPage({ mode = "all" }) {
               >
                 <span className="artist-menu-item__main">
                   {syncingImportPlaylistId === selectedPlaylist.id ? (
-                    <Loader2 className="artist-icon-sm animate-spin" />
+                    <DotLoader size="sm" label={null} />
                   ) : (
                     <RefreshCw className="artist-icon-sm" />
                   )}
@@ -1896,7 +1897,7 @@ function FlowPage({ mode = "all" }) {
                   onClick={() => handleApplySimple(selectedFlow)}
                 >
                   {applyingFlowId === selectedFlow.id ? (
-                    <Loader2 className="artist-icon-sm animate-spin" />
+                    <DotLoader size="sm" label={null} />
                   ) : null}
                   Save recipe
                 </button>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
+import { DotLoader } from "../../components/DotLoader";
 import {
   ArrowDown,
   ArrowUp,
@@ -8,7 +9,6 @@ import {
   CornerUpLeft,
   LayoutGrid,
   List,
-  Loader,
   Music,
   Search,
   Star,
@@ -326,7 +326,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   if (loading) {
     return (
       <div className="artist-loading">
-        <Loader className="artist-spinner animate-spin" />
+        <DotLoader size="xl" label={null} />
       </div>
     );
   }
@@ -484,7 +484,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
           </Link>
           {loadingReleases && (
             <p className="artist-meta-line">
-              <Loader className="artist-icon-sm animate-spin" />
+              <DotLoader size="sm" label={null} />
               {isAppearsOn ? "Loading appearances" : "Loading releases"}
             </p>
           )}
@@ -621,7 +621,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
             disabled={loadingMoreAppearances}
           >
             {loadingMoreAppearances ? (
-              <Loader className="artist-icon-sm animate-spin" />
+              <DotLoader size="sm" label={null} />
             ) : null}
             Load more
           </button>

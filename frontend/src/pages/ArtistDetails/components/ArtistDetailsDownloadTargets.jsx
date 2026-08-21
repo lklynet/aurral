@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader, Music, Star } from "lucide-react";
+import { Music, Star } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 import AddActionButton from "../../../components/AddActionButton";
 import { getReleaseGroupTracks } from "../../../utils/api/endpoints/artists.js";
 import { buildAurralPick, getReleaseGroupCoverUrl, getReleaseMetric } from "../utils";
@@ -231,7 +232,7 @@ export function ArtistDetailsDownloadTargets({
           <div className="artist-pick-panel__tracks artist-min-0">
             {loadingTracks ? (
               <div className="artist-loading">
-                <Loader className="artist-spinner animate-spin" />
+                <DotLoader size="xl" label={null} />
               </div>
             ) : tracks.length ? (
               <>

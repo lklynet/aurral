@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { getArtistTopSongVideo } from "../../../utils/api/endpoints/artists.js";
 import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
 
-import { Loader, Pause, Play } from "lucide-react";
+import { Pause, Play } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 export function ArtistDetailsPreviewTracks({
   mbid,
   artistName,
@@ -75,7 +76,7 @@ export function ArtistDetailsPreviewTracks({
       <h2 className="artist-section-title">Popular</h2>
       {loadingPreview ? (
         <div className="artist-loading">
-          <Loader className="artist-spinner animate-spin" />
+          <DotLoader size="xl" label={null} />
         </div>
       ) : (
         <div
@@ -149,7 +150,7 @@ export function ArtistDetailsPreviewTracks({
                   />
                 ) : (
                   <div className="artist-loading">
-                    <Loader className="artist-spinner animate-spin" />
+                    <DotLoader size="xl" label={null} />
                   </div>
                 )}
               </div>
