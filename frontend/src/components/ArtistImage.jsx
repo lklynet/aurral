@@ -3,7 +3,8 @@ import { getArtistCover } from "../utils/api/endpoints/artists.js";
 import { normalizeMediaUrl } from "../utils/normalizeMediaUrl";
 import { useArtistPreviewPlayback } from "../hooks/useArtistPreviewPlayback";
 
-import { Music, Loader, Play } from "lucide-react";
+import { Music, Play } from "lucide-react";
+import { DotLoader } from "./DotLoader";
 const queue = [];
 let active = 0;
 const MAX_CONCURRENT = 4;
@@ -214,7 +215,7 @@ const ArtistImage = ({
       title={`Play ${artistName || "artist"} top tracks`}
     >
       {isLoadingPreview ? (
-        <Loader className="artist-image-preview-button__icon animate-spin" />
+        <DotLoader size="md" label={null} className="artist-image-preview-button__icon" />
       ) : (
         <Play className="artist-image-preview-button__icon" fill="currentColor" />
       )}
@@ -242,15 +243,16 @@ const ArtistImage = ({
       >
         <div className="artist-image-overlay">
           {isLoading ? (
-            <Loader
-              className={`artist-image-loader${showLoading ? " animate-spin" : " is-dim"}`}
+            <DotLoader
+              size="md"
+              label={null}
+              className={`artist-image-loader${showLoading ? "" : " is-dim"}`}
             />
           ) : (
             <Music className="artist-image-icon" />
           )}
         </div>
         {previewButton}
-        {isLoading && <div className="artist-image-shimmer" />}
       </div>
     );
   }
@@ -265,7 +267,7 @@ const ArtistImage = ({
           className="artist-image-overlay"
           style={{ backgroundColor: "var(--aurral-surface-raised)" }}
         >
-          <Loader className="artist-image-loader animate-spin" />
+          <DotLoader size="md" label={null} className="artist-image-loader" />
         </div>
       )}
       {currentSrc && (

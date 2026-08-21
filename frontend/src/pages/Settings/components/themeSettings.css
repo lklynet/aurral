@@ -323,11 +323,6 @@
 
 .theme-settings__swatch.is-loading {
   background: var(--aurral-surface-hover);
-  animation: theme-settings-pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes theme-settings-pulse {
-  50% { opacity: 0.45; }
 }
 
 .theme-settings__card-copy {
@@ -431,14 +426,6 @@
   color: var(--aurral-accent);
 }
 
-.theme-settings__spin {
-  animation: theme-settings-spin 0.9s linear infinite;
-}
-
-@keyframes theme-settings-spin {
-  to { transform: rotate(360deg); }
-}
-
 .theme-settings__empty,
 .theme-settings__error {
   margin: 0;
@@ -535,8 +522,7 @@
   .theme-settings__mode-card,
   .theme-settings__card,
   .theme-settings__scheme-card,
-  .theme-settings__swatch.is-loading,
-  .theme-settings__spin {
+  .theme-settings__swatch.is-loading {
     animation: none;
     transition: none;
   }

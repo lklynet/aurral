@@ -4,6 +4,7 @@ import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useAccountSettings } from "./Settings/hooks/useAccountSettings";
 import { SettingsAccountTab } from "./Settings/components/SettingsAccountTab";
+import { DotLoader } from "../components/DotLoader";
 import {
   getSidebarStageBackdropEnabled,
   resolveSidebarStageBackdropVariant,
@@ -36,7 +37,7 @@ function ProfilePage() {
           aria-busy={account.saving}
           aria-hidden={!account.saving}
         >
-          {account.saving ? "Saving…" : null}
+          {account.saving ? <><DotLoader size="sm" label={null} /> Saving…</> : null}
         </span>
       </div>
 

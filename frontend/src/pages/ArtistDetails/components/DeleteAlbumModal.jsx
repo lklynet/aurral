@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { Loader } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.js";
 
 export function DeleteAlbumModal({
@@ -61,7 +61,7 @@ export function DeleteAlbumModal({
           <button onClick={onConfirm} disabled={!!removing} className="btn btn-danger">
             {removing ? (
               <>
-                <Loader className="artist-icon-sm animate-spin" />
+                <DotLoader size="sm" label={null} />
                 Deleting...
               </>
             ) : (

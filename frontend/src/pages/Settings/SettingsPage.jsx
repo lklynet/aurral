@@ -20,6 +20,7 @@ import { SettingsRssNewsTab } from "./components/SettingsRssNewsTab";
 import { SettingsDiscoverTab } from "./components/SettingsDiscoverTab";
 import { SettingsUsersTab } from "./components/SettingsUsersTab";
 import { SettingsMetadataTab } from "./components/SettingsMetadataTab";
+import { DotLoader } from "../../components/DotLoader";
 import { DEFAULT_SETTINGS_TAB, normalizeSettingsTabId } from "./settingsTabsConfig";
 import "./settingsArr.css";
 
@@ -300,7 +301,7 @@ function SettingsPage() {
                 aria-busy={data.saving}
                 aria-hidden={!data.saving}
               >
-                {data.saving ? "Saving…" : null}
+                {data.saving ? <><DotLoader size="sm" label={null} /> Saving…</> : null}
               </div>
             ) : null}
 

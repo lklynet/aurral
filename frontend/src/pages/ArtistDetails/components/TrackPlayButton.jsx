@@ -1,4 +1,5 @@
-import { Loader, Pause, Play } from "lucide-react";
+import { Pause, Play } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 import { getTrackPlayAccessibilityLabel, isLibraryPlaybackTrack } from "../utils";
 
 export function TrackPlayButton({ track, isPlaying, isLoading, onClick, size = "default" }) {
@@ -15,7 +16,7 @@ export function TrackPlayButton({ track, isPlaying, isLoading, onClick, size = "
       title={playLabel}
     >
       {isLoading ? (
-        <Loader className="artist-icon-xs animate-spin" />
+        <DotLoader size="xs" label={null} />
       ) : isPlaying ? (
         <Pause className="artist-icon-xs" />
       ) : (

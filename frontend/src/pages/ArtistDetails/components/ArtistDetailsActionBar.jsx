@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   Ban,
   ChevronDown,
-  Loader,
   MoreHorizontal,
   Pause,
   Pencil,
@@ -13,6 +12,7 @@ import {
   ThumbsUp,
   Trash2,
 } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 import AddActionButton from "../../../components/AddActionButton";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import { getDiscoveryFeedbackLabel } from "../../../utils/discoveryFeedback";
@@ -51,7 +51,7 @@ export function ArtistDetailsActionBar({
     if (loadingLibrary) {
       return (
         <div className="btn btn-secondary btn--bold btn-min-h">
-          <Loader className="artist-icon-sm animate-spin" />
+          <DotLoader size="sm" label={null} />
           {existsInLibrary ? "Loading library" : "Checking Lidarr"}
         </div>
       );
@@ -175,7 +175,7 @@ export function ArtistDetailsActionBar({
             title={isPreviewPlaying ? "Pause playback" : "Play artist"}
           >
             {buildingQueue ? (
-              <Loader className="artist-icon-md animate-spin" />
+              <DotLoader size="md" label={null} />
             ) : isPreviewPlaying ? (
               <Pause className="artist-icon-md" />
             ) : (
@@ -196,7 +196,7 @@ export function ArtistDetailsActionBar({
               title="Refresh artist"
             >
               {library.refreshingArtist ? (
-                <Loader className="artist-icon-sm animate-spin" />
+                <DotLoader size="sm" label={null} />
               ) : (
                 <RefreshCw className="artist-icon-sm" />
               )}
@@ -235,7 +235,7 @@ export function ArtistDetailsActionBar({
                       >
                         <span className="artist-menu-item__main">
                           {tasteActionPending === "more_like_this" ? (
-                            <Loader className="artist-icon-sm animate-spin" />
+                            <DotLoader size="sm" label={null} />
                           ) : (
                             <ThumbsUp className="artist-icon-sm" />
                           )}
@@ -253,7 +253,7 @@ export function ArtistDetailsActionBar({
                       >
                         <span className="artist-menu-item__main">
                           {tasteActionPending === "less_like_this" ? (
-                            <Loader className="artist-icon-sm animate-spin" />
+                            <DotLoader size="sm" label={null} />
                           ) : (
                             <ThumbsDown className="artist-icon-sm" />
                           )}
@@ -271,7 +271,7 @@ export function ArtistDetailsActionBar({
                       >
                         <span className="artist-menu-item__main">
                           {tasteActionPending === "block_artist" ? (
-                            <Loader className="artist-icon-sm animate-spin" />
+                            <DotLoader size="sm" label={null} />
                           ) : (
                             <Ban className="artist-icon-sm" />
                           )}

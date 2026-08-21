@@ -4,6 +4,7 @@ import { getProwlarrIndexers, testProwlarrConnection } from "../../../utils/api/
 import { queryClient, queryKeys } from "../../../queryClient.js";
 
 import { RefreshCw } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 import { SettingsInput } from "./SettingsField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
 import {
@@ -155,7 +156,7 @@ export function SettingsIndexersSection({
           </div>
           {loadingProwlarrIndexers && (
             <span className="settings-page__status">
-              <RefreshCw className="settings-page__status-icon animate-spin" />
+              <DotLoader size="sm" label={null} className="settings-page__status-icon" />
               Loading
             </span>
           )}
@@ -208,7 +209,11 @@ export function SettingsIndexersSection({
               disabled={testingProwlarr || loadingProwlarrIndexers}
               onClick={handleTestProwlarr}
             >
-              <RefreshCw className={`artist-icon-sm${testingProwlarr ? " animate-spin" : ""}`} />
+              {testingProwlarr ? (
+                <DotLoader size="sm" label={null} />
+              ) : (
+                <RefreshCw className="artist-icon-sm" aria-hidden />
+              )}
               {testingProwlarr ? "Testing..." : "Test connection"}
             </button>
           }
@@ -274,9 +279,11 @@ export function SettingsIndexersSection({
                 disabled={loadingProwlarrIndexers || !health?.prowlarrConfigured}
                 onClick={() => loadProwlarrIndexers()}
               >
-                <RefreshCw
-                  className={`artist-icon-sm${loadingProwlarrIndexers ? " animate-spin" : ""}`}
-                />
+                {loadingProwlarrIndexers ? (
+                  <DotLoader size="sm" label={null} />
+                ) : (
+                  <RefreshCw className="artist-icon-sm" aria-hidden />
+                )}
                 {loadingProwlarrIndexers ? "Refreshing..." : "Refresh indexers"}
               </button>
             </SettingsModalActions>

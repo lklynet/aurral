@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { Loader } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.js";
 
 export function DeleteTrackModal({ show, title, onCancel, onConfirm, deleting }) {
@@ -35,7 +35,7 @@ export function DeleteTrackModal({ show, title, onCancel, onConfirm, deleting })
           <button onClick={onConfirm} disabled={deleting} className="btn btn-danger">
             {deleting ? (
               <>
-                <Loader className="artist-icon-sm animate-spin" />
+                <DotLoader size="sm" label={null} />
                 Deleting...
               </>
             ) : (

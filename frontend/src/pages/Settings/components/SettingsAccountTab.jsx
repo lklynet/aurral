@@ -7,6 +7,7 @@ import { ThemeSettings } from "./ThemeSettings";
 
 import { Link } from "react-router-dom";
 import { RotateCcw } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 export function SettingsAccountTab({
   listenHistoryProvider,
   setListenHistoryProvider,
@@ -53,7 +54,9 @@ export function SettingsAccountTab({
   if (loading) {
     return (
       <div className={profileVariant ? "profile-settings" : "settings-page__panel"}>
-        <p className="settings-page__muted-copy">Loading…</p>
+        <p className="settings-page__muted-copy">
+          <DotLoader size="sm" label={null} /> Loading…
+        </p>
       </div>
     );
   }
@@ -280,7 +283,11 @@ export function SettingsAccountTab({
               disabled={resettingTastes}
               className="btn btn-secondary btn-sm"
             >
-              <RotateCcw className={`artist-icon-xs${resettingTastes ? " animate-spin" : ""}`} />
+              {resettingTastes ? (
+                <DotLoader size="xs" label={null} />
+              ) : (
+                <RotateCcw className="artist-icon-xs" aria-hidden />
+              )}
               {resettingTastes ? "Resetting…" : "Reset discovery tastes"}
             </button>
           </div>

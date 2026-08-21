@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { ChevronRight, Loader, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import AddActionButton from "../../../components/AddActionButton";
+import { DotLoader } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import TooltipButton from "../../../components/TooltipButton";
 
@@ -104,7 +105,7 @@ export function TrackPlaylistPickerContent({
   if (loading) {
     return (
       <div className="artist-menu-item">
-        <Loader className="artist-icon-sm animate-spin" />
+        <DotLoader size="sm" label={null} />
         Loading playlists
       </div>
     );
@@ -415,7 +416,7 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
             disabled={saving || disabled}
           >
             {saving ? (
-              <Loader className="artist-icon-xs animate-spin" />
+              <DotLoader size="xs" label={null} />
             ) : isKebab ? (
               <MoreHorizontal className="artist-icon-xs" />
             ) : (

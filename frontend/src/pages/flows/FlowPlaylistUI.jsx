@@ -3,13 +3,13 @@ import {
   Clock,
   ChevronDown,
   ListMusic,
-  Loader2,
   Plus,
   Sparkles,
   Upload,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import PillToggle from "../../components/PillToggle";
+import { DotLoader } from "../../components/DotLoader";
 import TooltipButton from "../../components/TooltipButton";
 import { PlaylistArtworkThumb } from "./flowComponents/PlaylistArtworkThumb.jsx";
 import {
@@ -144,7 +144,11 @@ export function FlowLibraryCreateMenu({
                 }}
               >
                 <span className="flow-page__library-create-action-icon" aria-hidden="true">
-                  <ListMusic className="flow-page__library-create-action-glyph" />
+                  {creatingPlaylist ? (
+                    <DotLoader size="sm" label={null} />
+                  ) : (
+                    <ListMusic className="flow-page__library-create-action-glyph" />
+                  )}
                 </span>
                 <span className="flow-page__library-create-action-copy">
                   <span className="flow-page__library-create-action-title">
@@ -167,7 +171,11 @@ export function FlowLibraryCreateMenu({
                     className="flow-page__library-create-action-icon flow-page__library-create-action-icon--flow"
                     aria-hidden="true"
                   >
-                    <Sparkles className="flow-page__library-create-action-glyph" />
+                    {creatingFlow ? (
+                      <DotLoader size="sm" label={null} />
+                    ) : (
+                      <Sparkles className="flow-page__library-create-action-glyph" />
+                    )}
                   </span>
                   <span className="flow-page__library-create-action-copy">
                     <span className="flow-page__library-create-action-title">
@@ -277,7 +285,7 @@ export function PlaylistLibraryItem({
                 title={activityHint}
                 aria-label={activityHint}
               >
-                <Loader2 className="artist-icon-xs animate-spin" aria-hidden="true" />
+                <DotLoader size="xs" label={null} />
               </span>
             ) : null}
           </div>
@@ -391,7 +399,7 @@ export function PlaylistDetailHero({
             ) : null}
             {activityHint ? (
               <p className="flow-page__detail-meta flow-page__detail-activity">
-                <Loader2 className="artist-icon-xs animate-spin" aria-hidden="true" />
+                <DotLoader size="xs" label={null} />
                 <span>{activityHint}</span>
               </p>
             ) : null}

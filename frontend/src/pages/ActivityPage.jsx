@@ -26,7 +26,8 @@ import ActivityMissingPage from "./activity/ActivityMissingPage";
 import ActivityInfoModal from "./activity/ActivityInfoModal";
 
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
-import { Loader, AlertCircle, Music } from "lucide-react";
+import { AlertCircle, Music } from "lucide-react";
+import { DotLoader } from "../components/DotLoader";
 import { queryClient, queryKeys } from "../queryClient.js";
 const ACTIVITY_PAGE_SIZE = 25;
 
@@ -412,7 +413,7 @@ function ActivityPage() {
           refreshing={refreshing}
         />
         <div className="artist-loading">
-          <Loader className="artist-spinner artist-spinner--large animate-spin" />
+          <DotLoader size="2xl" label={null} />
         </div>
       </div>
     );

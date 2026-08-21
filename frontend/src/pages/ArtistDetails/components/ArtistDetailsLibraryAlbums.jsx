@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDiscoverNavigation } from "../../../hooks/useDiscoverNavigation";
 import {
-  Loader,
   Music,
   ChevronLeft,
   ChevronRight,
@@ -10,6 +9,7 @@ import {
   Trash2,
   RefreshCw,
 } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 import { navigateToLibraryAlbum } from "../../../utils/searchNavigation";
 import { isVisibleLibraryAlbum } from "../utils";
 
@@ -271,7 +271,7 @@ export function ArtistDetailsLibraryAlbums({
               disabled={reSearchingMissingAlbums || incompleteAlbumCount === 0}
             >
               {reSearchingMissingAlbums ? (
-                <Loader className="artist-icon-sm animate-spin" />
+                <DotLoader size="sm" label={null} />
               ) : (
                 <RefreshCw className="artist-icon-sm" />
               )}
@@ -349,7 +349,7 @@ export function ArtistDetailsLibraryAlbums({
 
                 <div className="artist-library-card__status">
                   {requestingAlbum === rgId || reSearchingAlbum === libraryAlbum.id ? (
-                    <Loader className="artist-icon-xs animate-spin" />
+                    <DotLoader size="xs" label={null} />
                   ) : hasDownloadedStatus ? (
                     <span
                       className="artist-status-dot artist-status-dot--complete"
@@ -442,7 +442,7 @@ export function ArtistDetailsLibraryAlbums({
                               >
                                 <span className="artist-menu-item__main">
                                   {reSearchingAlbum === libraryAlbum.id ? (
-                                    <Loader className="artist-icon-sm animate-spin" />
+                                    <DotLoader size="sm" label={null} />
                                   ) : (
                                     <RefreshCw className="artist-icon-sm" />
                                   )}

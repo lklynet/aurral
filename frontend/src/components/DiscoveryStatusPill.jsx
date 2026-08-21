@@ -1,5 +1,6 @@
-import { Loader, Clock } from "lucide-react";
+import { Clock } from "lucide-react";
 import { formatDate } from "../utils/dateTime.js";
+import { DotLoader } from "./DotLoader";
 
 export default function DiscoveryStatusPill({
   isUpdating = false,
@@ -11,7 +12,7 @@ export default function DiscoveryStatusPill({
   if (isUpdating) {
     return (
       <span className="artist-discover-hero__updated artist-discover-hero__updated--refreshing">
-        <Loader className="artist-discover-hero__updated-icon animate-spin" />
+        <DotLoader size="sm" label={null} className="artist-discover-hero__updated-icon" />
         {updateProgressMessage || "Refreshing discovery..."}
       </span>
     );
@@ -20,7 +21,7 @@ export default function DiscoveryStatusPill({
   if (playlistsUpdating) {
     return (
       <span className="artist-discover-hero__updated artist-discover-hero__updated--refreshing">
-        <Loader className="artist-discover-hero__updated-icon animate-spin" />
+        <DotLoader size="sm" label={null} className="artist-discover-hero__updated-icon" />
         {playlistsUpdateMessage || "Updating playlists..."}
       </span>
     );

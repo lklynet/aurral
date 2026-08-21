@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { RefreshCw } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 import { StorageHealthDashboard, StorageHealthSummary } from "./StorageHealthDashboard";
 import {
   refreshStorageHealth,
@@ -176,7 +177,11 @@ export function SettingsStorageHealthSection({
             onClick={() => runHealthCheck({ notify: true })}
             disabled={checkingHealth}
           >
-            <RefreshCw className={`artist-icon-sm${checkingHealth ? " animate-spin" : ""}`} />
+            {checkingHealth ? (
+              <DotLoader size="sm" label={null} />
+            ) : (
+              <RefreshCw className="artist-icon-sm" aria-hidden />
+            )}
             {checkingHealth ? "Checking…" : "Run checks"}
           </button>
         </div>
@@ -202,7 +207,11 @@ export function SettingsSystemSection({ health }) {
           <h1 className="settings-system__title">System</h1>
         </div>
         <div className={`settings-system__status${runtimeReady ? " is-ready" : ""}`}>
-          <span className="settings-system__status-dot" aria-hidden />
+          {runtimeReady ? (
+            <span className="settings-system__status-dot" aria-hidden />
+          ) : (
+            <DotLoader size="xs" label={null} />
+          )}
           {runtimeReady ? "Running" : "Loading"}
         </div>
       </div>

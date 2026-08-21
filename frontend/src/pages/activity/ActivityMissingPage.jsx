@@ -5,10 +5,10 @@ import {
   ArrowUpCircle,
   CheckCircle2,
   Info,
-  Loader,
   RotateCcw,
   Search,
 } from "lucide-react";
+import { DotLoader } from "../../components/DotLoader";
 import TooltipButton from "../../components/TooltipButton";
 import { useToast } from "../../contexts/ToastContext";
 import { formatDateTime } from "../../utils/dateTime.js";
@@ -120,7 +120,7 @@ function MissingJobRow({ job, playlist, actionState, onAction, onInfo }) {
           }
         >
           {isWorking ? (
-            <Loader className="animate-spin" aria-hidden="true" />
+            <DotLoader size="sm" label={null} />
           ) : isMissing ? (
             <RotateCcw aria-hidden="true" />
           ) : (
@@ -308,7 +308,7 @@ export default function ActivityMissingPage() {
       }
     >
       {searchingAll ? (
-        <Loader className="animate-spin" aria-hidden="true" />
+        <DotLoader size="sm" label={null} />
       ) : showingCutoff ? (
         <ArrowUpCircle aria-hidden="true" />
       ) : (
@@ -327,7 +327,7 @@ export default function ActivityMissingPage() {
           placeholder={filterPlaceholder}
         />
         <div className="activity-page__loading">
-          <Loader className="artist-spinner artist-spinner--large animate-spin" />
+        <DotLoader size="2xl" label={null} />
         </div>
       </div>
     );

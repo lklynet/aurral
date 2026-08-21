@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { RefreshCw, Trash2, X } from "lucide-react";
 import PillToggle from "../../../components/PillToggle";
+import { DotLoader } from "../../../components/DotLoader";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { formatDateTime } from "../../../utils/dateTime.js";
@@ -225,10 +226,11 @@ export function SettingsDiscoverTab({
                 onClick={handleRefreshDiscovery}
                 disabled={refreshingDiscovery}
               >
-                <RefreshCw
-                  className={`artist-icon-xs${refreshingDiscovery ? " animate-spin" : ""}`}
-                  aria-hidden
-                />
+                {refreshingDiscovery ? (
+                  <DotLoader size="xs" label={null} />
+                ) : (
+                  <RefreshCw className="artist-icon-xs" aria-hidden />
+                )}
                 {refreshingDiscovery ? "Refreshing…" : "Refresh discovery"}
               </button>
               <button
@@ -237,10 +239,11 @@ export function SettingsDiscoverTab({
                 onClick={handleClearCache}
                 disabled={clearingCache}
               >
-                <Trash2
-                  className={`artist-icon-xs${clearingCache ? " animate-spin" : ""}`}
-                  aria-hidden
-                />
+                {clearingCache ? (
+                  <DotLoader size="xs" label={null} />
+                ) : (
+                  <Trash2 className="artist-icon-xs" aria-hidden />
+                )}
                 {clearingCache ? "Clearing…" : "Clear image cache"}
               </button>
             </>
@@ -274,7 +277,7 @@ export function SettingsDiscoverTab({
           {showProgress ? (
             <div className="arr-progress">
               <p className="arr-progress__line">
-                <RefreshCw className="artist-icon-xs animate-spin" aria-hidden />
+                <DotLoader size="xs" label={null} />
                 <span>{progressMessage}</span>
                 {typeof activeProgress === "number" ? (
                   <span className="arr-progress__pct">{activeProgress}%</span>

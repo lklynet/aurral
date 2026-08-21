@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { SettingsSelect } from "./SettingsField";
+import { DotLoader } from "../../../components/DotLoader";
 import {
   getPlexHomeUsersForAdmin,
   linkManagedPlexUser,
@@ -120,7 +121,11 @@ export function AdminPlexLinkField({ user, onChanged, showSuccess, showError }) 
         onClick={loadHomeUsers}
         disabled={loadingHomeUsers}
       >
-        {loadingHomeUsers ? "Loading Plex Home users…" : "Link managed Plex user"}
+        {loadingHomeUsers ? (
+          <>
+            <DotLoader size="sm" label={null} /> Loading Plex Home users…
+          </>
+        ) : "Link managed Plex user"}
       </button>
     );
   }

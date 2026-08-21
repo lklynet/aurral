@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertCircle, Check, Copy, RotateCcw } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 import { getApiKey, rotateApiKey } from "../../../utils/api/endpoints/auth";
 import { SettingsSystemSection } from "./SettingsStorageSection";
 import { SettingsSelect } from "./SettingsField";
@@ -138,7 +139,9 @@ export function SettingsSystemTab({ health, settings, updateSettings, showSucces
               <div className="settings-system__copy">
                 <div className="settings-system__label">API key</div>
               </div>
-              <div className="settings-system__value">Loading…</div>
+              <div className="settings-system__value">
+                <DotLoader size="sm" label={null} /> Loading…
+              </div>
             </div>
           ) : apiKey ? (
             <div className="settings-system__row">
@@ -171,9 +174,11 @@ export function SettingsSystemTab({ health, settings, updateSettings, showSucces
                   title="Rotate API key"
                   aria-label="Rotate API key"
                 >
-                  <RotateCcw
-                    className={"artist-icon-xs" + (rotating ? " animate-spin" : "")}
-                  />
+                  {rotating ? (
+                    <DotLoader size="xs" label={null} />
+                  ) : (
+                    <RotateCcw className="artist-icon-xs" aria-hidden />
+                  )}
                 </button>
               </div>
             </div>

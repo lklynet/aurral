@@ -3,6 +3,11 @@ import { QueryClient } from "@tanstack/react-query";
 const LIBRARY_CANONICAL_QUERY_KEY = ["library", "canonical"];
 const LIBRARY_VIEW_QUERY_KEY = ["library", "view"];
 const LIBRARY_ALBUM_TRACKS_QUERY_KEY = ["library", "tracks"];
+let libraryCanonicalGeneration = 0;
+
+export const bumpLibraryCanonicalGeneration = () => {
+  libraryCanonicalGeneration += 1;
+};
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,7 +46,11 @@ export const queryKeys = {
   libraryLookupBatch: (ids) => ["library", "lookup-batch", [...ids].sort()],
   libraryViewPrefix: LIBRARY_VIEW_QUERY_KEY,
   libraryCanonicalPrefix: LIBRARY_CANONICAL_QUERY_KEY,
-  libraryCanonical: (options) => [...LIBRARY_CANONICAL_QUERY_KEY, options],
+  libraryCanonical: (options) => [
+    ...LIBRARY_CANONICAL_QUERY_KEY,
+    libraryCanonicalGeneration,
+    options,
+  ],
   libraryAlbumLookup: (ids) => ["library", "album-lookup", [...ids].sort()],
   libraryAlbumTracksPrefix: LIBRARY_ALBUM_TRACKS_QUERY_KEY,
   libraryAlbumTracks: (albumId, releaseGroupMbid) => [

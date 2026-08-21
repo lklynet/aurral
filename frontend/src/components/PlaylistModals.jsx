@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Check, Loader2, MoreVertical, Plus, Sparkles, Trash2, Upload, X } from "lucide-react";
+import { Check, MoreVertical, Plus, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { useModalDialog } from "../hooks/useModalDialog.js";
+import { DotLoader } from "./DotLoader";
 
 export function ModalShell({
   open,
@@ -116,7 +117,7 @@ export function CreatePlaylistModal({
             disabled={saving}
           >
             {saving ? (
-              <Loader2 className="artist-icon-sm animate-spin" />
+              <DotLoader size="sm" label={null} />
             ) : (
               <Plus className="artist-icon-sm" />
             )}
@@ -354,7 +355,7 @@ export function RenamePlaylistModal({
                     >
                       <span className="artist-menu-item__main">
                         {coverBusy ? (
-                          <Loader2 className="artist-icon-sm animate-spin" />
+                          <DotLoader size="sm" label={null} />
                         ) : (
                           <Sparkles className="artist-icon-sm" />
                         )}
@@ -418,7 +419,7 @@ export function RenamePlaylistModal({
               disabled={busy}
             >
               {saving ? (
-                <Loader2 className="artist-icon-sm animate-spin" />
+                <DotLoader size="sm" label={null} />
               ) : (
                 <Check className="artist-icon-sm" />
               )}

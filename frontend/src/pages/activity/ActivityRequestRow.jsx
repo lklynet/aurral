@@ -4,13 +4,13 @@ import {
   Clock,
   Eye,
   Info,
-  Loader,
   Pause,
   Play,
   RotateCcw,
   XCircle,
 } from "lucide-react";
 import TooltipButton from "../../components/TooltipButton";
+import { DotLoader } from "../../components/DotLoader";
 import { formatReviewReasonSummary, formatTimelineTime } from "./activityListUtils";
 
 function getStatusMeta(request) {
@@ -25,7 +25,6 @@ function getStatusMeta(request) {
   }
   if (request.status === "processing" || request.status === "pending") {
     return {
-      icon: Loader,
       label: request.statusLabel || "In progress",
       tone: "active",
       spinning: true,
@@ -123,7 +122,11 @@ export default function ActivityRequestRow({
         title={status.label}
         aria-label={status.label}
       >
-        <StatusIcon className={status.spinning ? "animate-spin" : ""} aria-hidden="true" />
+        {status.spinning ? (
+          <DotLoader size="sm" label={null} />
+        ) : (
+          <StatusIcon aria-hidden="true" />
+        )}
       </span>
       <div className="activity-row__details">
         <h2 className="activity-row__title">
@@ -176,7 +179,7 @@ export default function ActivityRequestRow({
               disabled={isApproving || isDenying}
               label="Approve track"
             >
-              {isApproving ? <Loader className="animate-spin" aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
+              {isApproving ? <DotLoader size="sm" label={null} /> : <CheckCircle2 aria-hidden="true" />}
             </TooltipButton>
             <TooltipButton
               className="native-library-icon-button"
@@ -184,7 +187,7 @@ export default function ActivityRequestRow({
               disabled={isApproving || isDenying}
               label="Deny track"
             >
-              {isDenying ? <Loader className="animate-spin" aria-hidden="true" /> : <XCircle aria-hidden="true" />}
+              {isDenying ? <DotLoader size="sm" label={null} /> : <XCircle aria-hidden="true" />}
             </TooltipButton>
           </>
         ) : null}
@@ -195,7 +198,11 @@ export default function ActivityRequestRow({
             disabled={isReSearching}
             label={isReSearching ? "Re-searching" : "Re-search"}
           >
-            <RotateCcw className={isReSearching ? "animate-spin" : ""} aria-hidden="true" />
+            {isReSearching ? (
+              <DotLoader size="sm" label={null} />
+            ) : (
+              <RotateCcw aria-hidden="true" />
+            )}
           </TooltipButton>
         ) : null}
         <TooltipButton

@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.js";
 
 export function ConfirmModal({
@@ -48,6 +49,7 @@ export function ConfirmModal({
             className="btn btn-secondary flow-page__btn--destructive"
             disabled={busy}
           >
+            {busy ? <DotLoader size="sm" label={null} /> : null}
             {busy ? busyLabel : confirmLabel}
           </button>
         </div>

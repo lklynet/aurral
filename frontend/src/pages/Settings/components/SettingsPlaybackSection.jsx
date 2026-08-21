@@ -24,6 +24,7 @@ import {
   Folder,
   RefreshCw,
 } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 import DownloadFolderPickerModal from "../../../components/DownloadFolderPickerModal";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsAdapterFields } from "./SettingsAdapterFields";
@@ -585,7 +586,11 @@ export function SettingsPlaybackSection({
               onClick={handleTestNavidrome}
               disabled={testingNavidrome || !navidrome.url || !navidrome.username || !navidrome.password}
             >
-              <RefreshCw className={`artist-icon-sm${testingNavidrome ? " animate-spin" : ""}`} />
+              {testingNavidrome ? (
+                <DotLoader size="sm" label={null} />
+              ) : (
+                <RefreshCw className="artist-icon-sm" aria-hidden />
+              )}
               {testingNavidrome ? "Testing…" : "Test connection"}
             </button>
           }
@@ -612,7 +617,11 @@ export function SettingsPlaybackSection({
               onClick={handleTestPlex}
               disabled={testingPlex || !plex.url || !plex.token}
             >
-              <RefreshCw className={`artist-icon-sm${testingPlex ? " animate-spin" : ""}`} />
+              {testingPlex ? (
+                <DotLoader size="sm" label={null} />
+              ) : (
+                <RefreshCw className="artist-icon-sm" aria-hidden />
+              )}
               {testingPlex ? "Testing…" : "Test connection"}
             </button>
           }
@@ -753,7 +762,7 @@ export function SettingsPlaybackSection({
 
             {plex.mainLibrarySectionId && libraryAccessCheck?.checking ? (
               <p className="settings-modal__hint">
-                <RefreshCw className="artist-icon-xs" aria-hidden /> Checking whether Aurral can
+                <DotLoader size="xs" label={null} /> Checking whether Aurral can
                 already read this library…
               </p>
             ) : null}
@@ -828,6 +837,7 @@ export function SettingsPlaybackSection({
                 onClick={handleSyncPlex}
                 disabled={syncingPlex || !plex.url || !plex.token}
               >
+                {syncingPlex ? <DotLoader size="sm" label={null} /> : null}
                 {syncingPlex ? "Syncing…" : "Sync to Plex now"}
               </button>
             </SettingsModalActions>

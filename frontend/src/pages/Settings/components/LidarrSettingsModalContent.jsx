@@ -6,6 +6,7 @@ import {
 import { Link } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
 import PillToggle from "../../../components/PillToggle";
+import { DotLoader } from "../../../components/DotLoader";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 export function LidarrSettingsSection({
@@ -175,9 +176,11 @@ export function LidarrSettingsSection({
               }
               className="arr-btn"
             >
-              <RefreshCw
-                className={`artist-icon-sm${refreshingProfilesTags ? " animate-spin" : ""}`}
-              />
+              {refreshingProfilesTags ? (
+                <DotLoader size="sm" label={null} />
+              ) : (
+                <RefreshCw className="artist-icon-sm" aria-hidden />
+              )}
               {refreshingProfilesTags ? "Refreshing..." : "Refresh profiles/tags"}
             </button>
             <button
@@ -190,6 +193,7 @@ export function LidarrSettingsSection({
               }
               className="arr-btn"
             >
+              {testingLidarr ? <DotLoader size="sm" label={null} /> : null}
               {testingLidarr ? "Testing..." : "Test connection"}
             </button>
             {lidarrTestStatus ? (
@@ -423,6 +427,7 @@ export function LidarrSettingsSection({
           disabled={applyingCommunityGuide || !health?.lidarrConfigured}
           className="arr-btn arr-btn--primary"
         >
+          {applyingCommunityGuide ? <DotLoader size="sm" label={null} /> : null}
           {applyingCommunityGuide ? "Applying..." : "Apply recommended settings"}
         </button>
         <p className="arr-form-help arr-form-help--spaced">

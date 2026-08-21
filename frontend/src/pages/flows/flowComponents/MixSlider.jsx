@@ -5,7 +5,8 @@ import { TAG_COLORS } from "../../discoverUtils";
 import { getTagColor } from "../../ArtistDetails/utils";
 import { useDebouncedTask } from "../../../hooks/useDebouncedTask";
 
-import { Loader2, Search } from "lucide-react";
+import { Search } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 const SOURCE_MIX_COLORS = {
   discover: TAG_COLORS[10],
   mix: TAG_COLORS[4],
@@ -600,7 +601,7 @@ export function CommaTokenInput({
         >
           {loadingSuggestions && suggestions.length === 0 ? (
             <div className="flow-page__token-suggestion flow-page__token-suggestion--loading">
-              <Loader2 className="artist-icon-sm animate-spin" />
+              <DotLoader size="sm" label={null} />
               Searching
             </div>
           ) : null}

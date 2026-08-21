@@ -11,6 +11,7 @@ import {
   createSharedPlaylist,
 } from "../utils/api/endpoints/playlists.js";
 import { getDiscovery } from "../utils/api/endpoints/discovery.js";
+import { DotLoader } from "../components/DotLoader";
 import { getArtistCover, getReleaseGroupCover } from "../utils/api/endpoints/artists.js";
 import { searchCatalog, searchUnified } from "../utils/api/endpoints/search.js";
 import SearchAlbumResults from "../components/SearchAlbumResults";
@@ -59,7 +60,6 @@ import {
   Grid3X3,
   LayoutGrid,
   List,
-  Loader,
   Music,
   Search,
   SlidersHorizontal,
@@ -1558,7 +1558,7 @@ function SearchResultsPage() {
 
       {loading && (
         <div className="artist-loading">
-          <Loader className="artist-spinner artist-spinner--large animate-spin" />
+          <DotLoader size="2xl" label={null} />
         </div>
       )}
 
@@ -1683,7 +1683,7 @@ function SearchResultsPage() {
               {showLoadMore && (
                 <div ref={sentinelRef} className="search-load-more">
                   <span className="search-load-more__inner">
-                    <Loader className="artist-spinner animate-spin" />
+                    <DotLoader size="xl" label={null} />
                     Loading...
                   </span>
                 </div>

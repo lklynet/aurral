@@ -19,6 +19,7 @@ import { readStoredNearbyLocation } from "../pages/discoverUtils.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { useToast } from "../contexts/ToastContext";
 import TooltipButton from "./TooltipButton";
+import { DotLoader } from "./DotLoader";
 import { queryClient, queryKeys } from "../queryClient.js";
 
 const ITEM_ICONS = {
@@ -339,7 +340,9 @@ function InboxMenu() {
             ) : null}
           </div>
           {(inboxQuery.isPending || (serverRefreshing && items.length === 0)) ? (
-            <div className="app-inbox-menu__empty">Loading…</div>
+            <div className="app-inbox-menu__empty">
+              <DotLoader size="sm" label={null} /> Loading…
+            </div>
           ) : items.length === 0 ? (
             <div className="app-inbox-menu__empty">Nothing to see here yet</div>
           ) : visibleItems.length === 0 ? (

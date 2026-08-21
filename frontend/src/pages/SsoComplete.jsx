@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { setStoredAuth } from "../utils/api/core.js";
 import { exchangeOidcCode } from "../utils/api/endpoints/auth.js";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { DotLoader } from "../components/DotLoader";
 
 const readHashParams = () => {
   const hash = String(window.location.hash || "").replace(/^#/, "");
@@ -83,7 +84,7 @@ const SsoComplete = () => {
 
   return (
     <div className="app-loading app-loading--screen">
-      <div className="app-loading__spinner app-loading__spinner--lg" />
+      <DotLoader size="2xl" />
     </div>
   );
 };

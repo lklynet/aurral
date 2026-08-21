@@ -1,6 +1,7 @@
 import { forwardRef } from "react";
-import { Loader, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import TooltipButton from "./TooltipButton";
+import { DotLoader } from "./DotLoader";
 
 const AddActionButton = forwardRef(function AddActionButton(
   {
@@ -27,7 +28,7 @@ const AddActionButton = forwardRef(function AddActionButton(
     >
       <span className="btn-add-action__icon">
         {isLoading ? (
-          <Loader className="animate-spin" aria-hidden="true" />
+          <DotLoader size="sm" label={null} />
         ) : (
           <Icon aria-hidden="true" />
         )}

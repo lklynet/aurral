@@ -6,7 +6,8 @@ import {
 } from "../utils/api/endpoints/discovery.js";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
-import { Crosshair, Loader, Music } from "lucide-react";
+import { Crosshair, Music } from "lucide-react";
+import { DotLoader } from "../components/DotLoader";
 
 import { Link } from "react-router-dom";
 import { useDiscoverData } from "./useDiscoverData";
@@ -158,7 +159,7 @@ export default function DiscoverPlaylistsPage() {
         </header>
         {isUpdating || playlistsUpdating ? (
           <div className="search-empty-panel">
-            <Loader className="artist-icon-lg animate-spin" />
+            <DotLoader size="lg" label={null} />
             <h2 className="search-empty-panel__title">
               {playlistsUpdating ? "Building playlists" : "Refreshing discovery"}
             </h2>

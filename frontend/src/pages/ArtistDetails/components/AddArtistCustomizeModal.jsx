@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { Loader } from "lucide-react";
+import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.js";
 
 export function AddArtistCustomizeModal({
@@ -54,7 +54,7 @@ export function AddArtistCustomizeModal({
 
         {loading ? (
           <div className="artist-loading">
-            <Loader className="artist-spinner animate-spin" />
+            <DotLoader size="xl" label={null} />
           </div>
         ) : (
           <div className="artist-modal__fields">
@@ -144,6 +144,7 @@ export function AddArtistCustomizeModal({
             className="btn btn-primary"
             disabled={loading || !configured || confirming}
           >
+            {confirming ? <DotLoader size="sm" label={null} /> : null}
             {confirming ? "Adding..." : "Add Artist"}
           </button>
         </div>

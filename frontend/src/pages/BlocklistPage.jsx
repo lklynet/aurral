@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Ban, Loader2, Search, X } from "lucide-react";
+import { Ban, Search, X } from "lucide-react";
+import { DotLoader } from "../components/DotLoader";
 import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { searchUnified } from "../utils/api/endpoints/search.js";
@@ -107,7 +108,7 @@ export default function BlocklistPage() {
             placeholder="Search for an artist"
             aria-label="Search for an artist to block"
           />
-          {searching ? <Loader2 className="artist-icon-sm animate-spin" aria-hidden="true" /> : null}
+          {searching ? <DotLoader size="sm" label={null} /> : null}
         </form>
         {suggestions.length > 0 ? (
           <div className="blocklist-page__suggestions">
@@ -123,7 +124,7 @@ export default function BlocklistPage() {
                 >
                   <span>{artist.name}</span>
                   {pendingKey === key ? (
-                    <Loader2 className="artist-icon-xs animate-spin" />
+                    <DotLoader size="xs" label={null} />
                   ) : (
                     <Ban className="artist-icon-xs" />
                   )}
@@ -154,7 +155,7 @@ export default function BlocklistPage() {
                     title="Unblock artist"
                   >
                     {pendingKey === key ? (
-                      <Loader2 className="artist-icon-xs animate-spin" />
+                      <DotLoader size="xs" label={null} />
                     ) : (
                       <X className="artist-icon-xs" />
                     )}

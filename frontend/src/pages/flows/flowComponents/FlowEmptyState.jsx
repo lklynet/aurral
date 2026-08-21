@@ -1,5 +1,6 @@
 import { ListMusic, Sparkles, Upload } from "lucide-react";
 import { Link } from "react-router-dom";
+import { DotLoader } from "../../../components/DotLoader";
 
 function getFlowEmptyCopy(libraryFilter, canCreate) {
   if (libraryFilter === "playlists") {
@@ -74,7 +75,7 @@ export function FlowEmptyState({
               disabled={creatingPlaylist}
               className="btn btn-primary btn--bold btn-min-h"
             >
-              <ListMusic className="artist-icon-sm" />
+              {creatingPlaylist ? <DotLoader size="sm" label={null} /> : <ListMusic className="artist-icon-sm" />}
               {creatingPlaylist ? "Creating…" : "New playlist"}
             </button>
           ) : null}
@@ -85,7 +86,7 @@ export function FlowEmptyState({
               disabled={creatingFlow}
               className="btn btn-secondary btn--bold btn-min-h"
             >
-              <Sparkles className="artist-icon-sm" />
+              {creatingFlow ? <DotLoader size="sm" label={null} /> : <Sparkles className="artist-icon-sm" />}
               {creatingFlow ? "Creating…" : "New flow"}
             </button>
           ) : null}

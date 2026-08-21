@@ -38,7 +38,8 @@ import { getAlbumAddButtonLabel, shouldTriggerAlbumSearch } from "../utils/album
 import { useDebouncedTask } from "../hooks/useDebouncedTask";
 import { useSharedPlaylists } from "../hooks/useSharedPlaylists";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Clock, Loader2, Search } from "lucide-react";
+import { Clock, Search } from "lucide-react";
+import { DotLoader } from "./DotLoader";
 import AddActionButton from "./AddActionButton";
 import SearchLibraryCheck from "./SearchLibraryCheck";
 import { TrackPlaylistMenu } from "../pages/ArtistDetails/components/TrackPlaylistMenu";
@@ -627,7 +628,7 @@ function GlobalSearch({ settingsMode = false }) {
           )}
           {loadingSuggestions && (
             <div className="global-search__loader">
-              <Loader2 className="artist-icon-md animate-spin" />
+              <DotLoader size="md" label={null} />
             </div>
           )}
         </div>

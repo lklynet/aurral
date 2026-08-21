@@ -11,6 +11,7 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { SettingsInput } from "./Settings/components/SettingsField";
 import { OnboardingStep, OnboardingStepHeader, OnboardingHint } from "./onboardingUtils.jsx";
 import PillToggle from "../components/PillToggle";
+import { DotLoader } from "../components/DotLoader";
 import {
   getApiErrorMessage,
   ONBOARDING_HERO_LOGO_SIZE,
@@ -343,7 +344,10 @@ function Onboarding() {
                   <ChevronRight className="artist-icon-xs" />
                 </>
               ) : (
-                primaryLabel
+                <>
+                  {testingLidarr || submitting ? <DotLoader size="sm" label={null} /> : null}
+                  {primaryLabel}
+                </>
               )}
             </button>
           </div>

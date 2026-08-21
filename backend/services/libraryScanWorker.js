@@ -17,9 +17,17 @@ function setScanRegistry(registry) {
   dbOps.setJSONSetting(LIBRARY_SCAN_REGISTRY_KEY, registry);
 }
 
+function normalizeJobId(value) {
+  const jobId = Number(value);
+  return Number.isSafeInteger(jobId) && jobId > 0 ? jobId : null;
+}
+
+function hasLiveScanJob(jobId) {
+  return Boolean(getLibraryScanQueue().getJob(jobId));
+}
+
 export function getScheduledLibraryScanJobId() {
-  const jobId = Number(getScanRegistry().jobId);
-  return Number.isFinite(jobId) ? jobId : null;
+  return normalizeJobId(getScanRegistry().jobId);
 }
 
 export function clearScheduledLibraryScan(jobId = null) {
@@ -32,13 +40,34 @@ export function clearScheduledLibraryScan(jobId = null) {
 
 export function scheduleLibraryScan({ force = false } = {}) {
   const registry = getScanRegistry();
-  const existingJobId = Number(registry.jobId);
-  if (Number.isFinite(existingJobId)) {
+  const existingJobId = normalizeJobId(registry.jobId);
+  if (existingJobId != null && hasLiveScanJob(existingJobId)) {
     return existingJobId;
   }
+  if (existingJobId != null) clearScheduledLibraryScan(existingJobId);
   const jobId = enqueueLibraryScanJob({ force: force === true });
   setScanRegistry({ jobId });
   return jobId;
+}
+
+export function claimScheduledLibraryScanJob(jobId) {
+  const normalizedJobId = normalizeJobId(jobId);
+  if (normalizedJobId == null) return false;
+  const scheduledJobId = getScheduledLibraryScanJobId();
+  if (scheduledJobId != null && scheduledJobId !== normalizedJobId) {
+    if (hasLiveScanJob(scheduledJobId)) return false;
+    clearScheduledLibraryScan(scheduledJobId);
+  }
+  setScanRegistry({ jobId: normalizedJobId });
+  return true;
+}
+
+export function onLibraryScanSuccess(_payload, job) {
+  clearScheduledLibraryScan(job.id);
+}
+
+export function onLibraryScanFinalFailure(job) {
+  clearScheduledLibraryScan(job.id);
 }
 
 export function getLibraryScanStatus(jobId) {
@@ -83,12 +112,7 @@ const {
   idlePollS: 10,
   retryDelayS: 60,
   filterJob(job) {
-    const scheduledJobId = getScheduledLibraryScanJobId();
-    if (scheduledJobId != null && scheduledJobId !== job.id) {
-      return false;
-    }
-    clearScheduledLibraryScan(job.id);
-    return true;
+    return claimScheduledLibraryScanJob(job.id);
   },
   processJob: async () => {
     const { lidarrClient } = await import("./lidarrClient.js");
@@ -106,6 +130,8 @@ const {
     setScanRegistry({ jobId: job.id });
     return { action: "retry", delayS: 60, message };
   },
+  onJobSuccess: onLibraryScanSuccess,
+  onFinalFailure: onLibraryScanFinalFailure,
   onLoopError(error) {
     databaseClosed = isHonkerDatabaseClosedError(error);
     if (!databaseClosed) {
