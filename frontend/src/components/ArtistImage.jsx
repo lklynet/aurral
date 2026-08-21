@@ -60,9 +60,13 @@ const ArtistImage = ({
   const [currentSrc, setCurrentSrc] = useState(() => normalizeMediaUrl(src));
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [fallbackVisible, setFallbackVisible] = useState(
+    () => typeof IntersectionObserver === "undefined",
+  );
   const fetchingRef = useRef(false);
   const triedBackendFallbackRef = useRef(false);
   const imgRef = useRef(null);
+  const fallbackTargetRef = useRef(null);
   const abortRef = useRef(null);
   const { canPlayArtistPreview, isArtistPreviewActive, isLoadingPreview, playArtistPreview } =
     useArtistPreviewPlayback({
@@ -124,6 +128,28 @@ const ArtistImage = ({
   );
 
   useEffect(() => {
+    if (src || currentSrc || !mbid || !enableBackendFallback) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setFallbackVisible(true);
+      return;
+    }
+
+    const target = fallbackTargetRef.current;
+    if (!target) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        setFallbackVisible(true);
+        observer.disconnect();
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [currentSrc, enableBackendFallback, mbid, src]);
+
+  useEffect(() => {
     fetchingRef.current = false;
     triedBackendFallbackRef.current = false;
 
@@ -135,7 +161,7 @@ const ArtistImage = ({
       setCurrentSrc(normalizeMediaUrl(src));
       setHasError(false);
       setIsLoading(true);
-    } else if (mbid && enableBackendFallback) {
+    } else if (mbid && enableBackendFallback && fallbackVisible) {
       setCurrentSrc(null);
       setHasError(false);
       setIsLoading(true);
@@ -147,7 +173,7 @@ const ArtistImage = ({
     }
 
     return () => controller.abort();
-  }, [src, mbid, artistName, fetchBackendCover, enableBackendFallback]);
+  }, [src, mbid, artistName, fetchBackendCover, enableBackendFallback, fallbackVisible]);
 
   useEffect(() => {
     const image = imgRef.current;
@@ -236,6 +262,7 @@ const ArtistImage = ({
   if (showPlaceholder) {
     return (
       <div
+        ref={fallbackTargetRef}
         className={`artist-image-root ${className}`}
         style={{
           background: "var(--aurral-surface-raised)",
