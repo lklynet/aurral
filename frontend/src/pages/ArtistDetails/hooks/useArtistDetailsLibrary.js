@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   getLibraryAlbums,
   updateLibraryAlbum,
@@ -20,6 +20,26 @@ import { useWebSocketChannel } from "../../../hooks/useWebSocket";
 import { queryClient, queryKeys } from "../../../queryClient.js";
 
 const DELETE_FILES_PREFERENCE_KEY = "aurral:library-delete-files";
+
+const invalidateLibraryQueries = (mbid = null, artistId = null) => {
+  const queryKeysToInvalidate = [
+    queryKeys.libraryCanonicalPrefix,
+    queryKeys.libraryViewPrefix,
+    queryKeys.libraryAlbumsPrefix,
+    queryKeys.libraryAlbumLookupPrefix,
+  ];
+  if (mbid) {
+    queryKeysToInvalidate.push(
+      queryKeys.libraryArtist(mbid),
+      queryKeys.libraryLookup(mbid),
+      queryKeys.libraryLookupDetails(mbid),
+    );
+  }
+  if (artistId != null) queryKeysToInvalidate.push(queryKeys.libraryAlbums(artistId));
+  return Promise.all(
+    queryKeysToInvalidate.map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+  );
+};
 
 const readDeleteFilesPreference = () => {
   try {
@@ -55,10 +75,7 @@ export function useArtistDetailsLibrary({
   const [showRemoveDropdown, setShowRemoveDropdown] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteFiles, setDeleteFilesState] = useState(() => readDeleteFilesPreference());
-  const [deletingArtist, setDeletingArtist] = useState(false);
-  const [addingToLibrary, setAddingToLibrary] = useState(false);
   const [showMonitorOptionMenu, setShowMonitorOptionMenu] = useState(false);
-  const [updatingMonitor, setUpdatingMonitor] = useState(false);
   const [refreshingArtist, setRefreshingArtist] = useState(false);
   const [reSearchingAlbum, setReSearchingAlbum] = useState(null);
   const [reSearchingMissingAlbums, setReSearchingMissingAlbums] = useState(false);
@@ -160,6 +177,35 @@ export function useArtistDetailsLibrary({
     refetchIntervalInBackground: false,
   });
   const { refetch: refetchLibraryAlbums } = libraryAlbumsQuery;
+  const refreshArtistMutation = useMutation({ mutationFn: refreshLibraryArtist });
+  const deleteArtistMutation = useMutation({
+    mutationFn: ({ mbid, deleteFiles }) => deleteArtistFromLibrary(mbid, deleteFiles),
+    onSuccess: (_result, { mbid }) => invalidateLibraryQueries(mbid),
+  });
+  const updateArtistMutation = useMutation({
+    mutationFn: ({ mbid, data }) => updateLibraryArtist(mbid, data),
+    onSuccess: (_result, { mbid }) => invalidateLibraryQueries(mbid),
+  });
+  const addArtistMutation = useMutation({
+    mutationFn: addArtistToLibrary,
+    onSuccess: () => invalidateLibraryQueries(),
+  });
+  const requestAlbumMutation = useMutation({
+    mutationFn: requestAlbumFromSearch,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.libraryAlbumLookupPrefix }),
+  });
+  const updateAlbumMutation = useMutation({
+    mutationFn: ({ id, data }) => updateLibraryAlbum(id, data),
+    onSuccess: () => invalidateLibraryQueries(),
+  });
+  const deleteAlbumMutation = useMutation({
+    mutationFn: ({ id, deleteFiles }) => deleteAlbumFromLibrary(id, deleteFiles),
+    onSuccess: () => invalidateLibraryQueries(),
+  });
+  const searchAlbumMutation = useMutation({
+    mutationFn: triggerAlbumSearch,
+  });
   const downloadStatuses = useMemo(() => {
     const statuses = downloadStatusesQuery.data || {};
     const now = Date.now();
@@ -212,10 +258,10 @@ export function useArtistDetailsLibrary({
     setRefreshingArtist(true);
     try {
       const mbid = libraryArtist.mbid || libraryArtist.foreignArtistId;
-      await refreshLibraryArtist(mbid);
+      await refreshArtistMutation.mutateAsync(mbid);
       setTimeout(async () => {
         try {
-          const refreshedArtist = await getLibraryArtist(mbid);
+          const refreshedArtist = await getLibraryArtist(mbid, { bypassCache: true });
           setLibraryArtist(refreshedArtist);
           await refetchLibraryAlbums();
           showSuccess("Artist data refreshed successfully.");
@@ -242,9 +288,8 @@ export function useArtistDetailsLibrary({
 
   const handleDeleteConfirm = async () => {
     if (!libraryArtist?.id) return;
-    setDeletingArtist(true);
     try {
-      await deleteArtistFromLibrary(libraryArtist.mbid, deleteFiles);
+      await deleteArtistMutation.mutateAsync({ mbid: libraryArtist.mbid, deleteFiles });
       setExistsInLibrary(false);
       setLibraryArtist(null);
       setLibraryAlbums([]);
@@ -256,14 +301,11 @@ export function useArtistDetailsLibrary({
       setShowDeleteModal(false);
     } catch (err) {
       showError(`Failed to delete artist: ${err.response?.data?.message || err.message}`);
-    } finally {
-      setDeletingArtist(false);
     }
   };
 
   const handleUpdateMonitorOption = async (newMonitorOption) => {
     if (!libraryArtist?.id) return;
-    setUpdatingMonitor(true);
     try {
       const updatedArtist = {
         ...libraryArtist,
@@ -277,8 +319,8 @@ export function useArtistDetailsLibrary({
       delete updatedArtist.statistics;
       delete updatedArtist.images;
       delete updatedArtist.links;
-      await updateLibraryArtist(libraryArtist.mbid, updatedArtist);
-      const refreshedArtist = await getLibraryArtist(libraryArtist.mbid);
+      await updateArtistMutation.mutateAsync({ mbid: libraryArtist.mbid, data: updatedArtist });
+      const refreshedArtist = await getLibraryArtist(libraryArtist.mbid, { bypassCache: true });
       setLibraryArtist(refreshedArtist);
       setShowRemoveDropdown(false);
       const monitorLabels = {
@@ -298,8 +340,6 @@ export function useArtistDetailsLibrary({
           err.response?.data?.message || err.response?.data?.error || err.message
         }`,
       );
-    } finally {
-      setUpdatingMonitor(false);
     }
   };
 
@@ -311,7 +351,7 @@ export function useArtistDetailsLibrary({
     const lookupMbid = lookupArtist.mbid || lookupArtist.foreignArtistId;
     let fullArtist;
     try {
-      fullArtist = await getLibraryArtist(lookupMbid);
+      fullArtist = await getLibraryArtist(lookupMbid, { bypassCache: true });
     } catch {
       fullArtist = {
         ...lookupArtist,
@@ -322,10 +362,10 @@ export function useArtistDetailsLibrary({
     setLibraryArtist(fullArtist);
     setExistsInLibrary(true);
     if (refresh) {
-      await refreshLibraryArtist(fullArtist.mbid || fullArtist.foreignArtistId);
+      await refreshArtistMutation.mutateAsync(fullArtist.mbid || fullArtist.foreignArtistId);
     }
     if (hydrateAlbums) {
-      const albums = await getLibraryAlbums(fullArtist.id);
+      const albums = await getLibraryAlbums(fullArtist.id, { bypassCache: true });
       setLibraryAlbums(deduplicateAlbums(albums));
     }
     return fullArtist;
@@ -412,9 +452,8 @@ export function useArtistDetailsLibrary({
       showError("Artist information not available");
       return;
     }
-    setAddingToLibrary(true);
     try {
-      const result = await addArtistToLibrary({
+      const result = await addArtistMutation.mutateAsync({
         foreignArtistId: artist.id,
         artistName: artist.name,
         quality: appSettings?.quality || "standard",
@@ -431,7 +470,7 @@ export function useArtistDetailsLibrary({
         hydrateAlbums: true,
       });
       if (!fullArtist) {
-        const lookup = await lookupArtistInLibrary(artist.id);
+        const lookup = await lookupArtistInLibrary(artist.id, { bypassCache: true });
         if (lookup.exists && lookup.artist) {
           fullArtist = await hydrateLibraryArtist(lookup.artist);
         }
@@ -448,8 +487,6 @@ export function useArtistDetailsLibrary({
         }`,
       );
       return false;
-    } finally {
-      setAddingToLibrary(false);
     }
   };
 
@@ -474,7 +511,7 @@ export function useArtistDetailsLibrary({
         throw new Error("Artist information not available");
       }
 
-      const result = await requestAlbumFromSearch({
+      const result = await requestAlbumMutation.mutateAsync({
         albumMbid: albumId,
         albumName: title,
         artistMbid: artist.id,
@@ -546,7 +583,10 @@ export function useArtistDetailsLibrary({
       const album = libraryAlbums.find((a) => a.id === libraryAlbumId);
       if (!album) throw new Error("Album not found in library");
       if (!album.monitored) {
-        await updateLibraryAlbum(libraryAlbumId, { ...album, monitored: true });
+        await updateAlbumMutation.mutateAsync({
+          id: libraryAlbumId,
+          data: { ...album, monitored: true },
+        });
         setLibraryAlbums((prev) =>
           prev.map((a) => (a.id === libraryAlbumId ? { ...a, monitored: true } : a)),
         );
@@ -558,7 +598,7 @@ export function useArtistDetailsLibrary({
           [overrideKey]: { status: "searching" },
         }),
       );
-      await triggerAlbumSearch(libraryAlbumId);
+      await searchAlbumMutation.mutateAsync(libraryAlbumId);
       showSuccess(`Search triggered for ${title}`);
     } catch (err) {
       showError(`Failed to re-search album: ${err.response?.data?.message || err.message}`);
@@ -608,7 +648,10 @@ export function useArtistDetailsLibrary({
 
       for (const album of eligibleAlbums) {
         if (!album.monitored) {
-          await updateLibraryAlbum(album.id, { ...album, monitored: true });
+          await updateAlbumMutation.mutateAsync({
+            id: album.id,
+            data: { ...album, monitored: true },
+          });
         }
       }
 
@@ -620,7 +663,7 @@ export function useArtistDetailsLibrary({
         ),
       );
 
-      await Promise.all(eligibleAlbums.map((album) => triggerAlbumSearch(album.id)));
+      await Promise.all(eligibleAlbums.map((album) => searchAlbumMutation.mutateAsync(album.id)));
 
       showSuccess(
         `Triggered search for ${eligibleAlbums.length} missing download${
@@ -653,12 +696,15 @@ export function useArtistDetailsLibrary({
       if (!libraryAlbum) throw new Error("Album not found in library");
       setRemovingAlbum(albumId);
       if (deleteAlbumFiles) {
-        await deleteAlbumFromLibrary(libraryAlbum.id, true);
+        await deleteAlbumMutation.mutateAsync({ id: libraryAlbum.id, deleteFiles: true });
         deletedAlbumAtRef.current[libraryAlbum.id] = Date.now();
         setLibraryAlbums((prev) => prev.filter((a) => a.id !== libraryAlbum.id));
         showSuccess(`Successfully deleted ${title} and files`);
       } else {
-        await updateLibraryAlbum(libraryAlbum.id, { monitored: false });
+        await updateAlbumMutation.mutateAsync({
+          id: libraryAlbum.id,
+          data: { monitored: false },
+        });
         unmonitoredAtRef.current[libraryAlbum.id] = Date.now();
         setLibraryAlbums((prev) =>
           prev.map((a) => (a.id === libraryAlbum.id ? { ...a, monitored: false } : a)),
@@ -810,8 +856,8 @@ export function useArtistDetailsLibrary({
     showDeleteModal,
     deleteFiles,
     setDeleteFiles: updateDeleteFilesPreference,
-    deletingArtist,
-    addingToLibrary,
+    deletingArtist: deleteArtistMutation.isPending,
+    addingToLibrary: addArtistMutation.isPending,
     showAddCustomizeModal,
     setShowAddCustomizeModal,
     loadingLidarrPreferences: lidarrPreferencesQuery.isFetching,
@@ -824,7 +870,7 @@ export function useArtistDetailsLibrary({
     setCustomizeTagId,
     showMonitorOptionMenu,
     setShowMonitorOptionMenu,
-    updatingMonitor,
+    updatingMonitor: updateArtistMutation.isPending,
     refreshingArtist,
     reSearchingAlbum,
     reSearchingMissingAlbums,

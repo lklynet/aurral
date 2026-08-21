@@ -1,9 +1,5 @@
 import { useState } from "react";
 import {
-  getLidarrRootFolders,
-  getLidarrMetadataProfiles,
-  getLidarrProfiles,
-  getLidarrTags,
   testLidarrConnection,
 } from "../../../utils/api/endpoints/settings.js";
 
@@ -19,20 +15,13 @@ export function LidarrSettingsSection({
   health,
   lidarrRootFolders,
   loadingLidarrRootFolders,
-  setLoadingLidarrRootFolders,
-  setLidarrRootFolders,
   lidarrProfiles,
   loadingLidarrProfiles,
-  setLoadingLidarrProfiles,
-  setLidarrProfiles,
   lidarrMetadataProfiles,
   loadingLidarrMetadataProfiles,
-  setLoadingLidarrMetadataProfiles,
-  setLidarrMetadataProfiles,
   lidarrTags,
   loadingLidarrTags,
-  setLoadingLidarrTags,
-  setLidarrTags,
+  refreshLidarrResources,
   testingLidarr,
   setTestingLidarr,
   applyingCommunityGuide,
@@ -81,25 +70,15 @@ export function LidarrSettingsSection({
       if (result.success) {
         setLidarrTestStatus({ tone: "success", message: "Connected." });
         showSuccess(`Lidarr connection successful! (${result.instanceName || "Lidarr"})`);
-        setLoadingLidarrRootFolders(true);
-        setLoadingLidarrProfiles(true);
-        setLoadingLidarrMetadataProfiles(true);
-        setLoadingLidarrTags(true);
         try {
-          const [rootFolders, profiles, metadataProfiles, tags] = await Promise.all([
-            getLidarrRootFolders(url, apiKey),
-            getLidarrProfiles(url, apiKey),
-            getLidarrMetadataProfiles(url, apiKey),
-            getLidarrTags(url, apiKey),
-          ]);
+          const [rootFolders, profiles, metadataProfiles, tags] = await refreshLidarrResources({
+            url,
+            apiKey,
+          });
           const nextRootFolders = Array.isArray(rootFolders) ? rootFolders : [];
           const nextProfiles = Array.isArray(profiles) ? profiles : [];
           const nextMetadataProfiles = Array.isArray(metadataProfiles) ? metadataProfiles : [];
           const nextTags = Array.isArray(tags) ? tags : [];
-          setLidarrRootFolders(nextRootFolders);
-          setLidarrProfiles(nextProfiles);
-          setLidarrMetadataProfiles(nextMetadataProfiles);
-          setLidarrTags(nextTags);
           if (nextRootFolders.length > 0) {
             showInfo(`Loaded ${nextRootFolders.length} root folder(s)`);
           }
@@ -112,12 +91,13 @@ export function LidarrSettingsSection({
           if (nextTags.length > 0) {
             showInfo(`Loaded ${nextTags.length} tag(s)`);
           }
-        } catch {
-        } finally {
-          setLoadingLidarrRootFolders(false);
-          setLoadingLidarrProfiles(false);
-          setLoadingLidarrMetadataProfiles(false);
-          setLoadingLidarrTags(false);
+        } catch (err) {
+          const errorMsg =
+            err.response?.data?.message ||
+            err.response?.data?.error ||
+            err.message ||
+            "Failed to load Lidarr resources";
+          showError(`Connected, but failed to load Lidarr resources: ${errorMsg}`);
         }
       } else {
         setLidarrTestStatus({ tone: "error", message: "Connection failed. Check the URL and API key, then retry." });
@@ -145,25 +125,15 @@ export function LidarrSettingsSection({
       showError("Please enter Lidarr URL and API key first");
       return;
     }
-    setLoadingLidarrRootFolders(true);
-    setLoadingLidarrProfiles(true);
-    setLoadingLidarrMetadataProfiles(true);
-    setLoadingLidarrTags(true);
     try {
-      const [rootFolders, profiles, metadataProfiles, tags] = await Promise.all([
-        getLidarrRootFolders(url, apiKey),
-        getLidarrProfiles(url, apiKey),
-        getLidarrMetadataProfiles(url, apiKey),
-        getLidarrTags(url, apiKey),
-      ]);
+      const [rootFolders, profiles, metadataProfiles, tags] = await refreshLidarrResources({
+        url,
+        apiKey,
+      });
       const nextRootFolders = Array.isArray(rootFolders) ? rootFolders : [];
       const nextProfiles = Array.isArray(profiles) ? profiles : [];
       const nextMetadataProfiles = Array.isArray(metadataProfiles) ? metadataProfiles : [];
       const nextTags = Array.isArray(tags) ? tags : [];
-      setLidarrRootFolders(nextRootFolders);
-      setLidarrProfiles(nextProfiles);
-      setLidarrMetadataProfiles(nextMetadataProfiles);
-      setLidarrTags(nextTags);
       if (nextRootFolders.length === 0 && nextProfiles.length === 0 && nextMetadataProfiles.length === 0 && nextTags.length === 0) {
         showInfo("No root folders, profiles, or tags found in Lidarr");
       } else {
@@ -185,11 +155,6 @@ export function LidarrSettingsSection({
     } catch (err) {
       const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
       showError(`Failed to load profiles and tags: ${errorMsg}`);
-    } finally {
-      setLoadingLidarrRootFolders(false);
-      setLoadingLidarrProfiles(false);
-      setLoadingLidarrMetadataProfiles(false);
-      setLoadingLidarrTags(false);
     }
   };
 

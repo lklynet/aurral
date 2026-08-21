@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   addSharedPlaylistTracks,
   createSharedPlaylist,
@@ -125,6 +125,10 @@ function ReleasePage() {
   } = useSharedPlaylists();
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
   const [libraryTrackSavingKey, setLibraryTrackSavingKey] = useState("");
+  const downloadTrackMutation = useMutation({ mutationFn: downloadTrackToLibrary });
+  const requestAlbumMutation = useMutation({ mutationFn: requestAlbumFromSearch });
+  const { mutateAsync: downloadTrack } = downloadTrackMutation;
+  const { mutateAsync: requestAlbum } = requestAlbumMutation;
 
   const trackContext = useMemo(
     () => ({
@@ -367,7 +371,7 @@ function ReleasePage() {
       const savingKey = String(track?.id ?? track?.mbid ?? "");
       setLibraryTrackSavingKey(savingKey);
       try {
-        const result = await downloadTrackToLibrary(payload);
+        const result = await downloadTrack(payload);
         showSuccess(
           result?.alreadyOwned
             ? `${payload.trackName} is already in your library`
@@ -386,14 +390,14 @@ function ReleasePage() {
         setLibraryTrackSavingKey("");
       }
     },
-    [buildReleaseTrackPayload, showError, showSuccess],
+    [buildReleaseTrackPayload, downloadTrack, showError, showSuccess],
   );
 
   const handleAlbumAction = useCallback(async () => {
     if (!releaseMbid || requestingAlbum) return;
     setRequestingAlbum(true);
     try {
-      const result = await requestAlbumFromSearch({
+      const result = await requestAlbum({
         albumMbid: releaseMbid,
         albumName: release.title,
         artistMbid,
@@ -467,6 +471,7 @@ function ReleasePage() {
     release.title,
     releaseMbid,
     requestingAlbum,
+    requestAlbum,
     showError,
     showSuccess,
   ]);

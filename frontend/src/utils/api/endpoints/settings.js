@@ -30,45 +30,51 @@ export const getPlexLibraries = () => getData("/settings/plex/libraries");
 export const checkPlexLibraryAccess = (sectionId) =>
   getData(`/settings/plex/libraries/${encodeURIComponent(sectionId)}/access-check`);
 
+export const fetchAppSettings = ({ signal } = {}) => getData("/settings", { signal });
+
 export const getAppSettings = () =>
   queryClient.fetchQuery({
     queryKey: queryKeys.appSettings,
-    queryFn: ({ signal: querySignal }) => getData("/settings", { signal: querySignal }),
+    queryFn: ({ signal }) => fetchAppSettings({ signal }),
     staleTime: 30_000,
   });
+
+export const fetchPlaybackSettings = ({ signal } = {}) =>
+  getData("/settings/playback", { signal });
+
 export const getPlaybackSettings = () =>
   queryClient.fetchQuery({
     queryKey: queryKeys.playbackSettings,
-    queryFn: ({ signal: querySignal }) => getData("/settings/playback", { signal: querySignal }),
+    queryFn: ({ signal }) => fetchPlaybackSettings({ signal }),
     staleTime: 30_000,
   });
 export const testPlaybackConnection = (key, config) =>
   postData(`/settings/playback/${encodeURIComponent(key)}/test`, config);
 
-export const updateAppSettings = async (settings) => {
-  const result = await postData("/settings", settings);
-  await queryClient.invalidateQueries({ queryKey: queryKeys.appSettings });
-  return result;
-};
+export const updateAppSettings = (settings) => postData("/settings", settings);
 
-export const getLidarrRootFolders = (url, apiKey) =>
+export const getLidarrRootFolders = (url, apiKey, { signal } = {}) =>
   getData("/settings/lidarr/root-folders", {
     params: lidarrCredentialParams(url, apiKey),
+    signal,
   });
 
-export const getLidarrProfiles = (url, apiKey) =>
+export const getLidarrProfiles = (url, apiKey, { signal } = {}) =>
   getData("/settings/lidarr/profiles", {
     params: lidarrCredentialParams(url, apiKey),
+    signal,
   });
 
-export const getLidarrMetadataProfiles = (url, apiKey) =>
+export const getLidarrMetadataProfiles = (url, apiKey, { signal } = {}) =>
   getData("/settings/lidarr/metadata-profiles", {
     params: lidarrCredentialParams(url, apiKey),
+    signal,
   });
 
-export const getLidarrTags = (url, apiKey) =>
+export const getLidarrTags = (url, apiKey, { signal } = {}) =>
   getData("/settings/lidarr/tags", {
     params: lidarrCredentialParams(url, apiKey),
+    signal,
   });
 
 export const testSlskdConnection = () => postData("/settings/slskd/test");

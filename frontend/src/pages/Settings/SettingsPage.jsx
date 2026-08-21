@@ -92,20 +92,13 @@ function SettingsPage() {
                 health={data.health}
                 lidarrRootFolders={data.lidarrRootFolders}
                 loadingLidarrRootFolders={data.loadingLidarrRootFolders}
-                setLoadingLidarrRootFolders={data.setLoadingLidarrRootFolders}
-                setLidarrRootFolders={data.setLidarrRootFolders}
                 lidarrProfiles={data.lidarrProfiles}
                 loadingLidarrProfiles={data.loadingLidarrProfiles}
-                setLoadingLidarrProfiles={data.setLoadingLidarrProfiles}
-                setLidarrProfiles={data.setLidarrProfiles}
                 lidarrMetadataProfiles={data.lidarrMetadataProfiles}
                 loadingLidarrMetadataProfiles={data.loadingLidarrMetadataProfiles}
-                setLoadingLidarrMetadataProfiles={data.setLoadingLidarrMetadataProfiles}
-                setLidarrMetadataProfiles={data.setLidarrMetadataProfiles}
                 lidarrTags={data.lidarrTags}
                 loadingLidarrTags={data.loadingLidarrTags}
-                setLoadingLidarrTags={data.setLoadingLidarrTags}
-                setLidarrTags={data.setLidarrTags}
+                refreshLidarrResources={data.refreshLidarrResources}
                 testingLidarr={data.testingLidarr}
                 setTestingLidarr={data.setTestingLidarr}
                 applyingCommunityGuide={data.applyingCommunityGuide}
@@ -282,6 +275,20 @@ function SettingsPage() {
 
   if (shouldRedirect) {
     return <Navigate to={`/settings/${normalizedParam}`} replace />;
+  }
+
+  if (!data.settingsLoaded) {
+    return (
+      <div className="settings-arr">
+        <div className="settings-arr__body">
+          <div className="settings-arr__content">
+            <p className="settings-page__muted-copy">
+              <DotLoader size="sm" label={null} /> Loading settings…
+            </p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

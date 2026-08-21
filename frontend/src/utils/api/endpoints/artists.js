@@ -9,10 +9,10 @@ import {
 } from "../core.js";
 import { queryClient, queryKeys } from "../../../queryClient.js";
 
-export const getArtistDetails = async (
+const fetchArtistDetails = async (
   mbid,
   artistName,
-  { mode = "", releaseTypes = [], appearsOnLimit = null } = {},
+  { mode = "", releaseTypes = [], appearsOnLimit = null, signal } = {},
 ) => {
   const params = {};
   if (artistName) {
@@ -29,8 +29,21 @@ export const getArtistDetails = async (
   }
   return getData(`/artists/${mbid}`, {
     params,
+    signal,
   });
 };
+
+export const getArtistDetails = (mbid, artistName, options = {}) =>
+  queryClient.fetchQuery({
+    queryKey: queryKeys.artistDetails(mbid, {
+      artistName,
+      mode: options.mode,
+      releaseTypes: options.releaseTypes,
+      appearsOnLimit: options.appearsOnLimit,
+    }),
+    queryFn: ({ signal }) => fetchArtistDetails(mbid, artistName, { ...options, signal }),
+    staleTime: 60_000,
+  });
 
 export const getReleaseGroupDetails = (mbid, { signal } = {}) =>
   getData(`/artists/release-group/${mbid}`, { signal });
@@ -192,7 +205,7 @@ export const getReleaseGroupCover = async (
   return request;
 };
 
-export const getSimilarArtistsForArtist = (
+const fetchSimilarArtistsForArtist = (
   mbid,
   artistName = "",
   limit = 20,
@@ -204,6 +217,13 @@ export const getSimilarArtistsForArtist = (
         ? { artistName: artistName.trim() }
         : {}),
     },
+  });
+
+export const getSimilarArtistsForArtist = (mbid, artistName = "", limit = 20) =>
+  queryClient.fetchQuery({
+    queryKey: queryKeys.artistSimilar(mbid, artistName, limit),
+    queryFn: () => fetchSimilarArtistsForArtist(mbid, artistName, limit),
+    staleTime: 5 * 60 * 1000,
   });
 
 export const getArtistPreview = (mbid, artistName, options = {}) =>
@@ -223,14 +243,26 @@ export const getArtistTopSongVideo = (
     signal: options.signal,
   });
 
-export const getArtistOverrides = (mbid) =>
-  getData(`/artists/${mbid}/overrides`);
+export const fetchArtistOverrides = (mbid, { signal } = {}) =>
+  getData(`/artists/${mbid}/overrides`, { signal });
 
-export const updateArtistOverrides = (
+export const getArtistOverrides = (mbid) =>
+  queryClient.fetchQuery({
+    queryKey: queryKeys.artistOverrides(mbid),
+    queryFn: ({ signal }) => fetchArtistOverrides(mbid, { signal }),
+    staleTime: 30_000,
+  });
+
+export const updateArtistOverrides = async (
   mbid,
   { musicbrainzId = null, deezerArtistId = null } = {},
-) =>
-  putData(`/artists/${mbid}/overrides`, {
+) => {
+  const result = await putData(`/artists/${mbid}/overrides`, {
     musicbrainzId,
     deezerArtistId,
   });
+  queryClient.setQueryData(queryKeys.artistOverrides(mbid), result);
+  await queryClient.invalidateQueries({ queryKey: queryKeys.artistDetailsPrefix });
+  await queryClient.invalidateQueries({ queryKey: queryKeys.artistSimilarPrefix });
+  return result;
+};
