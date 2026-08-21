@@ -166,7 +166,7 @@ app.use(
           "https://*.fanart.tv",
         ],
         connectSrc: connectSrcDirectives,
-        mediaSrc: ["'self'", "https://*.dzcdn.net", "https://*.deezer.com"],
+        mediaSrc: ["'self'", "data:", "https://*.dzcdn.net", "https://*.deezer.com"],
         frameSrc: ["'self'", "https://www.youtube-nocookie.com", "https://www.youtube.com"],
         frameAncestors: null,
         upgradeInsecureRequests: null,
