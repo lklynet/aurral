@@ -15,6 +15,36 @@ import {
   upsertLibraryTrack,
 } from "../../backend/services/libraryMediaStore.js";
 
+test("artist batch lookup rejects oversized batches", async () => {
+  const routes = new Map();
+  registerMisc({
+    get() {},
+    post(routePath, handler) {
+      routes.set(routePath, handler);
+    },
+  });
+  let statusCode = 200;
+  let body;
+  const response = {
+    status(code) {
+      statusCode = code;
+      return this;
+    },
+    json(value) {
+      body = value;
+      return this;
+    },
+  };
+
+  await routes.get("/lookup/batch")(
+    { body: { mbids: Array.from({ length: 101 }, (_, index) => `artist-${index}`) } },
+    response,
+  );
+
+  assert.equal(statusCode, 400);
+  assert.equal(body?.error, "mbids must contain at most 100 unique values");
+});
+
 test("album batch lookup bypasses stale cache and unrelated broken albums", async () => {
   const routes = new Map();
   registerMisc({

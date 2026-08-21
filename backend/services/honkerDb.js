@@ -2,6 +2,11 @@ import fs from "fs";
 import path from "path";
 import honker from "@russellthehippo/honker-node";
 import { resolveAurralDataDir } from "../config/data-dir.js";
+import { dbOps } from "../db/helpers/index.js";
+import { resolvePlaylistRoot } from "./playlistPaths.js";
+
+export const PLAYLIST_STARTUP_MIGRATION_VERSION = 1;
+export const PLAYLIST_STARTUP_MIGRATION_SETTING = "playlistStartupMigration";
 
 export const HONKER_QUEUE_NAMES = [
   "system-task",
@@ -392,24 +397,19 @@ export function bootstrapHonkerSchedules() {
 }
 
 export function enqueueHonkerStartupTasks() {
-  enqueueSystemTaskJob({ kind: "playlist-startup-migration" }, { delaySeconds: 3, priority: 10 });
+  const migration = dbOps.getJSONSetting(PLAYLIST_STARTUP_MIGRATION_SETTING);
+  if (
+    migration?.version !== PLAYLIST_STARTUP_MIGRATION_VERSION ||
+    path.resolve(String(migration?.rootPath || "")) !== resolvePlaylistRoot()
+  ) {
+    enqueueSystemTaskJob(
+      { kind: "playlist-startup-migration" },
+      { delaySeconds: 3, priority: 10 },
+    );
+  }
   enqueueSystemTaskJob({ kind: "weekly-flow-startup-check" }, { delaySeconds: 5, priority: 5 });
-  enqueueSystemTaskJob({ kind: "quality-profile-refresh" }, { delaySeconds: 10, priority: -10 });
-  enqueueSystemTaskJob(
-    { kind: "weekly-flow-startup-reuse-repair" },
-    { delaySeconds: 15, priority: 5 },
-  );
   enqueueSystemTaskJob({ kind: "discovery-bootstrap" }, { delaySeconds: 15, priority: 5 });
   enqueueSystemTaskJob({ kind: "library-index-bootstrap" }, { delaySeconds: 8, priority: 0 });
-  enqueueSystemTaskJob({ kind: "inbox-refresh" }, { delaySeconds: 20, priority: -5 });
-  enqueuePlaylistMbidEnrichmentJob(
-    {
-      kind: "playlist-mbid-enrichment-sweep",
-      reason: "startup",
-      reconcileArtistMbids: true,
-    },
-    { delaySeconds: 30, priority: -5 },
-  );
 }
 
 export function startHonkerScheduler() {

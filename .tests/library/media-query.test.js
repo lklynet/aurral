@@ -16,6 +16,7 @@ import {
   invalidateCanonicalLibraryCache,
 } from "../../backend/services/libraryQueryService.js";
 import { toPublicLibrary } from "../../backend/routes/library/handlers/canonical.js";
+import { getCanonicalLibraryReadModelForAlbumReferences } from "../../backend/services/canonicalLibraryReadAdapter.js";
 import {
   linkLibraryAlbumTrack,
   upsertLibraryArtist,
@@ -248,6 +249,91 @@ test("scoped canonical reads keep ownership lookups off unrelated library record
       artist.id,
       unrelatedArtist.id,
     );
+    invalidateCanonicalLibraryCache();
+  }
+});
+
+test("album-reference reads preserve identity keys and album-specific ownership", () => {
+  const key = `query-album-ownership-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({ identityKey: `${key}:artist`, name: "Shared Artist" });
+  const ownedAlbum = upsertLibraryAlbum({
+    identityKey: `${key}:owned-album`,
+    artistId: artist.id,
+    title: "Owned Album",
+  });
+  const missingAlbum = upsertLibraryAlbum({
+    identityKey: `${key}:missing-album`,
+    artistId: artist.id,
+    title: "Missing Album",
+  });
+  const track = upsertLibraryTrack({
+    identityKey: `${key}:track`,
+    mbid: `${key}-track`,
+    title: "Shared Track",
+    artistName: artist.name,
+  });
+  const missingAlbumTrack = upsertLibraryTrack({
+    identityKey: `${key}:missing-album-track`,
+    mbid: `${key}-missing-album-track`,
+    title: "Owned Only By Missing Album",
+    artistName: artist.name,
+  });
+  linkLibraryAlbumTrack({ albumId: ownedAlbum.id, trackId: track.id, trackNumber: 1 });
+  linkLibraryAlbumTrack({ albumId: missingAlbum.id, trackId: track.id, trackNumber: 1 });
+  linkLibraryAlbumTrack({
+    albumId: missingAlbum.id,
+    trackId: missingAlbumTrack.id,
+    trackNumber: 2,
+  });
+  const ownedPath = `/tmp/${key}/owned.flac`;
+  const missingAlbumPath = `/tmp/${key}/missing-album.flac`;
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: ownedAlbum.id,
+    source: "aurral",
+    path: ownedPath,
+  });
+  upsertLibraryMediaFile({
+    trackId: missingAlbumTrack.id,
+    albumId: missingAlbum.id,
+    source: "aurral",
+    path: missingAlbumPath,
+  });
+
+  try {
+    const readModel = getCanonicalLibraryReadModelForAlbumReferences({
+      source: "aurral",
+      availableOnly: false,
+      references: [ownedAlbum.identity_key, missingAlbum.identity_key],
+    });
+    const owned = readModel.albums.find((album) => album.canonicalId === ownedAlbum.id);
+    const missing = readModel.albums.find((album) => album.canonicalId === missingAlbum.id);
+    assert.equal(owned?.identityKey, ownedAlbum.identity_key);
+    assert.equal(missing?.identityKey, missingAlbum.identity_key);
+    assert.equal(owned?.statistics.trackFileCount, 1);
+    assert.equal(missing?.statistics.trackFileCount, 1);
+    assert.equal(
+      readModel.tracks.find((entry) => entry.albumId === missingAlbum.id)?.hasFile,
+      false,
+    );
+  } finally {
+    db.prepare("DELETE FROM library_media_files WHERE path IN (?, ?)").run(
+      ownedPath,
+      missingAlbumPath,
+    );
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (?, ?)").run(
+      ownedAlbum.id,
+      missingAlbum.id,
+    );
+    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(
+      track.id,
+      missingAlbumTrack.id,
+    );
+    db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)").run(
+      ownedAlbum.id,
+      missingAlbum.id,
+    );
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
     invalidateCanonicalLibraryCache();
   }
 });

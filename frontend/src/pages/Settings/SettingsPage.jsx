@@ -29,9 +29,8 @@ function SettingsPage() {
   const { user: authUser } = useAuth();
   const { tab: tabParam } = useParams();
 
-  const data = useSettingsData(showSuccess, showError, showInfo);
-
   const tabs = useSettingsTabs(authUser);
+  const data = useSettingsData(showSuccess, showError, showInfo, tabs.activeTab);
 
   const users = useSettingsUsers(authUser, showSuccess, showError, tabs.activeTab);
 

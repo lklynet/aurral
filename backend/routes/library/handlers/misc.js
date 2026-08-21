@@ -11,6 +11,8 @@ import {
 } from "../../../services/canonicalLibraryReadAdapter.js";
 import { getCanonicalArtistMbids } from "../../../services/libraryQueryService.js";
 
+const ARTIST_LOOKUP_BATCH_MAX = 100;
+
 const canonicalAlbumLookup = (albums, reference) =>
   albums.find((album) =>
     [album.mbid, album.releaseGroupMbid, album.identityKey].some(
@@ -127,13 +129,20 @@ export function registerMisc(router) {
         return res.status(400).json({ error: "mbids must be an array" });
       }
 
+      const wanted = [...new Set(mbids.map((mbid) => String(mbid || "").trim()).filter(Boolean))];
+      if (wanted.length > ARTIST_LOOKUP_BATCH_MAX) {
+        return res.status(400).json({
+          error: `mbids must contain at most ${ARTIST_LOOKUP_BATCH_MAX} unique values`,
+        });
+      }
+
       const existingArtistIds = getCanonicalArtistMbids({
         source: "all",
         availableOnly: false,
-        mbids,
+        mbids: wanted,
       });
       const results = {};
-      for (const mbid of mbids) {
+      for (const mbid of wanted) {
         results[mbid] = existingArtistIds.has(mbid);
       }
 

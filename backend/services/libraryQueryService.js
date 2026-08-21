@@ -51,6 +51,7 @@ const CANONICAL_SELECT = `SELECT
   album_track.disc_number,
   album_track.track_number,
   media.id AS media_id,
+  media.album_id AS media_album_id,
   media.source AS media_source,
   media.path AS media_path,
   media.format AS media_format,
@@ -138,6 +139,7 @@ function buildLibraryFromRows(rows) {
 
       const file = {
         id: row.media_id,
+        albumId: row.media_album_id,
         source: row.media_source,
         path: row.media_path,
         format: row.media_format,

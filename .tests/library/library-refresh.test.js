@@ -16,6 +16,11 @@ const {
   stopLibraryScanWorker,
 } = await import("../../backend/services/libraryScanWorker.js");
 const { dbOps } = await import("../../backend/db/helpers/index.js");
+const { db } = await import("../../backend/config/db-sqlite.js");
+const { beginLibraryScan, finishLibraryScan } = await import(
+  "../../backend/services/libraryMediaStore.js"
+);
+const { processSystemTask } = await import("../../backend/services/systemTaskWorker.js");
 const {
   getLibraryScanQueue,
   SCHEDULED_SYSTEM_TASKS,
@@ -29,6 +34,29 @@ test("library scans are not scheduled as a recurring background task", () => {
     SCHEDULED_SYSTEM_TASKS.some((task) => task.name === "library-index-refresh"),
     false,
   );
+});
+
+test("library bootstrap runs only until the first completed scan", async () => {
+  const queue = getLibraryScanQueue();
+  db.prepare("DELETE FROM library_scan_runs").run();
+  clearScheduledLibraryScan();
+  let bootstrapJobId;
+  try {
+    await processSystemTask({ kind: "library-index-bootstrap" });
+    bootstrapJobId = getScheduledLibraryScanJobId();
+    assert.ok(bootstrapJobId);
+    queue.cancel(bootstrapJobId);
+    clearScheduledLibraryScan();
+
+    const scanId = beginLibraryScan({ source: "test" });
+    finishLibraryScan(scanId);
+    await processSystemTask({ kind: "library-index-bootstrap" });
+    assert.equal(getScheduledLibraryScanJobId(), null);
+  } finally {
+    if (bootstrapJobId) queue.cancel(bootstrapJobId);
+    clearScheduledLibraryScan();
+    db.prepare("DELETE FROM library_scan_runs WHERE source = 'test'").run();
+  }
 });
 
 test("library refresh queues a forced scan and exposes its queue status", async () => {

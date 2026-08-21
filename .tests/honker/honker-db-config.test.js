@@ -6,9 +6,10 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, honkerDb] = await setupIsolatedBackend(
+const [isolatedState, honkerDb, { dbOps }] = await setupIsolatedBackend(
   "honker-db-config",
   "backend/services/honkerDb.js",
+  "backend/db/helpers/index.js",
 );
 
 test.after(async () => {
@@ -62,4 +63,38 @@ test("Honker uses a low-CPU watcher cadence by default", () => {
       process.env.AURRAL_HONKER_WATCHER_POLL_MS = original;
     }
   }
+});
+
+test("startup only queues due bootstrap work and a pending migration", () => {
+  const db = honkerDb.getHonkerDb();
+  const clearQueue = () => {
+    const tx = db.transaction();
+    tx.execute("DELETE FROM _honker_live");
+    tx.commit();
+  };
+  const queuedKinds = () =>
+    db
+      .query("SELECT payload FROM _honker_live ORDER BY id")
+      .map((row) => JSON.parse(row.payload).kind);
+
+  clearQueue();
+  honkerDb.enqueueHonkerStartupTasks();
+  assert.deepEqual(queuedKinds(), [
+    "playlist-startup-migration",
+    "weekly-flow-startup-check",
+    "discovery-bootstrap",
+    "library-index-bootstrap",
+  ]);
+
+  dbOps.setJSONSetting(honkerDb.PLAYLIST_STARTUP_MIGRATION_SETTING, {
+    version: honkerDb.PLAYLIST_STARTUP_MIGRATION_VERSION,
+    rootPath: process.env.WEEKLY_FLOW_FOLDER,
+  });
+  clearQueue();
+  honkerDb.enqueueHonkerStartupTasks();
+  assert.deepEqual(queuedKinds(), [
+    "weekly-flow-startup-check",
+    "discovery-bootstrap",
+    "library-index-bootstrap",
+  ]);
 });

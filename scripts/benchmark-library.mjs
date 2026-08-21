@@ -452,13 +452,20 @@ if (mode === "bulk") {
   };
 }
 const started = performance.now();
-const result = await indexLidarrLibrary({ client });
+let result = null;
+let error = null;
+try {
+  result = await indexLidarrLibrary({ client });
+} catch (caught) {
+  error = caught?.message || String(caught);
+}
 console.log(JSON.stringify({
   elapsedMs: Number((performance.now() - started).toFixed(3)),
   calls,
   callCount: calls.length,
   maxActiveAlbums,
   result,
+  error,
 }));
 `;
 
@@ -526,7 +533,7 @@ async function main() {
       });
     }
     const expectedBulkIndexerCalls = 5;
-    const expectedFallbackIndexerCalls = 5 + options.indexerAlbums * 2;
+    const expectedFallbackIndexerCalls = 5;
     const adapter = fullReads["legacy-adapter"];
     const pageP95 = Object.fromEntries(
       Object.entries(pages).map(([name, value]) => [name, value.warm.p95Ms]),
@@ -538,9 +545,10 @@ async function main() {
         && indexerProbes.bulk.callCount === expectedBulkIndexerCalls,
       fallbackIndexerCallCount: indexerProbes.fallback.status === "completed"
         && indexerProbes.fallback.callCount === expectedFallbackIndexerCalls,
-      fallbackIndexerConcurrency: indexerProbes.fallback.status === "completed"
-        && indexerProbes.fallback.maxActiveAlbums <= 4,
-      pageWarmP95Under5s: Object.values(pageP95).every((value) => value < 5000),
+      fallbackIndexerStopsAtBulkFailure: indexerProbes.fallback.status === "completed"
+        && indexerProbes.fallback.error === "bulk track-file read failed"
+        && indexerProbes.fallback.maxActiveAlbums === 0,
+      pageWarmP95Under750ms: Object.values(pageP95).every((value) => value < 750),
     };
     output = {
       benchmark: "aurral-library",

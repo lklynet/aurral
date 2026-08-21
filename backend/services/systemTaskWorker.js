@@ -1,8 +1,14 @@
 import createHonkerWorker from "./honkerWorkerFactory.js";
-import { getSystemTaskQueue } from "./honkerDb.js";
+import {
+  getSystemTaskQueue,
+  PLAYLIST_STARTUP_MIGRATION_SETTING,
+  PLAYLIST_STARTUP_MIGRATION_VERSION,
+} from "./honkerDb.js";
 import { cleanExpiredSessions } from "../config/session-helpers.js";
+import { dbOps } from "../db/helpers/index.js";
+import { resolvePlaylistRoot } from "./playlistPaths.js";
 
-async function processSystemTask(payload = {}) {
+export async function processSystemTask(payload = {}) {
   const kind = String(payload?.kind || "").trim();
   switch (kind) {
     case "weekly-flow-refresh": {
@@ -82,16 +88,17 @@ async function processSystemTask(payload = {}) {
     case "playlist-startup-migration": {
       const [
         migrationModule,
+        { ensurePlaylistFilesystemLayout },
         trackerModule,
-        { playlistManager },
         { repairYtdlpMetadata },
       ] = await Promise.all([
         import("./aurralDownloadFolderMigration.js"),
+        import("./playlistFilesystemMigration.js"),
         import("./weeklyFlow/weeklyFlowDownloadTracker.js"),
-        import("./weeklyFlow/weeklyFlowPlaylistManager.js"),
         import("./playlistDownloadUtils.js"),
       ]);
       const { migrateAurralDownloadFolder, migrateLegacyFlowFolder } = migrationModule;
+      ensurePlaylistFilesystemLayout();
       let result = {
         migrated: 0,
         flowMigrated: 0,
@@ -151,9 +158,23 @@ async function processSystemTask(payload = {}) {
           `[Playlists] Could not add metadata to ${metadataRepair.failed} yt-dlp track(s)`,
         );
       }
-      playlistManager.updateConfig(false);
-      await playlistManager.ensurePlaylists();
-      await playlistManager.scheduleScanLibrary(true);
+      if (
+        legacyFlowResult.migrated > 0 ||
+        result.migrated > 0 ||
+        result.removed > 0 ||
+        metadataRepair.repaired > 0
+      ) {
+        const { playlistManager } = await import("./weeklyFlow/weeklyFlowPlaylistManager.js");
+        playlistManager.updateConfig(false);
+        await playlistManager.ensurePlaylists();
+      }
+      if (metadataRepair.failed === 0) {
+        dbOps.setJSONSetting(PLAYLIST_STARTUP_MIGRATION_SETTING, {
+          version: PLAYLIST_STARTUP_MIGRATION_VERSION,
+          rootPath: resolvePlaylistRoot(),
+          completedAt: Date.now(),
+        });
+      }
       return;
     }
     case "lidarr-retry": {

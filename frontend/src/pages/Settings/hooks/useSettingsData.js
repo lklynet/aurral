@@ -197,34 +197,34 @@ const getLidarrResourceConfig = (settings) => {
   };
 };
 
-const buildLidarrQueries = ({ url, apiKey, credentialsRevision }) => [
+const buildLidarrQueries = ({ url, apiKey, credentialsRevision }, enabled) => [
   {
     queryKey: queryKeys.lidarrRootFolders(url, credentialsRevision),
     queryFn: ({ signal }) => getLidarrRootFolders(url, apiKey, { signal }),
-    enabled: Boolean(url && apiKey),
+    enabled: enabled && Boolean(url && apiKey),
     staleTime: 60_000,
   },
   {
     queryKey: queryKeys.lidarrProfiles(url, credentialsRevision),
     queryFn: ({ signal }) => getLidarrProfiles(url, apiKey, { signal }),
-    enabled: Boolean(url && apiKey),
+    enabled: enabled && Boolean(url && apiKey),
     staleTime: 60_000,
   },
   {
     queryKey: queryKeys.lidarrMetadataProfiles(url, credentialsRevision),
     queryFn: ({ signal }) => getLidarrMetadataProfiles(url, apiKey, { signal }),
-    enabled: Boolean(url && apiKey),
+    enabled: enabled && Boolean(url && apiKey),
     staleTime: 60_000,
   },
   {
     queryKey: queryKeys.lidarrTags(url, credentialsRevision),
     queryFn: ({ signal }) => getLidarrTags(url, apiKey, { signal }),
-    enabled: Boolean(url && apiKey),
+    enabled: enabled && Boolean(url && apiKey),
     staleTime: 60_000,
   },
 ];
 
-export function useSettingsData(showSuccess, showError, showInfo) {
+export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
   const [health, setHealth] = useState(null);
   const [settings, setSettingsState] = useState(defaultSettings);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -286,7 +286,9 @@ export function useSettingsData(showSuccess, showError, showInfo) {
       queryClient.setQueryData(queryKeys.appSettings, savedSettings);
     },
   });
-  const lidarrQueries = useQueries({ queries: buildLidarrQueries(lidarrResourceConfig) });
+  const lidarrQueries = useQueries({
+    queries: buildLidarrQueries(lidarrResourceConfig, activeTab === "lidarr"),
+  });
   const [lidarrRootFoldersQuery, lidarrProfilesQuery, lidarrMetadataProfilesQuery, lidarrTagsQuery] =
     lidarrQueries;
   const lidarrRootFolders = Array.isArray(lidarrRootFoldersQuery.data)

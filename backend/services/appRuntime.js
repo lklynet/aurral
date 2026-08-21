@@ -1,4 +1,3 @@
-import { ensurePlaylistFilesystemLayout } from "./playlistFilesystemMigration.js";
 import {
   enqueueHonkerStartupTasks,
   getHonkerQueueDepth,
@@ -131,7 +130,6 @@ export function startBackgroundWorkers({ logger = console } = {}) {
     return false;
   }
   backgroundWorkersStarted = true;
-  ensurePlaylistFilesystemLayout({ logger });
   import("./honkerTaskStatus.js")
     .then(({ clearStaleHonkerJobs }) => clearStaleHonkerJobs())
     .then((result) => {
