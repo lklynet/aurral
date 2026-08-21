@@ -341,7 +341,7 @@ function SearchResultsPage() {
     [isAlbumSearch, rawResults, withAlbumLibraryState],
   );
   const fullList = normalizedType === "trending" ? rawResults : null;
-  const loading = searchQuery.isPending;
+  const loading = searchQuery.isLoading;
   const loadingMore = searchQuery.isFetchingNextPage;
   const { fetchNextPage } = searchQuery;
   const error = searchQuery.error?.response?.data?.message ||

@@ -42,7 +42,7 @@ export const getCanonicalLibraryPage = (options = {}) => {
     queryKey: queryKeys.libraryCanonical(params),
     queryFn: ({ signal: querySignal }) => getData("/library/canonical", {
       params,
-      signal: options.signal || querySignal,
+      signal: querySignal,
     }),
     staleTime: 15_000,
   });
@@ -60,13 +60,14 @@ export const getLibraryRefreshStatus = (jobId) =>
 let libraryFavoritesGeneration = 0;
 let latestLibraryFavorites = null;
 
-export const getLibraryFavorites = ({ signal } = {}) => {
+export const fetchLibraryFavorites = ({ signal } = {}) =>
+  getData("/library/favorites", { signal });
+
+export const getLibraryFavorites = () => {
   const generation = libraryFavoritesGeneration;
   return queryClient.fetchQuery({
     queryKey: queryKeys.libraryFavorites,
-    queryFn: ({ signal: querySignal }) => getData("/library/favorites", {
-      signal: signal || querySignal,
-    }),
+    queryFn: ({ signal: querySignal }) => fetchLibraryFavorites({ signal: querySignal }),
     staleTime: 30_000,
   }).then((data) => {
     if (generation !== libraryFavoritesGeneration && latestLibraryFavorites) {

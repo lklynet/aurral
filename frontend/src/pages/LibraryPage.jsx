@@ -395,6 +395,7 @@ function LibraryPage() {
     clearCanonicalLibraryPageCache();
     queryClient.removeQueries({ queryKey: queryKeys.libraryAlbumTracksPrefix });
     void queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
   }, []);
 
   useWebSocketChannel("library", handleLibraryScanMessage);
@@ -423,6 +424,7 @@ function LibraryPage() {
         if (status.status === "completed") {
           clearCanonicalLibraryPageCache();
           void queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
           showSuccess("Library refreshed");
           return;
         }
@@ -1210,7 +1212,7 @@ function LibraryPage() {
   const libraryAlbum = routeAlbumId ? albumsById.get(String(routeAlbumId)) || null : null;
   const libraryArtist = routeArtistId ? artistsById.get(String(routeArtistId)) || null : null;
   const activityQueryKey = useMemo(
-    () => queryKeys.activityRequests(user?.id),
+    () => queryKeys.libraryActivityRequests(user?.id),
     [user?.id],
   );
   const hasTrackDownloadPolling = Object.values(trackDownloadStates).some(

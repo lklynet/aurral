@@ -44,7 +44,7 @@ import { getPlaylistRunActivity } from "./flows/flowRunActivity";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.js";
 import {
   getCanonicalLibraryPage,
-  getLibraryFavorites,
+  fetchLibraryFavorites,
   lookupAlbumsInLibraryBatch,
   lookupArtistInLibrary,
   updateLibraryFavorites,
@@ -251,7 +251,7 @@ function FlowPage({ mode = "all" }) {
     "";
   const favoriteQuery = useQuery({
     queryKey: queryKeys.libraryFavorites,
-    queryFn: ({ signal }) => getLibraryFavorites({ signal }),
+    queryFn: ({ signal }) => fetchLibraryFavorites({ signal }),
     staleTime: 30_000,
   });
   const favoriteTrackIds = useMemo(
@@ -1282,21 +1282,26 @@ function FlowPage({ mode = "all" }) {
     if (!id || favoriteTrackSavingKey) return;
     const nextStarred = !favoriteTrackIds.has(id);
     const favoriteQueryKey = queryKeys.libraryFavorites;
-    const previous = queryClient.getQueryData(favoriteQueryKey);
     setFavoriteTrackSavingKey(id);
-    queryClient.setQueryData(favoriteQueryKey, (current = {}) => {
-      const songs = Array.isArray(current.song) ? current.song : [];
-      const withoutTrack = songs.filter((entry) => String(entry?.id || "") !== id);
-      return {
-        ...current,
-        song: nextStarred ? [...withoutTrack, { id }] : withoutTrack,
-      };
-    });
+    let previous;
+    let optimistic;
     try {
+      await queryClient.cancelQueries({ queryKey: favoriteQueryKey });
+      previous = queryClient.getQueryData(favoriteQueryKey);
+      optimistic = queryClient.setQueryData(favoriteQueryKey, (current = {}) => {
+        const songs = Array.isArray(current.song) ? current.song : [];
+        const withoutTrack = songs.filter((entry) => String(entry?.id || "") !== id);
+        return {
+          ...current,
+          song: nextStarred ? [...withoutTrack, { id }] : withoutTrack,
+        };
+      });
       await updateLibraryFavorites([id], nextStarred);
       showSuccess(nextStarred ? "Added to favorites" : "Removed from favorites");
     } catch (err) {
-      queryClient.setQueryData(favoriteQueryKey, previous);
+      if (optimistic && queryClient.getQueryData(favoriteQueryKey) === optimistic) {
+        queryClient.setQueryData(favoriteQueryKey, previous);
+      }
       showError(
         err.response?.data?.message ||
           err.response?.data?.error ||
@@ -1304,6 +1309,7 @@ function FlowPage({ mode = "all" }) {
           "Failed to update favorites",
       );
     } finally {
+      void queryClient.invalidateQueries({ queryKey: favoriteQueryKey }).catch(() => {});
       setFavoriteTrackSavingKey("");
     }
   };

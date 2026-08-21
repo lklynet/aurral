@@ -123,6 +123,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     loading,
     error,
     loadingReleases,
+    loadingAppearsOn,
     existsInLibrary,
     setExistsInLibrary,
     appSettings,
@@ -176,13 +177,23 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     () => filteredReleaseGroups.slice(0, visibleReleaseCount),
     [filteredReleaseGroups, visibleReleaseCount],
   );
-  if (!isAppearsOn || appearsOnOffsetRef.current.mbid !== mbid) {
-    appearsOnOffsetRef.current = { mbid: isAppearsOn ? mbid : null, offset: null };
-  }
-  if (isAppearsOn && appearsOnOffsetRef.current.offset == null && releaseGroups.length > 0) {
-    appearsOnOffsetRef.current.offset = releaseGroups.length;
-  }
-  const initialAppearsOnOffset = appearsOnOffsetRef.current.offset ?? releaseGroups.length;
+  const initialAppearsOnOffset =
+    isAppearsOn && appearsOnOffsetRef.current.mbid === mbid
+      ? appearsOnOffsetRef.current.offset ?? releaseGroups.length
+      : releaseGroups.length;
+  useEffect(() => {
+    if (!isAppearsOn) {
+      appearsOnOffsetRef.current = { mbid: null, offset: null };
+      return;
+    }
+    if (appearsOnOffsetRef.current.mbid !== mbid) {
+      appearsOnOffsetRef.current = { mbid, offset: releaseGroups.length || null };
+      return;
+    }
+    if (appearsOnOffsetRef.current.offset == null && releaseGroups.length > 0) {
+      appearsOnOffsetRef.current.offset = releaseGroups.length;
+    }
+  }, [isAppearsOn, mbid, releaseGroups.length]);
   const appearsOnQuery = useInfiniteQuery({
     queryKey: queryKeys.artistAppearsOn(mbid),
     enabled: false,
@@ -203,6 +214,27 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     },
     staleTime: 30_000,
   });
+  useEffect(() => {
+    if (!isAppearsOn || loadingAppearsOn) return;
+    const cachedItems = appearsOnQuery.data?.pages?.flatMap((page) => page?.items || []) || [];
+    if (!cachedItems.length) return;
+    setArtist((previous) => {
+      if (!previous) return previous;
+      const existing = previous["appears-on-release-groups"] || [];
+      const byId = new Map(existing.map((item) => [item.id, item]));
+      let changed = false;
+      cachedItems.forEach((item) => {
+        if (!item?.id || byId.has(item.id)) return;
+        byId.set(item.id, item);
+        changed = true;
+      });
+      if (!changed) return previous;
+      return {
+        ...previous,
+        "appears-on-release-groups": [...byId.values()],
+      };
+    });
+  }, [appearsOnQuery.data, isAppearsOn, loadingAppearsOn, releaseGroups, setArtist]);
   const hasMoreAppearances = isAppearsOn && (
     !appearsOnQuery.data || appearsOnQuery.hasNextPage
   );
@@ -278,7 +310,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
       appearsOnOffsetRef.current.offset = initialAppearsOnOffset;
     }
     try {
-      const result = await appearsOnQuery.fetchNextPage();
+      const result = await appearsOnQuery.fetchNextPage({ throwOnError: true });
       const data = result.data?.pages?.at(-1);
       const items = Array.isArray(data?.items) ? data.items : [];
       if (items.length) {
