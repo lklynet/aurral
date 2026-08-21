@@ -19,7 +19,7 @@ import {
 import {
   findCanonicalAlbumsForArtist,
   findCanonicalArtist,
-  getCanonicalLibraryReadModel,
+  getCanonicalLibraryReadModelForArtists,
 } from "../../../services/canonicalLibraryReadAdapter.js";
 import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.js";
 import {
@@ -141,9 +141,10 @@ export function registerStream(router) {
         );
 
         const libraryTask = (async () => {
-          const canonical = getCanonicalLibraryReadModel({
+          const canonical = getCanonicalLibraryReadModelForArtists({
             source: "all",
             availableOnly: false,
+            mbids: [resolvedMbid, mbid],
           });
           const canonicalArtist =
             findCanonicalArtist(canonical.artists, resolvedMbid) ||

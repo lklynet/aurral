@@ -1,4 +1,10 @@
-import { getCanonicalLibrary } from "./libraryQueryService.js";
+import {
+  getCanonicalLibrary,
+  getCanonicalLibraryForAlbumReferences,
+  getCanonicalLibraryForArtists,
+} from "./libraryQueryService.js";
+
+const readModelCache = new WeakMap();
 
 const firstAvailableFile = (track) =>
   (track.files || []).find((file) => file.available) || track.files?.[0] || null;
@@ -130,7 +136,32 @@ export function buildCanonicalLibraryReadModel(library) {
 }
 
 export function getCanonicalLibraryReadModel({ source = "lidarr", availableOnly = true } = {}) {
-  return buildCanonicalLibraryReadModel(getCanonicalLibrary({ source, availableOnly }));
+  const library = getCanonicalLibrary({ source, availableOnly });
+  const cached = readModelCache.get(library);
+  if (cached) return cached;
+  const readModel = buildCanonicalLibraryReadModel(library);
+  readModelCache.set(library, readModel);
+  return readModel;
+}
+
+export function getCanonicalLibraryReadModelForArtists({
+  source = "lidarr",
+  availableOnly = true,
+  mbids = [],
+} = {}) {
+  return buildCanonicalLibraryReadModel(
+    getCanonicalLibraryForArtists({ source, availableOnly, mbids }),
+  );
+}
+
+export function getCanonicalLibraryReadModelForAlbumReferences({
+  source = "lidarr",
+  availableOnly = true,
+  references = [],
+} = {}) {
+  return buildCanonicalLibraryReadModel(
+    getCanonicalLibraryForAlbumReferences({ source, availableOnly, references }),
+  );
 }
 
 export function resolveCanonicalTrackPath(reference) {

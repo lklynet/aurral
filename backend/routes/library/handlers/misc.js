@@ -5,8 +5,11 @@ import { fetchReleaseGroupCoverUrl } from "../../../services/releaseGroupCoverSe
 import { libraryManager } from "../../../services/libraryManager.js";
 import { normalizePercentOfTracks } from "../../../services/lidarrAlbumStats.js";
 import { logger } from "../../../services/logger.js";
-import { getCanonicalLibraryReadModel } from "../../../services/canonicalLibraryReadAdapter.js";
-import { getCanonicalLibraryPage } from "../../../services/libraryQueryService.js";
+import {
+  getCanonicalLibraryReadModelForAlbumReferences,
+  getCanonicalLibraryReadModelForArtists,
+} from "../../../services/canonicalLibraryReadAdapter.js";
+import { getCanonicalArtistMbids } from "../../../services/libraryQueryService.js";
 
 const canonicalAlbumLookup = (albums, reference) =>
   albums.find((album) =>
@@ -88,9 +91,10 @@ export function registerMisc(router) {
         return res.status(400).json({ error: "Invalid MBID format" });
       }
 
-      const { artists, albums } = getCanonicalLibraryReadModel({
+      const { artists, albums } = getCanonicalLibraryReadModelForArtists({
         source: "all",
         availableOnly: false,
+        mbids: [mbid],
       });
       const artist = artists.find((candidate) => candidate.mbid === mbid);
       if (artist) {
@@ -123,11 +127,11 @@ export function registerMisc(router) {
         return res.status(400).json({ error: "mbids must be an array" });
       }
 
-      const { artists } = getCanonicalLibraryReadModel({
+      const existingArtistIds = getCanonicalArtistMbids({
         source: "all",
         availableOnly: false,
+        mbids,
       });
-      const existingArtistIds = new Set(artists.map((artist) => artist.mbid).filter(Boolean));
       const results = {};
       for (const mbid of mbids) {
         results[mbid] = existingArtistIds.has(mbid);
@@ -150,60 +154,49 @@ export function registerMisc(router) {
       }
 
       const wanted = [...new Set(mbids.map((mbid) => String(mbid || "").trim()).filter(Boolean))];
-      const { albums: canonicalAlbums } = getCanonicalLibraryReadModel({
-        source: "all",
-        availableOnly: false,
-      });
+      if (wanted.length === 0) return res.json({});
+      const { lidarrClient, LIDARR_ALBUM_LOOKUP_BATCH_MAX } =
+        await import("../../../services/lidarrClient.js");
+      if (wanted.length > LIDARR_ALBUM_LOOKUP_BATCH_MAX) {
+        return res.status(400).json({
+          error: `mbids must contain at most ${LIDARR_ALBUM_LOOKUP_BATCH_MAX} unique values`,
+        });
+      }
+
+      const { albums: canonicalAlbums, tracks: canonicalTracks } =
+        getCanonicalLibraryReadModelForAlbumReferences({
+          source: "all",
+          availableOnly: false,
+          references: wanted,
+        });
+      const tracksByAlbumId = new Map();
+      for (const track of canonicalTracks) {
+        const albumTracks = tracksByAlbumId.get(String(track.albumId)) || [];
+        albumTracks.push(track);
+        tracksByAlbumId.set(String(track.albumId), albumTracks);
+      }
       const results = {};
       for (const foreignAlbumId of wanted) {
         const album = canonicalAlbumLookup(canonicalAlbums, foreignAlbumId);
         if (album) {
-          const albumPage = getCanonicalLibraryPage({
-            source: "all",
-            availableOnly: false,
-            kind: "tracks",
-            albumId: album.id,
-            page: 1,
-            pageSize: 100,
-          });
-          const albumStats = albumPage.albums[0];
-          const ownedTrackMbids = [];
-          let trackPage = albumPage;
-          while (trackPage) {
-            ownedTrackMbids.push(
-              ...trackPage.tracks
-                .filter((track) => track.available && track.mbid)
-                .map((track) => String(track.mbid).trim())
-                .filter(Boolean),
-            );
-            trackPage = trackPage.hasMore
-              ? getCanonicalLibraryPage({
-                  source: "all",
-                  availableOnly: false,
-                  kind: "tracks",
-                  albumId: album.id,
-                  page: trackPage.page + 1,
-                  pageSize: 100,
-                })
-              : null;
-          }
+          const albumTracks = tracksByAlbumId.get(String(album.id)) || [];
+          const trackCount = albumTracks.length;
+          const trackFileCount = albumTracks.filter((track) => track.available).length;
           results[foreignAlbumId] = canonicalAlbumResult(
-            albumStats
-              ? {
-                  ...album,
-                  available: albumStats.availableTrackCount > 0,
-                  statistics: {
-                    ...album.statistics,
-                    trackCount: albumStats.trackCount,
-                    trackFileCount: albumStats.availableTrackCount,
-                    percentOfTracks:
-                      albumStats.trackCount > 0
-                        ? (albumStats.availableTrackCount / albumStats.trackCount) * 100
-                        : 0,
-                  },
-                }
-              : album,
-            ownedTrackMbids,
+            {
+              ...album,
+              available: trackFileCount > 0,
+              statistics: {
+                ...album.statistics,
+                trackCount,
+                trackFileCount,
+                percentOfTracks: trackCount > 0 ? (trackFileCount / trackCount) * 100 : 0,
+              },
+            },
+            albumTracks
+              .filter((track) => track.available && track.mbid)
+              .map((track) => String(track.mbid).trim())
+              .filter(Boolean),
           );
         }
       }
@@ -213,13 +206,6 @@ export function registerMisc(router) {
         return res.json(results);
       }
 
-      const { lidarrClient, LIDARR_ALBUM_LOOKUP_BATCH_MAX } =
-        await import("../../../services/lidarrClient.js");
-      if (wanted.length > LIDARR_ALBUM_LOOKUP_BATCH_MAX) {
-        return res.status(400).json({
-          error: `mbids must contain at most ${LIDARR_ALBUM_LOOKUP_BATCH_MAX} unique values`,
-        });
-      }
       if (!lidarrClient.isConfigured()) {
         return res.json(results);
       }

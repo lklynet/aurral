@@ -8,8 +8,12 @@ import { db } from "../../backend/config/db-sqlite.js";
 import { scanMusicRoot } from "../../backend/services/libraryFileScanner.js";
 import { indexLidarrLibrary } from "../../backend/services/libraryLidarrIndexer.js";
 import {
+  getCanonicalArtistMbids,
   getCanonicalLibrary,
+  getCanonicalLibraryForAlbumReferences,
+  getCanonicalLibraryForArtists,
   getCanonicalLibraryPage,
+  invalidateCanonicalLibraryCache,
 } from "../../backend/services/libraryQueryService.js";
 import { toPublicLibrary } from "../../backend/routes/library/handlers/canonical.js";
 import {
@@ -140,6 +144,112 @@ test("getCanonicalLibrary deduplicates a file shared by multiple album relations
 
 test("getCanonicalLibrary rejects unknown source filters", () => {
   assert.throws(() => getCanonicalLibrary({ source: "plex" }), /Unsupported library source/);
+});
+
+test("scoped canonical reads keep ownership lookups off unrelated library records", () => {
+  const key = `query-scoped-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({
+    identityKey: `${key}:artist`,
+    mbid: `${key}-artist`,
+    name: "Scoped Artist",
+  });
+  const unrelatedArtist = upsertLibraryArtist({
+    identityKey: `${key}:unrelated-artist`,
+    mbid: `${key}-unrelated-artist`,
+    name: "Unrelated Artist",
+  });
+  const releaseGroupMbid = `${key}-release-group`;
+  const album = upsertLibraryAlbum({
+    identityKey: `${key}:album`,
+    mbid: `${key}-album`,
+    releaseGroupMbid,
+    artistId: artist.id,
+    title: "Scoped Album",
+  });
+  const unrelatedAlbum = upsertLibraryAlbum({
+    identityKey: `${key}:unrelated-album`,
+    mbid: `${key}-unrelated-album`,
+    artistId: unrelatedArtist.id,
+    title: "Unrelated Album",
+  });
+  const ownedTrack = upsertLibraryTrack({
+    identityKey: `${key}:owned-track`,
+    mbid: `${key}-owned-track`,
+    title: "Owned Track",
+    artistName: artist.name,
+  });
+  const missingTrack = upsertLibraryTrack({
+    identityKey: `${key}:missing-track`,
+    mbid: `${key}-missing-track`,
+    title: "Missing Track",
+    artistName: artist.name,
+  });
+  const unrelatedTrack = upsertLibraryTrack({
+    identityKey: `${key}:unrelated-track`,
+    mbid: `${key}-unrelated-track`,
+    title: "Unrelated Track",
+    artistName: unrelatedArtist.name,
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: ownedTrack.id, trackNumber: 1 });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: missingTrack.id, trackNumber: 2 });
+  linkLibraryAlbumTrack({ albumId: unrelatedAlbum.id, trackId: unrelatedTrack.id, trackNumber: 1 });
+  const ownedPath = `/tmp/${key}/owned.flac`;
+  upsertLibraryMediaFile({
+    trackId: ownedTrack.id,
+    albumId: album.id,
+    source: "aurral",
+    path: ownedPath,
+  });
+  const unrelatedPath = `/tmp/${key}/unrelated.flac`;
+  upsertLibraryMediaFile({
+    trackId: unrelatedTrack.id,
+    albumId: unrelatedAlbum.id,
+    source: "aurral",
+    path: unrelatedPath,
+  });
+
+  try {
+    assert.deepEqual(
+      [...getCanonicalArtistMbids({ source: "all", mbids: [artist.mbid] })],
+      [artist.mbid],
+    );
+
+    const artistLibrary = getCanonicalLibraryForArtists({
+      source: "all",
+      availableOnly: false,
+      mbids: [artist.mbid],
+    });
+    assert.deepEqual(artistLibrary.artists.map((entry) => entry.mbid), [artist.mbid]);
+    assert.deepEqual(artistLibrary.albums.map((entry) => entry.mbid), [album.mbid]);
+
+    const albumLibrary = getCanonicalLibraryForAlbumReferences({
+      source: "all",
+      availableOnly: false,
+      references: [releaseGroupMbid],
+    });
+    assert.deepEqual(albumLibrary.albums.map((entry) => entry.mbid), [album.mbid]);
+    assert.deepEqual(
+      albumLibrary.tracks.map((entry) => entry.mbid),
+      [ownedTrack.mbid, missingTrack.mbid],
+    );
+  } finally {
+    db.prepare("DELETE FROM library_media_files WHERE path IN (?, ?)").run(ownedPath, unrelatedPath);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (?, ?)").run(
+      album.id,
+      unrelatedAlbum.id,
+    );
+    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?, ?)").run(
+      ownedTrack.id,
+      missingTrack.id,
+      unrelatedTrack.id,
+    );
+    db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)").run(album.id, unrelatedAlbum.id);
+    db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)").run(
+      artist.id,
+      unrelatedArtist.id,
+    );
+    invalidateCanonicalLibraryCache();
+  }
 });
 
 test("canonical newest ordering follows library arrival time", () => {
