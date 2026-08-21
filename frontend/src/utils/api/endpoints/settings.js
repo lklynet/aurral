@@ -1,4 +1,5 @@
 import { getData, postData, lidarrCredentialParams } from "../core.js";
+import { queryClient, queryKeys } from "../../../queryClient.js";
 
 export const startPlexAuth = (forwardUrl) =>
   postData("/settings/plex/auth/pin", { forwardUrl });
@@ -29,12 +30,26 @@ export const getPlexLibraries = () => getData("/settings/plex/libraries");
 export const checkPlexLibraryAccess = (sectionId) =>
   getData(`/settings/plex/libraries/${encodeURIComponent(sectionId)}/access-check`);
 
-export const getAppSettings = () => getData("/settings");
-export const getPlaybackSettings = () => getData("/settings/playback");
+export const getAppSettings = ({ signal } = {}) =>
+  queryClient.fetchQuery({
+    queryKey: queryKeys.appSettings,
+    queryFn: ({ signal: querySignal }) => getData("/settings", { signal: signal || querySignal }),
+    staleTime: 30_000,
+  });
+export const getPlaybackSettings = ({ signal } = {}) =>
+  queryClient.fetchQuery({
+    queryKey: queryKeys.playbackSettings,
+    queryFn: ({ signal: querySignal }) => getData("/settings/playback", { signal: signal || querySignal }),
+    staleTime: 30_000,
+  });
 export const testPlaybackConnection = (key, config) =>
   postData(`/settings/playback/${encodeURIComponent(key)}/test`, config);
 
-export const updateAppSettings = (settings) => postData("/settings", settings);
+export const updateAppSettings = async (settings) => {
+  const result = await postData("/settings", settings);
+  queryClient.setQueryData(queryKeys.appSettings, result);
+  return result;
+};
 
 export const getLidarrRootFolders = (url, apiKey) =>
   getData("/settings/lidarr/root-folders", {
@@ -60,7 +75,8 @@ export const testSlskdConnection = () => postData("/settings/slskd/test");
 
 export const testProwlarrConnection = () => postData("/settings/prowlarr/test");
 
-export const getProwlarrIndexers = () => getData("/settings/prowlarr/indexers");
+export const getProwlarrIndexers = ({ signal } = {}) =>
+  getData("/settings/prowlarr/indexers", { signal });
 
 export const testNzbgetConnection = () => postData("/settings/nzbget/test");
 
@@ -78,12 +94,13 @@ export const testLidarrLibraryAccess = (url, apiKey) =>
     params: lidarrCredentialParams(url, apiKey),
   });
 
-export const getStorageHealth = ({ force = false } = {}) =>
+export const getStorageHealth = ({ force = false, signal } = {}) =>
   getData("/settings/storage-health", {
     params: force ? { force: "1" } : undefined,
+    signal,
   });
 
-export const getSettingsTasks = () => getData("/settings/tasks");
+export const getSettingsTasks = ({ signal } = {}) => getData("/settings/tasks", { signal });
 
 export const clearSettingsStaleTasks = () =>
   postData("/settings/tasks/clear-stale");

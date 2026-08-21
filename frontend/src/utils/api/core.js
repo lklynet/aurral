@@ -163,27 +163,11 @@ export const clearAuthStorage = () => {
   globalThis?.localStorage?.removeItem(AUTH_TOKEN_KEY);
 };
 
-export const libraryLookupCache = new Map();
-const MAX_LIBRARY_LOOKUP_CACHE_SIZE = 1000;
 export const coverResponseCache = new Map();
 export const coverInflightRequests = new Map();
 const MAX_COVER_CACHE_SIZE = 1000;
 const COVER_CACHE_TTL_MS = 30 * 60 * 1000;
 const EMPTY_COVER_CACHE_TTL_MS = 60 * 1000;
-export const searchInflightRequests = new Map();
-export const bootstrapInflight = new Map();
-export const flowStatusInflight = new Map();
-
-export const setLibraryLookupCacheEntry = (id, value) => {
-  if (id == null) return;
-  if (libraryLookupCache.has(id)) libraryLookupCache.delete(id);
-  libraryLookupCache.set(id, value);
-  if (libraryLookupCache.size > MAX_LIBRARY_LOOKUP_CACHE_SIZE) {
-    const oldestKey = libraryLookupCache.keys().next().value;
-    if (oldestKey !== undefined) libraryLookupCache.delete(oldestKey);
-  }
-};
-
 export const setCoverCacheEntry = (key, value) => {
   if (!key) return;
   const images = Array.isArray(value?.images) ? value.images : [];

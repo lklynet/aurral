@@ -71,6 +71,7 @@ import {
   reserveUniquePlaylistName,
 } from "./ArtistDetails/utils";
 import { useResponsiveReleaseLimit } from "./ArtistDetails/hooks/useResponsiveReleaseLimit";
+import { queryClient, queryKeys } from "../queryClient.js";
 
 const LIBRARY_VIEW_IDS = new Set(LIBRARY_VIEWS.map((view) => view.id));
 
@@ -303,7 +304,6 @@ function LibraryPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [pageIndex, setPageIndex] = useState(1);
   const [pageData, setPageData] = useState(null);
-  const albumTrackCacheRef = useRef(new Map());
   const refreshAttemptRef = useRef(0);
   const [playlistSavingKey, setPlaylistSavingKey] = useState("");
   const [trackDownloadStates, setTrackDownloadStates] = useState({});
@@ -317,7 +317,7 @@ function LibraryPage() {
   const handleLibraryScanMessage = useCallback((message) => {
     if (message?.type !== "library_scan_completed") return;
     clearCanonicalLibraryPageCache();
-    albumTrackCacheRef.current.clear();
+    queryClient.removeQueries({ queryKey: ["library", "tracks"] });
     setRetryKey((value) => value + 1);
   }, []);
 
@@ -565,7 +565,9 @@ function LibraryPage() {
 
   const getAlbumTracks = useCallback(
     (album) => {
-      const cached = albumTrackCacheRef.current.get(String(album?.id));
+      const cached = queryClient.getQueryData(
+        queryKeys.libraryAlbumTracks(String(album?.id), album?.releaseGroupMbid),
+      )?.tracks;
       return cached || album?.trackIds?.map((id) => tracksById.get(String(id))).filter(Boolean) || [];
     },
     [tracksById],
@@ -573,37 +575,44 @@ function LibraryPage() {
 
   const loadAlbumTracks = useCallback(async (album) => {
     if (!album?.id) return [];
-    const cacheKey = String(album.id);
-    const cached = albumTrackCacheRef.current.get(cacheKey);
-    if (cached) return cached;
-    const page = await getCanonicalLibraryPage({
-      kind: "tracks",
-      albumId: album.id,
-      page: 1,
-      pageSize,
-    });
-    const ownedTracks = Array.isArray(page?.items) ? page.items : [];
-    let tracks = ownedTracks;
-    const pageArtist = page?.artists?.[0] || null;
     const releaseGroupMbid = album?.releaseGroupMbid || null;
-    if (releaseGroupMbid) {
-      try {
-        const metadataTracks = await getReleaseGroupTracks(releaseGroupMbid, {
-          artistMbid: album?.artistMbid || pageArtist?.mbid || "",
-          artistName:
-            album?.artistName || pageArtist?.name || album?.albumArtist || "",
-          albumTitle: album?.title || album?.albumName || "",
-          releaseDate: album?.releaseDate || "",
+    const result = await queryClient.fetchQuery({
+      queryKey: queryKeys.libraryAlbumTracks(String(album.id), releaseGroupMbid),
+      queryFn: async () => {
+        const page = await getCanonicalLibraryPage({
+          kind: "tracks",
+          albumId: album.id,
+          page: 1,
+          pageSize,
         });
-        tracks = mergeAlbumMetadataTracks(
-          ownedTracks,
-          metadataTracks,
-          album,
-          pageArtist,
-        );
-      } catch {}
-    }
-    albumTrackCacheRef.current.set(cacheKey, tracks);
+        const ownedTracks = Array.isArray(page?.items) ? page.items : [];
+        const pageArtist = page?.artists?.[0] || null;
+        if (!releaseGroupMbid) return { tracks: ownedTracks, page };
+        try {
+          const metadataTracks = await getReleaseGroupTracks(releaseGroupMbid, {
+            artistMbid: album?.artistMbid || pageArtist?.mbid || "",
+            artistName:
+              album?.artistName || pageArtist?.name || album?.albumArtist || "",
+            albumTitle: album?.title || album?.albumName || "",
+            releaseDate: album?.releaseDate || "",
+          });
+          return {
+            tracks: mergeAlbumMetadataTracks(
+              ownedTracks,
+              metadataTracks,
+              album,
+              pageArtist,
+            ),
+            page,
+          };
+        } catch {
+          return { tracks: ownedTracks, page };
+        }
+      },
+      staleTime: 5 * 60 * 1000,
+    });
+    const tracks = result.tracks;
+    const page = result.page;
     setLibrary((current) => {
       const merge = (kind) => [
         ...(current[kind] || []),
@@ -785,7 +794,7 @@ function LibraryPage() {
       };
     });
     clearCanonicalLibraryPageCache();
-    albumTrackCacheRef.current.clear();
+    queryClient.removeQueries({ queryKey: ["library", "tracks"] });
   }, []);
 
   const handleLibraryRemovalConfirm = useCallback(async () => {

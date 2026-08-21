@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { StorageHealthDashboard, StorageHealthSummary } from "./StorageHealthDashboard";
 import {
-  getStorageHealthCache,
   refreshStorageHealth,
-  subscribeStorageHealth,
+  useStorageHealth,
 } from "../../../hooks/useStorageHealth";
 import { SettingsArrFieldSet } from "./arr/SettingsArrLayout";
 import { runStorageHealthAction } from "../utils/runStorageHealthAction";
@@ -120,16 +119,9 @@ export function SettingsStorageHealthSection({
   showSuccess,
   showError,
 }) {
-  const [healthResult, setHealthResult] = useState(() => getStorageHealthCache().result);
+  const storageHealth = useStorageHealth({ enabled: true, pollMs: 120000 });
+  const healthResult = storageHealth.result;
   const [checkingHealth, setCheckingHealth] = useState(false);
-
-  useEffect(
-    () =>
-      subscribeStorageHealth((cache) => {
-        setHealthResult(cache.result);
-      }),
-    [],
-  );
 
   const runHealthCheck = useCallback(
     async ({ notify = true } = {}) => {
@@ -169,20 +161,6 @@ export function SettingsStorageHealthSection({
     [hasUnsavedChanges, handleSaveSettings, showError, showSuccess],
   );
 
-  useEffect(() => {
-    if (getStorageHealthCache().result) return undefined;
-    let cancelled = false;
-    setCheckingHealth(true);
-    refreshStorageHealth()
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setCheckingHealth(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const system = health?.system || {};
 
   return (
@@ -202,8 +180,8 @@ export function SettingsStorageHealthSection({
             {checkingHealth ? "Checking…" : "Run checks"}
           </button>
         </div>
-        <StorageHealthSummary result={healthResult} loading={checkingHealth} />
-        <StorageHealthDashboard result={healthResult} loading={checkingHealth} showSummary={false} />
+        <StorageHealthSummary result={healthResult} loading={checkingHealth || storageHealth.loading} />
+        <StorageHealthDashboard result={healthResult} loading={checkingHealth || storageHealth.loading} showSummary={false} />
       </SettingsArrFieldSet>
 
       <SettingsArrFieldSet legend="Disk space">

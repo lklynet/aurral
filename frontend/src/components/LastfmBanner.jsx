@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { getBootstrapStatus } from "../utils/api/endpoints/auth.js";
 import { useAuth } from "../contexts/AuthContext";
 
 import { useNavigate } from "react-router-dom";
@@ -32,25 +31,12 @@ const readDismissed = (user) => {
 const LastfmBanner = () => {
   const { user, bootstrap } = useAuth();
   const [dismissed, setDismissed] = useState(() => readDismissed(user));
-  const [lastfmConfigured, setLastfmConfigured] = useState(
-    bootstrap ? !!bootstrap.lastfmConfigured : null,
-  );
+  const lastfmConfigured = bootstrap ? !!bootstrap.lastfmConfigured : null;
   const navigate = useNavigate();
 
   useEffect(() => {
     setDismissed(readDismissed(user));
   }, [user]);
-
-  useEffect(() => {
-    if (bootstrap) {
-      setLastfmConfigured(!!bootstrap.lastfmConfigured);
-      return;
-    }
-    if (dismissed) return;
-    getBootstrapStatus()
-      .then((status) => setLastfmConfigured(!!status.lastfmConfigured))
-      .catch(() => setLastfmConfigured(false));
-  }, [bootstrap, dismissed]);
 
   if (dismissed || lastfmConfigured === null || lastfmConfigured) {
     return null;

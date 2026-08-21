@@ -12,6 +12,7 @@ import {
   logoutApi,
 } from "../utils/api/endpoints/auth.js";
 import { setDateTimeFormat } from "../utils/dateTime.js";
+import { queryClient } from "../queryClient.js";
 
 const AuthContext = createContext(null);
 
@@ -112,6 +113,7 @@ export const AuthProvider = ({ children }) => {
       const result = await loginApi(normalizedUsername, password);
       if (!result?.token) return false;
       authResolvedRef.current = true;
+      queryClient.clear();
       setStoredAuth({ token: result.token });
       setUser(result.user || null);
       setIsAuthenticated(true);
@@ -131,6 +133,7 @@ export const AuthProvider = ({ children }) => {
     if (externalLogoutUrl) {
       void logoutApi().catch(() => {});
       clearAuthStorage();
+      queryClient.clear();
       invalidateBootstrapCache();
       window.location.href = externalLogoutUrl;
       return;
@@ -140,6 +143,7 @@ export const AuthProvider = ({ children }) => {
       await logoutApi();
     } catch {}
     clearAuthStorage();
+    queryClient.clear();
     invalidateBootstrapCache();
     setIsAuthenticated(false);
     setUser(null);

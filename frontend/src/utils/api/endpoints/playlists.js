@@ -3,10 +3,9 @@ import {
   postData,
   putData,
   deleteData,
-  fetchInflightOnce,
   buildAuthenticatedApiUrl,
-  flowStatusInflight,
 } from "../core.js";
+import { queryClient, queryKeys } from "../../../queryClient.js";
 
 export const getFlowTrackStreamUrl = (jobId) =>
   buildAuthenticatedApiUrl(`/playlists/stream/${encodeURIComponent(jobId)}`);
@@ -41,10 +40,13 @@ export const generateFlowArtwork = (playlistId) =>
     `/playlists/artwork/${encodeURIComponent(playlistId)}/generate`,
   );
 
-export const getFlowStatus = async ({ signal } = {}) => {
-  return fetchInflightOnce(flowStatusInflight, "flowStatus", () =>
-    getData("/playlists/status", { signal }),
-  );
+export const getFlowStatus = ({ signal, bypassCache = false } = {}) => {
+  if (bypassCache) return getData("/playlists/status", { signal });
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.playlistStatus,
+    queryFn: ({ signal: querySignal }) => getData("/playlists/status", { signal: signal || querySignal }),
+    staleTime: 4_000,
+  });
 };
 
 export const getFlowJobs = (flowId, limit = null, options = {}) => {

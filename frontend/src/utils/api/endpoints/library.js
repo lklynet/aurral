@@ -3,19 +3,12 @@ import {
   postData,
   putData,
   deleteData,
-  libraryLookupCache,
-  setLibraryLookupCacheEntry,
   buildAuthenticatedApiUrl,
-  getRequestToken,
 } from "../core.js";
+import { queryClient, queryKeys } from "../../../queryClient.js";
 
 const buildStreamUrl = (path) => buildAuthenticatedApiUrl(path);
 const SLOW_LIBRARY_REQUEST_TIMEOUT_MS = 90000;
-const LIBRARY_FAVORITES_CACHE_TTL_MS = 30000;
-const LIBRARY_PAGE_CACHE_TTL_MS = 15000;
-const MAX_LIBRARY_PAGE_CACHE_SIZE = 100;
-const libraryPageCache = new Map();
-const libraryPageRequests = new Map();
 
 export const getLibraryArtists = (options = {}) =>
   getData("/library/artists", options);
@@ -45,84 +38,45 @@ export const getCanonicalLibraryPage = (options = {}) => {
       availableOnly: options.availableOnly === true ? "true" : "false",
     }).filter(([, value]) => value !== undefined && value !== null && value !== ""),
   );
-  const cacheKey = `${getRequestToken()}:${JSON.stringify(params)}`;
-  const cached = libraryPageCache.get(cacheKey);
-  if (cached && Date.now() < cached.expiresAt) return Promise.resolve(cached.data);
-  if (cached) libraryPageCache.delete(cacheKey);
-  if (libraryPageRequests.has(cacheKey)) return libraryPageRequests.get(cacheKey);
-  const request = getData("/library/canonical", { params })
-    .then((data) => {
-      libraryPageCache.delete(cacheKey);
-      libraryPageCache.set(cacheKey, { data, expiresAt: Date.now() + LIBRARY_PAGE_CACHE_TTL_MS });
-      if (libraryPageCache.size > MAX_LIBRARY_PAGE_CACHE_SIZE) {
-        libraryPageCache.delete(libraryPageCache.keys().next().value);
-      }
-      return data;
-    })
-    .finally(() => libraryPageRequests.delete(cacheKey));
-  libraryPageRequests.set(cacheKey, request);
-  return request;
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.libraryCanonical(params),
+    queryFn: ({ signal }) => getData("/library/canonical", { params, signal }),
+    staleTime: 15_000,
+  });
 };
 
-export const clearCanonicalLibraryPageCache = () => libraryPageCache.clear();
+export const clearCanonicalLibraryPageCache = () => {
+  queryClient.removeQueries({ queryKey: ["library", "canonical"] });
+};
 
 export const requestLibraryRefresh = () => postData("/library/refresh", {});
 
 export const getLibraryRefreshStatus = (jobId) =>
   getData(`/library/refresh/${encodeURIComponent(jobId)}`);
 
-let libraryFavoritesCache = null;
-let libraryFavoritesRequest = null;
 let libraryFavoritesGeneration = 0;
+let latestLibraryFavorites = null;
 
 export const getLibraryFavorites = () => {
-  const token = getRequestToken();
   const generation = libraryFavoritesGeneration;
-  if (
-    libraryFavoritesCache?.token === token &&
-    libraryFavoritesCache?.generation === generation &&
-    Date.now() < libraryFavoritesCache.expiresAt
-  ) {
-    return Promise.resolve(libraryFavoritesCache.data);
-  }
-  if (
-    libraryFavoritesRequest?.token === token &&
-    libraryFavoritesRequest?.generation === generation
-  ) return libraryFavoritesRequest.promise;
-  let promise;
-  promise = getData("/library/favorites")
-    .then((data) => {
-      if (getRequestToken() === token && libraryFavoritesGeneration === generation) {
-        libraryFavoritesCache = {
-          token,
-          generation,
-          data,
-          expiresAt: Date.now() + LIBRARY_FAVORITES_CACHE_TTL_MS,
-        };
-      }
-      return data;
-    })
-    .finally(() => {
-      if (libraryFavoritesRequest?.promise === promise) libraryFavoritesRequest = null;
-    });
-  libraryFavoritesRequest = { token, generation, promise };
-  return promise;
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.libraryFavorites,
+    queryFn: ({ signal }) => getData("/library/favorites", { signal }),
+    staleTime: 30_000,
+  }).then((data) => {
+    if (generation !== libraryFavoritesGeneration && latestLibraryFavorites) {
+      queryClient.setQueryData(queryKeys.libraryFavorites, latestLibraryFavorites);
+    }
+    return data;
+  });
 };
 
 export const updateLibraryFavorites = async (ids, starred) => {
-  const token = getRequestToken();
   const generation = ++libraryFavoritesGeneration;
   const data = await postData("/library/favorites", { ids, starred });
-  if (libraryFavoritesGeneration === generation) {
-    libraryFavoritesGeneration += 1;
-    libraryFavoritesCache = getRequestToken() === token
-      ? {
-        token,
-        generation: libraryFavoritesGeneration,
-        data,
-        expiresAt: Date.now() + LIBRARY_FAVORITES_CACHE_TTL_MS,
-      }
-      : null;
+  if (generation === libraryFavoritesGeneration) {
+    latestLibraryFavorites = data;
+    queryClient.setQueryData(queryKeys.libraryFavorites, data);
   }
   clearCanonicalLibraryPageCache();
   return data;
@@ -142,9 +96,8 @@ export const readLibraryLookupCache = (mbids) => {
   const result = {};
   if (!Array.isArray(mbids)) return result;
   mbids.forEach((id) => {
-    if (libraryLookupCache.has(id)) {
-      result[id] = libraryLookupCache.get(id);
-    }
+    const value = queryClient.getQueryData(queryKeys.libraryLookup(id));
+    if (value !== undefined) result[id] = value;
   });
   return result;
 };
@@ -152,18 +105,35 @@ export const readLibraryLookupCache = (mbids) => {
 const writeLibraryLookupCache = (lookup) => {
   if (!lookup || typeof lookup !== "object") return;
   Object.entries(lookup).forEach(([id, value]) => {
-    setLibraryLookupCacheEntry(id, value);
+    queryClient.setQueryData(queryKeys.libraryLookup(id), value);
   });
 };
 
 export const lookupArtistsInLibraryBatch = async (mbids) => {
-  const data = await postData("/library/lookup/batch", { mbids });
+  const ids = [...new Set((Array.isArray(mbids) ? mbids : []).filter(Boolean))];
+  if (!ids.length) return {};
+  const data = await queryClient.fetchQuery({
+    queryKey: queryKeys.libraryLookupBatch(ids),
+    queryFn: ({ signal }) => postData("/library/lookup/batch", { mbids: ids }, { signal }),
+    staleTime: 60_000,
+  });
   writeLibraryLookupCache(data);
   return data;
 };
 
-export const lookupAlbumsInLibraryBatch = (mbids) =>
-  postData("/library/albums/lookup/batch", { mbids });
+export const lookupAlbumsInLibraryBatch = (mbids, { signal, bypassCache = false } = {}) => {
+  const ids = [...new Set((Array.isArray(mbids) ? mbids : []).filter(Boolean))];
+  if (!ids.length) return Promise.resolve({});
+  if (bypassCache) {
+    return postData("/library/albums/lookup/batch", { mbids: ids }, { signal });
+  }
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.libraryAlbumLookup(ids),
+    queryFn: ({ signal: querySignal }) =>
+      postData("/library/albums/lookup/batch", { mbids: ids }, { signal: signal || querySignal }),
+    staleTime: 15_000,
+  });
+};
 
 export const addArtistToLibrary = (artistData) =>
   postData("/library/artists", artistData);
@@ -261,17 +231,28 @@ export const triggerAlbumSearch = (albumId) =>
     albumId,
   });
 
-export const getDownloadStatus = async (albumIds) => {
-  const ids = Array.isArray(albumIds) ? albumIds.join(",") : albumIds;
-  return getData(`/library/downloads/status?albumIds=${ids}`);
+export const getDownloadStatus = async (albumIds, { signal, bypassCache = false } = {}) => {
+  const ids = Array.isArray(albumIds) ? albumIds.filter(Boolean) : [albumIds];
+  if (!ids.length) return {};
+  if (bypassCache) {
+    return getData(`/library/downloads/status?albumIds=${ids.join(",")}`, { signal });
+  }
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.downloadStatus(ids),
+    queryFn: ({ signal: querySignal }) =>
+      getData(`/library/downloads/status?albumIds=${ids.join(",")}`, {
+        signal: signal || querySignal,
+      }),
+    staleTime: 4_000,
+  });
 };
 
 export const refreshLibraryArtist = (mbid) =>
   postData(`/library/artists/${mbid}/refresh`);
 
-export const getRequests = ({ refresh = false } = {}) =>
-  getData("/requests", { params: refresh ? { refresh: 1 } : {} });
+export const getRequests = ({ refresh = false, signal } = {}) =>
+  getData("/requests", { params: refresh ? { refresh: 1 } : {}, signal });
 
-export const getRecentlyAdded = () => getData("/library/recent");
+export const getRecentlyAdded = ({ signal } = {}) => getData("/library/recent", { signal });
 
-export const getRecentReleases = () => getData("/library/recent-releases");
+export const getRecentReleases = ({ signal } = {}) => getData("/library/recent-releases", { signal });

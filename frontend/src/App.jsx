@@ -7,6 +7,8 @@ import { DISCOVERY_MANUAL_REFRESH_KEY } from "./utils/discoverRecentNavigation.j
 import { AudioPlayerProvider } from "react-use-audio-player";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "./queryClient";
 import { DiscoverRecentProvider } from "./contexts/DiscoverRecentProvider";
 import { AudioQueueProvider } from "./contexts/AudioQueueProvider";
 import { AlertTriangle, XCircle } from "lucide-react";
@@ -321,7 +323,8 @@ function AppContent() {
 
 function App() {
   return (
-    <ToastProvider>
+    <QueryClientProvider client={queryClient}>
+      <ToastProvider>
         <AuthProvider>
           <AudioPlayerProvider>
             <AudioQueueProvider>
@@ -331,6 +334,7 @@ function App() {
           </AudioPlayerProvider>
         </AuthProvider>
       </ToastProvider>
+    </QueryClientProvider>
   );
 }
 

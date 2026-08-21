@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { getRequests, triggerAlbumSearch } from "../utils/api/endpoints/library.js";
 import { approveBlockedJob, denyBlockedJob, getStagingStreamUrl } from "../utils/api/endpoints/playlists";
 import { useAudioQueue } from "../contexts/audioQueueContext";
@@ -26,6 +27,7 @@ import ActivityInfoModal from "./activity/ActivityInfoModal";
 
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { Loader, AlertCircle, Music } from "lucide-react";
+import { queryClient, queryKeys } from "../queryClient.js";
 const ACTIVITY_PAGE_SIZE = 25;
 
 const QUEUE_EMPTY_STATE = {
@@ -44,9 +46,7 @@ function ActivityPage() {
   const { view: viewParam } = useParams();
   const { user } = useAuth();
   const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [localError, setLocalError] = useState(null);
   const [visibleCount, setVisibleCount] = useState(ACTIVITY_PAGE_SIZE);
   const [reSearchingAlbumIds, setReSearchingAlbumIds] = useState({});
   const [approvingJobId, setApprovingJobId] = useState(null);
@@ -55,7 +55,6 @@ function ActivityPage() {
   const [filterValue, setFilterValue] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [infoRequest, setInfoRequest] = useState(null);
-  const fetchRequestsInFlightRef = useRef(false);
 
   const { playTrack, currentTrack, isPlaying, togglePlayPause } = useAudioQueue();
 
@@ -75,6 +74,45 @@ function ActivityPage() {
     : isMissingView ? `${isCutoffView ? "Cutoff unmet" : "Missing"} - Wanted`
     : "Activity",
   );
+
+  const activityQueryKey = useMemo(
+    () => queryKeys.activityRequests(user?.id),
+    [user?.id],
+  );
+  const refreshFromStatusEvent = useCallback(() => {
+    if (document.hidden || isMissingView) return;
+    queryClient.refetchQueries({ queryKey: activityQueryKey, type: "active" });
+  }, [activityQueryKey, isMissingView]);
+  const { isConnected: downloadsWsConnected } = useWebSocketChannel(
+    "downloads",
+    (message) => {
+      if (message?.type === "download_statuses") refreshFromStatusEvent();
+    },
+  );
+  const { isConnected: playlistsWsConnected } = useWebSocketChannel(
+    "weekly-flow",
+    (message) => {
+      if (message?.type === "playlist_status") refreshFromStatusEvent();
+    },
+    { enabled: hasFlowAccess },
+  );
+  const activityWsConnected = downloadsWsConnected && (!hasFlowAccess || playlistsWsConnected);
+  const activityQuery = useQuery({
+    queryKey: activityQueryKey,
+    queryFn: ({ signal }) => getRequests({ refresh: isListLikeView, signal }),
+    enabled: !isMissingView,
+    staleTime: isListLikeView ? 0 : 30_000,
+    refetchInterval: isMissingView
+      ? false
+      : getActivityPollIntervalMs({ isConnected: activityWsConnected, isListLikeView }),
+    refetchIntervalInBackground: false,
+  });
+  const requests = useMemo(
+    () => mergeActivityRequests([], activityQuery.data),
+    [activityQuery.data],
+  );
+  const loading = activityQuery.isPending;
+  const error = localError || activityQuery.error?.response?.data?.message || activityQuery.error?.message;
 
   const filteredRequests = useMemo(
     () => {
@@ -129,27 +167,19 @@ function ActivityPage() {
   }, [activeView]);
 
   const fetchRequests = useCallback(async ({ silent = false, refresh = false } = {}) => {
-    if (fetchRequestsInFlightRef.current) return;
-    fetchRequestsInFlightRef.current = true;
-    if (!silent) {
-      setLoading(true);
-    }
-
     try {
-      const data = await getRequests({ refresh: refresh || isListLikeView });
-      setRequests((previous) => mergeActivityRequests(previous, data));
-      setError(null);
-    } catch {
+      return await queryClient.fetchQuery({
+        queryKey: activityQueryKey,
+        queryFn: ({ signal }) => getRequests({ refresh: refresh || isListLikeView, signal }),
+        staleTime: refresh ? 0 : isListLikeView ? 0 : 30_000,
+      });
+    } catch (requestError) {
       if (!silent) {
-        setError("Failed to load activity.");
+        setLocalError(requestError?.response?.data?.message || "Failed to load activity.");
       }
-    } finally {
-      fetchRequestsInFlightRef.current = false;
-      if (!silent) {
-        setLoading(false);
-      }
+      return null;
     }
-  }, [isListLikeView]);
+  }, [activityQueryKey, isListLikeView]);
 
   const handleManualRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -160,37 +190,16 @@ function ActivityPage() {
     }
   }, [fetchRequests]);
 
-  const refreshFromStatusEvent = useCallback(() => {
-    if (document.hidden || isMissingView) return;
-    fetchRequests({ silent: true, refresh: true });
-  }, [fetchRequests, isMissingView]);
-
-  const { isConnected: downloadsWsConnected } = useWebSocketChannel(
-    "downloads",
-    (message) => {
-      if (message?.type === "download_statuses") refreshFromStatusEvent();
-    },
-  );
-  const { isConnected: playlistsWsConnected } = useWebSocketChannel(
-    "weekly-flow",
-    (message) => {
-      if (message?.type === "playlist_status") refreshFromStatusEvent();
-    },
-    { enabled: hasFlowAccess },
-  );
-  const activityWsConnected = downloadsWsConnected && (!hasFlowAccess || playlistsWsConnected);
-
   useEffect(() => {
     if (isMissingView) return undefined;
-    fetchRequests();
 
     const handleFocus = () => {
-      fetchRequests({ silent: true });
+      queryClient.refetchQueries({ queryKey: activityQueryKey, type: "active" });
     };
 
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
-        fetchRequests({ silent: true });
+        queryClient.refetchQueries({ queryKey: activityQueryKey, type: "active" });
       }
     };
 
@@ -201,20 +210,23 @@ function ActivityPage() {
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [fetchRequests, isMissingView]);
+  }, [activityQueryKey, isMissingView]);
 
-  useEffect(() => {
-    if (isMissingView) return undefined;
-    const intervalMs = getActivityPollIntervalMs({
-      isConnected: activityWsConnected,
-      isListLikeView,
+  const updateRequests = useCallback((updater) => {
+    queryClient.setQueryData(activityQueryKey, (current) => {
+      const next = Array.isArray(current) ? current : [];
+      return updater(next);
     });
-    const interval = setInterval(() => {
-      if (document.hidden) return;
-      fetchRequests({ silent: true });
-    }, intervalMs);
-    return () => clearInterval(interval);
-  }, [activityWsConnected, isListLikeView, isMissingView, fetchRequests]);
+  }, [activityQueryKey]);
+  const reSearchMutation = useMutation({
+    mutationFn: ({ albumId }) => triggerAlbumSearch(albumId),
+  });
+  const approveMutation = useMutation({
+    mutationFn: approveBlockedJob,
+  });
+  const denyMutation = useMutation({
+    mutationFn: denyBlockedJob,
+  });
 
   const navigateToArtist = useCallback(
     (request, isAlbum, artistMbid, artistName, displayName) => {
@@ -235,8 +247,8 @@ function ActivityPage() {
     if (!albumId || reSearchingAlbumIds[albumId]) return;
     setReSearchingAlbumIds((prev) => ({ ...prev, [albumId]: true }));
     try {
-      await triggerAlbumSearch(albumId);
-      setRequests((prev) =>
+      await reSearchMutation.mutateAsync({ albumId });
+      updateRequests((prev) =>
         prev.map((item) =>
           String(item.albumId) === String(albumId)
             ? {
@@ -253,7 +265,7 @@ function ActivityPage() {
         ),
       );
     } catch {
-      setError("Failed to trigger album search.");
+      setLocalError("Failed to trigger album search.");
     } finally {
       setReSearchingAlbumIds(({ [albumId]: _, ...prev }) => prev);
     }
@@ -263,8 +275,8 @@ function ActivityPage() {
     if (!jobId || approvingJobId === jobId) return;
     setApprovingJobId(jobId);
     try {
-      await approveBlockedJob(jobId);
-      setRequests((prev) =>
+      await approveMutation.mutateAsync(jobId);
+      updateRequests((prev) =>
         prev.map((r) =>
           r.jobId === jobId
             ? {
@@ -292,8 +304,8 @@ function ActivityPage() {
     if (!jobId || denyingJobId === jobId) return;
     setDenyingJobId(jobId);
     try {
-      await denyBlockedJob(jobId);
-      setRequests((prev) =>
+      await denyMutation.mutateAsync(jobId);
+      updateRequests((prev) =>
         prev.map((r) =>
           r.jobId === jobId
             ? {

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { getProwlarrIndexers, testProwlarrConnection } from "../../../utils/api/endpoints/settings.js";
+import { queryClient, queryKeys } from "../../../queryClient.js";
 
 import { RefreshCw } from "lucide-react";
 import { SettingsInput } from "./SettingsField";
@@ -28,12 +30,22 @@ export function SettingsIndexersSection({
   const [activeModal, setActiveModal] = useState(null);
   const [testingProwlarr, setTestingProwlarr] = useState(false);
   const [testStatus, setTestStatus] = useState(null);
-  const [loadingProwlarrIndexers, setLoadingProwlarrIndexers] = useState(false);
-  const [prowlarrIndexers, setProwlarrIndexers] = useState([]);
 
   const prowlarr = settings.integrations?.prowlarr || {};
   const prowlarrConfigured = Boolean(prowlarr.url && prowlarr.apiKey);
   const prowlarrEnabled = prowlarr.enabled === true;
+  const indexersQuery = useQuery({
+    queryKey: queryKeys.prowlarrIndexers,
+    queryFn: ({ signal }) => getProwlarrIndexers({ signal }),
+    enabled: health?.prowlarrConfigured === true,
+    staleTime: 60_000,
+  });
+  const prowlarrIndexers = health?.prowlarrConfigured
+    ? Array.isArray(indexersQuery.data?.indexers)
+      ? indexersQuery.data.indexers
+      : []
+    : [];
+  const loadingProwlarrIndexers = indexersQuery.isPending || indexersQuery.isFetching;
 
   useEffect(() => {
     setTestStatus(null);
@@ -54,15 +66,9 @@ export function SettingsIndexersSection({
   };
 
   const loadProwlarrIndexers = async ({ quiet = false } = {}) => {
-    if (!health?.prowlarrConfigured) {
-      setProwlarrIndexers([]);
-      return;
-    }
-    setLoadingProwlarrIndexers(true);
     try {
-      const result = await getProwlarrIndexers();
+      const { data: result } = await indexersQuery.refetch();
       const indexers = Array.isArray(result?.indexers) ? result.indexers : [];
-      setProwlarrIndexers(indexers);
       if (!quiet && indexers.length > 0) {
         showSuccess(`Loaded ${indexers.length} Usenet indexer(s)`);
       }
@@ -78,34 +84,8 @@ export function SettingsIndexersSection({
             "Failed to load Prowlarr indexers",
         );
       }
-    } finally {
-      setLoadingProwlarrIndexers(false);
     }
   };
-
-  useEffect(() => {
-    if (!health?.prowlarrConfigured) {
-      setProwlarrIndexers([]);
-      return;
-    }
-    let cancelled = false;
-    setLoadingProwlarrIndexers(true);
-    getProwlarrIndexers()
-      .then((result) => {
-        if (!cancelled) {
-          setProwlarrIndexers(Array.isArray(result?.indexers) ? result.indexers : []);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setProwlarrIndexers([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingProwlarrIndexers(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [health?.prowlarrConfigured]);
 
   const updateProwlarrIndexer = (id, patch) => {
     const key = String(id);
@@ -142,7 +122,9 @@ export function SettingsIndexersSection({
     try {
       await handleSaveSettings();
       const result = await testProwlarrConnection();
-      setProwlarrIndexers(Array.isArray(result.indexers) ? result.indexers : []);
+      queryClient.setQueryData(queryKeys.prowlarrIndexers, {
+        indexers: Array.isArray(result.indexers) ? result.indexers : [],
+      });
       setTestStatus({ tone: "success", message: "Connected." });
       showSuccess(result.message || "Prowlarr connection OK");
     } catch (error) {

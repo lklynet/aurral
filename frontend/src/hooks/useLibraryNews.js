@@ -1,80 +1,46 @@
-import { useCallback, useEffect, useState } from "react";
+import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
 import {
   disableNewsFeed,
   getLibraryNews,
 } from "../utils/api/endpoints/news.js";
-
-const CLIENT_CACHE_TTL_MS = 5 * 60 * 1000;
-const newsPageCache = new Map();
+import { queryClient, queryKeys } from "../queryClient.js";
 
 export function useLibraryNews({ enabled = false, limit = 60, mode = "matched", userId = null } = {}) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState("");
-  const cacheKey = `${userId || "anonymous"}:${mode}:${limit}`;
-
-  const load = useCallback(async ({ append = false, offset = 0 } = {}) => {
-    if (!enabled) {
-      setData(null);
-      setError("");
-      return null;
-    }
-    if (append) setLoadingMore(true);
-    else setLoading(true);
-    try {
-      const next = await getLibraryNews(limit, mode, offset);
-      setData((previous) => {
-        const result = append
-          ? { ...next, articles: [...(previous?.articles || []), ...(next.articles || [])] }
-          : next;
-        newsPageCache.set(cacheKey, { data: result, cachedAt: Date.now() });
-        return result;
-      });
-      setError("");
-      return next;
-    } catch (err) {
-      setError(err?.response?.data?.message || err?.message || "Failed to load artist news");
-      return null;
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  }, [cacheKey, enabled, limit, mode]);
-
-  const loadMore = useCallback(() => {
-    if (loading || loadingMore || !data?.hasMore) return Promise.resolve(null);
-    return load({ append: true, offset: data.articles?.length || 0 });
-  }, [data?.articles?.length, data?.hasMore, load, loading, loadingMore]);
-
-  const disablePublisher = useCallback(async (publisher, sourceUrl) => {
-    await disableNewsFeed(sourceUrl, publisher);
-    await load();
-  }, [load]);
-
-  useEffect(() => {
-    if (!enabled) {
-      load();
-      return;
-    }
-    const cached = newsPageCache.get(cacheKey);
-    if (cached) {
-      setData(cached.data);
-      if (Date.now() - cached.cachedAt < CLIENT_CACHE_TTL_MS) return;
-    }
-    load();
-  }, [cacheKey, enabled, load]);
+  const queryKey = queryKeys.news(userId, mode, limit);
+  const query = useInfiniteQuery({
+    queryKey,
+    queryFn: ({ pageParam, signal }) => getLibraryNews(limit, mode, pageParam, { signal }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) => {
+      if (!lastPage?.hasMore) return undefined;
+      return pages.reduce((count, page) => count + (page?.articles?.length || 0), 0);
+    },
+    enabled,
+    staleTime: 5 * 60 * 1000,
+  });
+  const disableMutation = useMutation({
+    mutationFn: ({ publisher, sourceUrl }) => disableNewsFeed(sourceUrl, publisher),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+  });
+  const pages = query.data?.pages || [];
+  const firstPage = pages[0] || null;
+  const articles = pages.flatMap((page) => Array.isArray(page?.articles) ? page.articles : []);
+  const loadMore = () =>
+    query.hasNextPage && !query.isFetchingNextPage
+      ? query.fetchNextPage()
+      : Promise.resolve(null);
 
   return {
-    articles: Array.isArray(data?.articles) ? data.articles : [],
-    artistCount: Number(data?.artistCount || 0),
-    refresh: data?.refresh || null,
-    configured: data?.configured === true,
-    loading,
-    loadingMore,
-    hasMore: data?.hasMore === true,
+    articles,
+    artistCount: Number(firstPage?.artistCount || 0),
+    refresh: firstPage?.refresh || null,
+    configured: firstPage?.configured === true,
+    loading: enabled && (query.isPending || query.isFetching),
+    loadingMore: query.isFetchingNextPage,
+    hasMore: query.hasNextPage === true,
     loadMore,
-    error,
-    disablePublisher,
+    error: query.error?.response?.data?.message || query.error?.message || "",
+    disablePublisher: (publisher, sourceUrl) =>
+      disableMutation.mutateAsync({ publisher, sourceUrl }),
   };
 }

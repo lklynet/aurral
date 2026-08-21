@@ -7,6 +7,7 @@ import {
   setCoverCacheEntry,
   coverInflightRequests,
 } from "../core.js";
+import { queryClient, queryKeys } from "../../../queryClient.js";
 
 export const getArtistDetails = async (
   mbid,
@@ -31,8 +32,8 @@ export const getArtistDetails = async (
   });
 };
 
-export const getReleaseGroupDetails = (mbid) =>
-  getData(`/artists/release-group/${mbid}`);
+export const getReleaseGroupDetails = (mbid, { signal } = {}) =>
+  getData(`/artists/release-group/${mbid}`, { signal });
 
 export const getArtistAppearsOnPage = (
   mbid,
@@ -44,8 +45,15 @@ export const getArtistAppearsOnPage = (
     excludeIds: Array.isArray(excludeIds) ? excludeIds : [],
   });
 
-export const getReleaseGroupRatingsBatch = (ids = []) =>
-  postData("/artists/release-groups/ratings", { ids });
+export const getReleaseGroupRatingsBatch = (ids = []) => {
+  const normalizedIds = [...new Set((Array.isArray(ids) ? ids : []).filter(Boolean))];
+  if (!normalizedIds.length) return Promise.resolve({ ratings: {} });
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.releaseGroupRatings(normalizedIds),
+    queryFn: () => postData("/artists/release-groups/ratings", { ids: normalizedIds }),
+    staleTime: 5 * 60 * 1000,
+  });
+};
 
 const RELEASE_GROUP_COVER_BATCH_SIZE = 24;
 
@@ -64,6 +72,7 @@ export const getReleaseGroupTracks = async (mbid, context = {}) => {
   if (context.deezerAlbumId) params.deezerAlbumId = context.deezerAlbumId;
   return getData(`/artists/release-group/${mbid}/tracks`, {
     params,
+    signal: context.signal,
   });
 };
 

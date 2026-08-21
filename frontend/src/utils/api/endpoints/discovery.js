@@ -2,15 +2,17 @@ import { getData, postData, deleteData, buildAuthenticatedApiUrl } from "../core
 
 export const getDiscovery = (options = false) => {
   const params = {};
+  let signal;
   if (typeof options === "boolean") {
     if (options) params._ = Date.now();
   } else if (options && typeof options === "object") {
     const { offset, limit, cacheBust } = options;
+    signal = options.signal;
     if (cacheBust) params._ = Date.now();
     if (typeof offset === "number") params.offset = offset;
     if (typeof limit === "number") params.limit = limit;
   }
-  return getData("/discover", { params });
+  return getData("/discover", { params, signal });
 };
 
 export const adoptDiscoverPlaylistAsFlow = (presetId) =>
@@ -28,7 +30,8 @@ export const getDiscoverArtworkUrl = (presetId, version) =>
   );
 
 export const getNearbyShows = async (zipCode = "", limit, options = {}) => {
-  const params = { _: Date.now() };
+  const params = {};
+  if (options.cacheBust) params._ = Date.now();
   if (typeof zipCode === "string" && zipCode.trim()) {
     params.zip = zipCode.trim();
   }

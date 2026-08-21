@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
   CalendarDays,
@@ -18,6 +19,7 @@ import { readStoredNearbyLocation } from "../pages/discoverUtils.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { useToast } from "../contexts/ToastContext";
 import TooltipButton from "./TooltipButton";
+import { queryClient, queryKeys } from "../queryClient.js";
 
 const ITEM_ICONS = {
   release: Music2,
@@ -136,10 +138,6 @@ function InboxItem({ item, onRemove, onOpen, pendingAction }) {
 
 function InboxMenu() {
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [serverRefreshing, setServerRefreshing] = useState(false);
   const [filter, setFilter] = useState("all");
   const [filterOpen, setFilterOpen] = useState(false);
   const [pendingActions, setPendingActions] = useState({});
@@ -160,28 +158,51 @@ function InboxMenu() {
     return () => window.removeEventListener("aurral:settings-updated", handleSettingsUpdated);
   }, []);
 
-  const loadInbox = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { mode, zip } = readStoredNearbyLocation();
-      const locationZip = mode === "zip" ? zip : "";
-      const result = await getInbox({ zip: locationZip, limit: 50 });
-      setItems(Array.isArray(result?.items) ? result.items : []);
-      setUnreadCount(Number(result?.unreadCount || 0));
-      setServerRefreshing(result?.refreshing === true);
-    } catch {
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!inboxEnabled) return undefined;
-    if (!Number.isInteger(Number(user?.id)) || Number(user.id) <= 0) return undefined;
-    loadInbox();
-    const interval = window.setInterval(loadInbox, 60 * 1000);
-    return () => window.clearInterval(interval);
-  }, [inboxEnabled, loadInbox, user?.id]);
+  const { mode, zip } = readStoredNearbyLocation();
+  const locationZip = mode === "zip" ? zip : "";
+  const userId = Number.isInteger(Number(user?.id)) && Number(user.id) > 0 ? user.id : null;
+  const queryKey = queryKeys.inbox(userId, locationZip, 50);
+  const inboxQuery = useQuery({
+    queryKey,
+    queryFn: ({ signal }) => getInbox({ zip: locationZip, limit: 50, signal }),
+    enabled: inboxEnabled && userId != null,
+    refetchInterval: 60 * 1000,
+    staleTime: 30 * 1000,
+  });
+  const items = Array.isArray(inboxQuery.data?.items) ? inboxQuery.data.items : [];
+  const unreadCount = Number(inboxQuery.data?.unreadCount || 0);
+  const serverRefreshing = inboxQuery.data?.refreshing === true;
+  const loadInbox = () => inboxQuery.refetch();
+  const itemMutation = useMutation({
+    mutationFn: ({ id, action }) => updateInboxItem(id, action),
+    onMutate: ({ id, action }) => {
+      queryClient.setQueryData(queryKey, (current) => {
+        if (!current) return current;
+        const item = current.items?.find((entry) => entry.id === id);
+        if (!item) return current;
+        if (action === "dismiss") {
+          return {
+            ...current,
+            items: current.items.filter((entry) => entry.id !== id),
+            unreadCount: Math.max(0, Number(current.unreadCount || 0) - (item.isRead ? 0 : 1)),
+          };
+        }
+        return {
+          ...current,
+          items: current.items.map((entry) =>
+            entry.id === id ? { ...entry, isRead: true } : entry,
+          ),
+          unreadCount: Math.max(0, Number(current.unreadCount || 0) - (item.isRead ? 0 : 1)),
+        };
+      });
+    },
+    onError: () => queryClient.invalidateQueries({ queryKey }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey }),
+  });
+  const readAllMutation = useMutation({
+    mutationFn: markAllInboxItemsRead,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+  });
 
   useEffect(() => {
     if (!open) return undefined;
@@ -207,11 +228,7 @@ function InboxMenu() {
 
   const handleOpen = (item) => {
     if (!item.isRead) {
-      setItems((current) => current.map((entry) => (
-        entry.id === item.id ? { ...entry, isRead: true } : entry
-      )));
-      setUnreadCount((count) => Math.max(0, count - 1));
-      void updateInboxItem(item.id, "read").catch((error) => {
+      void itemMutation.mutateAsync({ id: item.id, action: "read" }).catch((error) => {
         showError(error?.response?.data?.error || error?.message || `Failed to read ${item.title}`);
       });
     }
@@ -222,9 +239,7 @@ function InboxMenu() {
     const actionKey = `${item.id}:dismiss`;
     setPendingActions((current) => ({ ...current, [actionKey]: "dismiss" }));
     try {
-      await updateInboxItem(item.id, "dismiss");
-      setItems((current) => current.filter((entry) => entry.id !== item.id));
-      if (!item.isRead) setUnreadCount((count) => Math.max(0, count - 1));
+      await itemMutation.mutateAsync({ id: item.id, action: "dismiss" });
     } catch (error) {
       showError(
         error?.response?.data?.message ||
@@ -243,7 +258,7 @@ function InboxMenu() {
 
   const handleReadAll = async () => {
     try {
-      await markAllInboxItemsRead();
+      await readAllMutation.mutateAsync();
     } catch (error) {
       showError(
         error?.response?.data?.message ||
@@ -317,7 +332,7 @@ function InboxMenu() {
               </div>
             ) : null}
           </div>
-          {(loading || (serverRefreshing && items.length === 0)) ? (
+          {(inboxQuery.isPending || inboxQuery.isFetching || (serverRefreshing && items.length === 0)) ? (
             <div className="app-inbox-menu__empty">Loading…</div>
           ) : items.length === 0 ? (
             <div className="app-inbox-menu__empty">Nothing to see here yet</div>

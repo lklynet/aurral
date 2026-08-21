@@ -1,20 +1,32 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { getFlowStatus } from "../utils/api/endpoints/playlists.js";
 import { useToast } from "../contexts/ToastContext";
+import { queryClient, queryKeys } from "../queryClient.js";
 
 export function useSharedPlaylists() {
   const { showError } = useToast();
-  const [sharedPlaylists, setSharedPlaylists] = useState([]);
-  const [playlistsLoading, setPlaylistsLoading] = useState(false);
   const [playlistsError, setPlaylistsError] = useState("");
+  const query = useQuery({
+    queryKey: queryKeys.playlistStatus,
+    queryFn: ({ signal }) => getFlowStatus({ signal, bypassCache: true }),
+    staleTime: 4_000,
+  });
+  const sharedPlaylists = Array.isArray(query.data?.sharedPlaylists)
+    ? query.data.sharedPlaylists
+    : [];
+  const setSharedPlaylists = useCallback((next) => {
+    queryClient.setQueryData(queryKeys.playlistStatus, (current) => ({
+      ...(current || {}),
+      sharedPlaylists: typeof next === "function" ? next(current?.sharedPlaylists || []) : next,
+    }));
+  }, []);
 
   const loadSharedPlaylists = useCallback(async () => {
-    setPlaylistsLoading(true);
     setPlaylistsError("");
     try {
-      const data = await getFlowStatus();
+      const { data } = await query.refetch();
       const playlists = Array.isArray(data?.sharedPlaylists) ? data.sharedPlaylists : [];
-      setSharedPlaylists(playlists);
       return playlists;
     } catch (err) {
       const message =
@@ -25,16 +37,14 @@ export function useSharedPlaylists() {
       setPlaylistsError(message);
       showError(message);
       return null;
-    } finally {
-      setPlaylistsLoading(false);
     }
-  }, [showError]);
+  }, [query, showError]);
 
   return {
     sharedPlaylists,
     setSharedPlaylists,
-    playlistsLoading,
-    playlistsError,
+    playlistsLoading: query.isPending || query.isFetching,
+    playlistsError: playlistsError || query.error?.response?.data?.message || query.error?.message || "",
     setPlaylistsError,
     loadSharedPlaylists,
   };

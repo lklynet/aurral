@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
   ArrowUpCircle,
@@ -14,13 +15,14 @@ import { formatDateTime } from "../../utils/dateTime.js";
 import { useSearchParams } from "react-router-dom";
 import {
   getAllFlowJobs,
-  getFlowStatus,
   reSearchFlowTrack,
   reSearchAllMissingTracks,
   reSearchSharedPlaylistTrack,
   searchTrackUpgrade,
   searchAllUpgrades,
 } from "../../utils/api/endpoints/playlists.js";
+import { queryClient, queryKeys } from "../../queryClient.js";
+import { usePlaylistStatusQuery } from "../flows/usePlaylistStatusQuery.js";
 import ActivityToolbar from "./ActivityToolbar";
 import ActivityInfoModal from "./ActivityInfoModal";
 import {
@@ -140,15 +142,38 @@ function MissingJobRow({ job, playlist, actionState, onAction, onInfo }) {
 export default function ActivityMissingPage() {
   const [searchParams] = useSearchParams();
   const { showError, showSuccess } = useToast();
-  const [jobs, setJobs] = useState([]);
-  const [playlistInfo, setPlaylistInfo] = useState(new Map());
   const [infoJob, setInfoJob] = useState(null);
   const [actionStates, setActionStates] = useState({});
   const [filterValue, setFilterValue] = useState("");
-  const [loading, setLoading] = useState(true);
   const [searchingAll, setSearchingAll] = useState(false);
   const [visibleCount, setVisibleCount] = useState(WANTED_PAGE_SIZE);
-  const [error, setError] = useState("");
+  const jobsQueryKey = queryKeys.playlistJobs();
+  const jobsQuery = useQuery({
+    queryKey: jobsQueryKey,
+    queryFn: ({ signal }) => getAllFlowJobs({ signal }),
+    staleTime: 15_000,
+  });
+  const statusQuery = usePlaylistStatusQuery();
+  const allJobs = useMemo(
+    () => Array.isArray(jobsQuery.data) ? jobsQuery.data : [],
+    [jobsQuery.data],
+  );
+  const playlistInfo = useMemo(() => toPlaylistInfo(statusQuery.data), [statusQuery.data]);
+  const jobs = useMemo(() => {
+    const upgradeJobIds = new Set(
+      allJobs
+        .filter((job) => job?.upgradeForJobId && ["pending", "downloading"].includes(job.status))
+        .map((job) => String(job.upgradeForJobId)),
+    );
+    return allJobs
+      .filter((job) => isMissingAurralJob(job) || isCutoffUnmetAurralJob(job))
+      .map((job) => ({ ...job, upgradeQueued: upgradeJobIds.has(String(job.id)) }))
+      .sort(sortMissingJobs);
+  }, [allJobs]);
+  const loading = jobsQuery.isPending || statusQuery.isPending;
+  const error = jobsQuery.error?.response?.data?.message ||
+    statusQuery.error?.response?.data?.message ||
+    jobsQuery.error?.message || statusQuery.error?.message || "";
   const activeTab = searchParams.get("tab") === "cutoff" ? "cutoff" : "missing";
   const showingCutoff = activeTab === "cutoff";
   const filterPlaceholder = showingCutoff ? "Filter cutoff unmet" : "Filter missing tracks";
@@ -158,52 +183,24 @@ export default function ActivityMissingPage() {
     setVisibleCount(WANTED_PAGE_SIZE);
   }, [activeTab]);
 
-  const loadJobs = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) setLoading(true);
-    setError("");
-    try {
-      const [allJobs, status] = await Promise.all([getAllFlowJobs(), getFlowStatus()]);
-      const upgradeJobIds = new Set(
-        (Array.isArray(allJobs) ? allJobs : [])
-          .filter((job) => job?.upgradeForJobId && ["pending", "downloading"].includes(job.status))
-          .map((job) => String(job.upgradeForJobId)),
-      );
-      const nextJobs = (Array.isArray(allJobs) ? allJobs : [])
-          .filter((job) => isMissingAurralJob(job) || isCutoffUnmetAurralJob(job))
-          .map((job) => ({ ...job, upgradeQueued: upgradeJobIds.has(String(job.id)) }))
-          .sort(sortMissingJobs);
-      setJobs(nextJobs);
-      const jobsByKey = new Map(nextJobs.map((job) => [getMissingJobKey(job), job]));
-      setActionStates((current) => {
-        const next = {};
-        for (const [id, state] of Object.entries(current)) {
-          if (state === "working") {
-            next[id] = state;
-            continue;
-          }
-          if (jobsByKey.get(id)?.upgradeQueued) next[id] = "queued";
-        }
-        for (const job of nextJobs) {
-          if (job.upgradeQueued) next[getMissingJobKey(job)] = "queued";
-        }
-        return next;
-      });
-      setPlaylistInfo(toPlaylistInfo(status));
-    } catch (requestError) {
-      setError(
-          requestError.response?.data?.message ||
-          requestError.response?.data?.error ||
-          requestError.message ||
-          "Failed to load wanted tracks",
-      );
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    loadJobs();
-  }, [loadJobs]);
+    const jobsByKey = new Map(jobs.map((job) => [getMissingJobKey(job), job]));
+    setActionStates((current) => {
+      const next = {};
+      for (const [id, state] of Object.entries(current)) {
+        if (state === "working") next[id] = state;
+        else if (jobsByKey.get(id)?.upgradeQueued) next[id] = "queued";
+      }
+      for (const job of jobs) {
+        if (job.upgradeQueued) next[getMissingJobKey(job)] = "queued";
+      }
+      return next;
+    });
+  }, [jobs]);
+
+  const loadJobs = useCallback(async () => {
+    await Promise.all([jobsQuery.refetch(), statusQuery.fetchStatus()]);
+  }, [jobsQuery, statusQuery]);
 
   const visibleJobs = useMemo(() => {
     const query = filterValue.trim().toLocaleLowerCase();
@@ -235,7 +232,9 @@ export default function ActivityMissingPage() {
           ? reSearchSharedPlaylistTrack
           : reSearchFlowTrack;
         await reSearch(job.playlistType, job.id);
-        setJobs((current) => current.filter((entry) => getMissingJobKey(entry) !== id));
+        queryClient.setQueryData(jobsQueryKey, (current) =>
+          (Array.isArray(current) ? current : []).filter((entry) => getMissingJobKey(entry) !== id),
+        );
         setActionStates((current) => {
           const next = { ...current };
           delete next[id];
@@ -279,7 +278,7 @@ export default function ActivityMissingPage() {
             : "No missing tracks to re-search",
         );
       }
-      await loadJobs({ silent: true });
+      await loadJobs();
     } catch (requestError) {
       showError(
         requestError.response?.data?.message ||

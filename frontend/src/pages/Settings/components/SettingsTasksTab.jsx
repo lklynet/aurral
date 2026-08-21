@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { getSettingsTasks, clearSettingsStaleTasks } from "../../../utils/api/endpoints/settings.js";
+import { queryClient, queryKeys } from "../../../queryClient.js";
 import { SettingsArrFieldSet } from "./arr/SettingsArrLayout";
 
 import { AlertCircle, Check, Clock, Loader2, XCircle } from "lucide-react";
@@ -409,39 +411,31 @@ function QueueTable({ queue = [], loading = false }) {
 }
 
 export function SettingsTasksTab({ showError, showSuccess }) {
-  const [tasks, setTasks] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
-  const [loadError, setLoadError] = useState(null);
   const [showAllWorkers, setShowAllWorkers] = useState(false);
-  const refreshInFlightRef = useRef(false);
-
-  const refreshTasks = useCallback(async () => {
-    if (refreshInFlightRef.current) return;
-    refreshInFlightRef.current = true;
-    try {
-      const result = await getSettingsTasks();
-      setTasks(result);
-      setLoadError(null);
-    } catch (error) {
-      const message =
-        error.response?.data?.message ||
-        error.response?.data?.error ||
-        error.message ||
-        "Failed to load tasks";
-      setLoadError(message);
-    } finally {
-      refreshInFlightRef.current = false;
-      setLoading(false);
-    }
-  }, []);
+  const tasksQuery = useQuery({
+    queryKey: queryKeys.settingsTasks,
+    queryFn: ({ signal }) => getSettingsTasks({ signal }),
+    staleTime: 0,
+    refetchInterval: POLL_INTERVAL_MS,
+    refetchIntervalInBackground: false,
+  });
+  const tasks = tasksQuery.data;
+  const loading = tasksQuery.isPending || tasksQuery.isFetching;
+  const loadError =
+    tasksQuery.error?.response?.data?.message ||
+    tasksQuery.error?.response?.data?.error ||
+    tasksQuery.error?.message ||
+    null;
+  const clearMutation = useMutation({
+    mutationFn: clearSettingsStaleTasks,
+    onSuccess: (result) => queryClient.setQueryData(queryKeys.settingsTasks, result.tasks || null),
+  });
 
   const clearStaleJobs = useCallback(async () => {
     setClearing(true);
     try {
-      const result = await clearSettingsStaleTasks();
-      setTasks(result.tasks || null);
-      setLoadError(null);
+      const result = await clearMutation.mutateAsync();
       const cleared = Number(result.cleared || 0);
       if (cleared > 0) {
         showSuccess?.(`Cleared ${cleared} stuck job${cleared === 1 ? "" : "s"}.`);
@@ -454,26 +448,11 @@ export function SettingsTasksTab({ showError, showSuccess }) {
         error.response?.data?.error ||
         error.message ||
         "Failed to clear stuck jobs";
-      setLoadError(message);
       showError(message);
     } finally {
       setClearing(false);
     }
-  }, [showError, showSuccess]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const poll = async () => {
-      if (cancelled) return;
-      await refreshTasks();
-    };
-    poll();
-    const interval = window.setInterval(poll, POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [refreshTasks]);
+  }, [clearMutation, showError, showSuccess]);
 
   const idleWorkerCount = useMemo(() => {
     const workerRows = tasks?.workers || [];

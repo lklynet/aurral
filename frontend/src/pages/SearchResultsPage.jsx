@@ -29,6 +29,7 @@ import { useToast } from "../contexts/ToastContext";
 import { allReleaseTypes } from "./ArtistDetails/constants";
 import { readReleaseListViewMode, writeReleaseListViewMode } from "./ArtistDetails/utils";
 import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
+import { queryClient, queryKeys } from "../queryClient.js";
 import { useSharedPlaylists } from "../hooks/useSharedPlaylists";
 import { getArtistRecordId } from "../utils/artistTaste";
 import { getAlbumAddButtonLabel, isAlbumCompleteInLibrary, shouldTriggerAlbumSearch } from "../utils/albumAddAction";
@@ -177,6 +178,15 @@ function SearchResultsPage() {
   const { lookup: artistFeedbackLookup, submitFeedback } = useArtistTasteFeedback();
   const canAddArtist = hasPermission("addArtist");
   const canAddAlbum = hasPermission("addAlbum");
+  const fetchSearchDiscovery = useCallback(
+    ({ offset = 0, limit } = {}) =>
+      queryClient.fetchQuery({
+        queryKey: queryKeys.searchDiscovery(normalizedType, offset, limit),
+        queryFn: ({ signal }) => getDiscovery({ offset, limit, signal }),
+        staleTime: 30_000,
+      }),
+    [normalizedType],
+  );
 
   const updateAlbumSort = useCallback(
     (nextSort) => {
@@ -252,7 +262,7 @@ function SearchResultsPage() {
         setError(null);
         try {
           const isRecommended = normalizedType === "recommended";
-          const data = await getDiscovery();
+          const data = await fetchSearchDiscovery();
           const list =
             isRecommended ? data.recommendations || [] : data.globalTop || [];
           if (isRecommended) {
@@ -383,7 +393,7 @@ function SearchResultsPage() {
     return () => {
       cancelled = true;
     };
-  }, [trimmedQuery, normalizedType, isAlbumSearch, isTagSearch, isUnifiedSearch, albumSort]);
+  }, [trimmedQuery, normalizedType, isAlbumSearch, isTagSearch, isUnifiedSearch, albumSort, fetchSearchDiscovery]);
 
   useEffect(() => {
     if (!isUnifiedSearch || !unifiedResults) return undefined;
@@ -854,7 +864,7 @@ function SearchResultsPage() {
     if (normalizedType === "recommended") {
       setLoadingMore(true);
       try {
-        const data = await getDiscovery({ offset: results.length, limit: PAGE_SIZE });
+        const data = await fetchSearchDiscovery({ offset: results.length, limit: PAGE_SIZE });
         const newItems = data.recommendations || [];
         setResults((prev) => [...prev, ...newItems]);
         setSearchTotalCount(data.recommendationCount ?? 0);
@@ -929,6 +939,7 @@ function SearchResultsPage() {
     trimmedQuery,
     visibleCount,
     albumSort,
+    fetchSearchDiscovery,
   ]);
 
   const onSentinel = useCallback(

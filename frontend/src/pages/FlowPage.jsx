@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Check, Loader2, Play, FilePlus2, Download, Trash2, Search, RefreshCw, ClipboardCopy, ListMusic } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -66,6 +67,7 @@ import { FlowEmptyState } from "./flows/flowComponents/FlowEmptyState.jsx";
 import { ConfirmModal } from "./flows/flowComponents/ConfirmModal.jsx";
 import { MoreMenu } from "./flows/flowComponents/MoreMenu.jsx";
 import { getApiErrorMessage } from "./onboardingUtils.jsx";
+import { queryClient, queryKeys } from "../queryClient.js";
 import {
   NEW_FLOW_TEMPLATE,
   buildFlowFromForm,
@@ -164,6 +166,14 @@ const playlistTrackFavoriteId = (entry, track) => {
   return `${kind}:${encodeURIComponent(`${entry.id}:${track.id}`)}`;
 };
 
+const normalizeFlowJobs = (jobs) =>
+  (Array.isArray(jobs) ? jobs : []).map((job) => ({
+    ...job,
+    albumName: job?.albumName || null,
+    reason: job?.reason || null,
+    streamUrl: job?.status === "done" && job?.id ? getFlowTrackStreamUrl(job.id) : null,
+  }));
+
 function FlowPage({ mode = "all" }) {
   const fixedLibraryFilter = mode === "flows" ? "flows" : mode === "playlists" ? "playlists" : null;
   useDocumentTitle(mode === "flows" ? "Flows" : "Playlists");
@@ -211,10 +221,7 @@ function FlowPage({ mode = "all" }) {
   const [savingToPlaylistId, setSavingToPlaylistId] = useState(null);
   const [deletingTrackId, setDeletingTrackId] = useState(null);
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
-  const [selectedTracks, setSelectedTracks] = useState([]);
   const [trackArtworkByAlbumMbid, setTrackArtworkByAlbumMbid] = useState({});
-  const [selectedTracksLoading, setSelectedTracksLoading] = useState(false);
-  const [selectedTracksError, setSelectedTracksError] = useState("");
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [isCreatePlaylistOpen, setIsCreatePlaylistOpen] = useState(false);
   const [creatingPlaylist, setCreatingPlaylist] = useState(false);
@@ -228,6 +235,22 @@ function FlowPage({ mode = "all" }) {
   const playlistsLoading = false;
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
+  const selectedTracksQuery = useQuery({
+    queryKey: queryKeys.playlistJobs(selectedId),
+    queryFn: ({ signal }) =>
+      getFlowJobs(selectedId, null, { signal }).then(normalizeFlowJobs),
+    enabled: Boolean(selectedId),
+    staleTime: 15_000,
+  });
+  const selectedTracks = useMemo(
+    () => selectedTracksQuery.data || [],
+    [selectedTracksQuery.data],
+  );
+  const selectedTracksLoading = selectedTracksQuery.isPending || selectedTracksQuery.isFetching;
+  const selectedTracksError =
+    selectedTracksQuery.error?.response?.data?.message ||
+    selectedTracksQuery.error?.message ||
+    "";
   const disabledFlowSources = status?.capabilities?.unavailableSources || {};
   const canCreateGeneratedFlow = Object.keys(disabledFlowSources).length === 0;
 
@@ -460,31 +483,20 @@ function FlowPage({ mode = "all" }) {
   };
 
   const fetchFlowTracks = useCallback(
-    async (flowId, { showSpinner = true, signal } = {}) => {
-      if (!flowId) return;
-      if (showSpinner) {
-        setSelectedTracksLoading(true);
-      }
-      setSelectedTracksError("");
+    async (flowId, { signal } = {}) => {
+      if (!flowId) return [];
       try {
-        const jobs = await getFlowJobs(flowId, null, { signal });
-        if (signal?.aborted) return;
-        const normalized = (Array.isArray(jobs) ? jobs : []).map((job) => ({
-          ...job,
-          albumName: job?.albumName || null,
-          reason: job?.reason || null,
-          streamUrl: job?.status === "done" && job?.id ? getFlowTrackStreamUrl(job.id) : null,
-        }));
-        setSelectedTracks(normalized);
+        return await queryClient.fetchQuery({
+          queryKey: queryKeys.playlistJobs(flowId),
+          queryFn: ({ signal: querySignal }) =>
+            getFlowJobs(flowId, null, { signal: signal || querySignal }).then(normalizeFlowJobs),
+          staleTime: 0,
+        });
       } catch (err) {
-        if (signal?.aborted) return;
+        if (signal?.aborted) return [];
         const message = err.response?.data?.message || err.message || "Failed to load tracks";
-        setSelectedTracksError(message);
         showError(message);
-      } finally {
-        if (showSpinner && !signal?.aborted) {
-          setSelectedTracksLoading(false);
-        }
+        return [];
       }
     },
     [showError],
@@ -639,21 +651,6 @@ function FlowPage({ mode = "all" }) {
     navigate,
     selectedId,
   ]);
-
-  useEffect(() => {
-    if (!selectedId) {
-      setSelectedTracks([]);
-      setTrackArtworkByAlbumMbid({});
-      setSelectedTracksLoading(false);
-      setSelectedTracksError("");
-      return;
-    }
-    setSelectedTracks([]);
-    setSelectedTracksError("");
-    const controller = new AbortController();
-    fetchFlowTracks(selectedId, { signal: controller.signal });
-    return () => controller.abort();
-  }, [selectedId, fetchFlowTracks]);
 
   useEffect(() => {
     if (selectedEntry?.kind !== "shared") {
@@ -1055,8 +1052,8 @@ function FlowPage({ mode = "all" }) {
       [jobId]: true,
     }));
     if (track.status !== "done" && flowId === selectedId) {
-      setSelectedTracks((prev) =>
-        prev.map((entry) =>
+      queryClient.setQueryData(queryKeys.playlistJobs(flowId), (prev) =>
+        (prev || []).map((entry) =>
           entry?.id === jobId
             ? {
                 ...entry,

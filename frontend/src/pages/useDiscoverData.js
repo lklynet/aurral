@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   addArtistToLibrary,
   getRecentlyAdded,
@@ -27,6 +28,7 @@ import {
 import { useWebSocketChannel } from "../hooks/useWebSocket";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
+import { queryClient, queryKeys } from "../queryClient.js";
 const getArtistId = (artist) => getArtistRecordId(artist);
 
 export function useDiscoverData() {
@@ -43,13 +45,58 @@ export function useDiscoverData() {
     setAppliedZip: setAppliedNearbyZip,
   } = useNearbyShows({ enabled: ticketmasterConfigured });
 
-  const [data, setData] = useState(() => readStoredDiscoveryData(authUser?.id));
-  const [recentlyAdded, setRecentlyAdded] = useState(
-    () => readStoredRecentlyAdded(authUser?.id) || [],
+  const discoveryQueryKey = useMemo(
+    () => queryKeys.discovery(authUser?.id),
+    [authUser?.id],
   );
-  const [recentReleases, setRecentReleases] = useState(
-    () => readStoredRecentReleases(authUser?.id) || [],
+  const discoveryInitial = useMemo(
+    () => readStoredDiscoveryData(authUser?.id) || undefined,
+    [authUser?.id],
   );
+  const discoveryQuery = useQuery({
+    queryKey: discoveryQueryKey,
+    queryFn: async ({ signal }) => {
+      const nextValue = await getDiscovery({ signal });
+      return mergeDiscoveryHttp(queryClient.getQueryData(discoveryQueryKey), nextValue, {
+        allowClearStatus: true,
+      }) || nextValue;
+    },
+    initialData: discoveryInitial,
+    initialDataUpdatedAt: 0,
+    staleTime: 30_000,
+  });
+  const data = discoveryQuery.data || null;
+  const setData = useCallback((updater) => {
+    queryClient.setQueryData(discoveryQueryKey, updater);
+  }, [discoveryQueryKey]);
+  const recentlyAddedInitial = useMemo(
+    () => readStoredRecentlyAdded(authUser?.id) || undefined,
+    [authUser?.id],
+  );
+  const recentReleasesInitial = useMemo(
+    () => readStoredRecentReleases(authUser?.id) || undefined,
+    [authUser?.id],
+  );
+  const recentlyAddedQuery = useQuery({
+    queryKey: queryKeys.recentlyAdded(authUser?.id),
+    queryFn: ({ signal }) => getRecentlyAdded({ signal }),
+    initialData: recentlyAddedInitial,
+    initialDataUpdatedAt: recentlyAddedInitial
+      ? isStoredRecentlyAddedFresh(authUser?.id) ? Date.now() : 0
+      : undefined,
+    staleTime: 5 * 60 * 1000,
+  });
+  const recentReleasesQuery = useQuery({
+    queryKey: queryKeys.recentReleases(authUser?.id),
+    queryFn: ({ signal }) => getRecentReleases({ signal }),
+    initialData: recentReleasesInitial,
+    initialDataUpdatedAt: recentReleasesInitial
+      ? isStoredRecentReleasesFresh(authUser?.id) ? Date.now() : 0
+      : undefined,
+    staleTime: 5 * 60 * 1000,
+  });
+  const recentlyAdded = recentlyAddedQuery.data || [];
+  const recentReleases = recentReleasesQuery.data || [];
   const [pendingRecentReleaseIds, setPendingRecentReleaseIds] = useState({});
   const [error, setError] = useState(null);
   const [libraryLookup, setLibraryLookup] = useState({});
@@ -59,6 +106,14 @@ export function useDiscoverData() {
   const discoveryPollInFlightRef = useRef(false);
   const canAddArtist = hasPermission("addArtist");
   const canAddAlbum = hasPermission("addAlbum");
+
+  useEffect(() => {
+    if (recentlyAddedQuery.data) writeStoredRecentlyAdded(recentlyAddedQuery.data, authUser?.id);
+  }, [authUser?.id, recentlyAddedQuery.data]);
+
+  useEffect(() => {
+    if (recentReleasesQuery.data) writeStoredRecentReleases(recentReleasesQuery.data, authUser?.id);
+  }, [authUser?.id, recentReleasesQuery.data]);
 
   const applyDiscoveryData = useCallback(
     (nextValue, { allowClearStatus = true } = {}) => {
@@ -71,7 +126,7 @@ export function useDiscoverData() {
         return normalizedData;
       });
     },
-    [authUser?.id],
+    [authUser?.id, setData],
   );
 
   const fetchAndApplyDiscovery = useCallback(
@@ -79,15 +134,45 @@ export function useDiscoverData() {
       const clearStatus =
         allowClearStatus ??
         Date.now() - lastDiscoveryWsMessageAtRef.current >= 20000;
-      return getDiscovery(cacheBust)
-        .then((discoveryData) => {
-          applyDiscoveryData(discoveryData, { allowClearStatus: clearStatus });
-          setError(null);
-        })
+      return queryClient.fetchQuery({
+        queryKey: discoveryQueryKey,
+        queryFn: ({ signal }) => getDiscovery({ cacheBust, signal }).then((discoveryData) =>
+          mergeDiscoveryHttp(queryClient.getQueryData(discoveryQueryKey), discoveryData, {
+            allowClearStatus: clearStatus,
+          }) || discoveryData,
+        ),
+        staleTime: cacheBust ? 0 : 30_000,
+      })
+        .then(() => setError(null))
         .catch(console.warn);
     },
-    [applyDiscoveryData],
+    [discoveryQueryKey],
   );
+
+  useEffect(() => {
+    if (data) writeStoredDiscoveryData(data, authUser?.id);
+  }, [authUser?.id, data]);
+
+  useEffect(() => {
+    if (!discoveryQuery.error) return;
+    setError(discoveryQuery.error?.response?.data?.message || "Failed to load discovery data");
+    if (discoveryQuery.data) return;
+    queryClient.setQueryData(discoveryQueryKey, {
+      recommendations: [],
+      globalTop: [],
+      basedOn: [],
+      topTags: [],
+      topGenres: [],
+      fallbackGenres: [],
+      provider: "lastfm",
+      capabilities: null,
+      lastUpdated: null,
+      isUpdating: false,
+      stale: false,
+      discoveryMode: "balanced",
+      configured: false,
+    });
+  }, [authUser?.id, data, discoveryQuery.data, discoveryQuery.error, discoveryQueryKey]);
 
   const { isConnected: isDiscoverySocketConnected } = useWebSocketChannel(
     "discovery",
@@ -321,66 +406,15 @@ export function useDiscoverData() {
   ]);
 
   useEffect(() => {
-    const cachedDiscovery = readStoredDiscoveryData(authUser?.id);
-    if (cachedDiscovery) {
-      setData(cachedDiscovery);
-      setError(null);
-    }
-    getDiscovery()
-      .then((discoveryData) => {
-        applyDiscoveryData(discoveryData, { allowClearStatus: true });
-        setError(null);
-      })
-      .catch((err) => {
-        if (cachedDiscovery) return;
-        setError(
-          err.response?.data?.message || "Failed to load discovery data",
-        );
-        setData({
-          recommendations: [],
-          globalTop: [],
-          basedOn: [],
-          topTags: [],
-          topGenres: [],
-          fallbackGenres: [],
-          provider: "lastfm",
-          capabilities: null,
-          lastUpdated: null,
-          isUpdating: false,
-          stale: false,
-          discoveryMode: "balanced",
-          configured: false,
-        });
-      });
+  }, [authUser?.id, applyDiscoveryData]);
 
-    const cachedRecentlyAdded = readStoredRecentlyAdded(authUser?.id);
-    if (cachedRecentlyAdded && isStoredRecentlyAddedFresh(authUser?.id)) {
-      setRecentlyAdded(cachedRecentlyAdded);
-    } else {
-      getRecentlyAdded()
-        .then((items) => {
-          setRecentlyAdded(items);
-          writeStoredRecentlyAdded(items, authUser?.id);
-        })
-        .catch((err) => {
-          showError(err?.message || "Failed to load recently added");
-        });
-    }
+  useEffect(() => {
+    if (recentlyAddedQuery.error) showError(recentlyAddedQuery.error?.message || "Failed to load recently added");
+  }, [recentlyAddedQuery.error, showError]);
 
-    const cachedRecentReleases = readStoredRecentReleases(authUser?.id);
-    if (cachedRecentReleases && isStoredRecentReleasesFresh(authUser?.id)) {
-      setRecentReleases(cachedRecentReleases);
-    } else {
-      getRecentReleases()
-        .then((items) => {
-          setRecentReleases(items);
-          writeStoredRecentReleases(items, authUser?.id);
-        })
-        .catch((err) => {
-          showError(err?.message || "Failed to load recent releases");
-        });
-    }
-  }, [authUser?.id, showError, applyDiscoveryData]);
+  useEffect(() => {
+    if (recentReleasesQuery.error) showError(recentReleasesQuery.error?.message || "Failed to load recent releases");
+  }, [recentReleasesQuery.error, showError]);
 
   useEffect(() => {
     if (bootstrap) {
@@ -487,7 +521,7 @@ export function useDiscoverData() {
       }
       return saved;
     },
-    [authUser?.id, submitFeedback],
+    [authUser?.id, setData, submitFeedback],
   );
 
   return {

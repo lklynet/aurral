@@ -239,7 +239,7 @@ export function useSettingsData(showSuccess, showError, showInfo) {
 
   const refreshHealth = useCallback(async (options) => {
     try {
-      const healthData = await checkHealth();
+      const healthData = await checkHealth({ force: true });
       applyHealthUpdate(healthData, options);
       return healthData;
     } catch {
