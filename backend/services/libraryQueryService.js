@@ -221,20 +221,40 @@ export function getCanonicalArtistMbids({ source = null, availableOnly = false, 
   return new Set(rows.map((row) => row.mbid).filter(Boolean));
 }
 
-export function getCanonicalTrackPath(reference) {
-  const value = String(reference ?? "").trim();
-  if (!value) return null;
-  const selectPath = (condition) => db.prepare(
+export function getCanonicalTrackPath(albumReference, trackReference) {
+  const albumValue = String(albumReference ?? "").trim();
+  const trackValue = String(trackReference ?? "").trim();
+  if (!albumValue || !trackValue) return null;
+
+  const album = /^[1-9]\d*$/.test(albumValue)
+    ? db.prepare("SELECT id FROM library_albums WHERE id = ?").get(albumValue)
+    : db.prepare(
+      `SELECT id FROM library_albums
+       WHERE identity_key = ? OR mbid = ? OR release_group_mbid = ?
+       LIMIT 1`,
+    ).get(albumValue, albumValue, albumValue);
+  const track = /^[1-9]\d*$/.test(trackValue)
+    ? db.prepare("SELECT id FROM library_tracks WHERE id = ?").get(trackValue)
+    : db.prepare(
+      `SELECT id FROM library_tracks
+       WHERE identity_key = ? OR mbid = ?
+       LIMIT 1`,
+    ).get(trackValue, trackValue);
+  if (!album || !track) return null;
+
+  return db.prepare(
     `SELECT media.path
      FROM library_media_files AS media
-     JOIN library_tracks AS track ON track.id = media.track_id
-     WHERE media.available = 1
-       AND ${condition}
-     ORDER BY media.source = 'lidarr' DESC, media.path COLLATE NOCASE
+     JOIN library_album_tracks AS album_track
+       ON album_track.album_id = ? AND album_track.track_id = media.track_id
+     WHERE media.track_id = ?
+       AND media.available = 1
+       AND (media.album_id = ? OR media.album_id IS NULL)
+     ORDER BY media.album_id = ? DESC,
+              media.source = 'lidarr' DESC,
+              media.path COLLATE NOCASE
      LIMIT 1`,
-  ).get(value)?.path || null;
-  if (/^[1-9]\d*$/.test(value)) return selectPath("track.id = ?");
-  return selectPath("track.identity_key = ?") || selectPath("track.mbid = ?");
+  ).get(album.id, track.id, album.id, album.id)?.path || null;
 }
 
 export function getCanonicalLibraryForArtists({

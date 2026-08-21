@@ -51,24 +51,65 @@ async function createAudioFile(root, relativePath) {
   return filePath;
 }
 
-test("getCanonicalTrackPath resolves one indexed track without building the library graph", () => {
+test("getCanonicalTrackPath keeps shared tracks scoped to the requested album", () => {
   const key = `query-track-path-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({
+    identityKey: `${key}:artist`,
+    name: "Query Fixture",
+  });
+  const firstAlbum = upsertLibraryAlbum({
+    identityKey: `${key}:album:first`,
+    artistId: artist.id,
+    title: "First Album",
+  });
+  const secondAlbum = upsertLibraryAlbum({
+    identityKey: `${key}:album:second`,
+    artistId: artist.id,
+    title: "Second Album",
+  });
+  const fallbackAlbum = upsertLibraryAlbum({
+    identityKey: `${key}:album:fallback`,
+    artistId: artist.id,
+    title: "Fallback Album",
+  });
   const track = upsertLibraryTrack({
     identityKey: key,
     mbid: `${key}-mbid`,
     title: "Direct Path",
     artistName: "Query Fixture",
   });
-  const filePath = `/tmp/${key}.flac`;
-  upsertLibraryMediaFile({ trackId: track.id, source: "lidarr", path: filePath });
+  linkLibraryAlbumTrack({ albumId: firstAlbum.id, trackId: track.id });
+  linkLibraryAlbumTrack({ albumId: secondAlbum.id, trackId: track.id });
+  linkLibraryAlbumTrack({ albumId: fallbackAlbum.id, trackId: track.id });
+  const firstPath = `/tmp/${key}-first.flac`;
+  const secondPath = `/tmp/${key}-second.flac`;
+  const fallbackPath = `/tmp/${key}-fallback.flac`;
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: firstAlbum.id,
+    source: "lidarr",
+    path: firstPath,
+  });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: secondAlbum.id,
+    source: "lidarr",
+    path: secondPath,
+  });
 
   try {
-    assert.equal(getCanonicalTrackPath(track.id), filePath);
-    assert.equal(getCanonicalTrackPath(track.identity_key), filePath);
-    assert.equal(getCanonicalTrackPath(track.mbid), filePath);
+    assert.equal(getCanonicalTrackPath(firstAlbum.id, track.id), firstPath);
+    assert.equal(getCanonicalTrackPath(secondAlbum.identity_key, track.mbid), secondPath);
+    assert.equal(getCanonicalTrackPath(fallbackAlbum.id, track.id), null);
+    upsertLibraryMediaFile({ trackId: track.id, source: "aurral", path: fallbackPath });
+    assert.equal(getCanonicalTrackPath(fallbackAlbum.id, track.id), fallbackPath);
+    assert.equal(getCanonicalTrackPath(firstAlbum.id, track.id), firstPath);
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE track_id = ?").run(track.id);
+    db.prepare("DELETE FROM library_album_tracks WHERE track_id = ?").run(track.id);
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_albums WHERE artist_id = ?").run(artist.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   }
 });
 

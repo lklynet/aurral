@@ -102,8 +102,11 @@ const yearOf = (value) => {
 const favoriteId = (kind, entity) =>
   kind + ":" + encodeURIComponent(text(entity?.identityKey));
 
-const firstAvailableFile = (track) =>
-  (track?.files || []).find((file) => file.available) || null;
+const firstAvailableFile = (track, albumId = null) =>
+  (track?.files || []).find((file) => file.available && file.albumId === albumId)
+  || (track?.files || []).find((file) => file.available && file.albumId == null)
+  || (albumId == null ? (track?.files || []).find((file) => file.available) : null)
+  || null;
 
 const EMPTY_LIBRARY = { artists: [], albums: [], tracks: [], genres: [] };
 
@@ -701,7 +704,12 @@ function LibraryPage() {
   }, [setLibrary]);
 
   const getAlbumForTrack = useCallback(
-    (track) => (track?.albums?.[0] ? albumsById.get(String(track.albums[0].albumId)) : null),
+    (track) => {
+      const fileAlbumId = firstAvailableFile(track)?.albumId;
+      const relation = track?.albums?.find((entry) => entry.albumId === fileAlbumId)
+        || track?.albums?.[0];
+      return relation ? albumsById.get(String(relation.albumId)) : null;
+    },
     [albumsById],
   );
 
@@ -1350,7 +1358,7 @@ function LibraryPage() {
     (track) => {
       const album = getAlbumForTrack(track);
       const artist = getArtistForAlbum(album);
-      const file = firstAvailableFile(track);
+      const file = firstAvailableFile(track, album?.id);
       return {
         id: track.id,
         title: track.title,
@@ -1358,9 +1366,9 @@ function LibraryPage() {
         album: album?.title || "Unknown Album",
         src:
           file?.previewUrl ||
-          (file
+          (file && album
             ? buildAuthenticatedApiUrl(
-                "/library/canonical-stream/" + encodeURIComponent(track.id),
+                `/library/canonical-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`,
               )
             : ""),
         streamFormat: file?.format || null,

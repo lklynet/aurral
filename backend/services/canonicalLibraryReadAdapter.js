@@ -176,8 +176,8 @@ export function getCanonicalLibraryReadModelForAlbumReferences({
   );
 }
 
-export function resolveCanonicalTrackPath(reference) {
-  return getCanonicalTrackPath(reference);
+export function resolveCanonicalTrackPath(albumReference, trackReference) {
+  return getCanonicalTrackPath(albumReference, trackReference);
 }
 
 export function findCanonicalArtist(artists, reference) {

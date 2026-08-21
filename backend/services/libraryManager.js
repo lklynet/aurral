@@ -270,7 +270,7 @@ export function buildPlaybackQueueFromCanonicalLibrary({ artists = [], albums = 
         title: track.title || "Unknown Track",
         artist: artist?.name || track.artistName || "Unknown Artist",
         album: album.title || "Unknown Album",
-        streamPath: `/library/file-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`,
+        streamPath: `/library/canonical-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`,
         streamFormat: file.format || null,
         quality: file.quality?.quality?.name || file.quality?.audioFormat || null,
         trackNumber: relation?.trackNumber || 0,

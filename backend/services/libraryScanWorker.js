@@ -43,6 +43,7 @@ export function clearScheduledLibraryScan(jobId = null) {
   if (!("jobId" in registry)) return;
   if (jobId != null && Number(registry.jobId) !== Number(jobId)) return;
   delete registry.jobId;
+  delete registry.includeLidarr;
   setScanRegistry(registry);
 }
 
@@ -67,6 +68,7 @@ export function scheduleLibraryScan({ force = false, includeLidarr = true } = {}
 export function claimScheduledLibraryScanJob(jobId) {
   const normalizedJobId = normalizeJobId(jobId);
   if (normalizedJobId == null) return false;
+  const registry = getScanRegistry();
   const scheduledJobId = getScheduledLibraryScanJobId();
   if (scheduledJobId != null && scheduledJobId !== normalizedJobId) {
     if (hasLiveScanJob(scheduledJobId)) return false;
@@ -74,7 +76,8 @@ export function claimScheduledLibraryScanJob(jobId) {
   }
   setScanRegistry({
     jobId: normalizedJobId,
-    includeLidarr: getScanRegistry().includeLidarr === true,
+    includeLidarr:
+      Number(registry.jobId) === normalizedJobId && registry.includeLidarr === true,
   });
   return true;
 }

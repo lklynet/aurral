@@ -154,6 +154,24 @@ test("a full refresh upgrades a pending local-only scan", () => {
   }
 });
 
+test("claiming an unregistered scan does not inherit stale Lidarr mode", () => {
+  const queue = getLibraryScanQueue();
+  clearScheduledLibraryScan();
+  let jobId;
+  try {
+    jobId = scheduleLibraryScan({ includeLidarr: false });
+    dbOps.setJSONSetting("pendingLibraryScanJob", { includeLidarr: true });
+    assert.equal(claimScheduledLibraryScanJob(jobId), true);
+    assert.deepEqual(dbOps.getJSONSetting("pendingLibraryScanJob"), {
+      jobId,
+      includeLidarr: false,
+    });
+  } finally {
+    if (jobId) queue.cancel(jobId);
+    clearScheduledLibraryScan();
+  }
+});
+
 test("terminal library scan outcomes clear the persistent registry", () => {
   const queue = getLibraryScanQueue();
   let successJob;
