@@ -423,6 +423,7 @@ function LibraryPage() {
         if (refreshAttemptRef.current !== attempt) return;
         if (status.status === "completed") {
           clearCanonicalLibraryPageCache();
+          queryClient.removeQueries({ queryKey: queryKeys.libraryAlbumTracksPrefix });
           void queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
           void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
           showSuccess("Library refreshed");
