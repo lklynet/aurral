@@ -450,6 +450,30 @@ test("refreshes a cached native token after a 401", async () => {
   assert.equal(requestCount, 2);
 });
 
+test("retries native Navidrome requests after a 429", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestCount = 0;
+  globalThis.fetch = async (url) => {
+    const request = new URL(url);
+    if (request.pathname === "/auth/login") return jsonResponse({ token: "native-token" });
+    requestCount += 1;
+    if (requestCount === 1) return new Response(null, {
+      status: 429,
+      headers: { "retry-after": "0" },
+    });
+    return jsonResponse({ ok: true });
+  };
+
+  try {
+    const client = new NavidromeClient("http://navidrome.test", "user", "password");
+    assert.deepEqual(await client._nativeRequest("GET", "/api/library"), { ok: true });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(requestCount, 2);
+});
+
 test("refreshes a cached native token after a 401 during artwork upload", async () => {
   const originalFetch = globalThis.fetch;
   let loginCount = 0;
