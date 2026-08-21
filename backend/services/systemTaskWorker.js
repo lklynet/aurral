@@ -99,6 +99,7 @@ async function processSystemTask(payload = {}) {
         legacyFlowResult = await migrateLegacyFlowFolder();
       } catch (error) {
         console.error(`[Playlists] Legacy flow folder migration failed: ${error.message}`);
+        throw error;
       }
       if (legacyFlowResult.migrated > 0) {
         console.log(`[Playlists] Migrated ${legacyFlowResult.migrated} legacy flow file(s)`);
@@ -112,6 +113,7 @@ async function processSystemTask(payload = {}) {
         result = await migrateAurralDownloadFolder();
       } catch (error) {
         console.error(`[Playlists] Aurral download folder migration failed: ${error.message}`);
+        throw error;
       }
       const flowMigrated = result.flowMigrated || 0;
       const permanentMigrated = (result.migrated || 0) - flowMigrated;
@@ -120,10 +122,16 @@ async function processSystemTask(payload = {}) {
           `[Playlists] Migrated ${permanentMigrated} permanent track(s) and ${flowMigrated} flow track(s), and removed ${result.removed} unkept flow file(s)`,
         );
       }
+      if (result.repaired > 0) {
+        console.log(`[Playlists] Repaired ${result.repaired} migrated tracker path(s)`);
+      }
       if (result.retained > 0 || result.failed > 0) {
         console.warn(
           `[Playlists] Retained ${result.retained} item(s) and failed ${result.failed} migration item(s) for review`,
         );
+      }
+      if (legacyFlowResult.failed > 0 || result.status === "blocked" || result.failed > 0) {
+        throw new Error("Playlist filesystem migration requires review before playlist rebuild");
       }
       const metadataRepair = await repairYtdlpMetadata(
         trackerModule.downloadTracker.getAll(),

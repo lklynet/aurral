@@ -80,6 +80,13 @@ function saveMigrationState(state) {
   dbOps.setJSONSetting(AURRAL_DOWNLOAD_FOLDER_MIGRATION_SETTING, state);
 }
 
+function pathMatches(candidate, expected, rootPath) {
+  const resolved = path.resolve(String(candidate || ""));
+  const remapped = remapLegacyPath(resolved, rootPath);
+  const expectedPath = path.resolve(expected);
+  return resolved === expectedPath || remapped === expectedPath;
+}
+
 function pathsOverlap(left, right) {
   const a = path.resolve(left);
   const b = path.resolve(right);
@@ -337,8 +344,47 @@ export async function migrateLegacyFlowFolder(options = {}) {
 
 function updateJobPaths(jobs, destination) {
   for (const job of jobs) {
-    downloadTracker.updateFinalPath(job.id, destination);
+    if (!downloadTracker.updateFinalPath(job.id, destination)) {
+      throw new Error(`Could not update tracker path for job ${job.id}`);
+    }
+    const updated = downloadTracker.getJob(job.id);
+    if (
+      !updated
+      || updated.status !== "done"
+      || path.resolve(String(updated.finalPath || "")) !== path.resolve(destination)
+    ) {
+      throw new Error(`Tracker path was not persisted for job ${job.id}`);
+    }
   }
+}
+
+async function repairCompletedMigrationState(state, rootPath, jobs, logger) {
+  const result = { repaired: 0, failed: 0, failures: [] };
+  for (const [sourcePath, item] of Object.entries(state.items)) {
+    if (item?.status !== "complete" || !item.destination) continue;
+    const destination = path.resolve(String(item.destination));
+    const destinationStat = await fs.stat(destination).catch(() => null);
+    if (!isPathInsideRoot(destination, rootPath) || !destinationStat?.isFile()) {
+      const reason = "completed migration destination is missing";
+      retainItem(state, sourcePath, reason, logger);
+      result.failed += 1;
+      result.failures.push({ sourcePath, reason });
+      continue;
+    }
+    const staleJobs = jobs.filter(
+      (job) => job?.status === "done" && pathMatches(job.finalPath, sourcePath, rootPath),
+    );
+    if (!staleJobs.length) continue;
+    try {
+      updateJobPaths(staleJobs, destination);
+      result.repaired += staleJobs.length;
+    } catch (error) {
+      retainItem(state, sourcePath, error.message, logger);
+      result.failed += 1;
+      result.failures.push({ sourcePath, reason: error.message });
+    }
+  }
+  return result;
 }
 
 async function resolveIdentity(sourcePath, rootPath, playlistId, jobs, metadataReader) {
@@ -392,6 +438,21 @@ async function defaultIndexDestination({ rootPath, targetPath, metadataReader })
   return media;
 }
 
+async function defaultIndexDestinations({ rootPath, entries, metadataReader }) {
+  await scanMusicRoot({
+    rootPath,
+    source: "aurral",
+    filePaths: entries.map((entry) => entry.targetPath),
+    metadataReader,
+  });
+  const indexed = new Map();
+  for (const entry of entries) {
+    const media = getLibraryMediaFile({ source: "aurral", path: entry.targetPath });
+    if (media?.available) indexed.set(entry.targetPath, media);
+  }
+  return indexed;
+}
+
 function itemState(state, sourcePath) {
   return state.items[sourcePath] || {};
 }
@@ -405,6 +466,40 @@ function retainItem(state, sourcePath, reason, logger) {
   };
   saveMigrationState(state);
   log(logger, "warn", `[AurralMigration] Retained ${sourcePath}: ${reason}`);
+}
+
+async function commitIndexedMigrationItem({
+  state,
+  sourcePath,
+  committedPath,
+  jobs,
+  identity,
+  rootPath,
+}) {
+  state.items[sourcePath] = {
+    ...itemState(state, sourcePath),
+    status: "indexed",
+    destination: committedPath,
+    identity,
+    updatedAt: Date.now(),
+  };
+  saveMigrationState(state);
+  updateJobPaths(jobs, committedPath);
+  state.items[sourcePath] = {
+    ...itemState(state, sourcePath),
+    status: "referenced",
+    updatedAt: Date.now(),
+  };
+  saveMigrationState(state);
+  if (path.resolve(sourcePath) !== path.resolve(committedPath)) {
+    await removeSource(sourcePath, rootPath);
+  }
+  state.items[sourcePath] = {
+    ...itemState(state, sourcePath),
+    status: "complete",
+    updatedAt: Date.now(),
+  };
+  saveMigrationState(state);
 }
 
 function resolveOwnership(sourcePath, rootPath, jobs, knownIds) {
@@ -434,20 +529,24 @@ export async function migrateAurralDownloadFolder(options = {}) {
   }
 
   const state = loadMigrationState(rootPath);
+  const jobs = downloadTracker.getAll().filter((job) => job?.status === "done");
   if (state.status === "complete") {
+    const repair = await repairCompletedMigrationState(state, rootPath, jobs, logger);
+    if (repair.failed > 0) state.status = "needs-review";
+    if (repair.repaired > 0 || repair.failed > 0) saveMigrationState(state);
     return {
-      status: "complete",
+      status: state.status,
       rootPath,
       scanned: 0,
       migrated: 0,
       flowMigrated: 0,
       removed: 0,
       retained: 0,
-      failed: 0,
-      failures: [],
+      repaired: repair.repaired,
+      failed: repair.failed,
+      failures: repair.failures,
     };
   }
-  const jobs = downloadTracker.getAll().filter((job) => job?.status === "done");
   const knownIds = new Set([
     ...jobs.map(jobPlaylistId).filter(Boolean),
     ...flowPlaylistConfig.getFlows().map((flow) => String(flow.id)),
@@ -465,7 +564,9 @@ export async function migrateAurralDownloadFolder(options = {}) {
   }
 
   const metadataReader = options.metadataReader || parseFile;
+  const useBatchIndex = !options.indexDestination;
   const indexDestination = options.indexDestination || defaultIndexDestination;
+  const pendingPermanent = [];
   const result = {
     status: "complete",
     rootPath,
@@ -575,6 +676,15 @@ export async function migrateAurralDownloadFolder(options = {}) {
         };
         saveMigrationState(state);
       }
+      if (!flow && useBatchIndex) {
+        pendingPermanent.push({
+          sourcePath,
+          targetPath: committedPath,
+          jobs: jobsForSource,
+          identity,
+        });
+        continue;
+      }
       if (!flow) {
         await indexDestination({
           rootPath,
@@ -589,30 +699,14 @@ export async function migrateAurralDownloadFolder(options = {}) {
           throw new Error("Flow destination verification failed");
         }
       }
-      state.items[sourcePath] = {
-        ...itemState(state, sourcePath),
-        status: "indexed",
-        destination: committedPath,
+      await commitIndexedMigrationItem({
+        state,
+        sourcePath,
+        committedPath,
+        jobs: jobsForSource,
         identity,
-        updatedAt: Date.now(),
-      };
-      saveMigrationState(state);
-      updateJobPaths(jobsForSource, committedPath);
-      state.items[sourcePath] = {
-        ...itemState(state, sourcePath),
-        status: "referenced",
-        updatedAt: Date.now(),
-      };
-      saveMigrationState(state);
-      if (path.resolve(sourcePath) !== path.resolve(committedPath)) {
-        await removeSource(sourcePath, rootPath);
-      }
-      state.items[sourcePath] = {
-        ...itemState(state, sourcePath),
-        status: "complete",
-        updatedAt: Date.now(),
-      };
-      saveMigrationState(state);
+        rootPath,
+      });
       result.migrated += 1;
       if (flow) result.flowMigrated += 1;
     } catch (error) {
@@ -622,11 +716,47 @@ export async function migrateAurralDownloadFolder(options = {}) {
     }
   }
 
+  if (pendingPermanent.length) {
+    let indexed = new Map();
+    let batchError = null;
+    try {
+      indexed = await defaultIndexDestinations({
+        rootPath,
+        entries: pendingPermanent,
+        metadataReader,
+      });
+    } catch (error) {
+      batchError = error;
+    }
+    for (const entry of pendingPermanent) {
+      try {
+        if (batchError) throw batchError;
+        if (!indexed.has(entry.targetPath)) {
+          throw new Error("Destination was not indexed as available Aurral media");
+        }
+        await commitIndexedMigrationItem({
+          state,
+          sourcePath: entry.sourcePath,
+          committedPath: entry.targetPath,
+          jobs: entry.jobs,
+          identity: entry.identity,
+          rootPath,
+        });
+        result.migrated += 1;
+      } catch (error) {
+        retainItem(state, entry.sourcePath, `migration verification failed: ${error.message}`, logger);
+        result.failed += 1;
+        result.failures.push({ sourcePath: entry.sourcePath, reason: error.message });
+      }
+    }
+  }
+
   for (const [sourcePath, item] of Object.entries(state.items)) {
     if (item?.status !== "referenced" || fileSet.has(sourcePath)) continue;
     state.items[sourcePath] = { ...item, status: "complete", updatedAt: Date.now() };
   }
-  state.status = result.failed || result.retained ? "needs-review" : "complete";
+  const stateNeedsReview = Object.values(state.items).some((item) => item?.status === "retained");
+  state.status = result.failed || result.retained || stateNeedsReview ? "needs-review" : "complete";
   result.status = state.status;
   state.lastResult = {
     scanned: result.scanned,

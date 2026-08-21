@@ -282,6 +282,48 @@ test("matches Navidrome-relative paths under the configured library root", async
   assert.equal(musicSong.id, "music-relative-match");
 });
 
+test("waits for and verifies a Navidrome library update", async () => {
+  const client = new NavidromeClient("http://navidrome.test", "user", "password");
+  let libraryPath = "/data/downloads/aurral-weekly-flow";
+  const calls = [];
+  client._nativeRequest = async (method, requestPath, body) => {
+    calls.push({ method, requestPath, body });
+    if (method === "GET") {
+      return [{ id: "aurral-library", name: "Aurral Weekly Flow", path: libraryPath }];
+    }
+    if (method === "PUT") {
+      libraryPath = body.path;
+      return { id: "aurral-library", name: body.name, path: body.path };
+    }
+    throw new Error(`Unexpected Navidrome request: ${method} ${requestPath}`);
+  };
+
+  const library = await client.ensureWeeklyFlowLibrary("/data/downloads");
+
+  assert.equal(library.id, "aurral-library");
+  assert.equal(library.path, "/data/downloads");
+  assert.deepEqual(calls.map(({ method, requestPath }) => [method, requestPath]), [
+    ["GET", "/api/library"],
+    ["PUT", "/api/library/aurral-library"],
+    ["GET", "/api/library"],
+  ]);
+});
+
+test("fails when Navidrome keeps the old library path", async () => {
+  const client = new NavidromeClient("http://navidrome.test", "user", "password");
+  client._nativeRequest = async (method) => {
+    if (method === "GET") {
+      return [{ id: "aurral-library", name: "Aurral Playlists", path: "/data/downloads/aurral-weekly-flow" }];
+    }
+    return { ok: true };
+  };
+
+  await assert.rejects(
+    client.ensureWeeklyFlowLibrary("/data/downloads"),
+    /Navidrome library path verification failed/,
+  );
+});
+
 test("prefers an exact absolute path over an earlier relative match", async () => {
   const client = new NavidromeClient("http://navidrome.test", "user", "password");
   client._libraryPaths = ["/data/music"];

@@ -396,6 +396,30 @@ export class NavidromeClient {
     const normalizedPath = normalizeLibraryPath(libraryPath);
     this._libraryPaths = [normalizedPath];
     try {
+      const verifyLibrary = async (libraryId) => {
+        const refreshed = await this.getLibraries();
+        const list = Array.isArray(refreshed) ? refreshed : [];
+        const byId = libraryId == null
+          ? null
+          : list.find((library) => String(library?.id || "") === String(libraryId));
+        const verified = byId || list.find(
+          (library) => normalizeLibraryPath(library?.path) === normalizedPath,
+        );
+        if (!verified || normalizeLibraryPath(verified.path) !== normalizedPath) {
+          throw new Error(
+            `Navidrome library path verification failed: expected ${normalizedPath}`,
+          );
+        }
+        this._libraryPaths = [...new Set([
+          normalizedPath,
+          ...list.map((library) => normalizeLibraryPath(library.path)).filter(Boolean),
+        ])];
+        return verified;
+      };
+      const updateAndVerify = async (library) => {
+        await this.updateLibrary(library.id, library);
+        return verifyLibrary(library.id);
+      };
       const libs = await this.getLibraries();
       const list = Array.isArray(libs) ? libs : [];
       this._libraryPaths = [...new Set([
@@ -405,7 +429,7 @@ export class NavidromeClient {
       const byPath = list.find((lib) => normalizeLibraryPath(lib.path) === normalizedPath);
       if (byPath) {
         if (byPath.name !== name) {
-          return this.updateLibrary(byPath.id, {
+          return updateAndVerify({
             ...byPath,
             name,
             path: normalizedPath,
@@ -417,7 +441,7 @@ export class NavidromeClient {
       const byName = list.find((lib) => lib.name === name || LEGACY_LIBRARY_NAMES.has(lib.name));
       if (byName) {
         if (normalizeLibraryPath(byName.path) !== normalizedPath) {
-          return this.updateLibrary(byName.id, {
+          return updateAndVerify({
             ...byName,
             name,
             path: normalizedPath,
@@ -428,14 +452,15 @@ export class NavidromeClient {
 
       const legacy = list.find((lib) => isLegacyPlaylistLibraryPath(lib.path));
       if (legacy) {
-        return this.updateLibrary(legacy.id, {
+        return updateAndVerify({
           ...legacy,
           name,
           path: normalizedPath,
         });
       }
 
-      return this.createLibrary(name, normalizedPath);
+      const created = await this.createLibrary(name, normalizedPath);
+      return verifyLibrary(created?.id);
     } catch (err) {
       const message = err?.response?.data?.error || err.message;
       if (err?.response?.status === 429) {
@@ -443,7 +468,7 @@ export class NavidromeClient {
       } else {
         logger.warn("navidrome", "Navidrome library setup failed", { message });
       }
-      return null;
+      throw err;
     }
   }
 }
