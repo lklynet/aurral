@@ -26,6 +26,7 @@ const invalidateLibraryQueries = (mbid = null, artistId = null) => {
     queryKeys.libraryCanonicalPrefix,
     queryKeys.libraryViewPrefix,
     queryKeys.libraryAlbumsPrefix,
+    queryKeys.libraryAlbumLookupPrefix,
   ];
   if (mbid) {
     queryKeysToInvalidate.push(
@@ -191,6 +192,8 @@ export function useArtistDetailsLibrary({
   });
   const requestAlbumMutation = useMutation({
     mutationFn: requestAlbumFromSearch,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.libraryAlbumLookupPrefix }),
   });
   const updateAlbumMutation = useMutation({
     mutationFn: ({ id, data }) => updateLibraryAlbum(id, data),

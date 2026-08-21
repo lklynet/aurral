@@ -197,27 +197,27 @@ const getLidarrResourceConfig = (settings) => {
   };
 };
 
-const buildLidarrQueries = ({ url, apiKey }) => [
+const buildLidarrQueries = ({ url, apiKey, credentialsRevision }) => [
   {
-    queryKey: queryKeys.lidarrRootFolders(url),
+    queryKey: queryKeys.lidarrRootFolders(url, credentialsRevision),
     queryFn: ({ signal }) => getLidarrRootFolders(url, apiKey, { signal }),
     enabled: Boolean(url && apiKey),
     staleTime: 60_000,
   },
   {
-    queryKey: queryKeys.lidarrProfiles(url),
+    queryKey: queryKeys.lidarrProfiles(url, credentialsRevision),
     queryFn: ({ signal }) => getLidarrProfiles(url, apiKey, { signal }),
     enabled: Boolean(url && apiKey),
     staleTime: 60_000,
   },
   {
-    queryKey: queryKeys.lidarrMetadataProfiles(url),
+    queryKey: queryKeys.lidarrMetadataProfiles(url, credentialsRevision),
     queryFn: ({ signal }) => getLidarrMetadataProfiles(url, apiKey, { signal }),
     enabled: Boolean(url && apiKey),
     staleTime: 60_000,
   },
   {
-    queryKey: queryKeys.lidarrTags(url),
+    queryKey: queryKeys.lidarrTags(url, credentialsRevision),
     queryFn: ({ signal }) => getLidarrTags(url, apiKey, { signal }),
     enabled: Boolean(url && apiKey),
     staleTime: 60_000,
@@ -247,7 +247,25 @@ export function useSettingsData(showSuccess, showError, showInfo) {
   const persistSettingsRef = useRef(null);
   const settingsActivationTimerRef = useRef(null);
   const mountedRef = useRef(true);
-  const [lidarrResourceConfig, setLidarrResourceConfig] = useState({ url: "", apiKey: "" });
+  const lidarrResourceConfigRef = useRef({ url: "", apiKey: "", credentialsRevision: 0 });
+  const [lidarrResourceConfig, setLidarrResourceConfig] = useState(
+    lidarrResourceConfigRef.current,
+  );
+
+  const updateLidarrResourceConfig = useCallback((config) => {
+    const previous = lidarrResourceConfigRef.current;
+    const url = config.url || "";
+    const apiKey = config.apiKey || "";
+    if (previous.url === url && previous.apiKey === apiKey) return previous;
+    const next = {
+      url,
+      apiKey,
+      credentialsRevision: previous.credentialsRevision + 1,
+    };
+    lidarrResourceConfigRef.current = next;
+    setLidarrResourceConfig(next);
+    return next;
+  }, []);
 
   const settingsQuery = useQuery({
     queryKey: queryKeys.appSettings,
@@ -361,7 +379,7 @@ export function useSettingsData(showSuccess, showError, showInfo) {
       const savedSettings = settingsResult.data;
       const updatedSettings = normalizeSettings(savedSettings);
       const savedSnapshot = structuredClone(updatedSettings);
-      setLidarrResourceConfig(getLidarrResourceConfig(updatedSettings));
+      updateLidarrResourceConfig(getLidarrResourceConfig(updatedSettings));
       settingsRef.current = updatedSettings;
       originalSettingsRef.current = savedSnapshot;
       setSettingsState(updatedSettings);
@@ -378,18 +396,19 @@ export function useSettingsData(showSuccess, showError, showInfo) {
         if (changed) persistSettingsRef.current?.(settingsRef.current);
       }, 600);
     } catch {}
-  }, [refetchPlayback, refetchSettings, refreshHealth]);
+  }, [refetchPlayback, refetchSettings, refreshHealth, updateLidarrResourceConfig]);
 
   const refreshLidarrResources = useCallback(async (config = null) => {
-    const nextConfig = config || getLidarrResourceConfig(settingsRef.current);
-    setLidarrResourceConfig(nextConfig);
+    const nextConfig = updateLidarrResourceConfig(
+      config || getLidarrResourceConfig(settingsRef.current),
+    );
     if (!nextConfig.url || !nextConfig.apiKey) return [];
     return Promise.all(
       buildLidarrQueries(nextConfig).map(({ queryKey, queryFn }) =>
         queryClient.fetchQuery({ queryKey, queryFn, staleTime: 0 }),
       ),
     );
-  }, []);
+  }, [updateLidarrResourceConfig]);
 
   useEffect(() => {
     fetchSettings();
@@ -463,6 +482,7 @@ export function useSettingsData(showSuccess, showError, showInfo) {
           const normalizedSettings = normalizeSettings(savedSettings);
           const savedSnapshot = structuredClone(normalizedSettings);
           const isLatestSettings = settingsRef.current === settingsToSave;
+          updateLidarrResourceConfig(getLidarrResourceConfig(normalizedSettings));
 
           originalSettingsRef.current = savedSnapshot;
           if (mountedRef.current) setOriginalSettings(savedSnapshot);
@@ -513,7 +533,7 @@ export function useSettingsData(showSuccess, showError, showInfo) {
         }
       }
     },
-    [refreshHealth, saveSettings, showError],
+    [refreshHealth, saveSettings, showError, updateLidarrResourceConfig],
   );
 
   persistSettingsRef.current = persistSettings;
