@@ -2,6 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createServer } from "vite";
 
+const waitForRequestSignal = async (getSignal) => {
+  const deadline = Date.now() + 1000;
+  while (!getSignal() && Date.now() < deadline) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.ok(getSignal(), "fetch was not called before the request signal timeout");
+};
+
 test("canonical cache invalidation does not abort an active request", async (t) => {
   const vite = await createServer({
     root: "frontend",
@@ -65,7 +73,7 @@ test("library requests forward caller cancellation", async (t) => {
     });
     try {
       const request = load(controller.signal);
-      while (!requestSignal) await new Promise((resolve) => setImmediate(resolve));
+      await waitForRequestSignal(() => requestSignal);
       controller.abort();
       await assert.rejects(request, /aborted/);
       assert.equal(requestSignal.aborted, true);
@@ -88,7 +96,7 @@ test("library requests forward caller cancellation", async (t) => {
     });
     try {
       const request = load();
-      while (!requestSignal) await new Promise((resolve) => setImmediate(resolve));
+      await waitForRequestSignal(() => requestSignal);
       await queryClient.cancelQueries({ queryKey, exact: true });
       await assert.rejects(request);
       assert.equal(requestSignal.aborted, true);
