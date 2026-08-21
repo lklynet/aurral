@@ -282,6 +282,48 @@ test("matches Navidrome-relative paths under the configured library root", async
   assert.equal(musicSong.id, "music-relative-match");
 });
 
+test("waits for and verifies a Navidrome library update", async () => {
+  const client = new NavidromeClient("http://navidrome.test", "user", "password");
+  let libraryPath = "/data/downloads/aurral-weekly-flow";
+  const calls = [];
+  client._nativeRequest = async (method, requestPath, body) => {
+    calls.push({ method, requestPath, body });
+    if (method === "GET") {
+      return [{ id: "aurral-library", name: "Aurral Weekly Flow", path: libraryPath }];
+    }
+    if (method === "PUT") {
+      libraryPath = body.path;
+      return { id: "aurral-library", name: body.name, path: body.path };
+    }
+    throw new Error(`Unexpected Navidrome request: ${method} ${requestPath}`);
+  };
+
+  const library = await client.ensureWeeklyFlowLibrary("/data/downloads");
+
+  assert.equal(library.id, "aurral-library");
+  assert.equal(library.path, "/data/downloads");
+  assert.deepEqual(calls.map(({ method, requestPath }) => [method, requestPath]), [
+    ["GET", "/api/library"],
+    ["PUT", "/api/library/aurral-library"],
+    ["GET", "/api/library"],
+  ]);
+});
+
+test("fails when Navidrome keeps the old library path", async () => {
+  const client = new NavidromeClient("http://navidrome.test", "user", "password");
+  client._nativeRequest = async (method) => {
+    if (method === "GET") {
+      return [{ id: "aurral-library", name: "Aurral Playlists", path: "/data/downloads/aurral-weekly-flow" }];
+    }
+    return { ok: true };
+  };
+
+  await assert.rejects(
+    client.ensureWeeklyFlowLibrary("/data/downloads"),
+    /Navidrome library path verification failed/,
+  );
+});
+
 test("prefers an exact absolute path over an earlier relative match", async () => {
   const client = new NavidromeClient("http://navidrome.test", "user", "password");
   client._libraryPaths = ["/data/music"];
@@ -405,6 +447,30 @@ test("refreshes a cached native token after a 401", async () => {
   }
 
   assert.equal(loginCount, 2);
+  assert.equal(requestCount, 2);
+});
+
+test("retries native Navidrome requests after a 429", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestCount = 0;
+  globalThis.fetch = async (url) => {
+    const request = new URL(url);
+    if (request.pathname === "/auth/login") return jsonResponse({ token: "native-token" });
+    requestCount += 1;
+    if (requestCount === 1) return new Response(null, {
+      status: 429,
+      headers: { "retry-after": "0" },
+    });
+    return jsonResponse({ ok: true });
+  };
+
+  try {
+    const client = new NavidromeClient("http://navidrome.test", "user", "password");
+    assert.deepEqual(await client._nativeRequest("GET", "/api/library"), { ok: true });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
   assert.equal(requestCount, 2);
 });
 

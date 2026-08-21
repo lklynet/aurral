@@ -37,6 +37,7 @@ test.beforeEach(async () => {
     sharedPlaylists: [],
     onboardingComplete: true,
   });
+  dbOps.setJSONSetting("aurralDownloadFolderMigration", null);
 });
 
 test.after(async () => {
@@ -206,6 +207,111 @@ test("migrates permanent tracks, isolates active flows, and removes unkept flow 
   await assert.rejects(() => fs.access(permanentSource));
   await assert.rejects(() => fs.access(flowSource));
   await assert.rejects(() => fs.access(unkeptFlowSource));
+});
+
+test("retains a permanent source when tracker updates are not persisted", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Unpersisted Permanent" });
+  const source = path.join(
+    root,
+    "aurral-weekly-flow",
+    playlist.id,
+    "Artist",
+    "Album",
+    "Track.flac",
+  );
+  await fs.mkdir(path.dirname(source), { recursive: true });
+  await fs.writeFile(source, "track audio");
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", albumName: "Album", trackName: "Track" },
+    playlist.id,
+  );
+  downloadTracker.setDone(jobId, source);
+  mock.method(downloadTracker, "updateFinalPath", () => false);
+
+  const result = await migrateAurralDownloadFolder({
+    root,
+    indexDestination: async () => {},
+    logger: { warn() {} },
+  });
+  const destination = path.join(root, "Artist", "Album", "Track.flac");
+
+  assert.equal(result.failed, 1);
+  assert.equal(result.status, "needs-review");
+  await assert.doesNotReject(() => fs.access(source));
+  await assert.doesNotReject(() => fs.access(destination));
+  assert.equal(downloadTracker.getJob(jobId).finalPath, source);
+});
+
+test("repairs stale tracker paths from a completed migration", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Repair Complete" });
+  const source = path.join(
+    root,
+    "aurral-weekly-flow",
+    playlist.id,
+    "Artist",
+    "Album",
+    "Track.flac",
+  );
+  const destination = path.join(root, "Artist", "Album", "Track.flac");
+  await fs.mkdir(path.dirname(destination), { recursive: true });
+  await fs.writeFile(destination, "migrated track");
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", albumName: "Album", trackName: "Track" },
+    playlist.id,
+  );
+  downloadTracker.setDone(jobId, source);
+  dbOps.setJSONSetting("aurralDownloadFolderMigration", {
+    version: 1,
+    rootPath: path.resolve(root),
+    status: "complete",
+    items: {
+      [source]: {
+        status: "complete",
+        destination,
+        identity: { artistName: "Artist", albumName: "Album", trackName: "Track" },
+      },
+    },
+  });
+
+  const result = await migrateAurralDownloadFolder({ root });
+
+  assert.equal(result.status, "complete");
+  assert.equal(result.repaired, 1);
+  assert.equal(downloadTracker.getJob(jobId).finalPath, destination);
+});
+
+test("indexes permanent migrations in one library scan", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Batch indexing" });
+  const jobs = [];
+  for (const trackName of ["Track One", "Track Two"]) {
+    const source = path.join(
+      root,
+      "aurral-weekly-flow",
+      playlist.id,
+      "Artist",
+      "Album",
+      `${trackName}.flac`,
+    );
+    await fs.mkdir(path.dirname(source), { recursive: true });
+    await fs.writeFile(source, trackName);
+    const jobId = downloadTracker.addJob(
+      { artistName: "Artist", albumName: "Album", trackName },
+      playlist.id,
+    );
+    downloadTracker.setDone(jobId, source);
+    jobs.push(jobId);
+  }
+
+  const result = await migrateAurralDownloadFolder({
+    root,
+    metadataReader: async () => ({
+      common: { albumartist: "Artist", album: "Album", title: "Track" },
+    }),
+  });
+
+  assert.equal(result.migrated, 2);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM library_scan_runs").get().count, 1);
+  assert.ok(jobs.every((jobId) => downloadTracker.getJob(jobId).finalPath.startsWith(root)));
 });
 
 test("retains a failed item and completes it safely on retry", async () => {

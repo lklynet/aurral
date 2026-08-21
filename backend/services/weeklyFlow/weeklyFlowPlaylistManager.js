@@ -178,7 +178,15 @@ export class WeeklyFlowPlaylistManager {
   async _ensurePlaylistsInternal() {
     const flows = flowPlaylistConfig.getFlows();
     const sharedPlaylists = flowPlaylistConfig.getSharedPlaylists();
-    await this.destinationRegistry.run("ensureLibrary");
+    const libraryResults = await this.destinationRegistry.run("ensureLibrary");
+    const libraryFailures = libraryResults.filter((result) => !result.ok);
+    if (libraryFailures.length) {
+      throw new Error(
+        libraryFailures
+          .map((result) => `${result.destination}: ${result.error?.message || "library setup failed"}`)
+          .join("; "),
+      );
+    }
     for (const flow of flows) {
       if (flow.enabled) {
         await this._publishPlaylist(flow, "Flow");

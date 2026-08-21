@@ -369,3 +369,25 @@ test("keeps Navidrome and Plex failures isolated when both destinations are conf
   });
   await assert.doesNotReject(manager.ensurePlaylists());
 });
+
+test("does not publish playlists when a configured library cannot be verified", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Blocked setup" });
+  const manager = new WeeklyFlowPlaylistManager(weeklyFlowRoot);
+  const published = [];
+  manager.navidromeDestination.isConfigured = () => true;
+  manager.navidromeDestination.ensureLibrary = async () => ({
+    ok: false,
+    error: { message: "Navidrome library path verification failed" },
+  });
+  manager.navidromeDestination.publishPlaylist = async () => {
+    published.push(playlist.id);
+    return { ok: true };
+  };
+
+  await assert.rejects(
+    manager.ensurePlaylists(),
+    /Navidrome: Navidrome library path verification failed/,
+  );
+  assert.deepEqual(published, []);
+});
