@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import api from "../../../utils/api/core.js";
 import { checkHealth } from "../../../utils/api/endpoints/auth.js";
 import {
-  getAppSettings,
-  getPlaybackSettings,
+  fetchAppSettings,
+  fetchPlaybackSettings,
   updateAppSettings,
   getLidarrRootFolders,
   getLidarrProfiles,
@@ -22,6 +23,7 @@ import {
   checkForChanges,
   normalizeSettings,
 } from "../utils";
+import { queryClient, queryKeys } from "../../../queryClient.js";
 
 const defaultSettings = {
   dateTimeFormat: "browser",
@@ -187,25 +189,50 @@ const defaultSettings = {
 
 const AUTOSAVE_DELAY_MS = 450;
 
+const getLidarrResourceConfig = (settings) => {
+  const lidarr = settings?.integrations?.lidarr || {};
+  return {
+    url: lidarr.url || "",
+    apiKey: lidarr.apiKey || "",
+  };
+};
+
+const buildLidarrQueries = ({ url, apiKey }) => [
+  {
+    queryKey: queryKeys.lidarrRootFolders(url),
+    queryFn: ({ signal }) => getLidarrRootFolders(url, apiKey, { signal }),
+    enabled: Boolean(url && apiKey),
+    staleTime: 60_000,
+  },
+  {
+    queryKey: queryKeys.lidarrProfiles(url),
+    queryFn: ({ signal }) => getLidarrProfiles(url, apiKey, { signal }),
+    enabled: Boolean(url && apiKey),
+    staleTime: 60_000,
+  },
+  {
+    queryKey: queryKeys.lidarrMetadataProfiles(url),
+    queryFn: ({ signal }) => getLidarrMetadataProfiles(url, apiKey, { signal }),
+    enabled: Boolean(url && apiKey),
+    staleTime: 60_000,
+  },
+  {
+    queryKey: queryKeys.lidarrTags(url),
+    queryFn: ({ signal }) => getLidarrTags(url, apiKey, { signal }),
+    enabled: Boolean(url && apiKey),
+    staleTime: 60_000,
+  },
+];
+
 export function useSettingsData(showSuccess, showError, showInfo) {
-  const [playbackSettings, setPlaybackSettings] = useState(null);
   const [health, setHealth] = useState(null);
   const [settings, setSettingsState] = useState(defaultSettings);
   const [originalSettings, setOriginalSettings] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [refreshingDiscovery, setRefreshingDiscovery] = useState(false);
   const [discoveryProgressMessage, setDiscoveryProgressMessage] = useState("");
   const [discoveryProgress, setDiscoveryProgress] = useState(null);
   const [clearingCache, setClearingCache] = useState(false);
-  const [lidarrRootFolders, setLidarrRootFolders] = useState([]);
-  const [loadingLidarrRootFolders, setLoadingLidarrRootFolders] = useState(false);
-  const [lidarrProfiles, setLidarrProfiles] = useState([]);
-  const [loadingLidarrProfiles, setLoadingLidarrProfiles] = useState(false);
-  const [lidarrMetadataProfiles, setLidarrMetadataProfiles] = useState([]);
-  const [loadingLidarrMetadataProfiles, setLoadingLidarrMetadataProfiles] = useState(false);
-  const [lidarrTags, setLidarrTags] = useState([]);
-  const [loadingLidarrTags, setLoadingLidarrTags] = useState(false);
   const [testingLidarr, setTestingLidarr] = useState(false);
   const [testingGotify, setTestingGotify] = useState(false);
   const [applyingCommunityGuide, setApplyingCommunityGuide] = useState(false);
@@ -220,6 +247,46 @@ export function useSettingsData(showSuccess, showError, showInfo) {
   const persistSettingsRef = useRef(null);
   const settingsActivationTimerRef = useRef(null);
   const mountedRef = useRef(true);
+  const [lidarrResourceConfig, setLidarrResourceConfig] = useState({ url: "", apiKey: "" });
+
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.appSettings,
+    queryFn: ({ signal }) => fetchAppSettings({ signal }),
+    enabled: false,
+    staleTime: 30_000,
+  });
+  const playbackQuery = useQuery({
+    queryKey: queryKeys.playbackSettings,
+    queryFn: ({ signal }) => fetchPlaybackSettings({ signal }),
+    enabled: false,
+    staleTime: 30_000,
+  });
+  const settingsSaveMutation = useMutation({
+    mutationFn: updateAppSettings,
+    onSuccess: (savedSettings) => {
+      queryClient.setQueryData(queryKeys.appSettings, savedSettings);
+    },
+  });
+  const lidarrQueries = useQueries({ queries: buildLidarrQueries(lidarrResourceConfig) });
+  const [lidarrRootFoldersQuery, lidarrProfilesQuery, lidarrMetadataProfilesQuery, lidarrTagsQuery] =
+    lidarrQueries;
+  const lidarrRootFolders = Array.isArray(lidarrRootFoldersQuery.data)
+    ? lidarrRootFoldersQuery.data
+    : [];
+  const lidarrProfiles = Array.isArray(lidarrProfilesQuery.data) ? lidarrProfilesQuery.data : [];
+  const lidarrMetadataProfiles = Array.isArray(lidarrMetadataProfilesQuery.data)
+    ? lidarrMetadataProfilesQuery.data
+    : [];
+  const lidarrTags = Array.isArray(lidarrTagsQuery.data) ? lidarrTagsQuery.data : [];
+  const loadingLidarrRootFolders = lidarrRootFoldersQuery.isFetching;
+  const loadingLidarrProfiles = lidarrProfilesQuery.isFetching;
+  const loadingLidarrMetadataProfiles = lidarrMetadataProfilesQuery.isFetching;
+  const loadingLidarrTags = lidarrTagsQuery.isFetching;
+  const playbackSettings = playbackQuery.data?.destinations || null;
+  const saving = settingsSaveMutation.isPending;
+  const { mutateAsync: saveSettings } = settingsSaveMutation;
+  const { refetch: refetchSettings } = settingsQuery;
+  const { refetch: refetchPlayback } = playbackQuery;
 
   const applyHealthUpdate = useCallback((healthData, { allowClearRefreshing = true } = {}) => {
     setHealth(healthData);
@@ -286,14 +353,15 @@ export function useSettingsData(showSuccess, showError, showInfo) {
     comparisonEnabledRef.current = false;
     if (settingsActivationTimerRef.current) clearTimeout(settingsActivationTimerRef.current);
     try {
-      const [, savedSettings] = await Promise.all([refreshHealth(), getAppSettings()]);
-      let playback = null;
-      try {
-        playback = await getPlaybackSettings();
-      } catch {}
-      setPlaybackSettings(playback?.destinations || null);
+      const [, settingsResult] = await Promise.all([
+        refreshHealth(),
+        refetchSettings({ throwOnError: true }),
+        refetchPlayback({ throwOnError: false }),
+      ]);
+      const savedSettings = settingsResult.data;
       const updatedSettings = normalizeSettings(savedSettings);
       const savedSnapshot = structuredClone(updatedSettings);
+      setLidarrResourceConfig(getLidarrResourceConfig(updatedSettings));
       settingsRef.current = updatedSettings;
       originalSettingsRef.current = savedSnapshot;
       setSettingsState(updatedSettings);
@@ -309,34 +377,19 @@ export function useSettingsData(showSuccess, showError, showInfo) {
         setHasUnsavedChanges(changed);
         if (changed) persistSettingsRef.current?.(settingsRef.current);
       }, 600);
-
-      const lidarr = updatedSettings.integrations?.lidarr || {};
-      if (lidarr.url && lidarr.apiKey) {
-        setLoadingLidarrRootFolders(true);
-        setLoadingLidarrProfiles(true);
-        setLoadingLidarrMetadataProfiles(true);
-        setLoadingLidarrTags(true);
-        try {
-          const [rootFolders, profiles, metadataProfiles, tags] = await Promise.all([
-            getLidarrRootFolders(lidarr.url, lidarr.apiKey),
-            getLidarrProfiles(lidarr.url, lidarr.apiKey),
-            getLidarrMetadataProfiles(lidarr.url, lidarr.apiKey),
-            getLidarrTags(lidarr.url, lidarr.apiKey),
-          ]);
-          setLidarrRootFolders(Array.isArray(rootFolders) ? rootFolders : []);
-          setLidarrProfiles(profiles);
-          setLidarrMetadataProfiles(metadataProfiles);
-          setLidarrTags(Array.isArray(tags) ? tags : []);
-        } catch {
-        } finally {
-          setLoadingLidarrRootFolders(false);
-          setLoadingLidarrProfiles(false);
-          setLoadingLidarrMetadataProfiles(false);
-          setLoadingLidarrTags(false);
-        }
-      }
     } catch {}
-  }, [refreshHealth]);
+  }, [refetchPlayback, refetchSettings, refreshHealth]);
+
+  const refreshLidarrResources = useCallback(async (config = null) => {
+    const nextConfig = config || getLidarrResourceConfig(settingsRef.current);
+    setLidarrResourceConfig(nextConfig);
+    if (!nextConfig.url || !nextConfig.apiKey) return [];
+    return Promise.all(
+      buildLidarrQueries(nextConfig).map(({ queryKey, queryFn }) =>
+        queryClient.fetchQuery({ queryKey, queryFn, staleTime: 0 }),
+      ),
+    );
+  }, []);
 
   useEffect(() => {
     fetchSettings();
@@ -403,11 +456,10 @@ export function useSettingsData(showSuccess, showError, showInfo) {
         return saveInFlightRef.current;
       }
 
-      if (mountedRef.current) setSaving(true);
       let succeeded = false;
       const request = (async () => {
         try {
-          const savedSettings = await updateAppSettings(settingsToSave);
+          const savedSettings = await saveSettings(settingsToSave);
           const normalizedSettings = normalizeSettings(savedSettings);
           const savedSnapshot = structuredClone(normalizedSettings);
           const isLatestSettings = settingsRef.current === settingsToSave;
@@ -447,7 +499,6 @@ export function useSettingsData(showSuccess, showError, showInfo) {
         return await request;
       } finally {
         saveInFlightRef.current = null;
-        if (mountedRef.current) setSaving(false);
 
         const shouldSaveLatest =
           succeeded &&
@@ -462,7 +513,7 @@ export function useSettingsData(showSuccess, showError, showInfo) {
         }
       }
     },
-    [refreshHealth, showError],
+    [refreshHealth, saveSettings, showError],
   );
 
   persistSettingsRef.current = persistSettings;
@@ -557,63 +608,44 @@ export function useSettingsData(showSuccess, showError, showInfo) {
       const result = await applyLidarrCommunityGuide();
       showSuccess("Community guide settings applied successfully!");
 
-      if (result.results?.qualityProfile) {
-        const url = settings.integrations?.lidarr?.url;
-        const apiKey = settings.integrations?.lidarr?.apiKey;
-        setLoadingLidarrProfiles(true);
-        try {
-          const profiles = await getLidarrProfiles(url, apiKey);
-          setLidarrProfiles(profiles);
-          if (result.results.qualityProfile.id) {
-            updateSettings({
-              ...settings,
-              integrations: {
-                ...settings.integrations,
-                lidarr: {
-                  ...(settings.integrations?.lidarr || {}),
-                  qualityProfileId: result.results.qualityProfile.id,
-                },
-              },
-            });
-            showInfo(`Default quality profile set to '${result.results.qualityProfile.name}'`);
-          }
-        } catch {
-        } finally {
-          setLoadingLidarrProfiles(false);
-        }
+      let nextSettings = settings;
+      const qualityProfile = result.results?.qualityProfile;
+      const metadataProfile = result.results?.metadataProfile;
+      if (qualityProfile?.id) {
+        nextSettings = {
+          ...nextSettings,
+          integrations: {
+            ...nextSettings.integrations,
+            lidarr: {
+              ...(nextSettings.integrations?.lidarr || {}),
+              qualityProfileId: qualityProfile.id,
+            },
+          },
+        };
+        showInfo(`Default quality profile set to '${qualityProfile.name}'`);
       }
-      if (result.results?.metadataProfile) {
-        const url = settings.integrations?.lidarr?.url;
-        const apiKey = settings.integrations?.lidarr?.apiKey;
-        setLoadingLidarrMetadataProfiles(true);
-        try {
-          const profiles = await getLidarrMetadataProfiles(url, apiKey);
-          setLidarrMetadataProfiles(profiles);
-          if (result.results.metadataProfile.id) {
-            updateSettings({
-              ...settings,
-              integrations: {
-                ...settings.integrations,
-                lidarr: {
-                  ...(settings.integrations?.lidarr || {}),
-                  metadataProfileId: result.results.metadataProfile.id,
-                },
-              },
-            });
-            showInfo(`Default metadata profile set to '${result.results.metadataProfile.name}'`);
-          }
-        } catch {
-        } finally {
-          setLoadingLidarrMetadataProfiles(false);
-        }
+      if (metadataProfile?.id) {
+        nextSettings = {
+          ...nextSettings,
+          integrations: {
+            ...nextSettings.integrations,
+            lidarr: {
+              ...(nextSettings.integrations?.lidarr || {}),
+              metadataProfileId: metadataProfile.id,
+            },
+          },
+        };
+        showInfo(`Default metadata profile set to '${metadataProfile.name}'`);
       }
+      if (nextSettings !== settings) updateSettings(nextSettings);
+      if (qualityProfile || metadataProfile) await refreshLidarrResources();
     } catch (err) {
       const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
       showError(`Failed to apply community guide: ${errorMsg}`);
     } finally {
       setApplyingCommunityGuide(false);
     }
-  }, [settings, updateSettings, showSuccess, showError, showInfo]);
+  }, [refreshLidarrResources, settings, updateSettings, showSuccess, showError, showInfo]);
 
   return {
     health,
@@ -634,21 +666,14 @@ export function useSettingsData(showSuccess, showError, showInfo) {
     handleRefreshDiscovery,
     handleClearCache,
     lidarrRootFolders,
-    setLidarrRootFolders,
     loadingLidarrRootFolders,
-    setLoadingLidarrRootFolders,
     lidarrProfiles,
-    setLidarrProfiles,
     loadingLidarrProfiles,
-    setLoadingLidarrProfiles,
     lidarrMetadataProfiles,
-    setLidarrMetadataProfiles,
     loadingLidarrMetadataProfiles,
-    setLoadingLidarrMetadataProfiles,
     lidarrTags,
-    setLidarrTags,
     loadingLidarrTags,
-    setLoadingLidarrTags,
+    refreshLidarrResources,
     testingLidarr,
     setTestingLidarr,
     testingGotify,
@@ -657,7 +682,6 @@ export function useSettingsData(showSuccess, showError, showInfo) {
     showCommunityGuideModal,
     setShowCommunityGuideModal,
     handleApplyCommunityGuide,
-    getLidarrProfiles,
     testLidarrConnection,
     testGotifyConnection,
   };

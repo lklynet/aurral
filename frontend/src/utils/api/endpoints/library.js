@@ -95,15 +95,34 @@ export const updateLibraryFavorites = async (ids, starred) => {
   return data;
 };
 
-export const getLibraryArtist = async (mbid) => {
-  const artist = await getData(`/library/artists/${mbid}`);
-  if (artist && !artist.foreignArtistId) {
-    artist.foreignArtistId = artist.mbid;
-  }
-  return artist;
+const normalizeLibraryArtist = (artist) =>
+  artist && !artist.foreignArtistId
+    ? { ...artist, foreignArtistId: artist.mbid }
+    : artist;
+
+const fetchLibraryArtist = async (mbid, { signal } = {}) =>
+  normalizeLibraryArtist(await getData(`/library/artists/${mbid}`, { signal }));
+
+export const getLibraryArtist = (mbid, { signal, bypassCache = false } = {}) => {
+  if (signal && !bypassCache) return fetchLibraryArtist(mbid, { signal });
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.libraryArtist(mbid),
+    queryFn: ({ signal: querySignal }) => fetchLibraryArtist(mbid, { signal: querySignal }),
+    staleTime: bypassCache ? 0 : 15_000,
+  });
 };
 
-export const lookupArtistInLibrary = (mbid) => getData(`/library/lookup/${mbid}`);
+const fetchLibraryArtistLookup = (mbid, { signal } = {}) =>
+  getData(`/library/lookup/${mbid}`, { signal });
+
+export const lookupArtistInLibrary = (mbid, { signal, bypassCache = false } = {}) => {
+  if (signal && !bypassCache) return fetchLibraryArtistLookup(mbid, { signal });
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.libraryLookupDetails(mbid),
+    queryFn: ({ signal: querySignal }) => fetchLibraryArtistLookup(mbid, { signal: querySignal }),
+    staleTime: bypassCache ? 0 : 15_000,
+  });
+};
 
 export const readLibraryLookupCache = (mbids) => {
   const result = {};
@@ -164,7 +183,7 @@ export const deleteAlbumFromLibrary = (id, deleteFiles = false) =>
 export const deleteTrackFromLibrary = (id) =>
   deleteData(`/library/tracks/${encodeURIComponent(id)}`);
 
-export const getLibraryAlbums = async (artistId, { signal } = {}) => {
+const fetchLibraryAlbums = async (artistId, { signal } = {}) => {
   const data = await getData("/library/albums", {
     params: { artistId },
     signal,
@@ -173,6 +192,15 @@ export const getLibraryAlbums = async (artistId, { signal } = {}) => {
     ...album,
     foreignAlbumId: album.foreignAlbumId || album.mbid,
   }));
+};
+
+export const getLibraryAlbums = (artistId, { signal, bypassCache = false } = {}) => {
+  if (signal && !bypassCache) return fetchLibraryAlbums(artistId, { signal });
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.libraryAlbums(artistId),
+    queryFn: ({ signal: querySignal }) => fetchLibraryAlbums(artistId, { signal: querySignal }),
+    staleTime: bypassCache ? 0 : 15_000,
+  });
 };
 
 export const addLibraryAlbum = async (

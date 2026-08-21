@@ -1,8 +1,9 @@
 import { useCallback, useId, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   getArtistCover,
   getArtistDetails,
-  getArtistOverrides,
+  fetchArtistOverrides,
   getArtistPreview,
   getSimilarArtistsForArtist,
   updateArtistOverrides,
@@ -47,6 +48,7 @@ import { ArtistDetailsSimilar } from "./components/ArtistDetailsSimilar";
 import { DeleteArtistModal } from "./components/DeleteArtistModal";
 import { DeleteAlbumModal } from "./components/DeleteAlbumModal";
 import { AddArtistCustomizeModal } from "./components/AddArtistCustomizeModal";
+import { queryClient, queryKeys } from "../../queryClient.js";
 const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function ArtistDetailsPage() {
@@ -66,8 +68,6 @@ function ArtistDetailsPage() {
   const { hasPermission } = useAuth();
   const similarArtistsScrollRef = useRef(null);
   const [showEditIdsModal, setShowEditIdsModal] = useState(false);
-  const [idsLoading, setIdsLoading] = useState(false);
-  const [idsSaving, setIdsSaving] = useState(false);
   const [idsError, setIdsError] = useState("");
   const [idsValues, setIdsValues] = useState({
     musicbrainzId: "",
@@ -86,6 +86,26 @@ function ArtistDetailsPage() {
   const [visibleReleaseGroupCoverIds, setVisibleReleaseGroupCoverIds] = useState([]);
   const [visibleAppearsOnCoverIds, setVisibleAppearsOnCoverIds] = useState([]);
   const [visibleLibraryCoverIds, setVisibleLibraryCoverIds] = useState([]);
+
+  const artistOverridesQuery = useQuery({
+    queryKey: queryKeys.artistOverrides(mbid),
+    queryFn: ({ signal }) => fetchArtistOverrides(mbid, { signal }),
+    enabled: false,
+    staleTime: 30_000,
+  });
+  const saveArtistOverridesMutation = useMutation({
+    mutationFn: ({ artistMbid, values }) => updateArtistOverrides(artistMbid, values),
+  });
+  const addSimilarArtistMutation = useMutation({
+    mutationFn: addArtistToLibrary,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix }),
+  });
+  const downloadTrackMutation = useMutation({ mutationFn: downloadTrackToLibrary });
+  const { mutateAsync: saveArtistOverrides } = saveArtistOverridesMutation;
+  const { mutateAsync: addSimilarArtist } = addSimilarArtistMutation;
+  const { mutateAsync: downloadTrack } = downloadTrackMutation;
+  const idsLoading = artistOverridesQuery.isFetching;
+  const idsSaving = saveArtistOverridesMutation.isPending;
 
   const stream = useArtistDetailsStream(mbid, artistNameFromNav, {
     visibleCoverIds: [
@@ -182,7 +202,7 @@ function ArtistDetailsPage() {
       const artistId = similarArtist?.id || similarArtist?.mbid;
       if (!similarArtist?.name || !artistId) return false;
       try {
-        await addArtistToLibrary({
+        await addSimilarArtist({
           foreignArtistId: artistId,
           artistName: similarArtist.name,
         });
@@ -198,7 +218,7 @@ function ArtistDetailsPage() {
         return false;
       }
     },
-    [showError, showSuccess],
+    [addSimilarArtist, showError, showSuccess],
   );
 
   const library = useArtistDetailsLibrary({
@@ -237,9 +257,8 @@ function ArtistDetailsPage() {
     if (!mbid) return;
     setShowEditIdsModal(true);
     setIdsError("");
-    setIdsLoading(true);
     try {
-      const data = await getArtistOverrides(mbid);
+      const { data } = await artistOverridesQuery.refetch({ throwOnError: true });
       setIdsValues({
         musicbrainzId: data?.musicbrainzId || "",
         deezerArtistId: data?.deezerArtistId || "",
@@ -251,8 +270,6 @@ function ArtistDetailsPage() {
           err.message ||
           "Failed to load artist IDs",
       );
-    } finally {
-      setIdsLoading(false);
     }
   };
 
@@ -268,15 +285,17 @@ function ArtistDetailsPage() {
       setIdsError("Deezer Artist ID must be numeric.");
       return;
     }
-    setIdsSaving(true);
     setIdsError("");
     setLoadingCover(true);
     setLoadingPreview(true);
     setLoadingSimilar(true);
     try {
-      await updateArtistOverrides(mbid, {
-        musicbrainzId: musicbrainzId || null,
-        deezerArtistId: deezerArtistId || null,
+      await saveArtistOverrides({
+        artistMbid: mbid,
+        values: {
+          musicbrainzId: musicbrainzId || null,
+          deezerArtistId: deezerArtistId || null,
+        },
       });
       showSuccess("Artist IDs updated");
       setShowEditIdsModal(false);
@@ -305,7 +324,6 @@ function ArtistDetailsPage() {
       setLoadingCover(false);
       setLoadingPreview(false);
       setLoadingSimilar(false);
-      setIdsSaving(false);
     }
   };
 
@@ -424,7 +442,7 @@ function ArtistDetailsPage() {
     if (!savingKey) return false;
     setLibraryTrackSavingKeys((current) => new Set(current).add(savingKey));
     try {
-      const result = await downloadTrackToLibrary(payload);
+      const result = await downloadTrack(payload);
       showSuccess(
         result?.alreadyOwned
           ? `${payload.trackName} is already in your library`
