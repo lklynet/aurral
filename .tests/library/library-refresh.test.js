@@ -16,10 +16,20 @@ const {
   stopLibraryScanWorker,
 } = await import("../../backend/services/libraryScanWorker.js");
 const { dbOps } = await import("../../backend/db/helpers/index.js");
-const { getLibraryScanQueue } = await import("../../backend/services/honkerDb.js");
+const {
+  getLibraryScanQueue,
+  SCHEDULED_SYSTEM_TASKS,
+} = await import("../../backend/services/honkerDb.js");
 const { createLibraryFileWatcher } = await import(
   "../../backend/services/libraryFileWatcher.js"
 );
+
+test("library scans are not scheduled as a recurring background task", () => {
+  assert.equal(
+    SCHEDULED_SYSTEM_TASKS.some((task) => task.name === "library-index-refresh"),
+    false,
+  );
+});
 
 test("library refresh queues a forced scan and exposes its queue status", async () => {
   const existingJobId = Number(dbOps.getJSONSetting("pendingLibraryScanJob")?.jobId);

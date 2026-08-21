@@ -30,6 +30,14 @@ export function getScheduledLibraryScanJobId() {
   return normalizeJobId(getScanRegistry().jobId);
 }
 
+export function hasCompletedLibraryScan() {
+  return Boolean(
+    db
+      .prepare("SELECT 1 FROM library_scan_runs WHERE status = 'complete' LIMIT 1")
+      .get(),
+  );
+}
+
 export function clearScheduledLibraryScan(jobId = null) {
   const registry = getScanRegistry();
   if (!("jobId" in registry)) return;

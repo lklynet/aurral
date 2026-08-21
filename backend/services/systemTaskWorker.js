@@ -50,8 +50,13 @@ async function processSystemTask(payload = {}) {
       return;
     }
     case "library-index-refresh": {
-      const { scheduleLibraryScan } = await import("./libraryScanWorker.js");
-      scheduleLibraryScan();
+      return;
+    }
+    case "library-index-bootstrap": {
+      const { hasCompletedLibraryScan, scheduleLibraryScan } = await import(
+        "./libraryScanWorker.js"
+      );
+      if (!hasCompletedLibraryScan()) scheduleLibraryScan();
       return;
     }
     case "weekly-flow-startup-check": {

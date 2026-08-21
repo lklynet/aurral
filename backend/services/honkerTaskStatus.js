@@ -167,7 +167,7 @@ const PAYLOAD_DETAIL_KEY = {
       : "Scans playlists for tracks missing MusicBrainz IDs and queues enrichment jobs.",
   "library-scan": (p, desc) =>
     p?.force
-      ? "Refreshes Aurral's library view after startup or a forced scan."
+      ? "Refreshes Aurral's library view after a requested refresh."
       : desc,
   "discovery-user-refresh": (p, desc) =>
     p?.listenHistoryProfile?.listenHistoryUsername

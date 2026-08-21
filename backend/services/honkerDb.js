@@ -99,12 +99,6 @@ export const SCHEDULED_SYSTEM_TASKS = [
     payload: { kind: "playlist-mbid-enrichment-sweep", reason: "schedule" },
     maxAttempts: 4,
   },
-  {
-    name: "library-index-refresh",
-    queue: "system-task",
-    schedule: "@every 15m",
-    payload: { kind: "library-index-refresh" },
-  },
 ];
 
 const PIPELINE_PHASE_PRIORITY = {
@@ -406,8 +400,8 @@ export function enqueueHonkerStartupTasks() {
     { delaySeconds: 15, priority: 5 },
   );
   enqueueSystemTaskJob({ kind: "discovery-bootstrap" }, { delaySeconds: 15, priority: 5 });
+  enqueueSystemTaskJob({ kind: "library-index-bootstrap" }, { delaySeconds: 8, priority: 0 });
   enqueueSystemTaskJob({ kind: "inbox-refresh" }, { delaySeconds: 20, priority: -5 });
-  enqueueSystemTaskJob({ kind: "library-index-refresh" }, { delaySeconds: 8, priority: 0 });
   enqueuePlaylistMbidEnrichmentJob(
     {
       kind: "playlist-mbid-enrichment-sweep",

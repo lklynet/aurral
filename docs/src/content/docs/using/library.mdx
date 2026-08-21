@@ -54,10 +54,12 @@ automatically. The home page and **Newest** album or track sorting use the time
 the media first entered Aurral's canonical library, not the album's original
 release date.
 
-Use the **Refresh** button in Library when you need to check immediately. The
-button starts a scan, waits for it to finish, and reloads the page from the
-updated canonical records. The scheduled scan remains as a fallback and runs
-every 15 minutes.
+On a new installation, Aurral performs one initial scan when the library has
+not been indexed yet. After that, Aurral does not run recurring full-library
+scans. When files change, the filesystem watcher queues a scan; use the
+**Refresh** button in Library when you need to check immediately. The button
+starts a scan, waits for it to finish, and reloads the page from the updated
+canonical records.
 
 If Discover says an album is in Lidarr but Library does not show it, check the
 Lidarr path mapping first. Aurral must be able to read the path Lidarr reports.
