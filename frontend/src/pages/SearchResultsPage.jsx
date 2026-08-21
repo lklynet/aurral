@@ -181,11 +181,11 @@ function SearchResultsPage() {
   const fetchSearchDiscovery = useCallback(
     ({ offset = 0, limit } = {}) =>
       queryClient.fetchQuery({
-        queryKey: queryKeys.searchDiscovery(normalizedType, offset, limit),
+        queryKey: queryKeys.searchDiscovery(offset, limit),
         queryFn: ({ signal }) => getDiscovery({ offset, limit, signal }),
         staleTime: 30_000,
       }),
-    [normalizedType],
+    [],
   );
 
   const updateAlbumSort = useCallback(

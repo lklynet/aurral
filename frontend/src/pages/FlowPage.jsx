@@ -246,7 +246,7 @@ function FlowPage({ mode = "all" }) {
     () => selectedTracksQuery.data || [],
     [selectedTracksQuery.data],
   );
-  const selectedTracksLoading = selectedTracksQuery.isPending || selectedTracksQuery.isFetching;
+  const selectedTracksLoading = selectedTracksQuery.isPending;
   const selectedTracksError =
     selectedTracksQuery.error?.response?.data?.message ||
     selectedTracksQuery.error?.message ||

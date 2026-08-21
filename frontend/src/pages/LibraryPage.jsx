@@ -317,7 +317,7 @@ function LibraryPage() {
   const handleLibraryScanMessage = useCallback((message) => {
     if (message?.type !== "library_scan_completed") return;
     clearCanonicalLibraryPageCache();
-    queryClient.removeQueries({ queryKey: ["library", "tracks"] });
+    queryClient.removeQueries({ queryKey: queryKeys.libraryAlbumTracksPrefix });
     setRetryKey((value) => value + 1);
   }, []);
 
@@ -794,7 +794,7 @@ function LibraryPage() {
       };
     });
     clearCanonicalLibraryPageCache();
-    queryClient.removeQueries({ queryKey: ["library", "tracks"] });
+    queryClient.removeQueries({ queryKey: queryKeys.libraryAlbumTracksPrefix });
   }, []);
 
   const handleLibraryRemovalConfirm = useCallback(async () => {

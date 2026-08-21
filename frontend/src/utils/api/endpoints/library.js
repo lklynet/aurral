@@ -46,7 +46,7 @@ export const getCanonicalLibraryPage = (options = {}) => {
 };
 
 export const clearCanonicalLibraryPageCache = () => {
-  queryClient.removeQueries({ queryKey: ["library", "canonical"] });
+  queryClient.removeQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
 };
 
 export const requestLibraryRefresh = () => postData("/library/refresh", {});
@@ -65,10 +65,17 @@ export const getLibraryFavorites = () => {
     staleTime: 30_000,
   }).then((data) => {
     if (generation !== libraryFavoritesGeneration && latestLibraryFavorites) {
-      queryClient.setQueryData(queryKeys.libraryFavorites, latestLibraryFavorites);
+      const repaired = latestLibraryFavorites;
+      queryClient.setQueryData(queryKeys.libraryFavorites, repaired);
+      return repaired;
     }
     return data;
   });
+};
+
+export const clearLibraryFavoritesCache = () => {
+  libraryFavoritesGeneration += 1;
+  latestLibraryFavorites = null;
 };
 
 export const updateLibraryFavorites = async (ids, starred) => {
@@ -110,7 +117,7 @@ const writeLibraryLookupCache = (lookup) => {
 };
 
 export const lookupArtistsInLibraryBatch = async (mbids) => {
-  const ids = [...new Set((Array.isArray(mbids) ? mbids : []).filter(Boolean))];
+  const ids = [...new Set((Array.isArray(mbids) ? mbids : []).filter(Boolean))].sort();
   if (!ids.length) return {};
   const data = await queryClient.fetchQuery({
     queryKey: queryKeys.libraryLookupBatch(ids),
@@ -122,7 +129,7 @@ export const lookupArtistsInLibraryBatch = async (mbids) => {
 };
 
 export const lookupAlbumsInLibraryBatch = (mbids, { signal, bypassCache = false } = {}) => {
-  const ids = [...new Set((Array.isArray(mbids) ? mbids : []).filter(Boolean))];
+  const ids = [...new Set((Array.isArray(mbids) ? mbids : []).filter(Boolean))].sort();
   if (!ids.length) return Promise.resolve({});
   if (bypassCache) {
     return postData("/library/albums/lookup/batch", { mbids: ids }, { signal });
@@ -130,7 +137,7 @@ export const lookupAlbumsInLibraryBatch = (mbids, { signal, bypassCache = false 
   return queryClient.fetchQuery({
     queryKey: queryKeys.libraryAlbumLookup(ids),
     queryFn: ({ signal: querySignal }) =>
-      postData("/library/albums/lookup/batch", { mbids: ids }, { signal: signal || querySignal }),
+      postData("/library/albums/lookup/batch", { mbids: ids }, { signal: querySignal }),
     staleTime: 15_000,
   });
 };
@@ -232,7 +239,7 @@ export const triggerAlbumSearch = (albumId) =>
   });
 
 export const getDownloadStatus = async (albumIds, { signal, bypassCache = false } = {}) => {
-  const ids = Array.isArray(albumIds) ? albumIds.filter(Boolean) : [albumIds];
+  const ids = [...new Set((Array.isArray(albumIds) ? albumIds : [albumIds]).filter(Boolean))].sort();
   if (!ids.length) return {};
   if (bypassCache) {
     return getData(`/library/downloads/status?albumIds=${ids.join(",")}`, { signal });
@@ -241,7 +248,7 @@ export const getDownloadStatus = async (albumIds, { signal, bypassCache = false 
     queryKey: queryKeys.downloadStatus(ids),
     queryFn: ({ signal: querySignal }) =>
       getData(`/library/downloads/status?albumIds=${ids.join(",")}`, {
-        signal: signal || querySignal,
+        signal: querySignal,
       }),
     staleTime: 4_000,
   });

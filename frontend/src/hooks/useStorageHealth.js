@@ -17,7 +17,12 @@ export function getStorageHealthCache() {
 
 export function subscribeStorageHealth(listener) {
   return queryClient.getQueryCache().subscribe((event) => {
-    if (event.query?.queryKey?.[0] !== queryKeys.storageHealth[0]) return;
+    const queryKey = event.query?.queryKey;
+    if (
+      !queryKey ||
+      queryKey.length !== queryKeys.storageHealth.length ||
+      queryKey.some((value, index) => value !== queryKeys.storageHealth[index])
+    ) return;
     listener(getStorageHealthCache());
   });
 }
@@ -50,7 +55,8 @@ export function useStorageHealth({ enabled = true, pollMs = 120000 } = {}) {
 
   return {
     ...toSnapshot(query.data, query.dataUpdatedAt),
-    loading: query.isPending || query.isFetching,
+    loading: query.isPending,
+    isFetching: query.isFetching,
     error: query.error,
     refresh,
   };

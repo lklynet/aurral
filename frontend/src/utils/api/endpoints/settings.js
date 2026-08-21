@@ -30,16 +30,16 @@ export const getPlexLibraries = () => getData("/settings/plex/libraries");
 export const checkPlexLibraryAccess = (sectionId) =>
   getData(`/settings/plex/libraries/${encodeURIComponent(sectionId)}/access-check`);
 
-export const getAppSettings = ({ signal } = {}) =>
+export const getAppSettings = () =>
   queryClient.fetchQuery({
     queryKey: queryKeys.appSettings,
-    queryFn: ({ signal: querySignal }) => getData("/settings", { signal: signal || querySignal }),
+    queryFn: ({ signal: querySignal }) => getData("/settings", { signal: querySignal }),
     staleTime: 30_000,
   });
-export const getPlaybackSettings = ({ signal } = {}) =>
+export const getPlaybackSettings = () =>
   queryClient.fetchQuery({
     queryKey: queryKeys.playbackSettings,
-    queryFn: ({ signal: querySignal }) => getData("/settings/playback", { signal: signal || querySignal }),
+    queryFn: ({ signal: querySignal }) => getData("/settings/playback", { signal: querySignal }),
     staleTime: 30_000,
   });
 export const testPlaybackConnection = (key, config) =>
@@ -47,7 +47,7 @@ export const testPlaybackConnection = (key, config) =>
 
 export const updateAppSettings = async (settings) => {
   const result = await postData("/settings", settings);
-  queryClient.setQueryData(queryKeys.appSettings, result);
+  await queryClient.invalidateQueries({ queryKey: queryKeys.appSettings });
   return result;
 };
 

@@ -175,7 +175,9 @@ function InboxMenu() {
   const loadInbox = () => inboxQuery.refetch();
   const itemMutation = useMutation({
     mutationFn: ({ id, action }) => updateInboxItem(id, action),
-    onMutate: ({ id, action }) => {
+    onMutate: async ({ id, action }) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData(queryKey);
       queryClient.setQueryData(queryKey, (current) => {
         if (!current) return current;
         const item = current.items?.find((entry) => entry.id === id);
@@ -195,8 +197,13 @@ function InboxMenu() {
           unreadCount: Math.max(0, Number(current.unreadCount || 0) - (item.isRead ? 0 : 1)),
         };
       });
+      return { previous };
     },
-    onError: () => queryClient.invalidateQueries({ queryKey }),
+    onError: (_error, _variables, context) => {
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(queryKey, context.previous);
+      }
+    },
     onSettled: () => queryClient.invalidateQueries({ queryKey }),
   });
   const readAllMutation = useMutation({
@@ -268,7 +275,6 @@ function InboxMenu() {
       );
       return;
     }
-    await loadInbox();
   };
 
   const visibleItems = filter === "all" ? items : items.filter((item) => item.kind === filter);
@@ -332,7 +338,7 @@ function InboxMenu() {
               </div>
             ) : null}
           </div>
-          {(inboxQuery.isPending || inboxQuery.isFetching || (serverRefreshing && items.length === 0)) ? (
+          {(inboxQuery.isPending || (serverRefreshing && items.length === 0)) ? (
             <div className="app-inbox-menu__empty">Loading…</div>
           ) : items.length === 0 ? (
             <div className="app-inbox-menu__empty">Nothing to see here yet</div>

@@ -15,6 +15,7 @@ export function useSharedPlaylists() {
   const sharedPlaylists = Array.isArray(query.data?.sharedPlaylists)
     ? query.data.sharedPlaylists
     : [];
+  const { refetch } = query;
   const setSharedPlaylists = useCallback((next) => {
     queryClient.setQueryData(queryKeys.playlistStatus, (current) => ({
       ...(current || {}),
@@ -25,7 +26,7 @@ export function useSharedPlaylists() {
   const loadSharedPlaylists = useCallback(async () => {
     setPlaylistsError("");
     try {
-      const { data } = await query.refetch();
+      const { data } = await refetch({ throwOnError: true });
       const playlists = Array.isArray(data?.sharedPlaylists) ? data.sharedPlaylists : [];
       return playlists;
     } catch (err) {
@@ -38,12 +39,12 @@ export function useSharedPlaylists() {
       showError(message);
       return null;
     }
-  }, [query, showError]);
+  }, [refetch, showError]);
 
   return {
     sharedPlaylists,
     setSharedPlaylists,
-    playlistsLoading: query.isPending || query.isFetching,
+    playlistsLoading: query.isLoading,
     playlistsError: playlistsError || query.error?.response?.data?.message || query.error?.message || "",
     setPlaylistsError,
     loadSharedPlaylists,

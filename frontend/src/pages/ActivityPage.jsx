@@ -168,11 +168,13 @@ function ActivityPage() {
 
   const fetchRequests = useCallback(async ({ silent = false, refresh = false } = {}) => {
     try {
-      return await queryClient.fetchQuery({
+      const result = await queryClient.fetchQuery({
         queryKey: activityQueryKey,
         queryFn: ({ signal }) => getRequests({ refresh: refresh || isListLikeView, signal }),
         staleTime: refresh ? 0 : isListLikeView ? 0 : 30_000,
       });
+      setLocalError(null);
+      return result;
     } catch (requestError) {
       if (!silent) {
         setLocalError(requestError?.response?.data?.message || "Failed to load activity.");

@@ -421,7 +421,7 @@ export function SettingsTasksTab({ showError, showSuccess }) {
     refetchIntervalInBackground: false,
   });
   const tasks = tasksQuery.data;
-  const loading = tasksQuery.isPending || tasksQuery.isFetching;
+  const loading = tasksQuery.isPending;
   const loadError =
     tasksQuery.error?.response?.data?.message ||
     tasksQuery.error?.response?.data?.error ||

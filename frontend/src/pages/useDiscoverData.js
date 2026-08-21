@@ -21,8 +21,8 @@ import {
   writeStoredDiscoveryData,
   normalizeDiscoveryData,
   mergeDiscoveryHttp,
-  isStoredRecentlyAddedFresh,
-  isStoredRecentReleasesFresh,
+  getStoredRecentlyAddedAt,
+  getStoredRecentReleasesAt,
 } from "./discoverUtils";
 
 import { useWebSocketChannel } from "../hooks/useWebSocket";
@@ -82,7 +82,7 @@ export function useDiscoverData() {
     queryFn: ({ signal }) => getRecentlyAdded({ signal }),
     initialData: recentlyAddedInitial,
     initialDataUpdatedAt: recentlyAddedInitial
-      ? isStoredRecentlyAddedFresh(authUser?.id) ? Date.now() : 0
+      ? getStoredRecentlyAddedAt(authUser?.id)
       : undefined,
     staleTime: 5 * 60 * 1000,
   });
@@ -91,7 +91,7 @@ export function useDiscoverData() {
     queryFn: ({ signal }) => getRecentReleases({ signal }),
     initialData: recentReleasesInitial,
     initialDataUpdatedAt: recentReleasesInitial
-      ? isStoredRecentReleasesFresh(authUser?.id) ? Date.now() : 0
+      ? getStoredRecentReleasesAt(authUser?.id)
       : undefined,
     staleTime: 5 * 60 * 1000,
   });
@@ -122,11 +122,10 @@ export function useDiscoverData() {
           allowClearStatus,
         });
         if (!normalizedData) return prev;
-        writeStoredDiscoveryData(normalizedData, authUser?.id);
         return normalizedData;
       });
     },
-    [authUser?.id, setData],
+    [setData],
   );
 
   const fetchAndApplyDiscovery = useCallback(
@@ -144,9 +143,16 @@ export function useDiscoverData() {
         staleTime: cacheBust ? 0 : 30_000,
       })
         .then(() => setError(null))
-        .catch(console.warn);
+        .catch((err) => {
+          console.warn(err);
+          setError(
+            err?.response?.data?.message ||
+              err?.message ||
+              "Failed to refresh discovery data",
+          );
+        });
     },
-    [discoveryQueryKey],
+    [discoveryQueryKey, setError],
   );
 
   useEffect(() => {
@@ -156,23 +162,7 @@ export function useDiscoverData() {
   useEffect(() => {
     if (!discoveryQuery.error) return;
     setError(discoveryQuery.error?.response?.data?.message || "Failed to load discovery data");
-    if (discoveryQuery.data) return;
-    queryClient.setQueryData(discoveryQueryKey, {
-      recommendations: [],
-      globalTop: [],
-      basedOn: [],
-      topTags: [],
-      topGenres: [],
-      fallbackGenres: [],
-      provider: "lastfm",
-      capabilities: null,
-      lastUpdated: null,
-      isUpdating: false,
-      stale: false,
-      discoveryMode: "balanced",
-      configured: false,
-    });
-  }, [authUser?.id, data, discoveryQuery.data, discoveryQuery.error, discoveryQueryKey]);
+  }, [discoveryQuery.error]);
 
   const { isConnected: isDiscoverySocketConnected } = useWebSocketChannel(
     "discovery",
@@ -321,7 +311,6 @@ export function useDiscoverData() {
                   : "balanced",
               configured: true,
             });
-            writeStoredDiscoveryData(normalized, authUser?.id);
             return normalized;
           });
         } else {
@@ -404,9 +393,6 @@ export function useDiscoverData() {
     isDiscoverySocketConnected,
     fetchAndApplyDiscovery,
   ]);
-
-  useEffect(() => {
-  }, [authUser?.id, applyDiscoveryData]);
 
   useEffect(() => {
     if (recentlyAddedQuery.error) showError(recentlyAddedQuery.error?.message || "Failed to load recently added");
@@ -515,13 +501,12 @@ export function useDiscoverData() {
               return { ...playlist, tracks, trackCount: tracks.length };
             }),
           };
-          writeStoredDiscoveryData(next, authUser?.id);
           return next;
         });
       }
       return saved;
     },
-    [authUser?.id, setData, submitFeedback],
+    [setData, submitFeedback],
   );
 
   return {

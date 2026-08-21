@@ -105,7 +105,7 @@ function ReleasePage() {
   const releaseDetailsQuery = useQuery({
     queryKey: queryKeys.releaseGroupDetails(releaseMbid),
     queryFn: ({ signal }) => getReleaseGroupDetails(releaseMbid, { signal }),
-    enabled: Boolean(releaseMbid),
+    enabled: Boolean(releaseMbid) && (Boolean(release.title) || releaseDetailsQuery.isFetched),
     staleTime: 5 * 60 * 1000,
   });
   const release = useMemo(
@@ -147,7 +147,7 @@ function ReleasePage() {
     () => (Array.isArray(tracksQuery.data) ? tracksQuery.data : []),
     [tracksQuery.data],
   );
-  const loadingTracks = tracksQuery.isPending || tracksQuery.isFetching;
+  const loadingTracks = tracksQuery.isPending;
   const albumLookupQuery = useQuery({
     queryKey: queryKeys.libraryAlbumLookup(releaseMbid ? [releaseMbid] : []),
     queryFn: ({ signal }) =>

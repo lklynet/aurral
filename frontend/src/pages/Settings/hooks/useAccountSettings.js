@@ -40,6 +40,8 @@ export function useAccountSettings(authUser, showError) {
   const currentDraftRef = useRef(null);
   const hasUnsavedChangesRef = useRef(false);
   const isListenHistoryValidRef = useRef(false);
+  const hydratedHistoryAccountRef = useRef(null);
+  const hydratedLidarrAccountRef = useRef(null);
 
   const hasUnsavedChanges =
     listenHistoryProvider !== savedListenHistoryProvider ||
@@ -88,7 +90,10 @@ export function useAccountSettings(authUser, showError) {
 
   useEffect(() => {
     const historyData = historyQuery.data;
-    if (!historyData) return;
+    if (!historyData || authUser?.id == null) return;
+    const accountChanged = hydratedHistoryAccountRef.current !== authUser.id;
+    if (!accountChanged && (hasUnsavedChangesRef.current || saveInFlightRef.current)) return;
+    hydratedHistoryAccountRef.current = authUser.id;
     const provider = historyData.listenHistoryProvider || "lastfm";
     const username = historyData.listenHistoryUsername || "";
     const url = historyData.listenHistoryUrl || "";
@@ -98,11 +103,14 @@ export function useAccountSettings(authUser, showError) {
     setSavedListenHistoryProvider(provider);
     setSavedListenHistoryUsername(username);
     setSavedListenHistoryUrl(url);
-  }, [historyQuery.data]);
+  }, [authUser?.id, historyQuery.data]);
 
   useEffect(() => {
     const lidarrData = lidarrQuery.data;
-    if (!lidarrData) return;
+    if (!lidarrData || authUser?.id == null) return;
+    const accountChanged = hydratedLidarrAccountRef.current !== authUser.id;
+    if (!accountChanged && (hasUnsavedChangesRef.current || saveInFlightRef.current)) return;
+    hydratedLidarrAccountRef.current = authUser.id;
     setLidarrConfigured(lidarrData?.configured === true);
     setLidarrRootFolders(Array.isArray(lidarrData?.rootFolders) ? lidarrData.rootFolders : []);
     setLidarrQualityProfiles(
@@ -117,7 +125,7 @@ export function useAccountSettings(authUser, showError) {
     setSavedLidarrRootFolderPath(nextRootFolderPath);
     setLidarrQualityProfileId(nextQualityProfileId);
     setSavedLidarrQualityProfileId(nextQualityProfileId);
-  }, [lidarrQuery.data]);
+  }, [authUser?.id, lidarrQuery.data]);
 
   useEffect(() => {
     if (historyQuery.error || lidarrQuery.error) showError("Failed to load account settings");

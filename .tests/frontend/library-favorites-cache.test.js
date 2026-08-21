@@ -41,7 +41,7 @@ test("an older favorites read cannot overwrite a newer mutation cache", async (t
   requests[1].resolve(jsonResponse(freshFavorites));
   assert.deepEqual(await mutation, freshFavorites);
   requests[0].resolve(jsonResponse(staleFavorites));
-  assert.deepEqual(await read, staleFavorites);
+  assert.deepEqual(await read, freshFavorites);
   assert.deepEqual(await getLibraryFavorites(), freshFavorites);
   assert.equal(requests.length, 2);
 });

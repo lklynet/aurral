@@ -358,7 +358,7 @@ export function useArtistDetailsLibrary({
 
   const loadLidarrPreferenceState = async ({ force = false } = {}) => {
     if (!force && lidarrPreferencesQuery.data) return lidarrPreferencesQuery.data;
-    const { data } = await lidarrPreferencesQuery.refetch();
+    const { data } = await lidarrPreferencesQuery.refetch({ throwOnError: true });
     return data;
   };
 
@@ -479,8 +479,11 @@ export function useArtistDetailsLibrary({
           },
         ]),
       );
+      const nextDownloadStatusIds = [
+        ...new Set([...downloadStatusIds, String(addedAlbum.id)].filter(Boolean)),
+      ];
       queryClient.setQueryData(
-        queryKeys.downloadStatus(downloadStatusIds),
+        queryKeys.downloadStatus(nextDownloadStatusIds),
         (previous = {}) => {
           const next = { ...previous };
           delete next[`pending-${albumId}`];
@@ -753,6 +756,7 @@ export function useArtistDetailsLibrary({
         ["downloading", "processing", "adding"].includes(status.status),
     );
     if (!hasNewlyAdded && !hasActiveDownloads) return;
+    if (libraryRefreshTimeoutsRef.current.size) return;
 
     const viewedArtistId = artist?.id || null;
     const libraryArtistId = libraryArtist.id;

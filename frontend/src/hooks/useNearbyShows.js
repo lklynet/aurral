@@ -40,7 +40,7 @@ export function useNearbyShows({ enabled = true, limit } = {}) {
 
   return {
     data,
-    loading: enabled && (query.isPending || query.isFetching),
+    loading: enabled && query.isLoading,
     error,
     locationMode,
     appliedZip,

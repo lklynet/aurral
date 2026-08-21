@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
 import {
   disableNewsFeed,
@@ -25,22 +26,30 @@ export function useLibraryNews({ enabled = false, limit = 60, mode = "matched", 
   const pages = query.data?.pages || [];
   const firstPage = pages[0] || null;
   const articles = pages.flatMap((page) => Array.isArray(page?.articles) ? page.articles : []);
-  const loadMore = () =>
-    query.hasNextPage && !query.isFetchingNextPage
-      ? query.fetchNextPage()
-      : Promise.resolve(null);
+  const { fetchNextPage, hasNextPage, isFetchingNextPage } = query;
+  const loadMore = useCallback(
+    () =>
+      hasNextPage && !isFetchingNextPage
+        ? fetchNextPage()
+        : Promise.resolve(null),
+    [fetchNextPage, hasNextPage, isFetchingNextPage],
+  );
+  const { mutateAsync: disableNewsFeedMutation } = disableMutation;
+  const disablePublisher = useCallback(
+    (publisher, sourceUrl) => disableNewsFeedMutation({ publisher, sourceUrl }),
+    [disableNewsFeedMutation],
+  );
 
   return {
     articles,
     artistCount: Number(firstPage?.artistCount || 0),
     refresh: firstPage?.refresh || null,
     configured: firstPage?.configured === true,
-    loading: enabled && (query.isPending || query.isFetching),
+    loading: enabled && query.isLoading,
     loadingMore: query.isFetchingNextPage,
     hasMore: query.hasNextPage === true,
     loadMore,
     error: query.error?.response?.data?.message || query.error?.message || "",
-    disablePublisher: (publisher, sourceUrl) =>
-      disableMutation.mutateAsync({ publisher, sourceUrl }),
+    disablePublisher,
   };
 }

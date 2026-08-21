@@ -26,7 +26,8 @@ export function useArtistTasteFeedback() {
     staleTime: 60_000,
   });
   const feedbackList = feedbackQuery.data ?? EMPTY_FEEDBACK;
-  const feedbackMutation = useMutation({
+  const { mutateAsync } = useMutation({
+    scope: { id: `taste-feedback:${user?.id ?? "anonymous"}` },
     mutationFn: async ({ artist, action, isSelected, sourceContext, seedArtistName }) => {
       const payload = buildArtistFeedbackPayload(artist, action, { sourceContext, seedArtistName });
       return applyArtistDiscoveryFeedback({
@@ -67,7 +68,7 @@ export function useArtistTasteFeedback() {
       { isSelected = false, sourceContext = null, seedArtistName = null } = {},
     ) => {
       try {
-        await feedbackMutation.mutateAsync({
+        await mutateAsync({
           artist,
           action,
           isSelected,
@@ -80,7 +81,7 @@ export function useArtistTasteFeedback() {
         return false;
       }
     },
-    [feedbackMutation, showError],
+    [mutateAsync, showError],
   );
 
   return {

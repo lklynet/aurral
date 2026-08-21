@@ -44,7 +44,7 @@ export const getFlowStatus = ({ signal, bypassCache = false } = {}) => {
   if (bypassCache) return getData("/playlists/status", { signal });
   return queryClient.fetchQuery({
     queryKey: queryKeys.playlistStatus,
-    queryFn: ({ signal: querySignal }) => getData("/playlists/status", { signal: signal || querySignal }),
+    queryFn: ({ signal: querySignal }) => getData("/playlists/status", { signal: querySignal }),
     staleTime: 4_000,
   });
 };

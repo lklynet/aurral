@@ -78,13 +78,18 @@ const markStoredAt = (key) => {
   } catch {}
 };
 
-const isStoredFresh = (key) => {
+const readStoredAt = (key) => {
   try {
     const at = Number(localStorage.getItem(`${key}:at`));
-    return Number.isFinite(at) && Date.now() - at < DISCOVER_CACHE_FRESH_TTL_MS;
+    return Number.isFinite(at) ? at : 0;
   } catch {
-    return false;
+    return 0;
   }
+};
+
+const isStoredFresh = (key) => {
+  const at = readStoredAt(key);
+  return at > 0 && Date.now() - at < DISCOVER_CACHE_FRESH_TTL_MS;
 };
 
 export const isStoredRecentlyAddedFresh = (userId) =>
@@ -92,6 +97,12 @@ export const isStoredRecentlyAddedFresh = (userId) =>
 
 export const isStoredRecentReleasesFresh = (userId) =>
   isStoredFresh(getDiscoverRecentReleasesStorageKey(userId));
+
+export const getStoredRecentlyAddedAt = (userId) =>
+  readStoredAt(getDiscoverRecentlyAddedStorageKey(userId));
+
+export const getStoredRecentReleasesAt = (userId) =>
+  readStoredAt(getDiscoverRecentReleasesStorageKey(userId));
 
 export const readStoredNearbyLocation = () => {
   try {

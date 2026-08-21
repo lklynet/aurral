@@ -1,10 +1,10 @@
 import { getData, postData, putData, patchData, deleteData, lidarrCredentialParams } from "../core.js";
 import { queryClient, queryKeys } from "../../../queryClient.js";
 
-export const checkHealth = ({ force = false, signal } = {}) =>
+export const checkHealth = ({ force = false } = {}) =>
   queryClient.fetchQuery({
     queryKey: queryKeys.appHealth,
-    queryFn: ({ signal: querySignal }) => getData("/health", { signal: signal || querySignal }),
+    queryFn: ({ signal: querySignal }) => getData("/health", { signal: querySignal }),
     staleTime: force ? 0 : 5_000,
   });
 
@@ -14,11 +14,11 @@ export const invalidateBootstrapCache = () => {
   queryClient.removeQueries({ queryKey: queryKeys.authBootstrap });
 };
 
-export const getBootstrapStatus = ({ signal } = {}) =>
+export const getBootstrapStatus = () =>
   queryClient.fetchQuery({
     queryKey: queryKeys.authBootstrap,
     queryFn: ({ signal: querySignal }) =>
-      getData("/health/bootstrap", { signal: signal || querySignal }),
+      getData("/health/bootstrap", { signal: querySignal }),
     staleTime: 25_000,
   });
 

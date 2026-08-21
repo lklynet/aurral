@@ -93,7 +93,7 @@ export function ArtistDetailsDownloadTargets({
     () => (Array.isArray(tracksQuery.data) ? tracksQuery.data : []),
     [tracksQuery.data],
   );
-  const loadingTracks = tracksQuery.isPending || tracksQuery.isFetching;
+  const loadingTracks = tracksQuery.isPending;
 
   useEffect(() => {
     setShowAllTracks(false);

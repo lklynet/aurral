@@ -1,5 +1,8 @@
 import { QueryClient } from "@tanstack/react-query";
 
+const LIBRARY_CANONICAL_QUERY_KEY = ["library", "canonical"];
+const LIBRARY_ALBUM_TRACKS_QUERY_KEY = ["library", "tracks"];
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -25,11 +28,12 @@ export const queryKeys = {
   libraryFavorites: ["library", "favorites"],
   libraryLookup: (id) => ["library", "lookup", id],
   libraryLookupBatch: (ids) => ["library", "lookup-batch", [...ids].sort()],
-  libraryCanonical: (options) => ["library", "canonical", options],
+  libraryCanonicalPrefix: LIBRARY_CANONICAL_QUERY_KEY,
+  libraryCanonical: (options) => [...LIBRARY_CANONICAL_QUERY_KEY, options],
   libraryAlbumLookup: (ids) => ["library", "album-lookup", [...ids].sort()],
+  libraryAlbumTracksPrefix: LIBRARY_ALBUM_TRACKS_QUERY_KEY,
   libraryAlbumTracks: (albumId, releaseGroupMbid) => [
-    "library",
-    "tracks",
+    ...LIBRARY_ALBUM_TRACKS_QUERY_KEY,
     albumId,
     releaseGroupMbid || null,
   ],
@@ -44,7 +48,7 @@ export const queryKeys = {
   releaseGroupRatings: (ids) => ["artists", "release-group-ratings", [...ids].sort()],
   downloadStatus: (ids) => ["library", "download-status", [...ids].sort()],
   searchCatalog: (query, scope, options) => ["search", scope, query, options],
-  searchDiscovery: (type, offset, limit) => ["search", "discovery", type, offset || 0, limit || null],
+  searchDiscovery: (offset, limit) => ["search", "discovery", offset || 0, limit || null],
   searchUnified: (query, mode, limit) => ["search", "unified", query, mode, limit],
   storageHealth: ["settings", "storage-health"],
   settingsTasks: ["settings", "tasks"],

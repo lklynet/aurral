@@ -7,10 +7,6 @@ export function useFlowStatus() {
   const { data: status, isPending: loading, fetchStatus } = usePlaylistStatusQuery();
 
   useEffect(() => {
-    fetchStatus();
-  }, [fetchStatus]);
-
-  useEffect(() => {
     const interval = setInterval(() => setCountdownNow(Date.now()), 30000);
     return () => clearInterval(interval);
   }, []);

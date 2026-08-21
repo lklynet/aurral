@@ -45,7 +45,7 @@ export function SettingsIndexersSection({
       ? indexersQuery.data.indexers
       : []
     : [];
-  const loadingProwlarrIndexers = indexersQuery.isPending || indexersQuery.isFetching;
+  const loadingProwlarrIndexers = indexersQuery.isFetching;
 
   useEffect(() => {
     setTestStatus(null);
@@ -67,7 +67,7 @@ export function SettingsIndexersSection({
 
   const loadProwlarrIndexers = async ({ quiet = false } = {}) => {
     try {
-      const { data: result } = await indexersQuery.refetch();
+      const { data: result } = await indexersQuery.refetch({ throwOnError: true });
       const indexers = Array.isArray(result?.indexers) ? result.indexers : [];
       if (!quiet && indexers.length > 0) {
         showSuccess(`Loaded ${indexers.length} Usenet indexer(s)`);
