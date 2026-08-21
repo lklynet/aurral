@@ -277,6 +277,20 @@ function SettingsPage() {
     return <Navigate to={`/settings/${normalizedParam}`} replace />;
   }
 
+  if (!data.settingsLoaded) {
+    return (
+      <div className="settings-arr">
+        <div className="settings-arr__body">
+          <div className="settings-arr__content">
+            <p className="settings-page__muted-copy">
+              <DotLoader size="sm" label={null} /> Loading settings…
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <CommunityGuideModal

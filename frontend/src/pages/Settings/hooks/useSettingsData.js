@@ -227,6 +227,7 @@ const buildLidarrQueries = ({ url, apiKey, credentialsRevision }) => [
 export function useSettingsData(showSuccess, showError, showInfo) {
   const [health, setHealth] = useState(null);
   const [settings, setSettingsState] = useState(defaultSettings);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [originalSettings, setOriginalSettings] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [refreshingDiscovery, setRefreshingDiscovery] = useState(false);
@@ -371,11 +372,9 @@ export function useSettingsData(showSuccess, showError, showInfo) {
     comparisonEnabledRef.current = false;
     if (settingsActivationTimerRef.current) clearTimeout(settingsActivationTimerRef.current);
     try {
-      const [, settingsResult] = await Promise.all([
-        refreshHealth(),
-        refetchSettings({ throwOnError: true }),
-        refetchPlayback({ throwOnError: false }),
-      ]);
+      void refreshHealth();
+      void refetchPlayback({ throwOnError: false });
+      const settingsResult = await refetchSettings({ throwOnError: true });
       const savedSettings = settingsResult.data;
       const updatedSettings = normalizeSettings(savedSettings);
       const savedSnapshot = structuredClone(updatedSettings);
@@ -384,6 +383,7 @@ export function useSettingsData(showSuccess, showError, showInfo) {
       originalSettingsRef.current = savedSnapshot;
       setSettingsState(updatedSettings);
       setOriginalSettings(savedSnapshot);
+      setSettingsLoaded(true);
       hasUnsavedChangesRef.current = false;
       setHasUnsavedChanges(false);
       settingsActivationTimerRef.current = setTimeout(() => {
@@ -395,7 +395,9 @@ export function useSettingsData(showSuccess, showError, showInfo) {
         setHasUnsavedChanges(changed);
         if (changed) persistSettingsRef.current?.(settingsRef.current);
       }, 600);
-    } catch {}
+    } catch {
+      setSettingsLoaded(true);
+    }
   }, [refetchPlayback, refetchSettings, refreshHealth, updateLidarrResourceConfig]);
 
   const refreshLidarrResources = useCallback(async (config = null) => {
@@ -503,7 +505,7 @@ export function useSettingsData(showSuccess, showError, showInfo) {
             }));
           }
 
-          if (mountedRef.current) await refreshHealth();
+          if (mountedRef.current) void refreshHealth();
           succeeded = true;
           return true;
         } catch (err) {
@@ -670,6 +672,7 @@ export function useSettingsData(showSuccess, showError, showInfo) {
   return {
     health,
     settings,
+    settingsLoaded,
     playbackSettings,
     updateSettings,
     originalSettings,

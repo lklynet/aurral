@@ -51,11 +51,7 @@ export const getPlaybackSettings = () =>
 export const testPlaybackConnection = (key, config) =>
   postData(`/settings/playback/${encodeURIComponent(key)}/test`, config);
 
-export const updateAppSettings = async (settings) => {
-  const result = await postData("/settings", settings);
-  await queryClient.invalidateQueries({ queryKey: queryKeys.appSettings });
-  return result;
-};
+export const updateAppSettings = (settings) => postData("/settings", settings);
 
 export const getLidarrRootFolders = (url, apiKey, { signal } = {}) =>
   getData("/settings/lidarr/root-folders", {
