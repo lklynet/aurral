@@ -22,6 +22,7 @@ test("album track hydration does not rewrite unchanged library state", async (t)
   const hydrated = mergeAlbumTrackPageIntoLibrary(current, page, album.id, [track]);
   assert.notStrictEqual(hydrated, current);
   assert.equal(hydrated.albums[0].trackCount, 1);
+  assert.equal(hydrated.albums[0].availableTrackCount, 1);
   assert.strictEqual(
     mergeAlbumTrackPageIntoLibrary(hydrated, page, album.id, [track]),
     hydrated,
