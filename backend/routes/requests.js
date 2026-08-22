@@ -2,7 +2,10 @@ import express from "express";
 import { UUID_REGEX } from "../../lib/uuid.js";
 import { noCache } from "../middleware/cache.js";
 import { requireAuth, requirePermission } from "../middleware/requirePermission.js";
-import { invalidateAllDownloadStatusesCache } from "./library/handlers/downloads.js";
+import {
+  getLidarrStatusSnapshot,
+  invalidateAllDownloadStatusesCache,
+} from "./library/handlers/downloads.js";
 import { buildLidarrRequests } from "../services/lidarrRequestBuilder.js";
 import { getAurralHistoryRequests } from "../services/aurralHistoryService.js";
 
@@ -71,8 +74,11 @@ const filterRedundantAurralRequests = (aurralRequests, lidarrRequests) => {
 };
 
 const buildRequestsResponse = async (lidarrClient) => {
+  const snapshot = lidarrClient?.isConfigured()
+    ? await getLidarrStatusSnapshot()
+    : null;
   const [lidarrRequests, aurralRequests] = await Promise.all([
-    lidarrClient?.isConfigured() ? buildLidarrRequests(lidarrClient) : Promise.resolve([]),
+    snapshot ? buildLidarrRequests(lidarrClient, snapshot.provider) : Promise.resolve([]),
     getAurralHistoryRequests(lidarrClient),
   ]);
   const filteredAurral = filterRedundantAurralRequests(aurralRequests, lidarrRequests);

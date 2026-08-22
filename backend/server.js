@@ -13,7 +13,10 @@ import { authMiddleware, isProxyAuthEnabled } from "./middleware/auth.js";
 import { handleOidcCallback, isOidcEnabled } from "./services/oidcAuth.js";
 import { logger } from "./services/logger.js";
 import { websocketService } from "./services/websocketService.js";
-import { getAllDownloadStatuses } from "./routes/library/handlers/downloads.js";
+import {
+  getLidarrStatusSnapshot,
+  hasActiveLidarrStatusSnapshot,
+} from "./routes/library/handlers/downloads.js";
 import { getWeeklyFlowStatusSnapshot } from "./services/weeklyFlow/weeklyFlowStatusSnapshot.js";
 
 import settingsRouter from "./routes/settings/index.js";
@@ -302,17 +305,19 @@ const broadcastDownloadStatuses = async () => {
   if (downloadStatusBroadcastInFlight) return;
   downloadStatusBroadcastInFlight = true;
   try {
-    if (!hasWsSubscribers("downloads")) return;
-    const { lidarrClient } = await import("./services/lidarrClient.js");
-    if (lidarrClient.isCircuitOpen()) return;
-    const statuses = await getAllDownloadStatuses();
-    const payload = JSON.stringify(statuses);
+    if (!hasWsSubscribers("downloads") && !hasActiveLidarrStatusSnapshot()) return;
+    const snapshot = await getLidarrStatusSnapshot();
+    const message = {
+      type: "download_statuses",
+      statuses: snapshot.statuses,
+      stale: snapshot.stale,
+      error: snapshot.error,
+      updatedAt: snapshot.updatedAt,
+    };
+    const payload = JSON.stringify(message);
     if (payload !== lastDownloadStatusesPayload) {
       lastDownloadStatusesPayload = payload;
-      websocketService.broadcast("downloads", {
-        type: "download_statuses",
-        statuses,
-      });
+      websocketService.broadcast("downloads", message);
     }
   } catch (error) {
     logger.warn("system", "Failed to broadcast download statuses:", { message: error.message });

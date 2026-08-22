@@ -11,12 +11,21 @@ import { logger } from "../../../services/logger.js";
 import { getCanonicalTrackOwnership } from "../../../services/libraryQueryService.js";
 
 const STALE_GRABBED_MS = 15 * 60 * 1000;
-const DOWNLOAD_STATUS_CACHE_MS = 5000;
+const ACTIVE_STATUS_CACHE_MS = 10 * 1000;
+const IDLE_STATUS_CACHE_MS = 60 * 1000;
+const MAX_STATUS_RETRY_MS = 2 * 60 * 1000;
 let allDownloadStatusesCache = {
-  at: 0,
-  statuses: null,
+  snapshot: null,
   pending: null,
+  failures: 0,
+  nextRefreshAt: 0,
+  revision: 0,
 };
+
+const activeDownloadStatuses = new Set(["searching", "downloading", "processing"]);
+
+const snapshotHasActiveWork = (statuses) =>
+  Object.values(statuses || {}).some((status) => activeDownloadStatuses.has(status?.status));
 
 const invalidateActivityRequestsCache = () =>
   import("../../requests.js")
@@ -33,13 +42,7 @@ export const getDownloadStatusesForAlbumIds = async (
 
   if (lidarrClient.isConfigured()) {
     try {
-      const { queue, history, commands } =
-        snapshot ||
-        (await Promise.all([
-          lidarrClient.getQueue(),
-          lidarrClient.getHistory(1, 200),
-          lidarrClient.request("/command").catch(() => []),
-        ]).then(([queue, history, commands]) => ({ queue, history, commands })));
+      const { queue, history, commands } = snapshot || (await getLidarrStatusSnapshot()).provider;
       const queueItems = Array.isArray(queue) ? queue : queue.records || [];
       const historyItems = Array.isArray(history) ? history : history.records || [];
       const searchContext = parseLidarrSearchContext({
@@ -221,85 +224,106 @@ export const getDownloadStatusesForAlbumIds = async (
   return statuses;
 };
 
-const computeAllDownloadStatuses = async () => {
+const computeLidarrStatusSnapshot = async () => {
   const { lidarrClient } = await import("../../../services/lidarrClient.js");
 
   if (!lidarrClient.isConfigured()) {
-    return {};
-  }
-  if (lidarrClient.isCircuitOpen()) {
-    return allDownloadStatusesCache.statuses || {};
+    return { provider: { queue: [], history: { records: [] }, commands: [] }, statuses: {} };
   }
 
-  try {
-    const [queue, history, commands] = await Promise.all([
-      lidarrClient.getQueue(),
-      lidarrClient.getHistory(1, 200),
-      lidarrClient.request("/command").catch(() => []),
-    ]);
-    const queueItems = Array.isArray(queue) ? queue : queue.records || [];
-    const historyItems = Array.isArray(history) ? history : history.records || [];
-    const oneHourAgo = Date.now() - 60 * 60 * 1000;
-    const albumIds = new Set();
-    const searchContext = parseLidarrSearchContext({
-      queue,
-      history,
-      commands,
-    });
+  const [queue, history, commands] = await Promise.all([
+    lidarrClient.getQueue({ forceRefresh: true }),
+    lidarrClient.getHistory(1, 200, "date", "descending", { forceRefresh: true }),
+    lidarrClient.request("/command", "GET", null, false, { forceRefresh: true }),
+  ]);
+  const provider = { queue, history, commands };
+  const queueItems = Array.isArray(queue) ? queue : queue.records || [];
+  const historyItems = Array.isArray(history) ? history : history.records || [];
+  const oneHourAgo = Date.now() - 60 * 60 * 1000;
+  const albumIds = new Set();
+  const searchContext = parseLidarrSearchContext({ queue, history, commands });
 
-    for (const item of queueItems) {
-      const albumId = item?.albumId ?? item?.album?.id;
-      if (albumId != null) albumIds.add(String(albumId));
-    }
-    for (const item of historyItems) {
-      if (item?.albumId == null) continue;
-      const historyTime = new Date(item?.date || item?.eventDate || 0).getTime();
-      if (historyTime > oneHourAgo) albumIds.add(String(item.albumId));
-    }
-    for (const albumId of searchContext.searchingAlbumIds) {
-      albumIds.add(String(albumId));
-    }
-
-    return getDownloadStatusesForAlbumIds([...albumIds], {
-      queue,
-      history,
-      commands,
-    });
-  } catch (error) {
-    logger.warn("downloads", "Failed to fetch Lidarr status:", { message: error.message });
-    return allDownloadStatusesCache.statuses || {};
+  for (const item of queueItems) {
+    const albumId = item?.albumId ?? item?.album?.id;
+    if (albumId != null) albumIds.add(String(albumId));
   }
+  for (const item of historyItems) {
+    if (item?.albumId == null) continue;
+    const historyTime = new Date(item?.date || item?.eventDate || 0).getTime();
+    if (historyTime > oneHourAgo) albumIds.add(String(item.albumId));
+  }
+  for (const albumId of searchContext.searchingAlbumIds) {
+    albumIds.add(String(albumId));
+  }
+
+  const statuses = await getDownloadStatusesForAlbumIds([...albumIds], provider);
+  return { provider, statuses };
 };
 
 export const invalidateAllDownloadStatusesCache = () => {
-  allDownloadStatusesCache.at = 0;
-  allDownloadStatusesCache.statuses = null;
-  allDownloadStatusesCache.pending = null;
+  allDownloadStatusesCache.revision += 1;
+  allDownloadStatusesCache.nextRefreshAt = 0;
 };
 
-export const getAllDownloadStatuses = async () => {
+export const hasActiveLidarrStatusSnapshot = () =>
+  allDownloadStatusesCache.snapshot?.active === true;
+
+const staleSnapshot = (error) => ({
+  ...(allDownloadStatusesCache.snapshot || {
+    provider: { queue: [], history: { records: [] }, commands: [] },
+    statuses: {},
+    updatedAt: null,
+    active: false,
+  }),
+  stale: true,
+  error: error?.message || String(error),
+});
+
+export const getLidarrStatusSnapshot = async ({ force = false } = {}) => {
   const { lidarrClient } = await import("../../../services/lidarrClient.js");
-  if (lidarrClient.isCircuitOpen() && allDownloadStatusesCache.statuses) {
-    return allDownloadStatusesCache.statuses;
+  if (lidarrClient.isCircuitOpen()) {
+    return staleSnapshot("Lidarr circuit is open");
   }
 
   const now = Date.now();
-  if (
-    allDownloadStatusesCache.statuses &&
-    now - allDownloadStatusesCache.at < DOWNLOAD_STATUS_CACHE_MS
-  ) {
-    return allDownloadStatusesCache.statuses;
+  if (!force && allDownloadStatusesCache.snapshot && now < allDownloadStatusesCache.nextRefreshAt) {
+    return allDownloadStatusesCache.snapshot;
   }
-
   if (allDownloadStatusesCache.pending) {
     return allDownloadStatusesCache.pending;
   }
 
-  allDownloadStatusesCache.pending = computeAllDownloadStatuses()
-    .then((statuses) => {
-      allDownloadStatusesCache.statuses = statuses;
-      allDownloadStatusesCache.at = Date.now();
-      return statuses;
+  const refreshRevision = allDownloadStatusesCache.revision;
+  allDownloadStatusesCache.pending = computeLidarrStatusSnapshot()
+    .then(({ provider, statuses }) => {
+      const active = snapshotHasActiveWork(statuses);
+      const refreshedAt = Date.now();
+      const snapshot = {
+        provider,
+        statuses,
+        updatedAt: new Date(refreshedAt).toISOString(),
+        active,
+        stale: false,
+        error: null,
+      };
+      allDownloadStatusesCache.snapshot = snapshot;
+      allDownloadStatusesCache.failures = 0;
+      allDownloadStatusesCache.nextRefreshAt =
+        refreshRevision === allDownloadStatusesCache.revision
+          ? refreshedAt + (active ? ACTIVE_STATUS_CACHE_MS : IDLE_STATUS_CACHE_MS)
+          : 0;
+      return snapshot;
+    })
+    .catch((error) => {
+      allDownloadStatusesCache.failures += 1;
+      allDownloadStatusesCache.nextRefreshAt = Date.now() + Math.min(
+        MAX_STATUS_RETRY_MS,
+        ACTIVE_STATUS_CACHE_MS * 2 ** (allDownloadStatusesCache.failures - 1),
+      );
+      logger.warn("downloads", "Failed to refresh Lidarr status:", { message: error.message });
+      const snapshot = staleSnapshot(error);
+      allDownloadStatusesCache.snapshot = snapshot;
+      return snapshot;
     })
     .finally(() => {
       allDownloadStatusesCache.pending = null;
@@ -307,6 +331,9 @@ export const getAllDownloadStatuses = async () => {
 
   return allDownloadStatusesCache.pending;
 };
+
+export const getAllDownloadStatuses = async () =>
+  (await getLidarrStatusSnapshot()).statuses;
 
 export function registerDownloads(router) {
   router.post("/downloads/track", requireAuth, requirePermission("addAlbum"), async (req, res) => {
@@ -549,7 +576,7 @@ export function registerDownloads(router) {
       if (!lidarrClient.isConfigured()) {
         return res.json([]);
       }
-      const queue = await lidarrClient.getQueue();
+      const queue = (await getLidarrStatusSnapshot()).provider.queue;
       const queueItems = Array.isArray(queue) ? queue : queue.records || [];
       res.json(
         queueItems.map((item) => ({
