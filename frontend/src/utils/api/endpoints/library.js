@@ -63,24 +63,33 @@ export const getLibraryRefreshStatus = (jobId) =>
 
 let libraryFavoritesGeneration = 0;
 let latestLibraryFavorites = null;
+let libraryFavoritesRefresh = null;
 
 export const fetchLibraryFavorites = ({ signal } = {}) =>
   getData("/library/favorites", { signal });
 
-export const getLibraryFavorites = ({ signal } = {}) => {
+const waitForLibraryFavoritesRefresh = async () => {
+  let waited = false;
+  while (libraryFavoritesRefresh) {
+    waited = true;
+    const pending = libraryFavoritesRefresh;
+    await pending;
+  }
+  return waited;
+};
+
+export const getLibraryFavorites = async ({ signal } = {}) => {
   const generation = libraryFavoritesGeneration;
-  return queryClient.fetchQuery({
+  const data = await queryClient.fetchQuery({
     queryKey: queryKeys.libraryFavorites,
     queryFn: ({ signal: querySignal }) => fetchLibraryFavorites({ signal: mergeSignals(signal, querySignal) }),
     staleTime: 30_000,
-  }).then((data) => {
-    if (generation !== libraryFavoritesGeneration && latestLibraryFavorites) {
-      const repaired = latestLibraryFavorites;
-      queryClient.setQueryData(queryKeys.libraryFavorites, repaired);
-      return repaired;
-    }
-    return data;
   });
+  const waitedForRefresh = await waitForLibraryFavoritesRefresh();
+  if (generation === libraryFavoritesGeneration && !waitedForRefresh) return data;
+  const repaired = latestLibraryFavorites || queryClient.getQueryData(queryKeys.libraryFavorites) || data;
+  queryClient.setQueryData(queryKeys.libraryFavorites, repaired);
+  return repaired;
 };
 
 export const clearLibraryFavoritesCache = () => {
@@ -90,18 +99,31 @@ export const clearLibraryFavoritesCache = () => {
 
 export const updateLibraryFavorites = async (ids, starred) => {
   const generation = ++libraryFavoritesGeneration;
-  const data = await postData("/library/favorites", { ids, starred });
-  if (generation === libraryFavoritesGeneration) {
+  let settleRefresh;
+  const refresh = new Promise((resolve) => {
+    settleRefresh = resolve;
+  });
+  libraryFavoritesRefresh = refresh;
+  try {
+    const data = await postData("/library/favorites", { ids, starred });
+    if (generation !== libraryFavoritesGeneration) return data;
     try {
-      latestLibraryFavorites = await fetchLibraryFavorites();
-      queryClient.setQueryData(queryKeys.libraryFavorites, latestLibraryFavorites);
+      const refreshed = await fetchLibraryFavorites();
+      if (generation !== libraryFavoritesGeneration) return data;
+      latestLibraryFavorites = refreshed;
+      queryClient.setQueryData(queryKeys.libraryFavorites, refreshed);
     } catch {
-      latestLibraryFavorites = null;
-      queryClient.invalidateQueries({ queryKey: queryKeys.libraryFavorites });
+      if (generation === libraryFavoritesGeneration) {
+        latestLibraryFavorites = null;
+        queryClient.invalidateQueries({ queryKey: queryKeys.libraryFavorites });
+      }
     }
+    return data;
+  } finally {
+    clearCanonicalLibraryPageCache();
+    settleRefresh();
+    if (libraryFavoritesRefresh === refresh) libraryFavoritesRefresh = null;
   }
-  clearCanonicalLibraryPageCache();
-  return data;
 };
 
 const normalizeLibraryArtist = (artist) =>
