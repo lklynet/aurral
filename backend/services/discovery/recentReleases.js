@@ -64,6 +64,7 @@ export async function getRecentMissingReleases(limit = 24, options = {}) {
       to: includeFuture ? null : new Date(today).toISOString().slice(0, 10),
       limit: normalizedLimit,
       missingOnly: true,
+      artistIds: providedArtists.map((artist) => artist?.canonicalId || artist?.id),
     });
   }
 

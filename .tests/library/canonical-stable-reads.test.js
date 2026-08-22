@@ -5,12 +5,18 @@ import { db } from "../../backend/config/db-sqlite.js";
 import {
   beginLibraryScan,
   finishLibraryScan,
+  linkLibraryAlbumTrack,
+  upsertLibraryAlbum,
   upsertLibraryArtist,
+  upsertLibraryTrack,
 } from "../../backend/services/libraryMediaStore.js";
 import { getRecentMissingReleases } from "../../backend/services/discovery/recentReleases.js";
 import { libraryManager } from "../../backend/services/libraryManager.js";
 import { lidarrClient } from "../../backend/services/lidarrClient.js";
-import { getCanonicalArtistProjection } from "../../backend/services/libraryQueryService.js";
+import {
+  getCanonicalArtistProjection,
+  getCanonicalLibraryPage,
+} from "../../backend/services/libraryQueryService.js";
 import {
   clearScheduledLibraryScan,
   getScheduledLibraryScanJobId,
@@ -78,7 +84,7 @@ test("artist monitoring mutations dedupe canonical reconciliation scans", async 
     jobId = getScheduledLibraryScanJobId();
     assert.ok(jobId);
     assert.deepEqual(JSON.parse(getLibraryScanQueue().getJob(jobId).payload), {
-      force: true,
+      force: false,
       includeLidarr: true,
     });
 
@@ -117,6 +123,40 @@ test("artist details do not expose Lidarr state for Aurral-only artists", () => 
     assert.equal(getCanonicalLidarrArtist(mbid), null);
   } finally {
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  }
+});
+
+test("canonical artist page totals match hydrated items", () => {
+  const key = `artist-page-shape:${process.pid}:${Date.now()}`;
+  const emptyArtist = upsertLibraryArtist({
+    identityKey: `${key}:empty`,
+    name: `${key} empty`,
+  });
+  const populatedArtist = upsertLibraryArtist({
+    identityKey: `${key}:populated`,
+    name: `${key} populated`,
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: `${key}:album`,
+    artistId: populatedArtist.id,
+    title: "Hydrated Album",
+  });
+  const track = upsertLibraryTrack({
+    identityKey: `${key}:track`,
+    title: "Hydrated Track",
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+
+  try {
+    const page = getCanonicalLibraryPage({ kind: "artists", query: key });
+    assert.equal(page.total, 1);
+    assert.deepEqual(page.items.map((artist) => artist.id), [populatedArtist.id]);
+  } finally {
+    db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)").run(
+      emptyArtist.id,
+      populatedArtist.id,
+    );
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
   }
 });
 

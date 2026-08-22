@@ -53,7 +53,7 @@ const ALBUM_OWNED_BY_DIFFERENT_ARTIST_ERROR =
 
 function scheduleCanonicalLibraryReconciliation() {
   invalidateCanonicalLibraryCache();
-  return scheduleLibraryScan({ force: true, includeLidarr: true });
+  return scheduleLibraryScan({ includeLidarr: true });
 }
 
 function buildTrackFileIndex(trackFiles) {

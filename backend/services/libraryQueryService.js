@@ -391,7 +391,9 @@ const canonicalDateAlbumProjection = (row) => {
       trackCount,
       trackFileCount: availableTrackCount,
       sizeOnDisk: Number(row.size_on_disk || 0),
-      percentOfTracks: trackCount > 0 && availableTrackCount === trackCount ? 100 : 0,
+      percentOfTracks: trackCount > 0
+        ? Math.round((availableTrackCount / trackCount) * 100)
+        : 0,
     },
   };
 };
@@ -401,6 +403,7 @@ export function getCanonicalAlbumsByReleaseDate({
   to = null,
   limit = 100,
   missingOnly = false,
+  artistIds = [],
 } = {}) {
   const fromDate = String(from || "").trim();
   const toDate = String(to || "").trim();
@@ -410,6 +413,18 @@ export function getCanonicalAlbumsByReleaseDate({
   if (toDate) {
     conditions.push("album.release_date <= ?");
     parameters.push(toDate);
+  }
+  const canonicalArtistIds = [...new Set(
+    (Array.isArray(artistIds) ? artistIds : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isSafeInteger(value) && value > 0),
+  )];
+  if (Array.isArray(artistIds) && artistIds.length > 0) {
+    if (!canonicalArtistIds.length) return [];
+    conditions.push(
+      "album.artist_id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))",
+    );
+    parameters.push(JSON.stringify(canonicalArtistIds));
   }
   if (missingOnly === true) {
     conditions.push(`NOT EXISTS (
@@ -890,6 +905,29 @@ const recentMediaOrder = (kind, sourceFilter, availableOnly, direction) => {
 
 const pageMediaExists = (kind, sourceFilter, availableOnly) => {
   if (!sourceFilter && availableOnly !== true) {
+    if (kind === "artists") {
+      return {
+        sql: `EXISTS (
+          SELECT 1
+          FROM library_albums AS page_album
+          JOIN library_album_tracks AS page_album_track ON page_album_track.album_id = page_album.id
+          JOIN library_tracks AS page_track ON page_track.id = page_album_track.track_id
+          WHERE page_album.artist_id = artist.id
+        )`,
+        parameters: [],
+      };
+    }
+    if (kind === "albums") {
+      return {
+        sql: `EXISTS (
+          SELECT 1
+          FROM library_album_tracks AS page_album_track
+          JOIN library_tracks AS page_track ON page_track.id = page_album_track.track_id
+          WHERE page_album_track.album_id = album.id
+        )`,
+        parameters: [],
+      };
+    }
     return { sql: "1 = 1", parameters: [] };
   }
   const { conditions, parameters } = mediaSourceClause(sourceFilter);

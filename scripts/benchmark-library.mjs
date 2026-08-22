@@ -506,6 +506,9 @@ async function main() {
         options.repeats,
       );
     }
+    const artistProjectionCold = measure(
+      () => queryService.getCanonicalArtistProjection({ page: 1, pageSize: 100 }),
+    );
     const artistProjectionSamples = [];
     for (let index = 0; index < options.repeats; index += 1) {
       artistProjectionSamples.push(
@@ -514,7 +517,8 @@ async function main() {
     }
     const stripProjection = ({ value: _value, ...sample }) => sample;
     pages["artist-projection"] = {
-      shape: artistProjectionSummary(artistProjectionSamples[0].value),
+      shape: artistProjectionSummary(artistProjectionCold.value),
+      cold: stripProjection(artistProjectionCold),
       warm: summarizeSamples(artistProjectionSamples.map(stripProjection)),
     };
     const artistProjectionPlan = queryService.getCanonicalArtistProjectionQueryPlan({

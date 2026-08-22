@@ -178,6 +178,23 @@ test("canonical recent releases exclude owned albums without loading old albums"
   try {
     addAlbum({ suffix: 1, title: "Missing Current", releaseDate: "2026-08-20" });
     addAlbum({ suffix: 2, title: "Owned Current", releaseDate: "2026-08-19", available: true });
+    const unrelatedArtist = upsertLibraryArtist({
+      identityKey: `${key}:unrelated-artist`,
+      name: "Unrelated Release Artist",
+    });
+    const unrelatedAlbum = upsertLibraryAlbum({
+      identityKey: `${key}:unrelated-album`,
+      artistId: unrelatedArtist.id,
+      title: "Unrelated Newer Release",
+      releaseDate: "2026-08-21",
+    });
+    const unrelatedTrack = upsertLibraryTrack({
+      identityKey: `${key}:unrelated-track`,
+      title: "Unrelated Track",
+      artistName: "Unrelated Release Artist",
+    });
+    trackIds.push(unrelatedTrack.id);
+    linkLibraryAlbumTrack({ albumId: unrelatedAlbum.id, trackId: unrelatedTrack.id });
     for (let index = 0; index < 125; index += 1) {
       addAlbum({ suffix: index + 100, title: `Old Album ${index}`, releaseDate: "2000-01-01" });
     }
@@ -188,13 +205,25 @@ test("canonical recent releases exclude owned albums without loading old albums"
       to: "2026-08-22",
       limit: 10,
     });
-    assert.equal(projectedAlbums[0]?.artistId, projectedArtist?.id);
+    assert.equal(
+      projectedAlbums.find((album) => album.title === "Missing Current")?.artistId,
+      projectedArtist?.id,
+    );
 
     const releases = await getRecentMissingReleases(10, {
       now: "2026-08-22T12:00:00Z",
     });
 
-    assert.deepEqual(releases.map((album) => album.title), ["Missing Current"]);
+    assert.deepEqual(releases.map((album) => album.title), [
+      "Unrelated Newer Release",
+      "Missing Current",
+    ]);
+
+    const scopedReleases = await getRecentMissingReleases(10, {
+      artists: [projectedArtist],
+      now: "2026-08-22T12:00:00Z",
+    });
+    assert.deepEqual(scopedReleases.map((album) => album.title), ["Missing Current"]);
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path LIKE ?").run(`/tmp/${key}/%`);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(canonicalArtist.id);
