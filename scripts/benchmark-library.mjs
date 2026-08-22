@@ -401,13 +401,27 @@ const value = read[operation]();
 const elapsedMs = performance.now() - started;
 const serialized = JSON.stringify(value);
 const after = process.memoryUsage();
-const counts = Array.isArray(value)
-  ? { items: value.length }
-  : {
-      artists: Array.isArray(value?.artist) ? value.artist.length : undefined,
-      albums: Array.isArray(value?.album) ? value.album.length : undefined,
-      songs: Array.isArray(value?.song) ? value.song.length : undefined,
-    };
+const arrayCount = (target, key) => Array.isArray(target?.[key]) ? target[key].length : 0;
+const indexArtistCount = Array.isArray(value?.index)
+  ? value.index.reduce((total, group) => total + arrayCount(group, "artist"), 0)
+  : 0;
+const counts = {
+  getIndexes: { artists: indexArtistCount },
+  getArtist: { albums: arrayCount(value, "album") },
+  getAlbum: { songs: arrayCount(value, "song") },
+  search3: {
+    artists: arrayCount(value, "artist"),
+    albums: arrayCount(value, "album"),
+    songs: arrayCount(value, "song"),
+  },
+  randomSongs: { items: Array.isArray(value) ? value.length : 0 },
+  starred: {
+    artists: arrayCount(value, "artist"),
+    albums: arrayCount(value, "album"),
+    songs: arrayCount(value, "song"),
+  },
+  playlists: { items: Array.isArray(value) ? value.length : 0 },
+}[operation] || {};
 console.log(JSON.stringify({
   elapsedMs: Number(elapsedMs.toFixed(3)),
   jsonBytes: Buffer.byteLength(serialized),
@@ -421,21 +435,42 @@ console.log(JSON.stringify({
 
 function summarizeReadSamples(samples) {
   const completed = samples.filter((sample) => sample.status === "completed");
-  const values = completed.map((sample) => sample.elapsedMs).sort((a, b) => a - b);
+  const statisticsComplete = samples.length > 0
+    && completed.length === samples.length
+    && completed.every((sample) => [
+      sample.elapsedMs,
+      sample.jsonBytes,
+      sample.rssDeltaBytes,
+      sample.heapDeltaBytes,
+    ].every(Number.isFinite));
+  const values = statisticsComplete
+    ? completed.map((sample) => sample.elapsedMs).sort((a, b) => a - b)
+    : [];
   const percentile = (fraction) => values[Math.min(values.length - 1, Math.ceil(values.length * fraction) - 1)];
+  const itemTotal = (sample) => Object.values(sample.counts || {})
+    .reduce((total, count) => total + (Number.isFinite(Number(count)) ? Number(count) : 0), 0);
   return {
     samples,
     sampleCount: samples.length,
     completedCount: completed.length,
+    statisticsComplete,
     nonVacuous: samples.length > 0
       && completed.length === samples.length
-      && completed.every((sample) => Number(sample.jsonBytes) > 0),
-    responseBytes: [...new Set(completed.map((sample) => sample.jsonBytes))],
-    medianMs: completed.length ? percentile(0.5) : null,
-    p95Ms: completed.length ? percentile(0.95) : null,
-    maxRssDeltaBytes: completed.length ? Math.max(...completed.map((sample) => sample.rssDeltaBytes)) : null,
-    maxHeapDeltaBytes: completed.length ? Math.max(...completed.map((sample) => sample.heapDeltaBytes)) : null,
+      && completed.every((sample) => itemTotal(sample) > 0),
+    responseBytes: statisticsComplete ? [...new Set(completed.map((sample) => sample.jsonBytes))] : [],
+    medianMs: statisticsComplete ? percentile(0.5) : null,
+    p95Ms: statisticsComplete ? percentile(0.95) : null,
+    maxRssDeltaBytes: statisticsComplete
+      ? Math.max(...completed.map((sample) => sample.rssDeltaBytes))
+      : null,
+    maxHeapDeltaBytes: statisticsComplete
+      ? Math.max(...completed.map((sample) => sample.heapDeltaBytes))
+      : null,
   };
+}
+
+function isFiniteBelow(value, limit) {
+  return Number.isFinite(value) && value < limit;
 }
 
 const indexerProbeCode = `
@@ -637,29 +672,31 @@ async function main() {
     const measuredReads = measuredReadNames.map((name) => subsonicReads[name]);
     const measuredQueryChecks = {
       nonVacuousCompletedSamples: measuredReads.every((read) => read.nonVacuous),
-      coldP95Under750ms: measuredReads.every((read) => read.p95Ms < 750),
+      coldP95Under750ms: measuredReads.every((read) => isFiniteBelow(read.p95Ms, 750)),
       responseUnder2MiB: measuredReads.every((read) =>
         read.responseBytes.length > 0
-        && read.responseBytes.every((bytes) => bytes < 2 * 1024 * 1024)),
+        && read.responseBytes.every((bytes) => isFiniteBelow(bytes, 2 * 1024 * 1024))),
       maxRssDeltaUnder64MiB: measuredReads.every((read) =>
-        read.maxRssDeltaBytes < 64 * 1024 * 1024),
+        isFiniteBelow(read.maxRssDeltaBytes, 64 * 1024 * 1024)),
     };
     const pageBudgetChecks = {
-      warmP95Under250ms: Object.values(pages).every((page) => page.warm.p95Ms < 250),
-      coldP95Under750ms: Object.values(pages).every((page) => page.cold.p95Ms < 750),
+      warmP95Under250ms: Object.values(pages).every((page) =>
+        isFiniteBelow(page.warm.p95Ms, 250)),
+      coldP95Under750ms: Object.values(pages).every((page) =>
+        isFiniteBelow(page.cold.p95Ms, 750)),
       responseUnder2MiB: Object.values(pages).every((page) =>
         [...page.cold.samples, ...page.warm.samples]
-          .every((sample) => sample.jsonBytes < 2 * 1024 * 1024)),
+          .every((sample) => isFiniteBelow(sample.jsonBytes, 2 * 1024 * 1024))),
       maxRssDeltaUnder64MiB: Object.values(pages).every((page) =>
         [...page.cold.samples, ...page.warm.samples]
-          .every((sample) => sample.rssDeltaBytes < 64 * 1024 * 1024)),
+          .every((sample) => isFiniteBelow(sample.rssDeltaBytes, 64 * 1024 * 1024))),
     };
     const compatibilityReadChecks = {
       responseUnder2MiB: Object.values(subsonicReads).every((read) =>
         read.responseBytes.length > 0
-        && read.responseBytes.every((bytes) => bytes < 2 * 1024 * 1024)),
+        && read.responseBytes.every((bytes) => isFiniteBelow(bytes, 2 * 1024 * 1024))),
       maxRssDeltaUnder64MiB: Object.values(subsonicReads).every((read) =>
-        read.maxRssDeltaBytes < 64 * 1024 * 1024),
+        isFiniteBelow(read.maxRssDeltaBytes, 64 * 1024 * 1024)),
     };
     const boundedReadCompleted = Object.values(subsonicReads).every((read) =>
       read.nonVacuous);
