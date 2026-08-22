@@ -117,6 +117,18 @@ test("discoveryNeedsRefresh returns true when cache is empty", () => {
   );
 });
 
+test("discoveryNeedsRefresh retries a recent empty cache", () => {
+  assert.equal(
+    discoveryNeedsRefresh({
+      recommendations: [],
+      globalTop: [],
+      topGenres: [],
+      lastUpdated: new Date().toISOString(),
+    }),
+    true,
+  );
+});
+
 test("discoveryNeedsRefresh returns false for fresh populated cache", () => {
   assert.equal(
     discoveryNeedsRefresh({
@@ -139,17 +151,22 @@ test("first discovery startup queues one refresh", async () => {
   assert.equal(payloads[0].scheduleOnly, false);
 });
 
-test("completed empty discovery cache stays fresh across two restarts", async () => {
+test("recent empty discovery cache queues one recovery refresh", async () => {
   process.env.LASTFM_API_KEY = "test-key";
-  setDiscoveryCache({ lastUpdated: new Date().toISOString() });
+  setDiscoveryCache({
+    recommendations: [],
+    globalTop: [],
+    topGenres: [],
+    lastUpdated: new Date().toISOString(),
+  });
 
   await bootstrapDiscoveryRefresh();
   await bootstrapDiscoveryRefresh();
 
   const payloads = discoveryRefreshPayloads();
   assert.equal(payloads.length, 1);
-  assert.equal(payloads[0].reason, "scheduled");
-  assert.equal(payloads[0].scheduleOnly, true);
+  assert.equal(payloads[0].reason, "startup");
+  assert.equal(payloads[0].scheduleOnly, false);
 });
 
 test("stale and incomplete discovery caches retry", async () => {

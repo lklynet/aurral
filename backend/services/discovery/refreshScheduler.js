@@ -1,6 +1,6 @@
 import { dbOps } from "../../db/helpers/index.js";
 import { getLastfmApiKey } from "../apiClients/index.js";
-import { iterateCanonicalArtistProjection } from "../libraryQueryService.js";
+import { getCanonicalArtistProjection } from "../libraryQueryService.js";
 import {
   enqueueDiscoveryRefreshJob,
   getHonkerDb,
@@ -143,16 +143,25 @@ export function markDiscoveryRefreshDequeued() {
 export async function isDiscoveryRefreshConfigured() {
   const hasLastfm = !!getLastfmApiKey();
   if (hasLastfm) return true;
-  const libraryArtists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
-  return libraryArtists.length > 0;
+  return getCanonicalArtistProjection({ page: 1, pageSize: 1 }).length > 0;
 }
 
 export function discoveryNeedsRefresh(cache = getDiscoveryCache()) {
   const lastUpdated = cache?.lastUpdated;
+  const hasRecommendations =
+    Array.isArray(cache?.recommendations) && cache.recommendations.length > 0;
+  const hasGlobalTop =
+    Array.isArray(cache?.globalTop) && cache.globalTop.length > 0;
+  const hasGenres = Array.isArray(cache?.topGenres) && cache.topGenres.length > 0;
   const refreshHours = getDiscoveryAutoRefreshHours();
   const staleCutoff = Date.now() - refreshHours * 60 * 60 * 1000;
   const lastUpdatedAt = new Date(lastUpdated || "").getTime();
-  return !Number.isFinite(lastUpdatedAt) || lastUpdatedAt < staleCutoff;
+  return (
+    !Number.isFinite(lastUpdatedAt) ||
+    lastUpdatedAt < staleCutoff ||
+    (!hasRecommendations && !hasGlobalTop) ||
+    !hasGenres
+  );
 }
 
 function emitDiscoveryQueued(reason) {
