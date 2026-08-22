@@ -738,9 +738,14 @@ export const rerankRecommendations = (recommendations = [], limit = 100, options
 };
 
 export const filterRecommendationsForServe = (recommendations = [], feedback = []) =>
-  (Array.isArray(recommendations) ? recommendations : []).filter(
-    (recommendation) => !feedbackBoostForCandidate(recommendation, feedback).hidden,
-  );
+  (Array.isArray(recommendations) ? recommendations : [])
+    .filter((recommendation) => !feedbackBoostForCandidate(recommendation, feedback).hidden)
+    .map((recommendation) => {
+      const mbid = normalizeMbid(recommendation?.id) || normalizeMbid(recommendation?.navigateTo);
+      return recommendation?.id === mbid && recommendation?.navigateTo === mbid
+        ? recommendation
+        : { ...recommendation, id: mbid, navigateTo: mbid };
+    });
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -867,9 +872,11 @@ export const mergeResolvedRecommendations = (
   for (const recommendation of Array.isArray(recommendations) ? recommendations : []) {
     const keys = normalizeArtistIdentityKeys(recommendation);
     if (keys.some((key) => existingArtistKeys.has(key))) continue;
+    const recommendationMbid =
+      normalizeMbid(recommendation?.id) || normalizeMbid(recommendation?.navigateTo);
 
     const identityKeys = [
-      normalizeMbid(recommendation?.id),
+      recommendationMbid,
       `name:${normalizeText(recommendation?.name)}`,
     ].filter(Boolean);
     if (identityKeys.length === 0) continue;
@@ -880,6 +887,8 @@ export const mergeResolvedRecommendations = (
     if (!existing) {
       const entry = {
         ...recommendation,
+        id: recommendationMbid,
+        navigateTo: recommendationMbid,
         tags: Array.isArray(recommendation?.tags) ? [...recommendation.tags] : [],
         matchedTags: Array.isArray(recommendation?.matchedTags)
           ? [...recommendation.matchedTags]
@@ -912,9 +921,8 @@ export const mergeResolvedRecommendations = (
       continue;
     }
 
-    existing.id = existing.id || recommendation.id || null;
-    existing.navigateTo =
-      existing.navigateTo || recommendation.navigateTo || recommendation.id || null;
+    existing.id = existing.id || recommendationMbid;
+    existing.navigateTo = existing.navigateTo || recommendationMbid;
     existing.image = existing.image || recommendation.image || null;
     existing.popularityLabel = existing.popularityLabel || recommendation.popularityLabel || null;
     existing.popularityRank = existing.popularityRank || recommendation.popularityRank || null;

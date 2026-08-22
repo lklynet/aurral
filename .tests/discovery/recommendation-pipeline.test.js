@@ -5,6 +5,7 @@ import {
   addRecommendationCandidate,
   buildDiscoverySeedList,
   finalizeRecommendationAccumulator,
+  filterRecommendationsForServe,
   mergeRetainedRecommendationPool,
   mergeResolvedRecommendations,
   rerankRecommendations,
@@ -125,6 +126,21 @@ test("mergeResolvedRecommendations collapses name and mbid variants of the same 
     merged[0].tags.sort(),
     ["dream-pop", "shoegaze"],
   );
+});
+
+test("mergeResolvedRecommendations does not expose provider IDs as artist routes", () => {
+  const [recommendation] = mergeResolvedRecommendations([
+    { id: 2278254, navigateTo: 2278254, name: "Discovery Artist" },
+  ]);
+
+  assert.equal(recommendation.id, null);
+  assert.equal(recommendation.navigateTo, null);
+
+  const [cachedRecommendation] = filterRecommendationsForServe([
+    { id: 2278254, navigateTo: 2278254, name: "Cached Discovery Artist" },
+  ]);
+  assert.equal(cachedRecommendation.id, null);
+  assert.equal(cachedRecommendation.navigateTo, null);
 });
 
 

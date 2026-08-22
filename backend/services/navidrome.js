@@ -10,6 +10,7 @@ const NAVIDROME_SONG_PAGE_SIZE = 1_000;
 const NAVIDROME_RATE_LIMIT_RETRIES = 2;
 const NAVIDROME_RATE_LIMIT_DELAY_MS = 250;
 const NAVIDROME_RATE_LIMIT_MAX_DELAY_MS = 5_000;
+const NAVIDROME_NETWORK_RETRIES = 2;
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -80,7 +81,14 @@ export class NavidromeClient {
 
           return response.data["subsonic-response"];
         } catch (error) {
-          if (error?.response?.status !== 429 || attempt >= NAVIDROME_RATE_LIMIT_RETRIES) throw error;
+          const isNetworkFailure = error instanceof TypeError && !error?.response;
+          if (isNetworkFailure) {
+            if (attempt >= NAVIDROME_NETWORK_RETRIES) throw error;
+            await wait(NAVIDROME_RATE_LIMIT_DELAY_MS);
+            continue;
+          }
+          if (!error?.response) throw error;
+          if (error.response.status !== 429 || attempt >= NAVIDROME_RATE_LIMIT_RETRIES) throw error;
           const retryAfterHeader = error.response.headers?.["retry-after"]?.trim();
           const retryAfter = Number(retryAfterHeader);
           const delay = retryAfterHeader && Number.isFinite(retryAfter) && retryAfter >= 0

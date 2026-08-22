@@ -48,6 +48,24 @@ test("retries Navidrome rate limits", async () => {
   assert.equal(attempts, 2);
 });
 
+test("retries transient Navidrome connection failures", async () => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = async () => {
+    attempts += 1;
+    if (attempts === 1) throw new TypeError("fetch failed");
+    return jsonResponse({ "subsonic-response": { status: "ok" } });
+  };
+
+  try {
+    await new NavidromeClient("http://navidrome.test", "user", "password").ping();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(attempts, 2);
+});
+
 test("uses the fallback delay for invalid rate limit headers", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response("", {
