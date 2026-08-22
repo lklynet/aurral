@@ -284,6 +284,12 @@ db.exec(`
     ON library_artists (sort_name COLLATE NOCASE, name COLLATE NOCASE);
   CREATE INDEX IF NOT EXISTS idx_library_artists_mbid
     ON library_artists (mbid);
+  CREATE INDEX IF NOT EXISTS idx_library_artists_provider_id
+    ON library_artists (CAST(json_extract(metadata_json, '$.id') AS TEXT));
+  CREATE INDEX IF NOT EXISTS idx_library_artists_foreign_artist_id
+    ON library_artists (CAST(json_extract(metadata_json, '$.foreignArtistId') AS TEXT));
+  CREATE INDEX IF NOT EXISTS idx_library_artists_name
+    ON library_artists (name COLLATE NOCASE);
   CREATE INDEX IF NOT EXISTS idx_library_album_tracks_track_id
     ON library_album_tracks (track_id);
   CREATE INDEX IF NOT EXISTS idx_library_tracks_title
@@ -452,6 +458,12 @@ if (hasUniqueIndex(["path"])) {
 }
 
 db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_library_artists_provider_id
+    ON library_artists (CAST(json_extract(metadata_json, '$.id') AS TEXT));
+  CREATE INDEX IF NOT EXISTS idx_library_artists_foreign_artist_id
+    ON library_artists (CAST(json_extract(metadata_json, '$.foreignArtistId') AS TEXT));
+  CREATE INDEX IF NOT EXISTS idx_library_artists_name
+    ON library_artists (name COLLATE NOCASE);
   CREATE INDEX IF NOT EXISTS idx_library_media_files_album_source_available
     ON library_media_files (album_id, source, available);
 `);

@@ -420,6 +420,10 @@ test("artist and album reference reads resolve through indexed entity lookups", 
     identityKey: `${key}:artist`,
     mbid: `${key}:artist-mbid`,
     name: "Query Plan Artist",
+    metadata: {
+      id: `${key}:provider-id`,
+      foreignArtistId: `${key}:foreign-artist-id`,
+    },
   });
   const album = upsertLibraryAlbum({
     identityKey: `${key}:album`,
@@ -445,7 +449,14 @@ test("artist and album reference reads resolve through indexed entity lookups", 
 
   try {
     assert.deepEqual(
-      getCanonicalLibraryForArtistReferences({ references: [artist.mbid] }).artists.map(({ id }) => id),
+      getCanonicalLibraryForArtistReferences({
+        references: [
+          artist.mbid,
+          `${key}:provider-id`,
+          `${key}:foreign-artist-id`,
+          "QUERY PLAN ARTIST",
+        ],
+      }).artists.map(({ id }) => id),
       [artist.id],
     );
     assert.deepEqual(
