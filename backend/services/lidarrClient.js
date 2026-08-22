@@ -443,7 +443,7 @@ export class LidarrClient {
     const isStatusRequest =
       method === "GET" &&
       (endpoint === "/queue" || endpoint === "/command" || endpoint.startsWith("/history"));
-    if (isStatusRequest) {
+    if (isStatusRequest && !options.forceRefresh) {
       const cached = this._statusCache.get(endpoint);
       if (cached && now - cached.at < LIDARR_STATUS_CACHE_MS) {
         return cached.data;
@@ -1484,8 +1484,8 @@ export class LidarrClient {
     });
   }
 
-  async getQueue() {
-    const response = await this.request("/queue");
+  async getQueue(options = {}) {
+    const response = await this.request("/queue", "GET", null, false, options);
     if (response && Array.isArray(response)) {
       return response;
     }
@@ -1496,14 +1496,20 @@ export class LidarrClient {
     return this.request(`/queue/${queueId}`);
   }
 
-  async getHistory(page = 1, pageSize = 20, sortKey = "date", sortDirection = "descending") {
+  async getHistory(
+    page = 1,
+    pageSize = 20,
+    sortKey = "date",
+    sortDirection = "descending",
+    options = {},
+  ) {
     const params = new URLSearchParams({
       page: page.toString(),
       pageSize: pageSize.toString(),
       sortKey,
       sortDirection,
     });
-    return this.request(`/history?${params.toString()}`);
+    return this.request(`/history?${params.toString()}`, "GET", null, false, options);
   }
 
   async getHistoryForAlbum(albumId) {

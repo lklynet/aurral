@@ -8,11 +8,13 @@ const toIso = (value) => {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 };
 
-export const buildLidarrRequests = async (lidarrClient) => {
-  const [queue, history] = await Promise.all([
-    lidarrClient.getQueue().catch(() => []),
-    lidarrClient.getHistory(1, 200).catch(() => ({ records: [] })),
-  ]);
+export const buildLidarrRequests = async (lidarrClient, snapshot = null) => {
+  const [queue, history] = snapshot
+    ? [snapshot.queue, snapshot.history]
+    : await Promise.all([
+        lidarrClient.getQueue().catch(() => []),
+        lidarrClient.getHistory(1, 200).catch(() => ({ records: [] })),
+      ]);
 
   const requestsByAlbumId = new Map();
   const queueItems = Array.isArray(queue) ? queue : queue?.records || [];
