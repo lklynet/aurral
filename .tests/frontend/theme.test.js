@@ -26,7 +26,7 @@ test.afterEach(() => {
   invalidateThemeCaches();
 });
 
-test("Aurral keeps the original light and dark palettes", () => {
+test("Aurral keeps its neutral light and dark palettes", () => {
   const [aurral] = BUILT_IN_THEMES;
   assert.deepEqual(
     {
@@ -44,7 +44,7 @@ test("Aurral keeps the original light and dark palettes", () => {
       surfaceRaised: "#f1f1f1",
       surfacePopover: "#e4e4e4",
       surfaceHover: "#d0d0d0",
-      accent: "#4d7c0f",
+      accent: "#525252",
       text: "#171717",
     },
   );
@@ -64,7 +64,7 @@ test("Aurral keeps the original light and dark palettes", () => {
       surfaceRaised: "#202020",
       surfacePopover: "#2d2d2d",
       surfaceHover: "#424242",
-      accent: "#84cc16",
+      accent: "#b3b3b3",
       text: "#ffffff",
     },
   );

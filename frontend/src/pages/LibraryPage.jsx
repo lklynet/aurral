@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Grid3X3,
   Heart,
+  Info,
   List,
   ListFilter,
   Pause,
@@ -68,6 +69,7 @@ import {
 import { DeleteAlbumModal } from "./ArtistDetails/components/DeleteAlbumModal";
 import { DeleteArtistModal } from "./ArtistDetails/components/DeleteArtistModal";
 import { DeleteTrackModal } from "./ArtistDetails/components/DeleteTrackModal";
+import LibraryInfoModal from "./LibraryInfoModal";
 import {
   buildSharedPlaylistTrackPayload,
   reserveUniquePlaylistName,
@@ -396,6 +398,7 @@ function LibraryPage() {
   const [playlistSavingKey, setPlaylistSavingKey] = useState("");
   const [trackDownloadStates, setTrackDownloadStates] = useState({});
   const [libraryRemoval, setLibraryRemoval] = useState(null);
+  const [libraryInfo, setLibraryInfo] = useState(null);
   const [deleteFiles, setDeleteFiles] = useState(false);
   const [deletingLibraryEntity, setDeletingLibraryEntity] = useState(false);
   const [homeAlbumsGridRef, homeAlbumColumns] = useResponsiveReleaseLimit({
@@ -1490,6 +1493,10 @@ function LibraryPage() {
     navigate("/library/artist/" + encodeURIComponent(artist.id) + previewQuery);
   };
 
+  const openLibraryInfo = (kind, entity, context = {}) => {
+    setLibraryInfo({ kind, entity, ...context });
+  };
+
   const handleDiscoverArtistOpen = (artist) => {
     if (!artist?.mbid) return;
     navigate("/artist/" + encodeURIComponent(artist.mbid), {
@@ -1606,6 +1613,9 @@ function LibraryPage() {
             matchesSource(librarySource);
           const artistName = artist?.name || track.artistName || "Unknown Artist";
           const albumName = album?.title || "Unknown Album";
+          const trackNumber = track.albums?.find(
+            (entry) => String(entry.albumId) === String(album?.id),
+          )?.trackNumber;
           const isFavorite = favoriteIds.has(favoriteId("song", track));
           const trackMenuItems = [
             {
@@ -1614,6 +1624,12 @@ function LibraryPage() {
               icon: active && isPlaying ? Pause : Play,
               onSelect: () => playTrack(track, tracks),
               disabled: !file || (active && isLoading),
+            },
+            {
+              id: "info",
+              label: "View info",
+              icon: Info,
+              onSelect: () => openLibraryInfo("track", track, { artist, album, trackNumber }),
             },
             {
               id: "favorite",
@@ -1849,6 +1865,12 @@ function LibraryPage() {
                 onSelect: () => handleArtistOpen(artist),
               },
               {
+                id: "info",
+                label: "View info",
+                icon: Info,
+                onSelect: () => openLibraryInfo("artist", artist),
+              },
+              {
                 id: "favorite",
                 label: isFavorite ? "Remove from favorites" : "Add to favorites",
                 icon: Heart,
@@ -1964,6 +1986,12 @@ function LibraryPage() {
                 label: "Open album",
                 icon: ExternalLink,
                 onSelect: () => handleAlbumOpen(album),
+              },
+              {
+                id: "info",
+                label: "View info",
+                icon: Info,
+                onSelect: () => openLibraryInfo("album", album, { artist }),
               },
               {
                 id: "favorite",
@@ -2223,6 +2251,12 @@ function LibraryPage() {
                     disabled: !albumTracks.some((track) => firstAvailableFile(track)),
                   },
                   {
+                    id: "info",
+                    label: "View info",
+                    icon: Info,
+                    onSelect: () => openLibraryInfo("album", libraryAlbum, { artist }),
+                  },
+                  {
                     id: "favorite",
                     label: favoriteIds.has(favoriteId("album", libraryAlbum))
                       ? "Remove from favorites"
@@ -2348,6 +2382,12 @@ function LibraryPage() {
                     disabled: !artistTracks.some((track) => firstAvailableFile(track)),
                   },
                   {
+                    id: "info",
+                    label: "View info",
+                    icon: Info,
+                    onSelect: () => openLibraryInfo("artist", libraryArtist),
+                  },
+                  {
                     id: "favorite",
                     label: favoriteIds.has(favoriteId("artist", libraryArtist))
                       ? "Remove from favorites"
@@ -2462,6 +2502,7 @@ function LibraryPage() {
         onConfirm={handleLibraryRemovalConfirm}
         deleting={deletingLibraryEntity}
       />
+      <LibraryInfoModal item={libraryInfo} onClose={() => setLibraryInfo(null)} />
     </>
   );
 

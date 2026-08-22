@@ -164,7 +164,7 @@ export const BUILT_IN_THEMES = [
     id: DEFAULT_THEME_ID,
     label: "Aurral",
     appearance: "light",
-    colors: createThemeColors("light", "#ffffff", "#4d7c0f", {
+    colors: createThemeColors("light", "#ffffff", "#525252", {
       chrome: "#e5e7eb",
       surface: "#ffffff",
       surfaceRaised: "#f1f1f1",
@@ -187,7 +187,7 @@ export const BUILT_IN_THEMES = [
       scrim: "#e5e7ebb8",
     }),
     variants: {
-      dark: createThemeColors("dark", "#121212", "#84cc16", {
+      dark: createThemeColors("dark", "#121212", "#b3b3b3", {
         chrome: "#000000",
         surface: "#121212",
         surfaceRaised: "#202020",
