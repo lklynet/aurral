@@ -132,6 +132,7 @@ test("canonical page search uses FTS and genre reads use the stored scan snapsho
     kind: "tracks",
     page: 1,
     pageSize: 20,
+    source: "lidarr",
     query: "Needle",
   });
   assert.deepEqual(page.tracks.map((entry) => entry.title), ["Needle Song"]);
@@ -140,6 +141,7 @@ test("canonical page search uses FTS and genre reads use the stored scan snapsho
   assert.ok(pageSearchSql);
   const plan = prepare(`EXPLAIN QUERY PLAN ${pageSearchSql}`).all(
     '"nee" AND "eed" AND "edl" AND "dle"',
+    "lidarr",
     "%needle%",
     "%needle%",
     "%needle%",
