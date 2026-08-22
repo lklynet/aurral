@@ -21,8 +21,8 @@ const db = new Database(DB_PATH);
 db.pragma("journal_mode = WAL");
 db.pragma("busy_timeout = 5000");
 db.pragma("synchronous = NORMAL");
-db.pragma("cache_size = -32000");
-db.pragma("mmap_size = 33554432");
+db.pragma("cache_size = -16000");
+db.pragma("mmap_size = 16777216");
 
 function tryAddColumn(sql) {
   try {
