@@ -1097,7 +1097,7 @@ export function getCanonicalArtistPage({
        WHERE ${conditions.join(" AND ")}
        ${searchMatch
          ? "ORDER BY coalesce(artist.sort_name, artist.name) COLLATE NOCASE, artist.name COLLATE NOCASE, artist.id"
-         : "ORDER BY coalesce(artist.sort_name, artist.name) COLLATE NOCASE, artist.name COLLATE NOCASE"}
+         : "ORDER BY coalesce(artist.sort_name, artist.name) COLLATE NOCASE, artist.name COLLATE NOCASE, artist.id"}
        ${pageSql}`,
     ).all(...parameters, ...(boundedLimit === null ? [] : [boundedLimit, pageOffset(offset)])).map((row) => row.id);
   if (!ids.length) return { artists: [], albums: [], tracks: [] };
@@ -1280,6 +1280,7 @@ export function getCanonicalAlbumPage({
     orderBy = "album.title COLLATE NOCASE, coalesce(album.album_artist, artist.name) COLLATE NOCASE";
   }
 
+  const paginatedOrderBy = type === "random" ? orderBy : `${orderBy}, album.id`;
   const boundedLimit = pageLimit(limit, 20);
   if (boundedLimit === 0) return { artists: [], albums: [], tracks: [] };
   const searchJoin = searchMatch
@@ -1300,7 +1301,7 @@ export function getCanonicalAlbumPage({
      ${searchJoin}
      WHERE ${conditions.join(" AND ")}
      GROUP BY album.id
-     ${searchMatch ? `ORDER BY ${orderBy}, album.id` : `ORDER BY ${orderBy}`}
+     ORDER BY ${paginatedOrderBy}
      LIMIT ? OFFSET ?`,
   ).all(...parameters, boundedLimit, pageOffset(offset)).map((row) => row.id);
   const library = getCanonicalLibraryForAlbumIds({ source: sourceFilter, availableOnly, ids });
@@ -1692,12 +1693,15 @@ function buildPageQuery({
   let orderBy;
   if (sort === "newest" && (kind === "albums" || kind === "tracks")) {
     orderBy = recentMediaOrder(kind, sourceFilter, availableOnly, direction);
+    if (kind === "albums") orderBy += ", album.id";
   } else if (sort === "artist" && kind !== "artists") {
     orderBy = `artist.name COLLATE NOCASE ${orderDirection}, ${kind === "albums" ? "album.title" : "track.title"} COLLATE NOCASE ${orderDirection}`;
+    if (kind === "albums") orderBy += ", album.id";
   } else if (kind === "artists") {
-    orderBy = `coalesce(artist.sort_name, artist.name) COLLATE NOCASE ${orderDirection}, artist.name COLLATE NOCASE ${orderDirection}`;
+    orderBy = `coalesce(artist.sort_name, artist.name) COLLATE NOCASE ${orderDirection}, artist.name COLLATE NOCASE ${orderDirection}, artist.id ${orderDirection}`;
   } else {
     orderBy = `${kind === "albums" ? "album.title" : "track.title"} COLLATE NOCASE ${orderDirection}`;
+    if (kind === "albums") orderBy += `, album.id ${orderDirection}`;
   }
 
   return {

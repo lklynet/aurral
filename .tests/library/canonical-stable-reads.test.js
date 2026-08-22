@@ -192,6 +192,7 @@ test("deleting a Lidarr artist clears canonical provider state for both IDs", as
 test("canonical artist compatibility reads apply SQL pagination", async () => {
   const key = `canonical-artist-route:${process.pid}:${Date.now()}`;
   const artists = [];
+  const albums = [];
   const tracks = [];
   const paths = [];
   for (const name of ["A", "B"]) {
@@ -220,6 +221,7 @@ test("canonical artist compatibility reads apply SQL pagination", async () => {
       available: true,
     });
     artists.push(artist);
+    albums.push(album);
     tracks.push(track);
     paths.push(filePath);
   }
@@ -246,6 +248,11 @@ test("canonical artist compatibility reads apply SQL pagination", async () => {
     assert.equal(body[0].added, body[0].addedAt);
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path IN (?, ?)").run(...paths);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (?, ?) OR track_id IN (?, ?)").run(
+      ...albums.map((album) => album.id),
+      ...tracks.map((track) => track.id),
+    );
+    db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)").run(...albums.map((album) => album.id));
     db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)").run(...artists.map((artist) => artist.id));
     db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(...tracks.map((track) => track.id));
   }
@@ -260,8 +267,14 @@ test("canonical paginated reads keep tied rows stable", () => {
   const albums = [];
   const tracks = [];
   const paths = [];
+  let nullSortArtist;
 
   try {
+    nullSortArtist = upsertLibraryArtist({
+      identityKey: `${key}:null-sort-artist`,
+      name: `${key} Null Sort Artist`,
+      syncSearch: false,
+    });
     for (const index of [0, 1]) {
       const artist = upsertLibraryArtist({
         identityKey: `${key}:artist:${index}`,
@@ -298,9 +311,13 @@ test("canonical paginated reads keep tied rows stable", () => {
     const projectionOffset = db.prepare(
       `SELECT COUNT(*) AS count
        FROM library_artists
-       WHERE sort_name COLLATE NOCASE < ?
-          OR (sort_name COLLATE NOCASE = ? AND name COLLATE NOCASE < ?)`,
-    ).get(artistName, artistName, artistName).count;
+       WHERE sort_name IS NULL
+          OR sort_name COLLATE NOCASE < ?
+          OR (sort_name COLLATE NOCASE = ? AND (
+            name COLLATE NOCASE < ?
+            OR (name COLLATE NOCASE = ? AND id < ?)
+          ))`,
+    ).get(artistName, artistName, artistName, artistName, artists[0].id).count;
     assert.deepEqual(
       getCanonicalArtistProjection({ pageSize: 2, offset: projectionOffset })
         .map((artist) => artist.id),
@@ -312,6 +329,27 @@ test("canonical paginated reads keep tied rows stable", () => {
         offset: projectionOffset + offset,
       })[0]?.id),
       expectedProjectionIds,
+    );
+
+    assert.deepEqual(
+      [0, 1].map((offset) => getCanonicalArtistPage({
+        source: "lidarr",
+        availableOnly: true,
+        query: artistName,
+        limit: 1,
+        offset,
+      }).artists[0]?.id),
+      expectedIds,
+    );
+    assert.deepEqual(
+      [0, 1].map((offset) => getCanonicalAlbumPage({
+        source: "lidarr",
+        availableOnly: true,
+        query: albumTitle,
+        limit: 1,
+        offset,
+      }).albums[0]?.id),
+      albums.map((album) => album.id),
     );
 
     const artistSearchMatch = getLibrarySearchMatch(artistName);
@@ -368,6 +406,16 @@ test("canonical paginated reads keep tied rows stable", () => {
          WHERE entity_kind = ? AND entity_id IN (${ids.map(() => "?").join(",")})`,
       ).run(kind, ...ids);
     }
+    if (albums.length) {
+      db.prepare(
+        `DELETE FROM library_album_tracks
+         WHERE album_id IN (${albums.map(() => "?").join(",")})
+            OR track_id IN (${tracks.map(() => "?").join(",")})`,
+      ).run(...albums.map((album) => album.id), ...tracks.map((track) => track.id));
+      db.prepare(
+        `DELETE FROM library_albums WHERE id IN (${albums.map(() => "?").join(",")})`,
+      ).run(...albums.map((album) => album.id));
+    }
     if (artists.length) {
       db.prepare(
         `DELETE FROM library_artists WHERE id IN (${artists.map(() => "?").join(",")})`,
@@ -377,6 +425,9 @@ test("canonical paginated reads keep tied rows stable", () => {
       db.prepare(
         `DELETE FROM library_tracks WHERE id IN (${tracks.map(() => "?").join(",")})`,
       ).run(...tracks.map((track) => track.id));
+    }
+    if (nullSortArtist) {
+      db.prepare("DELETE FROM library_artists WHERE id = ?").run(nullSortArtist.id);
     }
   }
 });
@@ -489,6 +540,11 @@ test("canonical artist page totals match hydrated items", () => {
     assert.equal(page.total, 1);
     assert.deepEqual(page.items.map((artist) => artist.id), [populatedArtist.id]);
   } finally {
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? OR track_id = ?").run(
+      album.id,
+      track.id,
+    );
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)").run(
       emptyArtist.id,
       populatedArtist.id,
