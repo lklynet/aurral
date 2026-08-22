@@ -729,27 +729,14 @@ export function getCanonicalLibraryForArtistReferences({
 } = {}) {
   const references = normalizeLookupValues(requestedReferences);
   if (!references.length) return { artists: [], albums: [], tracks: [] };
-  const placeholders = references.map(() => "?").join(",");
-  return getScopedCanonicalLibrary({
-    source,
-    availableOnly,
-    conditions: [`(
-      artist.id IN (${placeholders}) OR
-      artist.mbid IN (${placeholders}) OR
-      artist.identity_key IN (${placeholders}) OR
-      CAST(json_extract(artist.metadata_json, '$.id') AS TEXT) IN (${placeholders}) OR
-      CAST(json_extract(artist.metadata_json, '$.foreignArtistId') AS TEXT) IN (${placeholders}) OR
-      lower(artist.name) IN (${references.map(() => "lower(?)").join(",")})
-    )`],
-    parameters: [
-      ...references,
-      ...references,
-      ...references,
-      ...references,
-      ...references,
-      ...references,
-    ],
-  });
+  const ids = resolveCanonicalReferenceIds("library_artists", references, [
+    "identity_key",
+    "mbid",
+    "CAST(json_extract(metadata_json, '$.id') AS TEXT)",
+    "CAST(json_extract(metadata_json, '$.foreignArtistId') AS TEXT)",
+    "name COLLATE NOCASE",
+  ]);
+  return getCanonicalLibraryForIds("artists", ids, source, availableOnly);
 }
 
 export function getCanonicalLibraryForAlbumIds({
