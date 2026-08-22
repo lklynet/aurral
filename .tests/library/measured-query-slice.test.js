@@ -47,7 +47,7 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("substring search uses the trigram index and stays order-sort free", (t) => {
+test("substring search uses the trigram index with stable pagination", (t) => {
   const prepared = [];
   const prepare = db.prepare.bind(db);
   t.mock.method(db, "prepare", (sql) => {
@@ -67,7 +67,7 @@ test("substring search uses the trigram index and stays order-sort free", (t) =>
     sql.includes("FROM library_tracks AS track") && sql.includes("library_search_fts"));
   assert.ok(searchSql);
   assert.match(searchSql, /MATCH \?/);
-  assert.doesNotMatch(searchSql, /ORDER BY/);
+  assert.match(searchSql, /ORDER BY track\.id/);
   const plan = prepare(`EXPLAIN QUERY PLAN ${searchSql}`).all(
     '"nee" AND "eed" AND "edl" AND "dle"',
     "%needle%",
@@ -77,7 +77,6 @@ test("substring search uses the trigram index and stays order-sort free", (t) =>
     0,
   );
   assert.ok(plan.some((row) => row.detail.includes("SCAN search_fts VIRTUAL TABLE")));
-  assert.equal(plan.some((row) => row.detail.includes("USE TEMP B-TREE FOR ORDER BY")), false);
 });
 
 test("unchanged canonical upserts do not rewrite search documents", () => {
