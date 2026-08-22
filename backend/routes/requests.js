@@ -73,9 +73,9 @@ const filterRedundantAurralRequests = (aurralRequests, lidarrRequests) => {
   });
 };
 
-const buildRequestsResponse = async (lidarrClient) => {
+const buildRequestsResponse = async (lidarrClient, { force = false } = {}) => {
   const snapshot = lidarrClient?.isConfigured()
-    ? await getLidarrStatusSnapshot()
+    ? await getLidarrStatusSnapshot({ force })
     : null;
   const [lidarrRequests, aurralRequests] = await Promise.all([
     snapshot ? buildLidarrRequests(lidarrClient, snapshot.provider) : Promise.resolve([]),
@@ -87,9 +87,9 @@ const buildRequestsResponse = async (lidarrClient) => {
   );
 };
 
-const refreshRequestsCache = async (lidarrClient) => {
+const refreshRequestsCache = async (lidarrClient, options) => {
   if (pendingRequestsRefresh) return pendingRequestsRefresh;
-  pendingRequestsRefresh = buildRequestsResponse(lidarrClient)
+  pendingRequestsRefresh = buildRequestsResponse(lidarrClient, options)
     .then(updateRequestsCache)
     .finally(() => {
       pendingRequestsRefresh = null;
@@ -124,7 +124,7 @@ router.get("/", requireAuth, noCache, async (req, res) => {
       return res.json(filterDismissedRequests(lastRequestsResponse));
     }
 
-    const requests = await refreshRequestsCache(lidarrClient);
+    const requests = await refreshRequestsCache(lidarrClient, { force: forceRefresh });
     res.json(requests);
   } catch (error) {
     if (lastRequestsResponse) {
