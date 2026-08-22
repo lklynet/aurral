@@ -73,4 +73,10 @@ test("focused Subsonic requests never execute an unfiltered complete-library que
   );
   assert.deepEqual(completeQueries, []);
   assert.equal(prepared.some((sql) => /WHERE (artist|album)\.id IN/.test(sql)), true);
+  const artistIndexQuery = prepared.find((sql) =>
+    sql.includes("COUNT(DISTINCT album.id) AS album_count")
+      && sql.includes("FROM library_artists AS artist"),
+  );
+  assert.ok(artistIndexQuery);
+  assert.doesNotMatch(artistIndexQuery, /library_(album_tracks|media_files)/);
 });

@@ -770,6 +770,20 @@ export function getCanonicalArtistPage({
   if (!ids.length) return { artists: [], albums: [], tracks: [] };
 
   if (!includeStats) {
+    const filterAlbums = Boolean(sourceFilter) || availableOnly === true;
+    const albumJoin = filterAlbums ? "JOIN" : "LEFT JOIN";
+    const albumFilter = filterAlbums
+      ? `AND EXISTS (
+          SELECT 1
+          FROM library_album_tracks AS album_track
+          JOIN library_media_files AS media
+            ON media.track_id = album_track.track_id
+            AND ${albumMediaCondition("media", "album_track")}
+          WHERE album_track.album_id = album.id
+            ${sourceFilter ? "AND media.source = ?" : ""}
+            ${availableOnly === true ? "AND media.available = 1" : ""}
+        )`
+      : "";
     const rows = db.prepare(
       `SELECT
          artist.id AS artist_id,
@@ -780,18 +794,9 @@ export function getCanonicalArtistPage({
          artist.metadata_json AS artist_metadata_json,
          COUNT(DISTINCT album.id) AS album_count
        FROM library_artists AS artist
-       JOIN library_albums AS album ON album.artist_id = artist.id
+       ${albumJoin} library_albums AS album ON album.artist_id = artist.id
        WHERE artist.id IN (${ids.map(() => "?").join(",")})
-         AND EXISTS (
-           SELECT 1
-           FROM library_album_tracks AS album_track
-           JOIN library_media_files AS media
-             ON media.track_id = album_track.track_id
-             AND ${albumMediaCondition("media", "album_track")}
-           WHERE album_track.album_id = album.id
-             ${sourceFilter ? "AND media.source = ?" : ""}
-             ${availableOnly === true ? "AND media.available = 1" : ""}
-         )
+         ${albumFilter}
        GROUP BY artist.id`,
     ).all(...ids, ...(sourceFilter ? [sourceFilter] : []));
     const byId = new Map(rows.map((row) => [row.artist_id, {
