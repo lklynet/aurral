@@ -753,8 +753,8 @@ export function getCanonicalLibraryForArtistReferences({
     [
       "identity_key",
       "mbid",
-      "CAST(json_extract(metadata_json, '$.id') AS TEXT)",
-      "CAST(json_extract(metadata_json, '$.foreignArtistId') AS TEXT)",
+      "CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.id') END AS TEXT)",
+      "CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.foreignArtistId') END AS TEXT)",
       "name COLLATE NOCASE",
     ],
   );

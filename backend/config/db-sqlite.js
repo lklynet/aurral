@@ -286,9 +286,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_library_artists_mbid
     ON library_artists (mbid);
   CREATE INDEX IF NOT EXISTS idx_library_artists_provider_id
-    ON library_artists (CAST(json_extract(metadata_json, '$.id') AS TEXT));
+    ON library_artists (CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.id') END AS TEXT));
   CREATE INDEX IF NOT EXISTS idx_library_artists_foreign_artist_id
-    ON library_artists (CAST(json_extract(metadata_json, '$.foreignArtistId') AS TEXT));
+    ON library_artists (CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.foreignArtistId') END AS TEXT));
   CREATE INDEX IF NOT EXISTS idx_library_artists_name
     ON library_artists (name COLLATE NOCASE);
   CREATE INDEX IF NOT EXISTS idx_library_album_tracks_track_id
@@ -460,9 +460,9 @@ if (hasUniqueIndex(["path"])) {
 
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_library_artists_provider_id
-    ON library_artists (CAST(json_extract(metadata_json, '$.id') AS TEXT));
+    ON library_artists (CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.id') END AS TEXT));
   CREATE INDEX IF NOT EXISTS idx_library_artists_foreign_artist_id
-    ON library_artists (CAST(json_extract(metadata_json, '$.foreignArtistId') AS TEXT));
+    ON library_artists (CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.foreignArtistId') END AS TEXT));
   CREATE INDEX IF NOT EXISTS idx_library_artists_name
     ON library_artists (name COLLATE NOCASE);
   CREATE INDEX IF NOT EXISTS idx_library_media_files_album_source_available
