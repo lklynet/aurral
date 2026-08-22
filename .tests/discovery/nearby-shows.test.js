@@ -9,7 +9,10 @@ test("includes all artist inputs in the shows response cache key", () => {
   const base = {
     userId: 1,
     libraryArtists: [{ name: "Library Artist" }],
-    recommendedArtists: [{ name: "Recommended Artist" }],
+    recommendedArtists: [
+      { name: "Recommended Artist" },
+      { name: "Another Recommended Artist" },
+    ],
     trendingArtists: [{ name: "Trending Artist" }],
   };
   const key = buildShowsResponseCacheKey(base);
