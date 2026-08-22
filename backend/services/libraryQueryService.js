@@ -273,6 +273,25 @@ const canonicalArtistProjection = (row) => {
   };
 };
 
+const canonicalArtistKeyProjection = (row) => {
+  const metadata = parseJson(row.metadata_json) || {};
+  return {
+    id: String(row.id),
+    mbid: row.mbid || null,
+    foreignArtistId: metadata.foreignArtistId || row.mbid || row.identity_key,
+    name: row.name,
+    artistName: row.name,
+  };
+};
+
+export function getCanonicalArtistKeyProjection() {
+  const rows = db.prepare(
+    `SELECT id, identity_key, mbid, name, metadata_json
+     FROM library_artists`,
+  ).all();
+  return rows.map(canonicalArtistKeyProjection);
+}
+
 function buildCanonicalArtistProjectionQuery({
   page = 1,
   pageSize = 100,

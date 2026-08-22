@@ -15,6 +15,7 @@ import { getRecentMissingReleases } from "../../backend/services/discovery/recen
 import { libraryManager } from "../../backend/services/libraryManager.js";
 import { lidarrClient } from "../../backend/services/lidarrClient.js";
 import {
+  getCanonicalArtistKeyProjection,
   getCanonicalArtistProjection,
   getCanonicalLibraryPage,
 } from "../../backend/services/libraryQueryService.js";
@@ -56,6 +57,41 @@ test("stable artist and discovery reads do not call Lidarr", async (t) => {
     assert.equal(request.mock.callCount(), 0);
   } finally {
     lidarrClient.isConfigured = originalConfigured;
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  }
+});
+
+test("artist key reads use identity columns and preserve metadata foreign IDs", (t) => {
+  const identityKey = `artist-key-read:${Date.now()}`;
+  const foreignArtistId = "artist-key-foreign-id";
+  const artist = upsertLibraryArtist({
+    identityKey,
+    name: "Artist Key Read",
+    metadata: { foreignArtistId },
+  });
+  const prepared = [];
+  const prepare = db.prepare.bind(db);
+  t.mock.method(db, "prepare", (sql) => {
+    prepared.push(String(sql));
+    return prepare(sql);
+  });
+
+  try {
+    const projection = getCanonicalArtistKeyProjection().find(
+      (candidate) => candidate.id === String(artist.id),
+    );
+    assert.deepEqual(projection, {
+      id: String(artist.id),
+      mbid: null,
+      foreignArtistId,
+      name: "Artist Key Read",
+      artistName: "Artist Key Read",
+    });
+    const sql = prepared.find((entry) => entry.includes("FROM library_artists"));
+    assert.ok(sql);
+    assert.match(sql, /SELECT id, identity_key, mbid, name, metadata_json/);
+    assert.doesNotMatch(sql, /JOIN|COUNT|library_albums/);
+  } finally {
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   }
 });
