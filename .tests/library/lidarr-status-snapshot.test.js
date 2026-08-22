@@ -3,6 +3,7 @@ import http from "node:http";
 import test from "node:test";
 
 import {
+  getDownloadStatusesForAlbumIds,
   getLidarrStatusSnapshot,
   hasActiveLidarrStatusSnapshot,
   invalidateAllDownloadStatusesCache,
@@ -14,6 +15,7 @@ test("Lidarr status consumers share refreshes, idle, failure, and recovery state
   let active = false;
   let fail = false;
   let queueGate = null;
+  let albumCalls = 0;
   const calls = { queue: 0, history: 0, command: 0 };
   t.mock.method(lidarrClient, "isConfigured", () => true);
   t.mock.method(lidarrClient, "isCircuitOpen", () => false);
@@ -37,6 +39,10 @@ test("Lidarr status consumers share refreshes, idle, failure, and recovery state
     if (fail) throw new Error("provider unavailable");
     return [];
   });
+  t.mock.method(lidarrClient, "getAllAlbums", async () => {
+    albumCalls += 1;
+    return [];
+  });
 
   invalidateAllDownloadStatusesCache();
   const [first, concurrent] = await Promise.all([
@@ -44,6 +50,7 @@ test("Lidarr status consumers share refreshes, idle, failure, and recovery state
     getLidarrStatusSnapshot({ force: true }),
   ]);
   assert.deepEqual(calls, { queue: 1, history: 1, command: 1 });
+  assert.equal(albumCalls, 0);
   assert.equal(first, concurrent);
   assert.equal(first.active, false);
   assert.equal((await getLidarrStatusSnapshot()).updatedAt, first.updatedAt);
@@ -119,4 +126,70 @@ test("forced Lidarr status reads bypass the client cache", async (t) => {
   assert.equal((await client.getQueue())[0].id, 1);
   assert.equal((await client.getQueue({ forceRefresh: true }))[0].id, 2);
   assert.equal(calls, 2);
+});
+
+test("failed or stale history verifies albums with one bulk read", async (t) => {
+  const now = Date.now();
+  const calls = { bulk: 0, detail: 0 };
+  let bulkFailure = false;
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  t.mock.method(lidarrClient, "getAllAlbums", async () => {
+    calls.bulk += 1;
+    if (bulkFailure) throw new Error("provider unavailable");
+    return [
+      { id: 101, statistics: { trackFileCount: 2 } },
+      { id: 102, statistics: { trackFileCount: 0 } },
+    ];
+  });
+  t.mock.method(lidarrClient, "getAlbum", async () => {
+    calls.detail += 1;
+    return null;
+  });
+
+  const normal = await getDownloadStatusesForAlbumIds(["100"], {
+    queue: [],
+    history: {
+      records: [{ albumId: 100, eventType: "AlbumGrabbed", date: new Date(now).toISOString() }],
+    },
+    commands: [],
+  });
+  assert.equal(normal[100].status, "processing");
+  assert.deepEqual(calls, { bulk: 0, detail: 0 });
+
+  const verified = await getDownloadStatusesForAlbumIds(["101", "102"], {
+    queue: [],
+    history: {
+      records: [
+        {
+          albumId: 101,
+          eventType: "AlbumImportIncomplete",
+          date: new Date(now).toISOString(),
+        },
+        {
+          albumId: 102,
+          eventType: "AlbumGrabbed",
+          date: new Date(now - 16 * 60 * 1000).toISOString(),
+        },
+      ],
+    },
+    commands: [],
+  });
+  assert.equal(verified[101].status, "added");
+  assert.equal(verified[102].status, "failed");
+  assert.deepEqual(calls, { bulk: 1, detail: 0 });
+
+  bulkFailure = true;
+  const failedVerification = await getDownloadStatusesForAlbumIds(["101", "102"], {
+    queue: [],
+    history: {
+      records: [
+        { albumId: 101, eventType: "DownloadFailed", date: new Date(now).toISOString() },
+        { albumId: 102, eventType: "AlbumImportIncomplete", date: new Date(now).toISOString() },
+      ],
+    },
+    commands: [],
+  });
+  assert.equal(failedVerification[101].status, "failed");
+  assert.equal(failedVerification[102].status, "failed");
+  assert.deepEqual(calls, { bulk: 2, detail: 0 });
 });

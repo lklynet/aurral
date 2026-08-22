@@ -72,6 +72,13 @@ export const getDownloadStatusesForAlbumIds = async (
         queueByAlbumId.set(qAlbumId, q);
       }
 
+      let verifiedAlbumsPromise;
+      const getVerifiedAlbums = () =>
+        (verifiedAlbumsPromise ??= lidarrClient
+          .getAllAlbums()
+          .then((albums) => new Map(albums.map((album) => [String(album.id), album])))
+          .catch(() => new Map()));
+
       for (const albumId of albumIdArray) {
         if (!albumId || albumId === "undefined" || albumId === "null") continue;
         const lidarrAlbumId = parseInt(albumId, 10);
@@ -189,7 +196,7 @@ export const getDownloadStatusesForAlbumIds = async (
               updatedAt: new Date().toISOString(),
             };
           } else if (isFailedImport || isFailedDownload || isStaleGrabbed) {
-            const album = await lidarrClient.getAlbum(lidarrAlbumId).catch(() => null);
+            const album = (await getVerifiedAlbums()).get(String(lidarrAlbumId));
             statuses[albumId] = {
               status: albumHasTrackFiles(album) ? "added" : "failed",
               updatedAt: new Date().toISOString(),
