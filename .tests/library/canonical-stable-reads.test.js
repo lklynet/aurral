@@ -15,9 +15,12 @@ import { getRecentMissingReleases } from "../../backend/services/discovery/recen
 import { libraryManager } from "../../backend/services/libraryManager.js";
 import { lidarrClient } from "../../backend/services/lidarrClient.js";
 import {
+  getCanonicalAlbumPage,
+  getCanonicalArtistPage,
   getCanonicalArtistKeyProjection,
   getCanonicalArtistProjection,
   getCanonicalLibraryPage,
+  getCanonicalTrackPage,
 } from "../../backend/services/libraryQueryService.js";
 import {
   clearScheduledLibraryScan,
@@ -26,6 +29,7 @@ import {
 import { getLibraryScanQueue } from "../../backend/services/honkerDb.js";
 import { getCanonicalLidarrArtist } from "../../backend/routes/artists/handlers/details.js";
 import { registerArtists } from "../../backend/routes/library/handlers/artists.js";
+import { getLibrarySearchMatch } from "../../backend/services/librarySearchIndex.js";
 
 test("stable artist and discovery reads do not call Lidarr", async (t) => {
   const identityKey = `stable-read-test:${Date.now()}`;
@@ -244,6 +248,136 @@ test("canonical artist compatibility reads apply SQL pagination", async () => {
     db.prepare("DELETE FROM library_media_files WHERE path IN (?, ?)").run(...paths);
     db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)").run(...artists.map((artist) => artist.id));
     db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(...tracks.map((track) => track.id));
+  }
+});
+
+test("canonical paginated reads keep tied rows stable", () => {
+  const key = `canonical-stable-order:${process.pid}:${Date.now()}`;
+  const artistName = `${key} Artist`;
+  const albumTitle = `${key} Album`;
+  const trackTitle = `${key} Track`;
+  const artists = [];
+  const albums = [];
+  const tracks = [];
+  const paths = [];
+
+  try {
+    for (const index of [0, 1]) {
+      const artist = upsertLibraryArtist({
+        identityKey: `${key}:artist:${index}`,
+        name: artistName,
+        sortName: artistName,
+      });
+      const album = upsertLibraryAlbum({
+        identityKey: `${key}:album:${index}`,
+        artistId: artist.id,
+        title: albumTitle,
+      });
+      const track = upsertLibraryTrack({
+        identityKey: `${key}:track:${index}`,
+        title: trackTitle,
+        artistName,
+      });
+      const filePath = `/tmp/${key}/${index}.flac`;
+      linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+      upsertLibraryMediaFile({
+        trackId: track.id,
+        albumId: album.id,
+        source: "lidarr",
+        path: filePath,
+        available: true,
+      });
+      artists.push(artist);
+      albums.push(album);
+      tracks.push(track);
+      paths.push(filePath);
+    }
+
+    const expectedProjectionIds = artists.map((artist) => String(artist.id));
+    const expectedIds = artists.map((artist) => artist.id);
+    const projectionOffset = db.prepare(
+      `SELECT COUNT(*) AS count
+       FROM library_artists
+       WHERE sort_name COLLATE NOCASE < ?
+          OR (sort_name COLLATE NOCASE = ? AND name COLLATE NOCASE < ?)`,
+    ).get(artistName, artistName, artistName).count;
+    assert.deepEqual(
+      getCanonicalArtistProjection({ pageSize: 2, offset: projectionOffset })
+        .map((artist) => artist.id),
+      expectedProjectionIds,
+    );
+    assert.deepEqual(
+      [0, 1].map((offset) => getCanonicalArtistProjection({
+        pageSize: 1,
+        offset: projectionOffset + offset,
+      })[0]?.id),
+      expectedProjectionIds,
+    );
+
+    const artistSearchMatch = getLibrarySearchMatch(artistName);
+    const albumSearchMatch = getLibrarySearchMatch(albumTitle);
+    const trackSearchMatch = getLibrarySearchMatch(trackTitle);
+    assert.ok(artistSearchMatch && albumSearchMatch && trackSearchMatch);
+    assert.deepEqual(
+      [0, 1].map((offset) => getCanonicalArtistPage({
+        source: "lidarr",
+        availableOnly: true,
+        query: artistName,
+        searchMatch: artistSearchMatch,
+        limit: 1,
+        offset,
+      }).artists[0]?.id),
+      expectedIds,
+    );
+    assert.deepEqual(
+      [0, 1].map((offset) => getCanonicalAlbumPage({
+        source: "lidarr",
+        availableOnly: true,
+        query: albumTitle,
+        searchMatch: albumSearchMatch,
+        limit: 1,
+        offset,
+      }).albums[0]?.id),
+      albums.map((album) => album.id),
+    );
+    assert.deepEqual(
+      [0, 1].map((offset) => getCanonicalTrackPage({
+        source: "lidarr",
+        availableOnly: true,
+        query: trackTitle,
+        searchMatch: trackSearchMatch,
+        limit: 1,
+        offset,
+      }).tracks[0]?.id),
+      tracks.map((track) => track.id),
+    );
+  } finally {
+    if (paths.length) {
+      db.prepare(
+        `DELETE FROM library_media_files WHERE path IN (${paths.map(() => "?").join(",")})`,
+      ).run(...paths);
+    }
+    for (const [kind, ids] of [
+      ["artist", artists.map((artist) => artist.id)],
+      ["album", albums.map((album) => album.id)],
+      ["track", tracks.map((track) => track.id)],
+    ]) {
+      if (!ids.length) continue;
+      db.prepare(
+        `DELETE FROM library_search_documents
+         WHERE entity_kind = ? AND entity_id IN (${ids.map(() => "?").join(",")})`,
+      ).run(kind, ...ids);
+    }
+    if (artists.length) {
+      db.prepare(
+        `DELETE FROM library_artists WHERE id IN (${artists.map(() => "?").join(",")})`,
+      ).run(...artists.map((artist) => artist.id));
+    }
+    if (tracks.length) {
+      db.prepare(
+        `DELETE FROM library_tracks WHERE id IN (${tracks.map(() => "?").join(",")})`,
+      ).run(...tracks.map((track) => track.id));
+    }
   }
 });
 

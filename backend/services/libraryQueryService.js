@@ -346,7 +346,7 @@ function buildCanonicalArtistProjectionQuery({
         artist.created_at
       FROM library_artists AS artist
       ${whereSql}
-      ORDER BY artist.sort_name COLLATE NOCASE, artist.name COLLATE NOCASE
+      ORDER BY artist.sort_name COLLATE NOCASE, artist.name COLLATE NOCASE, artist.id
       ${limit}
     )
     SELECT
@@ -381,7 +381,7 @@ function buildCanonicalArtistProjectionQuery({
     LEFT JOIN library_media_files AS media ON media.track_id = album_track.track_id
       AND (media.album_id = album_track.album_id OR media.album_id IS NULL)
     GROUP BY artist.id
-    ORDER BY artist.sort_name COLLATE NOCASE, artist.name COLLATE NOCASE
+    ORDER BY artist.sort_name COLLATE NOCASE, artist.name COLLATE NOCASE, artist.id
   `,
   };
 }
@@ -1095,7 +1095,9 @@ export function getCanonicalArtistPage({
        FROM library_artists AS artist
        ${searchJoin}
        WHERE ${conditions.join(" AND ")}
-       ${searchMatch ? "" : "ORDER BY coalesce(artist.sort_name, artist.name) COLLATE NOCASE, artist.name COLLATE NOCASE"}
+       ${searchMatch
+         ? "ORDER BY coalesce(artist.sort_name, artist.name) COLLATE NOCASE, artist.name COLLATE NOCASE, artist.id"
+         : "ORDER BY coalesce(artist.sort_name, artist.name) COLLATE NOCASE, artist.name COLLATE NOCASE"}
        ${pageSql}`,
     ).all(...parameters, ...(boundedLimit === null ? [] : [boundedLimit, pageOffset(offset)])).map((row) => row.id);
   if (!ids.length) return { artists: [], albums: [], tracks: [] };
@@ -1298,7 +1300,7 @@ export function getCanonicalAlbumPage({
      ${searchJoin}
      WHERE ${conditions.join(" AND ")}
      GROUP BY album.id
-     ${searchMatch ? "" : `ORDER BY ${orderBy}`}
+     ${searchMatch ? `ORDER BY ${orderBy}, album.id` : `ORDER BY ${orderBy}`}
      LIMIT ? OFFSET ?`,
   ).all(...parameters, boundedLimit, pageOffset(offset)).map((row) => row.id);
   const library = getCanonicalLibraryForAlbumIds({ source: sourceFilter, availableOnly, ids });
@@ -1396,6 +1398,7 @@ export function getCanonicalTrackPage({
        JOIN library_search_fts AS search_fts
          ON search_fts.rowid = search_document.id AND library_search_fts MATCH ?
        WHERE ${searchConditions.join(" AND ")}
+       ORDER BY track.id
        LIMIT ? OFFSET ?`,
     ).all(searchMatch, ...parameters, pattern, pattern, pattern, boundedLimit, pageOffset(offset))
       .map((row) => row.id);
