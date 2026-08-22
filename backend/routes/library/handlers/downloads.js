@@ -323,10 +323,12 @@ export const getLidarrStatusSnapshot = async ({ force = false } = {}) => {
     })
     .catch((error) => {
       allDownloadStatusesCache.failures += 1;
-      allDownloadStatusesCache.nextRefreshAt = Date.now() + Math.min(
+      const retryAt = Date.now() + Math.min(
         MAX_STATUS_RETRY_MS,
         ACTIVE_STATUS_CACHE_MS * 2 ** (allDownloadStatusesCache.failures - 1),
       );
+      allDownloadStatusesCache.nextRefreshAt =
+        refreshRevision === allDownloadStatusesCache.revision ? retryAt : 0;
       logger.warn("downloads", "Failed to refresh Lidarr status:", { message: error.message });
       const snapshot = staleSnapshot(error);
       allDownloadStatusesCache.snapshot = snapshot;
