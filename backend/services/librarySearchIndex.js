@@ -74,7 +74,7 @@ export function syncLibrarySearchAlbum(albumId) {
     album.title,
     `${album.artist_name || ""} ${album.album_artist || ""}`.trim(),
     "",
-  ).changes > 0;
+  );
 }
 
 export function syncLibrarySearchTrack(trackId) {
@@ -99,7 +99,7 @@ export function syncLibrarySearchTrack(trackId) {
     track.title,
     track.artist_name || "",
     track.album_name || "",
-  ).changes > 0;
+  );
 }
 
 export function rebuildLibrarySearchIndex() {
