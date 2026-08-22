@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { db } from "../../backend/config/db-sqlite.js";
+import { registerAlbums } from "../../backend/routes/library/handlers/albums.js";
 import { registerTracks } from "../../backend/routes/library/handlers/tracks.js";
 import { indexLidarrLibrary } from "../../backend/services/libraryLidarrIndexer.js";
 
@@ -126,6 +127,53 @@ test("canonical track reads remove nested filesystem paths", async () => {
     assert.deepEqual(body[0].quality, { audioFormat: "FLAC", nested: {} });
     assert.match(body[0].streamPath, /\/library\/canonical-stream\/\d+\/\d+$/);
     assert.equal(body[0].streamFormat, "flac");
+
+    await routes.get("/tracks")(
+      {
+        query: {
+          readPath: "canonical",
+          albumId: "999999999",
+          releaseGroupMbid: "72222222-2222-4222-8222-222222222222",
+        },
+      },
+      {
+        json(value) {
+          body = value;
+          return this;
+        },
+        status() {
+          return this;
+        },
+      },
+    );
+    assert.deepEqual(body.map((track) => track.title), ["Route Track"]);
+
+    registerAlbums({
+      get(routePath, ...handlers) {
+        routes.set(routePath, handlers.at(-1));
+      },
+      post() {},
+      delete() {},
+      put() {},
+    });
+    const artist = db.prepare(
+      "SELECT id, identity_key AS identityKey, mbid FROM library_artists WHERE mbid = ?",
+    ).get("71111111-1111-4111-8111-111111111111");
+    for (const artistId of [artist.id, artist.identityKey, artist.mbid]) {
+      await routes.get("/albums")(
+        { query: { readPath: "canonical", artistId } },
+        {
+          json(value) {
+            body = value;
+            return this;
+          },
+          status() {
+            return this;
+          },
+        },
+      );
+      assert.deepEqual(body.map((album) => album.title), ["Route Album"]);
+    }
   } finally {
     const track = db.prepare(
       "SELECT track_id AS trackId FROM library_media_files WHERE source = ? AND path = ?",

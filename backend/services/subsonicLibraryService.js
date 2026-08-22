@@ -731,8 +731,12 @@ export function starMany(user, values, { skipCanonicalValidation = false } = {})
       ? resolvePlaylistSong(user, idFor(target.kind, target.key))
       : null,
   );
-  if (!skipCanonicalValidation &&
-    getCanonicalFavoriteTargetKeys(canonicalTargets).size !== canonicalTargets.length) return false;
+  const canonicalTargetKeys = skipCanonicalValidation
+    ? null
+    : getCanonicalFavoriteTargetKeys(canonicalTargets);
+  if (canonicalTargetKeys && canonicalTargets.some((target) => !canonicalTargetKeys.has(target))) {
+    return false;
+  }
   if (parsed.some((target, index) =>
     ["flow-song", "shared-song"].includes(target.kind)
       ? !playlistSongs[index]

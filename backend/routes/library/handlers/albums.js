@@ -9,7 +9,6 @@ import {
 } from "../../../middleware/requirePermission.js";
 import { logger } from "../../../services/logger.js";
 import {
-  findCanonicalAlbumsForArtist,
   getCanonicalLibraryReadModelForArtistReferences,
 } from "../../../services/canonicalLibraryReadAdapter.js";
 
@@ -27,7 +26,7 @@ export function registerAlbums(router) {
           availableOnly: true,
           references: [artistId],
         });
-        return res.json(findCanonicalAlbumsForArtist(albums, artistId));
+        return res.json(albums);
       }
 
       const albums = await libraryManager.getAlbums(artistId);

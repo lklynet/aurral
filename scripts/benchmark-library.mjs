@@ -250,13 +250,13 @@ function seedSubsonicFavorite(database) {
   const now = Date.now();
   const userId = Number(database.prepare(
     `INSERT INTO users (username, password_hash, role, permissions)
-     VALUES ('benchmark', 'benchmark', 'user', '{}')`,
+     VALUES ('benchmark', 'benchmark', 'user', '{"accessFlow":true}')`,
   ).run().lastInsertRowid);
   database.prepare(
     `INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
      VALUES (?, 'song', 'benchmark:track:0', ?)`,
   ).run(userId, now);
-  return { id: userId, username: "benchmark", permissions: {} };
+  return { id: userId, username: "benchmark", permissions: { accessFlow: true } };
 }
 
 function collectPageSamples(getPage, invalidate, repeats) {
@@ -365,7 +365,11 @@ import {
 } from "./backend/services/subsonicLibraryService.js";
 import { getCanonicalTrackPage } from "./backend/services/libraryQueryService.js";
 
-const user = { id: 1, username: "benchmark", permissions: {} };
+const user = {
+  id: Number(process.env.AURRAL_BENCHMARK_USER_ID),
+  username: "benchmark",
+  permissions: { accessFlow: true },
+};
 const encodedId = (kind, key) => kind + ":" + encodeURIComponent(key);
 const operation = process.env.AURRAL_BENCHMARK_OPERATION;
 const read = {
@@ -410,12 +414,11 @@ console.log(JSON.stringify({
 `;
 
 function summarizeReadSamples(samples) {
-  const values = samples.map((sample) => sample.elapsedMs).sort((a, b) => a - b);
-  const percentile = (fraction) => values[Math.min(values.length - 1, Math.ceil(values.length * fraction) - 1)];
   const completed = samples.filter((sample) => sample.status === "completed");
-  const strip = ({ status: _status, ...sample }) => sample;
+  const values = completed.map((sample) => sample.elapsedMs).sort((a, b) => a - b);
+  const percentile = (fraction) => values[Math.min(values.length - 1, Math.ceil(values.length * fraction) - 1)];
   return {
-    samples: samples.map(strip),
+    samples,
     responseBytes: [...new Set(completed.map((sample) => sample.jsonBytes))],
     medianMs: completed.length ? percentile(0.5) : null,
     p95Ms: completed.length ? percentile(0.95) : null,
@@ -522,9 +525,17 @@ async function main() {
     const imported = await import("../backend/config/db-sqlite.js");
     database = imported.db;
     const queryService = await import("../backend/services/libraryQueryService.js");
+    const { flowPlaylistConfig } = await import(
+      "../backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js"
+    );
     const seedStarted = performance.now();
     const seed = seedDatabase(database, options);
     const benchmarkUser = seedSubsonicFavorite(database);
+    flowPlaylistConfig.createSharedPlaylist({
+      name: "Benchmark Playlist",
+      ownerUserId: benchmarkUser.id,
+      tracks: [],
+    });
     const seedElapsedMs = Number((performance.now() - seedStarted).toFixed(3));
     const pageCases = [
       ["artists", { kind: "artists", page: 1, pageSize: 100 }],
@@ -592,7 +603,7 @@ async function main() {
       Object.entries(pages).map(([name, value]) => [name, value.warm.p95Ms]),
     );
     const boundedReadCompleted = Object.values(subsonicReads).every((read) =>
-      read.samples.every((sample) => sample.error === undefined));
+      read.samples.every((sample) => sample.status === "completed"));
     const checks = {
       boundedReadCompleted,
       bulkIndexerCallCount: indexerProbes.bulk.status === "completed"

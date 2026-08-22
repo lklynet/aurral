@@ -95,7 +95,7 @@ export function registerTracks(router) {
       const { albumId, releaseGroupMbid } = req.query;
 
       if (req.query.readPath === "canonical") {
-        const canonical = albumId
+        let canonical = albumId
           ? getCanonicalLibraryReadModelForAlbumIds({
               source: req.query.source || "all",
               availableOnly: true,
@@ -106,6 +106,13 @@ export function registerTracks(router) {
               availableOnly: true,
               references: releaseGroupMbid ? [releaseGroupMbid] : [],
             });
+        if (albumId && canonical.albums.length === 0 && releaseGroupMbid) {
+          canonical = getCanonicalLibraryReadModelForAlbumReferences({
+            source: req.query.source || "all",
+            availableOnly: true,
+            references: [releaseGroupMbid],
+          });
+        }
         const { albums, tracks } = canonical;
         const album = [albumId, releaseGroupMbid]
           .filter(Boolean)

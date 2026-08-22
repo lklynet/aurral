@@ -1,26 +1,76 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFile } from "node:fs/promises";
+import {
+  cleanupIsolatedState,
+  resetDatabase,
+  setupIsolatedBackend,
+} from "../helpers/backendTestHarness.js";
 
-const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
+const [isolatedState, { db }, subsonic, libraryStore] = await setupIsolatedBackend(
+  "subsonic-bounded-reads",
+  "backend/config/db-sqlite.js",
+  "backend/services/subsonicLibraryService.js",
+  "backend/services/libraryMediaStore.js",
+);
 
-test("hosted Subsonic single and paged reads do not use the complete-library helper", async () => {
-  const source = await read("../../backend/services/subsonicLibraryService.js");
-
-  assert.doesNotMatch(source, /\bfunction readLibrary\b/);
-  assert.doesNotMatch(source, /\bconst indexLibrary\b/);
-  assert.doesNotMatch(source, /getCanonicalLibrary\(\{\s*availableOnly:\s*false/);
+test.before(() => {
+  resetDatabase(db);
+  const artist = libraryStore.upsertLibraryArtist({
+    identityKey: "bounded:artist",
+    mbid: "bounded-artist-mbid",
+    name: "Bounded Artist",
+    metadata: { genres: ["Rock"] },
+  });
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: "bounded:album",
+    mbid: "bounded-album-mbid",
+    releaseGroupMbid: "bounded-release-group",
+    artistId: artist.id,
+    title: "Bounded Album",
+    metadata: { genres: ["Rock"] },
+  });
+  const track = libraryStore.upsertLibraryTrack({
+    identityKey: "bounded:track",
+    title: "Bounded Track",
+    artistName: artist.name,
+    metadata: { genres: ["Rock"] },
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  libraryStore.upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "lidarr",
+    path: "/tmp/bounded-track.flac",
+  });
 });
 
-test("legacy canonical compatibility reads select focused adapters", async () => {
-  const sources = await Promise.all([
-    read("../../backend/routes/library/handlers/artists.js"),
-    read("../../backend/routes/library/handlers/albums.js"),
-    read("../../backend/routes/library/handlers/tracks.js"),
-  ]);
+test.after(async () => {
+  await cleanupIsolatedState(isolatedState);
+});
 
-  for (const source of sources) {
-    assert.doesNotMatch(source, /getCanonicalLibraryReadModel\(/);
-    assert.doesNotMatch(source, /\bgetCanonicalLibrary\(/);
-  }
+test("focused Subsonic requests never execute an unfiltered complete-library query", (t) => {
+  const prepared = [];
+  const prepare = db.prepare.bind(db);
+  t.mock.method(db, "prepare", (sql) => {
+    prepared.push(String(sql));
+    return prepare(sql);
+  });
+  db.prepare("UPDATE library_tracks SET metadata_json = '{' WHERE identity_key = ?")
+    .run("bounded:track");
+
+  assert.ok(subsonic.listArtists().length);
+  assert.ok(subsonic.getArtist(`artist:${encodeURIComponent("bounded:artist")}`));
+  assert.ok(subsonic.getAlbum(`album:${encodeURIComponent("bounded:album")}`));
+  assert.ok(subsonic.searchLibrary("Bounded", { songCount: 1 }).song.length);
+  assert.ok(subsonic.getAlbumList({ size: 1 }).length);
+  assert.ok(subsonic.getSongsByGenre("Rock", { count: 1 }).length);
+  assert.deepEqual(subsonic.getGenres(), [{ albumCount: 1, songCount: 1, value: "Rock" }]);
+
+  const completeQueries = prepared.filter((sql) =>
+    sql.includes("FROM library_tracks AS track")
+      && sql.includes("LEFT JOIN library_media_files AS media")
+      && !/\bWHERE\b/.test(sql),
+  );
+  assert.deepEqual(completeQueries, []);
+  assert.equal(prepared.some((sql) => /WHERE (artist|album)\.id IN/.test(sql)), true);
 });

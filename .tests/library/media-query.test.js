@@ -11,6 +11,7 @@ import {
   getCanonicalArtistMbids,
   getCanonicalLibrary,
   getCanonicalLibraryForAlbumReferences,
+  getCanonicalLibraryForArtistReferences,
   getCanonicalLibraryForArtists,
   getCanonicalLibraryPage,
   getCanonicalTrack,
@@ -410,6 +411,77 @@ test("scoped canonical reads keep ownership lookups off unrelated library record
       unrelatedArtist.id,
     );
     invalidateCanonicalLibraryCache();
+  }
+});
+
+test("artist and album reference reads resolve through indexed entity lookups", (t) => {
+  const key = `query-plan-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({
+    identityKey: `${key}:artist`,
+    mbid: `${key}:artist-mbid`,
+    name: "Query Plan Artist",
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: `${key}:album`,
+    mbid: `${key}:album-mbid`,
+    releaseGroupMbid: `${key}:release-group`,
+    artistId: artist.id,
+    title: "Query Plan Album",
+  });
+  const track = upsertLibraryTrack({ identityKey: `${key}:track`, title: "Plan Track" });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "lidarr",
+    path: `/tmp/${key}.flac`,
+  });
+  const prepared = [];
+  const prepare = db.prepare.bind(db);
+  const spy = t.mock.method(db, "prepare", (sql) => {
+    prepared.push(String(sql));
+    return prepare(sql);
+  });
+
+  try {
+    assert.deepEqual(
+      getCanonicalLibraryForArtistReferences({ references: [artist.mbid] }).artists.map(({ id }) => id),
+      [artist.id],
+    );
+    assert.deepEqual(
+      getCanonicalLibraryForAlbumReferences({ references: [album.release_group_mbid] }).albums.map(({ id }) => id),
+      [album.id],
+    );
+    spy.mock.restore();
+
+    const lookups = prepared.filter((sql) =>
+      /^SELECT id FROM library_(artists|albums)/.test(sql.trim()),
+    );
+    assert.equal(lookups.length, 2);
+    for (const sql of lookups) {
+      const parameterCount = (sql.match(/\?/g) || []).length;
+      const plan = db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(
+        ...Array.from({ length: parameterCount }, () => `${key}:missing`),
+      );
+      assert.equal(plan.some(({ detail }) => /SCAN library_(artists|albums)/.test(detail)), false);
+      assert.equal(plan.some(({ detail }) => /INDEX/.test(detail)), true);
+    }
+    const hydration = prepared.filter((sql) => sql.includes("FROM library_tracks AS track"));
+    assert.equal(hydration.every((sql) => /WHERE (artist|album)\.id IN/.test(sql)), true);
+    for (const sql of hydration) {
+      const parameterCount = (sql.match(/\?/g) || []).length;
+      const plan = db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(
+        ...Array.from({ length: parameterCount }, () => artist.id),
+      );
+      assert.equal(plan.some(({ detail }) => /SCAN (album|album_track)/.test(detail)), false);
+    }
+  } finally {
+    spy.mock.restore();
+    db.prepare("DELETE FROM library_media_files WHERE track_id = ?").run(track.id);
+    db.prepare("DELETE FROM library_album_tracks WHERE track_id = ?").run(track.id);
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   }
 });
 
