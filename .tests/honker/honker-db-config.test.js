@@ -16,14 +16,15 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("schedule bootstrap reconciles config without resetting next fire state", () => {
+test("schedule bootstrap skips missed runs while reconciling config", () => {
   honkerDb.bootstrapHonkerSchedules();
   const scheduler = honkerDb.getHonkerDb().scheduler();
+  const now = Math.floor(Date.now() / 1000);
 
   const tx = honkerDb.getHonkerDb().transaction();
   tx.execute(
     "UPDATE _honker_scheduler_tasks SET next_fire_at = ?, priority = ? WHERE name = ?",
-    [42, 99, "weekly-flow-refresh"],
+    [now - 3 * 60 * 60, 99, "weekly-flow-refresh"],
   );
   tx.commit();
 
@@ -35,7 +36,7 @@ test("schedule bootstrap reconciles config without resetting next fire state", (
     (row) => row.name === "playlist-mbid-enrichment-sweep",
   );
 
-  assert.equal(weeklyFlow?.next_fire_at, 42);
+  assert.ok(weeklyFlow?.next_fire_at > now);
   assert.equal(weeklyFlow?.priority, 0);
   assert.equal(enrichment?.max_attempts, 4);
   assert.equal(rows.length, honkerDb.SCHEDULED_SYSTEM_TASKS.length);

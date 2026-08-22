@@ -118,3 +118,38 @@ test("library requests forward caller cancellation", async (t) => {
   await assertQueryCancellation(() => getLibraryFavorites(), queryKeys.libraryFavorites);
   queryClient.clear();
 });
+
+test("artist batch lookup stays within the API batch limit", async (t) => {
+  const vite = await createServer({
+    root: "frontend",
+    server: { middlewareMode: true, hmr: false },
+    appType: "custom",
+    optimizeDeps: { noDiscovery: true },
+  });
+  t.after(() => vite.close());
+
+  const { lookupArtistsInLibraryBatch } = await vite.ssrLoadModule(
+    "/src/utils/api/endpoints/library.js?artist-batch-limit-test",
+  );
+  const { queryClient } = await vite.ssrLoadModule("/src/queryClient.js");
+  const originalFetch = globalThis.fetch;
+  const requestSizes = [];
+  globalThis.fetch = async (_url, init) => {
+    const { mbids } = JSON.parse(init.body);
+    requestSizes.push(mbids.length);
+    return new Response(JSON.stringify(Object.fromEntries(mbids.map((id) => [id, true]))), {
+      status: mbids.length <= 100 ? 200 : 400,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const ids = Array.from({ length: 201 }, (_, index) => `artist-${index}`);
+    const result = await lookupArtistsInLibraryBatch(ids);
+    assert.deepEqual(requestSizes, [100, 100, 1]);
+    assert.equal(Object.keys(result).length, 201);
+  } finally {
+    globalThis.fetch = originalFetch;
+    queryClient.clear();
+  }
+});

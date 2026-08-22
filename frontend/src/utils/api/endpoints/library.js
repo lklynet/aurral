@@ -180,7 +180,16 @@ export const lookupArtistsInLibraryBatch = async (mbids) => {
   if (!ids.length) return {};
   const data = await queryClient.fetchQuery({
     queryKey: queryKeys.libraryLookupBatch(ids),
-    queryFn: ({ signal }) => postData("/library/lookup/batch", { mbids: ids }, { signal }),
+    queryFn: async ({ signal }) => {
+      const lookup = {};
+      for (let index = 0; index < ids.length; index += 100) {
+        Object.assign(
+          lookup,
+          await postData("/library/lookup/batch", { mbids: ids.slice(index, index + 100) }, { signal }),
+        );
+      }
+      return lookup;
+    },
     staleTime: 60_000,
   });
   writeLibraryLookupCache(data);

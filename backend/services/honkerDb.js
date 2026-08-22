@@ -391,7 +391,12 @@ export function bootstrapHonkerSchedules() {
     }
 
     const updates = {};
-    if (existing.cron_expr !== task.schedule) updates.schedule = task.schedule;
+    if (
+      existing.cron_expr !== task.schedule ||
+      Number(existing.next_fire_at || 0) <= Math.floor(Date.now() / 1000)
+    ) {
+      updates.schedule = task.schedule;
+    }
     if (existing.payload !== payloadText) updates.payload = task.payload;
     if (Number(existing.priority) !== priority) updates.priority = priority;
     if ((existing.expires_s ?? null) !== expiresS) updates.expiresS = expiresS;
