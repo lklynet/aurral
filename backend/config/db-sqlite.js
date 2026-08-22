@@ -272,12 +272,18 @@ db.exec(`
     ON lidarr_artist_id_map (lidarr_foreign_artist_id);
   CREATE INDEX IF NOT EXISTS idx_library_albums_artist_id
     ON library_albums (artist_id);
+  CREATE INDEX IF NOT EXISTS idx_library_albums_mbid
+    ON library_albums (mbid);
+  CREATE INDEX IF NOT EXISTS idx_library_albums_release_group_mbid
+    ON library_albums (release_group_mbid);
   CREATE INDEX IF NOT EXISTS idx_library_albums_title
     ON library_albums (title COLLATE NOCASE);
   CREATE INDEX IF NOT EXISTS idx_library_albums_release_date
     ON library_albums (release_date DESC);
   CREATE INDEX IF NOT EXISTS idx_library_artists_sort_name_name
     ON library_artists (sort_name COLLATE NOCASE, name COLLATE NOCASE);
+  CREATE INDEX IF NOT EXISTS idx_library_artists_mbid
+    ON library_artists (mbid);
   CREATE INDEX IF NOT EXISTS idx_library_album_tracks_track_id
     ON library_album_tracks (track_id);
   CREATE INDEX IF NOT EXISTS idx_library_tracks_title

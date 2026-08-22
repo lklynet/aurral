@@ -9,8 +9,7 @@ import {
 } from "../../../middleware/requirePermission.js";
 import { logger } from "../../../services/logger.js";
 import {
-  findCanonicalAlbumsForArtist,
-  getCanonicalLibraryReadModel,
+  getCanonicalLibraryReadModelForArtistReferences,
 } from "../../../services/canonicalLibraryReadAdapter.js";
 
 export function registerAlbums(router) {
@@ -22,8 +21,12 @@ export function registerAlbums(router) {
       }
 
       if (req.query.readPath === "canonical") {
-        const { albums } = getCanonicalLibraryReadModel({ source: req.query.source || "all" });
-        return res.json(findCanonicalAlbumsForArtist(albums, artistId));
+        const { albums } = getCanonicalLibraryReadModelForArtistReferences({
+          source: req.query.source || "all",
+          availableOnly: true,
+          references: [artistId],
+        });
+        return res.json(albums);
       }
 
       const albums = await libraryManager.getAlbums(artistId);

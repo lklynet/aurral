@@ -1,11 +1,11 @@
 import {
-  getCanonicalLibrary,
+  getCanonicalArtistPage,
+  getCanonicalLibraryForAlbumIds,
   getCanonicalLibraryForAlbumReferences,
+  getCanonicalLibraryForArtistReferences,
   getCanonicalLibraryForArtists,
   getCanonicalTrackPath,
 } from "./libraryQueryService.js";
-
-const readModelCache = new WeakMap();
 
 const albumFiles = (track, albumId) =>
   (track.files || []).filter((file) => file.albumId == null || file.albumId === albumId);
@@ -30,8 +30,13 @@ const recordMatches = (record, reference) => {
 
 const buildArtist = (artist, albumsByArtistId) => {
   const artistAlbums = albumsByArtistId.get(artist.id) || [];
-  const trackCount = artistAlbums.reduce((count, album) => count + album.trackIds.length, 0);
-  const sizeOnDisk = artistAlbums.reduce((total, album) => total + album.statistics.sizeOnDisk, 0);
+  const hasSummary = artist.albumCount !== undefined;
+  const trackCount = hasSummary
+    ? Number(artist.trackCount || 0)
+    : artistAlbums.reduce((count, album) => count + album.trackIds.length, 0);
+  const sizeOnDisk = hasSummary
+    ? Number(artist.sizeOnDisk || 0)
+    : artistAlbums.reduce((total, album) => total + album.statistics.sizeOnDisk, 0);
   const providerId = artist.metadata?.id ?? null;
   return {
     id: artist.id,
@@ -51,7 +56,7 @@ const buildArtist = (artist, albumsByArtistId) => {
       "none",
     addOptions: artist.metadata?.addOptions || null,
     statistics: {
-      albumCount: artistAlbums.length,
+      albumCount: hasSummary ? Number(artist.albumCount || 0) : artistAlbums.length,
       trackCount,
       sizeOnDisk,
     },
@@ -147,13 +152,18 @@ export function buildCanonicalLibraryReadModel(library) {
   return { artists: readArtists, albums: readAlbums, tracks: readTracks };
 }
 
-export function getCanonicalLibraryReadModel({ source = "lidarr", availableOnly = true } = {}) {
-  const library = getCanonicalLibrary({ source, availableOnly });
-  const cached = readModelCache.get(library);
-  if (cached) return cached;
-  const readModel = buildCanonicalLibraryReadModel(library);
-  readModelCache.set(library, readModel);
-  return readModel;
+export function getCanonicalLibraryReadModelForArtistPage({
+  source = "lidarr",
+  availableOnly = true,
+  limit = 10000,
+  offset = 0,
+} = {}) {
+  const library = getCanonicalArtistPage({ source, availableOnly, limit, offset, includeStats: true });
+  return {
+    artists: library.artists.map((artist) => buildArtist(artist, new Map())),
+    albums: [],
+    tracks: [],
+  };
 }
 
 export function getCanonicalLibraryReadModelForArtists({
@@ -163,6 +173,26 @@ export function getCanonicalLibraryReadModelForArtists({
 } = {}) {
   return buildCanonicalLibraryReadModel(
     getCanonicalLibraryForArtists({ source, availableOnly, mbids }),
+  );
+}
+
+export function getCanonicalLibraryReadModelForArtistReferences({
+  source = "all",
+  availableOnly = false,
+  references = [],
+} = {}) {
+  return buildCanonicalLibraryReadModel(
+    getCanonicalLibraryForArtistReferences({ source, availableOnly, references }),
+  );
+}
+
+export function getCanonicalLibraryReadModelForAlbumIds({
+  source = "lidarr",
+  availableOnly = true,
+  ids = [],
+} = {}) {
+  return buildCanonicalLibraryReadModel(
+    getCanonicalLibraryForAlbumIds({ source, availableOnly, ids }),
   );
 }
 
