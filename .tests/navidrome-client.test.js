@@ -66,6 +66,27 @@ test("retries transient Navidrome connection failures", async () => {
   assert.equal(attempts, 2);
 });
 
+test("does not retry transient failures for playlist mutations", async () => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = async () => {
+    attempts += 1;
+    throw new TypeError("fetch failed");
+  };
+
+  try {
+    await assert.rejects(
+      new NavidromeClient("http://navidrome.test", "user", "password")
+        .createPlaylist("Once", ["song-1"]),
+      /fetch failed/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(attempts, 1);
+});
+
 test("uses the fallback delay for invalid rate limit headers", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response("", {

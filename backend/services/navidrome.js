@@ -11,6 +11,12 @@ const NAVIDROME_RATE_LIMIT_RETRIES = 2;
 const NAVIDROME_RATE_LIMIT_DELAY_MS = 250;
 const NAVIDROME_RATE_LIMIT_MAX_DELAY_MS = 5_000;
 const NAVIDROME_NETWORK_RETRIES = 2;
+const NAVIDROME_RETRYABLE_READ_ENDPOINTS = new Set([
+  "ping",
+  "search3",
+  "getPlaylists",
+  "getPlaylist",
+]);
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -83,7 +89,9 @@ export class NavidromeClient {
         } catch (error) {
           const isNetworkFailure = error instanceof TypeError && !error?.response;
           if (isNetworkFailure) {
-            if (attempt >= NAVIDROME_NETWORK_RETRIES) throw error;
+            if (!NAVIDROME_RETRYABLE_READ_ENDPOINTS.has(endpoint) || attempt >= NAVIDROME_NETWORK_RETRIES) {
+              throw error;
+            }
             await wait(NAVIDROME_RATE_LIMIT_DELAY_MS);
             continue;
           }
