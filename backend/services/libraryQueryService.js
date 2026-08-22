@@ -529,13 +529,14 @@ export function getCanonicalLibraryForAlbumReferences({
   }
   if (availableOnly === true) mediaConditions.push("media.available = 1");
   parameters.push(...ids);
+  const mediaJoin = sourceFilter || availableOnly === true ? "JOIN" : "LEFT JOIN";
   const rows = db.prepare(
     `${CANONICAL_SELECT}
      FROM library_tracks AS track
      JOIN library_album_tracks AS album_track ON album_track.track_id = track.id
      JOIN library_albums AS album ON album.id = album_track.album_id
      JOIN library_artists AS artist ON artist.id = album.artist_id
-     LEFT JOIN library_media_files AS media ON ${mediaConditions.join(" AND ")}
+     ${mediaJoin} library_media_files AS media ON ${mediaConditions.join(" AND ")}
      WHERE album.id IN (${ids.map(() => "?").join(",")})
      ${canonicalOrder}`,
   ).iterate(...parameters);

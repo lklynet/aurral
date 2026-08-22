@@ -466,7 +466,10 @@ test("artist and album reference reads resolve through indexed entity lookups", 
       assert.equal(plan.some(({ detail }) => /SCAN library_(artists|albums)/.test(detail)), false);
       assert.equal(plan.some(({ detail }) => /INDEX/.test(detail)), true);
     }
-    const hydration = prepared.filter((sql) => sql.includes("FROM library_tracks AS track"));
+    const hydration = prepared.filter((sql) =>
+      sql.includes("track.id AS track_id") && sql.includes("FROM library_tracks AS track"),
+    );
+    assert.ok(hydration.length > 0);
     assert.equal(hydration.every((sql) => /WHERE (artist|album)\.id IN/.test(sql)), true);
     for (const sql of hydration) {
       const parameterCount = (sql.match(/\?/g) || []).length;
@@ -544,10 +547,20 @@ test("album-reference reads preserve identity keys and album-specific ownership"
     assert.equal(missing?.identityKey, missingAlbum.identity_key);
     assert.equal(owned?.statistics.trackFileCount, 1);
     assert.equal(missing?.statistics.trackFileCount, 1);
-    assert.equal(
-      readModel.tracks.find((entry) => entry.albumId === missingAlbum.id)?.hasFile,
-      false,
+    assert.deepEqual(
+      readModel.tracks
+        .filter((entry) => entry.albumId === missingAlbum.id)
+        .map((entry) => entry.title),
+      ["Owned Only By Missing Album"],
     );
+    db.prepare("UPDATE library_media_files SET available = 0 WHERE path = ?").run(missingAlbumPath);
+    const available = getCanonicalLibraryReadModelForAlbumReferences({
+      source: "aurral",
+      availableOnly: true,
+      references: [missingAlbum.identity_key],
+    });
+    assert.deepEqual(available.albums, []);
+    assert.deepEqual(available.tracks, []);
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path IN (?, ?)").run(
       ownedPath,

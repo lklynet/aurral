@@ -45,7 +45,7 @@ Options:
   --tracks-per-album N        Synthetic tracks per album, default 10
   --repeats N                 Page samples per cold/warm group, default 3
   --indexer-albums N          Albums in the Lidarr call probe, default 1000
-  --full-read-timeout-ms N    Timeout for full-read child probes, default 30000
+  --child-probe-timeout-ms N  Timeout for child probes, default 30000
   --child-heap-mb N           Child heap cap in megabytes, default 2048
   --output PATH               JSON result path, default perf-results/library-<timestamp>.json
   --check                     Exit nonzero when the regression gate fails
@@ -62,9 +62,9 @@ Options:
     readOption(args, "indexer-albums", 1000),
     "indexer-albums",
   );
-  const fullReadTimeoutMs = positiveInteger(
-    readOption(args, "full-read-timeout-ms", 30000),
-    "full-read-timeout-ms",
+  const childProbeTimeoutMs = positiveInteger(
+    readOption(args, "child-probe-timeout-ms", 30000),
+    "child-probe-timeout-ms",
   );
   const childHeapMb = positiveInteger(readOption(args, "child-heap-mb", 2048), "child-heap-mb");
   const output = readOption(
@@ -77,7 +77,7 @@ Options:
     tracksPerAlbum,
     repeats,
     indexerAlbums,
-    fullReadTimeoutMs,
+    childProbeTimeoutMs,
     childHeapMb,
     output: path.isAbsolute(output) ? output : path.join(repoRoot, output),
     check: args.includes("--check"),
@@ -569,7 +569,7 @@ async function main() {
         samples.push(await runChild({
           dataDir,
           dbPath,
-          timeoutMs: options.fullReadTimeoutMs,
+          timeoutMs: options.childProbeTimeoutMs,
           heapMb: options.childHeapMb,
           code: boundedReadCode,
           env: {
@@ -588,7 +588,7 @@ async function main() {
       indexerProbes[mode] = await runChild({
         dataDir: probeDir,
         dbPath: path.join(probeDir, "aurral.db"),
-        timeoutMs: options.fullReadTimeoutMs,
+        timeoutMs: options.childProbeTimeoutMs,
         heapMb: options.childHeapMb,
         code: indexerProbeCode,
         env: {

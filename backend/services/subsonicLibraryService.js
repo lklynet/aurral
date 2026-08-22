@@ -555,7 +555,7 @@ const findAvailableCanonicalFile = (track) => {
         availableOnly: true,
         query: track?.trackName,
         artist: track?.artistName,
-        limit: 1,
+        limit: 25,
       }));
   const candidate = library.tracks.find((entry) => isSameTrack(track, trackFromCanonical(library, entry)));
   const file = firstFile(candidate);
