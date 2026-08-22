@@ -5,6 +5,7 @@ const libraryCache = new Map();
 const PAGE_KINDS = new Set(["artists", "albums", "tracks", "genres"]);
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 100;
+const MAX_ARTIST_PROJECTION_PAGE_SIZE = 10000;
 
 const parseJson = (value) => {
   if (!value) return null;
@@ -261,9 +262,20 @@ const canonicalArtistProjection = (row) => {
   };
 };
 
-function buildCanonicalArtistProjectionQuery({ page = 1, pageSize = 100, reference = null } = {}) {
+function buildCanonicalArtistProjectionQuery({
+  page = 1,
+  pageSize = 100,
+  offset = null,
+  reference = null,
+} = {}) {
   const normalizedPage = Math.max(1, Number.parseInt(page, 10) || 1);
-  const normalizedPageSize = Math.min(100, Math.max(1, Number.parseInt(pageSize, 10) || 100));
+  const normalizedPageSize = Math.min(
+    MAX_ARTIST_PROJECTION_PAGE_SIZE,
+    Math.max(1, Number.parseInt(pageSize, 10) || 100),
+  );
+  const normalizedOffset = offset == null
+    ? (normalizedPage - 1) * normalizedPageSize
+    : Math.max(0, Number.parseInt(offset, 10) || 0);
   const references = normalizeLookupValues(reference == null ? [] : [reference]);
   const parameters = [];
   const where = [];
@@ -288,7 +300,7 @@ function buildCanonicalArtistProjectionQuery({ page = 1, pageSize = 100, referen
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const limit = references.length ? "" : "LIMIT ? OFFSET ?";
   if (!references.length) {
-    parameters.push(normalizedPageSize, (normalizedPage - 1) * normalizedPageSize);
+    parameters.push(normalizedPageSize, normalizedOffset);
   }
   return {
     parameters,

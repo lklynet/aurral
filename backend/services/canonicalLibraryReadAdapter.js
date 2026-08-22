@@ -38,7 +38,7 @@ const buildArtist = (artist, albumsByArtistId) => {
     canonicalId: artist.id,
     providerId,
     mbid: artist.mbid,
-    foreignArtistId: artist.mbid || artist.identityKey,
+    foreignArtistId: artist.metadata?.foreignArtistId || artist.mbid || artist.identityKey,
     artistName: artist.name,
     name: artist.name,
     sortName: artist.sortName,
