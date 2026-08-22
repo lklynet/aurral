@@ -895,8 +895,8 @@ const text = (value) => String(value || "").trim();
 
 const pageNumber = (value) => Math.max(1, Number.parseInt(value, 10) || 1);
 
-const pageSize = (value) =>
-  Math.min(MAX_PAGE_SIZE, Math.max(1, Number.parseInt(value, 10) || DEFAULT_PAGE_SIZE));
+const pageSize = (value, max = MAX_PAGE_SIZE) =>
+  Math.min(max, Math.max(1, Number.parseInt(value, 10) || DEFAULT_PAGE_SIZE));
 
 const genreStatsCache = new Map();
 const GENRE_STATS_SETTING_PREFIX = "libraryGenreStats:";
@@ -1965,6 +1965,7 @@ export function getCanonicalLibraryPage({
   kind = "albums",
   page = 1,
   pageSize: requestedPageSize = DEFAULT_PAGE_SIZE,
+  offset = null,
   query = "",
   genre = "",
   sort = null,
@@ -1984,7 +1985,13 @@ export function getCanonicalLibraryPage({
     text(sort).toLocaleLowerCase() ||
     (normalizedKind === "tracks" && albumId ? "album" : "name");
   const currentPage = pageNumber(page);
-  const currentPageSize = pageSize(requestedPageSize);
+  const currentPageSize = pageSize(
+    requestedPageSize,
+    normalizedKind === "artists" ? MAX_ARTIST_PROJECTION_PAGE_SIZE : MAX_PAGE_SIZE,
+  );
+  const currentOffset = offset == null
+    ? (currentPage - 1) * currentPageSize
+    : Math.max(0, Number.parseInt(offset, 10) || 0);
 
   if (normalizedKind === "genres") {
     let collection = getCanonicalGenreStats({ sourceFilter, availableOnly });
@@ -2049,7 +2056,7 @@ export function getCanonicalLibraryPage({
   ).all(
     ...queryDefinition.parameters,
     currentPageSize,
-    (currentPage - 1) * currentPageSize,
+    currentOffset,
   ).map((row) => row.page_id);
   if (normalizedKind === "artists") {
     const library = getCanonicalArtistPage({

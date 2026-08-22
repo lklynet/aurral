@@ -8,6 +8,7 @@ import {
   linkLibraryAlbumTrack,
   upsertLibraryAlbum,
   upsertLibraryArtist,
+  upsertLibraryMediaFile,
   upsertLibraryTrack,
 } from "../../backend/services/libraryMediaStore.js";
 import { getRecentMissingReleases } from "../../backend/services/discovery/recentReleases.js";
@@ -99,15 +100,25 @@ test("artist monitoring mutations dedupe canonical reconciliation scans", async 
   }
 });
 
-test("deleting a Lidarr artist clears canonical provider state", async (t) => {
+test("deleting a Lidarr artist clears canonical provider state for both IDs", async (t) => {
   const mbid = "89898989-8989-4898-8989-898989898989";
+  const foreignArtistId = "8989@deezer";
   const artist = upsertLibraryArtist({
+    identityKey: `lidarr-artist:${foreignArtistId}`,
+    name: "Deleted Provider Artist",
+    metadata: {
+      id: 8989,
+      foreignArtistId,
+      librarySource: "lidarr",
+      monitored: true,
+    },
+  });
+  const resolvedArtist = upsertLibraryArtist({
     identityKey: `mbid:${mbid}`,
     mbid,
     name: "Deleted Provider Artist",
     metadata: {
       id: 8989,
-      foreignArtistId: mbid,
       librarySource: "lidarr",
       monitored: true,
     },
@@ -117,7 +128,7 @@ test("deleting a Lidarr artist clears canonical provider state", async (t) => {
   t.mock.method(lidarrClient, "getArtistByMbid", async () => ({
     id: 8989,
     artistName: "Deleted Provider Artist",
-    foreignArtistId: mbid,
+    foreignArtistId,
   }));
   t.mock.method(lidarrClient, "deleteArtist", async () => true);
 
@@ -127,12 +138,76 @@ test("deleting a Lidarr artist clears canonical provider state", async (t) => {
     assert.equal(projection?.lidarrManaged, false);
     assert.equal(projection?.providerId, null);
     assert.equal(projection?.monitored, false);
+    assert.equal(getCanonicalArtistProjection({ reference: resolvedArtist.id })[0]?.providerId, null);
     assert.equal(getCanonicalLidarrArtist(mbid), null);
+    assert.equal(getCanonicalLidarrArtist(foreignArtistId), null);
   } finally {
     const jobId = getScheduledLibraryScanJobId();
     if (jobId) getLibraryScanQueue().cancel(jobId);
     clearScheduledLibraryScan();
-    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)").run(artist.id, resolvedArtist.id);
+  }
+});
+
+test("canonical artist compatibility reads apply SQL pagination", async () => {
+  const key = `canonical-artist-route:${process.pid}:${Date.now()}`;
+  const artists = [];
+  const tracks = [];
+  const paths = [];
+  for (const name of ["A", "B"]) {
+    const artist = upsertLibraryArtist({
+      identityKey: `${key}:artist:${name}`,
+      name: `${key} ${name}`,
+      sortName: `${key} ${name}`,
+      metadata: { librarySource: "lidarr" },
+    });
+    const album = upsertLibraryAlbum({
+      identityKey: `${key}:album:${name}`,
+      artistId: artist.id,
+      title: `${key} Album ${name}`,
+    });
+    const track = upsertLibraryTrack({
+      identityKey: `${key}:track:${name}`,
+      title: `${key} Track ${name}`,
+    });
+    const filePath = `/tmp/${key}/${name}.flac`;
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+    upsertLibraryMediaFile({
+      trackId: track.id,
+      albumId: album.id,
+      source: "lidarr",
+      path: filePath,
+      available: true,
+    });
+    artists.push(artist);
+    tracks.push(track);
+    paths.push(filePath);
+  }
+
+  const routes = new Map();
+  registerArtists({
+    get(path, ...handlers) {
+      routes.set(`GET ${path}`, handlers.at(-1));
+    },
+    post() { return this; },
+    put() { return this; },
+    delete() { return this; },
+  });
+
+  let body;
+  try {
+    await routes.get("GET /artists")(
+      { query: { readPath: "canonical", source: "lidarr", limit: "1", offset: "1" } },
+      { json(value) { body = value; return this; } },
+    );
+    assert.deepEqual(body.map((artist) => artist.name), [`${key} B`]);
+    assert.equal(body[0].canonicalId, artists[1].id);
+    assert.equal(body[0].statistics.trackCount, 1);
+    assert.equal(body[0].added, body[0].addedAt);
+  } finally {
+    db.prepare("DELETE FROM library_media_files WHERE path IN (?, ?)").run(...paths);
+    db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)").run(...artists.map((artist) => artist.id));
+    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(...tracks.map((track) => track.id));
   }
 });
 

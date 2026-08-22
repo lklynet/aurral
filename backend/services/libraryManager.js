@@ -1116,6 +1116,7 @@ export class LibraryManager {
       dbOps.deleteLidarrArtistIdMap(mbid);
       removeCachedArtistByMbid(mbid);
       clearCanonicalLidarrArtist(mbid);
+      clearCanonicalLidarrArtist(lidarrArtist.foreignArtistId);
       scheduleCanonicalLibraryReconciliation();
       logger.info('library', `[LibraryManager] Deleted artist "${lidarrArtist.artistName}" from Lidarr`);
       return { success: true };

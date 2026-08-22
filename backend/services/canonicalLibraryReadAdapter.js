@@ -195,7 +195,6 @@ export function getCanonicalLibraryReadModelForAlbumIds({
     getCanonicalLibraryForAlbumIds({ source, availableOnly, ids }),
   );
 }
-
 export function getCanonicalLibraryReadModelForAlbumReferences({
   source = "lidarr",
   availableOnly = true,
