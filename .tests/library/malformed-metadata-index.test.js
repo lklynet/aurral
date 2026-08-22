@@ -51,7 +51,10 @@ test("malformed artist metadata does not break startup or indexed reference look
             identityKey: "valid:artist",
             mbid: "valid-artist-mbid",
             name: "Valid Artist",
-            metadata: { id: "valid-provider-id" },
+            metadata: {
+              id: "valid-provider-id",
+              foreignArtistId: "valid-foreign-artist-id",
+            },
           });
           const album = upsertLibraryAlbum({
             identityKey: "valid:album",
@@ -69,19 +72,28 @@ test("malformed artist metadata does not break startup or indexed reference look
             source: "aurral",
             path: "/tmp/valid-track.flac",
           });
-          const result = getCanonicalLibraryForArtistReferences({
+          const providerResult = getCanonicalLibraryForArtistReferences({
             references: ["valid-provider-id"],
           });
+          const foreignResult = getCanonicalLibraryForArtistReferences({
+            references: ["valid-foreign-artist-id"],
+          });
           const expression = "CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.id') END AS TEXT)";
-          const plan = db.prepare(
+          const foreignExpression = "CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.foreignArtistId') END AS TEXT)";
+          const providerPlan = db.prepare(
             "EXPLAIN QUERY PLAN SELECT id FROM library_artists WHERE " + expression + " IN (?)",
           ).all("valid-provider-id");
+          const foreignPlan = db.prepare(
+            "EXPLAIN QUERY PLAN SELECT id FROM library_artists WHERE " + foreignExpression + " IN (?)",
+          ).all("valid-foreign-artist-id");
           process.stdout.write(JSON.stringify({
-            artistNames: result.artists.map(({ name }) => name),
-            indexSql: db.prepare(
-              "SELECT sql FROM sqlite_master WHERE name = 'idx_library_artists_provider_id'",
-            ).get().sql,
-            plan,
+            artistNames: providerResult.artists.map(({ name }) => name),
+            foreignArtistNames: foreignResult.artists.map(({ name }) => name),
+            indexes: db.prepare(
+              "SELECT name, sql FROM sqlite_master WHERE name IN ('idx_library_artists_provider_id', 'idx_library_artists_foreign_artist_id') ORDER BY name",
+            ).all(),
+            providerPlan,
+            foreignPlan,
           }));
         `,
       ],
@@ -93,9 +105,21 @@ test("malformed artist metadata does not break startup or indexed reference look
     );
     const evidence = JSON.parse(output);
     assert.deepEqual(evidence.artistNames, ["Valid Artist"]);
-    assert.match(evidence.indexSql, /json_valid\(metadata_json\)/);
+    assert.deepEqual(evidence.foreignArtistNames, ["Valid Artist"]);
+    const indexes = new Map(evidence.indexes.map(({ name, sql }) => [name, sql]));
+    assert.match(indexes.get("idx_library_artists_provider_id"), /json_valid\(metadata_json\)/);
+    assert.match(indexes.get("idx_library_artists_provider_id"), /json_extract\(metadata_json, '\$\.id'\)/);
+    assert.match(indexes.get("idx_library_artists_foreign_artist_id"), /json_valid\(metadata_json\)/);
+    assert.match(
+      indexes.get("idx_library_artists_foreign_artist_id"),
+      /json_extract\(metadata_json, '\$\.foreignArtistId'\)/,
+    );
     assert.equal(
-      evidence.plan.some(({ detail }) => detail.includes("idx_library_artists_provider_id")),
+      evidence.providerPlan.some(({ detail }) => detail.includes("idx_library_artists_provider_id")),
+      true,
+    );
+    assert.equal(
+      evidence.foreignPlan.some(({ detail }) => detail.includes("idx_library_artists_foreign_artist_id")),
       true,
     );
   } finally {
