@@ -149,17 +149,10 @@ export async function isDiscoveryRefreshConfigured() {
 
 export function discoveryNeedsRefresh(cache = getDiscoveryCache()) {
   const lastUpdated = cache?.lastUpdated;
-  const hasRecommendations =
-    Array.isArray(cache?.recommendations) && cache.recommendations.length > 0;
-  const hasGenres = Array.isArray(cache?.topGenres) && cache.topGenres.length > 0;
   const refreshHours = getDiscoveryAutoRefreshHours();
   const staleCutoff = Date.now() - refreshHours * 60 * 60 * 1000;
-  return (
-    !lastUpdated ||
-    new Date(lastUpdated).getTime() < staleCutoff ||
-    !hasRecommendations ||
-    !hasGenres
-  );
+  const lastUpdatedAt = new Date(lastUpdated || "").getTime();
+  return !Number.isFinite(lastUpdatedAt) || lastUpdatedAt < staleCutoff;
 }
 
 function emitDiscoveryQueued(reason) {
@@ -286,16 +279,6 @@ export async function bootstrapDiscoveryRefresh() {
   const result = await enqueueDiscoveryRefreshIfNeeded({ reason: "startup" });
   if (result.reason === "fresh") {
     const latest = getDiscoveryCache();
-    if (
-      (!latest.recommendations?.length && !latest.globalTop?.length) ||
-      !latest.topGenres?.length
-    ) {
-      const retry = enqueueDiscoveryRefresh({ reason: "startup_incomplete" });
-      if (retry.enqueued) {
-        console.log("Discovery cache timestamp exists but data is incomplete. Re-queued refresh.");
-      }
-      return;
-    }
     console.log(
       `Discovery cache is fresh (last updated ${latest.lastUpdated}). Scheduling next refresh.`,
     );
