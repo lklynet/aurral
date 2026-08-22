@@ -11,10 +11,18 @@ import { requireAuth } from "../../../middleware/requirePermission.js";
 import { buildArtistRequestKey, pendingArtistRequests } from "../utils.js";
 import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.js";
 import { getArtistTagPayload, buildArtistBase } from "../shared/transform.js";
-import {
-  findCanonicalArtist,
-  getCanonicalLibraryReadModelForArtists,
-} from "../../../services/canonicalLibraryReadAdapter.js";
+import { getCanonicalArtistProjection } from "../../../services/libraryQueryService.js";
+
+export function getCanonicalLidarrArtist(reference) {
+  const artist = getCanonicalArtistProjection({ reference })[0] || null;
+  if (!artist?.sources.includes("lidarr")) return null;
+  return {
+    id: artist.providerId || artist.id,
+    artistName: artist.artistName,
+    monitored: artist.monitored,
+    statistics: artist.statistics,
+  };
+}
 
 export function registerDetails(router) {
   const parseSelectedReleaseTypes = (value) =>
@@ -154,22 +162,9 @@ export function registerDetails(router) {
       const override = dbOps.getArtistOverride(mbid);
       const resolvedMbid = override?.musicbrainzId || mbid;
 
-      const canonical = getCanonicalLibraryReadModelForArtists({
-        source: "all",
-        availableOnly: false,
-        mbids: [mbid, resolvedMbid],
-      });
-      const canonicalArtist =
-        findCanonicalArtist(canonical.artists, resolvedMbid) ||
-        findCanonicalArtist(canonical.artists, mbid);
-      const lidarrArtist = canonicalArtist
-        ? {
-            id: canonicalArtist.providerId || canonicalArtist.id,
-            artistName: canonicalArtist.artistName,
-            monitored: canonicalArtist.monitored,
-            statistics: canonicalArtist.statistics,
-          }
-        : null;
+      const lidarrArtist =
+        getCanonicalLidarrArtist(resolvedMbid) ||
+        (resolvedMbid === mbid ? null : getCanonicalLidarrArtist(mbid));
 
       if (lidarrArtist) {
         const artistMbid = override?.musicbrainzId || mbid;

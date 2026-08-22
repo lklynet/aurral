@@ -11,6 +11,12 @@ import { getRecentMissingReleases } from "../../backend/services/discovery/recen
 import { libraryManager } from "../../backend/services/libraryManager.js";
 import { lidarrClient } from "../../backend/services/lidarrClient.js";
 import { getCanonicalArtistProjection } from "../../backend/services/libraryQueryService.js";
+import {
+  clearScheduledLibraryScan,
+  getScheduledLibraryScanJobId,
+} from "../../backend/services/libraryScanWorker.js";
+import { getLibraryScanQueue } from "../../backend/services/honkerDb.js";
+import { getCanonicalLidarrArtist } from "../../backend/routes/artists/handlers/details.js";
 
 test("stable artist and discovery reads do not call Lidarr", async (t) => {
   const identityKey = `stable-read-test:${Date.now()}`;
@@ -35,12 +41,54 @@ test("stable artist and discovery reads do not call Lidarr", async (t) => {
       now: "2026-08-22T12:00:00Z",
     });
 
-    assert.equal(artists.some((candidate) => candidate.providerId === "9911"), true);
+    const projectedArtist = artists.find((candidate) => candidate.providerId === "9911");
+    assert.equal(projectedArtist?.id, String(artist.id));
+    assert.equal(projectedArtist?.canonicalId, String(artist.id));
     assert.deepEqual(releases, []);
     assert.equal(request.mock.callCount(), 0);
   } finally {
     lidarrClient.isConfigured = originalConfigured;
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  }
+});
+
+test("artist monitoring mutations dedupe canonical reconciliation scans", async (t) => {
+  clearScheduledLibraryScan();
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  t.mock.method(lidarrClient, "getArtistByMbid", async () => ({
+    id: 9922,
+    artistName: "Monitoring Artist",
+    foreignArtistId: "33333333-3333-4333-8333-333333333333",
+    monitored: false,
+  }));
+  t.mock.method(lidarrClient, "updateArtistMonitoring", async () => ({}));
+  t.mock.method(lidarrClient, "getArtist", async () => ({
+    id: 9922,
+    artistName: "Monitoring Artist",
+    foreignArtistId: "33333333-3333-4333-8333-333333333333",
+    monitored: true,
+    monitor: "all",
+  }));
+
+  let jobId;
+  try {
+    await libraryManager.updateArtist("33333333-3333-4333-8333-333333333333", {
+      monitorOption: "all",
+    });
+    jobId = getScheduledLibraryScanJobId();
+    assert.ok(jobId);
+    assert.deepEqual(JSON.parse(getLibraryScanQueue().getJob(jobId).payload), {
+      force: true,
+      includeLidarr: true,
+    });
+
+    await libraryManager.updateArtist("33333333-3333-4333-8333-333333333333", {
+      monitorOption: "all",
+    });
+    assert.equal(getScheduledLibraryScanJobId(), jobId);
+  } finally {
+    if (jobId) getLibraryScanQueue().cancel(jobId);
+    clearScheduledLibraryScan();
   }
 });
 
@@ -56,6 +104,22 @@ test("stable artist reads remain local when Lidarr is absent", async (t) => {
   assert.equal(request.mock.callCount(), 0);
 });
 
+test("artist details do not expose Lidarr state for Aurral-only artists", () => {
+  const mbid = "67676767-6767-4676-8676-676767676767";
+  const artist = upsertLibraryArtist({
+    identityKey: `mbid:${mbid}`,
+    mbid,
+    name: "Aurral Only Artist",
+    metadata: { id: 6767, foreignArtistId: mbid },
+  });
+
+  try {
+    assert.equal(getCanonicalLidarrArtist(mbid), null);
+  } finally {
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  }
+});
+
 test("explicit artist synchronization retains its Lidarr request", async (t) => {
   const originalConfigured = lidarrClient.isConfigured;
   const request = t.mock.method(lidarrClient, "request", async () => []);
@@ -66,6 +130,9 @@ test("explicit artist synchronization retains its Lidarr request", async (t) => 
     await libraryManager.syncLidarrArtists({ forceRefresh: true });
     assert.deepEqual(request.mock.calls.map((call) => call.arguments[0]), ["/artist"]);
   } finally {
+    const jobId = getScheduledLibraryScanJobId();
+    if (jobId) getLibraryScanQueue().cancel(jobId);
+    clearScheduledLibraryScan();
     lidarrClient.isConfigured = originalConfigured;
   }
 });

@@ -5,7 +5,6 @@ import {
   buildIdentityKey,
   linkLibraryAlbumTrack,
   markUnseenFilesUnavailable,
-  removeLibraryAlbumTracksWithoutMedia,
   upsertLibraryAlbum,
   upsertLibraryArtist,
   upsertLibraryMediaFile,
@@ -185,22 +184,27 @@ export async function indexLidarrLibrary({ client } = {}) {
   const result = { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
 
   return withLibraryScan("lidarr", rootPath, async (scanId) => {
-    for (const album of Array.isArray(albums) ? albums : []) {
-      const artist = artistById.get(String(album?.artistId));
-      if (!artist || !album?.id) continue;
+    const artistRecordsById = new Map();
+    for (const artist of artistById.values()) {
       const artistProviderId = text(artist.foreignArtistId);
       const artistName = text(artist.artistName || artist.name) || "Unknown Artist";
       const artistKey =
         (artistProviderId &&
           buildIdentityKey(isUuid(artistProviderId) ? "mbid" : "lidarr-artist", artistProviderId)) ||
         buildFallbackIdentityKey("lidarr-artist", artist.id, artistName);
-      const artistRecord = upsertLibraryArtist({
+      artistRecordsById.set(String(artist.id), upsertLibraryArtist({
         identityKey: artistKey,
         mbid: isUuid(artistProviderId) ? artistProviderId : null,
         name: artistName,
         sortName: artist.sortName || null,
-        metadata: artist,
-      });
+        metadata: { ...artist, librarySource: "lidarr" },
+      }));
+    }
+    for (const album of Array.isArray(albums) ? albums : []) {
+      const artist = artistById.get(String(album?.artistId));
+      if (!artist || !album?.id) continue;
+      const artistName = text(artist.artistName || artist.name) || "Unknown Artist";
+      const artistRecord = artistRecordsById.get(String(artist.id));
       const albumProviderId = text(album.foreignAlbumId);
       const albumKey =
         (albumProviderId &&
@@ -219,8 +223,6 @@ export async function indexLidarrLibrary({ client } = {}) {
         releaseDate: album.releaseDate || null,
         metadata: album,
       });
-      let albumFilesIndexed = 0;
-
       for (const track of tracksByAlbumId.get(String(album.id)) || []) {
         const trackProviderId = text(track.foreignRecordingId || track.foreignTrackId);
         const trackKey =
@@ -268,13 +270,6 @@ export async function indexLidarrLibrary({ client } = {}) {
           scanId,
         });
         result.filesIndexed += 1;
-        albumFilesIndexed += 1;
-      }
-      if (
-        albumFilesIndexed === 0 &&
-        Number(album.statistics?.sizeOnDisk || 0) === 0
-      ) {
-        removeLibraryAlbumTracksWithoutMedia(albumRecord.id, "lidarr");
       }
     }
     if (result.filesFailed === 0 && result.filesIndexed > 0) {

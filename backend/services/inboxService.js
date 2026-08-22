@@ -1,7 +1,7 @@
 import { dbOps, userOps } from "../db/helpers/index.js";
 import { getTicketmasterApiKey } from "./apiClients/index.js";
 import {
-  getCanonicalLibraryPage,
+  getCanonicalAlbumsByReleaseDate,
   iterateCanonicalArtistProjection,
 } from "./libraryQueryService.js";
 import { getNearbyShows } from "./nearbyShowsService.js";
@@ -51,42 +51,23 @@ const upsertAll = (items) => {
 };
 
 async function buildReleaseItems(userId, now) {
-  const rawArtists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
-  const rawAlbums = [];
-  for (let page = 1; ; page += 1) {
-    const result = getCanonicalLibraryPage({
-      source: "all",
-      availableOnly: false,
-      kind: "albums",
-      page,
-      pageSize: 100,
-      sort: "newest",
-      direction: "desc",
-    });
-    rawAlbums.push(...result.items);
-    if (!result.hasMore) break;
-  }
-
-  const artistsById = new Map(
-    rawArtists.flatMap((artist) => [
-      [String(artist?.id), artist],
-      [artist?.id, artist],
-    ]),
-  );
   const cutoff = now - RELEASE_PAST_DAYS * DAY_MS;
   const horizon = now + RELEASE_FUTURE_DAYS * DAY_MS;
+  const rawAlbums = getCanonicalAlbumsByReleaseDate({
+    from: new Date(cutoff).toISOString().slice(0, 10),
+    to: new Date(horizon).toISOString().slice(0, 10),
+    limit: 1000,
+  });
   const seen = new Set();
 
   return rawAlbums
     .map((album) => {
-      const artist = artistsById.get(String(album?.artistId));
       const releaseMbid = String(album?.foreignAlbumId || "").trim();
       const releaseDate = album?.releaseDate || null;
       const releaseTime = toTime(releaseDate);
-      const artistMbid = String(artist?.foreignArtistId || "").trim();
-      const artistName = String(artist?.artistName || artist?.name || "").trim();
+      const artistMbid = String(album?.foreignArtistId || album?.artistMbid || "").trim();
+      const artistName = String(album?.artistName || "").trim();
       if (
-        !artist ||
         !releaseMbid ||
         !artistMbid ||
         !artistName ||

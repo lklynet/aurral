@@ -132,6 +132,10 @@ function pageSummary(page) {
   };
 }
 
+function artistProjectionSummary(artists) {
+  return { itemCount: artists.length };
+}
+
 function seedDatabase(database, { tracks, tracksPerAlbum }) {
   const albumCount = Math.ceil(tracks / tracksPerAlbum);
   const artistCount = Math.ceil(albumCount / 10);
@@ -502,6 +506,22 @@ async function main() {
         options.repeats,
       );
     }
+    const artistProjectionSamples = [];
+    for (let index = 0; index < options.repeats; index += 1) {
+      artistProjectionSamples.push(
+        measure(() => queryService.getCanonicalArtistProjection({ page: 1, pageSize: 100 })),
+      );
+    }
+    const stripProjection = ({ value: _value, ...sample }) => sample;
+    pages["artist-projection"] = {
+      shape: artistProjectionSummary(artistProjectionSamples[0].value),
+      warm: summarizeSamples(artistProjectionSamples.map(stripProjection)),
+    };
+    const artistProjectionPlan = queryService.getCanonicalArtistProjectionQueryPlan({
+      page: 1,
+      pageSize: 100,
+    });
+    const artistProjectionPlanDetails = artistProjectionPlan.map((row) => String(row.detail || ""));
     database.close();
     database = null;
     const fullReads = {};
@@ -548,6 +568,12 @@ async function main() {
       fallbackIndexerStopsAtBulkFailure: indexerProbes.fallback.status === "completed"
         && indexerProbes.fallback.error === "bulk track-file read failed"
         && indexerProbes.fallback.maxActiveAlbums === 0,
+      artistProjectionPageBounded:
+        artistProjectionPlanDetails.some((detail) => detail.includes("MATERIALIZE artist_page"))
+        && artistProjectionPlanDetails.some((detail) =>
+          /SEARCH album USING (?:COVERING )?INDEX .*artist_id/.test(detail),
+        )
+        && !artistProjectionPlanDetails.some((detail) => detail === "SCAN album"),
       pageWarmP95Under750ms: Object.values(pageP95).every((value) => value < 750),
     };
     output = {
@@ -560,6 +586,7 @@ async function main() {
       elapsedMs: Number((performance.now() - started).toFixed(3)),
       seed: { ...seed, elapsedMs: seedElapsedMs },
       pages,
+      artistProjectionPlan,
       fullReads,
       indexer: {
         requestedAlbums: options.indexerAlbums,

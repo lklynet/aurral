@@ -1,4 +1,7 @@
-import { getCanonicalLibraryPage, iterateCanonicalArtistProjection } from "../libraryQueryService.js";
+import {
+  getCanonicalAlbumsByReleaseDate,
+  iterateCanonicalArtistProjection,
+} from "../libraryQueryService.js";
 import { libraryManager } from "../libraryManager.js";
 
 const RECENT_RELEASE_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
@@ -32,6 +35,11 @@ function resolveDayMs(value) {
 }
 
 export async function getRecentMissingReleases(limit = 24, options = {}) {
+  const now = resolveTimeMs(options?.now);
+  const recentCutoff = now - RECENT_RELEASE_WINDOW_MS;
+  const today = resolveDayMs(now);
+  const includeFuture = options?.includeFuture !== false;
+  const normalizedLimit = Math.max(1, Math.round(Number(limit) || 24));
   const providedArtists =
     Array.isArray(options?.artists) && options.artists.length > 0 ? options.artists : null;
   const providedAlbums = Array.isArray(options?.albums) ? options.albums : null;
@@ -40,40 +48,23 @@ export async function getRecentMissingReleases(limit = 24, options = {}) {
   let canonicalAlbums = false;
 
   if (!artists && !albums) {
-    artists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
-    albums = [];
     canonicalAlbums = true;
-    for (let page = 1; ; page += 1) {
-      const result = getCanonicalLibraryPage({
-        source: "all",
-        availableOnly: false,
-        kind: "albums",
-        page,
-        pageSize: 100,
-        sort: "newest",
-        direction: "desc",
-      });
-      albums.push(...result.items);
-      if (!result.hasMore) break;
-    }
+    albums = getCanonicalAlbumsByReleaseDate({
+      from: new Date(recentCutoff).toISOString().slice(0, 10),
+      to: includeFuture ? null : new Date(today).toISOString().slice(0, 10),
+      limit: normalizedLimit,
+      missingOnly: true,
+    });
   } else if (!artists) {
     artists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
   } else if (!albums) {
-    albums = [];
     canonicalAlbums = true;
-    for (let page = 1; ; page += 1) {
-      const result = getCanonicalLibraryPage({
-        source: "all",
-        availableOnly: false,
-        kind: "albums",
-        page,
-        pageSize: 100,
-        sort: "newest",
-        direction: "desc",
-      });
-      albums.push(...result.items);
-      if (!result.hasMore) break;
-    }
+    albums = getCanonicalAlbumsByReleaseDate({
+      from: new Date(recentCutoff).toISOString().slice(0, 10),
+      to: includeFuture ? null : new Date(today).toISOString().slice(0, 10),
+      limit: normalizedLimit,
+      missingOnly: true,
+    });
   }
 
   if (!Array.isArray(albums) || albums.length === 0) {
@@ -93,35 +84,27 @@ export async function getRecentMissingReleases(limit = 24, options = {}) {
     });
   }
 
-  const now = resolveTimeMs(options?.now);
-  const recentCutoff = now - RECENT_RELEASE_WINDOW_MS;
-  const today = resolveDayMs(now);
-  const includeFuture = options?.includeFuture !== false;
-
   if (canonicalAlbums) {
     return albums
       .map((album) => {
-        const artist = artistsById.get(album.artistId) || artistsById.get(String(album.artistId));
         const releaseDate = album.releaseDate || null;
         const releaseTime = new Date(releaseDate).getTime();
-        if (!artist || !releaseDate || !Number.isFinite(releaseTime) || releaseTime < recentCutoff) {
+        if (!releaseDate || !Number.isFinite(releaseTime) || releaseTime < recentCutoff) {
           return null;
         }
         const releaseDay = resolveDayMs(releaseDate);
         if (!includeFuture && releaseDay != null && today != null && releaseDay > today) return null;
-        if (Number(album.statistics?.trackFileCount || 0) > 0 || Number(album.statistics?.sizeOnDisk || 0) > 0) {
-          return null;
-        }
+        if (Number(album.availableTrackCount || 0) > 0) return null;
         return {
           ...album,
-          artistName: artist.artistName || artist.name || null,
-          artistMbid: artist.mbid || artist.foreignArtistId || null,
-          foreignArtistId: artist.foreignArtistId || artist.mbid || null,
+          artistName: album.artistName || null,
+          artistMbid: album.artistMbid || album.foreignArtistId || null,
+          foreignArtistId: album.foreignArtistId || album.artistMbid || null,
         };
       })
       .filter(Boolean)
       .sort((left, right) => String(right.releaseDate || "").localeCompare(String(left.releaseDate || "")))
-      .slice(0, Math.max(1, Math.round(Number(limit) || 24)));
+      .slice(0, normalizedLimit);
   }
 
   return albums
@@ -153,5 +136,5 @@ export async function getRecentMissingReleases(limit = 24, options = {}) {
       const dateB = right.releaseDate || "";
       return dateB.localeCompare(dateA);
     })
-    .slice(0, Math.max(1, Math.round(Number(limit) || 24)));
+    .slice(0, normalizedLimit);
 }

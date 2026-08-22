@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { db } from "../../backend/config/db-sqlite.js";
-import { getCanonicalLibraryPage } from "../../backend/services/libraryQueryService.js";
+import {
+  getCanonicalArtistProjection,
+  getCanonicalLibraryPage,
+} from "../../backend/services/libraryQueryService.js";
 import {
   getLibrarySnapshot,
   linkLibraryAlbumTrack,
@@ -355,6 +358,91 @@ test("indexLidarrLibrary imports logical media and readable track files", async 
       "lidarr",
       filePath,
     );
+  }
+});
+
+test("indexLidarrLibrary keeps artists without albums and refreshes monitoring metadata", async () => {
+  const providerArtistId = "1212@deezer";
+  let monitored = false;
+  const client = {
+    isConfigured: () => true,
+    request: async () => [{
+      id: 1212,
+      artistName: "Albumless Artist",
+      foreignArtistId: providerArtistId,
+      monitored,
+      monitor: monitored ? "all" : "none",
+    }],
+    getAllAlbums: async () => [],
+    getRootFolders: async () => [],
+  };
+
+  try {
+    await indexLidarrLibrary({ client });
+    let projection = getCanonicalArtistProjection({ reference: providerArtistId })[0];
+    assert.equal(projection?.name, "Albumless Artist");
+    assert.equal(projection?.foreignArtistId, providerArtistId);
+    assert.equal(projection?.providerId, "1212");
+    assert.equal(projection?.id, projection?.canonicalId);
+    assert.deepEqual(projection?.sources, ["lidarr"]);
+    assert.equal(projection?.monitored, false);
+
+    monitored = true;
+    await indexLidarrLibrary({ client });
+    projection = getCanonicalArtistProjection({ reference: providerArtistId })[0];
+    assert.equal(projection?.monitored, true);
+    assert.equal(projection?.monitorOption, "all");
+  } finally {
+    db.prepare("DELETE FROM library_artists WHERE identity_key = ?").run(
+      `lidarr-artist:${providerArtistId}`,
+    );
+  }
+});
+
+test("indexLidarrLibrary keeps fully missing albums in canonical reads", async () => {
+  const artistMbid = "13131313-1313-4131-8131-131313131313";
+  const albumMbid = "14141414-1414-4141-8141-141414141414";
+  const trackMbid = "15151515-1515-4151-8151-151515151515";
+  const client = {
+    isConfigured: () => true,
+    request: async () => [{
+      id: 1313,
+      artistName: "Missing Album Artist",
+      foreignArtistId: artistMbid,
+    }],
+    getAllAlbums: async () => [{
+      id: 1414,
+      artistId: 1313,
+      title: "Fully Missing Album",
+      foreignAlbumId: albumMbid,
+      releaseDate: "2026-08-20",
+      statistics: { sizeOnDisk: 0 },
+    }],
+    getTracksByAlbumId: async () => [{
+      id: 1515,
+      albumId: 1414,
+      title: "Missing Track",
+      trackNumber: 1,
+      foreignRecordingId: trackMbid,
+    }],
+    getTrackFilesByAlbumId: async () => [],
+    getRootFolders: async () => [],
+  };
+
+  try {
+    await indexLidarrLibrary({ client });
+    const page = getCanonicalLibraryPage({
+      kind: "albums",
+      page: 1,
+      pageSize: 10,
+      query: "Fully Missing Album",
+    });
+
+    assert.equal(page.items[0]?.title, "Fully Missing Album");
+    assert.equal(page.items[0]?.availableTrackCount, 0);
+  } finally {
+    db.prepare("DELETE FROM library_artists WHERE mbid = ?").run(artistMbid);
+    db.prepare("DELETE FROM library_tracks WHERE mbid = ?").run(trackMbid);
   }
 });
 

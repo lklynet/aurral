@@ -225,12 +225,19 @@ const canonicalArtistProjection = (row) => {
   const metadata = parseJson(row.metadata_json) || {};
   const providerId = metadata.id == null ? null : String(metadata.id);
   const monitorOption = metadata.monitor || metadata.addOptions?.monitor || "none";
+  const sources = new Set(
+    String(row.sources || "")
+      .split(",")
+      .map((source) => source.trim())
+      .filter(Boolean),
+  );
+  if (metadata.librarySource === "lidarr") sources.add("lidarr");
   return {
-    id: providerId || String(row.id),
+    id: String(row.id),
     canonicalId: String(row.id),
     providerId,
     mbid: row.mbid || null,
-    foreignArtistId: row.mbid || row.identity_key,
+    foreignArtistId: metadata.foreignArtistId || row.mbid || row.identity_key,
     artistName: row.name,
     name: row.name,
     sortName: row.sort_name || row.name,
@@ -247,16 +254,13 @@ const canonicalArtistProjection = (row) => {
       trackCount: Number(row.track_count || 0),
       sizeOnDisk: Number(row.size_on_disk || 0),
     },
-    sources: String(row.sources || "")
-      .split(",")
-      .map((source) => source.trim())
-      .filter(Boolean),
+    sources: [...sources].sort(),
     available: Boolean(row.available),
     stale: Boolean(row.stale),
   };
 };
 
-export function getCanonicalArtistProjection({ page = 1, pageSize = 100, reference = null } = {}) {
+function buildCanonicalArtistProjectionQuery({ page = 1, pageSize = 100, reference = null } = {}) {
   const normalizedPage = Math.max(1, Number.parseInt(page, 10) || 1);
   const normalizedPageSize = Math.min(100, Math.max(1, Number.parseInt(pageSize, 10) || 100));
   const references = normalizeLookupValues(reference == null ? [] : [reference]);
@@ -268,16 +272,40 @@ export function getCanonicalArtistProjection({ page = 1, pageSize = 100, referen
       artist.mbid IN (${references.map(() => "?").join(",")}) OR
       artist.identity_key IN (${references.map(() => "?").join(",")}) OR
       CAST(json_extract(artist.metadata_json, '$.id') AS TEXT) IN (${references.map(() => "?").join(",")}) OR
+      CAST(json_extract(artist.metadata_json, '$.foreignArtistId') AS TEXT) IN (${references.map(() => "?").join(",")}) OR
       lower(artist.name) IN (${references.map(() => "lower(?)").join(",")})
     )`);
-    parameters.push(...references, ...references, ...references, ...references, ...references);
+    parameters.push(
+      ...references,
+      ...references,
+      ...references,
+      ...references,
+      ...references,
+      ...references,
+    );
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const limit = references.length ? "" : "LIMIT ? OFFSET ?";
   if (!references.length) {
     parameters.push(normalizedPageSize, (normalizedPage - 1) * normalizedPageSize);
   }
-  const rows = db.prepare(`
+  return {
+    parameters,
+    sql: `
+    WITH artist_page AS MATERIALIZED (
+      SELECT
+        artist.id,
+        artist.identity_key,
+        artist.mbid,
+        artist.name,
+        artist.sort_name,
+        artist.metadata_json,
+        artist.created_at
+      FROM library_artists AS artist
+      ${whereSql}
+      ORDER BY artist.sort_name COLLATE NOCASE, artist.name COLLATE NOCASE
+      ${limit}
+    )
     SELECT
       artist.id,
       artist.identity_key,
@@ -304,17 +332,26 @@ export function getCanonicalArtistProjection({ page = 1, pageSize = 100, referen
             LIMIT 1
           ), 0)
       ) THEN 1 ELSE 0 END AS stale
-    FROM library_artists AS artist
+    FROM artist_page AS artist
     LEFT JOIN library_albums AS album ON album.artist_id = artist.id
     LEFT JOIN library_album_tracks AS album_track ON album_track.album_id = album.id
     LEFT JOIN library_media_files AS media ON media.track_id = album_track.track_id
       AND (media.album_id = album_track.album_id OR media.album_id IS NULL)
-    ${whereSql}
     GROUP BY artist.id
     ORDER BY artist.sort_name COLLATE NOCASE, artist.name COLLATE NOCASE
-    ${limit}
-  `).all(...parameters);
+  `,
+  };
+}
+
+export function getCanonicalArtistProjection(options = {}) {
+  const query = buildCanonicalArtistProjectionQuery(options);
+  const rows = db.prepare(query.sql).all(...query.parameters);
   return rows.map(canonicalArtistProjection);
+}
+
+export function getCanonicalArtistProjectionQueryPlan(options = {}) {
+  const query = buildCanonicalArtistProjectionQuery(options);
+  return db.prepare(`EXPLAIN QUERY PLAN ${query.sql}`).all(...query.parameters);
 }
 
 export function* iterateCanonicalArtistProjection({ pageSize = 100 } = {}) {
@@ -323,6 +360,104 @@ export function* iterateCanonicalArtistProjection({ pageSize = 100 } = {}) {
     yield* artists;
     if (artists.length < Math.min(100, Math.max(1, Number.parseInt(pageSize, 10) || 100))) break;
   }
+}
+
+const canonicalDateAlbumProjection = (row) => {
+  const metadata = parseJson(row.metadata_json) || {};
+  const artistMetadata = parseJson(row.artist_metadata_json) || {};
+  const trackCount = Number(row.track_count || 0);
+  const availableTrackCount = Number(row.available_track_count || 0);
+  return {
+    id: String(row.id),
+    canonicalId: String(row.id),
+    providerId: metadata.id == null ? null : String(metadata.id),
+    artistId: String(row.artist_id),
+    providerArtistId: artistMetadata.id == null ? null : String(artistMetadata.id),
+    artistName: row.artist_name,
+    artistMbid: row.artist_mbid || null,
+    foreignArtistId:
+      artistMetadata.foreignArtistId || row.artist_mbid || row.artist_identity_key,
+    mbid: row.mbid || row.release_group_mbid || null,
+    releaseGroupMbid: row.release_group_mbid || null,
+    foreignAlbumId: row.mbid || row.release_group_mbid || row.identity_key,
+    albumName: row.title,
+    title: row.title,
+    releaseDate: row.release_date,
+    monitored: metadata.monitored === true,
+    albumType: metadata.albumType || metadata.releaseType || null,
+    trackCount,
+    availableTrackCount,
+    statistics: {
+      trackCount,
+      trackFileCount: availableTrackCount,
+      sizeOnDisk: Number(row.size_on_disk || 0),
+      percentOfTracks: trackCount > 0 && availableTrackCount === trackCount ? 100 : 0,
+    },
+  };
+};
+
+export function getCanonicalAlbumsByReleaseDate({
+  from,
+  to = null,
+  limit = 100,
+  missingOnly = false,
+} = {}) {
+  const fromDate = String(from || "").trim();
+  const toDate = String(to || "").trim();
+  if (!fromDate) return [];
+  const conditions = ["album.release_date >= ?"];
+  const parameters = [fromDate];
+  if (toDate) {
+    conditions.push("album.release_date <= ?");
+    parameters.push(toDate);
+  }
+  if (missingOnly === true) {
+    conditions.push(`NOT EXISTS (
+      SELECT 1
+      FROM library_album_tracks AS owned_relation
+      JOIN library_media_files AS owned_media
+        ON owned_media.track_id = owned_relation.track_id
+        AND (owned_media.album_id = owned_relation.album_id OR owned_media.album_id IS NULL)
+      WHERE owned_relation.album_id = album.id
+        AND owned_media.available = 1
+    )`);
+  }
+  parameters.push(Math.min(1000, Math.max(1, Number.parseInt(limit, 10) || 100)));
+  const rows = db.prepare(`
+    WITH date_albums AS MATERIALIZED (
+      SELECT
+        album.id,
+        album.identity_key,
+        album.mbid,
+        album.release_group_mbid,
+        album.artist_id,
+        album.title,
+        album.release_date,
+        album.metadata_json,
+        artist.identity_key AS artist_identity_key,
+        artist.mbid AS artist_mbid,
+        artist.name AS artist_name,
+        artist.metadata_json AS artist_metadata_json
+      FROM library_albums AS album
+      JOIN library_artists AS artist ON artist.id = album.artist_id
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY album.release_date DESC, album.id DESC
+      LIMIT ?
+    )
+    SELECT
+      album.*,
+      COUNT(DISTINCT album_track.track_id) AS track_count,
+      COUNT(DISTINCT CASE WHEN media.available = 1 THEN album_track.track_id END) AS available_track_count,
+      COALESCE(SUM(CASE WHEN media.available = 1 THEN media.size ELSE 0 END), 0) AS size_on_disk
+    FROM date_albums AS album
+    LEFT JOIN library_album_tracks AS album_track ON album_track.album_id = album.id
+    LEFT JOIN library_media_files AS media
+      ON media.track_id = album_track.track_id
+      AND (media.album_id = album_track.album_id OR media.album_id IS NULL)
+    GROUP BY album.id
+    ORDER BY album.release_date DESC, album.id DESC
+  `).all(...parameters);
+  return rows.map(canonicalDateAlbumProjection);
 }
 
 export function getCanonicalTrackPath(albumReference, trackReference) {
@@ -549,9 +684,17 @@ export function getCanonicalLibraryForArtistReferences({
       artist.mbid IN (${placeholders}) OR
       artist.identity_key IN (${placeholders}) OR
       CAST(json_extract(artist.metadata_json, '$.id') AS TEXT) IN (${placeholders}) OR
+      CAST(json_extract(artist.metadata_json, '$.foreignArtistId') AS TEXT) IN (${placeholders}) OR
       lower(artist.name) IN (${references.map(() => "lower(?)").join(",")})
     )`],
-    parameters: [...references, ...references, ...references, ...references, ...references],
+    parameters: [
+      ...references,
+      ...references,
+      ...references,
+      ...references,
+      ...references,
+      ...references,
+    ],
   });
 }
 
@@ -746,6 +889,9 @@ const recentMediaOrder = (kind, sourceFilter, availableOnly, direction) => {
 };
 
 const pageMediaExists = (kind, sourceFilter, availableOnly) => {
+  if (!sourceFilter && availableOnly !== true) {
+    return { sql: "1 = 1", parameters: [] };
+  }
   const { conditions, parameters } = mediaSourceClause(sourceFilter);
   if (availableOnly === true) conditions.push("page_media.available = 1");
   const conditionSql = conditions.length ? conditions.join(" AND ") : "1 = 1";
