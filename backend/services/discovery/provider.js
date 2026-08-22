@@ -13,7 +13,7 @@ import {
   getListenHistoryProfile,
   hasListenHistoryProfile,
 } from "../listeningHistory.js";
-import { libraryManager } from "../libraryManager.js";
+import { iterateCanonicalArtistProjection } from "../libraryQueryService.js";
 import {
   buildExistingArtistKeySet,
   buildDiscoverySeedList,
@@ -440,16 +440,9 @@ export const updateDiscoveryCache = async (options = {}) => {
     .catch((err) => { logger.warn('discovery', err); });
 
   try {
-    const { libraryManager, getCachedArtists } = await import("../libraryManager.js");
     recordDiscoveryUpdateProgress("loading_sources", "Loading library artists", 12);
-    const cachedArtists = getCachedArtists();
-    const [recentLibraryArtists, allLibraryArtistsRaw] = await Promise.all([
-      libraryManager.getRecentArtists(40),
-      cachedArtists.length > 0 ? cachedArtists : libraryManager.getAllArtists(),
-    ]);
-    const allLibraryArtists = Array.isArray(allLibraryArtistsRaw)
-      ? allLibraryArtistsRaw
-      : [];
+    const allLibraryArtists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
+    const recentLibraryArtists = allLibraryArtists.slice(0, 40);
     const libraryArtists =
       recentLibraryArtists.length > 0
         ? recentLibraryArtists
@@ -901,10 +894,7 @@ export const updateUserDiscoveryCache = async (
   }
 
   try {
-    const allLibraryArtistsRaw = await libraryManager.getAllArtists();
-    const allLibraryArtists = Array.isArray(allLibraryArtistsRaw)
-      ? allLibraryArtistsRaw
-      : [];
+    const allLibraryArtists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
     const existingArtistKeys = buildExistingArtistKeySet(allLibraryArtists);
 
     const lastfmHealth = { success: 0, failure: 0 };

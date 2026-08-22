@@ -1,3 +1,4 @@
+import { getCanonicalLibraryPage, iterateCanonicalArtistProjection } from "../libraryQueryService.js";
 import { libraryManager } from "../libraryManager.js";
 
 const RECENT_RELEASE_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
@@ -31,26 +32,48 @@ function resolveDayMs(value) {
 }
 
 export async function getRecentMissingReleases(limit = 24, options = {}) {
-  const { lidarrClient } = await import("../lidarrClient.js");
-  if (!lidarrClient.isConfigured()) {
-    return [];
-  }
-
   const providedArtists =
     Array.isArray(options?.artists) && options.artists.length > 0 ? options.artists : null;
   const providedAlbums = Array.isArray(options?.albums) ? options.albums : null;
   let artists = providedArtists;
   let albums = providedAlbums;
+  let canonicalAlbums = false;
 
   if (!artists && !albums) {
-    [artists, albums] = await Promise.all([
-      lidarrClient.request("/artist"),
-      lidarrClient.getAllAlbums(),
-    ]);
+    artists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
+    albums = [];
+    canonicalAlbums = true;
+    for (let page = 1; ; page += 1) {
+      const result = getCanonicalLibraryPage({
+        source: "all",
+        availableOnly: false,
+        kind: "albums",
+        page,
+        pageSize: 100,
+        sort: "newest",
+        direction: "desc",
+      });
+      albums.push(...result.items);
+      if (!result.hasMore) break;
+    }
   } else if (!artists) {
-    artists = await lidarrClient.request("/artist");
+    artists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
   } else if (!albums) {
-    albums = await lidarrClient.getAllAlbums();
+    albums = [];
+    canonicalAlbums = true;
+    for (let page = 1; ; page += 1) {
+      const result = getCanonicalLibraryPage({
+        source: "all",
+        availableOnly: false,
+        kind: "albums",
+        page,
+        pageSize: 100,
+        sort: "newest",
+        direction: "desc",
+      });
+      albums.push(...result.items);
+      if (!result.hasMore) break;
+    }
   }
 
   if (!Array.isArray(albums) || albums.length === 0) {
@@ -59,10 +82,10 @@ export async function getRecentMissingReleases(limit = 24, options = {}) {
 
   const artistsById = new Map();
   if (Array.isArray(artists)) {
-    await libraryManager.backfillLidarrArtistMappings(artists);
+    if (!canonicalAlbums) await libraryManager.backfillLidarrArtistMappings(artists);
     artists.forEach((artist) => {
       if (artist?.id != null) {
-        const mappedArtist = libraryManager.mapLidarrArtist(artist);
+        const mappedArtist = canonicalAlbums ? artist : libraryManager.mapLidarrArtist(artist);
         mappedArtist.artistName = mappedArtist.artistName || artist.name || null;
         artistsById.set(artist.id, mappedArtist);
         artistsById.set(String(artist.id), mappedArtist);
@@ -74,6 +97,32 @@ export async function getRecentMissingReleases(limit = 24, options = {}) {
   const recentCutoff = now - RECENT_RELEASE_WINDOW_MS;
   const today = resolveDayMs(now);
   const includeFuture = options?.includeFuture !== false;
+
+  if (canonicalAlbums) {
+    return albums
+      .map((album) => {
+        const artist = artistsById.get(album.artistId) || artistsById.get(String(album.artistId));
+        const releaseDate = album.releaseDate || null;
+        const releaseTime = new Date(releaseDate).getTime();
+        if (!artist || !releaseDate || !Number.isFinite(releaseTime) || releaseTime < recentCutoff) {
+          return null;
+        }
+        const releaseDay = resolveDayMs(releaseDate);
+        if (!includeFuture && releaseDay != null && today != null && releaseDay > today) return null;
+        if (Number(album.statistics?.trackFileCount || 0) > 0 || Number(album.statistics?.sizeOnDisk || 0) > 0) {
+          return null;
+        }
+        return {
+          ...album,
+          artistName: artist.artistName || artist.name || null,
+          artistMbid: artist.mbid || artist.foreignArtistId || null,
+          foreignArtistId: artist.foreignArtistId || artist.mbid || null,
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => String(right.releaseDate || "").localeCompare(String(left.releaseDate || "")))
+      .slice(0, Math.max(1, Math.round(Number(limit) || 24)));
+  }
 
   return albums
     .map((album) => {

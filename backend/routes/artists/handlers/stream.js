@@ -163,73 +163,13 @@ export function registerStream(router) {
             return;
           }
 
-          const { lidarrClient } = await import("../../../services/lidarrClient.js");
-          const { libraryManager } = await import("../../../services/libraryManager.js");
-
-          if (!lidarrClient.isConfigured()) return;
-
-          try {
-            const lidarrArtist = await lidarrClient.getArtistByMbid(mbid);
-            if (!lidarrArtist) {
-              if (isClientConnected()) {
-                sendSSE(res, "library", {
-                  exists: false,
-                  artist: null,
-                  albums: [],
-                });
-              }
-              return;
-            }
-            if (!isClientConnected()) return;
-
-            logger.info("stream", `Found artist in Lidarr: ${lidarrArtist.artistName}`);
-            const metadataArtist = await metadataArtistPromise;
-
-            sendArtist({
-              ...buildArtistBase(lidarrArtist.artistName, resolvedMbid, metadataArtist),
-              _lidarrData: {
-                id: lidarrArtist.id,
-                monitored: lidarrArtist.monitored,
-                statistics: lidarrArtist.statistics,
-              },
-            });
-
-            const libArtist = libraryManager.mapLidarrArtist(lidarrArtist);
+          if (isClientConnected()) {
             sendSSE(res, "library", {
-              exists: true,
-              artist: {
-                ...libArtist,
-                foreignArtistId: libArtist.foreignArtistId || libArtist.mbid,
-                added: libArtist.addedAt,
-              },
+              exists: false,
+              canonical: true,
+              artist: null,
               albums: [],
             });
-
-            const lidarrAlbums = await libraryManager.getAlbums(libArtist.id, lidarrArtist);
-
-            if (!isClientConnected()) return;
-
-            sendSSE(res, "library", {
-              exists: true,
-              artist: {
-                ...libArtist,
-                foreignArtistId: libArtist.foreignArtistId || libArtist.mbid,
-                added: libArtist.addedAt,
-              },
-              albums: lidarrAlbums.map((a) => ({
-                ...a,
-                foreignAlbumId: a.foreignAlbumId || a.mbid,
-                title: a.albumName,
-                albumType: "Album",
-                statistics: a.statistics || {
-                  trackCount: 0,
-                  sizeOnDisk: 0,
-                  percentOfTracks: 0,
-                },
-              })),
-            });
-          } catch (error) {
-            logger.warn("stream", `Failed to fetch from Lidarr: ${error.message}`);
           }
         })();
         tasks.push(libraryTask);

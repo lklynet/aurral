@@ -1,7 +1,7 @@
 import { requireAuth } from "../../../middleware/requirePermission.js";
 import { dbOps, userOps } from "../../../db/helpers/index.js";
 import { getTicketmasterApiKey, getLastfmApiKey } from "../../../services/apiClients/index.js";
-import { libraryManager } from "../../../services/libraryManager.js";
+import { iterateCanonicalArtistProjection } from "../../../services/libraryQueryService.js";
 import {
   getDiscoveryCache,
   getDiscoveryFeedback,
@@ -39,7 +39,7 @@ export function registerShows(router) {
       const radiusMiles = Number.isFinite(configuredRadius)
         ? Math.max(5, Math.min(250, Math.floor(configuredRadius)))
         : undefined;
-      const libraryArtists = await libraryManager.getAllArtists();
+      const libraryArtists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
       const reqUser = userOps.getUserById(req.user.id);
       const userCacheNamespace = getLastfmApiKey()
         ? getListenHistoryCacheNamespace(getListenHistoryProfile(reqUser || {}))

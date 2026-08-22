@@ -12,7 +12,7 @@ import {
   serveCachedRecommendations,
 } from "./index.js";
 import { getLastfmApiKey } from "../apiClients/index.js";
-import { libraryManager } from "../libraryManager.js";
+import { iterateCanonicalArtistProjection } from "../libraryQueryService.js";
 import { dbOps, userOps } from "../../db/helpers/index.js";
 import {
   DISCOVERY_PROVIDER_LASTFM,
@@ -38,7 +38,7 @@ import { getTopPlayedArtists } from "../playEventService.js";
 
 export async function getUserDiscovery(userId, limit = 50, offset = 0) {
   const hasLastfmKey = !!getLastfmApiKey();
-  const libraryArtists = await libraryManager.getAllArtists();
+  const libraryArtists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
 
   const reqUser = userOps.getUserById(userId);
   const externalListenHistoryProfile = getListenHistoryProfile(reqUser || {});

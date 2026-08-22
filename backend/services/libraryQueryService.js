@@ -64,13 +64,13 @@ const CANONICAL_SELECT = `SELECT
 const albumMediaCondition = (mediaAlias, albumTrackAlias) =>
   `(${mediaAlias}.album_id = ${albumTrackAlias}.album_id OR ${mediaAlias}.album_id IS NULL)`;
 
-const CANONICAL_FROM = `FROM library_media_files AS media
-  JOIN library_tracks AS track ON track.id = media.track_id
-  JOIN library_album_tracks AS album_track
-    ON album_track.track_id = track.id
-    AND ${albumMediaCondition("media", "album_track")}
-  JOIN library_albums AS album ON album.id = album_track.album_id
-  JOIN library_artists AS artist ON artist.id = album.artist_id`;
+const CANONICAL_FROM = `FROM library_artists AS artist
+  JOIN library_albums AS album ON album.artist_id = artist.id
+  JOIN library_album_tracks AS album_track ON album_track.album_id = album.id
+  JOIN library_tracks AS track ON track.id = album_track.track_id
+  LEFT JOIN library_media_files AS media
+    ON media.track_id = track.id
+    AND ${albumMediaCondition("media", "album_track")}`;
 
 function buildLibraryFromRows(rows) {
   const artists = new Map();
@@ -219,6 +219,110 @@ export function getCanonicalArtistMbids({ source = null, availableOnly = false, 
      WHERE ${conditions.join(" AND ")}`,
   ).all(...parameters);
   return new Set(rows.map((row) => row.mbid).filter(Boolean));
+}
+
+const canonicalArtistProjection = (row) => {
+  const metadata = parseJson(row.metadata_json) || {};
+  const providerId = metadata.id == null ? null : String(metadata.id);
+  const monitorOption = metadata.monitor || metadata.addOptions?.monitor || "none";
+  return {
+    id: providerId || String(row.id),
+    canonicalId: String(row.id),
+    providerId,
+    mbid: row.mbid || null,
+    foreignArtistId: row.mbid || row.identity_key,
+    artistName: row.name,
+    name: row.name,
+    sortName: row.sort_name || row.name,
+    path: metadata.path || null,
+    addedAt: metadata.added || (row.created_at ? new Date(row.created_at).toISOString() : null),
+    monitored: metadata.monitored === true,
+    monitorOption,
+    monitorNewItems: metadata.monitorNewItems || "none",
+    addOptions: metadata.addOptions || { monitor: monitorOption },
+    quality: metadata.qualityProfile?.name || "standard",
+    albumFolders: true,
+    statistics: {
+      albumCount: Number(row.album_count || 0),
+      trackCount: Number(row.track_count || 0),
+      sizeOnDisk: Number(row.size_on_disk || 0),
+    },
+    sources: String(row.sources || "")
+      .split(",")
+      .map((source) => source.trim())
+      .filter(Boolean),
+    available: Boolean(row.available),
+    stale: Boolean(row.stale),
+  };
+};
+
+export function getCanonicalArtistProjection({ page = 1, pageSize = 100, reference = null } = {}) {
+  const normalizedPage = Math.max(1, Number.parseInt(page, 10) || 1);
+  const normalizedPageSize = Math.min(100, Math.max(1, Number.parseInt(pageSize, 10) || 100));
+  const references = normalizeLookupValues(reference == null ? [] : [reference]);
+  const parameters = [];
+  const where = [];
+  if (references.length) {
+    where.push(`(
+      artist.id IN (${references.map(() => "?").join(",")}) OR
+      artist.mbid IN (${references.map(() => "?").join(",")}) OR
+      artist.identity_key IN (${references.map(() => "?").join(",")}) OR
+      CAST(json_extract(artist.metadata_json, '$.id') AS TEXT) IN (${references.map(() => "?").join(",")}) OR
+      lower(artist.name) IN (${references.map(() => "lower(?)").join(",")})
+    )`);
+    parameters.push(...references, ...references, ...references, ...references, ...references);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const limit = references.length ? "" : "LIMIT ? OFFSET ?";
+  if (!references.length) {
+    parameters.push(normalizedPageSize, (normalizedPage - 1) * normalizedPageSize);
+  }
+  const rows = db.prepare(`
+    SELECT
+      artist.id,
+      artist.identity_key,
+      artist.mbid,
+      artist.name,
+      artist.sort_name,
+      artist.metadata_json,
+      artist.created_at,
+      COUNT(DISTINCT album.id) AS album_count,
+      COUNT(DISTINCT album_track.track_id) AS track_count,
+      COALESCE(SUM(CASE WHEN media.available = 1 THEN media.size ELSE 0 END), 0) AS size_on_disk,
+      GROUP_CONCAT(DISTINCT media.source) AS sources,
+      MAX(CASE WHEN media.available = 1 THEN 1 ELSE 0 END) AS available,
+      CASE WHEN EXISTS (
+        SELECT 1
+        FROM library_scan_runs AS scan
+        WHERE scan.source = 'lidarr'
+          AND scan.status = 'failed'
+          AND scan.id > COALESCE((
+            SELECT complete.id
+            FROM library_scan_runs AS complete
+            WHERE complete.source = 'lidarr' AND complete.status = 'complete'
+            ORDER BY complete.id DESC
+            LIMIT 1
+          ), 0)
+      ) THEN 1 ELSE 0 END AS stale
+    FROM library_artists AS artist
+    LEFT JOIN library_albums AS album ON album.artist_id = artist.id
+    LEFT JOIN library_album_tracks AS album_track ON album_track.album_id = album.id
+    LEFT JOIN library_media_files AS media ON media.track_id = album_track.track_id
+      AND (media.album_id = album_track.album_id OR media.album_id IS NULL)
+    ${whereSql}
+    GROUP BY artist.id
+    ORDER BY artist.sort_name COLLATE NOCASE, artist.name COLLATE NOCASE
+    ${limit}
+  `).all(...parameters);
+  return rows.map(canonicalArtistProjection);
+}
+
+export function* iterateCanonicalArtistProjection({ pageSize = 100 } = {}) {
+  for (let page = 1; ; page += 1) {
+    const artists = getCanonicalArtistProjection({ page, pageSize });
+    yield* artists;
+    if (artists.length < Math.min(100, Math.max(1, Number.parseInt(pageSize, 10) || 100))) break;
+  }
 }
 
 export function getCanonicalTrackPath(albumReference, trackReference) {
@@ -426,6 +530,28 @@ export function getCanonicalLibraryForArtists({
     availableOnly,
     conditions: [`artist.mbid IN (${references.map(() => "?").join(",")})`],
     parameters: references,
+  });
+}
+
+export function getCanonicalLibraryForArtistReferences({
+  source = null,
+  availableOnly = false,
+  references: requestedReferences = [],
+} = {}) {
+  const references = normalizeLookupValues(requestedReferences);
+  if (!references.length) return { artists: [], albums: [], tracks: [] };
+  const placeholders = references.map(() => "?").join(",");
+  return getScopedCanonicalLibrary({
+    source,
+    availableOnly,
+    conditions: [`(
+      artist.id IN (${placeholders}) OR
+      artist.mbid IN (${placeholders}) OR
+      artist.identity_key IN (${placeholders}) OR
+      CAST(json_extract(artist.metadata_json, '$.id') AS TEXT) IN (${placeholders}) OR
+      lower(artist.name) IN (${references.map(() => "lower(?)").join(",")})
+    )`],
+    parameters: [...references, ...references, ...references, ...references, ...references],
   });
 }
 

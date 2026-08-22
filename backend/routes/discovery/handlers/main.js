@@ -4,8 +4,8 @@ import {
   getDiscoveryMode,
   serveCachedRecommendations,
 } from "../../../services/discovery/index.js";
-import { libraryManager } from "../../../services/libraryManager.js";
 import { requireAuth } from "../../../middleware/requirePermission.js";
+import { iterateCanonicalArtistProjection } from "../../../services/libraryQueryService.js";
 import {
   buildArtistKeySet,
   isLibraryArtist,
@@ -63,7 +63,7 @@ export function registerMain(router) {
       let recommendations = discoveryCache.recommendations || [];
       let globalTop = discoveryCache.globalTop || [];
 
-      const libraryArtists = await libraryManager.getAllArtists();
+      const libraryArtists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
       const existingArtistKeys = buildArtistKeySet(libraryArtists);
 
       recommendations = recommendations.filter(

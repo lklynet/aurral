@@ -1,6 +1,9 @@
 import { dbOps, userOps } from "../db/helpers/index.js";
 import { getTicketmasterApiKey } from "./apiClients/index.js";
-import { libraryManager } from "./libraryManager.js";
+import {
+  getCanonicalLibraryPage,
+  iterateCanonicalArtistProjection,
+} from "./libraryQueryService.js";
 import { getNearbyShows } from "./nearbyShowsService.js";
 import { getUserDiscovery } from "./discovery/userDiscovery.js";
 import { logger } from "./logger.js";
@@ -48,13 +51,21 @@ const upsertAll = (items) => {
 };
 
 async function buildReleaseItems(userId, now) {
-  const { lidarrClient } = await import("./lidarrClient.js");
-  if (!lidarrClient?.isConfigured()) return [];
-  const [rawArtists, rawAlbums] = await Promise.all([
-    lidarrClient.request("/artist"),
-    lidarrClient.getAllAlbums(),
-  ]);
-  if (!Array.isArray(rawArtists) || !Array.isArray(rawAlbums)) return [];
+  const rawArtists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
+  const rawAlbums = [];
+  for (let page = 1; ; page += 1) {
+    const result = getCanonicalLibraryPage({
+      source: "all",
+      availableOnly: false,
+      kind: "albums",
+      page,
+      pageSize: 100,
+      sort: "newest",
+      direction: "desc",
+    });
+    rawAlbums.push(...result.items);
+    if (!result.hasMore) break;
+  }
 
   const artistsById = new Map(
     rawArtists.flatMap((artist) => [
@@ -263,7 +274,7 @@ export async function refreshInboxForUser(userId, { req = null, zipCode = "", fo
     const now = Date.now();
     const preferences = getInboxPreferences();
     const libraryArtists = preferences.shows
-      ? await libraryManager.getAllArtists()
+      ? [...iterateCanonicalArtistProjection({ pageSize: 100 })]
       : [];
     const enabledNewsKinds = new Set(
       getEnabledKinds(preferences).filter((kind) =>

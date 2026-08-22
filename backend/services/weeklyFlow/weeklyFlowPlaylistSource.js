@@ -5,6 +5,14 @@ import { getBlockedArtistKeys } from "../discovery/feedback.js";
 import { mapWithConcurrency } from "../discovery/helpers.js";
 import { getYear } from "../providers/brainzmashRanking.js";
 import { resolveWeeklyFlowTrackContext } from "./weeklyFlowTrackResolver.js";
+import {
+  buildCanonicalLibraryReadModel,
+} from "../canonicalLibraryReadAdapter.js";
+import {
+  getCanonicalLibraryPage,
+  getCanonicalLibraryForArtistReferences,
+  iterateCanonicalArtistProjection,
+} from "../libraryQueryService.js";
 import BoundedMap from "../boundedMap.js";
 const LASTFM_HARVEST_CONCURRENCY = 12;
 const ARTIST_TOP_TRACKS_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -467,8 +475,7 @@ export class WeeklyFlowPlaylistSource {
     }
 
     const promise = (async () => {
-      const { libraryManager } = await import("../libraryManager.js");
-      const artists = await libraryManager.getAllArtists();
+      const artists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
       return this._buildArtistKeySet(artists);
     })();
     this.libraryArtistKeysCache = { promise };
@@ -1964,7 +1971,7 @@ export class WeeklyFlowPlaylistSource {
     return tracks.slice(0, limit);
   }
 
-  async _getLibraryOwnership(libraryManager, artistId) {
+  async _getLibraryOwnership(_libraryManager, artistId) {
     const key = String(artistId ?? "");
     if (!key) {
       return { ownedTitles: new Set(), ownedAlbums: new Set() };
@@ -1973,11 +1980,25 @@ export class WeeklyFlowPlaylistSource {
     if (cached?.data && cached.expiresAt > Date.now()) {
       return cached.data;
     }
-    const albums = await libraryManager.getAlbums(artistId);
-    const [ownedTitles, ownedAlbums] = await Promise.all([
-      this.getLibraryTrackTitles(libraryManager, artistId, albums),
-      this.getLibraryAlbumNames(libraryManager, artistId, albums),
-    ]);
+    const { albums, tracks } = buildCanonicalLibraryReadModel(
+      getCanonicalLibraryForArtistReferences({
+        source: "all",
+        availableOnly: false,
+        references: [artistId],
+      }),
+    );
+    const ownedTitles = new Set(
+      tracks
+        .filter((track) => track.available)
+        .map((track) => String(track.trackName || track.title || "").trim().toLowerCase())
+        .filter(Boolean),
+    );
+    const ownedAlbums = new Set(
+      albums
+        .filter((album) => album.available)
+        .map((album) => String(album.albumName || album.title || "").trim().toLowerCase())
+        .filter(Boolean),
+    );
     const data = { ownedTitles, ownedAlbums };
     this.libraryOwnershipCache.set(key, {
       data,
@@ -1986,42 +2007,42 @@ export class WeeklyFlowPlaylistSource {
     return data;
   }
 
-  async getLibraryTrackTitles(libraryManager, artistId, knownAlbums = null) {
-    const albums = Array.isArray(knownAlbums)
-      ? knownAlbums
-      : await libraryManager.getAlbums(artistId);
-    const titles = new Set();
-    const maxAlbums = 30;
-    const trackLists = await Promise.all(
-      albums.slice(0, maxAlbums).map((album) => libraryManager.getTracks(album.id)),
+  async getLibraryTrackTitles(_libraryManager, artistId, _knownAlbums = null) {
+    const { tracks } = buildCanonicalLibraryReadModel(
+      getCanonicalLibraryForArtistReferences({
+        source: "all",
+        availableOnly: false,
+        references: [artistId],
+      }),
     );
-    for (const tracks of trackLists) {
-      for (const t of tracks) {
-        const name = (t.trackName || t.title || "").trim().toLowerCase();
-        if (name) titles.add(name);
-      }
-    }
-    return titles;
+    return new Set(
+      tracks
+        .filter((track) => track.available)
+        .map((track) => String(track.trackName || track.title || "").trim().toLowerCase())
+        .filter(Boolean),
+    );
   }
 
-  async getLibraryAlbumNames(libraryManager, artistId, knownAlbums = null) {
-    const albums = Array.isArray(knownAlbums)
-      ? knownAlbums
-      : await libraryManager.getAlbums(artistId);
-    const names = new Set();
-    const maxAlbums = 40;
-    for (const album of albums.slice(0, maxAlbums)) {
-      const name = (album.albumName || album.title || "").trim().toLowerCase();
-      if (name) names.add(name);
-    }
-    return names;
+  async getLibraryAlbumNames(_libraryManager, artistId, _knownAlbums = null) {
+    const { albums } = buildCanonicalLibraryReadModel(
+      getCanonicalLibraryForArtistReferences({
+        source: "all",
+        availableOnly: false,
+        references: [artistId],
+      }),
+    );
+    return new Set(
+      albums
+        .filter((album) => album.available)
+        .map((album) => String(album.albumName || album.title || "").trim().toLowerCase())
+        .filter(Boolean),
+    );
   }
 
   async getMixTracks(limit, options = {}) {
-    const { libraryManager } = await import("../libraryManager.js");
     const artists = Array.isArray(options?.libraryArtists)
       ? options.libraryArtists
-      : await libraryManager.getAllArtists();
+      : [...iterateCanonicalArtistProjection({ pageSize: 100 })];
     if (artists.length === 0) {
       throw new Error("No artists in library. Add artists to enable Mix.");
     }
@@ -2050,7 +2071,7 @@ export class WeeklyFlowPlaylistSource {
           if (!artistKey || seenArtists.has(artistKey)) return null;
           try {
             const { ownedTitles, ownedAlbums } = await this._getLibraryOwnership(
-              libraryManager,
+              null,
               artist.id,
             );
             const trackList = await this._getArtistTopTrackList(artistName);
@@ -2104,15 +2125,21 @@ export class WeeklyFlowPlaylistSource {
     }
     const set = new Set();
     try {
-      const { lidarrClient } = await import("../lidarrClient.js");
-      if (lidarrClient.isConfigured()) {
-        const albums = await lidarrClient.getAllAlbums();
-        for (const album of Array.isArray(albums) ? albums : []) {
-          const mbid = String(album?.foreignAlbumId || "")
+      for (let page = 1; ; page += 1) {
+        const result = getCanonicalLibraryPage({
+          source: "all",
+          availableOnly: false,
+          kind: "albums",
+          page,
+          pageSize: 100,
+        });
+        for (const album of result.items) {
+          const mbid = String(album?.foreignAlbumId || album?.mbid || "")
             .trim()
             .toLowerCase();
           if (mbid) set.add(mbid);
         }
+        if (!result.hasMore) break;
       }
     } catch {}
     this.libraryAlbumMbidCache = {

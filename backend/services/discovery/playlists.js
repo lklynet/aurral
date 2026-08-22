@@ -1,6 +1,6 @@
 import { dbOps } from "../../db/helpers/index.js";
 import { getLastfmApiKey } from "../apiClients/index.js";
-import { libraryManager } from "../libraryManager.js";
+import { iterateCanonicalArtistProjection } from "../libraryQueryService.js";
 import { logger } from "../logger.js";
 import { buildExistingArtistKeySet } from "./recommendationPipeline.js";
 import { websocketService } from "../websocketService.js";
@@ -85,10 +85,7 @@ export const runQueuedDiscoverPlaylistBuild = async (payload = {}) => {
           recordDiscoverPlaylistBuildProgress("Building recommended playlists...");
         }
 
-        const allLibraryArtistsRaw = await libraryManager.getAllArtists();
-        const allLibraryArtists = Array.isArray(allLibraryArtistsRaw)
-          ? allLibraryArtistsRaw
-          : [];
+        const allLibraryArtists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
         const existingArtistKeys = buildExistingArtistKeySet(allLibraryArtists);
         const { generateDiscoverPlaylists } =
           await import("./playlistBuilder.js");

@@ -1,6 +1,6 @@
 import { buildImageProxyUrl } from "./imageProxyService.js";
 import { dbOps } from "../db/helpers/index.js";
-import { libraryManager } from "./libraryManager.js";
+import { iterateCanonicalArtistProjection } from "./libraryQueryService.js";
 import { getNewsSettings } from "./apiClients/config.js";
 import { fetchArticleImage, fetchRssFeed } from "./rssNews.js";
 import { mapWithConcurrency } from "./discovery/helpers.js";
@@ -210,7 +210,7 @@ export const disableNewsFeed = (sourceUrl, sourceName) => {
 
 export async function getNewsForUser({ limit = 60, offset = 0, userId, mode = "matched" } = {}) {
   const settings = getNewsSettings();
-  const libraryArtists = await libraryManager.getAllArtists();
+  const libraryArtists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
   const recommendedArtists = userId
     ? ((await getUserDiscovery(userId, 50, 0))?.body?.recommendations || [])
     : [];

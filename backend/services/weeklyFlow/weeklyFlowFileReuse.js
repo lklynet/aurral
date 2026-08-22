@@ -5,7 +5,12 @@ import {
   flowPlaylistConfig,
   tracksShareMembership,
 } from "./weeklyFlowPlaylistConfig.js";
-import { libraryManager } from "../libraryManager.js";
+import {
+  buildCanonicalLibraryReadModel,
+  findCanonicalArtist,
+  findCanonicalTracksForAlbum,
+} from "../canonicalLibraryReadAdapter.js";
+import { getCanonicalLibraryForArtistReferences } from "../libraryQueryService.js";
 import { commitImportToPlaylistLibrary, sanitizePathPart } from "../playlistDownloadUtils.js";
 import {
   AURRAL_FLOWS_DIR,
@@ -393,14 +398,15 @@ function findMatchingTrack(tracks, track, strictAlbum = false) {
 
 async function findLidarrSource(track, options = {}) {
   const strictAlbum = options.targetPlaylistType === "library";
-  let artists = [];
-  try {
-    artists = await libraryManager.getAllArtists();
-  } catch (error) {
-    console.warn("[WeeklyFlowReuse] Failed to inspect Lidarr artists:", error.message);
-    return null;
-  }
-  const artist = findMatchingArtist(Array.isArray(artists) ? artists : [], track);
+  const { artists, albums, tracks } = buildCanonicalLibraryReadModel(
+    getCanonicalLibraryForArtistReferences({
+      source: "lidarr",
+      availableOnly: false,
+      references: [track?.artistMbid, track?.artistName],
+    }),
+  );
+  const artist = findCanonicalArtist(artists, track?.artistMbid) ||
+    findMatchingArtist(artists, track);
   if (!artist) {
     console.log(
       `[WeeklyFlowReuse] Lidarr: no artist match for "${track?.artistName}" (mbid ${track?.artistMbid || "none"}, ${artists.length} Lidarr artists checked)`,
@@ -410,14 +416,8 @@ async function findLidarrSource(track, options = {}) {
   const artistId = artist.id || artist.artistId;
   if (!artistId) return null;
 
-  let albums = [];
-  try {
-    albums = await libraryManager.getAlbums(artistId);
-  } catch (error) {
-    console.warn("[WeeklyFlowReuse] Failed to inspect Lidarr albums:", error.message);
-    return null;
-  }
-  if (!albums.length) {
+  const artistAlbums = albums.filter((album) => String(album.artistId) === String(artist.id));
+  if (!artistAlbums.length) {
     console.log(
       `[WeeklyFlowReuse] Lidarr: artist "${artist.artistName}" (id ${artistId}) matched but has 0 albums`,
     );
@@ -425,7 +425,7 @@ async function findLidarrSource(track, options = {}) {
   }
 
   let foundTitleOnAnyAlbum = false;
-  const rankedAlbums = rankAlbums(Array.isArray(albums) ? albums : [], track);
+  const rankedAlbums = rankAlbums(artistAlbums, track);
   const albumsToCheck = strictAlbum
     ? rankedAlbums.filter((album) => {
         const albumMbid = String(track?.albumMbid || "").trim();
@@ -440,15 +440,9 @@ async function findLidarrSource(track, options = {}) {
       })
     : rankedAlbums;
   for (const album of albumsToCheck) {
-    let tracks = [];
-    try {
-      tracks = await libraryManager.getTracks(album.id);
-    } catch (error) {
-      console.warn("[WeeklyFlowReuse] Failed to inspect Lidarr tracks:", error.message);
-      continue;
-    }
+    const albumTracks = findCanonicalTracksForAlbum(tracks, album.id);
     const matchedTrack = findMatchingTrack(
-      Array.isArray(tracks) ? tracks : [],
+      albumTracks,
       track,
       strictAlbum,
     );
@@ -477,7 +471,7 @@ async function findLidarrSource(track, options = {}) {
   }
   if (!foundTitleOnAnyAlbum) {
     console.log(
-      `[WeeklyFlowReuse] Lidarr: artist "${artist.artistName}" matched (${albums.length} albums checked) but no album's tracklist contained "${track.trackName}"`,
+      `[WeeklyFlowReuse] Lidarr: artist "${artist.artistName}" matched (${artistAlbums.length} albums checked) but no album's tracklist contained "${track.trackName}"`,
     );
   }
   return null;
