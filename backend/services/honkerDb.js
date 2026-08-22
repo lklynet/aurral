@@ -38,6 +38,7 @@ let honkerSchedulerAbort = null;
 let honkerSchedulerPromise = null;
 const WORKER_ID = `aurral-${process.pid}`;
 const DEFAULT_HONKER_WATCHER_POLL_MS = 25;
+const MISSED_FIRE_GRACE_S = 300;
 
 export function getHonkerOpenOptions() {
   const configured = Number(process.env.AURRAL_HONKER_WATCHER_POLL_MS);
@@ -393,7 +394,8 @@ export function bootstrapHonkerSchedules() {
     const updates = {};
     if (
       existing.cron_expr !== task.schedule ||
-      Number(existing.next_fire_at || 0) <= Math.floor(Date.now() / 1000)
+      Number(existing.next_fire_at || 0) <=
+        Math.floor(Date.now() / 1000) - MISSED_FIRE_GRACE_S
     ) {
       updates.schedule = task.schedule;
     }
@@ -460,6 +462,7 @@ export function findActiveHonkerJob(
           OR (state = 'processing' AND (claim_expires_at IS NULL OR claim_expires_at > ?))
         )
       ORDER BY id ASC
+      LIMIT 100
     `,
     [safeQueue, now],
   );

@@ -135,8 +135,8 @@ test("a removed queued refresh is reported stale", async () => {
 });
 
 test("expired inbox leases are reported stale and recovered without overlap", async () => {
-  const queue = getSystemTaskQueue();
-  const jobId = queue.enqueue({ kind: "inbox-refresh", userId });
+  const refresh = await inboxService.enqueueInboxRefreshForUser(userId, { reason: "retry" });
+  const jobId = refresh.jobId;
   const expiredAt = Math.floor(Date.now() / 1000) - 10;
   const transaction = getHonkerDb().transaction();
   transaction.execute(
@@ -150,9 +150,13 @@ test("expired inbox leases are reported stale and recovered without overlap", as
   const staleStatus = getInboxRefreshStatus(userId);
   assert.equal(staleStatus.status, "stale");
   assert.equal(staleStatus.stale, true);
-  assert.match(staleStatus.error, /lease expired/i);
+  assert.match(staleStatus.error, /no longer active/i);
+  assert.equal(
+    getHonkerDb().query("SELECT state FROM _honker_live WHERE id = ?", [jobId])[0]?.state,
+    "processing",
+  );
 
-  const recovered = await enqueueInboxRefreshForUser(userId, { reason: "retry" });
+  const recovered = await inboxService.enqueueInboxRefreshForUser(userId, { reason: "retry" });
   assert.equal(recovered.queued, true);
   assert.notEqual(recovered.jobId, jobId);
   assert.equal(

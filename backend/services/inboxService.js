@@ -12,7 +12,6 @@ import { getNewsForUser, getNewsPreferences } from "./newsService.js";
 import {
   enqueueSystemTaskJob,
   findActiveHonkerJob,
-  getHonkerDb,
   withHonkerLock,
 } from "./honkerDb.js";
 
@@ -62,32 +61,6 @@ const normalizeUserId = (userId) => {
 const getInboxRefreshStatusKey = (userId) =>
   `${INBOX_REFRESH_STATUS_PREFIX}${normalizeUserId(userId)}`;
 
-const parsePayload = (value) => {
-  try {
-    return typeof value === "string" ? JSON.parse(value) : value;
-  } catch {
-    return null;
-  }
-};
-
-const getInboxRefreshJob = (userId) => {
-  const normalizedUserId = normalizeUserId(userId);
-  if (!normalizedUserId) return null;
-  const rows = getHonkerDb().query(
-    `
-      SELECT id, payload, state, run_at, claim_expires_at
-      FROM _honker_live
-      WHERE queue = 'system-task'
-        AND state IN ('pending', 'processing')
-      ORDER BY id ASC
-    `,
-  );
-  return rows.find((row) => {
-    const payload = parsePayload(row.payload);
-    return payload?.kind === "inbox-refresh" && Number(payload.userId) === normalizedUserId;
-  }) || null;
-};
-
 const getStoredRefreshStatus = (userId) =>
   dbOps.getJSONSetting(getInboxRefreshStatusKey(userId)) || {
     status: "idle",
@@ -99,11 +72,13 @@ const getStoredRefreshStatus = (userId) =>
   };
 
 const setStoredRefreshStatus = (userId, status) => {
-  dbOps.setJSONSetting(getInboxRefreshStatusKey(userId), {
-    ...getStoredRefreshStatus(userId),
-    ...status,
-    updatedAt: Date.now(),
-  });
+  db.transaction(() => {
+    dbOps.setJSONSetting(getInboxRefreshStatusKey(userId), {
+      ...getStoredRefreshStatus(userId),
+      ...status,
+      updatedAt: Date.now(),
+    });
+  })();
 };
 
 export function getInboxRefreshStatus(userId) {
@@ -120,36 +95,20 @@ export function getInboxRefreshStatus(userId) {
   }
 
   const stored = getStoredRefreshStatus(normalizedUserId);
-  const job = getInboxRefreshJob(normalizedUserId);
+  const job = findActiveHonkerJob(
+    "system-task",
+    (payload) =>
+      payload?.kind === "inbox-refresh" && Number(payload.userId) === normalizedUserId,
+    { recoverExpired: false },
+  );
   if (job) {
-    const leaseExpired =
-      job.state === "processing" &&
-      job.claim_expires_at != null &&
-      Number(job.claim_expires_at) <= Math.floor(Date.now() / 1000);
-    const active =
-      !leaseExpired &&
-      (job.state === "pending" ||
-        job.claim_expires_at == null ||
-        Number(job.claim_expires_at) > Math.floor(Date.now() / 1000));
-    if (active) {
-      const status = job.state === "processing" ? "running" : "queued";
-      return {
-        ...stored,
-        status,
-        stale: false,
-        error: null,
-        jobId: Number(job.id),
-      };
-    }
-    if (leaseExpired) {
-      return {
-        ...stored,
-        status: "stale",
-        stale: true,
-        error: stored.error || "Inbox refresh worker lease expired",
-        jobId: Number(job.id),
-      };
-    }
+    return {
+      ...stored,
+      status: job.state === "processing" ? "running" : "queued",
+      stale: false,
+      error: null,
+      jobId: Number(job.id),
+    };
   }
 
   if (refreshInflight.has(normalizedUserId)) {
@@ -390,7 +349,7 @@ export async function refreshInboxForUser(
       status: "running",
       stale: false,
       error: null,
-      jobId: jobId || getStoredRefreshStatus(normalizedUserId).jobId,
+      ...(jobId ? { jobId } : {}),
     });
     const preferences = getInboxPreferences();
     const libraryArtists = preferences.shows
@@ -439,11 +398,8 @@ export async function refreshInboxForUser(
       status: refreshStatus,
       stale: failures.length > 0,
       error: errorMessage,
-      jobId: jobId || getStoredRefreshStatus(normalizedUserId).jobId,
-      lastSuccessAt:
-        failures.length === 0
-          ? now
-          : getStoredRefreshStatus(normalizedUserId).lastSuccessAt,
+      ...(jobId ? { jobId } : {}),
+      ...(failures.length === 0 ? { lastSuccessAt: now } : {}),
     });
     if (failures.length > 0 && throwOnFailure) {
       const error = new Error(errorMessage);
@@ -459,7 +415,7 @@ export async function refreshInboxForUser(
         status: "failed",
         stale: true,
         error: error.message,
-        jobId: jobId || getStoredRefreshStatus(normalizedUserId).jobId,
+        ...(jobId ? { jobId } : {}),
       });
     }
     if (throwOnFailure) throw error;

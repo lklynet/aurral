@@ -16,7 +16,7 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("schedule bootstrap skips missed runs while reconciling config", () => {
+test("schedule bootstrap skips stale runs without postponing recently due work", () => {
   honkerDb.bootstrapHonkerSchedules();
   const scheduler = honkerDb.getHonkerDb().scheduler();
   const now = Math.floor(Date.now() / 1000);
@@ -38,6 +38,21 @@ test("schedule bootstrap skips missed runs while reconciling config", () => {
 
   assert.ok(weeklyFlow?.next_fire_at > now);
   assert.equal(weeklyFlow?.priority, 0);
+
+  const recentlyDue = now - 60;
+  const recentTx = honkerDb.getHonkerDb().transaction();
+  recentTx.execute(
+    "UPDATE _honker_scheduler_tasks SET next_fire_at = ? WHERE name = ?",
+    [recentlyDue, "weekly-flow-refresh"],
+  );
+  recentTx.commit();
+
+  honkerDb.bootstrapHonkerSchedules();
+
+  const preserved = scheduler
+    .list()
+    .find((row) => row.name === "weekly-flow-refresh");
+  assert.equal(preserved?.next_fire_at, recentlyDue);
   assert.equal(enrichment?.max_attempts, 4);
   assert.equal(rows.length, honkerDb.SCHEDULED_SYSTEM_TASKS.length);
 });
