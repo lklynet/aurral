@@ -1933,7 +1933,7 @@ function LibraryPage() {
             />
           </div>
           <span className="native-library-card__meta">
-            {artist.albumIds?.length || 0} album{artist.albumIds?.length === 1 ? "" : "s"}
+            {artist.albumCount ?? artist.albumIds?.length ?? 0} album{(artist.albumCount ?? artist.albumIds?.length ?? 0) === 1 ? "" : "s"}
           </span>
         </div>
       </article>
