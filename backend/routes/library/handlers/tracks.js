@@ -9,11 +9,11 @@ import fsp from "fs/promises";
 import path from "path";
 import { logger } from "../../../services/logger.js";
 import {
-  buildCanonicalLibraryReadModel,
   findCanonicalTracksForAlbum,
+  getCanonicalLibraryReadModelForAlbumIds,
+  getCanonicalLibraryReadModelForAlbumReferences,
   resolveCanonicalTrackPath,
 } from "../../../services/canonicalLibraryReadAdapter.js";
-import { getCanonicalLibrary } from "../../../services/libraryQueryService.js";
 import { stripFilesystemPaths } from "./canonical.js";
 import { streamAudioFile } from "../../../services/audioFileStream.js";
 
@@ -95,11 +95,18 @@ export function registerTracks(router) {
       const { albumId, releaseGroupMbid } = req.query;
 
       if (req.query.readPath === "canonical") {
-        const canonicalLibrary = getCanonicalLibrary({
-          source: req.query.source || "all",
-          availableOnly: true,
-        });
-        const { albums, tracks } = buildCanonicalLibraryReadModel(canonicalLibrary);
+        const canonical = albumId
+          ? getCanonicalLibraryReadModelForAlbumIds({
+              source: req.query.source || "all",
+              availableOnly: true,
+              ids: [albumId],
+            })
+          : getCanonicalLibraryReadModelForAlbumReferences({
+              source: req.query.source || "all",
+              availableOnly: true,
+              references: releaseGroupMbid ? [releaseGroupMbid] : [],
+            });
+        const { albums, tracks } = canonical;
         const album = [albumId, releaseGroupMbid]
           .filter(Boolean)
           .map((reference) =>

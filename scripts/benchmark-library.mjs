@@ -114,9 +114,11 @@ function measure(operation) {
   const after = memoryStats();
   return {
     elapsedMs: Number(elapsedMs.toFixed(3)),
+    jsonBytes: Buffer.byteLength(JSON.stringify(value)),
     memoryBefore: before,
     memoryAfter: after,
     rssDeltaBytes: after.rssBytes - before.rssBytes,
+    heapDeltaBytes: after.heapUsedBytes - before.heapUsedBytes,
     value,
   };
 }
@@ -244,6 +246,19 @@ function seedDatabase(database, { tracks, tracksPerAlbum }) {
   };
 }
 
+function seedSubsonicFavorite(database) {
+  const now = Date.now();
+  const userId = Number(database.prepare(
+    `INSERT INTO users (username, password_hash, role, permissions)
+     VALUES ('benchmark', 'benchmark', 'user', '{}')`,
+  ).run().lastInsertRowid);
+  database.prepare(
+    `INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
+     VALUES (?, 'song', 'benchmark:track:0', ?)`,
+  ).run(userId, now);
+  return { id: userId, username: "benchmark", permissions: {} };
+}
+
 function collectPageSamples(getPage, invalidate, repeats) {
   const coldSamples = [];
   const warmSamples = [];
@@ -338,53 +353,76 @@ function runChild({ dataDir, dbPath, code, timeoutMs, heapMb, env = {} }) {
   });
 }
 
-const fullReadCode = `
-import { performance } from "node:perf_hooks";
-import { getCanonicalLibrary } from "./backend/services/libraryQueryService.js";
-import { getCanonicalLibraryReadModel } from "./backend/services/canonicalLibraryReadAdapter.js";
+const boundedReadCode = `
+import { groupArtists } from "./backend/routes/subsonic.js";
 import {
-  buildPublicLibrary,
-  publicLibraryJsonReplacer,
-} from "./backend/routes/library/handlers/canonical.js";
+  getAlbum,
+  getFlowPlaylists,
+  getStarred,
+  getArtist,
+  listArtists,
+  searchLibrary,
+} from "./backend/services/subsonicLibraryService.js";
+import { getCanonicalTrackPage } from "./backend/services/libraryQueryService.js";
 
-const mode = process.env.AURRAL_BENCHMARK_MODE;
-let value;
-let rawReadMs = 0;
-let transformMs = 0;
-if (mode === "legacy-adapter") {
-  const started = performance.now();
-  value = getCanonicalLibraryReadModel({ source: "lidarr", availableOnly: true });
-  rawReadMs = performance.now() - started;
-} else {
-  const rawStarted = performance.now();
-  const raw = getCanonicalLibrary({ source: "lidarr", availableOnly: true });
-  rawReadMs = performance.now() - rawStarted;
-  const transformStarted = performance.now();
-  value = buildPublicLibrary(raw);
-  transformMs = performance.now() - transformStarted;
-}
-const readMs = rawReadMs + transformMs;
-const serializeStarted = performance.now();
-const jsonReplacer = mode === "full-endpoint" ? publicLibraryJsonReplacer : undefined;
-const jsonBytes = Buffer.byteLength(JSON.stringify(value, jsonReplacer));
-const serializeMs = performance.now() - serializeStarted;
-const memory = process.memoryUsage();
-const counts = {
-  artists: Array.isArray(value.artists) ? value.artists.length : 0,
-  albums: Array.isArray(value.albums) ? value.albums.length : 0,
-  tracks: Array.isArray(value.tracks) ? value.tracks.length : 0,
+const user = { id: 1, username: "benchmark", permissions: {} };
+const encodedId = (kind, key) => kind + ":" + encodeURIComponent(key);
+const operation = process.env.AURRAL_BENCHMARK_OPERATION;
+const read = {
+  getIndexes: () => ({ index: groupArtists(listArtists()) }),
+  getArtist: () => getArtist(encodedId("artist", "benchmark:artist:0")),
+  getAlbum: () => getAlbum(encodedId("album", "benchmark:album:0")),
+  search3: () => searchLibrary("Benchmark Track", {
+    artistCount: "20",
+    albumCount: "20",
+    songCount: "20",
+  }),
+  randomSongs: () => getCanonicalTrackPage({
+    source: "lidarr",
+    availableOnly: true,
+    random: true,
+    limit: 20,
+  }).tracks,
+  starred: () => getStarred(user),
+  playlists: () => getFlowPlaylists(user),
 };
+const before = process.memoryUsage();
+const started = performance.now();
+const value = read[operation]();
+const elapsedMs = performance.now() - started;
+const after = process.memoryUsage();
+const counts = Array.isArray(value)
+  ? { items: value.length }
+  : {
+      artists: Array.isArray(value?.artist) ? value.artist.length : undefined,
+      albums: Array.isArray(value?.album) ? value.album.length : undefined,
+      songs: Array.isArray(value?.song) ? value.song.length : undefined,
+    };
 console.log(JSON.stringify({
-  rawReadMs: Number(rawReadMs.toFixed(3)),
-  transformMs: Number(transformMs.toFixed(3)),
-  readMs: Number(readMs.toFixed(3)),
-  serializeMs: Number(serializeMs.toFixed(3)),
-  jsonBytes,
+  elapsedMs: Number(elapsedMs.toFixed(3)),
+  jsonBytes: Buffer.byteLength(JSON.stringify(value)),
+  rssDeltaBytes: after.rss - before.rss,
+  heapDeltaBytes: after.heapUsed - before.heapUsed,
+  rssBytes: after.rss,
+  heapUsedBytes: after.heapUsed,
   counts,
-  rssBytes: memory.rss,
-  heapUsedBytes: memory.heapUsed,
 }));
 `;
+
+function summarizeReadSamples(samples) {
+  const values = samples.map((sample) => sample.elapsedMs).sort((a, b) => a - b);
+  const percentile = (fraction) => values[Math.min(values.length - 1, Math.ceil(values.length * fraction) - 1)];
+  const completed = samples.filter((sample) => sample.status === "completed");
+  const strip = ({ status: _status, ...sample }) => sample;
+  return {
+    samples: samples.map(strip),
+    responseBytes: [...new Set(completed.map((sample) => sample.jsonBytes))],
+    medianMs: completed.length ? percentile(0.5) : null,
+    p95Ms: completed.length ? percentile(0.95) : null,
+    maxRssDeltaBytes: completed.length ? Math.max(...completed.map((sample) => sample.rssDeltaBytes)) : null,
+    maxHeapDeltaBytes: completed.length ? Math.max(...completed.map((sample) => sample.heapDeltaBytes)) : null,
+  };
+}
 
 const indexerProbeCode = `
 import { performance } from "node:perf_hooks";
@@ -486,6 +524,7 @@ async function main() {
     const queryService = await import("../backend/services/libraryQueryService.js");
     const seedStarted = performance.now();
     const seed = seedDatabase(database, options);
+    const benchmarkUser = seedSubsonicFavorite(database);
     const seedElapsedMs = Number((performance.now() - seedStarted).toFixed(3));
     const pageCases = [
       ["artists", { kind: "artists", page: 1, pageSize: 100 }],
@@ -504,16 +543,31 @@ async function main() {
     }
     database.close();
     database = null;
-    const fullReads = {};
-    for (const mode of ["full-endpoint", "legacy-adapter"]) {
-      fullReads[mode] = await runChild({
-        dataDir,
-        dbPath,
-        timeoutMs: options.fullReadTimeoutMs,
-        heapMb: options.childHeapMb,
-        code: fullReadCode,
-        env: { AURRAL_BENCHMARK_MODE: mode },
-      });
+    const subsonicReads = {};
+    for (const operation of [
+      "getIndexes",
+      "getArtist",
+      "getAlbum",
+      "search3",
+      "randomSongs",
+      "starred",
+      "playlists",
+    ]) {
+      const samples = [];
+      for (let index = 0; index < options.repeats; index += 1) {
+        samples.push(await runChild({
+          dataDir,
+          dbPath,
+          timeoutMs: options.fullReadTimeoutMs,
+          heapMb: options.childHeapMb,
+          code: boundedReadCode,
+          env: {
+            AURRAL_BENCHMARK_OPERATION: operation,
+            AURRAL_BENCHMARK_USER_ID: String(benchmarkUser.id),
+          },
+        }));
+      }
+      subsonicReads[operation] = summarizeReadSamples(samples);
     }
     const indexerProbes = {};
     for (const [mode, probeDir] of [
@@ -534,13 +588,13 @@ async function main() {
     }
     const expectedBulkIndexerCalls = 5;
     const expectedFallbackIndexerCalls = 5;
-    const adapter = fullReads["legacy-adapter"];
     const pageP95 = Object.fromEntries(
       Object.entries(pages).map(([name, value]) => [name, value.warm.p95Ms]),
     );
+    const boundedReadCompleted = Object.values(subsonicReads).every((read) =>
+      read.samples.every((sample) => sample.error === undefined));
     const checks = {
-      fullEndpointReadCompleted: fullReads["full-endpoint"].status === "completed",
-      legacyReadCompleted: adapter.status === "completed",
+      boundedReadCompleted,
       bulkIndexerCallCount: indexerProbes.bulk.status === "completed"
         && indexerProbes.bulk.callCount === expectedBulkIndexerCalls,
       fallbackIndexerCallCount: indexerProbes.fallback.status === "completed"
@@ -559,8 +613,8 @@ async function main() {
       options,
       elapsedMs: Number((performance.now() - started).toFixed(3)),
       seed: { ...seed, elapsedMs: seedElapsedMs },
+      subsonicReads,
       pages,
-      fullReads,
       indexer: {
         requestedAlbums: options.indexerAlbums,
         expectedBulkCalls: expectedBulkIndexerCalls,

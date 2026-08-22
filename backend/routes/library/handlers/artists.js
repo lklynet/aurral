@@ -6,15 +6,19 @@ import {
   requirePermission,
 } from "../../../middleware/requirePermission.js";
 import { logger } from "../../../services/logger.js";
-import { getCanonicalLibraryReadModel } from "../../../services/canonicalLibraryReadAdapter.js";
+import { getCanonicalLibraryReadModelForArtistPage } from "../../../services/canonicalLibraryReadAdapter.js";
 export function registerArtists(router) {
   router.get("/artists", cacheMiddleware(120), async (req, res) => {
     try {
       if (req.query.readPath === "canonical") {
-        const { artists } = getCanonicalLibraryReadModel({ source: req.query.source || "all" });
         const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10000, 1), 10000);
         const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
-        return res.json(artists.slice(offset, offset + limit).map((artist) => ({
+        const { artists } = getCanonicalLibraryReadModelForArtistPage({
+          source: req.query.source || "all",
+          limit,
+          offset,
+        });
+        return res.json(artists.map((artist) => ({
           ...artist,
           added: artist.addedAt,
         })));

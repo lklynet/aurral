@@ -1,7 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { dbOps } from "../db/helpers/index.js";
 import { db } from "../config/db-sqlite.js";
-import { getCanonicalLibrary } from "./libraryQueryService.js";
+import {
+  getCanonicalAlbumPage,
+  getCanonicalArtistPage,
+  getCanonicalFavoriteTargetKeys,
+  getCanonicalGenres,
+  getCanonicalLibrary,
+  getCanonicalLibraryForAlbumReferences,
+  getCanonicalLibraryForArtistReferences,
+  getCanonicalSearchPage,
+  getCanonicalTopTracks,
+  getCanonicalTrack,
+  getCanonicalTrackPage,
+} from "./libraryQueryService.js";
 import { fetchReleaseGroupCoverUrl } from "./releaseGroupCoverService.js";
 import { getArtistImage } from "./imageService.js";
 import { buildImageProxyUrl, warmPublicImageUrl } from "./imageProxyService.js";
@@ -212,14 +224,14 @@ const toArtistSummary = (artist) => {
     id: idFor("artist", artist.identityKey),
     name: artist.name,
     coverArt: idFor("artist", artist.identityKey),
-    albumCount: artist.albumIds.length,
+    albumCount: artist.albumCount ?? artist.albumIds.length,
     ...(genres.length
       ? { genre: genres[0], genres: genres.map((name) => ({ name })) }
       : {}),
   };
 };
 
-const indexLibrary = (library) => ({
+const indexFocusedLibrary = (library) => ({
   ...library,
   artistsById: new Map(library.artists.map((artist) => [artist.id, artist])),
   albumsById: new Map(library.albums.map((album) => [album.id, album])),
@@ -228,10 +240,6 @@ const indexLibrary = (library) => ({
   albumsByIdentity: new Map(library.albums.map((album) => [album.identityKey, album])),
   tracksByIdentity: new Map(library.tracks.map((track) => [track.identityKey, track])),
 });
-
-function readLibrary() {
-  return indexLibrary(getCanonicalLibrary({ availableOnly: false }));
-}
 
 function findCanonical(library, parsed) {
   if (!parsed) return null;
@@ -325,24 +333,30 @@ const flowJobs = (flow, { includePending = false } = {}) =>
 const playlistCoverArt = (kind, playlistId) => idFor(kind, playlistId);
 
 export function listArtists() {
-  const library = readLibrary();
-  const artists = [...library.artists].sort((left, right) =>
-    String(left.sortName || left.name).localeCompare(String(right.sortName || right.name)),
-  );
-  return artists.map(toArtistSummary);
+  return getCanonicalArtistPage({ source: "all", availableOnly: false }).artists.map(toArtistSummary);
 }
 
 export function getArtist(value) {
-  const library = readLibrary();
   const parsed = parseId(value);
-  const artist = parsed?.kind === "artist" ? findCanonical(library, parsed) : null;
+  if (parsed?.kind !== "artist") return null;
+  const library = indexFocusedLibrary(getCanonicalLibraryForArtistReferences({
+    source: "all",
+    availableOnly: false,
+    references: [parsed.key],
+  }));
+  const artist = findCanonical(library, parsed);
   return artist?.identityKey ? toArtist(library, artist) : null;
 }
 
 export function getAlbum(value) {
-  const library = readLibrary();
   const parsed = parseId(value);
-  const album = parsed?.kind === "album" ? findCanonical(library, parsed) : null;
+  if (parsed?.kind !== "album") return null;
+  const library = indexFocusedLibrary(getCanonicalLibraryForAlbumReferences({
+    source: "all",
+    availableOnly: false,
+    references: [parsed.key],
+  }));
+  const album = findCanonical(library, parsed);
   return album?.identityKey ? toAlbum(library, album) : null;
 }
 
@@ -350,9 +364,14 @@ export function getSong(value, user) {
   const playlistEntry = playlistJobFromId(user, value);
   if (playlistEntry) return toPlaylistSong(playlistEntry.playlist, playlistEntry.kind, playlistEntry.job);
 
-  const library = readLibrary();
   const parsed = parseId(value);
-  const track = parsed?.kind === "song" ? findCanonical(library, parsed) : null;
+  if (parsed?.kind !== "song") return null;
+  const library = indexFocusedLibrary(getCanonicalTrack({
+    trackId: parsed.key,
+    source: "all",
+    availableOnly: false,
+  }));
+  const track = findCanonical(library, parsed);
   return track?.identityKey ? toSong(library, track) : null;
 }
 
@@ -385,165 +404,58 @@ export function getMusicDirectory(value) {
 
 export function searchLibrary(query, options = {}) {
   const needle = String(query || "").trim().toLocaleLowerCase();
-  const library = readLibrary();
-  const artists = library.artists.filter((artist) =>
-    artist.name.toLocaleLowerCase().includes(needle),
-  );
-  const albums = library.albums
-    .filter((album) => {
-      const artist = findArtistForAlbum(library, album);
-      return [album.title, album.albumArtist, artist?.name].some((value) =>
-        String(value || "").toLocaleLowerCase().includes(needle),
-      );
-    });
-  const songs = library.tracks
-    .filter((track) => {
-      const album = findAlbumForTrack(library, track);
-      const artist = findArtistForAlbum(library, album);
-      return [track.title, track.artistName, album?.title, artist?.name].some((value) =>
-        String(value || "").toLocaleLowerCase().includes(needle),
-      );
-    });
-  const page = (items, count, offset) => items.slice(offset, offset + count);
+  const result = getCanonicalSearchPage({
+    source: "all",
+    availableOnly: false,
+    query: needle,
+    artistLimit: normalizeLimit(options.artistCount),
+    artistOffset: normalizeOffset(options.artistOffset),
+    albumLimit: normalizeLimit(options.albumCount),
+    albumOffset: normalizeOffset(options.albumOffset),
+    songLimit: normalizeLimit(options.songCount),
+    songOffset: normalizeOffset(options.songOffset),
+  });
+  const artistLibrary = indexFocusedLibrary({ artists: result.artists, albums: [], tracks: [] });
+  const albumLibrary = indexFocusedLibrary(result.albums);
+  const trackLibrary = indexFocusedLibrary(result.tracks);
   return {
-    artist: page(artists, normalizeLimit(options.artistCount), normalizeOffset(options.artistOffset)).map(
-      toArtistSummary,
-    ),
-    album: page(albums, normalizeLimit(options.albumCount), normalizeOffset(options.albumOffset)).map(
-      (album) => toAlbum(library, album),
-    ),
-    song: page(songs, normalizeLimit(options.songCount), normalizeOffset(options.songOffset)).map(
-      (track) => toSong(library, track),
-    ),
+    artist: artistLibrary.artists.map(toArtistSummary),
+    album: albumLibrary.albums.map((album) => toAlbum(albumLibrary, album)),
+    song: trackLibrary.tracks.map((track) => toSong(trackLibrary, track)),
   };
 }
 
 export function getAlbumList(options = {}) {
-  const library = readLibrary();
   const type = String(options.type || "alphabeticalByName");
-  let albums = [...library.albums];
-
   if (type === "starred") return [];
-  if (options.genre) {
-    const genre = String(options.genre).toLocaleLowerCase();
-    albums = albums.filter((album) =>
-      albumData(library, album).value.genres?.some((entry) =>
-        entry.name.toLocaleLowerCase() === genre,
-      ),
-    );
-  }
-  if (type === "byYear" || options.fromYear || options.toYear) {
-    const fromYear = Number.parseInt(options.fromYear, 10);
-    const toYear = Number.parseInt(options.toYear, 10);
-    const lowerYear = Number.isFinite(fromYear) && Number.isFinite(toYear)
-      ? Math.min(fromYear, toYear)
-      : fromYear;
-    const upperYear = Number.isFinite(fromYear) && Number.isFinite(toYear)
-      ? Math.max(fromYear, toYear)
-      : toYear;
-    albums = albums.filter((album) => {
-      const releaseYear = year(album.releaseDate) || 0;
-      return (!Number.isFinite(lowerYear) || releaseYear >= lowerYear) &&
-        (!Number.isFinite(upperYear) || releaseYear <= upperYear);
-    });
-  }
-
-  const values = new Map(albums.map((album) => [album.id, albumData(library, album).value]));
-  const compareName = (left, right) =>
-    `${left.title}\u0000${left.albumArtist}`.localeCompare(
-      `${right.title}\u0000${right.albumArtist}`,
-    );
-  const compareArtist = (left, right) =>
-    `${left.albumArtist}\u0000${left.title}`.localeCompare(
-      `${right.albumArtist}\u0000${right.title}`,
-    );
-  const compareReleaseDate = (left, right) => {
-    const leftDate = Date.parse(String(left.releaseDate || ""));
-    const rightDate = Date.parse(String(right.releaseDate || ""));
-    if (!Number.isFinite(leftDate) && !Number.isFinite(rightDate)) return compareName(left, right);
-    if (!Number.isFinite(leftDate)) return 1;
-    if (!Number.isFinite(rightDate)) return -1;
-    return rightDate - leftDate || compareName(left, right);
-  };
-  const compareYear = (left, right) => {
-    const leftYear = year(left.releaseDate) || 0;
-    const rightYear = year(right.releaseDate) || 0;
-    return leftYear - rightYear || compareName(left, right);
-  };
-  const compareGenre = (left, right) =>
-    `${values.get(left.id)?.genre || ""}\u0000${left.title}`.localeCompare(
-      `${values.get(right.id)?.genre || ""}\u0000${right.title}`,
-    );
-
-  if (type === "random") {
-    for (let index = albums.length - 1; index > 0; index -= 1) {
-      const swapIndex = Math.floor(Math.random() * (index + 1));
-      [albums[index], albums[swapIndex]] = [albums[swapIndex], albums[index]];
-    }
-  } else if (type === "newest" || type === "recent") {
-    albums.sort(compareReleaseDate);
-  } else if (type === "alphabeticalByArtist") {
-    albums.sort(compareArtist);
-  } else if (type === "byYear") {
-    const fromYear = Number.parseInt(options.fromYear, 10);
-    const toYear = Number.parseInt(options.toYear, 10);
-    albums.sort((left, right) => {
-      const comparison = compareYear(left, right);
-      return Number.isFinite(fromYear) && Number.isFinite(toYear) && fromYear > toYear
-        ? -comparison
-        : comparison;
-    });
-  } else if (type === "byGenre") {
-    albums.sort(compareGenre);
-  } else {
-    albums.sort(compareName);
-  }
-  const offset = normalizeOffset(options.offset);
-  const size = normalizeLimit(options.size);
-  return albums.slice(offset, offset + size).map((album) => toAlbumSummary(library, album));
+  const library = indexFocusedLibrary(getCanonicalAlbumPage({
+    source: "all",
+    availableOnly: false,
+    type,
+    genre: options.genre,
+    fromYear: options.fromYear,
+    toYear: options.toYear,
+    offset: normalizeOffset(options.offset),
+    limit: normalizeLimit(options.size),
+  }));
+  return library.albums.map((album) => toAlbumSummary(library, album));
 }
 
 export function getSongsByGenre(genre, options = {}) {
   const target = String(genre || "").trim().toLocaleLowerCase();
   if (!target) return [];
-  const library = readLibrary();
-  const tracks = library.tracks.filter((track) => {
-    const album = findAlbumForTrack(library, track);
-    const artist = findArtistForAlbum(library, album);
-    return [
-      ...entityGenres(artist),
-      ...entityGenres(album),
-      ...entityGenres(track),
-    ].some((value) => value.toLocaleLowerCase() === target);
-  });
-  const offset = normalizeOffset(options.offset);
-  const size = normalizeLimit(options.count);
-  return tracks.slice(offset, offset + size).map((track) => toSong(library, track));
+  const library = indexFocusedLibrary(getCanonicalTrackPage({
+    source: "all",
+    availableOnly: false,
+    genre: target,
+    offset: normalizeOffset(options.offset),
+    limit: normalizeLimit(options.count),
+  }));
+  return library.tracks.map((track) => toSong(library, track));
 }
 
 export function getGenres() {
-  const library = readLibrary();
-  const genres = new Map();
-  for (const album of library.albums) {
-    const tracks = albumTracks(library, album);
-    const artistGenres = entityGenres(findArtistForAlbum(library, album));
-    const albumMetadataGenres = entityGenres(album);
-    const albumGenres = [
-      ...artistGenres,
-      ...entityGenres(album),
-      ...tracks.flatMap((track) => entityGenres(track)),
-    ];
-    for (const name of new Set(albumGenres)) {
-      const value = genres.get(name) || { albumCount: 0, songCount: 0, value: name };
-      value.albumCount += 1;
-      value.songCount +=
-        artistGenres.includes(name) || albumMetadataGenres.includes(name)
-          ? tracks.length
-          : tracks.filter((track) => entityGenres(track).includes(name)).length;
-      genres.set(name, value);
-    }
-  }
-  return [...genres.values()].sort((left, right) => left.value.localeCompare(right.value));
+  return getCanonicalGenres({ source: "all", availableOnly: false });
 }
 
 const getStarsStmt = db.prepare(
@@ -607,7 +519,11 @@ const resolveSubsonicTrack = (user, value) => {
   if (playlistSong) return playlistSong;
   const parsed = parseId(value);
   if (parsed?.kind !== "song") return null;
-  const library = readLibrary();
+  const library = indexFocusedLibrary(getCanonicalTrack({
+    trackId: parsed.key,
+    source: "all",
+    availableOnly: false,
+  }));
   const track = findCanonical(library, parsed);
   const normalized = trackFromCanonical(library, track);
   return normalized ? { kind: "song", track: normalized, canonical: track } : null;
@@ -628,7 +544,19 @@ const findLibraryJob = (track) => {
 };
 
 const findAvailableCanonicalFile = (track) => {
-  const library = readLibrary();
+  const library = indexFocusedLibrary(track?.trackMbid
+    ? getCanonicalTrack({
+        trackId: track.trackMbid,
+        source: "all",
+        availableOnly: true,
+      })
+    : getCanonicalTrackPage({
+        source: "all",
+        availableOnly: true,
+        query: track?.trackName,
+        artist: track?.artistName,
+        limit: 1,
+      }));
   const candidate = library.tracks.find((entry) => isSameTrack(track, trackFromCanonical(library, entry)));
   const file = firstFile(candidate);
   return file?.available && file.path ? { file, albumName: findAlbumForTrack(library, candidate)?.title } : null;
@@ -795,16 +723,20 @@ export function star(user, value) {
 export function starMany(user, values, { skipCanonicalValidation = false } = {}) {
   const parsed = values.map(starTarget);
   if (!parsed.length || parsed.some((target) => !target) || !user?.id) return false;
-  const library = skipCanonicalValidation ? null : readLibrary();
+  const canonicalTargets = parsed
+    .filter((target) => ["artist", "album", "song"].includes(target.kind))
+    .map((target) => idFor(target.kind, target.key));
   const playlistSongs = parsed.map((target) =>
     ["flow-song", "shared-song"].includes(target.kind)
       ? resolvePlaylistSong(user, idFor(target.kind, target.key))
       : null,
   );
+  if (!skipCanonicalValidation &&
+    getCanonicalFavoriteTargetKeys(canonicalTargets).size !== canonicalTargets.length) return false;
   if (parsed.some((target, index) =>
     ["flow-song", "shared-song"].includes(target.kind)
       ? !playlistSongs[index]
-      : !skipCanonicalValidation && !findCanonical(library, target),
+      : false,
   )) return false;
   if (favoriteAutoKeepEnabled()) {
     const createdJobIds = [];
@@ -873,7 +805,7 @@ export function getStarredWithLibrary(user) {
   const library = getCanonicalLibrary({
     favoriteKeys: canonicalRows.map((row) => ({ kind: row.entity_kind, key: row.entity_key })),
   });
-  return { starred: buildStarred(indexLibrary(library), rows, user), library };
+  return { starred: buildStarred(indexFocusedLibrary(library), rows, user), library };
 }
 
 export function getStarred(user) {
@@ -887,22 +819,13 @@ export function getArtistInfo(value) {
 export function getTopSongs(artist, options = {}) {
   const target = String(artist || "").trim();
   if (!target) return [];
-  const library = readLibrary();
-  const normalizedTarget = target.toLocaleLowerCase();
-  const artistRecord = library.artists.find(
-    (entry) =>
-      entry.identityKey === target || entry.name.toLocaleLowerCase() === normalizedTarget,
-  );
-  if (!artistRecord) return [];
-  const tracks = library.tracks.filter((track) => {
-    const album = findAlbumForTrack(library, track);
-    const trackArtist = findArtistForAlbum(library, album);
-    return (
-      trackArtist?.id === artistRecord.id ||
-      String(track.artistName || "").trim().toLocaleLowerCase() === normalizedTarget
-    );
-  });
-  return tracks.slice(0, normalizeLimit(options.count)).map((track) => toSong(library, track));
+  const library = indexFocusedLibrary(getCanonicalTopTracks({
+    source: "all",
+    availableOnly: false,
+    artist: target,
+    limit: normalizeLimit(options.count),
+  }));
+  return library.tracks.map((track) => toSong(library, track));
 }
 
 export function getFlowPlaylists(user) {
@@ -967,8 +890,14 @@ export function resolveStreamPath(value, user) {
       : null;
   }
 
-  const library = readLibrary();
-  const track = findCanonical(library, parseId(value));
+  const parsed = parseId(value);
+  if (parsed?.kind !== "song") return null;
+  const library = indexFocusedLibrary(getCanonicalTrack({
+    trackId: parsed.key,
+    source: "all",
+    availableOnly: false,
+  }));
+  const track = findCanonical(library, parsed);
   const file = firstFile(track);
   return file?.available && file.path ? file.path : null;
 }
@@ -997,7 +926,23 @@ export async function resolveArtworkUrl(value) {
     return artwork;
   }
 
-  const library = readLibrary();
+  const library = indexFocusedLibrary(parsed.kind === "artist"
+    ? getCanonicalLibraryForArtistReferences({
+        source: "all",
+        availableOnly: false,
+        references: [parsed.key],
+      })
+    : parsed.kind === "album"
+      ? getCanonicalLibraryForAlbumReferences({
+          source: "all",
+          availableOnly: false,
+          references: [parsed.key],
+        })
+      : getCanonicalTrack({
+          trackId: parsed.key,
+          source: "all",
+          availableOnly: false,
+        }));
   const entity = findCanonical(library, parsed);
   if (!entity) return null;
 
