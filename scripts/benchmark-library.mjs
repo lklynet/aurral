@@ -111,10 +111,11 @@ function measure(operation) {
   const started = performance.now();
   const value = operation();
   const elapsedMs = performance.now() - started;
+  const serialized = JSON.stringify(value);
   const after = memoryStats();
   return {
     elapsedMs: Number(elapsedMs.toFixed(3)),
-    jsonBytes: Buffer.byteLength(JSON.stringify(value)),
+    jsonBytes: Buffer.byteLength(serialized),
     memoryBefore: before,
     memoryAfter: after,
     rssDeltaBytes: after.rssBytes - before.rssBytes,
@@ -398,6 +399,7 @@ const before = process.memoryUsage();
 const started = performance.now();
 const value = read[operation]();
 const elapsedMs = performance.now() - started;
+const serialized = JSON.stringify(value);
 const after = process.memoryUsage();
 const counts = Array.isArray(value)
   ? { items: value.length }
@@ -408,7 +410,7 @@ const counts = Array.isArray(value)
     };
 console.log(JSON.stringify({
   elapsedMs: Number(elapsedMs.toFixed(3)),
-  jsonBytes: Buffer.byteLength(JSON.stringify(value)),
+  jsonBytes: Buffer.byteLength(serialized),
   rssDeltaBytes: after.rss - before.rss,
   heapDeltaBytes: after.heapUsed - before.heapUsed,
   rssBytes: after.rss,
