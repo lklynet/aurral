@@ -2,7 +2,47 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import axios from "../../lib/axiosFetch.js";
 
+import { buildShowsResponseCacheKey } from "../../backend/routes/discovery/handlers/shows.js";
 import { getNearbyShows, groupShowsByEvent } from "../../backend/services/nearbyShowsService.js";
+
+test("includes all artist inputs in the shows response cache key", () => {
+  const base = {
+    userId: 1,
+    libraryArtists: [{ name: "Library Artist" }],
+    recommendedArtists: [{ name: "Recommended Artist" }],
+    trendingArtists: [{ name: "Trending Artist" }],
+  };
+  const key = buildShowsResponseCacheKey(base);
+
+  assert.notEqual(
+    buildShowsResponseCacheKey({
+      ...base,
+      libraryArtists: [{ name: "Different Library Artist" }],
+    }),
+    key,
+  );
+  assert.notEqual(
+    buildShowsResponseCacheKey({
+      ...base,
+      recommendedArtists: [{ name: "Different Recommended Artist" }],
+    }),
+    key,
+  );
+  assert.notEqual(
+    buildShowsResponseCacheKey({
+      ...base,
+      trendingArtists: [{ name: "Different Trending Artist" }],
+    }),
+    key,
+  );
+  assert.equal(
+    buildShowsResponseCacheKey({
+      ...base,
+      recommendedArtists: [...base.recommendedArtists].reverse(),
+    }),
+    key,
+  );
+});
 
 test("groups artists matched to the same Ticketmaster event", () => {
   const grouped = groupShowsByEvent([

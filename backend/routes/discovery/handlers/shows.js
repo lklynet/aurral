@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { requireAuth } from "../../../middleware/requirePermission.js";
+import { db } from "../../../config/db-sqlite.js";
 import { dbOps, userOps } from "../../../db/helpers/index.js";
 import { getTicketmasterApiKey, getLastfmApiKey } from "../../../services/apiClients/index.js";
 import { iterateCanonicalArtistProjection } from "../../../services/libraryQueryService.js";
@@ -13,6 +15,34 @@ import {
   getListenHistoryProfile,
 } from "../../../services/listeningHistory.js";
 import { getNearbyShows } from "../../../services/nearbyShowsService.js";
+
+const libraryArtistNamesStmt = db.prepare(
+  "SELECT name FROM library_artists ORDER BY id",
+);
+
+const fingerprintArtists = (artists) => {
+  const names = [
+    ...new Set(
+      (Array.isArray(artists) ? artists : [])
+        .map((artist) => String(artist?.artistName || artist?.name || "").trim())
+        .filter(Boolean),
+    ),
+  ].sort();
+  return createHash("sha256").update(JSON.stringify(names)).digest("hex");
+};
+
+export const buildShowsResponseCacheKey = ({
+  userId,
+  libraryArtists,
+  recommendedArtists,
+  trendingArtists,
+}) =>
+  JSON.stringify([
+    userId,
+    fingerprintArtists(libraryArtists),
+    fingerprintArtists(recommendedArtists),
+    fingerprintArtists(trendingArtists),
+  ]);
 
 export function registerShows(router) {
   router.get("/nearby-shows", requireAuth, async (req, res) => {
@@ -57,6 +87,7 @@ export function registerShows(router) {
             feedback,
           }).slice(0, 18)
         : [];
+      const libraryArtistNames = libraryArtistNamesStmt.all();
       const nearbyShows = await getNearbyShows({
         req,
         zipCode,
@@ -65,7 +96,12 @@ export function registerShows(router) {
         trendingArtists,
         limit: req.query.limit,
         radiusMiles,
-        responseCacheKey: req.user.id,
+        responseCacheKey: buildShowsResponseCacheKey({
+          userId: req.user.id,
+          libraryArtists: libraryArtistNames,
+          recommendedArtists,
+          trendingArtists,
+        }),
       });
 
       res.set("Cache-Control", "no-cache, no-store, must-revalidate");
