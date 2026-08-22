@@ -6,16 +6,32 @@ import {
   requirePermission,
 } from "../../../middleware/requirePermission.js";
 import { logger } from "../../../services/logger.js";
-import { getCanonicalLibraryReadModel } from "../../../services/canonicalLibraryReadAdapter.js";
-import { getCanonicalArtistProjection } from "../../../services/libraryQueryService.js";
+import { getCanonicalLibraryReadModelForArtistReferences } from "../../../services/canonicalLibraryReadAdapter.js";
+import { getCanonicalArtistProjection, getCanonicalLibraryPage } from "../../../services/libraryQueryService.js";
 export function registerArtists(router) {
   router.get("/artists", cacheMiddleware(120), async (req, res) => {
     try {
       const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10000, 1), 10000);
       const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
       if (req.query.readPath === "canonical") {
-        const { artists } = getCanonicalLibraryReadModel({ source: req.query.source || "all" });
-        return res.json(artists.slice(offset, offset + limit).map((artist) => ({
+        const source = req.query.source || "all";
+        const page = getCanonicalLibraryPage({
+          source,
+          availableOnly: true,
+          kind: "artists",
+          pageSize: limit,
+          offset,
+        });
+        const readModel = getCanonicalLibraryReadModelForArtistReferences({
+          source,
+          availableOnly: true,
+          references: page.items.map((artist) => artist.id),
+        });
+        const artistsById = new Map(readModel.artists.map((artist) => [String(artist.id), artist]));
+        const artists = page.items
+          .map((artist) => artistsById.get(String(artist.id)))
+          .filter(Boolean);
+        return res.json(artists.map((artist) => ({
           ...artist,
           added: artist.addedAt,
         })));

@@ -1,5 +1,6 @@
 import {
   getCanonicalLibrary,
+  getCanonicalLibraryForArtistReferences,
   getCanonicalLibraryForAlbumReferences,
   getCanonicalLibraryForArtists,
   getCanonicalTrackPath,
@@ -163,6 +164,16 @@ export function getCanonicalLibraryReadModelForArtists({
 } = {}) {
   return buildCanonicalLibraryReadModel(
     getCanonicalLibraryForArtists({ source, availableOnly, mbids }),
+  );
+}
+
+export function getCanonicalLibraryReadModelForArtistReferences({
+  source = "lidarr",
+  availableOnly = true,
+  references = [],
+} = {}) {
+  return buildCanonicalLibraryReadModel(
+    getCanonicalLibraryForArtistReferences({ source, availableOnly, references }),
   );
 }
 

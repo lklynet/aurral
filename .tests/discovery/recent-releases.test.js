@@ -219,7 +219,7 @@ test("canonical recent releases exclude owned albums without loading old albums"
       "Missing Current",
     ]);
 
-    const scopedReleases = await getRecentMissingReleases(10, {
+    const scopedReleases = await getRecentMissingReleases(1, {
       artists: [projectedArtist],
       now: "2026-08-22T12:00:00Z",
     });
