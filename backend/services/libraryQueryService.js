@@ -729,13 +729,17 @@ export function getCanonicalLibraryForArtistReferences({
 } = {}) {
   const references = normalizeLookupValues(requestedReferences);
   if (!references.length) return { artists: [], albums: [], tracks: [] };
-  const ids = resolveCanonicalReferenceIds("library_artists", references, [
-    "identity_key",
-    "mbid",
-    "CAST(json_extract(metadata_json, '$.id') AS TEXT)",
-    "CAST(json_extract(metadata_json, '$.foreignArtistId') AS TEXT)",
-    "name COLLATE NOCASE",
-  ]);
+  const ids = resolveCanonicalReferenceIds(
+    "library_artists",
+    references,
+    [
+      "identity_key",
+      "mbid",
+      "CAST(json_extract(metadata_json, '$.id') AS TEXT)",
+      "CAST(json_extract(metadata_json, '$.foreignArtistId') AS TEXT)",
+      "name COLLATE NOCASE",
+    ],
+  );
   return getCanonicalLibraryForIds("artists", ids, source, availableOnly);
 }
 
