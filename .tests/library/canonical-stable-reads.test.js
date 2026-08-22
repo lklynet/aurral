@@ -23,6 +23,7 @@ import {
 } from "../../backend/services/libraryScanWorker.js";
 import { getLibraryScanQueue } from "../../backend/services/honkerDb.js";
 import { getCanonicalLidarrArtist } from "../../backend/routes/artists/handlers/details.js";
+import { registerArtists } from "../../backend/routes/library/handlers/artists.js";
 
 test("stable artist and discovery reads do not call Lidarr", async (t) => {
   const identityKey = `stable-read-test:${Date.now()}`;
@@ -145,6 +146,60 @@ test("stable artist reads remain local when Lidarr is absent", async (t) => {
 
   assert.ok(Array.isArray(artists));
   assert.equal(request.mock.callCount(), 0);
+});
+
+test("legacy artist list bounds the projection before materialization", async (t) => {
+  const prefix = `zzzzzzzzzz-artist-page-${process.pid}-${Date.now()}`;
+  const artists = Array.from({ length: 101 }, (_, index) => upsertLibraryArtist({
+    identityKey: `${prefix}:${index}`,
+    name: `${prefix}-${String(index).padStart(3, "0")}`,
+    sortName: `${prefix}-${String(index).padStart(3, "0")}`,
+  }));
+  t.mock.method(libraryManager, "getAllArtists", async () => {
+    throw new Error("legacy artist list must not materialize all projection pages");
+  });
+
+  const routes = new Map();
+  registerArtists({
+    get(path, ...handlers) {
+      routes.set(`GET ${path}`, handlers.at(-1));
+    },
+    post(path, ...handlers) {
+      routes.set(`POST ${path}`, handlers.at(-1));
+    },
+    put(path, ...handlers) {
+      routes.set(`PUT ${path}`, handlers.at(-1));
+    },
+    delete(path, ...handlers) {
+      routes.set(`DELETE ${path}`, handlers.at(-1));
+    },
+  });
+
+  let statusCode = 200;
+  let body;
+  try {
+    await routes.get("GET /artists")(
+      { query: { limit: "1", offset: "100" } },
+      {
+        status(code) {
+          statusCode = code;
+          return this;
+        },
+        json(value) {
+          body = value;
+          return this;
+        },
+      },
+    );
+
+    assert.equal(statusCode, 200);
+    assert.deepEqual(body.map((artist) => artist.id), [String(artists[100].id)]);
+    assert.equal(body[0].added, body[0].addedAt);
+  } finally {
+    db.prepare(
+      `DELETE FROM library_artists WHERE id IN (${artists.map(() => "?").join(",")})`,
+    ).run(...artists.map((artist) => artist.id));
+  }
 });
 
 test("artist details do not expose Lidarr state for Aurral-only artists", () => {

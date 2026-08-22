@@ -7,12 +7,13 @@ import {
 } from "../../../middleware/requirePermission.js";
 import { logger } from "../../../services/logger.js";
 import { getCanonicalLibraryReadModelForArtistPage } from "../../../services/canonicalLibraryReadAdapter.js";
+import { getCanonicalArtistProjection } from "../../../services/libraryQueryService.js";
 export function registerArtists(router) {
   router.get("/artists", cacheMiddleware(120), async (req, res) => {
     try {
+      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10000, 1), 10000);
+      const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
       if (req.query.readPath === "canonical") {
-        const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10000, 1), 10000);
-        const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
         const { artists } = getCanonicalLibraryReadModelForArtistPage({
           source: req.query.source || "all",
           limit,
@@ -23,11 +24,8 @@ export function registerArtists(router) {
           added: artist.addedAt,
         })));
       }
-      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10000, 1), 10000);
-      const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
-      const artists = await libraryManager.getAllArtists();
-      const paged = artists.slice(offset, offset + limit);
-      const formatted = paged.map((artist) => ({
+      const artists = getCanonicalArtistProjection({ pageSize: limit, offset });
+      const formatted = artists.map((artist) => ({
         ...artist,
         foreignArtistId: artist.foreignArtistId || artist.mbid,
         added: artist.addedAt,

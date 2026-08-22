@@ -69,9 +69,38 @@ test("canonical read model maps the existing root to Library-shaped records", ()
   ]);
   assert.equal(result.albums[0].mbid, "release-1");
   assert.equal(result.albums[0].releaseGroupMbid, "album-1");
+  assert.equal(result.artists[0].foreignArtistId, "artist-1");
   assert.equal(result.albums[0].statistics.sizeOnDisk, 123);
   assert.equal(result.artists[0].statistics.sizeOnDisk, 123);
   assert.equal(result.tracks[0].path, "/music/Root Artist/Root Album/01 Root Track.flac");
+});
+
+test("canonical read model preserves non-MBID provider artist identity", () => {
+  const result = buildCanonicalLibraryReadModel({
+    artists: [
+      {
+        id: 4,
+        identityKey: "lidarr-artist:705@deezer",
+        mbid: null,
+        name: "Provider Artist",
+        sortName: "Provider Artist",
+        metadata: {
+          id: 42,
+          foreignArtistId: "705@deezer",
+          librarySource: "lidarr",
+        },
+        albumIds: [],
+        sources: ["lidarr"],
+        available: false,
+      },
+    ],
+    albums: [],
+    tracks: [],
+  });
+
+  assert.equal(result.artists[0].providerId, 42);
+  assert.equal(result.artists[0].mbid, null);
+  assert.equal(result.artists[0].foreignArtistId, "705@deezer");
 });
 
 test("canonical read model keeps flow-like records out when the index excludes them", () => {
