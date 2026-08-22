@@ -8,7 +8,7 @@ import { cleanExpiredSessions } from "../config/session-helpers.js";
 import { dbOps } from "../db/helpers/index.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
 
-export async function processSystemTask(payload = {}) {
+export async function processSystemTask(payload = {}, job = null) {
   const kind = String(payload?.kind || "").trim();
   switch (kind) {
     case "weekly-flow-refresh": {
@@ -76,8 +76,24 @@ export async function processSystemTask(payload = {}) {
       return;
     }
     case "inbox-refresh": {
-      const { refreshInboxForAllUsers } = await import("./inboxService.js");
-      await refreshInboxForAllUsers();
+      const {
+        enqueueInboxRefreshForAllUsers,
+        refreshInboxForUser,
+      } = await import("./inboxService.js");
+      const userId = Number(payload.userId);
+      if (Number.isInteger(userId) && userId > 0) {
+        await refreshInboxForUser(userId, {
+          force: true,
+          throwOnFailure: true,
+          jobId: job?.id || payload.jobId || null,
+          zipCode: payload.zipCode || "",
+          ipAddress: payload.ipAddress || "",
+        });
+      } else {
+        await enqueueInboxRefreshForAllUsers({
+          reason: payload.reason || "scheduled",
+        });
+      }
       return;
     }
     case "news-refresh": {

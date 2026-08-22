@@ -33,6 +33,7 @@ const STORAGE_HEALTH_CACHE_TTL_MS = Math.max(
   0,
   Math.floor(Number(process.env.AURRAL_STORAGE_HEALTH_CACHE_MS) || 60 * 1000),
 );
+const STORAGE_HEALTH_SNAPSHOT_KEY = "storageHealthSnapshot";
 const MEDIA_HEALTH_SAMPLE_LIMIT = Math.max(
   50,
   Math.floor(Number(process.env.AURRAL_MEDIA_HEALTH_SAMPLE_LIMIT) || 500),
@@ -996,6 +997,7 @@ export async function runStorageHealthCheck({ force = false } = {}) {
       storageHealthCache = result;
       storageHealthCacheKey = cacheKey;
       storageHealthCacheExpiresAt = Date.now() + STORAGE_HEALTH_CACHE_TTL_MS;
+      dbOps.setJSONSetting(STORAGE_HEALTH_SNAPSHOT_KEY, result);
       return result;
     })
     .finally(() => {
@@ -1004,4 +1006,8 @@ export async function runStorageHealthCheck({ force = false } = {}) {
     });
 
   return storageHealthInflight;
+}
+
+export function getStorageHealthSnapshot() {
+  return dbOps.getJSONSetting(STORAGE_HEALTH_SNAPSHOT_KEY);
 }

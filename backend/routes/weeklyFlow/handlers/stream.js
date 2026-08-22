@@ -51,9 +51,6 @@ export function registerStream(router) {
     if (!resolved) {
       return res.status(404).json({ error: "Track file missing" });
     }
-    if (resolved.migratedFrom) {
-      downloadTracker.setDone(job.id, resolved.path, job.albumName || null);
-    }
     const safePath = resolved.path;
     try {
       await fsp.access(safePath);

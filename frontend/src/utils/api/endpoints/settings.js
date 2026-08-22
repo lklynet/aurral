@@ -100,11 +100,11 @@ export const testLidarrLibraryAccess = (url, apiKey) =>
     params: lidarrCredentialParams(url, apiKey),
   });
 
-export const getStorageHealth = ({ force = false, signal } = {}) =>
-  getData("/settings/storage-health", {
-    params: force ? { force: "1" } : undefined,
-    signal,
-  });
+export const getStorageHealth = ({ signal } = {}) =>
+  getData("/settings/storage-health", { signal });
+
+export const runStorageHealthCheck = ({ signal } = {}) =>
+  postData("/settings/storage-health/check", {}, { signal });
 
 export const getSettingsTasks = ({ signal } = {}) => getData("/settings/tasks", { signal });
 

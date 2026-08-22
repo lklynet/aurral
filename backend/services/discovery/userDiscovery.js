@@ -1,11 +1,7 @@
-import { logger } from "../logger.js";
 import {
   getDiscoveryCache,
   getDiscoveryUpdateStatus,
   getDiscoveryPlaylistBuildStatus,
-  requestUserDiscoveryRefresh,
-  getUserDiscoveryCacheStaleness,
-  isGlobalDiscoveryRefreshInProgress,
   getDiscoveryMode,
   getDiscoveryFeedback,
   filterBlockedArtistsForUser,
@@ -13,11 +9,10 @@ import {
 } from "./index.js";
 import { getLastfmApiKey } from "../apiClients/index.js";
 import { iterateCanonicalArtistProjection } from "../libraryQueryService.js";
-import { dbOps, userOps } from "../../db/helpers/index.js";
+import { userOps } from "../../db/helpers/index.js";
 import {
   DISCOVERY_PROVIDER_LASTFM,
   DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK,
-  buildListenbrainzFallbackDiscovery,
   getDiscoveryCapabilities,
 } from "../listenbrainzDiscoveryFallback.js";
 import {
@@ -25,13 +20,9 @@ import {
   getListenHistoryProfile,
   hasListenHistoryProfile,
 } from "../listeningHistory.js";
-import { enqueueDiscoveryRefresh } from "./refreshScheduler.js";
 import {
   buildArtistKeySet,
   isLibraryArtist,
-  getDiscoveryRevalidateAt,
-  setDiscoveryRevalidateAt,
-  DISCOVERY_REVALIDATE_COOLDOWN_MS,
   getDiscoveryStaleMs,
 } from "../../routes/discovery/handlers/utils.js";
 import { getTopPlayedArtists } from "../playEventService.js";
@@ -52,63 +43,12 @@ export async function getUserDiscovery(userId, limit = 50, offset = 0) {
     : hasLocalListenHistory
       ? { listenHistoryProvider: "lastfm", listenHistoryUsername: `__aurral_local_${userId}` }
       : externalListenHistoryProfile;
-  const localOnly = !hasExternalListenHistory && hasLocalListenHistory;
   const userCacheNamespace =
     getListenHistoryCacheNamespace(listenHistoryProfile);
   const effectiveCacheNamespace = hasLastfmKey ? userCacheNamespace : null;
 
-  if (
-    hasListenHistoryProfile(listenHistoryProfile) &&
-    hasLastfmKey &&
-    !isGlobalDiscoveryRefreshInProgress()
-  ) {
-    const staleness = getUserDiscoveryCacheStaleness(userCacheNamespace);
-    const staleMs = await getDiscoveryStaleMs();
-    if (staleness > staleMs) {
-      requestUserDiscoveryRefresh(listenHistoryProfile, {
-        feedbackUserId: userId || null,
-        localOnly,
-      }).catch((err) => {
-        logger.error("discovery", `On-demand refresh for ${listenHistoryProfile.listenHistoryProvider}:${listenHistoryProfile.listenHistoryUsername} failed`, { error: err.message });
-      });
-    }
-  }
-
-  let discoveryCache = getDiscoveryCache(effectiveCacheNamespace);
-
-  const hasData =
-    discoveryCache.recommendations?.length > 0 ||
-    discoveryCache.globalTop?.length > 0 ||
-    discoveryCache.topGenres?.length > 0 ||
-    discoveryCache.fallbackGenres?.length > 0;
-  const hasCompletedRefresh =
-    !!discoveryCache.lastUpdated &&
-    (discoveryCache.recommendations?.length > 0 ||
-      discoveryCache.globalTop?.length > 0 ||
-      discoveryCache.topGenres?.length > 0 ||
-      discoveryCache.fallbackGenres?.length > 0);
-
-  let isUpdating = discoveryCache.isUpdating || false;
-
-  if (
-    !hasLastfmKey &&
-    (!hasData ||
-      discoveryCache.provider !== DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK)
-  ) {
-    const fallbackData = await buildListenbrainzFallbackDiscovery({
-      existingArtistKeys: buildArtistKeySet(libraryArtists),
-    });
-    dbOps.updateDiscoveryCache(fallbackData);
-    Object.assign(getDiscoveryCache(), fallbackData, { isUpdating: false });
-    discoveryCache = getDiscoveryCache(effectiveCacheNamespace);
-    isUpdating = false;
-  } else if (!hasData && !hasCompletedRefresh && !isUpdating) {
-    setDiscoveryRevalidateAt(Date.now());
-    const lazyRefresh = enqueueDiscoveryRefresh({ reason: "lazy" });
-    if (lazyRefresh.enqueued) {
-      isUpdating = true;
-    }
-  }
+  const discoveryCache = getDiscoveryCache(effectiveCacheNamespace);
+  const isUpdating = discoveryCache.isUpdating || false;
 
   let {
     recommendations,
@@ -176,19 +116,6 @@ export async function getUserDiscovery(userId, limit = 50, offset = 0) {
     Number.isFinite(parsedLastUpdated) &&
     parsedLastUpdated > 0 &&
     Date.now() - parsedLastUpdated > staleMs;
-
-  if (
-    isStale &&
-    !isUpdating &&
-    !hasListenHistoryProfile(listenHistoryProfile) &&
-    Date.now() - getDiscoveryRevalidateAt() > DISCOVERY_REVALIDATE_COOLDOWN_MS
-  ) {
-    setDiscoveryRevalidateAt(Date.now());
-    const staleRefresh = enqueueDiscoveryRefresh({ reason: "stale" });
-    if (staleRefresh.enqueued) {
-      isUpdating = true;
-    }
-  }
 
   const cacheStrategy =
     recommendations.length > 0 || globalTop.length > 0
