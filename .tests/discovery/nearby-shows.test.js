@@ -35,3 +35,33 @@ test("marks an unresolved postal code instead of returning a normal empty locati
   assert.deepEqual(result.libraryShows, []);
   assert.deepEqual(result.recommendedShows, []);
 });
+
+test("reuses a cached shows response without rebuilding artist maps", async (t) => {
+  let artistReads = 0;
+  t.mock.method(axios, "get", async (url) => {
+    if (url.includes("zippopotam")) {
+      return {
+        data: {
+          places: [{ "place name": "Austin", latitude: "30.2672", longitude: "-97.7431" }],
+        },
+      };
+    }
+    return { data: { _embedded: { events: [] } } };
+  });
+
+  const options = {
+    zipCode: "78701",
+    responseCacheKey: "user-1",
+    libraryArtists: {
+      [Symbol.iterator]() {
+        artistReads += 1;
+        return [][Symbol.iterator]();
+      },
+    },
+  };
+  const first = await getNearbyShows(options);
+  const second = await getNearbyShows(options);
+
+  assert.strictEqual(second, first);
+  assert.equal(artistReads, 1);
+});

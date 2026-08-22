@@ -39,7 +39,6 @@ export function registerShows(router) {
       const radiusMiles = Number.isFinite(configuredRadius)
         ? Math.max(5, Math.min(250, Math.floor(configuredRadius)))
         : undefined;
-      const libraryArtists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
       const reqUser = userOps.getUserById(req.user.id);
       const userCacheNamespace = getLastfmApiKey()
         ? getListenHistoryCacheNamespace(getListenHistoryProfile(reqUser || {}))
@@ -61,11 +60,12 @@ export function registerShows(router) {
       const nearbyShows = await getNearbyShows({
         req,
         zipCode,
-        libraryArtists,
+        libraryArtists: () => [...iterateCanonicalArtistProjection({ pageSize: 100 })],
         recommendedArtists,
         trendingArtists,
         limit: req.query.limit,
         radiusMiles,
+        responseCacheKey: req.user.id,
       });
 
       res.set("Cache-Control", "no-cache, no-store, must-revalidate");

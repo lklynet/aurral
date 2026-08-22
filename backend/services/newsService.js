@@ -5,6 +5,7 @@ import { getNewsSettings } from "./apiClients/config.js";
 import { fetchArticleImage, fetchRssFeed } from "./rssNews.js";
 import { mapWithConcurrency } from "./discovery/helpers.js";
 import { getUserDiscovery } from "./discovery/userDiscovery.js";
+import createCache from "./apiClients/simpleCache.js";
 
 const NEWS_PREFERENCES_KEY = (userId) => `user:${Number.parseInt(userId, 10)}:newsPreferences`;
 const NEWS_STATE_KEY = "news:rssState";
@@ -15,6 +16,7 @@ const MAX_ARTICLES = 1000;
 const MAX_BLOCKED_PUBLISHERS = 100;
 
 let refreshPromise = null;
+const newsResponseCache = createCache(5 * 60, 100);
 
 const normalizeBlockedPublishers = (publishers) => {
   const seen = new Set();
@@ -185,6 +187,7 @@ export const getNewsPreferences = (userId) => {
 export const updateNewsPreferences = (userId, preferences = {}) => {
   const next = { blockedPublishers: normalizeBlockedPublishers(preferences.blockedPublishers) };
   dbOps.setJSONSetting(NEWS_PREFERENCES_KEY(userId), next);
+  newsResponseCache.flushAll();
   return next;
 };
 
@@ -205,6 +208,7 @@ export const disableNewsFeed = (sourceUrl, sourceName) => {
   dbOps.updateSettings({
     integrations: { ...(settings.integrations || {}), news: nextNews },
   });
+  newsResponseCache.flushAll();
   return nextNews;
 };
 
@@ -215,6 +219,13 @@ export async function getNewsForUser({
   mode = "matched",
   refresh = false,
 } = {}) {
+  const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 60)));
+  const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
+  const responseCacheKey = JSON.stringify([userId || null, mode, safeLimit, safeOffset]);
+  if (!refresh) {
+    const cached = newsResponseCache.get(responseCacheKey);
+    if (cached) return cached;
+  }
   const settings = getNewsSettings();
   const libraryArtists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
   const recommendedArtists = userId
@@ -237,8 +248,6 @@ export async function getNewsForUser({
   );
   const matchedById = new Map(matchedArticles.map((article) => [article.id, article]));
   // Normalize pagination before enriching or slicing the current page.
-  const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 60)));
-  const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
   let articles = mode === "top"
     ? activeArticles
       .filter((article) => !isPublisherBlocked(article.source, preferences.blockedPublishers))
@@ -256,7 +265,7 @@ export async function getNewsForUser({
     const enrichedById = new Map(enrichedPage.map((article) => [article.id, article]));
     articles = articles.map((article) => enrichedById.get(article.id) || article);
   }
-  return {
+  const result = {
     configured: settings.enabled && getEnabledFeeds(settings).length > 0,
     artistCount: artists.length,
     feedCount: getEnabledFeeds(settings).length,
@@ -269,11 +278,14 @@ export async function getNewsForUser({
       warning: refreshResult.warning || null,
     },
   };
+  if (!refresh) newsResponseCache.set(responseCacheKey, result);
+  return result;
 }
 
 export const getLibraryNews = getNewsForUser;
 
 export async function refreshLibraryNews() {
+  newsResponseCache.flushAll();
   return getNewsForUser({ refresh: true });
 }
 

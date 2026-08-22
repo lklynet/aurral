@@ -6,6 +6,7 @@ import { runSharedInflight } from "./sharedInflight.js";
 const ticketmasterEventCache = createCache(15 * 60);
 const ipLocationCache = createCache(30 * 60);
 const zipLocationCache = createCache(24 * 60 * 60);
+const nearbyShowsResponseCache = createCache(5 * 60, 100);
 const nearbyShowsInflight = new Map();
 
 const DEFAULT_RADIUS_MILES = 250;
@@ -394,6 +395,8 @@ const buildArtistMap = (artists, sourceType) => {
   return map;
 };
 
+const resolveArtists = (artists) => typeof artists === "function" ? artists() : artists;
+
 const sortShows = (shows) =>
   shows.sort((a, b) => {
     const aTime = a.dateTime || a.date || "";
@@ -412,12 +415,16 @@ export const getNearbyShows = async ({
   trendingArtists = [],
   radiusMiles = DEFAULT_RADIUS_MILES,
   limit = DEFAULT_SHOW_LIMIT,
+  responseCacheKey = null,
 }) => {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || DEFAULT_SHOW_LIMIT, MAX_SHOW_LIMIT));
   const sanitizedZipCode = sanitizeZipCode(zipCode);
-  const libraryArtistMap = buildArtistMap(libraryArtists, "library");
-  const recommendedArtistMap = buildArtistMap(recommendedArtists, "recommended");
-  const trendingArtistMap = buildArtistMap(trendingArtists, "trending");
+  const locationKey = sanitizedZipCode || getForwardedIp(req);
+  const resultCacheKey = responseCacheKey
+    ? JSON.stringify([responseCacheKey, locationKey, radiusMiles, resolvedLimit])
+    : null;
+  const cachedResult = resultCacheKey ? nearbyShowsResponseCache.get(resultCacheKey) : null;
+  if (cachedResult) return cachedResult;
 
   let location;
   if (sanitizedZipCode) {
@@ -439,16 +446,21 @@ export const getNearbyShows = async ({
   }
 
   if (location.resolved === false) {
-    return {
+    const result = {
       location,
       shows: [],
       libraryShows: [],
       recommendedShows: [],
       total: 0,
     };
+    if (resultCacheKey) nearbyShowsResponseCache.set(resultCacheKey, result);
+    return result;
   }
 
   const events = await fetchTicketmasterEvents({ location, radiusMiles });
+  const libraryArtistMap = buildArtistMap(resolveArtists(libraryArtists), "library");
+  const recommendedArtistMap = buildArtistMap(resolveArtists(recommendedArtists), "recommended");
+  const trendingArtistMap = buildArtistMap(resolveArtists(trendingArtists), "trending");
   const libraryShows = [];
   const recommendedShows = [];
   const seen = new Set();
@@ -484,11 +496,13 @@ export const getNearbyShows = async ({
   sortShows(groupedLibraryShows);
   sortShows(groupedRecommendedShows);
 
-  return {
+  const result = {
     location,
     shows: groupedShows.slice(0, resolvedLimit),
     libraryShows: groupedLibraryShows.slice(0, resolvedLimit),
     recommendedShows: groupedRecommendedShows.slice(0, resolvedLimit),
     total: groupedShows.length,
   };
+  if (resultCacheKey) nearbyShowsResponseCache.set(resultCacheKey, result);
+  return result;
 };

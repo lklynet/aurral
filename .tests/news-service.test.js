@@ -100,3 +100,10 @@ test("ignores malformed stored RSS feed URLs", () => {
   const feeds = config.normalizeNewsFeeds([{ name: "Broken", url: "http://", group: "custom" }]);
   assert.equal(feeds.some((feed) => feed.name === "Broken"), false);
 });
+
+test("reuses a cached news response without rebuilding matches", async () => {
+  const first = await newsService.getNewsForUser({ userId: null, mode: "top" });
+  const second = await newsService.getNewsForUser({ userId: null, mode: "top" });
+
+  assert.strictEqual(second, first);
+});
