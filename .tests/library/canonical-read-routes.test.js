@@ -1,12 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { db } from "../../backend/config/db-sqlite.js";
 import { registerTracks } from "../../backend/routes/library/handlers/tracks.js";
 import { indexLidarrLibrary } from "../../backend/services/libraryLidarrIndexer.js";
+
+test("bounded backend callers do not materialize the compatibility library", async () => {
+  const boundedCallers = [
+    new URL("../../backend/routes/library/handlers/canonical.js", import.meta.url),
+    new URL("../../backend/routes/library/handlers/downloads.js", import.meta.url),
+    new URL("../../backend/services/libraryManager.js", import.meta.url),
+    new URL("../../backend/services/storageHealthService.js", import.meta.url),
+  ];
+
+  for (const caller of boundedCallers) {
+    const source = await readFile(caller, "utf8");
+    assert.doesNotMatch(source, /\bgetCanonicalLibrary(?:ReadModel)?\s*\(/);
+    assert.doesNotMatch(source, /\bbuildCanonicalLibraryReadModel\s*\(/);
+  }
+});
 
 test("canonical track reads remove nested filesystem paths", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-canonical-route-"));

@@ -8,7 +8,7 @@ import {
   albumHasTrackFiles,
 } from "../../../services/albumSearchState.js";
 import { logger } from "../../../services/logger.js";
-import { getCanonicalLibrary } from "../../../services/libraryQueryService.js";
+import { getCanonicalTrackOwnership } from "../../../services/libraryQueryService.js";
 
 const STALE_GRABBED_MS = 15 * 60 * 1000;
 const DOWNLOAD_STATUS_CACHE_MS = 5000;
@@ -329,14 +329,10 @@ export function registerDownloads(router) {
     }
 
     try {
-      const canonical = getCanonicalLibrary({ source: "all", availableOnly: false });
-      const alreadyOwned = canonical.tracks.some((candidate) => {
-        if (!candidate.files.some((file) => file.available)) return false;
-        if (track.trackMbid) return candidate.mbid === track.trackMbid;
-        return (
-          candidate.artistName?.toLocaleLowerCase() === track.artistName.toLocaleLowerCase() &&
-          candidate.title?.toLocaleLowerCase() === track.trackName.toLocaleLowerCase()
-        );
+      const alreadyOwned = getCanonicalTrackOwnership({
+        trackMbid: track.trackMbid,
+        artistName: track.artistName,
+        trackName: track.trackName,
       });
       if (alreadyOwned) return res.json({ success: true, alreadyOwned: true, queued: false });
 

@@ -13,7 +13,11 @@ import {
   getCanonicalLibraryForAlbumReferences,
   getCanonicalLibraryForArtists,
   getCanonicalLibraryPage,
+  getCanonicalTrack,
+  getCanonicalTrackCount,
+  getCanonicalTrackOwnership,
   getCanonicalTrackPath,
+  getCanonicalTrackSample,
   invalidateCanonicalLibraryCache,
 } from "../../backend/services/libraryQueryService.js";
 import { toPublicLibrary } from "../../backend/routes/library/handlers/canonical.js";
@@ -110,6 +114,96 @@ test("getCanonicalTrackPath keeps shared tracks scoped to the requested album", 
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
     db.prepare("DELETE FROM library_albums WHERE artist_id = ?").run(artist.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  }
+});
+
+test("focused track, ownership, count, and sample queries stay bounded", () => {
+  const key = `query-focused-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({
+    identityKey: `${key}:artist`,
+    name: "Focused Artist",
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: `${key}:album`,
+    artistId: artist.id,
+    title: "Focused Album",
+  });
+  const ownedTrack = upsertLibraryTrack({
+    identityKey: `${key}:owned`,
+    mbid: `${key}-owned-mbid`,
+    title: "Focused Track",
+    artistName: artist.name,
+  });
+  const unavailableTrack = upsertLibraryTrack({
+    identityKey: `${key}:unavailable`,
+    mbid: `${key}-unavailable-mbid`,
+    title: "Unavailable Track",
+    artistName: artist.name,
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: ownedTrack.id, trackNumber: 1 });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: unavailableTrack.id, trackNumber: 2 });
+  const ownedPath = `/tmp/${key}/owned.flac`;
+  const unavailablePath = `/tmp/${key}/unavailable.flac`;
+  upsertLibraryMediaFile({
+    trackId: ownedTrack.id,
+    albumId: album.id,
+    source: "aurral",
+    path: ownedPath,
+    available: true,
+  });
+  upsertLibraryMediaFile({
+    trackId: unavailableTrack.id,
+    albumId: album.id,
+    source: "aurral",
+    path: unavailablePath,
+    available: false,
+  });
+
+  try {
+    const focused = getCanonicalTrack({
+      trackId: ownedTrack.id,
+      source: "aurral",
+      availableOnly: true,
+      albumId: album.id,
+    });
+    assert.deepEqual(focused.tracks.map((track) => track.id), [ownedTrack.id]);
+    assert.deepEqual(focused.albums.map((entry) => entry.id), [album.id]);
+    assert.deepEqual(focused.tracks[0].files.map((file) => file.path), [ownedPath]);
+
+    const stale = getCanonicalTrack({
+      trackId: unavailableTrack.id,
+      source: "aurral",
+      availableOnly: false,
+    });
+    assert.deepEqual(stale.tracks.map((track) => track.id), [unavailableTrack.id]);
+    assert.equal(stale.tracks[0].files[0].available, false);
+
+    assert.equal(
+      getCanonicalTrackOwnership({ trackMbid: ownedTrack.mbid }),
+      true,
+    );
+    assert.equal(
+      getCanonicalTrackOwnership({ artistName: artist.name, trackName: ownedTrack.title }),
+      true,
+    );
+    assert.equal(
+      getCanonicalTrackOwnership({ trackMbid: unavailableTrack.mbid }),
+      false,
+    );
+
+    const countBefore = getCanonicalTrackCount({ source: "aurral" });
+    const availableCountBefore = getCanonicalTrackCount({ source: "aurral", availableOnly: true });
+    assert.equal(countBefore >= 2, true);
+    assert.equal(availableCountBefore >= 1, true);
+    const sample = getCanonicalTrackSample({ source: "aurral", availableOnly: true, limit: 1 });
+    assert.ok(sample.tracks.length <= 1);
+  } finally {
+    db.prepare("DELETE FROM library_media_files WHERE path IN (?, ?)").run(ownedPath, unavailablePath);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
+    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(ownedTrack.id, unavailableTrack.id);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    invalidateCanonicalLibraryCache();
   }
 });
 

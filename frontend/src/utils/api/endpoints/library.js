@@ -22,15 +22,6 @@ const mergeSignals = (callerSignal, querySignal) => {
 export const getLibraryArtists = (options = {}) =>
   getData("/library/artists", options);
 
-export const getCanonicalLibrary = (options = {}) =>
-  getData("/library/canonical", {
-    params: {
-      source: options.source || "all",
-      availableOnly: options.availableOnly === true ? "true" : "false",
-    },
-    signal: options.signal,
-  });
-
 export const getCanonicalLibraryPage = (options = {}, { signal } = {}) => {
   const params = Object.fromEntries(
     Object.entries({
@@ -101,8 +92,13 @@ export const updateLibraryFavorites = async (ids, starred) => {
   const generation = ++libraryFavoritesGeneration;
   const data = await postData("/library/favorites", { ids, starred });
   if (generation === libraryFavoritesGeneration) {
-    latestLibraryFavorites = data;
-    queryClient.setQueryData(queryKeys.libraryFavorites, data);
+    try {
+      latestLibraryFavorites = await fetchLibraryFavorites();
+      queryClient.setQueryData(queryKeys.libraryFavorites, latestLibraryFavorites);
+    } catch {
+      latestLibraryFavorites = null;
+      queryClient.invalidateQueries({ queryKey: queryKeys.libraryFavorites });
+    }
   }
   clearCanonicalLibraryPageCache();
   return data;

@@ -83,10 +83,10 @@ instance API key for WebSocket connections.
 | `GET` | `/api/library/tracks` | List album tracks |
 | `POST` | `/api/library/refresh` | Queue a canonical library scan |
 | `GET` | `/api/library/refresh/:jobId` | Read canonical library scan status |
-| `GET` | `/api/library/canonical` | Read the canonical artists, albums, and tracks |
+| `GET` | `/api/library/canonical` | Read a bounded canonical page; provide `kind` and `pageSize` |
 | `GET` | `/api/library/favorites` | Read the current user's library favorites |
 | `POST` | `/api/library/favorites` | Add or remove a library favorite |
-| `GET` | `/api/library/playback-queue` | Build the playback queue |
+| `GET` | `/api/library/playback-queue` | Build a bounded playback queue page; optional `page` and `pageSize` (1-100) |
 | `GET` | `/api/library/stream/:songId` | Stream a library song |
 | `GET` | `/api/library/canonical-stream/:trackId` | Stream a canonical library track |
 | `GET` | `/api/library/file-stream/:albumId/:trackId` | Stream an album track file |

@@ -257,6 +257,163 @@ export function getCanonicalTrackPath(albumReference, trackReference) {
   ).get(album.id, track.id, album.id, album.id)?.path || null;
 }
 
+export function getCanonicalTrack({
+  trackId,
+  source = null,
+  availableOnly = false,
+  albumId = null,
+} = {}) {
+  const reference = String(trackId ?? "").trim();
+  if (!reference) return { artists: [], albums: [], tracks: [] };
+
+  const numericId = /^\d+$/.test(reference) ? Number(reference) : null;
+  const conditions = [];
+  const parameters = [];
+  if (Number.isSafeInteger(numericId) && numericId > 0) {
+    conditions.push("track.id = ?");
+    parameters.push(numericId);
+  } else {
+    conditions.push("(track.identity_key = ? OR track.mbid = ?)");
+    parameters.push(reference, reference);
+  }
+  if (albumId !== null && albumId !== undefined && String(albumId).trim()) {
+    conditions.push("album.id = ?");
+    parameters.push(Number(albumId));
+  }
+
+  return getScopedCanonicalLibrary({
+    source,
+    availableOnly,
+    conditions,
+    parameters,
+  });
+}
+
+export function getCanonicalTrackOwnership({
+  trackMbid = null,
+  artistName = null,
+  trackName = null,
+  source = null,
+} = {}) {
+  const sourceFilter = normalizeSource(source);
+  const conditions = ["media.available = 1"];
+  const parameters = [];
+  if (sourceFilter) {
+    conditions.push("media.source = ?");
+    parameters.push(sourceFilter);
+  }
+
+  const mbid = String(trackMbid || "").trim();
+  if (mbid) {
+    conditions.push("track.mbid = ?");
+    parameters.push(mbid);
+  } else {
+    const artist = String(artistName || "").trim();
+    const title = String(trackName || "").trim();
+    if (!artist || !title) return false;
+    conditions.push("lower(coalesce(track.artist_name, '')) = lower(?)");
+    conditions.push("lower(track.title) = lower(?)");
+    parameters.push(artist, title);
+  }
+
+  return Boolean(db.prepare(
+    `SELECT EXISTS (
+       SELECT 1
+       ${CANONICAL_FROM}
+       WHERE ${conditions.join(" AND ")}
+     ) AS owned`,
+  ).get(...parameters)?.owned);
+}
+
+export function getCanonicalTrackCount({ source = null, availableOnly = false } = {}) {
+  const sourceFilter = normalizeSource(source);
+  const conditions = [];
+  const parameters = [];
+  if (sourceFilter) {
+    conditions.push("media.source = ?");
+    parameters.push(sourceFilter);
+  }
+  if (availableOnly === true) conditions.push("media.available = 1");
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  return Number(db.prepare(
+    `SELECT COUNT(DISTINCT track.id) AS total
+     ${CANONICAL_FROM}
+     ${where}`,
+  ).get(...parameters)?.total || 0);
+}
+
+export function getCanonicalTrackSample({
+  source = null,
+  availableOnly = false,
+  limit = 100,
+} = {}) {
+  const sourceFilter = normalizeSource(source);
+  const conditions = [];
+  const parameters = [];
+  if (sourceFilter) {
+    conditions.push("media.source = ?");
+    parameters.push(sourceFilter);
+  }
+  if (availableOnly === true) conditions.push("media.available = 1");
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const boundedLimit = Math.min(500, Math.max(1, Number.parseInt(limit, 10) || 100));
+  const rows = db.prepare(
+    `${CANONICAL_SELECT}
+     ${CANONICAL_FROM}
+     ${where}
+     ${canonicalOrder}
+     LIMIT ?`,
+  ).iterate(...parameters, boundedLimit);
+  return buildLibraryFromRows(rows);
+}
+
+const CANONICAL_FAVORITE_TABLES = {
+  artist: "library_artists",
+  album: "library_albums",
+  song: "library_tracks",
+};
+
+function parseCanonicalFavoriteId(value) {
+  const input = String(value || "").trim();
+  const separator = input.indexOf(":");
+  if (separator <= 0) return null;
+  const kind = input.slice(0, separator);
+  if (!CANONICAL_FAVORITE_TABLES[kind]) return null;
+  const rawKey = input.slice(separator + 1);
+  if (!rawKey) return null;
+  try {
+    const key = decodeURIComponent(rawKey).trim();
+    return key ? { kind, key, rawKey } : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getCanonicalFavoriteTargetKeys(values = []) {
+  const targets = (Array.isArray(values) ? values : [])
+    .map(parseCanonicalFavoriteId)
+    .filter(Boolean);
+  const found = new Set();
+  for (const [kind, table] of Object.entries(CANONICAL_FAVORITE_TABLES)) {
+    const keys = [...new Set(
+      targets.filter((target) => target.kind === kind).map((target) => target.key),
+    )];
+    if (!keys.length) continue;
+    const rows = db.prepare(
+      `SELECT identity_key FROM ${table}
+       WHERE identity_key IN (${keys.map(() => "?").join(",")})`,
+    ).all(...keys);
+    for (const row of rows) {
+      for (const target of targets) {
+        if (target.kind !== kind || target.key !== row.identity_key) continue;
+        found.add(`${kind}:${target.rawKey}`);
+        found.add(`${kind}:${encodeURIComponent(target.key)}`);
+      }
+    }
+  }
+  return found;
+}
+
 export function getCanonicalLibraryForArtists({
   source = null,
   availableOnly = false,

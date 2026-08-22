@@ -2,7 +2,10 @@ import { randomUUID } from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import { dbOps } from "../db/helpers/index.js";
-import { getCanonicalLibrary } from "./libraryQueryService.js";
+import {
+  getCanonicalTrackCount,
+  getCanonicalTrackSample,
+} from "./libraryQueryService.js";
 import { lidarrClient } from "./lidarrClient.js";
 import { slskdClient } from "./slskdClient.js";
 import { nzbgetClient } from "./nzbgetClient.js";
@@ -821,9 +824,8 @@ async function checkNavidromeSection() {
 }
 
 async function checkNativePlaybackSection() {
-  const library = getCanonicalLibrary({ availableOnly: true });
-  const tracks = Array.isArray(library.tracks) ? library.tracks : [];
-  if (tracks.length === 0) {
+  const trackCount = getCanonicalTrackCount({ availableOnly: true });
+  if (trackCount === 0) {
     return buildSection("native-playback", "Aurral-native playback", [
       healthStep("indexed", "warn", "Canonical media is ready for native playback", {
         fix: "Connect Lidarr, let the library index refresh, then run Storage Health again.",
@@ -831,7 +833,10 @@ async function checkNativePlaybackSection() {
     ]);
   }
 
-  const sample = tracks.slice(0, MEDIA_HEALTH_SAMPLE_LIMIT);
+  const sample = getCanonicalTrackSample({
+    availableOnly: true,
+    limit: MEDIA_HEALTH_SAMPLE_LIMIT,
+  }).tracks;
   const missing = [];
   for (const track of sample) {
     let readable = false;
@@ -846,7 +851,7 @@ async function checkNativePlaybackSection() {
     }
   }
 
-  const detail = `${tracks.length} canonical track${tracks.length === 1 ? "" : "s"} indexed`;
+  const detail = `${trackCount} canonical track${trackCount === 1 ? "" : "s"} indexed`;
   if (missing.length > 0) {
     return buildSection("native-playback", "Aurral-native playback", [
       healthStep("indexed", "fail", "Aurral-native playback can read indexed media", {

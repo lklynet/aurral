@@ -153,7 +153,7 @@ function responseFor() {
   return response;
 }
 
-test("native favorites reuse Subsonic star identity and return current favorites", () => {
+test("native favorites return changed identities and reuse Subsonic star identity", () => {
   const target = `artist:${encodeURIComponent(artist.identity_key)}`;
   const postResponse = responseFor();
   getRoute("POST /favorites")(
@@ -162,7 +162,8 @@ test("native favorites reuse Subsonic star identity and return current favorites
   );
 
   assert.equal(postResponse.statusCode, 200);
-  assert.equal(postResponse.body.artist[0].id, target);
+  assert.deepEqual(postResponse.body.changedIds, [target]);
+  assert.equal(postResponse.body.library, undefined);
 
   const getResponse = responseFor();
   getRoute("GET /favorites")({ user }, getResponse);
@@ -179,6 +180,7 @@ test("native favorites include the canonical favorite subset", () => {
     "Favorite Track",
     "Favorite Track Two",
   ]);
+  assert.equal(response.body.library.tracks[0].files[0].path, undefined);
 });
 
 test("canonical library pages return bounded collection responses", () => {
@@ -198,6 +200,7 @@ test("canonical library pages return bounded collection responses", () => {
   assert.equal(response.body.albums[0].trackCount, 2);
   assert.equal(response.body.albums[0].availableTrackCount, 1);
   assert.equal(response.body.hasMore, true);
+  assert.equal(response.body.items[0].files[0].path, undefined);
 
   const availableResponse = responseFor();
   getRoute("GET /canonical")(
@@ -215,15 +218,12 @@ test("canonical library pages return bounded collection responses", () => {
   assert.equal(artistResponse.body.items[0].userFavorite, true);
 });
 
-test("unpaged canonical library responses keep paths private", async () => {
+test("canonical library rejects unbounded requests", () => {
   const response = responseFor();
-  await getRoute("GET /canonical")({ user, query: {} }, response);
-  await new Promise((resolve) => response.once("finish", resolve));
+  getRoute("GET /canonical")({ user, query: { kind: "tracks" } }, response);
 
-  assert.equal(response.statusCode, 200);
-  assert.equal(response.contentType, "json");
-  assert.equal(response.body.tracks[0].files[0].path, undefined);
-  assert.equal(response.body.tracks[0].title, "Favorite Track");
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.body.error, "kind and pageSize (1-100) are required");
 });
 
 test("native favorites rejects unknown targets without changing stars", () => {

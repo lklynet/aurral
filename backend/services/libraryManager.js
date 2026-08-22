@@ -3,7 +3,8 @@ import { UUID_REGEX } from "../../lib/uuid.js";
 import { dbOps, userOps } from "../db/helpers/index.js";
 import { hasPermission } from "../middleware/auth.js";
 import {
-  getCanonicalLibrary,
+  getCanonicalLibraryPage,
+  getCanonicalTrack,
   invalidateCanonicalLibraryCache,
 } from "./libraryQueryService.js";
 const normalizeTypeName = (value) =>
@@ -1551,7 +1552,11 @@ export class LibraryManager {
       return { success: false, code: "lidarr_unavailable", error: "Lidarr is not configured" };
     }
     try {
-      const library = getCanonicalLibrary({ source: "lidarr", availableOnly: false });
+      const library = getCanonicalTrack({
+        trackId: id,
+        source: "lidarr",
+        availableOnly: false,
+      });
       const track = library.tracks.find((entry) => String(entry.id) === String(id));
       if (!track) return { success: false, code: "not_found", error: "Track not found" };
 
@@ -1740,9 +1745,15 @@ export class LibraryManager {
     }
   }
 
-  async getPlaybackQueue() {
+  async getPlaybackQueue({ page = 1, pageSize = 100 } = {}) {
     return buildPlaybackQueueFromCanonicalLibrary(
-      getCanonicalLibrary({ source: "lidarr", availableOnly: true }),
+      getCanonicalLibraryPage({
+        source: "lidarr",
+        availableOnly: true,
+        kind: "tracks",
+        page,
+        pageSize,
+      }),
     );
   }
 

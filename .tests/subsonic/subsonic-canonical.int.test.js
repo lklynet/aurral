@@ -599,7 +599,7 @@ test("streams canonical files through the authenticated native route", async () 
   const { token } = await login.json();
   const headers = { Authorization: `Bearer ${token}` };
   const canonical = await fetch(
-    `http://127.0.0.1:${aurral.port}/api/library/canonical?source=lidarr&availableOnly=true`,
+    `http://127.0.0.1:${aurral.port}/api/library/canonical?source=lidarr&availableOnly=true&kind=tracks&page=1&pageSize=100`,
     { headers },
   );
   const library = await canonical.json();

@@ -1,10 +1,8 @@
-import { Readable } from "node:stream";
-
 import { noCache } from "../../../middleware/cache.js";
 import { requireAuth } from "../../../middleware/requirePermission.js";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
 import {
-  getCanonicalLibrary,
+  getCanonicalFavoriteTargetKeys,
   getCanonicalLibraryPage,
 } from "../../../services/libraryQueryService.js";
 import {
@@ -61,37 +59,8 @@ export function buildPublicLibrary(library, favoriteKeys = null) {
   };
 }
 
-function* jsonArrayChunks(items, mapper) {
-  yield "[";
-  for (let index = 0; index < items.length; index += 1) {
-    if (index > 0) yield ",";
-    yield JSON.stringify(mapper(items[index]), publicLibraryJsonReplacer);
-  }
-  yield "]";
-}
-
-export function* publicLibraryJsonChunks(library, favoriteKeys = null) {
-  yield "{\"artists\":";
-  yield* jsonArrayChunks(
-    library.artists,
-    (artist) => publicEntity("artist", artist, favoriteKeys),
-  );
-  yield ",\"albums\":";
-  yield* jsonArrayChunks(library.albums, (album) => publicAlbum(album, favoriteKeys));
-  yield ",\"tracks\":";
-  yield* jsonArrayChunks(
-    library.tracks,
-    (track) => publicEntity("song", track, favoriteKeys),
-  );
-  yield "}";
-}
-
 function toPublicLibrary(library, favoriteKeys = null) {
   return stripFilesystemPaths(buildPublicLibrary(library, favoriteKeys));
-}
-
-export function toPublicLibraryJson(library, favoriteKeys = null) {
-  return JSON.stringify(buildPublicLibrary(library, favoriteKeys), publicLibraryJsonReplacer);
 }
 
 export function toPublicLibraryPage(page, favoriteKeys = null) {
@@ -131,27 +100,33 @@ export function registerCanonical(router) {
   router.get("/canonical", noCache, (req, res) => {
     try {
       const favoriteKeys = req.user ? getStarredIdentityKeys(req.user) : null;
-      if (req.query.kind) {
-        return res.json(toPublicLibraryPage(getCanonicalLibraryPage({
-          source: req.query.source,
-          availableOnly: req.query.availableOnly === "true",
-          kind: req.query.kind,
-          page: req.query.page,
-          pageSize: req.query.pageSize,
-          query: req.query.query,
-          genre: req.query.genre,
-          sort: req.query.sort,
-          direction: req.query.direction,
-          artistId: req.query.artistId,
-          albumId: req.query.albumId,
-        }), favoriteKeys));
+      const kind = typeof req.query.kind === "string" ? req.query.kind.trim() : "";
+      const requestedPageSize = typeof req.query.pageSize === "string"
+        ? Number(req.query.pageSize)
+        : NaN;
+      if (
+        !kind ||
+        !Number.isSafeInteger(requestedPageSize) ||
+        requestedPageSize < 1 ||
+        requestedPageSize > 100
+      ) {
+        return res.status(400).json({
+          error: "kind and pageSize (1-100) are required",
+        });
       }
-      const library = getCanonicalLibrary({
+      return res.json(toPublicLibraryPage(getCanonicalLibraryPage({
         source: req.query.source,
         availableOnly: req.query.availableOnly === "true",
-      });
-      res.type("json");
-      return Readable.from(publicLibraryJsonChunks(library, favoriteKeys)).pipe(res);
+        kind,
+        page: req.query.page,
+        pageSize: requestedPageSize,
+        query: req.query.query,
+        genre: req.query.genre,
+        sort: req.query.sort,
+        direction: req.query.direction,
+        artistId: req.query.artistId,
+        albumId: req.query.albumId,
+      }), favoriteKeys));
     } catch (error) {
       if (
         error.message.startsWith("Unsupported library source:") ||
@@ -181,12 +156,21 @@ export function registerCanonical(router) {
       });
     }
 
-    const changed = req.body.starred ? starMany(req.user, ids) : unstarMany(req.user, ids);
+    if (req.body.starred) {
+      const canonicalIds = ids.filter((id) => /^(artist|album|song):.+/.test(id));
+      const validTargets = getCanonicalFavoriteTargetKeys(canonicalIds);
+      if (canonicalIds.some((id) => !validTargets.has(id))) {
+        return res.status(400).json({ error: "Invalid favorite target" });
+      }
+    }
+
+    const changed = req.body.starred
+      ? starMany(req.user, ids, { skipCanonicalValidation: true })
+      : unstarMany(req.user, ids);
     if (!changed) {
       return res.status(400).json({ error: "Invalid favorite target" });
     }
-    const { starred, library } = getStarredWithLibrary(req.user);
-    return res.json({ ...starred, library: toPublicLibrary(library) });
+    return res.json({ changedIds: ids });
   });
 }
 

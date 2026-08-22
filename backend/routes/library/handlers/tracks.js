@@ -77,7 +77,10 @@ export function registerTracks(router) {
 
   router.get("/playback-queue", cacheMiddleware(120), async (req, res) => {
     try {
-      const tracks = await libraryManager.getPlaybackQueue();
+      const tracks = await libraryManager.getPlaybackQueue({
+        page: Number.parseInt(req.query.page, 10) || 1,
+        pageSize: Number.parseInt(req.query.pageSize, 10) || 100,
+      });
       res.json(tracks);
     } catch (error) {
       res.status(500).json({

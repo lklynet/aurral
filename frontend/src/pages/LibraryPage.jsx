@@ -1440,16 +1440,17 @@ function LibraryPage() {
         return next;
       });
       try {
-        const starred = await updateLibraryFavorites([id], nextStarred);
-        setFavoriteIds(
-          new Set(
-            ["artist", "album", "song"].flatMap((group) =>
-              (Array.isArray(starred?.[group]) ? starred[group] : []).map(
-                (entry) => entry.id,
-              ),
-            ),
-          ),
-        );
+        const result = await updateLibraryFavorites([id], nextStarred);
+        if (Array.isArray(result?.changedIds)) {
+          setFavoriteIds((current) => {
+            const next = new Set(current);
+            for (const changedId of result.changedIds) {
+              if (nextStarred) next.add(changedId);
+              else next.delete(changedId);
+            }
+            return next;
+          });
+        }
       } catch (requestError) {
         setFavoriteIds(previous);
         showError(requestError.response?.data?.message || "Failed to update favorites");

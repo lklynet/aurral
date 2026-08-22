@@ -32,16 +32,24 @@ test("an older favorites read cannot overwrite a newer mutation cache", async (t
   };
 
   const staleFavorites = { artist: [], album: [], song: [], library: { tracks: [] } };
+  const mutationResponse = {
+    artist: [],
+    album: [],
+    song: [{ id: "song:1" }],
+    changedIds: ["song:1"],
+  };
   const freshFavorites = { artist: [], album: [], song: ["song:1"], library: { tracks: ["fresh"] } };
   const read = getLibraryFavorites();
   await waitForRequests(1);
   const mutation = updateLibraryFavorites(["song:1"], true);
   await waitForRequests(2);
 
-  requests[1].resolve(jsonResponse(freshFavorites));
-  assert.deepEqual(await mutation, freshFavorites);
+  requests[1].resolve(jsonResponse(mutationResponse));
+  await waitForRequests(3);
+  requests[2].resolve(jsonResponse(freshFavorites));
+  assert.deepEqual(await mutation, mutationResponse);
   requests[0].resolve(jsonResponse(staleFavorites));
   assert.deepEqual(await read, freshFavorites);
   assert.deepEqual(await getLibraryFavorites(), freshFavorites);
-  assert.equal(requests.length, 2);
+  assert.equal(requests.length, 3);
 });

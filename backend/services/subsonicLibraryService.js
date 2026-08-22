@@ -792,10 +792,10 @@ export function star(user, value) {
   return starMany(user, [value]);
 }
 
-export function starMany(user, values) {
+export function starMany(user, values, { skipCanonicalValidation = false } = {}) {
   const parsed = values.map(starTarget);
   if (!parsed.length || parsed.some((target) => !target) || !user?.id) return false;
-  const library = readLibrary();
+  const library = skipCanonicalValidation ? null : readLibrary();
   const playlistSongs = parsed.map((target) =>
     ["flow-song", "shared-song"].includes(target.kind)
       ? resolvePlaylistSong(user, idFor(target.kind, target.key))
@@ -804,7 +804,7 @@ export function starMany(user, values) {
   if (parsed.some((target, index) =>
     ["flow-song", "shared-song"].includes(target.kind)
       ? !playlistSongs[index]
-      : !findCanonical(library, target),
+      : !skipCanonicalValidation && !findCanonical(library, target),
   )) return false;
   if (favoriteAutoKeepEnabled()) {
     const createdJobIds = [];
