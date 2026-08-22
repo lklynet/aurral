@@ -837,6 +837,7 @@ export function getCanonicalArtistPage({
     aggregateParameters.push(sourceFilter);
   }
   if (availableOnly === true) mediaConditions.push("media.available = 1");
+  const mediaJoin = sourceFilter || availableOnly === true ? "JOIN" : "LEFT JOIN";
   aggregateParameters.push(...ids);
   const rows = db.prepare(
     `SELECT
@@ -854,7 +855,7 @@ export function getCanonicalArtistPage({
      FROM library_artists AS artist
      JOIN library_albums AS album ON album.artist_id = artist.id
      JOIN library_album_tracks AS album_track ON album_track.album_id = album.id
-     JOIN library_media_files AS media ON ${mediaConditions.join(" AND ")}
+     ${mediaJoin} library_media_files AS media ON ${mediaConditions.join(" AND ")}
      WHERE artist.id IN (${ids.map(() => "?").join(",")})
      GROUP BY artist.id
      ORDER BY coalesce(artist.sort_name, artist.name) COLLATE NOCASE,
