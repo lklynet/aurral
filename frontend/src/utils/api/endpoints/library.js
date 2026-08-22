@@ -64,6 +64,7 @@ export const getLibraryRefreshStatus = (jobId) =>
 let libraryFavoritesGeneration = 0;
 let latestLibraryFavorites = null;
 let libraryFavoritesRefresh = null;
+let libraryFavoritesWrite = Promise.resolve();
 
 export const fetchLibraryFavorites = ({ signal } = {}) =>
   getData("/library/favorites", { signal });
@@ -97,33 +98,35 @@ export const clearLibraryFavoritesCache = () => {
   latestLibraryFavorites = null;
 };
 
-export const updateLibraryFavorites = async (ids, starred) => {
+export const updateLibraryFavorites = (ids, starred) => {
   const generation = ++libraryFavoritesGeneration;
-  let settleRefresh;
-  const refresh = new Promise((resolve) => {
-    settleRefresh = resolve;
-  });
-  libraryFavoritesRefresh = refresh;
-  try {
-    const data = await postData("/library/favorites", { ids, starred });
-    if (generation !== libraryFavoritesGeneration) return data;
+  const write = libraryFavoritesWrite.then(async () => {
     try {
-      const refreshed = await fetchLibraryFavorites();
+      const data = await postData("/library/favorites", { ids, starred });
       if (generation !== libraryFavoritesGeneration) return data;
-      latestLibraryFavorites = refreshed;
-      queryClient.setQueryData(queryKeys.libraryFavorites, refreshed);
-    } catch {
-      if (generation === libraryFavoritesGeneration) {
-        latestLibraryFavorites = null;
-        queryClient.invalidateQueries({ queryKey: queryKeys.libraryFavorites });
+      try {
+        const refreshed = await fetchLibraryFavorites();
+        if (generation !== libraryFavoritesGeneration) return data;
+        latestLibraryFavorites = refreshed;
+        queryClient.setQueryData(queryKeys.libraryFavorites, refreshed);
+      } catch {
+        if (generation === libraryFavoritesGeneration) {
+          latestLibraryFavorites = null;
+          queryClient.invalidateQueries({ queryKey: queryKeys.libraryFavorites });
+        }
       }
+      return data;
+    } finally {
+      clearCanonicalLibraryPageCache();
     }
-    return data;
-  } finally {
-    clearCanonicalLibraryPageCache();
-    settleRefresh();
-    if (libraryFavoritesRefresh === refresh) libraryFavoritesRefresh = null;
-  }
+  });
+  const pending = write.catch(() => {});
+  libraryFavoritesWrite = pending;
+  libraryFavoritesRefresh = pending;
+  pending.then(() => {
+    if (libraryFavoritesRefresh === pending) libraryFavoritesRefresh = null;
+  });
+  return write;
 };
 
 const normalizeLibraryArtist = (artist) =>

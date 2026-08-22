@@ -87,7 +87,7 @@ test("a favorites read waits when it completes before the mutation refresh", asy
   await mutation;
 });
 
-test("an older favorites refresh cannot overwrite a newer mutation", async (t) => {
+test("favorite writes serialize and the final refresh includes both mutations", async (t) => {
   const { updateLibraryFavorites, queryClient, queryKeys, requests, waitForRequests } =
     await openFavoritesHarness(t, "favorites-refresh-generation-test");
   const initial = { version: "initial" };
@@ -99,21 +99,24 @@ test("an older favorites refresh cannot overwrite a newer mutation", async (t) =
   await waitForRequests(2);
 
   const secondMutation = updateLibraryFavorites(["song:2"], true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(requests.length, 2);
+
+  requests[1].resolve(jsonResponse({ version: "first" }));
   await waitForRequests(3);
   requests[2].resolve(jsonResponse({ changedIds: ["song:2"] }));
   await waitForRequests(4);
 
-  requests[1].resolve(jsonResponse({ version: "old" }));
   await firstMutation;
   assert.deepEqual(queryClient.getQueryData(queryKeys.libraryFavorites), initial);
 
-  const freshFavorites = { version: "new" };
+  const freshFavorites = { version: "both" };
   requests[3].resolve(jsonResponse(freshFavorites));
   await secondMutation;
   assert.deepEqual(queryClient.getQueryData(queryKeys.libraryFavorites), freshFavorites);
 });
 
-test("an older failed refresh cannot invalidate a newer mutation", async (t) => {
+test("a failed favorite refresh does not block the next queued mutation", async (t) => {
   const { updateLibraryFavorites, queryClient, queryKeys, requests, waitForRequests } =
     await openFavoritesHarness(t, "favorites-refresh-failure-test");
   const initial = { version: "initial" };
@@ -125,16 +128,14 @@ test("an older failed refresh cannot invalidate a newer mutation", async (t) => 
   await waitForRequests(2);
 
   const secondMutation = updateLibraryFavorites(["song:2"], true);
-  await waitForRequests(3);
-  requests[2].resolve(jsonResponse({ changedIds: ["song:2"] }));
-  await waitForRequests(4);
-
   requests[1].resolve(new Response(JSON.stringify({ error: "refresh failed" }), {
     status: 500,
     headers: { "content-type": "application/json" },
   }));
   await firstMutation;
-  assert.equal(queryClient.getQueryState(queryKeys.libraryFavorites)?.isInvalidated, false);
+  await waitForRequests(3);
+  requests[2].resolve(jsonResponse({ changedIds: ["song:2"] }));
+  await waitForRequests(4);
 
   const freshFavorites = { version: "new" };
   requests[3].resolve(jsonResponse(freshFavorites));
