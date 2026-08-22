@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 import { initializeSchemaOnStartup } from "./schema-migration-v2.js";
+import { initializeLibrarySearchIndex } from "./library-search-index.js";
 import { syncDownloadFolderPath } from "../services/downloadFolderConfig.js";
 import { ensureDataDir } from "./data-dir.js";
 
@@ -20,8 +21,8 @@ const db = new Database(DB_PATH);
 db.pragma("journal_mode = WAL");
 db.pragma("busy_timeout = 5000");
 db.pragma("synchronous = NORMAL");
-db.pragma("cache_size = -64000");
-db.pragma("mmap_size = 268435456");
+db.pragma("cache_size = -32000");
+db.pragma("mmap_size = 33554432");
 
 function tryAddColumn(sql) {
   try {
@@ -454,6 +455,8 @@ if (hasUniqueIndex(["path"])) {
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_library_media_files_album_source_available
     ON library_media_files (album_id, source, available);
+  CREATE INDEX IF NOT EXISTS idx_library_media_files_track_album_source_available
+    ON library_media_files (track_id, album_id, source, available);
 `);
 
 const duplicateLidarrArtistIds = db
@@ -604,6 +607,7 @@ export const dbHelpers = {
 };
 
 initializeSchemaOnStartup(db, dbHelpers);
+initializeLibrarySearchIndex(db);
 
 const existingDownloadFolder = db
   .prepare("SELECT value FROM settings WHERE key = ?")

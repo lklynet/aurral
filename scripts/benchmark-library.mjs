@@ -423,6 +423,11 @@ function summarizeReadSamples(samples) {
   const percentile = (fraction) => values[Math.min(values.length - 1, Math.ceil(values.length * fraction) - 1)];
   return {
     samples,
+    sampleCount: samples.length,
+    completedCount: completed.length,
+    nonVacuous: samples.length > 0
+      && completed.length === samples.length
+      && completed.every((sample) => Number(sample.jsonBytes) > 0),
     responseBytes: [...new Set(completed.map((sample) => sample.jsonBytes))],
     medianMs: completed.length ? percentile(0.5) : null,
     p95Ms: completed.length ? percentile(0.95) : null,
@@ -529,11 +534,14 @@ async function main() {
     const imported = await import("../backend/config/db-sqlite.js");
     database = imported.db;
     const queryService = await import("../backend/services/libraryQueryService.js");
+    const { rebuildLibrarySearchIndex } = await import("../backend/services/librarySearchIndex.js");
     const { flowPlaylistConfig } = await import(
       "../backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js"
     );
     const seedStarted = performance.now();
     const seed = seedDatabase(database, options);
+    rebuildLibrarySearchIndex();
+    queryService.rebuildCanonicalGenreStats();
     const benchmarkUser = seedSubsonicFavorite(database);
     flowPlaylistConfig.createSharedPlaylist({
       name: "Benchmark Playlist",
@@ -552,7 +560,7 @@ async function main() {
     for (const [name, pageOptions] of pageCases) {
       pages[name] = collectPageSamples(
         () => queryService.getCanonicalLibraryPage(pageOptions),
-        queryService.invalidateCanonicalLibraryCache,
+        () => queryService.invalidateCanonicalLibraryCache({ persistedGenres: false }),
         options.repeats,
       );
     }
@@ -623,13 +631,41 @@ async function main() {
     }
     const expectedBulkIndexerCalls = 5;
     const expectedFallbackIndexerCalls = 5;
-    const pageP95 = Object.fromEntries(
-      Object.entries(pages).map(([name, value]) => [name, value.warm.p95Ms]),
-    );
+    const measuredReadNames = ["search3", "randomSongs"];
+    const measuredReads = measuredReadNames.map((name) => subsonicReads[name]);
+    const measuredQueryChecks = {
+      nonVacuousCompletedSamples: measuredReads.every((read) => read.nonVacuous),
+      coldP95Under750ms: measuredReads.every((read) => read.p95Ms < 750),
+      responseUnder2MiB: measuredReads.every((read) =>
+        read.responseBytes.length > 0
+        && read.responseBytes.every((bytes) => bytes < 2 * 1024 * 1024)),
+      maxRssDeltaUnder64MiB: measuredReads.every((read) =>
+        read.maxRssDeltaBytes < 64 * 1024 * 1024),
+    };
+    const pageBudgetChecks = {
+      warmP95Under250ms: Object.values(pages).every((page) => page.warm.p95Ms < 250),
+      coldP95Under750ms: Object.values(pages).every((page) => page.cold.p95Ms < 750),
+      responseUnder2MiB: Object.values(pages).every((page) =>
+        [...page.cold.samples, ...page.warm.samples]
+          .every((sample) => sample.jsonBytes < 2 * 1024 * 1024)),
+      maxRssDeltaUnder64MiB: Object.values(pages).every((page) =>
+        [...page.cold.samples, ...page.warm.samples]
+          .every((sample) => sample.rssDeltaBytes < 64 * 1024 * 1024)),
+    };
+    const compatibilityReadChecks = {
+      responseUnder2MiB: Object.values(subsonicReads).every((read) =>
+        read.responseBytes.length > 0
+        && read.responseBytes.every((bytes) => bytes < 2 * 1024 * 1024)),
+      maxRssDeltaUnder64MiB: Object.values(subsonicReads).every((read) =>
+        read.maxRssDeltaBytes < 64 * 1024 * 1024),
+    };
     const boundedReadCompleted = Object.values(subsonicReads).every((read) =>
-      read.samples.every((sample) => sample.status === "completed"));
+      read.nonVacuous);
     const checks = {
       boundedReadCompleted,
+      measuredQueryBudgets: Object.values(measuredQueryChecks).every(Boolean),
+      pageBudgets: Object.values(pageBudgetChecks).every(Boolean),
+      compatibilityReadBudgets: Object.values(compatibilityReadChecks).every(Boolean),
       bulkIndexerCallCount: indexerProbes.bulk.status === "completed"
         && indexerProbes.bulk.callCount === expectedBulkIndexerCalls,
       fallbackIndexerCallCount: indexerProbes.fallback.status === "completed"
@@ -643,7 +679,6 @@ async function main() {
           /SEARCH album USING (?:COVERING )?INDEX .*artist_id/.test(detail),
         )
         && !artistProjectionPlanDetails.some((detail) => detail === "SCAN album"),
-      pageWarmP95Under750ms: Object.values(pageP95).every((value) => value < 750),
     };
     output = {
       benchmark: "aurral-library",
@@ -657,6 +692,22 @@ async function main() {
       subsonicReads,
       pages,
       artistProjectionPlan,
+      budgets: {
+        targets: {
+          warmPageP95Ms: 250,
+          coldPageP95Ms: 750,
+          responseBytes: 2 * 1024 * 1024,
+          requestRssDeltaBytes: 64 * 1024 * 1024,
+        },
+        measuredQueryChecks,
+        pageBudgetChecks,
+        compatibilityReadChecks,
+        deferredIntegrationChecks: [
+          "stableReadProviderCalls",
+          "readStartedJobs",
+          "restartMigrationRepeats",
+        ],
+      },
       indexer: {
         requestedAlbums: options.indexerAlbums,
         expectedBulkCalls: expectedBulkIndexerCalls,

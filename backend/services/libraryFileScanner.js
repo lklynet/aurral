@@ -175,6 +175,7 @@ export async function scanMusicRoot({
   filePaths = null,
   metadataReader = parseFile,
   metadataEnricher = null,
+  syncSearch = true,
 } = {}) {
   const resolvedRoot = path.resolve(String(rootPath || ""));
   await fs.mkdir(resolvedRoot, { recursive: true });
@@ -214,6 +215,7 @@ export async function scanMusicRoot({
             mbid: record.artistMbid,
             name: record.artistName,
             metadata: record.artistMetadata,
+            syncSearch,
           });
           const album = upsertLibraryAlbum({
             identityKey: record.albumKey,
@@ -224,6 +226,7 @@ export async function scanMusicRoot({
             albumArtist: record.albumArtist,
             releaseDate: record.releaseDate,
             metadata: record.albumMetadata,
+            syncSearch,
           });
           const track = upsertLibraryTrack({
             identityKey: record.trackKey,
@@ -231,12 +234,14 @@ export async function scanMusicRoot({
             title: record.title,
             artistName: record.artistName,
             metadata: record.trackMetadata,
+            syncSearch,
           });
           linkLibraryAlbumTrack({
             albumId: album.id,
             trackId: track.id,
             discNumber: record.discNumber,
             trackNumber: record.trackNumber,
+            syncSearch,
           });
           upsertLibraryMediaFile({
             trackId: track.id,

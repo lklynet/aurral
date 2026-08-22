@@ -147,7 +147,7 @@ async function readFileStats(filePath) {
   }
 }
 
-export async function indexLidarrLibrary({ client } = {}) {
+export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
   if (!client || typeof client.isConfigured !== "function" || !client.isConfigured()) {
     return { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   }
@@ -198,6 +198,7 @@ export async function indexLidarrLibrary({ client } = {}) {
         name: artistName,
         sortName: artist.sortName || null,
         metadata: { ...artist, librarySource: "lidarr" },
+        syncSearch,
       }));
     }
     for (const album of Array.isArray(albums) ? albums : []) {
@@ -222,6 +223,7 @@ export async function indexLidarrLibrary({ client } = {}) {
         albumArtist: artistName,
         releaseDate: album.releaseDate || null,
         metadata: { ...album, librarySource: "lidarr" },
+        syncSearch,
       });
       for (const track of tracksByAlbumId.get(String(album.id)) || []) {
         const trackProviderId = text(track.foreignRecordingId || track.foreignTrackId);
@@ -235,6 +237,7 @@ export async function indexLidarrLibrary({ client } = {}) {
           title: text(track.title || track.trackTitle) || "Unknown Track",
           artistName,
           metadata: track,
+          syncSearch,
         });
         const trackNumber = Number(track.trackNumber || track.absoluteTrackNumber) || 0;
         linkLibraryAlbumTrack({
@@ -242,6 +245,7 @@ export async function indexLidarrLibrary({ client } = {}) {
           trackId: trackRecord.id,
           discNumber: Number(track.mediumNumber || track.discNumber) || 1,
           trackNumber,
+          syncSearch,
         });
 
         const resolvedFile = resolveTrackFile(
