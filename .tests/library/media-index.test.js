@@ -385,6 +385,7 @@ test("indexLidarrLibrary keeps artists without albums and refreshes monitoring m
     assert.equal(projection?.providerId, "1212");
     assert.equal(projection?.id, projection?.canonicalId);
     assert.deepEqual(projection?.sources, ["lidarr"]);
+    assert.equal(projection?.lidarrManaged, true);
     assert.equal(projection?.monitored, false);
 
     monitored = true;
@@ -440,6 +441,10 @@ test("indexLidarrLibrary keeps fully missing albums in canonical reads", async (
 
     assert.equal(page.items[0]?.title, "Fully Missing Album");
     assert.equal(page.items[0]?.availableTrackCount, 0);
+    const albumMetadata = db.prepare(
+      "SELECT metadata_json FROM library_albums WHERE mbid = ?",
+    ).get(albumMbid);
+    assert.equal(JSON.parse(albumMetadata.metadata_json).librarySource, "lidarr");
   } finally {
     db.prepare("DELETE FROM library_artists WHERE mbid = ?").run(artistMbid);
     db.prepare("DELETE FROM library_tracks WHERE mbid = ?").run(trackMbid);

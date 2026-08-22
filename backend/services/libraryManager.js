@@ -9,6 +9,10 @@ import {
   invalidateCanonicalLibraryCache,
 } from "./libraryQueryService.js";
 import { scheduleLibraryScan } from "./libraryScanWorker.js";
+import {
+  clearCanonicalLidarrAlbum,
+  clearCanonicalLidarrArtist,
+} from "./libraryMediaStore.js";
 const normalizeTypeName = (value) =>
   String(value || "")
     .toLowerCase()
@@ -1111,6 +1115,7 @@ export class LibraryManager {
       await lidarr.deleteArtist(lidarrArtist.id, deleteFiles);
       dbOps.deleteLidarrArtistIdMap(mbid);
       removeCachedArtistByMbid(mbid);
+      clearCanonicalLidarrArtist(mbid);
       scheduleCanonicalLibraryReconciliation();
       logger.info('library', `[LibraryManager] Deleted artist "${lidarrArtist.artistName}" from Lidarr`);
       return { success: true };
@@ -1561,6 +1566,7 @@ export class LibraryManager {
     }
     try {
       await lidarr.deleteAlbum(id, deleteFiles);
+      clearCanonicalLidarrAlbum(id);
       scheduleCanonicalLibraryReconciliation();
       return { success: true };
     } catch (error) {

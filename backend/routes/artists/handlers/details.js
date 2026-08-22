@@ -15,7 +15,7 @@ import { getCanonicalArtistProjection } from "../../../services/libraryQueryServ
 
 export function getCanonicalLidarrArtist(reference) {
   const artist = getCanonicalArtistProjection({ reference })[0] || null;
-  if (!artist?.sources.includes("lidarr")) return null;
+  if (!artist?.lidarrManaged) return null;
   return {
     id: artist.providerId || artist.id,
     artistName: artist.artistName,

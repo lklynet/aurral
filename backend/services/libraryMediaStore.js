@@ -15,6 +15,19 @@ const normalizeKeyPart = (value) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
+const LIDARR_METADATA_KEYS = [
+  "librarySource",
+  "id",
+  "monitored",
+  "monitor",
+  "monitorNewItems",
+  "addOptions",
+  "path",
+  "qualityProfile",
+  "rootFolderPath",
+  "statistics",
+];
+
 let libraryScanDepth = 0;
 let libraryCacheInvalidationPending = false;
 
@@ -87,6 +100,48 @@ export function upsertLibraryArtist({ identityKey, mbid = null, name, sortName =
   ).run(key, mbid || null, artistName, sortName || null, stringify(metadata), timestamp, timestamp);
   invalidateLibraryCache();
   return db.prepare("SELECT * FROM library_artists WHERE identity_key = ?").get(key);
+}
+
+function clearLidarrMetadata(table, where, parameters) {
+  const row = db.prepare(`SELECT id, metadata_json FROM ${table} WHERE ${where} LIMIT 1`)
+    .get(...parameters);
+  if (!row) return false;
+  let metadata = {};
+  try {
+    const parsed = JSON.parse(row.metadata_json || "{}");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) metadata = parsed;
+  } catch {}
+  for (const key of LIDARR_METADATA_KEYS) delete metadata[key];
+  db.prepare(`UPDATE ${table} SET metadata_json = ?, updated_at = ? WHERE id = ?`)
+    .run(stringify(metadata), now(), row.id);
+  invalidateLibraryCache();
+  return true;
+}
+
+export function clearCanonicalLidarrArtist(reference) {
+  const value = normalizeText(reference);
+  if (!value) return false;
+  return clearLidarrMetadata(
+    "library_artists",
+    `mbid = ? OR identity_key = ? OR (
+      json_valid(metadata_json)
+      AND CAST(json_extract(metadata_json, '$.foreignArtistId') AS TEXT) = ?
+    )`,
+    [value, value, value],
+  );
+}
+
+export function clearCanonicalLidarrAlbum(reference) {
+  const value = normalizeText(reference);
+  if (!value) return false;
+  return clearLidarrMetadata(
+    "library_albums",
+    `mbid = ? OR release_group_mbid = ? OR identity_key = ? OR (
+      json_valid(metadata_json)
+      AND CAST(json_extract(metadata_json, '$.id') AS TEXT) = ?
+    )`,
+    [value, value, value, value],
+  );
 }
 
 export function upsertLibraryAlbum({

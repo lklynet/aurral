@@ -236,6 +236,7 @@ const canonicalArtistProjection = (row) => {
     id: String(row.id),
     canonicalId: String(row.id),
     providerId,
+    lidarrManaged: metadata.librarySource === "lidarr",
     mbid: row.mbid || null,
     foreignArtistId: metadata.foreignArtistId || row.mbid || row.identity_key,
     artistName: row.name,

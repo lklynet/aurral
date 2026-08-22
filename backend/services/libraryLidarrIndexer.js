@@ -221,7 +221,7 @@ export async function indexLidarrLibrary({ client } = {}) {
         title: text(album.title) || "Unknown Album",
         albumArtist: artistName,
         releaseDate: album.releaseDate || null,
-        metadata: album,
+        metadata: { ...album, librarySource: "lidarr" },
       });
       for (const track of tracksByAlbumId.get(String(album.id)) || []) {
         const trackProviderId = text(track.foreignRecordingId || track.foreignTrackId);

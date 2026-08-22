@@ -98,6 +98,43 @@ test("artist monitoring mutations dedupe canonical reconciliation scans", async 
   }
 });
 
+test("deleting a Lidarr artist clears canonical provider state", async (t) => {
+  const mbid = "89898989-8989-4898-8989-898989898989";
+  const artist = upsertLibraryArtist({
+    identityKey: `mbid:${mbid}`,
+    mbid,
+    name: "Deleted Provider Artist",
+    metadata: {
+      id: 8989,
+      foreignArtistId: mbid,
+      librarySource: "lidarr",
+      monitored: true,
+    },
+  });
+  clearScheduledLibraryScan();
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  t.mock.method(lidarrClient, "getArtistByMbid", async () => ({
+    id: 8989,
+    artistName: "Deleted Provider Artist",
+    foreignArtistId: mbid,
+  }));
+  t.mock.method(lidarrClient, "deleteArtist", async () => true);
+
+  try {
+    assert.deepEqual(await libraryManager.deleteArtist(mbid), { success: true });
+    const projection = getCanonicalArtistProjection({ reference: artist.id })[0];
+    assert.equal(projection?.lidarrManaged, false);
+    assert.equal(projection?.providerId, null);
+    assert.equal(projection?.monitored, false);
+    assert.equal(getCanonicalLidarrArtist(mbid), null);
+  } finally {
+    const jobId = getScheduledLibraryScanJobId();
+    if (jobId) getLibraryScanQueue().cancel(jobId);
+    clearScheduledLibraryScan();
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  }
+});
+
 test("stable artist reads remain local when Lidarr is absent", async (t) => {
   const request = t.mock.method(lidarrClient, "request", async () => {
     throw new Error("absent Lidarr must not be called");
