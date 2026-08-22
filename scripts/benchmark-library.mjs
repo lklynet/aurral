@@ -518,7 +518,7 @@ async function main() {
     const stripProjection = ({ value: _value, ...sample }) => sample;
     pages["artist-projection"] = {
       shape: artistProjectionSummary(artistProjectionCold.value),
-      cold: stripProjection(artistProjectionCold),
+      cold: summarizeSamples([stripProjection(artistProjectionCold)]),
       warm: summarizeSamples(artistProjectionSamples.map(stripProjection)),
     };
     const artistProjectionPlan = queryService.getCanonicalArtistProjectionQueryPlan({
