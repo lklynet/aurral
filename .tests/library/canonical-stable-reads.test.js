@@ -351,6 +351,28 @@ test("canonical paginated reads keep tied rows stable", () => {
       }).albums[0]?.id),
       albums.map((album) => album.id),
     );
+    for (const sort of ["name", "artist", "newest"]) {
+      const expectedTrackIds = getCanonicalLibraryPage({
+        source: "lidarr",
+        availableOnly: true,
+        kind: "tracks",
+        query: trackTitle,
+        sort,
+        pageSize: 2,
+      }).tracks.map((track) => track.id);
+      assert.deepEqual(
+        [0, 1].map((offset) => getCanonicalLibraryPage({
+          source: "lidarr",
+          availableOnly: true,
+          kind: "tracks",
+          query: trackTitle,
+          sort,
+          pageSize: 1,
+          offset,
+        }).tracks[0]?.id),
+        expectedTrackIds,
+      );
+    }
 
     const artistSearchMatch = getLibrarySearchMatch(artistName);
     const albumSearchMatch = getLibrarySearchMatch(albumTitle);

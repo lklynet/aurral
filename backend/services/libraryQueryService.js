@@ -1694,14 +1694,17 @@ function buildPageQuery({
   if (sort === "newest" && (kind === "albums" || kind === "tracks")) {
     orderBy = recentMediaOrder(kind, sourceFilter, availableOnly, direction);
     if (kind === "albums") orderBy += ", album.id";
+    else orderBy += ", track.id";
   } else if (sort === "artist" && kind !== "artists") {
     orderBy = `artist.name COLLATE NOCASE ${orderDirection}, ${kind === "albums" ? "album.title" : "track.title"} COLLATE NOCASE ${orderDirection}`;
     if (kind === "albums") orderBy += ", album.id";
+    else orderBy += ", track.id";
   } else if (kind === "artists") {
     orderBy = `coalesce(artist.sort_name, artist.name) COLLATE NOCASE ${orderDirection}, artist.name COLLATE NOCASE ${orderDirection}, artist.id ${orderDirection}`;
   } else {
     orderBy = `${kind === "albums" ? "album.title" : "track.title"} COLLATE NOCASE ${orderDirection}`;
     if (kind === "albums") orderBy += `, album.id ${orderDirection}`;
+    else orderBy += `, track.id ${orderDirection}`;
   }
 
   return {
