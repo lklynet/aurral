@@ -20,17 +20,23 @@ export function getLibrarySearchMatch(value) {
   return trigrams.size ? [...trigrams].join(" AND ") : null;
 }
 
-const upsertDocument = db.prepare(
-  `INSERT INTO library_search_documents (entity_kind, entity_id, title, artist_name, album_name)
-   VALUES (?, ?, ?, ?, ?)
-   ON CONFLICT(entity_kind, entity_id) DO UPDATE SET
-     title = excluded.title,
-     artist_name = excluded.artist_name,
-     album_name = excluded.album_name
-   WHERE title IS NOT excluded.title
-      OR artist_name IS NOT excluded.artist_name
-      OR album_name IS NOT excluded.album_name`,
-);
+let upsertDocument;
+
+function upsertSearchDocument(...values) {
+  if (!indexAvailable) return false;
+  upsertDocument ??= db.prepare(
+    `INSERT INTO library_search_documents (entity_kind, entity_id, title, artist_name, album_name)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(entity_kind, entity_id) DO UPDATE SET
+       title = excluded.title,
+       artist_name = excluded.artist_name,
+       album_name = excluded.album_name
+     WHERE title IS NOT excluded.title
+        OR artist_name IS NOT excluded.artist_name
+        OR album_name IS NOT excluded.album_name`,
+  );
+  return upsertDocument.run(...values).changes > 0;
+}
 
 export function syncLibrarySearchArtist(artistId) {
   if (!indexAvailable) return false;
@@ -38,7 +44,7 @@ export function syncLibrarySearchArtist(artistId) {
     "SELECT id, name FROM library_artists WHERE id = ?",
   ).get(Number(artistId));
   if (!artist) return false;
-  const changed = upsertDocument.run("artist", artist.id, artist.name, "", "").changes > 0;
+  const changed = upsertSearchDocument("artist", artist.id, artist.name, "", "");
   if (!changed) return false;
   for (const album of db.prepare(
     "SELECT id FROM library_albums WHERE artist_id = ?",
@@ -62,7 +68,7 @@ export function syncLibrarySearchAlbum(albumId) {
      WHERE album.id = ?`,
   ).get(Number(albumId));
   if (!album) return false;
-  return upsertDocument.run(
+  return upsertSearchDocument(
     "album",
     album.id,
     album.title,
@@ -87,7 +93,7 @@ export function syncLibrarySearchTrack(trackId) {
      GROUP BY track.id`,
   ).get(Number(trackId));
   if (!track) return false;
-  return upsertDocument.run(
+  return upsertSearchDocument(
     "track",
     track.id,
     track.title,
