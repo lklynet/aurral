@@ -139,6 +139,17 @@ function resolveEnqueueRunAt(options) {
   return null;
 }
 
+function parseHonkerPayload(value) {
+  try {
+    const payload = typeof value === "string" ? JSON.parse(value) : value;
+    return payload && typeof payload === "object" && !Array.isArray(payload)
+      ? payload
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function createHonkerQueue({
   name,
   visibilityTimeoutS,
@@ -397,19 +408,61 @@ export function bootstrapHonkerSchedules() {
 }
 
 export function enqueueHonkerStartupTasks() {
+  const enqueueIfAbsent = (payload, options) => {
+    const existing = findActiveHonkerJob(
+      "system-task",
+      (candidate) => candidate?.kind === payload.kind,
+      { recoverExpired: true },
+    );
+    return existing?.id || enqueueSystemTaskJob(payload, options);
+  };
   const migration = dbOps.getJSONSetting(PLAYLIST_STARTUP_MIGRATION_SETTING);
   if (
     migration?.version !== PLAYLIST_STARTUP_MIGRATION_VERSION ||
     path.resolve(String(migration?.rootPath || "")) !== resolvePlaylistRoot()
   ) {
-    enqueueSystemTaskJob(
+    enqueueIfAbsent(
       { kind: "playlist-startup-migration" },
       { delaySeconds: 3, priority: 10 },
     );
   }
-  enqueueSystemTaskJob({ kind: "weekly-flow-startup-check" }, { delaySeconds: 5, priority: 5 });
-  enqueueSystemTaskJob({ kind: "discovery-bootstrap" }, { delaySeconds: 15, priority: 5 });
-  enqueueSystemTaskJob({ kind: "library-index-bootstrap" }, { delaySeconds: 8, priority: 0 });
+  enqueueIfAbsent({ kind: "weekly-flow-startup-check" }, { delaySeconds: 5, priority: 5 });
+  enqueueIfAbsent({ kind: "discovery-bootstrap" }, { delaySeconds: 15, priority: 5 });
+  enqueueIfAbsent({ kind: "library-index-bootstrap" }, { delaySeconds: 8, priority: 0 });
+}
+
+export function findActiveHonkerJob(
+  queueName,
+  predicate = () => true,
+  { recoverExpired = false } = {},
+) {
+  const safeQueue = String(queueName || "").trim();
+  if (!safeQueue) return null;
+  const queue = getHonkerQueueByName(safeQueue);
+  if (recoverExpired) {
+    try {
+      queue?.sweepExpired();
+    } catch {}
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const rows = getHonkerDb().query(
+    `
+      SELECT id, payload, state, run_at, claim_expires_at, attempts
+      FROM _honker_live
+      WHERE queue = ?
+        AND (
+          state = 'pending'
+          OR (state = 'processing' AND (claim_expires_at IS NULL OR claim_expires_at > ?))
+        )
+      ORDER BY id ASC
+    `,
+    [safeQueue, now],
+  );
+  for (const row of rows) {
+    const payload = parseHonkerPayload(row.payload);
+    if (predicate(payload, row)) return { ...row, payload };
+  }
+  return null;
 }
 
 export function startHonkerScheduler() {

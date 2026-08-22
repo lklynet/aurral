@@ -208,7 +208,13 @@ export const disableNewsFeed = (sourceUrl, sourceName) => {
   return nextNews;
 };
 
-export async function getNewsForUser({ limit = 60, offset = 0, userId, mode = "matched" } = {}) {
+export async function getNewsForUser({
+  limit = 60,
+  offset = 0,
+  userId,
+  mode = "matched",
+  refresh = false,
+} = {}) {
   const settings = getNewsSettings();
   const libraryArtists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
   const recommendedArtists = userId
@@ -219,9 +225,11 @@ export async function getNewsForUser({ limit = 60, offset = 0, userId, mode = "m
     ...recommendedArtists.map((artist) => ({ ...artist, newsType: "recommended" })),
   ]);
   const preferences = getNewsPreferences(userId);
-  const refresh = await refreshFeeds();
+  const refreshResult = refresh
+    ? await refreshFeeds()
+    : { state: getStoredState(), warning: null };
   const activeFeedUrls = new Set(getEnabledFeeds(settings).map((feed) => feed.url));
-  const activeArticles = refresh.state.articles.filter((article) => activeFeedUrls.has(article.sourceUrl));
+  const activeArticles = refreshResult.state.articles.filter((article) => activeFeedUrls.has(article.sourceUrl));
   const matchedArticles = matchNewsArticles(
     activeArticles,
     artists,
@@ -242,7 +250,9 @@ export async function getNewsForUser({ limit = 60, offset = 0, userId, mode = "m
     : matchedArticles;
   if (mode === "top") {
     const page = articles.slice(safeOffset, safeOffset + safeLimit);
-    const enrichedPage = await enrichArticleImages(page, refresh.state);
+    const enrichedPage = refresh
+      ? await enrichArticleImages(page, refreshResult.state)
+      : page;
     const enrichedById = new Map(enrichedPage.map((article) => [article.id, article]));
     articles = articles.map((article) => enrichedById.get(article.id) || article);
   }
@@ -254,9 +264,9 @@ export async function getNewsForUser({ limit = 60, offset = 0, userId, mode = "m
     hasMore: safeOffset + safeLimit < articles.length,
     blockedPublishers: preferences.blockedPublishers,
     refresh: {
-      checkedAt: refresh.state.checkedAt || null,
-      failedFeeds: refresh.state.failedFeeds,
-      warning: refresh.warning || null,
+      checkedAt: refreshResult.state.checkedAt || null,
+      failedFeeds: refreshResult.state.failedFeeds,
+      warning: refreshResult.warning || null,
     },
   };
 }
@@ -264,7 +274,7 @@ export async function getNewsForUser({ limit = 60, offset = 0, userId, mode = "m
 export const getLibraryNews = getNewsForUser;
 
 export async function refreshLibraryNews() {
-  return getNewsForUser();
+  return getNewsForUser({ refresh: true });
 }
 
 export const getNewsFeedState = () => {

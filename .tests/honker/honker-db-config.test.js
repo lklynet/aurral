@@ -79,6 +79,7 @@ test("startup only queues due bootstrap work and a pending migration", () => {
 
   clearQueue();
   honkerDb.enqueueHonkerStartupTasks();
+  honkerDb.enqueueHonkerStartupTasks();
   assert.deepEqual(queuedKinds(), [
     "playlist-startup-migration",
     "weekly-flow-startup-check",

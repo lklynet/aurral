@@ -1,6 +1,9 @@
 import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getStorageHealth } from "../utils/api/endpoints/settings.js";
+import {
+  getStorageHealth,
+  runStorageHealthCheck,
+} from "../utils/api/endpoints/settings.js";
 import { queryClient, queryKeys } from "../queryClient.js";
 
 const toSnapshot = (result, dataUpdatedAt = 0) => ({
@@ -34,7 +37,8 @@ export function setStorageHealthResult(result) {
 export function refreshStorageHealth({ force = false } = {}) {
   return queryClient.fetchQuery({
     queryKey: queryKeys.storageHealth,
-    queryFn: ({ signal }) => getStorageHealth({ force, signal }),
+    queryFn: ({ signal }) =>
+      force ? runStorageHealthCheck({ signal }) : getStorageHealth({ signal }),
     staleTime: force ? 0 : 120_000,
   });
 }

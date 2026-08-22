@@ -4,8 +4,10 @@ import { hasPermission } from "../middleware/auth.js";
 import { requireAuth } from "../middleware/requirePermission.js";
 import { libraryManager } from "../services/libraryManager.js";
 import {
+  enqueueInboxRefreshForUser,
   getInboxForUser,
   getInboxRefreshCooldownMs,
+  getInboxRefreshStatus,
   markAllInboxItemsRead,
   updateInboxItem,
 } from "../services/inboxService.js";
@@ -56,9 +58,6 @@ router.get("/", requireAuth, async (req, res) => {
     const limit = Math.max(1, Math.min(50, Number.parseInt(req.query.limit, 10) || 50));
     const result = await getInboxForUser(getUserId(req), {
       limit,
-      zipCode: String(req.query.zip || "").trim(),
-      req,
-      awaitRefresh: false,
     });
     res.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
     return res.json(result);
@@ -72,21 +71,37 @@ router.post("/refresh", requireAuth, async (req, res) => {
   const now = Date.now();
   const last = lastManualRefresh.get(userId) || 0;
   const cooldown = getInboxRefreshCooldownMs() * 3;
+  const current = getInboxRefreshStatus(userId);
+  if (current.status === "queued" || current.status === "running") {
+    return res.status(202).json({
+      accepted: false,
+      queued: false,
+      jobId: current.jobId,
+      status: current.status,
+      refreshStatus: current,
+    });
+  }
   if (now - last < cooldown) {
     return res.status(429).json({
       error: "Inbox refresh is rate limited",
       retryAfterSeconds: Math.ceil((cooldown - (now - last)) / 1000),
     });
   }
-  lastManualRefresh.set(userId, now);
   try {
-    const result = await getInboxForUser(userId, {
-      limit: 50,
+    const refresh = await enqueueInboxRefreshForUser(userId, {
+      reason: "manual",
       zipCode: String(req.body?.zip || req.query.zip || "").trim(),
-      req,
-      force: true,
+      ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
     });
-    return res.json(result);
+    lastManualRefresh.set(userId, now);
+    const result = getInboxForUser(userId, { limit: 50 });
+    return res.status(202).json({
+      ...result,
+      accepted: refresh.queued,
+      queued: refresh.queued,
+      jobId: refresh.jobId,
+      status: refresh.status,
+    });
   } catch (error) {
     return res.status(500).json({ error: "Failed to refresh inbox", message: error.message });
   }
