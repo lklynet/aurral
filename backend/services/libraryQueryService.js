@@ -1,4 +1,9 @@
 import { db, dbHelpers } from "../config/db-sqlite.js";
+import {
+  computeLibraryGenreStats,
+  rebuildStoredLibraryGenreStats,
+} from "../config/library-search-index.js";
+import { getLibrarySearchMatch } from "./librarySearchIndex.js";
 
 const SOURCES = new Set(["aurral", "lidarr"]);
 const libraryCache = new Map();
@@ -609,29 +614,13 @@ export function getCanonicalLibrary({ source = null, availableOnly = false, favo
 
 const text = (value) => String(value || "").trim();
 
-const metadataGenres = (entity) => {
-  const metadata = entity?.metadata || {};
-  return [metadata.genres, metadata.genre, metadata.common?.genre, metadata.tags?.genre]
-    .flatMap((value) => (Array.isArray(value) ? value : [value]))
-    .map(text)
-    .filter(Boolean)
-    .filter((value, index, values) => values.indexOf(value) === index);
-};
-
-const addGenreStats = (stats, metadata, kind) => {
-  metadataGenres({ metadata }).forEach((genre) => {
-    const entry = stats.get(genre) || { name: genre, artists: 0, albums: 0, tracks: 0 };
-    entry[kind] += 1;
-    stats.set(genre, entry);
-  });
-};
-
 const pageNumber = (value) => Math.max(1, Number.parseInt(value, 10) || 1);
 
 const pageSize = (value) =>
   Math.min(MAX_PAGE_SIZE, Math.max(1, Number.parseInt(value, 10) || DEFAULT_PAGE_SIZE));
 
 const genreStatsCache = new Map();
+const GENRE_STATS_SETTING_PREFIX = "libraryGenreStats:";
 const GENRE_METADATA_PATHS = ["$.genres", "$.genre", "$.common.genre", "$.tags.genre"];
 
 const escapeLike = (value) => value.replace(/[\\%_]/g, "\\$&");
@@ -660,7 +649,7 @@ const recentMediaOrder = (kind, sourceFilter, availableOnly, direction) => {
     return `COALESCE((
       SELECT MAX(page_media.created_at)
       FROM library_album_tracks AS page_album_track
-      JOIN library_media_files AS page_media INDEXED BY idx_library_media_files_track_source_available
+      JOIN library_media_files AS page_media INDEXED BY idx_library_media_files_track_album_source_available
         ON page_media.track_id = page_album_track.track_id
       WHERE page_album_track.album_id = album.id
         AND ${albumMediaCondition("page_media", "page_album_track")}${mediaFilter}
@@ -668,7 +657,7 @@ const recentMediaOrder = (kind, sourceFilter, availableOnly, direction) => {
   }
   return `COALESCE((
     SELECT MAX(page_media.created_at)
-    FROM library_media_files AS page_media INDEXED BY idx_library_media_files_track_source_available
+    FROM library_media_files AS page_media INDEXED BY idx_library_media_files_track_album_source_available
     WHERE page_media.track_id = track.id${mediaFilter}
   ), 0) ${orderDirection}, track.title COLLATE NOCASE ${direction === "desc" ? "DESC" : "ASC"}`;
 };
@@ -683,7 +672,7 @@ const pageMediaExists = (kind, sourceFilter, availableOnly) => {
         SELECT 1
         FROM library_albums AS page_album
         JOIN library_album_tracks AS page_album_track ON page_album_track.album_id = page_album.id
-        JOIN library_media_files AS page_media INDEXED BY idx_library_media_files_track_source_available
+        JOIN library_media_files AS page_media INDEXED BY idx_library_media_files_track_album_source_available
           ON page_media.track_id = page_album_track.track_id
         WHERE page_album.artist_id = artist.id
           AND ${albumMediaCondition("page_media", "page_album_track")}
@@ -697,7 +686,7 @@ const pageMediaExists = (kind, sourceFilter, availableOnly) => {
       sql: `EXISTS (
         SELECT 1
         FROM library_album_tracks AS page_album_track
-        JOIN library_media_files AS page_media INDEXED BY idx_library_media_files_track_source_available
+        JOIN library_media_files AS page_media INDEXED BY idx_library_media_files_track_album_source_available
           ON page_media.track_id = page_album_track.track_id
         WHERE page_album_track.album_id = album.id
           AND ${albumMediaCondition("page_media", "page_album_track")}
@@ -708,7 +697,7 @@ const pageMediaExists = (kind, sourceFilter, availableOnly) => {
   }
   return {
     sql: `EXISTS (
-      SELECT 1 FROM library_media_files AS page_media INDEXED BY idx_library_media_files_track_source_available
+      SELECT 1 FROM library_media_files AS page_media INDEXED BY idx_library_media_files_track_album_source_available
       WHERE page_media.track_id = track.id AND ${conditionSql}
     )`,
     parameters,
@@ -746,13 +735,14 @@ export function getCanonicalArtistPage({
   offset = 0,
   limit = null,
   includeStats = false,
+  searchMatch = null,
 } = {}) {
   const sourceFilter = normalizeSource(source);
   const media = pageMediaExists("artists", sourceFilter, availableOnly);
   const conditions = [media.sql];
   const parameters = [...media.parameters];
   const normalizedQuery = text(query).toLocaleLowerCase();
-  if (normalizedQuery) {
+  if (normalizedQuery && !searchMatch) {
     conditions.push("lower(artist.name) LIKE ? ESCAPE '\\'");
     parameters.push(`%${escapeLike(normalizedQuery)}%`);
   }
@@ -760,12 +750,23 @@ export function getCanonicalArtistPage({
     ? null
     : pageLimit(limit);
   const pageSql = boundedLimit === null ? "" : "LIMIT ? OFFSET ?";
+  const searchJoin = searchMatch
+    ? `JOIN library_search_documents AS search_document
+         ON search_document.entity_kind = 'artist' AND search_document.entity_id = artist.id
+       JOIN library_search_fts AS search_fts
+         ON search_fts.rowid = search_document.id AND library_search_fts MATCH ?`
+    : "";
+  if (searchMatch) {
+    parameters.unshift(searchMatch);
+    conditions.push("lower(search_document.title) LIKE ? ESCAPE '\\'");
+    parameters.push(`%${escapeLike(normalizedQuery)}%`);
+  }
   const ids = db.prepare(
     `SELECT artist.id
      FROM library_artists AS artist
+     ${searchJoin}
      WHERE ${conditions.join(" AND ")}
-     ORDER BY coalesce(artist.sort_name, artist.name) COLLATE NOCASE,
-       artist.name COLLATE NOCASE
+     ${searchMatch ? "" : "ORDER BY coalesce(artist.sort_name, artist.name) COLLATE NOCASE, artist.name COLLATE NOCASE"}
      ${pageSql}`,
   ).all(...parameters, ...(boundedLimit === null ? [] : [boundedLimit, pageOffset(offset)])).map((row) => row.id);
   if (!ids.length) return { artists: [], albums: [], tracks: [] };
@@ -890,13 +891,14 @@ export function getCanonicalAlbumPage({
   artistId = null,
   offset = 0,
   limit = 20,
+  searchMatch = null,
 } = {}) {
   const sourceFilter = normalizeSource(source);
   const media = pageMediaExists("albums", sourceFilter, availableOnly);
   const conditions = [media.sql];
   const parameters = [...media.parameters];
   const normalizedQuery = text(query).toLocaleLowerCase();
-  if (normalizedQuery) {
+  if (normalizedQuery && !searchMatch) {
     const fields = ["album.title", "album.album_artist", "artist.name"];
     const pattern = `%${escapeLike(normalizedQuery)}%`;
     conditions.push(`(${fields.map((field) =>
@@ -947,19 +949,48 @@ export function getCanonicalAlbumPage({
 
   const boundedLimit = pageLimit(limit, 20);
   if (boundedLimit === 0) return { artists: [], albums: [], tracks: [] };
+  const searchJoin = searchMatch
+    ? `JOIN library_search_documents AS search_document
+         ON search_document.entity_kind = 'album' AND search_document.entity_id = album.id
+       JOIN library_search_fts AS search_fts
+         ON search_fts.rowid = search_document.id AND library_search_fts MATCH ?`
+    : "";
+  if (searchMatch) {
+    parameters.unshift(searchMatch);
+    conditions.push("(lower(search_document.title) LIKE ? ESCAPE '\\' OR lower(search_document.artist_name) LIKE ? ESCAPE '\\')");
+    parameters.push(`%${escapeLike(normalizedQuery)}%`, `%${escapeLike(normalizedQuery)}%`);
+  }
   const ids = db.prepare(
     `SELECT album.id
      FROM library_albums AS album
      JOIN library_artists AS artist ON artist.id = album.artist_id
+     ${searchJoin}
      WHERE ${conditions.join(" AND ")}
      GROUP BY album.id
-     ORDER BY ${orderBy}
+     ${searchMatch ? "" : `ORDER BY ${orderBy}`}
      LIMIT ? OFFSET ?`,
   ).all(...parameters, boundedLimit, pageOffset(offset)).map((row) => row.id);
   const library = getCanonicalLibraryForAlbumIds({ source: sourceFilter, availableOnly, ids });
   const albumsById = new Map(library.albums.map((album) => [album.id, album]));
   library.albums = ids.map((id) => albumsById.get(id)).filter(Boolean);
   return library;
+}
+
+function getRandomTrackIds({ conditions, parameters, limit, offset }) {
+  const maximum = Number(db.prepare("SELECT max(id) AS maximum FROM library_tracks").get()?.maximum || 0);
+  if (!maximum) return [];
+  const needed = limit + offset;
+  const pivot = Math.floor(Math.random() * maximum) + 1;
+  const read = (operator, boundary, count) => db.prepare(
+    `SELECT track.id
+     FROM library_tracks AS track
+     WHERE ${conditions.join(" AND ")} AND track.id ${operator} ?
+     ORDER BY track.id
+     LIMIT ?`,
+  ).all(...parameters, boundary, count).map((row) => row.id);
+  const ids = read(">=", pivot, needed);
+  if (ids.length < needed) ids.push(...read("<", pivot, needed - ids.length));
+  return ids.slice(offset, offset + limit);
 }
 
 export function getCanonicalTrackPage({
@@ -973,6 +1004,7 @@ export function getCanonicalTrackPage({
   offset = 0,
   limit = 20,
   random = false,
+  searchMatch = null,
 } = {}) {
   const sourceFilter = normalizeSource(source);
   const media = pageMediaExists("tracks", sourceFilter, availableOnly);
@@ -986,7 +1018,7 @@ export function getCanonicalTrackPage({
     "artist.name",
   ];
   const normalizedQuery = text(query).toLocaleLowerCase();
-  if (normalizedQuery) {
+  if (normalizedQuery && !searchMatch) {
     const pattern = `%${escapeLike(normalizedQuery)}%`;
     conditions.push(`(${fields.map((field) =>
       `lower(coalesce(${field}, '')) LIKE ? ESCAPE '\\'`).join(" OR ")})`);
@@ -1014,6 +1046,47 @@ export function getCanonicalTrackPage({
   }
   const boundedLimit = pageLimit(limit, 20);
   if (boundedLimit === 0) return { artists: [], albums: [], tracks: [] };
+  const useSearchIndex = Boolean(searchMatch)
+    && !artistReference
+    && !(artistId !== null && artistId !== undefined && String(artistId).trim())
+    && !(albumId !== null && albumId !== undefined && String(albumId).trim())
+    && !normalizedGenre;
+  if (useSearchIndex) {
+    const pattern = `%${escapeLike(normalizedQuery)}%`;
+    const searchConditions = [
+      ...conditions,
+      "(lower(search_document.title) LIKE ? ESCAPE '\\' OR lower(search_document.artist_name) LIKE ? ESCAPE '\\' OR lower(search_document.album_name) LIKE ? ESCAPE '\\')",
+    ];
+    const ids = db.prepare(
+      `SELECT track.id
+       FROM library_tracks AS track
+       JOIN library_search_documents AS search_document
+         ON search_document.entity_kind = 'track' AND search_document.entity_id = track.id
+       JOIN library_search_fts AS search_fts
+         ON search_fts.rowid = search_document.id AND library_search_fts MATCH ?
+       WHERE ${searchConditions.join(" AND ")}
+       LIMIT ? OFFSET ?`,
+    ).all(searchMatch, ...parameters, pattern, pattern, pattern, boundedLimit, pageOffset(offset))
+      .map((row) => row.id);
+    const library = getCanonicalLibraryForTrackIds({ source: sourceFilter, availableOnly, ids, albumId });
+    const tracksById = new Map(library.tracks.map((track) => [track.id, track]));
+    library.tracks = ids.map((id) => tracksById.get(id)).filter(Boolean);
+    return library;
+  }
+  if (random && !normalizedQuery && !artistReference && !normalizedGenre
+    && !(artistId !== null && artistId !== undefined && String(artistId).trim())
+    && !(albumId !== null && albumId !== undefined && String(albumId).trim())) {
+    const ids = getRandomTrackIds({
+      conditions,
+      parameters,
+      limit: boundedLimit,
+      offset: pageOffset(offset),
+    });
+    const library = getCanonicalLibraryForTrackIds({ source: sourceFilter, availableOnly, ids, albumId });
+    const tracksById = new Map(library.tracks.map((track) => [track.id, track]));
+    library.tracks = ids.map((id) => tracksById.get(id)).filter(Boolean);
+    return library;
+  }
   const orderBy = random
     ? "random()"
     : "artist.sort_name COLLATE NOCASE, artist.name COLLATE NOCASE, album.title COLLATE NOCASE, album_track.disc_number, album_track.track_number, track.title COLLATE NOCASE";
@@ -1045,12 +1118,14 @@ export function getCanonicalSearchPage({
   songLimit = 20,
   songOffset = 0,
 } = {}) {
+  const searchMatch = getLibrarySearchMatch(query);
   const albumLibrary = getCanonicalAlbumPage({
     source,
     availableOnly,
     query,
     limit: albumLimit,
     offset: albumOffset,
+    searchMatch,
   });
   const trackLibrary = getCanonicalTrackPage({
     source,
@@ -1058,9 +1133,17 @@ export function getCanonicalSearchPage({
     query,
     limit: songLimit,
     offset: songOffset,
+    searchMatch,
   });
   return {
-    artists: getCanonicalArtistPage({ source, availableOnly, query, limit: artistLimit, offset: artistOffset }).artists,
+    artists: getCanonicalArtistPage({
+      source,
+      availableOnly,
+      query,
+      limit: artistLimit,
+      offset: artistOffset,
+      searchMatch,
+    }).artists,
     albums: albumLibrary,
     tracks: trackLibrary,
   };
@@ -1171,12 +1254,16 @@ function buildPageQuery({
   const media = pageMediaExists(kind, sourceFilter, availableOnly);
   where.push(media.sql);
   parameters.push(...media.parameters);
+  const searchMatch = getLibrarySearchMatch(query);
 
   let from;
   let idExpression;
   let searchableFields;
   let genreAliases;
+  let entityKind;
+  let groupBy = null;
   if (kind === "artists") {
+    entityKind = "artist";
     from = "FROM library_artists AS artist";
     idExpression = "artist.id";
     searchableFields = ["artist.name"];
@@ -1190,6 +1277,7 @@ function buildPageQuery({
       parameters.push(Number(albumId));
     }
   } else if (kind === "albums") {
+    entityKind = "album";
     from = "FROM library_albums AS album JOIN library_artists AS artist ON artist.id = album.artist_id";
     idExpression = "album.id";
     searchableFields = ["album.title", "album.album_artist", "artist.name"];
@@ -1203,10 +1291,16 @@ function buildPageQuery({
       parameters.push(Number(albumId));
     }
   } else {
-    from = `FROM library_tracks AS track
-      JOIN library_album_tracks AS album_track ON album_track.track_id = track.id
-      JOIN library_albums AS album ON album.id = album_track.album_id
-      JOIN library_artists AS artist ON artist.id = album.artist_id`;
+    entityKind = "track";
+    const needsRelations = Boolean(artistId || albumId || genre || sort === "artist")
+      || Boolean(query && !searchMatch);
+    from = needsRelations
+      ? `FROM library_tracks AS track
+        JOIN library_album_tracks AS album_track ON album_track.track_id = track.id
+        JOIN library_albums AS album ON album.id = album_track.album_id
+        JOIN library_artists AS artist ON artist.id = album.artist_id`
+      : "FROM library_tracks AS track";
+    if (needsRelations) groupBy = "track.id";
     idExpression = "track.id";
     searchableFields = [
       "track.title",
@@ -1226,7 +1320,29 @@ function buildPageQuery({
     }
   }
 
-  if (query) {
+  if (searchMatch) {
+    from += `
+      JOIN library_search_documents AS search_document
+        ON search_document.entity_kind = '${entityKind}'
+        AND search_document.entity_id = ${idExpression}
+      JOIN library_search_fts AS search_fts
+        ON search_fts.rowid = search_document.id
+        AND library_search_fts MATCH ?`;
+    parameters.unshift(searchMatch);
+    const pattern = `%${escapeLike(query)}%`;
+    const indexedFields = kind === "artists"
+      ? ["search_document.title"]
+      : kind === "albums"
+        ? ["search_document.title", "search_document.artist_name"]
+        : [
+            "search_document.title",
+            "search_document.artist_name",
+            "search_document.album_name",
+          ];
+    where.push(`(${indexedFields.map((field) =>
+      `lower(${field}) LIKE ? ESCAPE '\\'`).join(" OR ")})`);
+    parameters.push(...indexedFields.map(() => pattern));
+  } else if (query) {
     const pattern = `%${escapeLike(query)}%`;
     where.push(`(${searchableFields.map((field) =>
       `lower(coalesce(${field}, '')) LIKE ? ESCAPE '\\'`).join(" OR ")})`);
@@ -1256,6 +1372,7 @@ function buildPageQuery({
     where: where.join(" AND "),
     parameters,
     orderBy,
+    groupBy,
   };
 }
 
@@ -1263,29 +1380,16 @@ function getCanonicalGenreStats({ sourceFilter, availableOnly }) {
   const cacheKey = `${sourceFilter || "all"}:${availableOnly === true ? "available" : "all"}`;
   const cached = genreStatsCache.get(cacheKey);
   if (cached) return cached;
-  const artistMedia = pageMediaExists("artists", sourceFilter, availableOnly);
-  const albumMedia = pageMediaExists("albums", sourceFilter, availableOnly);
-  const trackMedia = pageMediaExists("tracks", sourceFilter, availableOnly);
-  const stats = new Map();
-  for (const row of db.prepare(
-    `SELECT artist.metadata_json FROM library_artists AS artist WHERE ${artistMedia.sql}`,
-  ).iterate(...artistMedia.parameters)) {
-    addGenreStats(stats, parseJson(row.metadata_json), "artists");
+  const settingKey = `${GENRE_STATS_SETTING_PREFIX}${cacheKey}`;
+  const stored = db.prepare("SELECT value FROM settings WHERE key = ?").get(settingKey)?.value;
+  if (stored) {
+    const parsed = parseJson(stored);
+    if (Array.isArray(parsed)) {
+      genreStatsCache.set(cacheKey, parsed);
+      return parsed;
+    }
   }
-  for (const row of db.prepare(
-    `SELECT album.metadata_json
-     FROM library_albums AS album
-     JOIN library_artists AS artist ON artist.id = album.artist_id
-     WHERE ${albumMedia.sql}`,
-  ).iterate(...albumMedia.parameters)) {
-    addGenreStats(stats, parseJson(row.metadata_json), "albums");
-  }
-  for (const row of db.prepare(
-    `SELECT track.metadata_json FROM library_tracks AS track WHERE ${trackMedia.sql}`,
-  ).iterate(...trackMedia.parameters)) {
-    addGenreStats(stats, parseJson(row.metadata_json), "tracks");
-  }
-  const sortedStats = [...stats.values()].sort((left, right) => left.name.localeCompare(right.name));
+  const sortedStats = computeLibraryGenreStats(db, { sourceFilter, availableOnly });
   genreStatsCache.set(cacheKey, sortedStats);
   return sortedStats;
 }
@@ -1519,7 +1623,7 @@ export function getCanonicalLibraryPage({
     `SELECT ${queryDefinition.idExpression} AS page_id
      ${queryDefinition.from}
      WHERE ${queryDefinition.where}
-     GROUP BY ${queryDefinition.idExpression}
+     ${queryDefinition.groupBy ? `GROUP BY ${queryDefinition.groupBy}` : ""}
      ORDER BY ${queryDefinition.orderBy}
      LIMIT ? OFFSET ?`,
   ).all(
@@ -1577,9 +1681,18 @@ export function getCanonicalLibraryPage({
   };
 }
 
-export function invalidateCanonicalLibraryCache() {
+export function rebuildCanonicalGenreStats() {
+  db.prepare("DELETE FROM settings WHERE key LIKE ?").run(`${GENRE_STATS_SETTING_PREFIX}%`);
+  genreStatsCache.clear();
+  rebuildStoredLibraryGenreStats(db);
+}
+
+export function invalidateCanonicalLibraryCache({ persistedGenres = true } = {}) {
   libraryCache.clear();
   genreStatsCache.clear();
+  if (persistedGenres) {
+    db.prepare("DELETE FROM settings WHERE key LIKE ?").run(`${GENRE_STATS_SETTING_PREFIX}%`);
+  }
 }
 
 export { normalizeSource };

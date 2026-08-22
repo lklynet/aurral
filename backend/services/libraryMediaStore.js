@@ -1,5 +1,10 @@
 import { db, dbHelpers } from "../config/db-sqlite.js";
 import { invalidateCanonicalLibraryCache } from "./libraryQueryService.js";
+import {
+  syncLibrarySearchAlbum,
+  syncLibrarySearchArtist,
+  syncLibrarySearchTrack,
+} from "./librarySearchIndex.js";
 
 const now = () => Date.now();
 
@@ -70,23 +75,35 @@ export function finishLibraryScan(scanId, {
   );
 }
 
-export function upsertLibraryArtist({ identityKey, mbid = null, name, sortName = null, metadata = null }) {
+export function upsertLibraryArtist({
+  identityKey,
+  mbid = null,
+  name,
+  sortName = null,
+  metadata = null,
+  syncSearch = true,
+}) {
   const timestamp = now();
   const key = normalizeText(identityKey);
   const artistName = normalizeText(name);
   if (!key || !artistName) throw new Error("Library artist identityKey and name are required");
-  db.prepare(
-    `INSERT INTO library_artists (identity_key, mbid, name, sort_name, metadata_json, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(identity_key) DO UPDATE SET
-       mbid = COALESCE(excluded.mbid, library_artists.mbid),
-       name = excluded.name,
-       sort_name = COALESCE(excluded.sort_name, library_artists.sort_name),
-       metadata_json = COALESCE(excluded.metadata_json, library_artists.metadata_json),
-       updated_at = excluded.updated_at`,
-  ).run(key, mbid || null, artistName, sortName || null, stringify(metadata), timestamp, timestamp);
+  const artist = db.transaction(() => {
+    db.prepare(
+      `INSERT INTO library_artists (identity_key, mbid, name, sort_name, metadata_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(identity_key) DO UPDATE SET
+         mbid = COALESCE(excluded.mbid, library_artists.mbid),
+         name = excluded.name,
+         sort_name = COALESCE(excluded.sort_name, library_artists.sort_name),
+         metadata_json = COALESCE(excluded.metadata_json, library_artists.metadata_json),
+         updated_at = excluded.updated_at`,
+    ).run(key, mbid || null, artistName, sortName || null, stringify(metadata), timestamp, timestamp);
+    const row = db.prepare("SELECT * FROM library_artists WHERE identity_key = ?").get(key);
+    if (syncSearch) syncLibrarySearchArtist(row?.id);
+    return row;
+  })();
   invalidateLibraryCache();
-  return db.prepare("SELECT * FROM library_artists WHERE identity_key = ?").get(key);
+  return artist;
 }
 
 export function upsertLibraryAlbum({
@@ -98,6 +115,7 @@ export function upsertLibraryAlbum({
   albumArtist = null,
   releaseDate = null,
   metadata = null,
+  syncSearch = true,
 }) {
   const timestamp = now();
   const key = normalizeText(identityKey);
@@ -105,33 +123,45 @@ export function upsertLibraryAlbum({
   if (!key || !Number.isSafeInteger(Number(artistId)) || !albumTitle) {
     throw new Error("Library album identityKey, artistId, and title are required");
   }
-  db.prepare(
-    `INSERT INTO library_albums
-      (identity_key, mbid, release_group_mbid, artist_id, title, album_artist, release_date, metadata_json, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(identity_key) DO UPDATE SET
-       mbid = COALESCE(excluded.mbid, library_albums.mbid),
-       release_group_mbid = COALESCE(excluded.release_group_mbid, library_albums.release_group_mbid),
-       artist_id = excluded.artist_id,
-       title = excluded.title,
-       album_artist = COALESCE(excluded.album_artist, library_albums.album_artist),
-       release_date = COALESCE(excluded.release_date, library_albums.release_date),
-       metadata_json = COALESCE(excluded.metadata_json, library_albums.metadata_json),
-       updated_at = excluded.updated_at`,
-  ).run(
-    key,
-    mbid || null,
-    releaseGroupMbid || null,
-    Number(artistId),
-    albumTitle,
-    albumArtist || null,
-    releaseDate || null,
-    stringify(metadata),
-    timestamp,
-    timestamp,
-  );
+  const album = db.transaction(() => {
+    db.prepare(
+      `INSERT INTO library_albums
+        (identity_key, mbid, release_group_mbid, artist_id, title, album_artist, release_date, metadata_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(identity_key) DO UPDATE SET
+         mbid = COALESCE(excluded.mbid, library_albums.mbid),
+         release_group_mbid = COALESCE(excluded.release_group_mbid, library_albums.release_group_mbid),
+         artist_id = excluded.artist_id,
+         title = excluded.title,
+         album_artist = COALESCE(excluded.album_artist, library_albums.album_artist),
+         release_date = COALESCE(excluded.release_date, library_albums.release_date),
+         metadata_json = COALESCE(excluded.metadata_json, library_albums.metadata_json),
+         updated_at = excluded.updated_at`,
+    ).run(
+      key,
+      mbid || null,
+      releaseGroupMbid || null,
+      Number(artistId),
+      albumTitle,
+      albumArtist || null,
+      releaseDate || null,
+      stringify(metadata),
+      timestamp,
+      timestamp,
+    );
+    const row = db.prepare("SELECT * FROM library_albums WHERE identity_key = ?").get(key);
+    const searchChanged = syncSearch && syncLibrarySearchAlbum(row?.id);
+    if (row?.id && searchChanged) {
+      for (const track of db.prepare(
+        "SELECT track_id FROM library_album_tracks WHERE album_id = ?",
+      ).all(row.id)) {
+        syncLibrarySearchTrack(track.track_id);
+      }
+    }
+    return row;
+  })();
   invalidateLibraryCache();
-  return db.prepare("SELECT * FROM library_albums WHERE identity_key = ?").get(key);
+  return album;
 }
 
 export function upsertLibraryTrack({
@@ -140,56 +170,79 @@ export function upsertLibraryTrack({
   title,
   artistName = null,
   metadata = null,
+  syncSearch = true,
 }) {
   const timestamp = now();
   const key = normalizeText(identityKey);
   const trackTitle = normalizeText(title);
   if (!key || !trackTitle) throw new Error("Library track identityKey and title are required");
-  db.prepare(
-    `INSERT INTO library_tracks (identity_key, mbid, title, artist_name, metadata_json, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(identity_key) DO UPDATE SET
-       mbid = COALESCE(excluded.mbid, library_tracks.mbid),
-       title = excluded.title,
-       artist_name = COALESCE(excluded.artist_name, library_tracks.artist_name),
-       metadata_json = COALESCE(excluded.metadata_json, library_tracks.metadata_json),
-       updated_at = excluded.updated_at`,
-  ).run(key, mbid || null, trackTitle, artistName || null, stringify(metadata), timestamp, timestamp);
+  const track = db.transaction(() => {
+    db.prepare(
+      `INSERT INTO library_tracks (identity_key, mbid, title, artist_name, metadata_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(identity_key) DO UPDATE SET
+         mbid = COALESCE(excluded.mbid, library_tracks.mbid),
+         title = excluded.title,
+         artist_name = COALESCE(excluded.artist_name, library_tracks.artist_name),
+         metadata_json = COALESCE(excluded.metadata_json, library_tracks.metadata_json),
+         updated_at = excluded.updated_at`,
+    ).run(key, mbid || null, trackTitle, artistName || null, stringify(metadata), timestamp, timestamp);
+    const row = db.prepare("SELECT * FROM library_tracks WHERE identity_key = ?").get(key);
+    if (syncSearch) syncLibrarySearchTrack(row?.id);
+    return row;
+  })();
   invalidateLibraryCache();
-  return db.prepare("SELECT * FROM library_tracks WHERE identity_key = ?").get(key);
+  return track;
 }
 
-export function linkLibraryAlbumTrack({ albumId, trackId, discNumber = 1, trackNumber = 0 }) {
-  db.prepare(
-    `INSERT OR IGNORE INTO library_album_tracks
-      (album_id, track_id, disc_number, track_number, created_at)
-     VALUES (?, ?, ?, ?, ?)`,
-  ).run(Number(albumId), Number(trackId), Number(discNumber) || 1, Number(trackNumber) || 0, now());
+export function linkLibraryAlbumTrack({
+  albumId,
+  trackId,
+  discNumber = 1,
+  trackNumber = 0,
+  syncSearch = true,
+}) {
+  db.transaction(() => {
+    db.prepare(
+      `INSERT OR IGNORE INTO library_album_tracks
+        (album_id, track_id, disc_number, track_number, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(Number(albumId), Number(trackId), Number(discNumber) || 1, Number(trackNumber) || 0, now());
+    if (syncSearch) syncLibrarySearchTrack(trackId);
+  })();
   invalidateLibraryCache();
 }
 
-export function removeLibraryAlbumTracksWithoutMedia(albumId, source) {
+export function removeLibraryAlbumTracksWithoutMedia(albumId, source, { syncSearch = true } = {}) {
   const mediaSource = normalizeText(source);
-  db.prepare(
-    `DELETE FROM library_album_tracks
-     WHERE album_id = ?
-       AND NOT EXISTS (
-         SELECT 1
-         FROM library_media_files AS media
-         WHERE media.track_id = library_album_tracks.track_id
-           AND media.album_id = library_album_tracks.album_id
-           AND media.source = ?
-           AND media.available = 1
-       )
-       AND NOT EXISTS (
-         SELECT 1
-         FROM library_media_files AS media
-         WHERE media.track_id = library_album_tracks.track_id
-           AND media.album_id = library_album_tracks.album_id
-           AND media.source != ?
-           AND media.available = 1
-       )`,
-  ).run(Number(albumId), mediaSource, mediaSource);
+  db.transaction(() => {
+    const trackIds = db.prepare(
+      "SELECT track_id FROM library_album_tracks WHERE album_id = ?",
+    ).all(Number(albumId)).map((row) => row.track_id);
+    db.prepare(
+      `DELETE FROM library_album_tracks
+       WHERE album_id = ?
+         AND NOT EXISTS (
+           SELECT 1
+           FROM library_media_files AS media
+           WHERE media.track_id = library_album_tracks.track_id
+             AND media.album_id = library_album_tracks.album_id
+             AND media.source = ?
+             AND media.available = 1
+         )
+         AND NOT EXISTS (
+           SELECT 1
+           FROM library_media_files AS media
+           WHERE media.track_id = library_album_tracks.track_id
+             AND media.album_id = library_album_tracks.album_id
+             AND media.source != ?
+             AND media.available = 1
+         )`,
+    ).run(Number(albumId), mediaSource, mediaSource);
+    if (syncSearch) {
+      for (const trackId of trackIds) syncLibrarySearchTrack(trackId);
+    }
+  })();
   invalidateLibraryCache();
 }
 

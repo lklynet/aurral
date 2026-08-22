@@ -3,6 +3,8 @@ import { db } from "../config/db-sqlite.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
 import { scanMusicRoot } from "./libraryFileScanner.js";
 import { indexLidarrLibrary } from "./libraryLidarrIndexer.js";
+import { rebuildLibrarySearchIndex } from "./librarySearchIndex.js";
+import { rebuildCanonicalGenreStats } from "./libraryQueryService.js";
 
 function getAurralJobMetadataByPath() {
   const rows = db
@@ -38,24 +40,31 @@ export async function scanConfiguredLibrary({
   includeLidarr = true,
 } = {}) {
   const jobMetadataByPath = getAurralJobMetadataByPath();
-  const local = await scanMusicRoot({
-    rootPath: musicRoot,
-    source: "aurral",
-    metadataEnricher: (_metadata, filePath) => jobMetadataByPath.get(path.resolve(filePath)),
-  });
+  let local;
   let lidarr = { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
-  if (includeLidarr) {
-    try {
-      lidarr = await indexLidarrLibrary({ client: lidarrClient });
-    } catch (error) {
-      lidarr = {
-        skipped: false,
-        error: error.message,
-        filesSeen: 0,
-        filesIndexed: 0,
-        filesFailed: 0,
-      };
+  try {
+    local = await scanMusicRoot({
+      rootPath: musicRoot,
+      source: "aurral",
+      metadataEnricher: (_metadata, filePath) => jobMetadataByPath.get(path.resolve(filePath)),
+      syncSearch: false,
+    });
+    if (includeLidarr) {
+      try {
+        lidarr = await indexLidarrLibrary({ client: lidarrClient, syncSearch: false });
+      } catch (error) {
+        lidarr = {
+          skipped: false,
+          error: error.message,
+          filesSeen: 0,
+          filesIndexed: 0,
+          filesFailed: 0,
+        };
+      }
     }
+  } finally {
+    rebuildLibrarySearchIndex();
+    rebuildCanonicalGenreStats();
   }
   return { local, lidarr };
 }

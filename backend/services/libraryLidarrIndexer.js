@@ -148,7 +148,7 @@ async function readFileStats(filePath) {
   }
 }
 
-export async function indexLidarrLibrary({ client } = {}) {
+export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
   if (!client || typeof client.isConfigured !== "function" || !client.isConfigured()) {
     return { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   }
@@ -200,6 +200,7 @@ export async function indexLidarrLibrary({ client } = {}) {
         name: artistName,
         sortName: artist.sortName || null,
         metadata: artist,
+        syncSearch,
       });
       const albumProviderId = text(album.foreignAlbumId);
       const albumKey =
@@ -218,6 +219,7 @@ export async function indexLidarrLibrary({ client } = {}) {
         albumArtist: artistName,
         releaseDate: album.releaseDate || null,
         metadata: album,
+        syncSearch,
       });
       let albumFilesIndexed = 0;
 
@@ -233,6 +235,7 @@ export async function indexLidarrLibrary({ client } = {}) {
           title: text(track.title || track.trackTitle) || "Unknown Track",
           artistName,
           metadata: track,
+          syncSearch,
         });
         const trackNumber = Number(track.trackNumber || track.absoluteTrackNumber) || 0;
         linkLibraryAlbumTrack({
@@ -240,6 +243,7 @@ export async function indexLidarrLibrary({ client } = {}) {
           trackId: trackRecord.id,
           discNumber: Number(track.mediumNumber || track.discNumber) || 1,
           trackNumber,
+          syncSearch,
         });
 
         const resolvedFile = resolveTrackFile(
@@ -274,7 +278,7 @@ export async function indexLidarrLibrary({ client } = {}) {
         albumFilesIndexed === 0 &&
         Number(album.statistics?.sizeOnDisk || 0) === 0
       ) {
-        removeLibraryAlbumTracksWithoutMedia(albumRecord.id, "lidarr");
+        removeLibraryAlbumTracksWithoutMedia(albumRecord.id, "lidarr", { syncSearch });
       }
     }
     if (result.filesFailed === 0 && result.filesIndexed > 0) {

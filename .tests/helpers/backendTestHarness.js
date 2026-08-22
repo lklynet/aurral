@@ -30,6 +30,7 @@ const RESET_TABLES = [
   "library_albums",
   "library_artists",
   "library_scan_runs",
+  "library_search_documents",
   "settings",
 ];
 
