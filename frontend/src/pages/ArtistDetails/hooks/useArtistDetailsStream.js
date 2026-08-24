@@ -311,8 +311,12 @@ export function useArtistDetailsStream(
       }
     };
 
-    libraryRefreshRef.current = () => {
+    libraryRefreshRef.current = async () => {
       optimisticLibraryLookupRef.current = false;
+      await queryClient.cancelQueries({
+        queryKey: queryKeys.libraryLookupDetails(mbid),
+        exact: true,
+      });
       return loadLibraryFallback({ bypassCache: true });
     };
 
