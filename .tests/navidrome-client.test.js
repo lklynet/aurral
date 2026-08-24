@@ -106,13 +106,13 @@ test("uses the fallback delay for invalid rate limit headers", async () => {
 
 test("batches large playlist creation requests", async () => {
   const originalFetch = globalThis.fetch;
-  const urls = [];
-  globalThis.fetch = async (url) => {
-    urls.push(new URL(url));
+  const requests = [];
+  globalThis.fetch = async (url, init = {}) => {
+    requests.push({ url: new URL(url), init });
     return jsonResponse({
       "subsonic-response": {
         status: "ok",
-        playlist: urls.length === 1 ? { id: "new-id", name: "Large" } : undefined,
+        playlist: requests.length === 1 ? { id: "new-id", name: "Large" } : undefined,
       },
     });
   };
@@ -124,12 +124,12 @@ test("batches large playlist creation requests", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(urls.length, 9);
-  assert.equal(urls[0].pathname, "/rest/createPlaylist");
-  assert.equal(urls[0].searchParams.getAll("songId").length, 50);
-  assert.equal(urls[1].pathname, "/rest/updatePlaylist");
-  assert.equal(urls[1].searchParams.getAll("songIdToAdd").length, 50);
-  assert.ok(urls.every((url) => url.toString().length < 8192));
+  assert.equal(requests.length, 9);
+  assert.equal(requests[0].url.pathname, "/rest/createPlaylist");
+  assert.equal(requests[0].url.searchParams.getAll("songId").length, 50);
+  assert.equal(requests[1].url.pathname, "/rest/updatePlaylist");
+  assert.equal(requests[1].init.body.getAll("songIdToAdd").length, 50);
+  assert.ok(requests.every(({ url }) => url.toString().length < 8192));
 });
 
 test("preserves Subsonic error codes for missing native IDs", async () => {
@@ -154,10 +154,10 @@ test("preserves Subsonic error codes for missing native IDs", async () => {
 
 test("replaces playlist entries with repeated Subsonic parameters", async () => {
   const originalFetch = globalThis.fetch;
-  const urls = [];
-  globalThis.fetch = async (url) => {
-    urls.push(new URL(url));
-    if (urls.length === 1) {
+  const requests = [];
+  globalThis.fetch = async (url, init = {}) => {
+    requests.push({ url: new URL(url), init });
+    if (requests.length === 1) {
       return jsonResponse({
         "subsonic-response": {
           status: "ok",
@@ -175,17 +175,17 @@ test("replaces playlist entries with repeated Subsonic parameters", async () => 
     globalThis.fetch = originalFetch;
   }
 
-  assert.deepEqual(urls[1].searchParams.getAll("songIndexToRemove"), ["0", "1"]);
-  assert.deepEqual(urls[1].searchParams.getAll("songIdToAdd"), ["song-1", "song-2"]);
-  assert.equal(urls[1].searchParams.get("name"), "Renamed");
+  assert.deepEqual(requests[1].init.body.getAll("songIndexToRemove"), ["0", "1"]);
+  assert.deepEqual(requests[1].init.body.getAll("songIdToAdd"), ["song-1", "song-2"]);
+  assert.equal(requests[1].init.body.get("name"), "Renamed");
 });
 
 test("batches large playlist replacement requests", async () => {
   const originalFetch = globalThis.fetch;
-  const urls = [];
-  globalThis.fetch = async (url) => {
-    urls.push(new URL(url));
-    if (urls.length === 1) {
+  const requests = [];
+  globalThis.fetch = async (url, init = {}) => {
+    requests.push({ url: new URL(url), init });
+    if (requests.length === 1) {
       return jsonResponse({
         "subsonic-response": {
           status: "ok",
@@ -206,11 +206,43 @@ test("batches large playlist replacement requests", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(urls.length, 4);
-  assert.equal(urls[1].searchParams.getAll("songIdToAdd").length, 50);
-  assert.equal(urls[2].searchParams.getAll("songIdToAdd").length, 50);
-  assert.equal(urls[3].searchParams.getAll("songIdToAdd").length, 1);
-  assert.ok(urls.every((url) => url.toString().length < 8192));
+  assert.equal(requests.length, 4);
+  assert.equal(requests[1].init.body.getAll("songIdToAdd").length, 50);
+  assert.equal(requests[2].init.body.getAll("songIdToAdd").length, 50);
+  assert.equal(requests[3].init.body.getAll("songIdToAdd").length, 1);
+  assert.ok(requests.every(({ url }) => url.toString().length < 8192));
+});
+
+test("posts large playlist replacements without exceeding request URL limits", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, init = {}) => {
+    if (String(url).length >= 8192) throw new TypeError("fetch failed");
+    requests.push({ url: new URL(url), init });
+    if (requests.length === 1) {
+      return jsonResponse({
+        "subsonic-response": {
+          status: "ok",
+          playlist: {
+            entry: Array.from({ length: 1_000 }, (_, index) => ({ id: `old-${index}` })),
+          },
+        },
+      });
+    }
+    return jsonResponse({ "subsonic-response": { status: "ok" } });
+  };
+
+  try {
+    await new NavidromeClient("http://navidrome.test", "user", "password")
+      .updatePlaylist("playlist-1", { name: "Large", songIds: ["song-1"] });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(requests[1].url.pathname, "/rest/updatePlaylist");
+  assert.equal(requests[1].init.method, "POST");
+  assert.equal(requests[1].url.search, "");
+  assert.equal(requests[1].init.body.getAll("songIndexToRemove").length, 1_000);
 });
 
 test("prefers the exact indexed path when duplicate songs match", async () => {

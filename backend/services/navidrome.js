@@ -76,7 +76,10 @@ export class NavidromeClient {
           }
         }
         try {
-          const response = await axios.get(`${this.url}/rest/${endpoint}?${query}`);
+          const endpointUrl = `${this.url}/rest/${endpoint}`;
+          const response = endpoint === "updatePlaylist"
+            ? await axios.post(endpointUrl, query)
+            : await axios.get(`${endpointUrl}?${query}`);
 
           if (response.data["subsonic-response"]?.status === "failed") {
             const responseError = response.data["subsonic-response"].error || {};
