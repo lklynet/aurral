@@ -515,13 +515,14 @@ export async function withLibraryScan(source, rootPath, run) {
   const scan = { changed: false };
   return libraryScanContext.run(scan, async () => {
     libraryScanDepth += 1;
-    const scanId = beginLibraryScan({ source, rootPath });
+    let scanId;
     try {
+      scanId = beginLibraryScan({ source, rootPath });
       const result = await run(scanId);
       finishLibraryScan(scanId, { ...result, status: "complete" });
       return { scanId, ...result, changed: scan.changed, status: "complete" };
     } catch (error) {
-      finishLibraryScan(scanId, { status: "failed", error: error.message });
+      if (scanId) finishLibraryScan(scanId, { status: "failed", error: error.message });
       throw error;
     } finally {
       if (scan.changed && parentScan) parentScan.changed = true;

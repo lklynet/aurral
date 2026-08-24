@@ -230,7 +230,10 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
 
     for (const album of Array.isArray(albums) ? albums : []) {
       const artist = artistById.get(String(album?.artistId));
-      if (!artist || !album?.id) continue;
+      if (!artist || !album?.id) {
+        result.filesFailed += 1;
+        continue;
+      }
       const batch = db.transaction(() => {
         const seenPaths = [];
         let filesIndexed = 0;

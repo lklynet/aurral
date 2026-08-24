@@ -7,7 +7,9 @@ import path from "node:path";
 import { db } from "../../backend/config/db-sqlite.js";
 import {
   getCanonicalArtistProjection,
+  getCanonicalLibrary,
   getCanonicalLibraryPage,
+  invalidateCanonicalLibraryCache,
 } from "../../backend/services/libraryQueryService.js";
 import {
   buildFallbackIdentityKey,
@@ -66,6 +68,57 @@ test("overlapping scans keep change tracking isolated", async () => {
     releaseFirst?.();
     db.prepare("DELETE FROM library_artists WHERE identity_key = ?").run(identityKey);
     db.prepare("DELETE FROM library_scan_runs WHERE source LIKE 'test-overlap-%'").run();
+  }
+});
+
+test("a failed scan-run insert does not leak scan state", async () => {
+  const identityKey = `name:scan-insert-failure-${process.pid}`;
+  let artist;
+  try {
+    artist = upsertLibraryArtist({ identityKey, name: "Before Failure", syncSearch: false });
+    const album = upsertLibraryAlbum({
+      identityKey: `${identityKey}:album`,
+      artistId: artist.id,
+      title: "Scan Failure Album",
+      syncSearch: false,
+    });
+    const track = upsertLibraryTrack({
+      identityKey: `${identityKey}:track`,
+      title: "Scan Failure Track",
+      artistName: "Before Failure",
+      syncSearch: false,
+    });
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, syncSearch: false });
+    upsertLibraryMediaFile({
+      trackId: track.id,
+      albumId: album.id,
+      source: "aurral",
+      path: `/tmp/scan-insert-failure-${process.pid}.flac`,
+      available: true,
+    });
+    assert.equal(getCanonicalLibrary().artists.find((item) => item.id === artist.id)?.name, "Before Failure");
+
+    db.exec(`CREATE TEMP TRIGGER fail_library_scan_insert
+      BEFORE INSERT ON library_scan_runs BEGIN
+        SELECT RAISE(FAIL, 'scan insert failed');
+      END`);
+    await assert.rejects(
+      () => withLibraryScan("test-insert-failure", null, async () => ({})),
+      /scan insert failed/,
+    );
+    db.exec("DROP TRIGGER fail_library_scan_insert");
+
+    await withLibraryScan("test-after-insert-failure", null, async () => {
+      upsertLibraryArtist({ identityKey, name: "After Failure", syncSearch: false });
+      return { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
+    });
+
+    assert.equal(getCanonicalLibrary().artists.find((item) => item.id === artist.id)?.name, "After Failure");
+  } finally {
+    db.exec("DROP TRIGGER IF EXISTS fail_library_scan_insert");
+    if (artist) db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    db.prepare("DELETE FROM library_scan_runs WHERE source LIKE 'test-%insert-failure'").run();
+    invalidateCanonicalLibraryCache();
   }
 });
 
@@ -1071,6 +1124,35 @@ test("a partial Lidarr rescan preserves existing file availability", async () =>
       "lidarr",
       filePath,
     );
+  }
+});
+
+test("a Lidarr rescan preserves files for an album with a missing artist response", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-missing-artist-"));
+  let filePath;
+  try {
+    filePath = await createAudioFile(root, "Missing Artist/Album/01 Track.flac");
+    const artist = { id: 117, artistName: "Missing Artist", foreignArtistId: "17171717-1717-4717-8717-171717171717" };
+    const album = { id: 118, artistId: 117, title: "Album", foreignAlbumId: "18181818-1818-4818-8818-181818181818" };
+    const track = { id: 119, albumId: 118, title: "Track", foreignRecordingId: "19191919-1919-4919-8919-191919191919", trackFileId: 120 };
+    const client = {
+      isConfigured: () => true,
+      request: async () => [artist],
+      getAllAlbums: async () => [album],
+      getTracksByAlbumId: async () => [track],
+      getTrackFilesByAlbumId: async () => [{ id: 120, path: filePath, trackIds: [119] }],
+      getRootFolders: async () => [{ path: root }],
+    };
+    await indexLidarrLibrary({ client });
+    client.request = async () => [];
+    const result = await indexLidarrLibrary({ client });
+    const file = getLibrarySnapshot().files.find((entry) => entry.path === filePath);
+
+    assert.equal(result.filesFailed, 1);
+    assert.equal(file?.available, 1);
+  } finally {
+    if (filePath) deleteIndexedFile("lidarr", filePath);
+    await rm(root, { recursive: true, force: true });
   }
 });
 
