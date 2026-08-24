@@ -43,9 +43,10 @@ import {
   deleteAlbumFromLibrary,
   deleteArtistFromLibrary,
   deleteTrackFromLibrary,
+  fetchCanonicalLibraryPage,
   getCanonicalLibraryPage,
-  getLibraryRefreshStatus,
   getLibraryFavorites,
+  getLibraryRefreshStatus,
   getRequests,
   downloadTrackToLibrary,
   requestLibraryRefresh,
@@ -550,20 +551,21 @@ function LibraryPage() {
     queryFn: async ({ signal }) => {
       const nextData = isDetail
         ? routeAlbumId
-          ? await getCanonicalLibraryPage({
+          ? await fetchCanonicalLibraryPage({
               kind: "tracks",
               albumId: routeAlbumId,
               page: 1,
               pageSize,
             }, { signal })
           : await Promise.all([
-              getCanonicalLibraryPage({
+              fetchCanonicalLibraryPage({
                 kind: "albums",
                 artistId: routeArtistId,
                 page: 1,
                 pageSize,
+                availableOnly: true,
               }, { signal }),
-              getCanonicalLibraryPage({
+              fetchCanonicalLibraryPage({
                 kind: "tracks",
                 artistId: routeArtistId,
                 page: 1,
@@ -575,13 +577,13 @@ function LibraryPage() {
           ? await getLibraryFavorites({ signal })
           : section === "home"
             ? await Promise.all([
-                getCanonicalLibraryPage({
+                fetchCanonicalLibraryPage({
                   kind: "albums",
                   page: 1,
                   pageSize,
                   sort: "newest",
                 }, { signal }),
-                getCanonicalLibraryPage({
+                fetchCanonicalLibraryPage({
                   kind: "tracks",
                   page: 1,
                   pageSize: 12,
@@ -589,7 +591,7 @@ function LibraryPage() {
                   availableOnly: true,
                 }, { signal }),
               ])
-            : await getCanonicalLibraryPage({
+            : await fetchCanonicalLibraryPage({
                 kind: tab,
                 page: pageIndex,
                 pageSize,

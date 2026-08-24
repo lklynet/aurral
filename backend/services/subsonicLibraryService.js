@@ -570,7 +570,18 @@ const findAvailableCanonicalFile = (track) => {
       }));
   const candidate = library.tracks.find((entry) => isSameTrack(track, trackFromCanonical(library, entry)));
   const file = firstFile(candidate);
-  return file?.available && file.path ? { file, albumName: findAlbumForTrack(library, candidate)?.title } : null;
+  return file?.available && file.path
+    ? { file, track: candidate, albumName: findAlbumForTrack(library, candidate)?.title }
+    : null;
+};
+
+const canonicalStarRow = (user, row) => {
+  if (!["flow-song", "shared-song"].includes(row?.entity_kind)) return row;
+  const playlistSong = resolvePlaylistSong(user, idFor(row.entity_kind, row.entity_key));
+  const canonical = playlistSong ? findAvailableCanonicalFile(playlistSong.track)?.track : null;
+  return canonical
+    ? { ...row, entity_kind: "song", entity_key: canonical.identityKey }
+    : row;
 };
 
 const ensureLibraryJob = (track, createdJobIds = null) => {
@@ -786,8 +797,21 @@ export function unstar(user, value) {
 export function unstarMany(user, values) {
   const parsed = values.map(starTarget);
   if (!parsed.length || parsed.some((target) => !target) || !user?.id) return false;
+  const targetKeys = new Set(parsed.flatMap((target) => {
+    const row = { entity_kind: target.kind, entity_key: target.key };
+    const canonical = canonicalStarRow(user, row);
+    return [row, canonical].map((entry) => `${entry.entity_kind}:${entry.entity_key}`);
+  }));
   const removeStars = db.transaction(() => {
-    for (const target of parsed) removeStarStmt.run(user.id, target.kind, target.key);
+    for (const row of starredRows(user)) {
+      const canonical = canonicalStarRow(user, row);
+      if (
+        targetKeys.has(`${row.entity_kind}:${row.entity_key}`) ||
+        targetKeys.has(`${canonical.entity_kind}:${canonical.entity_key}`)
+      ) {
+        removeStarStmt.run(user.id, row.entity_kind, row.entity_key);
+      }
+    }
   });
   removeStars();
   return true;
@@ -796,7 +820,10 @@ export function unstarMany(user, values) {
 const starredRows = (user) => (user?.id ? getStarsStmt.all(user.id) : []);
 
 export function getStarredIdentityKeys(user) {
-  return new Set(starredRows(user).map((row) => `${row.entity_kind}:${row.entity_key}`));
+  return new Set(starredRows(user).map((row) => {
+    const canonical = canonicalStarRow(user, row);
+    return `${canonical.entity_kind}:${canonical.entity_key}`;
+  }));
 }
 
 const buildStarred = (library, rows, user) => {
@@ -825,7 +852,7 @@ const buildStarred = (library, rows, user) => {
 };
 
 export function getStarredWithLibrary(user) {
-  const rows = starredRows(user);
+  const rows = starredRows(user).map((row) => canonicalStarRow(user, row));
   const canonicalRows = rows.filter((row) => ["artist", "album", "song"].includes(row.entity_kind));
   const library = getCanonicalLibrary({
     favoriteKeys: canonicalRows.map((row) => ({ kind: row.entity_kind, key: row.entity_key })),

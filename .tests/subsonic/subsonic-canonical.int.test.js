@@ -35,6 +35,8 @@ let sharedPlaylist;
 let syncedFavoritePlaylist;
 let syncedFavoriteSourcePath;
 let syncedFavoriteSourceJobId;
+let canonicalFavoritePlaylist;
+let canonicalFavoriteJobId;
 
 function subsonicUrl(method, params = {}) {
   const query = new URLSearchParams({
@@ -164,6 +166,26 @@ test.before(async () => {
     durationMs: 1000,
   }, sharedPlaylist.id);
   downloadTracker.setDone(sharedJobId, fixturePath);
+  canonicalFavoritePlaylist = flowPlaylistConfig.createSharedPlaylist({
+    name: "Canonical Favorite Playlist",
+    ownerUserId: alice.id,
+    tracks: [{
+      artistName: "Canonical Artist",
+      albumName: "Canonical Album",
+      trackName: "Canonical Song",
+      durationMs: 10_000,
+    }],
+  });
+  canonicalFavoriteJobId = downloadTracker.addJob({
+    artistName: "Canonical Artist",
+    artistMbid: "11111111-1111-4111-8111-111111111111",
+    albumName: "Canonical Album",
+    albumMbid: "22222222-2222-4222-8222-222222222222",
+    trackName: "Canonical Song",
+    trackMbid: "33333333-3333-4333-8333-333333333333",
+    durationMs: 10_000,
+  }, canonicalFavoritePlaylist.id);
+  downloadTracker.setDone(canonicalFavoriteJobId, fixturePath, "Canonical Album");
   const syncedFavoriteTrack = {
     artistName: "Synced Favorite Artist",
     albumName: "Synced Favorite Album",
@@ -642,6 +664,37 @@ test("favoriting a synced playlist track keeps it when the source removes it", a
     if (libraryJobId) downloadTracker.removeJob(libraryJobId);
     await rm(path.join(weeklyFlowRoot, track.artistName), { recursive: true, force: true });
     flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+  }
+});
+
+test("playlist favorites resolve to the owned canonical track", async () => {
+  const playlistSongId = `shared-song:${encodeURIComponent(`${canonicalFavoritePlaylist.id}:${canonicalFavoriteJobId}`)}`;
+  let canonicalSongId;
+  try {
+    assert.equal(responseJson(await request("star", { id: playlistSongId })).status, "ok");
+
+    const favorites = await (await apiFetch("/api/library/favorites")).json();
+    assert.deepEqual(favorites.library.tracks.map((track) => track.title), ["Canonical Song"]);
+    assert.equal(favorites.song.some((song) => /^song:/.test(song.id)), true);
+
+    const album = responseJson(await request("getArtist", {
+      id: responseJson(await request("getArtists")).artists.index[0].artist[0].id,
+    })).artist.album[0];
+    canonicalSongId = responseJson(await request("getAlbum", { id: album.id })).album.song[0].id;
+    const page = await (await apiFetch(
+      "/api/library/canonical?kind=tracks&page=1&pageSize=100&availableOnly=true",
+    )).json();
+    assert.equal(page.items.find((track) => track.title === "Canonical Song").userFavorite, true);
+
+    assert.equal(responseJson(await request("unstar", { id: canonicalSongId })).status, "ok");
+    assert.equal(
+      responseJson(await request("getStarred")).starred.song.some(
+        (song) => song.id === canonicalSongId,
+      ),
+      false,
+    );
+  } finally {
+    await request("unstar", { id: [playlistSongId, canonicalSongId].filter(Boolean) });
   }
 });
 

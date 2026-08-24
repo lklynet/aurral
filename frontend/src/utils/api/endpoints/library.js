@@ -22,28 +22,33 @@ const mergeSignals = (callerSignal, querySignal) => {
 export const getLibraryArtists = (options = {}) =>
   getData("/library/artists", options);
 
+const canonicalLibraryPageParams = (options = {}) => Object.fromEntries(
+  Object.entries({
+    kind: options.kind,
+    page: options.page,
+    pageSize: options.pageSize,
+    query: options.query,
+    genre: options.genre,
+    sort: options.sort,
+    direction: options.direction,
+    artistId: options.artistId,
+    albumId: options.albumId,
+    source: options.source || "all",
+    availableOnly: options.availableOnly === true ? "true" : "false",
+  }).filter(([, value]) => value !== undefined && value !== null && value !== ""),
+);
+
+export const fetchCanonicalLibraryPage = (options = {}, { signal } = {}) =>
+  getData("/library/canonical", { params: canonicalLibraryPageParams(options), signal });
+
 export const getCanonicalLibraryPage = (options = {}, { signal } = {}) => {
-  const params = Object.fromEntries(
-    Object.entries({
-      kind: options.kind,
-      page: options.page,
-      pageSize: options.pageSize,
-      query: options.query,
-      genre: options.genre,
-      sort: options.sort,
-      direction: options.direction,
-      artistId: options.artistId,
-      albumId: options.albumId,
-      source: options.source || "all",
-      availableOnly: options.availableOnly === true ? "true" : "false",
-    }).filter(([, value]) => value !== undefined && value !== null && value !== ""),
-  );
+  const params = canonicalLibraryPageParams(options);
   return queryClient.fetchQuery({
     queryKey: queryKeys.libraryCanonical(params),
-    queryFn: ({ signal: querySignal }) => getData("/library/canonical", {
-      params,
-      signal: mergeSignals(signal, querySignal),
-    }),
+    queryFn: ({ signal: querySignal }) => fetchCanonicalLibraryPage(
+      options,
+      { signal: mergeSignals(signal, querySignal) },
+    ),
     staleTime: 15_000,
   });
 };
