@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { dbOps } from "../db/helpers/index.js";
 import { db } from "../config/db-sqlite.js";
 import {
@@ -543,6 +544,16 @@ const findLibraryJob = (track) => {
   );
 };
 
+const findReusableLibrarySource = (track) =>
+  downloadTracker.getAll().find(
+    (job) =>
+      job?.playlistType !== "library" &&
+      job?.status === "done" &&
+      typeof job.finalPath === "string" &&
+      existsSync(job.finalPath) &&
+      isSameTrack(job, track),
+  );
+
 const findAvailableCanonicalFile = (track) => {
   const library = indexFocusedLibrary(track?.trackMbid
     ? getCanonicalTrack({
@@ -580,6 +591,16 @@ const ensureLibraryJob = (track, createdJobIds = null) => {
   const owned = findAvailableCanonicalFile(track);
   if (owned) {
     downloadTracker.setDone(jobId, owned.file.path, owned.albumName || track.albumName || null);
+    return jobId;
+  }
+  const reusableSource = findReusableLibrarySource(track);
+  if (reusableSource) {
+    downloadTracker.setDone(
+      jobId,
+      reusableSource.finalPath,
+      reusableSource.albumName || track.albumName || null,
+      reusableSource.externalPath || null,
+    );
     return jobId;
   }
   recordTrackJobQueued(downloadTracker.getJob(jobId));

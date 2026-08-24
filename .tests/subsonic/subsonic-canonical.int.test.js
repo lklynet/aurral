@@ -11,7 +11,7 @@ import {
   startServerProcess,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidarrLibrary }, { flowPlaylistConfig }, { downloadTracker }, { resolveArtworkUrl, createSubsonicPlaylist }, { warmImageProxy }, { playlistManager }] =
+const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidarrLibrary }, { flowPlaylistConfig }, { downloadTracker }, { weeklyFlowWorker }, { updateSharedPlaylist }, { resolveArtworkUrl, createSubsonicPlaylist, star }, { warmImageProxy }, { playlistManager }] =
   await setupIsolatedBackend(
     "subsonic-canonical",
     "backend/config/db-sqlite.js",
@@ -20,6 +20,8 @@ const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidar
     "backend/services/libraryLidarrIndexer.js",
     "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+  "backend/services/weeklyFlow/weeklyFlowWorker.js",
+  "backend/services/weeklyFlow/weeklyFlowOperations.js",
   "backend/services/subsonicLibraryService.js",
   "backend/services/imageProxyService.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
@@ -30,6 +32,9 @@ let authToken;
 let fixtureRoot;
 let fixturePath;
 let sharedPlaylist;
+let syncedFavoritePlaylist;
+let syncedFavoriteSourcePath;
+let syncedFavoriteSourceJobId;
 
 function subsonicUrl(method, params = {}) {
   const query = new URLSearchParams({
@@ -159,6 +164,36 @@ test.before(async () => {
     durationMs: 1000,
   }, sharedPlaylist.id);
   downloadTracker.setDone(sharedJobId, fixturePath);
+  const syncedFavoriteTrack = {
+    artistName: "Synced Favorite Artist",
+    albumName: "Synced Favorite Album",
+    trackName: "Synced Favorite Song",
+    durationMs: 1000,
+  };
+  syncedFavoritePlaylist = flowPlaylistConfig.createSharedPlaylist({
+    name: "Synced Favorite Playlist",
+    ownerUserId: alice.id,
+    tracks: [syncedFavoriteTrack],
+    importSource: {
+      provider: "lastfm-station",
+      externalId: "synced-favorite",
+      syncEnabled: true,
+      syncIntervalHours: 24,
+      keepRemovedTracks: false,
+    },
+  });
+  syncedFavoriteSourcePath = path.join(
+    process.env.WEEKLY_FLOW_FOLDER,
+    "aurral-weekly-flow",
+    syncedFavoritePlaylist.id,
+    syncedFavoriteTrack.artistName,
+    syncedFavoriteTrack.albumName,
+    `${syncedFavoriteTrack.trackName}.flac`,
+  );
+  await mkdir(path.dirname(syncedFavoriteSourcePath), { recursive: true });
+  await writeFile(syncedFavoriteSourcePath, "synced favorite");
+  syncedFavoriteSourceJobId = downloadTracker.addJob(syncedFavoriteTrack, syncedFavoritePlaylist.id);
+  downloadTracker.setDone(syncedFavoriteSourceJobId, syncedFavoriteSourcePath, syncedFavoriteTrack.albumName);
   const favoriteFlow = flowPlaylistConfig.createFlow({ name: "Favorite Toggle Flow", size: 1 });
   const favoritePath = path.join(fixtureRoot, "Favorite Artist", "Favorite Album", "Favorite Song.flac");
   await mkdir(path.dirname(favoritePath), { recursive: true });
@@ -191,6 +226,11 @@ test.before(async () => {
 
 test.after(async () => {
   await aurral?.stop();
+  if (syncedFavoritePlaylist) {
+    downloadTracker.clearByPlaylistType(syncedFavoritePlaylist.id);
+    flowPlaylistConfig.deleteSharedPlaylist(syncedFavoritePlaylist.id);
+  }
+  await rm(syncedFavoriteSourcePath, { force: true }).catch(() => {});
   await rm(fixtureRoot, { recursive: true, force: true });
   await cleanupIsolatedState(isolatedState);
 });
@@ -557,6 +597,52 @@ test("favorites can keep Flow tracks and respect the auto-keep setting", async (
   assert.ok(autoKeepJob);
   downloadTracker.removeJob(autoKeepJob.id);
   assert.equal(responseJson(await request("unstar", { id: entry.id })).status, "ok");
+});
+
+test("favoriting a synced playlist track keeps it when the source removes it", async () => {
+  const playlist = syncedFavoritePlaylist;
+  const track = playlist.tracks[0];
+  const sourcePath = syncedFavoriteSourcePath;
+  const weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER;
+  const originalStart = weeklyFlowWorker.start;
+  let libraryJobId;
+  try {
+    weeklyFlowWorker.start = async () => false;
+    const songId = `shared-song:${encodeURIComponent(`${playlist.id}:${syncedFavoriteSourceJobId}`)}`;
+    assert.equal(star(userOps.getUserByUsername("alice"), songId), true);
+
+    const libraryJob = db.prepare(
+      "SELECT id, status, final_path AS finalPath FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ? LIMIT 1",
+    ).get("library", track.trackName);
+    assert.ok(libraryJob);
+    assert.equal(libraryJob.status, "done");
+    libraryJobId = libraryJob.id;
+
+    await updateSharedPlaylist({
+      playlistId: playlist.id,
+      tracks: [],
+      hasTracksUpdate: true,
+      hasImportSourceUpdate: true,
+      importSource: {
+        ...playlist.importSource,
+        lastSyncAt: Date.now(),
+        lastSyncTrackCount: 0,
+      },
+      mergeImportSource: true,
+    });
+
+    const updatedLibraryJob = db.prepare(
+      "SELECT final_path AS finalPath FROM playlist_download_jobs WHERE id = ?",
+    ).get(libraryJobId);
+    await stat(updatedLibraryJob.finalPath);
+    await assert.rejects(stat(sourcePath));
+  } finally {
+    weeklyFlowWorker.start = originalStart;
+    downloadTracker.clearByPlaylistType(playlist.id);
+    if (libraryJobId) downloadTracker.removeJob(libraryJobId);
+    await rm(path.join(weeklyFlowRoot, track.artistName), { recursive: true, force: true });
+    flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+  }
 });
 
 test("streams canonical files with full and range responses", async () => {
