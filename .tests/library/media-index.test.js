@@ -7,7 +7,9 @@ import path from "node:path";
 import { db } from "../../backend/config/db-sqlite.js";
 import {
   getCanonicalArtistProjection,
+  getCanonicalLibrary,
   getCanonicalLibraryPage,
+  invalidateCanonicalLibraryCache,
 } from "../../backend/services/libraryQueryService.js";
 import {
   buildFallbackIdentityKey,
@@ -17,10 +19,108 @@ import {
   upsertLibraryArtist,
   upsertLibraryMediaFile,
   upsertLibraryTrack,
+  withLibraryScan,
 } from "../../backend/services/libraryMediaStore.js";
 import { scanMusicRoot } from "../../backend/services/libraryFileScanner.js";
 import { indexLidarrLibrary } from "../../backend/services/libraryLidarrIndexer.js";
 import { scanConfiguredLibrary } from "../../backend/services/libraryIndexService.js";
+
+test("scan change tracking ignores unrelated database writes", async () => {
+  const settingKey = `unrelated-scan-write-${process.pid}`;
+  try {
+    const result = await withLibraryScan("test-unrelated-write", null, async () => {
+      db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run(settingKey, "value");
+      return { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
+    });
+
+    assert.equal(result.changed, false);
+  } finally {
+    db.prepare("DELETE FROM settings WHERE key = ?").run(settingKey);
+    db.prepare("DELETE FROM library_scan_runs WHERE source = 'test-unrelated-write'").run();
+  }
+});
+
+test("overlapping scans keep change tracking isolated", async () => {
+  const identityKey = `name:overlapping-scan-${process.pid}`;
+  let releaseFirst;
+  const holdFirst = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+  let firstChanged;
+
+  try {
+    const first = withLibraryScan("test-overlap-first", null, async () => {
+      upsertLibraryArtist({ identityKey, name: "Overlapping Scan", syncSearch: false });
+      firstChanged = true;
+      await holdFirst;
+      return { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
+    });
+    while (!firstChanged) await new Promise((resolve) => setImmediate(resolve));
+
+    const second = await withLibraryScan("test-overlap-second", null, async () => (
+      { filesSeen: 0, filesIndexed: 0, filesFailed: 0 }
+    ));
+    releaseFirst();
+
+    assert.equal(second.changed, false);
+    assert.equal((await first).changed, true);
+  } finally {
+    releaseFirst?.();
+    db.prepare("DELETE FROM library_artists WHERE identity_key = ?").run(identityKey);
+    db.prepare("DELETE FROM library_scan_runs WHERE source LIKE 'test-overlap-%'").run();
+  }
+});
+
+test("a failed scan-run insert does not leak scan state", async () => {
+  const identityKey = `name:scan-insert-failure-${process.pid}`;
+  let artist;
+  try {
+    artist = upsertLibraryArtist({ identityKey, name: "Before Failure", syncSearch: false });
+    const album = upsertLibraryAlbum({
+      identityKey: `${identityKey}:album`,
+      artistId: artist.id,
+      title: "Scan Failure Album",
+      syncSearch: false,
+    });
+    const track = upsertLibraryTrack({
+      identityKey: `${identityKey}:track`,
+      title: "Scan Failure Track",
+      artistName: "Before Failure",
+      syncSearch: false,
+    });
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, syncSearch: false });
+    upsertLibraryMediaFile({
+      trackId: track.id,
+      albumId: album.id,
+      source: "aurral",
+      path: `/tmp/scan-insert-failure-${process.pid}.flac`,
+      available: true,
+    });
+    assert.equal(getCanonicalLibrary().artists.find((item) => item.id === artist.id)?.name, "Before Failure");
+
+    db.exec(`CREATE TEMP TRIGGER fail_library_scan_insert
+      BEFORE INSERT ON library_scan_runs BEGIN
+        SELECT RAISE(FAIL, 'scan insert failed');
+      END`);
+    await assert.rejects(
+      () => withLibraryScan("test-insert-failure", null, async () => ({})),
+      /scan insert failed/,
+    );
+    db.exec("DROP TRIGGER fail_library_scan_insert");
+
+    await withLibraryScan("test-after-insert-failure", null, async () => {
+      upsertLibraryArtist({ identityKey, name: "After Failure", syncSearch: false });
+      return { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
+    });
+
+    assert.equal(getCanonicalLibrary().artists.find((item) => item.id === artist.id)?.name, "After Failure");
+  } finally {
+    db.exec("DROP TRIGGER IF EXISTS fail_library_scan_insert");
+    if (artist) db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    db.prepare("DELETE FROM library_scan_runs WHERE source LIKE 'test-%insert-failure'").run();
+    invalidateCanonicalLibraryCache();
+  }
+});
 
 test("a local-only configured scan does not contact Lidarr", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-local-only-scan-"));
@@ -40,6 +140,41 @@ test("a local-only configured scan does not contact Lidarr", async () => {
     assert.equal(lidarrCalls, 0);
     assert.equal(result.lidarr.skipped, true);
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a failed provider scan repairs derived library indexes", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-failed-index-repair-"));
+  const identityKey = `name:failed-index-repair-${process.pid}`;
+  const artist = upsertLibraryArtist({
+    identityKey,
+    name: "Failed Index Repair",
+    syncSearch: false,
+  });
+  db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?")
+    .run(artist.id);
+
+  try {
+    const result = await scanConfiguredLibrary({
+      musicRoot: root,
+      lidarrClient: {
+        isConfigured: () => true,
+        request: async () => {
+          throw new Error("Lidarr unavailable");
+        },
+        getAllAlbums: async () => [],
+        getRootFolders: async () => [],
+      },
+    });
+    const indexed = db.prepare(
+      "SELECT 1 FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?",
+    ).get(artist.id);
+
+    assert.equal(result.lidarr.error, "Lidarr unavailable");
+    assert.equal(Boolean(indexed), true);
+  } finally {
+    db.prepare("DELETE FROM library_artists WHERE identity_key = ?").run(identityKey);
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -439,6 +574,120 @@ test("indexLidarrLibrary imports logical media and readable track files", async 
       "lidarr",
       filePath,
     );
+  }
+});
+
+test("an unchanged Lidarr rescan does not rewrite library rows", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-unchanged-"));
+  const filePath = await createAudioFile(root, "Stable Artist/Stable Album/01 Stable Track.flac");
+  const artistMbid = "10101010-1010-4010-8010-101010101010";
+  const albumMbid = "20202020-2020-4020-8020-202020202020";
+  const trackMbid = "30303030-3030-4030-8030-303030303030";
+  const genreStatsKey = `libraryGenreStats:unchanged-${process.pid}`;
+  const client = {
+    isConfigured: () => true,
+    request: async () => [{ id: 1010, artistName: "Stable Artist", foreignArtistId: artistMbid }],
+    getAllAlbums: async () => [{
+      id: 2020,
+      artistId: 1010,
+      title: "Stable Album",
+      foreignAlbumId: albumMbid,
+      path: path.dirname(filePath),
+    }],
+    getTracksByAlbumId: async () => [{
+      id: 3030,
+      albumId: 2020,
+      title: "Stable Track",
+      trackNumber: 1,
+      foreignRecordingId: trackMbid,
+      trackFileId: 4040,
+    }],
+    getTrackFilesByAlbumId: async () => [{ id: 4040, path: filePath, trackIds: [3030] }],
+    getRootFolders: async () => [{ path: root }],
+  };
+
+  try {
+    await indexLidarrLibrary({ client, syncSearch: false });
+    db.prepare("UPDATE library_artists SET updated_at = 1 WHERE mbid = ?").run(artistMbid);
+    db.prepare("UPDATE library_albums SET updated_at = 1 WHERE release_group_mbid = ?").run(albumMbid);
+    db.prepare("UPDATE library_tracks SET updated_at = 1 WHERE mbid = ?").run(trackMbid);
+    db.prepare("UPDATE library_media_files SET updated_at = 1 WHERE source = 'lidarr' AND path = ?")
+      .run(filePath);
+
+    const changesBefore = db.prepare("SELECT total_changes() AS count").get().count;
+    const result = await indexLidarrLibrary({ client, syncSearch: false });
+    const changesAfter = db.prepare("SELECT total_changes() AS count").get().count;
+
+    assert.equal(result.changed, false);
+    assert.equal(changesAfter - changesBefore, 2);
+    assert.deepEqual({
+      artist: db.prepare("SELECT updated_at FROM library_artists WHERE mbid = ?").get(artistMbid)?.updated_at,
+      album: db.prepare("SELECT updated_at FROM library_albums WHERE release_group_mbid = ?").get(albumMbid)?.updated_at,
+      track: db.prepare("SELECT updated_at FROM library_tracks WHERE mbid = ?").get(trackMbid)?.updated_at,
+      media: db.prepare("SELECT updated_at FROM library_media_files WHERE source = 'lidarr' AND path = ?")
+        .get(filePath)?.updated_at,
+    }, { artist: 1, album: 1, track: 1, media: 1 });
+
+    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run(genreStatsKey, "preserved");
+    const configuredChangesBefore = db.prepare("SELECT total_changes() AS count").get().count;
+    const configured = await scanConfiguredLibrary({
+      musicRoot: path.join(root, "empty-aurral-root"),
+      lidarrClient: client,
+    });
+    const configuredChangesAfter = db.prepare("SELECT total_changes() AS count").get().count;
+
+    assert.equal(configured.local.changed, false);
+    assert.equal(configured.lidarr.changed, false);
+    assert.equal(configuredChangesAfter - configuredChangesBefore, 4);
+    assert.equal(db.prepare("SELECT value FROM settings WHERE key = ?").get(genreStatsKey)?.value, "preserved");
+  } finally {
+    db.prepare("DELETE FROM settings WHERE key = ?").run(genreStatsKey);
+    deleteIndexedFile("lidarr", filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Lidarr persistence yields between album transactions", async () => {
+  const artistMbid = "40404040-4040-4040-8040-404040404040";
+  const firstAlbumMbid = "50505050-5050-4050-8050-505050505050";
+  const secondAlbumMbid = "60606060-6060-4060-8060-606060606060";
+  let scanning = true;
+  const yieldedBetweenAlbums = new Promise((resolve) => {
+    const inspect = () => {
+      const firstExists = Boolean(db.prepare(
+        "SELECT 1 FROM library_albums WHERE release_group_mbid = ?",
+      ).get(firstAlbumMbid));
+      const secondExists = Boolean(db.prepare(
+        "SELECT 1 FROM library_albums WHERE release_group_mbid = ?",
+      ).get(secondAlbumMbid));
+      if (firstExists && !secondExists) return resolve(true);
+      if (!scanning) return resolve(false);
+      setImmediate(inspect);
+    };
+    setImmediate(inspect);
+  });
+
+  try {
+    await indexLidarrLibrary({
+      syncSearch: false,
+      client: {
+        isConfigured: () => true,
+        request: async () => [{ id: 4040, artistName: "Yield Artist", foreignArtistId: artistMbid }],
+        getAllAlbums: async () => [
+          { id: 5050, artistId: 4040, title: "First Yield Album", foreignAlbumId: firstAlbumMbid },
+          { id: 6060, artistId: 4040, title: "Second Yield Album", foreignAlbumId: secondAlbumMbid },
+        ],
+        getTracksByAlbumId: async () => [],
+        getTrackFilesByAlbumId: async () => [],
+        getRootFolders: async () => [],
+      },
+    });
+    scanning = false;
+
+    assert.equal(await yieldedBetweenAlbums, true);
+  } finally {
+    scanning = false;
+    db.prepare("DELETE FROM library_artists WHERE mbid = ?").run(artistMbid);
   }
 });
 
@@ -878,6 +1127,35 @@ test("a partial Lidarr rescan preserves existing file availability", async () =>
   }
 });
 
+test("a Lidarr rescan preserves files for an album with a missing artist response", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-missing-artist-"));
+  let filePath;
+  try {
+    filePath = await createAudioFile(root, "Missing Artist/Album/01 Track.flac");
+    const artist = { id: 117, artistName: "Missing Artist", foreignArtistId: "17171717-1717-4717-8717-171717171717" };
+    const album = { id: 118, artistId: 117, title: "Album", foreignAlbumId: "18181818-1818-4818-8818-181818181818" };
+    const track = { id: 119, albumId: 118, title: "Track", foreignRecordingId: "19191919-1919-4919-8919-191919191919", trackFileId: 120 };
+    const client = {
+      isConfigured: () => true,
+      request: async () => [artist],
+      getAllAlbums: async () => [album],
+      getTracksByAlbumId: async () => [track],
+      getTrackFilesByAlbumId: async () => [{ id: 120, path: filePath, trackIds: [119] }],
+      getRootFolders: async () => [{ path: root }],
+    };
+    await indexLidarrLibrary({ client });
+    client.request = async () => [];
+    const result = await indexLidarrLibrary({ client });
+    const file = getLibrarySnapshot().files.find((entry) => entry.path === filePath);
+
+    assert.equal(result.filesFailed, 1);
+    assert.equal(file?.available, 1);
+  } finally {
+    if (filePath) deleteIndexedFile("lidarr", filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a Lidarr outage leaves the last indexed library available", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-outage-"));
   let filePath;
@@ -961,6 +1239,34 @@ test("an empty Lidarr response leaves the last indexed library available", async
 
     assert.equal(result.filesIndexed, 0);
     assert.equal(file?.available, 1);
+  } finally {
+    if (filePath) deleteIndexedFile("lidarr", filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a Lidarr rescan marks the final removed media file unavailable", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-final-removal-"));
+  let filePath;
+  const artist = { id: 47, artistName: "Removal Artist", foreignArtistId: "47474747-4747-4747-8747-474747474747" };
+  const album = { id: 48, artistId: 47, title: "Removal Album", foreignAlbumId: "48484848-4848-4848-8848-484848484848" };
+  const track = { id: 49, albumId: 48, title: "Removal Track", trackNumber: 1, foreignRecordingId: "49494949-4949-4949-8949-494949494949", trackFileId: 50 };
+  try {
+    filePath = await createAudioFile(root, "Removal Artist/Removal Album/01 Removal Track.flac");
+    const client = {
+      isConfigured: () => true,
+      request: async () => [artist],
+      getAllAlbums: async () => [album],
+      getTracksByAlbumId: async () => [track],
+      getTrackFilesByAlbumId: async () => [{ id: 50, path: filePath, trackIds: [49] }],
+      getRootFolders: async () => [{ path: root }],
+    };
+    await indexLidarrLibrary({ client });
+    client.getTrackFilesByAlbumId = async () => [];
+    await indexLidarrLibrary({ client });
+    const file = getLibrarySnapshot().files.find((entry) => entry.path === filePath);
+
+    assert.equal(file?.available, 0);
   } finally {
     if (filePath) deleteIndexedFile("lidarr", filePath);
     await rm(root, { recursive: true, force: true });
