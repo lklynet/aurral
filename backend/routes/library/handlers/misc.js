@@ -68,6 +68,61 @@ const toLibraryAlbum = (album) => ({
   albumType: "Album",
 });
 
+export async function getArtistLibraryLookup(mbid) {
+  const { artists, albums } = getCanonicalLibraryReadModelForArtists({
+    source: "all",
+    availableOnly: false,
+    mbids: [mbid],
+  });
+  const artist = artists.find((candidate) => candidate.mbid === mbid);
+  const { lidarrClient } = await import("../../../services/lidarrClient.js");
+  let lidarrArtist;
+  let lidarrAlbums;
+  if (lidarrClient.isConfigured()) {
+    try {
+      lidarrArtist = await lidarrClient.getArtistByMbid(mbid, { forceRefresh: true });
+      if (lidarrArtist) {
+        const albums = await lidarrClient.request(
+          `/album?artistId=${encodeURIComponent(lidarrArtist.id)}`,
+          "GET",
+          null,
+          false,
+          { forceRefresh: true },
+        );
+        if (!Array.isArray(albums)) throw new Error("Invalid Lidarr album response");
+        lidarrAlbums = albums.map((album) =>
+          toLibraryAlbum(libraryManager.mapLidarrAlbum(album, lidarrArtist)),
+        );
+      }
+    } catch {
+      lidarrArtist = undefined;
+      lidarrAlbums = undefined;
+    }
+  }
+  if (lidarrArtist && lidarrAlbums) {
+    return {
+      exists: true,
+      artist: toLibraryArtist(libraryManager.mapLidarrArtist(lidarrArtist)),
+      albums: lidarrAlbums,
+      canonical: true,
+    };
+  }
+  if (lidarrArtist === undefined && artist) {
+    return {
+      exists: true,
+      artist: toLibraryArtist(artist),
+      albums: albums.filter((album) => album.artistMbid === mbid).map(toLibraryAlbum),
+      canonical: true,
+    };
+  }
+  return {
+    exists: false,
+    artist: null,
+    albums: [],
+    canonical: true,
+  };
+}
+
 export function registerMisc(router) {
   router.get("/rootfolder", async (req, res) => {
     try {
@@ -93,58 +148,7 @@ export function registerMisc(router) {
         return res.status(400).json({ error: "Invalid MBID format" });
       }
 
-      const { artists, albums } = getCanonicalLibraryReadModelForArtists({
-        source: "all",
-        availableOnly: false,
-        mbids: [mbid],
-      });
-      const artist = artists.find((candidate) => candidate.mbid === mbid);
-      const { lidarrClient } = await import("../../../services/lidarrClient.js");
-      let lidarrArtist;
-      let lidarrAlbums;
-      if (lidarrClient.isConfigured()) {
-        try {
-          lidarrArtist = await lidarrClient.getArtistByMbid(mbid, { forceRefresh: true });
-          if (lidarrArtist) {
-            const albums = await lidarrClient.request(
-              `/album?artistId=${encodeURIComponent(lidarrArtist.id)}`,
-              "GET",
-              null,
-              false,
-              { forceRefresh: true },
-            );
-            if (!Array.isArray(albums)) throw new Error("Invalid Lidarr album response");
-            lidarrAlbums = albums.map((album) =>
-              toLibraryAlbum(libraryManager.mapLidarrAlbum(album, lidarrArtist)),
-            );
-          }
-        } catch {
-          lidarrArtist = undefined;
-          lidarrAlbums = undefined;
-        }
-      }
-      if (lidarrArtist && lidarrAlbums) {
-        res.json({
-          exists: true,
-          artist: toLibraryArtist(libraryManager.mapLidarrArtist(lidarrArtist)),
-          albums: lidarrAlbums,
-          canonical: true,
-        });
-      } else if (lidarrArtist === undefined && artist) {
-        res.json({
-          exists: true,
-          artist: toLibraryArtist(artist),
-          albums: albums.filter((album) => album.artistMbid === mbid).map(toLibraryAlbum),
-          canonical: true,
-        });
-      } else {
-        res.json({
-          exists: false,
-          artist: null,
-          albums: [],
-          canonical: true,
-        });
-      }
+      res.json(await getArtistLibraryLookup(mbid));
     } catch (error) {
       res.status(500).json({
         error: "Failed to lookup artist",

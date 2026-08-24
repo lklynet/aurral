@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { db } from "../../backend/config/db-sqlite.js";
+import { registerStream as registerArtistStream } from "../../backend/routes/artists/handlers/stream.js";
 import { registerMisc } from "../../backend/routes/library/handlers/misc.js";
 import { libraryManager } from "../../backend/services/libraryManager.js";
 import { lidarrClient } from "../../backend/services/lidarrClient.js";
@@ -103,6 +104,43 @@ test("artist lookup follows fresh Lidarr artist and album membership while the c
       { json(value) { body = value; return this; } },
     );
     assert.equal(body?.exists, false);
+
+    const streamRoutes = new Map();
+    registerArtistStream({
+      get(path, ...handlers) {
+        streamRoutes.set(path, handlers.at(-1));
+      },
+    });
+    const writes = [];
+    let closeStream = () => {};
+    await streamRoutes.get("/:mbid/stream")(
+      {
+        params: { mbid },
+        query: { artistName: "Stale Artist" },
+        headers: {},
+        socket: { destroyed: false },
+        on(event, handler) {
+          if (event === "close") closeStream = handler;
+        },
+      },
+      {
+        setHeader() {},
+        status() { return this; },
+        json() { return this; },
+        write(value) { writes.push(value); },
+        flush() {},
+        end() {},
+      },
+    );
+    const deadline = Date.now() + 1000;
+    let libraryEventIndex = writes.indexOf("event: library\n");
+    while (libraryEventIndex === -1 && Date.now() < deadline) {
+      await new Promise((resolve) => setImmediate(resolve));
+      libraryEventIndex = writes.indexOf("event: library\n");
+    }
+    assert.notEqual(libraryEventIndex, -1);
+    assert.equal(JSON.parse(writes[libraryEventIndex + 1].slice(6)).exists, false);
+    closeStream();
   } finally {
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
