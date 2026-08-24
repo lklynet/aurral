@@ -13,6 +13,8 @@ import {
 } from "../../../utils/api/endpoints/library.js";
 import { getAppSettings } from "../../../utils/api/endpoints/settings.js";
 import { getStoredAuth } from "../../../utils/api/core.js";
+import { queryClient, queryKeys } from "../../../queryClient.js";
+import { useWebSocketChannel } from "../../../hooks/useWebSocket.js";
 import { allReleaseTypes, emptyArtistShape } from "../constants";
 
 const buildReleaseGroupCoverRequest = (rgId, artist, libraryAlbums, pageArtistName) => {
@@ -126,6 +128,17 @@ export function useArtistDetailsStream(
   const artistNameRef = useRef(artistNameFromNav || "");
   const visibleCoverIdsRef = useRef(visibleCoverIds);
   const streamRequestRef = useRef(0);
+  const libraryRefreshRef = useRef(null);
+  const optimisticLibraryLookupRef = useRef(false);
+
+  useWebSocketChannel(
+    "library",
+    (message) => {
+      if (message?.type !== "library_scan_completed") return;
+      libraryRefreshRef.current?.();
+    },
+    { enabled: Boolean(mbid) },
+  );
 
   if (artistMbidRef.current !== mbid) {
     artistMbidRef.current = mbid;
@@ -154,6 +167,7 @@ export function useArtistDetailsStream(
     const requestId = ++streamRequestRef.current;
     const isCurrentRequest = () => streamRequestRef.current === requestId;
     const nextCachedLookup = readLibraryLookupCache([mbid])?.[mbid];
+    optimisticLibraryLookupRef.current = nextCachedLookup === true;
     const nextSeededExistsInLibrary =
       stableInitialLibraryHint.existsInLibrary === true || nextCachedLookup === true
         ? true
@@ -253,22 +267,24 @@ export function useArtistDetailsStream(
       await Promise.allSettled(requests);
     };
 
-    const loadLibraryFallback = async () => {
+    const loadLibraryFallback = async ({ bypassCache = false } = {}) => {
       setLoadingLibrary(true);
       try {
-        const lookup = await lookupArtistInLibrary(mbid);
+        const lookup = await lookupArtistInLibrary(mbid, { bypassCache });
         if (!isCurrentRequest()) return;
+        queryClient.setQueryData(queryKeys.libraryLookup(mbid), lookup.exists);
         setExistsInLibrary(lookup.exists);
         if (!lookup.exists || !lookup.artist) return;
 
         const fullArtist = lookup.canonical
           ? lookup.artist
-          : await getLibraryArtist(lookup.artist.mbid || lookup.artist.foreignArtistId).catch(
-              (err) => {
-                console.error("Failed to fetch full artist details:", err);
-                return lookup.artist;
-              },
-            );
+          : await getLibraryArtist(
+              lookup.artist.mbid || lookup.artist.foreignArtistId,
+              { bypassCache },
+            ).catch((err) => {
+              console.error("Failed to fetch full artist details:", err);
+              return lookup.artist;
+            });
         if (!isCurrentRequest()) return;
 
         setLibraryArtist(fullArtist);
@@ -281,7 +297,7 @@ export function useArtistDetailsStream(
         const artistId = fullArtist.id || lookup.artist.id;
         if (!artistId) return;
 
-        const albums = await getLibraryAlbums(artistId).catch((err) => {
+        const albums = await getLibraryAlbums(artistId, { bypassCache }).catch((err) => {
           console.error("Failed to fetch library albums:", err);
           return [];
         });
@@ -293,6 +309,14 @@ export function useArtistDetailsStream(
           setLoadingLibrary(false);
         }
       }
+    };
+
+    libraryRefreshRef.current = async () => {
+      await queryClient.cancelQueries({
+        queryKey: queryKeys.libraryLookupDetails(mbid),
+        exact: true,
+      });
+      return loadLibraryFallback({ bypassCache: true });
     };
 
     const loadRestFallback = async () => {
@@ -434,10 +458,17 @@ export function useArtistDetailsStream(
         if (!isCurrentRequest()) return;
         libraryReceived = true;
         if (data.exists && data.artist) {
+          optimisticLibraryLookupRef.current = false;
+          queryClient.setQueryData(queryKeys.libraryLookup(mbid), true);
           setExistsInLibrary(true);
           setLibraryArtist(data.artist);
           setLibraryAlbums(data.albums || []);
         } else if (!data.exists) {
+          if (optimisticLibraryLookupRef.current) {
+            setLoadingLibrary(false);
+            return;
+          }
+          queryClient.setQueryData(queryKeys.libraryLookup(mbid), false);
           setExistsInLibrary(false);
           setLibraryArtist(null);
           setLibraryAlbums([]);
@@ -490,6 +521,7 @@ export function useArtistDetailsStream(
     return () => {
       clearTimeout(fallbackTimeout);
       eventSource.close();
+      libraryRefreshRef.current = null;
     };
   }, [
     mbid,

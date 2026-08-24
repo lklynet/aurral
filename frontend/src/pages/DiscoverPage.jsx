@@ -992,9 +992,6 @@ function DiscoverPage() {
                   playlistsUpdateMessage={playlistsUpdateMessage}
                 />
               </div>
-              <p className="artist-discover-hero__description">
-                Your daily mix, curated from your library.
-              </p>
               {heroBasedOn.length > 0 && (
                 <div className="artist-discover-hero__based-on">
                   <div className="artist-discover-hero__based-on-intro">Based on:</div>
