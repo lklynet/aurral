@@ -210,8 +210,16 @@ export const lookupAlbumsInLibraryBatch = (mbids, { signal, bypassCache = false 
   });
 };
 
-export const addArtistToLibrary = (artistData) =>
-  postData("/library/artists", artistData);
+export const addArtistToLibrary = async (artistData) => {
+  const result = await postData("/library/artists", artistData);
+  const mbid =
+    result?.artist?.mbid ||
+    result?.artist?.foreignArtistId ||
+    result?.foreignArtistId ||
+    artistData?.foreignArtistId;
+  if (mbid) queryClient.setQueryData(queryKeys.libraryLookup(mbid), true);
+  return result;
+};
 
 export const deleteArtistFromLibrary = (mbid, deleteFiles = false) =>
   deleteData(`/library/artists/${mbid}`, {
