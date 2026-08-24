@@ -188,6 +188,52 @@ test("testConnection preserves Lidarr HTTP diagnostics", async (t) => {
   client._httpsInsecureAgent.destroy();
 });
 
+test("missing Lidarr resources are absent records, not endpoint failures", async (t) => {
+  const requests = [];
+  const server = http.createServer((request, response) => {
+    requests.push([request.method, request.url]);
+    response.writeHead(404, { "content-type": "application/json" });
+    response.end(JSON.stringify({ message: "Artist with ID 2411485 does not exist" }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const address = server.address();
+  const client = new LidarrClient();
+  client._holdConfig = true;
+  client.config = {
+    url: `http://127.0.0.1:${address.port}`,
+    apiKey: "test",
+    timeoutMs: 2000,
+    circuitDisabled: true,
+  };
+  const originalConsoleError = console.error;
+  const errors = [];
+  console.error = (...args) => errors.push(args);
+  t.after(() => {
+    console.error = originalConsoleError;
+    client._httpAgent.destroy();
+    client._httpsAgent.destroy();
+    client._httpsInsecureAgent.destroy();
+  });
+
+  assert.equal(await client.getArtist(2411485), null);
+  assert.equal(await client.getAlbum(2411485), null);
+  await assert.rejects(
+    client.updateAlbum(2411485, { monitored: true }),
+    /Album with ID 2411485 not found in Lidarr/,
+  );
+  assert.deepEqual(requests, [
+    ["GET", "/api/v1/artist/2411485"],
+    ["GET", "/api/v1/album/2411485"],
+    ["GET", "/api/v1/album/2411485"],
+  ]);
+  assert.deepEqual(errors, []);
+});
+
 test("getAlbumByMbid avoids unrelated broken albums in Lidarr", async (t) => {
   const requests = [];
   const server = http.createServer((request, response) => {
@@ -495,7 +541,7 @@ test("artist add resolves a non-numeric Lidarr response ID before follow-up call
   client._httpsInsecureAgent.destroy();
 });
 
-test("artist add retries with the active metadata provider ID after a UUID format error", async (t) => {
+test("artist add resolves a numeric metadata-provider response ID", async (t) => {
   const artistMbid = "9c9f1380-2516-4fc9-a3e6-f9f61941d090";
   const requests = [];
   let providerPayload;
@@ -527,14 +573,14 @@ test("artist add retries with the active metadata provider ID after a UUID forma
       }
       providerPayload = payload;
       return {
-        id: 42,
+        id: 2411485,
         foreignArtistId: "705@deezer",
         artistName: "Muse",
         monitored: true,
       };
     }
     if (endpoint === "/artist" && method === "GET") {
-      return [{ id: 42, foreignArtistId: "705@deezer", artistName: "Muse" }];
+      return [{ id: 42, foreignArtistId: "705@deezer", artistName: "Muse", monitored: true }];
     }
     if (endpoint === `/artist/lookup?term=${encodeURIComponent("Muse")}` && method === "GET") {
       return [
@@ -563,6 +609,7 @@ test("artist add retries with the active metadata provider ID after a UUID forma
     { endpoint: "/artist", method: "POST" },
     { endpoint: `/artist/lookup?term=${encodeURIComponent("Muse")}`, method: "GET" },
     { endpoint: "/artist", method: "POST" },
+    { endpoint: "/artist", method: "GET" },
     { endpoint: "/artist", method: "GET" },
   ]);
 });
@@ -643,7 +690,14 @@ test("artist add accepts a MusicBrainz alias when resolving a provider ID", asyn
       };
     }
     if (endpoint === "/artist" && method === "GET") {
-      return [{ id: 42, foreignArtistId: providerArtistId, artistName: "FromSoftware" }];
+      return [
+        {
+          id: 42,
+          foreignArtistId: providerArtistId,
+          artistName: "FromSoftware",
+          monitored: true,
+        },
+      ];
     }
     if (
       endpoint === `/artist/lookup?term=${encodeURIComponent("FromSoftware")}` &&
@@ -698,6 +752,11 @@ test("artist add succeeds when a provider mapping conflict follows a successful 
     }
     if (endpoint === `/artist/lookup?term=${encodeURIComponent("Muse")}` && method === "GET") {
       return [{ foreignArtistId: providerId, artistName: "Muse" }];
+    }
+    if (endpoint === "/artist" && method === "GET") {
+      return [
+        { id: 42, foreignArtistId: providerId, artistName: "Muse", monitored: true },
+      ];
     }
     throw new Error(`Unexpected Lidarr request: ${method} ${endpoint}`);
   };

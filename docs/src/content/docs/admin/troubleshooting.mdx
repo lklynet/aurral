@@ -125,6 +125,22 @@ Aurral fetches covers on demand without a background prefetch. It caches each co
 
 The image-proxy disk cache has a 256MB limit and uses least-recently-used removal. Restart Aurral if you need a clean memory baseline.
 
+## The container exits with code 137
+
+Exit code 137 means that the container received `SIGKILL`. Check whether Docker killed it for exceeding its memory limit:
+
+```bash
+docker inspect <container> --format 'oom={{.State.OOMKilled}} memory_limit={{.HostConfig.Memory}}'
+```
+
+If the container is still running, capture its current memory use:
+
+```bash
+docker stats --no-stream <container>
+```
+
+If the container has stopped, `docker stats` has no historical usage data. Use the `docker inspect` result and the host's out-of-memory logs instead. If `oom=true`, increase the container memory limit. If `oom=false`, check the container supervisor and Docker daemon logs for the process that sent `SIGKILL`.
+
 ## Permission errors
 
 - Make sure mounted folders are writable by the container user.

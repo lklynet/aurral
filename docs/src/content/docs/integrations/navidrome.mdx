@@ -93,6 +93,8 @@ Aurral stores the Navidrome playlist ID for each flow or shared playlist. Names 
 
 Aurral also uploads its generated playlist artwork to API playlists and updates it when you change or regenerate artwork in Aurral. Aurral revalidates its local artwork response after restart, so the image stays current in the Aurral UI. Navidrome uses that uploaded image instead of its automatic tiled artwork when custom playlist artwork is supported.
 
+If Navidrome is unavailable during a playlist update, Aurral keeps the stored playlist ID and queues the snapshot for its existing catch-up attempts.
+
 If a new track is not indexed, Aurral leaves it out until Navidrome scans it; it never substitutes a same-title track from another artist. Navidrome scans the **Aurral Playlists** library, not only your main Lidarr library. If the library appears but has no tracks:
 
 - confirm that a permanent track exists under the Downloads Folder or a flow track exists under `_flows`;

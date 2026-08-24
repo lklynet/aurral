@@ -519,11 +519,17 @@ export class NavidromePlaybackDestination {
   }
 
   async publishPlaylist(value) {
+    let snapshot;
+    let key;
     try {
-      const snapshot = createPlaybackPlaylistSnapshot(value);
-      const key = `${snapshot.entityId}:${this._targetKey(snapshot.ownerUserId)}`;
+      snapshot = createPlaybackPlaylistSnapshot(value);
+      key = `${snapshot.entityId}:${this._targetKey(snapshot.ownerUserId)}`;
       return await this._runPlaylistOperation(key, () => this._publishPlaylist(snapshot));
     } catch (error) {
+      if (snapshot) {
+        this._pendingSnapshots.set(key, snapshot);
+        this._scheduleCatchup();
+      }
       return playbackOperationFailure({
         code: "PLAYLIST_PUBLISH_FAILED",
         message: error?.message || "Could not publish the Navidrome playlist",

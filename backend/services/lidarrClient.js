@@ -590,8 +590,11 @@ export class LidarrClient {
           const statusText = error.response.statusText;
           const responseData = error.response.data;
 
-          const isAlbum404 = status === 404 && endpoint.includes("/album/");
-          if (!isAlbum404) {
+          const isMissingResource =
+            status === 404 &&
+            method === "GET" &&
+            /^\/(?:artist|album)\/\d+$/.test(endpoint);
+          if (!isMissingResource) {
             console.error(`Lidarr API error (${status}):`, {
               url: `${this.config.url}${this.apiPath}${endpoint}`,
               method: method,
@@ -651,8 +654,7 @@ export class LidarrClient {
             throw userError;
           }
           if (status === 404) {
-            const isAlbumEndpoint = endpoint.includes("/album/");
-            if (isAlbumEndpoint) {
+            if (isMissingResource) {
               return null;
             }
             const userError = new Error(
@@ -1014,12 +1016,14 @@ export class LidarrClient {
     };
 
     const resolveAddedArtist = async (artist) => {
-      if (normalizeLidarrArtistId(artist?.id)) {
+      const foreignArtistId = String(artist?.foreignArtistId || "").trim();
+      if (normalizeLidarrArtistId(artist?.id) && foreignArtistId === mbid) {
         return artist;
       }
-      let resolvedArtist = await this.getArtistByMbid(mbid);
+      const lookupId = foreignArtistId || mbid;
+      let resolvedArtist = await this.getArtistByMbid(lookupId);
       if (!normalizeLidarrArtistId(resolvedArtist?.id)) {
-        resolvedArtist = await this.getArtistByMbid(mbid, { forceRefresh: true });
+        resolvedArtist = await this.getArtistByMbid(lookupId, { forceRefresh: true });
       }
       if (!normalizeLidarrArtistId(resolvedArtist?.id)) {
         throw new Error(`Lidarr add did not return a numeric artist ID for ${mbid}`);
@@ -1183,6 +1187,9 @@ export class LidarrClient {
       throw new Error(`Lidarr artist ID must be numeric: ${artistId}`);
     }
     const artist = await this.getArtist(normalizedArtistId);
+    if (!artist) {
+      throw new Error(`Artist with ID ${normalizedArtistId} not found in Lidarr`);
+    }
 
     const updated = {
       ...artist,
@@ -1198,6 +1205,9 @@ export class LidarrClient {
       throw new Error(`Lidarr artist ID must be numeric: ${artistId}`);
     }
     const artist = await this.getArtist(normalizedArtistId);
+    if (!artist) {
+      throw new Error(`Artist with ID ${normalizedArtistId} not found in Lidarr`);
+    }
     const monitoring = getArtistMonitoringPayload(monitorOption);
 
     const updated = {
@@ -1451,6 +1461,9 @@ export class LidarrClient {
 
   async updateAlbum(albumId, updates) {
     const album = await this.getAlbum(albumId);
+    if (!album) {
+      throw new Error(`Album with ID ${albumId} not found in Lidarr`);
+    }
 
     const updated = {
       ...album,

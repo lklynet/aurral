@@ -884,6 +884,10 @@ test("keeps the stored playlist ID when Navidrome is unavailable", async () => {
     throw new Error("offline");
   };
   const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+  let catchupScheduled = false;
+  destination._scheduleCatchup = () => {
+    catchupScheduled = true;
+  };
   navidromePlaylistPointerStore.setPointer(playlist.id, "global", {
     playlistId: "saved-id",
     title: playlist.name,
@@ -898,6 +902,8 @@ test("keeps the stored playlist ID when Navidrome is unavailable", async () => {
   );
 
   assert.equal(result.ok, false);
+  assert.equal(catchupScheduled, true);
+  assert.equal(destination._pendingSnapshots.has(`${playlist.id}:global`), true);
   assert.equal(
     navidromePlaylistPointerStore.getPointer(playlist.id, "global").playlistId,
     "saved-id",
