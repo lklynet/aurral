@@ -160,6 +160,45 @@ export async function deezerGetArtistTopTracksById(artistId) {
   return getDeezerArtistTopTracksById(artistId);
 }
 
+export function selectDeezerTrackPreview(candidates, { artistName, trackName }) {
+  const targetArtist = normalizeTitle(artistName);
+  const targetTrack = normalizeTitle(trackName);
+  if (!targetArtist || !targetTrack) return null;
+
+  return (Array.isArray(candidates) ? candidates : []).find((candidate) => {
+    const candidateArtist = normalizeTitle(candidate?.artist?.name);
+    const candidateTrack = normalizeTitle(candidate?.title_short || candidate?.title);
+    return (
+      candidate?.preview &&
+      candidateTrack &&
+      candidateArtist === targetArtist &&
+      (candidateTrack === targetTrack ||
+        candidateTrack.includes(targetTrack) ||
+        targetTrack.includes(candidateTrack))
+    );
+  }) || null;
+}
+
+export async function deezerGetTrackPreview({ artistName, trackName }) {
+  if (!String(artistName || "").trim() || !String(trackName || "").trim()) return null;
+  try {
+    const response = await axios.get("https://api.deezer.com/search", {
+      params: { q: `${artistName} ${trackName}`, limit: 10 },
+      timeout: 3000,
+    });
+    const track = selectDeezerTrackPreview(response.data?.data, { artistName, trackName });
+    if (!track) return null;
+    return {
+      preview_url: track.preview,
+      previewProvider: "deezer",
+      previewTrackId: String(track.id),
+      durationMs: track.duration ? track.duration * 1000 : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function normalizeTitle(title) {
   return String(title || "")
     .toLowerCase()
