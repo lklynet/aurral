@@ -101,6 +101,42 @@ export function upsertLibraryArtist({
   const artistName = normalizeText(name);
   if (!key || !artistName) throw new Error("Library artist identityKey and name are required");
   const artist = db.transaction(() => {
+    const fallbackKey = buildFallbackIdentityKey("artist", artistName);
+    if (mbid) {
+      const resolved = db.prepare("SELECT id FROM library_artists WHERE identity_key = ?").get(key);
+      const fallback = fallbackKey === key
+        ? null
+        : db.prepare("SELECT id FROM library_artists WHERE identity_key = ?").get(fallbackKey);
+      if (fallback) {
+        db.prepare(
+          `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
+           SELECT user_id, entity_kind, ?, created_at
+           FROM subsonic_stars
+           WHERE entity_kind = 'artist' AND entity_key = ?`,
+        ).run(key, fallbackKey);
+        db.prepare(
+          "DELETE FROM subsonic_stars WHERE entity_kind = 'artist' AND entity_key = ?",
+        ).run(fallbackKey);
+      }
+      if (fallback && !resolved) {
+        db.prepare("UPDATE library_artists SET identity_key = ? WHERE id = ?").run(key, fallback.id);
+      } else if (fallback && resolved && fallback.id !== resolved.id) {
+        db.prepare("UPDATE library_albums SET artist_id = ? WHERE artist_id = ?")
+          .run(resolved.id, fallback.id);
+        db.prepare("DELETE FROM library_artists WHERE id = ?").run(fallback.id);
+      }
+    } else if (key === fallbackKey) {
+      const resolved = db.prepare(
+        `SELECT * FROM library_artists
+         WHERE mbid IS NOT NULL AND name = ? COLLATE NOCASE
+         ORDER BY id
+         LIMIT 2`,
+      ).all(artistName);
+      if (resolved.length === 1) {
+        if (syncSearch) syncLibrarySearchArtist(resolved[0].id);
+        return resolved[0];
+      }
+    }
     db.prepare(
       `INSERT INTO library_artists (identity_key, mbid, name, sort_name, metadata_json, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)

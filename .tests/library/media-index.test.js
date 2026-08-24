@@ -10,6 +10,7 @@ import {
   getCanonicalLibraryPage,
 } from "../../backend/services/libraryQueryService.js";
 import {
+  buildFallbackIdentityKey,
   getLibrarySnapshot,
   linkLibraryAlbumTrack,
   upsertLibraryAlbum,
@@ -166,6 +167,86 @@ test("scanMusicRoot derives stable fallback records when tags are missing", asyn
   } finally {
     if (filePath) deleteIndexedFile(source, filePath);
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("upsertLibraryArtist promotes a name fallback when its MBID becomes known", () => {
+  const name = `Identity Promotion ${process.pid} ${Date.now()}`;
+  const mbid = "11111111-1111-4111-8111-111111111112";
+  const fallback = upsertLibraryArtist({
+    identityKey: buildFallbackIdentityKey("artist", name),
+    name,
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: buildFallbackIdentityKey("album", fallback.identity_key, "Album"),
+    artistId: fallback.id,
+    title: "Album",
+  });
+
+  try {
+    const resolved = upsertLibraryArtist({
+      identityKey: `mbid:${mbid}`,
+      mbid,
+      name,
+    });
+    const fallbackAgain = upsertLibraryArtist({
+      identityKey: buildFallbackIdentityKey("artist", name),
+      name,
+    });
+    const artists = db.prepare("SELECT id, mbid FROM library_artists WHERE name = ?").all(name);
+    const linkedAlbum = db.prepare("SELECT artist_id FROM library_albums WHERE id = ?").get(album.id);
+
+    assert.deepEqual(artists, [{ id: resolved.id, mbid }]);
+    assert.equal(resolved.id, fallback.id);
+    assert.equal(fallbackAgain.id, resolved.id);
+    assert.equal(linkedAlbum.artist_id, resolved.id);
+  } finally {
+    db.prepare("DELETE FROM library_artists WHERE name = ?").run(name);
+  }
+});
+
+test("upsertLibraryArtist repairs an existing fallback and MBID duplicate", () => {
+  const name = `Identity Repair ${process.pid} ${Date.now()}`;
+  const mbid = "11111111-1111-4111-8111-111111111113";
+  const fallbackKey = buildFallbackIdentityKey("artist", name);
+  const fallback = upsertLibraryArtist({
+    identityKey: fallbackKey,
+    name,
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: buildFallbackIdentityKey("album", fallback.identity_key, "Album"),
+    artistId: fallback.id,
+    title: "Album",
+  });
+  const timestamp = Date.now();
+  const resolvedId = Number(db.prepare(
+    `INSERT INTO library_artists
+      (identity_key, mbid, name, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(`mbid:${mbid}`, mbid, name, timestamp, timestamp).lastInsertRowid);
+  const userId = Number(db.prepare(
+    "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+  ).run(`identity-repair-${process.pid}-${timestamp}`, "hash").lastInsertRowid);
+  db.prepare(
+    `INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
+     VALUES (?, 'artist', ?, ?)`,
+  ).run(userId, fallbackKey, timestamp);
+
+  try {
+    const resolved = upsertLibraryArtist({ identityKey: `mbid:${mbid}`, mbid, name });
+    const artists = db.prepare("SELECT id, mbid FROM library_artists WHERE name = ?").all(name);
+    const linkedAlbum = db.prepare("SELECT artist_id FROM library_albums WHERE id = ?").get(album.id);
+    const star = db.prepare(
+      "SELECT entity_key FROM subsonic_stars WHERE user_id = ? AND entity_kind = 'artist'",
+    ).get(userId);
+
+    assert.deepEqual(artists, [{ id: resolvedId, mbid }]);
+    assert.equal(resolved.id, resolvedId);
+    assert.equal(linkedAlbum.artist_id, resolvedId);
+    assert.equal(star.entity_key, `mbid:${mbid}`);
+  } finally {
+    db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+    db.prepare("DELETE FROM library_artists WHERE name = ?").run(name);
   }
 });
 
