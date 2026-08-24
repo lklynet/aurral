@@ -56,6 +56,7 @@ import {
   addSharedPlaylistTracks,
   createSharedPlaylist,
   deleteSharedPlaylistTrack,
+  getFlowTrackStreamUrl,
 } from "../utils/api/endpoints/playlists.js";
 import { buildAuthenticatedApiUrl } from "../utils/api/core.js";
 import { mergeAlbumMetadataTracks } from "../utils/libraryTrackHydration.js";
@@ -101,8 +102,11 @@ const yearOf = (value) => {
   return match ? match[1] : "";
 };
 
-const favoriteId = (kind, entity) =>
-  kind + ":" + encodeURIComponent(text(entity?.identityKey));
+export const favoriteId = (kind, entity) => {
+  const id = text(entity?.id);
+  if (kind === "song" && /^(flow|shared)-song:/.test(id)) return id;
+  return kind + ":" + encodeURIComponent(text(entity?.identityKey));
+};
 
 const firstAvailableFile = (track, albumId = null) =>
   (track?.files || []).find((file) => file.available && file.albumId === albumId)
@@ -128,6 +132,34 @@ const normalizeLibraryPages = (pages) => pages.reduce(
   },
   { artists: [], albums: [], tracks: [], genres: [] },
 );
+
+export const favoriteLibraryFromResponse = (favorites) => {
+  const library = normalizeLibraryPages([favorites?.library || EMPTY_LIBRARY]);
+  const playlistTracks = (Array.isArray(favorites?.song) ? favorites.song : [])
+    .filter((track) => /^(flow|shared)-song:/.test(text(track?.id)))
+    .map((track) => {
+      const jobId = decodeURIComponent(track.id.slice(track.id.indexOf(":") + 1)).split(":").at(-1);
+      const durationMs = Number(track.duration) > 0 ? Number(track.duration) * 1000 : null;
+      return {
+        id: track.id,
+        identityKey: track.id,
+        title: track.title,
+        artistName: track.artist,
+        albumName: track.album,
+        durationMs,
+        albums: [],
+        files: [{
+          available: true,
+          previewUrl: getFlowTrackStreamUrl(jobId),
+          format: track.suffix || null,
+          durationMs,
+        }],
+      };
+    });
+  return playlistTracks.length
+    ? { ...library, tracks: [...library.tracks, ...playlistTracks] }
+    : library;
+};
 
 const favoriteIdsFromPages = (pages) => new Set(
   ["artists", "albums", "tracks"].flatMap((kind) =>
@@ -570,7 +602,9 @@ function LibraryPage() {
       const pageResults = section === "favorites"
         ? [nextData?.library || EMPTY_LIBRARY]
         : Array.isArray(nextData) ? nextData : [nextData];
-      const normalizedLibrary = normalizeLibraryPages(pageResults);
+      const normalizedLibrary = section === "favorites"
+        ? favoriteLibraryFromResponse(nextData)
+        : normalizeLibraryPages(pageResults);
       const usePreview =
         import.meta.env.DEV &&
         pageResults.every((page) => Number(page?.total || 0) === 0) &&
@@ -1366,7 +1400,7 @@ function LibraryPage() {
         id: track.id,
         title: track.title,
         artist: artist?.name || track.artistName || "Unknown Artist",
-        album: album?.title || "Unknown Album",
+        album: album?.title || track.albumName || track.album || "Unknown Album",
         src:
           file?.previewUrl ||
           (file && album
@@ -1612,7 +1646,7 @@ function LibraryPage() {
             String(currentTrack?.id) === String(track.id) &&
             matchesSource(librarySource);
           const artistName = artist?.name || track.artistName || "Unknown Artist";
-          const albumName = album?.title || "Unknown Album";
+          const albumName = album?.title || track.albumName || track.album || "Unknown Album";
           const trackNumber = track.albums?.find(
             (entry) => String(entry.albumId) === String(album?.id),
           )?.trackNumber;
