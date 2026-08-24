@@ -23,6 +23,9 @@ export const adoptDiscoverPlaylistAsStatic = (presetId) =>
     presetId,
   });
 
+export const getDiscoverPlaylistPreviews = (presetId, options = {}) =>
+  getData(`/discover/playlists/${encodeURIComponent(presetId)}/previews`, options);
+
 export const getDiscoverArtworkUrl = (presetId, version) =>
   buildAuthenticatedApiUrl(
     `/discover/artwork/${encodeURIComponent(presetId)}`,

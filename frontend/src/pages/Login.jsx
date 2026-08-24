@@ -45,7 +45,6 @@ const Login = () => {
         <div className="login-header">
           <img src="/arralogo.svg" alt="Aurral" className="login-logo" />
           <h1 className="login-title">Sign in</h1>
-          <p className="login-subtitle">Enter your credentials to access Aurral</p>
         </div>
 
         {oidcEnabled && (
@@ -78,7 +77,6 @@ const Login = () => {
                 required
                 autoComplete="username"
                 className="login-input"
-                placeholder="Username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 aria-invalid={error ? "true" : undefined}
@@ -96,7 +94,6 @@ const Login = () => {
                 required
                 autoComplete="current-password"
                 className="login-input"
-                placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 aria-invalid={error ? "true" : undefined}

@@ -3,6 +3,7 @@ import {
   adoptDiscoverPlaylistAsFlow,
   adoptDiscoverPlaylistAsStatic,
   getDiscoverArtworkUrl,
+  getDiscoverPlaylistPreviews,
 } from "../utils/api/endpoints/discovery.js";
 import {
   addSharedPlaylistTracks,
@@ -43,11 +44,13 @@ const mapPlaylistTracks = (tracks, presetId) =>
       artistName: track?.artistName || "Unknown Artist",
       trackName: track?.trackName || "Unknown Track",
       albumName: track?.albumName || null,
-      durationMs: null,
+      durationMs: track?.durationMs || null,
       reason: track?.reason || "Discover playlist",
       artistMbid: artistMbid || null,
       albumMbid: String(track?.albumMbid || "").trim() || null,
       trackMbid: trackMbid || null,
+      status: track?.preview_url ? "done" : "pending",
+      streamUrl: track?.preview_url || null,
     };
   });
 
@@ -62,9 +65,35 @@ export default function DiscoverPlaylistDetailPage() {
     return playlists.find((p) => p.presetId === presetId) || null;
   }, [data?.discoverPlaylists, presetId]);
 
+  const [previewTracks, setPreviewTracks] = useState(null);
+  const [previewMessage, setPreviewMessage] = useState("");
+
+  useEffect(() => {
+    setPreviewTracks(null);
+    setPreviewMessage("");
+    if (playlist?.type !== "editorial") return undefined;
+    const controller = new AbortController();
+    getDiscoverPlaylistPreviews(playlist.presetId, { signal: controller.signal })
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        const nextTracks = result?.tracks || [];
+        setPreviewTracks(nextTracks);
+        if (!nextTracks.some((track) => track?.preview_url)) {
+          setPreviewMessage("No Deezer previews are available for this playlist.");
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setPreviewTracks(null);
+          setPreviewMessage("Deezer previews are unavailable right now.");
+        }
+      });
+    return () => controller.abort();
+  }, [playlist?.presetId, playlist?.type]);
+
   const tracks = useMemo(
-    () => (playlist ? mapPlaylistTracks(playlist.tracks || [], playlist.presetId) : []),
-    [playlist],
+    () => (playlist ? mapPlaylistTracks(previewTracks || playlist.tracks || [], playlist.presetId) : []),
+    [playlist, previewTracks],
   );
   const hasAlbumMetadata = useMemo(
     () => tracks.some((track) => String(track?.albumName || "").trim()),
@@ -356,10 +385,19 @@ export default function DiscoverPlaylistDetailPage() {
         </div>
       </div>
 
+      {previewMessage ? (
+        <p className="flow-page__tracks-error" role="status">{previewMessage}</p>
+      ) : null}
       <FlowTracksPanel
         tracks={tracks}
         loading={false}
-        showPlaybackControls={false}
+        playbackSource={{
+          type: "discover-playlist-preview",
+          id: playlist.presetId,
+          label: playlist.name,
+          recordHistory: false,
+        }}
+        showPlaybackControls={playlist.type === "editorial"}
         hideAlbumColumn={!hasAlbumMetadata}
         hideStatusColumn
         hideQualityColumn

@@ -1,10 +1,12 @@
 import { lastfmRequest, getLastfmApiKey } from "../apiClients/index.js";
+import { deezerGetTrackPreview } from "../apiClients/deezer.js";
 import { selectEditorialPresets } from "../../config/editorialPlaylistPresets.js";
 import { FIXED_DISCOVER_PLAYLIST_ARTWORK_COLORS } from "../../config/discoverPlaylistPresets.js";
 import { logger } from "../logger.js";
 
 const EDITORIAL_BUILD_CONCURRENCY = 3;
 const ALBUM_ENRICH_CONCURRENCY = 2;
+const PREVIEW_ENRICH_CONCURRENCY = 4;
 
 const normalizeTrack = (track, rank) => ({
   artistName: track?.artist?.name || null,
@@ -93,6 +95,17 @@ async function enrichTracksWithAlbums(tracks) {
 }
 
 export { enrichTracksWithAlbums };
+
+export async function enrichEditorialTracksWithDeezerPreviews(tracks) {
+  const sourceTracks = Array.isArray(tracks) ? tracks : [];
+  const enriched = [];
+  for (let i = 0; i < sourceTracks.length; i += PREVIEW_ENRICH_CONCURRENCY) {
+    const batch = sourceTracks.slice(i, i + PREVIEW_ENRICH_CONCURRENCY);
+    const previews = await Promise.all(batch.map(deezerGetTrackPreview));
+    enriched.push(...batch.map((track, index) => ({ ...track, ...previews[index] })));
+  }
+  return enriched;
+}
 
 export async function generateEditorialPlaylists() {
   if (!getLastfmApiKey()) {

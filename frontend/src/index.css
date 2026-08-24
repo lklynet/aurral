@@ -15681,7 +15681,7 @@ button.native-library-genre-row:focus-visible {
 .login-logo {
   width: 3rem;
   height: 3rem;
-  margin: 0 0 1.5rem;
+  margin: 0 auto 1.5rem;
 }
 
 .login-title {
@@ -15690,6 +15690,7 @@ button.native-library-genre-row:focus-visible {
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.1;
+  text-align: center;
 }
 
 .login-subtitle {
