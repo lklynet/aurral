@@ -30,6 +30,7 @@ export function DiscoverPlaylistContextMenu({
   const menuButtonRef = useRef(null);
   const menuRef = useRef(null);
   const closeMenuRef = useRef(null);
+  const restoreFocusRef = useRef(false);
   const playlistName = String(playlist?.name || "playlist").trim() || "playlist";
   const presetId = playlist?.presetId;
   const isAdoptingFlow = adoptingFlowId === presetId;
@@ -122,6 +123,12 @@ export function DiscoverPlaylistContextMenu({
   }, [showMenu, updateMenuPosition]);
 
   useEffect(() => {
+    if (showMenu || isBusy || !restoreFocusRef.current) return;
+    restoreFocusRef.current = false;
+    menuButtonRef.current?.focus();
+  }, [showMenu, isBusy]);
+
+  useEffect(() => {
     if (!showMenu) return undefined;
     const handlePointerDown = (event) => {
       if (
@@ -134,8 +141,8 @@ export function DiscoverPlaylistContextMenu({
     };
     const handleEscape = (event) => {
       if (event.key === "Escape") {
+        restoreFocusRef.current = true;
         closeMenu();
-        requestAnimationFrame(() => menuButtonRef.current?.focus());
       }
     };
     document.addEventListener("pointerdown", handlePointerDown);
