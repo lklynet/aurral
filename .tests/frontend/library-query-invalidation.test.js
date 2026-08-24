@@ -153,3 +153,34 @@ test("artist batch lookup stays within the API batch limit", async (t) => {
     queryClient.clear();
   }
 });
+
+test("artist adds publish an immediate shared library lookup", async (t) => {
+  const vite = await createServer({
+    root: "frontend",
+    server: { middlewareMode: true, hmr: false },
+    appType: "custom",
+    optimizeDeps: { noDiscovery: true },
+  });
+  t.after(() => vite.close());
+
+  const { addArtistToLibrary } = await vite.ssrLoadModule(
+    "/src/utils/api/endpoints/library.js?artist-add-lookup-test",
+  );
+  const { queryClient, queryKeys } = await vite.ssrLoadModule("/src/queryClient.js");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    foreignArtistId: "artist-1",
+    artist: { mbid: "artist-1", artistName: "Artist" },
+  }), {
+    status: 201,
+    headers: { "content-type": "application/json" },
+  });
+
+  try {
+    await addArtistToLibrary({ foreignArtistId: "artist-1", artistName: "Artist" });
+    assert.equal(queryClient.getQueryData(queryKeys.libraryLookup("artist-1")), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    queryClient.clear();
+  }
+});
