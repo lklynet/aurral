@@ -39,6 +39,7 @@ function Onboarding() {
   const stepMeasureRef = useRef(null);
   const heroAnchorRef = useRef(null);
   const compactAnchorRef = useRef(null);
+  const lidarrTestVersionRef = useRef(0);
   const [stepHeight, setStepHeight] = useState(null);
   const [animateStepHeight, setAnimateStepHeight] = useState(false);
   const [logoFlyout, setLogoFlyout] = useState({ opacity: 0 });
@@ -112,23 +113,28 @@ function Onboarding() {
       setError("Enter Lidarr URL and API key first");
       return;
     }
+    const testVersion = ++lidarrTestVersionRef.current;
+    const testUrl = lidarrUrl.trim();
+    const testApiKey = lidarrApiKey.trim();
     setTestingLidarr(true);
     setError("");
     try {
-      await testLidarrOnboarding(lidarrUrl.trim(), lidarrApiKey.trim());
+      await testLidarrOnboarding(testUrl, testApiKey);
       const [profiles, metadataProfiles] = await Promise.all([
-        getLidarrProfilesOnboarding(lidarrUrl.trim(), lidarrApiKey.trim()),
-        getLidarrMetadataProfilesOnboarding(lidarrUrl.trim(), lidarrApiKey.trim()),
+        getLidarrProfilesOnboarding(testUrl, testApiKey),
+        getLidarrMetadataProfilesOnboarding(testUrl, testApiKey),
       ]);
+      if (testVersion !== lidarrTestVersionRef.current) return;
       setLidarrQualityProfileId(profiles?.[0]?.id ?? null);
       setLidarrMetadataProfileId(metadataProfiles?.[0]?.id ?? null);
       setLidarrTestSuccess(true);
       showSuccess("Lidarr connection successful");
     } catch (e) {
+      if (testVersion !== lidarrTestVersionRef.current) return;
       setLidarrTestSuccess(false);
       setError(getApiErrorMessage(e, "Lidarr connection failed"));
     } finally {
-      setTestingLidarr(false);
+      if (testVersion === lidarrTestVersionRef.current) setTestingLidarr(false);
     }
   };
 
@@ -323,8 +329,12 @@ function Onboarding() {
                         placeholder="http://localhost:8686"
                         value={lidarrUrl}
                         onChange={(e) => {
+                          lidarrTestVersionRef.current += 1;
                           setLidarrUrl(e.target.value);
+                          setLidarrQualityProfileId(null);
+                          setLidarrMetadataProfileId(null);
                           setLidarrTestSuccess(false);
+                          setTestingLidarr(false);
                         }}
                       />
                     </div>
@@ -338,8 +348,12 @@ function Onboarding() {
                         placeholder="Paste your Lidarr API key"
                         value={lidarrApiKey}
                         onChange={(e) => {
+                          lidarrTestVersionRef.current += 1;
                           setLidarrApiKey(e.target.value);
+                          setLidarrQualityProfileId(null);
+                          setLidarrMetadataProfileId(null);
                           setLidarrTestSuccess(false);
+                          setTestingLidarr(false);
                         }}
                       />
                     </div>

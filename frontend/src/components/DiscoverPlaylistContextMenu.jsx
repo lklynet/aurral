@@ -135,6 +135,7 @@ export function DiscoverPlaylistContextMenu({
     const handleEscape = (event) => {
       if (event.key === "Escape") {
         closeMenu();
+        requestAnimationFrame(() => menuButtonRef.current?.focus());
       }
     };
     document.addEventListener("pointerdown", handlePointerDown);
