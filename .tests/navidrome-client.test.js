@@ -245,6 +245,57 @@ test("posts large playlist replacements without exceeding request URL limits", a
   assert.equal(requests[1].init.body.getAll("songIndexToRemove").length, 1_000);
 });
 
+test("preserves playlist update parameters across same-origin redirects", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, init = {}) => {
+    requests.push({ url: new URL(url), init });
+    if (requests.length === 1) {
+      return new Response(null, {
+        status: 302,
+        headers: { location: "/canonical/updatePlaylist" },
+      });
+    }
+    return jsonResponse({ "subsonic-response": { status: "ok" } });
+  };
+
+  try {
+    await new NavidromeClient("http://navidrome.test", "user", "password")
+      .request("updatePlaylist", { playlistId: "playlist-1", songIdToAdd: ["song-1"] });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(requests[1].url.pathname, "/canonical/updatePlaylist");
+  assert.equal(requests[1].init.method, "POST");
+  assert.equal(requests[1].init.body.get("playlistId"), "playlist-1");
+  assert.deepEqual(requests[1].init.body.getAll("songIdToAdd"), ["song-1"]);
+});
+
+test("rejects playlist update redirects across origins", async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    return new Response(null, {
+      status: 302,
+      headers: { location: "https://other.test/updatePlaylist" },
+    });
+  };
+
+  try {
+    await assert.rejects(
+      new NavidromeClient("http://navidrome.test", "user", "password")
+        .request("updatePlaylist", { playlistId: "playlist-1" }),
+      /redirect request body across origins/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(requests, 1);
+});
+
 test("prefers the exact indexed path when duplicate songs match", async () => {
   const client = new NavidromeClient("http://navidrome.test", "user", "password");
   client._getIndexedSongs = async () => [

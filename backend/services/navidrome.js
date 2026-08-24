@@ -78,7 +78,7 @@ export class NavidromeClient {
         try {
           const endpointUrl = `${this.url}/rest/${endpoint}`;
           const response = endpoint === "updatePlaylist"
-            ? await axios.post(endpointUrl, query)
+            ? await axios.post(endpointUrl, query, { preserveMethodOnRedirect: true })
             : await axios.get(`${endpointUrl}?${query}`);
 
           if (response.data["subsonic-response"]?.status === "failed") {
