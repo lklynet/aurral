@@ -112,3 +112,24 @@ test("status snapshot trackIdentities includes pending download jobs", async () 
     "expected pending job identity in snapshot",
   );
 });
+
+test("status snapshot trackCount includes failed download jobs", async () => {
+  const { downloadTracker } = await importFromRepo(
+    "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+  );
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Failed Mix" });
+  const jobId = downloadTracker.addJob(
+    { artistName: "Radiohead", trackName: "Karma Police" },
+    playlist.id,
+  );
+  downloadTracker.setFailed(jobId, "Not found");
+
+  const status = getWeeklyFlowStatusSnapshot();
+  const shared = status.sharedPlaylists.find((entry) => entry.id === playlist.id);
+
+  assert.equal(shared.trackCount, 1);
+  assert.equal(
+    getSharedPlaylistTrackCount(shared, status.sharedPlaylistStats[playlist.id]),
+    1,
+  );
+});
