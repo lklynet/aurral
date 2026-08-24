@@ -7,6 +7,7 @@ import {
   importFromRepo,
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
+import { getSharedPlaylistTrackCount } from "../../frontend/src/pages/flows/flowStats.js";
 
 const [isolatedState, { db }, { dbOps }, { flowPlaylistConfig }, snapshotModule] =
   await setupIsolatedBackend(
@@ -33,8 +34,8 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("status snapshot includes shared playlist summaries without embedding track arrays", () => {
-  const tracks = Array.from({ length: 250 }, (_, index) => ({
+test("status snapshot includes shared playlist summaries without embedding track arrays", async () => {
+  const tracks = Array.from({ length: 421 }, (_, index) => ({
     artistName: `Artist ${index}`,
     trackName: `Track ${index}`,
   }));
@@ -44,20 +45,28 @@ test("status snapshot includes shared playlist summaries without embedding track
     sourceName: "Exported JSON",
     tracks,
   });
+  const { downloadTracker } = await importFromRepo(
+    "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+  );
+  downloadTracker.addJob(tracks[0], playlist.id);
 
   const status = getWeeklyFlowStatusSnapshot();
   const shared = (status.sharedPlaylists || []).find((p) => p.id === playlist.id);
 
   assert.ok(shared);
-  assert.equal(shared.trackCount, 250);
+  assert.equal(shared.trackCount, 421);
+  assert.equal(
+    getSharedPlaylistTrackCount(shared, status.sharedPlaylistStats[playlist.id]),
+    421,
+  );
   assert.equal("tracks" in shared, false);
   assert.ok(Array.isArray(shared.trackIdentities));
-  assert.equal(shared.trackIdentities.length, 250);
+  assert.equal(shared.trackIdentities.length, 421);
   assert.equal(shared.sourceName, "Exported JSON");
 
   const serialized = JSON.stringify(status);
-  assert.equal(serialized.includes("Artist 249"), false);
-  assert.equal(serialized.includes("Track 249"), false);
+  assert.equal(serialized.includes("Artist 420"), false);
+  assert.equal(serialized.includes("Track 420"), false);
 });
 
 test("status snapshot includes empty manual playlists", () => {
@@ -101,5 +110,26 @@ test("status snapshot trackIdentities includes pending download jobs", async () 
   assert.ok(
     shared.trackIdentities[0].includes("radiohead"),
     "expected pending job identity in snapshot",
+  );
+});
+
+test("status snapshot trackCount includes failed download jobs", async () => {
+  const { downloadTracker } = await importFromRepo(
+    "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+  );
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Failed Mix" });
+  const jobId = downloadTracker.addJob(
+    { artistName: "Radiohead", trackName: "Karma Police" },
+    playlist.id,
+  );
+  downloadTracker.setFailed(jobId, "Not found");
+
+  const status = getWeeklyFlowStatusSnapshot();
+  const shared = status.sharedPlaylists.find((entry) => entry.id === playlist.id);
+
+  assert.equal(shared.trackCount, 1);
+  assert.equal(
+    getSharedPlaylistTrackCount(shared, status.sharedPlaylistStats[playlist.id]),
+    1,
   );
 });

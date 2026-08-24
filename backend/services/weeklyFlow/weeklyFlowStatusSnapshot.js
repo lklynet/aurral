@@ -131,7 +131,8 @@ export function getWeeklyFlowStatusSnapshot({
       Number(playlistStats?.pending || 0) +
       Number(playlistStats?.downloading || 0) +
       Number(playlistStats?.blocked || 0) +
-      Number(playlistStats?.done || 0);
+      Number(playlistStats?.done || 0) +
+      Number(playlistStats?.failed || 0);
     return {
       id: playlist.id,
       name: playlist.name,
@@ -140,7 +141,7 @@ export function getWeeklyFlowStatusSnapshot({
       sourceFlowId: playlist.sourceFlowId,
       importedAt: playlist.importedAt,
       createdAt: playlist.createdAt,
-      trackCount: jobTotal > 0 ? jobTotal : playlist.trackCount,
+      trackCount: Math.max(jobTotal, Number(playlist.trackCount || 0)),
       trackIdentities: collectPlaylistTrackIdentities(playlist),
       trackEntries: collectPlaylistTrackEntries(playlist),
       importSource: playlist.importSource
