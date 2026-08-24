@@ -45,6 +45,104 @@ test("artist batch lookup rejects oversized batches", async () => {
   assert.equal(body?.error, "mbids must contain at most 100 unique values");
 });
 
+test("artist lookup follows fresh Lidarr artist and album membership while the canonical index catches up", async (t) => {
+  const mbid = "55555555-5555-4555-8555-555555555555";
+  const artist = upsertLibraryArtist({
+    identityKey: `artist-lookup-stale-${process.pid}-${Date.now()}`,
+    mbid,
+    name: "Stale Artist",
+    metadata: { id: 41, foreignArtistId: mbid, monitored: true },
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: `artist-lookup-stale-album-${process.pid}-${Date.now()}`,
+    mbid: "77777777-7777-4777-8777-777777777777",
+    artistId: artist.id,
+    title: "Stale Artist Album",
+    metadata: { id: 43, artistId: 41, monitored: true },
+  });
+  const track = upsertLibraryTrack({
+    identityKey: `artist-lookup-stale-track-${process.pid}-${Date.now()}`,
+    title: "Stale Artist Track",
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  invalidateCanonicalLibraryCache();
+  const routes = new Map();
+  registerMisc({
+    get(path, handler) {
+      routes.set(path, handler);
+    },
+    post() {},
+  });
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  let artistRemoved = false;
+  t.mock.method(lidarrClient, "getArtistByMbid", async (_mbid, options) => {
+    assert.equal(_mbid, mbid);
+    assert.deepEqual(options, { forceRefresh: true });
+    return artistRemoved
+      ? null
+      : { id: 41, foreignArtistId: mbid, artistName: "Stale Artist", monitored: true };
+  });
+  t.mock.method(lidarrClient, "request", async (path, method, data, skip, options) => {
+    assert.equal(path, "/album?artistId=41");
+    assert.deepEqual([method, data, skip, options], ["GET", null, false, { forceRefresh: true }]);
+    return [];
+  });
+  let body;
+
+  try {
+    await routes.get("/lookup/:mbid")(
+      { params: { mbid } },
+      { json(value) { body = value; return this; } },
+    );
+    assert.equal(body?.exists, true);
+    assert.deepEqual(body?.albums, []);
+
+    artistRemoved = true;
+    await routes.get("/lookup/:mbid")(
+      { params: { mbid } },
+      { json(value) { body = value; return this; } },
+    );
+    assert.equal(body?.exists, false);
+  } finally {
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    invalidateCanonicalLibraryCache();
+  }
+});
+
+test("artist lookup sees a fresh Lidarr add before the canonical index catches up", async (t) => {
+  const mbid = "66666666-6666-4666-8666-666666666666";
+  const routes = new Map();
+  registerMisc({
+    get(path, handler) {
+      routes.set(path, handler);
+    },
+    post() {},
+  });
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  t.mock.method(lidarrClient, "getArtistByMbid", async (_mbid, options) => {
+    assert.equal(_mbid, mbid);
+    assert.deepEqual(options, { forceRefresh: true });
+    return {
+      id: 42,
+      foreignArtistId: mbid,
+      artistName: "Fresh Artist",
+      monitored: true,
+    };
+  });
+  t.mock.method(lidarrClient, "request", async () => []);
+  let body;
+
+  await routes.get("/lookup/:mbid")(
+    { params: { mbid } },
+    { json(value) { body = value; return this; } },
+  );
+  assert.equal(body?.exists, true);
+  assert.equal(body?.artist?.foreignArtistId, mbid);
+});
+
 test("album batch lookup bypasses stale cache and unrelated broken albums", async () => {
   const routes = new Map();
   registerMisc({
@@ -215,6 +313,56 @@ test("canonical album lookup reports partial ownership and the complete track co
     db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(ownedTrack.id, missingTrack.id);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  }
+});
+
+test("album lookup follows fresh Lidarr removal while the canonical index catches up", async (t) => {
+  const key = `album-lookup-stale-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({
+    identityKey: `${key}:artist`,
+    name: "Stale Album Artist",
+    metadata: { id: 51, monitored: true },
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: `${key}:album`,
+    mbid: `${key}-album`,
+    artistId: artist.id,
+    title: "Stale Album",
+    metadata: { id: 52, artistId: 51, monitored: true },
+  });
+  const track = upsertLibraryTrack({
+    identityKey: `${key}:track`,
+    title: "Stale Album Track",
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  invalidateCanonicalLibraryCache();
+  const routes = new Map();
+  registerMisc({
+    get() {},
+    post(path, handler) {
+      routes.set(path, handler);
+    },
+  });
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  t.mock.method(lidarrClient, "getAlbumsByMbidsSettled", async (mbids, options) => {
+    assert.deepEqual(mbids, [album.mbid]);
+    assert.deepEqual(options, { forceRefresh: true });
+    return [{ status: "fulfilled", value: undefined }];
+  });
+  let body;
+
+  try {
+    await routes.get("/albums/lookup/batch")(
+      { body: { mbids: [album.mbid] } },
+      { json(value) { body = value; return this; } },
+    );
+    assert.deepEqual(body, {});
+  } finally {
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    invalidateCanonicalLibraryCache();
   }
 });
 

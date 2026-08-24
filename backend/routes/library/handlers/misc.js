@@ -99,7 +99,38 @@ export function registerMisc(router) {
         mbids: [mbid],
       });
       const artist = artists.find((candidate) => candidate.mbid === mbid);
-      if (artist) {
+      const { lidarrClient } = await import("../../../services/lidarrClient.js");
+      let lidarrArtist;
+      let lidarrAlbums;
+      if (lidarrClient.isConfigured()) {
+        try {
+          lidarrArtist = await lidarrClient.getArtistByMbid(mbid, { forceRefresh: true });
+          if (lidarrArtist) {
+            const albums = await lidarrClient.request(
+              `/album?artistId=${encodeURIComponent(lidarrArtist.id)}`,
+              "GET",
+              null,
+              false,
+              { forceRefresh: true },
+            );
+            if (!Array.isArray(albums)) throw new Error("Invalid Lidarr album response");
+            lidarrAlbums = albums.map((album) =>
+              toLibraryAlbum(libraryManager.mapLidarrAlbum(album, lidarrArtist)),
+            );
+          }
+        } catch {
+          lidarrArtist = undefined;
+          lidarrAlbums = undefined;
+        }
+      }
+      if (lidarrArtist && lidarrAlbums) {
+        res.json({
+          exists: true,
+          artist: toLibraryArtist(libraryManager.mapLidarrArtist(lidarrArtist)),
+          albums: lidarrAlbums,
+          canonical: true,
+        });
+      } else if (lidarrArtist === undefined && artist) {
         res.json({
           exists: true,
           artist: toLibraryArtist(artist),
@@ -210,18 +241,13 @@ export function registerMisc(router) {
         }
       }
 
-      const missing = wanted.filter((foreignAlbumId) => !results[foreignAlbumId]);
-      if (missing.length === 0) {
-        return res.json(results);
-      }
-
       if (!lidarrClient.isConfigured()) {
         return res.json(results);
       }
-      const albums = await lidarrClient.getAlbumsByMbidsSettled(missing, { forceRefresh: true });
+      const albums = await lidarrClient.getAlbumsByMbidsSettled(wanted, { forceRefresh: true });
 
-      for (let index = 0; index < missing.length; index += 1) {
-        const foreignAlbumId = missing[index];
+      for (let index = 0; index < wanted.length; index += 1) {
+        const foreignAlbumId = wanted[index];
         const result = albums[index];
         if (result.status === "rejected") {
           logger.warn("library", "Lidarr album lookup failed", {
@@ -231,7 +257,11 @@ export function registerMisc(router) {
           continue;
         }
         const album = result.value;
-        if (!album) continue;
+        if (!album) {
+          delete results[foreignAlbumId];
+          continue;
+        }
+        if (results[foreignAlbumId]) continue;
 
         const albumTracks = album.id ? await libraryManager.getTracks(album.id) : [];
 
