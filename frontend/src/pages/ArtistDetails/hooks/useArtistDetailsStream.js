@@ -312,7 +312,6 @@ export function useArtistDetailsStream(
     };
 
     libraryRefreshRef.current = async () => {
-      optimisticLibraryLookupRef.current = false;
       await queryClient.cancelQueries({
         queryKey: queryKeys.libraryLookupDetails(mbid),
         exact: true,
