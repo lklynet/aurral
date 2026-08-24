@@ -140,7 +140,7 @@ export function getWeeklyFlowStatusSnapshot({
       sourceFlowId: playlist.sourceFlowId,
       importedAt: playlist.importedAt,
       createdAt: playlist.createdAt,
-      trackCount: jobTotal > 0 ? jobTotal : playlist.trackCount,
+      trackCount: Math.max(jobTotal, Number(playlist.trackCount || 0)),
       trackIdentities: collectPlaylistTrackIdentities(playlist),
       trackEntries: collectPlaylistTrackEntries(playlist),
       importSource: playlist.importSource
