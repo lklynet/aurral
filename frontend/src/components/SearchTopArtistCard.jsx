@@ -1,7 +1,6 @@
 import { ChevronRight, ListMusic, Music } from "lucide-react";
 import ArtistImage from "./ArtistImage";
 import SearchLibraryCheck from "./SearchLibraryCheck";
-import { useImageGradientColors } from "../utils/imageColors";
 import { navigateFromSearchResult } from "../utils/searchNavigation";
 import { getArtistRecordId } from "../utils/artistTaste";
 import { isAlbumCompleteInLibrary } from "../utils/albumAddAction";
@@ -114,7 +113,6 @@ function SearchTopArtistCard({
   const result = item || legacyArtist;
   const label = getPrimaryLabel(result);
   const backdropSrc = result ? getBackdropSrc(result, artistImages, albumCovers) : "";
-  const gradientColors = useImageGradientColors(backdropSrc);
   if (!result || !label) return null;
   const isArtist = result.type === "artist";
   const artistId = isArtist ? getArtistRecordId(result) : null;
@@ -136,25 +134,13 @@ function SearchTopArtistCard({
       <div
         role="button"
         tabIndex={0}
-        className={`search-top-artist__main${
-          gradientColors ? " search-top-artist__main--gradient" : ""
-        }${gradientColors || backdropSrc ? " search-top-artist__main--overlay" : ""}`}
-        style={
-          gradientColors
-            ? {
-                "--search-top-gradient-top": gradientColors.top,
-                "--search-top-gradient-bottom": gradientColors.bottom,
-              }
-            : undefined
-        }
+        className={`search-top-artist__main${backdropSrc ? " search-top-artist__main--overlay" : ""}`}
         onClick={navigateToResult}
         onKeyDown={handleMainKeyDown}
         aria-label={`Open ${label}`}
       >
         <span className="search-top-artist__backdrop" aria-hidden="true">
-          {gradientColors ? (
-            <span className="search-top-artist__backdrop-gradient" />
-          ) : backdropSrc ? (
+          {backdropSrc ? (
             <img src={backdropSrc} alt="" className="search-top-artist__backdrop-image" />
           ) : null}
           <span className="search-top-artist__backdrop-wash" />

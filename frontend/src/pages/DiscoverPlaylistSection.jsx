@@ -172,18 +172,14 @@ export function DiscoverPlaylistSection({
           return (
             <div key={playlist.presetId} className="artist-discover-shelf-card">
               <div
-                role="button"
-                tabIndex={0}
                 className="artist-discover-card artist-discover-card--playlist"
-                onClick={() => navigate(`/discover/playlists/${playlist.presetId}`)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    navigate(`/discover/playlists/${playlist.presetId}`);
-                  }
-                }}
               >
-                <div className="artist-discover-card__cover">
+                <button
+                  type="button"
+                  className="artist-discover-card__cover"
+                  aria-label={`Open ${playlist.name}`}
+                  onClick={() => navigate(`/discover/playlists/${encodeURIComponent(playlist.presetId)}`)}
+                >
                   {showArtwork ? (
                     <img
                       src={getDiscoverArtworkUrl(playlist.presetId, artworkVersion)}
@@ -199,19 +195,21 @@ export function DiscoverPlaylistSection({
                     />
                   ) : (
                     <div className="artist-media-placeholder--discover">
-                      <CoverIcon className="artist-icon-lg" />
+                      <CoverIcon className="artist-icon-lg" aria-hidden="true" />
                     </div>
                   )}
-                </div>
+                </button>
                 <div className="artist-discover-card__content">
                   <div className="artist-discover-card__text">
                     <div className="artist-card-title-row--discover">
-                      <span
+                      <button
+                        type="button"
                         className="artist-card-title--discover"
                         title={playlist.name}
+                        onClick={() => navigate(`/discover/playlists/${encodeURIComponent(playlist.presetId)}`)}
                       >
                         {playlist.name}
-                      </span>
+                      </button>
                       {playlist.adoptedFlowId ? (
                         <CheckCircle2
                           className="artist-library-check--discover"
@@ -231,7 +229,7 @@ export function DiscoverPlaylistSection({
                       </p>
                     ) : null}
                   </div>
-                  <div onClick={(event) => event.stopPropagation()} role="none">
+                  <div>
                     <DiscoverPlaylistContextMenu
                       playlist={playlist}
                       canAdopt={canAdopt}

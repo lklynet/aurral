@@ -151,9 +151,6 @@ export function SettingsIndexersSection({
     <>
       <div className="settings-page__section">
         <div className="settings-page__section-header">
-          <div className="settings-page__section-intro">
-            <h3 className="settings-page__section-title">Indexers</h3>
-          </div>
           {loadingProwlarrIndexers && (
             <span className="settings-page__status">
               <DotLoader size="sm" label={null} className="settings-page__status-icon" />

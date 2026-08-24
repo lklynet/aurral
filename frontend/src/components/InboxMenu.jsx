@@ -143,6 +143,7 @@ function InboxMenu() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [pendingActions, setPendingActions] = useState({});
   const menuRef = useRef(null);
+  const triggerRef = useRef(null);
   const { user, bootstrap } = useAuth();
   const [inboxEnabled, setInboxEnabled] = useState(true);
   const { showError } = useToast();
@@ -224,6 +225,7 @@ function InboxMenu() {
       if (event.key === "Escape") {
         setFilterOpen(false);
         setOpen(false);
+        triggerRef.current?.focus();
       }
     };
     document.addEventListener("mousedown", handleOutsideClick);
@@ -286,10 +288,12 @@ function InboxMenu() {
   return (
     <div ref={menuRef} className="app-inbox-menu">
       <TooltipButton
+        ref={triggerRef}
         label={unreadCount ? "Inbox, unread notifications" : "Inbox"}
         className={`app-header-link app-inbox-menu__trigger${open ? " is-open" : ""}${unreadCount > 0 ? " has-unread" : ""}`}
-        aria-haspopup="menu"
+        aria-haspopup="true"
         aria-expanded={open}
+        aria-controls="inbox-notifications"
         onClick={() => {
           setOpen((current) => !current);
           if (!open) void loadInbox();
@@ -299,7 +303,11 @@ function InboxMenu() {
       </TooltipButton>
 
       {open ? (
-        <div className="app-inbox-menu__dropdown" role="menu">
+        <div
+          id="inbox-notifications"
+          className="app-inbox-menu__dropdown"
+          aria-label="Inbox notifications"
+        >
           <div className="app-inbox-menu__header">
             <span>Inbox</span>
             <span className="app-inbox-menu__header-actions">

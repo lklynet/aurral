@@ -425,7 +425,7 @@ function ActivityPage() {
           onRefresh={handleManualRefresh}
           refreshing={refreshing}
         />
-        <div className="artist-loading">
+        <div className="activity-page__loading" role="status" aria-label="Loading activity">
           <DotLoader size="2xl" label={null} />
         </div>
       </div>
@@ -459,7 +459,7 @@ function ActivityPage() {
 
       {filteredRequests.length === 0 ? (
         !error && (
-          <div className="search-empty-panel">
+          <div className="search-empty-panel activity-page__empty">
             <div className="search-empty-panel__icon" aria-hidden="true">
               <Music className="artist-icon-lg" />
             </div>

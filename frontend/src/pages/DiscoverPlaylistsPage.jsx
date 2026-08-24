@@ -68,6 +68,7 @@ export default function DiscoverPlaylistsPage() {
   const updateProgressMessage = data?.updateProgressMessage;
   const playlistsUpdateMessage = data?.playlistsUpdateMessage;
   const lastUpdated = data?.lastUpdated;
+  const isDiscoveryLoading = !data && !error;
 
   const visiblePlaylists = useMemo(
     () => sortDiscoverPlaylists(data?.discoverPlaylists || []),
@@ -157,7 +158,13 @@ export default function DiscoverPlaylistsPage() {
             />
           </div>
         </header>
-        {isUpdating || playlistsUpdating ? (
+        {isDiscoveryLoading ? (
+          <div className="search-empty-panel discover-playlists-page__status-panel">
+            <DotLoader size="lg" label={null} />
+            <h2 className="search-empty-panel__title">Loading your playlists</h2>
+            <p className="search-empty-panel__message">Checking your latest discovery playlists.</p>
+          </div>
+        ) : isUpdating || playlistsUpdating ? (
           <div className="search-empty-panel">
             <DotLoader size="lg" label={null} />
             <h2 className="search-empty-panel__title">
@@ -235,17 +242,13 @@ export default function DiscoverPlaylistsPage() {
             <article
               key={playlist.presetId}
               className="artist-release-card"
-              onClick={() => navigate(`/discover/playlists/${encodeURIComponent(playlist.presetId)}`)}
-              role="link"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  navigate(`/discover/playlists/${encodeURIComponent(playlist.presetId)}`);
-                }
-              }}
             >
-              <div className="artist-release-card__cover">
+              <button
+                type="button"
+                className="artist-release-card__cover discover-playlists-page__cover-link"
+                aria-label={`Open ${playlist.name}`}
+                onClick={() => navigate(`/discover/playlists/${encodeURIComponent(playlist.presetId)}`)}
+              >
                 {showArtwork ? (
                   <img
                     src={getDiscoverArtworkUrl(playlist.presetId)}
@@ -274,7 +277,17 @@ export default function DiscoverPlaylistsPage() {
                     )}
                   </div>
                 )}
-              </div>
+              </button>
+
+              <h2 className="discover-playlists-page__card-title" title={playlist.name}>
+                <button
+                  type="button"
+                  className="discover-playlists-page__title-link"
+                  onClick={() => navigate(`/discover/playlists/${encodeURIComponent(playlist.presetId)}`)}
+                >
+                  {playlist.name}
+                </button>
+              </h2>
 
               <div className="artist-release-card__meta-row">
                 <div className="artist-release-card__meta-col">
@@ -283,7 +296,7 @@ export default function DiscoverPlaylistsPage() {
                   )}
                   <p className="artist-release-card__meta">{playlist.trackCount || 0} tracks</p>
                 </div>
-                <div onClick={(e) => e.stopPropagation()}>
+                <div>
                   <DiscoverPlaylistContextMenu
                     playlist={playlist}
                     canAdopt

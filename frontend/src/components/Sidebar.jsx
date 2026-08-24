@@ -331,6 +331,9 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
             onMouseEnter={(event) => {
               if (isIcons) positionSidebarTooltip(event);
             }}
+            onFocus={(event) => {
+              if (isIcons) positionSidebarTooltip(event);
+            }}
             className={`sidebar-link ${isIcons ? "sidebar-link--icons" : "sidebar-link--full"}${
               active ? " is-active" : ""
             }`}
@@ -390,6 +393,9 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
                     onMouseEnter={(event) => {
                       if (isIcons) positionSidebarTooltip(event);
                     }}
+                    onFocus={(event) => {
+                      if (isIcons) positionSidebarTooltip(event);
+                    }}
                     className={`sidebar-link ${
                       isIcons ? "sidebar-link--icons" : "sidebar-link--full"
                     }${active ? " is-active" : ""}`}
@@ -400,6 +406,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
                           : item.label
                         : undefined
                     }
+                    aria-current={active ? "page" : undefined}
                   >
                     <span className="sidebar-link__icon-wrap">
                       <Icon className="sidebar-link__icon" aria-hidden="true" />
@@ -435,6 +442,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
               <Link
                 to="/"
                 onMouseEnter={positionSidebarTooltip}
+                onFocus={positionSidebarTooltip}
                 className={`sidebar-link sidebar-link--${isIcons ? "icons" : "full"}`}
                 aria-label="Back to Aurral"
               >
@@ -448,8 +456,10 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
               <Link
                 to={`/settings/${DEFAULT_SETTINGS_TAB}`}
                 onMouseEnter={positionSidebarTooltip}
+                onFocus={positionSidebarTooltip}
                 className={`sidebar-link sidebar-link--icons${isOnSettings ? " is-active" : ""}`}
                 aria-label={hasStorageFailure ? "Settings (storage issues)" : "Settings"}
+                aria-current={isOnSettings ? "page" : undefined}
               >
                 <span className="sidebar-link__icon-wrap">
                   <Settings className="sidebar-link__icon" aria-hidden="true" />
@@ -467,6 +477,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
                 <Link
                   to={`/settings/${DEFAULT_SETTINGS_TAB}`}
                   className={`sidebar-link sidebar-link--full${isOnSettings ? " is-active" : ""}`}
+                  aria-current={isOnSettings ? "page" : undefined}
                 >
                   <span className="sidebar-link__icon-wrap">
                     <Settings className="sidebar-link__icon" aria-hidden="true" />

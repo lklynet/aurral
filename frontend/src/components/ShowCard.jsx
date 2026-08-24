@@ -121,7 +121,7 @@ const ShowCard = memo(({ show }) => {
           />
         ) : (
           <div className="artist-media-placeholder--discover">
-            <Music className="artist-media-placeholder--discover-icon" />
+            <Music className="artist-media-placeholder--discover-icon" aria-hidden="true" />
           </div>
         )}
         <div className="artist-show-card__image--discover-overlay" />

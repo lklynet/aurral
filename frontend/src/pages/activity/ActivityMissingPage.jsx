@@ -13,6 +13,7 @@ import TooltipButton from "../../components/TooltipButton";
 import { useToast } from "../../contexts/ToastContext";
 import { formatDateTime } from "../../utils/dateTime.js";
 import { useSearchParams } from "react-router-dom";
+import { PageSectionMobileNav } from "../../components/PageSectionMobileNav";
 import {
   getAllFlowJobs,
   reSearchFlowTrack,
@@ -23,6 +24,7 @@ import {
 } from "../../utils/api/endpoints/playlists.js";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import { usePlaylistStatusQuery } from "../flows/usePlaylistStatusQuery.js";
+import { buildWantedPath, WANTED_VIEWS } from "../../navigation/activityNavConfig";
 import ActivityToolbar from "./ActivityToolbar";
 import ActivityInfoModal from "./ActivityInfoModal";
 import {
@@ -106,7 +108,9 @@ function MissingJobRow({ job, playlist, actionState, onAction, onInfo }) {
           {hint}
         </p>
       </div>
-      <span className="activity-row__status-label">{statusLabel}</span>
+      <span className={`activity-row__status-label activity-row__status-label--${isMissing ? "failed" : "pending"}`}>
+        {statusLabel}
+      </span>
       <time className="activity-row__time" dateTime={toJobDate(job.createdAt)?.toISOString()}>
         {formatJobDate(job.createdAt)}
       </time>
@@ -184,6 +188,15 @@ export default function ActivityMissingPage() {
   const showingCutoff = activeTab === "cutoff";
   const filterPlaceholder = showingCutoff ? "Filter cutoff unmet" : "Filter missing tracks";
   const hasFilter = filterValue.trim().length > 0;
+  const wantedMobileNav = (
+    <PageSectionMobileNav
+      sections={WANTED_VIEWS}
+      activeId={activeTab}
+      label="Wanted"
+      getSectionPath={buildWantedPath}
+      selectId="wanted-view-select"
+    />
+  );
 
   useEffect(() => {
     setVisibleCount(WANTED_PAGE_SIZE);
@@ -338,7 +351,7 @@ export default function ActivityMissingPage() {
   const searchAllButton = (
     <button
       type="button"
-      className="btn btn-secondary btn--bold activity-toolbar__bulk-action"
+      className="btn btn-secondary activity-toolbar__action"
       onClick={handleSearchAll}
       disabled={searchingAll || !hasActionableJobs}
       aria-busy={searchingAll}
@@ -360,22 +373,24 @@ export default function ActivityMissingPage() {
 
   if (loading) {
     return (
-      <div>
+      <section className="activity-page__missing" aria-label="Wanted tracks">
+        {wantedMobileNav}
         <ActivityToolbar
           filterValue={filterValue}
           onFilterChange={setFilterValue}
           action={searchAllButton}
           placeholder={filterPlaceholder}
         />
-        <div className="activity-page__loading">
-        <DotLoader size="2xl" label={null} />
+        <div className="activity-page__loading" role="status" aria-label="Loading wanted tracks">
+          <DotLoader size="2xl" label={null} />
         </div>
-      </div>
+      </section>
     );
   }
 
   return (
     <section className="activity-page__missing" aria-label="Wanted tracks">
+      {wantedMobileNav}
       <ActivityToolbar
         filterValue={filterValue}
         onFilterChange={setFilterValue}
@@ -383,7 +398,7 @@ export default function ActivityMissingPage() {
         placeholder={filterPlaceholder}
       />
       {error ? (
-        <div className="artist-error-panel" role="alert">
+        <div className="artist-error-panel activity-page__error" role="alert">
           <AlertCircle className="artist-error-icon" aria-hidden="true" />
           <h2 className="artist-error-title">Unable to load wanted tracks</h2>
           <p className="artist-error-copy">{error}</p>
@@ -394,7 +409,7 @@ export default function ActivityMissingPage() {
       ) : null}
 
       {!error && visibleJobs.length === 0 ? (
-        <div className="search-empty-panel">
+        <div className="search-empty-panel activity-page__empty">
           <div className="search-empty-panel__icon" aria-hidden="true">
             <CheckCircle2 className="artist-icon-lg" />
           </div>

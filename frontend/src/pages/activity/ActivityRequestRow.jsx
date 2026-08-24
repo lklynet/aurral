@@ -159,7 +159,9 @@ export default function ActivityRequestRow({
         ) : null}
         {jobError ? <span className="activity-row__error" role="alert">{jobError}</span> : null}
       </div>
-      <span className="activity-row__status-label">{status.label}</span>
+      <span className={`activity-row__status-label activity-row__status-label--${status.tone}`}>
+        {status.label}
+      </span>
       <time className="activity-row__time" dateTime={request.requestedAt || undefined}>
         {timelineTime}
       </time>
@@ -174,17 +176,19 @@ export default function ActivityRequestRow({
               {isThisPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
             </TooltipButton>
             <TooltipButton
-              className="native-library-icon-button"
+              className="native-library-icon-button activity-row__action--approve"
               onClick={() => onApprove(request.jobId)}
               disabled={isApproving || isDenying}
+              aria-busy={isApproving}
               label="Approve track"
             >
               {isApproving ? <DotLoader size="sm" label={null} /> : <CheckCircle2 aria-hidden="true" />}
             </TooltipButton>
             <TooltipButton
-              className="native-library-icon-button"
+              className="native-library-icon-button activity-row__action--deny"
               onClick={() => onDeny(request.jobId)}
               disabled={isApproving || isDenying}
+              aria-busy={isDenying}
               label="Deny track"
             >
               {isDenying ? <DotLoader size="sm" label={null} /> : <XCircle aria-hidden="true" />}

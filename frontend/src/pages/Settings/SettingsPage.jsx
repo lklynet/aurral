@@ -31,7 +31,6 @@ function SettingsPage() {
 
   const tabs = useSettingsTabs(authUser);
   const data = useSettingsData(showSuccess, showError, showInfo, tabs.activeTab);
-
   const users = useSettingsUsers(authUser, showSuccess, showError, tabs.activeTab);
 
   const normalizedParam = normalizeSettingsTabId(tabParam);
@@ -301,22 +300,28 @@ function SettingsPage() {
       <div className="settings-arr">
         <div className="settings-arr__body">
           <div className="settings-arr__content">
+            <header className="settings-arr__header">
+              <div className="settings-arr__heading">
+                <p className="settings-arr__eyebrow">Settings</p>
+                <h1 className="settings-arr__title">{tabs.activeTabMeta?.label || "Settings"}</h1>
+              </div>
+              {tabs.activeTab !== "tasks" ? (
+                <div
+                  className={`settings-arr__save-state${data.saving ? " is-saving" : ""}`}
+                  role="status"
+                  aria-live="polite"
+                  aria-busy={data.saving}
+                  aria-hidden={!data.saving}
+                >
+                  {data.saving ? <><DotLoader size="sm" label={null} /> Saving…</> : null}
+                </div>
+              ) : null}
+            </header>
             <SettingsMobileNav
               tabs={tabs.tabs}
               activeTab={tabs.activeTab}
               onSelectTab={handleTabSelect}
             />
-            {tabs.activeTab !== "tasks" ? (
-              <div
-                className={`settings-arr__save-state${data.saving ? " is-saving" : ""}`}
-                role="status"
-                aria-live="polite"
-                aria-busy={data.saving}
-                aria-hidden={!data.saving}
-              >
-                {data.saving ? <><DotLoader size="sm" label={null} /> Saving…</> : null}
-              </div>
-            ) : null}
 
             {renderTabContent()}
           </div>

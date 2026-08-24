@@ -160,14 +160,6 @@ export function LidarrSettingsSection({
 
   return (
     <>
-      <div className="settings-page__section">
-        <div className="settings-page__section-header">
-          <div className="settings-page__section-intro">
-            <h3 className="settings-page__section-title">Lidarr</h3>
-          </div>
-        </div>
-      </div>
-
       <SettingsArrFieldSet
         legend="Connection"
         actions={

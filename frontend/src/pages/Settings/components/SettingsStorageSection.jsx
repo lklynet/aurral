@@ -203,9 +203,6 @@ export function SettingsSystemSection({ health }) {
   return (
     <div className="settings-system__body">
       <div className="settings-system__intro">
-        <div>
-          <h1 className="settings-system__title">System</h1>
-        </div>
         <div className={`settings-system__status${runtimeReady ? " is-ready" : ""}`}>
           {runtimeReady ? (
             <span className="settings-system__status-dot" aria-hidden />

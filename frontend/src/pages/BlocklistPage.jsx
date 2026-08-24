@@ -96,19 +96,28 @@ export default function BlocklistPage() {
 
       <section className="blocklist-page__panel">
         <div className="blocklist-page__panel-title">
-          <Ban className="artist-icon-sm" aria-hidden="true" />
           <h2>Block an artist</h2>
         </div>
-        <form className="blocklist-page__search" onSubmit={submitTypedArtist}>
-          <Search className="artist-icon-sm" aria-hidden="true" />
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search for an artist"
-            aria-label="Search for an artist to block"
-          />
-          {searching ? <DotLoader size="sm" label={null} /> : null}
+        <form
+          className="blocklist-page__search-form"
+          onSubmit={submitTypedArtist}
+          aria-busy={searching}
+        >
+          <label className="blocklist-page__search-label" htmlFor="blocklist-search">
+            Artist name
+          </label>
+          <div className="blocklist-page__search">
+            <Search className="artist-icon-sm" aria-hidden="true" />
+            <input
+              id="blocklist-search"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search artists or enter a name"
+              aria-label="Search for an artist to block"
+            />
+            {searching ? <DotLoader size="sm" label="Searching" /> : null}
+          </div>
         </form>
         {suggestions.length > 0 ? (
           <div className="blocklist-page__suggestions">
@@ -121,6 +130,7 @@ export default function BlocklistPage() {
                   onClick={() => blockArtist(artist)}
                   disabled={pendingKey === key}
                   className="blocklist-page__suggestion"
+                  aria-label={`Block ${artist.name}`}
                 >
                   <span>{artist.name}</span>
                   {pendingKey === key ? (

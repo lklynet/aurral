@@ -15,6 +15,7 @@ function GitHubIcon({ className = "" }) {
 function UserProfileMenu() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  const triggerRef = useRef(null);
   const { authRequired, canLogOut, logout } = useAuth();
 
   useEffect(() => {
@@ -27,6 +28,7 @@ function UserProfileMenu() {
     const handleEscape = (event) => {
       if (event.key === "Escape") {
         setMenuOpen(false);
+        triggerRef.current?.focus();
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -42,6 +44,7 @@ function UserProfileMenu() {
   return (
     <div ref={menuRef} className="app-profile-menu">
       <TooltipButton
+        ref={triggerRef}
         label="User menu"
         onClick={() => setMenuOpen((open) => !open)}
         className={`app-header-link app-profile-menu__trigger${menuOpen ? " is-open" : ""}`}

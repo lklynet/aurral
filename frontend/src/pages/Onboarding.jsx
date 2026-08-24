@@ -39,6 +39,7 @@ function Onboarding() {
   const stepMeasureRef = useRef(null);
   const heroAnchorRef = useRef(null);
   const compactAnchorRef = useRef(null);
+  const lidarrTestVersionRef = useRef(0);
   const [stepHeight, setStepHeight] = useState(null);
   const [animateStepHeight, setAnimateStepHeight] = useState(false);
   const [logoFlyout, setLogoFlyout] = useState({ opacity: 0 });
@@ -47,6 +48,8 @@ function Onboarding() {
 
   const currentStep = STEPS[step];
   const passwordTooShort = authPassword.length > 0 && authPassword.length < 8;
+  const passwordMismatch =
+    authPasswordConfirm.length > 0 && authPassword !== authPasswordConfirm;
   const adminComplete =
     authUser.trim() && authPassword && !passwordTooShort && authPassword === authPasswordConfirm;
 
@@ -110,23 +113,28 @@ function Onboarding() {
       setError("Enter Lidarr URL and API key first");
       return;
     }
+    const testVersion = ++lidarrTestVersionRef.current;
+    const testUrl = lidarrUrl.trim();
+    const testApiKey = lidarrApiKey.trim();
     setTestingLidarr(true);
     setError("");
     try {
-      await testLidarrOnboarding(lidarrUrl.trim(), lidarrApiKey.trim());
+      await testLidarrOnboarding(testUrl, testApiKey);
       const [profiles, metadataProfiles] = await Promise.all([
-        getLidarrProfilesOnboarding(lidarrUrl.trim(), lidarrApiKey.trim()),
-        getLidarrMetadataProfilesOnboarding(lidarrUrl.trim(), lidarrApiKey.trim()),
+        getLidarrProfilesOnboarding(testUrl, testApiKey),
+        getLidarrMetadataProfilesOnboarding(testUrl, testApiKey),
       ]);
+      if (testVersion !== lidarrTestVersionRef.current) return;
       setLidarrQualityProfileId(profiles?.[0]?.id ?? null);
       setLidarrMetadataProfileId(metadataProfiles?.[0]?.id ?? null);
       setLidarrTestSuccess(true);
       showSuccess("Lidarr connection successful");
     } catch (e) {
+      if (testVersion !== lidarrTestVersionRef.current) return;
       setLidarrTestSuccess(false);
       setError(getApiErrorMessage(e, "Lidarr connection failed"));
     } finally {
-      setTestingLidarr(false);
+      if (testVersion === lidarrTestVersionRef.current) setTestingLidarr(false);
     }
   };
 
@@ -198,14 +206,11 @@ function Onboarding() {
             style={logoFlyout}
           />
           <div className="onboarding-progress">
-            <div className="onboarding-progress__dots">
+            <div className="onboarding-progress__dots" aria-hidden="true">
               {STEPS.map((s, i) => (
                 <div
                   key={s}
-                  className="onboarding-progress__dot"
-                  style={{
-                    backgroundColor: i <= step ? "var(--aurral-control-on)" : "var(--aurral-text-subtle)",
-                  }}
+                  className={`onboarding-progress__dot${i <= step ? " is-complete" : ""}${i === step ? " is-current" : ""}`}
                 />
               ))}
             </div>
@@ -218,7 +223,7 @@ function Onboarding() {
                 />
               ) : null}
               <span className="onboarding-progress__count">
-                {step + 1} / {STEPS.length}
+                Step {step + 1} of {STEPS.length}
               </span>
             </div>
           </div>
@@ -226,6 +231,7 @@ function Onboarding() {
           <div
             className={`onboarding-step-shell${animateStepHeight ? " onboarding-step-shell--animate" : ""}`}
             style={stepHeight != null ? { height: stepHeight } : undefined}
+            aria-busy={testingLidarr || submitting}
           >
             <div ref={stepMeasureRef} className="onboarding-step-measure">
               {currentStep === "admin" && (
@@ -241,30 +247,54 @@ function Onboarding() {
                     copy="Create your admin account. Connect Lidarr next, then finish the rest in Settings."
                   />
                   <div className="onboarding-fields">
-                    <SettingsInput
-                      legacyStyle
-                      type="text"
-                      autoComplete="off"
-                      placeholder="Username"
-                      value={authUser}
-                      onChange={(e) => setAuthUser(e.target.value)}
-                    />
-                    <SettingsInput
-                      legacyStyle
-                      type="password"
-                      autoComplete="new-password"
-                      placeholder="Password"
-                      value={authPassword}
-                      onChange={(e) => setAuthPassword(e.target.value)}
-                    />
-                    <SettingsInput
-                      legacyStyle
-                      type="password"
-                      autoComplete="new-password"
-                      placeholder="Confirm password"
-                      value={authPasswordConfirm}
-                      onChange={(e) => setAuthPasswordConfirm(e.target.value)}
-                    />
+                    <div className="onboarding-field">
+                      <label htmlFor="onboarding-username">Username</label>
+                      <SettingsInput
+                        id="onboarding-username"
+                        legacyStyle
+                        type="text"
+                        autoComplete="off"
+                        placeholder="Username"
+                        value={authUser}
+                        onChange={(e) => setAuthUser(e.target.value)}
+                      />
+                    </div>
+                    <div className="onboarding-field">
+                      <label htmlFor="onboarding-password">Password</label>
+                      <SettingsInput
+                        id="onboarding-password"
+                        legacyStyle
+                        type="password"
+                        autoComplete="new-password"
+                        placeholder="Password"
+                        value={authPassword}
+                        onChange={(e) => setAuthPassword(e.target.value)}
+                        aria-invalid={passwordTooShort ? "true" : undefined}
+                      />
+                      {passwordTooShort ? (
+                        <p className="onboarding-field__error" role="alert">
+                          Password must be at least 8 characters.
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="onboarding-field">
+                      <label htmlFor="onboarding-password-confirm">Confirm password</label>
+                      <SettingsInput
+                        id="onboarding-password-confirm"
+                        legacyStyle
+                        type="password"
+                        autoComplete="new-password"
+                        placeholder="Confirm password"
+                        value={authPasswordConfirm}
+                        onChange={(e) => setAuthPasswordConfirm(e.target.value)}
+                        aria-invalid={passwordMismatch ? "true" : undefined}
+                      />
+                      {passwordMismatch ? (
+                        <p className="onboarding-field__error" role="alert">
+                          Passwords do not match.
+                        </p>
+                      ) : null}
+                    </div>
                     <OnboardingHint>Password must be at least 8 characters long.</OnboardingHint>
                     <div className="onboarding-toggle-row">
                       <span>Auto-login on local network</span>
@@ -289,39 +319,64 @@ function Onboarding() {
                     copy="Aurral is a Lidarr companion. Connect Lidarr to manage your library."
                   />
                   <div className="onboarding-fields">
-                    <SettingsInput
-                      legacyStyle
-                      type="url"
-                      autoComplete="off"
-                      placeholder="Lidarr URL (e.g. http://localhost:8686)"
-                      value={lidarrUrl}
-                      onChange={(e) => {
-                        setLidarrUrl(e.target.value);
-                        setLidarrTestSuccess(false);
-                      }}
-                    />
-                    <SettingsInput
-                      legacyStyle
-                      type="password"
-                      autoComplete="off"
-                      placeholder="API key"
-                      value={lidarrApiKey}
-                      onChange={(e) => {
-                        setLidarrApiKey(e.target.value);
-                        setLidarrTestSuccess(false);
-                      }}
-                    />
+                    <div className="onboarding-field">
+                      <label htmlFor="onboarding-lidarr-url">Lidarr URL</label>
+                      <SettingsInput
+                        id="onboarding-lidarr-url"
+                        legacyStyle
+                        type="url"
+                        autoComplete="off"
+                        placeholder="http://localhost:8686"
+                        value={lidarrUrl}
+                        onChange={(e) => {
+                          lidarrTestVersionRef.current += 1;
+                          setLidarrUrl(e.target.value);
+                          setLidarrQualityProfileId(null);
+                          setLidarrMetadataProfileId(null);
+                          setLidarrTestSuccess(false);
+                          setTestingLidarr(false);
+                        }}
+                      />
+                    </div>
+                    <div className="onboarding-field">
+                      <label htmlFor="onboarding-lidarr-api-key">API key</label>
+                      <SettingsInput
+                        id="onboarding-lidarr-api-key"
+                        legacyStyle
+                        type="password"
+                        autoComplete="off"
+                        placeholder="Paste your Lidarr API key"
+                        value={lidarrApiKey}
+                        onChange={(e) => {
+                          lidarrTestVersionRef.current += 1;
+                          setLidarrApiKey(e.target.value);
+                          setLidarrQualityProfileId(null);
+                          setLidarrMetadataProfileId(null);
+                          setLidarrTestSuccess(false);
+                          setTestingLidarr(false);
+                        }}
+                      />
+                    </div>
                     <OnboardingHint>
                       Find your API key in Lidarr under Settings → General → Security. The
                       Downloads Folder and optional playback clients are configured in Settings
                       after setup. Aurral can play indexed media directly when the canonical file
                       is readable.
                     </OnboardingHint>
+                    {lidarrTestSuccess ? (
+                      <p className="onboarding-status onboarding-status--success" role="status">
+                        Lidarr connection successful. You can finish setup.
+                      </p>
+                    ) : null}
                   </div>
                 </OnboardingStep>
               )}
 
-              {error && <p className="onboarding-error">{error}</p>}
+              {error && (
+                <p className="onboarding-error" role="alert">
+                  {error}
+                </p>
+              )}
             </div>
           </div>
 
@@ -336,7 +391,8 @@ function Onboarding() {
               type="button"
               onClick={primaryAction}
               disabled={isPrimaryDisabled}
-              className="btn btn-secondary btn--bold btn--grow"
+              className="btn btn-primary btn--bold btn--grow"
+              aria-busy={testingLidarr || submitting}
             >
               {primaryLabel === "Next" ? (
                 <>

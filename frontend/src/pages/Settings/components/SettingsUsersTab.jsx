@@ -444,7 +444,7 @@ export function SettingsUsersTab({
                         </button>
                         <button
                           type="button"
-                          className="arr-btn arr-btn--primary"
+                          className="arr-btn btn-danger"
                           disabled={deletingUser}
                           onClick={async () => {
                             setDeletingUser(true);
