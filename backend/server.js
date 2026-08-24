@@ -394,7 +394,7 @@ const gracefulShutdown = async (signal) => {
   for (const interval of broadcastIntervals) {
     clearInterval(interval);
   }
-  await shutdownHonkerInfrastructure({ timeoutMs: 30000 });
+  await shutdownHonkerInfrastructure({ timeoutMs: 5000 });
   await new Promise((resolve) => {
     httpServer.close(() => resolve());
   });
