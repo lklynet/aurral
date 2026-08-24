@@ -184,6 +184,7 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
     .filter(Boolean)
     .join(";") || null;
   const result = { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
+  const tracksEnumerated = albumTrackData.some((albumData) => albumData.tracks.length > 0);
 
   return withLibraryScan("lidarr", rootPath, async (scanId) => {
     const indexedFiles = new Map();
@@ -302,7 +303,7 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
       for (const filePath of batch.seenPaths) unseenPaths.delete(filePath);
       await new Promise((resolve) => setImmediate(resolve));
     }
-    if (result.filesFailed === 0 && result.filesIndexed > 0) {
+    if (result.filesFailed === 0 && (result.filesIndexed > 0 || tracksEnumerated)) {
       markLibraryMediaFilesUnavailable("lidarr", unseenPaths);
     }
     return result;

@@ -38,6 +38,37 @@ test("scan change tracking ignores unrelated database writes", async () => {
   }
 });
 
+test("overlapping scans keep change tracking isolated", async () => {
+  const identityKey = `name:overlapping-scan-${process.pid}`;
+  let releaseFirst;
+  const holdFirst = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+  let firstChanged;
+
+  try {
+    const first = withLibraryScan("test-overlap-first", null, async () => {
+      upsertLibraryArtist({ identityKey, name: "Overlapping Scan", syncSearch: false });
+      firstChanged = true;
+      await holdFirst;
+      return { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
+    });
+    while (!firstChanged) await new Promise((resolve) => setImmediate(resolve));
+
+    const second = await withLibraryScan("test-overlap-second", null, async () => (
+      { filesSeen: 0, filesIndexed: 0, filesFailed: 0 }
+    ));
+    releaseFirst();
+
+    assert.equal(second.changed, false);
+    assert.equal((await first).changed, true);
+  } finally {
+    releaseFirst?.();
+    db.prepare("DELETE FROM library_artists WHERE identity_key = ?").run(identityKey);
+    db.prepare("DELETE FROM library_scan_runs WHERE source LIKE 'test-overlap-%'").run();
+  }
+});
+
 test("a local-only configured scan does not contact Lidarr", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-local-only-scan-"));
   let lidarrCalls = 0;
@@ -1126,6 +1157,34 @@ test("an empty Lidarr response leaves the last indexed library available", async
 
     assert.equal(result.filesIndexed, 0);
     assert.equal(file?.available, 1);
+  } finally {
+    if (filePath) deleteIndexedFile("lidarr", filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a Lidarr rescan marks the final removed media file unavailable", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-final-removal-"));
+  let filePath;
+  const artist = { id: 47, artistName: "Removal Artist", foreignArtistId: "47474747-4747-4747-8747-474747474747" };
+  const album = { id: 48, artistId: 47, title: "Removal Album", foreignAlbumId: "48484848-4848-4848-8848-484848484848" };
+  const track = { id: 49, albumId: 48, title: "Removal Track", trackNumber: 1, foreignRecordingId: "49494949-4949-4949-8949-494949494949", trackFileId: 50 };
+  try {
+    filePath = await createAudioFile(root, "Removal Artist/Removal Album/01 Removal Track.flac");
+    const client = {
+      isConfigured: () => true,
+      request: async () => [artist],
+      getAllAlbums: async () => [album],
+      getTracksByAlbumId: async () => [track],
+      getTrackFilesByAlbumId: async () => [{ id: 50, path: filePath, trackIds: [49] }],
+      getRootFolders: async () => [{ path: root }],
+    };
+    await indexLidarrLibrary({ client });
+    client.getTrackFilesByAlbumId = async () => [];
+    await indexLidarrLibrary({ client });
+    const file = getLibrarySnapshot().files.find((entry) => entry.path === filePath);
+
+    assert.equal(file?.available, 0);
   } finally {
     if (filePath) deleteIndexedFile("lidarr", filePath);
     await rm(root, { recursive: true, force: true });

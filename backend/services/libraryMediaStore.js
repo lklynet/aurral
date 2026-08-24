@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { db, dbHelpers } from "../config/db-sqlite.js";
 import { invalidateCanonicalLibraryCache } from "./libraryQueryService.js";
 import {
@@ -34,12 +35,13 @@ const LIDARR_METADATA_KEYS = [
 ];
 
 let libraryScanDepth = 0;
-let libraryScanChanged = false;
 let libraryCacheInvalidationPending = false;
+const libraryScanContext = new AsyncLocalStorage();
 
 const invalidateLibraryCache = () => {
-  if (libraryScanDepth > 0) {
-    libraryScanChanged = true;
+  const scan = libraryScanContext.getStore();
+  if (scan) {
+    scan.changed = true;
     libraryCacheInvalidationPending = true;
     return;
   }
@@ -509,23 +511,27 @@ export function markLibraryMediaFilesUnavailable(source, paths) {
 }
 
 export async function withLibraryScan(source, rootPath, run) {
-  if (libraryScanDepth === 0) libraryScanChanged = false;
-  libraryScanDepth += 1;
-  const scanId = beginLibraryScan({ source, rootPath });
-  try {
-    const result = await run(scanId);
-    finishLibraryScan(scanId, { ...result, status: "complete" });
-    return { scanId, ...result, changed: libraryScanChanged, status: "complete" };
-  } catch (error) {
-    finishLibraryScan(scanId, { status: "failed", error: error.message });
-    throw error;
-  } finally {
-    libraryScanDepth -= 1;
-    if (libraryScanDepth === 0 && libraryCacheInvalidationPending) {
-      libraryCacheInvalidationPending = false;
-      invalidateCanonicalLibraryCache();
+  const parentScan = libraryScanContext.getStore();
+  const scan = { changed: false };
+  return libraryScanContext.run(scan, async () => {
+    libraryScanDepth += 1;
+    const scanId = beginLibraryScan({ source, rootPath });
+    try {
+      const result = await run(scanId);
+      finishLibraryScan(scanId, { ...result, status: "complete" });
+      return { scanId, ...result, changed: scan.changed, status: "complete" };
+    } catch (error) {
+      finishLibraryScan(scanId, { status: "failed", error: error.message });
+      throw error;
+    } finally {
+      if (scan.changed && parentScan) parentScan.changed = true;
+      libraryScanDepth -= 1;
+      if (libraryScanDepth === 0 && libraryCacheInvalidationPending) {
+        libraryCacheInvalidationPending = false;
+        invalidateCanonicalLibraryCache();
+      }
     }
-  }
+  });
 }
 
 export function getLibrarySnapshot() {
