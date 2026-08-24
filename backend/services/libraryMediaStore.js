@@ -110,41 +110,72 @@ export function upsertLibraryArtist({
   let libraryChanged = false;
   const artist = db.transaction(() => {
     const fallbackKey = buildFallbackIdentityKey("artist", artistName);
+    const findFallbackArtist = () => {
+      return db
+        .prepare("SELECT id, identity_key FROM library_artists WHERE identity_key = ? AND mbid IS NULL")
+        .get(fallbackKey);
+    };
+    const findResolvedArtist = () => {
+      const exact = db
+        .prepare(
+          `SELECT * FROM library_artists
+           WHERE mbid IS NOT NULL AND name = ? COLLATE NOCASE
+           ORDER BY id
+           LIMIT 2`,
+        )
+        .all(artistName);
+      if (exact.length === 1) return exact[0];
+      // ponytail: normalized duplicate repair scans artist rows; add a persisted normalized name if this becomes hot.
+      const matches = db
+        .prepare("SELECT * FROM library_artists WHERE mbid IS NOT NULL")
+        .all()
+        .filter((row) => buildFallbackIdentityKey("artist", row.name) === fallbackKey);
+      return matches.length === 1 ? matches[0] : null;
+    };
+    const mergeFallbackArtist = (fallback, resolved) => {
+      if (!fallback || !resolved || fallback.id === resolved.id) return;
+      libraryChanged = db.prepare(
+        `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
+         SELECT user_id, entity_kind, ?, created_at
+         FROM subsonic_stars
+         WHERE entity_kind = 'artist' AND entity_key = ?`,
+      ).run(resolved.identity_key, fallback.identity_key).changes > 0 || libraryChanged;
+      libraryChanged = db.prepare(
+        "DELETE FROM subsonic_stars WHERE entity_kind = 'artist' AND entity_key = ?",
+      ).run(fallback.identity_key).changes > 0 || libraryChanged;
+      libraryChanged = db.prepare("UPDATE library_albums SET artist_id = ? WHERE artist_id = ?")
+        .run(resolved.id, fallback.id).changes > 0 || libraryChanged;
+      libraryChanged = db.prepare("DELETE FROM library_artists WHERE id = ?")
+        .run(fallback.id).changes > 0 || libraryChanged;
+    };
     if (mbid) {
-      const resolved = db.prepare("SELECT id FROM library_artists WHERE identity_key = ?").get(key);
+      const resolved = db.prepare("SELECT id, identity_key FROM library_artists WHERE identity_key = ?").get(key);
       const fallback = fallbackKey === key
         ? null
-        : db.prepare("SELECT id FROM library_artists WHERE identity_key = ?").get(fallbackKey);
-      if (fallback) {
+        : findFallbackArtist();
+      if (fallback && !resolved) {
         libraryChanged = db.prepare(
           `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
            SELECT user_id, entity_kind, ?, created_at
            FROM subsonic_stars
            WHERE entity_kind = 'artist' AND entity_key = ?`,
-        ).run(key, fallbackKey).changes > 0 || libraryChanged;
+        ).run(key, fallback.identity_key).changes > 0 || libraryChanged;
         libraryChanged = db.prepare(
           "DELETE FROM subsonic_stars WHERE entity_kind = 'artist' AND entity_key = ?",
-        ).run(fallbackKey).changes > 0 || libraryChanged;
+        ).run(fallback.identity_key).changes > 0 || libraryChanged;
       }
       if (fallback && !resolved) {
         libraryChanged = db.prepare("UPDATE library_artists SET identity_key = ? WHERE id = ?")
           .run(key, fallback.id).changes > 0 || libraryChanged;
       } else if (fallback && resolved && fallback.id !== resolved.id) {
-        libraryChanged = db.prepare("UPDATE library_albums SET artist_id = ? WHERE artist_id = ?")
-          .run(resolved.id, fallback.id).changes > 0 || libraryChanged;
-        libraryChanged = db.prepare("DELETE FROM library_artists WHERE id = ?")
-          .run(fallback.id).changes > 0 || libraryChanged;
+        mergeFallbackArtist(fallback, resolved);
       }
     } else if (key === fallbackKey) {
-      const resolved = db.prepare(
-        `SELECT * FROM library_artists
-         WHERE mbid IS NOT NULL AND name = ? COLLATE NOCASE
-         ORDER BY id
-         LIMIT 2`,
-      ).all(artistName);
-      if (resolved.length === 1) {
-        if (syncSearch) syncLibrarySearchArtist(resolved[0].id);
-        return resolved[0];
+      const resolved = findResolvedArtist();
+      if (resolved) {
+        mergeFallbackArtist(findFallbackArtist(), resolved);
+        if (syncSearch) syncLibrarySearchArtist(resolved.id);
+        return resolved;
       }
     }
     const existing = db.prepare("SELECT * FROM library_artists WHERE identity_key = ?").get(key);

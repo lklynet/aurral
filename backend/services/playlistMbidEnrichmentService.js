@@ -322,6 +322,7 @@ export async function enrichSharedPlaylistMbids(
 
       if (playlistTracksUpdated > 0 || jobsUpdated > 0) {
         playlistManager.updateConfig(false);
+        playlistManager.scheduleScanLibrary();
       }
 
       return {

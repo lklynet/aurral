@@ -76,6 +76,7 @@ test("library refresh queues a forced scan and exposes its queue status", async 
 
   let body;
   let statusCode = 200;
+  let refreshJobId;
   const response = {
     status(code) {
       statusCode = code;
@@ -97,6 +98,12 @@ test("library refresh queues a forced scan and exposes its queue status", async 
       includeLidarr: true,
     });
     const jobId = body.jobId;
+    refreshJobId = jobId;
+
+    body = undefined;
+    await routes.get("GET /refresh")({ user: { id: 1 } }, response);
+    assert.equal(body.jobId, jobId);
+    assert.equal(body.status.status, "queued");
 
     body = undefined;
     await routes.get("GET /refresh/:jobId")(
@@ -106,7 +113,7 @@ test("library refresh queues a forced scan and exposes its queue status", async 
     assert.equal(body.status, "queued");
     body.jobId = jobId;
   } finally {
-    if (body?.jobId) getLibraryScanQueue().cancel(body.jobId);
+    if (refreshJobId || body?.jobId) getLibraryScanQueue().cancel(refreshJobId || body.jobId);
     clearScheduledLibraryScan();
     await new Promise((resolve) => setImmediate(resolve));
     await stopLibraryScanWorker();

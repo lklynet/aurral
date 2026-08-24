@@ -385,6 +385,46 @@ test("upsertLibraryArtist repairs an existing fallback and MBID duplicate", () =
   }
 });
 
+test("upsertLibraryArtist merges normalized name variants when the MBID row exists first", () => {
+  const suffix = `${process.pid} ${Date.now()}`;
+  const cases = [
+    {
+      canonicalName: `Volcano! ${suffix}`,
+      fallbackName: `Volcano ${suffix}`,
+      mbid: "11111111-1111-4111-8111-111111111114",
+    },
+    {
+      canonicalName: `Marshmello;Lil Peep ${suffix}`,
+      fallbackName: `Marshmello, Lil Peep ${suffix}`,
+      mbid: "11111111-1111-4111-8111-111111111115",
+    },
+  ];
+
+  try {
+    for (const entry of cases) {
+      const resolved = upsertLibraryArtist({
+        identityKey: `mbid:${entry.mbid}`,
+        mbid: entry.mbid,
+        name: entry.canonicalName,
+      });
+      const fallback = upsertLibraryArtist({
+        identityKey: buildFallbackIdentityKey("artist", entry.fallbackName),
+        name: entry.fallbackName,
+      });
+
+      assert.equal(fallback.id, resolved.id);
+    }
+
+    assert.equal(
+      db.prepare("SELECT COUNT(*) AS count FROM library_artists WHERE name LIKE ?").get(`%${suffix}`)
+        .count,
+      cases.length,
+    );
+  } finally {
+    db.prepare("DELETE FROM library_artists WHERE name LIKE ?").run(`%${suffix}`);
+  }
+});
+
 test("scanMusicRoot applies trusted job metadata when file tags omit identities", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-job-metadata-"));
   const source = `test-job-metadata-${process.pid}`;

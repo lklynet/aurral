@@ -13,6 +13,7 @@ import {
 } from "../../../services/subsonicLibraryService.js";
 import {
   getLibraryScanStatus,
+  getScheduledLibraryScanJobId,
   scheduleLibraryScan,
 } from "../../../services/libraryScanWorker.js";
 
@@ -86,6 +87,14 @@ export function registerCanonical(router) {
       queued: true,
       jobId,
       status: getLibraryScanStatus(jobId),
+    });
+  });
+
+  router.get("/refresh", requireAuth, noCache, (_req, res) => {
+    const jobId = getScheduledLibraryScanJobId();
+    return res.json({
+      jobId,
+      status: jobId == null ? null : getLibraryScanStatus(jobId),
     });
   });
 

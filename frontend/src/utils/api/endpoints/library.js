@@ -63,6 +63,8 @@ export const clearCanonicalLibraryPageCache = () => {
 
 export const requestLibraryRefresh = () => postData("/library/refresh", {});
 
+export const getActiveLibraryRefresh = () => getData("/library/refresh");
+
 export const getLibraryRefreshStatus = (jobId) =>
   getData(`/library/refresh/${encodeURIComponent(jobId)}`);
 
