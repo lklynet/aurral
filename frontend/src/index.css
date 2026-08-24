@@ -14350,6 +14350,308 @@ button.native-library-genre-row:focus-visible {
   color: var(--aurral-text-muted);
 }
 
+.artist-details-page {
+  padding-bottom: 4rem;
+}
+
+.artist-details-page .artist-hero__inner {
+  min-height: clamp(20rem, 36vw, 27rem);
+  padding: clamp(4rem, 8vw, 6rem) clamp(1rem, 2vw, 1.5rem) 2.25rem;
+}
+
+.artist-details-page .artist-hero__title {
+  max-width: 52rem;
+  font-size: clamp(2.75rem, 7vw, 5.5rem);
+  font-weight: 700;
+  letter-spacing: -0.05em;
+}
+
+.artist-details-page .artist-hero .artist-tag {
+  border-color: rgb(255 255 255 / 0.24);
+  background: rgb(0 0 0 / 0.48);
+  backdrop-filter: none;
+}
+
+.artist-details-page .artist-action-bar {
+  border-bottom-color: var(--aurral-border-strong);
+  background: var(--aurral-surface);
+  backdrop-filter: none;
+}
+
+.artist-details-page .artist-section {
+  margin-bottom: 3.5rem;
+}
+
+.artist-details-page .artist-section-title {
+  margin-bottom: 1.125rem;
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.artist-details-page .artist-section-title--large {
+  font-size: 1.75rem;
+  font-weight: 600;
+}
+
+.artist-details-page .artist-tabs {
+  gap: 0.75rem;
+}
+
+.artist-details-page .artist-tab {
+  min-height: 2.25rem;
+  padding: 0.5rem 0.125rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--aurral-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.artist-details-page .artist-tab:hover:not(:disabled) {
+  border-bottom-color: var(--aurral-border-strong);
+  background: transparent;
+  color: var(--aurral-text);
+}
+
+.artist-details-page .artist-tab:focus-visible {
+  border-bottom-color: var(--aurral-border-strong);
+  outline: 2px solid var(--aurral-ring);
+  outline-offset: 3px;
+}
+
+.artist-details-page .artist-tab.is-active {
+  border-bottom-color: var(--aurral-text);
+  background: transparent;
+  color: var(--aurral-text);
+}
+
+.artist-details-page .artist-release-grid,
+.artist-details-page .artist-albums-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(9rem, 100%), 1fr));
+  gap: 1rem 0.75rem;
+}
+
+.artist-details-page .artist-release-card {
+  padding: 0.25rem 0.25rem 0.5rem;
+}
+
+.artist-details-page .artist-release-card:hover:not(:disabled),
+.artist-details-page .artist-release-card:focus-within {
+  background-color: var(--aurral-surface-hover);
+}
+
+.artist-details-page .artist-release-card__cover {
+  margin-bottom: 0.625rem;
+  border-radius: 8px;
+}
+
+.artist-details-page .artist-release-card__title {
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.artist-details-page .artist-release-card__meta,
+.artist-details-page .artist-release-card__metric {
+  font-size: 0.8125rem;
+}
+
+.artist-details-page .artist-release-list-item {
+  padding: 0.75rem 0.5rem;
+  border-bottom: 1px solid var(--aurral-border);
+  border-radius: 0;
+}
+
+.artist-details-page .artist-release-list-item:last-child {
+  border-bottom: 0;
+}
+
+.artist-details-page .artist-release-list-item:hover {
+  background: var(--aurral-surface-hover);
+}
+
+.artist-details-page .artist-about-card {
+  min-height: 22rem;
+}
+
+.artist-details-page .artist-about-card__body {
+  padding: clamp(1.25rem, 3vw, 2.25rem);
+}
+
+.artist-details-page .artist-about-bio {
+  font-size: clamp(1.05rem, 1.8vw, 1.4rem);
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.artist-details-page .artist-rating-badge {
+  width: 5rem;
+}
+
+.artist-details-page .artist-rating-badge__label {
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.artist-details-page .artist-about-aside {
+  gap: 1.5rem;
+  padding-top: 0.25rem;
+}
+
+.artist-details-page .artist-about-side-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.artist-details-page .artist-page-header {
+  margin-bottom: 2rem;
+}
+
+.artist-details-page > .artist-page-header:first-child {
+  padding-top: 1.5rem;
+}
+
+.artist-details-page .artist-title-link {
+  font-size: clamp(1.25rem, 2.4vw, 1.75rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.artist-details-page .artist-release-page__controls {
+  gap: 1.25rem;
+  margin-bottom: 2.5rem;
+}
+
+.artist-details-page .artist-release-page__filters {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--aurral-border);
+}
+
+.artist-details-page .artist-count {
+  margin-bottom: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.artist-details-page .release-page__hero {
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+  margin-bottom: 3rem;
+}
+
+.artist-details-page .release-page__cover {
+  border-radius: 8px;
+}
+
+.artist-details-page .release-page__title {
+  font-size: clamp(1.75rem, 4vw, 3.25rem);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+}
+
+.artist-details-page .release-page__actions {
+  margin-top: 0.75rem;
+}
+
+.artist-details-page .release-page__library-status {
+  border: 1px solid var(--aurral-border);
+  border-radius: var(--aurral-radius-sm);
+  background: transparent;
+  font-weight: 500;
+}
+
+.artist-details-page .release-page__tracks .artist-release-track-list {
+  margin-top: 0;
+  padding: 1rem 0 0;
+  border: 0;
+  border-top: 1px solid var(--aurral-border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.artist-details-page .release-page__tracks .artist-track-row {
+  padding: 0.75rem 0.5rem;
+  border-bottom: 1px solid var(--aurral-border);
+  border-radius: 0;
+}
+
+.artist-details-page .release-page__tracks .artist-track-row:last-child {
+  border-bottom: 0;
+}
+
+.artist-details-page .release-page__tracks .artist-track-row:hover {
+  background: var(--aurral-surface-hover);
+}
+
+@media (min-width: 900px) {
+  .artist-details-page .artist-about-grid {
+    grid-template-columns: minmax(0, 1.8fr) minmax(12rem, 0.8fr);
+    gap: 2rem;
+  }
+}
+
+@media (max-width: 639px) {
+  .artist-details-page {
+    padding-bottom: 3rem;
+  }
+
+  .artist-details-page .artist-hero__inner {
+    min-height: 19rem;
+    padding: 4.5rem 1rem 1.5rem;
+  }
+
+  .artist-details-page .artist-hero__title {
+    font-size: clamp(2.5rem, 14vw, 4rem);
+  }
+
+  .artist-details-page .artist-action-bar {
+    padding-inline: 0.75rem;
+  }
+
+  .artist-details-page .artist-action-bar__group {
+    overflow-x: auto;
+    padding-bottom: 0.125rem;
+  }
+
+  .artist-details-page .artist-release-page__filters {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .artist-details-page .artist-release-page__filters .artist-tabs {
+    max-width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .artist-details-page .artist-release-page__filters .artist-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .artist-details-page .artist-release-page__live-toggle {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .artist-details-page .release-page__hero {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+
+  .artist-details-page .release-page__cover {
+    width: min(100%, 16rem);
+  }
+
+  .artist-details-page .release-page__title {
+    font-size: 2rem;
+  }
+}
+
 .search-banner,
 .app-banner,
 .settings-page__banner {
