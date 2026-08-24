@@ -18,6 +18,7 @@ const [
   { flowPlaylistConfig },
   { playlistManager },
   { weeklyFlowWorker },
+  { queueQualityUpgrade },
   { registerJobs },
 ] = await setupIsolatedBackend(
   "approved-import-path",
@@ -27,6 +28,7 @@ const [
   "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
   "backend/services/weeklyFlow/weeklyFlowWorker.js",
+  "backend/services/qualityProfileService.js",
   "backend/routes/weeklyFlow/handlers/jobs.js",
 );
 
@@ -152,6 +154,54 @@ test("reports when an upgrade search is already queued for a track", async () =>
   assert.equal(second.status, 200, JSON.stringify(payload));
   assert.equal(payload.alreadyQueued, true);
   assert.equal(payload.queued, 0);
+});
+
+test("records queued upgrade history if the pipeline removes the live job immediately", async () => {
+  const playlistId = "e6be4cd3-10b0-4744-baa1-7e960a41ca54";
+  flowPlaylistConfig.createSharedPlaylist({
+    id: playlistId,
+    name: "Fast failure",
+    tracks: [{ artistName: "Artist", trackName: "Fast failure track", albumName: "Album" }],
+  });
+  dbOps.updateSettings({
+    ...dbOps.getSettings(),
+    integrations: {
+      slskd: { enabled: true, url: "http://127.0.0.1:1", apiKey: "test-key" },
+    },
+  });
+  const finalPath = path.join(
+    process.env.DOWNLOAD_FOLDER,
+    "aurral-weekly-flow",
+    playlistId,
+    "Artist",
+    "Album",
+    "Fast failure track.mp3",
+  );
+  await fs.mkdir(path.dirname(finalPath), { recursive: true });
+  await fs.writeFile(finalPath, "audio");
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Fast failure track", albumName: "Album" },
+    playlistId,
+  );
+  downloadTracker.setDone(jobId, finalPath, "Album");
+  downloadTracker.updateQuality(jobId, { tier: "mp3-128", format: "mp3" });
+
+  const originalEnqueue = downloadTracker.enqueueDownloadPipeline;
+  downloadTracker.enqueueDownloadPipeline = (upgradeJobId) => {
+    downloadTracker.removeJob(upgradeJobId);
+    return true;
+  };
+  try {
+    assert.equal(await queueQualityUpgrade(downloadTracker.getJob(jobId)), "queued");
+    assert.equal(
+      dbOps.getAurralHistory().some(
+        (entry) => entry.metadata?.trackName === "Fast failure track",
+      ),
+      true,
+    );
+  } finally {
+    downloadTracker.enqueueDownloadPipeline = originalEnqueue;
+  }
 });
 
 test("search all stays within the requesting user's playlist access", async () => {

@@ -147,13 +147,14 @@ export async function queueQualityUpgrade(job) {
   if (downloadTracker.findActiveUpgradeJob(current)) return "already-queued";
   const upgradeJobId = downloadTracker.addUpgradeJob(current);
   if (!upgradeJobId) return "ineligible";
+  const queuedUpgrade = downloadTracker.getJob(upgradeJobId);
   if (!downloadTracker.enqueueDownloadPipeline(upgradeJobId)) {
     downloadTracker.removeJob(upgradeJobId);
     return "ineligible";
   }
   downloadTracker.markQualityUpgradeChecked(current.id);
   const { recordTrackJobQueued } = await import("./aurralHistoryService.js");
-  recordTrackJobQueued(downloadTracker.getJob(upgradeJobId));
+  recordTrackJobQueued(queuedUpgrade);
   return "queued";
 }
 
