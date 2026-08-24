@@ -266,11 +266,6 @@ export function SettingsDownloadClientsSection({
   return (
     <>
       <div className="settings-page__section">
-        <div className="settings-page__section-header">
-          <div className="settings-page__section-intro">
-            <h3 className="settings-page__section-title">Download clients</h3>
-          </div>
-        </div>
         <div className="settings-page__integration-card-grid">
           <IntegrationCard
             title="slskd"

@@ -1285,6 +1285,24 @@ function SearchResultsPage() {
   return (
     <div className="search-page">
       <header className="search-page__header">
+        <div className="search-page__title-row">
+          <h1 className="search-page__title">{pageTitle}</h1>
+        </div>
+
+        {(pageSubtitle || (isTagSearch && lastfmConfigured !== false)) && (
+          <div className="search-page__subtitle-row">
+            {pageSubtitle && <p className="search-page__subtitle">{pageSubtitle}</p>}
+            {isTagSearch && lastfmConfigured !== false && (
+              <span className="search-page__tag-legend">
+                <span className="search-page__tag-legend-ring" aria-hidden="true">
+                  <span className="search-page__tag-legend-ring-core" />
+                </span>
+                <span>recommended</span>
+              </span>
+            )}
+          </div>
+        )}
+
         {showTagBanner && (
           <div className="search-banner">
             <p className="search-banner__copy">
@@ -1314,24 +1332,6 @@ function SearchResultsPage() {
                 <X className="artist-icon-sm" />
               </button>
             </div>
-          </div>
-        )}
-
-        <div className="search-page__title-row">
-          <h1 className="search-page__title">{pageTitle}</h1>
-        </div>
-
-        {(pageSubtitle || (isTagSearch && lastfmConfigured !== false)) && (
-          <div className="search-page__subtitle-row">
-            {pageSubtitle && <p className="search-page__subtitle">{pageSubtitle}</p>}
-            {isTagSearch && lastfmConfigured !== false && (
-              <span className="search-page__tag-legend">
-                <span className="search-page__tag-legend-ring" aria-hidden="true">
-                  <span className="search-page__tag-legend-ring-core" />
-                </span>
-                <span>recommended</span>
-              </span>
-            )}
           </div>
         )}
 
@@ -1453,6 +1453,7 @@ function SearchResultsPage() {
                 className={`search-page__filter${
                   activeFilter === option.value ? " is-active" : ""
                 }`}
+                aria-pressed={activeFilter === option.value}
               >
                 {option.label}
               </button>

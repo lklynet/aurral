@@ -117,8 +117,10 @@ function NearbyLocationControl({
           {zipFormVisible && (
             <div className="artist-nearby-zip-editor artist-nearby-zip-editor--menu">
               <div className="artist-nearby-zip-editor__field">
+                <label htmlFor="nearby-location-zip">ZIP or postal code</label>
                 <input
                   ref={zipInputRef}
+                  id="nearby-location-zip"
                   type="text"
                   value={zipDraft}
                   onChange={(event) => setZipDraft(event.target.value)}

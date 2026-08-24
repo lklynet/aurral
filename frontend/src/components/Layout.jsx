@@ -490,6 +490,7 @@ function Layout({ children, headerActions }) {
                       ref={index === 0 ? mobileMenuInitialFocusRef : undefined}
                       to={item.path}
                       className={`app-mobile-menu__item${active ? " is-active" : ""}`}
+                      aria-current={active ? "page" : undefined}
                     >
                       <Icon aria-hidden="true" />
                       <span>{item.label}</span>
@@ -524,6 +525,7 @@ function Layout({ children, headerActions }) {
                   key={item.path}
                   to={item.path}
                   className={`app-mobile-nav__item${active ? " is-active" : ""}`}
+                  aria-current={active ? "page" : undefined}
                 >
                   <Icon aria-hidden="true" />
                   <span>{item.label}</span>

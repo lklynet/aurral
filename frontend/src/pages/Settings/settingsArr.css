@@ -2481,3 +2481,335 @@
     max-width: none;
   }
 }
+
+.app-main--settings {
+  padding: clamp(1rem, 4vw, 3rem);
+}
+
+.settings-arr {
+  max-width: 68rem;
+}
+
+.settings-arr__content {
+  padding-bottom: 3rem;
+}
+
+.settings-arr__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 2.25rem;
+  padding: 0 0.75rem 1rem;
+  border-bottom: 1px solid var(--aurral-border);
+}
+
+.settings-arr__heading {
+  min-width: 0;
+}
+
+.settings-arr__eyebrow {
+  margin: 0 0 0.375rem;
+  color: var(--aurral-text-subtle);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.settings-arr__title {
+  margin: 0;
+  color: var(--aurral-text);
+  font-size: clamp(1.5rem, 2vw, 1.875rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.settings-arr__header .settings-arr__save-state {
+  position: static;
+  flex: 0 0 auto;
+  color: var(--aurral-text-muted);
+  font-size: 0.75rem;
+}
+
+.settings-arr__header .settings-arr__save-state.is-saving {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.settings-arr__mobile-label {
+  color: var(--aurral-text-muted);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.settings-arr .arr-page,
+.settings-arr .arr-form,
+.settings-arr .settings-page__panel,
+.settings-arr .settings-page__form {
+  gap: 2.75rem;
+}
+
+.settings-arr .arr-fieldset__legend,
+.settings-arr .settings-page__section-title,
+.settings-arr .settings-page__panel-title {
+  font-weight: 600;
+}
+
+.settings-arr .arr-form-group,
+.settings-arr .settings-page__fields > div,
+.settings-arr .settings-page__field,
+.settings-arr .settings-page__field-stack--lg > div {
+  padding: 0.625rem 0.75rem;
+}
+
+.settings-arr :is(.arr-input, .arr-select, .arr-textarea, .artist-input) {
+  height: 2.25rem;
+  padding: 0 0.75rem;
+  box-shadow: none;
+}
+
+.settings-arr .arr-textarea,
+.settings-arr .settings-page__code-input,
+.settings-arr textarea.arr-input {
+  height: auto;
+  padding: 0.625rem 0.75rem;
+}
+
+.settings-arr :is(.arr-input, .arr-select, .arr-textarea, .artist-input):focus-visible,
+.arr-portal :is(.arr-input, .arr-select, .arr-textarea, .artist-input):focus-visible {
+  outline-offset: 2px;
+}
+
+.settings-arr .arr-btn,
+.settings-arr .btn,
+.arr-portal .arr-btn {
+  height: 2.25rem;
+  min-height: 2.25rem;
+  border-radius: 0.5rem;
+}
+
+.settings-arr .arr-btn--primary,
+.settings-arr .btn-primary,
+.arr-portal .arr-btn--primary {
+  border-color: var(--aurral-text);
+  background: var(--aurral-text);
+  color: var(--aurral-surface);
+}
+
+.settings-arr .arr-btn.btn-danger,
+.arr-portal .arr-btn.btn-danger {
+  border-color: color-mix(in srgb, var(--aurral-danger) 35%, var(--aurral-border));
+  background: color-mix(in srgb, var(--aurral-danger) 12%, var(--aurral-surface));
+  color: color-mix(in srgb, var(--aurral-danger) 72%, var(--aurral-text));
+}
+
+.settings-arr .arr-btn.btn-danger:hover:not(:disabled),
+.arr-portal .arr-btn.btn-danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--aurral-danger) 52%, var(--aurral-border));
+  background: color-mix(in srgb, var(--aurral-danger) 18%, var(--aurral-surface));
+  color: var(--aurral-danger);
+}
+
+.settings-arr .arr-btn--primary:hover:not(:disabled),
+.settings-arr .btn-primary:hover:not(:disabled),
+.arr-portal .arr-btn--primary:hover:not(:disabled) {
+  border-color: var(--aurral-text-muted);
+  background: var(--aurral-text-muted);
+  color: var(--aurral-surface);
+}
+
+.settings-arr .arr-card {
+  min-height: 6.25rem;
+  padding: 0.875rem;
+  border-radius: 0.625rem;
+}
+
+.settings-arr .arr-card__title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.settings-arr .arr-table th,
+.settings-arr .arr-health__table th {
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.settings-arr .arr-table-wrap,
+.settings-arr .arr-health__table-wrap {
+  max-width: 100%;
+}
+
+.settings-arr .settings-news-categories {
+  gap: 0.75rem;
+}
+
+.settings-arr .settings-news-category {
+  border-radius: 0;
+  background: transparent;
+}
+
+.settings-arr .settings-news-feed {
+  border-radius: 0;
+}
+
+.settings-arr .settings-system__intro {
+  justify-content: flex-end;
+}
+
+.settings-arr .artist-modal-backdrop,
+.arr-portal .arr-modal-backdrop {
+  background: var(--aurral-scrim);
+  backdrop-filter: blur(3px);
+}
+
+.settings-arr .settings-arr__modal,
+.arr-portal .arr-modal {
+  border-radius: 0.75rem;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .settings-arr .arr-form-group:hover,
+  .settings-arr .settings-page__fields > div:hover,
+  .settings-arr .settings-page__field:hover,
+  .settings-arr .settings-page__field-stack--lg > div:hover,
+  .settings-arr .settings-system__row:hover {
+    background: var(--settings-row-hover);
+  }
+}
+
+@media (max-width: 48rem) {
+  .app-main--settings {
+    padding: 0.75rem;
+  }
+
+  .settings-arr__content {
+    padding-bottom: 2rem;
+  }
+
+  .settings-arr__header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    padding: 0 0.25rem 0.875rem;
+  }
+
+  .settings-arr__header .settings-arr__save-state {
+    text-align: left;
+  }
+
+  .settings-arr .arr-fieldset__actions {
+    position: static;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    margin: -0.125rem 0.75rem 0.625rem;
+  }
+
+  .settings-arr .arr-form-group,
+  .settings-arr .settings-page__fields > div,
+  .settings-arr .settings-page__field,
+  .settings-arr .settings-page__field-stack--lg > div {
+    display: block;
+    padding: 0.75rem;
+  }
+
+  .settings-arr .arr-form-control,
+  .settings-arr .settings-page__fields > div > :is(.arr-input, .arr-select, .arr-textarea),
+  .settings-arr .settings-page__field > :is(.arr-input, .arr-select, .arr-textarea),
+  .settings-arr .settings-page__field-stack--lg > div > :is(.arr-input, .arr-select, .arr-textarea),
+  .settings-arr .settings-page__fields > div > .artist-input,
+  .settings-arr .settings-page__field > .artist-input,
+  .settings-arr .settings-page__field-stack--lg > div > .artist-input {
+    width: 100%;
+    max-width: none;
+    margin-top: 0.5rem;
+  }
+
+  .settings-arr .settings-system__intro {
+    justify-content: flex-start;
+  }
+
+  .settings-arr .settings-system__row {
+    display: block;
+  }
+
+  .settings-arr .settings-system__value,
+  .settings-arr .settings-system__value--error,
+  .settings-arr .settings-system__api-value {
+    justify-content: flex-start;
+    margin-top: 0.5rem;
+    text-align: start;
+  }
+
+  .settings-arr .settings-system__api-key {
+    flex: 1;
+    max-width: none;
+  }
+
+  .settings-arr .settings-news-feed__url {
+    overflow-wrap: anywhere;
+  }
+}
+
+.profile-page--settings .profile-page__header {
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--aurral-border);
+}
+
+.profile-page--settings .page-title {
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.profile-page--settings .profile-settings__section {
+  padding: 1.75rem 0 2rem;
+}
+
+.profile-page--settings .profile-settings__section:first-child {
+  padding-top: 0;
+}
+
+.profile-page--settings .profile-settings__section + .profile-settings__section {
+  border-top-color: var(--aurral-border-strong);
+}
+
+.profile-page--settings .profile-settings__section .settings-page__section-title {
+  font-size: 1.125rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.profile-page--settings .profile-settings__section .settings-page__section-note,
+.profile-page--settings .profile-settings__section .settings-page__hint,
+.profile-page--settings .profile-settings__section .settings-page__footnote {
+  max-width: 42rem;
+}
+
+.profile-page--settings .profile-settings__label {
+  font-weight: 600;
+}
+
+.profile-page--settings .profile-settings__section-status {
+  color: var(--aurral-text-muted);
+}
+
+.profile-page--settings .profile-settings__action .btn {
+  min-height: 2.5rem;
+}
+
+@media (max-width: 48rem) {
+  .profile-page--settings .profile-page__header {
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.875rem;
+  }
+
+  .profile-page--settings .profile-settings__section {
+    padding-block: 1.5rem 1.75rem;
+  }
+}

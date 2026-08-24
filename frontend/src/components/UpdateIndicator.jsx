@@ -43,6 +43,7 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
   const [updateInfo, setUpdateInfo] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const indicatorRef = useRef(null);
+  const triggerRef = useRef(null);
   const resolvedVersion = currentVersion || import.meta.env.VITE_APP_VERSION;
   const repo = import.meta.env.VITE_GITHUB_REPO || "lklynet/aurral";
   const releaseChannel = (import.meta.env.VITE_RELEASE_CHANNEL || "stable").toLowerCase();
@@ -163,7 +164,10 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
       }
     };
     const handleKeyDown = (event) => {
-      if (event.key === "Escape") setMenuOpen(false);
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
@@ -181,6 +185,7 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
   return (
     <div ref={indicatorRef} className="app-update-indicator">
       <TooltipButton
+        ref={triggerRef}
         label={updateLabel}
         className={`app-header-link app-update-indicator__trigger is-available${menuOpen ? " is-open" : ""}`}
         onClick={() => setMenuOpen((open) => !open)}

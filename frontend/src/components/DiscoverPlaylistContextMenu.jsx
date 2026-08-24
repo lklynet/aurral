@@ -210,6 +210,7 @@ export function DiscoverPlaylistContextMenu({
         disabled={isBusy}
         aria-label={`Playlist options for ${playlistName}`}
         title={`Playlist options for ${playlistName}`}
+        aria-haspopup="menu"
         aria-expanded={showMenu}
       >
         {triggerVariant === "add" ? (
@@ -231,10 +232,14 @@ export function DiscoverPlaylistContextMenu({
                 top: menuPosition.top,
                 left: menuPosition.left,
               }}
+              role="menu"
+              aria-label={`Actions for ${playlistName}`}
+              aria-busy={isBusy}
               onClick={(event) => event.stopPropagation()}
             >
               <button
                 type="button"
+                role="menuitem"
                 onClick={handleFlowClick}
                 disabled={isBusy}
                 className={`artist-menu-item--discover${playlist.adoptedFlowId ? " is-selected" : ""}`}
@@ -250,6 +255,7 @@ export function DiscoverPlaylistContextMenu({
               </button>
               <button
                 type="button"
+                role="menuitem"
                 onClick={handlePlaylistClick}
                 disabled={isBusy}
                 className={`artist-menu-item--discover${playlist.adoptedPlaylistId ? " is-selected" : ""}`}

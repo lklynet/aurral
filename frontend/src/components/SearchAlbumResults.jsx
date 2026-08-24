@@ -29,7 +29,7 @@ function AlbumCover({ src, alt }) {
   if (!src || failed) {
     return (
       <div className="artist-release-card__placeholder">
-        <Music className="artist-icon-lg" />
+        <Music className="artist-icon-lg" aria-hidden="true" />
       </div>
     );
   }
@@ -98,8 +98,7 @@ function SearchAlbumResults({
   );
 
   const openArtist = useCallback(
-    (album, event) => {
-      event?.stopPropagation();
+    (album) => {
       if (!album.artistMbid) return;
       navigate(`/artist/${album.artistMbid}`, {
         state: { artistName: album.artistName },
@@ -117,27 +116,42 @@ function SearchAlbumResults({
 
     if (viewMode === "list") {
       return (
-        <div
+        <article
+          key={album.id}
           className="artist-release-list-item search-album-results__item"
-          onClick={() => openAlbum(album)}
         >
-          <div className="artist-media-cell artist-list-cover">
-            {coverSrc ? (
-              <img src={coverSrc} alt={album.title} loading="lazy" decoding="async" />
-            ) : (
-              <div className="artist-media-placeholder">
-                <Music className="artist-icon-md" />
-              </div>
-            )}
-          </div>
+          <button
+            type="button"
+            className="search-album-results__cover-link"
+            aria-label={`Open ${album.title}`}
+            onClick={() => openAlbum(album)}
+          >
+            <div className="artist-media-cell artist-list-cover">
+              {coverSrc ? (
+                <img src={coverSrc} alt="" loading="lazy" decoding="async" />
+              ) : (
+                <div className="artist-media-placeholder">
+                  <Music className="artist-icon-md" aria-hidden="true" />
+                </div>
+              )}
+            </div>
+          </button>
           <div className="artist-min-0">
-            <h2 className="artist-release-card__title artist-truncate">{album.title}</h2>
+            <h2 className="artist-release-card__title artist-truncate">
+              <button
+                type="button"
+                className="search-album-results__title-link"
+                onClick={() => openAlbum(album)}
+              >
+                {album.title}
+              </button>
+            </h2>
             <div className="artist-release-card__meta artist-truncate">
               {album.artistName ? (
                 <button
                   type="button"
                   className="artist-link-button"
-                  onClick={(event) => openArtist(album, event)}
+                  onClick={() => openArtist(album)}
                 >
                   {album.artistName}
                 </button>
@@ -146,7 +160,7 @@ function SearchAlbumResults({
               {releaseMeta ? <span>{releaseMeta}</span> : null}
             </div>
           </div>
-          <div className="artist-row-actions" onClick={(event) => event.stopPropagation()}>
+          <div className="artist-row-actions">
             <AlbumAction
               album={album}
               isPending={isPending}
@@ -154,7 +168,7 @@ function SearchAlbumResults({
               onAlbumAction={onAlbumAction}
             />
           </div>
-        </div>
+        </article>
       );
     }
 
@@ -162,17 +176,23 @@ function SearchAlbumResults({
       <article
         key={album.id}
         className="artist-release-card search-album-results__item"
-        onClick={() => openAlbum(album)}
       >
-        <div className="artist-release-card__cover">
-          {coverSrc ? (
-            <AlbumCover src={coverSrc} alt={album.title} />
-          ) : (
-            <div className="artist-release-card__placeholder">
-              <Music className="artist-icon-lg" />
-            </div>
-          )}
-          <div className="artist-release-card__action" onClick={(event) => event.stopPropagation()}>
+        <div className="search-album-results__cover-wrap">
+          <button
+            type="button"
+            className="artist-release-card__cover search-album-results__cover-link"
+            aria-label={`Open ${album.title}`}
+            onClick={() => openAlbum(album)}
+          >
+            {coverSrc ? (
+              <AlbumCover src={coverSrc} alt="" />
+            ) : (
+              <div className="artist-release-card__placeholder">
+                <Music className="artist-icon-lg" aria-hidden="true" />
+              </div>
+            )}
+          </button>
+          <div className="artist-release-card__action">
             <AlbumAction
               album={album}
               isPending={isPending}
@@ -182,13 +202,19 @@ function SearchAlbumResults({
           </div>
         </div>
         <h2 className="artist-release-card__title artist-truncate" title={album.title}>
-          {album.title}
+          <button
+            type="button"
+            className="search-album-results__title-link"
+            onClick={() => openAlbum(album)}
+          >
+            {album.title}
+          </button>
         </h2>
         {album.artistName ? (
           <button
             type="button"
             className="artist-card-button"
-            onClick={(event) => openArtist(album, event)}
+            onClick={() => openArtist(album)}
           >
             <p className="artist-release-card__meta artist-truncate">{album.artistName}</p>
           </button>
