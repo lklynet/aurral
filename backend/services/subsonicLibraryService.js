@@ -555,7 +555,7 @@ const findReusableLibrarySource = (track) =>
   );
 
 const findAvailableCanonicalFile = (track) => {
-  const library = indexFocusedLibrary(track?.trackMbid
+  let library = indexFocusedLibrary(track?.trackMbid
     ? getCanonicalTrack({
         trackId: track.trackMbid,
         source: "all",
@@ -568,7 +568,17 @@ const findAvailableCanonicalFile = (track) => {
         artist: track?.artistName,
         limit: 25,
       }));
-  const candidate = library.tracks.find((entry) => isSameTrack(track, trackFromCanonical(library, entry)));
+  let candidate = library.tracks.find((entry) => isSameTrack(track, trackFromCanonical(library, entry)));
+  if (!candidate && track?.trackMbid) {
+    library = indexFocusedLibrary(getCanonicalTrackPage({
+      source: "all",
+      availableOnly: true,
+      query: track.trackName,
+      artist: track.artistName,
+      limit: 25,
+    }));
+    candidate = library.tracks.find((entry) => isSameTrack(track, trackFromCanonical(library, entry)));
+  }
   const file = firstFile(candidate);
   return file?.available && file.path
     ? { file, track: candidate, albumName: findAlbumForTrack(library, candidate)?.title }

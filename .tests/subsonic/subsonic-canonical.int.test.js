@@ -182,7 +182,7 @@ test.before(async () => {
     albumName: "Canonical Album",
     albumMbid: "22222222-2222-4222-8222-222222222222",
     trackName: "Canonical Song",
-    trackMbid: "33333333-3333-4333-8333-333333333333",
+    trackMbid: "55555555-5555-4555-8555-555555555555",
     durationMs: 10_000,
   }, canonicalFavoritePlaylist.id);
   downloadTracker.setDone(canonicalFavoriteJobId, fixturePath, "Canonical Album");
