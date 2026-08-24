@@ -63,8 +63,10 @@ export async function scanConfiguredLibrary({
       }
     }
   } finally {
-    rebuildLibrarySearchIndex();
-    rebuildCanonicalGenreStats();
+    if (local?.changed || lidarr?.changed) {
+      rebuildLibrarySearchIndex();
+      rebuildCanonicalGenreStats();
+    }
   }
   return { local, lidarr };
 }

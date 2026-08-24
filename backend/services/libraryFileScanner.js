@@ -4,8 +4,9 @@ import { parseFile } from "music-metadata";
 import {
   buildFallbackIdentityKey,
   buildIdentityKey,
+  getAvailableLibraryMediaPaths,
   linkLibraryAlbumTrack,
-  markUnseenFilesUnavailable,
+  markLibraryMediaFilesUnavailable,
   upsertLibraryAlbum,
   upsertLibraryArtist,
   upsertLibraryMediaFile,
@@ -193,6 +194,7 @@ export async function scanMusicRoot({
       )
     : null;
   const result = { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
+  const unseenPaths = requestedFiles ? null : getAvailableLibraryMediaPaths(source);
   const scanResult = await withLibraryScan(source, resolvedRoot, (scanId) => {
     const run = async () => {
       const files = requestedFiles || walkAudioFiles(resolvedRoot);
@@ -255,12 +257,15 @@ export async function scanMusicRoot({
             quality: record.quality,
             scanId,
           });
+          unseenPaths?.delete(filePath);
           result.filesIndexed += 1;
         } catch {
           result.filesFailed += 1;
         }
       }
-      if (!requestedFiles && result.filesFailed === 0) markUnseenFilesUnavailable(scanId, source);
+      if (unseenPaths && result.filesFailed === 0) {
+        markLibraryMediaFilesUnavailable(source, unseenPaths);
+      }
       return result;
     };
     return run();

@@ -1,10 +1,12 @@
 import fs from "fs/promises";
 import path from "path";
+import { db } from "../config/db-sqlite.js";
 import {
   buildFallbackIdentityKey,
   buildIdentityKey,
+  getAvailableLibraryMediaPaths,
   linkLibraryAlbumTrack,
-  markUnseenFilesUnavailable,
+  markLibraryMediaFilesUnavailable,
   upsertLibraryAlbum,
   upsertLibraryArtist,
   upsertLibraryMediaFile,
@@ -184,73 +186,13 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
   const result = { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
 
   return withLibraryScan("lidarr", rootPath, async (scanId) => {
-    const artistRecordsById = new Map();
-    for (const artist of artistById.values()) {
-      const artistProviderId = text(artist.foreignArtistId);
-      const artistName = text(artist.artistName || artist.name) || "Unknown Artist";
-      const artistKey =
-        (artistProviderId &&
-          buildIdentityKey(isUuid(artistProviderId) ? "mbid" : "lidarr-artist", artistProviderId)) ||
-        buildFallbackIdentityKey("lidarr-artist", artist.id, artistName);
-      artistRecordsById.set(String(artist.id), upsertLibraryArtist({
-        identityKey: artistKey,
-        mbid: isUuid(artistProviderId) ? artistProviderId : null,
-        name: artistName,
-        sortName: artist.sortName || null,
-        metadata: { ...artist, librarySource: "lidarr" },
-        syncSearch,
-      }));
-    }
+    const indexedFiles = new Map();
+    const unseenPaths = getAvailableLibraryMediaPaths("lidarr");
     for (const album of Array.isArray(albums) ? albums : []) {
-      const artist = artistById.get(String(album?.artistId));
-      if (!artist || !album?.id) continue;
-      const artistName = text(artist.artistName || artist.name) || "Unknown Artist";
-      const artistRecord = artistRecordsById.get(String(artist.id));
-      const albumProviderId = text(album.foreignAlbumId);
-      const albumKey =
-        (albumProviderId &&
-          buildIdentityKey(
-            isUuid(albumProviderId) ? "release-group" : "lidarr-album",
-            albumProviderId,
-          )) ||
-        buildFallbackIdentityKey("lidarr-album", album.id, album.title);
-      const albumRecord = upsertLibraryAlbum({
-        identityKey: albumKey,
-        mbid: isUuid(albumProviderId) ? albumProviderId : null,
-        releaseGroupMbid: isUuid(albumProviderId) ? albumProviderId : null,
-        artistId: artistRecord.id,
-        title: text(album.title) || "Unknown Album",
-        albumArtist: artistName,
-        releaseDate: album.releaseDate || null,
-        metadata: { ...album, librarySource: "lidarr" },
-        syncSearch,
-      });
-      for (const track of tracksByAlbumId.get(String(album.id)) || []) {
-        const trackProviderId = text(track.foreignRecordingId || track.foreignTrackId);
-        const trackKey =
-          (trackProviderId &&
-            buildIdentityKey(isUuid(trackProviderId) ? "recording" : "lidarr-track", trackProviderId)) ||
-          buildFallbackIdentityKey("lidarr-track", albumRecord.id, track.id, track.title);
-        const trackRecord = upsertLibraryTrack({
-          identityKey: trackKey,
-          mbid: isUuid(trackProviderId) ? trackProviderId : null,
-          title: text(track.title || track.trackTitle) || "Unknown Track",
-          artistName,
-          metadata: track,
-          syncSearch,
-        });
-        const trackNumber = Number(track.trackNumber || track.absoluteTrackNumber) || 0;
-        linkLibraryAlbumTrack({
-          albumId: albumRecord.id,
-          trackId: trackRecord.id,
-          discNumber: Number(track.mediumNumber || track.discNumber) || 1,
-          trackNumber,
-          syncSearch,
-        });
-
+      for (const track of tracksByAlbumId.get(String(album?.id)) || []) {
         const resolvedFile = resolveTrackFile(
           track,
-          filesByAlbumId.get(String(album.id)) || new Map(),
+          filesByAlbumId.get(String(album?.id)) || new Map(),
           album,
         );
         if (!resolvedFile) continue;
@@ -260,26 +202,100 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
           result.filesFailed += 1;
           continue;
         }
-        upsertLibraryMediaFile({
-          trackId: trackRecord.id,
-          albumId: albumRecord.id,
-          source: "lidarr",
-          path: resolvedFile.localPath,
-          format: path.extname(resolvedFile.localPath).slice(1).toLowerCase(),
-          size: stat.size,
-          mtimeMs: stat.mtimeMs,
-          durationMs: track.duration || resolvedFile.file?.duration || null,
-          quality: resolvedFile.file?.mediaInfo || track.mediaInfo || null,
-          available: true,
-          scanId,
-        });
-        result.filesIndexed += 1;
+        indexedFiles.set(track, { resolvedFile, stat });
       }
     }
-    if (result.filesFailed === 0 && result.filesIndexed > 0) {
-      markUnseenFilesUnavailable(scanId, "lidarr");
-    }
-    return result;
+
+    return db.transaction(() => {
+      const artistRecordsById = new Map();
+      for (const artist of artistById.values()) {
+        const artistProviderId = text(artist.foreignArtistId);
+        const artistName = text(artist.artistName || artist.name) || "Unknown Artist";
+        const artistKey =
+          (artistProviderId &&
+            buildIdentityKey(isUuid(artistProviderId) ? "mbid" : "lidarr-artist", artistProviderId)) ||
+          buildFallbackIdentityKey("lidarr-artist", artist.id, artistName);
+        artistRecordsById.set(String(artist.id), upsertLibraryArtist({
+          identityKey: artistKey,
+          mbid: isUuid(artistProviderId) ? artistProviderId : null,
+          name: artistName,
+          sortName: artist.sortName || null,
+          metadata: { ...artist, librarySource: "lidarr" },
+          syncSearch,
+        }));
+      }
+      for (const album of Array.isArray(albums) ? albums : []) {
+        const artist = artistById.get(String(album?.artistId));
+        if (!artist || !album?.id) continue;
+        const artistName = text(artist.artistName || artist.name) || "Unknown Artist";
+        const artistRecord = artistRecordsById.get(String(artist.id));
+        const albumProviderId = text(album.foreignAlbumId);
+        const albumKey =
+          (albumProviderId &&
+            buildIdentityKey(
+              isUuid(albumProviderId) ? "release-group" : "lidarr-album",
+              albumProviderId,
+            )) ||
+          buildFallbackIdentityKey("lidarr-album", album.id, album.title);
+        const albumRecord = upsertLibraryAlbum({
+          identityKey: albumKey,
+          mbid: isUuid(albumProviderId) ? albumProviderId : null,
+          releaseGroupMbid: isUuid(albumProviderId) ? albumProviderId : null,
+          artistId: artistRecord.id,
+          title: text(album.title) || "Unknown Album",
+          albumArtist: artistName,
+          releaseDate: album.releaseDate || null,
+          metadata: { ...album, librarySource: "lidarr" },
+          syncSearch,
+        });
+        for (const track of tracksByAlbumId.get(String(album.id)) || []) {
+          const trackProviderId = text(track.foreignRecordingId || track.foreignTrackId);
+          const trackKey =
+            (trackProviderId &&
+              buildIdentityKey(isUuid(trackProviderId) ? "recording" : "lidarr-track", trackProviderId)) ||
+            buildFallbackIdentityKey("lidarr-track", albumRecord.id, track.id, track.title);
+          const trackRecord = upsertLibraryTrack({
+            identityKey: trackKey,
+            mbid: isUuid(trackProviderId) ? trackProviderId : null,
+            title: text(track.title || track.trackTitle) || "Unknown Track",
+            artistName,
+            metadata: track,
+            syncSearch,
+          });
+          const trackNumber = Number(track.trackNumber || track.absoluteTrackNumber) || 0;
+          linkLibraryAlbumTrack({
+            albumId: albumRecord.id,
+            trackId: trackRecord.id,
+            discNumber: Number(track.mediumNumber || track.discNumber) || 1,
+            trackNumber,
+            syncSearch,
+          });
+
+          const indexedFile = indexedFiles.get(track);
+          if (!indexedFile) continue;
+          const { resolvedFile, stat } = indexedFile;
+          upsertLibraryMediaFile({
+            trackId: trackRecord.id,
+            albumId: albumRecord.id,
+            source: "lidarr",
+            path: resolvedFile.localPath,
+            format: path.extname(resolvedFile.localPath).slice(1).toLowerCase(),
+            size: stat.size,
+            mtimeMs: stat.mtimeMs,
+            durationMs: track.duration || resolvedFile.file?.duration || null,
+            quality: resolvedFile.file?.mediaInfo || track.mediaInfo || null,
+            available: true,
+            scanId,
+          });
+          unseenPaths.delete(resolvedFile.localPath);
+          result.filesIndexed += 1;
+        }
+      }
+      if (result.filesFailed === 0 && result.filesIndexed > 0) {
+        markLibraryMediaFilesUnavailable("lidarr", unseenPaths);
+      }
+      return result;
+    })();
   });
 }
 

@@ -442,6 +442,76 @@ test("indexLidarrLibrary imports logical media and readable track files", async 
   }
 });
 
+test("an unchanged Lidarr rescan does not rewrite library rows", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-unchanged-"));
+  const filePath = await createAudioFile(root, "Stable Artist/Stable Album/01 Stable Track.flac");
+  const artistMbid = "10101010-1010-4010-8010-101010101010";
+  const albumMbid = "20202020-2020-4020-8020-202020202020";
+  const trackMbid = "30303030-3030-4030-8030-303030303030";
+  const genreStatsKey = `libraryGenreStats:unchanged-${process.pid}`;
+  const client = {
+    isConfigured: () => true,
+    request: async () => [{ id: 1010, artistName: "Stable Artist", foreignArtistId: artistMbid }],
+    getAllAlbums: async () => [{
+      id: 2020,
+      artistId: 1010,
+      title: "Stable Album",
+      foreignAlbumId: albumMbid,
+      path: path.dirname(filePath),
+    }],
+    getTracksByAlbumId: async () => [{
+      id: 3030,
+      albumId: 2020,
+      title: "Stable Track",
+      trackNumber: 1,
+      foreignRecordingId: trackMbid,
+      trackFileId: 4040,
+    }],
+    getTrackFilesByAlbumId: async () => [{ id: 4040, path: filePath, trackIds: [3030] }],
+    getRootFolders: async () => [{ path: root }],
+  };
+
+  try {
+    await indexLidarrLibrary({ client, syncSearch: false });
+    db.prepare("UPDATE library_artists SET updated_at = 1 WHERE mbid = ?").run(artistMbid);
+    db.prepare("UPDATE library_albums SET updated_at = 1 WHERE release_group_mbid = ?").run(albumMbid);
+    db.prepare("UPDATE library_tracks SET updated_at = 1 WHERE mbid = ?").run(trackMbid);
+    db.prepare("UPDATE library_media_files SET updated_at = 1 WHERE source = 'lidarr' AND path = ?")
+      .run(filePath);
+
+    const changesBefore = db.prepare("SELECT total_changes() AS count").get().count;
+    const result = await indexLidarrLibrary({ client, syncSearch: false });
+    const changesAfter = db.prepare("SELECT total_changes() AS count").get().count;
+
+    assert.equal(result.changed, false);
+    assert.equal(changesAfter - changesBefore, 2);
+    assert.deepEqual({
+      artist: db.prepare("SELECT updated_at FROM library_artists WHERE mbid = ?").get(artistMbid)?.updated_at,
+      album: db.prepare("SELECT updated_at FROM library_albums WHERE release_group_mbid = ?").get(albumMbid)?.updated_at,
+      track: db.prepare("SELECT updated_at FROM library_tracks WHERE mbid = ?").get(trackMbid)?.updated_at,
+      media: db.prepare("SELECT updated_at FROM library_media_files WHERE source = 'lidarr' AND path = ?")
+        .get(filePath)?.updated_at,
+    }, { artist: 1, album: 1, track: 1, media: 1 });
+
+    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run(genreStatsKey, "preserved");
+    const configuredChangesBefore = db.prepare("SELECT total_changes() AS count").get().count;
+    const configured = await scanConfiguredLibrary({
+      musicRoot: path.join(root, "empty-aurral-root"),
+      lidarrClient: client,
+    });
+    const configuredChangesAfter = db.prepare("SELECT total_changes() AS count").get().count;
+
+    assert.equal(configured.local.changed, false);
+    assert.equal(configured.lidarr.changed, false);
+    assert.equal(configuredChangesAfter - configuredChangesBefore, 4);
+    assert.equal(db.prepare("SELECT value FROM settings WHERE key = ?").get(genreStatsKey)?.value, "preserved");
+  } finally {
+    db.prepare("DELETE FROM settings WHERE key = ?").run(genreStatsKey);
+    deleteIndexedFile("lidarr", filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("indexLidarrLibrary keeps artists without albums and refreshes monitoring metadata", async () => {
   const providerArtistId = "1212@deezer";
   let monitored = false;
