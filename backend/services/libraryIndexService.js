@@ -42,6 +42,7 @@ export async function scanConfiguredLibrary({
   const jobMetadataByPath = getAurralJobMetadataByPath();
   let local;
   let lidarr = { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
+  let scanFailed = false;
   try {
     local = await scanMusicRoot({
       rootPath: musicRoot,
@@ -53,6 +54,7 @@ export async function scanConfiguredLibrary({
       try {
         lidarr = await indexLidarrLibrary({ client: lidarrClient, syncSearch: false });
       } catch (error) {
+        scanFailed = true;
         lidarr = {
           skipped: false,
           error: error.message,
@@ -62,8 +64,11 @@ export async function scanConfiguredLibrary({
         };
       }
     }
+  } catch (error) {
+    scanFailed = true;
+    throw error;
   } finally {
-    if (local?.changed || lidarr?.changed) {
+    if (scanFailed || local?.changed || lidarr?.changed) {
       rebuildLibrarySearchIndex();
       rebuildCanonicalGenreStats();
     }

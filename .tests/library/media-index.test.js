@@ -17,10 +17,26 @@ import {
   upsertLibraryArtist,
   upsertLibraryMediaFile,
   upsertLibraryTrack,
+  withLibraryScan,
 } from "../../backend/services/libraryMediaStore.js";
 import { scanMusicRoot } from "../../backend/services/libraryFileScanner.js";
 import { indexLidarrLibrary } from "../../backend/services/libraryLidarrIndexer.js";
 import { scanConfiguredLibrary } from "../../backend/services/libraryIndexService.js";
+
+test("scan change tracking ignores unrelated database writes", async () => {
+  const settingKey = `unrelated-scan-write-${process.pid}`;
+  try {
+    const result = await withLibraryScan("test-unrelated-write", null, async () => {
+      db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run(settingKey, "value");
+      return { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
+    });
+
+    assert.equal(result.changed, false);
+  } finally {
+    db.prepare("DELETE FROM settings WHERE key = ?").run(settingKey);
+    db.prepare("DELETE FROM library_scan_runs WHERE source = 'test-unrelated-write'").run();
+  }
+});
 
 test("a local-only configured scan does not contact Lidarr", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-local-only-scan-"));
@@ -40,6 +56,41 @@ test("a local-only configured scan does not contact Lidarr", async () => {
     assert.equal(lidarrCalls, 0);
     assert.equal(result.lidarr.skipped, true);
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a failed provider scan repairs derived library indexes", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-failed-index-repair-"));
+  const identityKey = `name:failed-index-repair-${process.pid}`;
+  const artist = upsertLibraryArtist({
+    identityKey,
+    name: "Failed Index Repair",
+    syncSearch: false,
+  });
+  db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?")
+    .run(artist.id);
+
+  try {
+    const result = await scanConfiguredLibrary({
+      musicRoot: root,
+      lidarrClient: {
+        isConfigured: () => true,
+        request: async () => {
+          throw new Error("Lidarr unavailable");
+        },
+        getAllAlbums: async () => [],
+        getRootFolders: async () => [],
+      },
+    });
+    const indexed = db.prepare(
+      "SELECT 1 FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?",
+    ).get(artist.id);
+
+    assert.equal(result.lidarr.error, "Lidarr unavailable");
+    assert.equal(Boolean(indexed), true);
+  } finally {
+    db.prepare("DELETE FROM library_artists WHERE identity_key = ?").run(identityKey);
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -509,6 +560,50 @@ test("an unchanged Lidarr rescan does not rewrite library rows", async () => {
     db.prepare("DELETE FROM settings WHERE key = ?").run(genreStatsKey);
     deleteIndexedFile("lidarr", filePath);
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Lidarr persistence yields between album transactions", async () => {
+  const artistMbid = "40404040-4040-4040-8040-404040404040";
+  const firstAlbumMbid = "50505050-5050-4050-8050-505050505050";
+  const secondAlbumMbid = "60606060-6060-4060-8060-606060606060";
+  let scanning = true;
+  const yieldedBetweenAlbums = new Promise((resolve) => {
+    const inspect = () => {
+      const firstExists = Boolean(db.prepare(
+        "SELECT 1 FROM library_albums WHERE release_group_mbid = ?",
+      ).get(firstAlbumMbid));
+      const secondExists = Boolean(db.prepare(
+        "SELECT 1 FROM library_albums WHERE release_group_mbid = ?",
+      ).get(secondAlbumMbid));
+      if (firstExists && !secondExists) return resolve(true);
+      if (!scanning) return resolve(false);
+      setImmediate(inspect);
+    };
+    setImmediate(inspect);
+  });
+
+  try {
+    await indexLidarrLibrary({
+      syncSearch: false,
+      client: {
+        isConfigured: () => true,
+        request: async () => [{ id: 4040, artistName: "Yield Artist", foreignArtistId: artistMbid }],
+        getAllAlbums: async () => [
+          { id: 5050, artistId: 4040, title: "First Yield Album", foreignAlbumId: firstAlbumMbid },
+          { id: 6060, artistId: 4040, title: "Second Yield Album", foreignAlbumId: secondAlbumMbid },
+        ],
+        getTracksByAlbumId: async () => [],
+        getTrackFilesByAlbumId: async () => [],
+        getRootFolders: async () => [],
+      },
+    });
+    scanning = false;
+
+    assert.equal(await yieldedBetweenAlbums, true);
+  } finally {
+    scanning = false;
+    db.prepare("DELETE FROM library_artists WHERE mbid = ?").run(artistMbid);
   }
 });
 

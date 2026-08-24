@@ -206,8 +206,8 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
       }
     }
 
-    return db.transaction(() => {
-      const artistRecordsById = new Map();
+    const artistRecordsById = db.transaction(() => {
+      const records = new Map();
       for (const artist of artistById.values()) {
         const artistProviderId = text(artist.foreignArtistId);
         const artistName = text(artist.artistName || artist.name) || "Unknown Artist";
@@ -215,7 +215,7 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
           (artistProviderId &&
             buildIdentityKey(isUuid(artistProviderId) ? "mbid" : "lidarr-artist", artistProviderId)) ||
           buildFallbackIdentityKey("lidarr-artist", artist.id, artistName);
-        artistRecordsById.set(String(artist.id), upsertLibraryArtist({
+        records.set(String(artist.id), upsertLibraryArtist({
           identityKey: artistKey,
           mbid: isUuid(artistProviderId) ? artistProviderId : null,
           name: artistName,
@@ -224,9 +224,15 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
           syncSearch,
         }));
       }
-      for (const album of Array.isArray(albums) ? albums : []) {
-        const artist = artistById.get(String(album?.artistId));
-        if (!artist || !album?.id) continue;
+      return records;
+    })();
+
+    for (const album of Array.isArray(albums) ? albums : []) {
+      const artist = artistById.get(String(album?.artistId));
+      if (!artist || !album?.id) continue;
+      const batch = db.transaction(() => {
+        const seenPaths = [];
+        let filesIndexed = 0;
         const artistName = text(artist.artistName || artist.name) || "Unknown Artist";
         const artistRecord = artistRecordsById.get(String(artist.id));
         const albumProviderId = text(album.foreignAlbumId);
@@ -287,15 +293,19 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
             available: true,
             scanId,
           });
-          unseenPaths.delete(resolvedFile.localPath);
-          result.filesIndexed += 1;
+          seenPaths.push(resolvedFile.localPath);
+          filesIndexed += 1;
         }
-      }
-      if (result.filesFailed === 0 && result.filesIndexed > 0) {
-        markLibraryMediaFilesUnavailable("lidarr", unseenPaths);
-      }
-      return result;
-    })();
+        return { filesIndexed, seenPaths };
+      })();
+      result.filesIndexed += batch.filesIndexed;
+      for (const filePath of batch.seenPaths) unseenPaths.delete(filePath);
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    if (result.filesFailed === 0 && result.filesIndexed > 0) {
+      markLibraryMediaFilesUnavailable("lidarr", unseenPaths);
+    }
+    return result;
   });
 }
 

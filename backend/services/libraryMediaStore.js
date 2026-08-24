@@ -34,10 +34,12 @@ const LIDARR_METADATA_KEYS = [
 ];
 
 let libraryScanDepth = 0;
+let libraryScanChanged = false;
 let libraryCacheInvalidationPending = false;
 
 const invalidateLibraryCache = () => {
   if (libraryScanDepth > 0) {
+    libraryScanChanged = true;
     libraryCacheInvalidationPending = true;
     return;
   }
@@ -507,14 +509,13 @@ export function markLibraryMediaFilesUnavailable(source, paths) {
 }
 
 export async function withLibraryScan(source, rootPath, run) {
+  if (libraryScanDepth === 0) libraryScanChanged = false;
   libraryScanDepth += 1;
   const scanId = beginLibraryScan({ source, rootPath });
-  const changesBefore = db.prepare("SELECT total_changes() AS count").get().count;
   try {
     const result = await run(scanId);
-    const changed = db.prepare("SELECT total_changes() AS count").get().count > changesBefore;
     finishLibraryScan(scanId, { ...result, status: "complete" });
-    return { scanId, ...result, changed, status: "complete" };
+    return { scanId, ...result, changed: libraryScanChanged, status: "complete" };
   } catch (error) {
     finishLibraryScan(scanId, { status: "failed", error: error.message });
     throw error;
