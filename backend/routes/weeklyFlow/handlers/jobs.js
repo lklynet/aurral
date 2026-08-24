@@ -30,12 +30,12 @@ import { finalizePipelineJobSuccess } from "../../../services/pipelineHelpers.js
 import path from "path";
 import fs from "fs/promises";
 import { invalidateRequestsCache } from "../../requests.js";
-import { enqueueSystemTaskJob } from "../../../services/honkerDb.js";
 import {
   decorateJobQuality,
   classifyQualityJob,
   getQualityProfile,
   queueQualityUpgrade,
+  runQualityUpgradeCheck,
 } from "../../../services/qualityProfileService.js";
 
 const getAccessiblePlaylistIds = (user) => [
@@ -50,7 +50,7 @@ export function registerJobs(router) {
     res.json(getWeeklyFlowStatusSnapshot({ user: req.user }));
   });
 
-  router.get("/jobs/:flowId", async (req, res) => {
+  router.get("/jobs/:flowId", noCache, async (req, res) => {
     const { flowId } = req.params;
     if (!canAccessPlaylistType(req.user, flowId)) {
       return res.status(404).json({ error: "Playlist not found" });
@@ -90,7 +90,7 @@ export function registerJobs(router) {
     res.json(filterJobsForUser(req.user, jobs).map((job) => decorateJobQuality(job, profile)));
   });
 
-  router.get("/jobs", (req, res) => {
+  router.get("/jobs", noCache, (req, res) => {
     const { status } = req.query;
     const jobs = filterJobsForUser(
       req.user,
@@ -115,18 +115,16 @@ export function registerJobs(router) {
     }
   });
 
-  router.post("/quality-upgrades", (req, res) => {
+  router.post("/quality-upgrades", async (req, res) => {
     const playlistIds = getAccessiblePlaylistIds(req.user);
+    let queued = 0;
     for (const playlistId of playlistIds) {
-      enqueueSystemTaskJob(
-        { kind: "quality-upgrade-check", force: true, playlistId, limit: 500 },
-        { priority: -10 },
-      );
+      queued += await runQualityUpgradeCheck({ force: true, playlistId, limit: 500 });
     }
+    if (queued > 0) invalidateRequestsCache();
     return res.json({
       success: true,
-      queued: 0,
-      scheduled: true,
+      queued,
       playlistCount: playlistIds.length,
     });
   });
@@ -147,6 +145,7 @@ export function registerJobs(router) {
     if (result !== "queued") {
       return res.status(409).json({ error: "Track is not eligible for an upgrade" });
     }
+    invalidateRequestsCache();
     return res.json({ success: true, queued: 1, jobId });
   });
 
@@ -155,11 +154,9 @@ export function registerJobs(router) {
     if (!canAccessPlaylistType(req.user, playlistId)) {
       return res.status(404).json({ error: "Playlist not found" });
     }
-    enqueueSystemTaskJob(
-      { kind: "quality-upgrade-check", force: true, playlistId, limit: 500 },
-      { priority: -10 },
-    );
-    return res.json({ success: true, queued: 0, scheduled: true });
+    const queued = await runQualityUpgradeCheck({ force: true, playlistId, limit: 500 });
+    if (queued > 0) invalidateRequestsCache();
+    return res.json({ success: true, queued });
   });
 
   router.put("/playlists/:playlistId/retry-cycle", async (req, res) => {

@@ -72,12 +72,18 @@ function MissingJobRow({ job, playlist, actionState, onAction, onInfo }) {
   const isQueued = actionState === "queued";
   const operationLabel = playlist?.name || "Aurral operation";
   const meta = [job.artistName, job.albumName].filter(Boolean).join(" · ") || operationLabel;
-  const hint = isMissing
-    ? job.error || operationLabel
-    : `${job.qualityLabel || "Unknown quality"} · ${
-        job.qualityState === "below-floor" ? "Below cutoff" : "Upgrade available"
-      }`;
-  const statusLabel = isMissing ? "Missing" : isQueued ? "Upgrade queued" : "Cutoff unmet";
+  const hint = isWorking
+    ? isMissing ? "Adding re-search to Queue" : "Adding upgrade search to Queue"
+    : isQueued
+      ? "Upgrade search is in Queue"
+      : isMissing
+        ? job.error || operationLabel
+        : `${job.qualityLabel || "Unknown quality"} · ${
+            job.qualityState === "below-floor" ? "Below cutoff" : "Upgrade available"
+          }`;
+  const statusLabel = isWorking
+    ? isMissing ? "Re-searching" : "Queuing upgrade"
+    : isMissing ? "Missing" : isQueued ? "Upgrade queued" : "Cutoff unmet";
   const StatusIcon = isMissing ? AlertCircle : ArrowUpCircle;
 
   return (
@@ -219,6 +225,13 @@ export default function ActivityMissingPage() {
   const hasWantedJobs = jobs.some((job) =>
     showingCutoff ? isCutoffUnmetAurralJob(job) : isMissingAurralJob(job),
   );
+  const actionableJobs = jobs.filter((job) =>
+    showingCutoff
+      ? isCutoffUnmetAurralJob(job) && !job.upgradeQueued
+      : isMissingAurralJob(job),
+  );
+  const hasActionableJobs = actionableJobs.length > 0;
+  const allUpgradesQueued = showingCutoff && hasWantedJobs && !hasActionableJobs;
 
   const handleAction = async (job) => {
     const id = getMissingJobKey(job);
@@ -262,16 +275,36 @@ export default function ActivityMissingPage() {
   };
 
   const handleSearchAll = useCallback(async () => {
-    if (searchingAll || !hasWantedJobs) return;
+    if (searchingAll || !hasActionableJobs) return;
     setSearchingAll(true);
+    setActionStates((current) => Object.fromEntries([
+      ...Object.entries(current),
+      ...actionableJobs.map((job) => [getMissingJobKey(job), "working"]),
+    ]));
     try {
       const result = showingCutoff
         ? await searchAllUpgrades()
         : await reSearchAllMissingTracks();
       if (showingCutoff) {
-        showSuccess("Cutoff upgrade search queued");
+        const queued = Number(result?.queued || 0);
+        setActionStates((current) => ({
+          ...current,
+          ...Object.fromEntries(
+            actionableJobs.map((job) => [getMissingJobKey(job), "queued"]),
+          ),
+        }));
+        showSuccess(
+          queued > 0
+            ? `${queued} upgrade search${queued === 1 ? "" : "es"} queued`
+            : "No new upgrade searches were queued",
+        );
       } else {
         const requeued = Number(result?.requeued || 0);
+        setActionStates((current) => {
+          const next = { ...current };
+          for (const job of actionableJobs) delete next[getMissingJobKey(job)];
+          return next;
+        });
         showSuccess(
           requeued > 0
             ? `Re-searching ${requeued} missing track${requeued === 1 ? "" : "s"}`
@@ -279,7 +312,16 @@ export default function ActivityMissingPage() {
         );
       }
       await loadJobs();
+      await queryClient.invalidateQueries({ queryKey: ["activity", "requests"] });
     } catch (requestError) {
+      setActionStates((current) => {
+        const next = { ...current };
+        for (const job of actionableJobs) {
+          const id = getMissingJobKey(job);
+          if (next[id] === "working") delete next[id];
+        }
+        return next;
+      });
       showError(
         requestError.response?.data?.message ||
           requestError.response?.data?.error ||
@@ -291,21 +333,15 @@ export default function ActivityMissingPage() {
     } finally {
       setSearchingAll(false);
     }
-  }, [hasWantedJobs, loadJobs, searchingAll, showingCutoff, showError, showSuccess]);
+  }, [actionableJobs, hasActionableJobs, loadJobs, searchingAll, showingCutoff, showError, showSuccess]);
 
   const searchAllButton = (
-    <TooltipButton
-      className="native-library-icon-button"
+    <button
+      type="button"
+      className="btn btn-secondary btn--bold activity-toolbar__bulk-action"
       onClick={handleSearchAll}
-      disabled={searchingAll || !hasWantedJobs}
+      disabled={searchingAll || !hasActionableJobs}
       aria-busy={searchingAll}
-      label={
-        searchingAll
-          ? "Searching all"
-          : showingCutoff
-            ? "Search all cutoff-unmet tracks"
-            : "Re-search all missing tracks"
-      }
     >
       {searchingAll ? (
         <DotLoader size="sm" label={null} />
@@ -314,7 +350,12 @@ export default function ActivityMissingPage() {
       ) : (
         <RotateCcw aria-hidden="true" />
       )}
-    </TooltipButton>
+      <span>
+        {searchingAll
+          ? showingCutoff ? "Queuing upgrades" : "Re-searching all"
+          : allUpgradesQueued ? "Upgrades queued" : "Search all"}
+      </span>
+    </button>
   );
 
   if (loading) {

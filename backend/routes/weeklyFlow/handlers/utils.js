@@ -173,7 +173,7 @@ export const canAccessPlaylistType = (user, playlistType) => {
 
 export const filterJobsForUser = (user, jobs) =>
   (Array.isArray(jobs) ? jobs : []).filter((job) =>
-    canAccessPlaylistType(user, job?.playlistType),
+    canAccessPlaylistType(user, job?.playlistId || job?.playlistType),
   );
 
 export const queueFlowSideEffect = (kind, labelPrefix, flowId) => {

@@ -8902,9 +8902,11 @@ button.native-library-genre-row:focus-visible {
 
 .activity-page__header {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
   min-height: 2.25rem;
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.65rem;
 }
 
 .activity-toolbar {
@@ -8925,6 +8927,16 @@ button.native-library-genre-row:focus-visible {
 
 .activity-toolbar__group--end {
   margin-left: auto;
+}
+
+.activity-toolbar__bulk-action {
+  min-height: 2rem;
+  gap: 0.4rem;
+}
+
+.activity-toolbar__bulk-action svg {
+  width: 0.9rem;
+  height: 0.9rem;
 }
 
 .activity-toolbar__filter {

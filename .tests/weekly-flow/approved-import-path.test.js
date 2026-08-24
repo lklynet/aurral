@@ -18,7 +18,6 @@ const [
   { flowPlaylistConfig },
   { playlistManager },
   { weeklyFlowWorker },
-  honkerDb,
   { registerJobs },
 ] = await setupIsolatedBackend(
   "approved-import-path",
@@ -28,7 +27,6 @@ const [
   "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
   "backend/services/weeklyFlow/weeklyFlowWorker.js",
-  "backend/services/honkerDb.js",
   "backend/routes/weeklyFlow/handlers/jobs.js",
 );
 
@@ -182,14 +180,46 @@ test("search all stays within the requesting user's playlist access", async () =
   downloadTracker.setFailed(jobId, "No source");
   downloadTracker.setFailed(otherJobId, "No source");
 
+  const ownedPath = path.join(
+    process.env.DOWNLOAD_FOLDER,
+    "aurral-weekly-flow",
+    ownedPlaylistId,
+    "Artist",
+    "Album",
+    "Owned.mp3",
+  );
+  const otherPath = path.join(
+    process.env.DOWNLOAD_FOLDER,
+    "aurral-weekly-flow",
+    otherPlaylistId,
+    "Artist",
+    "Album",
+    "Private.mp3",
+  );
+  await fs.mkdir(path.dirname(ownedPath), { recursive: true });
+  await fs.mkdir(path.dirname(otherPath), { recursive: true });
+  await fs.writeFile(ownedPath, "audio");
+  await fs.writeFile(otherPath, "audio");
+  const ownedUpgradeId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Owned", albumName: "Album" },
+    ownedPlaylistId,
+  );
+  const otherUpgradeId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Private", albumName: "Album" },
+    otherPlaylistId,
+  );
+  downloadTracker.setDone(ownedUpgradeId, ownedPath, "Album");
+  downloadTracker.setDone(otherUpgradeId, otherPath, "Album");
+  downloadTracker.updateQuality(ownedUpgradeId, { tier: "mp3-128", format: "mp3" });
+  downloadTracker.updateQuality(otherUpgradeId, { tier: "mp3-128", format: "mp3" });
+  dbOps.updateSettings({
+    ...dbOps.getSettings(),
+    integrations: {
+      slskd: { enabled: true, url: "http://127.0.0.1:1", apiKey: "test-key" },
+    },
+  });
+
   const originalStart = weeklyFlowWorker.start;
-  const systemTaskQueue = honkerDb.getSystemTaskQueue();
-  const originalEnqueue = systemTaskQueue.enqueue;
-  const enqueuedTasks = [];
-  systemTaskQueue.enqueue = (payload, options) => {
-    enqueuedTasks.push({ payload, options });
-    return enqueuedTasks.length;
-  };
   weeklyFlowWorker.start = async () => {};
   requestUser = { role: "user", id: 7 };
   try {
@@ -203,21 +233,29 @@ test("search all stays within the requesting user's playlist access", async () =
     const upgradeResponse = await fetch(`${baseUrl}/quality-upgrades`, { method: "POST" });
     const upgradePayload = await upgradeResponse.json();
     assert.equal(upgradeResponse.status, 200, JSON.stringify(upgradePayload));
-    assert.equal(upgradePayload.scheduled, true);
+    assert.equal(upgradePayload.queued, 1);
     assert.equal(upgradePayload.playlistCount, 1);
-    assert.deepEqual(enqueuedTasks, [
-      {
-        payload: {
-          kind: "quality-upgrade-check",
-          force: true,
-          playlistId: ownedPlaylistId,
-          limit: 500,
-        },
-        options: { priority: -10, runAt: null },
-      },
-    ]);
+    const queuedUpgrade = downloadTracker.getAll().find(
+      (job) => job.upgradeForJobId === ownedUpgradeId,
+    );
+    assert.equal(["pending", "downloading"].includes(queuedUpgrade?.status), true);
+    assert.equal(
+      downloadTracker.getAll().some((job) => job.upgradeForJobId === otherUpgradeId),
+      false,
+    );
+    assert.equal(
+      dbOps.getAurralHistory().some((entry) => entry.metadata?.jobId === queuedUpgrade.id),
+      true,
+    );
+
+    const jobsResponse = await fetch(`${baseUrl}/jobs`);
+    const jobsPayload = await jobsResponse.json();
+    assert.match(jobsResponse.headers.get("cache-control") || "", /no-store/);
+    assert.equal(
+      jobsPayload.some((job) => job.upgradeForJobId === ownedUpgradeId),
+      true,
+    );
   } finally {
-    systemTaskQueue.enqueue = originalEnqueue;
     weeklyFlowWorker.start = originalStart;
     requestUser = { role: "admin" };
   }
