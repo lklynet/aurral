@@ -81,7 +81,7 @@ instance API key for WebSocket connections.
 | `PUT` | `/api/library/albums/:id` | Update an album |
 | `DELETE` | `/api/library/albums/:id` | Delete an album |
 | `GET` | `/api/library/tracks` | List album tracks |
-| `DELETE` | `/api/library/tracks/:id` | Delete a library track file |
+| `DELETE` | `/api/library/tracks/:id` | Delete a library track file and prune canonical records when no media remains |
 | `POST` | `/api/library/refresh` | Queue a canonical library scan |
 | `GET` | `/api/library/refresh/:jobId` | Read canonical library scan status |
 | `GET` | `/api/library/canonical` | Read a bounded canonical page; provide a supported `kind` and `pageSize` (1-100) |

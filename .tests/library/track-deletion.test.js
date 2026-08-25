@@ -8,6 +8,7 @@ import path from "node:path";
 import { db } from "../../backend/config/db-sqlite.js";
 import { lidarrClient } from "../../backend/services/lidarrClient.js";
 import { libraryManager } from "../../backend/services/libraryManager.js";
+import { downloadTracker } from "../../backend/services/weeklyFlow/weeklyFlowDownloadTracker.js";
 import {
   linkLibraryAlbumTrack,
   upsertLibraryAlbum,
@@ -26,21 +27,19 @@ test("deletes Aurral-owned track files without Lidarr", async (t) => {
   const artist = upsertLibraryArtist({
     identityKey: `${identity}:artist`,
     name: "Artist",
-    syncSearch: false,
   });
   const album = upsertLibraryAlbum({
     identityKey: `${identity}:album`,
     artistId: artist.id,
     title: "Album",
-    syncSearch: false,
   });
   const track = upsertLibraryTrack({
     identityKey: `${identity}:track`,
+    mbid: `${identity}-mbid`,
     title: "Track",
     artistName: "Artist",
-    syncSearch: false,
   });
-  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, syncSearch: false });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
   upsertLibraryMediaFile({
     trackId: track.id,
     albumId: album.id,
@@ -48,6 +47,16 @@ test("deletes Aurral-owned track files without Lidarr", async (t) => {
     path: filePath,
     available: true,
   });
+  const libraryJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Track" },
+    "library",
+  );
+  downloadTracker.setDone(libraryJobId, filePath, "Album");
+  const upgradeJobId = downloadTracker.addUpgradeJob(downloadTracker.getJob(libraryJobId));
+  const differentTrackJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Track", trackMbid: `${identity}-different-mbid` },
+    "library",
+  );
 
   t.mock.method(lidarrClient, "isConfigured", () => false);
 
@@ -56,17 +65,36 @@ test("deletes Aurral-owned track files without Lidarr", async (t) => {
     await assert.rejects(() => access(filePath));
     assert.equal(
       db.prepare(
-        "SELECT available FROM library_media_files WHERE source = ? AND path = ?",
-      ).get("aurral", filePath)?.available,
-      0,
+        "SELECT 1 FROM library_media_files WHERE source = ? AND path = ?",
+      ).get("aurral", filePath),
+      undefined,
     );
-    assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
+    assert.equal(db.prepare("SELECT 1 FROM library_tracks WHERE id = ?").get(track.id), undefined);
+    assert.equal(db.prepare("SELECT 1 FROM library_albums WHERE id = ?").get(album.id), undefined);
+    assert.equal(db.prepare("SELECT 1 FROM library_artists WHERE id = ?").get(artist.id), undefined);
+    for (const [entityKind, entityId] of [["artist", artist.id], ["album", album.id], ["track", track.id]]) {
+      assert.equal(
+        db.prepare(
+          "SELECT 1 FROM library_search_documents WHERE entity_kind = ? AND entity_id = ?",
+        ).get(entityKind, entityId),
+        undefined,
+      );
+    }
+    assert.equal(downloadTracker.getJob(libraryJobId), null);
+    assert.equal(downloadTracker.getJob(upgradeJobId), null);
+    assert.notEqual(downloadTracker.getJob(differentTrackJobId), null);
   } finally {
+    db.prepare(
+      "DELETE FROM library_search_documents WHERE (entity_kind, entity_id) IN ((?, ?), (?, ?), (?, ?))",
+    ).run("artist", artist.id, "album", album.id, "track", track.id);
     db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run("aurral", filePath);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?").run(album.id, track.id);
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    if (libraryJobId) downloadTracker.removeJob(libraryJobId);
+    if (upgradeJobId) downloadTracker.removeJob(upgradeJobId);
+    if (differentTrackJobId) downloadTracker.removeJob(differentTrackJobId);
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -107,10 +135,15 @@ test("records successful Aurral deletions when another file fails", async (t) =>
       available: true,
     });
   }
+  const libraryJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Track" },
+    "library",
+  );
 
+  let failDeletion = true;
   const originalUnlink = fsp.unlink;
   t.mock.method(fsp, "unlink", async (filePath) => {
-    if (filePath === failedPath) {
+    if (failDeletion && filePath === failedPath) {
       const error = new Error("permission denied");
       error.code = "EACCES";
       throw error;
@@ -131,6 +164,7 @@ test("records successful Aurral deletions when another file fails", async (t) =>
       ).get("aurral", deletedPath)?.available,
       0,
     );
+    assert.equal(downloadTracker.getJob(libraryJobId), null);
     assert.equal(
       db.prepare(
         "SELECT available FROM library_media_files WHERE source = ? AND path = ?",
@@ -139,6 +173,12 @@ test("records successful Aurral deletions when another file fails", async (t) =>
     );
     await assert.rejects(() => access(deletedPath));
     await access(failedPath);
+    failDeletion = false;
+    assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
+    await assert.rejects(() => access(failedPath));
+    assert.equal(db.prepare("SELECT 1 FROM library_tracks WHERE id = ?").get(track.id), undefined);
+    assert.equal(db.prepare("SELECT 1 FROM library_albums WHERE id = ?").get(album.id), undefined);
+    assert.equal(db.prepare("SELECT 1 FROM library_artists WHERE id = ?").get(artist.id), undefined);
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE source = ? AND path IN (?, ?)").run(
       "aurral",
@@ -149,6 +189,7 @@ test("records successful Aurral deletions when another file fails", async (t) =>
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    if (libraryJobId) downloadTracker.removeJob(libraryJobId);
     await rm(root, { recursive: true, force: true });
   }
 });

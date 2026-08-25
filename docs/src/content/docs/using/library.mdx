@@ -26,6 +26,11 @@ reports stale library data, partial or missing files, provider health problems,
 and empty results. Use **View info** in an artist, album, or track action menu
 to inspect the indexed metadata without leaving the Library.
 
+When you delete an Aurral-owned track, Aurral removes its file. If no other
+media for the track is available, it also removes the canonical track and any
+empty album or artist record. If one of several files cannot be deleted, Aurral
+keeps the track until a later deletion succeeds.
+
 Navidrome remains optional. Lidarr remains the library provider when it is
 configured.
 
