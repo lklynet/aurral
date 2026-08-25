@@ -342,7 +342,8 @@ export function SettingsPlaybackSection({
     setTestingJellyfin(true);
     try {
       if (handleSaveSettings) {
-        await handleSaveSettings();
+        const saved = await handleSaveSettings();
+        if (saved !== true) return;
       }
       await testPlaybackConnection("jellyfin", jellyfin);
       setTestStatus({ tone: "success", message: "Connected." });

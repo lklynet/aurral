@@ -2,6 +2,7 @@ import axios from "../../lib/axiosFetch.js";
 
 const CLIENT_NAME = "Aurral";
 const CLIENT_VERSION = "1.0.0";
+const JELLYFIN_TIMEOUT_MS = 30_000;
 
 export class JellyfinClient {
   constructor(url, apiKey, userId) {
@@ -29,6 +30,7 @@ export class JellyfinClient {
       params,
       data,
       headers: this.headers(),
+      timeout: JELLYFIN_TIMEOUT_MS,
     });
     return response.data;
   }

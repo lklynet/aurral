@@ -116,3 +116,31 @@ test("publishes, updates, scans, and deletes a managed playlist", async () => {
     else process.env.PATH_MAPPINGS = originalMappings;
   }
 });
+
+test("preserves repeated resolved tracks in a playlist", async () => {
+  const calls = [];
+  const destination = new JellyfinPlaybackDestination(weeklyFlowRoot, {
+    client: makeClient(calls),
+  });
+
+  const originalMappings = process.env.PATH_MAPPINGS;
+  process.env.PATH_MAPPINGS = "jellyfin|/downloads|/media";
+  try {
+    assert.equal(
+      (await destination.publishPlaylist(snapshot({
+        tracks: [
+          { path: "/media/one.flac", title: "One", artist: "Artist" },
+          { path: "/media/one.flac", title: "One", artist: "Artist" },
+        ],
+      }))).ok,
+      true,
+    );
+    assert.deepEqual(calls[0].payload.itemIds, [
+      "jellyfin-track-1",
+      "jellyfin-track-1",
+    ]);
+  } finally {
+    if (originalMappings == null) delete process.env.PATH_MAPPINGS;
+    else process.env.PATH_MAPPINGS = originalMappings;
+  }
+});

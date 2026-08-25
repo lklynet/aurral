@@ -146,7 +146,7 @@ export class JellyfinPlaybackDestination {
       const match = pathMatch || (mbidMatches.length === 1 ? mbidMatches[0] : null);
       if (match) ids.push(match);
     }
-    return [...new Set(ids)];
+    return ids;
   }
 
   _hash(snapshot, itemIds) {
