@@ -1,9 +1,72 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { normalizeAlbumReleaseTypesFilter } from "../../backend/services/searchService.js";
+import { createMockHttpServer } from "../helpers/backendTestHarness.js";
+import { dbOps } from "../../backend/db/helpers/index.js";
+import { clearMetadataProviderCaches } from "../../backend/services/providers/brainzmashProvider.js";
+import {
+  normalizeAlbumReleaseTypesFilter,
+  searchArtists,
+} from "../../backend/services/searchService.js";
 import { libraryManager } from "../../backend/services/libraryManager.js";
 import { lidarrClient } from "../../backend/services/lidarrClient.js";
+
+test("searchArtists normalizes BrainzMash artists", async () => {
+  let requests = 0;
+  const server = await createMockHttpServer((request, response) => {
+    if (!request.url?.startsWith("/search/artist")) {
+      response.writeHead(404);
+      response.end();
+      return;
+    }
+    requests += 1;
+    if (requests === 1) {
+      response.writeHead(503);
+      response.end();
+      return;
+    }
+    response.setHeader("content-type", "application/json");
+    response.end(
+      JSON.stringify([
+        {
+          id: "artist-mbid",
+          artistname: "Adele",
+          sortname: "Adele",
+          type: "Person",
+          genres: ["pop"],
+          images: [{ Url: "https://images.example/adele.jpg", CoverType: "poster" }],
+        },
+      ]),
+    );
+  });
+  const originalSettings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      metadata: {
+        ...originalSettings.integrations.metadata,
+        baseUrl: server.url,
+        enableNarrowFallbacks: false,
+      },
+    },
+  });
+  clearMetadataProviderCaches();
+
+  try {
+    const result = await searchArtists("Adele", 5, 0);
+    assert.equal(result.items[0].id, "artist-mbid");
+    assert.equal(result.items[0].name, "Adele");
+    assert.equal(result.items[0].artistType, "Person");
+    assert.deepEqual(result.items[0].genres, ["pop"]);
+    assert.equal(result.items[0].imageUrl, "https://images.example/adele.jpg");
+    assert.equal(requests, 2);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(originalSettings);
+    await server.close();
+  }
+});
 
 test("normalizeAlbumReleaseTypesFilter removes invalid and duplicate release types", () => {
   assert.deepEqual(

@@ -106,7 +106,14 @@ async function loadAlbumTrackData(client, albums, artistIds) {
       files = await client.getTrackFilesByIds(
         tracks.map((track) => track?.trackFileId),
         { forceRefresh: true, throwOnError: true },
-      );
+      ).catch((error) => {
+        if (typeof client.getAllTrackFiles !== "function") throw error;
+        return client.getAllTrackFiles({
+          artistIds,
+          forceRefresh: true,
+          throwOnError: true,
+        });
+      });
     } else {
       [tracks, files] = await Promise.all([
         client.getAllTracks({ artistIds, forceRefresh: true, throwOnError: true }),
