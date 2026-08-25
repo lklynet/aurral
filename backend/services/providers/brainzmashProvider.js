@@ -116,7 +116,18 @@ async function request(path, params = {}, { signal } = {}) {
             ? `HTTP ${error.response.status}`
             : error?.code || error?.message || "Unknown error";
         if (attempt === METADATA_MAX_RETRIES || !isRetryable(error)) throw error;
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        await new Promise((resolve, reject) => {
+          const onAbort = () => {
+            clearTimeout(timer);
+            reject(sharedSignal.reason || new Error("The operation was aborted"));
+          };
+          const timer = setTimeout(() => {
+            sharedSignal.removeEventListener("abort", onAbort);
+            resolve();
+          }, 250);
+          if (sharedSignal.aborted) onAbort();
+          else sharedSignal.addEventListener("abort", onAbort, { once: true });
+        });
       }
     }
     throw new Error("Metadata provider request failed");
