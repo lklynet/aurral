@@ -343,7 +343,13 @@ export function SettingsPlaybackSection({
     try {
       if (handleSaveSettings) {
         const saved = await handleSaveSettings();
-        if (saved !== true) return;
+        if (saved !== true) {
+          setTestStatus({
+            tone: "error",
+            message: "Could not save settings. Fix the save error and retry.",
+          });
+          return;
+        }
       }
       await testPlaybackConnection("jellyfin", jellyfin);
       setTestStatus({ tone: "success", message: "Connected." });
