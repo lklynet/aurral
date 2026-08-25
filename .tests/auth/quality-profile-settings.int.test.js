@@ -38,12 +38,12 @@ test.before(async () => {
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
   userOps.createUser("admin", bcrypt.hashSync("password123", 4), "admin");
   aurral = await startServerProcess();
-  const response = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/login`, {
+  const response = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/sign-in/username`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username: "admin", password: "password123" }),
   });
-  authToken = (await response.json()).token;
+  authToken = response.headers.get("set-auth-token");
   assert.equal(response.status, 200);
 });
 

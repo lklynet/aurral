@@ -1,11 +1,19 @@
 ---
 title: Users and authentication
-description: Local users, permissions, LAN auto-login, and reverse-proxy auth.
+description: Manage local accounts, Better Auth sessions, OIDC, and Aurral authentication adapters.
 ---
 
-Aurral supports multiple local users with individual permissions.
+Aurral uses Better Auth for local credentials, browser sessions, bearer tokens, and OIDC. Aurral keeps the adapters that belong to its own protocols and deployment model.
 
 ![Aurral user settings](../../../assets/screenshots/settings-user.webp)
+
+## Local accounts
+
+Each local account has a name, an email address, and a password. Use the email address to sign in.
+
+Admins create accounts from **Settings > Users**. The first account is created during onboarding.
+
+Passwords must contain at least eight characters. Better Auth stores the credential and owns password verification. Aurral stores application permissions and per-user settings alongside the Better Auth user record.
 
 ## Permissions
 
@@ -16,67 +24,61 @@ Admins can control whether users can:
 - Change monitoring
 - Delete artists or albums
 
-## Authentication
+The account role is `admin` or `user`. Aurral applies its permission checks to each API request after the authentication adapter resolves the Better Auth user.
 
-- Local username and password accounts
-- Optional local-network auto-login for single-admin home setups
-- Reverse-proxy authentication for SSO
-- Native OpenID Connect login
+## Sessions
+
+Better Auth creates, reads, expires, and revokes sessions. The browser receives a bearer token in the `set-auth-token` response header after a successful sign-in and sends it as an `Authorization: Bearer` header.
+
+The public session endpoints are:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/auth/sign-in/email` | Sign in with an email address and password |
+| `GET` | `/api/auth/get-session` | Read the current user and session |
+| `POST` | `/api/auth/sign-out` | Revoke the current session |
+| `POST` | `/api/auth/change-password` | Change the current user's password and revoke other sessions |
+
+Set `SESSION_EXPIRY_HOURS` to change the lifetime of a session. The default is `720` hours, or 30 days. A restart does not remove a valid session. A session expires when Better Auth reaches its stored expiry time or when the user signs out.
 
 ## Native OIDC
 
-Set `OIDC_ENABLED=true` and configure your identity provider as a confidential OIDC client.
+Set `OIDC_ENABLED=true` and configure the identity provider as a confidential OIDC client.
 
 Required variables:
 
-- `OIDC_ISSUER` - discovery issuer URL
+- `BETTER_AUTH_URL`, the public Aurral origin
+- `OIDC_ISSUER`, the provider issuer URL
 - `OIDC_CLIENT_ID`
 - `OIDC_CLIENT_SECRET`
-- `OIDC_REDIRECT_URI` - must be exactly `https://aurral.example.com/sso/callback`
+- `OIDC_REDIRECT_URI`, set to `https://aurral.example.com/api/auth/callback/oidc`
 
-Optional role mapping:
+Set `OIDC_DISCOVERY_URL` when the provider's discovery document is not at its standard location. Set `OIDC_PROVIDER_ID` when the provider uses an identifier other than `oidc`.
 
-- `OIDC_DEFAULT_ROLE` - `user` (default) or `admin`
-- `OIDC_ADMIN_USERS` - exact usernames promoted to admin at login
-- `OIDC_GROUPS_CLAIM` - ID-token claim with group membership
-- `OIDC_ADMIN_GROUPS` - groups from that claim that grant admin
+The browser starts OIDC with `POST /api/auth/sign-in/social` and the body `{ "provider": "oidc", "disableRedirect": true }`. Better Auth completes the provider callback at `/api/auth/callback/oidc`, validates the transaction, creates or links the account, and creates the session.
 
-Aurral starts login at `/api/auth/oidc/login`, handles the IdP return at `/sso/callback`, then issues a normal Aurral session. Username comes from `OIDC_USERNAME_CLAIM` (default `preferred_username`), with a fallback to `email`.
+Use `OIDC_USERNAME_CLAIM` to choose the provider claim that fills Aurral's compatibility username field. The default is `preferred_username`. The account's Better Auth email and name remain the local identity fields.
 
-OIDC-created users cannot use local password login until an admin sets a password. Role changes from the IdP apply on the next OIDC login.
+Use `OIDC_ADMIN_USERS` for a comma-separated list of provider identities that receive the `admin` role. OIDC users without a local credential cannot sign in with a password until an administrator sets one.
 
-Set `OIDC_LOGOUT_URL` if you want **Log out** to end the identity-provider session as well.
+Native OIDC and reverse-proxy authentication can both be configured. Choose one as the primary browser sign-in path for a deployment.
 
-Native OIDC and reverse-proxy auth can both stay configured. Use one as the primary browser login path for a given deployment.
+## Reverse-proxy authentication
 
-## Reverse-proxy auth
+Set `AUTH_PROXY_ENABLED=true` to use a reverse proxy as the identity provider. Use `AUTH_PROXY_HEADER` if the proxy uses a custom identity header. The default header is `x-forwarded-user`.
 
-Set `AUTH_PROXY_ENABLED=true` to use reverse-proxy authentication. Use `AUTH_PROXY_HEADER` if the proxy uses a custom header.
+Aurral accepts proxy identity headers only from `AUTH_PROXY_TRUSTED_IPS`. Set that allowlist before exposing Aurral through a proxy. `TRUST_PROXY` controls Express client-IP handling and does not replace the authentication allowlist.
 
-The default username header is `x-forwarded-user`.
+Aurral resolves the trusted proxy identity on each request and applies the configured role rules:
 
-When a proxied username first reaches Aurral, Aurral creates a matching local user. The user role comes from one of these sources:
+- `AUTH_PROXY_DEFAULT_ROLE` sets the default role.
+- `AUTH_PROXY_ADMIN_USERS` promotes exact identity matches.
+- `AUTH_PROXY_ROLE_HEADER` names the group header.
+- `AUTH_PROXY_ADMIN_GROUPS` lists groups that grant the `admin` role.
 
-- `AUTH_PROXY_DEFAULT_ROLE` - the default for anyone not otherwise granted admin
-- An exact match in `AUTH_PROXY_ADMIN_USERS`
-- Group membership from `AUTH_PROXY_ROLE_HEADER` (for example, Authelia's `Remote-Groups`), compared with `AUTH_PROXY_ADMIN_GROUPS`
+Proxy authentication remains an Aurral adapter. It does not use Better Auth's email sign-in or create a Better Auth bearer session. Set `AUTH_PROXY_LOGOUT_URL` when **Log out** must also end the proxy or identity-provider session.
 
-Aurral evaluates the role on every request. A proxy or identity-provider role change takes effect on the next request.
-You do not have to edit the account in Aurral.
-
-Set `AUTH_PROXY_TRUSTED_IPS` to your reverse proxy's address. Without it, Aurral accepts identity headers from any client that can reach Aurral.
-
-On the first request that your proxy authenticates, Aurral issues its own session and the browser uses it for later API calls. Use `SESSION_EXPIRY_HOURS` to change how long an Aurral session lasts.
-
-Most setups also protect `/api` with the proxy, so the proxy still decides every request. Page loads always go to the network rather than to Aurral's offline cache, so your proxy can redirect them to the identity provider whenever its session has ended.
-
-A tab that is already open has no page load to redirect. When the proxy rejects one of its API calls, Aurral reloads that tab, which sends it back through the proxy. Aurral reloads at most once every 30 seconds, so a misconfigured proxy cannot cause a redirect loop.
-
-When the proxy protects only page loads and leaves `/api` to Aurral's own session, the open page keeps working after the identity-provider session ends, until the Aurral session expires.
-
-For Authentik, route `/outpost.goauthentik.io` directly to the Authentik outpost.
-
-Do not protect that location with `auth_request`. Verify the route before you test Aurral:
+For Authentik, route `/outpost.goauthentik.io` directly to the Authentik outpost. Do not protect that route with `auth_request`. Verify it with:
 
 ```bash
 curl -i https://aurral.example.com/outpost.goauthentik.io/ping
@@ -84,26 +86,33 @@ curl -i https://aurral.example.com/outpost.goauthentik.io/ping
 
 The response must be `204`.
 
-Set `AUTH_PROXY_LOGOUT_URL=https://aurral.example.com/outpost.goauthentik.io/sign_out` to end the Authentik session when you log out.
+## LAN auto-login
 
-Aurral hides its **Log out** control while proxy authentication is on and this variable is unset, because clearing an Aurral session cannot end the proxy session. Set the variable to get the control back.
+Aurral can bypass the sign-in page for a single-admin installation when the request comes from a trusted local subnet. The setting is available during onboarding and under **Settings > System**.
 
-Proxy-created users cannot use local password login until an admin sets a password. After creation, admins can manage the account from **Settings > Users**.
+LAN auto-login is an Aurral request adapter. It does not create a Better Auth session. Disable it when untrusted clients can reach the local network or the Aurral port.
 
-## Per-user Plex accounts
+## Aurral authentication adapters
 
-Each user can link their own flow and shared playlists to their own Plex account instead of the shared admin Plex connection. From a user's **Manage** dialog in **Settings > Users**, admins link a Plex Home managed user; anyone can also self-link their own invited/friend Plex account from their **Profile** page. See [Plex - Per-user Plex accounts](/integrations/plex/#per-user-plex-accounts) for the full setup steps.
+Better Auth does not own these paths:
 
-## Reset admin password
+| Path or credential | Aurral behavior |
+| --- | --- |
+| `X-Api-Key` or `api_key` | The instance API key grants administrator access to the JSON API. It has no read-only scope and is not a Better Auth session. |
+| `/rest/:method.view` | The Subsonic adapter handles the Subsonic account and token formats. Better Auth bearer tokens and the instance API key are not Subsonic credentials. |
+| Media stream and artwork query tokens | Aurral issues short-lived media tokens so audio and image elements can load protected URLs. |
+| `/ws?token=SESSION_TOKEN` | The WebSocket adapter resolves the Better Auth bearer session token from the query string. It also accepts trusted proxy identity and LAN auto-login. It does not accept the instance API key. |
 
-From the repository root:
+## Migrate an existing installation
 
-```bash
-npm run auth:reset-admin-password -- --password "new-password"
-```
+The first start after the migration updates the existing `users` table, creates Better Auth credential accounts, and invalidates legacy sessions. New Better Auth sessions are created after users sign in again.
 
-Generate a random password:
+The migration keeps existing numeric user IDs, application permissions, profile settings, and rows that reference `users.id`. Existing password hashes are copied into Better Auth credential accounts, so users keep their passwords. Existing username data remains as compatibility data, but new sign-in uses an email address. Review accounts with identifiers that are not valid email addresses in **Settings > Users** after the upgrade.
 
-```bash
-npm run auth:reset-admin-password -- --generate
-```
+Existing custom sessions are not portable to Better Auth. Users must sign in again after the migration. Do not delete or edit Better Auth tables by hand.
+
+Before upgrading, stop Aurral and back up the complete `/config` mount and the environment or secret store that contains `BETTER_AUTH_SECRET`. Keep the backup until every local account has signed in successfully. For rollback, stop the new version, restore the pre-migration `/config` backup and its matching environment, then start the previous version. Do not point the previous version at a database that has already been migrated.
+
+## Recover an account
+
+An administrator can set a user's password from **Settings > Users**. The user must then sign in with the account's email address and the new password.

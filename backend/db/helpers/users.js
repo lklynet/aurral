@@ -11,18 +11,24 @@ const getUserByUsernameStmt = db.prepare(
   "SELECT * FROM users WHERE username = ?"
 );
 const getAllUsersStmt = db.prepare(
-  "SELECT id, username, role, permissions, lastfm_username, listen_history_provider, listen_history_username, listen_history_url, lidarr_root_folder_path, lidarr_quality_profile_id FROM users ORDER BY username"
+  "SELECT id, username, display_username, name, email, role, permissions, lastfm_username, listen_history_provider, listen_history_username, listen_history_url, lidarr_root_folder_path, lidarr_quality_profile_id FROM users ORDER BY name, email"
 );
 const getUserByIdStmt = db.prepare("SELECT * FROM users WHERE id = ?");
 const getUserAuthByIdStmt = db.prepare(
-  "SELECT id, username, role, permissions FROM users WHERE id = ?"
+  "SELECT id, username, display_username, name, email, role, permissions FROM users WHERE id = ?"
+);
+const getCredentialPasswordStmt = db.prepare(
+  "SELECT password FROM accounts WHERE user_id = ? AND provider_id = 'credential' LIMIT 1"
+);
+const updateCredentialPasswordStmt = db.prepare(
+  "UPDATE accounts SET password = ?, updated_at = ? WHERE user_id = ? AND provider_id = 'credential'"
 );
 const countUsersStmt = db.prepare("SELECT COUNT(*) AS count FROM users");
 const insertUserStmt = db.prepare(
-  "INSERT INTO users (username, password_hash, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id) VALUES (?, ?, ?, ?, ?, ?)"
+  "INSERT INTO users (username, display_username, name, email, email_verified, created_at, updated_at, password_hash, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)"
 );
 const updateUserStmt = db.prepare(
-  "UPDATE users SET username = ?, password_hash = ?, role = ?, permissions = ?, lastfm_username = ?, listen_history_provider = ?, listen_history_username = ?, listen_history_url = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ? WHERE id = ?"
+  "UPDATE users SET username = ?, display_username = ?, name = ?, email = ?, password_hash = ?, role = ?, permissions = ?, lastfm_username = ?, listen_history_provider = ?, listen_history_username = ?, listen_history_url = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, updated_at = ? WHERE id = ?"
 );
 const deleteUserStmt = db.prepare("DELETE FROM users WHERE id = ?");
 const getAllListeningHistoryUsersStmt = db.prepare(
@@ -52,6 +58,8 @@ export const userOps = {
     return {
       id: row.id,
       username: row.username,
+      name: row.name || row.display_username || row.username,
+      email: row.email,
       passwordHash: row.password_hash,
       role: row.role || "user",
       permissions: dbHelpers.parseJSON(row.permissions) || {
@@ -72,6 +80,8 @@ export const userOps = {
     return {
       id: row.id,
       username: row.username,
+      name: row.name || row.display_username || row.username,
+      email: row.email,
       passwordHash: row.password_hash,
       role: row.role || "user",
       permissions: dbHelpers.parseJSON(row.permissions) || {
@@ -91,11 +101,23 @@ export const userOps = {
     return {
       id: row.id,
       username: row.username,
+      name: row.name || row.display_username || row.username,
+      email: row.email,
       role: row.role || "user",
       permissions: dbHelpers.parseJSON(row.permissions) || {
         ...DEFAULT_PERMISSIONS,
       },
     };
+  },
+  getCredentialPasswordHash(id) {
+    return getCredentialPasswordStmt.get(parseInt(id, 10))?.password || null;
+  },
+  updateCredentialPasswordHash(id, passwordHash) {
+    updateCredentialPasswordStmt.run(
+      passwordHash,
+      new Date().toISOString(),
+      parseInt(id, 10),
+    );
   },
   countUsers() {
     return countUsersStmt.get().count;
@@ -117,15 +139,28 @@ export const userOps = {
           : null,
     }));
   },
-  createUser(username, passwordHash, role = "user", permissions = null) {
+  createUser(username, passwordHash, role = "user", permissions = null, identity = {}) {
     const un = String(username).trim();
     if (!un) return null;
     const perms = permissions
       ? { ...DEFAULT_PERMISSIONS, ...permissions }
       : { ...DEFAULT_PERMISSIONS };
     try {
+      const now = new Date().toISOString();
+      const name = String(identity.name || un).trim();
+      const email = String(
+        identity.email ||
+          (un.includes("@") ? un : `legacy-${Buffer.from(un).toString("hex")}@aurral.invalid`),
+      )
+        .trim()
+        .toLowerCase();
       const result = insertUserStmt.run(
         un.toLowerCase(),
+        un,
+        name,
+        email,
+        now,
+        now,
         passwordHash,
         role,
         dbHelpers.stringifyJSON(perms),
@@ -135,6 +170,8 @@ export const userOps = {
       return {
         id: result.lastInsertRowid,
         username: un,
+        name,
+        email,
         role,
         permissions: perms,
         listenHistoryProvider: DEFAULT_LISTEN_HISTORY_PROVIDER,
@@ -159,6 +196,10 @@ export const userOps = {
       data.passwordHash !== undefined
         ? data.passwordHash
         : existing.passwordHash;
+    const name = data.name !== undefined ? String(data.name).trim() : existing.name;
+    const email = data.email !== undefined
+      ? String(data.email).trim().toLowerCase()
+      : existing.email;
     const role = data.role !== undefined ? data.role : existing.role;
     const permissions =
       data.permissions !== undefined
@@ -212,6 +253,9 @@ export const userOps = {
     try {
       updateUserStmt.run(
         username.toLowerCase(),
+        username,
+        name,
+        email,
         passwordHash,
         role,
         dbHelpers.stringifyJSON(permissions),
@@ -221,11 +265,14 @@ export const userOps = {
         resolvedUrl,
         lidarrRootFolderPath,
         lidarrQualityProfileId,
+        new Date().toISOString(),
         parseInt(id, 10)
       );
       return {
         id: parseInt(id, 10),
         username,
+        name,
+        email,
         role,
         permissions,
         listenHistoryProvider,

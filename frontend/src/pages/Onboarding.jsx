@@ -23,7 +23,8 @@ import { ChevronRight, ChevronLeft } from "lucide-react";
 function Onboarding() {
   useDocumentTitle("Setup");
   const [step, setStep] = useState(0);
-  const [authUser, setAuthUser] = useState("admin");
+  const [authName, setAuthName] = useState("Admin");
+  const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authPasswordConfirm, setAuthPasswordConfirm] = useState("");
   const [localNetworkBypass, setLocalNetworkBypass] = useState(false);
@@ -51,7 +52,11 @@ function Onboarding() {
   const passwordMismatch =
     authPasswordConfirm.length > 0 && authPassword !== authPasswordConfirm;
   const adminComplete =
-    authUser.trim() && authPassword && !passwordTooShort && authPassword === authPasswordConfirm;
+    authName.trim() &&
+    authEmail.trim() &&
+    authPassword &&
+    !passwordTooShort &&
+    authPassword === authPasswordConfirm;
 
   const syncLogoPosition = useCallback(() => {
     const card = cardRef.current;
@@ -147,8 +152,11 @@ function Onboarding() {
     setError("");
     try {
       await completeOnboarding({
-        authUser: authUser.trim() || "admin",
-        authPassword: authPassword || undefined,
+        auth: {
+          name: authName.trim(),
+          email: authEmail.trim(),
+          password: authPassword,
+        },
         security: {
           localNetworkBypass: { enabled: localNetworkBypass === true },
         },
@@ -248,15 +256,29 @@ function Onboarding() {
                   />
                   <div className="onboarding-fields">
                     <div className="onboarding-field">
-                      <label htmlFor="onboarding-username">Username</label>
+                      <label htmlFor="onboarding-name">Name</label>
                       <SettingsInput
-                        id="onboarding-username"
+                        id="onboarding-name"
                         legacyStyle
                         type="text"
-                        autoComplete="off"
-                        placeholder="Username"
-                        value={authUser}
-                        onChange={(e) => setAuthUser(e.target.value)}
+                        required
+                        autoComplete="name"
+                        placeholder="Your name"
+                        value={authName}
+                        onChange={(e) => setAuthName(e.target.value)}
+                      />
+                    </div>
+                    <div className="onboarding-field">
+                      <label htmlFor="onboarding-email">Email</label>
+                      <SettingsInput
+                        id="onboarding-email"
+                        legacyStyle
+                        type="email"
+                        required
+                        autoComplete="email"
+                        placeholder="you@example.com"
+                        value={authEmail}
+                        onChange={(e) => setAuthEmail(e.target.value)}
                       />
                     </div>
                     <div className="onboarding-field">
@@ -265,6 +287,7 @@ function Onboarding() {
                         id="onboarding-password"
                         legacyStyle
                         type="password"
+                        required
                         autoComplete="new-password"
                         placeholder="Password"
                         value={authPassword}

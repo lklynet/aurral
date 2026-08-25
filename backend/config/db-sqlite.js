@@ -60,22 +60,66 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
+    display_username TEXT,
+    name TEXT NOT NULL DEFAULT '',
+    email TEXT UNIQUE NOT NULL,
+    email_verified INTEGER NOT NULL DEFAULT 0,
+    image TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    password_hash TEXT NOT NULL DEFAULT '',
     role TEXT NOT NULL DEFAULT 'user',
     permissions TEXT,
-    discover_layout TEXT
+    discover_layout TEXT,
+    banned INTEGER NOT NULL DEFAULT 0,
+    ban_reason TEXT,
+    ban_expires TEXT
   );
 
   CREATE TABLE IF NOT EXISTS sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     token TEXT UNIQUE NOT NULL,
-    created_at INTEGER NOT NULL,
-    expires_at INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
     ip_address TEXT,
     user_agent TEXT,
+    impersonated_by INTEGER,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    account_id TEXT NOT NULL,
+    provider_id TEXT NOT NULL,
+    issuer TEXT NOT NULL,
+    access_token TEXT,
+    refresh_token TEXT,
+    id_token TEXT,
+    access_token_expires_at TEXT,
+    refresh_token_expires_at TEXT,
+    scope TEXT,
+    password TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_issuer_account
+    ON accounts(issuer, account_id);
+  CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id);
+
+  CREATE TABLE IF NOT EXISTS verifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    identifier TEXT NOT NULL,
+    value TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_verifications_identifier ON verifications(identifier);
 
   CREATE TABLE IF NOT EXISTS lastfm_link_states (
     token_hash TEXT PRIMARY KEY,
@@ -581,6 +625,92 @@ if (!userColumns.includes("discover_layout")) {
 if (!userColumns.includes("listen_history_url")) {
   tryAddColumn("ALTER TABLE users ADD COLUMN listen_history_url TEXT");
 }
+if (!userColumns.includes("display_username")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN display_username TEXT");
+}
+if (!userColumns.includes("name")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN name TEXT");
+}
+if (!userColumns.includes("email")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN email TEXT");
+}
+if (!userColumns.includes("email_verified")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0");
+}
+if (!userColumns.includes("image")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN image TEXT");
+}
+if (!userColumns.includes("created_at")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN created_at TEXT");
+}
+if (!userColumns.includes("updated_at")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN updated_at TEXT");
+}
+if (!userColumns.includes("banned")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN banned INTEGER NOT NULL DEFAULT 0");
+}
+if (!userColumns.includes("ban_reason")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN ban_reason TEXT");
+}
+if (!userColumns.includes("ban_expires")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN ban_expires TEXT");
+}
+
+db.exec(`
+  UPDATE users
+  SET display_username = COALESCE(NULLIF(TRIM(display_username), ''), username),
+      name = COALESCE(NULLIF(TRIM(name), ''), username),
+      email = COALESCE(
+        NULLIF(LOWER(TRIM(email)), ''),
+        CASE
+          WHEN username LIKE '%@%' THEN LOWER(TRIM(username))
+          ELSE 'legacy-' || id || '@aurral.invalid'
+        END
+      ),
+      created_at = COALESCE(NULLIF(created_at, ''), CURRENT_TIMESTAMP),
+      updated_at = COALESCE(NULLIF(updated_at, ''), CURRENT_TIMESTAMP);
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
+`);
+
+const sessionColumns = db
+  .prepare("PRAGMA table_info(sessions)")
+  .all()
+  .map((column) => column.name);
+
+if (!sessionColumns.includes("updated_at")) {
+  db.exec(`
+    DROP TABLE sessions;
+    CREATE TABLE sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      token TEXT UNIQUE NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      ip_address TEXT,
+      user_agent TEXT,
+      impersonated_by INTEGER,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+}
+
+const now = new Date().toISOString();
+db.prepare(`
+  INSERT INTO accounts
+    (user_id, account_id, provider_id, issuer, password, created_at, updated_at)
+  SELECT id, CAST(id AS TEXT), 'credential', 'local:credential', password_hash, ?, ?
+  FROM users
+  WHERE password_hash IS NOT NULL
+    AND password_hash != ''
+    AND NOT EXISTS (
+      SELECT 1 FROM accounts
+      WHERE accounts.user_id = users.id
+        AND accounts.provider_id = 'credential'
+        AND accounts.issuer = 'local:credential'
+    )
+`).run(now, now);
 
 db.exec(`
   UPDATE users

@@ -80,12 +80,12 @@ test.before(async () => {
   navidromeUrl = `http://127.0.0.1:${navidrome.address().port}`;
 
   aurral = await startServerProcess();
-  const login = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/login`, {
+  const login = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/sign-in/username`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username: "admin", password: "password123" }),
   });
-  authToken = (await login.json()).token;
+  authToken = login.headers.get("set-auth-token");
   assert.equal(login.status, 200);
 });
 

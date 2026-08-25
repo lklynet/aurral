@@ -25,13 +25,20 @@ can change Aurral, Lidarr, files, users, or external services.
 | `GET` | `/api/health` | Detailed application health |
 | `GET` | `/api/health/ws` | WebSocket connection statistics |
 | `POST` | `/api/health/stream-token` | Issue a short-lived token for media streams |
-| `POST` | `/api/auth/login` | Create a password-login session |
-| `POST` | `/api/auth/logout` | End a login session |
-| `GET` | `/api/auth/me` | Current authenticated identity |
-| `GET` | `/api/auth/api-key` | Read or create the instance API key |
-| `POST` | `/api/auth/api-key/rotate` | Replace the instance API key |
-| `GET` | `/api/auth/oidc/login` | Start an OpenID Connect login |
-| `POST` | `/api/auth/oidc/exchange` | Exchange an OpenID Connect code for a session |
+| `POST` | `/api/auth/sign-in/email` | Sign in with an email address and password |
+| `GET` | `/api/auth/get-session` | Read the current Better Auth user and session |
+| `POST` | `/api/auth/sign-out` | Revoke the current Better Auth session |
+| `POST` | `/api/auth/change-password` | Change the current user's password and revoke other sessions |
+| `POST` | `/api/auth/sign-in/social` | Start a Better Auth social or OIDC sign-in |
+| `GET` | `/api/auth/callback/:provider` | Complete a Better Auth provider callback |
+| `GET` | `/api/auth/admin/list-users` | List users for an administrator |
+| `POST` | `/api/auth/admin/create-user` | Create a local user for an administrator |
+| `POST` | `/api/auth/admin/update-user` | Update Better Auth user fields |
+| `POST` | `/api/auth/admin/set-role` | Set a user's role |
+| `POST` | `/api/auth/admin/set-user-password` | Set a user's password |
+| `POST` | `/api/auth/admin/remove-user` | Delete a user |
+| `GET` | `/api/aurral-auth/api-key` | Read or create the instance API key |
+| `POST` | `/api/aurral-auth/api-key/rotate` | Replace the instance API key |
 
 The liveness, bootstrap, and health routes do not require authentication.
 Aurral returns detailed health fields only for a request with a valid
@@ -53,10 +60,10 @@ Subscriptions use the `status`, `downloads`, `discovery`, `library`,
 `weekly-flow`, and `playlists` channels. The `library` channel sends a
 `library_scan_completed` message after Aurral refreshes its canonical library.
 
-For local password authentication, connect with the session token as
-`/ws?token=SESSION_TOKEN`. Aurral also accepts reverse-proxy identity and LAN
-auto-login for WebSocket connections. Aurral does not currently accept the
-instance API key for WebSocket connections.
+For local or OIDC authentication, connect with the Better Auth bearer session
+token as `/ws?token=SESSION_TOKEN`. Aurral also accepts trusted reverse-proxy
+identity and LAN auto-login for WebSocket connections. Aurral does not accept
+the instance API key for WebSocket connections.
 
 ## Incoming webhooks
 

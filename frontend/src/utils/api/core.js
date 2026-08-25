@@ -65,7 +65,7 @@ async function request(config) {
   const token = getRequestToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   const urlPath = String(config.url || "");
-  const isAuthEndpoint = urlPath.includes("/auth/login") || urlPath.includes("/auth/logout");
+  const isAuthEndpoint = /\/auth(?:\/|$)/.test(urlPath);
 
   try {
     const init = { method, headers, signal: controller.signal, redirect: "manual" };
@@ -128,11 +128,19 @@ const api = {
   delete: (url, config = {}) => request({ ...config, method: "DELETE", url }),
 };
 
-const AUTH_TOKEN_KEY = "auth_token";
+const AUTH_TOKEN_KEY = "bearer_token";
+const LEGACY_AUTH_TOKEN_KEY = "auth_token";
 
 function readAuthFromStorage(storage) {
   if (!storage) return { token: "" };
-  return { token: storage.getItem(AUTH_TOKEN_KEY) || "" };
+  const token = storage.getItem(AUTH_TOKEN_KEY);
+  if (token) return { token };
+  const legacyToken = storage.getItem(LEGACY_AUTH_TOKEN_KEY);
+  if (legacyToken) {
+    storage.setItem(AUTH_TOKEN_KEY, legacyToken);
+    return { token: legacyToken };
+  }
+  return { token: "" };
 }
 
 export const getStoredAuth = () => {
@@ -149,6 +157,8 @@ export const getStoredAuth = () => {
 export const getRequestToken = () => getStoredAuth().token;
 
 export const setStoredAuth = ({ token = "" } = {}) => {
+  globalThis?.sessionStorage?.removeItem(LEGACY_AUTH_TOKEN_KEY);
+  globalThis?.localStorage?.removeItem(LEGACY_AUTH_TOKEN_KEY);
   if (!token) {
     globalThis?.sessionStorage?.removeItem(AUTH_TOKEN_KEY);
     globalThis?.localStorage?.removeItem(AUTH_TOKEN_KEY);
@@ -161,6 +171,8 @@ export const setStoredAuth = ({ token = "" } = {}) => {
 export const clearAuthStorage = () => {
   globalThis?.sessionStorage?.removeItem(AUTH_TOKEN_KEY);
   globalThis?.localStorage?.removeItem(AUTH_TOKEN_KEY);
+  globalThis?.sessionStorage?.removeItem(LEGACY_AUTH_TOKEN_KEY);
+  globalThis?.localStorage?.removeItem(LEGACY_AUTH_TOKEN_KEY);
 };
 
 export const coverResponseCache = new Map();

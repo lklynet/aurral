@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { dbOps, userOps } from "../db/helpers/index.js";
-import { hashPassword } from "../middleware/passwordHash.js";
+import { auth } from "../services/betterAuth.js";
 
 function parseArgs(argv) {
   const args = {
@@ -89,21 +89,7 @@ function resolveConfiguredAdminUsername(settings) {
   );
 }
 
-function upsertGeneralAuth(settings, username, password) {
-  return {
-    ...settings,
-    integrations: {
-      ...(settings.integrations || {}),
-      general: {
-        ...(settings.integrations?.general || {}),
-        authUser: username,
-        authPassword: password,
-      },
-    },
-  };
-}
-
-function main() {
+async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
     printUsage();
@@ -124,17 +110,26 @@ function main() {
     process.exit(1);
   }
 
-  const hash = hashPassword(password);
   const existing = userOps.getUserByUsername(username);
 
   let resultUser = null;
   if (existing) {
-    resultUser = userOps.updateUser(existing.id, {
-      passwordHash: hash,
-      role: "admin",
+    await auth.api.setUserPassword({
+      body: { userId: String(existing.id), newPassword: password },
     });
+    resultUser = userOps.updateUser(existing.id, { role: "admin" });
   } else {
-    resultUser = userOps.createUser(username, hash, "admin", null);
+    const email = username.includes("@") ? username : `${username}@aurral.invalid`;
+    const created = await auth.api.createUser({
+      body: {
+        email,
+        name: username,
+        password,
+        role: "admin",
+        data: { username, displayUsername: username },
+      },
+    });
+    resultUser = created?.user || created;
   }
 
   if (!resultUser) {
@@ -142,11 +137,12 @@ function main() {
     process.exit(1);
   }
 
-  dbOps.updateSettings(upsertGeneralAuth(currentSettings, username, password));
-
   console.log("Admin password reset successful.");
-  console.log(`Username: ${username}`);
+  console.log(`Email: ${resultUser.email}`);
   console.log(`Password: ${password}`);
 }
 
-main();
+main().catch((error) => {
+  console.error(error.message || "Failed to update admin password.");
+  process.exit(1);
+});

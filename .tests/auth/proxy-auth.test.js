@@ -6,18 +6,21 @@ import {
   cleanupIsolatedState,
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
+import {
+  assertBetterAuthCoreSchema,
+  readBetterAuthSessions,
+  readBetterAuthUser,
+} from "../helpers/betterAuthFixtures.js";
 
-const [isolatedState, { db }, dbHelpers, authModule, sessionModule] = await setupIsolatedBackend(
+const [isolatedState, { db }, dbHelpers, authModule] = await setupIsolatedBackend(
   "proxy-auth",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
   "backend/middleware/auth.js",
-  "backend/config/session-helpers.js",
 );
 
-const { dbOps, userOps } = dbHelpers;
+const { dbOps } = dbHelpers;
 const { issueProxySession, resolveProxyUser, resolveRequestUser } = authModule;
-const { getSessionByToken } = sessionModule;
 
 const completeOnboarding = () => dbOps.updateSettings({ onboardingComplete: true });
 
@@ -45,6 +48,7 @@ test.beforeEach(() => {
   resetDatabase(db);
   resetProxyEnv();
   dbOps.updateSettings({ onboardingComplete: false });
+  assertBetterAuthCoreSchema(db);
 });
 
 test.after(async () => {
@@ -71,16 +75,16 @@ test("proxy auth creates a persistent user for a new proxied identity", () => {
   assert.equal(resolved.permissions.accessFlow, false);
   assert.equal(resolved.permissions.accessSettings, false);
 
-  const stored = userOps.getUserByUsername("Alice@example.com");
+  const stored = readBetterAuthUser(db, resolved.id);
   assert.equal(stored?.id, resolved.id);
-  assert.equal(stored?.username, "alice@example.com");
-  assert.ok(stored?.passwordHash);
+  assert.equal(stored?.email, "alice@example.com");
+  assert.equal(stored?.name, "alice@example.com");
 
   const secondResolve = resolveProxyUser(
     proxyRequest({ "x-forwarded-user": "alice@example.com" }),
   );
   assert.equal(secondResolve?.id, resolved.id);
-  assert.equal(userOps.getAllUsers().length, 1);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM "users"').get().count, 1);
 });
 
 test("proxy auth creates configured admin users as admins", () => {
@@ -93,7 +97,7 @@ test("proxy auth creates configured admin users as admins", () => {
   assert.ok(resolved);
   assert.equal(resolved.role, "admin");
   assert.equal(resolved.permissions.accessSettings, true);
-  assert.equal(userOps.getUserByUsername("sso-admin")?.role, "admin");
+  assert.equal(readBetterAuthUser(db, resolved.id)?.role, "admin");
 });
 
 test("proxy auth does not create users from untrusted proxy IPs", () => {
@@ -104,7 +108,7 @@ test("proxy auth does not create users from untrusted proxy IPs", () => {
   );
 
   assert.equal(resolved, null);
-  assert.equal(userOps.getAllUsers().length, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM "users"').get().count, 0);
 });
 
 test("proxy auth grants admin via AUTH_PROXY_ADMIN_GROUPS membership", () => {
@@ -120,7 +124,7 @@ test("proxy auth grants admin via AUTH_PROXY_ADMIN_GROUPS membership", () => {
 
   assert.ok(resolved);
   assert.equal(resolved.role, "admin");
-  assert.equal(userOps.getUserByUsername("bob")?.role, "admin");
+  assert.equal(readBetterAuthUser(db, resolved.id)?.role, "admin");
 });
 
 test("proxy auth does not grant admin for a literal 'admin' group unless configured", () => {
@@ -137,35 +141,40 @@ test("proxy auth does not grant admin for a literal 'admin' group unless configu
   assert.equal(resolved.role, "user");
 });
 
-test("proxy auth issues one Aurral session that outlives the identity header", () => {
+test("proxy auth issues one Aurral session that outlives the identity header", async () => {
   completeOnboarding();
-  const issued = issueProxySession(proxyRequest({ "x-forwarded-user": "erin" }));
+  const issued = await issueProxySession(proxyRequest({ "x-forwarded-user": "erin" }));
 
   assert.ok(issued?.token);
-  assert.equal(getSessionByToken(issued.token)?.user?.username, "erin");
+  const issuedUser = resolveRequestUser(proxyRequest({ "x-forwarded-user": "erin" }));
+  assert.ok(issuedUser?.id);
+  assert.equal(readBetterAuthSessions(db, issuedUser.id).length, 1);
 
-  const headerlessRequest = proxyRequest({ authorization: `Bearer ${issued.token}` });
-  assert.equal(resolveRequestUser(headerlessRequest)?.username, "erin");
+  const headerlessUser = await authModule.resolveSessionUserFromToken(issued.token);
+  assert.equal(headerlessUser?.username, "erin");
 
-  assert.equal(issueProxySession(headerlessRequest), null);
-});
-
-test("proxy auth issues no session without a trusted identity header", () => {
-  completeOnboarding();
-  assert.equal(issueProxySession(proxyRequest()), null);
-
-  process.env.AUTH_PROXY_TRUSTED_IPS = "10.0.0.1";
   assert.equal(
-    issueProxySession(proxyRequest({ "x-forwarded-user": "mallory" }, "192.168.1.10")),
+    await issueProxySession(proxyRequest({ authorization: `Bearer ${issued.token}` })),
     null,
   );
 });
 
-test("proxy auth issues no session while onboarding leaves authentication off", () => {
-  assert.equal(issueProxySession(proxyRequest({ "x-forwarded-user": "frank" })), null);
+test("proxy auth issues no session without a trusted identity header", async () => {
+  completeOnboarding();
+  assert.equal(await issueProxySession(proxyRequest()), null);
+
+  process.env.AUTH_PROXY_TRUSTED_IPS = "10.0.0.1";
+  assert.equal(
+    await issueProxySession(proxyRequest({ "x-forwarded-user": "mallory" }, "192.168.1.10")),
+    null,
+  );
+});
+
+test("proxy auth issues no session while onboarding leaves authentication off", async () => {
+  assert.equal(await issueProxySession(proxyRequest({ "x-forwarded-user": "frank" })), null);
 
   completeOnboarding();
-  assert.ok(issueProxySession(proxyRequest({ "x-forwarded-user": "frank" }))?.token);
+  assert.ok((await issueProxySession(proxyRequest({ "x-forwarded-user": "frank" })))?.token);
 });
 
 test("proxy auth re-syncs role on every request instead of only at creation", () => {
@@ -175,10 +184,10 @@ test("proxy auth re-syncs role on every request instead of only at creation", ()
   process.env.AUTH_PROXY_ADMIN_USERS = "dave";
   const promoted = resolveProxyUser(proxyRequest({ "x-forwarded-user": "dave" }));
   assert.equal(promoted.role, "admin");
-  assert.equal(userOps.getUserByUsername("dave")?.role, "admin");
+  assert.equal(readBetterAuthUser(db, promoted.id)?.role, "admin");
 
   delete process.env.AUTH_PROXY_ADMIN_USERS;
   const demoted = resolveProxyUser(proxyRequest({ "x-forwarded-user": "dave" }));
   assert.equal(demoted.role, "user");
-  assert.equal(userOps.getUserByUsername("dave")?.role, "user");
+  assert.equal(readBetterAuthUser(db, demoted.id)?.role, "user");
 });

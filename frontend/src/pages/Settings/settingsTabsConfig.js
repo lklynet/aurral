@@ -259,6 +259,8 @@ const SETTINGS_SEARCH_METADATA = {
       "New password": "change password authentication",
       "Confirm password": "change password authentication",
       "Auto-login": "local network bypass authentication login",
+      Name: "create edit user account",
+      Email: "create edit user account",
       Username: "create edit user account",
       Password: "create edit user account",
       Permissions: "roles manage users access",

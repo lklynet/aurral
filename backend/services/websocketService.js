@@ -5,6 +5,7 @@ import {
   getAuthPassword,
   isProxyAuthEnabled,
   resolveLocalNetworkBypassUser,
+  resolveSessionUserFromHeaders,
   resolveSessionUserFromToken,
   resolveProxyUser,
 } from "../middleware/auth.js";
@@ -33,20 +34,27 @@ class WebSocketService {
     });
 
     this.wss.on('connection', (ws, req) => {
-      this.handleConnection(ws, req);
+      this.handleConnection(ws, req).catch((error) => {
+        logger.error("system", "Failed to authenticate WebSocket client", {
+          error: error.message,
+        });
+        ws.close(1011, "Authentication failed");
+      });
     });
 
     logger.info("system", "WebSocket server initialized on /ws");
     return this;
   }
 
-  handleConnection(ws, req) {
+  async handleConnection(ws, req) {
     let sessionUser = null;
     let authSource = null;
     if (isAuthRequired()) {
       const requestUrl = new URL(req.url || "", "http://localhost");
       const token = requestUrl.searchParams.get("token");
-      sessionUser = resolveSessionUserFromToken(token);
+      sessionUser = token
+        ? await resolveSessionUserFromToken(token)
+        : await resolveSessionUserFromHeaders(req.headers);
       if (!sessionUser) {
         sessionUser = resolveProxyUser(req);
       }

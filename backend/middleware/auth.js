@@ -1,7 +1,10 @@
 import crypto from "crypto";
 import os from "os";
 import { dbOps, userOps } from "../db/helpers/index.js";
-import { createSession, getSessionByToken } from "../config/session-helpers.js";
+import {
+  createAuthSession,
+  getSessionForHeaders,
+} from "../services/betterAuth.js";
 import { hashPassword, verifyPassword, needsRehash } from "./passwordHash.js";
 
 const safeCompare = (a, b) => {
@@ -254,10 +257,21 @@ function buildPermissions(role, permissions) {
   };
 }
 
+function getProxyIdentity(username) {
+  const normalized = String(username || "").trim().toLowerCase();
+  const key = crypto.createHash("sha256").update(normalized).digest("hex").slice(0, 32);
+  return {
+    name: normalized,
+    email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)
+      ? normalized
+      : `proxy-${key}@aurral.invalid`,
+  };
+}
+
 function toResolvedUser(user) {
   if (!user) return null;
   return {
-    id: user.id,
+    id: Number(user.id),
     username: user.username,
     role: user.role,
     permissions: buildPermissions(user.role, user.permissions),
@@ -268,12 +282,40 @@ const toSessionUser = (session) => {
   if (!session?.user) return null;
   const baseUser = session.user;
   return {
-    id: baseUser.id,
+    id: Number(baseUser.id),
     username: baseUser.username,
     role: baseUser.role,
     permissions: buildPermissions(baseUser.role, baseUser.permissions),
   };
 };
+
+async function getBetterAuthUser(headers) {
+  try {
+    return toSessionUser(await getSessionForHeaders(headers));
+  } catch {
+    return null;
+  }
+}
+
+function getBearerHeaders(token, headers = {}) {
+  return {
+    ...headers,
+    authorization: `Bearer ${String(token || "").trim()}`,
+  };
+}
+
+async function hydrateBetterAuthUser(req, { queryToken = false } = {}) {
+  if (req.user) return req.user;
+  const token = queryToken ? String(req.query?.token || "").trim() : "";
+  const authorization = String(req.headers?.authorization || "").trim();
+  const cookie = String(req.headers?.cookie || "").trim();
+  if (!token && !authorization && !cookie) return null;
+  const user = await getBetterAuthUser(
+    token ? getBearerHeaders(token, req.headers) : req.headers,
+  );
+  if (user) req.user = user;
+  return user;
+}
 
 const getBearerToken = (req) => {
   const authHeader = String(req.headers.authorization || "");
@@ -306,10 +348,14 @@ export function sendUnauthorizedResponse(req, res, { challenge = false, ...overr
   });
 }
 
-export const resolveSessionUserFromToken = (token) => {
+export async function resolveSessionUserFromToken(token) {
   if (!token) return null;
-  return toSessionUser(getSessionByToken(token));
-};
+  return getBetterAuthUser(getBearerHeaders(token));
+}
+
+export async function resolveSessionUserFromHeaders(headers) {
+  return getBetterAuthUser(headers || {});
+}
 
 function resolveApiKeyUser(req) {
   const headerKey = (req.headers["x-api-key"] || "").trim();
@@ -441,19 +487,27 @@ export function reconcileLocalNetworkBypassSetting() {
 }
 
 export function ensureExternalUser(username, role) {
+  const identity = getProxyIdentity(username);
   const existing = userOps.getUserByUsername(username);
   if (existing) {
     if (existing.role !== role) {
       const updated = userOps.updateUser(existing.id, { role });
-      return toResolvedUser(updated || existing);
+      return {
+        ...toResolvedUser(updated || existing),
+        ...identity,
+      };
     }
-    return toResolvedUser(existing);
+    return {
+      ...toResolvedUser(existing),
+      ...identity,
+    };
   }
   const passwordHash = hashPassword(crypto.randomBytes(32).toString("hex"));
-  const created = userOps.createUser(username, passwordHash, role, null);
-  return created
+  const created = userOps.createUser(username, passwordHash, role, null, identity);
+  const resolved = created
     ? toResolvedUser(userOps.getUserByUsername(created.username) || created)
     : toResolvedUser(userOps.getUserByUsername(username));
+  return resolved ? { ...resolved, ...identity } : null;
 }
 
 function isProxyAdmin(req, username) {
@@ -494,12 +548,12 @@ export function resolveProxyUser(req) {
   return ensureExternalUser(username, role);
 }
 
-export function issueProxySession(req) {
+export async function issueProxySession(req) {
   if (!isAuthRequiredByConfig()) return null;
-  if (resolveSessionUserFromToken(getBearerToken(req))) return null;
+  if (await resolveSessionUserFromToken(getBearerToken(req))) return null;
   const proxyUser = resolveProxyUser(req);
   if (!proxyUser?.id || proxyUser.id < 0) return null;
-  return createSession(proxyUser.id, req.ip || null, req.headers["user-agent"] || null);
+  return createAuthSession(proxyUser.id, req);
 }
 
 function migrateLegacyAdmin() {
@@ -523,9 +577,10 @@ export function resolveUser(username, password) {
     .toLowerCase();
   const u = userOps.getUserByUsername(un);
   if (!u || !password) return null;
-  if (!verifyPassword(password, u.passwordHash)) return null;
-  if (needsRehash(u.passwordHash)) {
-    userOps.updateUser(u.id, { passwordHash: hashPassword(password) });
+  const passwordHash = userOps.getCredentialPasswordHash(u.id) || u.passwordHash;
+  if (!passwordHash || !verifyPassword(password, passwordHash)) return null;
+  if (needsRehash(passwordHash)) {
+    userOps.updateCredentialPasswordHash(u.id, hashPassword(password));
   }
   const perms = buildPermissions(u.role, u.permissions);
   return {
@@ -554,30 +609,6 @@ export function resolveSubsonicTokenUser(username, token, salt) {
   return matchedPassword ? resolveUser(username, matchedPassword) : null;
 }
 
-function legacyAuth(username, password) {
-  const authUser = getAuthUser();
-  const passwords = getAuthPassword();
-  if (passwords.length === 0) return null;
-  const userMatches = safeCompare(username, authUser);
-  const passwordMatches = passwords.some((p) => safeCompare(password, p));
-  if (!userMatches || !passwordMatches) return null;
-  return {
-    id: 0,
-    username: authUser,
-    role: "admin",
-    permissions: {
-      accessSettings: true,
-      accessFlow: true,
-      addArtist: true,
-      addAlbum: true,
-      changeMonitoring: true,
-      deleteArtist: true,
-      deleteAlbum: true,
-      deleteTrack: true,
-    },
-  };
-}
-
 export function resolveLocalNetworkBypassUser(req) {
   const status = getLocalNetworkBypassStatus(req);
   if (!status.active) return null;
@@ -585,27 +616,11 @@ export function resolveLocalNetworkBypassUser(req) {
 }
 
 export function resolveRequestUser(req) {
-  const sessionUser = resolveSessionUserFromToken(getBearerToken(req));
-  if (sessionUser) return sessionUser;
+  if (req.user) return req.user;
   const proxyUser = resolveProxyUser(req);
   if (proxyUser) return proxyUser;
   const apiKeyUser = resolveApiKeyUser(req);
   if (apiKeyUser) return apiKeyUser;
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith("Basic ")) {
-    try {
-      const token = authHeader.substring(6);
-      const decoded = Buffer.from(token, "base64").toString("utf8");
-      const colon = decoded.indexOf(":");
-      const username = colon >= 0 ? decoded.slice(0, colon) : decoded;
-      const password = colon >= 0 ? decoded.slice(colon + 1) : "";
-      let user = resolveUser(username, password);
-      if (!user) user = legacyAuth(username, password);
-      if (user) return user;
-    } catch (e) {
-      return null;
-    }
-  }
   return resolveLocalNetworkBypassUser(req);
 }
 
@@ -647,81 +662,59 @@ function consumeStreamToken(rawToken) {
   return payload.user || null;
 }
 
-export const authMiddleware = (req, res, next) => {
-    if (!req.path.startsWith("/api")) return next();
-    if (
-      req.path === "/api/health" ||
-      req.path === "/api/health/live" ||
-      req.path === "/api/health/bootstrap" ||
-      req.path === "/api/filesystem/browse" ||
-      req.path === "/api/filesystem/ensure" ||
-      req.path === "/api/image-proxy" ||
-      req.path.startsWith("/api/image-proxy/") ||
-      (req.method === "GET" && /^\/api\/feeds\/lidarr\/flows\/[^/]+\.json$/i.test(req.path))
-    ) {
-      return next();
-    }
-    if (
-      /^\/api\/library\/stream\/[^/]+$/.test(req.path) ||
-      /^\/api\/library\/canonical-stream\/[^/]+\/[^/]+$/i.test(req.path) ||
-      /^\/api\/library\/file-stream\/[^/]+\/[^/]+$/i.test(req.path) ||
-      /^\/api\/artists\/[a-f0-9-]{36}\/stream$/i.test(req.path) ||
-      /^\/api\/weekly-flow\/stream\/[^/]+$/i.test(req.path) ||
-      /^\/api\/playlists\/stream\/[^/]+$/i.test(req.path) ||
-      /^\/api\/playlists\/staging-stream\/[^/]+$/i.test(req.path) ||
-      (req.method === "GET" && /^\/api\/weekly-flow\/artwork\/[^/]+$/i.test(req.path)) ||
-      (req.method === "GET" && /^\/api\/playlists\/artwork\/[^/]+$/i.test(req.path)) ||
-      (req.method === "GET" && /^\/api\/discover\/artwork\/[^/]+$/i.test(req.path))
-    ) {
-      return next();
-    }
-    if (
-      req.path === "/api/auth/login" ||
-      req.path === "/api/auth/oidc/login" ||
-      req.path === "/api/auth/oidc/exchange"
-      || (req.method === "GET" && req.path === "/api/scrobbling/lastfm/link/callback")
-    ) {
-      return next();
-    }
+const isPublicAuthPath = (req) =>
+  req.path === "/api/health" ||
+  req.path === "/api/health/live" ||
+  req.path === "/api/health/bootstrap" ||
+  req.path === "/api/filesystem/browse" ||
+  req.path === "/api/filesystem/ensure" ||
+  req.path === "/api/image-proxy" ||
+  req.path.startsWith("/api/image-proxy/") ||
+  (req.method === "GET" && /^\/api\/feeds\/lidarr\/flows\/[^/]+\.json$/i.test(req.path));
 
-    const settings = dbOps.getSettings();
-    const onboardingDone = settings.onboardingComplete;
+const isMediaAuthPath = (req) =>
+  /^\/api\/library\/stream\/[^/]+$/.test(req.path) ||
+  /^\/api\/library\/canonical-stream\/[^/]+\/[^/]+$/i.test(req.path) ||
+  /^\/api\/library\/file-stream\/[^/]+\/[^/]+$/i.test(req.path) ||
+  /^\/api\/artists\/[a-f0-9-]{36}\/stream$/i.test(req.path) ||
+  /^\/api\/weekly-flow\/stream\/[^/]+$/i.test(req.path) ||
+  /^\/api\/playlists\/stream\/[^/]+$/i.test(req.path) ||
+  /^\/api\/playlists\/staging-stream\/[^/]+$/i.test(req.path) ||
+  (req.method === "GET" && /^\/api\/weekly-flow\/artwork\/[^/]+$/i.test(req.path)) ||
+  (req.method === "GET" && /^\/api\/playlists\/artwork\/[^/]+$/i.test(req.path)) ||
+  (req.method === "GET" && /^\/api\/discover\/artwork\/[^/]+$/i.test(req.path));
 
-    if (req.path.startsWith("/api/onboarding") && !onboardingDone) return next();
+export const authMiddleware = async (req, res, next) => {
+  if (!req.path.startsWith("/api")) return next();
 
-    const authRequired = isAuthRequiredByConfig();
+  if (isPublicAuthPath(req)) {
+    await hydrateBetterAuthUser(req);
+    return next();
+  }
 
-    if (!authRequired) return next();
+  if (isMediaAuthPath(req)) {
+    await hydrateBetterAuthUser(req, { queryToken: true });
+    return next();
+  }
 
-    const user = resolveRequestUser(req);
-    if (user) {
-      req.user = user;
-      return next();
-    }
+  if (req.method === "GET" && req.path === "/api/scrobbling/lastfm/link/callback") {
+    return next();
+  }
 
-    return sendUnauthorizedResponse(req, res);
+  const settings = dbOps.getSettings();
+  const onboardingDone = settings.onboardingComplete;
+
+  if (req.path.startsWith("/api/onboarding") && !onboardingDone) return next();
+  if (!isAuthRequiredByConfig()) return next();
+
+  const user = (await hydrateBetterAuthUser(req)) || resolveRequestUser(req);
+  if (user) {
+    req.user = user;
+    return next();
+  }
+
+  return sendUnauthorizedResponse(req, res);
 };
-
-function getCredentialsFromRequest(req) {
-  const sessionUser = resolveSessionUserFromToken(req.query.token);
-  if (sessionUser) {
-    return { type: "session", user: sessionUser };
-  }
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith("Basic ")) {
-    try {
-      const token = authHeader.substring(6);
-      const decoded = Buffer.from(token, "base64").toString("utf8");
-      const colon = decoded.indexOf(":");
-      const username = colon >= 0 ? decoded.slice(0, colon) : decoded;
-      const password = colon >= 0 ? decoded.slice(colon + 1) : "";
-      return { type: "basic", username, password };
-    } catch (e) {
-      return null;
-    }
-  }
-  return null;
-}
 
 export const verifyTokenAuth = (req) => {
   const user = resolveRequestUser(req);
@@ -729,30 +722,12 @@ export const verifyTokenAuth = (req) => {
     req.user = user;
     return true;
   }
-  const creds = getCredentialsFromRequest(req);
-  if (creds) {
-    if (creds.type === "session" && creds.user) {
-      req.user = creds.user;
-      return true;
-    }
-    if (creds.type === "basic") {
-      let u = resolveUser(creds.username, creds.password);
-      if (!u) u = legacyAuth(creds.username, creds.password);
-      if (u) {
-        req.user = u;
-        return true;
-      }
-    }
-  }
   const streamTokenUser = consumeStreamToken(req.query.st);
   if (streamTokenUser) {
     req.user = streamTokenUser;
     return true;
   }
-  if (isProxyAuthEnabled()) return false;
-  const passwords = getAuthPassword();
-  if (passwords.length === 0) return true;
-  return false;
+  return !isAuthRequiredByConfig();
 };
 
 export function hasPermission(user, permission) {

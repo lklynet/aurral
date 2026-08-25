@@ -10,7 +10,10 @@ import dns from "node:dns";
 dns.setDefaultResultOrder("ipv4first");
 
 import { authMiddleware, isProxyAuthEnabled } from "./middleware/auth.js";
-import { handleOidcCallback, isOidcEnabled } from "./services/oidcAuth.js";
+import {
+  betterAuthHandler,
+  isOidcEnabled,
+} from "./services/betterAuth.js";
 import { logger } from "./services/logger.js";
 import { websocketService } from "./services/websocketService.js";
 import {
@@ -185,17 +188,17 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(express.json({ limit: JSON_BODY_LIMIT }));
-
-app.use(authMiddleware);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
 });
-app.use("/api/auth/login", authLimiter);
-app.use("/api/auth/oidc/login", authLimiter);
-app.use("/api/auth/oidc/exchange", authLimiter);
+app.all("/api/auth/*splat", betterAuthHandler);
+
+app.use(express.json({ limit: JSON_BODY_LIMIT }));
+
+app.use(authMiddleware);
+
 app.use("/api/users/me/password", authLimiter);
 
 const limiter = rateLimit({
@@ -223,23 +226,11 @@ app.use("/api/weekly-flow", (req, res) => {
   const target = req.originalUrl.replace("/api/weekly-flow", "/api/playlists");
   res.redirect(308, target);
 });
-app.use("/api/auth", authRouter);
+app.use("/api/aurral-auth", authRouter);
 app.use("/api/scrobbling", scrobblingRouter);
 app.use("/api/play-events", playEventsRouter);
 app.use("/api/image-proxy", imageProxyRouter);
 app.use("/rest", subsonicRouter);
-
-app.get("/sso/callback", async (req, res) => {
-  try {
-    const result = await handleOidcCallback(req);
-    const code = encodeURIComponent(result.code);
-    res.redirect(302, `/sso/complete#code=${code}`);
-  } catch (error) {
-    logger.error("auth", "OIDC callback failed:", { message: error.message });
-    const message = encodeURIComponent(error.message || "OIDC login failed");
-    res.redirect(302, `/sso/complete#error=${message}`);
-  }
-});
 
 const frontendDist = path.join(__dirname, "..", "frontend", "dist");
 const frontendFallbackRoute = /.*/;

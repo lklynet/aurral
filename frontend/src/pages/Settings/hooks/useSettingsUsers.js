@@ -13,8 +13,8 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
   });
   const invalidateUsers = () => queryClient.invalidateQueries({ queryKey: queryKeys.users });
   const createUserMutation = useMutation({
-    mutationFn: ({ username, password, role, permissions }) =>
-      createUser(username, password, role, permissions),
+    mutationFn: ({ name, email, password, role, permissions }) =>
+      createUser({ name, email, password, role, permissions }),
     onSuccess: invalidateUsers,
   });
   const updateUserMutation = useMutation({
@@ -28,7 +28,8 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
   const changePasswordMutation = useMutation({
     mutationFn: ({ currentPassword, newPassword }) => changeMyPassword(currentPassword, newPassword),
   });
-  const [newUserUsername, setNewUserUsername] = useState("");
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserPermissions, setNewUserPermissions] = useState({
     ...GRANULAR_PERMISSIONS,
@@ -36,6 +37,8 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
   const [creatingUser, setCreatingUser] = useState(false);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [editUser, setEditUser] = useState(null);
+  const [editUserName, setEditUserName] = useState("");
+  const [editUserEmail, setEditUserEmail] = useState("");
   const [editPassword, setEditPassword] = useState("");
   const [editCurrentPassword, setEditCurrentPassword] = useState("");
   const [editPermissions, setEditPermissions] = useState({
@@ -56,8 +59,10 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
   return {
     usersList: usersQuery.data || [],
     loadingUsers: usersQuery.isPending || usersQuery.isFetching,
-    newUserUsername,
-    setNewUserUsername,
+    newUserName,
+    setNewUserName,
+    newUserEmail,
+    setNewUserEmail,
     newUserPassword,
     setNewUserPassword,
     newUserPermissions,
@@ -68,6 +73,10 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
     setShowAddUserModal,
     editUser,
     setEditUser,
+    editUserName,
+    setEditUserName,
+    editUserEmail,
+    setEditUserEmail,
     editPassword,
     setEditPassword,
     editCurrentPassword,
@@ -89,8 +98,8 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
     deletingUser,
     setDeletingUser,
     refreshUsers,
-    createUser: (username, password, role, permissions) =>
-      createUserMutation.mutateAsync({ username, password, role, permissions }),
+    createUser: (name, email, password, role, permissions) =>
+      createUserMutation.mutateAsync({ name, email, password, role, permissions }),
     updateUser: (id, data) => updateUserMutation.mutateAsync({ id, data }),
     deleteUser: (id) => deleteUserMutation.mutateAsync(id),
     changeMyPassword: (currentPassword, newPassword) =>

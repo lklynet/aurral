@@ -27,14 +27,13 @@ let userAToken = "";
 let userBToken = "";
 
 async function login(username, password) {
-  const response = await fetch(`http://127.0.0.1:${server.port}/api/auth/login`, {
+  const response = await fetch(`http://127.0.0.1:${server.port}/api/auth/sign-in/username`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
   });
-  const payload = await response.json();
-  assert.equal(response.status, 200, JSON.stringify(payload));
-  return payload.token;
+  assert.equal(response.status, 200, await response.text());
+  return response.headers.get("set-auth-token");
 }
 
 async function apiFetch(token, path, options = {}) {

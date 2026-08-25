@@ -21,33 +21,41 @@ Use the web UI for most settings. Use these variables for Docker deployment sett
 
 ## Authentication
 
+Set `BETTER_AUTH_SECRET` to a long, random, persistent value. Generate one with:
+
+```bash
+openssl rand -hex 32
+```
+
+Keep the value in your environment file or secret store. Do not commit it to a Compose file. Keep the same value across restarts. Changing it invalidates active authentication state and requires users to sign in again.
+
 | Variable | Purpose |
 | -------- | ------- |
+| `BETTER_AUTH_SECRET` | Secret used by Better Auth for authentication state. Set it explicitly in production. |
+| `BETTER_AUTH_URL` | Public Aurral origin used to build Better Auth callback URLs, for example `https://aurral.example.com`. |
+| `SESSION_EXPIRY_HOURS` | Better Auth session lifetime in hours. Default `720` (30 days). |
+| `AURRAL_PUBLIC_URL` | Public Aurral origin used by non-authentication integration callbacks. Better Auth uses `BETTER_AUTH_URL` for authentication callbacks. |
 | `TRUST_PROXY` | Set when Aurral is behind a reverse proxy. |
-| `AURRAL_PUBLIC_URL` | Canonical public origin for OAuth callbacks (for example, `https://aurral.example.com`). |
 | `AUTH_PROXY_ENABLED` | Enable reverse-proxy authentication. Default header `x-forwarded-user`. |
-| `AUTH_PROXY_HEADER` | Custom header that contains the authenticated username. |
-| `AUTH_PROXY_DOMAIN` | Origin of your forwardAuth login page (for example, `https://auth.example.com`). Aurral adds it to the `connect-src` content security policy so pages can reach your authentication origin. |
-| `AUTH_PROXY_TRUSTED_IPS` | Comma-separated proxy IP allowlist for authentication headers. You must set it when you enable proxy authentication. Without it, a direct client can use the identity header to impersonate users. |
-| `AUTH_PROXY_LOGOUT_URL` | Your proxy or IdP logout endpoint. For Authentik single-application forward auth, use `https://aurral.example.com/outpost.goauthentik.io/sign_out`. This value ends the proxy session when you log out of Aurral. Aurral hides its **Log out** control while proxy authentication is on and this value is unset. |
-| `AUTH_PROXY_DEFAULT_ROLE` | Role for proxy-auth users who do not otherwise have the admin role: `user` or `admin`. Aurral evaluates the role on every request. |
-| `AUTH_PROXY_ADMIN_USERS` | Comma-separated usernames that get the admin role. Aurral checks the list on each request. If you remove a username, Aurral changes that user on the next request. |
-| `AUTH_PROXY_ROLE_HEADER` | Optional header that contains the user's group membership (for example, Authelia's `Remote-Groups`). Usually, this is a comma-separated list. Aurral compares it with `AUTH_PROXY_ADMIN_GROUPS` on every request. |
-| `AUTH_PROXY_ADMIN_GROUPS` | Comma-separated group names that give the admin role. Aurral compares these names with `AUTH_PROXY_ROLE_HEADER`. A group named `admin` has no special function unless you list it here. |
-| `OIDC_ENABLED` | Enable native OpenID Connect login. |
-| `OIDC_ISSUER` | Identity provider issuer URL used for OIDC discovery. |
+| `AUTH_PROXY_HEADER` | Custom header that contains the authenticated identity. |
+| `AUTH_PROXY_DOMAIN` | Origin of your forwardAuth login page. Aurral adds it to the `connect-src` content security policy. |
+| `AUTH_PROXY_TRUSTED_IPS` | Comma-separated proxy IP allowlist for authentication headers. Set it when you enable proxy authentication. |
+| `AUTH_PROXY_LOGOUT_URL` | Proxy or identity-provider logout endpoint. Aurral redirects there after local logout. |
+| `AUTH_PROXY_DEFAULT_ROLE` | Role for proxy identities that do not otherwise receive administrator access: `user` or `admin`. |
+| `AUTH_PROXY_ADMIN_USERS` | Comma-separated identities that receive the `admin` role. |
+| `AUTH_PROXY_ROLE_HEADER` | Header that contains group membership, such as Authelia's `Remote-Groups`. |
+| `AUTH_PROXY_ADMIN_GROUPS` | Comma-separated groups that grant the `admin` role. |
+| `OIDC_ENABLED` | Enable the Better Auth OIDC provider. |
+| `OIDC_PROVIDER_ID` | Provider identifier used by Better Auth. Default `oidc`. |
+| `OIDC_ISSUER` | Identity-provider issuer URL. |
+| `OIDC_DISCOVERY_URL` | Optional discovery document URL when the provider does not use its standard location. |
 | `OIDC_CLIENT_ID` | OIDC client ID. |
 | `OIDC_CLIENT_SECRET` | OIDC client secret. |
-| `OIDC_REDIRECT_URI` | Exact callback URL registered with your IdP. Must be `https://<your-aurral-host>/sso/callback`. |
-| `OIDC_SCOPES` | Space-separated scopes. Default `openid profile email`. |
-| `OIDC_USERNAME_CLAIM` | Claim used as the Aurral username. Default `preferred_username`. Falls back to `email` when that claim is missing. |
-| `OIDC_DEFAULT_ROLE` | Role for OIDC users who are not otherwise granted admin: `user` or `admin`. |
-| `OIDC_ADMIN_USERS` | Comma-separated usernames that get the admin role at OIDC login. |
-| `OIDC_GROUPS_CLAIM` | Optional ID-token claim that contains group membership. |
-| `OIDC_ADMIN_GROUPS` | Comma-separated group names that grant the admin role when present in `OIDC_GROUPS_CLAIM`. |
-| `OIDC_LOGOUT_URL` | Optional IdP logout URL. When set, Aurral redirects there after clearing the local session. |
-| `OIDC_DOMAIN` | Optional IdP origin added to the `connect-src` content security policy. |
-| `SESSION_EXPIRY_HOURS` | Session lifetime in hours for password login, proxy auth, and native OIDC. Default `720` (30 days). |
+| `OIDC_REDIRECT_URI` | Exact callback URL registered with the provider. Use `https://<your-aurral-host>/api/auth/callback/oidc`. |
+| `OIDC_USERNAME_CLAIM` | Provider claim used for Aurral's compatibility username field. Default `preferred_username`. |
+| `OIDC_ADMIN_USERS` | Comma-separated provider identities that receive the `admin` role. |
+
+Register only `/api/auth/callback/oidc` with the identity provider. Better Auth completes the provider transaction and creates the session.
 
 ## Cross-origin clients
 
@@ -89,6 +97,8 @@ These variables change the shared Lidarr Spotify OAuth proxy. The default values
 environment:
   - PUID=1000
   - PGID=1000
+  - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+  - BETTER_AUTH_URL=https://aurral.example.com
   - TRUST_PROXY=true
 ```
 

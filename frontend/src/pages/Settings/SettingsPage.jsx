@@ -212,8 +212,10 @@ function SettingsPage() {
             authUser={authUser}
             usersList={users.usersList}
             loadingUsers={users.loadingUsers}
-            newUserUsername={users.newUserUsername}
-            setNewUserUsername={users.setNewUserUsername}
+            newUserName={users.newUserName}
+            setNewUserName={users.setNewUserName}
+            newUserEmail={users.newUserEmail}
+            setNewUserEmail={users.setNewUserEmail}
             newUserPassword={users.newUserPassword}
             setNewUserPassword={users.setNewUserPassword}
             newUserPermissions={users.newUserPermissions}
@@ -224,6 +226,10 @@ function SettingsPage() {
             setShowAddUserModal={users.setShowAddUserModal}
             editUser={users.editUser}
             setEditUser={users.setEditUser}
+            editUserName={users.editUserName}
+            setEditUserName={users.setEditUserName}
+            editUserEmail={users.editUserEmail}
+            setEditUserEmail={users.setEditUserEmail}
             editPassword={users.editPassword}
             setEditPassword={users.setEditPassword}
             editCurrentPassword={users.editCurrentPassword}

@@ -2,11 +2,12 @@ import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { getAppBasePath } from "../utils/basePath.js";
+import { startOidcLogin } from "../utils/api/endpoints/auth.js";
 import { DotLoader } from "../components/DotLoader";
 
 const Login = () => {
   useDocumentTitle("Sign in");
-  const [username, setUsername] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -19,24 +20,31 @@ const Login = () => {
     if (submitting) return;
     setSubmitting(true);
     try {
-      const success = await login(password, username);
+      const success = await login(identifier, password);
 
       if (success) {
         setError("");
       } else {
-        setError("Invalid username or password");
+        setError("Invalid email, username, or password");
       }
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleOidcLogin = () => {
+  const handleOidcLogin = async () => {
     if (startingSso) return;
     setStartingSso(true);
-    const basePath = getAppBasePath();
-    const prefix = basePath === "/" ? "" : basePath.replace(/\/$/, "");
-    window.location.assign(`${prefix}/api/auth/oidc/login`);
+    setError("");
+    try {
+      const basePath = getAppBasePath();
+      const prefix = basePath === "/" ? "" : basePath.replace(/\/$/, "");
+      const redirectUrl = await startOidcLogin(`${prefix}/sso/complete`);
+      window.location.assign(redirectUrl);
+    } catch {
+      setStartingSso(false);
+      setError("Unable to start SSO sign-in");
+    }
   };
 
   return (
@@ -64,21 +72,21 @@ const Login = () => {
           </div>
         )}
 
-        <form className="login-form" onSubmit={handleSubmit}>
+        <form className="login-form" onSubmit={handleSubmit} aria-busy={submitting}>
           <div className="login-fields">
             <div className="login-field">
-              <label htmlFor="username" className="login-label">
-                Username
+              <label htmlFor="identifier" className="login-label">
+                Email or username
               </label>
               <input
-                id="username"
-                name="username"
+                id="identifier"
+                name="identifier"
                 type="text"
                 required
                 autoComplete="username"
                 className="login-input"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 aria-invalid={error ? "true" : undefined}
                 aria-describedby={error ? "login-error" : undefined}
               />

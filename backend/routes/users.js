@@ -1,10 +1,10 @@
 import express from "express";
 import { userOps, dbOps } from "../db/helpers/index.js";
-import { hashPassword, verifyPassword } from "../middleware/passwordHash.js";
 import { requireAuth, requireAdmin } from "../middleware/requirePermission.js";
 import { reconcileLocalNetworkBypassSetting } from "../middleware/auth.js";
 import { requirePasswordStrength } from "../middleware/auth.js";
-import { deleteSessionsByUserId } from "../config/session-helpers.js";
+import { auth, revokeUserSessions } from "../services/betterAuth.js";
+import { fromNodeHeaders } from "better-auth/node";
 import { websocketService } from "../services/websocketService.js";
 import {
   getListenHistoryCacheNamespace,
@@ -190,21 +190,29 @@ router.get("/", requireAuth, requireAdmin, async (req, res) => {
 
 router.post("/", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { username, password, role = "user", permissions } = req.body;
-    const un = String(username || "").trim();
-    if (!un || !password) {
-      return res.status(400).json({ error: "Username and password required" });
-    }
-    if (userOps.getUserByUsername(un)) {
-      return res.status(409).json({ error: "Username already exists" });
+    const { email, name, password, role = "user", permissions } = req.body;
+    if (!String(email || "").trim() || !String(name || "").trim() || !password) {
+      return res.status(400).json({ error: "Name, email, and password required" });
     }
     const passwordValidation = requirePasswordStrength(password);
     if (!passwordValidation.valid) {
       return res.status(400).json({ error: passwordValidation.error });
     }
-    const hash = hashPassword(password);
     const perms = permissions ? { ...userOps.getDefaultPermissions(), ...permissions } : null;
-    const created = userOps.createUser(un, hash, role, perms);
+    const result = await auth.api.createUser({
+      body: {
+        email: String(email).trim().toLowerCase(),
+        name: String(name).trim(),
+        password,
+        role,
+        data: {
+          username: String(email).trim().toLowerCase(),
+          displayUsername: String(name).trim(),
+          permissions: perms,
+        },
+      },
+    });
+    const created = result?.user || result;
     if (!created) {
       return res.status(500).json({ error: "Failed to create user" });
     }
@@ -262,14 +270,18 @@ router.patch("/:id", requireAuth, async (req, res) => {
         if (!currentPassword) {
           return res.status(400).json({ error: "currentPassword required to change password" });
         }
-        if (!verifyPassword(currentPassword, existing.passwordHash)) {
-          return res.status(400).json({ error: "Current password is incorrect" });
-        }
         const passwordValidation = requirePasswordStrength(password);
         if (!passwordValidation.valid) {
           return res.status(400).json({ error: passwordValidation.error });
         }
-        updates.passwordHash = hashPassword(password);
+        await auth.api.changePassword({
+          headers: fromNodeHeaders(req.headers),
+          body: {
+            currentPassword,
+            newPassword: password,
+            revokeOtherSessions: true,
+          },
+        });
       }
       if (Object.keys(updates).length === 0) {
         return res.json({
@@ -285,9 +297,6 @@ router.patch("/:id", requireAuth, async (req, res) => {
         });
       }
       const updated = userOps.updateUser(id, updates);
-      if (updates.passwordHash) {
-        deleteSessionsByUserId(id);
-      }
       return res.json(updated);
     }
     const updates = {};
@@ -296,7 +305,9 @@ router.patch("/:id", requireAuth, async (req, res) => {
       if (!passwordValidation.valid) {
         return res.status(400).json({ error: passwordValidation.error });
       }
-      updates.passwordHash = hashPassword(password);
+      await auth.api.setUserPassword({
+        body: { userId: String(id), newPassword: password },
+      });
     }
     if (permissions !== undefined) updates.permissions = permissions;
     if (role !== undefined) updates.role = role;
@@ -524,20 +535,21 @@ router.post("/me/password", requireAuth, async (req, res) => {
     if (!passwordValidation.valid) {
       return res.status(400).json({ error: passwordValidation.error });
     }
-    const u = userOps.getUserById(req.user.id);
-    if (!u || !verifyPassword(currentPassword || "", u.passwordHash)) {
-      return res.status(400).json({ error: "Current password is incorrect" });
-    }
-    const hash = hashPassword(newPassword);
-    userOps.updateUser(req.user.id, { passwordHash: hash });
-    deleteSessionsByUserId(req.user.id);
+    await auth.api.changePassword({
+      headers: fromNodeHeaders(req.headers),
+      body: {
+        currentPassword: currentPassword || "",
+        newPassword,
+        revokeOtherSessions: true,
+      },
+    });
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: "Failed to change password", message: e.message });
   }
 });
 
-router.delete("/:id", requireAuth, requireAdmin, (req, res) => {
+router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (req.user.id === id) {
@@ -547,8 +559,8 @@ router.delete("/:id", requireAuth, requireAdmin, (req, res) => {
     if (!existing) {
       return res.status(404).json({ error: "User not found" });
     }
-    deleteSessionsByUserId(id);
-    userOps.deleteUser(id);
+    await revokeUserSessions(id);
+    await auth.api.removeUser({ body: { userId: String(id) } });
     reconcileLocalBypassAfterUserMutation();
     res.json({ success: true });
   } catch (e) {
