@@ -148,7 +148,7 @@ export default function DiscoverPlaylistsPage() {
       <div className="discover-playlists-page">
         <header className="discover-playlists-page__header">
           <div className="discover-playlists-page__title-row">
-            <h1 className="page-title">Playlists for you</h1>
+            <h1 className="page-title">Playlists</h1>
             <DiscoveryStatusPill
               isUpdating={isUpdating}
               playlistsUpdating={playlistsUpdating}
@@ -162,7 +162,6 @@ export default function DiscoverPlaylistsPage() {
           <div className="search-empty-panel discover-playlists-page__status-panel">
             <DotLoader size="lg" label={null} />
             <h2 className="search-empty-panel__title">Loading your playlists</h2>
-            <p className="search-empty-panel__message">Checking your latest discovery playlists.</p>
           </div>
         ) : isUpdating || playlistsUpdating ? (
           <div className="search-empty-panel">
@@ -190,9 +189,6 @@ export default function DiscoverPlaylistsPage() {
               <Music className="artist-icon-lg" />
             </div>
             <h2 className="search-empty-panel__title">Connect Last.fm</h2>
-            <p className="search-empty-panel__message">
-              Connect a Last.fm API key in Settings → Connect to generate discover playlists.
-            </p>
             <Link to="/settings/connect" className="btn btn-secondary btn-sm">
               Open Last.fm settings
             </Link>
@@ -203,9 +199,6 @@ export default function DiscoverPlaylistsPage() {
               <Music className="artist-icon-lg" />
             </div>
             <h2 className="search-empty-panel__title">No playlists yet</h2>
-            <p className="search-empty-panel__message">
-              Run a discovery refresh to generate playlists.
-            </p>
             <Link to="/settings/discover" className="btn btn-secondary btn-sm">
               Open Discovery Settings
             </Link>
@@ -219,7 +212,7 @@ export default function DiscoverPlaylistsPage() {
     <div className="discover-playlists-page">
       <header className="discover-playlists-page__header">
         <div className="discover-playlists-page__title-row">
-          <h1 className="page-title">Playlists for you</h1>
+          <h1 className="page-title">Playlists</h1>
           <DiscoveryStatusPill
             isUpdating={isUpdating}
             playlistsUpdating={playlistsUpdating}

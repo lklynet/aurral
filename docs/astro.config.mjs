@@ -72,6 +72,7 @@ export default defineConfig({
             { slug: "integrations/usenet" },
             { slug: "integrations/navidrome" },
             { slug: "integrations/plex" },
+            { slug: "integrations/jellyfin" },
             { slug: "integrations/ticketmaster" },
             { slug: "integrations/metadata" },
             { slug: "integrations/notifications" },

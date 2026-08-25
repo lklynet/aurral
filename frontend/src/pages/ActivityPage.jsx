@@ -41,13 +41,6 @@ const HISTORY_EMPTY_STATE = {
   message: "A chronological log of album requests, track downloads, and other activity will appear here.",
 };
 
-const ACTIVITY_DESCRIPTIONS = {
-  queue: "Work in progress. Completed and failed work moves to History.",
-  history: "Finished activity. Tracks that need another search appear in Wanted.",
-  missing: "Tracks with no file. Re-search them here, then follow progress in Queue and History.",
-  cutoff: "Playable tracks below your quality target. Queue upgrades here, then follow them in Queue and History.",
-};
-
 function ActivityPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -382,9 +375,6 @@ function ActivityPage() {
     <>
       <header className="activity-page__header">
         <h1 className="page-title">{activeViewLabel}</h1>
-        <p className="page-subtitle">
-          {ACTIVITY_DESCRIPTIONS[isCutoffView ? "cutoff" : activeView]}
-        </p>
       </header>
       {!isMissingView ? (
         <PageSectionMobileNav

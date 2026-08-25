@@ -278,7 +278,6 @@ export default function DiscoverPlaylistDetailPage() {
         <section className="discover-playlist-detail__status" aria-live="polite">
           <DotLoader size="lg" label={null} />
           <h1>Loading playlist</h1>
-          <p>Checking your latest discovery playlists.</p>
         </section>
       </div>
     );

@@ -102,6 +102,13 @@ export function syncLibrarySearchTrack(trackId) {
   );
 }
 
+export function removeLibrarySearchDocument(entityKind, entityId) {
+  if (!indexAvailable) return false;
+  return db.prepare(
+    "DELETE FROM library_search_documents WHERE entity_kind = ? AND entity_id = ?",
+  ).run(String(entityKind || ""), Number(entityId)).changes > 0;
+}
+
 export function rebuildLibrarySearchIndex() {
   if (!indexAvailable) return false;
   db.transaction(() => {

@@ -10,10 +10,12 @@ import {
   invalidateCanonicalLibraryCache,
 } from "./libraryQueryService.js";
 import { scheduleLibraryScan } from "./libraryScanWorker.js";
+import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 import {
   clearCanonicalLidarrAlbum,
   clearCanonicalLidarrArtist,
   markLibraryMediaFilesUnavailable,
+  removeLibraryTrackIfNoAvailableMedia,
 } from "./libraryMediaStore.js";
 const normalizeTypeName = (value) =>
   String(value || "")
@@ -60,6 +62,33 @@ const ALBUM_OWNED_BY_DIFFERENT_ARTIST_ERROR =
 function scheduleCanonicalLibraryReconciliation() {
   invalidateCanonicalLibraryCache();
   return scheduleLibraryScan({ includeLidarr: true });
+}
+
+function removeLibraryDownloadJobs(track) {
+  const normalize = (value) => String(value || "").trim().toLocaleLowerCase();
+  const trackMbid = normalize(track?.mbid);
+  const artistName = normalize(track?.artistName);
+  const trackName = normalize(track?.title);
+  const jobs = downloadTracker.getAll();
+  const removedJobIds = new Set();
+  for (const job of jobs) {
+    if (job.playlistType !== "library") continue;
+    const jobTrackMbid = normalize(job.trackMbid);
+    const matchesName = normalize(job.artistName) === artistName
+      && normalize(job.trackName) === trackName;
+    const matchesTrack = trackMbid && jobTrackMbid
+      ? jobTrackMbid === trackMbid
+      : matchesName;
+    if (matchesTrack) {
+      removedJobIds.add(job.id);
+      downloadTracker.removeJob(job.id);
+    }
+  }
+  for (const job of jobs) {
+    if (job.upgradeForJobId && removedJobIds.has(job.upgradeForJobId)) {
+      downloadTracker.removeJob(job.id);
+    }
+  }
 }
 
 function buildTrackFileIndex(trackFiles) {
@@ -1590,6 +1619,7 @@ export class LibraryManager {
       const lidarrFiles = track.files.filter((file) => file.source === "lidarr" && file.available);
       if (aurralFiles.length > 0 && lidarrFiles.length === 0) {
         const paths = [...new Set(aurralFiles.map((file) => file.path))];
+        removeLibraryDownloadJobs(track);
         try {
           const deletionResults = await Promise.allSettled(paths.map(async (filePath) => {
             try {
@@ -1605,7 +1635,6 @@ export class LibraryManager {
             .map((result) => result.value);
           if (reconciledPaths.length > 0) {
             markLibraryMediaFilesUnavailable("aurral", reconciledPaths);
-            invalidateCanonicalLibraryCache();
           }
           const failure = deletionResults.find((result) => result.status === "rejected");
           if (failure) {
@@ -1613,6 +1642,7 @@ export class LibraryManager {
             logger.error("library", `[LibraryManager] Failed to delete Aurral track file: ${error.message}`);
             return { success: false, code: "failed", error: error.message };
           }
+          removeLibraryTrackIfNoAvailableMedia(id);
           return { success: true };
         } catch (error) {
           logger.error("library", `[LibraryManager] Failed to delete Aurral track file: ${error.message}`);

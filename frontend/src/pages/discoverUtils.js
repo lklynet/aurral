@@ -31,11 +31,11 @@ const DISCOVER_RECENT_RELEASES_KEY = "discoverRecentReleases";
 
 export const DEFAULT_DISCOVER_SECTIONS = [
   { id: "recentlyAdded", label: "Recently Added", enabled: true },
-  { id: "playlists", label: "Playlists for you", enabled: true },
+  { id: "playlists", label: "Playlists", enabled: true },
   { id: "recommendedShows", label: "Shows Near You", enabled: true },
   { id: "recentReleases", label: "Recent Releases", enabled: true },
   { id: "news", label: "Artist News", enabled: true },
-  { id: "recommended", label: "Recommended for You", enabled: true },
+  { id: "recommended", label: "Recommended", enabled: true },
   { id: "globalTop", label: "Global Trending", enabled: true },
   { id: "genreSections", label: "Because You Like", enabled: true },
 ];

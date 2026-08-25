@@ -2,7 +2,7 @@ import { useId } from "react";
 import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.js";
 
-export function DeleteTrackModal({ show, title, onCancel, onConfirm, deleting }) {
+export function DeleteTrackModal({ show, title, hasFile = true, onCancel, onConfirm, deleting }) {
   const titleId = useId();
   const { dialogRef } = useModalDialog({
     open: show,
@@ -22,11 +22,14 @@ export function DeleteTrackModal({ show, title, onCancel, onConfirm, deleting })
         tabIndex={-1}
       >
         <h3 id={titleId} className="artist-modal__title">
-          Delete Track File
+          {hasFile ? "Delete track file" : "Remove track from library"}
         </h3>
         <p className="artist-modal__copy">
-          Delete <strong>{title || "this track"}</strong> from the library? This permanently
-          removes the audio file from disk.
+          {hasFile
+            ? <>Delete <strong>{title || "this track"}</strong> from the library? This permanently
+              removes the audio file from disk.</>
+            : <>Remove <strong>{title || "this track"}</strong> from the library? This clears the
+              unavailable track record and stops it from being queued again.</>}
         </p>
         <div className="artist-modal__actions">
           <button onClick={onCancel} disabled={deleting} className="btn btn-secondary">
@@ -36,10 +39,10 @@ export function DeleteTrackModal({ show, title, onCancel, onConfirm, deleting })
             {deleting ? (
               <>
                 <DotLoader size="sm" label={null} />
-                Deleting...
+                {hasFile ? "Deleting..." : "Removing..."}
               </>
             ) : (
-              "Delete Track"
+              hasFile ? "Delete track" : "Remove track"
             )}
           </button>
         </div>

@@ -252,7 +252,6 @@ function Onboarding() {
                   <OnboardingStepHeader
                     title="Welcome to Aurral"
                     titleClassName="onboarding-title--hero"
-                    copy="Create your admin account. Connect Lidarr next, then finish the rest in Settings."
                   />
                   <div className="onboarding-fields">
                     <div className="onboarding-field">
@@ -318,7 +317,6 @@ function Onboarding() {
                         </p>
                       ) : null}
                     </div>
-                    <OnboardingHint>Password must be at least 8 characters long.</OnboardingHint>
                     <div className="onboarding-toggle-row">
                       <span>Auto-login on local network</span>
                       <PillToggle
@@ -339,7 +337,6 @@ function Onboarding() {
                 <OnboardingStep>
                   <OnboardingStepHeader
                     title="Connect Lidarr"
-                    copy="Aurral is a Lidarr companion. Connect Lidarr to manage your library."
                   />
                   <div className="onboarding-fields">
                     <div className="onboarding-field">
@@ -381,10 +378,7 @@ function Onboarding() {
                       />
                     </div>
                     <OnboardingHint>
-                      Find your API key in Lidarr under Settings → General → Security. The
-                      Downloads Folder and optional playback clients are configured in Settings
-                      after setup. Aurral can play indexed media directly when the canonical file
-                      is readable.
+                      Find your API key in Lidarr under Settings → General → Security.
                     </OnboardingHint>
                     {lidarrTestSuccess ? (
                       <p className="onboarding-status onboarding-status--success" role="status">

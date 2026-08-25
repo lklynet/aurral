@@ -45,11 +45,7 @@ const LastfmBanner = () => {
   return (
     <div className="app-banner">
       <div className="app-banner__content">
-        <p className="app-banner__title">Personalize your discovery</p>
-        <p className="app-banner__text">
-          Connect Last.fm for personalized recommendations, related artists, full tag search, and
-          flows.
-        </p>
+        <p className="app-banner__title">Last.fm</p>
       </div>
       <div className="app-banner__actions">
         <button

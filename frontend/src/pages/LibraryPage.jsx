@@ -116,6 +116,9 @@ const firstAvailableFile = (track, albumId = null) =>
   || (albumId == null ? (track?.files || []).find((file) => file.available) : null)
   || null;
 
+const hasAurralTrackFile = (track) =>
+  (track?.files || []).some((file) => file.source === "aurral");
+
 const EMPTY_LIBRARY = { artists: [], albums: [], tracks: [], genres: [] };
 
 const normalizeLibraryPages = (pages) => pages.reduce(
@@ -941,12 +944,15 @@ function LibraryPage() {
       queryKey: queryKeys.libraryAlbumTracksPrefix,
       refetchType: "none",
     });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
   }, [setLibrary]);
 
   const handleLibraryRemovalConfirm = useCallback(async () => {
     if (!libraryRemoval?.entity || deletingLibraryEntity) return;
     const removal = libraryRemoval;
     const entity = removal.entity;
+    const trackHasFile = removal.kind === "track" && Boolean(firstAvailableFile(entity));
     setDeletingLibraryEntity(true);
     try {
       if (!isPreviewLibrary) {
@@ -965,7 +971,9 @@ function LibraryPage() {
           ? "Artist removed from library"
           : removal.kind === "album"
             ? "Album removed from library"
-            : "Track deleted",
+            : trackHasFile
+              ? "Track deleted"
+              : "Track removed from library",
       );
       if (
         (removal.kind === "artist" && String(routeArtistId) === String(entity.id)) ||
@@ -1742,11 +1750,11 @@ function LibraryPage() {
                   },
                 ]
               : []),
-            ...(file && canDeleteTrack
+            ...(canDeleteTrack && (file || hasAurralTrackFile(track))
               ? [
                   {
                     id: "delete",
-                    label: "Delete track file",
+                    label: file ? "Delete track file" : "Remove track from library",
                     icon: Trash2,
                     danger: true,
                     separatorBefore: true,
@@ -2568,6 +2576,7 @@ function LibraryPage() {
       <DeleteTrackModal
         show={libraryRemoval?.kind === "track"}
         title={libraryRemoval?.entity?.title || libraryRemoval?.entity?.trackName}
+        hasFile={Boolean(firstAvailableFile(libraryRemoval?.entity))}
         onCancel={() => setLibraryRemoval(null)}
         onConfirm={handleLibraryRemovalConfirm}
         deleting={deletingLibraryEntity}

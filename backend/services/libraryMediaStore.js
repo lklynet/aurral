@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { db, dbHelpers } from "../config/db-sqlite.js";
 import { invalidateCanonicalLibraryCache } from "./libraryQueryService.js";
 import {
+  removeLibrarySearchDocument,
   syncLibrarySearchAlbum,
   syncLibrarySearchArtist,
   syncLibrarySearchTrack,
@@ -400,6 +401,56 @@ export function linkLibraryAlbumTrack({
     return result.changes > 0;
   })();
   if (changed) invalidateLibraryCache();
+}
+
+export function removeLibraryTrackIfNoAvailableMedia(trackId) {
+  const normalizedTrackId = Number(trackId);
+  if (!Number.isSafeInteger(normalizedTrackId)) return false;
+  const removed = db.transaction(() => {
+    const mediaFiles = db.prepare(
+      "SELECT album_id, available FROM library_media_files WHERE track_id = ?",
+    ).all(normalizedTrackId);
+    if (!mediaFiles.length || mediaFiles.some((file) => file.available === 1)) return false;
+
+    const albumIds = new Set([
+      ...db.prepare(
+        "SELECT album_id FROM library_album_tracks WHERE track_id = ?",
+      ).all(normalizedTrackId).map((row) => row.album_id),
+      ...mediaFiles.map((file) => file.album_id).filter((albumId) => albumId != null),
+    ]);
+    const artistIds = new Set(
+      db.prepare(
+        `SELECT artist_id
+         FROM library_albums
+         WHERE id IN (${[...albumIds].map(() => "?").join(",") || "NULL"})`,
+      ).all(...albumIds).map((row) => row.artist_id),
+    );
+
+    removeLibrarySearchDocument("track", normalizedTrackId);
+    db.prepare("DELETE FROM library_media_files WHERE track_id = ?").run(normalizedTrackId);
+    db.prepare("DELETE FROM library_album_tracks WHERE track_id = ?").run(normalizedTrackId);
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(normalizedTrackId);
+
+    for (const albumId of albumIds) {
+      const result = db.prepare(
+        `DELETE FROM library_albums
+         WHERE id = ?
+           AND NOT EXISTS (SELECT 1 FROM library_album_tracks WHERE album_id = ?)`,
+      ).run(albumId, albumId);
+      if (result.changes > 0) removeLibrarySearchDocument("album", albumId);
+    }
+    for (const artistId of artistIds) {
+      const result = db.prepare(
+        `DELETE FROM library_artists
+         WHERE id = ?
+           AND NOT EXISTS (SELECT 1 FROM library_albums WHERE artist_id = ?)`,
+      ).run(artistId, artistId);
+      if (result.changes > 0) removeLibrarySearchDocument("artist", artistId);
+    }
+    return true;
+  })();
+  if (removed) invalidateLibraryCache();
+  return removed;
 }
 
 export function removeLibraryAlbumTracksWithoutMedia(albumId, source, { syncSearch = true } = {}) {
