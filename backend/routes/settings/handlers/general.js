@@ -293,7 +293,7 @@ export function registerGeneral(router) {
         integrations.news = nextNews;
       }
 
-      const INTEGRATION_KEYS = ["lidarr", "navidrome", "slskd", "prowlarr", "nzbget", "ytdlp", "lastfm", "ticketmaster", "news", "metadata", "general", "gotify", "webhookEvents"];
+      const INTEGRATION_KEYS = ["lidarr", "navidrome", "jellyfin", "slskd", "prowlarr", "nzbget", "ytdlp", "lastfm", "ticketmaster", "news", "metadata", "general", "gotify", "webhookEvents"];
       let mergedIntegrations =
         currentSettings.integrations || defaultData.settings.integrations || {};
       if (integrations) {
@@ -445,7 +445,7 @@ export function registerGeneral(router) {
           { priority: -10 },
         );
       }
-      if (integrations?.navidrome) {
+      if (integrations?.navidrome || integrations?.jellyfin) {
         const { playlistManager } = await import(
           "../../../services/weeklyFlow/weeklyFlowPlaylistManager.js"
         );

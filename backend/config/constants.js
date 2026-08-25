@@ -41,6 +41,11 @@ export const defaultData = {
         plexUsername: "",
         mainLibrarySectionId: "",
       },
+      jellyfin: {
+        url: "",
+        apiKey: "",
+        userId: "",
+      },
       lastfm: {
         apiKey: "",
         apiSecret: "",

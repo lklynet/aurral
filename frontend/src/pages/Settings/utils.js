@@ -91,6 +91,12 @@ export const normalizeSettings = (savedSettings) => {
         downloadsPath: "",
         ...(savedSettings.integrations?.plex || {}),
       },
+      jellyfin: {
+        url: "",
+        apiKey: "",
+        userId: "",
+        ...(savedSettings.integrations?.jellyfin || {}),
+      },
       lastfm: {
         apiKey: "",
         discoveryPeriod: "1month",

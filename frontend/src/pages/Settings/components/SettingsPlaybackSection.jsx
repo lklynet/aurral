@@ -60,6 +60,7 @@ export function SettingsPlaybackSection({
   const [plexConnecting, setPlexConnecting] = useState(false);
   const [testingPlex, setTestingPlex] = useState(false);
   const [testingNavidrome, setTestingNavidrome] = useState(false);
+  const [testingJellyfin, setTestingJellyfin] = useState(false);
   const [testStatus, setTestStatus] = useState(null);
   const [syncingPlex, setSyncingPlex] = useState(false);
   const [plexServers, setPlexServers] = useState([]);
@@ -79,8 +80,10 @@ export function SettingsPlaybackSection({
 
   const navidrome = settings.integrations?.navidrome || {};
   const plex = settings.integrations?.plex || {};
+  const jellyfin = settings.integrations?.jellyfin || {};
   const navidromeConfigured = Boolean(navidrome.url);
   const plexConfigured = Boolean(plex.token && plex.url);
+  const jellyfinConfigured = Boolean(jellyfin.url && jellyfin.apiKey && jellyfin.userId);
   const plexToken = plex.token;
   const pathMappings = Array.isArray(settings.pathMappings) ? settings.pathMappings : [];
   const plexLibraryMapping = pathMappings.find((entry) => entry?.source === "plex") || null;
@@ -118,6 +121,17 @@ export function SettingsPlaybackSection({
       integrations: {
         ...settings.integrations,
         plex: { ...plex, ...patch },
+      },
+    });
+  };
+
+  const updateJellyfin = (patch) => {
+    setTestStatus(null);
+    updateSettings({
+      ...settings,
+      integrations: {
+        ...settings.integrations,
+        jellyfin: { ...jellyfin, ...patch },
       },
     });
   };
@@ -318,6 +332,30 @@ export function SettingsPlaybackSection({
     }
   };
 
+  const handleTestJellyfin = async () => {
+    setTestStatus(null);
+    if (!jellyfin.url || !jellyfin.apiKey || !jellyfin.userId) {
+      setTestStatus({ tone: "error", message: "Enter the server URL, API key, and user ID first." });
+      showError("Enter the Jellyfin server URL, API key, and user ID first");
+      return;
+    }
+    setTestingJellyfin(true);
+    try {
+      if (handleSaveSettings) {
+        await handleSaveSettings();
+      }
+      await testPlaybackConnection("jellyfin", jellyfin);
+      setTestStatus({ tone: "success", message: "Connected." });
+      showSuccess("Jellyfin connection OK");
+    } catch (err) {
+      setTestStatus({ tone: "error", message: "Connection failed. Check the URL, API key, and user ID, then retry." });
+      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
+      showError(`Jellyfin connection failed: ${errorMsg}`);
+    } finally {
+      setTestingJellyfin(false);
+    }
+  };
+
   const handleLastfmLink = async () => {
     if (scrobbleStatus?.lastfm?.configured !== true) {
       setActiveModal("lastfm");
@@ -431,6 +469,7 @@ export function SettingsPlaybackSection({
   );
   const navidromeMeta = navidrome.username || navidrome.url || "Subsonic API";
   const plexMeta = selectedPlexServer?.name || (plex.token ? "Signed in" : "Flow playlists");
+  const jellyfinMeta = jellyfin.userId || jellyfin.url || "Jellyfin API";
 
   return (
     <>
@@ -452,6 +491,13 @@ export function SettingsPlaybackSection({
             status={getConfiguredStatus(plexConfigured)}
             meta={plexMeta}
             onClick={() => setActiveModal("plex")}
+          />
+          <IntegrationCard
+            title="Jellyfin"
+            subtitle="Jellyfin API"
+            status={getConfiguredStatus(jellyfinConfigured)}
+            meta={jellyfinMeta}
+            onClick={() => setActiveModal("jellyfin")}
           />
         </SettingsArrCardGrid>
       </SettingsArrFieldSet>
@@ -600,6 +646,40 @@ export function SettingsPlaybackSection({
               definition={playbackSettings?.navidrome}
               settings={navidrome}
               onChange={updateNavidrome}
+            />
+          </SettingsModalSection>
+        </SettingsIntegrationModal>
+      )}
+
+      {activeModal === "jellyfin" && (
+        <SettingsIntegrationModal
+          title="Jellyfin"
+          onClose={closeModal}
+          testStatus={testStatus}
+          footerActions={
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleTestJellyfin}
+              disabled={testingJellyfin || !jellyfin.url || !jellyfin.apiKey || !jellyfin.userId}
+            >
+              {testingJellyfin ? (
+                <DotLoader size="sm" label={null} />
+              ) : (
+                <RefreshCw className="artist-icon-sm" aria-hidden />
+              )}
+              {testingJellyfin ? "Testing…" : "Test connection"}
+            </button>
+          }
+        >
+          <SettingsModalIntro>
+            Connect Jellyfin to publish Aurral flow and shared playlists into its music library.
+          </SettingsModalIntro>
+          <SettingsModalSection title="Connection">
+            <SettingsAdapterFields
+              definition={playbackSettings?.jellyfin}
+              settings={jellyfin}
+              onChange={updateJellyfin}
             />
           </SettingsModalSection>
         </SettingsIntegrationModal>

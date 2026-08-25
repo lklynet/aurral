@@ -61,6 +61,11 @@ const defaultSettings = {
       machineIdentifier: "",
       downloadsPath: "",
     },
+    jellyfin: {
+      url: "",
+      apiKey: "",
+      userId: "",
+    },
     lastfm: {
       apiKey: "",
       apiSecret: "",

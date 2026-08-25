@@ -6,7 +6,7 @@
 
 ## Context
 
-`WeeklyFlowPlaylistManager` creates path-first playlist snapshots. A settings-driven registry sends each snapshot to every configured playback destination. Navidrome and Plex resolve snapshot tracks to their own song IDs and store playlist pointers. Both destinations publish the same Aurral playlists, but their configuration and identity rules are different.
+`WeeklyFlowPlaylistManager` creates path-first playlist snapshots. A settings-driven registry sends each snapshot to every configured playback destination. Navidrome, Jellyfin, and Plex resolve snapshot tracks to their own song IDs and store playlist pointers. Each destination publishes the same Aurral playlists, but their configuration and identity rules are different.
 
 ## Decision
 
@@ -40,7 +40,9 @@ The Navidrome adapter resolves snapshot paths or exact recording MBIDs to Subson
 
 The Plex adapter resolves snapshot paths to Plex rating keys. It keeps section IDs, user tokens, playlist pointers, owner-specific titles, library setup, and scans inside the adapter.
 
-The registry and playback contract remain unchanged. Navidrome's Subsonic API behavior stays inside its adapter, and Plex retains its existing behavior. The registry checks saved settings, runs every configured destination, and records one destination failure without blocking another destination.
+The Jellyfin adapter resolves exact library paths first and unique MusicBrainz recording IDs second. It keeps the Jellyfin user ID, playlist pointers, API requests, library reads, and scans inside the adapter.
+
+The registry and playback contract remain unchanged. Navidrome's Subsonic API behavior stays inside its adapter, Jellyfin's REST API behavior stays inside its adapter, and Plex retains its existing behavior. The registry checks saved settings, runs every configured destination, and records one destination failure without blocking another destination.
 
 ## Native Aurral playback
 

@@ -1,0 +1,24 @@
+---
+title: Jellyfin
+description: Connect Jellyfin to publish Aurral flow and shared playlists.
+---
+
+Jellyfin is an optional playback destination. Aurral publishes playlists into an existing Jellyfin music library through the Jellyfin API.
+
+## Setup
+
+1. Create a Jellyfin API key with access to the music library.
+2. Open **Settings > Playback > Jellyfin** in Aurral.
+3. Enter the Jellyfin server URL, API key, and the Jellyfin user ID that owns the playlists.
+4. Add a **Jellyfin** path mapping when Aurral and Jellyfin use different filesystem paths.
+5. Select **Test connection**.
+
+Aurral creates or updates playlists for enabled flows and shared playlists when settings are saved or a playlist changes. It removes playlists that Aurral previously created when the corresponding flow or shared playlist is deleted or disabled.
+
+## Matching and scans
+
+Aurral matches tracks by exact Jellyfin library path first. It uses a unique MusicBrainz recording ID only when the path does not match. It does not use title or artist guesses.
+
+Saving Jellyfin settings and the normal library scan request refresh the Jellyfin library. If Jellyfin is still indexing files, Aurral retries incomplete playlists during the next few minutes.
+
+The Jellyfin MVP does not start playback sessions, manage multiple Jellyfin users, or create a Jellyfin library. Keep the same music library available to both Aurral and Jellyfin, or configure the path mapping.

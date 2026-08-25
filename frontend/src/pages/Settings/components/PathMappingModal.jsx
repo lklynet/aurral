@@ -13,6 +13,7 @@ const PATH_MAPPING_SOURCE_OPTIONS = [
   { value: "nzbget", label: "NZBGet" },
   { value: "sabnzbd", label: "SABnzbd" },
   { value: "plex", label: "Plex" },
+  { value: "jellyfin", label: "Jellyfin" },
 ];
 
 const EMPTY_MAPPING = { source: "all", remote: "", local: "" };

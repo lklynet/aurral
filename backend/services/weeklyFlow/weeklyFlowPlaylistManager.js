@@ -25,6 +25,7 @@ import { PlaybackDestinationRegistry } from "../playback/playbackDestinationRegi
 import { collectPlaybackPlaylistTracks } from "../playback/playbackPlaylistTracks.js";
 import { NavidromePlaybackDestination } from "../playback/navidromePlaybackDestination.js";
 import { PlexPlaybackDestination } from "../playback/plexPlaybackDestination.js";
+import { JellyfinPlaybackDestination } from "../playback/jellyfinPlaybackDestination.js";
 
 const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg", ".png"];
 const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
@@ -43,9 +44,13 @@ export class WeeklyFlowPlaylistManager {
     this.plexDestination = assertPlaybackDestination(
       new PlexPlaybackDestination(this.weeklyFlowRoot),
     );
+    this.jellyfinDestination = assertPlaybackDestination(
+      new JellyfinPlaybackDestination(this.weeklyFlowRoot),
+    );
     this.destinationRegistry = new PlaybackDestinationRegistry([
       this.navidromeDestination,
       this.plexDestination,
+      this.jellyfinDestination,
     ]);
     this._ensureInFlight = null;
     this._refreshInFlight = new Map();
