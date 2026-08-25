@@ -157,7 +157,7 @@ function SearchResultsPage() {
   const isAlbumSearch = normalizedType === "album";
   const isUnifiedSearch = normalizedType === "unified" && !!trimmedQuery;
   const pageTitle = useMemo(() => {
-    if (normalizedType === "recommended") return "Recommended for You";
+    if (normalizedType === "recommended") return "Recommended";
     if (normalizedType === "trending") return "Global Trending";
     if (isTagSearch && trimmedQuery) {
       return trimmedQuery.startsWith("#") ? trimmedQuery : `#${trimmedQuery.replace(/^#/, "")}`;
@@ -1265,7 +1265,7 @@ function SearchResultsPage() {
     : searchTotalCount || results.length;
   const pageSubtitle =
     normalizedType === "recommended"
-      ? `${discoveryCount} recommendations we think you'll like`
+      ? `${discoveryCount} recommendations`
       : normalizedType === "trending"
         ? "Trending right now"
         : isUnifiedSearch && trimmedQuery
@@ -1463,10 +1463,6 @@ function SearchResultsPage() {
 
         {isAlbumSearch && trimmedQuery && (
           <>
-            <p className="search-page__subtitle">
-              Search results include compilations, soundtracks, and releases from Various Artists.
-            </p>
-
             <div className="artist-heading-row">
               <div className="artist-min-0">
                 <div className="artist-tabs">

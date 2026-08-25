@@ -52,9 +52,6 @@ function ShowsPage() {
   const showGroups = getShowGroups(showsData);
   const shows = showGroups[showFilter] || showGroups.all;
   const hasAnyShows = Object.values(showGroups).some((group) => group.length > 0);
-  const pageSubtitle = showsLoading
-    ? "Finding Ticketmaster events matched to your library and recommendations."
-    : `Upcoming concerts around ${locationLabel}.`;
   const emptyMessage =
     showFilter === "library"
       ? `We could not find local Ticketmaster shows for artists from your library around ${locationLabel}.`
@@ -76,7 +73,6 @@ function ShowsPage() {
         <div className="shows-page__title-row">
           <div className="shows-page__title-wrap">
             <h1 className="page-title">Shows Near You</h1>
-            <p className="page-subtitle">{pageSubtitle}</p>
           </div>
           <NearbyLocationControl
             locationMode={locationMode}

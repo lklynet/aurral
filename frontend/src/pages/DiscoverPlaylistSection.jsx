@@ -153,7 +153,7 @@ export function DiscoverPlaylistSection({
 
   return (
     <DiscoverRail
-      title="Playlists for you"
+      title="Playlists"
       onViewAll={() => navigate("/discover/playlists")}
       afterTitle={
         <DiscoveryStatusPill

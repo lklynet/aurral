@@ -6,8 +6,6 @@ function getFlowEmptyCopy(libraryFilter, canCreate) {
   if (libraryFilter === "playlists") {
     return {
       title: "No playlists yet",
-      message:
-        "Create a playlist to curate tracks, or import one from Aurral Convert or a JSON export.",
       showPlaylistAction: true,
       showFlowAction: false,
       showImportAction: true,
@@ -17,8 +15,6 @@ function getFlowEmptyCopy(libraryFilter, canCreate) {
     if (!canCreate) {
       return {
         title: "Flows need listening history",
-        message:
-          "Connect Last.fm in Settings to create flows that generate tracks from your taste.",
         showPlaylistAction: false,
         showFlowAction: false,
         showImportAction: false,
@@ -27,17 +23,13 @@ function getFlowEmptyCopy(libraryFilter, canCreate) {
     }
     return {
       title: "No flows yet",
-      message:
-        "Flows are auto-updating playlists built from recipes like Release Radar or your top artists.",
       showPlaylistAction: false,
       showFlowAction: true,
       showImportAction: false,
     };
   }
   return {
-    title: "Start your playlist library",
-    message:
-      "Import a playlist, build your own track list, or create a flow that updates automatically from your taste.",
+    title: "No playlists or flows yet",
     showPlaylistAction: true,
     showFlowAction: canCreate,
     showImportAction: true,
@@ -65,7 +57,6 @@ export function FlowEmptyState({
         <ListMusic className="artist-icon-lg" />
       </div>
       <h2 className="flow-page__collection-empty__title">{copy.title}</h2>
-      <p className="flow-page__collection-empty__message">{copy.message}</p>
       {!isCompact ? (
         <div className="flow-page__collection-empty__actions">
           {copy.showPlaylistAction ? (

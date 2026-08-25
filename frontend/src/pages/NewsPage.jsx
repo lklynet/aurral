@@ -47,9 +47,6 @@ export default function NewsPage() {
       <header className="discover-news-page__header">
         <div>
           <h1 className="page-title">Artist News</h1>
-          <p className="discover-news-page__subtitle">
-            Top stories from your enabled RSS feeds
-          </p>
         </div>
         {newsConfigured ? (
           <button
@@ -76,7 +73,6 @@ export default function NewsPage() {
         <section className="discover-news-page__status">
           <DotLoader size="2xl" label={null} />
           <h2>Loading artist news</h2>
-          <p>Checking recent stories for your library artists.</p>
         </section>
       ) : articles.length > 0 ? (
         <>
