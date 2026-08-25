@@ -154,11 +154,14 @@ const SETTINGS_SEARCH_METADATA = {
     services: {
       Navidrome: "Subsonic music server",
       Plex: "Plexamp music server",
+      Jellyfin: "Jellyfin music server",
       Scrobbling: "Last.fm ListenBrainz Koito completed plays",
     },
     fields: {
       "Server URL": "playback server address host connection",
       "Subsonic / Navidrome": "playback server connection",
+      "API key": "Jellyfin credentials authentication",
+      "User ID": "Jellyfin playlist owner",
       Username: "Navidrome Subsonic credentials",
       Password: "Navidrome Subsonic credentials",
       Account: "Plex link sign in authentication",
