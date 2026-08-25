@@ -2,9 +2,11 @@ import path from "node:path";
 import { db } from "../config/db-sqlite.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
 import { scanMusicRoot } from "./libraryFileScanner.js";
+import { upsertLibraryArtist } from "./libraryMediaStore.js";
 import { indexLidarrLibrary } from "./libraryLidarrIndexer.js";
 import { rebuildLibrarySearchIndex } from "./librarySearchIndex.js";
 import { rebuildCanonicalGenreStats } from "./libraryQueryService.js";
+import { musicbrainzGetArtistNameByMbid } from "./apiClients/index.js";
 
 function getAurralJobMetadataByPath() {
   const rows = db
@@ -34,6 +36,28 @@ function getAurralJobMetadataByPath() {
   return byPath;
 }
 
+async function canonicalizeAurralArtistNames(jobMetadataByPath) {
+  const candidates = new Map();
+  for (const metadata of jobMetadataByPath.values()) {
+    const artistMbid = String(metadata?.artistMbid || "").trim();
+    const artistName = String(metadata?.artistName || "").trim();
+    if (!artistMbid || !/[;,×!]/.test(artistName) || candidates.has(artistMbid)) continue;
+    candidates.set(artistMbid, artistName);
+  }
+
+  for (const artistMbid of candidates.keys()) {
+    const existing = db.prepare("SELECT id FROM library_artists WHERE mbid = ?").get(artistMbid);
+    if (!existing) continue;
+    const artistName = await musicbrainzGetArtistNameByMbid(artistMbid).catch(() => null);
+    if (!artistName) continue;
+    upsertLibraryArtist({
+      identityKey: `mbid:${artistMbid}`,
+      mbid: artistMbid,
+      name: artistName,
+    });
+  }
+}
+
 export async function scanConfiguredLibrary({
   musicRoot = resolvePlaylistRoot(),
   lidarrClient,
@@ -50,6 +74,7 @@ export async function scanConfiguredLibrary({
       metadataEnricher: (_metadata, filePath) => jobMetadataByPath.get(path.resolve(filePath)),
       syncSearch: false,
     });
+    await canonicalizeAurralArtistNames(jobMetadataByPath);
     if (includeLidarr) {
       try {
         lidarr = await indexLidarrLibrary({ client: lidarrClient, syncSearch: false });

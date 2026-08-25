@@ -13,6 +13,7 @@ const [
   { dbOps },
   { flowPlaylistConfig },
   { downloadTracker },
+  { playlistManager },
   { getPlaylistMbidEnrichmentQueue },
   {
     enrichSharedPlaylistMbids,
@@ -24,6 +25,7 @@ const [
   "backend/db/helpers/index.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+  "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
   "backend/services/honkerDb.js",
   "backend/services/playlistMbidEnrichmentService.js",
 );
@@ -93,6 +95,34 @@ test("enrichSharedPlaylistMbids fills missing playlist and job MBIDs", async () 
   assert.equal(storedJob.trackMbid, "track-new-noise");
   assert.equal(storedJob.trackNumber, 1);
   assert.equal(storedJob.albumTrackCount, 12);
+});
+
+test("enrichSharedPlaylistMbids rescans the library after updating a downloaded job", async (t) => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({
+    name: "Downloaded",
+    tracks: [{ artistName: "Refused", trackName: "New Noise" }],
+  });
+  const jobId = downloadTracker.addJob(
+    { artistName: "Refused", trackName: "New Noise" },
+    playlist.id,
+  );
+  downloadTracker.setDone(jobId, "/library/Refused/New Noise.flac");
+  const scheduleScanLibrary = t.mock.method(
+    playlistManager,
+    "scheduleScanLibrary",
+    () => 1,
+  );
+
+  await enrichSharedPlaylistMbids(playlist.id, {
+    resolveTrackContext: (track) => ({
+      ...track,
+      artistMbid: "artist-refused",
+      albumMbid: "album-shape",
+      trackMbid: "track-new-noise",
+    }),
+  });
+
+  assert.equal(scheduleScanLibrary.mock.callCount(), 1);
 });
 
 test("enrichSharedPlaylistMbids returns missing when playlistId is empty", async () => {

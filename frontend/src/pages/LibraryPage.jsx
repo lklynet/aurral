@@ -44,6 +44,7 @@ import {
   deleteArtistFromLibrary,
   deleteTrackFromLibrary,
   fetchCanonicalLibraryPage,
+  getActiveLibraryRefresh,
   getCanonicalLibraryPage,
   getLibraryFavorites,
   getLibraryRefreshStatus,
@@ -457,6 +458,60 @@ function LibraryPage() {
     refreshAttemptRef.current += 1;
   }, []);
 
+  const completeLibraryRefresh = useCallback(() => {
+    clearCanonicalLibraryPageCache();
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.libraryAlbumTracksPrefix,
+      refetchType: "none",
+    });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
+  }, []);
+
+  const pollLibraryRefresh = useCallback(async (jobId, attempt, announceSuccess = false) => {
+    const deadline = Date.now() + LIBRARY_REFRESH_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const status = await getLibraryRefreshStatus(jobId);
+      if (refreshAttemptRef.current !== attempt) return;
+      if (status.status === "completed") {
+        completeLibraryRefresh();
+        if (announceSuccess) showSuccess("Library refreshed");
+        return;
+      }
+      if (status.status === "failed") {
+        throw new Error(status.error || "Library refresh failed");
+      }
+      await wait(750);
+    }
+    throw new Error("Library refresh timed out");
+  }, [completeLibraryRefresh, showSuccess]);
+
+  useEffect(() => {
+    let mounted = true;
+    const restoreLibraryRefresh = async () => {
+      try {
+        const active = await getActiveLibraryRefresh();
+        if (!mounted || !active?.jobId || !["queued", "running"].includes(active.status?.status)) return;
+        const attempt = refreshAttemptRef.current + 1;
+        refreshAttemptRef.current = attempt;
+        setRefreshing(true);
+        try {
+          await pollLibraryRefresh(active.jobId, attempt);
+        } catch (requestError) {
+          if (refreshAttemptRef.current === attempt) {
+            showError(requestError.response?.data?.message || requestError.message || "Library refresh failed");
+          }
+        } finally {
+          if (refreshAttemptRef.current === attempt) setRefreshing(false);
+        }
+      } catch {}
+    };
+    void restoreLibraryRefresh();
+    return () => {
+      mounted = false;
+    };
+  }, [pollLibraryRefresh, showError]);
+
   const refreshLibrary = useCallback(async () => {
     if (refreshing) return;
     const attempt = refreshAttemptRef.current + 1;
@@ -467,28 +522,7 @@ function LibraryPage() {
       const queued = await requestLibraryRefresh();
       const jobId = queued?.jobId;
       if (!jobId) throw new Error("Library refresh did not start");
-
-      const deadline = Date.now() + LIBRARY_REFRESH_TIMEOUT_MS;
-      while (Date.now() < deadline) {
-        const status = await getLibraryRefreshStatus(jobId);
-        if (refreshAttemptRef.current !== attempt) return;
-        if (status.status === "completed") {
-          clearCanonicalLibraryPageCache();
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.libraryAlbumTracksPrefix,
-            refetchType: "none",
-          });
-          void queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
-          void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
-          showSuccess("Library refreshed");
-          return;
-        }
-        if (status.status === "failed") {
-          throw new Error(status.error || "Library refresh failed");
-        }
-        await wait(750);
-      }
-      throw new Error("Library refresh timed out");
+      await pollLibraryRefresh(jobId, attempt, true);
     } catch (requestError) {
       if (refreshAttemptRef.current === attempt) {
         showError(requestError.response?.data?.message || requestError.message || "Library refresh failed");
@@ -496,7 +530,7 @@ function LibraryPage() {
     } finally {
       if (refreshAttemptRef.current === attempt) setRefreshing(false);
     }
-  }, [refreshing, showError, showSuccess]);
+  }, [pollLibraryRefresh, refreshing, showError]);
 
   const section = LIBRARY_VIEW_IDS.has(routeSection) ? routeSection : DEFAULT_LIBRARY_VIEW;
   const isDetail = Boolean(routeAlbumId || routeArtistId);

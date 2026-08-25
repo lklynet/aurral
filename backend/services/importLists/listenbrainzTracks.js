@@ -20,7 +20,9 @@ export function parseListenBrainzPlaylist(payload) {
 
   for (const track of tracks) {
     const extension = getExtension(track);
-    const artistName = String(track?.creator || "").trim();
+    const creator = String(track?.creator || "").trim();
+    const artistMbid = getIdentifier(extension.artist_identifiers, ARTIST_URI_PREFIX);
+    const artistName = artistMbid ? creator.split(";", 1)[0].trim() : creator;
     const trackName = String(track?.title || "").trim();
     if (!artistName || !trackName) {
       stats.incomplete += 1;
@@ -31,7 +33,7 @@ export function parseListenBrainzPlaylist(payload) {
       trackName,
       albumName: String(track?.album || "").trim() || null,
       trackMbid: getIdentifier(track?.identifier, TRACK_URI_PREFIX),
-      artistMbid: getIdentifier(extension.artist_identifiers, ARTIST_URI_PREFIX),
+      artistMbid,
       albumMbid: getIdentifier(extension.release_identifier, RELEASE_URI_PREFIX),
       durationMs: Number.isFinite(Number(track?.duration)) ? Number(track.duration) : null,
     });
