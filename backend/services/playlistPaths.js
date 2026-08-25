@@ -9,7 +9,6 @@ import { commitImportToPlaylistLibrary } from "./playlistDownloadUtils.js";
 
 export const PLAYLIST_LIBRARY_DIR = "aurral-weekly-flow";
 export const AURRAL_FLOWS_DIR = "_flows";
-export const LEGACY_AURRAL_FLOWS_DIR = ".flows";
 const LEGACY_LIBRARY_DIR = "aurral-weekly-flow";
 const PREVIOUS_V2_LIBRARY_DIR = "aurral-playlists";
 const LEGACY_DOCKER_PLAYLIST_ROOT = "/app/downloads";
@@ -54,15 +53,6 @@ export function remapLegacyPath(finalPath, playlistRoot = resolvePlaylistRoot())
     resolved = path.resolve(
       root,
       path.relative(root, resolved).replaceAll(LEGACY_LIBRARY_DIR, PLAYLIST_LIBRARY_DIR),
-    );
-  }
-  const relative = path.relative(root, resolved);
-  const legacyFlowPrefix = `${LEGACY_AURRAL_FLOWS_DIR}${path.sep}`;
-  if (relative === LEGACY_AURRAL_FLOWS_DIR || relative.startsWith(legacyFlowPrefix)) {
-    return path.resolve(
-      root,
-      AURRAL_FLOWS_DIR,
-      relative.slice(legacyFlowPrefix.length),
     );
   }
   return resolved;

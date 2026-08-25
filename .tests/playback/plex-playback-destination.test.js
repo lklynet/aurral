@@ -322,7 +322,6 @@ test("configures Plex with the canonical root and explicit flow location", async
           key: "7",
           title: "Aurral",
           Location: [
-            { path: `${root}/.flows` },
             { path: root },
           ],
         }];
@@ -336,7 +335,7 @@ test("configures Plex with the canonical root and explicit flow location", async
   assert.equal(calls.length, 1);
   assert.equal(
     calls[0].requestPath,
-    `/library/sections?name=Aurral&type=artist&agent=tv.plex.agents.music&scanner=Plex+Music&language=en-US&location=${encodeURIComponent(root)}&location=${encodeURIComponent(`${root}/_flows`)}&location=${encodeURIComponent(`${root}/.flows`)}`,
+    `/library/sections?name=Aurral&type=artist&agent=tv.plex.agents.music&scanner=Plex+Music&language=en-US&location=${encodeURIComponent(root)}&location=${encodeURIComponent(`${root}/_flows`)}`,
   );
   assert.equal(calls[0].options.method, "POST");
 });
