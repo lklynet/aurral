@@ -1,3 +1,4 @@
+import fsp from "fs/promises";
 import path from "path";
 import { UUID_REGEX } from "../../lib/uuid.js";
 import { dbOps, userOps } from "../db/helpers/index.js";
@@ -12,6 +13,7 @@ import { scheduleLibraryScan } from "./libraryScanWorker.js";
 import {
   clearCanonicalLidarrAlbum,
   clearCanonicalLidarrArtist,
+  markLibraryMediaFilesUnavailable,
 } from "./libraryMediaStore.js";
 const normalizeTypeName = (value) =>
   String(value || "")
@@ -1576,26 +1578,54 @@ export class LibraryManager {
   }
 
   async deleteTrack(id) {
-    const lidarr = await getLidarrClient();
-    if (!lidarr || !lidarr.isConfigured()) {
-      return { success: false, code: "lidarr_unavailable", error: "Lidarr is not configured" };
-    }
     try {
       const library = getCanonicalTrack({
         trackId: id,
-        source: "lidarr",
         availableOnly: false,
       });
       const track = library.tracks.find((entry) => String(entry.id) === String(id));
       if (!track) return { success: false, code: "not_found", error: "Track not found" };
 
-      const metadata = track.metadata || {};
+      const aurralFiles = track.files.filter((file) => file.source === "aurral" && file.path);
+      const lidarrFiles = track.files.filter((file) => file.source === "lidarr" && file.available);
+      if (aurralFiles.length > 0 && lidarrFiles.length === 0) {
+        const paths = [...new Set(aurralFiles.map((file) => file.path))];
+        try {
+          await Promise.all(paths.map(async (filePath) => {
+            try {
+              await fsp.unlink(filePath);
+            } catch (error) {
+              if (error?.code !== "ENOENT") throw error;
+            }
+          }));
+          markLibraryMediaFilesUnavailable("aurral", paths);
+          invalidateCanonicalLibraryCache();
+          return { success: true };
+        } catch (error) {
+          logger.error("library", `[LibraryManager] Failed to delete Aurral track file: ${error.message}`);
+          return { success: false, code: "failed", error: error.message };
+        }
+      }
+
+      const lidarr = await getLidarrClient();
+      if (!lidarr || !lidarr.isConfigured()) {
+        return { success: false, code: "lidarr_unavailable", error: "Lidarr is not configured" };
+      }
+      const lidarrLibrary = getCanonicalTrack({
+        trackId: id,
+        source: "lidarr",
+        availableOnly: false,
+      });
+      const lidarrTrack = lidarrLibrary.tracks.find((entry) => String(entry.id) === String(id));
+      if (!lidarrTrack) return { success: false, code: "not_found", error: "Track not found" };
+
+      const metadata = lidarrTrack.metadata || {};
       let trackFileId = Number(
         metadata.trackFileId || metadata.trackFile?.id || metadata.file?.id,
       );
       if (!Number.isFinite(trackFileId)) {
-        const trackAlbums = Array.isArray(track.albums) ? track.albums : [];
-        const album = library.albums.find((entry) =>
+        const trackAlbums = Array.isArray(lidarrTrack.albums) ? lidarrTrack.albums : [];
+        const album = lidarrLibrary.albums.find((entry) =>
           trackAlbums.some((relation) => String(relation.albumId) === String(entry.id)),
         );
         const lidarrAlbumId = Number(album?.metadata?.id);
