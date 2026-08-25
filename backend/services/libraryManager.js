@@ -1591,15 +1591,28 @@ export class LibraryManager {
       if (aurralFiles.length > 0 && lidarrFiles.length === 0) {
         const paths = [...new Set(aurralFiles.map((file) => file.path))];
         try {
-          await Promise.all(paths.map(async (filePath) => {
+          const deletionResults = await Promise.allSettled(paths.map(async (filePath) => {
             try {
               await fsp.unlink(filePath);
+              return filePath;
             } catch (error) {
-              if (error?.code !== "ENOENT") throw error;
+              if (error?.code === "ENOENT") return filePath;
+              throw error;
             }
           }));
-          markLibraryMediaFilesUnavailable("aurral", paths);
-          invalidateCanonicalLibraryCache();
+          const reconciledPaths = deletionResults
+            .filter((result) => result.status === "fulfilled")
+            .map((result) => result.value);
+          if (reconciledPaths.length > 0) {
+            markLibraryMediaFilesUnavailable("aurral", reconciledPaths);
+            invalidateCanonicalLibraryCache();
+          }
+          const failure = deletionResults.find((result) => result.status === "rejected");
+          if (failure) {
+            const error = failure.reason;
+            logger.error("library", `[LibraryManager] Failed to delete Aurral track file: ${error.message}`);
+            return { success: false, code: "failed", error: error.message };
+          }
           return { success: true };
         } catch (error) {
           logger.error("library", `[LibraryManager] Failed to delete Aurral track file: ${error.message}`);
