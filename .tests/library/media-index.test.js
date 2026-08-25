@@ -886,6 +886,72 @@ test("indexLidarrLibrary uses bulk track reads when Lidarr provides them", async
   }
 });
 
+test("indexLidarrLibrary refreshes track files when an ID batch is stale", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-stale-track-file-"));
+  let filePath;
+  try {
+    filePath = await createAudioFile(root, "Stale Artist/Stale Album/01 Stale Track.flac");
+    const calls = [];
+    const client = {
+      isConfigured: () => true,
+      request: async () => [{
+        id: 717,
+        artistName: "Stale Artist",
+        foreignArtistId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      }],
+      getAllAlbums: async () => [{
+        id: 818,
+        artistId: 717,
+        title: "Stale Album",
+        foreignAlbumId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        path: path.join(root, "Stale Artist", "Stale Album"),
+      }],
+      getAllTracks: async ({ artistIds }) => {
+        assert.deepEqual(artistIds, [717]);
+        calls.push("tracks");
+        return [{
+          id: 819,
+          albumId: 818,
+          title: "Stale Track",
+          trackNumber: 1,
+          foreignRecordingId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          trackFileId: 820,
+        }];
+      },
+      getTrackFilesByIds: async (trackFileIds) => {
+        assert.deepEqual(trackFileIds, [820]);
+        calls.push("id-files");
+        throw new Error("Lidarr API error: 500 - Expected query to return 1 rows but returned 0");
+      },
+      getAllTrackFiles: async ({ artistIds }) => {
+        assert.deepEqual(artistIds, [717]);
+        calls.push("artist-files");
+        return [{ id: 821, path: filePath, trackIds: [819] }];
+      },
+      getTracksByAlbumId: async () => {
+        throw new Error("per-album track read should not run after stale ID recovery");
+      },
+      getTrackFilesByAlbumId: async () => {
+        throw new Error("per-album file read should not run after stale ID recovery");
+      },
+      getRootFolders: async () => [{ path: root }],
+    };
+
+    const result = await indexLidarrLibrary({ client });
+    const file = getLibrarySnapshot().files.find((entry) => entry.path === filePath);
+
+    assert.deepEqual(calls, ["tracks", "id-files", "artist-files"]);
+    assert.equal(result.filesIndexed, 1);
+    assert.equal(file?.source, "lidarr");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run(
+      "lidarr",
+      filePath,
+    );
+  }
+});
+
 test("indexLidarrLibrary does not fan out per album when a bulk track read fails", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-bulk-fallback-"));
   let filePath;
