@@ -217,10 +217,11 @@ export class JellyfinPlaybackDestination {
     let playlistId = reusable?.playlistId || null;
     if (playlistId) {
       try {
-        await this.client.updatePlaylist(playlistId, {
+        const updated = await this.client.updatePlaylist(playlistId, {
           name: snapshot.displayName,
           itemIds,
         });
+        playlistId = itemId(updated) || playlistId;
       } catch (error) {
         if (!isNotFound(error)) throw error;
         playlistId = null;

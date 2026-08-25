@@ -79,13 +79,20 @@ export class JellyfinClient {
   }
 
   async updatePlaylist(playlistId, { name, itemIds }) {
-    return this.request("POST", `/Playlists/${encodeURIComponent(playlistId)}`, {
-      data: {
-        Name: name,
-        Ids: itemIds,
-        IsPublic: true,
-      },
-    });
+    const replacement = await this.createPlaylist({ name, itemIds });
+    const replacementId = replacement?.Id ?? replacement?.id;
+    if (!replacementId) throw new Error("Jellyfin did not return a replacement playlist ID");
+    try {
+      await this.deletePlaylist(playlistId);
+    } catch (error) {
+      if (Number(error?.response?.status) !== 404) {
+        try {
+          await this.deletePlaylist(replacementId);
+        } catch {}
+        throw error;
+      }
+    }
+    return replacement;
   }
 
   async deletePlaylist(playlistId) {

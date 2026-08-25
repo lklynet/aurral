@@ -450,11 +450,13 @@ export function registerGeneral(router) {
           "../../../services/weeklyFlow/weeklyFlowPlaylistManager.js"
         );
         playlistManager.updateConfig(false);
-        void playlistManager.ensureSmartPlaylists().catch((error) => {
+        try {
+          await playlistManager.ensureSmartPlaylists();
+        } catch (error) {
           logger.warn("settings", "Failed to initialize playback playlists:", {
             message: error.message,
           });
-        });
+        }
         playlistManager.scheduleScanLibrary(true);
       }
       const reconciled = reconcileLocalNetworkBypassSetting().settings;
