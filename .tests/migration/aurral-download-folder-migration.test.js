@@ -15,7 +15,7 @@ const [
   { dbOps },
   { flowPlaylistConfig },
   { downloadTracker },
-  { migrateAurralDownloadFolder, migrateLegacyFlowFolder },
+  { migrateAurralDownloadFolder },
 ] = await setupIsolatedBackend(
   "aurral-download-folder-migration",
   "backend/config/db-sqlite.js",
@@ -45,96 +45,6 @@ test.after(async () => {
 });
 
 test.afterEach(() => mock.restoreAll());
-
-test("moves legacy dot flow files into the visible flow directory", async () => {
-  const flow = flowPlaylistConfig.createFlow({ name: "Legacy Nightly", enabled: true });
-  const source = path.join(
-    root,
-    ".flows",
-    flow.id,
-    "Artist",
-    "Album",
-    "Flow Track.flac",
-  );
-  await fs.mkdir(path.dirname(source), { recursive: true });
-  await fs.writeFile(source, "flow audio");
-  const jobId = downloadTracker.addJob(
-    { artistName: "Artist", albumName: "Album", trackName: "Flow Track" },
-    flow.id,
-  );
-  downloadTracker.setDone(
-    jobId,
-    path.join(
-      "/app/downloads",
-      ".flows",
-      flow.id,
-      "Artist",
-      "Album",
-      "Flow Track.flac",
-    ),
-  );
-
-  const result = await migrateLegacyFlowFolder({ root });
-  const destination = path.join(
-    root,
-    "_flows",
-    flow.id,
-    "Artist",
-    "Album",
-    "Flow Track.flac",
-  );
-
-  assert.equal(result.migrated, 1);
-  assert.equal(downloadTracker.getJob(jobId).finalPath, destination);
-  assert.equal(await fs.readFile(destination, "utf8"), "flow audio");
-  await assert.rejects(() => fs.access(source));
-
-  const retry = await migrateLegacyFlowFolder({ root });
-  assert.equal(retry.scanned, 0);
-  assert.equal(retry.migrated, 0);
-});
-
-test("retains the legacy source when tracker updates fail", async () => {
-  const flow = flowPlaylistConfig.createFlow({ name: "Failed Legacy Nightly", enabled: true });
-  const source = path.join(root, ".flows", flow.id, "Artist", "Album", "Flow Track.flac");
-  await fs.mkdir(path.dirname(source), { recursive: true });
-  await fs.writeFile(source, "flow audio");
-  const jobId = downloadTracker.addJob(
-    { artistName: "Artist", albumName: "Album", trackName: "Flow Track" },
-    flow.id,
-  );
-  downloadTracker.setDone(jobId, source);
-  mock.method(downloadTracker, "updateFinalPath", () => {
-    throw new Error("tracker unavailable");
-  });
-
-  const result = await migrateLegacyFlowFolder({ root, logger: { warn() {} } });
-  const destination = path.join(root, "_flows", flow.id, "Artist", "Album", "Flow Track.flac");
-
-  assert.equal(result.failed, 1);
-  await assert.doesNotReject(() => fs.access(source));
-  await assert.doesNotReject(() => fs.access(destination));
-  assert.equal(downloadTracker.getJob(jobId).finalPath, source);
-});
-
-test("retains the legacy source when tracker updates are not persisted", async () => {
-  const flow = flowPlaylistConfig.createFlow({ name: "Unpersisted Legacy Nightly", enabled: true });
-  const source = path.join(root, ".flows", flow.id, "Artist", "Album", "Flow Track.flac");
-  await fs.mkdir(path.dirname(source), { recursive: true });
-  await fs.writeFile(source, "flow audio");
-  const jobId = downloadTracker.addJob(
-    { artistName: "Artist", albumName: "Album", trackName: "Flow Track" },
-    flow.id,
-  );
-  downloadTracker.setDone(jobId, source);
-  mock.method(downloadTracker, "updateFinalPath", () => false);
-
-  const result = await migrateLegacyFlowFolder({ root, logger: { warn() {} } });
-
-  assert.equal(result.failed, 1);
-  await assert.doesNotReject(() => fs.access(source));
-  assert.equal(downloadTracker.getJob(jobId).finalPath, source);
-});
 
 test("migrates permanent tracks, isolates active flows, and removes unkept flow files", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Saved" });

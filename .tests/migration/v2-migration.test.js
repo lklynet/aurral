@@ -214,3 +214,38 @@ test("v2 migration survives legacy playlist_download_jobs sync triggers", async 
   );
   reopened.close();
 });
+
+test("startup applies the consolidated v3 migration once", async () => {
+  const { dbPath } = createPreMigrationDb();
+  const { initializeSchemaOnStartup } = await import(
+    "../../backend/config/schema-migration-v2.js",
+  );
+  const db = new Database(dbPath);
+  db.prepare("INSERT INTO settings (key, value) VALUES ('schemaVersion', '2')").run();
+
+  const result = initializeSchemaOnStartup(db, dbHelpers);
+  assert.equal(result.migrated, true);
+  assert.equal(result.schemaVersion, 3);
+  assert.equal(
+    db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weekly_flow_jobs'",
+      )
+      .get(),
+    undefined,
+  );
+
+  db.exec("CREATE TABLE weekly_flow_jobs (id TEXT PRIMARY KEY)");
+  const secondResult = initializeSchemaOnStartup(db, dbHelpers);
+  assert.equal(secondResult.migrated, false);
+  assert.equal(secondResult.schemaVersion, 3);
+  assert.ok(
+    db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weekly_flow_jobs'",
+      )
+      .get(),
+  );
+
+  db.close();
+});

@@ -113,7 +113,7 @@ export async function processSystemTask(payload = {}, job = null) {
         import("./weeklyFlow/weeklyFlowDownloadTracker.js"),
         import("./playlistDownloadUtils.js"),
       ]);
-      const { migrateAurralDownloadFolder, migrateLegacyFlowFolder } = migrationModule;
+      const { migrateAurralDownloadFolder } = migrationModule;
       const layout = ensurePlaylistFilesystemLayout();
       let result = {
         migrated: 0,
@@ -122,21 +122,6 @@ export async function processSystemTask(payload = {}, job = null) {
         retained: 0,
         failed: 0,
       };
-      let legacyFlowResult = { migrated: 0, retained: 0, failed: 0 };
-      try {
-        legacyFlowResult = await migrateLegacyFlowFolder();
-      } catch (error) {
-        console.error(`[Playlists] Legacy flow folder migration failed: ${error.message}`);
-        throw error;
-      }
-      if (legacyFlowResult.migrated > 0) {
-        console.log(`[Playlists] Migrated ${legacyFlowResult.migrated} legacy flow file(s)`);
-      }
-      if (legacyFlowResult.retained > 0 || legacyFlowResult.failed > 0) {
-        console.warn(
-          `[Playlists] Retained ${legacyFlowResult.retained} legacy flow file(s) for review`,
-        );
-      }
       try {
         result = await migrateAurralDownloadFolder();
       } catch (error) {
@@ -158,7 +143,7 @@ export async function processSystemTask(payload = {}, job = null) {
           `[Playlists] Retained ${result.retained} item(s) and failed ${result.failed} migration item(s) for review`,
         );
       }
-      if (legacyFlowResult.failed > 0 || result.status === "blocked" || result.failed > 0) {
+      if (result.status === "blocked" || result.failed > 0) {
         throw new Error("Playlist filesystem migration requires review before playlist rebuild");
       }
       const metadataRepair = await repairYtdlpMetadata(
@@ -176,7 +161,6 @@ export async function processSystemTask(payload = {}, job = null) {
       }
       if (
         layout.sidecarsMoved > 0 ||
-        legacyFlowResult.migrated > 0 ||
         result.migrated > 0 ||
         result.removed > 0 ||
         metadataRepair.repaired > 0

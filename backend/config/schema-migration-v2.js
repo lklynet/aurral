@@ -1,5 +1,6 @@
 const SCHEMA_VERSION_KEY = "schemaVersion";
-export const TARGET_SCHEMA_VERSION = 2;
+const V2_SCHEMA_VERSION = 2;
+export const TARGET_SCHEMA_VERSION = 3;
 
 export function getSchemaVersion(db) {
   const row = db
@@ -9,7 +10,7 @@ export function getSchemaVersion(db) {
 }
 
 export function initializeSchemaOnStartup(db, dbHelpers) {
-  return applyV2Migration(db, dbHelpers);
+  return applyV3Migration(db, dbHelpers);
 }
 
 function tableExists(db, name) {
@@ -468,23 +469,34 @@ function migrateJobsTable(db) {
   dropLegacyWeeklyFlowJobs(db);
 }
 
-export function applyV2Migration(db, dbHelpers) {
+function applySchemaMigration(db, dbHelpers, targetVersion) {
+  const currentVersion = getSchemaVersion(db);
+  const migrated = currentVersion < targetVersion;
+  if (!migrated) {
+    return { migrated: false, schemaVersion: currentVersion };
+  }
   const upsertSettingStmt = db.prepare(
     "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
   );
-  const currentVersion = getSchemaVersion(db);
-  const migrated = currentVersion < TARGET_SCHEMA_VERSION;
   const run = db.transaction(() => {
     finalizeV2SettingsKeys(db, dbHelpers);
     migrateJobsTable(db);
     ensureSlskdTransferHistoryTable(db);
     if (migrated) {
-      upsertSettingStmt.run(SCHEMA_VERSION_KEY, String(TARGET_SCHEMA_VERSION));
+      upsertSettingStmt.run(SCHEMA_VERSION_KEY, String(targetVersion));
     }
   });
   run();
   return {
-    migrated,
-    schemaVersion: migrated ? TARGET_SCHEMA_VERSION : currentVersion,
+    migrated: true,
+    schemaVersion: targetVersion,
   };
+}
+
+export function applyV2Migration(db, dbHelpers) {
+  return applySchemaMigration(db, dbHelpers, V2_SCHEMA_VERSION);
+}
+
+export function applyV3Migration(db, dbHelpers) {
+  return applySchemaMigration(db, dbHelpers, TARGET_SCHEMA_VERSION);
 }
