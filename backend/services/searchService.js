@@ -1,6 +1,7 @@
 import { getDiscoveryCache } from "./discovery/index.js";
 import { getLastfmApiKey, lastfmRequest } from "./apiClients/index.js";
 import { buildImageProxyUrl } from "./imageProxyService.js";
+import { selectBestArtistImage } from "./imageService.js";
 import { LIDARR_ALBUM_LOOKUP_BATCH_MAX, lidarrClient } from "./lidarrClient.js";
 import {
   searchAlbums as providerSearchAlbums,
@@ -83,6 +84,28 @@ export function normalizeAlbumSearchSort(value) {
   return ["relevance", "dateDesc", "artistAsc", "titleAsc"].includes(normalized)
     ? normalized
     : "relevance";
+}
+
+function normalizeArtistItem(item) {
+  const image = selectBestArtistImage(item.images);
+  return {
+    type: "artist",
+    id: item.id,
+    name: item.name,
+    sortName: item.sortName || item.name,
+    image: image?.url || null,
+    imageUrl: image?.url || null,
+    artistType: item.type || null,
+    country: null,
+    area: null,
+    begin: null,
+    end: null,
+    disambiguation: item.disambiguation || null,
+    tags: Array.isArray(item.genres) ? item.genres : [],
+    genres: Array.isArray(item.genres) ? item.genres : [],
+    inLibrary: false,
+    score: item.score || 0,
+  };
 }
 
 function normalizeAlbumItem(item, lookup = null) {

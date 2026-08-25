@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import http from "node:http";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import createCache from "../../backend/services/apiClients/simpleCache.js";
@@ -43,6 +44,23 @@ test("fetch transport failures expose axios-compatible request metadata", async 
     );
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("fetch timeouts expose an axios-compatible timeout code", async () => {
+  const server = http.createServer((_request, response) => {
+    setTimeout(() => response.end("ok"), 100);
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+
+  try {
+    await assert.rejects(
+      axios.get(`http://127.0.0.1:${port}`, { timeout: 10 }),
+      (error) => error.code === "ECONNABORTED",
+    );
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
   }
 });
 

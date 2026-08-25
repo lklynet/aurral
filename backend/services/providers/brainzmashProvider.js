@@ -24,6 +24,8 @@ import { runSharedInflight } from "../sharedInflight.js";
 const providerCache = createCache(300);
 const releaseCache = createCache(300);
 const providerInflightRequests = new Map();
+const METADATA_REQUEST_TIMEOUT_MS = 8000;
+const METADATA_MAX_RETRIES = 1;
 
 export function clearMetadataProviderCaches() {
   providerCache.flushAll();
@@ -75,6 +77,13 @@ function getUserAgent() {
   return `${APP_NAME}/${APP_VERSION}`;
 }
 
+function isRetryable(error) {
+  return (
+    ["ECONNABORTED", "ETIMEDOUT", "ECONNRESET", "ENOTFOUND", "EAI_AGAIN"].includes(error?.code) ||
+    [408, 425, 429, 500, 502, 503, 504].includes(error?.response?.status)
+  );
+}
+
 async function request(path, params = {}, { signal } = {}) {
   const baseUrl = getMetadataBaseUrl();
   const cacheKey = `${baseUrl}${path}:${JSON.stringify(params)}`;
@@ -84,27 +93,33 @@ async function request(path, params = {}, { signal } = {}) {
   healthState.lastCheckedAt = nowIso();
 
   return runSharedInflight(providerInflightRequests, cacheKey, async (sharedSignal) => {
-    try {
-      const response = await axios.get(`${baseUrl}${path}`, {
-        params,
-        timeout: 8000,
-        headers: {
-          "User-Agent": getUserAgent(),
-        },
-        signal: sharedSignal,
-      });
-      providerCache.set(cacheKey, response.data);
-      healthState.lastSuccessAt = healthState.lastCheckedAt;
-      healthState.lastFailureReason = "";
-      return response.data;
-    } catch (error) {
-      healthState.lastFailureAt = healthState.lastCheckedAt;
-      healthState.lastFailureReason =
-        error?.response?.status != null
-          ? `HTTP ${error.response.status}`
-          : error?.code || error?.message || "Unknown error";
-      throw error;
+    for (let attempt = 0; attempt <= METADATA_MAX_RETRIES; attempt += 1) {
+      if (sharedSignal.aborted) throw sharedSignal.reason || new Error("The operation was aborted");
+      try {
+        const response = await axios.get(`${baseUrl}${path}`, {
+          params,
+          timeout: METADATA_REQUEST_TIMEOUT_MS,
+          headers: {
+            "User-Agent": getUserAgent(),
+          },
+          signal: sharedSignal,
+        });
+        providerCache.set(cacheKey, response.data);
+        healthState.lastSuccessAt = healthState.lastCheckedAt;
+        healthState.lastFailureReason = "";
+        return response.data;
+      } catch (error) {
+        if (sharedSignal.aborted) throw sharedSignal.reason || error;
+        healthState.lastFailureAt = healthState.lastCheckedAt;
+        healthState.lastFailureReason =
+          error?.response?.status != null
+            ? `HTTP ${error.response.status}`
+            : error?.code || error?.message || "Unknown error";
+        if (attempt === METADATA_MAX_RETRIES || !isRetryable(error)) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
     }
+    throw new Error("Metadata provider request failed");
   }, { signal });
 }
 
