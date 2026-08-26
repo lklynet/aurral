@@ -8,6 +8,7 @@ import {
   Ellipsis,
   Ticket,
   AudioWaveform,
+  Workflow,
   Settings,
   LogOut,
   User,
@@ -122,6 +123,9 @@ function Layout({ children, headerActions }) {
       if (path.startsWith("/shows")) {
         return location.pathname.startsWith("/shows");
       }
+      if (path.startsWith("/flows")) {
+        return location.pathname.startsWith("/flows");
+      }
       if (path.startsWith("/activity")) {
         return location.pathname.startsWith("/activity");
       }
@@ -153,6 +157,12 @@ function Layout({ children, headerActions }) {
   const mobileOverflowItems = useMemo(() => {
     const items = [
       { path: "/shows/all", label: "Shows", icon: Ticket },
+      {
+        path: "/flows",
+        label: "Flows",
+        icon: Workflow,
+        permission: "accessFlow",
+      },
       { path: "/activity/queue", label: "Activity", icon: Activity },
       { path: "/profile", label: "Profile", icon: User },
       {
