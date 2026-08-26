@@ -15,12 +15,24 @@ const DEFAULT_PERMISSIONS = {
   deleteAlbum: false,
   deleteTrack: false,
 };
+const OIDC_ROLE_MARKER = "__aurralOidcRole";
 
 const parseCsv = (value) =>
   String(value || "")
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
+
+const getOidcRoleData = (user) => {
+  const role = user.permissions?.[OIDC_ROLE_MARKER];
+  if (!role) return {};
+  return {
+    role,
+    permissions: Object.fromEntries(
+      Object.entries(user.permissions).filter(([key]) => key !== OIDC_ROLE_MARKER),
+    ),
+  };
+};
 
 function getSecret() {
   const configured = String(process.env.BETTER_AUTH_SECRET || "").trim();
@@ -123,10 +135,12 @@ function getOidcPlugin() {
           const resolvedUsername = resolveOidcUsername(profile);
           const role = resolveOidcRole(profile, resolvedUsername);
           return {
-            username: resolvedUsername,
             displayUsername: resolvedUsername,
             role,
-            permissions: role === "admin" ? {} : DEFAULT_PERMISSIONS,
+            permissions: {
+              ...(role === "admin" ? {} : DEFAULT_PERMISSIONS),
+              [OIDC_ROLE_MARKER]: role,
+            },
           };
         },
       },
@@ -227,8 +241,19 @@ export const auth = betterAuth({
         before: async (user) => ({
           data: {
             ...user,
-            username: String(user.username || user.email || "").trim().toLowerCase(),
+            ...getOidcRoleData(user),
+            username: String(user.username || user.displayUsername || user.email || "")
+              .trim()
+              .toLowerCase(),
             displayUsername: String(user.displayUsername || user.name || user.email || "").trim(),
+          },
+        }),
+      },
+      update: {
+        before: async (user) => ({
+          data: {
+            ...user,
+            ...getOidcRoleData(user),
           },
         }),
       },
