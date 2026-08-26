@@ -53,6 +53,14 @@ function pickBestCandidate(candidates, expectedTitle, expectedYear = null) {
     .sort((left, right) => right.score - left.score)[0]?.candidate;
 }
 
+function matchesAlbumTitle(actualTitle, expectedTitle) {
+  return (
+    !actualTitle ||
+    !expectedTitle ||
+    scoreTextMatchBase(actualTitle, expectedTitle, MATCHER_OPTIONS) >= 85
+  );
+}
+
 async function fetchArtistAliases(artistMbid) {
   const key = String(artistMbid || "").trim();
   if (!key) return [];
@@ -105,7 +113,8 @@ async function resolveReleaseGroup(artistName, artistMbid, albumName, releaseYea
     try {
       const candidates = safeMbid ? await listArtistAlbums(safeMbid) : [];
       const best = pickBestCandidate(candidates, safeAlbum, releaseYear);
-      if (best?.Id || best?.id) {
+      const bestTitle = best?.Title || best?.title;
+      if ((best?.Id || best?.id) && matchesAlbumTitle(bestTitle, safeAlbum)) {
         return {
           id: String(best?.Id || best?.id),
           title: String(best?.Title || best?.title || safeAlbum).trim() || safeAlbum,
@@ -185,6 +194,7 @@ async function fetchReleaseContext(albumMbid) {
         null;
       if (!pickedRelease) {
         return {
+          albumName: String(album?.title || "").trim() || null,
           artistId,
           artistName,
           releaseYear: getYear(album?.releaseDate),
@@ -202,6 +212,7 @@ async function fetchReleaseContext(albumMbid) {
           }))
         : [];
       return {
+        albumName: String(album?.title || "").trim() || null,
         artistId,
         artistName,
         releaseYear: getYear(pickedRelease?.releaseDate) || getYear(album?.releaseDate),
@@ -284,6 +295,18 @@ export async function resolveWeeklyFlowTrackContext(track) {
   }
 
   let releaseContext = null;
+  if (base.albumMbid) {
+    releaseContext = await fetchReleaseContext(base.albumMbid);
+    if (
+      releaseContext?.albumName &&
+      base.albumName &&
+      !matchesAlbumTitle(releaseContext.albumName, base.albumName)
+    ) {
+      base.albumMbid = null;
+      base.trackMbid = null;
+      releaseContext = null;
+    }
+  }
   if (!base.albumMbid && base.albumName) {
     const releaseGroup = await resolveReleaseGroup(
       base.artistName,
@@ -307,7 +330,7 @@ export async function resolveWeeklyFlowTrackContext(track) {
 
   let matchedTrackDurationMs = null;
   if (base.albumMbid) {
-    releaseContext = await fetchReleaseContext(base.albumMbid);
+    releaseContext ||= await fetchReleaseContext(base.albumMbid);
     if (
       releaseContext?.artistId &&
       artistNamesMatch(base.artistName, releaseContext.artistName)

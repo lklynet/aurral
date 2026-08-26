@@ -270,8 +270,9 @@ export function registerJobs(router) {
     const ext = path.extname(sourcePath).toLowerCase();
     const albumDir = sanitizePathPart(job.albumName, "Unknown Album");
     const artistDir = sanitizePathPart(job.artistName, "Unknown Artist");
-    const destination = buildAurralTrackDestination(job.playlistType, artistDir, albumDir, {
-      ephemeral: Boolean(flowPlaylistConfig.getFlow(job.playlistType)),
+    const playlistId = job.playlistId || job.playlistType;
+    const destination = buildAurralTrackDestination(playlistId, artistDir, albumDir, {
+      ephemeral: Boolean(flowPlaylistConfig.getFlow(playlistId)),
     });
     const finalDir = joinUnderRoot(playlistRoot, destination);
     const finalName = `${sanitizePathPart(job.trackName, "Unknown Track")}${ext || ".mp3"}`;

@@ -7,7 +7,11 @@ import {
   DEFAULT_METADATA_BASE_URL,
   MUSICBRAINZ_API,
 } from "../../config/constants.js";
-import { rankAlbumCandidates, rankArtistCandidates } from "./brainzmashRanking.js";
+import {
+  rankAlbumCandidates,
+  rankArtistCandidates,
+  scoreTextMatch,
+} from "./brainzmashRanking.js";
 import {
   toLegacyArtist,
   toLegacyRelease,
@@ -329,6 +333,10 @@ export async function resolveAlbumByArtistAndTitle({
   albumTitle = "",
   releaseYear = null,
 }) {
+  const pickStrongMatch = (candidates) =>
+    candidates.find(
+      (candidate) => candidate?.id && scoreTextMatch(candidate.title, albumTitle) >= 85,
+    );
   const firstPass = await searchAlbums(albumTitle, {
     artistName,
     limit: 10,
@@ -338,7 +346,8 @@ export async function resolveAlbumByArtistAndTitle({
     artistName,
     releaseYear,
   });
-  if (ranked[0]?.id) return ranked[0].id;
+  const firstMatch = pickStrongMatch(ranked);
+  if (firstMatch?.id) return firstMatch.id;
 
   const secondPass = await searchAlbums(albumTitle, {
     artistName: "",
@@ -349,7 +358,7 @@ export async function resolveAlbumByArtistAndTitle({
     artistName,
     releaseYear,
   });
-  return ranked[0]?.id || null;
+  return pickStrongMatch(ranked)?.id || null;
 }
 
 export async function listArtistAlbums(

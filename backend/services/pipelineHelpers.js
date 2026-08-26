@@ -42,7 +42,7 @@ export function blockPipelineJobForReview({
   sourcePath,
 }) {
   const stagingPath = String(sourcePath || "").trim();
-  if (job?.upgradeForJobId || !validation?.blocked || !stagingPath) return false;
+  if (!validation?.blocked || !stagingPath) return false;
   const reason = validation.reason || "Blocked for review";
   if (!downloadTracker.setBlocked(job.id, reason, stagingPath)) return false;
   import("./aurralHistoryService.js")
