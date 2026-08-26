@@ -7,7 +7,6 @@ import { Lock, Trash2, UserPlus, X } from "lucide-react";
 import { GRANULAR_PERMISSIONS, granularPerms } from "../constants";
 import { useModalDialog } from "../../../hooks/useModalDialog.js";
 import { AdminPlexLinkField } from "./AdminPlexLinkField";
-import { PlexSelfLinkSection } from "./PlexSelfLinkSection";
 import { DotLoader } from "../../../components/DotLoader";
 function getLocalBypassStatus(status) {
   if (!status) {
@@ -309,15 +308,13 @@ export function SettingsUsersTab({
             </SettingsArrFormGroup>
           </SettingsArrFieldSet>
 
-          <SettingsArrFieldSet
-            legend="Users"
-            actions={
+          <SettingsArrFieldSet legend="Users">
+            <div className="arr-form-actions settings-users__actions">
               <button type="button" className="arr-btn arr-btn--primary" onClick={openAddUserModal}>
                 <UserPlus className="artist-icon-xs" aria-hidden />
                 Add user
               </button>
-            }
-          >
+            </div>
             <div className="arr-table-wrap">
               <table className="arr-table">
                 <thead>
@@ -703,7 +700,6 @@ export function SettingsUsersTab({
                                   onChange={(event) => setEditPassword(event.target.value)}
                                 />
                               </SettingsArrFormGroup>
-                              <PlexSelfLinkSection showSuccess={showSuccess} showError={showError} />
                             </>
                           ) : (
                             <>

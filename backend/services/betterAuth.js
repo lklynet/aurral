@@ -41,6 +41,15 @@ function getConfiguredBaseURL() {
     .replace(/\/+$/, "");
 }
 
+const betterAuthLogger = {
+  log(level, message, ...args) {
+    if (level === "warn" && String(message).startsWith("[better-auth] Base URL is not set.")) {
+      return;
+    }
+    console[level](`[Better Auth] ${message}`, ...args);
+  },
+};
+
 function getSessionExpirySeconds() {
   const hours = Number(process.env.SESSION_EXPIRY_HOURS);
   return Math.round((Number.isFinite(hours) && hours > 0 ? hours : 720) * 60 * 60);
@@ -135,6 +144,7 @@ export const auth = betterAuth({
   baseURL: configuredBaseURL || undefined,
   basePath: "/api/auth",
   secret: getSecret(),
+  logger: betterAuthLogger,
   database: db,
   trustedOrigins,
   emailAndPassword: {

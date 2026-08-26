@@ -554,6 +554,20 @@
   background: var(--aurral-surface-raised);
 }
 
+.arr-permissions .settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2.25rem;
+  color: var(--aurral-text-muted);
+  font-size: 0.875rem;
+}
+
+.arr-permissions .settings-toggle {
+  --w: 2rem;
+}
+
 .arr-permissions .artist-checkbox-label {
   color: var(--aurral-text-muted);
   font-size: 0.875rem;
@@ -2105,6 +2119,10 @@
   justify-content: flex-end;
   margin: 0.25rem 0.75rem 0;
   max-width: none;
+}
+
+.settings-arr .settings-users__actions {
+  margin: 0 0 0.75rem;
 }
 
 .settings-arr .arr-webhook-card {
