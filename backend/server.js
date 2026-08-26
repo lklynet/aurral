@@ -404,7 +404,7 @@ process.once("SIGINT", () => {
   void gracefulShutdown("SIGINT");
 });
 
-httpServer.listen(PORT, "::", async () => {
+httpServer.listen(PORT, async () => {
   logger.info("system", `Server running on port ${PORT}`);
   bootstrapHonkerSchedules();
   initializeAppRuntime({ logger });
