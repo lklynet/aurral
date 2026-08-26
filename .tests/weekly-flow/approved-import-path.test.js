@@ -112,6 +112,55 @@ test("approving a reviewed download commits it inside the managed playlist libra
   await assert.rejects(fs.access(path.join(playlistManager.libraryRoot, "Reviewed.m3u")));
 });
 
+test("approving a reviewed upgrade replaces the source playlist file", async () => {
+  const flow = flowPlaylistConfig.createFlow({
+    name: "Reviewed upgrade flow",
+    size: 10,
+    mix: { discover: 100 },
+    scheduleDays: [1],
+  });
+  const originalPath = path.join(
+    process.env.DOWNLOAD_FOLDER,
+    "_flows",
+    flow.id,
+    "Artist",
+    "Album",
+    "Track.mp3",
+  );
+  const candidatePath = path.join(isolatedState.baseDir, "review", "Track.flac");
+  await fs.mkdir(path.dirname(originalPath), { recursive: true });
+  await fs.mkdir(path.dirname(candidatePath), { recursive: true });
+  await fs.writeFile(originalPath, "original audio");
+  await fs.writeFile(candidatePath, "upgrade audio");
+
+  const sourceJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Track", albumName: "Album" },
+    flow.id,
+  );
+  downloadTracker.setDone(sourceJobId, originalPath, "Album");
+  downloadTracker.updateQuality(sourceJobId, { tier: "mp3-128", format: "mp3" });
+  const upgradeJobId = downloadTracker.addUpgradeJob(downloadTracker.getJob(sourceJobId));
+  downloadTracker.setBlocked(upgradeJobId, "blocked-duration-mismatch", candidatePath);
+
+  const response = await fetch(`${baseUrl}/jobs/${upgradeJobId}/approve`, { method: "POST" });
+  const payload = await response.json();
+  const expectedPath = path.join(
+    process.env.DOWNLOAD_FOLDER,
+    "_flows",
+    flow.id,
+    "Artist",
+    "Album",
+    "Track.flac",
+  );
+
+  assert.equal(response.status, 200, JSON.stringify(payload));
+  assert.equal(payload.path, expectedPath);
+  assert.equal(downloadTracker.getJob(upgradeJobId), null);
+  assert.equal(downloadTracker.getJob(sourceJobId)?.finalPath, expectedPath);
+  assert.equal(await fs.readFile(expectedPath, "utf8"), "upgrade audio");
+  await assert.rejects(fs.access(originalPath));
+});
+
 test("reports when an upgrade search is already queued for a track", async () => {
   const playlistId = "c79c1598-699a-4ab3-b8cd-4e570f001f18";
   flowPlaylistConfig.createSharedPlaylist({

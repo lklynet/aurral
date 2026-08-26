@@ -18,6 +18,7 @@ const [
   { processUsenetPipelinePayload },
   { dbOps },
   { db },
+  { blockPipelineJobForReview },
 ] = await setupIsolatedBackend(
   "download-review-routing",
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
@@ -25,6 +26,7 @@ const [
   "backend/services/usenetOrchestrator.js",
   "backend/db/helpers/index.js",
   "backend/config/db-sqlite.js",
+  "backend/services/pipelineHelpers.js",
 );
 
 test.beforeEach(() => {
@@ -232,4 +234,39 @@ test("Usenet sends its best plausible duration mismatch to review", async () => 
   } finally {
     await server.close();
   }
+});
+
+test("upgrade duration mismatches remain available for review", async () => {
+  const originalPath = path.join(process.env.DOWNLOAD_FOLDER, "original.mp3");
+  const candidatePath = path.join(process.env.DOWNLOAD_FOLDER, "candidate.mp3");
+  await writeOneSecondMp3(originalPath);
+  await writeOneSecondMp3(candidatePath);
+
+  const sourceJobId = downloadTracker.addJob(
+    {
+      artistName: "Artist Name",
+      trackName: "Correct Track",
+      albumName: "Album Name",
+      durationMs: 100000,
+    },
+    "upgrade-review",
+  );
+  downloadTracker.setDone(sourceJobId, originalPath, "Album Name");
+  const upgradeJobId = downloadTracker.addUpgradeJob(downloadTracker.getJob(sourceJobId));
+  downloadTracker.setDownloading(upgradeJobId);
+
+  const result = blockPipelineJobForReview({
+    downloadTracker,
+    job: downloadTracker.getJob(upgradeJobId),
+    validation: {
+      blocked: true,
+      reason: "blocked-duration-mismatch: candidate duration differs",
+    },
+    sourcePath: candidatePath,
+  });
+
+  assert.equal(result, true);
+  assert.equal(downloadTracker.getJob(upgradeJobId)?.status, "blocked");
+  assert.equal(downloadTracker.getJob(upgradeJobId)?.stagingPath, candidatePath);
+  await access(candidatePath);
 });
