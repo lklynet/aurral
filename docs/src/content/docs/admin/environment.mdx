@@ -21,20 +21,26 @@ Use the web UI for most settings. Use these variables for Docker deployment sett
 
 ## Authentication
 
-Set `BETTER_AUTH_SECRET` to a long, random, persistent value. Generate one with:
+Better Auth configuration is optional. When `BETTER_AUTH_SECRET` is omitted, Aurral generates a random secret and stores it in the `/config` database. When `BETTER_AUTH_URL` is omitted, Better Auth derives the origin from the incoming request.
+
+Set `BETTER_AUTH_SECRET` explicitly only when you manage secrets outside `/config`. Keep a configured value stable across restarts. Changing it invalidates active authentication state and requires users to sign in again.
+
+For installations behind a proxy, keep the public `Host` and protocol forwarded to Aurral. Set `BETTER_AUTH_URL` when the public origin cannot be inferred reliably, especially for OIDC callbacks.
+
+Generate an explicit secret with:
 
 ```bash
 openssl rand -hex 32
 ```
 
-Keep the value in your environment file or secret store. Do not commit it to a Compose file. Keep the same value across restarts. Changing it invalidates active authentication state and requires users to sign in again.
+If you set a value explicitly, keep it in your environment file or secret store. Do not commit it to a Compose file. Keep the same value across restarts. Changing it invalidates active authentication state and requires users to sign in again.
 
 | Variable | Purpose |
 | -------- | ------- |
-| `BETTER_AUTH_SECRET` | Secret used by Better Auth for authentication state. Set it explicitly in production. |
-| `BETTER_AUTH_URL` | Public Aurral origin used to build Better Auth callback URLs, for example `https://aurral.example.com`. |
+| `BETTER_AUTH_SECRET` | Optional Better Auth secret override. If omitted, Aurral generates and stores one in `/config`. |
+| `BETTER_AUTH_URL` | Optional public Aurral origin for Better Auth callbacks, for example `https://aurral.example.com`. If omitted, Better Auth uses the request origin. |
 | `SESSION_EXPIRY_HOURS` | Better Auth session lifetime in hours. Default `720` (30 days). |
-| `AURRAL_PUBLIC_URL` | Public Aurral origin used by non-authentication integration callbacks. Better Auth uses `BETTER_AUTH_URL` for authentication callbacks. |
+| `AURRAL_PUBLIC_URL` | Public Aurral origin used by non-authentication integration callbacks. Aurral also accepts it as a compatibility fallback when `BETTER_AUTH_URL` is omitted. |
 | `TRUST_PROXY` | Set when Aurral is behind a reverse proxy. |
 | `AUTH_PROXY_ENABLED` | Enable reverse-proxy authentication. Default header `x-forwarded-user`. |
 | `AUTH_PROXY_HEADER` | Custom header that contains the authenticated identity. |
@@ -97,8 +103,6 @@ These variables change the shared Lidarr Spotify OAuth proxy. The default values
 environment:
   - PUID=1000
   - PGID=1000
-  - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
-  - BETTER_AUTH_URL=https://aurral.example.com
   - TRUST_PROXY=true
 ```
 

@@ -25,7 +25,7 @@ const Login = () => {
       if (success) {
         setError("");
       } else {
-        setError("Invalid email, username, or password");
+        setError("Invalid username or password");
       }
     } finally {
       setSubmitting(false);
@@ -77,7 +77,7 @@ const Login = () => {
           <div className="login-fields">
             <div className="login-field">
               <label htmlFor="identifier" className="login-label">
-                Email or username
+                Username
               </label>
               <input
                 id="identifier"

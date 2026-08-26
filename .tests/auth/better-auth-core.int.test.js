@@ -98,7 +98,7 @@ test("Better Auth core schema owns users, credentials, sessions, and username fi
   assert.ok(new Date(sessions[0].expires_at).getTime() > Date.now());
 });
 
-test("Better Auth sign-up requires the documented email and name fields", async () => {
+test("Better Auth's email endpoint keeps its internal provider contract", async () => {
   const missingEmail = await signUp({ email: undefined, username: "missing-email" });
   assert.equal(missingEmail.response.ok, false);
 

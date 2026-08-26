@@ -45,6 +45,15 @@ const DEFAULT_PERMISSIONS = {
   deleteTrack: false,
 };
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function getInternalUserEmail(username, email = "") {
+  const explicitEmail = String(email || "").trim().toLowerCase();
+  if (EMAIL_PATTERN.test(explicitEmail)) return explicitEmail;
+  const normalizedUsername = String(username || "").trim().toLowerCase();
+  return `legacy-${Buffer.from(normalizedUsername).toString("hex")}@aurral.invalid`;
+}
+
 export const userOps = {
   getDefaultPermissions() {
     return { ...DEFAULT_PERMISSIONS };
@@ -150,12 +159,7 @@ export const userOps = {
     try {
       const now = new Date().toISOString();
       const name = String(identity.name || un).trim();
-      const email = String(
-        identity.email ||
-          (un.includes("@") ? un : `legacy-${Buffer.from(un).toString("hex")}@aurral.invalid`),
-      )
-        .trim()
-        .toLowerCase();
+      const email = getInternalUserEmail(un, identity.email);
       const result = insertUserStmt.run(
         un.toLowerCase(),
         un,

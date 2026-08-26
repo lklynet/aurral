@@ -1,5 +1,5 @@
 import express from "express";
-import { userOps, dbOps } from "../db/helpers/index.js";
+import { dbOps, getInternalUserEmail, userOps } from "../db/helpers/index.js";
 import { requireAuth, requireAdmin } from "../middleware/requirePermission.js";
 import { reconcileLocalNetworkBypassSetting } from "../middleware/auth.js";
 import { requirePasswordStrength } from "../middleware/auth.js";
@@ -197,10 +197,13 @@ router.get("/", requireAuth, requireAdmin, async (req, res) => {
 
 router.post("/", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { email, name, password, role = "user", permissions: topLevelPermissions } = req.body;
+    const username = String(req.body?.username || req.body?.email || "").trim().toLowerCase();
+    const name = String(req.body?.name || "").trim() || username;
+    const explicitEmail = req.body?.username ? req.body.email : "";
+    const { password, role = "user", permissions: topLevelPermissions } = req.body;
     const permissions = topLevelPermissions ?? req.body?.data?.permissions;
-    if (!String(email || "").trim() || !String(name || "").trim() || !password) {
-      return res.status(400).json({ error: "Name, email, and password required" });
+    if (!username || !password) {
+      return res.status(400).json({ error: "Username and password required" });
     }
     const passwordValidation = requirePasswordStrength(password);
     if (!passwordValidation.valid) {
@@ -209,13 +212,13 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
     const perms = permissions ? { ...userOps.getDefaultPermissions(), ...permissions } : null;
     const result = await auth.api.createUser({
       body: {
-        email: String(email).trim().toLowerCase(),
-        name: String(name).trim(),
+        email: getInternalUserEmail(username, explicitEmail),
+        name,
         password,
         role,
         data: {
-          username: String(email).trim().toLowerCase(),
-          displayUsername: String(name).trim(),
+          username,
+          displayUsername: name,
           permissions: perms,
         },
       },

@@ -9,7 +9,9 @@ Aurral uses Better Auth for local credentials, browser sessions, bearer tokens, 
 
 ## Local accounts
 
-Each local account has a name, an email address, and a password. Use the email address or username to sign in.
+Each local account has a username and password. Use the username to sign in.
+
+Better Auth requires an email-shaped identity internally. When no email is supplied, Aurral generates a private `@aurral.invalid` value for that internal record. It is not contact information and is not shown in the account management UI.
 
 Admins create accounts from **Settings > Users**. The first account is created during onboarding.
 
@@ -34,7 +36,7 @@ The public session endpoints are:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `POST` | `/api/auth/sign-in/email` | Sign in with an email address and password |
+| `POST` | `/api/auth/sign-in/email` | Better Auth email-identity sign-in for integrations |
 | `POST` | `/api/auth/sign-in/username` | Sign in with a username and password |
 | `GET` | `/api/auth/get-session` | Read the current user and session |
 | `POST` | `/api/auth/sign-out` | Revoke the current session |
@@ -48,11 +50,12 @@ Set `OIDC_ENABLED=true` and configure the identity provider as a confidential OI
 
 Required variables:
 
-- `BETTER_AUTH_URL`, the public Aurral origin
 - `OIDC_ISSUER`, the provider issuer URL
 - `OIDC_CLIENT_ID`
 - `OIDC_CLIENT_SECRET`
 - `OIDC_REDIRECT_URI`, set to `https://aurral.example.com/api/auth/callback/oidc`
+
+`BETTER_AUTH_URL` is optional. Set it when the public origin cannot be inferred from the request; otherwise Better Auth derives it automatically.
 
 Set `OIDC_DISCOVERY_URL` when the provider's discovery document is not at its standard location. Set `OIDC_PROVIDER_ID` when the provider uses an identifier other than `oidc`.
 
@@ -108,12 +111,12 @@ Better Auth does not own these paths:
 
 The first start after the migration updates the existing `users` table, creates Better Auth credential accounts, and invalidates legacy sessions. New Better Auth sessions are created after users sign in again.
 
-The migration keeps existing numeric user IDs, application permissions, profile settings, and rows that reference `users.id`. Existing password hashes are copied into Better Auth credential accounts, so users keep their passwords. Existing username data remains as compatibility data, but new sign-in uses an email address. Review accounts with identifiers that are not valid email addresses in **Settings > Users** after the upgrade.
+The migration keeps existing numeric user IDs, application permissions, profile settings, and rows that reference `users.id`. Existing password hashes are copied into Better Auth credential accounts, so users keep their passwords. Existing username data remains the sign-in identity. Accounts without a supplied email receive a private internal `@aurral.invalid` identity; users do not need to enter or configure an email address.
 
 Existing custom sessions are not portable to Better Auth. Users must sign in again after the migration. Do not delete or edit Better Auth tables by hand.
 
-Before upgrading, stop Aurral and back up the complete `/config` mount and the environment or secret store that contains `BETTER_AUTH_SECRET`. Keep the backup until every local account has signed in successfully. For rollback, stop the new version, restore the pre-migration `/config` backup and its matching environment, then start the previous version. Do not point the previous version at a database that has already been migrated.
+Before upgrading, stop Aurral and back up the complete `/config` mount. If `BETTER_AUTH_SECRET` is configured outside `/config`, back up that value too. Keep the backup until every local account has signed in successfully. For rollback, stop the new version, restore the pre-migration `/config` backup and its matching environment, then start the previous version. Do not point the previous version at a database that has already been migrated.
 
 ## Recover an account
 
-An administrator can set a user's password from **Settings > Users**. The user must then sign in with the account's email address and the new password.
+An administrator can set a user's password from **Settings > Users**. The user must then sign in with the account's username and the new password.

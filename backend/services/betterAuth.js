@@ -3,6 +3,7 @@ import { betterAuth } from "better-auth";
 import { toNodeHandler, fromNodeHeaders } from "better-auth/node";
 import { admin, bearer, genericOAuth, username } from "better-auth/plugins";
 import { db } from "../config/db-sqlite.js";
+import { getInternalUserEmail } from "../db/helpers/users.js";
 import { hashPassword, verifyPassword } from "../middleware/passwordHash.js";
 
 const DEFAULT_PERMISSIONS = {
@@ -34,11 +35,10 @@ function getSecret() {
   return generated;
 }
 
-function getBaseURL() {
-  return (
-    String(process.env.BETTER_AUTH_URL || process.env.AURRAL_PUBLIC_URL || "").replace(/\/+$/, "") ||
-    `http://127.0.0.1:${process.env.PORT || 3001}`
-  );
+function getConfiguredBaseURL() {
+  return String(process.env.BETTER_AUTH_URL || process.env.AURRAL_PUBLIC_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
 }
 
 function getSessionExpirySeconds() {
@@ -126,13 +126,13 @@ function getOidcPlugin() {
 }
 
 const oidcPlugin = getOidcPlugin();
-const useSecureCookies = getBaseURL().startsWith("https://");
-const trustedOrigins = [getBaseURL(), ...parseCsv(process.env.CORS_ORIGIN)];
-const useCrossOriginCookies = useSecureCookies && parseCsv(process.env.CORS_ORIGIN).length > 0;
+const configuredBaseURL = getConfiguredBaseURL();
+const trustedOrigins = [configuredBaseURL, ...parseCsv(process.env.CORS_ORIGIN)].filter(Boolean);
+const useCrossOriginCookies = parseCsv(process.env.CORS_ORIGIN).length > 0;
 
 export const auth = betterAuth({
   appName: "Aurral",
-  baseURL: getBaseURL(),
+  baseURL: configuredBaseURL || undefined,
   basePath: "/api/auth",
   secret: getSecret(),
   database: db,
@@ -226,10 +226,8 @@ export const auth = betterAuth({
   },
   advanced: {
     database: { generateId: "serial" },
-    useSecureCookies,
     defaultCookieAttributes: {
       sameSite: useCrossOriginCookies ? "none" : "lax",
-      secure: useSecureCookies,
     },
   },
   plugins: [
@@ -277,9 +275,9 @@ export async function getSessionForHeaders(headers) {
 }
 
 export async function createAuthUser({ email, name, username: usernameValue, role = "user", permissions }) {
-  const normalizedEmail = String(email || "").trim().toLowerCase();
-  const normalizedName = String(name || usernameValue || normalizedEmail).trim();
-  const normalizedUsername = String(usernameValue || normalizedEmail).trim().toLowerCase();
+  const normalizedUsername = String(usernameValue || email || "").trim().toLowerCase();
+  const normalizedEmail = getInternalUserEmail(normalizedUsername, email);
+  const normalizedName = String(name || normalizedUsername).trim();
   const result = await auth.api.createUser({
     body: {
       email: normalizedEmail,

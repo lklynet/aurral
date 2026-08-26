@@ -15,7 +15,7 @@ import {
   requestBetterAuth,
 } from "../helpers/betterAuthFixtures.js";
 
-const [isolatedState, { db }, { dbOps, userOps }] = await setupIsolatedBackend(
+const [isolatedState, { db }, { dbOps, getInternalUserEmail, userOps }] = await setupIsolatedBackend(
   "better-auth-migration",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
@@ -23,13 +23,18 @@ const [isolatedState, { db }, { dbOps, userOps }] = await setupIsolatedBackend(
 
 let server;
 const legacyPassword = "legacy-password";
+const originalAuthEnv = {
+  BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
+  BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
+  AURRAL_PUBLIC_URL: process.env.AURRAL_PUBLIC_URL,
+};
 
 test.before(async () => {
   resetDatabase(db);
   dbOps.updateSettings({ onboardingComplete: true, integrations: {} });
 
   const legacyHash = bcrypt.hashSync(legacyPassword, 4);
-  const legacyUser = userOps.createUser("legacy@example.com", legacyHash, "user");
+  const legacyUser = userOps.createUser("legacy@example.com", legacyHash, "admin");
   db.prepare(
     `INSERT INTO play_events
       (user_id, track_id, title, artist, played_at, source, created_at)
@@ -44,13 +49,18 @@ test.before(async () => {
     Date.now(),
   );
 
-  process.env.BETTER_AUTH_SECRET = "aurral-test-secret-for-better-auth";
+  delete process.env.BETTER_AUTH_SECRET;
+  delete process.env.BETTER_AUTH_URL;
+  delete process.env.AURRAL_PUBLIC_URL;
   server = await startServerProcess();
 });
 
 test.after(async () => {
   await server?.stop();
-  delete process.env.BETTER_AUTH_SECRET;
+  for (const [key, value] of Object.entries(originalAuthEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -61,11 +71,11 @@ test("migrates legacy bcrypt credentials into Better Auth without changing numer
     .prepare('SELECT id FROM "users" WHERE username = ?')
     .get("legacy@example.com");
   const migratedUser = db
-    .prepare('SELECT * FROM "users" WHERE email = ?')
+    .prepare('SELECT * FROM "users" WHERE username = ?')
     .get("legacy@example.com");
   assert.ok(migratedUser);
   assert.equal(
-    db.prepare('SELECT COUNT(*) AS count FROM "users" WHERE email = ?').get("legacy@example.com").count,
+    db.prepare('SELECT COUNT(*) AS count FROM "users" WHERE username = ?').get("legacy@example.com").count,
     1,
   );
   assert.equal(
@@ -76,8 +86,9 @@ test("migrates legacy bcrypt credentials into Better Auth without changing numer
   );
   assert.equal(Number(migratedUser.id), legacyUser.id);
   assert.equal(Number.isInteger(legacyUser.id), true);
-  assert.equal(migratedUser.email, "legacy@example.com");
+  assert.equal(migratedUser.email, getInternalUserEmail("legacy@example.com"));
   assert.ok(String(migratedUser.name).trim());
+  assert.ok(db.prepare('SELECT value FROM settings WHERE key = ?').get("_betterAuthSecret")?.value);
 
   const credentialAccounts = readBetterAuthAccount(db, migratedUser.id).filter(
     (account) => account.provider_id === "credential",
@@ -106,9 +117,9 @@ test("migrates legacy bcrypt credentials into Better Auth without changing numer
   assert.equal(appData.user_id, legacyUser.id);
   assert.equal(Number(migratedUser.id), appData.user_id);
 
-  const login = await requestBetterAuth(server, "/sign-in/email", {
+  const login = await requestBetterAuth(server, "/sign-in/username", {
     method: "POST",
-    body: { email: "legacy@example.com", password: legacyPassword },
+    body: { username: "legacy@example.com", password: legacyPassword },
   });
   assert.equal(login.response.status, 200, JSON.stringify(login.payload));
   assert.ok(login.authToken);
@@ -118,4 +129,16 @@ test("migrates legacy bcrypt credentials into Better Auth without changing numer
   );
   assert.ok(credentialAfterLogin);
   assert.equal(await bcrypt.compare(legacyPassword, credentialAfterLogin.password), true);
+
+  const createResponse = await fetch(`http://127.0.0.1:${server.port}/api/users`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${login.authToken}`,
+    },
+    body: JSON.stringify({ username: "new-user", password: "new-user-password" }),
+  });
+  assert.equal(createResponse.status, 201);
+  const createdUser = db.prepare('SELECT * FROM "users" WHERE username = ?').get("new-user");
+  assert.equal(createdUser.email, getInternalUserEmail("new-user"));
 });

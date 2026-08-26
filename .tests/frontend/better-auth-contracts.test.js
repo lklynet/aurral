@@ -37,7 +37,7 @@ const withFrontend = async (t) => {
   return vite;
 };
 
-test("local auth uses Better Auth email login and bearer response headers", async (t) => {
+test("local auth uses Better Auth username login and bearer response headers", async (t) => {
   const vite = await withFrontend(t);
   let request;
   globalThis.fetch = async (url, init) => {
@@ -59,9 +59,9 @@ test("local auth uses Better Auth email login and bearer response headers", asyn
   );
   const result = await loginApi("ada@example.com", "password123");
 
-  assert.equal(request.url, "/api/auth/sign-in/email");
+  assert.equal(request.url, "/api/auth/sign-in/username");
   assert.deepEqual(JSON.parse(request.init.body), {
-    email: "ada@example.com",
+    username: "ada@example.com",
     password: "password123",
   });
   assert.equal(result.token, "better-auth-session-token");
@@ -143,8 +143,7 @@ test("local account management uses Better Auth admin shapes", async (t) => {
     "/src/utils/api/endpoints/auth.js?better-auth-admin-contract",
   );
   await createUser({
-    name: "Grace Hopper",
-    email: "grace@example.com",
+    username: "grace",
     password: "password123",
     role: "user",
     permissions: { addArtist: true },
@@ -154,11 +153,10 @@ test("local account management uses Better Auth admin shapes", async (t) => {
   const users = await getUsers();
 
   assert.deepEqual(JSON.parse(requests[0].init.body), {
-    email: "grace@example.com",
-    name: "Grace Hopper",
+    username: "grace",
     password: "password123",
     role: "user",
-    data: { permissions: { addArtist: true } },
+    permissions: { addArtist: true },
   });
   assert.deepEqual(JSON.parse(requests[1].init.body), {
     currentPassword: "old-password",
@@ -174,11 +172,10 @@ test("onboarding and login forms expose Better Auth account fields", async () =>
   const onboarding = await readFile("frontend/src/pages/Onboarding.jsx", "utf8");
   const login = await readFile("frontend/src/pages/Login.jsx", "utf8");
 
-  assert.match(onboarding, /id="onboarding-name"/);
-  assert.match(onboarding, /id="onboarding-email"/);
-  assert.match(onboarding, /auth:\s*\{\s*name: authName\.trim\(\),\s*email: authEmail\.trim\(\)/s);
-  assert.doesNotMatch(onboarding, /onboarding-username/);
+  assert.match(onboarding, /id="onboarding-username"/);
+  assert.match(onboarding, /auth:\s*\{\s*username: authUsername\.trim\(\)/s);
+  assert.doesNotMatch(onboarding, /onboarding-email/);
   assert.match(login, /id="identifier"/);
-  assert.match(login, /Email or username/);
+  assert.match(login, /Username/);
   assert.doesNotMatch(login, /id="username"/);
 });

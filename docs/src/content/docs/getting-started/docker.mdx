@@ -22,8 +22,6 @@ services:
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
-      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env}
-      - BETTER_AUTH_URL=${BETTER_AUTH_URL:?Set BETTER_AUTH_URL in .env}
     volumes:
       - ${MEDIA_ROOT:-/srv/media}:/data
       - ./config:/config
@@ -41,12 +39,10 @@ For example, the host folder `/srv/media/downloads/aurral` is `/data/downloads/a
 docker compose up -d
 ```
 
-1. Generate and save a persistent `BETTER_AUTH_SECRET`, for example with `openssl rand -hex 32`.
-2. Set `BETTER_AUTH_URL` to the URL that users use to reach Aurral.
-3. Open `http://localhost:3001`.
-4. Create the admin account with a name, email address, and password.
-5. Connect Lidarr.
-6. Set the Downloads Folder path and run the storage checks.
+1. Open `http://localhost:3001`. Aurral generates and stores its Better Auth secret in `/config` and derives its auth URL from the incoming request.
+2. Create the admin account with a username and password.
+3. Connect Lidarr.
+4. Set the Downloads Folder path and run the storage checks.
 
 Continue with [First run](/getting-started/first-run/).
 

@@ -214,8 +214,6 @@ function SettingsPage() {
             loadingUsers={users.loadingUsers}
             newUserName={users.newUserName}
             setNewUserName={users.setNewUserName}
-            newUserEmail={users.newUserEmail}
-            setNewUserEmail={users.setNewUserEmail}
             newUserPassword={users.newUserPassword}
             setNewUserPassword={users.setNewUserPassword}
             newUserPermissions={users.newUserPermissions}
@@ -228,8 +226,6 @@ function SettingsPage() {
             setEditUser={users.setEditUser}
             editUserName={users.editUserName}
             setEditUserName={users.setEditUserName}
-            editUserEmail={users.editUserEmail}
-            setEditUserEmail={users.setEditUserEmail}
             editPassword={users.editPassword}
             setEditPassword={users.setEditPassword}
             editCurrentPassword={users.editCurrentPassword}

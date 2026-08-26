@@ -15,7 +15,7 @@ Aurral keeps application permissions, listening-history settings, Lidarr prefere
 
 ## Request flow
 
-The Express server mounts Better Auth under `/api/auth/*`. The frontend uses the Better Auth endpoints for email sign-in, session lookup, sign-out, password changes, OIDC sign-in, and administrator user management.
+The Express server mounts Better Auth under `/api/auth/*`. The frontend uses the Better Auth endpoints for username sign-in, session lookup, sign-out, password changes, OIDC sign-in, and administrator user management.
 
 The auth adapter resolves a Better Auth session into Aurral's request user shape. Permission middleware and route handlers continue to consume that shape. The adapter also handles trusted reverse-proxy identity, LAN auto-login, the instance API key, Subsonic authentication, media tokens, and WebSocket query tokens.
 
@@ -31,13 +31,13 @@ Do not add a second callback or session exchange layer around Better Auth.
 
 The database migration creates the Better Auth tables and copies existing local users into Better Auth user and credential-account records. It preserves numeric IDs, password hashes, roles, permissions, and application foreign keys. Existing custom sessions are not copied. Users sign in again after the migration.
 
-`BETTER_AUTH_SECRET` must remain stable across restarts and upgrades. Operators must back up `/config` and the matching environment or secret store before migration. A rollback requires restoring the pre-migration database and configuration together. The previous application version must not open a migrated database.
+When `BETTER_AUTH_SECRET` is omitted, Aurral generates it once and stores it in the `/config` database. If it is configured explicitly, it must remain stable across restarts and upgrades. Operators must back up `/config` and any matching environment or secret store before migration. A rollback requires restoring the pre-migration database and configuration together. The previous application version must not open a migrated database.
 
 ## Ownership boundary
 
 | Concern | Owner |
 | --- | --- |
-| Email/password credentials | Better Auth |
+| Username/password credentials | Better Auth, with an internal email-shaped identity |
 | Browser and bearer sessions | Better Auth |
 | OIDC state, PKCE, callback, and provider account | Better Auth |
 | User administration endpoints | Better Auth, with Aurral permission data |

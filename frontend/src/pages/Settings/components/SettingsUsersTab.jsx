@@ -96,7 +96,7 @@ function formatPlexLink(user) {
 }
 
 function getAccountLabel(user) {
-  return user.name || user.username || user.email || String(user.id);
+  return user.username || user.name || String(user.id);
 }
 
 function PermissionChecklist({ permissions, onChange }) {
@@ -128,8 +128,6 @@ export function SettingsUsersTab({
   loadingUsers,
   newUserName,
   setNewUserName,
-  newUserEmail,
-  setNewUserEmail,
   newUserPassword,
   setNewUserPassword,
   newUserPermissions,
@@ -142,8 +140,6 @@ export function SettingsUsersTab({
   setEditUser,
   editUserName,
   setEditUserName,
-  editUserEmail,
-  setEditUserEmail,
   editPassword,
   setEditPassword,
   editCurrentPassword,
@@ -198,7 +194,6 @@ export function SettingsUsersTab({
 
   const openAddUserModal = () => {
     setNewUserName("");
-    setNewUserEmail("");
     setNewUserPassword("");
     setNewUserPermissions({ ...GRANULAR_PERMISSIONS });
     setShowAddUserModal(true);
@@ -327,8 +322,7 @@ export function SettingsUsersTab({
               <table className="arr-table">
                 <thead>
                   <tr>
-                    <th scope="col">Name</th>
-                    <th scope="col">Email</th>
+                    <th scope="col">Username</th>
                     <th scope="col">Role</th>
                     <th scope="col">Plex</th>
                     <th scope="col" className="arr-table__actions-head">
@@ -339,19 +333,18 @@ export function SettingsUsersTab({
                 <tbody>
                   {loadingUsers ? (
                     <tr className="arr-table__empty-row">
-                      <td colSpan={5}>
+                      <td colSpan={4}>
                         <DotLoader size="sm" label={null} /> Loading users…
                       </td>
                     </tr>
                   ) : usersList.length === 0 ? (
                     <tr className="arr-table__empty-row">
-                      <td colSpan={5}>No users configured.</td>
+                      <td colSpan={4}>No users configured.</td>
                     </tr>
                   ) : (
                     usersList.map((user) => (
                       <tr key={user.id}>
                         <td>{getAccountLabel(user)}</td>
-                        <td>{user.email || "—"}</td>
                         <td>
                           <span
                             className={`arr-badge${
@@ -373,7 +366,6 @@ export function SettingsUsersTab({
                               onClick={() => {
                                 setEditUser(user);
                                 setEditUserName(user.name || "");
-                                setEditUserEmail(user.email || "");
                                 setEditPassword("");
                                 setEditCurrentPassword("");
                                 setEditPermissions(
@@ -509,8 +501,8 @@ export function SettingsUsersTab({
                       <form
                         onSubmit={async (event) => {
                           event.preventDefault();
-                          if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword) {
-                            showError("Name, email, and password required");
+                          if (!newUserName.trim() || !newUserPassword) {
+                            showError("Username and password required");
                             return;
                           }
                           setCreatingUser(true);
@@ -520,7 +512,6 @@ export function SettingsUsersTab({
                               usersList.length === 1;
                             await createUser(
                               newUserName.trim(),
-                              newUserEmail.trim(),
                               newUserPassword,
                               "user",
                               newUserPermissions,
@@ -532,7 +523,6 @@ export function SettingsUsersTab({
                             );
                             setShowAddUserModal(false);
                             setNewUserName("");
-                            setNewUserEmail("");
                             setNewUserPassword("");
                             setNewUserPermissions({ ...GRANULAR_PERMISSIONS });
                             await refreshUsers();
@@ -547,26 +537,15 @@ export function SettingsUsersTab({
                         }}
                       >
                         <div className="arr-modal__body">
-                          <SettingsArrFormGroup label="Name" labelFor="add-user-name">
+                          <SettingsArrFormGroup label="Username" labelFor="add-user-name">
                             <SettingsInput
                               id="add-user-name"
                               type="text"
                               required
-                              placeholder="Name"
-                              autoComplete="name"
+                              placeholder="Username"
+                              autoComplete="username"
                               value={newUserName}
                               onChange={(event) => setNewUserName(event.target.value)}
-                            />
-                          </SettingsArrFormGroup>
-                          <SettingsArrFormGroup label="Email" labelFor="add-user-email">
-                            <SettingsInput
-                              id="add-user-email"
-                              type="email"
-                              required
-                              placeholder="you@example.com"
-                              autoComplete="email"
-                              value={newUserEmail}
-                              onChange={(event) => setNewUserEmail(event.target.value)}
                             />
                           </SettingsArrFormGroup>
                           <SettingsArrFormGroup label="Password" labelFor="add-user-password">
@@ -652,7 +631,6 @@ export function SettingsUsersTab({
                               }
                               await updateUser(editUser.id, {
                                 name: editUserName.trim(),
-                                email: editUserEmail.trim(),
                               });
                               showSuccess(editPassword ? "Account updated" : "Account details updated");
                               setEditUser(null);
@@ -669,7 +647,6 @@ export function SettingsUsersTab({
                           try {
                             await updateUser(editUser.id, {
                               name: editUserName.trim(),
-                              email: editUserEmail.trim(),
                               ...(editPassword ? { password: editPassword } : {}),
                               permissions: editPermissions,
                             });
@@ -695,17 +672,6 @@ export function SettingsUsersTab({
                               autoComplete="name"
                               value={editUserName}
                               onChange={(event) => setEditUserName(event.target.value)}
-                              required
-                            />
-                          </SettingsArrFormGroup>
-                          <SettingsArrFormGroup label="Email" labelFor="edit-user-email">
-                            <SettingsInput
-                              id="edit-user-email"
-                              type="email"
-                              placeholder="you@example.com"
-                              autoComplete="email"
-                              value={editUserEmail}
-                              onChange={(event) => setEditUserEmail(event.target.value)}
                               required
                             />
                           </SettingsArrFormGroup>

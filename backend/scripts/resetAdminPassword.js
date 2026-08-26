@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { dbOps, userOps } from "../db/helpers/index.js";
+import { dbOps, getInternalUserEmail, userOps } from "../db/helpers/index.js";
 import { auth, setAuthUserPassword } from "../services/betterAuth.js";
 
 function parseArgs(argv) {
@@ -117,7 +117,7 @@ async function main() {
     await setAuthUserPassword(existing.id, password);
     resultUser = userOps.updateUser(existing.id, { role: "admin" });
   } else {
-    const email = username.includes("@") ? username : `${username}@aurral.invalid`;
+    const email = getInternalUserEmail(username);
     const created = await auth.api.createUser({
       body: {
         email,
@@ -136,7 +136,7 @@ async function main() {
   }
 
   console.log("Admin password reset successful.");
-  console.log(`Email: ${resultUser.email}`);
+  console.log(`Username: ${resultUser.username || username}`);
   if (args.generate) {
     console.log(`Generated password: ${password}`);
   } else {

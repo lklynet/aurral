@@ -42,9 +42,7 @@ export const ensureFilesystemPath = (pathValue) =>
 
 export const loginApi = async (identifier, password) => {
   const value = String(identifier || "").trim();
-  const response = value.includes("@")
-    ? await api.post("/auth/sign-in/email", { email: value, password })
-    : await api.post("/auth/sign-in/username", { username: value, password });
+  const response = await api.post("/auth/sign-in/username", { username: value, password });
   const token = response.headers.get("set-auth-token");
   if (token) setStoredAuth({ token });
   invalidateBootstrapCache();
@@ -107,13 +105,13 @@ export const getLidarrMetadataProfilesOnboarding = (url, apiKey) =>
 
 export const getUsers = () => getData("/users");
 
-export const createUser = ({ email, name, password, role, permissions }) =>
-  postData("/auth/admin/create-user", {
-    email,
+export const createUser = ({ username, name, password, role, permissions }) =>
+  postData("/users", {
+    username,
     name,
     password,
     role,
-    data: { permissions },
+    permissions,
   });
 
 export const updateUser = async (id, data = {}) => {

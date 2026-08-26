@@ -662,10 +662,7 @@ db.exec(`
       name = COALESCE(NULLIF(TRIM(name), ''), username),
       email = COALESCE(
         NULLIF(LOWER(TRIM(email)), ''),
-        CASE
-          WHEN username LIKE '%@%' THEN LOWER(TRIM(username))
-          ELSE 'legacy-' || id || '@aurral.invalid'
-        END
+        'legacy-' || id || '@aurral.invalid'
       ),
       created_at = COALESCE(NULLIF(created_at, ''), CURRENT_TIMESTAMP),
       updated_at = COALESCE(NULLIF(updated_at, ''), CURRENT_TIMESTAMP);
