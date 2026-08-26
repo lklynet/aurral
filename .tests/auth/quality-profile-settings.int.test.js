@@ -44,7 +44,9 @@ test.before(async () => {
     body: JSON.stringify({ username: "admin", password: "password123" }),
   });
   authToken = response.headers.get("set-auth-token");
-  assert.equal(response.status, 200);
+  const responseBody = await response.text();
+  assert.equal(response.status, 200, responseBody);
+  assert.ok(authToken);
 });
 
 test.after(async () => {

@@ -49,34 +49,45 @@ class WebSocketService {
   async handleConnection(ws, req) {
     let sessionUser = null;
     let authSource = null;
-    if (isAuthRequired()) {
-      const requestUrl = new URL(req.url || "", "http://localhost");
-      const token = requestUrl.searchParams.get("token");
-      sessionUser = token
-        ? await resolveSessionUserFromToken(token)
-        : await resolveSessionUserFromHeaders(req.headers);
-      if (!sessionUser) {
-        sessionUser = resolveProxyUser(req);
-      }
-      if (sessionUser) {
-        authSource = "session";
-      } else {
-        sessionUser = resolveLocalNetworkBypassUser({
-          headers: req.headers || {},
-          socket: req.socket || {},
-          connection: req.connection || {},
-          ip: req.socket?.remoteAddress || "",
-          ips: [],
-        });
+    let closedDuringAuth = false;
+    const onCloseDuringAuth = () => {
+      closedDuringAuth = true;
+    };
+    ws.once("close", onCloseDuringAuth);
+    try {
+      if (isAuthRequired()) {
+        const requestUrl = new URL(req.url || "", "http://localhost");
+        const token = requestUrl.searchParams.get("token");
+        sessionUser = token
+          ? await resolveSessionUserFromToken(token)
+          : await resolveSessionUserFromHeaders(req.headers);
+        if (!sessionUser) {
+          sessionUser = resolveProxyUser(req);
+        }
         if (sessionUser) {
-          authSource = "local-network-bypass";
+          authSource = "session";
+        } else {
+          sessionUser = resolveLocalNetworkBypassUser({
+            headers: req.headers || {},
+            socket: req.socket || {},
+            connection: req.connection || {},
+            ip: req.socket?.remoteAddress || "",
+            ips: [],
+          });
+          if (sessionUser) {
+            authSource = "local-network-bypass";
+          }
+        }
+        if (!sessionUser) {
+          ws.close(4401, "Unauthorized");
+          return;
         }
       }
-      if (!sessionUser) {
-        ws.close(4401, "Unauthorized");
-        return;
-      }
+    } finally {
+      ws.off("close", onCloseDuringAuth);
     }
+
+    if (closedDuringAuth || ws.readyState !== 1) return;
 
     const clientId = this.generateClientId();
     

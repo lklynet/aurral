@@ -9,7 +9,7 @@ Aurral uses Better Auth for local credentials, browser sessions, bearer tokens, 
 
 ## Local accounts
 
-Each local account has a name, an email address, and a password. Use the email address to sign in.
+Each local account has a name, an email address, and a password. Use the email address or username to sign in.
 
 Admins create accounts from **Settings > Users**. The first account is created during onboarding.
 
@@ -35,6 +35,7 @@ The public session endpoints are:
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/api/auth/sign-in/email` | Sign in with an email address and password |
+| `POST` | `/api/auth/sign-in/username` | Sign in with a username and password |
 | `GET` | `/api/auth/get-session` | Read the current user and session |
 | `POST` | `/api/auth/sign-out` | Revoke the current session |
 | `POST` | `/api/auth/change-password` | Change the current user's password and revoke other sessions |

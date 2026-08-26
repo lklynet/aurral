@@ -50,8 +50,8 @@ function addAlbum({ artist, title, releaseDate, trackTitle }) {
 
 test("starMany validates duplicate and equivalent encoded canonical targets", () => {
   const user = db.prepare(
-    "INSERT INTO users (username, password_hash, role, permissions) VALUES (?, '', 'user', '{}') RETURNING id",
-  ).get("subsonic-star-many");
+    "INSERT INTO users (username, email, password_hash, role, permissions) VALUES (?, ?, '', 'user', '{}') RETURNING id",
+  ).get("subsonic-star-many", "subsonic-star-many@example.com");
   const key = "test-track:Old Song";
   const encoded = `song:${encodeURIComponent(key)}`;
   const alternate = encoded.replaceAll("%3A", "%3a");

@@ -180,10 +180,13 @@ router.post("/complete", async (req, res) => {
           role: "admin",
         },
       });
-      const createdUser = userOps.getUserByUsername(authEmail);
-      if (!createdUser || !userOps.updateUser(createdUser.id, { role: "admin" })) {
-        throw new Error("Failed to create the administrator account");
-      }
+    }
+    const adminCandidate = userOps.getUserByUsername(authEmail);
+    if (!adminCandidate) {
+      throw new Error("Failed to create the administrator account");
+    }
+    if (adminCandidate.role !== "admin" && !userOps.updateUser(adminCandidate.id, { role: "admin" })) {
+      throw new Error("Failed to create the administrator account");
     }
 
     dbOps.updateSettings(nextSettings);

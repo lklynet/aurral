@@ -154,7 +154,12 @@ test("proxy auth issues one Aurral session that outlives the identity header", a
   assert.equal(headerlessUser?.username, "erin");
 
   assert.equal(
-    await issueProxySession(proxyRequest({ authorization: `Bearer ${issued.token}` })),
+    await issueProxySession(
+      proxyRequest({
+        "x-forwarded-user": "erin",
+        authorization: `Bearer ${issued.token}`,
+      }),
+    ),
     null,
   );
 });

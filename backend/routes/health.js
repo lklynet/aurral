@@ -323,7 +323,7 @@ router.get("/", noCache, async (req, res) => {
   try {
     const settings = dbOps.getSettings();
     const currentUser = resolveRequestUser(req);
-    const payload = buildBootstrapPayload(req);
+    const payload = await buildBootstrapPayload(req);
     if (currentUser) {
       const discoveryCache = getDiscoveryCache();
       const wsStats = websocketService.getStats();

@@ -105,6 +105,7 @@ function getOidcPlugin() {
           .split(/\s+/)
           .filter(Boolean),
         requireIdTokenVerification: true,
+        overrideUserInfo: true,
         mapProfileToUser(profile) {
           const resolvedUsername = resolveOidcUsername(profile);
           const role = resolveOidcRole(profile, resolvedUsername);
@@ -121,7 +122,9 @@ function getOidcPlugin() {
 }
 
 const oidcPlugin = getOidcPlugin();
+const useSecureCookies = getBaseURL().startsWith("https://");
 const trustedOrigins = [getBaseURL(), ...parseCsv(process.env.CORS_ORIGIN)];
+const useCrossOriginCookies = useSecureCookies && parseCsv(process.env.CORS_ORIGIN).length > 0;
 
 export const auth = betterAuth({
   appName: "Aurral",
@@ -219,7 +222,11 @@ export const auth = betterAuth({
   },
   advanced: {
     database: { generateId: "serial" },
-    useSecureCookies: getBaseURL().startsWith("https://"),
+    useSecureCookies,
+    defaultCookieAttributes: {
+      sameSite: useCrossOriginCookies ? "none" : "lax",
+      secure: useSecureCookies,
+    },
   },
   plugins: [
     bearer(),
@@ -292,7 +299,27 @@ export async function createAuthSession(userId, request = {}) {
   });
 }
 
-export async function revokeUserSessions(userId) {
+export async function setAuthUserPassword(userId, password) {
   const context = await auth.$context;
-  await context.internalAdapter.deleteUserSessions(String(userId));
+  const normalizedUserId = String(userId);
+  const hashedPassword = await context.password.hash(String(password));
+  if (await context.internalAdapter.findCredentialAccount(normalizedUserId)) {
+    await context.internalAdapter.updatePassword(normalizedUserId, hashedPassword);
+  } else {
+    await context.internalAdapter.createAccount({
+      userId: normalizedUserId,
+      accountId: normalizedUserId,
+      providerId: "credential",
+      issuer: "local:credential",
+      password: hashedPassword,
+    });
+  }
+  await context.internalAdapter.deleteUserSessions(normalizedUserId);
+}
+
+export async function removeAuthUser(userId) {
+  const context = await auth.$context;
+  const normalizedUserId = String(userId);
+  await context.internalAdapter.deleteUserSessions(normalizedUserId);
+  await context.internalAdapter.deleteUser(normalizedUserId);
 }

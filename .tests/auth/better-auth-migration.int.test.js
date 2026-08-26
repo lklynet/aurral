@@ -113,5 +113,9 @@ test("migrates legacy bcrypt credentials into Better Auth without changing numer
   assert.equal(login.response.status, 200, JSON.stringify(login.payload));
   assert.ok(login.authToken);
   assert.equal(String(login.payload.user.id), String(legacyUser.id));
-  assert.equal(await bcrypt.compare(legacyPassword, credential.password), true);
+  const credentialAfterLogin = readBetterAuthAccount(db, migratedUser.id).find(
+    (account) => account.provider_id === "credential",
+  );
+  assert.ok(credentialAfterLogin);
+  assert.equal(await bcrypt.compare(legacyPassword, credentialAfterLogin.password), true);
 });

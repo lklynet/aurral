@@ -68,7 +68,13 @@ async function request(config) {
   const isAuthEndpoint = /\/auth(?:\/|$)/.test(urlPath);
 
   try {
-    const init = { method, headers, signal: controller.signal, redirect: "manual" };
+    const init = {
+      method,
+      headers,
+      signal: controller.signal,
+      redirect: "manual",
+      credentials: config.credentials || "include",
+    };
     if (config.data != null && method !== "GET" && method !== "HEAD") {
       if (typeof config.data === "string" || isBinaryData) {
         init.body = config.data;

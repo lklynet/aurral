@@ -86,7 +86,9 @@ test.before(async () => {
     body: JSON.stringify({ username: "admin", password: "password123" }),
   });
   authToken = login.headers.get("set-auth-token");
-  assert.equal(login.status, 200);
+  const loginBody = await login.text();
+  assert.equal(login.status, 200, loginBody);
+  assert.ok(authToken);
 });
 
 test.after(async () => {

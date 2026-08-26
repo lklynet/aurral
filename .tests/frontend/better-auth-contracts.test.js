@@ -21,7 +21,7 @@ const withFrontend = async (t) => {
   };
   const vite = await createServer({
     root: "frontend",
-    server: { middlewareMode: true },
+    server: { middlewareMode: true, hmr: false },
     appType: "custom",
     optimizeDeps: { noDiscovery: true },
   });

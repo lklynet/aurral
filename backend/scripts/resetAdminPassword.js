@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { dbOps, userOps } from "../db/helpers/index.js";
-import { auth } from "../services/betterAuth.js";
+import { auth, setAuthUserPassword } from "../services/betterAuth.js";
 
 function parseArgs(argv) {
   const args = {
@@ -114,9 +114,7 @@ async function main() {
 
   let resultUser = null;
   if (existing) {
-    await auth.api.setUserPassword({
-      body: { userId: String(existing.id), newPassword: password },
-    });
+    await setAuthUserPassword(existing.id, password);
     resultUser = userOps.updateUser(existing.id, { role: "admin" });
   } else {
     const email = username.includes("@") ? username : `${username}@aurral.invalid`;
@@ -139,7 +137,11 @@ async function main() {
 
   console.log("Admin password reset successful.");
   console.log(`Email: ${resultUser.email}`);
-  console.log(`Password: ${password}`);
+  if (args.generate) {
+    console.log(`Generated password: ${password}`);
+  } else {
+    console.log("Password updated.");
+  }
 }
 
 main().catch((error) => {

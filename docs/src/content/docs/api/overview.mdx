@@ -29,6 +29,10 @@ curl --fail --include \
   https://aurral.example.com/api/auth/sign-in/email
 ```
 
+You can also sign in with the account's username at
+`POST /api/auth/sign-in/username`. See [Users and authentication](/admin/users/)
+for OIDC, reverse-proxy, and session details.
+
 Read the `set-auth-token` response header and send the value as a bearer token
 on later requests:
 
@@ -119,10 +123,10 @@ cross-origin JSON API requests. The authenticated Subsonic API at `/rest` is
 available to browser Subsonic clients such as Feishin without this setting.
 
 The current CORS preflight allows the `Content-Type` and `Authorization`
-headers. It does not allow the `X-Api-Key` header. For a cross-origin browser
-widget, use a server-side proxy. When you use the `api_key` query parameter, you
-do not need a custom header. However, browser history and access logs can reveal
-the key.
+headers and authenticated browser credentials. It does not allow the `X-Api-Key`
+header. For a cross-origin browser client, send requests with credentials
+included. When you use the `api_key` query parameter, you do not need a custom
+header. However, browser history and access logs can reveal the key.
 
 ## Responses and limits
 

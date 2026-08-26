@@ -47,8 +47,11 @@ async function login(username) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password: "password123" }),
   });
-  assert.equal(res.status, 200);
-  return res.headers.get("set-auth-token");
+  const responseBody = await res.text();
+  assert.equal(res.status, 200, responseBody);
+  const token = res.headers.get("set-auth-token");
+  assert.ok(token);
+  return token;
 }
 
 test.before(async () => {

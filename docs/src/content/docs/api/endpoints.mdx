@@ -26,6 +26,7 @@ can change Aurral, Lidarr, files, users, or external services.
 | `GET` | `/api/health/ws` | WebSocket connection statistics |
 | `POST` | `/api/health/stream-token` | Issue a short-lived token for media streams |
 | `POST` | `/api/auth/sign-in/email` | Sign in with an email address and password |
+| `POST` | `/api/auth/sign-in/username` | Sign in with a username and password |
 | `GET` | `/api/auth/get-session` | Read the current Better Auth user and session |
 | `POST` | `/api/auth/sign-out` | Revoke the current Better Auth session |
 | `POST` | `/api/auth/change-password` | Change the current user's password and revoke other sessions |
@@ -39,6 +40,16 @@ can change Aurral, Lidarr, files, users, or external services.
 | `POST` | `/api/auth/admin/remove-user` | Delete a user |
 | `GET` | `/api/aurral-auth/api-key` | Read or create the instance API key |
 | `POST` | `/api/aurral-auth/api-key/rotate` | Replace the instance API key |
+
+`POST /api/auth/sign-in/username` accepts a JSON body with `username` and
+`password` fields:
+
+```json
+{
+  "username": "alice",
+  "password": "your-password"
+}
+```
 
 The liveness, bootstrap, and health routes do not require authentication.
 Aurral returns detailed health fields only for a request with a valid

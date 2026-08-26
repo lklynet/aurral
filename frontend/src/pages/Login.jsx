@@ -39,7 +39,8 @@ const Login = () => {
     try {
       const basePath = getAppBasePath();
       const prefix = basePath === "/" ? "" : basePath.replace(/\/$/, "");
-      const redirectUrl = await startOidcLogin(`${prefix}/sso/complete`);
+      const callbackUrl = new URL(`${prefix}/sso/complete`, window.location.origin).toString();
+      const redirectUrl = await startOidcLogin(callbackUrl);
       window.location.assign(redirectUrl);
     } catch {
       setStartingSso(false);

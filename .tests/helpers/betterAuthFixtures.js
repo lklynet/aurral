@@ -74,8 +74,11 @@ export function assertBetterAuthCoreSchema(db) {
   }
 }
 
-function insertKnownColumns(db, table, values) {
+function insertKnownColumns(db, table, values, requiredColumns = []) {
   const columns = tableColumns(db, table);
+  for (const column of requiredColumns) {
+    assert.equal(columns.has(column), true, `${table}.${column} is required by this fixture`);
+  }
   const entries = Object.entries(values).filter(([column]) => columns.has(column));
   const names = entries.map(([column]) => quoteIdentifier(column)).join(", ");
   const placeholders = entries.map(() => "?").join(", ");
@@ -110,7 +113,7 @@ export function seedBetterAuthUser(
     display_username: username,
     role,
     permissions: JSON.stringify(permissions),
-  });
+  }, ["role", "permissions"]);
   insertKnownColumns(db, "accounts", {
     user_id: id,
     issuer,

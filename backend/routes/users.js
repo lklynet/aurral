@@ -3,7 +3,12 @@ import { userOps, dbOps } from "../db/helpers/index.js";
 import { requireAuth, requireAdmin } from "../middleware/requirePermission.js";
 import { reconcileLocalNetworkBypassSetting } from "../middleware/auth.js";
 import { requirePasswordStrength } from "../middleware/auth.js";
-import { auth, revokeUserSessions } from "../services/betterAuth.js";
+import {
+  auth,
+  getSessionForHeaders,
+  removeAuthUser,
+  setAuthUserPassword,
+} from "../services/betterAuth.js";
 import { fromNodeHeaders } from "better-auth/node";
 import { websocketService } from "../services/websocketService.js";
 import {
@@ -95,6 +100,8 @@ const reconcileLocalBypassAfterUserMutation = () => {
   }
   return result;
 };
+
+const hasBetterAuthSession = async (req) => Boolean(await getSessionForHeaders(req.headers));
 
 const normalizeRootFolderPath = (value) => {
   const normalized = String(value || "").trim();
@@ -190,7 +197,8 @@ router.get("/", requireAuth, requireAdmin, async (req, res) => {
 
 router.post("/", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { email, name, password, role = "user", permissions } = req.body;
+    const { email, name, password, role = "user", permissions: topLevelPermissions } = req.body;
+    const permissions = topLevelPermissions ?? req.body?.data?.permissions;
     if (!String(email || "").trim() || !String(name || "").trim() || !password) {
       return res.status(400).json({ error: "Name, email, and password required" });
     }
@@ -305,9 +313,14 @@ router.patch("/:id", requireAuth, async (req, res) => {
       if (!passwordValidation.valid) {
         return res.status(400).json({ error: passwordValidation.error });
       }
-      await auth.api.setUserPassword({
-        body: { userId: String(id), newPassword: password },
-      });
+      if (await hasBetterAuthSession(req)) {
+        await auth.api.setUserPassword({
+          headers: fromNodeHeaders(req.headers),
+          body: { userId: String(id), newPassword: password },
+        });
+      } else {
+        await setAuthUserPassword(id, password);
+      }
     }
     if (permissions !== undefined) updates.permissions = permissions;
     if (role !== undefined) updates.role = role;
@@ -559,8 +572,14 @@ router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
     if (!existing) {
       return res.status(404).json({ error: "User not found" });
     }
-    await revokeUserSessions(id);
-    await auth.api.removeUser({ body: { userId: String(id) } });
+    if (await hasBetterAuthSession(req)) {
+      await auth.api.removeUser({
+        headers: fromNodeHeaders(req.headers),
+        body: { userId: String(id) },
+      });
+    } else {
+      await removeAuthUser(id);
+    }
     reconcileLocalBypassAfterUserMutation();
     res.json({ success: true });
   } catch (e) {

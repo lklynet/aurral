@@ -6,10 +6,10 @@ Aurral uses Better Auth for local credentials, sessions, bearer tokens, OIDC pro
 
 Better Auth owns these SQLite tables:
 
-- `user`
-- `session`
-- `account`
-- `verification`
+- `users`
+- `sessions`
+- `accounts`
+- `verifications`
 
 Aurral keeps application permissions, listening-history settings, Lidarr preferences, discovery layout, and other user-scoped data in its existing application tables. Existing numeric user IDs remain stable because application tables reference them.
 

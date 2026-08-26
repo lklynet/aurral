@@ -17,7 +17,11 @@ const { db } = await import("../../backend/config/db-sqlite.js");
 
 test.beforeEach(() => {
   resetDatabase(db);
-  db.prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)").run("listener", "test");
+  db.prepare("INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)").run(
+    "listener",
+    "listener@example.com",
+    "test",
+  );
 });
 
 test.after(async () => cleanupIsolatedState(isolatedState));

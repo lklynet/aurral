@@ -128,6 +128,8 @@ export const userOps = {
       ...getListenHistoryProfile(r),
       id: r.id,
       username: r.username,
+      name: r.name || r.display_username || r.username,
+      email: r.email,
       role: r.role || "user",
       permissions: dbHelpers.parseJSON(r.permissions) || {
         ...DEFAULT_PERMISSIONS,

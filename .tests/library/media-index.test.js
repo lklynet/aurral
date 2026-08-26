@@ -360,8 +360,12 @@ test("upsertLibraryArtist repairs an existing fallback and MBID duplicate", () =
      VALUES (?, ?, ?, ?, ?)`,
   ).run(`mbid:${mbid}`, mbid, name, timestamp, timestamp).lastInsertRowid);
   const userId = Number(db.prepare(
-    "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-  ).run(`identity-repair-${process.pid}-${timestamp}`, "hash").lastInsertRowid);
+    "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
+  ).run(
+    `identity-repair-${process.pid}-${timestamp}`,
+    `identity-repair-${process.pid}-${timestamp}@example.com`,
+    "hash",
+  ).lastInsertRowid);
   db.prepare(
     `INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
      VALUES (?, 'artist', ?, ?)`,

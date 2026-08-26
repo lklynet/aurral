@@ -32,8 +32,11 @@ async function login(username, password) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
   });
-  assert.equal(response.status, 200, await response.text());
-  return response.headers.get("set-auth-token");
+  const responseBody = await response.text();
+  assert.equal(response.status, 200, responseBody);
+  const token = response.headers.get("set-auth-token");
+  assert.ok(token);
+  return token;
 }
 
 async function apiFetch(token, path, options = {}) {

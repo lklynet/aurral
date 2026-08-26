@@ -1,6 +1,7 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import os from "node:os";
 
 import bcrypt from "bcrypt";
 
@@ -125,10 +126,25 @@ test("LAN bypass resolves the sole Better Auth admin and stays ineligible for mu
   });
 
   const request = proxyRequest();
-  assert.equal(isRequestFromTrustedLocalSubnet(request), true);
-  const status = getLocalNetworkBypassStatus(request);
-  assert.equal(status.active, status.eligible);
-  if (status.active) assert.equal(resolveLocalNetworkBypassUser(request).id, 41);
+  const networkMock = mock.method(os, "networkInterfaces", () => ({
+    eth0: [
+      {
+        address: "192.168.1.100",
+        netmask: "255.255.255.0",
+        family: "IPv4",
+        internal: false,
+      },
+    ],
+  }));
+  try {
+    assert.equal(isRequestFromTrustedLocalSubnet(request), true);
+    const status = getLocalNetworkBypassStatus(request);
+    assert.equal(status.eligible, true);
+    assert.equal(status.active, true);
+    assert.equal(resolveLocalNetworkBypassUser(request).id, 41);
+  } finally {
+    networkMock.mock.restore();
+  }
 
   seedBetterAuthUser(db, {
     id: 42,
