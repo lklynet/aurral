@@ -80,6 +80,10 @@ export function isOidcEnabled() {
   );
 }
 
+export function getOidcProviderId() {
+  return String(process.env.OIDC_PROVIDER_ID || "oidc").trim() || "oidc";
+}
+
 export function getOidcBootstrapInfo() {
   return {
     oidcEnabled: isOidcEnabled(),
@@ -90,7 +94,7 @@ export function getOidcBootstrapInfo() {
 function getOidcPlugin() {
   if (!isOidcEnabled()) return null;
   const issuer = String(process.env.OIDC_ISSUER).replace(/\/+$/, "");
-  const providerId = String(process.env.OIDC_PROVIDER_ID || "oidc").trim();
+  const providerId = getOidcProviderId();
   return genericOAuth({
     config: [
       {

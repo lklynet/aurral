@@ -12,6 +12,7 @@ dns.setDefaultResultOrder("ipv4first");
 import { authMiddleware, isProxyAuthEnabled } from "./middleware/auth.js";
 import {
   betterAuthHandler,
+  getOidcProviderId,
   isOidcEnabled,
 } from "./services/betterAuth.js";
 import { logger } from "./services/logger.js";
@@ -194,7 +195,16 @@ const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
 });
+app.use("/api/auth/sign-in", authLimiter);
 app.all("/api/auth/*splat", betterAuthHandler);
+
+app.all("/sso/callback", (req, res, next) => {
+  const query = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+  const canonicalUrl = `/api/auth/callback/${encodeURIComponent(getOidcProviderId())}${query}`;
+  req.url = canonicalUrl;
+  req.originalUrl = canonicalUrl;
+  return betterAuthHandler(req, res, next);
+});
 
 app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
