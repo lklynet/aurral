@@ -30,6 +30,7 @@ const formatKind = (kind) => {
   const labels = {
     album_requested: "Album request",
     track_download: "Track download",
+    playlist_import: "Playlist import",
     track_reused_aurral: "Reused track",
     track_reused_lidarr: "Reused track",
   };

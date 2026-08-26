@@ -57,7 +57,7 @@ export async function enqueueImportedPlaylist({
     lastSyncAt: Date.now(),
     lastSyncTrackCount: tracks.length,
   });
-  return weeklyFlowOperationQueue.enqueuePayload({
+  const result = await weeklyFlowOperationQueue.enqueuePayload({
     kind: "shared-playlist-create",
     label: "shared-playlist:create",
     playlistId: safePlaylistId,
@@ -67,4 +67,5 @@ export async function enqueueImportedPlaylist({
     ownerUserId,
     importSource,
   });
+  return { ...result, tracksQueued: tracks.length };
 }

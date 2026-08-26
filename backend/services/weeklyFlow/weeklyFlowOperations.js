@@ -4,6 +4,7 @@ import {
   recordFlowGenerationStarted,
   recordFlowTracksGenerated,
   recordPlaylistTracksAdded,
+  recordTrackJobQueued,
 } from "../aurralHistoryService.js";
 import {
   buildSharedTrackIdentity,
@@ -156,6 +157,7 @@ const queueTracksForPlaylist = async (tracks, playlistId) => {
       );
     }
     jobIds.push(jobId);
+    recordTrackJobQueued(downloadTracker.getJob(jobId));
   }
   return { reusedJobIds, jobIds, createdJobIds };
 };

@@ -461,6 +461,81 @@ const isHonkerQueueActive = async (queueName, predicate) => {
   }
 };
 
+const canViewPlaylistActivity = (user, playlistId, ownerUserId = undefined) => {
+  if (!user || user.role === "admin") return true;
+  if (ownerUserId !== undefined) {
+    return ownerUserId != null && Number(ownerUserId) === Number(user.id);
+  }
+  const id = String(playlistId || "").trim();
+  if (!id || id === "library") return true;
+  const flow = flowPlaylistConfig.getFlow(id);
+  if (flow) return flowPlaylistConfig.canUserAccessFlow(user, flow);
+  const playlist = flowPlaylistConfig.getSharedPlaylist(id);
+  return playlist ? flowPlaylistConfig.canUserAccessSharedPlaylist(user, playlist) : false;
+};
+
+const loadPendingPlaylistImportHistory = async (user) => {
+  try {
+    const { getHonkerDb } = await import("./honkerDb.js");
+    const rows = getHonkerDb().query(
+      `
+        SELECT id, payload, state, created_at
+        FROM _honker_live
+        WHERE queue = ?
+          AND state IN ('pending', 'processing')
+        ORDER BY created_at ASC, id ASC
+      `,
+      ["weekly-flow-operation"],
+    );
+    return rows.flatMap((row) => {
+      const payload = parseHonkerPayload(row?.payload);
+      if (payload?.kind !== "shared-playlist-create") return [];
+      if (
+        user &&
+        user.role !== "admin" &&
+        (payload.ownerUserId == null || Number(payload.ownerUserId) !== Number(user.id))
+      ) {
+        return [];
+      }
+      const playlistId = String(payload.playlistId || "").trim();
+      const playlistName = String(payload.name || "Playlist").trim() || "Playlist";
+      const sourceName = String(payload.sourceName || "Playlist import").trim();
+      const trackCount = Array.isArray(payload.tracks) ? payload.tracks.length : 0;
+      const state = row.state === "processing" ? "processing" : "pending";
+      const countLabel = `${trackCount} track${trackCount === 1 ? "" : "s"}`;
+      const createdAt = Number(row.created_at);
+      return [
+        {
+          id: stableId("playlist_import", row.id),
+          kind: "playlist_import",
+          title: state === "processing" ? `Preparing ${playlistName}` : `Queued ${playlistName}`,
+          subtitle: `${sourceName} · ${countLabel} waiting for download`,
+          status: state,
+          statusLabel: state === "processing" ? "Preparing" : "Queued",
+          href: flowPlaylistConfig.getSharedPlaylist(playlistId)
+            ? buildPlaylistHref(playlistId)
+            : null,
+          metadata: {
+            operationId: row.id,
+            playlistId,
+            playlistName,
+            ownerUserId: payload.ownerUserId ?? null,
+            trackCount,
+          },
+          createdAt:
+            Number.isFinite(createdAt) && createdAt > 0
+              ? createdAt > 1e12
+                ? createdAt
+                : createdAt * 1000
+              : Date.now(),
+        },
+      ];
+    });
+  } catch {
+    return [];
+  }
+};
+
 const isPipelineActiveForJob = async (jobId) =>
   isHonkerQueueActive("slskd-pipeline", (payload) => payload?.jobId === jobId);
 
@@ -530,6 +605,7 @@ export const syncTrackDownloadHistory = async (historyEntries = null) => {
       continue;
     }
     if (isBlocked) continue;
+    if (job.status === "pending") continue;
 
     const anchorTime = Math.max(
       Number(job.startedAt || 0),
@@ -837,7 +913,11 @@ export const recordTrackJobSearching = (job) =>
 export const recordTrackJobQueued = (job) => {
   const jobId = String(job?.id || "").trim();
   if (!jobId || dbOps.getAurralHistoryById(stableId("track_download", jobId))) return null;
-  return recordTrackJobSearching(job);
+  return recordTrackJob(job, {
+    status: "pending",
+    statusLabel: "Queued",
+    title: `Queued ${job?.trackName || "track"}`,
+  });
 };
 
 export const recordTrackJobDownloading = (job) =>
@@ -901,6 +981,7 @@ export const toHistoryRequestItem = (entry, options = {}) => {
     href: entry.href || null,
     kind,
     playlistId: entry.metadata?.playlistId || null,
+    playlistName: entry.metadata?.playlistName || null,
     jobId: entry.metadata?.jobId || null,
     trackName,
     artistName: entry.metadata?.artistName || null,
@@ -923,9 +1004,42 @@ export const toHistoryRequestItem = (entry, options = {}) => {
 
 const FAILED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
-export const getAurralHistoryRequests = async (lidarrClient = null) => {
+const buildActiveTrackHistory = (job) => {
+  const playlistId = job?.playlistId || job?.playlistType;
+  const status =
+    job?.status === "blocked" ? "blocked" : job?.status === "downloading" ? "processing" : "pending";
+  const statusLabel =
+    status === "blocked" ? "Review" : status === "processing" ? "Downloading" : "Queued";
+  const title =
+    status === "blocked"
+      ? `Review needed for ${job?.trackName || "track"}`
+      : status === "processing"
+        ? `Downloading ${job?.trackName || "track"} via ${resolveDownloadClientLabel(job?.downloadSource, job?.downloadClient)}`
+        : `Queued ${job?.trackName || "track"}`;
+  return {
+    id: stableId("track_download", job?.id),
+    kind: "track_download",
+    title,
+    subtitle: `${job?.artistName || "Artist"} · ${resolvePlaylistName(playlistId)}`,
+    status,
+    statusLabel,
+    href: buildPlaylistHref(playlistId),
+    metadata: {
+      jobId: job?.id,
+      trackName: job?.trackName,
+      artistName: job?.artistName,
+      ...(job?.albumName ? { albumName: job.albumName } : {}),
+      playlistId,
+      downloadSource: job?.downloadSource || "slskd",
+      downloadClient: job?.downloadClient || null,
+    },
+    createdAt: Number(job?.createdAt) || Date.now(),
+  };
+};
+
+export const getAurralHistoryRequests = async (lidarrClient = null, user = null) => {
   await syncActivityFeedHistory(lidarrClient);
-  const entries = loadRecentHistory();
+  const entries = [...(await loadPendingPlaylistImportHistory(user)), ...loadRecentHistory()];
   const entryIds = new Set(entries.map((e) => e.id));
 
   const { downloadTracker } = await import("./weeklyFlow/weeklyFlowDownloadTracker.js");
@@ -936,10 +1050,12 @@ export const getAurralHistoryRequests = async (lidarrClient = null) => {
     const historyId = stableId("track_download", job.id);
     if (entryIds.has(historyId)) continue;
     const row = dbOps.getAurralHistoryById(historyId);
-    if (row) {
-      entries.push(row);
-      entryIds.add(historyId);
+    const entry = row || buildActiveTrackHistory(job);
+    if (!canViewPlaylistActivity(user, entry.metadata?.playlistId || entry.metadata?.playlistType)) {
+      continue;
     }
+    entries.push(entry);
+    entryIds.add(historyId);
   }
 
   const now = Date.now();
@@ -948,6 +1064,11 @@ export const getAurralHistoryRequests = async (lidarrClient = null) => {
     .filter(
       (e) =>
         !ACTIVITY_HIDDEN_KINDS.has(e.kind) &&
+        canViewPlaylistActivity(
+          user,
+          e.metadata?.playlistId || e.metadata?.playlistType,
+          e.metadata?.ownerUserId,
+        ) &&
         (e.status !== "failed" || now - e.createdAt < FAILED_RETENTION_MS),
     )
     .map((entry) => {
