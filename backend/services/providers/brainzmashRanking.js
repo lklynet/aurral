@@ -151,18 +151,19 @@ export function pickResolvedDurationMs({
 } = {}) {
   let duration = positiveMs(playlistDurationMs);
   const lastfm = positiveMs(lastfmDurationMs);
+  const matched = positiveMs(matchedTrackDurationMs);
+  const lastfmAlbumMatches =
+    Boolean(albumName) &&
+    Boolean(lastfmAlbumName) &&
+    scoreTextMatch(lastfmAlbumName, albumName, { extended: true }) >= 85;
   if (lastfm) {
     if (!duration) {
       duration = lastfm;
-    } else if (
-      albumName &&
-      lastfmAlbumName &&
-      scoreTextMatch(lastfmAlbumName, albumName, { extended: true }) >= 85
-    ) {
+    } else if (lastfmAlbumMatches) {
       duration = lastfm;
     }
   }
-  return duration || positiveMs(matchedTrackDurationMs);
+  return matched && !lastfmAlbumMatches ? matched : duration || matched;
 }
 
 export function getYear(value) {

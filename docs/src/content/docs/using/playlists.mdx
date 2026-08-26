@@ -71,7 +71,7 @@ The default profile accepts all tiers and uses **FLAC standard** as the cutoff.
 
 Aurral can use search-result names and bitrate data to order candidates. Aurral does not trust that data for final admission. It reads the downloaded file and rejects it when the format, bitrate, sample rate, or bit depth does not match an enabled tier.
 
-An unknown final quality is not valid. A quality rejection does not go to **Activity > Queue**. Queue review stays for track identity and duration decisions.
+An unknown final quality is not valid. A quality rejection does not go to **Activity > Queue**. Queue review stays for track identity and duration decisions, including upgrade downloads.
 
 The **Quality** column on the Playlists page shows the measured tier and its profile state. It labels a file reused from Lidarr as **Lidarr**.
 
@@ -93,6 +93,8 @@ A user who can open the playlist can start these searches. Manual searches work 
 To schedule upgrades, enable **Automatic upgrades** in the quality profile. The default is off. Set the interval from 1 to 365 days. The default is 2 days for each track.
 
 Upgrade jobs have a lower priority than missing-track downloads. Aurral uses slskd and Usenet for upgrades, in the configured source-priority order. It stops after the first source provides a valid, strictly better file. It waits for the next interval before it tries another automatic improvement for that track.
+
+If an upgrade download matches the requested track but has a significant duration mismatch, Aurral retains it under **Activity > Queue** for preview, approval, or denial. Approving it replaces the existing Aurral file.
 
 yt-dlp can supply an acceptable first file. Aurral does not use yt-dlp for upgrades.
 
