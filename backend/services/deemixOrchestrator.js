@@ -242,10 +242,15 @@ async function handleDeemixPoll(payload, helpers) {
 }
 
 async function handleDeemixFinalize(payload, helpers) {
+  // deemix derives the queue uuid from the track and bitrate, so a finished entry
+  // left behind makes the next request match it instead of downloading again.
+  // Dropping it once here covers every exit below, a job held for review included.
+  await getDeemixClient()
+    .removeFromQueue(payload.queueUuid)
+    .catch(() => {});
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
-  const client = getDeemixClient();
   const candidate = getPayloadCandidate(payload);
   const resolvedTrack = {
     ...buildResolvedTrack(job, payload.track),
@@ -254,7 +259,6 @@ async function handleDeemixFinalize(payload, helpers) {
   const filePath = String(payload.downloadedPath || "").trim();
   const exists = filePath ? await fs.stat(filePath).catch(() => null) : null;
   if (!exists?.isFile()) {
-    await client.removeFromQueue(payload.queueUuid).catch(() => {});
     const reason = filePath
       ? `deemix download is not readable at ${filePath}. Add a path mapping for deemix in Settings.`
       : "deemix finished without an audio file";
@@ -283,7 +287,6 @@ async function handleDeemixFinalize(payload, helpers) {
     ) {
       return null;
     }
-    await client.removeFromQueue(payload.queueUuid).catch(() => {});
     const reason = validation.reason || "deemix download failed track validation";
     if (hasNextCandidate(payload)) {
       return buildNextCandidatePayload(payload, { queueUuid: null, downloadedPath: null });
@@ -304,7 +307,6 @@ async function handleDeemixFinalize(payload, helpers) {
   const finalName = `${sanitizePathPart(job.trackName, "Unknown Track")}${ext || ".flac"}`;
   const finalPath = path.join(finalDir, finalName);
   const committedFinalPath = await commitImportToPlaylistLibrary(filePath, finalPath);
-  await client.removeFromQueue(payload.queueUuid).catch(() => {});
   return finalizePipelineJobSuccess({
     downloadTracker,
     job,

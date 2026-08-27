@@ -16,6 +16,7 @@ const [
   { downloadTracker },
   { processYtdlpPipelinePayload },
   { processUsenetPipelinePayload },
+  { processDeemixPipelinePayload },
   { dbOps },
   { db },
   { blockPipelineJobForReview },
@@ -24,6 +25,7 @@ const [
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
   "backend/services/ytdlpOrchestrator.js",
   "backend/services/usenetOrchestrator.js",
+  "backend/services/deemixOrchestrator.js",
   "backend/db/helpers/index.js",
   "backend/config/db-sqlite.js",
   "backend/services/pipelineHelpers.js",
@@ -269,4 +271,75 @@ test("upgrade duration mismatches remain available for review", async () => {
   assert.equal(downloadTracker.getJob(upgradeJobId)?.status, "blocked");
   assert.equal(downloadTracker.getJob(upgradeJobId)?.stagingPath, candidatePath);
   await access(candidatePath);
+});
+
+test("deemix drops its queue entry before a track goes to review", async () => {
+  const removed = [];
+  const filePath = path.join(
+    process.env.DOWNLOAD_FOLDER,
+    "deemix-complete",
+    "Artist Name - Correct Track.mp3",
+  );
+  await writeOneSecondMp3(filePath);
+  const server = await createMockHttpServer((req, res) => {
+    req.resume();
+    const url = new URL(req.url, "http://deemix.test");
+    if (url.pathname === "/api/removeFromQueue") removed.push(url.searchParams.get("uuid"));
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify(
+        url.pathname === "/api/getQueue"
+          ? { queue: { track_1_1: { status: "completed", files: [{ path: filePath }] } } }
+          : { result: true },
+      ),
+    );
+  });
+
+  try {
+    dbOps.updateSettings({
+      integrations: { deemix: { enabled: true, url: server.url, bitrate: 1 } },
+    });
+    const jobId = addDurationMismatchJob("deemix-review");
+    downloadTracker.updateDownloadMetadata(jobId, {
+      downloadSource: "deemix",
+      downloadClient: "deemix",
+      downloadClientId: "track_1_1",
+      releaseGuid: "1",
+      remoteFilename: "Correct Track",
+    });
+
+    const polled = await processDeemixPipelinePayload(
+      {
+        phase: "poll",
+        source: "deemix",
+        jobId,
+        queueUuid: "track_1_1",
+        destination: "deemix-review/Artist Name/Album Name",
+        candidate: {
+          raw: {
+            id: "1",
+            title: "Correct Track",
+            artist: "Artist Name",
+            album: "Album Name",
+            file: "Artist Name - Correct Track",
+          },
+        },
+        candidateIndex: 0,
+      },
+      { failOrTryNextSource: failIfPipelineFallsThrough },
+    );
+
+    assert.equal(polled.phase, "finalize");
+    assert.deepEqual(removed, []);
+
+    const result = await processDeemixPipelinePayload(polled, {
+      failOrTryNextSource: failIfPipelineFallsThrough,
+    });
+
+    assert.equal(result, null);
+    await assertReviewable(jobId, filePath, "deemix");
+    assert.deepEqual(removed, ["track_1_1"]);
+  } finally {
+    await server.close();
+  }
 });
