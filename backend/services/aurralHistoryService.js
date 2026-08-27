@@ -69,6 +69,7 @@ const resolveTrackDownloadHistorySource = (downloadSource, downloadClient) => {
     return "nzbget";
   }
   if (normalized === "ytdlp") return "ytdlp";
+  if (normalized === "deemix") return "deemix";
   return "slskd";
 };
 
@@ -77,6 +78,7 @@ const CLIENT_LABELS = {
   nzbget: "NZBGet",
   slskd: "slskd",
   ytdlp: "yt-dlp",
+  deemix: "deemix",
 };
 const resolveDownloadClientLabel = (downloadSource, downloadClient) =>
   CLIENT_LABELS[resolveTrackDownloadHistorySource(downloadSource, downloadClient)] || "slskd";

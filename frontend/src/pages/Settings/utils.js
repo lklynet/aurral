@@ -174,6 +174,13 @@ export const normalizeSettings = (savedSettings) => {
         stagingPath: "",
         ...(savedSettings.integrations?.ytdlp || {}),
       },
+      deemix: {
+        enabled: false,
+        url: "",
+        bitrate: 9,
+        priority: 15,
+        ...(savedSettings.integrations?.deemix || {}),
+      },
       ticketmaster: {
         apiKey: "",
         searchRadiusMiles: 250,

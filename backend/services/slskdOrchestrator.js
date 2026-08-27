@@ -19,6 +19,7 @@ import {
 } from "./slskdTransferHistory.js";
 import { processUsenetPipelinePayload } from "./usenetOrchestrator.js";
 import { processYtdlpPipelinePayload } from "./ytdlpOrchestrator.js";
+import { processDeemixPipelinePayload } from "./deemixOrchestrator.js";
 import {
   getDownloadSourceNotConfiguredMessage,
   getEnabledDownloadSources,
@@ -1137,6 +1138,13 @@ export async function processPipelinePayload(payload) {
       return job ? failOrTryNextSource(payload, job, "Usenet is not configured") : null;
     }
     return processUsenetPipelinePayload(payload, { failOrTryNextSource });
+  }
+  if (payload.source === "deemix") {
+    if (!isSourceConfigured("deemix")) {
+      const job = downloadTracker.getJob(payload.jobId);
+      return job ? failOrTryNextSource(payload, job, "deemix is not configured") : null;
+    }
+    return processDeemixPipelinePayload(payload, { failOrTryNextSource });
   }
   if (payload.source === "ytdlp") {
     if (!isSourceConfigured("ytdlp")) {

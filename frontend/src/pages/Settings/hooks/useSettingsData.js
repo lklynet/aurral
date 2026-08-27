@@ -117,6 +117,12 @@ const defaultSettings = {
       priority: 50,
       stagingPath: "",
     },
+    deemix: {
+      enabled: false,
+      url: "",
+      bitrate: 9,
+      priority: 15,
+    },
     ticketmaster: {
       apiKey: "",
       searchRadiusMiles: 250,

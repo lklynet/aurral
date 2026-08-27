@@ -306,6 +306,32 @@ export function registerGeneral(router) {
         nextSabnzbd.addPaused = nextSabnzbd.addPaused === true;
         integrations.sabnzbd = nextSabnzbd;
       }
+      if (integrations?.deemix) {
+        const nextDeemix = {
+          ...(currentSettings.integrations?.deemix || {}),
+          ...integrations.deemix,
+        };
+        const trimmedUrl = String(nextDeemix.url || "").trim();
+        if (trimmedUrl) {
+          const urlValidation = validateExternalUrl(trimmedUrl);
+          if (!urlValidation.valid) {
+            return res.status(400).json({
+              error: `Invalid deemix URL: ${urlValidation.error}`,
+            });
+          }
+          nextDeemix.url = urlValidation.url.replace(/\/+$/, "");
+        } else {
+          nextDeemix.url = "";
+        }
+        nextDeemix.enabled = nextDeemix.enabled === true;
+        const bitrate = Number.parseInt(nextDeemix.bitrate, 10);
+        nextDeemix.bitrate = [1, 3, 9].includes(bitrate) ? bitrate : 9;
+        const priority = Number.parseInt(nextDeemix.priority, 10);
+        nextDeemix.priority = Number.isFinite(priority)
+          ? Math.min(1000, Math.max(1, priority))
+          : 15;
+        integrations.deemix = nextDeemix;
+      }
       if (integrations?.ytdlp) {
         const nextYtdlp = {
           ...(currentSettings.integrations?.ytdlp || {}),
@@ -341,7 +367,7 @@ export function registerGeneral(router) {
         integrations.news = nextNews;
       }
 
-      const INTEGRATION_KEYS = ["lidarr", "navidrome", "jellyfin", "slskd", "prowlarr", "nzbget", "sabnzbd", "ytdlp", "lastfm", "ticketmaster", "news", "metadata", "general", "gotify", "webhookEvents"];
+      const INTEGRATION_KEYS = ["lidarr", "navidrome", "jellyfin", "slskd", "prowlarr", "nzbget", "sabnzbd", "ytdlp", "deemix", "lastfm", "ticketmaster", "news", "metadata", "general", "gotify", "webhookEvents"];
       let mergedIntegrations =
         currentSettings.integrations || defaultData.settings.integrations || {};
       if (integrations) {

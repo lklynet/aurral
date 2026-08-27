@@ -1,0 +1,47 @@
+---
+title: deemix
+description: Tagged Deezer downloads for flows and playlists.
+---
+
+[deemix](https://github.com/bambanah/deemix) is a self-hosted Deezer downloader. It returns tagged files with cover art, so Aurral can use it as a download source for flows and playlists.
+
+Aurral talks to the deemix web server. It searches Deezer for the track, adds the best match to the deemix queue, waits for the queue item to finish, and then imports the file that deemix wrote.
+
+Aurral does not store your ARL. Sign in once in the deemix web UI. Aurral reuses that login through the deemix API.
+
+## Setup
+
+1. Run deemix and open its web UI. Sign in with your ARL.
+2. Open **Settings > Download clients > deemix**.
+3. Turn on **Enable deemix**.
+4. Set **Server URL** to your deemix address, for example `http://localhost:6595`.
+5. Choose a **Bitrate**. FLAC is the default. Your Deezer account must allow the bitrate that you select.
+6. If necessary, set **Source priority**.
+7. Select **Test connection**.
+8. Settings save automatically after each change.
+
+The deemix default priority is `15`. The slskd default is `10`. The Usenet default is `20`. The yt-dlp default is `50`.
+
+## Path mapping
+
+deemix writes files into its own download folder. Aurral has to read that same file.
+
+Mount the deemix download folder into the Aurral container at the same path, or add a remote path mapping under **Settings > Download clients > Remote path mappings** with **Applies to** set to `deemix`. Use the path that deemix reports as the remote path and the path that Aurral sees as the local path.
+
+Aurral moves the imported file into your Downloads Folder, so the track does not stay in the deemix download folder.
+
+## Behavior
+
+Aurral tries download sources in priority order. It ranks Deezer results by title, artist, album, and duration, and it skips tracks that your account cannot stream.
+
+Aurral validates the downloaded audio with the same track validation that it uses for other sources, then writes the playlist's title, artist, album, album artist, year, and track number into the file.
+
+When a downloaded file matches the requested track but its duration differs significantly, Aurral retains it under **Activity > Queue** for preview, approval, or denial.
+
+Aurral removes its own queue entry from deemix after each track, so a repeated request downloads again instead of matching a finished queue item.
+
+Automatic and manual upgrade searches use slskd or Usenet, not deemix.
+
+## Download source priority
+
+See [Usenet](/integrations/usenet/#download-source-priority-and-fallback) for how priority and fallback work across sources.

@@ -24,7 +24,7 @@ The built-in adapters keep their settings metadata beside their client code. `GE
 
 ## Built-in clients
 
-The registry currently contains slskd, yt-dlp, NZBGet, and SABnzbd. Prowlarr remains an indexer service because it searches for Usenet releases and does not receive downloads.
+The registry currently contains slskd, yt-dlp, NZBGet, SABnzbd, and deemix. Prowlarr remains an indexer service because it searches for Usenet releases and does not receive downloads.
 
 The orchestration code selects clients through the registry. Provider-specific methods continue to run on the selected adapter, so each client can keep its own protocol and download state.
 

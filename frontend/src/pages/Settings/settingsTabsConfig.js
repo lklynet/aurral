@@ -122,6 +122,7 @@ const SETTINGS_SEARCH_METADATA = {
       "yt-dlp": "YouTube web download client",
       NZBGet: "Usenet download client",
       SABnzbd: "Usenet download client",
+      deemix: "Deezer download client",
     },
     fields: {
       "Quality profile": "default acceptable allowed formats rank preference cutoff upgrades",
@@ -136,6 +137,8 @@ const SETTINGS_SEARCH_METADATA = {
       "Enable yt-dlp": "YouTube web on off",
       "Enable NZBGet": "Usenet on off",
       "Enable SABnzbd": "Usenet on off",
+      "Enable deemix": "Deezer on off",
+      Bitrate: "deemix FLAC MP3 quality",
       "Server URL": "client address host connection",
       "API key": "client credentials authentication",
       Username: "NZBGet credentials",

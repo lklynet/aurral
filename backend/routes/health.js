@@ -284,6 +284,7 @@ function buildBootstrapPayload(req) {
     payload.sabnzbdConfigured = downloadSources.usenet.sabnzbdConfigured;
     payload.usenetConfigured = downloadSources.usenet.configured;
     payload.ytdlpConfigured = downloadSources.ytdlp.configured;
+    payload.deemixConfigured = downloadSources.deemix.configured;
     payload.downloadSources = downloadSources;
     payload.metadataProviders = getMetadataProviderHealthSnapshot();
     payload.localNetworkBypass = getLocalNetworkBypassStatus(req);

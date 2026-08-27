@@ -69,8 +69,9 @@ export default function ActivityRequestRow({
   const isSlskd = request.source === "slskd";
   const isUsenet = request.source === "nzbget" || request.source === "sabnzbd";
   const isYtdlp = request.source === "ytdlp";
+  const isDeemix = request.source === "deemix";
   const isTrackDownload =
-    isSlskd || isUsenet || isYtdlp || request.kind === "track_download";
+    isSlskd || isUsenet || isYtdlp || isDeemix || request.kind === "track_download";
   const isAurral = request.source === "aurral" && !isTrackDownload;
   const isActivity = request.type === "activity";
   const isAlbum = request.type === "album";
@@ -84,7 +85,7 @@ export default function ActivityRequestRow({
   const displayMeta = getRequestMeta(request, displayTitle);
   const artistMbid = isAlbum ? request.artistMbid : request.mbid;
   const canNavigate =
-    ((isSlskd || isUsenet || isYtdlp) && request.playlistId) ||
+    ((isSlskd || isUsenet || isYtdlp || isDeemix) && request.playlistId) ||
     ((isAurral || isActivity) && request.href) ||
     (artistMbid && artistMbid !== "null" && artistMbid !== "undefined");
   const status = getStatusMeta(request);

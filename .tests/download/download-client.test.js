@@ -5,6 +5,7 @@ import { DownloadClientRegistry } from "../../backend/services/download/download
 import { getDownloadClientSettings } from "../../backend/services/download/downloadClientSettings.js";
 import { NzbgetClient } from "../../backend/services/nzbgetClient.js";
 import { SlskdClient } from "../../backend/services/slskdClient.js";
+import { DeemixClient, buildQueueUuid } from "../../backend/services/deemixClient.js";
 import { registerDownloadClients } from "../../backend/routes/settings/handlers/downloadClients.js";
 
 function client(key, configured) {
@@ -41,10 +42,12 @@ test("download client registry validates, updates, and selects adapters", () => 
 test("download adapters expose settings metadata without field values", () => {
   const settings = getDownloadClientSettings();
 
-  assert.deepEqual(Object.keys(settings), ["slskd", "ytdlp", "nzbget", "sabnzbd"]);
+  assert.deepEqual(Object.keys(settings), ["slskd", "ytdlp", "nzbget", "sabnzbd", "deemix"]);
   assert.deepEqual(settings.nzbget.validation.required, ["url"]);
   assert.equal(settings.sabnzbd.fields.find((field) => field.key === "apiKey").secret, true);
   assert.equal(settings.ytdlp.fields.find((field) => field.key === "stagingPath").type, "path");
+  assert.deepEqual(settings.deemix.validation.required, ["url"]);
+  assert.equal(settings.deemix.fields.find((field) => field.key === "bitrate").type, "select");
   for (const definition of Object.values(settings)) {
     for (const field of definition.fields) {
       assert.equal("value" in field, false);
@@ -60,6 +63,20 @@ test("download client instances can receive adapter configuration", () => {
   assert.equal(client.isConfigured(), true);
   client.updateConfig({ enabled: false, url: "http://nzbget.local" });
   assert.equal(client.isConfigured(), false);
+});
+
+test("deemix needs an enabled adapter with a server URL", () => {
+  const client = new DeemixClient({ enabled: false, url: "http://deemix.local" });
+
+  assert.equal(client.isConfigured(), false);
+  client.updateConfig({ enabled: true, url: "http://deemix.local" });
+  assert.equal(client.isConfigured(), true);
+  assert.equal(client.getBitrate(), 9);
+  client.updateConfig({ enabled: true, url: "http://deemix.local", bitrate: "3" });
+  assert.equal(client.getBitrate(), 3);
+  client.updateConfig({ enabled: true, url: "http://deemix.local", bitrate: 7 });
+  assert.equal(client.getBitrate(), 9);
+  assert.equal(buildQueueUuid("3135556", 9), "track_3135556_9");
 });
 
 test("slskd treats an explicitly disabled adapter as unconfigured", () => {

@@ -302,12 +302,9 @@ export function registerJobs(router) {
     if (sourcePath) {
       await fs.rm(sourcePath, { force: true }).catch(() => {});
     }
-    const deniedSourceKey =
-      job.downloadSource === "usenet"
-        ? String(job.releaseGuid || "").trim()
-        : job.downloadSource === "ytdlp"
-          ? String(job.releaseGuid || "").trim()
-          : `${String(job.remoteUsername || "").trim()}\0${String(job.remoteFilename || "").trim()}`;
+    const deniedSourceKey = ["usenet", "ytdlp", "deemix"].includes(job.downloadSource)
+      ? String(job.releaseGuid || "").trim()
+      : `${String(job.remoteUsername || "").trim()}\0${String(job.remoteFilename || "").trim()}`;
     if (job.downloadSource && deniedSourceKey) {
       downloadTracker.recordDeniedSource(job.id, job.downloadSource, deniedSourceKey);
     }

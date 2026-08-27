@@ -69,6 +69,7 @@ export default defineConfig({
             { slug: "integrations/koito" },
             { slug: "integrations/slskd" },
             { slug: "integrations/ytdlp" },
+            { slug: "integrations/deemix" },
             { slug: "integrations/usenet" },
             { slug: "integrations/navidrome" },
             { slug: "integrations/plex" },

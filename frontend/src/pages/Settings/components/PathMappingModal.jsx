@@ -12,6 +12,7 @@ const PATH_MAPPING_SOURCE_OPTIONS = [
   { value: "slskd", label: "slskd" },
   { value: "nzbget", label: "NZBGet" },
   { value: "sabnzbd", label: "SABnzbd" },
+  { value: "deemix", label: "deemix" },
   { value: "plex", label: "Plex" },
   { value: "jellyfin", label: "Jellyfin" },
 ];
