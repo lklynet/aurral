@@ -17,6 +17,8 @@ import {
   sanitizePathPart,
   writeAudioMetadata,
 } from "./playlistDownloadUtils.js";
+import { getQualityProfile } from "./qualityProfileService.js";
+import { isQualityUpgrade } from "./qualityProfileModel.js";
 import {
   getPayloadCandidate,
   hasNextCandidate,
@@ -36,6 +38,18 @@ function getDeemixClient() {
 
 function hasEnoughCandidates(aggregated, resolvedTrack) {
   return rankDeemixResults(aggregated, resolvedTrack).some((entry) => entry.preDownloadValid);
+}
+
+// The configured bitrate fixes the tier, so an upgrade that deemix cannot
+// improve on is refused before the download rather than after validation.
+function readUnusableUpgradeTier(upgradeForJobId) {
+  if (!upgradeForJobId) return null;
+  const tier = getDeemixClient().getQualityTierId();
+  const currentTier = downloadTracker.getJob(upgradeForJobId)?.qualityTier || null;
+  if (isQualityUpgrade({ tier }, currentTier, getQualityProfile())) return null;
+  return `deemix downloads ${tier || "an unknown tier"}, which is not an upgrade over ${
+    currentTier || "the current file"
+  }`;
 }
 
 function readQueuedFilePath(queueItem) {
@@ -60,6 +74,10 @@ async function handleDeemixSearch(payload, helpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
+  const unusableUpgrade = readUnusableUpgradeTier(payload.upgradeForJobId);
+  if (unusableUpgrade) {
+    return helpers.failOrTryNextSource(payload, job, unusableUpgrade);
+  }
   downloadTracker.setDownloading(job.id);
   downloadTracker.updateDownloadMetadata(job.id, {
     downloadSource: "deemix",

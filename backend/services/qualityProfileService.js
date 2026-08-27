@@ -128,10 +128,10 @@ export async function reclassifyQualityJobs({ enqueue = false } = {}) {
   return { classified, queued };
 }
 
+const UPGRADE_SOURCE_IDS = new Set(["slskd", "usenet", "deemix"]);
+
 function hasUpgradeSource() {
-  return getEnabledDownloadSources().some(
-    (source) => source.id === "slskd" || source.id === "usenet",
-  );
+  return getEnabledDownloadSources().some((source) => UPGRADE_SOURCE_IDS.has(source.id));
 }
 
 export async function queueQualityUpgrade(job) {

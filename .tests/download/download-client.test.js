@@ -11,6 +11,7 @@ import {
   describeBitrateSupport,
 } from "../../backend/services/deemixClient.js";
 import { registerDownloadClients } from "../../backend/routes/settings/handlers/downloadClients.js";
+import { QUALITY_TIERS } from "../../backend/services/qualityProfileModel.js";
 
 function client(key, configured) {
   const updates = [];
@@ -81,6 +82,17 @@ test("deemix needs an enabled adapter with a server URL", () => {
   client.updateConfig({ enabled: true, url: "http://deemix.local", bitrate: 7 });
   assert.equal(client.getBitrate(), 9);
   assert.equal(buildQueueUuid("3135556", 9), "track_3135556_9");
+});
+
+test("deemix maps each bitrate to a real quality tier", () => {
+  const client = new DeemixClient({ enabled: true, url: "http://deemix.local" });
+  const tierIds = new Set(QUALITY_TIERS.map((tier) => tier.id));
+
+  for (const [bitrate, expected] of [[9, "flac-standard"], [3, "mp3-320"], [1, "mp3-128"]]) {
+    client.updateConfig({ enabled: true, url: "http://deemix.local", bitrate });
+    assert.equal(client.getQualityTierId(), expected);
+    assert.equal(tierIds.has(expected), true);
+  }
 });
 
 test("deemix reports a bitrate the Deezer plan cannot stream", () => {

@@ -235,7 +235,7 @@ function buildPipelinePayload(job) {
     destination: buildAurralTrackDestination(playlistId, artistDir, albumDir, { ephemeral }),
     upgrade: Boolean(job.upgradeForJobId),
     upgradeForJobId: job.upgradeForJobId || null,
-    allowedSources: job.upgradeForJobId ? ["slskd", "usenet"] : null,
+    allowedSources: job.upgradeForJobId ? ["slskd", "usenet", "deemix"] : null,
   };
 }
 

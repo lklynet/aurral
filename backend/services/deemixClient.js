@@ -65,6 +65,11 @@ export function buildQueueUuid(trackId, bitrate) {
   return `track_${String(trackId || "").trim()}_${normalizeInteger(bitrate, FLAC_BITRATE)}`;
 }
 
+// deemix downloads exactly the configured bitrate, so unlike a Soulseek or
+// Usenet release its quality tier is known before anything is downloaded.
+// Deezer serves 16-bit FLAC, which classifies as flac-standard.
+const BITRATE_TIERS = Object.freeze({ 9: "flac-standard", 3: "mp3-320", 1: "mp3-128" });
+
 function bitrateLabel(bitrate) {
   const rate = normalizeInteger(bitrate, FLAC_BITRATE);
   return BITRATE_OPTIONS.find((option) => Number(option.value) === rate)?.label || String(rate);
@@ -189,6 +194,10 @@ export class DeemixClient {
 
   getBitrate() {
     return this._getSettings().bitrate;
+  }
+
+  getQualityTierId() {
+    return BITRATE_TIERS[this._getSettings().bitrate] || null;
   }
 
   async testConnection({ force = false } = {}) {
