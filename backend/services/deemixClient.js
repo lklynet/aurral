@@ -65,6 +65,38 @@ export function buildQueueUuid(trackId, bitrate) {
   return `track_${String(trackId || "").trim()}_${normalizeInteger(bitrate, FLAC_BITRATE)}`;
 }
 
+function bitrateLabel(bitrate) {
+  const rate = normalizeInteger(bitrate, FLAC_BITRATE);
+  return BITRATE_OPTIONS.find((option) => Number(option.value) === rate)?.label || String(rate);
+}
+
+// Deezer plans gate the higher bitrates, and deemix refuses the queue instead of
+// downgrading. Name the setting to change rather than echoing its error id.
+export function describeBitrateSupport(currentUser, bitrate) {
+  const rate = normalizeInteger(bitrate, FLAC_BITRATE);
+  if (rate === FLAC_BITRATE && currentUser?.can_stream_lossless === false) {
+    return "This Deezer account cannot stream FLAC. Set Bitrate to MP3 320 or MP3 128.";
+  }
+  if (rate === 3 && currentUser?.can_stream_hq === false) {
+    return "This Deezer account cannot stream MP3 320. Set Bitrate to MP3 128.";
+  }
+  return null;
+}
+
+function describeAddToQueueError(errid, currentUser, bitrate) {
+  const id = String(errid || "").trim();
+  if (id === "CantStream") {
+    return (
+      describeBitrateSupport(currentUser, bitrate) ||
+      `This Deezer account cannot stream at ${bitrateLabel(bitrate)}. Lower the deemix bitrate.`
+    );
+  }
+  if (id === "NotLoggedIn") {
+    return "deemix is not logged in. Sign in with your ARL in the deemix web UI.";
+  }
+  return `deemix rejected the download: ${id || "unknown error"}`;
+}
+
 // deemix authenticates per express-session, so every call has to reuse the
 // cookie that /api/connect issues.
 // ponytail: one shared session, deemix runs single-user by default.
@@ -198,12 +230,20 @@ export class DeemixClient {
         };
       } else {
         const user = String(connected?.currentUser?.name || "").trim();
+        const unsupportedBitrate = describeBitrateSupport(
+          connected?.currentUser,
+          settings.bitrate,
+        );
+        const connectedMessage = `deemix is connected${user ? ` as ${user}` : ""}${suffix}`;
         result = {
           ok: true,
+          warning: !!unsupportedBitrate,
           configured: true,
           connected: true,
           version,
-          message: `deemix is connected${user ? ` as ${user}` : ""}${suffix}`,
+          message: unsupportedBitrate
+            ? `${connectedMessage}. ${unsupportedBitrate}`
+            : connectedMessage,
         };
       }
     } catch (error) {
@@ -235,13 +275,15 @@ export class DeemixClient {
     const url = String(trackUrl || "").trim();
     if (!url) throw new Error("deemix download requires a Deezer track URL");
     const settings = this._getSettings();
-    await requireSession(settings);
+    const connected = await requireSession(settings);
     const data = await request(settings, "POST", "/api/addToQueue", {
       data: { url, bitrate: settings.bitrate },
       timeout: 60000,
     });
     if (data?.result !== true) {
-      throw new Error(`deemix rejected the download: ${data?.errid || "unknown error"}`);
+      throw new Error(
+        describeAddToQueueError(data?.errid, connected?.currentUser, settings.bitrate),
+      );
     }
     const queued = Array.isArray(data?.data?.obj) ? data.data.obj[0] : data?.data?.obj;
     // A track already in the queue comes back without an object, so fall back to

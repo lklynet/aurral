@@ -5,7 +5,11 @@ import { DownloadClientRegistry } from "../../backend/services/download/download
 import { getDownloadClientSettings } from "../../backend/services/download/downloadClientSettings.js";
 import { NzbgetClient } from "../../backend/services/nzbgetClient.js";
 import { SlskdClient } from "../../backend/services/slskdClient.js";
-import { DeemixClient, buildQueueUuid } from "../../backend/services/deemixClient.js";
+import {
+  DeemixClient,
+  buildQueueUuid,
+  describeBitrateSupport,
+} from "../../backend/services/deemixClient.js";
 import { registerDownloadClients } from "../../backend/routes/settings/handlers/downloadClients.js";
 
 function client(key, configured) {
@@ -77,6 +81,17 @@ test("deemix needs an enabled adapter with a server URL", () => {
   client.updateConfig({ enabled: true, url: "http://deemix.local", bitrate: 7 });
   assert.equal(client.getBitrate(), 9);
   assert.equal(buildQueueUuid("3135556", 9), "track_3135556_9");
+});
+
+test("deemix reports a bitrate the Deezer plan cannot stream", () => {
+  const free = { can_stream_lossless: false, can_stream_hq: false };
+  const hifi = { can_stream_lossless: true, can_stream_hq: true };
+
+  assert.match(describeBitrateSupport(free, 9), /cannot stream FLAC/);
+  assert.match(describeBitrateSupport(free, 3), /cannot stream MP3 320/);
+  assert.equal(describeBitrateSupport(free, 1), null);
+  assert.equal(describeBitrateSupport(hifi, 9), null);
+  assert.equal(describeBitrateSupport(undefined, 9), null);
 });
 
 test("slskd treats an explicitly disabled adapter as unconfigured", () => {

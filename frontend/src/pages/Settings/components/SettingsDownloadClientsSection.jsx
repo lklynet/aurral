@@ -173,25 +173,27 @@ export function SettingsDownloadClientsSection({
       const result = await testDownloadClientConnection(definition.key, config);
       if (result.success || result.ok) {
         if (result.warning || result.soulseekConnected === false) {
-          setTestStatus({ tone: "warning", message: "API reachable, but Soulseek is not connected." });
-          showInfo(result.message || `${definition.label} is reachable, but its service is not connected`);
+          const warning =
+            result.message || `${definition.label} is reachable, but its service is not connected`;
+          setTestStatus({ tone: "warning", message: warning });
+          showInfo(warning);
         } else {
           setTestStatus({ tone: "success", message: "Connected." });
           showSuccess(result.message || `${definition.label} connection OK`);
         }
       } else {
         const message = result.message || `${definition.label} connection failed`;
-        setTestStatus({ tone: "error", message: "Connection failed. Check the settings and retry." });
+        setTestStatus({ tone: "error", message });
         showError(message);
       }
     } catch (error) {
-      setTestStatus({ tone: "error", message: "Connection failed. Check the settings and retry." });
-      showError(
+      const message =
         error.response?.data?.message ||
-          error.response?.data?.error ||
-          error.message ||
-          `${definition.label} connection failed`,
-      );
+        error.response?.data?.error ||
+        error.message ||
+        `${definition.label} connection failed`;
+      setTestStatus({ tone: "error", message });
+      showError(message);
     } finally {
       setTestingClient(null);
     }
