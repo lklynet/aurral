@@ -79,6 +79,15 @@ test("marks an unresolved postal code instead of returning a normal empty locati
   assert.deepEqual(result.recommendedShows, []);
 });
 
+test("keeps the requested country on an unresolved postal code", async (t) => {
+  t.mock.method(axios, "get", async () => ({ data: [] }));
+
+  const result = await getNearbyShows({ zipCode: "12345", country: "mx" });
+
+  assert.equal(result.location.resolved, false);
+  assert.equal(result.location.countryCode, "MX");
+});
+
 test("resolves non-US postal codes with an explicit country", async (t) => {
   const calls = [];
   t.mock.method(axios, "get", async (url, config) => {

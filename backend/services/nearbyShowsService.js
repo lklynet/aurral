@@ -450,7 +450,7 @@ export const getNearbyShows = async ({
         city: null,
         region: null,
         regionCode: null,
-        countryCode: isLikelyUsZip(sanitizedZipCode) ? "US" : null,
+        countryCode: sanitizedCountry || (isLikelyUsZip(sanitizedZipCode) ? "US" : null),
         latitude: null,
         longitude: null,
         label: sanitizedZipCode,
