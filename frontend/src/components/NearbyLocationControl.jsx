@@ -22,7 +22,6 @@ const NEARBY_COUNTRIES = [
   ["PL", "Poland"],
   ["CZ", "Czechia"],
   ["ES", "Spain"],
-  ["PT", "Portugal"],
   ["IT", "Italy"],
   ["MX", "Mexico"],
   ["BR", "Brazil"],
