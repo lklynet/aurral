@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs/promises";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
-import { ytdlpClient } from "./ytdlpClient.js";
+import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger } from "./logger.js";
 import { validateDownloadedTrack } from "./weeklyFlow/weeklyFlowSoulseekMatcher.js";
 import {
@@ -24,6 +24,8 @@ import {
   blockPipelineJobForReview,
   finalizePipelineJobSuccess,
 } from "./pipelineHelpers.js";
+
+const ytdlpClient = getDownloadClient("ytdlp");
 
 function hasEnoughCandidates(aggregated, resolvedTrack) {
   return rankYtdlpResults(aggregated, resolvedTrack).some((entry) => entry.preDownloadValid);

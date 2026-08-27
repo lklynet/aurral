@@ -130,6 +130,7 @@ function SettingsPage() {
             <form onSubmit={data.handleSaveSettings} className="arr-form" autoComplete="off">
               <SettingsDownloadClientsSection
                 settings={data.settings}
+                downloadClientSettings={data.downloadClientSettings}
                 updateSettings={data.updateSettings}
                 health={data.health}
                 handleSaveSettings={data.handleSaveSettings}

@@ -1,4 +1,9 @@
 import { validateExternalUrl } from "../../../middleware/urlValidator.js";
+import {
+  getDownloadClient,
+  getDownloadClientSettings,
+  testDownloadClient,
+} from "../../../services/download/downloadClientSettings.js";
 
 function registerClientTest(router, path, importClient, label, { warning } = {}) {
   router.post(path, async (_req, res) => {
@@ -26,10 +31,32 @@ function registerClientTest(router, path, importClient, label, { warning } = {})
 }
 
 export function registerDownloadClients(router) {
+  router.get("/download-clients", (_req, res) => {
+    res.json({ clients: getDownloadClientSettings() });
+  });
+
+  router.post("/download-clients/:key/test", async (req, res) => {
+    try {
+      const result = await testDownloadClient(req.params.key, req.body || {});
+      if (!result.configured) {
+        return res.status(400).json(result);
+      }
+      if (!result.ok) {
+        return res.status(502).json(result);
+      }
+      return res.json({ success: true, warning: result.warning === true, ...result });
+    } catch (error) {
+      return res.status(400).json({
+        error: "Connection failed",
+        message: error.message,
+      });
+    }
+  });
+
   registerClientTest(
     router,
     "/slskd/test",
-    async () => (await import("../../../services/slskdClient.js")).slskdClient,
+    async () => getDownloadClient("slskd"),
     "slskd",
     { warning: true },
   );
@@ -57,21 +84,21 @@ export function registerDownloadClients(router) {
   registerClientTest(
     router,
     "/nzbget/test",
-    async () => (await import("../../../services/nzbgetClient.js")).nzbgetClient,
+    async () => getDownloadClient("nzbget"),
     "NZBGet",
   );
 
   registerClientTest(
     router,
     "/sabnzbd/test",
-    async () => (await import("../../../services/sabnzbdClient.js")).sabnzbdClient,
+    async () => getDownloadClient("sabnzbd"),
     "SABnzbd",
   );
 
   registerClientTest(
     router,
     "/ytdlp/test",
-    async () => (await import("../../../services/ytdlpClient.js")).ytdlpClient,
+    async () => getDownloadClient("ytdlp"),
     "yt-dlp",
   );
 

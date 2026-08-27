@@ -252,11 +252,59 @@ export function registerGeneral(router) {
         integrations.nzbget = nextNzbget;
       }
       if (integrations?.slskd) {
-        const priority = Number.parseInt(integrations.slskd.priority, 10);
-        integrations.slskd.enabled = integrations.slskd.enabled === true;
-        integrations.slskd.priority = Number.isFinite(priority)
+        const nextSlskd = {
+          ...(currentSettings.integrations?.slskd || {}),
+          ...integrations.slskd,
+        };
+        const trimmedUrl = String(nextSlskd.url || "").trim();
+        if (trimmedUrl) {
+          const urlValidation = validateExternalUrl(trimmedUrl);
+          if (!urlValidation.valid) {
+            return res.status(400).json({
+              error: `Invalid slskd URL: ${urlValidation.error}`,
+            });
+          }
+          nextSlskd.url = urlValidation.url.replace(/\/+$/, "");
+        } else {
+          nextSlskd.url = "";
+        }
+        nextSlskd.apiKey =
+          typeof nextSlskd.apiKey === "string" ? nextSlskd.apiKey.trim() : "";
+        nextSlskd.enabled = nextSlskd.enabled === true;
+        const priority = Number.parseInt(nextSlskd.priority, 10);
+        nextSlskd.priority = Number.isFinite(priority)
           ? Math.min(1000, Math.max(1, priority))
           : 10;
+        nextSlskd.cleanupAfterRuns = nextSlskd.cleanupAfterRuns === true;
+        integrations.slskd = nextSlskd;
+      }
+      if (integrations?.sabnzbd) {
+        const nextSabnzbd = {
+          ...(currentSettings.integrations?.sabnzbd || {}),
+          ...integrations.sabnzbd,
+        };
+        const trimmedUrl = String(nextSabnzbd.url || "").trim();
+        if (trimmedUrl) {
+          const urlValidation = validateExternalUrl(trimmedUrl);
+          if (!urlValidation.valid) {
+            return res.status(400).json({
+              error: `Invalid SABnzbd URL: ${urlValidation.error}`,
+            });
+          }
+          nextSabnzbd.url = urlValidation.url.replace(/\/+$/, "");
+        } else {
+          nextSabnzbd.url = "";
+        }
+        nextSabnzbd.apiKey =
+          typeof nextSabnzbd.apiKey === "string" ? nextSabnzbd.apiKey.trim() : "";
+        nextSabnzbd.enabled = nextSabnzbd.enabled === true;
+        nextSabnzbd.category = String(nextSabnzbd.category || "aurral").trim() || "aurral";
+        const priority = Number.parseInt(nextSabnzbd.priority, 10);
+        nextSabnzbd.priority = Number.isFinite(priority)
+          ? Math.min(1000, Math.max(1, priority))
+          : 20;
+        nextSabnzbd.addPaused = nextSabnzbd.addPaused === true;
+        integrations.sabnzbd = nextSabnzbd;
       }
       if (integrations?.ytdlp) {
         const nextYtdlp = {
@@ -293,7 +341,7 @@ export function registerGeneral(router) {
         integrations.news = nextNews;
       }
 
-      const INTEGRATION_KEYS = ["lidarr", "navidrome", "jellyfin", "slskd", "prowlarr", "nzbget", "ytdlp", "lastfm", "ticketmaster", "news", "metadata", "general", "gotify", "webhookEvents"];
+      const INTEGRATION_KEYS = ["lidarr", "navidrome", "jellyfin", "slskd", "prowlarr", "nzbget", "sabnzbd", "ytdlp", "lastfm", "ticketmaster", "news", "metadata", "general", "gotify", "webhookEvents"];
       let mergedIntegrations =
         currentSettings.integrations || defaultData.settings.integrations || {};
       if (integrations) {
@@ -422,6 +470,10 @@ export function registerGeneral(router) {
       }
 
       dbOps.updateSettings(updatedSettings);
+      const { downloadClientRegistry } = await import(
+        "../../../services/download/downloadClientSettings.js"
+      );
+      downloadClientRegistry.updateConfig(updatedSettings.integrations);
       try {
         const { refreshLibraryFileWatcher } = await import(
           "../../../services/libraryFileWatcher.js"

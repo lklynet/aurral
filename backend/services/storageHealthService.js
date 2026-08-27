@@ -7,9 +7,7 @@ import {
   getCanonicalTrackSample,
 } from "./libraryQueryService.js";
 import { lidarrClient } from "./lidarrClient.js";
-import { slskdClient } from "./slskdClient.js";
-import { nzbgetClient } from "./nzbgetClient.js";
-import { sabnzbdClient } from "./sabnzbdClient.js";
+import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { NavidromeClient } from "./navidrome.js";
 import { PlexClient } from "./plex.js";
 import { runLidarrLibraryAccessTest } from "./lidarrLibraryAccessTest.js";
@@ -635,7 +633,7 @@ async function checkDownloadClientSection({
 
 async function checkSlskdSection() {
   return checkDownloadClientSection({
-    client: slskdClient,
+    client: getDownloadClient("slskd"),
     key: "slskd",
     title: "slskd downloads",
     isEnabled: (config) => config.enabled !== false,
@@ -669,7 +667,7 @@ async function checkSlskdSection() {
 
 async function checkNzbgetSection() {
   return checkDownloadClientSection({
-    client: nzbgetClient,
+    client: getDownloadClient("nzbget"),
     key: "nzbget",
     title: "NZBGet downloads",
     isEnabled: (config) => config.enabled === true,
@@ -690,7 +688,7 @@ async function checkNzbgetSection() {
 
 async function checkSabnzbdSection() {
   return checkDownloadClientSection({
-    client: sabnzbdClient,
+    client: getDownloadClient("sabnzbd"),
     key: "sabnzbd",
     title: "SABnzbd downloads",
     isEnabled: (config) => config.enabled === true,

@@ -10,16 +10,46 @@ const SEARCH_LIMIT = 5;
 const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const AUDIO_FORMAT = "m4a";
 
-function getSettings() {
-  return dbOps.getSettings()?.integrations?.ytdlp || {};
+export const ytdlpSettings = Object.freeze({
+  key: "ytdlp",
+  label: "yt-dlp",
+  subtitle: "YouTube / web",
+  enabledDefault: true,
+  healthKey: "ytdlpConfigured",
+  testRequiresEnabled: false,
+  fields: Object.freeze([
+    Object.freeze({ key: "enabled", label: "Enable yt-dlp", type: "toggle" }),
+    Object.freeze({
+      key: "priority",
+      label: "Source priority",
+      type: "number",
+      min: 1,
+      max: 1000,
+      section: "Behavior",
+    }),
+    Object.freeze({
+      key: "stagingPath",
+      label: "Staging path",
+      type: "path",
+      section: "Downloads",
+      hint: "Temporary downloads stay here until imported.",
+    }),
+  ]),
+  defaults: Object.freeze({ enabled: true, priority: 50, stagingPath: "" }),
+  validation: Object.freeze({ required: [], url: [] }),
+  testConnection: true,
+});
+
+function getSettings(config = null) {
+  return config || dbOps.getSettings()?.integrations?.ytdlp || {};
 }
 
 function getBinaryPath() {
   return DEFAULT_BINARY;
 }
 
-export function isYtdlpEnabled() {
-  return getSettings().enabled !== false;
+function isEnabledFor(config = null) {
+  return getSettings(config).enabled !== false;
 }
 
 function resolveBinaryExists(binary) {
@@ -39,8 +69,8 @@ function resolveBinaryExists(binary) {
   });
 }
 
-export function isConfigured() {
-  return isYtdlpEnabled() && resolveBinaryExists(getBinaryPath());
+function isConfiguredFor(config = null) {
+  return isEnabledFor(config) && resolveBinaryExists(getBinaryPath());
 }
 
 function runYtdlp(args, { timeoutMs = 120000, cwd } = {}) {
@@ -78,8 +108,8 @@ function runYtdlp(args, { timeoutMs = 120000, cwd } = {}) {
   });
 }
 
-export async function testConnection({ force: _force = false } = {}) {
-  if (!isYtdlpEnabled()) {
+async function testConnectionFor(config = null, { force: _force = false } = {}) {
+  if (!isEnabledFor(config)) {
     return { configured: false, ok: false, message: "yt-dlp is disabled" };
   }
   const binary = getBinaryPath();
@@ -99,7 +129,7 @@ export async function testConnection({ force: _force = false } = {}) {
   }
 }
 
-export async function search(query, { limit = SEARCH_LIMIT } = {}) {
+async function searchFor(_config = null, query, { limit = SEARCH_LIMIT } = {}) {
   const trimmed = String(query || "").trim();
   if (!trimmed) return [];
   const capped = Math.min(Math.max(Number(limit) || SEARCH_LIMIT, 1), 10);
@@ -140,9 +170,9 @@ export async function search(query, { limit = SEARCH_LIMIT } = {}) {
   return results;
 }
 
-function resolveStagingDir(jobId) {
+function resolveStagingDir(config, jobId) {
   return path.join(
-    resolveYtdlpStagingRoot(getSettings().stagingPath),
+    resolveYtdlpStagingRoot(getSettings(config).stagingPath),
     "ytdlp",
     String(jobId || "unknown"),
   );
@@ -160,10 +190,10 @@ async function findDownloadedAudio(dir) {
   return null;
 }
 
-export async function downloadAudio(videoUrl, { jobId } = {}) {
+async function downloadAudioFor(config = null, videoUrl, { jobId } = {}) {
   const url = String(videoUrl || "").trim();
   if (!url) throw new Error("Missing yt-dlp download URL");
-  const stagingDir = resolveStagingDir(jobId);
+  const stagingDir = resolveStagingDir(config, jobId);
   await fsPromises.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
   await fsPromises.mkdir(stagingDir, { recursive: true });
   const outTemplate = path.join(stagingDir, "%(id)s.%(ext)s");
@@ -196,15 +226,77 @@ export async function downloadAudio(videoUrl, { jobId } = {}) {
   return { filePath, stagingDir };
 }
 
-export async function cleanupStaging(jobId) {
-  await fsPromises.rm(resolveStagingDir(jobId), { recursive: true, force: true }).catch(() => {});
+async function cleanupStagingFor(config = null, jobId) {
+  await fsPromises.rm(resolveStagingDir(config, jobId), { recursive: true, force: true }).catch(() => {});
 }
 
-export const ytdlpClient = {
-  isConfigured,
-  isEnabled: isYtdlpEnabled,
-  testConnection,
-  search,
-  downloadAudio,
-  cleanupStaging,
-};
+export class YtdlpClient {
+  constructor(config = null) {
+    this.key = "ytdlp";
+    this.name = "yt-dlp";
+    this._config = config;
+  }
+
+  updateConfig(config = null) {
+    this._config = config;
+  }
+
+  isEnabled() {
+    return isEnabledFor(this._config);
+  }
+
+  isConfigured() {
+    return isConfiguredFor(this._config);
+  }
+
+  getStatus() {
+    return {
+      enabled: this.isEnabled(),
+      configured: this.isConfigured(),
+    };
+  }
+
+  testConnection(options) {
+    return testConnectionFor(this._config, options);
+  }
+
+  search(query, options) {
+    return searchFor(this._config, query, options);
+  }
+
+  downloadAudio(videoUrl, options) {
+    return downloadAudioFor(this._config, videoUrl, options);
+  }
+
+  cleanupStaging(jobId) {
+    return cleanupStagingFor(this._config, jobId);
+  }
+}
+
+const defaultYtdlpClient = new YtdlpClient();
+
+export function isYtdlpEnabled() {
+  return defaultYtdlpClient.isEnabled();
+}
+
+export function isConfigured() {
+  return defaultYtdlpClient.isConfigured();
+}
+
+export function testConnection(options) {
+  return defaultYtdlpClient.testConnection(options);
+}
+
+export function search(query, options) {
+  return defaultYtdlpClient.search(query, options);
+}
+
+export function downloadAudio(videoUrl, options) {
+  return defaultYtdlpClient.downloadAudio(videoUrl, options);
+}
+
+export function cleanupStaging(jobId) {
+  return defaultYtdlpClient.cleanupStaging(jobId);
+}
+
+export const ytdlpClient = defaultYtdlpClient;

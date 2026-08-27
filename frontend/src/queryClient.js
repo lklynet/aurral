@@ -27,6 +27,7 @@ export const queryKeys = {
   appHealth: ["app", "health"],
   appSettings: ["settings", "app"],
   playbackSettings: ["settings", "playback"],
+  downloadClientSettings: ["settings", "download-clients"],
   lidarrRootFolders: (url, credentialsRevision = 0) => [
     "settings",
     "lidarr",

@@ -2,8 +2,7 @@ import path from "path";
 import fs from "fs/promises";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 import { prowlarrClient } from "./prowlarrClient.js";
-import { nzbgetClient } from "./nzbgetClient.js";
-import { sabnzbdClient } from "./sabnzbdClient.js";
+import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger } from "./logger.js";
 import {
   buildFlowSearchTiers,
@@ -40,13 +39,17 @@ const POLL_DELAY_SECONDS = 5;
 const MAX_POLL_ATTEMPTS = 720;
 
 function getUsenetClient() {
-  if (sabnzbdClient.isConfigured()) return sabnzbdClient;
-  return nzbgetClient;
+  const sabnzbd = getDownloadClient("sabnzbd");
+  if (sabnzbd.isConfigured()) return sabnzbd;
+  return getDownloadClient("nzbget");
 }
 
 function getUsenetClientKey() {
-  if (sabnzbdClient.isConfigured()) return "sabnzbd";
-  return "nzbget";
+  return getUsenetClient().key;
+}
+
+function getSabnzbdClient() {
+  return getDownloadClient("sabnzbd");
 }
 
 function hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions) {
@@ -327,7 +330,7 @@ async function handleUsenetPoll(payload, helpers) {
   const pollAttempts = Number(payload.pollAttempts || 0) + 1;
   if (pollAttempts > MAX_POLL_ATTEMPTS) {
     if (getUsenetClientKey() === "sabnzbd") {
-      sabnzbdClient.deleteHistoryItem(payload.nzbId).catch(() => {});
+      getSabnzbdClient().deleteHistoryItem(payload.nzbId).catch(() => {});
     }
     if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, { nzbId: null, history: null });
     return helpers.failOrTryNextSource(payload, job, "Usenet polling timed out");
@@ -347,7 +350,7 @@ async function handleUsenetPoll(payload, helpers) {
     }
     if (state === "failed") {
       if (getUsenetClientKey() === "sabnzbd") {
-        sabnzbdClient.deleteHistoryItem(payload.nzbId).catch(() => {});
+        getSabnzbdClient().deleteHistoryItem(payload.nzbId).catch(() => {});
       }
       if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, { nzbId: null, history: null });
       return helpers.failOrTryNextSource(
@@ -402,7 +405,7 @@ async function handleUsenetFinalize(payload, helpers) {
       found.validation?.reason ||
       "Usenet download completed, but no matching audio file was found";
     if (getUsenetClientKey() === "sabnzbd") {
-      sabnzbdClient.deleteHistoryItem(payload.nzbId).catch(() => {});
+      getSabnzbdClient().deleteHistoryItem(payload.nzbId).catch(() => {});
     }
     if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, { nzbId: null, history: null });
     return helpers.failOrTryNextSource(payload, job, reason);
@@ -423,7 +426,7 @@ async function handleUsenetFinalize(payload, helpers) {
     finalPath,
   );
   if (getUsenetClientKey() === "sabnzbd") {
-    sabnzbdClient.deleteHistoryItem(payload.nzbId).catch(() => {});
+    getSabnzbdClient().deleteHistoryItem(payload.nzbId).catch(() => {});
   }
   return finalizePipelineJobSuccess({
     downloadTracker,

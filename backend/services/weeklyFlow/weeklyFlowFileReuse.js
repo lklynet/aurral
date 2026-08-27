@@ -20,23 +20,11 @@ import {
   resolvePlaylistRoot as resolveWeeklyFlowRoot,
 } from "../playlistPaths.js";
 import { getPathMappings, resolveLocalPath } from "../pathMappings.js";
-
-export const EXISTING_FILE_MODES = new Set(["download", "reuse"]);
-const LEGACY_REUSE_MODES = new Set(["hardlink", "copy"]);
-const DEFAULT_EXISTING_FILE_MODE = "reuse";
-
-export function normalizeExistingFileMode(value) {
-  const normalized = String(value || "")
-    .trim()
-    .toLowerCase();
-  if (EXISTING_FILE_MODES.has(normalized)) {
-    return normalized;
-  }
-  if (LEGACY_REUSE_MODES.has(normalized)) {
-    return "reuse";
-  }
-  return DEFAULT_EXISTING_FILE_MODE;
-}
+import { normalizeExistingFileMode } from "./weeklyFlowFileReuseMode.js";
+export {
+  EXISTING_FILE_MODES,
+  normalizeExistingFileMode,
+} from "./weeklyFlowFileReuseMode.js";
 
 export function sortJobsForTrackReuse(jobs) {
   return [...jobs].sort((a, b) => {

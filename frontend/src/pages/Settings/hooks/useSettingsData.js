@@ -5,6 +5,7 @@ import { checkHealth } from "../../../utils/api/endpoints/auth.js";
 import {
   fetchAppSettings,
   fetchPlaybackSettings,
+  fetchDownloadClientSettings,
   updateAppSettings,
   getLidarrRootFolders,
   getLidarrProfiles,
@@ -285,6 +286,12 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
     enabled: false,
     staleTime: 30_000,
   });
+  const downloadClientQuery = useQuery({
+    queryKey: queryKeys.downloadClientSettings,
+    queryFn: ({ signal }) => fetchDownloadClientSettings({ signal }),
+    enabled: false,
+    staleTime: 30_000,
+  });
   const settingsSaveMutation = useMutation({
     mutationFn: updateAppSettings,
     onSuccess: (savedSettings) => {
@@ -309,10 +316,12 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
   const loadingLidarrMetadataProfiles = lidarrMetadataProfilesQuery.isFetching;
   const loadingLidarrTags = lidarrTagsQuery.isFetching;
   const playbackSettings = playbackQuery.data?.destinations || null;
+  const downloadClientSettings = downloadClientQuery.data?.clients || null;
   const saving = settingsSaveMutation.isPending;
   const { mutateAsync: saveSettings } = settingsSaveMutation;
   const { refetch: refetchSettings } = settingsQuery;
   const { refetch: refetchPlayback } = playbackQuery;
+  const { refetch: refetchDownloadClients } = downloadClientQuery;
 
   const applyHealthUpdate = useCallback((healthData, { allowClearRefreshing = true } = {}) => {
     setHealth(healthData);
@@ -380,8 +389,11 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
     if (settingsActivationTimerRef.current) clearTimeout(settingsActivationTimerRef.current);
     try {
       void refreshHealth();
-      void refetchPlayback({ throwOnError: false });
-      const settingsResult = await refetchSettings({ throwOnError: true });
+      const [settingsResult] = await Promise.all([
+        refetchSettings({ throwOnError: true }),
+        refetchPlayback({ throwOnError: false }),
+        refetchDownloadClients({ throwOnError: false }),
+      ]);
       const savedSettings = settingsResult.data;
       const updatedSettings = normalizeSettings(savedSettings);
       const savedSnapshot = structuredClone(updatedSettings);
@@ -405,7 +417,13 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
     } catch {
       setSettingsLoaded(true);
     }
-  }, [refetchPlayback, refetchSettings, refreshHealth, updateLidarrResourceConfig]);
+  }, [
+    refetchDownloadClients,
+    refetchPlayback,
+    refetchSettings,
+    refreshHealth,
+    updateLidarrResourceConfig,
+  ]);
 
   const refreshLidarrResources = useCallback(async (config = null) => {
     const nextConfig = updateLidarrResourceConfig(
@@ -681,6 +699,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
     settings,
     settingsLoaded,
     playbackSettings,
+    downloadClientSettings,
     updateSettings,
     originalSettings,
     hasUnsavedChanges,

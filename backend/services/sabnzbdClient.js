@@ -6,10 +6,63 @@ import {
 } from "./usenetClientCommon.js";
 import axios from "../../lib/axiosFetch.js";
 
-let connectionCache = { checkedAt: 0, result: null };
+export const sabnzbdSettings = Object.freeze({
+  key: "sabnzbd",
+  label: "SABnzbd",
+  subtitle: "Usenet",
+  enabledDefault: false,
+  testRequiresEnabled: true,
+  fields: Object.freeze([
+    Object.freeze({ key: "enabled", label: "Enable SABnzbd", type: "toggle" }),
+    Object.freeze({
+      key: "url",
+      label: "Server URL",
+      type: "url",
+      required: true,
+      section: "Connection",
+      placeholder: "http://localhost:8080",
+    }),
+    Object.freeze({
+      key: "apiKey",
+      label: "API key",
+      type: "password",
+      required: true,
+      secret: true,
+      section: "Connection",
+    }),
+    Object.freeze({ key: "category", label: "Category", type: "text", section: "Downloads" }),
+    Object.freeze({
+      key: "priority",
+      label: "Source priority",
+      type: "number",
+      min: 1,
+      max: 1000,
+      section: "Downloads",
+    }),
+    Object.freeze({
+      key: "addPaused",
+      label: "Add NZBs paused",
+      type: "toggle",
+      section: "Advanced",
+      advanced: true,
+    }),
+  ]),
+  defaults: Object.freeze({
+    enabled: false,
+    url: "",
+    apiKey: "",
+    category: "aurral",
+    priority: 20,
+    addPaused: false,
+  }),
+  validation: Object.freeze({ required: ["url", "apiKey"], url: ["url"] }),
+  testConnection: true,
+});
 
-function getSettings() {
-  const sabnzbd = dbOps.getSettings()?.integrations?.sabnzbd || {};
+let connectionCache = { checkedAt: 0, result: null, settingsKey: null };
+
+function getSettings(config = null) {
+  const sabnzbd = config || dbOps.getSettings()?.integrations?.sabnzbd || {};
   return {
     enabled: sabnzbd.enabled === true,
     url: normalizeBaseUrl(sabnzbd.url),
@@ -18,6 +71,10 @@ function getSettings() {
     priority: normalizeInteger(sabnzbd.priority, 20),
     addPaused: sabnzbd.addPaused === true,
   };
+}
+
+function getSettingsKey(settings) {
+  return JSON.stringify([settings.url, settings.apiKey]);
 }
 
 function buildUrl(url, apiKey) {
@@ -48,14 +105,31 @@ function readConfigValue(entries, name) {
 }
 
 export class SabnzbdClient {
+  constructor(config = null) {
+    this.key = "sabnzbd";
+    this.name = "SABnzbd";
+    this._config = config;
+  }
+
+  updateConfig(config = null) {
+    this._config = config;
+  }
+
+  _getSettings() {
+    return getSettings(this._config);
+  }
+
   isConfigured() {
-    const { enabled, url, apiKey } = getSettings();
+    const { enabled, url, apiKey } = this._getSettings();
     return enabled && !!url && !!apiKey;
   }
 
   getStatus() {
-    const settings = getSettings();
-    const cached = connectionCache.result;
+    const settings = this._getSettings();
+    const cached =
+      connectionCache.settingsKey === getSettingsKey(settings)
+        ? connectionCache.result
+        : null;
     return {
       enabled: settings.enabled,
       configured: this.isConfigured(),
@@ -65,7 +139,7 @@ export class SabnzbdClient {
   }
 
   async api(mode, params = {}) {
-    const settings = getSettings();
+    const settings = this._getSettings();
     const base = buildUrl(settings.url, settings.apiKey);
     const query = Object.entries({ mode, ...params })
       .filter(([, v]) => v != null && v !== "")
@@ -85,7 +159,7 @@ export class SabnzbdClient {
     priority,
     addPaused,
   }) {
-    const settings = getSettings();
+    const settings = this._getSettings();
     const safeUrl = String(url || "").trim();
     if (!safeUrl) throw new Error("SABnzbd append requires a URL");
     const nzbName = `${sanitizeNzbName(name)}.nzb`;
@@ -141,7 +215,7 @@ export class SabnzbdClient {
   }
 
   async testConnection({ force = false } = {}) {
-    const settings = getSettings();
+    const settings = this._getSettings();
     if (!settings.enabled) {
       return {
         ok: false,
@@ -158,7 +232,13 @@ export class SabnzbdClient {
         message: "SABnzbd URL and API key are required",
       };
     }
-    if (!force && connectionCache.result && Date.now() - connectionCache.checkedAt < 30000) {
+    const settingsKey = getSettingsKey(settings);
+    if (
+      !force &&
+      connectionCache.settingsKey === settingsKey &&
+      connectionCache.result &&
+      Date.now() - connectionCache.checkedAt < 30000
+    ) {
       return connectionCache.result;
     }
     try {
@@ -182,7 +262,7 @@ export class SabnzbdClient {
         directories,
         message: `SABnzbd is connected${version ? ` (v${version})` : ""}`,
       };
-      connectionCache = { checkedAt: Date.now(), result };
+      connectionCache = { checkedAt: Date.now(), result, settingsKey };
       return result;
     } catch (error) {
       const result = {
@@ -191,7 +271,7 @@ export class SabnzbdClient {
         connected: false,
         message: error?.message || "Failed to reach SABnzbd",
       };
-      connectionCache = { checkedAt: Date.now(), result };
+      connectionCache = { checkedAt: Date.now(), result, settingsKey };
       return result;
     }
   }

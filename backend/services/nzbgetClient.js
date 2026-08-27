@@ -6,10 +6,88 @@ import {
 } from "./usenetClientCommon.js";
 import axios from "../../lib/axiosFetch.js";
 
-let connectionCache = { checkedAt: 0, result: null };
+export const nzbgetSettings = Object.freeze({
+  key: "nzbget",
+  label: "NZBGet",
+  subtitle: "Usenet",
+  enabledDefault: false,
+  testRequiresEnabled: true,
+  fields: Object.freeze([
+    Object.freeze({ key: "enabled", label: "Enable NZBGet", type: "toggle" }),
+    Object.freeze({
+      key: "url",
+      label: "Server URL",
+      type: "url",
+      required: true,
+      section: "Connection",
+      placeholder: "http://localhost:6789",
+    }),
+    Object.freeze({
+      key: "username",
+      label: "Username",
+      type: "text",
+      section: "Connection",
+    }),
+    Object.freeze({
+      key: "password",
+      label: "Password",
+      type: "password",
+      secret: true,
+      section: "Connection",
+    }),
+    Object.freeze({ key: "category", label: "Category", type: "text", section: "Downloads" }),
+    Object.freeze({
+      key: "priority",
+      label: "Source priority",
+      type: "number",
+      min: 1,
+      max: 1000,
+      section: "Downloads",
+    }),
+    Object.freeze({
+      key: "nzbPriority",
+      label: "NZB priority",
+      type: "number",
+      min: -100,
+      max: 900,
+      section: "Advanced",
+      advanced: true,
+    }),
+    Object.freeze({
+      key: "completedPath",
+      label: "Completed download path",
+      type: "text",
+      section: "Advanced",
+      advanced: true,
+      placeholder: "/downloads/completed",
+    }),
+    Object.freeze({
+      key: "addPaused",
+      label: "Add NZBs paused",
+      type: "toggle",
+      section: "Advanced",
+      advanced: true,
+    }),
+  ]),
+  defaults: Object.freeze({
+    enabled: false,
+    url: "",
+    username: "",
+    password: "",
+    category: "aurral",
+    priority: 20,
+    nzbPriority: 0,
+    addPaused: false,
+    completedPath: "",
+  }),
+  validation: Object.freeze({ required: ["url"], url: ["url"] }),
+  testConnection: true,
+});
 
-function getSettings() {
-  const nzbget = dbOps.getSettings()?.integrations?.nzbget || {};
+let connectionCache = { checkedAt: 0, result: null, settingsKey: null };
+
+function getSettings(config = null) {
+  const nzbget = config || dbOps.getSettings()?.integrations?.nzbget || {};
   return {
     enabled: nzbget.enabled === true,
     url: normalizeBaseUrl(nzbget.url),
@@ -21,6 +99,10 @@ function getSettings() {
     addPaused: nzbget.addPaused === true,
     completedPath: String(nzbget.completedPath || "").trim(),
   };
+}
+
+function getSettingsKey(settings) {
+  return JSON.stringify([settings.url, settings.username, settings.password]);
 }
 
 function buildRpcUrl(baseUrl) {
@@ -44,14 +126,31 @@ function readConfigValue(configEntries, name) {
 }
 
 export class NzbgetClient {
+  constructor(config = null) {
+    this.key = "nzbget";
+    this.name = "NZBGet";
+    this._config = config;
+  }
+
+  updateConfig(config = null) {
+    this._config = config;
+  }
+
+  _getSettings() {
+    return getSettings(this._config);
+  }
+
   isConfigured() {
-    const { enabled, url } = getSettings();
+    const { enabled, url } = this._getSettings();
     return enabled && !!url;
   }
 
   getStatus() {
-    const settings = getSettings();
-    const cached = connectionCache.result;
+    const settings = this._getSettings();
+    const cached =
+      connectionCache.settingsKey === getSettingsKey(settings)
+        ? connectionCache.result
+        : null;
     return {
       enabled: settings.enabled,
       configured: this.isConfigured(),
@@ -62,7 +161,7 @@ export class NzbgetClient {
   }
 
   async rpc(method, params = []) {
-    const { url, username, password } = getSettings();
+    const { url, username, password } = this._getSettings();
     const rpcUrl = buildRpcUrl(url);
     if (!rpcUrl) throw new Error("NZBGet not configured");
     const response = await axios.post(
@@ -129,7 +228,7 @@ export class NzbgetClient {
     autoCategory = false,
     ppParameters = [],
   }) {
-    const settings = getSettings();
+    const settings = this._getSettings();
     const safeUrl = String(url || "").trim();
     if (!safeUrl) throw new Error("NZBGet append requires a URL");
     const nzbName = `${sanitizeNzbName(name)}.nzb`;
@@ -171,7 +270,7 @@ export class NzbgetClient {
   }
 
   async getDownloadDirectories() {
-    const settings = getSettings();
+    const settings = this._getSettings();
     const config = await this.config().catch(() => []);
     return {
       completedPath: settings.completedPath || "",
@@ -182,7 +281,7 @@ export class NzbgetClient {
   }
 
   async testConnection({ force = false } = {}) {
-    const settings = getSettings();
+    const settings = this._getSettings();
     if (!settings.enabled) {
       return {
         ok: false,
@@ -199,7 +298,13 @@ export class NzbgetClient {
         message: "NZBGet URL is required",
       };
     }
-    if (!force && connectionCache.result && Date.now() - connectionCache.checkedAt < 30000) {
+    const settingsKey = getSettingsKey(settings);
+    if (
+      !force &&
+      connectionCache.settingsKey === settingsKey &&
+      connectionCache.result &&
+      Date.now() - connectionCache.checkedAt < 30000
+    ) {
       return connectionCache.result;
     }
     try {
@@ -219,7 +324,7 @@ export class NzbgetClient {
         directories,
         message: `NZBGet is connected${version ? ` (v${version})` : ""}`,
       };
-      connectionCache = { checkedAt: Date.now(), result };
+      connectionCache = { checkedAt: Date.now(), result, settingsKey };
       return result;
     } catch (error) {
       const result = {
@@ -228,7 +333,7 @@ export class NzbgetClient {
         connected: false,
         message: error?.message || "Failed to reach NZBGet",
       };
-      connectionCache = { checkedAt: Date.now(), result };
+      connectionCache = { checkedAt: Date.now(), result, settingsKey };
       return result;
     }
   }

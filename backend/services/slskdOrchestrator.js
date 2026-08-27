@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs/promises";
 import { db } from "../config/db-sqlite.js";
-import { isSlskdCleanupAfterRunsEnabled, slskdClient } from "./slskdClient.js";
+import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger } from "./logger.js";
 import { enqueuePipelineJob } from "./honkerDb.js";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
@@ -40,8 +40,11 @@ import {
   blockPipelineJobForReview,
   finalizePipelineJobSuccess,
 } from "./pipelineHelpers.js";
+
 import { getQualityProfile } from "./qualityProfileService.js";
 import { getQualityTier, orderAdvertisedQualityCandidates } from "./qualityProfileModel.js";
+
+const slskdClient = getDownloadClient("slskd");
 
 export { commitImportToPlaylistLibrary };
 
@@ -586,7 +589,7 @@ async function cleanupTransferForPayload(payload, transfer) {
     .catch((err) => { logger.warn("slskd", "Failed to clean up transfer for payload", { transferId, error: err?.message || String(err) }); });}
 
 async function cleanupSuccessfulRunArtifacts(payload, transfer) {
-  if (!isSlskdCleanupAfterRunsEnabled()) return;
+  if (!slskdClient.isCleanupAfterRunsEnabled()) return;
   const searchIds = getPayloadSearchIds(payload);
   const transferId = readTransferId(transfer);
   const candidate = getPayloadCandidate(payload);

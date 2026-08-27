@@ -899,9 +899,10 @@ export class WeeklyFlowWorker {
             ).catch((err) =>
               console.warn("[WeeklyFlowWorker] Gotify notification failed:", err.message),
             );
-            import("../slskdClient.js")
-              .then(({ slskdClient, isSlskdCleanupAfterRunsEnabled }) => {
-                if (!isSlskdCleanupAfterRunsEnabled()) return null;
+            import("../download/downloadClientSettings.js")
+              .then(({ getDownloadClient }) => {
+                const slskdClient = getDownloadClient("slskd");
+                if (!slskdClient.isCleanupAfterRunsEnabled()) return null;
                 const globalStats = downloadTracker.getStats();
                 if (globalStats.pending > 0 || globalStats.downloading > 0) {
                   return null;

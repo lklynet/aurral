@@ -51,6 +51,19 @@ export const getPlaybackSettings = () =>
 export const testPlaybackConnection = (key, config) =>
   postData(`/settings/playback/${encodeURIComponent(key)}/test`, config);
 
+export const fetchDownloadClientSettings = ({ signal } = {}) =>
+  getData("/settings/download-clients", { signal });
+
+export const getDownloadClientSettings = () =>
+  queryClient.fetchQuery({
+    queryKey: queryKeys.downloadClientSettings,
+    queryFn: ({ signal }) => fetchDownloadClientSettings({ signal }),
+    staleTime: 30_000,
+  });
+
+export const testDownloadClientConnection = (key, config) =>
+  postData(`/settings/download-clients/${encodeURIComponent(key)}/test`, config);
+
 export const updateAppSettings = (settings) => postData("/settings", settings);
 
 export const getLidarrRootFolders = (url, apiKey, { signal } = {}) =>

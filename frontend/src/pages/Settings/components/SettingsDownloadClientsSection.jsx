@@ -1,28 +1,19 @@
 import { useEffect, useState } from "react";
-import { testNzbgetConnection, testSabnzbdConnection, testSlskdConnection, testYtdlpConnection } from "../../../utils/api/endpoints/settings.js";
+import { testDownloadClientConnection } from "../../../utils/api/endpoints/settings.js";
 
 import { Plus, RefreshCw, Trash2, Wrench } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import DownloadFolderField from "../../../components/DownloadFolderField";
-import { SettingsInput } from "./SettingsField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
-import {
-  SettingsModalField,
-  SettingsModalSection,
-  SettingsModalToggle,
-} from "./SettingsModalLayout";
+import { SettingsAdapterFields } from "./SettingsAdapterFields";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { getProviderStatus } from "../utils/integrationStatus";
 import { PATH_MAPPING_SOURCE_OPTIONS, PathMappingModal } from "./PathMappingModal";
 import { QUALITY_TIER_LABELS, QualityProfileModal } from "./QualityProfileModal";
+
 const PATH_MAPPING_SOURCE_VALUES = new Set(
   PATH_MAPPING_SOURCE_OPTIONS.map((option) => option.value),
 );
-
-function toNumber(value, fallback) {
-  const next = parseInt(value, 10);
-  return Number.isFinite(next) ? next : fallback;
-}
 
 function normalizePathMappingSource(value) {
   const normalized = String(value || "")
@@ -44,16 +35,33 @@ function sourceLabel(source) {
   return PATH_MAPPING_SOURCE_OPTIONS.find((option) => option.value === source)?.label || source;
 }
 
-const CLIENT_MODALS = {
-  qualityProfile: "quality-profile",
-  slskd: "slskd",
-  ytdlp: "ytdlp",
-  nzbget: "nzbget",
-  sabnzbd: "sabnzbd",
-};
+function isClientEnabled(definition, config) {
+  return definition.enabledDefault === true ? config.enabled !== false : config.enabled === true;
+}
+
+function isClientConfigured(definition, config, health) {
+  if (definition.healthKey) return health?.[definition.healthKey] === true;
+  return (definition.validation?.required || []).every((key) => String(config[key] || "").trim());
+}
+
+function missingRequiredFields(definition, config) {
+  return (definition.validation?.required || [])
+    .filter((key) => !String(config[key] || "").trim())
+    .map((key) => definition.fields.find((field) => field.key === key)?.label || key);
+}
+
+function clientMeta(definition, config) {
+  const priorityField = definition.fields.find((field) => field.key === "priority");
+  if (!priorityField) return null;
+  const priority = config.priority ?? definition.defaults?.priority;
+  return priority == null ? null : `Priority ${priority}`;
+}
+
+const QUALITY_PROFILE_MODAL = "quality-profile";
 
 export function SettingsDownloadClientsSection({
   settings,
+  downloadClientSettings,
   updateSettings,
   health,
   handleSaveSettings,
@@ -62,12 +70,8 @@ export function SettingsDownloadClientsSection({
   showInfo,
 }) {
   const [activeModal, setActiveModal] = useState(null);
-  const [testingSlskd, setTestingSlskd] = useState(false);
-  const [testingYtdlp, setTestingYtdlp] = useState(false);
-  const [testingNzbget, setTestingNzbget] = useState(false);
-  const [testingSabnzbd, setTestingSabnzbd] = useState(false);
+  const [testingClient, setTestingClient] = useState(null);
   const [testStatus, setTestStatus] = useState(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [mappingModal, setMappingModal] = useState(null);
 
   useEffect(() => {
@@ -75,10 +79,6 @@ export function SettingsDownloadClientsSection({
   }, [activeModal]);
 
   const integrations = settings.integrations || {};
-  const slskd = integrations.slskd || {};
-  const ytdlp = integrations.ytdlp || {};
-  const nzbget = integrations.nzbget || {};
-  const sabnzbd = integrations.sabnzbd || {};
   const pathMappings = coercePathMappings(settings.pathMappings).filter(
     (entry) => entry.remote || entry.local,
   );
@@ -89,15 +89,10 @@ export function SettingsDownloadClientsSection({
   const qualityEnabled = new Set(
     Array.isArray(qualityProfile.enabled) ? qualityProfile.enabled : qualityOrder,
   );
-
-  const slskdConfigured = Boolean(slskd.url && slskd.apiKey);
-  const ytdlpConfigured = health?.ytdlpConfigured === true;
-  const nzbgetConfigured = Boolean(nzbget.url);
-  const sabnzbdConfigured = Boolean(sabnzbd.url && sabnzbd.apiKey);
-  const slskdEnabled = slskd.enabled === true;
-  const ytdlpEnabled = ytdlp.enabled !== false;
-  const nzbgetEnabled = nzbget.enabled === true;
-  const sabnzbdEnabled = sabnzbd.enabled === true;
+  const clientDefinitions = downloadClientSettings
+    ? Object.values(downloadClientSettings)
+    : [];
+  const activeClient = downloadClientSettings?.[activeModal] || null;
 
   const updateIntegration = (key, patch) => {
     setTestStatus(null);
@@ -154,80 +149,40 @@ export function SettingsDownloadClientsSection({
     updatePathMappings(pathMappings.filter((_entry, entryIndex) => entryIndex !== index));
   };
 
-  const handleTestNzbget = async () => {
-    setTestStatus(null);
-    if (!nzbgetEnabled || !nzbget.url) {
-      setTestStatus({ tone: "error", message: "Enable NZBGet and enter the server URL." });
-      showError("Enable NZBGet and enter the server URL first");
+  const handleTestClient = async (definition) => {
+    const config = integrations[definition.key] || {};
+    const missing = missingRequiredFields(definition, config);
+    if (definition.testRequiresEnabled && !isClientEnabled(definition, config)) {
+      const message = `Enable ${definition.label} and enter its required settings first.`;
+      setTestStatus({ tone: "error", message });
+      showError(message);
       return;
     }
-    setTestingNzbget(true);
-    try {
-      await handleSaveSettings();
-      const result = await testNzbgetConnection();
-      setTestStatus({ tone: "success", message: "Connected." });
-      showSuccess(result.message || "NZBGet connection OK");
-    } catch (error) {
-      setTestStatus({ tone: "error", message: "Connection failed. Check the settings and retry." });
-      showError(
-        error.response?.data?.message ||
-          error.response?.data?.error ||
-          error.message ||
-          "NZBGet connection failed",
-      );
-    } finally {
-      setTestingNzbget(false);
+    if (missing.length > 0) {
+      const message = `Enter ${missing.join(" and ")} first.`;
+      setTestStatus({ tone: "error", message });
+      showError(message);
+      return;
     }
-  };
 
-  const handleTestSabnzbd = async () => {
     setTestStatus(null);
-    if (!sabnzbdEnabled || !sabnzbd.url || !sabnzbd.apiKey) {
-      setTestStatus({ tone: "error", message: "Enable SABnzbd and enter the URL and API key." });
-      showError("Enable SABnzbd and enter the server URL and API key first");
-      return;
-    }
-    setTestingSabnzbd(true);
+    setTestingClient(definition.key);
     try {
-      await handleSaveSettings();
-      const result = await testSabnzbdConnection();
-      setTestStatus({ tone: "success", message: "Connected." });
-      showSuccess(result.message || "SABnzbd connection OK");
-    } catch (error) {
-      setTestStatus({ tone: "error", message: "Connection failed. Check the settings and retry." });
-      showError(
-        error.response?.data?.message ||
-          error.response?.data?.error ||
-          error.message ||
-          "SABnzbd connection failed",
-      );
-    } finally {
-      setTestingSabnzbd(false);
-    }
-  };
-
-  const handleTestSlskd = async () => {
-    setTestStatus(null);
-    if (!slskd.url || !slskd.apiKey) {
-      setTestStatus({ tone: "error", message: "Enter the slskd URL and API key." });
-      showError("Enter slskd URL and API key first");
-      return;
-    }
-    setTestingSlskd(true);
-    try {
-      await handleSaveSettings();
-      const result = await testSlskdConnection();
+      const saved = await handleSaveSettings();
+      if (saved === false) return;
+      const result = await testDownloadClientConnection(definition.key, config);
       if (result.success || result.ok) {
         if (result.warning || result.soulseekConnected === false) {
           setTestStatus({ tone: "warning", message: "API reachable, but Soulseek is not connected." });
-          showInfo(result.message || "slskd API is reachable, but Soulseek is not connected");
+          showInfo(result.message || `${definition.label} is reachable, but its service is not connected`);
         } else {
           setTestStatus({ tone: "success", message: "Connected." });
-          showSuccess(result.message || "slskd connection OK");
+          showSuccess(result.message || `${definition.label} connection OK`);
         }
       } else {
+        const message = result.message || `${definition.label} connection failed`;
         setTestStatus({ tone: "error", message: "Connection failed. Check the settings and retry." });
-        showError(result.message || "slskd connection failed");
+        showError(message);
       }
     } catch (error) {
       setTestStatus({ tone: "error", message: "Connection failed. Check the settings and retry." });
@@ -235,31 +190,10 @@ export function SettingsDownloadClientsSection({
         error.response?.data?.message ||
           error.response?.data?.error ||
           error.message ||
-          "slskd connection failed",
+          `${definition.label} connection failed`,
       );
     } finally {
-      setTestingSlskd(false);
-    }
-  };
-
-  const handleTestYtdlp = async () => {
-    setTestStatus(null);
-    setTestingYtdlp(true);
-    try {
-      await handleSaveSettings();
-      const result = await testYtdlpConnection();
-      setTestStatus({ tone: "success", message: "Connected." });
-      showSuccess(result.message || "yt-dlp OK");
-    } catch (error) {
-      setTestStatus({ tone: "error", message: "Connection failed. Check the settings and retry." });
-      showError(
-        error.response?.data?.message ||
-          error.response?.data?.error ||
-          error.message ||
-          "yt-dlp test failed",
-      );
-    } finally {
-      setTestingYtdlp(false);
+      setTestingClient(null);
     }
   };
 
@@ -267,34 +201,30 @@ export function SettingsDownloadClientsSection({
     <>
       <div className="settings-page__section">
         <div className="settings-page__integration-card-grid">
-          <IntegrationCard
-            title="slskd"
-            subtitle="Soulseek"
-            status={getProviderStatus(slskdEnabled, slskdConfigured)}
-            meta={`Priority ${slskd.priority ?? 10}`}
-            onClick={() => setActiveModal(CLIENT_MODALS.slskd)}
-          />
-          <IntegrationCard
-            title="yt-dlp"
-            subtitle="YouTube / web"
-            status={getProviderStatus(ytdlpEnabled, ytdlpConfigured)}
-            meta={`Priority ${ytdlp.priority ?? 50}`}
-            onClick={() => setActiveModal(CLIENT_MODALS.ytdlp)}
-          />
-          <IntegrationCard
-            title="NZBGet"
-            subtitle="Usenet"
-            status={getProviderStatus(nzbgetEnabled, health?.nzbgetConfigured || nzbgetConfigured)}
-            meta={`Priority ${nzbget.priority ?? 20}`}
-            onClick={() => setActiveModal(CLIENT_MODALS.nzbget)}
-          />
-          <IntegrationCard
-            title="SABnzbd"
-            subtitle="Usenet"
-            status={getProviderStatus(sabnzbdEnabled, health?.sabnzbdConfigured || sabnzbdConfigured)}
-            meta={`Priority ${sabnzbd.priority ?? 20}`}
-            onClick={() => setActiveModal(CLIENT_MODALS.sabnzbd)}
-          />
+          {clientDefinitions.length > 0 ? (
+            clientDefinitions.map((definition) => {
+              const config = integrations[definition.key] || {};
+              return (
+                <IntegrationCard
+                  key={definition.key}
+                  title={definition.label}
+                  subtitle={definition.subtitle}
+                  status={getProviderStatus(
+                    isClientEnabled(definition, config),
+                    isClientConfigured(definition, config, health),
+                  )}
+                  meta={clientMeta(definition, config)}
+                  onClick={() => setActiveModal(definition.key)}
+                />
+              );
+            })
+          ) : (
+            <div className="arr-info">
+              {downloadClientSettings
+                ? "No download clients are available."
+                : "Download client settings are unavailable. Refresh the page to retry."}
+            </div>
+          )}
         </div>
       </div>
 
@@ -307,7 +237,7 @@ export function SettingsDownloadClientsSection({
           subtitle={`${qualityEnabled.size} qualities allowed`}
           status={{ label: "Configured", className: "is-enabled" }}
           meta={`Cutoff ${QUALITY_TIER_LABELS[qualityProfile.cutoff] || "not set"}`}
-          onClick={() => setActiveModal(CLIENT_MODALS.qualityProfile)}
+          onClick={() => setActiveModal(QUALITY_PROFILE_MODAL)}
         />
       </SettingsArrFieldSet>
 
@@ -417,7 +347,7 @@ export function SettingsDownloadClientsSection({
         />
       ) : null}
 
-      {activeModal === CLIENT_MODALS.qualityProfile && (
+      {activeModal === QUALITY_PROFILE_MODAL && (
         <QualityProfileModal
           profile={{ ...qualityProfile, order: qualityOrder, enabled: [...qualityEnabled] }}
           onChange={updateQualityProfile}
@@ -425,365 +355,35 @@ export function SettingsDownloadClientsSection({
         />
       )}
 
-      {activeModal === CLIENT_MODALS.slskd && (
+      {activeClient ? (
         <SettingsIntegrationModal
-          title="slskd"
+          title={activeClient.label}
           onClose={() => setActiveModal(null)}
           testStatus={testStatus}
           footerActions={
             <button
               type="button"
               className="btn btn-secondary"
-              disabled={testingSlskd}
-              onClick={handleTestSlskd}
+              disabled={testingClient === activeClient.key}
+              onClick={() => handleTestClient(activeClient)}
             >
-              {testingSlskd ? (
+              {testingClient === activeClient.key ? (
                 <DotLoader size="sm" label={null} />
               ) : (
                 <RefreshCw className="artist-icon-sm" aria-hidden />
               )}
-              {testingSlskd ? "Testing..." : "Test connection"}
+              {testingClient === activeClient.key ? "Testing..." : "Test connection"}
             </button>
           }
         >
-          <SettingsModalToggle
-            label="Enable slskd"
-            checked={slskdEnabled}
-            onChange={(event) => updateIntegration("slskd", { enabled: event.target.checked })}
+          <SettingsAdapterFields
+            key={activeClient.key}
+            definition={activeClient}
+            settings={integrations[activeClient.key] || {}}
+            onChange={(patch) => updateIntegration(activeClient.key, patch)}
           />
-
-          <SettingsModalSection title="Connection">
-            <SettingsModalField label="Server URL">
-              <SettingsInput
-                type="url"
-                placeholder="http://localhost:5030"
-                autoComplete="off"
-                value={slskd.url || ""}
-                onChange={(event) => updateIntegration("slskd", { url: event.target.value })}
-              />
-            </SettingsModalField>
-            <SettingsModalField label="API key">
-              <SettingsInput
-                type="password"
-                autoComplete="off"
-                value={slskd.apiKey || ""}
-                onChange={(event) => updateIntegration("slskd", { apiKey: event.target.value })}
-              />
-            </SettingsModalField>
-          </SettingsModalSection>
-
-          <SettingsModalSection title="Behavior">
-            <SettingsModalField label="Source priority">
-              <SettingsInput
-                type="number"
-                min="1"
-                max="1000"
-                value={slskd.priority ?? 10}
-                onChange={(event) =>
-                  updateIntegration("slskd", {
-                    priority: toNumber(event.target.value, 10),
-                  })
-                }
-              />
-            </SettingsModalField>
-            <SettingsModalToggle
-              label="Clean up after runs"
-              checked={slskd.cleanupAfterRuns === true}
-              onChange={(event) =>
-                updateIntegration("slskd", {
-                  cleanupAfterRuns: event.target.checked,
-                })
-              }
-            />
-          </SettingsModalSection>
         </SettingsIntegrationModal>
-      )}
-
-      {activeModal === CLIENT_MODALS.ytdlp && (
-        <SettingsIntegrationModal
-          title="yt-dlp"
-          onClose={() => setActiveModal(null)}
-          testStatus={testStatus}
-          footerActions={
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={testingYtdlp}
-              onClick={handleTestYtdlp}
-            >
-              {testingYtdlp ? (
-                <DotLoader size="sm" label={null} />
-              ) : (
-                <RefreshCw className="artist-icon-sm" aria-hidden />
-              )}
-              {testingYtdlp ? "Testing..." : "Test connection"}
-            </button>
-          }
-        >
-          <SettingsModalToggle
-            label="Enable yt-dlp"
-            checked={ytdlpEnabled}
-            onChange={(event) => updateIntegration("ytdlp", { enabled: event.target.checked })}
-          />
-
-          <SettingsModalSection title="Behavior">
-            <SettingsModalField label="Source priority">
-              <SettingsInput
-                type="number"
-                min="1"
-                max="1000"
-                value={ytdlp.priority ?? 50}
-                onChange={(event) =>
-                  updateIntegration("ytdlp", {
-                    priority: toNumber(event.target.value, 50),
-                  })
-                }
-              />
-            </SettingsModalField>
-          </SettingsModalSection>
-
-          <SettingsModalSection title="Downloads">
-            <SettingsModalField
-              label="Staging path"
-              htmlFor="ytdlp-staging-path"
-              hint="Temporary downloads stay here until imported."
-            >
-              <DownloadFolderField
-                id="ytdlp-staging-path"
-                value={ytdlp.stagingPath || ""}
-                autoApplySuggestion={false}
-                onChange={(nextPath) => updateIntegration("ytdlp", { stagingPath: nextPath })}
-              />
-            </SettingsModalField>
-          </SettingsModalSection>
-        </SettingsIntegrationModal>
-      )}
-
-      {activeModal === CLIENT_MODALS.nzbget && (
-        <SettingsIntegrationModal
-          title="NZBGet"
-          onClose={() => setActiveModal(null)}
-          testStatus={testStatus}
-          footerActions={
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={testingNzbget}
-              onClick={handleTestNzbget}
-            >
-              {testingNzbget ? (
-                <DotLoader size="sm" label={null} />
-              ) : (
-                <RefreshCw className="artist-icon-sm" aria-hidden />
-              )}
-              {testingNzbget ? "Testing..." : "Test connection"}
-            </button>
-          }
-        >
-          <SettingsModalToggle
-            label="Enable NZBGet"
-            checked={nzbgetEnabled}
-            onChange={(event) => updateIntegration("nzbget", { enabled: event.target.checked })}
-          />
-
-          <SettingsModalSection title="Connection">
-            <SettingsModalField label="Server URL">
-              <SettingsInput
-                type="url"
-                placeholder="http://localhost:6789"
-                autoComplete="off"
-                value={nzbget.url || ""}
-                onChange={(event) => updateIntegration("nzbget", { url: event.target.value })}
-              />
-            </SettingsModalField>
-            <SettingsModalField label="Username">
-              <SettingsInput
-                type="text"
-                autoComplete="off"
-                value={nzbget.username || ""}
-                onChange={(event) => updateIntegration("nzbget", { username: event.target.value })}
-              />
-            </SettingsModalField>
-            <SettingsModalField label="Password">
-              <SettingsInput
-                type="password"
-                autoComplete="off"
-                value={nzbget.password || ""}
-                onChange={(event) => updateIntegration("nzbget", { password: event.target.value })}
-              />
-            </SettingsModalField>
-          </SettingsModalSection>
-
-          <SettingsModalSection title="Downloads">
-            <SettingsModalField label="Category">
-              <SettingsInput
-                type="text"
-                value={nzbget.category || "aurral"}
-                onChange={(event) => updateIntegration("nzbget", { category: event.target.value })}
-              />
-            </SettingsModalField>
-            <SettingsModalField label="Source priority">
-              <SettingsInput
-                type="number"
-                min="1"
-                max="1000"
-                value={nzbget.priority ?? 20}
-                onChange={(event) =>
-                  updateIntegration("nzbget", {
-                    priority: toNumber(event.target.value, 20),
-                  })
-                }
-              />
-            </SettingsModalField>
-          </SettingsModalSection>
-
-          <div className="settings-page__advanced-toggle-row">
-            <button
-              type="button"
-              className="settings-page__advanced-toggle"
-              onClick={() => setShowAdvanced((current) => !current)}
-            >
-              {showAdvanced ? "Hide advanced" : "Show advanced"}
-            </button>
-          </div>
-
-          {showAdvanced && (
-            <SettingsModalSection title="Advanced">
-              <SettingsModalField label="NZB priority">
-                <SettingsInput
-                  type="number"
-                  min="-100"
-                  max="900"
-                  value={nzbget.nzbPriority ?? 0}
-                  onChange={(event) =>
-                    updateIntegration("nzbget", {
-                      nzbPriority: toNumber(event.target.value, 0),
-                    })
-                  }
-                />
-              </SettingsModalField>
-              <SettingsModalField label="Completed download path">
-                <SettingsInput
-                  type="text"
-                  placeholder="/downloads/completed"
-                  autoComplete="off"
-                  value={nzbget.completedPath || ""}
-                  onChange={(event) =>
-                    updateIntegration("nzbget", {
-                      completedPath: event.target.value,
-                    })
-                  }
-                />
-              </SettingsModalField>
-              <SettingsModalToggle
-                label="Add NZBs paused"
-                checked={nzbget.addPaused === true}
-                onChange={(event) =>
-                  updateIntegration("nzbget", {
-                    addPaused: event.target.checked,
-                  })
-                }
-              />
-            </SettingsModalSection>
-          )}
-        </SettingsIntegrationModal>
-      )}
-
-      {activeModal === CLIENT_MODALS.sabnzbd && (
-        <SettingsIntegrationModal
-          title="SABnzbd"
-          onClose={() => setActiveModal(null)}
-          testStatus={testStatus}
-          footerActions={
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={testingSabnzbd}
-              onClick={handleTestSabnzbd}
-            >
-              {testingSabnzbd ? (
-                <DotLoader size="sm" label={null} />
-              ) : (
-                <RefreshCw className="artist-icon-sm" aria-hidden />
-              )}
-              {testingSabnzbd ? "Testing..." : "Test connection"}
-            </button>
-          }
-        >
-          <SettingsModalToggle
-            label="Enable SABnzbd"
-            checked={sabnzbdEnabled}
-            onChange={(event) => updateIntegration("sabnzbd", { enabled: event.target.checked })}
-          />
-
-          <SettingsModalSection title="Connection">
-            <SettingsModalField label="Server URL">
-              <SettingsInput
-                type="url"
-                placeholder="http://localhost:8080"
-                autoComplete="off"
-                value={sabnzbd.url || ""}
-                onChange={(event) => updateIntegration("sabnzbd", { url: event.target.value })}
-              />
-            </SettingsModalField>
-            <SettingsModalField label="API key">
-              <SettingsInput
-                type="password"
-                autoComplete="off"
-                value={sabnzbd.apiKey || ""}
-                onChange={(event) => updateIntegration("sabnzbd", { apiKey: event.target.value })}
-              />
-            </SettingsModalField>
-          </SettingsModalSection>
-
-          <SettingsModalSection title="Downloads">
-            <SettingsModalField label="Category">
-              <SettingsInput
-                type="text"
-                value={sabnzbd.category || "aurral"}
-                onChange={(event) => updateIntegration("sabnzbd", { category: event.target.value })}
-              />
-            </SettingsModalField>
-            <SettingsModalField label="Source priority">
-              <SettingsInput
-                type="number"
-                min="1"
-                max="1000"
-                value={sabnzbd.priority ?? 20}
-                onChange={(event) =>
-                  updateIntegration("sabnzbd", {
-                    priority: toNumber(event.target.value, 20),
-                  })
-                }
-              />
-            </SettingsModalField>
-          </SettingsModalSection>
-
-          <div className="settings-page__advanced-toggle-row">
-            <button
-              type="button"
-              className="settings-page__advanced-toggle"
-              onClick={() => setShowAdvanced((current) => !current)}
-            >
-              {showAdvanced ? "Hide advanced" : "Show advanced"}
-            </button>
-          </div>
-
-          {showAdvanced && (
-            <SettingsModalSection title="Advanced">
-              <SettingsModalToggle
-                label="Add NZBs paused"
-                checked={sabnzbd.addPaused === true}
-                onChange={(event) =>
-                  updateIntegration("sabnzbd", {
-                    addPaused: event.target.checked,
-                  })
-                }
-              />
-            </SettingsModalSection>
-          )}
-        </SettingsIntegrationModal>
-      )}
+      ) : null}
     </>
   );
 }

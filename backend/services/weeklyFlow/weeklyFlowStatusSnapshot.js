@@ -3,7 +3,7 @@ import { weeklyFlowWorker } from "./weeklyFlowWorker.js";
 import { buildSharedTrackIdentity, flowPlaylistConfig } from "./weeklyFlowPlaylistConfig.js";
 import { weeklyFlowOperationQueue } from "./weeklyFlowOperationQueue.js";
 import { getWeeklyFlowOperationWorkerStatus } from "./weeklyFlowOperationWorker.js";
-import { slskdClient } from "../slskdClient.js";
+import { getDownloadClient } from "../download/downloadClientSettings.js";
 import { userOps } from "../../db/helpers/index.js";
 import { getFlowCapabilities } from "../listenbrainzDiscoveryFallback.js";
 
@@ -221,7 +221,7 @@ export function getWeeklyFlowStatusSnapshot({
       ...workerStatus,
       stats,
     },
-    slskd: slskdClient.getStatus(),
+    slskd: getDownloadClient("slskd").getStatus(),
     stats,
     flowStats,
     sharedStats,

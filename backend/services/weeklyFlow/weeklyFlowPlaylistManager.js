@@ -15,7 +15,7 @@ import {
   resolvePlaylistRoot,
 } from "../playlistPaths.js";
 import { scheduleLibraryScan } from "../libraryScanWorker.js";
-import { ytdlpClient } from "../ytdlpClient.js";
+import { getDownloadClient } from "../download/downloadClientSettings.js";
 import {
   assertPlaybackDestination,
   createPlaybackPlaylistIdentity,
@@ -296,7 +296,7 @@ export class WeeklyFlowPlaylistManager {
       const jobs = downloadTracker.getByPlaylistType(playlistType);
       for (const job of jobs) {
         if (job.downloadClient === "ytdlp") {
-          await ytdlpClient.cleanupStaging(job.id);
+          await getDownloadClient("ytdlp").cleanupStaging(job.id);
         }
       }
       const playlistDir = path.join(this.playlistLibraryRoot, playlistType);

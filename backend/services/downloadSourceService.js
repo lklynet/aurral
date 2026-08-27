@@ -1,9 +1,6 @@
 import { dbOps } from "../db/helpers/index.js";
-import { slskdClient } from "./slskdClient.js";
 import { prowlarrClient } from "./prowlarrClient.js";
-import { nzbgetClient } from "./nzbgetClient.js";
-import { sabnzbdClient } from "./sabnzbdClient.js";
-import { ytdlpClient } from "./ytdlpClient.js";
+import { getDownloadClient } from "./download/downloadClientSettings.js";
 
 const SOURCE_LABELS = {
   slskd: "Soulseek",
@@ -33,7 +30,7 @@ function getSlskdPriority() {
 
 function getUsenetPriority() {
   const integrations = getIntegrations();
-  if (sabnzbdClient.isConfigured()) {
+  if (getDownloadClient("sabnzbd")?.isConfigured()) {
     return normalizePriority(integrations.sabnzbd?.priority, 20);
   }
   return normalizePriority(integrations.nzbget?.priority, 20);
@@ -45,6 +42,10 @@ function getYtdlpPriority() {
 }
 
 export function getDownloadSourceStatus() {
+  const slskdClient = getDownloadClient("slskd");
+  const nzbgetClient = getDownloadClient("nzbget");
+  const sabnzbdClient = getDownloadClient("sabnzbd");
+  const ytdlpClient = getDownloadClient("ytdlp");
   const slskdConfigured = isSlskdEnabled() && slskdClient.isConfigured();
   const prowlarrConfigured = prowlarrClient.isConfigured();
   const nzbgetConfigured = nzbgetClient.isConfigured();

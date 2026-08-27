@@ -9,7 +9,7 @@ import {
   syncDownloadFolderPath,
   validateDownloadFolderPath,
 } from "../../services/downloadFolderConfig.js";
-import { normalizeExistingFileMode } from "../../services/weeklyFlow/weeklyFlowFileReuse.js";
+import { normalizeExistingFileMode } from "../../services/weeklyFlow/weeklyFlowFileReuseMode.js";
 import { normalizeDateTimeFormat } from "../../config/constants.js";
 import { normalizeQualityProfile } from "../../services/qualityProfileModel.js";
 
