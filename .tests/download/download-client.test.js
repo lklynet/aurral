@@ -4,6 +4,8 @@ import { assertDownloadClient } from "../../backend/services/download/downloadCl
 import { DownloadClientRegistry } from "../../backend/services/download/downloadClientRegistry.js";
 import { getDownloadClientSettings } from "../../backend/services/download/downloadClientSettings.js";
 import { NzbgetClient } from "../../backend/services/nzbgetClient.js";
+import { SlskdClient } from "../../backend/services/slskdClient.js";
+import { registerDownloadClients } from "../../backend/routes/settings/handlers/downloadClients.js";
 
 function client(key, configured) {
   const updates = [];
@@ -58,4 +60,58 @@ test("download client instances can receive adapter configuration", () => {
   assert.equal(client.isConfigured(), true);
   client.updateConfig({ enabled: false, url: "http://nzbget.local" });
   assert.equal(client.isConfigured(), false);
+});
+
+test("slskd treats an explicitly disabled adapter as unconfigured", () => {
+  const client = new SlskdClient({
+    enabled: false,
+    url: "http://slskd.local",
+    apiKey: "test-key",
+  });
+
+  assert.equal(client.isConfigured(), false);
+  client.updateConfig({ url: "http://slskd.local", apiKey: "test-key" });
+  assert.equal(client.isConfigured(), true);
+});
+
+test("download client test routes validate transient URLs", async () => {
+  const routes = [];
+  const router = {
+    get(path, handler) {
+      routes.push({ method: "GET", path, handler });
+    },
+    post(path, handler) {
+      routes.push({ method: "POST", path, handler });
+    },
+  };
+  registerDownloadClients(router);
+  const route = routes.find(
+    ({ method, path }) => method === "POST" && path === "/download-clients/:key/test",
+  );
+  const response = {
+    statusCode: 200,
+    payload: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(payload) {
+      this.payload = payload;
+      return this;
+    },
+  };
+
+  await route.handler(
+    {
+      params: { key: "nzbget" },
+      body: { url: "http://169.254.169.254" },
+    },
+    response,
+  );
+
+  assert.equal(response.statusCode, 400);
+  assert.deepEqual(response.payload, {
+    error: "Connection failed",
+    message: "Server URL: Target host is blocked",
+  });
 });

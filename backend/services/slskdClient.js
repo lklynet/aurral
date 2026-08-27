@@ -245,8 +245,8 @@ export class SlskdClient {
   }
 
   isConfigured() {
-    const { url, apiKey } = getSettings(this._config);
-    return !!(url && apiKey);
+    const { url, apiKey, slskd } = getSettings(this._config);
+    return slskd.enabled !== false && !!(url && apiKey);
   }
 
   async testConnection({ force = false } = {}) {

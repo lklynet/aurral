@@ -5,6 +5,27 @@ import {
   testDownloadClient,
 } from "../../../services/download/downloadClientSettings.js";
 
+function validateDownloadClientTestConfig(key, config) {
+  const definition = getDownloadClientSettings()[key];
+  const nextConfig =
+    config && typeof config === "object" && !Array.isArray(config)
+      ? { ...config }
+      : {};
+
+  for (const field of definition?.fields || []) {
+    if (field.type !== "url") continue;
+    const value = nextConfig[field.key];
+    if (value == null || String(value).trim() === "") continue;
+    const validation = validateExternalUrl(value);
+    if (!validation.valid) {
+      throw new Error(`${field.label || field.key}: ${validation.error}`);
+    }
+    nextConfig[field.key] = validation.url;
+  }
+
+  return nextConfig;
+}
+
 function registerClientTest(router, path, importClient, label, { warning } = {}) {
   router.post(path, async (_req, res) => {
     try {
@@ -37,7 +58,8 @@ export function registerDownloadClients(router) {
 
   router.post("/download-clients/:key/test", async (req, res) => {
     try {
-      const result = await testDownloadClient(req.params.key, req.body || {});
+      const config = validateDownloadClientTestConfig(req.params.key, req.body);
+      const result = await testDownloadClient(req.params.key, config);
       if (!result.configured) {
         return res.status(400).json(result);
       }
