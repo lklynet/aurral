@@ -79,6 +79,27 @@ test("marks an unresolved postal code instead of returning a normal empty locati
   assert.deepEqual(result.recommendedShows, []);
 });
 
+test("resolves non-US postal codes with an explicit country", async (t) => {
+  const calls = [];
+  t.mock.method(axios, "get", async (url, config) => {
+    calls.push({ url, config });
+    if (url.includes("nominatim")) {
+      return {
+        data: [
+          { lat: "51.5", lon: "-0.12", address: { city: "London", country_code: "gb" } },
+        ],
+      };
+    }
+    return { data: {} };
+  });
+
+  const result = await getNearbyShows({ zipCode: "EC1A 1BB", country: "gb" });
+
+  assert.equal(result.location.countryCode, "GB");
+  const nominatim = calls.find(({ url }) => url.includes("nominatim"));
+  assert.equal(nominatim.config.params.countrycodes, "gb");
+});
+
 test("reuses a cached shows response without rebuilding artist maps", async (t) => {
   let artistReads = 0;
   t.mock.method(axios, "get", async (url) => {

@@ -38,6 +38,10 @@ export const getNearbyShows = async (zipCode = "", limit, options = {}) => {
   if (typeof zipCode === "string" && zipCode.trim()) {
     params.zip = zipCode.trim();
   }
+  const country = String(options.country || "").trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(country)) {
+    params.country = country;
+  }
   if (Number.isFinite(limit) && limit > 0) {
     params.limit = Math.floor(limit);
   }

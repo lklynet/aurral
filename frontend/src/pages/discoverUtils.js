@@ -52,6 +52,7 @@ export const getFallbackGenreFromSectionId = (id) =>
 
 export const DISCOVER_NEARBY_MODE_KEY = "discoverNearbyMode";
 export const DISCOVER_NEARBY_ZIP_KEY = "discoverNearbyZip";
+export const DISCOVER_NEARBY_COUNTRY_KEY = "discoverNearbyCountry";
 export const DISCOVER_PREVIEW_ITEM_LIMIT = 12;
 
 const getDiscoverLayoutStorageKey = (userId) =>
@@ -136,21 +137,29 @@ export const readStoredNearbyLocation = () => {
   try {
     const storedMode = localStorage.getItem(DISCOVER_NEARBY_MODE_KEY);
     const storedZip = localStorage.getItem(DISCOVER_NEARBY_ZIP_KEY) || "";
+    const storedCountry =
+      String(localStorage.getItem(DISCOVER_NEARBY_COUNTRY_KEY) || "").toUpperCase() || "";
     const mode =
       storedMode === "zip" || storedMode === "ip" ? storedMode : "ip";
-    return { mode, zip: storedZip };
+    return { mode, zip: storedZip, country: storedCountry };
   } catch {
-    return { mode: "ip", zip: "" };
+    return { mode: "ip", zip: "", country: "" };
   }
 };
 
-export const writeStoredNearbyLocation = ({ mode, zip } = {}) => {
+export const writeStoredNearbyLocation = ({ mode, zip, country } = {}) => {
   try {
     if (mode === "zip" || mode === "ip") {
       localStorage.setItem(DISCOVER_NEARBY_MODE_KEY, mode);
     }
     if (typeof zip === "string") {
       localStorage.setItem(DISCOVER_NEARBY_ZIP_KEY, zip);
+    }
+    if (typeof country === "string") {
+      localStorage.setItem(
+        DISCOVER_NEARBY_COUNTRY_KEY,
+        country.trim().toUpperCase(),
+      );
     }
   } catch {}
 };

@@ -41,6 +41,7 @@ export function useDiscoverData() {
     error: nearbyShowsError,
     locationMode: nearbyLocationMode,
     appliedZip: appliedNearbyZip,
+    appliedCountry: appliedNearbyCountry,
     setLocationMode: setNearbyLocationMode,
     setAppliedZip: setAppliedNearbyZip,
   } = useNearbyShows({ enabled: ticketmasterConfigured });
@@ -526,6 +527,7 @@ export function useDiscoverData() {
     nearbyLocationMode,
     setNearbyLocationMode,
     appliedNearbyZip,
+    appliedNearbyCountry,
     setAppliedNearbyZip,
     canAddArtist,
     canAddAlbum,

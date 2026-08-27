@@ -73,6 +73,7 @@ function DiscoverPage() {
     nearbyLocationMode,
     setNearbyLocationMode,
     appliedNearbyZip,
+    appliedNearbyCountry,
     setAppliedNearbyZip,
     canAddArtist,
     canAddAlbum,
@@ -715,6 +716,7 @@ function DiscoverPage() {
           <NearbyLocationControl
             locationMode={nearbyLocationMode}
             appliedZip={appliedNearbyZip}
+            appliedCountry={appliedNearbyCountry}
             location={nearbyShowsData?.location}
             onSelectYourLocation={() => setNearbyLocationMode("ip")}
             onStartCustomLocation={() => setNearbyLocationMode("zip")}

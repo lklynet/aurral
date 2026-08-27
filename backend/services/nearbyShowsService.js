@@ -46,6 +46,11 @@ const sanitizeZipCode = (value) =>
     .replace(/[^a-zA-Z0-9 -]/g, "")
     .slice(0, 12);
 
+const sanitizeCountryCode = (value) => {
+  const code = String(value || "").trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(code) ? code : "";
+};
+
 const isLikelyUsZip = (value) => /^\d{5}(-\d{4})?$/.test(String(value || "").trim());
 
 const normalizeUsZip = (value) =>
@@ -184,15 +189,17 @@ const getTicketmasterLocationParams = (location, radiusMiles) => {
   throw new Error("Unable to determine a search location");
 };
 
-const resolveZipLocation = async (zipCode) => {
+const resolveZipLocation = async (zipCode, countryCode = "") => {
   const zip = sanitizeZipCode(zipCode);
   if (!zip) return null;
+  const country = sanitizeCountryCode(countryCode);
   const normalizedZip = isLikelyUsZip(zip) ? normalizeUsZip(zip) : zip;
-  const cached = zipLocationCache.get(normalizedZip);
+  const cacheKey = country ? `${country}:${normalizedZip}` : normalizedZip;
+  const cached = zipLocationCache.get(cacheKey);
   if (cached) return cached;
-  return runSharedInflight(nearbyShowsInflight, `zip:${normalizedZip}`, async (signal) => {
+  return runSharedInflight(nearbyShowsInflight, `zip:${cacheKey}`, async (signal) => {
     try {
-      if (isLikelyUsZip(normalizedZip)) {
+      if (!country && isLikelyUsZip(normalizedZip)) {
         const response = await axios.get(
           `https://api.zippopotam.us/us/${encodeURIComponent(normalizedZip)}`,
           {
@@ -227,7 +234,11 @@ const resolveZipLocation = async (zipCode) => {
       const response = await axios.get("https://nominatim.openstreetmap.org/search", {
         params: {
           postalcode: normalizedZip,
-          countrycodes: isLikelyUsZip(normalizedZip) ? "us" : undefined,
+          countrycodes: country
+            ? country.toLowerCase()
+            : isLikelyUsZip(normalizedZip)
+              ? "us"
+              : undefined,
           format: "jsonv2",
           addressdetails: 1,
           limit: 1,
@@ -254,7 +265,7 @@ const resolveZipLocation = async (zipCode) => {
         longitude: result.lon != null ? Number(result.lon) : null,
       };
       location.label = buildLocationLabel(location);
-      zipLocationCache.set(normalizedZip, location);
+      zipLocationCache.set(cacheKey, location);
       return location;
     } catch {
       return null;
@@ -410,6 +421,7 @@ const sortShows = (shows) =>
 export const getNearbyShows = async ({
   req,
   zipCode,
+  country = "",
   libraryArtists = [],
   recommendedArtists = [],
   trendingArtists = [],
@@ -419,7 +431,9 @@ export const getNearbyShows = async ({
 }) => {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || DEFAULT_SHOW_LIMIT, MAX_SHOW_LIMIT));
   const sanitizedZipCode = sanitizeZipCode(zipCode);
-  const locationKey = sanitizedZipCode || getForwardedIp(req);
+  const sanitizedCountry = sanitizeCountryCode(country);
+  const locationKey =
+    [sanitizedZipCode || getForwardedIp(req), sanitizedCountry].filter(Boolean).join("|");
   const resultCacheKey = responseCacheKey
     ? JSON.stringify([responseCacheKey, locationKey, radiusMiles, resolvedLimit])
     : null;
@@ -429,7 +443,7 @@ export const getNearbyShows = async ({
   let location;
   if (sanitizedZipCode) {
     location =
-      (await resolveZipLocation(sanitizedZipCode)) || {
+      (await resolveZipLocation(sanitizedZipCode, sanitizedCountry)) || {
         source: "zip",
         resolved: false,
         postalCode: sanitizedZipCode,

@@ -1,6 +1,34 @@
 import { useState, useEffect, useRef } from "react";
 import { ChevronDown, Locate } from "lucide-react";
 
+const NEARBY_COUNTRIES = [
+  ["", "Country"],
+  ["US", "United States"],
+  ["CA", "Canada"],
+  ["GB", "United Kingdom"],
+  ["IE", "Ireland"],
+  ["AU", "Australia"],
+  ["NZ", "New Zealand"],
+  ["DE", "Germany"],
+  ["AT", "Austria"],
+  ["CH", "Switzerland"],
+  ["FR", "France"],
+  ["BE", "Belgium"],
+  ["NL", "Netherlands"],
+  ["DK", "Denmark"],
+  ["SE", "Sweden"],
+  ["NO", "Norway"],
+  ["FI", "Finland"],
+  ["PL", "Poland"],
+  ["CZ", "Czechia"],
+  ["ES", "Spain"],
+  ["PT", "Portugal"],
+  ["IT", "Italy"],
+  ["MX", "Mexico"],
+  ["BR", "Brazil"],
+  ["JP", "Japan"],
+];
+
 function getNearbyCityLabel(location) {
   if (!location) return "Location";
   if (location.city) return location.city;
@@ -13,6 +41,7 @@ function getNearbyCityLabel(location) {
 function NearbyLocationControl({
   locationMode,
   appliedZip,
+  appliedCountry = "",
   location,
   onSelectYourLocation,
   onStartCustomLocation,
@@ -23,6 +52,7 @@ function NearbyLocationControl({
   const zipInputRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [zipDraft, setZipDraft] = useState(appliedZip);
+  const [countryDraft, setCountryDraft] = useState(appliedCountry);
   const [showZipForm, setShowZipForm] = useState(false);
   const zipModeActive = locationMode === "zip";
   const cityLabel = getNearbyCityLabel(location);
@@ -30,7 +60,8 @@ function NearbyLocationControl({
 
   useEffect(() => {
     setZipDraft(appliedZip);
-  }, [appliedZip]);
+    setCountryDraft(appliedCountry);
+  }, [appliedZip, appliedCountry]);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -63,7 +94,7 @@ function NearbyLocationControl({
   const saveZip = () => {
     const sanitized = zipDraft.trim();
     if (!sanitized) return;
-    onApplyZip(sanitized);
+    onApplyZip(sanitized, countryDraft);
     closeMenu();
   };
 
@@ -109,6 +140,7 @@ function NearbyLocationControl({
               onStartCustomLocation();
               setShowZipForm(true);
               setZipDraft(appliedZip);
+              setCountryDraft(appliedCountry);
             }}
             className={`artist-menu-item${zipModeActive ? " is-active" : ""}`}
           >
@@ -132,6 +164,21 @@ function NearbyLocationControl({
                   className="artist-nearby-zip-editor__input"
                   placeholder="ZIP or postal code"
                 />
+              </div>
+              <div className="artist-nearby-zip-editor__field">
+                <label htmlFor="nearby-location-country">Country</label>
+                <select
+                  id="nearby-location-country"
+                  value={countryDraft}
+                  onChange={(event) => setCountryDraft(event.target.value)}
+                  className="artist-nearby-zip-editor__input"
+                >
+                  {NEARBY_COUNTRIES.map(([code, name]) => (
+                    <option key={code || "any"} value={code}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="artist-nearby-zip-editor__actions">
                 <button type="button" onClick={closeMenu} className="btn btn-secondary btn-sm">

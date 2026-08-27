@@ -10,24 +10,33 @@ import {
 export function useNearbyShows({ enabled = true, limit } = {}) {
   const [locationMode, setLocationModeState] = useState(() => readStoredNearbyLocation().mode);
   const [appliedZip, setAppliedZipState] = useState(() => readStoredNearbyLocation().zip);
+  const [appliedCountry, setAppliedCountryState] = useState(
+    () => readStoredNearbyLocation().country || "",
+  );
 
   const setLocationMode = useCallback((mode) => {
     setLocationModeState(mode);
     writeStoredNearbyLocation({ mode });
   }, []);
 
-  const setAppliedZip = useCallback((zip) => {
+  const setAppliedZip = useCallback((zip, country) => {
     const nextZip = String(zip || "").trim();
+    const nextCountry = String(country || "").trim().toUpperCase();
     setAppliedZipState(nextZip);
+    setAppliedCountryState(nextCountry);
     setLocationModeState("zip");
-    writeStoredNearbyLocation({ mode: "zip", zip: nextZip });
+    writeStoredNearbyLocation({ mode: "zip", zip: nextZip, country: nextCountry });
   }, []);
 
   const shouldUseZip = locationMode === "zip";
   const trimmedZip = appliedZip.trim();
   const query = useQuery({
-    queryKey: queryKeys.nearbyShows(locationMode, trimmedZip, limit),
-    queryFn: ({ signal }) => getNearbyShows(shouldUseZip ? trimmedZip : "", limit, { signal }),
+    queryKey: queryKeys.nearbyShows(locationMode, trimmedZip, limit, appliedCountry),
+    queryFn: ({ signal }) =>
+      getNearbyShows(shouldUseZip ? trimmedZip : "", limit, {
+        signal,
+        country: shouldUseZip ? appliedCountry : "",
+      }),
     enabled: enabled && (!shouldUseZip || Boolean(trimmedZip)),
     staleTime: 5 * 60 * 1000,
   });
@@ -44,6 +53,7 @@ export function useNearbyShows({ enabled = true, limit } = {}) {
     error,
     locationMode,
     appliedZip,
+    appliedCountry,
     setLocationMode,
     setAppliedZip,
     locationLabel:
