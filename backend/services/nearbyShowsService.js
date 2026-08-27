@@ -58,6 +58,35 @@ const normalizeUsZip = (value) =>
     .trim()
     .split("-")[0];
 
+export const encodeGeohash = (latitude, longitude, precision) => {
+  const base32 = "0123456789bcdefghjkmnpqrstuvwxyz";
+  let latRange = [-90, 90];
+  let lonRange = [-180, 180];
+  let hash = "";
+  let bits = 0;
+  let bitCount = 0;
+  let isLongitude = true;
+  while (hash.length < precision) {
+    const range = isLongitude ? lonRange : latRange;
+    const center = (range[0] + range[1]) / 2;
+    const value = isLongitude ? longitude : latitude;
+    if (value >= center) {
+      bits = (bits << 1) | 1;
+      range[0] = center;
+    } else {
+      bits <<= 1;
+      range[1] = center;
+    }
+    isLongitude = !isLongitude;
+    if (++bitCount === 5) {
+      hash += base32[bits];
+      bits = 0;
+      bitCount = 0;
+    }
+  }
+  return hash;
+};
+
 const sanitizeIpAddress = (value) => {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -169,7 +198,7 @@ const getTicketmasterLocationParams = (location, radiusMiles) => {
   const longitude = Number(location.longitude);
   if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
     return {
-      latlong: `${latitude},${longitude}`,
+      geoPoint: encodeGeohash(latitude, longitude, 8),
       radius: radiusMiles,
       unit: "miles",
       sort: "distance,asc",
@@ -230,6 +259,38 @@ const resolveZipLocation = async (zipCode, countryCode = "") => {
         }
       }
     } catch {}
+    if (country === "CA") {
+      try {
+        const response = await axios.get("https://geocoder.ca/", {
+          params: { locate: normalizedZip.replace(/\s+/g, ""), json: 1 },
+          timeout: 5000,
+          headers: {
+            Accept: "application/json",
+            "User-Agent": "Aurral/1.0 (+https://github.com/leekelly/aurral)",
+          },
+          signal,
+        });
+        const data = response.data;
+        const latitude = Number(data?.latt);
+        const longitude = Number(data?.longt);
+        if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+          const location = {
+            source: "zip",
+            resolved: true,
+            postalCode: data?.postal || normalizedZip,
+            city: data?.standard?.city || null,
+            region: data?.standard?.prov || null,
+            regionCode: null,
+            countryCode: "CA",
+            latitude,
+            longitude,
+          };
+          location.label = buildLocationLabel(location);
+          zipLocationCache.set(cacheKey, location);
+          return location;
+        }
+      } catch {}
+    }
     try {
       const response = await axios.get("https://nominatim.openstreetmap.org/search", {
         params: {
@@ -328,7 +389,6 @@ const fetchTicketmasterEvents = async ({ location, radiusMiles }) => {
         locale: "*",
         includeTBA: "no",
         includeTBD: "no",
-        source: "ticketmaster",
         ...buildDateRange(),
         ...getTicketmasterLocationParams(location, radiusMiles),
       },

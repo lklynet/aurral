@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import axios from "../../lib/axiosFetch.js";
 
 import { buildShowsResponseCacheKey } from "../../backend/routes/discovery/handlers/shows.js";
-import { getNearbyShows, groupShowsByEvent } from "../../backend/services/nearbyShowsService.js";
+import {
+  encodeGeohash,
+  getNearbyShows,
+  groupShowsByEvent,
+} from "../../backend/services/nearbyShowsService.js";
 
 test("includes all artist inputs in the shows response cache key", () => {
   const base = {
@@ -107,6 +111,56 @@ test("resolves non-US postal codes with an explicit country", async (t) => {
   assert.equal(result.location.countryCode, "GB");
   const nominatim = calls.find(({ url }) => url.includes("nominatim"));
   assert.equal(nominatim.config.params.countrycodes, "gb");
+});
+
+test("encodes geohashes matching values accepted by Ticketmaster", () => {
+  assert.equal(encodeGeohash(34.09, -118.4065, 8), "9q5cctgh");
+  assert.equal(encodeGeohash(51.52457, -0.11204, 8), "gcpvj7y2");
+});
+
+test("resolves Canadian postal codes through geocoder.ca", async (t) => {
+  process.env.TICKETMASTER_API_KEY = "test-key";
+  t.after(() => delete process.env.TICKETMASTER_API_KEY);
+  const calls = [];
+  t.mock.method(axios, "get", async (url, config) => {
+    calls.push({ url, params: config?.params });
+    if (url.includes("geocoder.ca")) {
+      return {
+        data: {
+          latt: "43.643772",
+          longt: "-79.382112",
+          postal: "M5V2T6",
+          standard: { city: "Toronto", prov: "ON" },
+        },
+      };
+    }
+    return { data: { _embedded: { events: [] } } };
+  });
+
+  const result = await getNearbyShows({
+    zipCode: "M5V 2T6",
+    country: "ca",
+    libraryArtists: [],
+    recommendedArtists: [],
+    trendingArtists: [],
+  });
+
+  assert.equal(result.location.resolved, true);
+  assert.equal(result.location.city, "Toronto");
+  assert.equal(result.location.region, "ON");
+  assert.equal(result.location.countryCode, "CA");
+  assert.equal(result.location.latitude, 43.643772);
+  const geocoder = calls.find(({ url }) => url.includes("geocoder.ca"));
+  assert.equal(geocoder.params.locate, "M5V2T6");
+  const ticketmaster = calls.find(({ url }) => url.includes("ticketmaster"));
+  assert.ok(ticketmaster, "expected a Ticketmaster events request");
+  assert.equal(
+    ticketmaster.params.geoPoint,
+    encodeGeohash(43.643772, -79.382112, 8),
+  );
+  assert.equal(ticketmaster.params.latlong, undefined);
+  assert.equal(ticketmaster.params.source, undefined);
+  assert.equal(ticketmaster.params.sort, "distance,asc");
 });
 
 test("reuses a cached shows response without rebuilding artist maps", async (t) => {
