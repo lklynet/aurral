@@ -13,9 +13,7 @@ const router = express.Router();
 const dismissedAlbumIds = new Map();
 const DISMISSED_ALBUM_TTL_MS = 24 * 60 * 60 * 1000;
 const REQUESTS_CACHE_MS = 15000;
-let lastRequestsResponse = null;
-let lastRequestsAt = 0;
-let lastRequestsUserId = null;
+const requestsCache = new Map();
 const pendingRequestsRefreshes = new Map();
 
 const getRequestsUserId = (user) => (user?.id == null ? null : String(user.id));
@@ -35,19 +33,20 @@ const filterDismissedRequests = (requests) =>
     : [];
 
 const updateRequestsCache = (requests, user) => {
-  lastRequestsResponse = filterDismissedRequests(requests);
-  lastRequestsAt = Date.now();
-  lastRequestsUserId = getRequestsUserId(user);
-  return lastRequestsResponse;
+  const response = filterDismissedRequests(requests);
+  requestsCache.set(getRequestsUserId(user), { response, at: Date.now() });
+  return response;
 };
 
 const removeAlbumFromRequestsCache = (albumId) => {
-  if (!lastRequestsResponse) return;
   const normalizedAlbumId = String(albumId);
-  lastRequestsResponse = lastRequestsResponse.filter(
-    (request) => String(request?.albumId) !== normalizedAlbumId,
-  );
-  lastRequestsAt = Date.now();
+  for (const cache of requestsCache.values()) {
+    if (!cache?.response) continue;
+    cache.response = cache.response.filter(
+      (request) => String(request?.albumId) !== normalizedAlbumId,
+    );
+    cache.at = Date.now();
+  }
 };
 
 const filterRedundantAurralRequests = (aurralRequests, lidarrRequests) => {
@@ -117,23 +116,24 @@ router.get("/", requireAuth, noCache, async (req, res) => {
   try {
     pruneDismissedAlbumIds();
     const { lidarrClient } = await import("../services/lidarrClient.js");
-
-    if (!lidarrClient?.isConfigured()) {
-      const aurralOnly = await getAurralHistoryRequests(null, req.user);
-      lastRequestsResponse = filterDismissedRequests(aurralOnly);
-      lastRequestsAt = Date.now();
-      lastRequestsUserId = getRequestsUserId(req.user);
-      return res.json(aurralOnly);
-    }
-
     const forceRefresh = req.query.refresh === "1" || req.query.refresh === "true";
+    const userId = getRequestsUserId(req.user);
+    const cached = requestsCache.get(userId);
+
     if (
       !forceRefresh &&
-      lastRequestsResponse &&
-      lastRequestsUserId === getRequestsUserId(req.user) &&
-      Date.now() - lastRequestsAt < REQUESTS_CACHE_MS
+      cached &&
+      Date.now() - cached.at < REQUESTS_CACHE_MS
     ) {
-      return res.json(filterDismissedRequests(lastRequestsResponse));
+      return res.json(filterDismissedRequests(cached.response));
+    }
+
+    if (!lidarrClient?.isConfigured()) {
+      const requests = await refreshRequestsCache(lidarrClient, {
+        force: forceRefresh,
+        user: req.user,
+      });
+      return res.json(requests);
     }
 
     const requests = await refreshRequestsCache(lidarrClient, {
@@ -142,8 +142,9 @@ router.get("/", requireAuth, noCache, async (req, res) => {
     });
     res.json(requests);
   } catch (error) {
-    if (lastRequestsResponse && lastRequestsUserId === getRequestsUserId(req.user)) {
-      return res.json(filterDismissedRequests(lastRequestsResponse));
+    const cached = requestsCache.get(getRequestsUserId(req.user));
+    if (cached?.response) {
+      return res.json(filterDismissedRequests(cached.response));
     }
     res.status(500).json({ error: "Failed to fetch requests" });
   }
@@ -209,9 +210,7 @@ router.delete("/:mbid", requireAuth, requirePermission("deleteArtist"), async (r
 });
 
 export const invalidateRequestsCache = () => {
-  lastRequestsResponse = null;
-  lastRequestsAt = 0;
-  lastRequestsUserId = null;
+  requestsCache.clear();
 };
 
 export default router;
