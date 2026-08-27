@@ -59,8 +59,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV LD_PRELOAD=libjemalloc.so.2
 
-ADD --chmod=755 --checksum=sha256:e5d57466682cfa9d61e9cf7c8a4f09b00f4a62af37d3bbdc4bcffdf63615feac \
-    https://github.com/yt-dlp/yt-dlp/releases/download/2026.06.09/yt-dlp \
+ADD --chmod=755 --checksum=sha256:1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6 \
+    https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp \
     /usr/local/bin/yt-dlp
 RUN yt-dlp --version
 
