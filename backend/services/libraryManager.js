@@ -373,7 +373,7 @@ export class LibraryManager {
     } catch (error) {
       if (isArtistAlreadyAddedError(error)) {
         try {
-          const existing = await this.getArtist(mbid);
+          const existing = await this.getArtist(mbid, { forceRefresh: true });
           if (existing) {
             return existing;
           }
@@ -771,17 +771,19 @@ export class LibraryManager {
       logger.error('library', `Failed to fetch tracks for album ${releaseGroupMbid}: ${error.message}`);    }
   }
 
-  async getArtist(mbid) {
+  async getArtist(mbid, { forceRefresh = false } = {}) {
     const lidarr = await getLidarrClient();
     if (!lidarr || !lidarr.isConfigured()) {
       return null;
     }
-    const cachedArtist = findCachedArtistByMbid(mbid);
-    if (cachedArtist) {
-      return cachedArtist;
+    if (!forceRefresh) {
+      const cachedArtist = findCachedArtistByMbid(mbid);
+      if (cachedArtist) {
+        return cachedArtist;
+      }
     }
     try {
-      const lidarrArtist = await lidarr.getArtistByMbid(mbid);
+      const lidarrArtist = await lidarr.getArtistByMbid(mbid, { forceRefresh });
       if (!lidarrArtist) return null;
       const mappedArtist = this.mapLidarrArtist(lidarrArtist);
       upsertCachedArtist(mappedArtist);
