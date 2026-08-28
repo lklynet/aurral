@@ -32,7 +32,7 @@ const METADATA_REQUEST_MIN_INTERVAL_MS = 100;
 const METADATA_REQUEST_TIMEOUT_MS = 8000;
 const METADATA_MAX_QUEUED_REQUESTS = Math.floor(
   METADATA_REQUEST_TIMEOUT_MS / METADATA_REQUEST_MIN_INTERVAL_MS,
-);
+) - 1;
 const providerCache = createCache(METADATA_CACHE_TTL_SECONDS, METADATA_CACHE_MAX_ENTRIES);
 const releaseCache = createCache(300);
 const providerInflightRequests = new Map();
