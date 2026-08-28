@@ -3,7 +3,7 @@
  * circular imports.
  */
 import { dbOps } from "./settings.js";
-import { userOps } from "./users.js";
+import { getInternalUserEmail, userOps } from "./users.js";
 import registerCache from "./cache.js";
 import registerDiscovery from "./discovery.js";
 import registerOverrides from "./overrides.js";
@@ -18,4 +18,4 @@ registerLidarr(dbOps);
 registerHistory(dbOps);
 registerInbox(dbOps);
 
-export { dbOps, userOps };
+export { dbOps, getInternalUserEmail, userOps };

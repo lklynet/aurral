@@ -80,8 +80,10 @@ export const AuthProvider = ({ children }) => {
       if (token) {
         try {
           const me = await getMe();
-          setUser(me.user || null);
-          setIsAuthenticated(!!me.user);
+          const sessionUser = me?.user || null;
+          setUser(sessionUser);
+          setIsAuthenticated(!!sessionUser);
+          if (!sessionUser) clearAuthStorage();
         } catch {
           clearAuthStorage();
           setUser(null);
@@ -106,12 +108,12 @@ export const AuthProvider = ({ children }) => {
     checkAuthStatus();
   }, [checkAuthStatus]);
 
-  const login = useCallback(async (password, username) => {
-    const normalizedUsername = String(username || "").trim();
-    if (!normalizedUsername || !password) return false;
+  const login = useCallback(async (email, password) => {
+    const normalizedEmail = String(email || "").trim();
+    if (!normalizedEmail || !password) return false;
 
     try {
-      const result = await loginApi(normalizedUsername, password);
+      const result = await loginApi(normalizedEmail, password);
       if (!result?.token) return false;
       authResolvedRef.current = true;
       clearLibraryFavoritesCache();

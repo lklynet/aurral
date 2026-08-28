@@ -1,6 +1,5 @@
 import express from "express";
-import { dbOps, userOps } from "../db/helpers/index.js";
-import { hashPassword } from "../middleware/passwordHash.js";
+import { dbOps, getInternalUserEmail, userOps } from "../db/helpers/index.js";
 import { defaultData } from "../config/constants.js";
 import { requirePasswordStrength, reconcileLocalNetworkBypassSetting } from "../middleware/auth.js";
 import { validateDownloadFolderPath } from "../services/downloadFolderConfig.js";
@@ -11,6 +10,7 @@ import {
   fetchQualityProfiles,
   fetchMetadataProfiles,
 } from "../services/lidarrSettingsService.js";
+import { auth } from "../services/betterAuth.js";
 
 const router = express.Router();
 
@@ -103,12 +103,23 @@ async function resolveLidarrProfiles(lidarr) {
 
 router.post("/complete", async (req, res) => {
   try {
-    const { authUser, authPassword, lidarr, security, downloadFolderPath } = req.body;
-    if (authPassword != null && String(authPassword).length > 0) {
-      const passwordValidation = requirePasswordStrength(authPassword);
-      if (!passwordValidation.valid) {
-        return res.status(400).json({ error: passwordValidation.error });
-      }
+    const { lidarr, security, downloadFolderPath } = req.body;
+    const authInput = req.body?.auth || {
+      username: req.body?.authUser,
+      password: req.body?.authPassword,
+    };
+    const authUsername = String(authInput?.username || authInput?.name || "")
+      .trim()
+      .toLowerCase();
+    const authName = String(authInput?.name || "").trim() || authUsername;
+    const authEmail = getInternalUserEmail(authUsername, authInput?.email);
+    const authPassword = String(authInput?.password || "");
+    if (!authUsername || !authPassword) {
+      return res.status(400).json({ error: "Username and password are required" });
+    }
+    const passwordValidation = requirePasswordStrength(authPassword);
+    if (!passwordValidation.valid) {
+      return res.status(400).json({ error: passwordValidation.error });
     }
 
     if (!lidarr?.url || !lidarr?.apiKey) {
@@ -124,14 +135,6 @@ router.post("/complete", async (req, res) => {
       ...(current.integrations || defaultData.settings.integrations || {}),
       general: {
         ...(current.integrations?.general || {}),
-        authUser:
-          authUser != null
-            ? String(authUser).trim()
-            : current.integrations?.general?.authUser || "admin",
-        authPassword:
-          authPassword != null
-            ? String(authPassword)
-            : current.integrations?.general?.authPassword || "",
       },
       lidarr: {
         ...(current.integrations?.lidarr || {}),
@@ -173,14 +176,26 @@ router.post("/complete", async (req, res) => {
       nextSettings.downloadFolderPath = validation.path;
     }
 
-    dbOps.updateSettings(nextSettings);
-
-    const authUserFinal = integrations?.general?.authUser || "admin";
-    const authPasswordFinal = integrations?.general?.authPassword || "";
-    if (authPasswordFinal && userOps.getAllUsers().length === 0) {
-      const hash = hashPassword(authPasswordFinal);
-      userOps.createUser(authUserFinal, hash, "admin", null);
+    if (userOps.countUsers() === 0) {
+      await auth.api.signUpEmail({
+        body: {
+          name: authName,
+          email: authEmail,
+          password: authPassword,
+          username: authUsername,
+          displayUsername: authName,
+        },
+      });
     }
+    const adminCandidate = userOps.getUserByUsername(authUsername);
+    if (!adminCandidate) {
+      throw new Error("Failed to create the administrator account");
+    }
+    if (adminCandidate.role !== "admin" && !userOps.updateUser(adminCandidate.id, { role: "admin" })) {
+      throw new Error("Failed to create the administrator account");
+    }
+
+    dbOps.updateSettings(nextSettings);
 
     reconcileLocalNetworkBypassSetting();
 

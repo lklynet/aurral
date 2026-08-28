@@ -16,6 +16,7 @@ export function AdminPlexLinkField({ user, onChanged, showSuccess, showError }) 
   const [unlinking, setUnlinking] = useState(false);
 
   const plexLink = user.plexLink || { connected: false };
+  const accountLabel = user.name || user.username || user.email || String(user.id);
 
   const loadHomeUsers = async () => {
     setLoadingHomeUsers(true);
@@ -36,7 +37,7 @@ export function AdminPlexLinkField({ user, onChanged, showSuccess, showError }) 
     if (!selectedPlexUserId) return;
     if (plexLink.connected && plexLink.linkType === "self") {
       const confirmed = window.confirm(
-        `${user.username} already has their own Plex account linked ("${
+        `${accountLabel} already has their own Plex account linked ("${
           plexLink.plexUsername || "unknown"
         }"). Linking a managed Plex user will replace that self-link. Continue?`,
       );
@@ -50,7 +51,7 @@ export function AdminPlexLinkField({ user, onChanged, showSuccess, showError }) 
         plexUuid: picked?.uuid || null,
       });
       showSuccess?.(
-        `Linked ${user.username} to Plex user "${picked?.title || selectedPlexUserId}".`,
+        `Linked ${accountLabel} to Plex user "${picked?.title || selectedPlexUserId}".`,
       );
       setHomeUsers(null);
       setSelectedPlexUserId("");
@@ -68,7 +69,7 @@ export function AdminPlexLinkField({ user, onChanged, showSuccess, showError }) 
     setUnlinking(true);
     try {
       await adminUnlinkPlex(user.id);
-      showSuccess?.(`Unlinked ${user.username}'s Plex account.`);
+      showSuccess?.(`Unlinked ${accountLabel}'s Plex account.`);
       await onChanged?.();
     } catch (err) {
       showError?.(err.response?.data?.message || "Failed to unlink Plex");

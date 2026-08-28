@@ -19,6 +19,33 @@ operate.
 
 ## Authentication
 
+Better Auth owns local sign-in, sessions, and bearer tokens. Sign in with a
+username and password:
+
+```bash
+curl --fail --include \
+  --header "Content-Type: application/json" \
+  --data '{"username":"admin","password":"YOUR_PASSWORD"}' \
+  https://aurral.example.com/api/auth/sign-in/username
+```
+
+See [Users and authentication](/admin/users/) for OIDC, reverse-proxy, and
+session details.
+
+Read the `set-auth-token` response header and send the value as a bearer token
+on later requests:
+
+```bash
+curl --fail \
+  --header "Authorization: Bearer YOUR_SESSION_TOKEN" \
+  https://aurral.example.com/api/library/artists
+```
+
+Use `GET /api/auth/get-session` to check the current session. Use
+`POST /api/auth/sign-out` to revoke it. Better Auth owns the session lifetime;
+see [Users and authentication](/admin/users/) for the default and the
+`SESSION_EXPIRY_HOURS` setting.
+
 Open **Settings > System**. Copy the API key. Send the key in the `X-Api-Key`
 header:
 
@@ -38,9 +65,9 @@ curl --fail \
 Use the header. A browser can save URLs in its history. A reverse proxy can
 save URLs in its access logs.
 
-The API key replaces a login session token. You do not need to call the login
-endpoint first. The key currently gives administrator access. It does **not**
-have read-only access.
+The API key replaces a Better Auth session token. You do not need to call the
+sign-in endpoint first. The key currently gives administrator access. It does
+**not** have read-only access.
 
 Keep the key in a secret store. If your integration needs read access, make
 only `GET` requests. After you rotate the key, the old key does not operate.
@@ -95,10 +122,10 @@ cross-origin JSON API requests. The authenticated Subsonic API at `/rest` is
 available to browser Subsonic clients such as Feishin without this setting.
 
 The current CORS preflight allows the `Content-Type` and `Authorization`
-headers. It does not allow the `X-Api-Key` header. For a cross-origin browser
-widget, use a server-side proxy. When you use the `api_key` query parameter, you
-do not need a custom header. However, browser history and access logs can reveal
-the key.
+headers and authenticated browser credentials. It does not allow the `X-Api-Key`
+header. For a cross-origin browser client, send requests with credentials
+included. When you use the `api_key` query parameter, you do not need a custom
+header. However, browser history and access logs can reveal the key.
 
 ## Responses and limits
 

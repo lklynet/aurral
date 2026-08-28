@@ -17,7 +17,7 @@ import {
   issueStreamToken,
   getLocalNetworkBypassStatus,
 } from "../middleware/auth.js";
-import { getOidcBootstrapInfo } from "../services/oidcAuth.js";
+import { getOidcBootstrapInfo } from "../services/betterAuth.js";
 import { lidarrClient } from "../services/lidarrClient.js";
 import {
   getDiscoveryCache,
@@ -233,7 +233,7 @@ async function buildSystemPayload(settings) {
   };
 }
 
-function buildBootstrapPayload(req) {
+async function buildBootstrapPayload(req) {
   lidarrClient.updateConfig();
   const settings = dbOps.getSettings();
   const onboardingDone = settings.onboardingComplete;
@@ -289,7 +289,7 @@ function buildBootstrapPayload(req) {
     payload.metadataProviders = getMetadataProviderHealthSnapshot();
     payload.localNetworkBypass = getLocalNetworkBypassStatus(req);
     payload.proxyLogoutUrl = process.env.AUTH_PROXY_LOGOUT_URL || null;
-    const proxySession = issueProxySession(req);
+    const proxySession = await issueProxySession(req);
     if (proxySession) payload.token = proxySession.token;
   }
 
@@ -300,9 +300,9 @@ router.get("/live", noCache, (_req, res) => {
   res.json({ status: "ok" });
 });
 
-router.get("/bootstrap", noCache, (req, res) => {
+router.get("/bootstrap", noCache, async (req, res) => {
   try {
-    res.json(buildBootstrapPayload(req));
+    res.json(await buildBootstrapPayload(req));
   } catch (error) {
     logger.error("health", "Bootstrap check error:", { message: error.message });
     res.status(500).json({
@@ -324,7 +324,7 @@ router.get("/", noCache, async (req, res) => {
   try {
     const settings = dbOps.getSettings();
     const currentUser = resolveRequestUser(req);
-    const payload = buildBootstrapPayload(req);
+    const payload = await buildBootstrapPayload(req);
     if (currentUser) {
       const discoveryCache = getDiscoveryCache();
       const wsStats = websocketService.getStats();

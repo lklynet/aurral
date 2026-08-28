@@ -1,5 +1,3 @@
-import { loginApi } from "../../../utils/api/endpoints/auth.js";
-import { setStoredAuth } from "../../../utils/api/core.js";
 import PillToggle from "../../../components/PillToggle";
 import { SettingsInput } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
@@ -9,7 +7,6 @@ import { Lock, Trash2, UserPlus, X } from "lucide-react";
 import { GRANULAR_PERMISSIONS, granularPerms } from "../constants";
 import { useModalDialog } from "../../../hooks/useModalDialog.js";
 import { AdminPlexLinkField } from "./AdminPlexLinkField";
-import { PlexSelfLinkSection } from "./PlexSelfLinkSection";
 import { DotLoader } from "../../../components/DotLoader";
 function getLocalBypassStatus(status) {
   if (!status) {
@@ -97,6 +94,10 @@ function formatPlexLink(user) {
   return "—";
 }
 
+function getAccountLabel(user) {
+  return user.username || user.name || String(user.id);
+}
+
 function PermissionChecklist({ permissions, onChange }) {
   return (
     <div className="arr-permissions">
@@ -124,8 +125,8 @@ export function SettingsUsersTab({
   authUser,
   usersList,
   loadingUsers,
-  newUserUsername,
-  setNewUserUsername,
+  newUserName,
+  setNewUserName,
   newUserPassword,
   setNewUserPassword,
   newUserPermissions,
@@ -136,6 +137,8 @@ export function SettingsUsersTab({
   setShowAddUserModal,
   editUser,
   setEditUser,
+  editUserName,
+  setEditUserName,
   editPassword,
   setEditPassword,
   editCurrentPassword,
@@ -189,7 +192,7 @@ export function SettingsUsersTab({
   });
 
   const openAddUserModal = () => {
-    setNewUserUsername("");
+    setNewUserName("");
     setNewUserPassword("");
     setNewUserPermissions({ ...GRANULAR_PERMISSIONS });
     setShowAddUserModal(true);
@@ -210,10 +213,6 @@ export function SettingsUsersTab({
               setChangingPassword(true);
               try {
                 await changeMyPassword(changePwCurrent, changePwNew);
-                const result = await loginApi(authUser?.username, changePwNew);
-                if (result?.token) {
-                  setStoredAuth({ token: result.token });
-                }
                 showSuccess("Password changed");
                 setChangePwCurrent("");
                 setChangePwNew("");
@@ -309,15 +308,13 @@ export function SettingsUsersTab({
             </SettingsArrFormGroup>
           </SettingsArrFieldSet>
 
-          <SettingsArrFieldSet
-            legend="Users"
-            actions={
+          <SettingsArrFieldSet legend="Users">
+            <div className="arr-form-actions settings-users__actions">
               <button type="button" className="arr-btn arr-btn--primary" onClick={openAddUserModal}>
                 <UserPlus className="artist-icon-xs" aria-hidden />
                 Add user
               </button>
-            }
-          >
+            </div>
             <div className="arr-table-wrap">
               <table className="arr-table">
                 <thead>
@@ -344,7 +341,7 @@ export function SettingsUsersTab({
                   ) : (
                     usersList.map((user) => (
                       <tr key={user.id}>
-                        <td>{user.username}</td>
+                        <td>{getAccountLabel(user)}</td>
                         <td>
                           <span
                             className={`arr-badge${
@@ -362,9 +359,10 @@ export function SettingsUsersTab({
                             <button
                               type="button"
                               className="arr-btn arr-btn--ghost arr-btn--icon"
-                              aria-label={`Manage ${user.username}`}
+                              aria-label={`Manage ${getAccountLabel(user)}`}
                               onClick={() => {
                                 setEditUser(user);
+                                setEditUserName(user.name || "");
                                 setEditPassword("");
                                 setEditCurrentPassword("");
                                 setEditPermissions(
@@ -382,7 +380,7 @@ export function SettingsUsersTab({
                             <button
                               type="button"
                               className="arr-btn arr-btn--ghost arr-btn--icon"
-                              aria-label={`Delete ${user.username}`}
+                              aria-label={`Delete ${getAccountLabel(user)}`}
                               disabled={user.role === "admin"}
                               onClick={() => user.role !== "admin" && setDeleteUserTarget(user)}
                             >
@@ -500,7 +498,7 @@ export function SettingsUsersTab({
                       <form
                         onSubmit={async (event) => {
                           event.preventDefault();
-                          if (!newUserUsername.trim() || !newUserPassword) {
+                          if (!newUserName.trim() || !newUserPassword) {
                             showError("Username and password required");
                             return;
                           }
@@ -510,7 +508,7 @@ export function SettingsUsersTab({
                               health?.localNetworkBypass?.enabled === true &&
                               usersList.length === 1;
                             await createUser(
-                              newUserUsername.trim(),
+                              newUserName.trim(),
                               newUserPassword,
                               "user",
                               newUserPermissions,
@@ -521,7 +519,7 @@ export function SettingsUsersTab({
                                 : "User created",
                             );
                             setShowAddUserModal(false);
-                            setNewUserUsername("");
+                            setNewUserName("");
                             setNewUserPassword("");
                             setNewUserPermissions({ ...GRANULAR_PERMISSIONS });
                             await refreshUsers();
@@ -536,20 +534,22 @@ export function SettingsUsersTab({
                         }}
                       >
                         <div className="arr-modal__body">
-                          <SettingsArrFormGroup label="Username" labelFor="add-user-username">
+                          <SettingsArrFormGroup label="Username" labelFor="add-user-name">
                             <SettingsInput
-                              id="add-user-username"
+                              id="add-user-name"
                               type="text"
+                              required
                               placeholder="Username"
-                              autoComplete="off"
-                              value={newUserUsername}
-                              onChange={(event) => setNewUserUsername(event.target.value)}
+                              autoComplete="username"
+                              value={newUserName}
+                              onChange={(event) => setNewUserName(event.target.value)}
                             />
                           </SettingsArrFormGroup>
                           <SettingsArrFormGroup label="Password" labelFor="add-user-password">
                             <SettingsInput
                               id="add-user-password"
                               type="password"
+                              required
                               placeholder="Password"
                               autoComplete="new-password"
                               value={newUserPassword}
@@ -617,25 +617,19 @@ export function SettingsUsersTab({
                         onSubmit={async (event) => {
                           event.preventDefault();
                           if (isSelfEdit) {
-                            if (!editPassword) {
-                              setEditUser(null);
-                              return;
-                            }
-                            if (!editCurrentPassword) {
+                            if (editPassword && !editCurrentPassword) {
                               showError("Current password required");
                               return;
                             }
                             setSavingEdit(true);
                             try {
-                              await updateUser(editUser.id, {
-                                currentPassword: editCurrentPassword,
-                                password: editPassword,
-                              });
-                              const result = await loginApi(authUser?.username, editPassword);
-                              if (result?.token) {
-                                setStoredAuth({ token: result.token });
+                              if (editPassword) {
+                                await changeMyPassword(editCurrentPassword, editPassword);
                               }
-                              showSuccess("Password changed");
+                              await updateUser(editUser.id, {
+                                name: editUserName.trim(),
+                              });
+                              showSuccess(editPassword ? "Account updated" : "Account details updated");
                               setEditUser(null);
                             } catch (err) {
                               showError(
@@ -649,6 +643,7 @@ export function SettingsUsersTab({
                           setSavingEdit(true);
                           try {
                             await updateUser(editUser.id, {
+                              name: editUserName.trim(),
                               ...(editPassword ? { password: editPassword } : {}),
                               permissions: editPermissions,
                             });
@@ -666,6 +661,17 @@ export function SettingsUsersTab({
                         }}
                       >
                         <div className="arr-modal__body">
+                          <SettingsArrFormGroup label="Name" labelFor="edit-user-name">
+                            <SettingsInput
+                              id="edit-user-name"
+                              type="text"
+                              placeholder="Name"
+                              autoComplete="name"
+                              value={editUserName}
+                              onChange={(event) => setEditUserName(event.target.value)}
+                              required
+                            />
+                          </SettingsArrFormGroup>
                           {isSelfEdit ? (
                             <>
                               <SettingsArrFormGroup
@@ -694,7 +700,6 @@ export function SettingsUsersTab({
                                   onChange={(event) => setEditPassword(event.target.value)}
                                 />
                               </SettingsArrFormGroup>
-                              <PlexSelfLinkSection showSuccess={showSuccess} showError={showError} />
                             </>
                           ) : (
                             <>

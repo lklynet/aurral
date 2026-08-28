@@ -1,4 +1,12 @@
-import { getData, postData, putData, patchData, deleteData, lidarrCredentialParams } from "../core.js";
+import api, {
+  getData,
+  postData,
+  putData,
+  patchData,
+  deleteData,
+  lidarrCredentialParams,
+  setStoredAuth,
+} from "../core.js";
 import { queryClient, queryKeys } from "../../../queryClient.js";
 
 export const checkHealth = ({ force = false } = {}) =>
@@ -32,25 +40,47 @@ export const ensureFilesystemPath = (pathValue) =>
     path: pathValue,
   });
 
-export const loginApi = async (username, password) => {
-  const result = await postData("/auth/login", { username, password });
+export const loginApi = async (identifier, password) => {
+  const value = String(identifier || "").trim();
+  const response = await api.post("/auth/sign-in/username", { username: value, password });
+  const token = response.headers.get("set-auth-token");
+  if (token) setStoredAuth({ token });
   invalidateBootstrapCache();
-  return result;
+  const result = response.data;
+  if (token && result && typeof result === "object" && !Array.isArray(result) && !result.token) {
+    return { ...result, token };
+  }
+  return token && !result ? { token } : result;
 };
 
-export const exchangeOidcCode = (code) => postData("/auth/oidc/exchange", { code });
+export const startOidcLogin = async (callbackURL) => {
+  const response = await api.post("/auth/sign-in/social", {
+    provider: "oidc",
+    callbackURL,
+    disableRedirect: true,
+  });
+  const result = response.data;
+  const url = result?.url || result?.redirectURL;
+  if (!url) throw new Error("The authentication provider did not return a redirect URL");
+  return url;
+};
 
 export const logoutApi = async () => {
-  const result = await postData("/auth/logout");
+  const response = await api.post("/auth/sign-out");
   invalidateBootstrapCache();
-  return result;
+  return response.data;
 };
 
-export const getMe = () => getData("/auth/me");
+export const getMe = async () => {
+  const response = await api.get("/auth/get-session");
+  const token = response.headers.get("set-auth-token");
+  if (token) setStoredAuth({ token });
+  return response.data;
+};
 
-export const getApiKey = () => getData("/auth/api-key");
+export const getApiKey = () => getData("/aurral-auth/api-key");
 
-export const rotateApiKey = () => postData("/auth/api-key/rotate");
+export const rotateApiKey = () => postData("/aurral-auth/api-key/rotate");
 
 export const completeOnboarding = async (payload) => {
   const result = await postData("/onboarding/complete", payload);
@@ -75,22 +105,49 @@ export const getLidarrMetadataProfilesOnboarding = (url, apiKey) =>
 
 export const getUsers = () => getData("/users");
 
-export const createUser = (username, password, role, permissions) =>
+export const createUser = ({ username, name, password, role, permissions }) =>
   postData("/users", {
     username,
+    name,
     password,
     role,
     permissions,
   });
 
-export const updateUser = (id, data) => patchData(`/users/${id}`, data);
+export const updateUser = async (id, data = {}) => {
+  const { password, role, ...userData } = data;
+  let result;
+  if (Object.keys(userData).length > 0) {
+    result = await postData("/auth/admin/update-user", {
+      userId: String(id),
+      data: userData,
+    });
+  }
+  if (role) {
+    result = await postData("/auth/admin/set-role", {
+      userId: String(id),
+      role,
+    });
+  }
+  if (password) {
+    result = await postData("/auth/admin/set-user-password", {
+      userId: String(id),
+      newPassword: password,
+    });
+  }
+  return result;
+};
 
 export const deleteUser = async (id) => {
-  await deleteData(`/users/${id}`);
+  await postData("/auth/admin/remove-user", { userId: String(id) });
 };
 
 export const changeMyPassword = async (currentPassword, newPassword) => {
-  await postData("/users/me/password", { currentPassword, newPassword });
+  await postData("/auth/change-password", {
+    currentPassword,
+    newPassword,
+    revokeOtherSessions: true,
+  });
 };
 
 export const getMyListeningHistory = ({ signal } = {}) =>

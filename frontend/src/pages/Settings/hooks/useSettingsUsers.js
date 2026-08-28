@@ -14,7 +14,7 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
   const invalidateUsers = () => queryClient.invalidateQueries({ queryKey: queryKeys.users });
   const createUserMutation = useMutation({
     mutationFn: ({ username, password, role, permissions }) =>
-      createUser(username, password, role, permissions),
+      createUser({ username, password, role, permissions }),
     onSuccess: invalidateUsers,
   });
   const updateUserMutation = useMutation({
@@ -28,7 +28,7 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
   const changePasswordMutation = useMutation({
     mutationFn: ({ currentPassword, newPassword }) => changeMyPassword(currentPassword, newPassword),
   });
-  const [newUserUsername, setNewUserUsername] = useState("");
+  const [newUserName, setNewUserName] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserPermissions, setNewUserPermissions] = useState({
     ...GRANULAR_PERMISSIONS,
@@ -36,6 +36,7 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
   const [creatingUser, setCreatingUser] = useState(false);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [editUser, setEditUser] = useState(null);
+  const [editUserName, setEditUserName] = useState("");
   const [editPassword, setEditPassword] = useState("");
   const [editCurrentPassword, setEditCurrentPassword] = useState("");
   const [editPermissions, setEditPermissions] = useState({
@@ -56,8 +57,8 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
   return {
     usersList: usersQuery.data || [],
     loadingUsers: usersQuery.isPending || usersQuery.isFetching,
-    newUserUsername,
-    setNewUserUsername,
+    newUserName,
+    setNewUserName,
     newUserPassword,
     setNewUserPassword,
     newUserPermissions,
@@ -68,6 +69,8 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
     setShowAddUserModal,
     editUser,
     setEditUser,
+    editUserName,
+    setEditUserName,
     editPassword,
     setEditPassword,
     editCurrentPassword,

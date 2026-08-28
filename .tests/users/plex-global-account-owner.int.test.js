@@ -42,13 +42,16 @@ async function apiFetch(token, path, options = {}) {
 }
 
 async function login(username) {
-  const res = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/login`, {
+  const res = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/sign-in/username`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password: "password123" }),
   });
-  assert.equal(res.status, 200);
-  return (await res.json()).token;
+  const responseBody = await res.text();
+  assert.equal(res.status, 200, responseBody);
+  const token = res.headers.get("set-auth-token");
+  assert.ok(token);
+  return token;
 }
 
 test.before(async () => {

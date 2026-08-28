@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { setStoredAuth } from "../utils/api/core.js";
-import { exchangeOidcCode } from "../utils/api/endpoints/auth.js";
+import { getMe } from "../utils/api/endpoints/auth.js";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { DotLoader } from "../components/DotLoader";
 
@@ -33,24 +32,19 @@ const SsoComplete = () => {
 
   useEffect(() => {
     let cancelled = false;
-    const { code, error: hashError } = consumeSsoParams();
+    const { error: hashError } = consumeSsoParams();
 
     if (hashError) {
       setError(hashError);
       return undefined;
     }
 
-    if (!code) {
-      setError("Missing SSO session");
-      return undefined;
-    }
+    const complete = getMe().then((session) => {
+      if (!session?.user) throw new Error("Missing SSO session");
+    });
 
-    exchangeOidcCode(code)
-      .then(({ token }) => {
-        if (!token) throw new Error("Missing SSO session token");
-        setStoredAuth({ token });
-        return refreshAuth();
-      })
+    complete
+      .then(() => refreshAuth())
       .then(() => {
         if (!cancelled) {
           navigate("/", { replace: true });

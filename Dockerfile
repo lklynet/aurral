@@ -68,6 +68,7 @@ COPY package*.json ./
 COPY backend/package*.json ./backend/
 COPY frontend/package*.json ./frontend/
 COPY --from=backend-deps /app/node_modules ./node_modules
+COPY --from=backend-deps /app/backend/node_modules ./backend/node_modules
 
 COPY backend/ ./backend/
 COPY lib/ ./lib/

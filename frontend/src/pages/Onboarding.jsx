@@ -23,7 +23,7 @@ import { ChevronRight, ChevronLeft } from "lucide-react";
 function Onboarding() {
   useDocumentTitle("Setup");
   const [step, setStep] = useState(0);
-  const [authUser, setAuthUser] = useState("admin");
+  const [authUsername, setAuthUsername] = useState("admin");
   const [authPassword, setAuthPassword] = useState("");
   const [authPasswordConfirm, setAuthPasswordConfirm] = useState("");
   const [localNetworkBypass, setLocalNetworkBypass] = useState(false);
@@ -51,7 +51,10 @@ function Onboarding() {
   const passwordMismatch =
     authPasswordConfirm.length > 0 && authPassword !== authPasswordConfirm;
   const adminComplete =
-    authUser.trim() && authPassword && !passwordTooShort && authPassword === authPasswordConfirm;
+    authUsername.trim() &&
+    authPassword &&
+    !passwordTooShort &&
+    authPassword === authPasswordConfirm;
 
   const syncLogoPosition = useCallback(() => {
     const card = cardRef.current;
@@ -147,8 +150,10 @@ function Onboarding() {
     setError("");
     try {
       await completeOnboarding({
-        authUser: authUser.trim() || "admin",
-        authPassword: authPassword || undefined,
+        auth: {
+          username: authUsername.trim(),
+          password: authPassword,
+        },
         security: {
           localNetworkBypass: { enabled: localNetworkBypass === true },
         },
@@ -252,10 +257,11 @@ function Onboarding() {
                         id="onboarding-username"
                         legacyStyle
                         type="text"
-                        autoComplete="off"
+                        required
+                        autoComplete="username"
                         placeholder="Username"
-                        value={authUser}
-                        onChange={(e) => setAuthUser(e.target.value)}
+                        value={authUsername}
+                        onChange={(e) => setAuthUsername(e.target.value)}
                       />
                     </div>
                     <div className="onboarding-field">
@@ -264,6 +270,7 @@ function Onboarding() {
                         id="onboarding-password"
                         legacyStyle
                         type="password"
+                        required
                         autoComplete="new-password"
                         placeholder="Password"
                         value={authPassword}

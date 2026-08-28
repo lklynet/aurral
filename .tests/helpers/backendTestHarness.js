@@ -9,6 +9,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..", "..");
 
 const RESET_TABLES = [
+  "verifications",
+  "accounts",
   "sessions",
   "lastfm_link_states",
   "subsonic_stars",
@@ -88,7 +90,14 @@ export async function setupIsolatedBackend(name, ...modulePaths) {
 }
 
 export function resetDatabase(db) {
+  const tables = new Set(
+    db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+      .all()
+      .map((table) => table.name),
+  );
   for (const table of RESET_TABLES) {
+    if (!tables.has(table)) continue;
     db.prepare(`DELETE FROM ${table}`).run();
   }
 }

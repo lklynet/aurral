@@ -237,13 +237,15 @@ test.before(async () => {
     "shared-artwork",
   );
   aurral = await startServerProcess();
-  const login = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/login`, {
+  const login = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/sign-in/username`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username: "alice", password: "password123" }),
   });
-  authToken = (await login.json()).token;
-  assert.equal(login.status, 200);
+  authToken = login.headers.get("set-auth-token");
+  const loginBody = await login.text();
+  assert.equal(login.status, 200, loginBody);
+  assert.ok(authToken);
 });
 
 test.after(async () => {
@@ -730,13 +732,7 @@ test("streams canonical files with full and range responses", async () => {
 });
 
 test("streams canonical files through the authenticated native route", async () => {
-  const login = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: "alice", password: "password123" }),
-  });
-  const { token } = await login.json();
-  const headers = { Authorization: `Bearer ${token}` };
+  const headers = { Authorization: `Bearer ${authToken}` };
   const canonical = await fetch(
     `http://127.0.0.1:${aurral.port}/api/library/canonical?source=lidarr&availableOnly=true&kind=tracks&page=1&pageSize=100`,
     { headers },

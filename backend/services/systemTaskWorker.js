@@ -4,7 +4,6 @@ import {
   PLAYLIST_STARTUP_MIGRATION_SETTING,
   PLAYLIST_STARTUP_MIGRATION_VERSION,
 } from "./honkerDb.js";
-import { cleanExpiredSessions } from "../config/session-helpers.js";
 import { dbOps } from "../db/helpers/index.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
 
@@ -16,9 +15,6 @@ export async function processSystemTask(payload = {}, job = null) {
       await runScheduledRefresh();
       return;
     }
-    case "session-cleanup":
-      cleanExpiredSessions();
-      return;
     case "weekly-flow-reuse-repair": {
       const { weeklyFlowWorker } = await import("./weeklyFlow/weeklyFlowWorker.js");
       weeklyFlowWorker.scheduleReuseLinkRepair(false);

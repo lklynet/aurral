@@ -39,8 +39,8 @@ For example, the host folder `/srv/media/downloads/aurral` is `/data/downloads/a
 docker compose up -d
 ```
 
-1. Open `http://localhost:3001`.
-2. Create the admin account.
+1. Open `http://localhost:3001`. Aurral generates and stores its Better Auth secret in `/config` and derives its auth URL from the incoming request.
+2. Create the admin account with a username and password.
 3. Connect Lidarr.
 4. Set the Downloads Folder path and run the storage checks.
 

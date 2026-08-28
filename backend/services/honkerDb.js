@@ -56,12 +56,6 @@ export const SCHEDULED_SYSTEM_TASKS = [
     payload: { kind: "weekly-flow-refresh" },
   },
   {
-    name: "session-cleanup",
-    queue: "system-task",
-    schedule: "@every 1h",
-    payload: { kind: "session-cleanup" },
-  },
-  {
     name: "weekly-flow-reuse-repair",
     queue: "system-task",
     schedule: "@every 30m",
