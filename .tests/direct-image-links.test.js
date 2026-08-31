@@ -24,3 +24,9 @@ test("image retry URLs bypass a cached browser failure without changing the sour
 
   assert.match(retry, /^https:\/\/images\.example\/artist\.jpg\?size=512&aurral_image_retry=\d+#cover$/);
 });
+
+test("missing local image cache entries do not return dead proxy links", () => {
+  const missing = `/api/image-proxy/${"f".repeat(64)}.webp`;
+
+  assert.equal(buildStableImageProxyUrl(missing), null);
+});

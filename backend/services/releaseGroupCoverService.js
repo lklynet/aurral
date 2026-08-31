@@ -53,7 +53,9 @@ const getCachedUrl = (cacheKey) => {
     return undefined;
   }
   if (cached?.imageUrl && cached.imageUrl !== "NOT_FOUND") {
-    return toPublicCoverUrl(cached.imageUrl) || cached.imageUrl;
+    const imageUrl = toPublicCoverUrl(cached.imageUrl);
+    if (imageUrl) return imageUrl;
+    dbOps.deleteImage(cacheKey);
   }
   if (cached?.imageUrl === "NOT_FOUND") {
     return null;

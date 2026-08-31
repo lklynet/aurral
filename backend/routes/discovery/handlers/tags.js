@@ -109,7 +109,7 @@ export function registerTags(router) {
                     sortName: artist.name,
                     type: "Artist",
                     tags: [tag],
-                    image: buildImageProxyUrl(imageUrl) || imageUrl,
+                    image: buildImageProxyUrl(imageUrl),
                   };
                 })
                 .filter((a) => a.id);

@@ -95,14 +95,14 @@ const buildCachedArtistImagePayload = (cachedImageUrl, cachedImages = []) => {
   const persistedImages = Array.isArray(cachedImages)
     ? cachedImages
         .map((image) => {
-          const publicUrl = toPublicImageUrl(image?.image) || image?.image;
+          const publicUrl = toPublicImageUrl(image?.image);
           return publicUrl ? { ...image, image: publicUrl } : null;
         })
         .filter(Boolean)
     : [];
   if (persistedImages.length > 0) return persistedImages;
 
-  const publicUrl = toPublicImageUrl(cachedImageUrl) || cachedImageUrl;
+  const publicUrl = toPublicImageUrl(cachedImageUrl);
   return publicUrl
     ? [
         {
@@ -170,7 +170,9 @@ const getCachedUrl = (cacheKey) => {
     return undefined;
   }
   if (cached?.imageUrl && cached.imageUrl !== "NOT_FOUND") {
-    return buildStableImageProxyUrl(cached.imageUrl) || cached.imageUrl;
+    const imageUrl = buildStableImageProxyUrl(cached.imageUrl);
+    if (imageUrl) return imageUrl;
+    dbOps.deleteImage(cacheKey);
   }
   if (cached?.imageUrl === "NOT_FOUND") {
     return null;
@@ -273,12 +275,15 @@ export const getArtistImage = async (
     cachedImage.imageUrl !== "NOT_FOUND" &&
     !LEGACY_COVER_HOST_PATTERN.test(cachedImage.imageUrl)
   ) {
-    const cachedUrl = buildStableImageProxyUrl(cachedImage.imageUrl) || cachedImage.imageUrl;
+    const cachedUrl = buildStableImageProxyUrl(cachedImage.imageUrl);
     const images = buildCachedArtistImagePayload(cachedUrl, cachedImage.images);
-    return {
-      url: images[0]?.image || cachedUrl,
-      images,
-    };
+    if (images.length > 0 || cachedUrl) {
+      return {
+        url: images[0]?.image || cachedUrl,
+        images,
+      };
+    }
+    dbOps.deleteImage(mbid);
   }
 
   if (
@@ -328,7 +333,7 @@ export const getArtistImage = async (
       if (deezerImage) {
         negativeImageCache.delete(mbid);
         const result = buildArtistCoverFromUrl(
-          buildStableImageProxyUrl(deezerImage) || deezerImage,
+          buildStableImageProxyUrl(deezerImage),
           ["Artist"],
         );
         dbOps.setImage(mbid, result.url, result.images);
@@ -387,8 +392,7 @@ export const getArtistImage = async (
       await Promise.all(workers);
 
       if (foundCover) {
-        const artistImageUrl =
-          buildStableImageProxyUrl(foundCover.imageUrl) || foundCover.imageUrl;
+        const artistImageUrl = buildStableImageProxyUrl(foundCover.imageUrl);
         const result = {
           url: artistImageUrl,
           images: [

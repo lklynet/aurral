@@ -39,15 +39,7 @@ export function registerCover(router) {
         }).catch(() => null);
 
         return res.json({
-          images: cachedResult?.images?.length
-            ? cachedResult.images
-            : [
-                {
-                  image: cachedImage.imageUrl,
-                  front: true,
-                  types: ["Front"],
-                },
-              ],
+          images: cachedResult?.images || [],
         });
       }
 

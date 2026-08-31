@@ -787,7 +787,7 @@ export const buildStableImageProxyUrl = (sourceUrl) => {
   if (localKey) {
     const meta = _readCacheMetadata(path.join(IMAGE_PROXY_DIR, `${localKey}.json`));
     const sourceFromMeta = normalizeKnownImageUrl(meta?.sourceUrl) || meta?.sourceUrl || null;
-    return sourceFromMeta ? buildStableImageProxyUrl(sourceFromMeta) : normalized;
+    return sourceFromMeta ? buildStableImageProxyUrl(sourceFromMeta) : null;
   }
 
   const srcMatch = normalized.match(/\/api\/image-proxy\?src=([^&]+)/i);

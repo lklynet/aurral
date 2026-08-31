@@ -179,15 +179,7 @@ export function registerStream(router) {
                 artistName,
               }).catch(() => null);
               sendSSE(res, "cover", {
-                images: cachedCover?.images?.length
-                  ? cachedCover.images
-                  : [
-                      {
-                        image: cachedImage.imageUrl,
-                        front: true,
-                        types: ["Front"],
-                      },
-                    ],
+                images: cachedCover?.images || [],
               });
               return;
             }
@@ -264,7 +256,7 @@ export function registerStream(router) {
                     return {
                       id: a.mbid,
                       name: a.name,
-                      image: buildImageProxyUrl(img) || img,
+                      image: buildImageProxyUrl(img),
                       match: Math.round((a.match || 0) * 100),
                     };
                   })
