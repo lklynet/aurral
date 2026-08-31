@@ -11,7 +11,7 @@ import {
 import { getAlbumByMbid, resolveAlbumByArtistAndTitle } from "./providers/brainzmashProvider.js";
 
 export const LEGACY_COVER_HOST_PATTERN =
-  /https?:\/\/(?:caa\.lkly\.net|coverartarchive\.org|archive\.org|[\w-]+\.ca\.archive\.org)\//i;
+  /https?:\/\/(?:caa\.lkly\.net|archive\.org|[\w-]+\.ca\.archive\.org)\//i;
 
 const RG_CACHE_PREFIX = "rg:";
 const releaseGroupRefreshRequests = new Map();

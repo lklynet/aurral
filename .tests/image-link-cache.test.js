@@ -11,6 +11,7 @@ const coldMbid = "22222222-2222-4222-8222-222222222222";
 const fallbackRequestedMbid = "66666666-6666-4666-8666-666666666666";
 const fallbackResolvedMbid = "77777777-7777-4777-8777-777777777777";
 const coalescedMbid = "88888888-8888-4888-8888-888888888888";
+const canonicalCoverMbid = "99999999-9999-4999-8999-999999999999";
 const staleLocalUrl = `/api/image-proxy/${"a".repeat(64)}.webp`;
 const imageLinks = [
   {
@@ -141,6 +142,17 @@ test("cached release-group links survive byte-cache eviction without metadata re
 
   assert.equal(providerRequests, 1);
   assert.equal(result.imageUrl, staleLocalUrl);
+});
+
+test("canonical Cover Art Archive links stay cached without metadata requests", async () => {
+  const imageUrl = `https://coverartarchive.org/release-group/${canonicalCoverMbid}/front`;
+  dbOps.setImage(`rg:${canonicalCoverMbid}`, imageUrl);
+  const requestsBefore = providerRequests;
+
+  const result = await fetchReleaseGroupCoverUrl(canonicalCoverMbid);
+
+  assert.equal(providerRequests, requestsBefore);
+  assert.equal(result.imageUrl, imageUrl);
 });
 
 test("release-group refresh replaces a stale cached link", async () => {

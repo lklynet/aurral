@@ -176,12 +176,12 @@ export const getReleaseGroupCover = async (
   const cacheKey = releaseGroupCoverCacheKey(mbid, artistName, albumTitle);
   const refreshKey = `${cacheKey}:refresh`;
   if (!bypassCache) {
+    const refresh = coverInflightRequests.get(refreshKey);
+    if (refresh) return refresh;
     const cached = getCoverCacheEntry(cacheKey);
     if (cached) {
       return cached;
     }
-    const refresh = coverInflightRequests.get(refreshKey);
-    if (refresh) return refresh;
   } else {
     const normal = coverInflightRequests.get(cacheKey);
     if (normal) await normal.catch(() => undefined);
