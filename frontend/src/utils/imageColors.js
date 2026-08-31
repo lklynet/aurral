@@ -27,7 +27,6 @@ export async function extractTwoToneGradientFromImage(src) {
   if (gradientCache.has(src)) return gradientCache.get(src);
   const request = new Promise((ok, err) => {
     const img = new Image();
-    img.crossOrigin = "anonymous";
     img.onload = () => ok(img);
     img.onerror = err;
     img.src = normalizeMediaUrl(src);

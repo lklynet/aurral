@@ -56,3 +56,25 @@ test("invalidated album track caches fall back to the current library tracks", a
   assert.deepEqual(getCachedAlbumTracks(album, tracksById), [{ id: 8 }]);
   queryClient.clear();
 });
+
+test("library covers prefer the release-group MBID", async (t) => {
+  const vite = await createServer({
+    root: "frontend",
+    server: { middlewareMode: true, hmr: false },
+    appType: "custom",
+    optimizeDeps: { noDiscovery: true },
+  });
+  t.after(() => vite.close());
+
+  const { getAlbumCoverId } = await vite.ssrLoadModule(
+    "/src/pages/LibraryPage.jsx?library-cover-id-test",
+  );
+
+  assert.equal(
+    getAlbumCoverId({
+      mbid: "release-id",
+      releaseGroupMbid: "release-group-id",
+    }),
+    "release-group-id",
+  );
+});

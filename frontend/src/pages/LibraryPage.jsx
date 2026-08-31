@@ -84,6 +84,8 @@ const LIBRARY_VIEW_IDS = new Set(LIBRARY_VIEWS.map((view) => view.id));
 
 const text = (value) => String(value || "").trim();
 
+export const getAlbumCoverId = (album) => album?.releaseGroupMbid || album?.mbid || null;
+
 const metadataGenres = (entity) => {
   const metadata = entity?.metadata || {};
   return [metadata.genres, metadata.genre, metadata.common?.genre, metadata.tags?.genre]
@@ -1398,7 +1400,7 @@ function LibraryPage() {
   const coverItems = useMemo(() => {
     const items = library.albums
       .map((album) => ({
-        mbid: album.mbid || album.releaseGroupMbid,
+        mbid: getAlbumCoverId(album),
         coverUrl: album.coverUrl,
         artistName: getArtistForAlbum(album)?.name || album.albumArtist,
         albumTitle: album.title,
@@ -1431,7 +1433,7 @@ function LibraryPage() {
   }, [coverItems]);
 
   const getAlbumCover = useCallback(
-    (album) => album?.coverUrl || covers[album?.mbid || album?.releaseGroupMbid] || "",
+    (album) => album?.coverUrl || covers[getAlbumCoverId(album)] || "",
     [covers],
   );
 

@@ -134,11 +134,17 @@ export class WeeklyFlowPlaylistManager {
     const suppressed = await this._isArtworkGenerationSuppressed(safeRoot, baseName);
     if (!(await this._playlistArtworkExists(baseName)) && !suppressed) {
       const artworkContext = this.getArtworkContextForPlaylistId(playlistType);
-      await writeGeneratedPlaylistArtwork({
-        outputPath: artworkPath,
-        title: artworkContext?.title || playlistName,
-        kind: artworkContext?.kind || artworkKind,
-      });
+      try {
+        await writeGeneratedPlaylistArtwork({
+          outputPath: artworkPath,
+          title: artworkContext?.title || playlistName,
+          kind: artworkContext?.kind || artworkKind,
+        });
+      } catch (error) {
+        console.warn(
+          `[WeeklyFlowPlaylistManager] Artwork generation failed: ${error.message}`,
+        );
+      }
     }
   }
 

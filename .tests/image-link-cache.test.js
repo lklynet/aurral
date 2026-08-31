@@ -11,9 +11,16 @@ const coldMbid = "22222222-2222-4222-8222-222222222222";
 const fallbackRequestedMbid = "66666666-6666-4666-8666-666666666666";
 const fallbackResolvedMbid = "77777777-7777-4777-8777-777777777777";
 const coalescedMbid = "88888888-8888-4888-8888-888888888888";
-const canonicalCoverMbid = "99999999-9999-4999-8999-999999999999";
+const unresolvedReleaseMbid = "99999999-9999-4999-8999-999999999999";
 const missingArtistBytesMbid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const missingReleaseBytesMbid = "33333333-3333-4333-8333-333333333333";
 const staleLocalUrl = `/api/image-proxy/${"a".repeat(64)}.webp`;
+const resolvedCoverUrls = new Map([
+  [
+    missingReleaseBytesMbid,
+    "https://imagecache.lidarr.audio/v1/caa/release-id/missing-bytes-1200.jpg",
+  ],
+]);
 const imageLinks = [
   {
     image: "https://images.example/artist.jpg",
@@ -69,6 +76,19 @@ const providerServer = await createMockHttpServer((request, response) => {
         id: coalescedMbid,
         title: "Coalesced Album",
         images: [{ CoverType: "Cover", Url: "https://images.example/coalesced.jpg" }],
+      }),
+    );
+    return;
+  }
+  const resolvedCover = [...resolvedCoverUrls].find(([id]) =>
+    request.url?.includes(`/album/${id}`),
+  );
+  if (resolvedCover) {
+    response.end(
+      JSON.stringify({
+        id: resolvedCover[0],
+        title: "Resolved Album",
+        images: [{ CoverType: "Cover", Url: resolvedCover[1] }],
       }),
     );
     return;
@@ -147,29 +167,25 @@ test("missing artist image bytes trigger link replacement", async () => {
 });
 
 test("missing release-group image bytes trigger link replacement", async () => {
-  const releaseGroupMbid = "33333333-3333-4333-8333-333333333333";
-  dbOps.setImage(`rg:${releaseGroupMbid}`, staleLocalUrl);
+  dbOps.setImage(`rg:${missingReleaseBytesMbid}`, staleLocalUrl);
   const requestsBefore = providerRequests;
 
-  const result = await fetchReleaseGroupCoverUrl(releaseGroupMbid);
+  const result = await fetchReleaseGroupCoverUrl(missingReleaseBytesMbid);
 
   assert.equal(providerRequests, requestsBefore + 1);
-  assert.equal(
-    result.imageUrl,
-    `https://coverartarchive.org/release-group/${releaseGroupMbid}/front`,
-  );
-  assert.equal(dbOps.getImage(`rg:${releaseGroupMbid}`)?.imageUrl, result.imageUrl);
+  assert.equal(result.imageUrl, resolvedCoverUrls.get(missingReleaseBytesMbid));
+  assert.equal(dbOps.getImage(`rg:${missingReleaseBytesMbid}`)?.imageUrl, result.imageUrl);
 });
 
-test("canonical Cover Art Archive links stay cached without metadata requests", async () => {
-  const imageUrl = `https://coverartarchive.org/release-group/${canonicalCoverMbid}/front`;
-  dbOps.setImage(`rg:${canonicalCoverMbid}`, imageUrl);
+test("missing provider artwork does not synthesize an unverified cover URL", async () => {
   const requestsBefore = providerRequests;
 
-  const result = await fetchReleaseGroupCoverUrl(canonicalCoverMbid);
+  const result = await fetchReleaseGroupCoverUrl(unresolvedReleaseMbid);
 
-  assert.equal(providerRequests, requestsBefore);
-  assert.equal(result.imageUrl, imageUrl);
+  assert.equal(providerRequests, requestsBefore + 1);
+  assert.equal(result.imageUrl, null);
+  assert.equal(result.notFound, true);
+  assert.equal(dbOps.getImage(`rg:${unresolvedReleaseMbid}`)?.imageUrl, "NOT_FOUND");
 });
 
 test("release-group refresh replaces a stale cached link", async () => {

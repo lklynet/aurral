@@ -11,7 +11,7 @@ import {
 import { getAlbumByMbid, resolveAlbumByArtistAndTitle } from "./providers/brainzmashProvider.js";
 
 export const LEGACY_COVER_HOST_PATTERN =
-  /https?:\/\/(?:caa\.lkly\.net|archive\.org|[\w-]+\.ca\.archive\.org)\//i;
+  /https?:\/\/(?:archive\.org|[\w-]+\.ca\.archive\.org)\//i;
 
 const RG_CACHE_PREFIX = "rg:";
 const releaseGroupRefreshRequests = new Map();
@@ -31,9 +31,6 @@ const pickAlbumCoverUrl = (images = []) => {
   const preferred = ranked.find((entry) => ["front", "cover", "albumcover"].includes(entry.kind));
   return (preferred || ranked[0])?.url || null;
 };
-
-const coverArtArchiveFrontUrl = (releaseGroupMbid) =>
-  `https://coverartarchive.org/release-group/${releaseGroupMbid}/front`;
 
 export { warmPublicImageUrl };
 
@@ -92,11 +89,6 @@ const buildReleaseGroupCoverResult = async (cacheKey, album, { persist = true } 
       transientError: false,
     }
   );
-};
-
-const fetchCoverArtArchiveCover = async (cacheKey, releaseGroupMbid) => {
-  if (!releaseGroupMbid) return null;
-  return acceptCoverUrl(cacheKey, coverArtArchiveFrontUrl(releaseGroupMbid));
 };
 
 const fetchDeezerAlbumCover = async (
@@ -175,8 +167,6 @@ const fetchReleaseGroupCoverUncached = async (
       sawTransientError = true;
     }
   }
-  const caaCover = await fetchCoverArtArchiveCover(cacheKey, releaseGroupMbid);
-  if (caaCover?.imageUrl) return caaCover;
   const deezerCover = await fetchDeezerAlbumCover(cacheKey, {
     artistName: normalizedArtistName,
     albumTitle: normalizedAlbumTitle,

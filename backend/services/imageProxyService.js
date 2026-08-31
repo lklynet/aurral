@@ -322,7 +322,7 @@ const normalizeKnownImageUrl = (value) =>
   String(value || "")
     .trim()
     .replace(
-      /^(https?:\/\/(?:caa\.lkly\.net|coverartarchive\.org)\/release-group\/[0-9a-f-]+)\/front-250(?=[/?#]|$)/i,
+      /^(https?:\/\/coverartarchive\.org\/release-group\/[0-9a-f-]+)\/front-250(?=[/?#]|$)/i,
       "$1/front",
     )
     .replace(
