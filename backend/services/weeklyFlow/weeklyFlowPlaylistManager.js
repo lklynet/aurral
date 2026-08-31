@@ -7,6 +7,7 @@ import { writePlaylistArtworkWebpFromBuffer } from "../playlistArtwork.js";
 import {
   getArtworkExtensionForStyle,
   getPlaylistArtworkStyle,
+  isGeneratedPlaylistArtworkFallback,
   writeGeneratedPlaylistArtwork,
 } from "../playlistArtworkGenerator.js";
 import {
@@ -54,6 +55,7 @@ export class WeeklyFlowPlaylistManager {
     ]);
     this._ensureInFlight = null;
     this._refreshInFlight = new Map();
+    this._verifiedArtworkFiles = new Set();
     this.updateConfig(triggerEnsureOnInit);
   }
 
@@ -128,12 +130,27 @@ export class WeeklyFlowPlaylistManager {
   async _ensureFlowArtwork(playlistType, playlistName, artworkKind) {
     await fs.mkdir(this.libraryRoot, { recursive: true });
     const baseName = this._getPlaylistBaseName(playlistName);
-    const artworkExtension = getArtworkExtensionForStyle(getPlaylistArtworkStyle());
+    const style = getPlaylistArtworkStyle();
+    const artworkExtension = getArtworkExtensionForStyle(style);
     const artworkPath = path.join(this.libraryRoot, `${baseName}${artworkExtension}`);
     const safeRoot = path.resolve(this.libraryRoot);
     const suppressed = await this._isArtworkGenerationSuppressed(safeRoot, baseName);
-    if (!(await this._playlistArtworkExists(baseName)) && !suppressed) {
-      const artworkContext = this.getArtworkContextForPlaylistId(playlistType);
+    if (suppressed) return;
+    const artworkContext = this.getArtworkContextForPlaylistId(playlistType);
+    const existing = await this.resolveArtworkFile(playlistType);
+    let shouldGenerate = !existing;
+    const existingStat = existing ? await fs.stat(existing.safePath).catch(() => null) : null;
+    const existingIdentity = existingStat
+      ? `${existing.safePath}:${existingStat.size}:${existingStat.mtimeMs}`
+      : existing?.safePath;
+    if (style === "photo" && existing && !this._verifiedArtworkFiles.has(existingIdentity)) {
+      shouldGenerate = await isGeneratedPlaylistArtworkFallback(existing.safePath, {
+        title: artworkContext?.title || playlistName,
+        kind: artworkContext?.kind || artworkKind,
+      });
+      if (!shouldGenerate) this._verifiedArtworkFiles.add(existingIdentity);
+    }
+    if (shouldGenerate) {
       try {
         await writeGeneratedPlaylistArtwork({
           outputPath: artworkPath,
@@ -144,6 +161,18 @@ export class WeeklyFlowPlaylistManager {
         console.warn(
           `[WeeklyFlowPlaylistManager] Artwork generation failed: ${error.message}`,
         );
+        if (!existing) {
+          await writeGeneratedPlaylistArtwork({
+            outputPath: artworkPath,
+            title: artworkContext?.title || playlistName,
+            kind: artworkContext?.kind || artworkKind,
+            style: "aurral",
+          }).catch((fallbackError) =>
+            console.warn(
+              `[WeeklyFlowPlaylistManager] Fallback artwork failed: ${fallbackError.message}`,
+            ),
+          );
+        }
       }
     }
   }
@@ -271,16 +300,6 @@ export class WeeklyFlowPlaylistManager {
       await this._activePlaybackSnapshots(),
       () => this._activePlaybackSnapshots(),
     );
-  }
-
-  async _playlistArtworkExists(baseName) {
-    for (const extension of ARTWORK_FILE_EXTENSIONS) {
-      try {
-        await fs.access(path.join(this.libraryRoot, `${baseName}${extension}`));
-        return true;
-      } catch {}
-    }
-    return false;
   }
 
   async scanLibrary() {

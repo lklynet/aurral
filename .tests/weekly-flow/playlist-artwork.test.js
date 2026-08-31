@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import fs from "node:fs/promises";
 import sharp from "sharp";
+import axios from "../../lib/axiosFetch.js";
+import { buildPlaylistArtworkWebpBuffer } from "../../backend/services/playlistArtwork.js";
 
 import {
   setupIsolatedBackend,
@@ -99,6 +101,108 @@ test("writes WebP artwork for flows and playlists without M3U files", async () =
   assert.equal(playlistMeta.width, 1000);
   assert.equal(playlistMeta.height, 1000);
   assert.equal(playlistMeta.format, "webp");
+});
+
+test("serves temporary artwork and replaces it when the photo source recovers", async (t) => {
+  dbOps.updateSettings({ playlistArtwork: { style: "photo" } });
+  const source = await sharp({
+    create: {
+      width: 32,
+      height: 32,
+      channels: 3,
+      background: "#284466",
+    },
+  })
+    .jpeg()
+    .toBuffer();
+  let sourceAvailable = false;
+  t.mock.method(axios, "get", async () => {
+    if (!sourceAvailable) throw new Error("Request failed with status code 503");
+    return { data: source };
+  });
+  const playlist = flowPlaylistConfig.createSharedPlaylist({
+    name: "Offline Photos",
+    tracks: [{ artistName: "A", trackName: "One" }],
+  });
+  const manager = makeManager();
+
+  await manager.ensurePlaylists();
+
+  assert.equal((await manager.resolveArtworkFile(playlist.id))?.extension, ".webp");
+
+  sourceAvailable = true;
+  await manager.ensurePlaylists();
+
+  assert.equal((await manager.resolveArtworkFile(playlist.id))?.extension, ".jpg");
+});
+
+test("replaces the old generated JPEG fallback with photo artwork", async (t) => {
+  dbOps.updateSettings({ playlistArtwork: { style: "photo" } });
+  const source = await sharp({
+    create: {
+      width: 32,
+      height: 32,
+      channels: 3,
+      background: "#284466",
+    },
+  })
+    .jpeg()
+    .toBuffer();
+  t.mock.method(axios, "get", async () => ({ data: source }));
+  const playlist = flowPlaylistConfig.createSharedPlaylist({
+    name: "Legacy Fallback",
+    tracks: [{ artistName: "A", trackName: "One" }],
+  });
+  const manager = makeManager();
+  await fs.mkdir(manager.libraryRoot, { recursive: true });
+  const baseName = manager._sanitize(manager.getPlaylistName(playlist.id));
+  const artworkPath = path.join(manager.libraryRoot, `${baseName}.jpg`);
+  const fallback = await buildPlaylistArtworkWebpBuffer({
+    playlistName: playlist.name,
+    kind: "Playlist",
+  });
+  await fs.writeFile(
+    artworkPath,
+    await sharp(fallback).jpeg({ quality: 90, mozjpeg: true }).toBuffer(),
+  );
+
+  await manager.ensurePlaylists();
+
+  const metadata = await sharp(artworkPath).metadata();
+  assert.equal(metadata.width, 1200);
+  assert.equal(metadata.height, 1200);
+});
+
+test("does not replace uploaded artwork in photo mode", async (t) => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({
+    name: "Custom Cover",
+    tracks: [{ artistName: "A", trackName: "One" }],
+  });
+  const manager = makeManager();
+  const uploaded = await sharp({
+    create: {
+      width: 48,
+      height: 48,
+      channels: 3,
+      background: "#663322",
+    },
+  })
+    .png()
+    .toBuffer();
+  await manager.saveArtworkUpload(playlist.id, uploaded);
+  const artworkPath = (await manager.resolveArtworkFile(playlist.id)).safePath;
+  const before = await fs.readFile(artworkPath);
+  dbOps.updateSettings({ playlistArtwork: { style: "photo" } });
+  let photoRequests = 0;
+  t.mock.method(axios, "get", async () => {
+    photoRequests += 1;
+    throw new Error("Unexpected photo request");
+  });
+
+  await manager.ensurePlaylists();
+
+  assert.equal(photoRequests, 0);
+  assert.deepEqual(await fs.readFile(artworkPath), before);
 });
 
 test("removes old sidecar artwork when a flow is renamed", async () => {
