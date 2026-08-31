@@ -108,18 +108,32 @@ const providerServer = await createMockHttpServer((request, response) => {
 });
 process.env.BRAINZMASH_BASE_URL = providerServer.url;
 
-const [isolatedState, { dbOps }, { getArtistImage }, { fetchReleaseGroupCoverUrl }] =
-  await setupIsolatedBackend(
-    "image-link-cache",
-    "backend/db/helpers/index.js",
-    "backend/services/imageService.js",
-    "backend/services/releaseGroupCoverService.js",
-  );
+const [
+  isolatedState,
+  { dbOps },
+  { getArtistImage },
+  { fetchReleaseGroupCoverUrl },
+  { getCachedCoverCacheControl },
+] = await setupIsolatedBackend(
+  "image-link-cache",
+  "backend/db/helpers/index.js",
+  "backend/services/imageService.js",
+  "backend/services/releaseGroupCoverService.js",
+  "backend/routes/artists/handlers/cover.js",
+);
 
 test.after(async () => {
   await cleanupIsolatedState(isolatedState);
   await providerServer.close();
   delete process.env.BRAINZMASH_BASE_URL;
+});
+
+test("empty cached cover responses are not immutable", () => {
+  assert.equal(getCachedCoverCacheControl([]), "no-store");
+  assert.equal(
+    getCachedCoverCacheControl([{ image: "https://images.example/artist.jpg" }]),
+    "public, max-age=31536000, immutable",
+  );
 });
 
 test("cached artist image links survive byte-cache eviction without metadata requests", async () => {
