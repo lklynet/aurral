@@ -297,6 +297,20 @@ test("does not regenerate artwork after explicit remove until generate", async (
   await assert.doesNotReject(() => fs.access(flowWebp));
 });
 
+test("generates fallback artwork when the photo source is down", async (t) => {
+  dbOps.updateSettings({ playlistArtwork: { style: "photo" } });
+  t.mock.method(axios, "get", async () => {
+    throw new Error("Request failed with status code 503");
+  });
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Offline Generate" });
+  const manager = makeManager();
+
+  const outputPath = await manager.generateArtwork(playlist.id);
+
+  assert.equal(path.extname(outputPath), ".webp");
+  await assert.doesNotReject(() => fs.access(outputPath));
+});
+
 test("syncs artwork changes to the existing Navidrome playlist", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Artwork API" });
   const manager = makeManager();

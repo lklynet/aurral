@@ -478,17 +478,27 @@ export class WeeklyFlowPlaylistManager {
       throw new Error("Playlist not found");
     }
     await fs.mkdir(resolved.safeRoot, { recursive: true });
-    const artworkExtension = getArtworkExtensionForStyle(getPlaylistArtworkStyle());
+    const style = getPlaylistArtworkStyle();
+    const artworkExtension = getArtworkExtensionForStyle(style);
     const artworkPath = path.join(resolved.safeRoot, `${resolved.baseName}${artworkExtension}`);
     if (path.dirname(artworkPath) !== resolved.safeRoot) {
       throw new Error("Invalid artwork path");
     }
     const artworkContext = this.getArtworkContextForPlaylistId(playlistId);
-    const outputPath = await writeGeneratedPlaylistArtwork({
-      outputPath: artworkPath,
-      title: artworkContext?.title || resolved.playlistName,
-      kind: artworkContext?.kind || this.getArtworkKindForPlaylistId(playlistId),
-    });
+    const title = artworkContext?.title || resolved.playlistName;
+    const kind = artworkContext?.kind || this.getArtworkKindForPlaylistId(playlistId);
+    let outputPath;
+    try {
+      outputPath = await writeGeneratedPlaylistArtwork({ outputPath: artworkPath, title, kind });
+    } catch (error) {
+      if (style !== "photo") throw error;
+      outputPath = await writeGeneratedPlaylistArtwork({
+        outputPath: artworkPath,
+        title,
+        kind,
+        style: "aurral",
+      });
+    }
     await this._setArtworkGenerationSuppressed(resolved.safeRoot, resolved.baseName, false);
     await this._syncNavidromeArtwork(playlistId);
     return outputPath;
