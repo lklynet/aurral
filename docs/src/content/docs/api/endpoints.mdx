@@ -377,7 +377,7 @@ setup, Aurral does not require a credential for these routes.
 | --- | --- | --- |
 | `GET` | `/api/filesystem/browse` | Browse server directories |
 | `POST` | `/api/filesystem/ensure` | Create or validate a server directory |
-| `GET` | `/api/image-proxy` | Redirect a legacy proxied image URL to its source |
+| `GET` | `/api/image-proxy` | Resolve a legacy proxied image URL through the native image cache |
 | `GET` | `/api/image-proxy/:cacheKey` | Fetch a cached native-library image |
 
 Image-proxy routes are public. Before onboarding, filesystem routes do not

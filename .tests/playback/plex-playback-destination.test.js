@@ -39,6 +39,7 @@ test.beforeEach(async () => {
     onboardingComplete: true,
     flows: [],
     sharedPlaylists: [],
+    playlistArtwork: { style: "aurral" },
   });
 });
 

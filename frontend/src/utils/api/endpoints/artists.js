@@ -174,14 +174,21 @@ export const getReleaseGroupCover = async (
   { artistName = "", albumTitle = "", bypassCache = false } = {},
 ) => {
   const cacheKey = releaseGroupCoverCacheKey(mbid, artistName, albumTitle);
+  const refreshKey = `${cacheKey}:refresh`;
   if (!bypassCache) {
     const cached = getCoverCacheEntry(cacheKey);
     if (cached) {
       return cached;
     }
+    const refresh = coverInflightRequests.get(refreshKey);
+    if (refresh) return refresh;
+  } else {
+    const normal = coverInflightRequests.get(cacheKey);
+    if (normal) await normal.catch(() => undefined);
   }
-  if (coverInflightRequests.has(cacheKey)) {
-    return coverInflightRequests.get(cacheKey);
+  const inflightKey = bypassCache ? refreshKey : cacheKey;
+  if (coverInflightRequests.has(inflightKey)) {
+    return coverInflightRequests.get(inflightKey);
   }
   const request = (async () => {
     const params = {};
@@ -202,9 +209,9 @@ export const getReleaseGroupCover = async (
     }
     return data;
   })().finally(() => {
-    coverInflightRequests.delete(cacheKey);
+    coverInflightRequests.delete(inflightKey);
   });
-  coverInflightRequests.set(cacheKey, request);
+  coverInflightRequests.set(inflightKey, request);
   return request;
 };
 

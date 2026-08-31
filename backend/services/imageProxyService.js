@@ -859,11 +859,16 @@ export const handleLegacyImageProxyRequest = async (req, res) => {
   if (!rawSourceUrl) {
     return res.status(404).json({ error: "Image not found" });
   }
-  const directUrl = buildStableImageProxyUrl(rawSourceUrl);
-  if (!directUrl || directUrl.startsWith("/") || directUrl.startsWith("data:") || directUrl.startsWith("blob:")) {
+
+  try {
+    const cached = await warmImageProxy(rawSourceUrl);
+    if (!cached?.localUrl) {
+      return res.status(404).json({ error: "Image not found" });
+    }
+    return res.redirect(302, cached.localUrl);
+  } catch {
     return res.status(404).json({ error: "Image not found" });
   }
-  return res.redirect(302, directUrl);
 };
 
 migrateObsoleteImageCache();

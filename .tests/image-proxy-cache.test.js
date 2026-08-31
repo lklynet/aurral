@@ -108,6 +108,48 @@ test("image proxy serves cached images from hidden worktree paths", async () => 
   }
 });
 
+test("legacy image URLs redirect only to the local native cache", async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-image-legacy-"));
+  const previousDataDir = process.env.AURRAL_DATA_DIR;
+  const originalFetch = global.fetch;
+  let server;
+  process.env.AURRAL_DATA_DIR = dataDir;
+  try {
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    global.fetch = async () =>
+      new Response(png, { headers: { "content-type": "image/png" } });
+
+    const { handleImageProxyRequest, handleLegacyImageProxyRequest } = await import(
+      `../backend/services/imageProxyService.js?legacy-test=${Date.now()}`
+    );
+    const app = express();
+    app.get("/api/image-proxy", handleLegacyImageProxyRequest);
+    app.get("/api/image-proxy/:cacheKey", handleImageProxyRequest);
+    server = await new Promise((resolve) => {
+      const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
+    });
+
+    const response = await originalFetch(
+      `http://127.0.0.1:${server.address().port}/api/image-proxy?src=${encodeURIComponent("https://images.example/legacy.png")}`,
+      { redirect: "manual" },
+    );
+    assert.equal(response.status, 302);
+    assert.match(
+      response.headers.get("location") || "",
+      /^\/api\/image-proxy\/[a-f0-9]{64}\.webp$/,
+    );
+  } finally {
+    global.fetch = originalFetch;
+    if (server) await new Promise((resolve) => server.close(resolve));
+    if (previousDataDir === undefined) delete process.env.AURRAL_DATA_DIR;
+    else process.env.AURRAL_DATA_DIR = previousDataDir;
+    await fs.rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("image proxy cache prunes oldest entries over the size cap", async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-image-cap-"));
   const previousDataDir = process.env.AURRAL_DATA_DIR;

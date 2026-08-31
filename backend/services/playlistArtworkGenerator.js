@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { dbOps } from "../db/helpers/index.js";
 import { buildPlaylistArtworkWebpBuffer } from "./playlistArtwork.js";
+import sharp from "./sharpConfig.js";
 import {
   fetchImageBuffer,
   renderStylizedPhotoArtwork,
@@ -49,7 +50,16 @@ export async function buildGeneratedPlaylistArtworkBuffer({
   }
 
   const sourceImageUrl = await resolvePlaylistSourceImageUrl();
-  const sourceBuffer = await fetchImageBuffer(sourceImageUrl);
+  let sourceBuffer;
+  try {
+    sourceBuffer = await fetchImageBuffer(sourceImageUrl);
+  } catch {
+    const fallback = await buildPlaylistArtworkWebpBuffer({
+      playlistName: displayTitle,
+      kind,
+    });
+    return sharp(fallback).jpeg({ quality: 90, mozjpeg: true }).toBuffer();
+  }
   return renderStylizedPhotoArtwork({
     imageBuffer: sourceBuffer,
     title: displayTitle,

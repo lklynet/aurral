@@ -3,6 +3,7 @@ import { normalizeMediaUrl } from "./normalizeMediaUrl.js";
 
 const N = 64;
 const gradientCache = new Map();
+const FALLBACK_GRADIENT = { top: "#343434", bottom: "#171717" };
 
 function avgHex(data, y0, y1) {
   let r = 0,
@@ -41,7 +42,7 @@ export async function extractTwoToneGradientFromImage(src) {
       const bottom = avgHex(data, N >> 1, N);
       return top || bottom ? { top: top || bottom, bottom: bottom || top } : null;
     })
-    .catch(() => null);
+    .catch(() => FALLBACK_GRADIENT);
   gradientCache.set(src, request);
   const result = await request;
   if (!result) gradientCache.delete(src);

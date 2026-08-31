@@ -55,6 +55,7 @@ export function ArtistDetailsHero({
               onError={() => {
                 if (!retryImage && heroImage) {
                   setRetryImage(withImageCacheBust(heroImage));
+                  return;
                 } else {
                   setImageFailed(true);
                 }
