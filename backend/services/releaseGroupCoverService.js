@@ -1,7 +1,6 @@
 import { dbOps } from "../db/helpers/index.js";
 import {
-  isImageProxyLocalUrl,
-  resolveImageProxyLocalUrl,
+  buildStableImageProxyUrl,
   warmPublicImageUrl,
 } from "./imageProxyService.js";
 import {
@@ -39,13 +38,10 @@ export { warmPublicImageUrl };
 
 const toPublicCoverUrl = (imageUrl) => {
   if (!imageUrl || imageUrl === "NOT_FOUND") return null;
-  if (isImageProxyLocalUrl(imageUrl)) {
-    return resolveImageProxyLocalUrl(imageUrl) || null;
-  }
-  return null;
+  return buildStableImageProxyUrl(imageUrl);
 };
 
-const getCachedUrl = async (cacheKey) => {
+const getCachedUrl = (cacheKey) => {
   const cached = dbOps.getImage(cacheKey);
   if (
     cached?.imageUrl &&
@@ -56,17 +52,7 @@ const getCachedUrl = async (cacheKey) => {
     return undefined;
   }
   if (cached?.imageUrl && cached.imageUrl !== "NOT_FOUND") {
-    if (isImageProxyLocalUrl(cached.imageUrl) && !resolveImageProxyLocalUrl(cached.imageUrl)) {
-      dbOps.deleteImage(cacheKey);
-      return undefined;
-    }
-    const warmed = await warmPublicImageUrl(cached.imageUrl);
-    if (warmed) {
-      if (warmed !== cached.imageUrl) dbOps.setImage(cacheKey, warmed);
-      return warmed;
-    }
-    dbOps.deleteImage(cacheKey);
-    return undefined;
+    return toPublicCoverUrl(cached.imageUrl) || cached.imageUrl;
   }
   if (cached?.imageUrl === "NOT_FOUND") {
     return null;
@@ -79,7 +65,7 @@ const persistCover = (cacheKey, proxiedUrl) => {
 };
 
 const acceptCoverUrl = async (cacheKey, imageUrl) => {
-  const proxiedUrl = await warmPublicImageUrl(imageUrl);
+  const proxiedUrl = toPublicCoverUrl(imageUrl);
   if (!proxiedUrl) return null;
   persistCover(cacheKey, proxiedUrl);
   return {
@@ -124,7 +110,6 @@ const fetchDeezerAlbumCover = async (cacheKey, { artistName = "", albumTitle = "
 export const fetchDeezerArtistImageUrl = async ({
   artistName = "",
   deezerArtistId = null,
-  imageProfile = "card",
 } = {}) => {
   try {
     const artist = deezerArtistId
@@ -133,7 +118,7 @@ export const fetchDeezerArtistImageUrl = async ({
         ? await getDeezerArtist(artistName)
         : null;
     if (!artist?.imageUrl) return null;
-    return warmPublicImageUrl(artist.imageUrl, imageProfile);
+    return toPublicCoverUrl(artist.imageUrl);
   } catch {
     return null;
   }
@@ -141,10 +126,10 @@ export const fetchDeezerArtistImageUrl = async ({
 
 export const fetchReleaseGroupCoverUrl = async (
   releaseGroupMbid,
-  { artistName = "", albumTitle = "" } = {},
+  { artistName = "", albumTitle = "", bypassCache = false } = {},
 ) => {
   const cacheKey = `${RG_CACHE_PREFIX}${releaseGroupMbid}`;
-  const cached = await getCachedUrl(cacheKey);
+  const cached = bypassCache ? undefined : getCachedUrl(cacheKey);
   if (cached !== undefined) {
     return {
       imageUrl: cached,

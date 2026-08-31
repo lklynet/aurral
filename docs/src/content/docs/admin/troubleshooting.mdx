@@ -121,9 +121,15 @@ See [Plex integration](/integrations/plex/).
 
 Official images preload jemalloc. This lets sharp return free native memory after it optimizes cover art.
 
-Aurral fetches covers on demand without a background prefetch. It caches each cover as a card-size WebP image (512px).
+Aurral returns provider image links to the web UI, so web artwork is fetched and cached by the browser. Native library clients that require Aurral to serve artwork still fetch covers on demand and cache them as 512px WebP images.
 
 The image-proxy disk cache has a 256MB limit and uses least-recently-used removal. Restart Aurral if you need a clean memory baseline.
+
+Aurral stores image links in SQLite separately from the native-library image bytes. When the byte cache evicts an image, Aurral can fetch it again without another metadata lookup.
+
+After upgrading to link-first artwork, Aurral removes obsolete web-image bytes once and keeps native-library bytes. It retains only the small legacy metadata needed to translate older local image links.
+
+The **Clear artwork cache** action removes those stored links and native-library image files. Discovery recommendations are kept; artwork is rebuilt on demand.
 
 ## The container exits with code 137
 

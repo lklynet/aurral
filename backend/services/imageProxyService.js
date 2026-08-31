@@ -10,17 +10,15 @@ import { resolveAurralDataDir } from "../config/data-dir.js";
 const IMAGE_PROXY_ROUTE = "/api/image-proxy";
 const DATA_DIR = resolveAurralDataDir();
 const IMAGE_PROXY_DIR = path.join(DATA_DIR, "image-proxy");
+const IMAGE_CACHE_MIGRATION_MARKER = path.join(DATA_DIR, ".image-cache-links-v1");
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 25000;
 const MAX_REDIRECTS = 5;
 const MAX_SOURCE_IMAGE_BYTES = 25 * 1024 * 1024;
 const MAX_SOURCE_IMAGE_PIXELS = 40_000_000;
 const IMAGE_PROFILES = {
-  card: { maxPx: 512, maxBytes: 150 * 1024, quality: 70 },
-  artist: { maxPx: 2048, maxBytes: 2 * 1024 * 1024, quality: 82 },
   library: { maxPx: 512, maxBytes: 150 * 1024, quality: 70 },
 };
-const isPersistentProfile = (profile) => profile === "library";
 // ponytail: FIFO by mtime, touch on serve for LRU; raise/env only if disk pressure complains
 const IMAGE_PROXY_MAX_BYTES = (() => {
   const parsed = Number(process.env.AURRAL_IMAGE_PROXY_MAX_BYTES);
@@ -136,6 +134,7 @@ const initializeCacheIndex = () => {
   indexBuildPromise = (async () => {
     try {
       await ensureCacheDir();
+      await migrateObsoleteImageCache();
       const files = (await fs.promises.readdir(IMAGE_PROXY_DIR)).filter((file) =>
         /^[a-f0-9]{64}\.json$/i.test(file),
       );
@@ -182,6 +181,7 @@ const initializeCacheIndex = () => {
 };
 
 export const clearImageProxyCache = async () => {
+  await migrateObsoleteImageCache();
   if (indexBuildPromise) await indexBuildPromise;
   await Promise.allSettled([...inflightRequests.values()]);
   await fs.promises.rm(IMAGE_PROXY_DIR, { recursive: true, force: true });
@@ -197,10 +197,11 @@ export const clearImageProxyCache = async () => {
 export const getImageProxyCacheSizeBytes = async () => {
   let total = 0;
   try {
+    await migrateObsoleteImageCache();
     await ensureCacheDir();
     const dir = await fs.promises.opendir(IMAGE_PROXY_DIR);
     for await (const entry of dir) {
-      if (entry.isFile()) {
+      if (entry.isFile() && !entry.name.endsWith(".json")) {
         total += (await fs.promises.stat(path.join(IMAGE_PROXY_DIR, entry.name))).size;
       }
     }
@@ -208,7 +209,7 @@ export const getImageProxyCacheSizeBytes = async () => {
   return total;
 };
 
-const removeCacheEntryFromDisk = async (cacheKey, extension, sourceUrl, profile = "card") => {
+const removeCacheEntryFromDisk = async (cacheKey, extension, sourceUrl, profile = "library") => {
   const normalizedKey = String(cacheKey || "").toLowerCase();
   if (!normalizedKey) return;
   const { metaPath, baseImagePath } = getCachePaths(normalizedKey);
@@ -263,7 +264,7 @@ const pruneImageProxyCacheToLimit = async () => {
     return;
   }
 
-  const evictableEntries = entries.filter((entry) => !isPersistentProfile(entry.profile));
+  const evictableEntries = entries;
   let total = evictableEntries.reduce((sum, entry) => sum + entry.bytes, 0);
   if (total <= IMAGE_PROXY_MAX_BYTES) return;
 
@@ -309,16 +310,13 @@ export const isPrivateHostname = (hostname) => {
 
 const hashValue = (value) => crypto.createHash("sha256").update(String(value)).digest("hex");
 
-const normalizeImageProfile = (value) =>
-  typeof value === "string" && Object.hasOwn(IMAGE_PROFILES, value) ? value : "card";
+const normalizeImageProfile = () => "library";
 
-const buildSourceMapKey = (sourceUrl, profile = "card") =>
+const buildSourceMapKey = (sourceUrl, profile = "library") =>
   `${normalizeImageProfile(profile)}:${sourceUrl}`;
 
-const buildImageCacheKey = (sourceUrl, profile = "card") => {
-  const normalizedProfile = normalizeImageProfile(profile);
-  return hashValue(normalizedProfile === "card" ? sourceUrl : `${normalizedProfile}:${sourceUrl}`);
-};
+const buildImageCacheKey = (sourceUrl, profile = "library") =>
+  hashValue(`${normalizeImageProfile(profile)}:${sourceUrl}`);
 
 const normalizeKnownImageUrl = (value) =>
   String(value || "")
@@ -349,6 +347,41 @@ const removeStaleCachedFiles = (cacheKey, keepExtension) =>
         fs.promises.unlink(path.join(IMAGE_PROXY_DIR, `${cacheKey}.${extension}`)),
       ),
   );
+
+let obsoleteImageCacheMigrationComplete = false;
+
+const migrateObsoleteImageCache = () => {
+  if (obsoleteImageCacheMigrationComplete) return;
+  if (fs.existsSync(IMAGE_CACHE_MIGRATION_MARKER)) {
+    obsoleteImageCacheMigrationComplete = true;
+    return;
+  }
+
+  try {
+    fs.mkdirSync(IMAGE_PROXY_DIR, { recursive: true });
+    const files = fs.readdirSync(IMAGE_PROXY_DIR);
+    for (const file of files.filter((entry) => /^[a-f0-9]{64}\.json$/i.test(entry))) {
+      const cacheKey = file.slice(0, 64).toLowerCase();
+      const metaPath = path.join(IMAGE_PROXY_DIR, file);
+      const meta = _readCacheMetadata(metaPath);
+      if (!meta) {
+        try {
+          fs.unlinkSync(metaPath);
+        } catch {}
+      }
+      if (meta?.profile === "library") continue;
+      for (const extension of [...new Set([...Object.values(MIME_EXTENSION_MAP), "img"])]) {
+        try {
+          fs.unlinkSync(path.join(IMAGE_PROXY_DIR, `${cacheKey}.${extension}`));
+        } catch {}
+      }
+    }
+    fs.writeFileSync(IMAGE_CACHE_MIGRATION_MARKER, "1\n", { flag: "wx" });
+    obsoleteImageCacheMigrationComplete = true;
+  } catch (error) {
+    if (error?.code === "EEXIST") obsoleteImageCacheMigrationComplete = true;
+  }
+};
 
 const buildLocalImageUrl = (cacheKey, extension) => `${IMAGE_PROXY_ROUTE}/${cacheKey}.${extension}`;
 
@@ -427,7 +460,7 @@ const getCachedEntryFromKey = (cacheKey) => {
   };
 };
 
-const getCachedEntry = (sourceUrl, imageProfile = "card") => {
+const getCachedEntry = (sourceUrl, imageProfile = "library") => {
   const normalizedSourceUrl = normalizeKnownImageUrl(sourceUrl);
   if (!normalizedSourceUrl) return null;
   const profile = normalizeImageProfile(imageProfile);
@@ -443,7 +476,7 @@ const writeCacheEntry = async (
   buffer,
   contentType,
   sourceUrl,
-  imageProfile = "card",
+  imageProfile = "library",
 ) => {
   await ensureCacheDir();
   const profile = normalizeImageProfile(imageProfile);
@@ -510,7 +543,7 @@ const inspectImageBuffer = async (buffer, contentType) => {
   return metadata;
 };
 
-const optimizeImageBuffer = async (buffer, contentType, imageProfile = "card") => {
+const optimizeImageBuffer = async (buffer, contentType, imageProfile = "library") => {
   if (!OPTIMIZABLE_CONTENT_TYPES.has(contentType)) {
     return { buffer, contentType };
   }
@@ -650,7 +683,7 @@ const fetchRemoteImage = async (sourceUrl) => {
   throw new Error("Too many upstream image redirects");
 };
 
-const fetchAndCacheImage = async (sourceUrl, imageProfile = "card") => {
+const fetchAndCacheImage = async (sourceUrl, imageProfile = "library") => {
   const normalizedSourceUrl = normalizeKnownImageUrl(sourceUrl);
   if (!normalizedSourceUrl) {
     throw new Error("Missing source image URL");
@@ -669,7 +702,7 @@ const fetchAndCacheImage = async (sourceUrl, imageProfile = "card") => {
   );
 };
 
-export const warmImageProxy = async (sourceUrl, imageProfile = "card") => {
+export const warmImageProxy = async (sourceUrl, imageProfile = "library") => {
   const profile = normalizeImageProfile(imageProfile);
   const cacheKeyFromLocalUrl = getCacheKeyFromLocalUrl(sourceUrl);
   if (cacheKeyFromLocalUrl) {
@@ -718,7 +751,7 @@ export const warmImageProxy = async (sourceUrl, imageProfile = "card") => {
   return request;
 };
 
-export const warmPublicImageUrl = async (sourceUrl, imageProfile = "card") => {
+export const warmPublicImageUrl = async (sourceUrl, imageProfile = "library") => {
   const normalized = String(sourceUrl || "").trim();
   if (!normalized || normalized === "NOT_FOUND") return null;
   if (isImageProxyLocalUrl(normalized)) {
@@ -743,39 +776,45 @@ export const warmPublicImageUrl = async (sourceUrl, imageProfile = "card") => {
 };
 
 export const buildImageProxyUrl = (sourceUrl) => {
+  return buildStableImageProxyUrl(sourceUrl);
+};
+
+export const buildStableImageProxyUrl = (sourceUrl) => {
   const normalized = normalizeKnownImageUrl(sourceUrl);
   if (!normalized) return null;
-  if (
-    normalized.startsWith("/") ||
-    normalized.startsWith("data:") ||
-    normalized.startsWith("blob:")
-  ) {
-    const localKey = getCacheKeyFromLocalUrl(normalized);
-    if (localKey) {
-      const entry = readCacheEntryFromDisk(localKey);
-      if (entry?.localUrl) return entry.localUrl;
-      const meta = _readCacheMetadata(path.join(IMAGE_PROXY_DIR, `${localKey}.json`));
-      const sourceFromMeta = normalizeKnownImageUrl(meta?.sourceUrl) || meta?.sourceUrl || null;
-      if (sourceFromMeta) {
-        return `${IMAGE_PROXY_ROUTE}?src=${encodeURIComponent(sourceFromMeta)}`;
-      }
-      return null;
+
+  const localKey = getCacheKeyFromLocalUrl(normalized);
+  if (localKey) {
+    const meta = _readCacheMetadata(path.join(IMAGE_PROXY_DIR, `${localKey}.json`));
+    const sourceFromMeta = normalizeKnownImageUrl(meta?.sourceUrl) || meta?.sourceUrl || null;
+    return sourceFromMeta ? buildStableImageProxyUrl(sourceFromMeta) : normalized;
+  }
+
+  const srcMatch = normalized.match(/\/api\/image-proxy\?src=([^&]+)/i);
+  let remote = normalized;
+  if (srcMatch) {
+    try {
+      remote = decodeURIComponent(srcMatch[1]);
+    } catch {
+      return normalized;
     }
+  }
+  if (
+    remote.startsWith("/") ||
+    remote.startsWith("data:") ||
+    remote.startsWith("blob:")
+  ) {
     return normalized;
   }
 
   try {
-    const parsed = new URL(normalized);
-    if (!["http:", "https:"].includes(parsed.protocol)) {
-      return normalized;
-    }
+    const parsed = new URL(remote);
+    if (!["http:", "https:"].includes(parsed.protocol)) return normalized;
   } catch {
     return normalized;
   }
 
-  const cached = getCachedEntry(normalized);
-  if (cached?.localUrl && fs.existsSync(cached.imagePath)) return cached.localUrl;
-  return `${IMAGE_PROXY_ROUTE}?src=${encodeURIComponent(normalized)}`;
+  return remote;
 };
 
 export const handleImageProxyRequest = async (req, res) => {
@@ -820,14 +859,11 @@ export const handleLegacyImageProxyRequest = async (req, res) => {
   if (!rawSourceUrl) {
     return res.status(404).json({ error: "Image not found" });
   }
-
-  try {
-    const cached = await warmImageProxy(rawSourceUrl);
-    if (!cached?.localUrl) {
-      return res.status(404).json({ error: "Image not found" });
-    }
-    return res.redirect(302, cached.localUrl);
-  } catch {
+  const directUrl = buildStableImageProxyUrl(rawSourceUrl);
+  if (!directUrl || directUrl.startsWith("/") || directUrl.startsWith("data:") || directUrl.startsWith("blob:")) {
     return res.status(404).json({ error: "Image not found" });
   }
+  return res.redirect(302, directUrl);
 };
+
+migrateObsoleteImageCache();

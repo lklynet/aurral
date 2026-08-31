@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getArtistHeroImage } from "../utils";
+import { withImageCacheBust } from "../../../utils/normalizeMediaUrl";
 
 const normalizeTagName = (value) => String(value || "").trim();
 
@@ -29,9 +30,16 @@ export function ArtistDetailsHero({
 }) {
   const heroImage = getArtistHeroImage(coverImages);
   const [imageFailed, setImageFailed] = useState(false);
+  const [retryImage, setRetryImage] = useState("");
+  const displayedImage = retryImage || heroImage;
   const tags = useMemo(() => buildTags(artist), [artist]);
   const visibleTags = tags.slice(0, 8);
-  const showImage = heroImage && !imageFailed;
+  const showImage = displayedImage && !imageFailed;
+
+  useEffect(() => {
+    setImageFailed(false);
+    setRetryImage("");
+  }, [heroImage]);
 
   return (
     <section className="artist-hero">
@@ -39,13 +47,17 @@ export function ArtistDetailsHero({
         {showImage ? (
           <>
             <img
-              src={heroImage}
+              src={displayedImage}
               alt=""
               className="artist-hero__image"
               loading="eager"
               decoding="async"
               onError={() => {
-                setImageFailed(true);
+                if (!retryImage && heroImage) {
+                  setRetryImage(withImageCacheBust(heroImage));
+                } else {
+                  setImageFailed(true);
+                }
                 onCoverError?.();
               }}
             />

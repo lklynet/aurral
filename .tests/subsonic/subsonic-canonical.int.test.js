@@ -786,10 +786,11 @@ test("keeps canonical protocol IDs and flow entries after restart", async () => 
 
 test("returns the canonical artwork redirect contract", async () => {
   const artist = responseJson(await request("getArtists")).artists.index[0].artist[0];
-  dbOps.setImage("11111111-1111-4111-8111-111111111111", "https://example.com/cover.jpg");
+  const source = "https://example.com/cover.jpg";
+  dbOps.setImage("11111111-1111-4111-8111-111111111111", source);
   const result = await request("getCoverArt", { id: artist.id }, { redirect: "manual" });
   assert.equal(result.response.status, 302);
-  assert.match(result.response.headers.get("location"), /image-proxy/);
+  assert.equal(result.response.headers.get("location"), source);
   assert.equal(result.response.headers.get("cache-control"), "public, max-age=31536000, immutable");
 });
 

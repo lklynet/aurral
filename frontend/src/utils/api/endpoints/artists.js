@@ -191,6 +191,9 @@ export const getReleaseGroupCover = async (
     if (typeof albumTitle === "string" && albumTitle.trim()) {
       params.albumTitle = albumTitle.trim();
     }
+    if (bypassCache) {
+      params.refresh = true;
+    }
     const data = await getData(`/artists/release-group/${mbid}/cover`, {
       params,
     });

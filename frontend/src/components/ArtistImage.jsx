@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getArtistCover } from "../utils/api/endpoints/artists.js";
-import { normalizeMediaUrl } from "../utils/normalizeMediaUrl";
+import { normalizeMediaUrl, withImageCacheBust } from "../utils/normalizeMediaUrl";
 import { useArtistPreviewPlayback } from "../hooks/useArtistPreviewPlayback";
 
 import { Music, Play } from "lucide-react";
@@ -108,7 +108,11 @@ const ArtistImage = ({
           const front = data.images.find((img) => img.front) || data.images[0];
           const url = front.image;
           if (url) {
-            setCurrentSrc(normalizeMediaUrl(url));
+            const retryUrl =
+              refresh && failedSourceRef.current === normalizeMediaUrl(url)
+                ? withImageCacheBust(url)
+                : url;
+            setCurrentSrc(normalizeMediaUrl(retryUrl));
             setHasError(false);
           } else {
             setHasError(true);

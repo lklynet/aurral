@@ -139,6 +139,7 @@ export function registerReleaseGroup(router) {
         typeof req.query.albumTitle === "string" && req.query.albumTitle.trim()
           ? req.query.albumTitle.trim()
           : "";
+      const bypassCache = req.query.refresh === "true";
 
       if (!UUID_REGEX.test(mbid)) {
         return res
@@ -148,6 +149,7 @@ export function registerReleaseGroup(router) {
       const cover = await fetchReleaseGroupCoverUrl(mbid, {
         artistName,
         albumTitle: albumTitleFromQuery,
+        bypassCache,
       });
       if (cover?.imageUrl) {
         res.set("Cache-Control", "public, max-age=31536000, immutable");

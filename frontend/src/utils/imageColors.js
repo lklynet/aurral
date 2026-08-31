@@ -4,13 +4,6 @@ import { normalizeMediaUrl } from "./normalizeMediaUrl.js";
 const N = 64;
 const gradientCache = new Map();
 
-function proxyImageUrl(src) {
-  const u = normalizeMediaUrl(src);
-  if (!u || /^(data:|blob:|\/api\/image-proxy)/.test(u)) return u;
-  if (u.startsWith("/") || u.startsWith(location.origin)) return u;
-  return `/api/image-proxy?src=${encodeURIComponent(u)}`;
-}
-
 function avgHex(data, y0, y1) {
   let r = 0,
     g = 0,
@@ -36,7 +29,7 @@ export async function extractTwoToneGradientFromImage(src) {
     img.crossOrigin = "anonymous";
     img.onload = () => ok(img);
     img.onerror = err;
-    img.src = proxyImageUrl(src);
+    img.src = normalizeMediaUrl(src);
   })
     .then((img) => {
       const c = Object.assign(document.createElement("canvas"), { width: N, height: N });
