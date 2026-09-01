@@ -15,8 +15,12 @@ const [isolatedState, { db }, { dbOps, userOps }] = await setupIsolatedBackend(
 );
 
 const store = await import("../../backend/services/libraryManagementStore.js");
+const libraryStore = await import("../../backend/services/libraryMediaStore.js");
 const { buildCanonicalLibraryReadModel } = await import(
   "../../backend/services/canonicalLibraryReadAdapter.js"
+);
+const { getCanonicalLibraryPage } = await import(
+  "../../backend/services/libraryQueryService.js"
 );
 const { computeLibraryRootOverlaps } = await import(
   "../../backend/services/downloadFolderConfig.js"
@@ -138,6 +142,46 @@ test("read model exposes managedBy and monitorMode without inventing values", ()
   assert.equal(model.albums.find((a) => a.id === 21).managedBy, null);
 });
 
+test("canonical page cache reflects ownership changes without manual invalidation", () => {
+  const artist = libraryStore.upsertLibraryArtist({
+    identityKey: "mbid:cache-artist",
+    mbid: "cache-artist",
+    name: "Cache Artist",
+  });
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: "rg:cache-album",
+    artistId: artist.id,
+    title: "Cache Album",
+    albumArtist: artist.name,
+  });
+  const track = libraryStore.upsertLibraryTrack({
+    identityKey: "rec:cache-track",
+    mbid: "cache-track",
+    title: "Cache Track",
+    artistName: artist.name,
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  libraryStore.upsertLibraryMediaFile({
+    trackId: track.id,
+    source: "aurral",
+    path: "/library/Cache Artist/Cache Album/01 Cache Track.flac",
+    format: "flac",
+    available: true,
+  });
+
+  store.setLibraryManagement({ entityKind: "artist", entityId: artist.id, managedBy: "aurral" });
+  const before = getCanonicalLibraryPage({ kind: "artists", pageSize: 100 });
+  assert.equal(before.items.find((entry) => String(entry.id) === String(artist.id))?.managedBy, "aurral");
+
+  store.setLibraryManagement({ entityKind: "artist", entityId: artist.id, managedBy: "lidarr" });
+  const updated = getCanonicalLibraryPage({ kind: "artists", pageSize: 100 });
+  assert.equal(updated.items.find((entry) => String(entry.id) === String(artist.id))?.managedBy, "lidarr");
+
+  store.clearLibraryManagement("artist", artist.id);
+  const cleared = getCanonicalLibraryPage({ kind: "artists", pageSize: 100 });
+  assert.equal(cleared.items.find((entry) => String(entry.id) === String(artist.id))?.managedBy, null);
+});
+
 test("root overlap warnings cover equal and nested roots without rejecting", () => {
   assert.deepEqual(
     computeLibraryRootOverlaps({ aurralRoot: "/data/media", lidarrRoots: ["/data/other"] }),
@@ -172,6 +216,33 @@ test("root overlap warnings cover equal and nested roots without rejecting", () 
     lidarrRoots: ["/data/media", "/data/media"],
   });
   assert.equal(deduped.length, 1);
+
+  const filesystemRoot = computeLibraryRootOverlaps({
+    aurralRoot: "/",
+    lidarrRoots: ["/music"],
+  });
+  assert.equal(filesystemRoot.length, 1);
+  assert.equal(filesystemRoot[0].type, "nested-b-in-a");
+
+  const driveRoot = computeLibraryRootOverlaps({
+    aurralRoot: "C:/",
+    lidarrRoots: ["C:/Music"],
+  });
+  assert.equal(driveRoot.length, 1);
+  assert.equal(driveRoot[0].type, "nested-b-in-a");
+
+  const driveRootEqual = computeLibraryRootOverlaps({
+    aurralRoot: "C:/",
+    lidarrRoots: ["C:/"],
+  });
+  assert.equal(driveRootEqual[0].type, "equal");
+
+  const backslashRoot = computeLibraryRootOverlaps({
+    aurralRoot: "C:\\music\\aurral",
+    lidarrRoots: ["C:/music"],
+  });
+  assert.equal(backslashRoot.length, 1);
+  assert.equal(backslashRoot[0].type, "nested-a-in-b");
 });
 
 test("per-user library owner preference normalizes and defaults by connectivity", async () => {

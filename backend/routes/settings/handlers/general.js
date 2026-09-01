@@ -33,7 +33,10 @@ function mergeIntegrations(existing, input, keys) {
 
 function resolveLibraryRootWarnings(settings) {
   const aurralRoot = settings?.downloadFolderPath || resolvePlaylistRoot();
-  const lidarrRoots = [settings?.integrations?.lidarr?.rootFolderPath];
+  const lidarrRoots =
+    settings?.integrations?.lidarr?.enabled === false
+      ? []
+      : [settings?.integrations?.lidarr?.rootFolderPath];
   return computeLibraryRootOverlaps({ aurralRoot, lidarrRoots });
 }
 

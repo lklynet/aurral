@@ -21,6 +21,7 @@ const selectAllStmt = db.prepare(
 );
 
 let cache = null;
+let changeListeners = [];
 
 function getCache() {
   if (!cache) {
@@ -36,6 +37,20 @@ function getCache() {
     }
   }
   return cache;
+}
+
+export function onLibraryManagementChange(listener) {
+  if (typeof listener === "function") {
+    changeListeners.push(listener);
+  }
+}
+
+function notifyChanged() {
+  for (const listener of changeListeners) {
+    try {
+      listener();
+    } catch {}
+  }
 }
 
 export function invalidateLibraryManagementCache() {
@@ -90,6 +105,7 @@ export function setLibraryManagement({
   const now = Date.now();
   upsertStmt.run(kind, id, owner, normalizedMonitorMode, now, now);
   invalidateLibraryManagementCache();
+  notifyChanged();
   return getLibraryManagementEntry(kind, id);
 }
 
@@ -101,6 +117,7 @@ export function clearLibraryManagement(entityKind, entityId) {
   const result = clearStmt.run(kind, id);
   if (result.changes > 0) {
     invalidateLibraryManagementCache();
+    notifyChanged();
   }
   return result.changes > 0;
 }

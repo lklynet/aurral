@@ -1,5 +1,6 @@
 const SCHEMA_VERSION_KEY = "schemaVersion";
 const V2_SCHEMA_VERSION = 2;
+const V3_SCHEMA_VERSION = 3;
 const V4_SCHEMA_VERSION = 4;
 export const TARGET_SCHEMA_VERSION = V4_SCHEMA_VERSION;
 
@@ -11,7 +12,7 @@ export function getSchemaVersion(db) {
 }
 
 export function initializeSchemaOnStartup(db, dbHelpers) {
-  return applyV3Migration(db, dbHelpers);
+  return applyV4Migration(db, dbHelpers);
 }
 
 function tableExists(db, name) {
@@ -581,7 +582,7 @@ export function applyV2Migration(db, dbHelpers) {
 }
 
 export function applyV3Migration(db, dbHelpers) {
-  return applySchemaMigration(db, dbHelpers, TARGET_SCHEMA_VERSION);
+  return applySchemaMigration(db, dbHelpers, V3_SCHEMA_VERSION);
 }
 
 export function applyV4Migration(db, dbHelpers) {
