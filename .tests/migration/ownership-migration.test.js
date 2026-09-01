@@ -127,6 +127,37 @@ test("ownership migration is idempotent and preserves explicit manager rows", as
   db.close();
 });
 
+test("applyV3Migration keeps its version 3 contract without ownership state", async () => {
+  const { dbPath } = createPreV4Db();
+  const { applyV3Migration } = await import(
+    "../../backend/config/schema-migration-v2.js",
+  );
+  const db = new Database(dbPath);
+  db.prepare("UPDATE settings SET value = '2' WHERE key = 'schemaVersion'").run();
+
+  const result = applyV3Migration(db, dbHelpers);
+  assert.equal(result.migrated, true);
+  assert.equal(result.schemaVersion, 3);
+
+  const table = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'library_management'")
+    .get();
+  assert.equal(table, undefined);
+  const jobColumns = db.prepare("PRAGMA table_info(playlist_download_jobs)").all().map((c) => c.name);
+  assert.ok(!jobColumns.includes("managed_by"));
+
+  const { initializeSchemaOnStartup } = await import(
+    "../../backend/config/schema-migration-v2.js",
+  );
+  const upgraded = initializeSchemaOnStartup(db, dbHelpers);
+  assert.equal(upgraded.migrated, true);
+  assert.equal(upgraded.schemaVersion, 4);
+  const jobColumnsAfter = db.prepare("PRAGMA table_info(playlist_download_jobs)").all().map((c) => c.name);
+  assert.ok(jobColumnsAfter.includes("managed_by"));
+
+  db.close();
+});
+
 test("ownership migration runs on fresh databases without lidarr records", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aurral-v4-fresh-"));
   const dbPath = path.join(tempDir, "aurral.db");

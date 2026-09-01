@@ -327,10 +327,10 @@ export function listBrowseDirectory(requestedPath, _roots = getFilesystemBrowseR
 }
 
 function normalizeRootForCompare(value) {
-  let normalized = String(value || "").trim().replace(/\\/g, "/");
+  let normalized = String(value || "").trim().split("\\").join("/");
   if (!normalized) return "";
-  if (normalized !== "/" && !/^[A-Za-z]:\/$/.test(normalized)) {
-    normalized = normalized.replace(/\/+$/, "");
+  while (normalized.length > 1 && normalized.endsWith("/")) {
+    normalized = normalized.slice(0, -1);
   }
   return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
@@ -340,8 +340,10 @@ function compareRoots(left, right) {
   const b = normalizeRootForCompare(right);
   if (!a || !b) return "disjoint";
   if (a === b) return "equal";
-  if (b.startsWith(`${a}/`)) return "nested-b-in-a";
-  if (a.startsWith(`${b}/`)) return "nested-a-in-b";
+  const aPrefix = a.endsWith("/") ? a : `${a}/`;
+  const bPrefix = b.endsWith("/") ? b : `${b}/`;
+  if (b.startsWith(aPrefix)) return "nested-b-in-a";
+  if (a.startsWith(bPrefix)) return "nested-a-in-b";
   return "disjoint";
 }
 

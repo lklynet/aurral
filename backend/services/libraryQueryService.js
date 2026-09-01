@@ -7,10 +7,15 @@ import { getLibrarySearchMatch } from "./librarySearchIndex.js";
 import {
   getManagedByMap,
   invalidateLibraryManagementCache,
+  onLibraryManagementChange,
 } from "./libraryManagementStore.js";
 
 const SOURCES = new Set(["aurral", "lidarr"]);
 const libraryCache = new Map();
+
+onLibraryManagementChange(() => {
+  libraryCache.clear();
+});
 const PAGE_KINDS = new Set(["artists", "albums", "tracks", "genres"]);
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 100;
@@ -1873,6 +1878,8 @@ function getAlbumTrackSummary(albumId, sourceFilter) {
   ).get(...parameters);
   if (!row) return { artist: null, album: null };
   const sources = parseSources(row.sources);
+  const artistManagement = getManagedByMap("artist").get(row.artist_id) || null;
+  const albumManagement = getManagedByMap("album").get(row.album_id) || null;
   return {
     artist: {
       id: row.artist_id,
@@ -1882,6 +1889,8 @@ function getAlbumTrackSummary(albumId, sourceFilter) {
       sortName: row.artist_sort_name,
       metadata: parseJson(row.artist_metadata_json),
       albumIds: [row.album_id],
+      managedBy: artistManagement?.managedBy ?? null,
+      monitorMode: artistManagement?.monitorMode ?? null,
       sources,
       available: Boolean(row.available),
     },
@@ -1896,6 +1905,8 @@ function getAlbumTrackSummary(albumId, sourceFilter) {
       releaseDate: row.album_release_date,
       metadata: parseJson(row.album_metadata_json),
       trackIds: [],
+      managedBy: albumManagement?.managedBy ?? null,
+      monitorMode: albumManagement?.monitorMode ?? null,
       sources,
       available: Boolean(row.available),
     },

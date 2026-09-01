@@ -87,3 +87,93 @@ test("schedules the library scan after playlist initialization settles", async (
     playlistManager.scheduleScanLibrary = originalScheduleScanLibrary;
   }
 });
+
+function captureSettingsRoutes() {
+  const routes = {};
+  registerGeneral({
+    get(path, ...handlers) {
+      routes[`GET ${path}`] = handlers.at(-1);
+    },
+    post(path, ...handlers) {
+      routes[`POST ${path}`] = handlers.at(-1);
+    },
+  });
+  const makeResponse = () => {
+    let state = { statusCode: 200, body: null };
+    return {
+      get statusCode() {
+        return state.statusCode;
+      },
+      get body() {
+        return state.body;
+      },
+      status(code) {
+        state.statusCode = code;
+        return this;
+      },
+      json(body) {
+        state.body = body;
+        return this;
+      },
+    };
+  };
+  const postSettings = async (body) => {
+    const response = makeResponse();
+    await routes["POST /"]({ body, user: { id: 1 } }, response);
+    return response;
+  };
+  const getSettings = async () => {
+    const response = makeResponse();
+    await routes["GET /"]({}, response);
+    return response;
+  };
+  return { postSettings, getSettings };
+}
+
+test("saves overlapping roots with an equal overlap warning", async () => {
+  const { postSettings } = captureSettingsRoutes();
+  dbOps.updateSettings({
+    downloadFolderPath: "/data/media/aurral",
+    integrations: {
+      lidarr: { url: "http://127.0.0.1:18686", apiKey: "key", rootFolderPath: "/data/media" },
+    },
+  });
+
+  const response = await postSettings({
+    integrations: {
+      lidarr: { rootFolderPath: "/data/media/aurral" },
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  const warnings = response.body.rootWarnings;
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0].type, "equal");
+  assert.match(warnings[0].message, /rename, import, or delete/);
+});
+
+test("does not warn about lidarr roots while lidarr is disabled", async () => {
+  const { getSettings, postSettings } = captureSettingsRoutes();
+  dbOps.updateSettings({
+    downloadFolderPath: "/data/media/aurral",
+    integrations: {
+      lidarr: {
+        url: "http://127.0.0.1:18686",
+        apiKey: "key",
+        enabled: false,
+        rootFolderPath: "/data/media/aurral",
+      },
+    },
+  });
+
+  const saved = await postSettings({
+    integrations: {
+      lidarr: { rootFolderPath: "/data/media/aurral" },
+    },
+  });
+  assert.equal(saved.statusCode, 200);
+  assert.deepEqual(saved.body.rootWarnings, []);
+
+  const current = await getSettings();
+  assert.deepEqual(current.body.rootWarnings, []);
+});

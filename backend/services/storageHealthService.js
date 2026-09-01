@@ -432,9 +432,12 @@ async function checkDownloadsSection() {
   const downloadFolder = String(settings.downloadFolderPath || resolvePlaylistRoot() || "").trim();
   const suggested = getSuggestedDownloadFolderPath();
 
+  const lidarrEnabled = settings.integrations?.lidarr?.enabled !== false;
   const rootOverlaps = computeLibraryRootOverlaps({
     aurralRoot: downloadFolder,
-    lidarrRoots: [settings.integrations?.lidarr?.rootFolderPath],
+    lidarrRoots: lidarrEnabled
+      ? [settings.integrations?.lidarr?.rootFolderPath]
+      : [],
   });
   if (rootOverlaps.length > 0) {
     steps.push(
