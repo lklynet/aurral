@@ -47,6 +47,8 @@ function rowToJob(row) {
     artistAliases: parseStringListJson(row.artist_aliases),
     playlistId: row.playlist_id || row.playlist_type,
     playlistType: row.playlist_type || row.playlist_id,
+    managedBy: row.managed_by === "lidarr" ? "lidarr" : "aurral",
+    requestGroupId: row.request_group_id || null,
     status: row.status,
     startedAt: row.started_at,
     completedAt: row.completed_at,
@@ -97,6 +99,8 @@ const insertStmt = db.prepare(`
     artist_aliases,
     playlist_id,
     playlist_type,
+    managed_by,
+    request_group_id,
     status,
     staging_path,
     final_path,
@@ -114,7 +118,7 @@ const insertStmt = db.prepare(`
     quality_upgrade_checked_at,
     upgrade_for_job_id
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const updateStmt = db.prepare(`
@@ -488,6 +492,8 @@ export class WeeklyFlowDownloadTracker {
       stringifyStringListJson(job.artistAliases),
       job.playlistId || job.playlistType,
       job.playlistType || job.playlistId,
+      job.managedBy === "lidarr" ? "lidarr" : "aurral",
+      job.requestGroupId ?? null,
       job.status,
       job.stagingPath ?? null,
       job.finalPath ?? null,
@@ -568,6 +574,10 @@ export class WeeklyFlowDownloadTracker {
       artistAliases: normalizeStringList(track?.artistAliases),
       playlistId: playlistType,
       playlistType,
+      managedBy: track?.managedBy === "lidarr" ? "lidarr" : "aurral",
+      requestGroupId: track?.requestGroupId
+        ? String(track.requestGroupId).trim() || null
+        : null,
       status: "pending",
       startedAt: null,
       completedAt: null,

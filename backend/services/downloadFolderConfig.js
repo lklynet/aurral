@@ -325,3 +325,50 @@ export function listBrowseDirectory(requestedPath, _roots = getFilesystemBrowseR
     entries,
   };
 }
+
+function normalizeRootForCompare(value) {
+  let normalized = String(value || "").trim().replace(/\\/g, "/");
+  if (!normalized) return "";
+  if (normalized !== "/" && !/^[A-Za-z]:\/$/.test(normalized)) {
+    normalized = normalized.replace(/\/+$/, "");
+  }
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+function compareRoots(left, right) {
+  const a = normalizeRootForCompare(left);
+  const b = normalizeRootForCompare(right);
+  if (!a || !b) return "disjoint";
+  if (a === b) return "equal";
+  if (b.startsWith(`${a}/`)) return "nested-b-in-a";
+  if (a.startsWith(`${b}/`)) return "nested-a-in-b";
+  return "disjoint";
+}
+
+export function computeLibraryRootOverlaps({ aurralRoot, lidarrRoots } = {}) {
+  const resolvedAurralRoot = String(aurralRoot || "").trim();
+  if (!resolvedAurralRoot) return [];
+  const candidates = (Array.isArray(lidarrRoots) ? lidarrRoots : [lidarrRoots])
+    .map((root) => String(root || "").trim())
+    .filter(Boolean);
+  const warnings = [];
+  const seen = new Set();
+  for (const lidarrRoot of candidates) {
+    const relation = compareRoots(resolvedAurralRoot, lidarrRoot);
+    if (relation === "disjoint" || seen.has(`${relation}:${lidarrRoot}`)) {
+      continue;
+    }
+    seen.add(`${relation}:${lidarrRoot}`);
+    warnings.push({
+      type: relation,
+      lidarrRoot,
+      message:
+        relation === "equal"
+          ? "The Lidarr root folder is the same as the Aurral download folder. Lidarr can rename, import, or delete files under that path."
+          : relation === "nested-b-in-a"
+            ? "The Lidarr root folder is inside the Aurral download folder. Lidarr can rename, import, or delete files under that path."
+            : "The Aurral download folder is inside the Lidarr root folder. Lidarr can rename, import, or delete files under that path.",
+    });
+  }
+  return warnings;
+}

@@ -20,6 +20,7 @@ import {
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 import { commitImportToPlaylistLibrary } from "./playlistDownloadUtils.js";
 import {
+  computeLibraryRootOverlaps,
   getFilesystemBrowseRoots,
   resolveEnvDownloadFolder,
   getSuggestedDownloadFolderPath,
@@ -431,6 +432,19 @@ async function checkDownloadsSection() {
   const downloadFolder = String(settings.downloadFolderPath || resolvePlaylistRoot() || "").trim();
   const suggested = getSuggestedDownloadFolderPath();
 
+  const rootOverlaps = computeLibraryRootOverlaps({
+    aurralRoot: downloadFolder,
+    lidarrRoots: [settings.integrations?.lidarr?.rootFolderPath],
+  });
+  if (rootOverlaps.length > 0) {
+    steps.push(
+      healthStep("root-overlap", "warn", "Aurral and Lidarr roots are separate libraries", {
+        detail: rootOverlaps.map((warning) => warning.message).join(" "),
+        fix: "Use different folders for the Aurral download root and the Lidarr root so each library stays independently managed.",
+      }),
+    );
+  }
+
   if (!downloadFolder) {
     steps.push(
       healthStep("configured", "fail", "Downloads folder is configured", {
@@ -511,6 +525,16 @@ async function checkDownloadsSection() {
 
 async function checkLidarrSection() {
   lidarrClient.updateConfig();
+  if (lidarrClient.isEnabled() === false) {
+    return {
+      section: buildSection("lidarr", "Lidarr library", [], {
+        skipped: true,
+        skipReason: "Lidarr is disabled.",
+      }),
+      sample: null,
+      rootPaths: [],
+    };
+  }
   if (!lidarrClient.isConfigured()) {
     return {
       section: buildSection("lidarr", "Lidarr library", [], {

@@ -11,18 +11,18 @@ const getUserByUsernameStmt = db.prepare(
   "SELECT * FROM users WHERE username = ?"
 );
 const getAllUsersStmt = db.prepare(
-  "SELECT id, username, role, permissions, lastfm_username, listen_history_provider, listen_history_username, listen_history_url, lidarr_root_folder_path, lidarr_quality_profile_id FROM users ORDER BY username"
+  "SELECT id, username, role, permissions, lastfm_username, listen_history_provider, listen_history_username, listen_history_url, lidarr_root_folder_path, lidarr_quality_profile_id, default_library_owner FROM users ORDER BY username"
 );
 const getUserByIdStmt = db.prepare("SELECT * FROM users WHERE id = ?");
 const getUserAuthByIdStmt = db.prepare(
-  "SELECT id, username, role, permissions FROM users WHERE id = ?"
+  "SELECT id, username, role, permissions, default_library_owner FROM users WHERE id = ?"
 );
 const countUsersStmt = db.prepare("SELECT COUNT(*) AS count FROM users");
 const insertUserStmt = db.prepare(
   "INSERT INTO users (username, password_hash, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id) VALUES (?, ?, ?, ?, ?, ?)"
 );
 const updateUserStmt = db.prepare(
-  "UPDATE users SET username = ?, password_hash = ?, role = ?, permissions = ?, lastfm_username = ?, listen_history_provider = ?, listen_history_username = ?, listen_history_url = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ? WHERE id = ?"
+  "UPDATE users SET username = ?, password_hash = ?, role = ?, permissions = ?, lastfm_username = ?, listen_history_provider = ?, listen_history_username = ?, listen_history_url = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, default_library_owner = ? WHERE id = ?"
 );
 const deleteUserStmt = db.prepare("DELETE FROM users WHERE id = ?");
 const getAllListeningHistoryUsersStmt = db.prepare(
@@ -38,6 +38,12 @@ const DEFAULT_PERMISSIONS = {
   deleteAlbum: false,
   deleteTrack: false,
 };
+
+function normalizeDefaultLibraryOwner(value) {
+  if (value === null || value === "") return null;
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "aurral" || normalized === "lidarr" ? normalized : null;
+}
 
 export const userOps = {
   getDefaultPermissions() {
@@ -62,6 +68,7 @@ export const userOps = {
         row.lidarr_quality_profile_id != null
           ? Number(row.lidarr_quality_profile_id)
           : null,
+      defaultLibraryOwner: normalizeDefaultLibraryOwner(row.default_library_owner),
       ...history,
     };
   },
@@ -82,6 +89,7 @@ export const userOps = {
         row.lidarr_quality_profile_id != null
           ? Number(row.lidarr_quality_profile_id)
           : null,
+      defaultLibraryOwner: normalizeDefaultLibraryOwner(row.default_library_owner),
       ...history,
     };
   },
@@ -95,6 +103,7 @@ export const userOps = {
       permissions: dbHelpers.parseJSON(row.permissions) || {
         ...DEFAULT_PERMISSIONS,
       },
+      defaultLibraryOwner: normalizeDefaultLibraryOwner(row.default_library_owner),
     };
   },
   countUsers() {
@@ -115,6 +124,7 @@ export const userOps = {
         r.lidarr_quality_profile_id != null
           ? Number(r.lidarr_quality_profile_id)
           : null,
+      defaultLibraryOwner: normalizeDefaultLibraryOwner(r.default_library_owner),
     }));
   },
   createUser(username, passwordHash, role = "user", permissions = null) {
@@ -143,6 +153,7 @@ export const userOps = {
         lastfmUsername: null,
         lidarrRootFolderPath: null,
         lidarrQualityProfileId: null,
+        defaultLibraryOwner: null,
       };
     } catch (e) {
       return null;
@@ -209,6 +220,10 @@ export const userOps = {
         : parsedLidarrQualityProfileId === null
           ? null
           : existing.lidarrQualityProfileId;
+    const defaultLibraryOwner =
+      data.defaultLibraryOwner !== undefined
+        ? normalizeDefaultLibraryOwner(data.defaultLibraryOwner)
+        : normalizeDefaultLibraryOwner(existing.defaultLibraryOwner);
     try {
       updateUserStmt.run(
         username.toLowerCase(),
@@ -221,6 +236,7 @@ export const userOps = {
         resolvedUrl,
         lidarrRootFolderPath,
         lidarrQualityProfileId,
+        defaultLibraryOwner,
         parseInt(id, 10)
       );
       return {
@@ -234,6 +250,7 @@ export const userOps = {
         lastfmUsername,
         lidarrRootFolderPath,
         lidarrQualityProfileId,
+        defaultLibraryOwner,
       };
     } catch (e) {
       return null;
