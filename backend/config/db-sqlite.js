@@ -53,6 +53,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS images_cache (
     mbid TEXT PRIMARY KEY,
     image_url TEXT,
+    images_json TEXT,
     cache_age INTEGER,
     created_at TEXT NOT NULL
   );
@@ -399,6 +400,7 @@ db.exec(`
 `);
 
 tryAddColumn("ALTER TABLE library_media_files ADD COLUMN album_id INTEGER");
+tryAddColumn("ALTER TABLE images_cache ADD COLUMN images_json TEXT");
 
 function hasUniqueIndex(columns) {
   return db.prepare("PRAGMA index_list(library_media_files)").all().some((index) => {

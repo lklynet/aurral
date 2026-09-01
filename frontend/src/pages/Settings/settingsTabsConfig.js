@@ -239,7 +239,7 @@ const SETTINGS_SEARCH_METADATA = {
       "Recommended artists": "number per refresh",
       "Recommended playlists": "Discover Weekly Trending Mix Library Blend Listening History Release Radar",
       "Refresh discovery": "update recommendations now",
-      "Clear image cache": "artwork cache reset",
+      "Clear artwork cache": "stored artwork links native library image files reset",
       Provider: "Last.fm ListenBrainz fallback",
       "Last updated": "discovery cache status",
     },

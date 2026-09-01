@@ -116,14 +116,14 @@ instance API key for WebSocket connections.
 | `PUT` | `/api/artists/:mbid/overrides` | Set metadata-provider overrides |
 | `GET` | `/api/artists/:mbid/similar` | Similar artists |
 | `GET` | `/api/artists/:mbid/video` | Find a video for a named artist and track |
-| `GET` | `/api/artists/:mbid/cover` | Artist image metadata |
+| `GET` | `/api/artists/:mbid/cover` | Artist image metadata; `refresh=true` retries a stale link |
 | `GET` | `/api/artists/:mbid/preview` | Deezer top tracks and preview URLs |
 | `GET` | `/api/artists/:mbid/stream` | Stream progressive artist metadata with SSE |
 | `POST` | `/api/artists/:mbid/appears-on` | Find releases that include an artist |
 | `POST` | `/api/artists/release-groups/ratings` | Batch release ratings |
 | `POST` | `/api/artists/release-groups/covers` | Batch release covers |
 | `GET` | `/api/artists/release-group/:mbid` | Release-group details |
-| `GET` | `/api/artists/release-group/:mbid/cover` | Release-group cover metadata |
+| `GET` | `/api/artists/release-group/:mbid/cover` | Release-group cover metadata; `refresh=true` retries a stale link |
 | `GET` | `/api/artists/release-group/:mbid/tracks` | Release-group tracks |
 
 `GET /api/artists` intentionally returns `404`. Use `/api/search` or an artist
@@ -166,7 +166,7 @@ accept `releaseTypes` and `sort`. `GET /api/requests` accepts `refresh=true`.
 | `POST` | `/api/discover/playlists/adopt` | Create a flow from a discovery preset |
 | `POST` | `/api/discover/playlists/adopt-playlist` | Create a static playlist from a discovery preset |
 | `POST` | `/api/discover/refresh` | Refresh discovery data |
-| `POST` | `/api/discover/clear` | Clear image and metadata-provider caches |
+| `POST` | `/api/discover/clear` | Clear artwork links, native-library image files, and metadata-provider caches |
 | `POST` | `/api/discover/clear-discovery` | Clear the discovery cache |
 
 ## News
@@ -377,8 +377,8 @@ setup, Aurral does not require a credential for these routes.
 | --- | --- | --- |
 | `GET` | `/api/filesystem/browse` | Browse server directories |
 | `POST` | `/api/filesystem/ensure` | Create or validate a server directory |
-| `GET` | `/api/image-proxy` | Fetch a legacy proxied image |
-| `GET` | `/api/image-proxy/:cacheKey` | Fetch a cached proxied image |
+| `GET` | `/api/image-proxy` | Resolve a legacy proxied image URL through the native image cache |
+| `GET` | `/api/image-proxy/:cacheKey` | Fetch a cached native-library image |
 
 Image-proxy routes are public. Before onboarding, filesystem routes do not
 require authentication. After onboarding, Aurral requires an administrator

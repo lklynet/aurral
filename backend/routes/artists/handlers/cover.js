@@ -6,6 +6,9 @@ import { getArtistImage } from "../../../services/imageService.js";
 
 const NEGATIVE_COVER_CACHE_MS = 7 * 24 * 60 * 60 * 1000;
 
+export const getCachedCoverCacheControl = (images) =>
+  images.length > 0 ? "public, max-age=31536000, immutable" : "no-store";
+
 export function registerCover(router) {
   router.get("/:mbid/cover", async (req, res) => {
     const { mbid } = req.params;
@@ -32,23 +35,13 @@ export function registerCover(router) {
         cachedImage.imageUrl !== "NOT_FOUND"
       ) {
         logger.info("api", "Cover cache hit", { mbid });
-        res.set("Cache-Control", "public, max-age=31536000, immutable");
-
         const cachedResult = await getArtistImage(mbid, {
           artistName: artistNameFromQuery,
         }).catch(() => null);
+        const images = cachedResult?.images || [];
+        res.set("Cache-Control", getCachedCoverCacheControl(images));
 
-        return res.json({
-          images: cachedResult?.images?.length
-            ? cachedResult.images
-            : [
-                {
-                  image: cachedImage.imageUrl,
-                  front: true,
-                  types: ["Front"],
-                },
-              ],
-        });
+        return res.json({ images });
       }
 
       const negativeCacheIsFresh =

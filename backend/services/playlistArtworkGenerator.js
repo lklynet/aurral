@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { dbOps } from "../db/helpers/index.js";
 import { buildPlaylistArtworkWebpBuffer } from "./playlistArtwork.js";
+import sharp from "./sharpConfig.js";
 import {
   fetchImageBuffer,
   renderStylizedPhotoArtwork,
@@ -30,6 +31,22 @@ export function getArtworkContentTypeForExtension(extension) {
 
 export async function resolvePlaylistSourceImageUrl() {
   return `https://picsum.photos/800/800?random=${randomUUID()}`;
+}
+
+export async function isGeneratedPlaylistArtworkFallback(filePath, { title, kind }) {
+  try {
+    const metadata = await sharp(filePath).metadata();
+    if (metadata.width !== 1000 || metadata.height !== 1000) return false;
+    const existing = await fs.readFile(filePath);
+    const fallback = await buildPlaylistArtworkWebpBuffer({ playlistName: title, kind });
+    if (path.extname(filePath).toLowerCase() === ".webp") {
+      return existing.equals(fallback);
+    }
+    const jpeg = await sharp(fallback).jpeg({ quality: 90, mozjpeg: true }).toBuffer();
+    return existing.equals(jpeg);
+  } catch {
+    return false;
+  }
 }
 
 export async function buildGeneratedPlaylistArtworkBuffer({
@@ -77,17 +94,18 @@ export async function writeGeneratedPlaylistArtwork({
   const baseName = path.basename(targetPath, path.extname(targetPath));
   const keepExtension = path.extname(targetPath);
 
-  for (const extension of [".jpg", ".webp", ".png"]) {
-    if (extension === keepExtension) continue;
-    await fs.unlink(path.join(directory, `${baseName}${extension}`)).catch(() => {});
-  }
-
   const buffer = await buildGeneratedPlaylistArtworkBuffer({
     title,
     kind,
     style: resolvedStyle,
     paletteSeed,
   });
+
+  for (const extension of [".jpg", ".webp", ".png"]) {
+    if (extension === keepExtension) continue;
+    await fs.unlink(path.join(directory, `${baseName}${extension}`)).catch(() => {});
+  }
+
   await fs.writeFile(targetPath, buffer);
   return targetPath;
 }

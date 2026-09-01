@@ -168,7 +168,7 @@ export const matchNewsArticles = (articles, artists, blockedPublishers = []) => 
         artistMbid: artist.artistMbid,
         artistName: artist.artistName,
         newsType: artist.newsType,
-        imageUrl: buildImageProxyUrl(article.imageUrl) || article.imageUrl || null,
+        imageUrl: buildImageProxyUrl(article.imageUrl),
       })))
     .filter((article) => {
       const key = `${article.id}:${article.artistMbid || article.artistName}`;
@@ -254,7 +254,7 @@ export async function getNewsForUser({
       .map((article) => ({
         ...article,
         ...(matchedById.get(article.id) || {}),
-        imageUrl: buildImageProxyUrl(article.imageUrl) || article.imageUrl || null,
+        imageUrl: buildImageProxyUrl(article.imageUrl),
       }))
     : matchedArticles;
   if (mode === "top") {

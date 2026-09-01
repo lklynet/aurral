@@ -1,8 +1,9 @@
 import { db } from "../../config/db-sqlite.js";
 
 const getImageStmt = db.prepare("SELECT * FROM images_cache WHERE mbid = ?");
+const getImageJsonStmt = db.prepare("SELECT images_json FROM images_cache WHERE mbid = ?");
 const upsertImageStmt = db.prepare(
-  "INSERT OR REPLACE INTO images_cache (mbid, image_url, cache_age, created_at) VALUES (?, ?, ?, ?)"
+  "INSERT OR REPLACE INTO images_cache (mbid, image_url, images_json, cache_age, created_at) VALUES (?, ?, ?, ?, ?)"
 );
 const countImagesStmt = db.prepare("SELECT COUNT(*) as count FROM images_cache");
 const deleteImageStmt = db.prepare("DELETE FROM images_cache WHERE mbid = ?");
@@ -13,6 +14,18 @@ const cleanOldImagesStmt = db.prepare(
 
 const NOT_FOUND_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const getImagesStmtsByCount = new Map();
+
+const parseImages = (value) => {
+  if (!value) return null;
+  try {
+    const images = JSON.parse(value);
+    return Array.isArray(images) ? images : null;
+  } catch {
+    return null;
+  }
+};
+
+const serializeImages = (images) => (Array.isArray(images) ? JSON.stringify(images) : null);
 
 const getDeezerMbidCacheStmt = db.prepare(
   "SELECT mbid FROM deezer_mbid_cache WHERE cache_key = ?"
@@ -44,6 +57,7 @@ export default function register(dbOps) {
     return {
       mbid: row.mbid,
       imageUrl: row.image_url,
+      images: parseImages(row.images_json),
       cacheAge: row.cache_age,
     };
   };
@@ -54,7 +68,7 @@ export default function register(dbOps) {
     if (!stmt) {
       const placeholders = mbids.map(() => "?").join(",");
       stmt = db.prepare(
-        `SELECT mbid, image_url, cache_age FROM images_cache WHERE mbid IN (${placeholders})`
+        `SELECT mbid, image_url, images_json, cache_age FROM images_cache WHERE mbid IN (${placeholders})`
       );
       getImagesStmtsByCount.set(mbids.length, stmt);
     }
@@ -69,13 +83,23 @@ export default function register(dbOps) {
         deleteImageStmt.run(row.mbid);
         continue;
       }
-      result[row.mbid] = { imageUrl: row.image_url, cacheAge: row.cache_age };
+      result[row.mbid] = {
+        imageUrl: row.image_url,
+        images: parseImages(row.images_json),
+        cacheAge: row.cache_age,
+      };
     }
     return result;
   };
 
-  dbOps.setImage = function (mbid, imageUrl) {
-    upsertImageStmt.run(mbid, imageUrl, Date.now(), new Date().toISOString());
+  dbOps.setImage = function (mbid, imageUrl, images) {
+    const imagesJson =
+      imageUrl === "NOT_FOUND"
+        ? null
+        : images === undefined
+          ? getImageJsonStmt.get(mbid)?.images_json || null
+          : serializeImages(images);
+    upsertImageStmt.run(mbid, imageUrl, imagesJson, Date.now(), new Date().toISOString());
   };
 
   dbOps.countImages = function () {

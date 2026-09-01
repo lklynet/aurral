@@ -635,14 +635,14 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
   const handleClearCache = useCallback(async () => {
     if (
       !window.confirm(
-        "Are you sure you want to clear the image cache? Discovery recommendations will stay intact.",
+        "Clear stored artwork links and native-library image files? Discovery recommendations will stay intact. Artwork will be fetched again as needed.",
       )
     )
       return;
     setClearingCache(true);
     try {
       await api.post("/discover/clear");
-      showSuccess("Image cache cleared successfully.");
+      showSuccess("Artwork cache cleared successfully.");
       await refreshHealth();
     } catch (err) {
       showError(

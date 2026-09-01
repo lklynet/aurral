@@ -12,3 +12,12 @@ export function normalizeMediaUrl(value) {
   }
   return src;
 }
+
+export function withImageCacheBust(value) {
+  const src = normalizeMediaUrl(value);
+  if (!src) return src;
+  const hashIndex = src.indexOf("#");
+  const base = hashIndex === -1 ? src : src.slice(0, hashIndex);
+  const hash = hashIndex === -1 ? "" : src.slice(hashIndex);
+  return `${base}${base.includes("?") ? "&" : "?"}aurral_image_retry=${Date.now()}${hash}`;
+}

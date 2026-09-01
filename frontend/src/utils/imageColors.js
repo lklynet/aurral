@@ -3,13 +3,7 @@ import { normalizeMediaUrl } from "./normalizeMediaUrl.js";
 
 const N = 64;
 const gradientCache = new Map();
-
-function proxyImageUrl(src) {
-  const u = normalizeMediaUrl(src);
-  if (!u || /^(data:|blob:|\/api\/image-proxy)/.test(u)) return u;
-  if (u.startsWith("/") || u.startsWith(location.origin)) return u;
-  return `/api/image-proxy?src=${encodeURIComponent(u)}`;
-}
+const FALLBACK_GRADIENT = { top: "#343434", bottom: "#171717" };
 
 function avgHex(data, y0, y1) {
   let r = 0,
@@ -33,10 +27,9 @@ export async function extractTwoToneGradientFromImage(src) {
   if (gradientCache.has(src)) return gradientCache.get(src);
   const request = new Promise((ok, err) => {
     const img = new Image();
-    img.crossOrigin = "anonymous";
     img.onload = () => ok(img);
     img.onerror = err;
-    img.src = proxyImageUrl(src);
+    img.src = normalizeMediaUrl(src);
   })
     .then((img) => {
       const c = Object.assign(document.createElement("canvas"), { width: N, height: N });
@@ -48,7 +41,7 @@ export async function extractTwoToneGradientFromImage(src) {
       const bottom = avgHex(data, N >> 1, N);
       return top || bottom ? { top: top || bottom, bottom: bottom || top } : null;
     })
-    .catch(() => null);
+    .catch(() => FALLBACK_GRADIENT);
   gradientCache.set(src, request);
   const result = await request;
   if (!result) gradientCache.delete(src);

@@ -80,6 +80,7 @@ test.beforeEach(async () => {
     flows: [],
     sharedPlaylists: [],
     playlistWorker: { existingFileMode: "reuse", concurrency: 1 },
+    playlistArtwork: { style: "aurral" },
   });
   downloadTracker.clearAll();
   weeklyFlowWorker.stop();

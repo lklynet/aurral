@@ -129,6 +129,7 @@ export function registerReleaseGroup(router) {
   );
 
   router.get("/release-group/:mbid/cover", async (req, res) => {
+    const bypassCache = req.query.refresh === "true";
     try {
       const { mbid } = req.params;
       const artistName =
@@ -139,7 +140,6 @@ export function registerReleaseGroup(router) {
         typeof req.query.albumTitle === "string" && req.query.albumTitle.trim()
           ? req.query.albumTitle.trim()
           : "";
-
       if (!UUID_REGEX.test(mbid)) {
         return res
           .status(400)
@@ -148,9 +148,13 @@ export function registerReleaseGroup(router) {
       const cover = await fetchReleaseGroupCoverUrl(mbid, {
         artistName,
         albumTitle: albumTitleFromQuery,
+        bypassCache,
       });
       if (cover?.imageUrl) {
-        res.set("Cache-Control", "public, max-age=31536000, immutable");
+        res.set(
+          "Cache-Control",
+          bypassCache ? "no-store" : "public, max-age=31536000, immutable",
+        );
         return res.json({
           images: [
             {
@@ -164,17 +168,17 @@ export function registerReleaseGroup(router) {
         });
       }
       if (cover?.notFound) {
-        res.set("Cache-Control", "public, max-age=3600");
+        res.set("Cache-Control", bypassCache ? "no-store" : "public, max-age=3600");
         return res.json({ images: [], notFound: true, transientError: false });
       }
       res.set(
         "Cache-Control",
-        "public, max-age=60, stale-while-revalidate=300",
+        bypassCache ? "no-store" : "public, max-age=60, stale-while-revalidate=300",
       );
       res.json({ images: [], notFound: false, transientError: true });
     } catch (error) {
       logger.error("releaseGroup", `Error in release-group cover route for ${req.params.mbid}:`, { message: error.message });
-      res.set("Cache-Control", "public, max-age=60");
+      res.set("Cache-Control", bypassCache ? "no-store" : "public, max-age=60");
       res.json({ images: [], notFound: false, transientError: true });
     }
   });

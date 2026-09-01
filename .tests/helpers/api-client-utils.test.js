@@ -20,6 +20,56 @@ test("rate limiter spaces concurrent request starts", async () => {
   assert.ok(starts[2] - starts[1] >= 20);
 });
 
+test("rate limiter rejects excess queued reservations from a burst", async () => {
+  const limiter = createRateLimiter(20, { maxQueue: 1 });
+  const first = limiter.schedule(() => {});
+  const queued = limiter.schedule(() => {});
+
+  await assert.rejects(
+    limiter.schedule(() => {}),
+    (error) => error.code === "EQUEUEFULL",
+  );
+  await Promise.all([first, queued]);
+});
+
+test("rate limiter expires queued work before invoking its callback", async () => {
+  const limiter = createRateLimiter(30);
+  const first = limiter.schedule(() => {});
+  let invoked = false;
+
+  await assert.rejects(
+    limiter.schedule(
+      () => {
+        invoked = true;
+      },
+      { timeoutMs: 5 },
+    ),
+    (error) => error.code === "ETIMEDOUT",
+  );
+  await first;
+  assert.equal(invoked, false);
+});
+
+test("rate limiter removes aborted queued work", async () => {
+  const limiter = createRateLimiter(30);
+  const first = limiter.schedule(() => {});
+  const controller = new AbortController();
+  let invoked = false;
+
+  const cancelled = limiter.schedule(
+    () => {
+      invoked = true;
+    },
+    { signal: controller.signal },
+  );
+  controller.abort();
+
+  await assert.rejects(cancelled, { name: "AbortError" });
+  await first;
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(invoked, false);
+});
+
 test("TTL cache evicts its oldest entry at the size limit", () => {
   const cache = createCache(300, 2);
   cache.set("first", 1);

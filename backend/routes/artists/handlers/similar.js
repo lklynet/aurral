@@ -63,7 +63,7 @@ export function registerSimilar(router) {
         return {
           id: a.mbid,
           name: a.name,
-          image: buildImageProxyUrl(img) || img,
+          image: buildImageProxyUrl(img),
           match: Math.round((a.match || 0) * 100),
         };
       })

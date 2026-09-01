@@ -26,12 +26,14 @@ import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { ArtistDetailsReleaseTrackList } from "./components/ArtistDetailsReleaseTrackList";
 import { extractTwoToneGradientFromImage } from "../../utils/imageColors";
+import { withImageCacheBust } from "../../utils/normalizeMediaUrl.js";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import {
   buildSharedPlaylistTrackPayload,
   buildLastfmAlbumUrl,
   formatAlbumDuration,
   formatReleaseDate,
+  getCoverImage,
   getReleaseMetric,
   reserveUniquePlaylistName,
   resolveReleaseLibraryDisplay,
@@ -114,6 +116,8 @@ function ReleasePage() {
   );
 
   const [coverUrl, setCoverUrl] = useState(release._coverUrl || "");
+  const [coverRetryUrl, setCoverRetryUrl] = useState("");
+  const [coverLoadFailed, setCoverLoadFailed] = useState(false);
   const [requestingAlbum, setRequestingAlbum] = useState(false);
   const {
     sharedPlaylists,
@@ -254,14 +258,51 @@ function ReleasePage() {
 
   useEffect(() => {
     setCoverUrl(release._coverUrl || "");
-  }, [release._coverUrl]);
+    setCoverRetryUrl("");
+    setCoverLoadFailed(false);
+  }, [release._coverUrl, releaseMbid]);
+
+  useEffect(() => {
+    setCoverRetryUrl("");
+  }, [coverUrl]);
+
+  const handleCoverError = async () => {
+    if (!releaseMbid || !coverUrl || coverLoadFailed) return;
+    if (coverRetryUrl) {
+      setCoverRetryUrl("");
+      setCoverUrl("");
+      setCoverLoadFailed(true);
+      return;
+    }
+    setCoverRetryUrl(withImageCacheBust(coverUrl));
+    try {
+      const response = await getReleaseGroupCover(releaseMbid, {
+        artistName,
+        albumTitle: release.title,
+        bypassCache: true,
+      });
+      const refreshedUrl = getCoverImage(response?.images);
+      if (refreshedUrl && refreshedUrl !== coverUrl) {
+        setCoverUrl(refreshedUrl);
+        setCoverLoadFailed(false);
+      } else if (!refreshedUrl) {
+        setCoverRetryUrl("");
+        setCoverUrl("");
+        setCoverLoadFailed(true);
+      }
+    } catch {
+      setCoverRetryUrl("");
+      setCoverUrl("");
+      setCoverLoadFailed(true);
+    }
+  };
 
   useEffect(() => {
     if (tracksQuery.error) showError("Failed to load tracks");
   }, [showError, tracksQuery.error]);
 
   useEffect(() => {
-    if (!releaseMbid || coverUrl) return undefined;
+    if (!releaseMbid || coverUrl || coverLoadFailed) return undefined;
     let cancelled = false;
 
     const loadCover = async () => {
@@ -281,7 +322,7 @@ function ReleasePage() {
     return () => {
       cancelled = true;
     };
-  }, [artistName, coverUrl, release.title, releaseMbid]);
+  }, [artistName, coverLoadFailed, coverUrl, release.title, releaseMbid]);
 
   const getDefaultTrackPlaylistName = useCallback(
     (track) =>
@@ -515,7 +556,13 @@ function ReleasePage() {
       <div className="release-page__hero">
         <div className="release-page__cover">
           {coverUrl ? (
-            <img src={coverUrl} alt={releaseTitle} loading="eager" decoding="async" />
+            <img
+              src={coverRetryUrl || coverUrl}
+              alt={releaseTitle}
+              loading="eager"
+              decoding="async"
+              onError={() => void handleCoverError()}
+            />
           ) : (
             <div className="artist-release-card__placeholder">
               <Music className="artist-icon-lg" />

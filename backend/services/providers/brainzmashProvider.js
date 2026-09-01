@@ -23,12 +23,22 @@ import {
   toNormalizedArtistAlbum,
 } from "./brainzmashMappers.js";
 import { selectBestAlbumImage } from "../imageService.js";
+import createRateLimiter from "../apiClients/rateLimiter.js";
 import { runSharedInflight } from "../sharedInflight.js";
 
-const providerCache = createCache(300);
+const METADATA_CACHE_TTL_SECONDS = 24 * 60 * 60;
+const METADATA_CACHE_MAX_ENTRIES = 20_000;
+const METADATA_REQUEST_MIN_INTERVAL_MS = 100;
+const METADATA_REQUEST_TIMEOUT_MS = 8000;
+const METADATA_MAX_QUEUED_REQUESTS = Math.floor(
+  METADATA_REQUEST_TIMEOUT_MS / METADATA_REQUEST_MIN_INTERVAL_MS,
+) - 1;
+const providerCache = createCache(METADATA_CACHE_TTL_SECONDS, METADATA_CACHE_MAX_ENTRIES);
 const releaseCache = createCache(300);
 const providerInflightRequests = new Map();
-const METADATA_REQUEST_TIMEOUT_MS = 8000;
+const providerRequestLimiter = createRateLimiter(METADATA_REQUEST_MIN_INTERVAL_MS, {
+  maxQueue: METADATA_MAX_QUEUED_REQUESTS,
+});
 const METADATA_MAX_RETRIES = 1;
 
 export function clearMetadataProviderCaches() {
@@ -100,14 +110,20 @@ async function request(path, params = {}, { signal } = {}) {
     for (let attempt = 0; attempt <= METADATA_MAX_RETRIES; attempt += 1) {
       if (sharedSignal.aborted) throw sharedSignal.reason || new Error("The operation was aborted");
       try {
-        const response = await axios.get(`${baseUrl}${path}`, {
-          params,
-          timeout: METADATA_REQUEST_TIMEOUT_MS,
-          headers: {
-            "User-Agent": getUserAgent(),
-          },
-          signal: sharedSignal,
-        });
+        const response = await providerRequestLimiter.schedule(
+          (remainingMs) =>
+            axios.get(`${baseUrl}${path}`, {
+              params,
+              timeout: Number.isFinite(remainingMs)
+                ? Math.max(1, Math.floor(remainingMs))
+                : METADATA_REQUEST_TIMEOUT_MS,
+              headers: {
+                "User-Agent": getUserAgent(),
+              },
+              signal: sharedSignal,
+            }),
+          { signal: sharedSignal, timeoutMs: METADATA_REQUEST_TIMEOUT_MS },
+        );
         providerCache.set(cacheKey, response.data);
         healthState.lastSuccessAt = healthState.lastCheckedAt;
         healthState.lastFailureReason = "";

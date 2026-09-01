@@ -345,7 +345,8 @@ export function registerMisc(router) {
 
           const cachedUrl = cachedCovers[`rg:${coverId}`]?.imageUrl || null;
           if (cachedUrl && cachedUrl !== "NOT_FOUND") {
-            return [coverId, buildImageProxyUrl(cachedUrl) || cachedUrl];
+            const imageUrl = buildImageProxyUrl(cachedUrl);
+            if (imageUrl) return [coverId, imageUrl];
           }
 
           const cover = await fetchReleaseGroupCoverUrl(coverId, {
@@ -357,7 +358,7 @@ export function registerMisc(router) {
             return [coverId, null];
           }
 
-          return [coverId, buildImageProxyUrl(cover.imageUrl) || cover.imageUrl];
+          return [coverId, buildImageProxyUrl(cover.imageUrl)];
         }),
       );
 
@@ -367,13 +368,13 @@ export function registerMisc(router) {
 
       const withCachedCovers = recentMissing.map((album) => {
         const coverId = album.mbid || album.foreignAlbumId;
+        const cachedUrl = coverId ? cachedCovers[`rg:${coverId}`]?.imageUrl || null : null;
         const coverUrl =
           (coverId ? warmedCoverMap[coverId] : null) ||
-          (coverId ? cachedCovers[`rg:${coverId}`]?.imageUrl || null : null);
+          (cachedUrl && cachedUrl !== "NOT_FOUND" ? buildImageProxyUrl(cachedUrl) : null);
         return {
           ...album,
-          coverUrl:
-            coverUrl && coverUrl !== "NOT_FOUND" ? buildImageProxyUrl(coverUrl) || coverUrl : null,
+          coverUrl,
         };
       });
 

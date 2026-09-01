@@ -199,11 +199,18 @@ export const fetchInflightOnce = async (store, key, requestFactory) => {
 };
 
 export const fetchCoverWithMemo = async (key, requestFactory, { bypassCache = false } = {}) => {
+  const refreshKey = `${key}:refresh`;
   if (!bypassCache) {
+    const refresh = coverInflightRequests.get(refreshKey);
+    if (refresh) return refresh;
     const cached = getCoverCacheEntry(key);
     if (cached) return cached;
+  } else {
+    const normal = coverInflightRequests.get(key);
+    if (normal) await normal.catch(() => undefined);
   }
-  return fetchInflightOnce(coverInflightRequests, key, () =>
+
+  return fetchInflightOnce(coverInflightRequests, bypassCache ? refreshKey : key, () =>
     requestFactory().then((response) => {
       setCoverCacheEntry(key, response);
       return response;

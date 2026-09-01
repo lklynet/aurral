@@ -244,7 +244,7 @@ export function SettingsDiscoverTab({
                 ) : (
                   <Trash2 className="artist-icon-xs" aria-hidden />
                 )}
-                {clearingCache ? "Clearing…" : "Clear image cache"}
+                {clearingCache ? "Clearing…" : "Clear artwork cache"}
               </button>
             </>
           }
@@ -263,14 +263,14 @@ export function SettingsDiscoverTab({
               </dd>
             </div>
             <div>
-              <dt className="arr-meta-term">Image cache size</dt>
+              <dt className="arr-meta-term">Native image cache size</dt>
               <dd className="arr-meta-value">
-                {formatBytes(health?.discovery?.cachedImagesSizeBytes)}
+                {formatBytes(health?.discovery?.nativeImageCacheSizeBytes)}
               </dd>
             </div>
             <div>
-              <dt className="arr-meta-term">Cached images</dt>
-              <dd className="arr-meta-value">{health?.discovery?.cachedImagesCount ?? "—"}</dd>
+              <dt className="arr-meta-term">Artwork links</dt>
+              <dd className="arr-meta-value">{health?.discovery?.artworkLinkCount ?? "—"}</dd>
             </div>
           </dl>
 
