@@ -278,7 +278,17 @@ export function RenamePlaylistModal({
       return false;
     }
   };
-  const coverSrc = previewUrl || (!imageFailed && isSafeImageUrl(artworkUrl) ? artworkUrl : null);
+  const encodedPreviewUrl = (() => {
+    if (!previewUrl) return null;
+    try {
+      return encodeURI(String(previewUrl));
+    } catch {
+      return null;
+    }
+  })();
+  const coverSrc =
+    encodedPreviewUrl ||
+    (!imageFailed && isSafeImageUrl(artworkUrl) ? artworkUrl : null);
   const fallbackLabel =
     String(displayName || name || "?")
       .trim()
