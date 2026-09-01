@@ -360,6 +360,55 @@ router.get("/me/lidarr-preferences", requireAuth, async (req, res) => {
   }
 });
 
+router.get("/me/library-owner", requireAuth, async (req, res) => {
+  try {
+    const user = userOps.getUserById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const { lidarrClient } = await import("../services/lidarrClient.js");
+    const stored = user.defaultLibraryOwner || null;
+    const resolved =
+      stored || (lidarrClient.isConfigured() ? "lidarr" : "aurral");
+    res.json({ defaultLibraryOwner: resolved, storedDefaultLibraryOwner: stored });
+  } catch (e) {
+    res.status(500).json({
+      error: "Failed to get library owner preference",
+      message: e.message,
+    });
+  }
+});
+
+router.post("/me/library-owner", requireAuth, async (req, res) => {
+  try {
+    const requested = req.body?.defaultLibraryOwner;
+    if (requested !== null && requested !== undefined && requested !== "") {
+      const normalized = String(requested).trim().toLowerCase();
+      if (normalized !== "aurral" && normalized !== "lidarr") {
+        return res.status(400).json({
+          error: "defaultLibraryOwner must be 'aurral' or 'lidarr'",
+        });
+      }
+    }
+    const updated = userOps.updateUser(req.user.id, {
+      defaultLibraryOwner: requested == null || requested === "" ? null : requested,
+    });
+    if (!updated) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const { lidarrClient } = await import("../services/lidarrClient.js");
+    const stored = updated.defaultLibraryOwner || null;
+    const resolved =
+      stored || (lidarrClient.isConfigured() ? "lidarr" : "aurral");
+    res.json({ defaultLibraryOwner: resolved, storedDefaultLibraryOwner: stored });
+  } catch (e) {
+    res.status(500).json({
+      error: "Failed to save library owner preference",
+      message: e.message,
+    });
+  }
+});
+
 router.get("/me/discover-layout", requireAuth, (req, res) => {
   try {
     const user = userOps.getUserById(req.user.id);
