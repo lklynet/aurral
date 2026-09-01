@@ -104,13 +104,14 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("GET /api/onboarding/lidarr/test uses supplied credentials before onboarding is complete", async () => {
-  const params = new URLSearchParams({
-    url: fakeLidarr.url,
-    apiKey: "fake-key",
-  });
+test("POST /api/onboarding/lidarr/test uses supplied credentials before onboarding is complete", async () => {
   const response = await fetch(
-    `http://127.0.0.1:${server.port}/api/onboarding/lidarr/test?${params.toString()}`,
+    `http://127.0.0.1:${server.port}/api/onboarding/lidarr/test`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: fakeLidarr.url, apiKey: "fake-key" }),
+    },
   );
   const payload = await response.json();
 
@@ -123,13 +124,14 @@ test("GET /api/onboarding/lidarr/test uses supplied credentials before onboardin
   assert.equal(fakeLidarr.requests[0].apiKey, "fake-key");
 });
 
-test("GET /api/onboarding/lidarr/profiles uses supplied credentials before onboarding is complete", async () => {
-  const params = new URLSearchParams({
-    url: fakeLidarr.url,
-    apiKey: "fake-key",
-  });
+test("POST /api/onboarding/lidarr/profiles uses supplied credentials before onboarding is complete", async () => {
   const response = await fetch(
-    `http://127.0.0.1:${server.port}/api/onboarding/lidarr/profiles?${params.toString()}`,
+    `http://127.0.0.1:${server.port}/api/onboarding/lidarr/profiles`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: fakeLidarr.url, apiKey: "fake-key" }),
+    },
   );
   const payload = await response.json();
 

@@ -1,4 +1,4 @@
-import { getData, postData, putData, patchData, deleteData, lidarrCredentialParams } from "../core.js";
+import { getData, postData, putData, patchData, deleteData } from "../core.js";
 import { queryClient, queryKeys } from "../../../queryClient.js";
 
 export const checkHealth = ({ force = false } = {}) =>
@@ -59,19 +59,13 @@ export const completeOnboarding = async (payload) => {
 };
 
 export const testLidarrOnboarding = (url, apiKey) =>
-  getData("/onboarding/lidarr/test", {
-    params: lidarrCredentialParams(url, apiKey, { trimUrl: true }),
-  });
+  postData("/onboarding/lidarr/test", { url, apiKey });
 
 export const getLidarrProfilesOnboarding = (url, apiKey) =>
-  getData("/onboarding/lidarr/profiles", {
-    params: lidarrCredentialParams(url, apiKey),
-  });
+  postData("/onboarding/lidarr/profiles", { url, apiKey });
 
 export const getLidarrMetadataProfilesOnboarding = (url, apiKey) =>
-  getData("/onboarding/lidarr/metadata-profiles", {
-    params: lidarrCredentialParams(url, apiKey),
-  });
+  postData("/onboarding/lidarr/metadata-profiles", { url, apiKey });
 
 export const getUsers = () => getData("/users");
 

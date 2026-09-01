@@ -158,7 +158,7 @@ app.use(
         upgradeInsecureRequests: null,
       },
     },
-    frameguard: false,
+    frameguard: { action: "sameorigin" },
     crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
   }),
 );
@@ -170,6 +170,13 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5000,
+});
+
+app.use(limiter);
+
 app.use(authMiddleware);
 
 const authLimiter = rateLimit({
@@ -180,12 +187,6 @@ app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/oidc/login", authLimiter);
 app.use("/api/auth/oidc/exchange", authLimiter);
 app.use("/api/users/me/password", authLimiter);
-
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5000,
-});
-app.use("/api/", limiter);
 
 app.use("/api/settings", settingsRouter);
 app.use("/api/onboarding", onboardingRouter);
@@ -203,8 +204,8 @@ app.use("/api/filesystem", filesystemRouter);
 app.use("/api/feeds", lidarrFeedRouter);
 app.use("/api/playlists", weeklyFlowRouter);
 app.use("/api/weekly-flow", (req, res) => {
-  const target = req.originalUrl.replace("/api/weekly-flow", "/api/playlists");
-  res.redirect(308, target);
+  const parsed = new URL(req.originalUrl, "http://localhost");
+  res.redirect(308, `/api/playlists${parsed.pathname}${parsed.search}`);
 });
 app.use("/api/auth", authRouter);
 app.use("/api/scrobbling", scrobblingRouter);

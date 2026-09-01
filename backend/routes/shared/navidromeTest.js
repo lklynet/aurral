@@ -1,9 +1,10 @@
 import { validateExternalUrl } from "../../middleware/urlValidator.js";
 import { NavidromeClient } from "../../services/navidrome.js";
+import { stripTrailingSlashes } from "../../services/textUtils.js";
 
 export async function testNavidromeConnection(req, res) {
   try {
-    const url = String(req.body?.url || "").trim().replace(/\/+$/, "");
+    const url = stripTrailingSlashes(String(req.body?.url || "").trim());
     const username = String(req.body?.username || "").trim();
     const password = req.body?.password ?? "";
     if (!url || !username || !password) {

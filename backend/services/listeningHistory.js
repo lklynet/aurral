@@ -1,3 +1,5 @@
+import { stripTrailingSlashes } from "./textUtils.js";
+
 export const LISTEN_HISTORY_PROVIDERS = ["local", "lastfm", "listenbrainz", "koito"];
 export const DEFAULT_LISTEN_HISTORY_PROVIDER = "lastfm";
 
@@ -24,7 +26,7 @@ export function normalizeListenHistoryUsername(value) {
 
 export function normalizeListenHistoryUrl(value) {
   if (value == null) return null;
-  const normalized = String(value).trim().replace(/\/+$/, "");
+  const normalized = stripTrailingSlashes(String(value).trim());
   return normalized || null;
 }
 

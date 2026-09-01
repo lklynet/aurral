@@ -5,6 +5,7 @@ import { defaultData } from "../config/constants.js";
 import { requirePasswordStrength, reconcileLocalNetworkBypassSetting } from "../middleware/auth.js";
 import { validateDownloadFolderPath } from "../services/downloadFolderConfig.js";
 import { logger } from "../services/logger.js";
+import { stripTrailingSlashes } from "../services/textUtils.js";
 import { testNavidromeConnection } from "./shared/navidromeTest.js";
 import {
   testLidarrConnection as lidarrTest,
@@ -25,10 +26,10 @@ router.use((req, res, next) => {
   next();
 });
 
-router.get("/lidarr/profiles", async (req, res) => {
+router.post("/lidarr/profiles", async (req, res) => {
   try {
-    const url = (req.query.url || "").trim().replace(/\/+$/, "");
-    const apiKey = (req.query.apiKey || "").trim();
+    const url = stripTrailingSlashes(String(req.body?.url || "").trim());
+    const apiKey = String(req.body?.apiKey || "").trim();
     const profiles = await fetchQualityProfiles({ url, apiKey });
     res.json(profiles);
   } catch (error) {
@@ -39,10 +40,10 @@ router.get("/lidarr/profiles", async (req, res) => {
   }
 });
 
-router.get("/lidarr/metadata-profiles", async (req, res) => {
+router.post("/lidarr/metadata-profiles", async (req, res) => {
   try {
-    const url = (req.query.url || "").trim().replace(/\/+$/, "");
-    const apiKey = (req.query.apiKey || "").trim();
+    const url = stripTrailingSlashes(String(req.body?.url || "").trim());
+    const apiKey = String(req.body?.apiKey || "").trim();
     const profiles = await fetchMetadataProfiles({ url, apiKey });
     res.json(profiles);
   } catch (error) {
@@ -53,10 +54,10 @@ router.get("/lidarr/metadata-profiles", async (req, res) => {
   }
 });
 
-router.get("/lidarr/test", async (req, res) => {
+router.post("/lidarr/test", async (req, res) => {
   try {
-    const url = (req.query.url || "").trim().replace(/\/+$/, "");
-    const apiKey = (req.query.apiKey || "").trim();
+    const url = stripTrailingSlashes(String(req.body?.url || "").trim());
+    const apiKey = String(req.body?.apiKey || "").trim();
     const result = await lidarrTest({ url, apiKey });
     if (result.connected) {
       res.json({ success: true, message: "Connection successful" });
@@ -81,7 +82,7 @@ async function resolveLidarrProfiles(lidarr) {
   if (qualityProfileId && metadataProfileId) {
     return { qualityProfileId, metadataProfileId };
   }
-  const url = String(lidarr.url || "").trim().replace(/\/+$/, "");
+  const url = stripTrailingSlashes(String(lidarr.url || "").trim());
   const apiKey = String(lidarr.apiKey || "").trim();
   if (!url || !apiKey) return { qualityProfileId, metadataProfileId };
   try {
@@ -136,7 +137,7 @@ router.post("/complete", async (req, res) => {
       lidarr: {
         ...(current.integrations?.lidarr || {}),
         ...lidarr,
-        url: String(lidarr.url).trim().replace(/\/+$/, ""),
+        url: stripTrailingSlashes(String(lidarr.url).trim()),
         apiKey: String(lidarr.apiKey).trim(),
         qualityProfileId: profiles.qualityProfileId,
         metadataProfileId: profiles.metadataProfileId,
