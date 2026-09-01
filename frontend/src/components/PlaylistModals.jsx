@@ -268,7 +268,27 @@ export function RenamePlaylistModal({
     await onUpload?.(file);
   };
 
-  const coverSrc = previewUrl || (!imageFailed && artworkUrl ? artworkUrl : null);
+  const isSafeImageUrl = (value) => {
+    if (!value) return false;
+    try {
+      return ["http:", "https:", "data:", "blob:"].includes(
+        new URL(String(value), window.location.origin).protocol,
+      );
+    } catch {
+      return false;
+    }
+  };
+  const encodedPreviewUrl = (() => {
+    if (!previewUrl) return null;
+    try {
+      return encodeURI(String(previewUrl));
+    } catch {
+      return null;
+    }
+  })();
+  const coverSrc =
+    encodedPreviewUrl ||
+    (!imageFailed && isSafeImageUrl(artworkUrl) ? artworkUrl : null);
   const fallbackLabel =
     String(displayName || name || "?")
       .trim()

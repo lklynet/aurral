@@ -312,9 +312,11 @@ test("failed notification delivery is logged without an unhandled rejection", as
 
     await notifyRequestMade({ albumName: "Blue Train", artistName: "John Coltrane" });
     const failedLog = await waitFor(() =>
-      errors.find((args) => String(args[0]).includes("Notification delivery failed")),
+      errors.find((args) =>
+        args.map(String).join(" ").includes("Notification delivery failed"),
+      ),
     );
-    assert.deepEqual(failedLog[1], {
+    assert.deepEqual(failedLog[failedLog.length - 1], {
       kind: "webhooks",
       event: "notifyRequestMade",
       receiver: `http://127.0.0.1:${port}/hook`,
@@ -326,14 +328,17 @@ test("failed notification delivery is logged without an unhandled rejection", as
     await new Promise((resolve) => server.close(resolve));
     await notifyRequestAvailable({ albumName: "Blue Train", artistName: "John Coltrane" });
     const failedLogs = await waitFor(() => {
-      const logs = errors.filter((args) => String(args[0]).includes("Notification delivery failed"));
+      const logs = errors.filter((args) =>
+        args.map(String).join(" ").includes("Notification delivery failed"),
+      );
       return logs.length >= 2 ? logs : null;
     });
+    const secondLog = failedLogs[1][failedLogs[1].length - 1];
     assert.deepEqual(
       {
-        kind: failedLogs[1][1].kind,
-        event: failedLogs[1][1].event,
-        status: failedLogs[1][1].status,
+        kind: secondLog.kind,
+        event: secondLog.event,
+        status: secondLog.status,
       },
       { kind: "webhooks", event: "notifyRequestAvailable", status: null },
     );

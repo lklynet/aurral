@@ -32,9 +32,11 @@ test("simplified logger writes to console with level and category", async () => 
     logger.warn("test", "warn message");
     logger.error("test", "error message");
 
-    assert.ok(output.some((entry) => entry[0] === "log" && String(entry[1]).includes("[info]") && String(entry[1]).includes("[test]") && String(entry[1]).includes("Server running")));
-    assert.ok(output.some((entry) => entry[0] === "warn" && String(entry[1]).includes("[warn]")));
-    assert.ok(output.some((entry) => entry[0] === "error" && String(entry[1]).includes("[error]")));
+    const rendered = (entry) => entry.slice(1).map(String).join(" ");
+
+    assert.ok(output.some((entry) => entry[0] === "log" && rendered(entry).includes("[info]") && rendered(entry).includes("[test]") && rendered(entry).includes("Server running")));
+    assert.ok(output.some((entry) => entry[0] === "warn" && rendered(entry).includes("[warn]")));
+    assert.ok(output.some((entry) => entry[0] === "error" && rendered(entry).includes("[error]")));
   } finally {
     console.log = original.log;
     console.error = original.error;
@@ -63,8 +65,10 @@ test("regular logger hides routine info and debug output", async () => {
     logger.debug("test", "debug detail");
     logger.warn("test", "important warning");
 
-    assert.doesNotMatch(output.map((entry) => String(entry[1])).join("\n"), /routine info|debug detail/);
-    assert.match(output.map((entry) => String(entry[1])).join("\n"), /important warning/);
+    const rendered = (entry) => entry.slice(1).map(String).join(" ");
+
+    assert.doesNotMatch(output.map(rendered).join("\n"), /routine info|debug detail/);
+    assert.match(output.map(rendered).join("\n"), /important warning/);
   } finally {
     if (previousVerboseLogs === undefined) delete process.env.AURRAL_VERBOSE_LOGS;
     else process.env.AURRAL_VERBOSE_LOGS = previousVerboseLogs;

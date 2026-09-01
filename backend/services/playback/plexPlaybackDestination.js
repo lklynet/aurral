@@ -328,7 +328,7 @@ export class PlexPlaybackDestination {
   _hash(snapshot, ratingKeys, title) {
     const keys = [...ratingKeys].sort().join(",");
     return crypto
-      .createHash("sha1")
+      .createHash("sha256")
       .update(`${snapshot.entityId}|${snapshot.ownerUserId ?? "global"}|${title}|${keys}|${snapshot.description || ""}`)
       .digest("hex");
   }

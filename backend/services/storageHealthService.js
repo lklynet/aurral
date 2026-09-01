@@ -12,6 +12,7 @@ import { NavidromeClient } from "./navidrome.js";
 import { PlexClient } from "./plex.js";
 import { runLidarrLibraryAccessTest } from "./lidarrLibraryAccessTest.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
+import { normalizeSeparators } from "./textUtils.js";
 import {
   getPathMappings,
   looksLikeExternalOnlyPath,
@@ -765,7 +766,7 @@ async function checkNavidromeSection() {
     return buildSection("navidrome", "Navidrome playback", steps);
   }
 
-  const expectedLibraryPath = resolvePlaylistRoot().replace(/\\/g, "/").replace(/\/+$/, "");
+  const expectedLibraryPath = normalizeSeparators(resolvePlaylistRoot());
   const expectedLibraryCandidates = [expectedLibraryPath];
 
   let libraries = [];
@@ -949,7 +950,7 @@ async function checkPlexSection() {
   }
 
   const configuredBase = String(plex.downloadsPath || "").trim() || resolvePlaylistRoot();
-  const expectedPath = configuredBase.replace(/\\/g, "/").replace(/\/+$/, "");
+  const expectedPath = normalizeSeparators(configuredBase);
   const locations = getPlexLibraryLocations(libraries);
   const coveringLocation = locations.find((location) => pathCoversPrefix(location, expectedPath));
   if (coveringLocation) {

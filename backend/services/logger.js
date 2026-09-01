@@ -52,11 +52,11 @@ function log(level, category, message, data = {}) {
   const line = `[${level}] [${category}] ${message}`;
   const keys = Object.keys(data).length;
   if (level === "error") {
-    keys > 0 ? console.error(line, data) : console.error(line);
+    keys > 0 ? console.error("%s", line, data) : console.error("%s", line);
   } else if (level === "warn") {
-    keys > 0 ? console.warn(line, data) : console.warn(line);
+    keys > 0 ? console.warn("%s", line, data) : console.warn("%s", line);
   } else {
-    keys > 0 ? console.log(line, data) : console.log(line);
+    keys > 0 ? console.log("%s", line, data) : console.log("%s", line);
   }
 }
 

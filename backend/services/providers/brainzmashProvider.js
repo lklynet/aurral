@@ -268,8 +268,12 @@ export async function searchAlbums(
   } catch {}
 
   if (items.length === 0 && isNarrowFallbacksEnabled()) {
+    const escapeLucenePhrase = (value) =>
+      String(value || "")
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, '\\"');
     const mbQuery = artistName
-      ? `artist:"${artistName.replace(/"/g, '\\"')}" AND releasegroup:"${String(query || "").replace(/"/g, '\\"')}"`
+      ? `artist:"${escapeLucenePhrase(artistName)}" AND releasegroup:"${escapeLucenePhrase(query)}"`
       : String(query || "").trim();
     const response = await axios.get(`${MUSICBRAINZ_API}/release-group`, {
       params: {

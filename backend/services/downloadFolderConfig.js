@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { resolveAurralDataDir } from "../config/data-dir.js";
+import { stripTrailingSeparators } from "./textUtils.js";
 
 let storedDownloadFolderPath = null;
 
@@ -121,7 +122,7 @@ export function normalizeSelectedFolderPath(pathValue) {
   if (resolved === path.sep || resolved === "/") {
     return "/";
   }
-  return resolved.replace(/[/\\]+$/, "");
+  return stripTrailingSeparators(resolved);
 }
 
 function isFilesystemRoot(resolvedRoot) {

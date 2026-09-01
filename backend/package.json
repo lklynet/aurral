@@ -19,21 +19,21 @@
   "author": "",
   "license": "MIT",
   "optionalDependencies": {
-    "@russellthehippo/honker-node-darwin-arm64": "0.4.5",
-    "@russellthehippo/honker-node-darwin-x64": "0.4.5",
-    "@russellthehippo/honker-node-linux-arm64-gnu": "0.4.5",
-    "@russellthehippo/honker-node-linux-x64-gnu": "0.4.5"
+    "@russellthehippo/honker-node-darwin-arm64": "0.5.1",
+    "@russellthehippo/honker-node-darwin-x64": "0.5.1",
+    "@russellthehippo/honker-node-linux-arm64-gnu": "0.5.1",
+    "@russellthehippo/honker-node-linux-x64-gnu": "0.5.1"
   },
   "dependencies": {
-    "@russellthehippo/honker-node": "^0.4.5",
+    "@russellthehippo/honker-node": "^0.5.1",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^13.0.3",
     "express": "^5.2.1",
-    "express-rate-limit": "^8.6.2",
+    "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
     "music-metadata": "^11.15.0",
     "openid-client": "^6.8.7",
-    "sharp": "^0.35.3",
+    "sharp": "^0.35.4",
     "undici": "^8.10.0",
     "ws": "^8.21.3"
   }
