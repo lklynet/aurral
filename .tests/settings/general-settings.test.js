@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { join } from "node:path";
 import {
   cleanupIsolatedState,
   resetDatabase,
@@ -132,16 +133,17 @@ function captureSettingsRoutes() {
 
 test("saves overlapping roots with an equal overlap warning", async () => {
   const { postSettings } = captureSettingsRoutes();
+  const sharedRoot = join(isolatedState.baseDir, "roots", "shared");
   dbOps.updateSettings({
-    downloadFolderPath: "/data/media/aurral",
+    downloadFolderPath: sharedRoot,
     integrations: {
-      lidarr: { url: "http://127.0.0.1:18686", apiKey: "key", rootFolderPath: "/data/media" },
+      lidarr: { url: "http://127.0.0.1:18686", apiKey: "key", rootFolderPath: sharedRoot },
     },
   });
 
   const response = await postSettings({
     integrations: {
-      lidarr: { rootFolderPath: "/data/media/aurral" },
+      lidarr: { rootFolderPath: sharedRoot },
     },
   });
 
@@ -154,21 +156,22 @@ test("saves overlapping roots with an equal overlap warning", async () => {
 
 test("does not warn about lidarr roots while lidarr is disabled", async () => {
   const { getSettings, postSettings } = captureSettingsRoutes();
+  const sharedRoot = join(isolatedState.baseDir, "roots", "disabled-shared");
   dbOps.updateSettings({
-    downloadFolderPath: "/data/media/aurral",
+    downloadFolderPath: sharedRoot,
     integrations: {
       lidarr: {
         url: "http://127.0.0.1:18686",
         apiKey: "key",
         enabled: false,
-        rootFolderPath: "/data/media/aurral",
+        rootFolderPath: sharedRoot,
       },
     },
   });
 
   const saved = await postSettings({
     integrations: {
-      lidarr: { rootFolderPath: "/data/media/aurral" },
+      lidarr: { rootFolderPath: sharedRoot },
     },
   });
   assert.equal(saved.statusCode, 200);
