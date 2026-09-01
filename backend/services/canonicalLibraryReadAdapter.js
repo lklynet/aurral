@@ -6,6 +6,7 @@ import {
   getCanonicalLibraryForArtists,
   getCanonicalTrackPath,
 } from "./libraryQueryService.js";
+import { getManagedByMap } from "./libraryManagementStore.js";
 
 const albumFiles = (track, albumId) =>
   (track.files || []).filter((file) => file.albumId == null || file.albumId === albumId);
@@ -28,7 +29,7 @@ const recordMatches = (record, reference) => {
   );
 };
 
-const buildArtist = (artist, albumsByArtistId) => {
+const buildArtist = (artist, albumsByArtistId, managementByArtistId = new Map()) => {
   const artistAlbums = albumsByArtistId.get(artist.id) || [];
   const hasSummary = artist.albumCount !== undefined;
   const trackCount = hasSummary
@@ -38,10 +39,13 @@ const buildArtist = (artist, albumsByArtistId) => {
     ? Number(artist.sizeOnDisk || 0)
     : artistAlbums.reduce((total, album) => total + album.statistics.sizeOnDisk, 0);
   const providerId = artist.metadata?.id ?? null;
+  const management = managementByArtistId.get(Number(artist.id)) || null;
   return {
     id: artist.id,
     canonicalId: artist.id,
     providerId,
+    managedBy: management?.managedBy ?? null,
+    monitorMode: management?.monitorMode ?? null,
     mbid: artist.mbid,
     foreignArtistId: artist.metadata?.foreignArtistId || artist.mbid || artist.identityKey,
     artistName: artist.name,
@@ -65,7 +69,7 @@ const buildArtist = (artist, albumsByArtistId) => {
   };
 };
 
-const buildAlbum = (album, artistsById, tracksById) => {
+const buildAlbum = (album, artistsById, tracksById, managementByAlbumId = new Map()) => {
   const artist = artistsById.get(album.artistId);
   const albumTracks = album.trackIds
     .map((trackId) => tracksById.get(trackId))
@@ -78,11 +82,14 @@ const buildAlbum = (album, artistsById, tracksById) => {
     albumFiles(track, album.id).some((file) => file.available),
   ).length;
   const providerId = album.metadata?.id ?? null;
+  const management = managementByAlbumId.get(Number(album.id)) || null;
   return {
     id: album.id,
     canonicalId: album.id,
     identityKey: album.identityKey,
     providerId,
+    managedBy: management?.managedBy ?? null,
+    monitorMode: management?.monitorMode ?? null,
     providerArtistId: album.metadata?.artistId ?? null,
     artistId: album.artistId,
     artistMbid: artist?.mbid || null,
@@ -135,14 +142,22 @@ export function buildCanonicalLibraryReadModel(library) {
   const { artists, albums, tracks } = library;
   const artistsById = new Map(artists.map((artist) => [artist.id, artist]));
   const tracksById = new Map(tracks.map((track) => [track.id, track]));
-  const readAlbums = albums.map((album) => buildAlbum(album, artistsById, tracksById));
+  const management = {
+    artist: getManagedByMap("artist"),
+    album: getManagedByMap("album"),
+  };
+  const readAlbums = albums.map((album) =>
+    buildAlbum(album, artistsById, tracksById, management.album),
+  );
   const albumsByArtistId = new Map();
   for (const album of readAlbums) {
     const artistAlbums = albumsByArtistId.get(album.artistId) || [];
     artistAlbums.push(album);
     albumsByArtistId.set(album.artistId, artistAlbums);
   }
-  const readArtists = artists.map((artist) => buildArtist(artist, albumsByArtistId));
+  const readArtists = artists.map((artist) =>
+    buildArtist(artist, albumsByArtistId, management.artist),
+  );
   const readTracks = readAlbums.flatMap((album) =>
     album.trackIds
       .map((trackId) => tracksById.get(trackId))
@@ -160,7 +175,9 @@ export function getCanonicalLibraryReadModelForArtistPage({
 } = {}) {
   const library = getCanonicalArtistPage({ source, availableOnly, limit, offset, includeStats: true });
   return {
-    artists: library.artists.map((artist) => buildArtist(artist, new Map())),
+    artists: library.artists.map((artist) =>
+      buildArtist(artist, new Map(), getManagedByMap("artist")),
+    ),
     albums: [],
     tracks: [],
   };

@@ -351,6 +351,7 @@ export class LidarrClient {
       insecure: !!insecure,
       timeoutMs,
       circuitDisabled,
+      enabled: dbConfig.enabled !== false,
     };
 
     const didConfigChange =
@@ -359,7 +360,8 @@ export class LidarrClient {
       previousConfig.apiKey !== newConfig.apiKey ||
       previousConfig.insecure !== newConfig.insecure ||
       previousConfig.timeoutMs !== newConfig.timeoutMs ||
-      previousConfig.circuitDisabled !== newConfig.circuitDisabled;
+      previousConfig.circuitDisabled !== newConfig.circuitDisabled ||
+      previousConfig.enabled !== newConfig.enabled;
 
     this.config = newConfig;
     if (didConfigChange) {
@@ -375,9 +377,17 @@ export class LidarrClient {
     return this.config;
   }
 
+  isEnabled() {
+    this.updateConfig();
+    return this.config?.enabled !== false;
+  }
+
   isConfigured(skipConfigUpdate = false) {
     if (!skipConfigUpdate) {
       this.updateConfig();
+    }
+    if (this.config?.enabled === false) {
+      return false;
     }
     return !!this.config?.apiKey?.trim();
   }
@@ -420,6 +430,9 @@ export class LidarrClient {
     }
 
     if (!this.isConfigured(skipConfigUpdate)) {
+      if (this.config?.enabled === false) {
+        throw new Error("Lidarr is disabled");
+      }
       throw new Error("Lidarr API key not configured");
     }
 

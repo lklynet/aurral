@@ -583,6 +583,9 @@ if (!userColumns.includes("discover_layout")) {
 if (!userColumns.includes("listen_history_url")) {
   tryAddColumn("ALTER TABLE users ADD COLUMN listen_history_url TEXT");
 }
+if (!userColumns.includes("default_library_owner")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN default_library_owner TEXT");
+}
 
 db.exec(`
   UPDATE users

@@ -12,6 +12,7 @@ import { resolvePlaylistRoot } from "../../../services/playlistPaths.js";
 import {
   resolveYtdlpStagingRoot,
   validateDownloadFolderPath,
+  computeLibraryRootOverlaps,
 } from "../../../services/downloadFolderConfig.js";
 import { normalizePathMappings } from "../../../services/pathMappings.js";
 import { logger } from "../../../services/logger.js";
@@ -28,6 +29,15 @@ function mergeIntegrations(existing, input, keys) {
       : existing[key];
   }
   return merged;
+}
+
+function resolveLibraryRootWarnings(settings) {
+  const aurralRoot = settings?.downloadFolderPath || resolvePlaylistRoot();
+  const lidarrRoots =
+    settings?.integrations?.lidarr?.enabled === false
+      ? []
+      : [settings?.integrations?.lidarr?.rootFolderPath];
+  return computeLibraryRootOverlaps({ aurralRoot, lidarrRoots });
 }
 
 export function registerGeneral(router) {
@@ -65,8 +75,15 @@ export function registerGeneral(router) {
           enabled: settings?.security?.localNetworkBypass?.enabled === true,
         },
       };
+      if (settings.integrations?.lidarr) {
+        settings.integrations.lidarr = {
+          ...settings.integrations.lidarr,
+          enabled: settings.integrations.lidarr.enabled !== false,
+        };
+      }
       res.json({
         ...settings,
+        rootWarnings: resolveLibraryRootWarnings(settings),
         downloadFolderPath:
           settings.downloadFolderPath || resolvePlaylistRoot(),
         integrations: {
@@ -145,6 +162,12 @@ export function registerGeneral(router) {
         nextMetadata.enableNarrowFallbacks =
           nextMetadata.enableNarrowFallbacks !== false;
         integrations.metadata = nextMetadata;
+      }
+      if (integrations?.lidarr?.enabled !== undefined) {
+        integrations.lidarr = {
+          ...integrations.lidarr,
+          enabled: integrations.lidarr.enabled === true,
+        };
       }
       if (integrations?.coverArtArchive) {
         delete integrations.coverArtArchive;
@@ -544,7 +567,10 @@ export function registerGeneral(router) {
       ) {
         websocketService.reconcileAuthState();
       }
-      res.json(reconciled);
+      res.json({
+        ...reconciled,
+        rootWarnings: resolveLibraryRootWarnings(updatedSettings),
+      });
     } catch (error) {
       logger.error("settings", "Settings POST error:", error);
       res
