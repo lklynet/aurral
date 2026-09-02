@@ -18,12 +18,25 @@ const {
   discoveryNeedsRefresh,
   bootstrapDiscoveryRefresh,
   enqueueDiscoveryRefresh,
+  enqueueDiscoveryRefreshIfNeeded,
   markDiscoveryRefreshDequeued,
   recoverDeadDiscoveryRefresh,
   scheduleNextDiscoveryRefresh,
 } = refreshScheduler;
 const { getDiscoveryCache } = discoveryIndex;
+const { db } = await importFromRepo("backend/config/db-sqlite.js");
 const originalLastfmApiKey = process.env.LASTFM_API_KEY;
+
+function seedLibraryArtist() {
+  db.prepare(
+    `INSERT INTO library_artists (identity_key, name, created_at, updated_at)
+     VALUES ('test:seed-artist', 'Seed Artist', 1, 1)`,
+  ).run();
+}
+
+function clearLibraryArtists() {
+  db.prepare("DELETE FROM library_artists").run();
+}
 
 let heldGlobalRefreshLock = null;
 
@@ -96,6 +109,7 @@ test.beforeEach(() => {
   markDiscoveryRefreshDequeued();
   setDiscoveryCache();
   releaseHeldGlobalRefreshLock();
+  clearLibraryArtists();
 });
 
 test.after(async () => {
@@ -127,6 +141,47 @@ test("discoveryNeedsRefresh retries a recent empty cache", () => {
     }),
     true,
   );
+});
+
+test("discoveryNeedsRefresh does not retry missing genres when the library has no artists", () => {
+  assert.equal(
+    discoveryNeedsRefresh({
+      recommendations: [],
+      globalTop: [{ id: "trend-1" }],
+      topGenres: [],
+      lastUpdated: new Date().toISOString(),
+    }),
+    false,
+  );
+});
+
+test("discoveryNeedsRefresh retries missing genres when the library has seed artists", () => {
+  seedLibraryArtist();
+  assert.equal(
+    discoveryNeedsRefresh({
+      recommendations: [{ id: "rec-1" }],
+      globalTop: [{ id: "trend-1" }],
+      topGenres: [],
+      lastUpdated: new Date().toISOString(),
+    }),
+    true,
+  );
+});
+
+test("interval check does not queue a refresh after a seedless run left genres empty", async () => {
+  process.env.LASTFM_API_KEY = "test-key";
+  setDiscoveryCache({
+    recommendations: [],
+    globalTop: [{ id: "trend-1" }],
+    topGenres: [],
+    lastUpdated: new Date().toISOString(),
+  });
+
+  const result = await enqueueDiscoveryRefreshIfNeeded({ reason: "interval" });
+
+  assert.equal(result.enqueued, false);
+  assert.equal(result.reason, "fresh");
+  assert.equal(countDiscoveryRefreshJobs(), 0);
 });
 
 test("discoveryNeedsRefresh returns false for fresh populated cache", () => {
