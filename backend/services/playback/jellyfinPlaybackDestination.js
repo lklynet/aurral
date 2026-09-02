@@ -196,6 +196,7 @@ export class JellyfinPlaybackDestination {
 
   async _deleteCurrent(identity) {
     const targetKey = this._targetKey(identity.ownerUserId);
+    await this._deleteLegacyPointer(identity.entityId, targetKey);
     const pointer = jellyfinPlaylistPointerStore.getPointer(identity.entityId, targetKey);
     if (!pointer) return;
     if (pointer.serverUrl && pointer.serverUrl !== this.client?.url) {
@@ -258,7 +259,21 @@ export class JellyfinPlaybackDestination {
     await this._deleteLegacyPointer(snapshot.entityId, targetKey);
     const cacheKey = this._cacheKey(snapshot);
     const pointer = jellyfinPlaylistPointerStore.getPointer(snapshot.entityId, targetKey);
-    const reusable = pointer?.serverUrl === this.client.url ? pointer : null;
+    let reusable = pointer?.serverUrl === this.client.url ? pointer : null;
+
+    if (reusable && reusable.jellyfinUserId !== jellyfinUserId) {
+      try {
+        await this.client.deletePlaylist(
+          reusable.playlistId,
+          reusable.jellyfinUserId || this.client.userId,
+        );
+      } catch (error) {
+        if (!isNotFound(error)) throw error;
+      }
+
+      jellyfinPlaylistPointerStore.deletePointer(snapshot.entityId, targetKey);
+      reusable = null;
+    }
     const itemIds = this._resolveItemIds(snapshot, jellyfinUserId);
     if (!snapshot.tracks.length) {
       await this._deleteCurrent(snapshot);

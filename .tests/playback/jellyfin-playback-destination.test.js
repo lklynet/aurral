@@ -235,3 +235,89 @@ test("removes the legacy public playlist before publishing privately", async () 
     else process.env.PATH_MAPPINGS = originalMappings;
   }
 });
+
+test("removes the legacy playlist during owner-scoped deletion", async () => {
+  const calls = [];
+  const owner = userOps.createUser("ambi", "hash", "user");
+  const destination = new JellyfinPlaybackDestination(weeklyFlowRoot, {
+    client: makeClient(calls),
+  });
+
+  jellyfinPlaylistPointerStore.setPointer("flow-jellyfin", userId, {
+    playlistId: "legacy-public-playlist",
+    title: "Discover Weekly",
+    serverUrl: "http://jellyfin.local",
+  });
+
+  const result = await destination.deletePlaylist({
+    entityId: "flow-jellyfin",
+    ownerUserId: owner.id,
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls[0], {
+    operation: "delete",
+    playlistId: "legacy-public-playlist",
+  });
+  assert.equal(
+    jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId),
+    null,
+  );
+});
+
+test("does not reuse a playlist belonging to a different Jellyfin user", async () => {
+  const calls = [];
+  const owner = userOps.createUser("ambi", "hash", "user");
+  const client = makeClient(calls);
+
+  client.deletePlaylist = async (playlistId, jellyfinUserId) => {
+    calls.push({ operation: "delete", playlistId, jellyfinUserId });
+  };
+
+  const destination = new JellyfinPlaybackDestination(weeklyFlowRoot, {
+    client,
+  });
+
+  jellyfinPlaylistPointerStore.setPointer(
+    "flow-jellyfin",
+    String(owner.id),
+    {
+      playlistId: "old-user-playlist",
+      title: "Discover Weekly",
+      serverUrl: "http://jellyfin.local",
+      jellyfinUserId: "jellyfin-old-user",
+    },
+  );
+
+  const originalMappings = process.env.PATH_MAPPINGS;
+  process.env.PATH_MAPPINGS = "jellyfin|/downloads|/media";
+
+  try {
+    const result = await destination.publishPlaylist(
+      snapshot({ ownerUserId: owner.id }),
+    );
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(calls[0], {
+      operation: "delete",
+      playlistId: "old-user-playlist",
+      jellyfinUserId: "jellyfin-old-user",
+    });
+    assert.equal(calls[1].operation, "create");
+    assert.equal(calls[1].payload.userId, "jellyfin-ambi");
+    assert.equal(
+      calls.some((call) => call.operation === "update"),
+      false,
+    );
+    assert.equal(
+      jellyfinPlaylistPointerStore.getPointer(
+        "flow-jellyfin",
+        String(owner.id),
+      ).jellyfinUserId,
+      "jellyfin-ambi",
+    );
+  } finally {
+    if (originalMappings == null) delete process.env.PATH_MAPPINGS;
+    else process.env.PATH_MAPPINGS = originalMappings;
+  }
+});
