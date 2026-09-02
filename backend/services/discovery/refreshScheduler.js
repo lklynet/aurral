@@ -146,6 +146,14 @@ export async function isDiscoveryRefreshConfigured() {
   return getCanonicalArtistProjection({ page: 1, pageSize: 1 }).length > 0;
 }
 
+function hasDiscoverySeedArtists() {
+  try {
+    return getCanonicalArtistProjection({ page: 1, pageSize: 1 }).length > 0;
+  } catch {
+    return true;
+  }
+}
+
 export function discoveryNeedsRefresh(cache = getDiscoveryCache()) {
   const lastUpdated = cache?.lastUpdated;
   const hasRecommendations =
@@ -156,12 +164,17 @@ export function discoveryNeedsRefresh(cache = getDiscoveryCache()) {
   const refreshHours = getDiscoveryAutoRefreshHours();
   const staleCutoff = Date.now() - refreshHours * 60 * 60 * 1000;
   const lastUpdatedAt = new Date(lastUpdated || "").getTime();
-  return (
-    !Number.isFinite(lastUpdatedAt) ||
-    lastUpdatedAt < staleCutoff ||
-    (!hasRecommendations && !hasGlobalTop) ||
-    !hasGenres
-  );
+  if (!Number.isFinite(lastUpdatedAt) || lastUpdatedAt < staleCutoff) {
+    return true;
+  }
+  if (!hasRecommendations && !hasGlobalTop) {
+    return true;
+  }
+  // Recommendations and genres are seeded from library artists, so with an
+  // empty library a completed refresh legitimately leaves them empty and
+  // retrying cannot fill them — treating that as stale would re-run the
+  // refresh on every scheduled check (#763).
+  return !hasGenres && hasDiscoverySeedArtists();
 }
 
 function emitDiscoveryQueued(reason) {
