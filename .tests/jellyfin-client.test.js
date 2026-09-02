@@ -34,20 +34,47 @@ test("updates playlists with API-key-compatible replacement requests", async () 
     await client.deletePlaylist(replacement.Id);
 
     assert.equal(created.Id, "created");
-    assert.equal(replacement.Id, "replacement");
+    assert.equal(replacement.Id, "created");
     assert.deepEqual(
       requests.map(({ method, url }) => `${method} ${url.pathname}`),
       [
         "POST /Playlists",
-        "POST /Playlists",
+        "POST /Playlists/created",
         "DELETE /Items/created",
-        "DELETE /Items/replacement",
       ],
     );
     assert.equal(requests[0].body.UserId, "user-id");
+    assert.equal(requests[0].body.IsPublic, false);
+    assert.equal(requests[1].body.IsPublic, false);
     assert.equal(requests[1].body.Name, "Second");
     assert.equal(requests[2].url.searchParams.get("userId"), "user-id");
     assert.match(requests[0].headers?.authorization || "", /Token="api-key"/);
+  } finally {
+    await server.close();
+  }
+});
+
+test("finds Jellyfin users by exact case-insensitive username", async () => {
+  const server = await createMockHttpServer(async (_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify([
+      { Id: "jellyfin-ambi", Name: "ambi" },
+      { Id: "jellyfin-hopolis", Name: "Hopolis" },
+    ]));
+  });
+
+  try {
+    const client = new JellyfinClient(server.url, "api-key", "admin-user");
+
+    assert.equal(
+      (await client.findUserByUsername(" AMBI "))?.Id,
+      "jellyfin-ambi",
+    );
+    assert.equal(
+      (await client.findUserByUsername("hopolis"))?.Id,
+      "jellyfin-hopolis",
+    );
+    assert.equal(await client.findUserByUsername("hop"), null);
   } finally {
     await server.close();
   }

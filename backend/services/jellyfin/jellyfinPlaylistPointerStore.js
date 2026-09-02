@@ -23,6 +23,8 @@ const normalizePointer = (raw) => {
     playlistId,
     title: String(raw.title || ""),
     serverUrl: String(raw.serverUrl || ""),
+    jellyfinUserId:
+      raw.jellyfinUserId != null ? String(raw.jellyfinUserId) : null,
     updatedAt: Number(raw.updatedAt) || Date.now(),
   };
 };
@@ -32,7 +34,7 @@ export const jellyfinPlaylistPointerStore = {
     return normalizePointer(readStore()[entityId]?.[targetKey] || null);
   },
 
-  setPointer(entityId, targetKey, { playlistId, title, serverUrl }) {
+  setPointer(entityId, targetKey, { playlistId, title, serverUrl, jellyfinUserId = null }) {
     const store = readStore();
     if (!store[entityId]) store[entityId] = {};
     store[entityId][targetKey] = {
@@ -40,6 +42,8 @@ export const jellyfinPlaylistPointerStore = {
       title: String(title || ""),
       serverUrl: String(serverUrl || ""),
       updatedAt: Date.now(),
+      jellyfinUserId:
+        jellyfinUserId != null ? String(jellyfinUserId) : null,
     };
     writeStore(store);
   },

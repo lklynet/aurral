@@ -1,4 +1,5 @@
 import { setTimeout as wait } from "node:timers/promises";
+import { userOps } from "../../db/helpers/index.js";
 import { JellyfinClient } from "../jellyfin.js";
 import { jellyfinPlaylistPointerStore } from "../jellyfin/jellyfinPlaylistPointerStore.js";
 import { getPathMappings, resolveRemotePath } from "../pathMappings.js";
@@ -51,7 +52,7 @@ export class JellyfinPlaybackDestination {
     this.name = "Jellyfin";
     this.client = client;
     this._configKey = "";
-    this._libraryTracks = null;
+    this._libraryTracks = new Map();
     this._syncHashes = new Map();
     this._pendingSnapshots = new Map();
     this._catchupRunning = false;
@@ -69,7 +70,7 @@ export class JellyfinPlaybackDestination {
     this.client = config.url && config.apiKey && config.userId
       ? new JellyfinClient(config.url, config.apiKey, config.userId)
       : null;
-    this._libraryTracks = null;
+    this._libraryTracks = new Map();
     this._syncHashes.clear();
     this._pendingSnapshots.clear();
   }
@@ -78,12 +79,21 @@ export class JellyfinPlaybackDestination {
     return Boolean(this.client?.isConfigured());
   }
 
-  _targetKey() {
-    return String(this.client?.userId || "global");
+  async _resolveOwnerJellyfinUser(ownerUserId) {
+    if (ownerUserId == null) return { Id: this.client.userId };
+
+    const owner = userOps.getUserById(ownerUserId);
+    if (!owner?.username) return null;
+
+    return this.client.findUserByUsername(owner.username);
+  }
+
+  _targetKey(ownerUserId) {
+    return String(ownerUserId ?? this.client?.userId ?? "global");
   }
 
   _cacheKey(snapshot) {
-    return `${snapshot.entityId}:${this._targetKey()}`;
+    return `${snapshot.entityId}:${this._targetKey(snapshot.ownerUserId)}`;
   }
 
   async testConnection() {
@@ -96,6 +106,7 @@ export class JellyfinPlaybackDestination {
     try {
       await this.client.ping();
       await this.client.getUser();
+      await this.client.getUsers();
       return playbackOperationSuccess();
     } catch (error) {
       return playbackOperationFailure({
@@ -106,11 +117,24 @@ export class JellyfinPlaybackDestination {
     }
   }
 
-  async ensureLibrary() {
+  async ensureLibrary(userId = this.client?.userId) {
     if (!this.isConfigured()) return playbackOperationSuccess();
+
+    const libraryKey = String(userId || "").trim();
+    if (!libraryKey) {
+      return playbackOperationFailure({
+        code: "JELLYFIN_USER_NOT_FOUND",
+        message: "No Jellyfin user was provided for the library lookup",
+      });
+    }
+
+    if (this._libraryTracks.has(libraryKey)) {
+      return playbackOperationSuccess();
+    }
+
     try {
-      // Keep one full audio index in memory per scan; add a persistent index only if nightly libraries make this measurable.
-      this._libraryTracks = await this.client.getAudioItems();
+      const tracks = await this.client.getAudioItems(libraryKey);
+      this._libraryTracks.set(libraryKey, tracks);
       return playbackOperationSuccess();
     } catch (error) {
       return playbackOperationFailure({
@@ -121,10 +145,13 @@ export class JellyfinPlaybackDestination {
     }
   }
 
-  _resolveItemIds(snapshot) {
+  _resolveItemIds(snapshot, userId) {
+    const libraryKey = String(userId || "").trim();
+    const libraryTracks = this._libraryTracks.get(libraryKey) || [];
     const byPath = new Map();
     const byMbid = new Map();
-    for (const item of this._libraryTracks || []) {
+
+    for (const item of libraryTracks) {
       const id = itemId(item);
       if (!id) continue;
       const path = normalizePath(item.Path || item.path);
@@ -168,7 +195,7 @@ export class JellyfinPlaybackDestination {
   }
 
   async _deleteCurrent(identity) {
-    const targetKey = this._targetKey();
+    const targetKey = this._targetKey(identity.ownerUserId);
     const pointer = jellyfinPlaylistPointerStore.getPointer(identity.entityId, targetKey);
     if (!pointer) return;
     if (pointer.serverUrl && pointer.serverUrl !== this.client?.url) {
@@ -176,7 +203,10 @@ export class JellyfinPlaybackDestination {
       return;
     }
     try {
-      await this.client.deletePlaylist(pointer.playlistId);
+      await this.client.deletePlaylist(
+        pointer.playlistId,
+        pointer.jellyfinUserId || this.client.userId,
+      );
     } catch (error) {
       if (!isNotFound(error)) throw error;
     }
@@ -184,33 +214,60 @@ export class JellyfinPlaybackDestination {
     this._syncHashes.delete(this._cacheKey(identity));
   }
 
+  async _deleteLegacyPointer(entityId, currentTargetKey) {
+    const legacyTargetKey = String(this.client?.userId || "global");
+    if (legacyTargetKey === currentTargetKey) return;
+
+    const pointer = jellyfinPlaylistPointerStore.getPointer(
+      entityId,
+      legacyTargetKey,
+    );
+    if (!pointer) return;
+
+    if (!pointer.serverUrl || pointer.serverUrl === this.client?.url) {
+      try {
+        await this.client.deletePlaylist(
+          pointer.playlistId,
+          pointer.jellyfinUserId || this.client.userId,
+        );
+      } catch (error) {
+        if (!isNotFound(error)) throw error;
+      }
+    }
+
+    jellyfinPlaylistPointerStore.deletePointer(entityId, legacyTargetKey);
+  }
+
   async _publishPlaylist(snapshot) {
     if (!this.isConfigured()) return playbackOperationSuccess();
-    if (this._libraryTracks == null) {
-      const ensured = await this.ensureLibrary();
-      if (!ensured.ok) return ensured;
+    const jellyfinUser = await this._resolveOwnerJellyfinUser(
+      snapshot.ownerUserId,
+    );
+    const jellyfinUserId = itemId(jellyfinUser);
+
+    if (!jellyfinUserId) {
+      const owner = userOps.getUserById(snapshot.ownerUserId);
+      return playbackOperationFailure({
+        code: "JELLYFIN_USER_NOT_FOUND",
+        message: `No Jellyfin user matches Aurral username "${owner?.username || "unknown"}"`,
+      });
     }
-    const targetKey = this._targetKey();
+    const ensured = await this.ensureLibrary(jellyfinUserId);
+    if (!ensured.ok) return ensured;
+    const targetKey = this._targetKey(snapshot.ownerUserId);
+    await this._deleteLegacyPointer(snapshot.entityId, targetKey);
     const cacheKey = this._cacheKey(snapshot);
     const pointer = jellyfinPlaylistPointerStore.getPointer(snapshot.entityId, targetKey);
     const reusable = pointer?.serverUrl === this.client.url ? pointer : null;
-    const itemIds = this._resolveItemIds(snapshot);
+    const itemIds = this._resolveItemIds(snapshot, jellyfinUserId);
     if (!snapshot.tracks.length) {
       await this._deleteCurrent(snapshot);
       this._pendingSnapshots.delete(cacheKey);
       return playbackOperationSuccess();
     }
-    if (!itemIds.length) {
-      this._pendingSnapshots.set(cacheKey, snapshot);
-      this._scheduleCatchup();
-      return playbackOperationSuccess();
-    }
+
     const unresolved = itemIds.length < snapshot.tracks.length;
-    if (unresolved && reusable) {
-      this._pendingSnapshots.set(cacheKey, snapshot);
-      this._scheduleCatchup();
-      return playbackOperationSuccess();
-    }
+
     const hash = this._hash(snapshot, itemIds);
     if (!unresolved && this._syncHashes.get(cacheKey) === hash) return playbackOperationSuccess();
 
@@ -232,6 +289,7 @@ export class JellyfinPlaybackDestination {
       const created = await this.client.createPlaylist({
         name: snapshot.displayName,
         itemIds,
+        userId: jellyfinUserId,
       });
       playlistId = itemId(created);
     }
@@ -240,6 +298,7 @@ export class JellyfinPlaybackDestination {
       playlistId,
       title: snapshot.displayName,
       serverUrl: this.client.url,
+      jellyfinUserId,
     });
     if (unresolved) {
       this._pendingSnapshots.set(cacheKey, snapshot);
@@ -292,7 +351,7 @@ export class JellyfinPlaybackDestination {
     if (!this.isConfigured()) return playbackOperationSuccess();
     try {
       await this.client.scanLibrary();
-      this._libraryTracks = null;
+      this._libraryTracks.clear();
       this._scheduleCatchup();
       return playbackOperationSuccess();
     } catch (error) {
@@ -312,6 +371,9 @@ export class JellyfinPlaybackDestination {
         for (const delayMs of delaysMs) {
           await wait(delayMs, undefined, { ref: false });
           if (!this.isConfigured() || !this._pendingSnapshots.size) break;
+
+          this._libraryTracks.clear();
+
           for (const snapshot of [...this._pendingSnapshots.values()]) {
             const key = this._cacheKey(snapshot);
             if (this._pendingSnapshots.get(key) !== snapshot) continue;
