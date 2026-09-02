@@ -42,14 +42,32 @@ export class JellyfinClient {
   async getUser() {
     return this.request("GET", `/Users/${encodeURIComponent(this.userId)}`);
   }
+  async getUsers() {
+    return this.request("GET", "/Users");
+  }
 
-  async getAudioItems() {
+  async findUserByUsername(username) {
+    const wanted = String(username || "").trim().toLowerCase();
+    if (!wanted) return null;
+
+    const users = await this.getUsers();
+    return (
+      users.find(
+        (user) =>
+          String(user?.Name || "").trim().toLowerCase() === wanted,
+      ) || null
+    );
+  }
+
+  async getAudioItems(userId = this.userId) {
     const items = [];
     const limit = 1_000;
-    for (let startIndex = 0; ; startIndex += limit) {
+    let startIndex = 0;
+
+    while (true) {
       const page = await this.request("GET", "/Items", {
         params: {
-          userId: this.userId,
+          userId,
           recursive: true,
           includeItemTypes: "Audio",
           fields: "Path,ProviderIds",
@@ -58,46 +76,52 @@ export class JellyfinClient {
           enableTotalRecordCount: true,
         },
       });
+
       const pageItems = Array.isArray(page?.Items) ? page.Items : [];
+      if (!pageItems.length) return items;
+
       items.push(...pageItems);
-      if (pageItems.length < limit || items.length >= Number(page?.TotalRecordCount || 0)) {
+
+      const total = Number(page?.TotalRecordCount);
+      if (Number.isFinite(total) && total > 0 && items.length >= total) {
         return items;
       }
+
+      startIndex += pageItems.length;
     }
   }
 
-  async createPlaylist({ name, itemIds }) {
+  async createPlaylist({ name, itemIds, userId = this.userId }) {
     return this.request("POST", "/Playlists", {
       data: {
         Name: name,
         Ids: itemIds,
-        UserId: this.userId,
+        UserId: userId,
         MediaType: "Audio",
-        IsPublic: true,
+        IsPublic: false,
       },
     });
   }
 
   async updatePlaylist(playlistId, { name, itemIds }) {
-    const replacement = await this.createPlaylist({ name, itemIds });
-    const replacementId = replacement?.Id ?? replacement?.id;
-    if (!replacementId) throw new Error("Jellyfin did not return a replacement playlist ID");
-    try {
-      await this.deletePlaylist(playlistId);
-    } catch (error) {
-      if (Number(error?.response?.status) !== 404) {
-        try {
-          await this.deletePlaylist(replacementId);
-        } catch {}
-        throw error;
-      }
-    }
-    return replacement;
+    await this.request(
+      "POST",
+      `/Playlists/${encodeURIComponent(playlistId)}`,
+      {
+        data: {
+          Name: name,
+          Ids: itemIds,
+          IsPublic: false,
+        },
+      },
+    );
+
+    return { Id: String(playlistId) };
   }
 
-  async deletePlaylist(playlistId) {
+  async deletePlaylist(playlistId, userId = this.userId) {
     return this.request("DELETE", `/Items/${encodeURIComponent(playlistId)}`, {
-      params: { userId: this.userId },
+      params: { userId },
     });
   }
 
