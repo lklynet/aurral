@@ -138,10 +138,34 @@ export class NavidromeClient {
     if (relativeMatches.length === 1) return relativeMatches[0];
 
     const mbid = String(track.mbid || "").trim().toLowerCase();
-    if (!mbid) return null;
-    return indexedSongs.find(
-      (song) => String(song.musicBrainzId || "").trim().toLowerCase() === mbid,
-    ) || null;
+    if (mbid) {
+      const mbidMatch = indexedSongs.find(
+        (song) => String(song.musicBrainzId || "").trim().toLowerCase() === mbid,
+      );
+      if (mbidMatch) return mbidMatch;
+    }
+
+    const cleanTitle = String(_title || track.title || track.trackName || "").trim().toLowerCase();
+    const cleanArtist = String(_artist || track.artist || track.artistName || "").trim().toLowerCase();
+    if (cleanTitle && cleanArtist) {
+      const candidateMatches = indexedSongs.filter(
+        (song) =>
+          String(song.title || "").trim().toLowerCase() === cleanTitle &&
+          String(song.artist || "").trim().toLowerCase() === cleanArtist,
+      );
+      if (candidateMatches.length === 1) return candidateMatches[0];
+      if (candidateMatches.length > 1) {
+        const cleanAlbum = String(track.album || track.albumName || "").trim().toLowerCase();
+        if (cleanAlbum) {
+          const albumMatches = candidateMatches.filter(
+            (song) => String(song.album || "").trim().toLowerCase() === cleanAlbum,
+          );
+          if (albumMatches.length === 1) return albumMatches[0];
+        }
+      }
+    }
+
+    return null;
   }
 
   async searchSongsByArtist(artistName, limit = 5) {
@@ -365,8 +389,15 @@ export class NavidromeClient {
     }
   }
 
-  async _getIndexedSongs() {
-    if (!this._indexedSongsPromise) {
+  invalidateIndexedSongsCache() {
+    this._indexedSongsPromise = null;
+    this._indexedSongsAt = 0;
+  }
+
+  async _getIndexedSongs(force = false) {
+    const now = Date.now();
+    if (force || !this._indexedSongsPromise || now - (this._indexedSongsAt || 0) > 30000) {
+      this._indexedSongsAt = now;
       this._indexedSongsPromise = (async () => {
         const songs = [];
         for (let start = 0; ; ) {
