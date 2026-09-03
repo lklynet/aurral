@@ -591,7 +591,8 @@ export const syncTrackDownloadHistory = async (historyEntries = null) => {
     }
 
     if (job.status === "done") {
-      recordTrackJobCompleted(job);
+      const isReused = entry.statusLabel === "Queued" || job.sourceType === "aurral" || job.sourceType === "lidarr";
+      recordTrackJobCompleted(job, isReused ? "Reused" : "Downloaded");
       continue;
     }
     if (job.status === "failed") {
@@ -936,11 +937,11 @@ export const recordTrackJobMoving = (job) =>
     title: `Moving ${job?.trackName || "track"} into playlist library`,
   });
 
-export const recordTrackJobCompleted = (job) =>
+export const recordTrackJobCompleted = (job, statusLabel = "Downloaded") =>
   recordTrackJob(job, {
     status: "completed",
-    statusLabel: "Downloaded",
-    title: `Downloaded ${job?.trackName || "track"}`,
+    statusLabel,
+    title: `${statusLabel === "Reused" ? "Reused" : "Downloaded"} ${job?.trackName || "track"}`,
     subtitle: `${job?.artistName || "Artist"} · ${resolvePlaylistName(job?.playlistId || job?.playlistType)}`,
   });
 
@@ -1092,8 +1093,9 @@ export const getAurralHistoryRequests = async (lidarrClient = null, user = null)
         job?.status === "done" &&
         (entry.status === "pending" || entry.status === "processing")
       ) {
+        const isReused = entry.statusLabel === "Queued" || job.sourceType === "aurral" || job.sourceType === "lidarr";
         entry.status = "completed";
-        entry.statusLabel = entry.statusLabel === "Queued" ? "Reused" : "Downloaded";
+        entry.statusLabel = isReused ? "Reused" : "Downloaded";
       }
       return toHistoryRequestItem(entry, { sourceFilename, albumName, trackName });
     });
