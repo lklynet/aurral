@@ -26,6 +26,10 @@ export {
   normalizeExistingFileMode,
 } from "./weeklyFlowFileReuseMode.js";
 
+const VALID_AUDIO_EXTENSIONS = new Set([
+  ".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav", ".aac", ".ape",
+]);
+
 export function sortJobsForTrackReuse(jobs) {
   return [...jobs].sort((a, b) => {
     const priority = (job) => {
@@ -112,6 +116,72 @@ function isFlowPlaylistType(playlistType) {
 function isCanonicalPlaylistType(playlistType) {
   const key = String(playlistType || "").trim();
   return key === "library" || Boolean(flowPlaylistConfig.getSharedPlaylist(key));
+}
+
+async function findLocalExistingSource(track, options = {}) {
+  const targetPlaylistType = String(options.targetPlaylistType || "").trim();
+  if (!targetPlaylistType) return null;
+
+  const root = path.resolve(options.weeklyFlowRoot || resolveWeeklyFlowRoot());
+  const ephemeral = isFlowPlaylistType(targetPlaylistType);
+  const canonical = isCanonicalPlaylistType(targetPlaylistType);
+
+  const artistDir = sanitizePathPart(track?.artistName, "Unknown Artist");
+  const albumDir = sanitizePathPart(track?.albumName, "Unknown Album");
+  const expectedBaseName = sanitizePathPart(track?.trackName, "Unknown Track");
+
+  // Build candidate directories.
+  // Files can land in different locations depending on playlist type
+  // and whether adoptFileIntoPlaylist has moved them.
+  const candidateDirs = [];
+
+  if (ephemeral) {
+    // Flows store files under: <root>/_flows/<flowId>/Artist/Album/
+    candidateDirs.push(
+      path.resolve(root, AURRAL_FLOWS_DIR, targetPlaylistType, artistDir, albumDir),
+    );
+  } else if (canonical) {
+    // Library and shared playlists store at: <root>/Artist/Album/
+    candidateDirs.push(path.resolve(root, artistDir, albumDir));
+  } else {
+    // Regular playlists: the download pipeline writes to <root>/Artist/Album/
+    // but adoptFileIntoPlaylist may have moved files to
+    // <root>/aurral-weekly-flow/<playlistId>/Artist/Album/
+    candidateDirs.push(path.resolve(root, artistDir, albumDir));
+    candidateDirs.push(
+      path.resolve(root, PLAYLIST_LIBRARY_DIR, targetPlaylistType, artistDir, albumDir),
+    );
+  }
+
+  for (const destinationDir of candidateDirs) {
+    try {
+      const files = await fs.readdir(destinationDir);
+      for (const file of files) {
+        const ext = path.extname(file).toLowerCase();
+        const baseName = path.basename(file, ext);
+        if (baseName === expectedBaseName && VALID_AUDIO_EXTENSIONS.has(ext)) {
+          const filePath = path.join(destinationDir, file);
+          const stat = await fs.stat(filePath);
+          if (stat.isFile()) {
+            return {
+              sourceType: "aurral",
+              sourcePath: filePath,
+              sourceJob: null,
+              albumName: track?.albumName || null,
+            };
+          }
+        }
+      }
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        console.warn(
+          `[WeeklyFlowReuse] Failed to check local existing source at ${destinationDir}:`,
+          error.message,
+        );
+      }
+    }
+  }
+  return null;
 }
 
 function tracksShareLibraryMembership(left, right) {
@@ -470,6 +540,10 @@ export async function resolveReusableTrackSource(track, options = {}) {
   if (mode === "download") {
     return { source: null, reason: "Existing file reuse is disabled" };
   }
+
+  const localSource = await findLocalExistingSource(track, options);
+  if (localSource) return { source: localSource, reason: null };
+
   const aurralSource = await findAurralSource(track, options);
   if (aurralSource) return { source: aurralSource, reason: null };
   const lidarrSource = await findLidarrSource(track, options);
@@ -482,6 +556,10 @@ export async function resolveRepairTrackSource(track, options = {}) {
   if (mode === "download") {
     return { source: null, reason: "Existing file reuse is disabled" };
   }
+
+  const localSource = await findLocalExistingSource(track, options);
+  if (localSource) return { source: localSource, reason: null };
+
   const lidarrSource = await findLidarrSource(track, options);
   if (lidarrSource) return { source: lidarrSource, reason: null };
   const aurralSource = await findAurralSource(track, options);

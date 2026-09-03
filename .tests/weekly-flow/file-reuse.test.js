@@ -100,6 +100,33 @@ test("reuseTrackForPlaylist references a completed Aurral track path", async () 
   assert.equal(downloadTracker.getJob(result.jobId)?.finalPath, sourcePath);
 });
 
+test("reuseTrackForPlaylist detects and reuses local audio file from disk without prior tracker job (#741)", async () => {
+  const track = {
+    artistName: "Ella Langley",
+    trackName: "Choosin' Texas",
+    albumName: "Hungover",
+  };
+  const localFilePath = path.join(
+    weeklyFlowRoot,
+    "Ella Langley",
+    "Hungover",
+    "Choosin' Texas.flac",
+  );
+  await fs.mkdir(path.dirname(localFilePath), { recursive: true });
+  await fs.writeFile(localFilePath, "audio");
+
+  const result = await reuseTrackForPlaylist(track, "library", {
+    existingFileMode: "reuse",
+    weeklyFlowRoot,
+  });
+
+  assert.equal(result.reused, true);
+  assert.equal(result.sourceType, "aurral");
+  assert.equal(result.finalPath, localFilePath);
+  assert.equal(downloadTracker.getJob(result.jobId)?.status, "done");
+  assert.equal(downloadTracker.getJob(result.jobId)?.finalPath, localFilePath);
+});
+
 test("library reuse does not cross album boundaries for the same track title", async () => {
   const sourceTrack = {
     artistName: "Amigo the Devil",
