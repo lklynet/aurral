@@ -109,15 +109,34 @@ function sortReusableJobs(jobs) {
   });
 }
 
+/**
+ * Checks whether a playlist type corresponds to an ephemeral Flow playlist.
+ *
+ * @param {string} playlistType - Target playlist identifier.
+ * @returns {boolean} True if the playlist type is a configured flow.
+ */
 function isFlowPlaylistType(playlistType) {
   return Boolean(flowPlaylistConfig.getFlow(String(playlistType || "").trim()));
 }
 
+/**
+ * Checks whether a playlist type corresponds to a canonical or shared playlist.
+ *
+ * @param {string} playlistType - Target playlist identifier.
+ * @returns {boolean} True if the playlist type is canonical or shared.
+ */
 function isCanonicalPlaylistType(playlistType) {
   const key = String(playlistType || "").trim();
   return key === "library" || Boolean(flowPlaylistConfig.getSharedPlaylist(key));
 }
 
+/**
+ * Sanitizes a path segment to strip directory traversal sequences and invalid characters.
+ *
+ * @param {string|null|undefined} value - Raw path component.
+ * @param {string} [fallback="Unknown"] - Safe fallback if value is empty or resolves to traversal.
+ * @returns {string} Sanitized directory or file name.
+ */
 function sanitizeSafeSegment(value, fallback = "Unknown") {
   const text = sanitizePathPart(value, fallback);
   if (!text || text === "." || text === ".." || text.startsWith(".")) {
@@ -126,6 +145,13 @@ function sanitizeSafeSegment(value, fallback = "Unknown") {
   return text;
 }
 
+/**
+ * Scans local storage directories to locate an existing audio file matching track metadata.
+ *
+ * @param {object} track - Track metadata including artistName, albumName, and trackName.
+ * @param {object} [options={}] - Options containing targetPlaylistType and weeklyFlowRoot.
+ * @returns {Promise<{sourceType: string, sourcePath: string, sourceJob: null, albumName: string|null}|null>} Resolved source or null.
+ */
 async function findLocalExistingSource(track, options = {}) {
   const targetPlaylistType = sanitizeSafeSegment(options.targetPlaylistType, "");
   if (!targetPlaylistType) return null;
@@ -546,6 +572,13 @@ async function findLidarrSource(track, options = {}) {
   return null;
 }
 
+/**
+ * Resolves a reusable track source from local storage, Aurral library, or Lidarr library.
+ *
+ * @param {object} track - Track metadata to locate.
+ * @param {object} [options={}] - Reuse options including targetPlaylistType and existingFileMode.
+ * @returns {Promise<{source: object|null, reason: string|null}>}
+ */
 export async function resolveReusableTrackSource(track, options = {}) {
   const mode = normalizeExistingFileMode(options.existingFileMode);
   if (mode === "download") {
@@ -562,6 +595,13 @@ export async function resolveReusableTrackSource(track, options = {}) {
   return { source: null, reason: "No reusable Aurral or Lidarr file found" };
 }
 
+/**
+ * Resolves a repair source for a track, checking local storage, Lidarr, and Aurral library.
+ *
+ * @param {object} track - Track metadata to locate for repair.
+ * @param {object} [options={}] - Repair options including targetPlaylistType and existingFileMode.
+ * @returns {Promise<{source: object|null, reason: string|null}>}
+ */
 export async function resolveRepairTrackSource(track, options = {}) {
   const mode = normalizeExistingFileMode(options.existingFileMode);
   if (mode === "download") {
