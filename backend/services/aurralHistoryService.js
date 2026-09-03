@@ -1087,6 +1087,14 @@ export const getAurralHistoryRequests = async (lidarrClient = null, user = null)
       const trackName =
         entry.metadata?.trackName ||
         (entry.status === "blocked" && job?.trackName ? job.trackName : null);
+      if (
+        entry.kind === "track_download" &&
+        job?.status === "done" &&
+        (entry.status === "pending" || entry.status === "processing")
+      ) {
+        entry.status = "completed";
+        entry.statusLabel = entry.statusLabel === "Queued" ? "Reused" : "Downloaded";
+      }
       return toHistoryRequestItem(entry, { sourceFilename, albumName, trackName });
     });
 };
