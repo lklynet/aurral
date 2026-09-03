@@ -21,7 +21,26 @@ Enter these values in first-run setup or in **Settings > Lidarr**:
 - The URL Aurral can reach (often `http://lidarr:8686` in Docker). Aurral supports both HTTP and HTTPS. Use HTTPS when the connection leaves your trusted network.
 - Your Lidarr API key
 - Default quality profile, metadata profile, tag, monitoring option, and search-on-add behavior
+- **Show available music only**, which controls whether the Library lists your whole Lidarr catalog or only downloaded music
 - Optional **Davo's Community Lidarr Guide** for quality profiles and file names
+
+## Library display
+
+Lidarr reports an artist's full discography, including albums you have not
+downloaded. **Show available music only** (in **Settings > Lidarr**) keeps the
+Library focused on music you actually have:
+
+- When **on** (the default), the Library — the Albums list, Album artists list,
+  and the home **Recently added** shelf — shows only albums with downloaded
+  files, and the library counts reflect that. Artists with no downloaded music
+  drop off the list, so an artist you remove in Lidarr disappears from the
+  Library on the next scan.
+- When **off**, the Library shows each artist's full Lidarr discography,
+  including albums with no files (labelled `0/10 available`).
+
+This setting only changes what the Library **lists**. You can still search for
+and request unmonitored or undownloaded albums from the artist's discography,
+and the request and monitor workflows are unchanged.
 
 ## Metadata providers
 

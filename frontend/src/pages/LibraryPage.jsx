@@ -595,6 +595,9 @@ function LibraryPage() {
               albumId: routeAlbumId,
               page: 1,
               pageSize,
+              // An album detail view shows the full tracklist regardless of the
+              // library-wide availability setting; owned/missing is shown per row.
+              availableOnly: false,
             }, { signal })
           : await Promise.all([
               fetchCanonicalLibraryPage({
@@ -621,6 +624,8 @@ function LibraryPage() {
                   page: 1,
                   pageSize,
                   sort: "newest",
+                  // "Recently added" defers to the Lidarr "available only"
+                  // setting (omitted param) like the Albums/Artists tabs.
                 }, { signal }),
                 fetchCanonicalLibraryPage({
                   kind: "tracks",
@@ -638,7 +643,9 @@ function LibraryPage() {
                 genre: selectedGenre,
                 sort: sortMode,
                 direction: sortDirection,
-                availableOnly: tab === "tracks",
+                // Albums/artists defer to the Lidarr "available only" setting
+                // (omitted param); tracks always filter to playable files.
+                availableOnly: tab === "tracks" ? true : undefined,
               }, { signal });
       const pageResults = section === "favorites"
         ? [nextData?.library || EMPTY_LIBRARY]
@@ -747,6 +754,9 @@ function LibraryPage() {
           albumId: album.id,
           page: 1,
           pageSize,
+          // Full tracklist regardless of the library-wide availability setting;
+          // availability is surfaced per-track via badges after merging metadata.
+          availableOnly: false,
         }, { signal });
         const ownedTracks = Array.isArray(page?.items) ? page.items : [];
         const pageArtist = page?.artists?.[0] || null;

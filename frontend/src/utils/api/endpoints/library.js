@@ -34,7 +34,11 @@ const canonicalLibraryPageParams = (options = {}) => Object.fromEntries(
     artistId: options.artistId,
     albumId: options.albumId,
     source: options.source || "all",
-    availableOnly: options.availableOnly === true ? "true" : "false",
+    // Tri-state: an explicit boolean forces the filter, while `undefined` omits
+    // the param so the backend applies the Lidarr "available only" setting.
+    availableOnly: options.availableOnly === undefined || options.availableOnly === null
+      ? undefined
+      : options.availableOnly === true ? "true" : "false",
   }).filter(([, value]) => value !== undefined && value !== null && value !== ""),
 );
 
