@@ -127,6 +127,23 @@ test("reuseTrackForPlaylist detects and reuses local audio file from disk withou
   assert.equal(downloadTracker.getJob(result.jobId)?.finalPath, localFilePath);
 });
 
+test("reuseTrackForPlaylist neutralizes path traversal attempts in track metadata and target playlist", async () => {
+  const result = await reuseTrackForPlaylist(
+    {
+      artistName: "../../etc",
+      trackName: "../../passwd",
+      albumName: "..",
+    },
+    "../../secrets",
+    {
+      existingFileMode: "reuse",
+      weeklyFlowRoot,
+    },
+  );
+
+  assert.equal(result.reused, false);
+});
+
 test("library reuse does not cross album boundaries for the same track title", async () => {
   const sourceTrack = {
     artistName: "Amigo the Devil",

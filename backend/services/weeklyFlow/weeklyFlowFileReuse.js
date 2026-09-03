@@ -118,17 +118,25 @@ function isCanonicalPlaylistType(playlistType) {
   return key === "library" || Boolean(flowPlaylistConfig.getSharedPlaylist(key));
 }
 
+function sanitizeSafeSegment(value, fallback = "Unknown") {
+  const text = sanitizePathPart(value, fallback);
+  if (!text || text === "." || text === ".." || text.startsWith(".")) {
+    return fallback;
+  }
+  return text;
+}
+
 async function findLocalExistingSource(track, options = {}) {
-  const targetPlaylistType = String(options.targetPlaylistType || "").trim();
+  const targetPlaylistType = sanitizeSafeSegment(options.targetPlaylistType, "");
   if (!targetPlaylistType) return null;
 
   const root = path.resolve(options.weeklyFlowRoot || resolveWeeklyFlowRoot());
   const ephemeral = isFlowPlaylistType(targetPlaylistType);
   const canonical = isCanonicalPlaylistType(targetPlaylistType);
 
-  const artistDir = sanitizePathPart(track?.artistName, "Unknown Artist");
-  const albumDir = sanitizePathPart(track?.albumName, "Unknown Album");
-  const expectedBaseName = sanitizePathPart(track?.trackName, "Unknown Track");
+  const artistDir = sanitizeSafeSegment(track?.artistName, "Unknown Artist");
+  const albumDir = sanitizeSafeSegment(track?.albumName, "Unknown Album");
+  const expectedBaseName = sanitizeSafeSegment(track?.trackName, "Unknown Track");
 
   // Build candidate directories.
   // Files can land in different locations depending on playlist type
@@ -154,6 +162,7 @@ async function findLocalExistingSource(track, options = {}) {
   }
 
   for (const destinationDir of candidateDirs) {
+    if (!isPathInsideRoot(destinationDir, root)) continue;
     try {
       const files = await fs.readdir(destinationDir);
       for (const file of files) {
@@ -161,11 +170,13 @@ async function findLocalExistingSource(track, options = {}) {
         const baseName = path.basename(file, ext);
         if (baseName === expectedBaseName && VALID_AUDIO_EXTENSIONS.has(ext)) {
           const filePath = path.join(destinationDir, file);
-          const stat = await fs.stat(filePath);
+          const resolvedFilePath = path.resolve(filePath);
+          if (!isPathInsideRoot(resolvedFilePath, root)) continue;
+          const stat = await fs.stat(resolvedFilePath);
           if (stat.isFile()) {
             return {
               sourceType: "aurral",
-              sourcePath: filePath,
+              sourcePath: resolvedFilePath,
               sourceJob: null,
               albumName: track?.albumName || null,
             };
