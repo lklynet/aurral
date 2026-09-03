@@ -148,13 +148,21 @@ export class NavidromeClient {
     const cleanTitle = String(_title || track.title || track.trackName || "").trim().toLowerCase();
     const cleanArtist = String(_artist || track.artist || track.artistName || "").trim().toLowerCase();
     if (cleanTitle && cleanArtist) {
-      return (
-        indexedSongs.find(
-          (song) =>
-            String(song.title || "").trim().toLowerCase() === cleanTitle &&
-            String(song.artist || "").trim().toLowerCase() === cleanArtist,
-        ) || null
+      const candidateMatches = indexedSongs.filter(
+        (song) =>
+          String(song.title || "").trim().toLowerCase() === cleanTitle &&
+          String(song.artist || "").trim().toLowerCase() === cleanArtist,
       );
+      if (candidateMatches.length === 1) return candidateMatches[0];
+      if (candidateMatches.length > 1) {
+        const cleanAlbum = String(track.album || track.albumName || "").trim().toLowerCase();
+        if (cleanAlbum) {
+          const albumMatches = candidateMatches.filter(
+            (song) => String(song.album || "").trim().toLowerCase() === cleanAlbum,
+          );
+          if (albumMatches.length === 1) return albumMatches[0];
+        }
+      }
     }
 
     return null;
