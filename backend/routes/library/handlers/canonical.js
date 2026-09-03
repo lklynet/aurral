@@ -1,5 +1,6 @@
 import { noCache } from "../../../middleware/cache.js";
 import { requireAuth } from "../../../middleware/requirePermission.js";
+import { dbOps } from "../../../db/helpers/index.js";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
 import {
   getCanonicalFavoriteTargetKeys,
@@ -27,6 +28,16 @@ export function stripFilesystemPaths(value) {
       .filter(([key]) => !isFilesystemPathKey(key))
       .map(([key, entry]) => [key, stripFilesystemPaths(entry)]),
   );
+}
+
+// Resolves the effective availableOnly flag for a canonical library read.
+// An explicit query param always wins so detail/track views can force a value;
+// otherwise the Lidarr "show available music only" setting decides, defaulting
+// to on so the Library shows owned music rather than the full discography.
+export function resolveCanonicalAvailableOnly(queryValue, settings) {
+  if (queryValue === "true") return true;
+  if (queryValue === "false") return false;
+  return settings?.integrations?.lidarr?.availableOnly !== false;
 }
 
 function getAlbumCoverUrl(album) {
@@ -125,7 +136,10 @@ export function registerCanonical(router) {
       }
       return res.json(toPublicLibraryPage(getCanonicalLibraryPage({
         source: req.query.source,
-        availableOnly: req.query.availableOnly === "true",
+        availableOnly: resolveCanonicalAvailableOnly(
+          req.query.availableOnly,
+          dbOps.getSettings(),
+        ),
         kind,
         page: req.query.page,
         pageSize: requestedPageSize,

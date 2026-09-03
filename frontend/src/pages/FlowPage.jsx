@@ -1192,6 +1192,8 @@ function FlowPage({ mode = "all" }) {
           page: 1,
           pageSize: 100,
           query: track.artistName,
+          // Resolve for navigation even if nothing is available yet.
+          availableOnly: false,
         });
         canonicalId = canonicalLibraryId(
           findCanonicalArtistByName(page?.items, track.artistName),
@@ -1228,6 +1230,8 @@ function FlowPage({ mode = "all" }) {
           page: 1,
           pageSize: 100,
           query: track.albumName,
+          // Resolve for navigation even if nothing is available yet.
+          availableOnly: false,
         });
         canonicalId = canonicalLibraryId(
           findCanonicalAlbumByName(page?.items, track.albumName, track.artistName),

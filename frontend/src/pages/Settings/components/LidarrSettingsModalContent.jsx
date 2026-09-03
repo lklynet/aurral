@@ -410,6 +410,18 @@ export function LidarrSettingsSection({
             aria-label="Search for missing albums when artists are added"
           />
         </SettingsArrFormGroup>
+
+        <SettingsArrFormGroup
+          label="Show available music only"
+          help="Hide albums and artists with no downloaded files from the Library. You can still search for and request unmonitored albums. Turn off to browse each artist's full Lidarr discography."
+        >
+          <PillToggle
+            className="settings-toggle"
+            checked={settings.integrations?.lidarr?.availableOnly !== false}
+            onChange={(e) => updateLidarr({ availableOnly: e.target.checked })}
+            aria-label="Show only albums with downloaded files in the Library"
+          />
+        </SettingsArrFormGroup>
       </SettingsArrFieldSet>
 
       <SettingsArrFieldSet legend="Community guide">

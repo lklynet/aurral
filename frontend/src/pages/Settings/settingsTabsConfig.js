@@ -94,6 +94,7 @@ const SETTINGS_SEARCH_METADATA = {
       Tag: "lidarr tag",
       "Default monitoring option": "albums existing future missing latest first",
       "Search on add": "missing albums artists",
+      "Show available music only": "available downloaded files discography hide unmonitored library owned",
       "Community guide": "Davo recommended settings custom formats naming scheme",
     },
   },

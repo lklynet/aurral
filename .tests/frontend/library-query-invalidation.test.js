@@ -112,7 +112,6 @@ test("library requests forward caller cancellation", async (t) => {
       page: 1,
       pageSize: 100,
       source: "all",
-      availableOnly: "false",
     }),
   );
   await assertQueryCancellation(() => getLibraryFavorites(), queryKeys.libraryFavorites);

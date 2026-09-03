@@ -120,6 +120,7 @@ export const defaultData = {
         tagId: null,
         defaultMonitorOption: "none",
         searchOnAdd: false,
+        availableOnly: true,
       },
       metadata: {
         provider: "brainzmash",

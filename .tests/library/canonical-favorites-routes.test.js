@@ -186,7 +186,7 @@ test("native favorites include the canonical favorite subset", () => {
 test("canonical library pages return bounded collection responses", () => {
   const response = responseFor();
   getRoute("GET /canonical")(
-    { user, query: { kind: "tracks", page: "1", pageSize: "1" } },
+    { user, query: { kind: "tracks", page: "1", pageSize: "1", availableOnly: "false" } },
     response,
   );
 
