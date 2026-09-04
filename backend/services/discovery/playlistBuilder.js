@@ -242,7 +242,8 @@ export async function generateDiscoverPlaylists({
 }
 
 export function annotateDiscoverPlaylistsForUser(playlists, user) {
-  const flows = flowPlaylistConfig.getFlowsOwnedByUser(user?.id);
+  const userId = user && typeof user === "object" ? user.id : user;
+  const flows = flowPlaylistConfig.getFlowsOwnedByUser(userId);
   const adoptedFlowByPresetId = new Map();
   for (const flow of flows) {
     const presetId = String(flow?.discoverPresetId || "").trim();
@@ -250,7 +251,7 @@ export function annotateDiscoverPlaylistsForUser(playlists, user) {
     adoptedFlowByPresetId.set(presetId, flow.id);
   }
   const adoptedPlaylistByPresetId = new Map();
-  for (const playlist of flowPlaylistConfig.getSharedPlaylistsOwnedByUser(user?.id)) {
+  for (const playlist of flowPlaylistConfig.getSharedPlaylistsOwnedByUser(userId)) {
     const presetId = String(playlist?.discoverPresetId || "").trim();
     if (!presetId) continue;
     adoptedPlaylistByPresetId.set(presetId, playlist.id);
