@@ -97,11 +97,11 @@ function renderXmlElement(name, value) {
     return `<${name}>${escapeXml(value)}</${name}>`;
   }
 
-  const text = name === "genre" && Object.hasOwn(value, "value") ? value.value : null;
+  const text = Object.hasOwn(value, "value") ? value.value : null;
   const attributes = [];
   const children = [];
   for (const [key, entry] of Object.entries(value)) {
-    if (XML_OMIT_FIELDS.has(key) || (name === "genre" && key === "value")) continue;
+    if (XML_OMIT_FIELDS.has(key) || key === "value") continue;
     if (entry == null || entry === undefined) continue;
     if (typeof entry === "object") children.push(renderXmlElement(key, entry));
     else attributes.push(`${key}="${escapeXml(entry)}"`);
@@ -334,6 +334,9 @@ async function handleSubsonicRequest(req, res) {
     return getAlbum(getParameter(req, "id"))
       ? sendResponse(res, format, "ok", null, { albumInfo: {} })
       : sendError(res, format, 70, "Requested data was not found");
+  }
+  if (method === "getlyrics") {
+    return sendResponse(res, format, "ok", null, { lyrics: { value: "" } });
   }
   if (method === "getinternetradiostations") {
     return sendResponse(res, format, "ok", null, { internetRadioStations: { internetRadioStation: [] } });
