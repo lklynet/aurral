@@ -315,6 +315,10 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.match(song.id, /^song:/);
   assert.equal(responseJson(await request("getSong", { id: song.id })).song.title, "Canonical Song");
   assert.equal(song.contentType, "audio/flac");
+  assert.match(song.created, /^\d{4}-\d{2}-\d{2}T/);
+  assert.notEqual(song.created.slice(0, 4), "1970");
+  assert.match(album.created, /^\d{4}-\d{2}-\d{2}T/);
+  assert.notEqual(album.created.slice(0, 4), "1970");
   assert.equal(song.genre, "Rock");
   assert.equal(song.musicBrainzId, "33333333-3333-4333-8333-333333333333");
   assert.equal(song.mediaType, "song");
