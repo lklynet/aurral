@@ -10,6 +10,7 @@ import {
   getArtistInfo,
   getFlowPlaylist,
   getFlowPlaylists,
+  getLibraryLastModified,
   getGenres,
   getMusicDirectory,
   getSong,
@@ -32,6 +33,7 @@ import { recordPlayEvent } from "../services/playEventService.js";
 const SUBSONIC_VERSION = "1.16.1";
 const SUBSONIC_NAMESPACE = "http://subsonic.org/restapi";
 const SUBSONIC_AUTH_HELP_URL = "https://docs.aurral.org/api/overview/";
+const IGNORED_ARTICLES = "The El La Los Las Le Les";
 // OpenSubsonic extensions this server implements, advertised by getOpenSubsonicExtensions.
 const SUPPORTED_EXTENSIONS = [
   { name: "formPost", versions: [1] },
@@ -302,13 +304,20 @@ async function handleSubsonicRequest(req, res) {
       },
     });
   }
-  if (method === "getartists" || method === "getindexes") {
-    const indexes = groupArtists(listArtists(user));
+  if (method === "getartists") {
     return sendResponse(res, format, "ok", null, {
-      [method === "getartists" ? "artists" : "indexes"]: {
-        ignoredArticles: "The El La Los Las Le Les",
-        ...(method === "getindexes" ? { lastModified: Date.now() } : {}),
-        index: indexes,
+      artists: { ignoredArticles: IGNORED_ARTICLES, index: groupArtists(listArtists(user)) },
+    });
+  }
+  if (method === "getindexes") {
+    const lastModified = getLibraryLastModified();
+    const ifModifiedSince = Number.parseInt(getParameter(req, "ifModifiedSince"), 10);
+    const unchanged = Number.isFinite(ifModifiedSince) && ifModifiedSince >= lastModified;
+    return sendResponse(res, format, "ok", null, {
+      indexes: {
+        ignoredArticles: IGNORED_ARTICLES,
+        lastModified,
+        ...(unchanged ? {} : { index: groupArtists(listArtists(user)) }),
       },
     });
   }

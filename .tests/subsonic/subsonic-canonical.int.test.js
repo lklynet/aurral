@@ -275,6 +275,11 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.equal(license.license.valid, true);
   const indexes = responseJson(await request("getIndexes"));
   assert.equal(typeof indexes.indexes.lastModified, "number");
+  assert.ok(indexes.indexes.lastModified > 0);
+  assert.equal(responseJson(await request("getIndexes")).indexes.lastModified, indexes.indexes.lastModified);
+  const unchanged = responseJson(await request("getIndexes", { ifModifiedSince: indexes.indexes.lastModified }));
+  assert.equal(unchanged.indexes.index, undefined);
+  assert.ok(Array.isArray(indexes.indexes.index));
   const albumList = responseJson(await request("getAlbumList2", { type: "newest", size: 10 }));
   assert.equal(albumList.albumList2.album[0].title, "Canonical Album");
   assert.deepEqual(responseJson(await request("getGenres")).genres.genre, [

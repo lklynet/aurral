@@ -524,6 +524,18 @@ export function getCanonicalAlbumsByReleaseDate({
   return rows.map(canonicalDateAlbumProjection);
 }
 
+export function getCanonicalLibraryLastModified() {
+  const row = db.prepare(
+    `SELECT MAX(updated_at) AS last_modified FROM (
+       SELECT MAX(updated_at) AS updated_at FROM library_artists
+       UNION ALL SELECT MAX(updated_at) FROM library_albums
+       UNION ALL SELECT MAX(updated_at) FROM library_tracks
+       UNION ALL SELECT MAX(updated_at) FROM library_media_files
+     )`,
+  ).get();
+  return Number(row?.last_modified) || null;
+}
+
 export function getCanonicalTrackPath(albumReference, trackReference) {
   const albumValue = String(albumReference ?? "").trim();
   const trackValue = String(trackReference ?? "").trim();
