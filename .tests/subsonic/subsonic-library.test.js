@@ -15,7 +15,7 @@ const [isolatedState, { db }, subsonic, libraryStore] =
     "backend/services/libraryMediaStore.js",
   );
 
-const { getAlbumList, getMusicDirectory, getTopSongs, starMany } = subsonic;
+const { getAlbumList, getMusicDirectory, getTopSongs, resolveCanonicalTracks, starMany } = subsonic;
 
 const {
   linkLibraryAlbumTrack,
@@ -133,4 +133,56 @@ test("marks album entries as directories in artist music directories", () => {
   assert.ok(directory);
   assert.equal(directory.child.length, 2);
   assert.equal(directory.child.every((album) => album.isDir === true), true);
+});
+
+test("resolves playlist descriptors to library tracks in bulk", () => {
+  const artistB = upsertLibraryArtist({ identityKey: "test-artist:artist-b-mbid", name: "Artist B" });
+  const album = upsertLibraryAlbum({
+    identityKey: "test-album:Mbid Album",
+    artistId: artistB.id,
+    title: "Mbid Album",
+    albumArtist: artistB.name,
+  });
+  const track = upsertLibraryTrack({
+    identityKey: "test-track:Mbid Song",
+    mbid: "44444444-4444-4444-8444-444444444444",
+    title: "Mbid Song",
+    artistName: artistB.name,
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    source: "lidarr",
+    path: "/test/Mbid Album/Mbid Song.flac",
+    format: "flac",
+    available: true,
+  });
+
+  const descriptors = [
+    { artistName: "Artist A", trackName: "Old Song" },
+    { artistName: "Artist B", trackName: "Mbid Song", trackMbid: "44444444-4444-4444-8444-444444444444" },
+    { artistName: "Artist B", trackName: "Old Song" },
+    null,
+    ...Array.from({ length: 1000 }, (_, index) => ({ artistName: "Artist A", trackName: `Missing ${index}` })),
+  ];
+  const prepare = db.prepare;
+  let statements = 0;
+  db.prepare = function spy(...args) {
+    statements += 1;
+    return prepare.apply(this, args);
+  };
+  let resolved;
+  try {
+    resolved = resolveCanonicalTracks(descriptors);
+  } finally {
+    db.prepare = prepare;
+  }
+  assert.equal(resolved.length, descriptors.length);
+  assert.equal(resolved[0].track.title, "Old Song");
+  assert.equal(resolved[0].track.artistName, "Artist A");
+  assert.equal(resolved[1].track.identityKey, "test-track:Mbid Song");
+  assert.equal(resolved[2], null);
+  assert.equal(resolved[3], null);
+  assert.equal(resolved.slice(4).every((entry) => entry === null), true);
+  assert.ok(statements <= 4, `expected a handful of statements, ran ${statements}`);
 });
