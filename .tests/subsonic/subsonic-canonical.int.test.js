@@ -302,6 +302,8 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.deepEqual(responseJson(await request("getAlbumInfo2", { id: album.id })).albumInfo, {});
   assert.equal(responseJson(await request("getAlbumInfo2", { id: "album:missing" })).error.code, 70);
   assert.deepEqual(responseJson(await request("getSimilarSongs2", { id: "song:missing" })).similarSongs2, { song: [] });
+  assert.deepEqual(responseJson(await request("getLyrics", { artist: "Canonical Artist", title: "Canonical Song" })).lyrics, { value: "" });
+  assert.match((await request("getLyrics", { artist: "Canonical Artist", title: "Canonical Song", f: "xml" })).body, /<lyrics\/>/);
   assert.deepEqual(responseJson(await request("getInternetRadioStations")).internetRadioStations, { internetRadioStation: [] });
   assert.deepEqual(responseJson(await request("getPodcasts")).podcasts, { channel: [] });
   assert.equal(responseJson(await request("getTopSongs", { artist: "Canonical Artist" })).topSongs.song[0].title, "Canonical Song");
