@@ -102,6 +102,24 @@ test("allows browser clients to read redirected artwork without CORS configurati
   assert.equal(response.headers.get("cross-origin-resource-policy"), "cross-origin");
 });
 
+test("accepts form-encoded POST requests", async () => {
+  const response = await fetch(`http://127.0.0.1:${aurral.port}/rest/getUser.view`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ u: "alice", p: "password123", v: "1.16.1", c: "form-test", f: "json" }),
+  });
+  const body = JSON.parse(await response.text())["subsonic-response"];
+  assert.equal(body.status, "ok");
+  assert.equal(body.user.username, "alice");
+
+  const mixed = await fetch(`http://127.0.0.1:${aurral.port}/rest/ping.view?f=json&c=form-test`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ u: "alice", p: "password123", v: "1.16.1" }),
+  });
+  assert.equal(JSON.parse(await mixed.text())["subsonic-response"].status, "ok");
+});
+
 test("returns the Subsonic invalid-credentials error", async () => {
   const result = await request("ping", { p: "wrong-password", f: "json" });
   assert.equal(result.response.status, 200);

@@ -34,14 +34,20 @@ const SUBSONIC_NAMESPACE = "http://subsonic.org/restapi";
 const SUBSONIC_AUTH_HELP_URL = "https://docs.aurral.org/api/overview/";
 const router = express.Router();
 
+// OpenSubsonic formPost: parameters may arrive in a urlencoded body; query wins on conflicts.
+const requestParameters = (req) => ({
+  ...(req.body && typeof req.body === "object" ? req.body : {}),
+  ...(req.query || {}),
+});
+
 const getParameter = (req, name) => {
-  const value = req.query?.[name];
+  const value = requestParameters(req)[name];
   return String(Array.isArray(value) ? value[0] || "" : value || "");
 };
 
 const getParameters = (req, names) =>
   names.flatMap((name) => {
-    const value = req.query?.[name];
+    const value = requestParameters(req)[name];
     return (Array.isArray(value) ? value : [value])
       .map((entry) => String(entry || "").trim())
       .filter(Boolean);
@@ -327,7 +333,7 @@ async function handleSubsonicRequest(req, res) {
   if (method === "search3" || method === "search2") {
     const query = getParameter(req, "query");
     return sendResponse(res, format, "ok", null, {
-      [method === "search3" ? "searchResult3" : "searchResult2"]: searchLibrary(query, req.query),
+      [method === "search3" ? "searchResult3" : "searchResult2"]: searchLibrary(query, requestParameters(req)),
     });
   }
   if (method === "getplaylists") {
@@ -344,7 +350,7 @@ async function handleSubsonicRequest(req, res) {
         ? updateSubsonicPlaylist(user, {
             playlistId,
             name: name || undefined,
-            comment: Object.hasOwn(req.query || {}, "comment")
+            comment: Object.hasOwn(requestParameters(req), "comment")
               ? getParameter(req, "comment")
               : undefined,
             songIdsToAdd: getParameters(req, ["songId"]),
@@ -402,8 +408,8 @@ async function handleSubsonicRequest(req, res) {
     try {
       const playlist = updateSubsonicPlaylist(user, {
         playlistId,
-        name: Object.hasOwn(req.query || {}, "name") ? getParameter(req, "name") : undefined,
-        comment: Object.hasOwn(req.query || {}, "comment")
+        name: Object.hasOwn(requestParameters(req), "name") ? getParameter(req, "name") : undefined,
+        comment: Object.hasOwn(requestParameters(req), "comment")
           ? getParameter(req, "comment")
           : undefined,
         songIdsToAdd: getParameters(req, ["songIdToAdd"]),
