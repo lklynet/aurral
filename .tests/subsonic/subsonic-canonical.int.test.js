@@ -470,6 +470,23 @@ test("exposes owned static playlists and keeps their entries playable", async ()
   assert.equal(stream.body, "0123456789");
 });
 
+test("returns canonical song ids for playlist entries that exist in the library", async () => {
+  const playlist = responseJson(await request("getPlaylist", {
+    id: `shared:${encodeURIComponent(canonicalFavoritePlaylist.id)}`,
+  })).playlist;
+  assert.equal(playlist.entry.length, 1);
+  assert.match(playlist.entry[0].id, /^song:/);
+  assert.equal(playlist.entry[0].parent, playlist.id);
+  assert.equal(playlist.entry[0].title, "Canonical Song");
+  assert.equal(playlist.entry[0].musicBrainzId, "33333333-3333-4333-8333-333333333333");
+  const artistId = responseJson(await request("getArtists")).artists.index[0].artist[0].id;
+  const album = responseJson(await request("getArtist", { id: artistId })).artist.album[0];
+  const canonicalSong = responseJson(await request("getAlbum", { id: album.id })).album.song[0];
+  assert.equal(playlist.entry[0].id, canonicalSong.id);
+  const stream = await request("stream", { id: playlist.entry[0].id });
+  assert.equal(stream.response.status, 200);
+});
+
 test("does not expose another user's static playlist", async () => {
   userOps.createUser("bob", hashPassword("bob-password"), "user");
   const result = responseJson(await request("getPlaylist", {
