@@ -72,6 +72,7 @@ function responseAttributes(status) {
     version: SUBSONIC_VERSION,
     type: APP_NAME,
     serverVersion: APP_VERSION,
+    openSubsonic: true,
   };
 }
 
@@ -99,7 +100,7 @@ function renderXmlElement(name, value) {
 }
 
 function renderXml({ status, data = {}, error }) {
-  const attributes = Object.entries({ status, version: SUBSONIC_VERSION })
+  const attributes = Object.entries(responseAttributes(status))
     .map(([key, value]) => `${key}="${escapeXml(value)}"`)
     .join(" ");
   const body = error
