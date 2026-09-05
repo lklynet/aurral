@@ -337,12 +337,14 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.equal(responseJson(missingArtist).error.code, 10);
 });
 
-test("emits schema-compatible XML for strict Subsonic clients", async () => {
+test("emits OpenSubsonic XML envelopes and elements", async () => {
   const userXml = await request("getUser", { f: "xml" });
-  assert.match(userXml.body, /<subsonic-response xmlns="http:\/\/subsonic\.org\/restapi" status="ok" version="1\.16\.1">/);
+  assert.match(
+    userXml.body,
+    /<subsonic-response xmlns="http:\/\/subsonic\.org\/restapi" status="ok" version="1\.16\.1" type="Aurral" serverVersion="[^"]+" openSubsonic="true">/,
+  );
   assert.match(userXml.body, /videoConversionRole="false"/);
   assert.match(userXml.body, /<folder>1<\/folder>/);
-  assert.doesNotMatch(userXml.body, /\stype="Aurral"|\sserverVersion=/);
 
   const foldersXml = await request("getMusicFolders", { f: "xml" });
   assert.match(foldersXml.body, /<musicFolder id="1" name="Aurral"\/>/);

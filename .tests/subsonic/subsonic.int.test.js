@@ -60,6 +60,7 @@ test("authenticates an Aurral user and returns JSON or XML envelopes", async () 
   assert.equal(json.json.version, "1.16.1");
   assert.equal(json.json.type, "Aurral");
   assert.equal(typeof json.json.serverVersion, "string");
+  assert.equal(json.json.openSubsonic, true);
   assert.equal(Object.hasOwn(json.json, "error"), false);
 
   const encoded = await request("ping", {
@@ -73,6 +74,7 @@ test("authenticates an Aurral user and returns JSON or XML envelopes", async () 
   assert.match(xml.contentType, /application\/xml/);
   assert.match(xml.body, /<subsonic-response[^>]+status="ok"/);
   assert.match(xml.body, /xmlns="http:\/\/subsonic\.org\/restapi"/);
+  assert.match(xml.body, /\stype="Aurral"\sserverVersion="[^"]+"\sopenSubsonic="true">/);
 });
 
 test("allows browser Subsonic clients without CORS configuration", async () => {
