@@ -13,10 +13,7 @@ import {
   getListenHistoryProfile,
   hasListenHistoryProfile,
 } from "../listeningHistory.js";
-import {
-  getCanonicalArtistKeyProjection,
-  iterateCanonicalArtistProjection,
-} from "../libraryQueryService.js";
+import { getCanonicalArtistKeys } from "../libraryQueryService.js";
 import {
   buildExistingArtistKeySet,
   buildDiscoverySeedList,
@@ -444,7 +441,7 @@ export const updateDiscoveryCache = async (options = {}) => {
 
   try {
     recordDiscoveryUpdateProgress("loading_sources", "Loading library artists", 12);
-    const allLibraryArtists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
+    const allLibraryArtists = getCanonicalArtistKeys();
     const recentLibraryArtists = allLibraryArtists.slice(0, 40);
     const libraryArtists =
       recentLibraryArtists.length > 0
@@ -897,7 +894,7 @@ export const updateUserDiscoveryCache = async (
   }
 
   try {
-    const existingArtistKeys = buildExistingArtistKeySet(getCanonicalArtistKeyProjection());
+    const existingArtistKeys = buildExistingArtistKeySet(getCanonicalArtistKeys());
 
     const lastfmHealth = { success: 0, failure: 0 };
     const discoveryPeriod = getLastfmDiscoveryPeriod();

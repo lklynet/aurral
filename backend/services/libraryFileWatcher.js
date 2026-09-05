@@ -2,13 +2,20 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { resolvePlaylistRoot } from "./playlistPaths.js";
-import { isLibraryScanExcludedDirectory } from "./libraryFileScanner.js";
+import { AUDIO_EXTENSIONS, isLibraryScanExcludedDirectory } from "./libraryFileScanner.js";
 import { lidarrClient } from "./lidarrClient.js";
 import { scheduleLibraryScan } from "./libraryScanWorker.js";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
 
-const DEFAULT_DEBOUNCE_MS = 2000;
+// Lidarr writes album folders in bursts (files, artwork, nfo, temp names), so
+// a change only schedules a scan once the roots have been quiet for a while.
+const DEFAULT_DEBOUNCE_MS = (() => {
+  const configured = Number(process.env.LIBRARY_WATCH_DEBOUNCE_MS);
+  return Number.isFinite(configured) && configured >= 0 ? configured : 2 * 60 * 1000;
+})();
 
+// Directories (no extension) still count: a moved or removed album folder only
+// reports the directory itself.
 function isIgnoredChange(root, filename) {
   if (filename == null || filename === "") return false;
   const changedPath = path.isAbsolute(String(filename))
@@ -16,7 +23,11 @@ function isIgnoredChange(root, filename) {
     : path.resolve(root, String(filename));
   const relative = path.relative(path.resolve(root), changedPath);
   const firstSegment = relative.split(path.sep).find(Boolean);
-  return isLibraryScanExcludedDirectory(firstSegment);
+  if (isLibraryScanExcludedDirectory(firstSegment)) return true;
+  const baseName = path.basename(changedPath);
+  if (baseName.startsWith(".")) return true;
+  const extension = path.extname(baseName).toLowerCase();
+  return Boolean(extension) && !AUDIO_EXTENSIONS.has(extension);
 }
 
 export function createLibraryFileWatcher({

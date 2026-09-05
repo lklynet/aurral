@@ -3,7 +3,7 @@ import { dbOps, userOps } from "../db/helpers/index.js";
 import { getTicketmasterApiKey } from "./apiClients/index.js";
 import {
   getCanonicalAlbumsByReleaseDate,
-  iterateCanonicalArtistProjection,
+  getCanonicalArtistKeys,
 } from "./libraryQueryService.js";
 import { getNearbyShows } from "./nearbyShowsService.js";
 import { getUserDiscovery } from "./discovery/userDiscovery.js";
@@ -353,7 +353,7 @@ export async function refreshInboxForUser(
     });
     const preferences = getInboxPreferences();
     const libraryArtists = preferences.shows
-      ? [...iterateCanonicalArtistProjection({ pageSize: 100 })]
+      ? getCanonicalArtistKeys()
       : [];
     const enabledNewsKinds = new Set(
       getEnabledKinds(preferences).filter((kind) =>

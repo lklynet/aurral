@@ -13,6 +13,13 @@ Use the web UI for most settings. Use these variables for Docker deployment sett
 | `AURRAL_DATA_DIR` | Override app data directory. Default `/config`. |
 | `DOWNLOAD_FOLDER` | Initial Downloads Folder path. Prefer **Settings > Download clients > Downloads Folder > Path**. Use an absolute path under your media mount. |
 
+## Database
+
+| Variable | Purpose |
+| -------- | ------- |
+| `AURRAL_SQLITE_CACHE_MB` | SQLite page cache for the main connection, in megabytes. Default `256`. Worker connections use a quarter of this value. Lower it on hosts with little RAM. |
+| `AURRAL_SQLITE_MMAP_MB` | Size of the memory-mapped window over the database file, in megabytes. Default `1024`. This is address space, not allocated RAM; the OS shares the pages with its file cache. Set `0` to disable. |
+
 ## Path mappings
 
 | Variable | Purpose |

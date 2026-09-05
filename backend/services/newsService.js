@@ -1,6 +1,6 @@
 import { buildImageProxyUrl } from "./imageProxyService.js";
 import { dbOps } from "../db/helpers/index.js";
-import { iterateCanonicalArtistProjection } from "./libraryQueryService.js";
+import { getCanonicalArtistKeys } from "./libraryQueryService.js";
 import { getNewsSettings } from "./apiClients/config.js";
 import { fetchArticleImage, fetchRssFeed } from "./rssNews.js";
 import { mapWithConcurrency } from "./discovery/helpers.js";
@@ -227,7 +227,7 @@ export async function getNewsForUser({
     if (cached) return cached;
   }
   const settings = getNewsSettings();
-  const libraryArtists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
+  const libraryArtists = getCanonicalArtistKeys();
   const recommendedArtists = userId
     ? ((await getUserDiscovery(userId, 50, 0))?.body?.recommendations || [])
     : [];

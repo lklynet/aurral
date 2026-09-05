@@ -33,7 +33,9 @@ export function getScheduledLibraryScanJobId() {
 export function hasCompletedLibraryScan() {
   return Boolean(
     db
-      .prepare("SELECT 1 FROM library_scan_runs WHERE status = 'complete' LIMIT 1")
+      .prepare(
+        "SELECT 1 FROM library_scan_runs WHERE status = 'complete' AND source != 'lidarr-artist' LIMIT 1",
+      )
       .get(),
   );
 }
@@ -44,24 +46,58 @@ export function clearScheduledLibraryScan(jobId = null) {
   if (jobId != null && Number(registry.jobId) !== Number(jobId)) return;
   delete registry.jobId;
   delete registry.includeLidarr;
+  delete registry.artistIds;
+  delete registry.force;
   setScanRegistry(registry);
 }
 
-export function scheduleLibraryScan({ force = false, includeLidarr = true } = {}) {
+const normalizeArtistIds = (value) => [
+  ...new Set(
+    (Array.isArray(value) ? value : [])
+      .map((entry) => Number(entry))
+      .filter((entry) => Number.isSafeInteger(entry) && entry > 0),
+  ),
+];
+
+const registryEntry = (jobId, includeLidarr, artistIds = null, force = false) => {
+  const entry = { jobId, includeLidarr: includeLidarr === true };
+  const scoped = normalizeArtistIds(artistIds);
+  if (scoped.length) entry.artistIds = scoped;
+  if (force === true) entry.force = true;
+  return entry;
+};
+
+// One live scan job at a time. `artistIds` requests a Lidarr re-index scoped
+// to those artists; scoped requests merge into a pending scoped job, and any
+// unscoped request upgrades a pending scoped job to a full scan.
+export function scheduleLibraryScan({ force = false, includeLidarr = true, artistIds = null } = {}) {
   const registry = getScanRegistry();
   const existingJobId = normalizeJobId(registry.jobId);
+  const scoped = normalizeArtistIds(artistIds);
+  const pendingScope = normalizeArtistIds(registry.artistIds);
   if (existingJobId != null && hasLiveScanJob(existingJobId)) {
-    if (includeLidarr === true && registry.includeLidarr !== true) {
-      setScanRegistry({ jobId: existingJobId, includeLidarr: true });
+    // A forced request (manual refresh) turns the pending job into a forced
+    // full scan, which disables the unchanged-artist skip.
+    const pendingForce = registry.force === true || force === true;
+    if (force === true && registry.force !== true) {
+      setScanRegistry(registryEntry(existingJobId, true, null, true));
+    } else if (scoped.length && pendingScope.length) {
+      const merged = [...new Set([...pendingScope, ...scoped])];
+      if (merged.length !== pendingScope.length) {
+        setScanRegistry(registryEntry(existingJobId, true, merged, pendingForce));
+      }
+    } else if (pendingScope.length) {
+      setScanRegistry(registryEntry(existingJobId, true, null, pendingForce));
+    } else if ((includeLidarr === true || scoped.length) && registry.includeLidarr !== true) {
+      setScanRegistry(registryEntry(existingJobId, true, null, pendingForce));
     }
     return existingJobId;
   }
   if (existingJobId != null) clearScheduledLibraryScan(existingJobId);
-  const jobId = enqueueLibraryScanJob({
-    force: force === true,
-    includeLidarr: includeLidarr === true,
-  });
-  setScanRegistry({ jobId, includeLidarr: includeLidarr === true });
+  const payload = { force: force === true, includeLidarr: includeLidarr === true || scoped.length > 0 };
+  if (scoped.length) payload.artistIds = scoped;
+  const jobId = enqueueLibraryScanJob(payload);
+  setScanRegistry(registryEntry(jobId, payload.includeLidarr, scoped, force));
   return jobId;
 }
 
@@ -74,11 +110,13 @@ export function claimScheduledLibraryScanJob(jobId) {
     if (hasLiveScanJob(scheduledJobId)) return false;
     clearScheduledLibraryScan(scheduledJobId);
   }
-  setScanRegistry({
-    jobId: normalizedJobId,
-    includeLidarr:
-      Number(registry.jobId) === normalizedJobId && registry.includeLidarr === true,
-  });
+  const owned = Number(registry.jobId) === normalizedJobId;
+  setScanRegistry(registryEntry(
+    normalizedJobId,
+    owned && registry.includeLidarr === true,
+    owned ? registry.artistIds : null,
+    owned && registry.force === true,
+  ));
   return true;
 }
 
@@ -135,13 +173,18 @@ const {
     return claimScheduledLibraryScanJob(job.id);
   },
   processJob: async (payload, job) => {
-    const { lidarrClient } = await import("./lidarrClient.js");
-    const { scanConfiguredLibrary } = await import("./libraryIndexService.js");
+    const { runLibraryScanInWorker } = await import("./libraryScanRunner.js");
     const registry = getScanRegistry();
+    const owned = Number(registry.jobId) === Number(job.id);
     const includeLidarr =
-      payload?.includeLidarr === true ||
-      (Number(registry.jobId) === Number(job.id) && registry.includeLidarr === true);
-    await scanConfiguredLibrary({ lidarrClient, includeLidarr });
+      payload?.includeLidarr === true || (owned && registry.includeLidarr === true);
+    // The registry is the merged, upgradable view of this job; the payload is
+    // only the fallback when the registry no longer points at it.
+    const artistIds = owned
+      ? normalizeArtistIds(registry.artistIds)
+      : normalizeArtistIds(payload?.artistIds);
+    const force = payload?.force === true || (owned && registry.force === true);
+    await runLibraryScanInWorker({ includeLidarr, artistIds, force });
     const { playlistManager } = await import("./weeklyFlow/weeklyFlowPlaylistManager.js");
     await playlistManager.scanLibrary();
     websocketService.broadcast("library", { type: "library_scan_completed" });
@@ -151,10 +194,13 @@ const {
     if (job.attempts >= 3) {
       return { action: "fail", message };
     }
-    setScanRegistry({
-      jobId: job.id,
-      includeLidarr: getScanRegistry().includeLidarr === true,
-    });
+    const registry = getScanRegistry();
+    setScanRegistry(registryEntry(
+      job.id,
+      registry.includeLidarr === true,
+      registry.artistIds,
+      registry.force === true,
+    ));
     return { action: "retry", delayS: 60, message };
   },
   onJobSuccess: onLibraryScanSuccess,

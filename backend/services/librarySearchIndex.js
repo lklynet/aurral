@@ -109,6 +109,32 @@ export function removeLibrarySearchDocument(entityKind, entityId) {
   ).run(String(entityKind || ""), Number(entityId)).changes > 0;
 }
 
+// Repair pass for scans that ended abnormally: drops documents whose entity is
+// gone and returns the ids of entities that have no document, so the caller
+// can sync them in batches instead of rebuilding the whole index.
+export function findLibrarySearchDocumentGaps() {
+  const gaps = { artist: [], album: [], track: [] };
+  if (!indexAvailable) return gaps;
+  const tables = { artist: "library_artists", album: "library_albums", track: "library_tracks" };
+  db.transaction(() => {
+    for (const [kind, table] of Object.entries(tables)) {
+      db.prepare(
+        `DELETE FROM library_search_documents
+         WHERE entity_kind = ?
+           AND NOT EXISTS (SELECT 1 FROM ${table} AS entity WHERE entity.id = entity_id)`,
+      ).run(kind);
+      gaps[kind] = db.prepare(
+        `SELECT entity.id
+         FROM ${table} AS entity
+         LEFT JOIN library_search_documents AS document
+           ON document.entity_kind = ? AND document.entity_id = entity.id
+         WHERE document.id IS NULL`,
+      ).all(kind).map((row) => row.id);
+    }
+  })();
+  return gaps;
+}
+
 export function rebuildLibrarySearchIndex() {
   if (!indexAvailable) return false;
   db.transaction(() => {

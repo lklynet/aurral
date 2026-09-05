@@ -14,6 +14,7 @@ import {
   withLibraryScan,
 } from "./libraryMediaStore.js";
 import { parseAurralIdentityComment } from "./playlistDownloadUtils.js";
+import { slimFileTags } from "./libraryMetadataProjection.js";
 
 const AUDIO_EXTENSIONS = new Set([
   ".aac",
@@ -135,9 +136,9 @@ function buildMetadataRecord(metadata, filePath, rootPath) {
     discNumber,
     albumArtist: text(common.albumartist) || artistName,
     releaseDate: text(common.releasedate || common.date) || null,
-    artistMetadata: { tags: common },
-    albumMetadata: { tags: common },
-    trackMetadata: { tags: common },
+    artistMetadata: { tags: slimFileTags(common) },
+    albumMetadata: { tags: slimFileTags(common) },
+    trackMetadata: { tags: slimFileTags(common) },
     durationMs: Number.isFinite(Number(metadata?.format?.duration))
       ? Math.round(Number(metadata.format.duration) * 1000)
       : null,

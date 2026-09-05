@@ -14,6 +14,8 @@ function makeTempGitRepo() {
     cwd: repoDir,
     stdio: "ignore",
   });
+  execFileSync("git", ["config", "tag.gpgsign", "false"], { cwd: repoDir, stdio: "ignore" });
+  execFileSync("git", ["config", "commit.gpgsign", "false"], { cwd: repoDir, stdio: "ignore" });
   execFileSync("git", ["config", "user.email", "tests@example.com"], {
     cwd: repoDir,
     stdio: "ignore",

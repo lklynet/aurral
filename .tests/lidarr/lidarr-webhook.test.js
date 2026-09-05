@@ -7,15 +7,25 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, history, webhook] = await setupIsolatedBackend(
+const [isolatedState, { db }, history, webhook, scanWorker, honker] = await setupIsolatedBackend(
   "lidarr-webhook",
   "backend/config/db-sqlite.js",
   "backend/services/aurralHistoryService.js",
   "backend/routes/lidarrWebhook.js",
+  "backend/services/libraryScanWorker.js",
+  "backend/services/honkerDb.js",
 );
 
 const { upsertAurralHistory } = history;
 const { handleLidarrWebhook } = webhook;
+const { clearScheduledLibraryScan, getScheduledLibraryScanJobId } = scanWorker;
+const { getLibraryScanQueue } = honker;
+
+const cancelScheduledScan = () => {
+  const jobId = getScheduledLibraryScanJobId();
+  if (jobId) getLibraryScanQueue().cancel(jobId);
+  clearScheduledLibraryScan();
+};
 
 function createResponse() {
   const result = { statusCode: 200, body: undefined, ended: false };
@@ -37,8 +47,52 @@ function createResponse() {
 }
 
 test.beforeEach(() => {
+  cancelScheduledScan();
   resetDatabase(db);
   db.prepare("DELETE FROM aurral_history").run();
+});
+
+test.afterEach(() => {
+  cancelScheduledScan();
+});
+
+test("Lidarr Download webhook re-indexes only the imported artist", () => {
+  const response = createResponse();
+  handleLidarrWebhook(
+    {
+      body: {
+        eventType: "Download",
+        artist: { id: 77, name: "Scoped Artist", mbId: "artist-mbid" },
+        album: { id: 42, title: "Blue Train" },
+      },
+    },
+    response,
+  );
+
+  const jobId = getScheduledLibraryScanJobId();
+  assert.ok(jobId);
+  assert.deepEqual(response.result.body, { handled: false, scanJobId: jobId });
+  assert.deepEqual(JSON.parse(getLibraryScanQueue().getJob(jobId).payload), {
+    force: false,
+    includeLidarr: true,
+    artistIds: [77],
+  });
+});
+
+test("Lidarr delete webhooks schedule a full re-index", () => {
+  const response = createResponse();
+  handleLidarrWebhook(
+    { body: { eventType: "ArtistDelete", artist: { id: 77, name: "Gone Artist" } } },
+    response,
+  );
+
+  const jobId = getScheduledLibraryScanJobId();
+  assert.ok(jobId);
+  assert.deepEqual(response.result.body, { handled: true, scanJobId: jobId });
+  assert.deepEqual(JSON.parse(getLibraryScanQueue().getJob(jobId).payload), {
+    force: false,
+    includeLidarr: true,
+  });
 });
 
 test.after(async () => {

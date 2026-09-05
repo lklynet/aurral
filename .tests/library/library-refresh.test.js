@@ -223,8 +223,80 @@ test("library file watcher debounces library changes and ignores generated folde
 
   onChange("change", "aurral-weekly-flow/flow/track.flac");
   onChange("change", "_staging/track.flac");
+  onChange("change", "Artist/Album/cover.jpg");
+  onChange("change", "Artist/Album/album.nfo");
+  onChange("change", "Artist/Album/.DS_Store");
+  onChange("change", "Artist/Album/01 track.flac.partial~");
   await new Promise((resolve) => setTimeout(resolve, 15));
   assert.equal(scheduled, 1);
 
+  // A moved or deleted album folder only reports the directory itself.
+  onChange("rename", "Artist/Album");
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  assert.equal(scheduled, 2);
+
   watcher.close();
+});
+
+test("artist-scoped scans merge into one job and upgrade to a full scan", () => {
+  const queue = getLibraryScanQueue();
+  clearScheduledLibraryScan();
+  let jobId;
+  let secondJob;
+  try {
+    jobId = scheduleLibraryScan({ artistIds: [11] });
+    assert.deepEqual(JSON.parse(queue.getJob(jobId).payload), {
+      force: false,
+      includeLidarr: true,
+      artistIds: [11],
+    });
+    assert.equal(scheduleLibraryScan({ artistIds: [12, 11] }), jobId);
+    assert.deepEqual(dbOps.getJSONSetting("pendingLibraryScanJob"), {
+      jobId,
+      includeLidarr: true,
+      artistIds: [11, 12],
+    });
+
+    assert.equal(scheduleLibraryScan({ includeLidarr: false }), jobId);
+    assert.deepEqual(dbOps.getJSONSetting("pendingLibraryScanJob"), {
+      jobId,
+      includeLidarr: true,
+    });
+    // Once the pending job is a full scan, scoped requests ride along.
+    assert.equal(scheduleLibraryScan({ artistIds: [13] }), jobId);
+    assert.deepEqual(dbOps.getJSONSetting("pendingLibraryScanJob"), {
+      jobId,
+      includeLidarr: true,
+    });
+
+    queue.cancel(jobId);
+    secondJob = scheduleLibraryScan({ includeLidarr: false });
+    assert.equal(scheduleLibraryScan({ artistIds: [14] }), secondJob);
+    assert.deepEqual(dbOps.getJSONSetting("pendingLibraryScanJob"), {
+      jobId: secondJob,
+      includeLidarr: true,
+    });
+  } finally {
+    if (jobId) queue.cancel(jobId);
+    if (secondJob) queue.cancel(secondJob);
+    clearScheduledLibraryScan();
+  }
+});
+
+test("artist-scoped scans do not count as a completed library scan", async () => {
+  const queue = getLibraryScanQueue();
+  db.prepare("DELETE FROM library_scan_runs").run();
+  clearScheduledLibraryScan();
+  let bootstrapJobId;
+  try {
+    const scanId = beginLibraryScan({ source: "lidarr-artist", rootPath: "artist:1" });
+    finishLibraryScan(scanId);
+    await processSystemTask({ kind: "library-index-bootstrap" });
+    bootstrapJobId = getScheduledLibraryScanJobId();
+    assert.ok(bootstrapJobId);
+  } finally {
+    if (bootstrapJobId) queue.cancel(bootstrapJobId);
+    clearScheduledLibraryScan();
+    db.prepare("DELETE FROM library_scan_runs WHERE source = 'lidarr-artist'").run();
+  }
 });

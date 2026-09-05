@@ -5,6 +5,7 @@ import {
   buildFallbackIdentityKey,
   buildIdentityKey,
   getAvailableLibraryMediaPaths,
+  getAvailableLibraryMediaPathsForArtists,
   linkLibraryAlbumTrack,
   markLibraryMediaFilesUnavailable,
   upsertLibraryAlbum,
@@ -14,6 +15,7 @@ import {
   withLibraryScan,
 } from "./libraryMediaStore.js";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
+import { slimLidarrAlbum, slimLidarrArtist, slimLidarrTrack } from "./libraryMetadataProjection.js";
 import { mapWithConcurrency } from "./discovery/helpers.js";
 
 const text = (value) => String(value || "").trim();
@@ -156,16 +158,111 @@ async function readFileStats(filePath) {
   }
 }
 
-export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
+const FILE_STAT_CONCURRENCY = 16;
+
+const artistFingerprint = (artist) => JSON.stringify({
+  statistics: artist?.statistics ?? null,
+  lastInfoSync: artist?.lastInfoSync ?? null,
+  path: artist?.path ?? null,
+});
+
+// Lidarr artists whose stored statistics, lastInfoSync, and path match the
+// fresh resource have no new, removed, upgraded, or retagged files, so their
+// track and file reads are skipped. Only trusted when the previous full Lidarr
+// scan completed; a failed run may have written artist rows without tracks.
+function findUnchangedLidarrArtists(artists) {
+  const lastRun = db.prepare(
+    "SELECT status FROM library_scan_runs WHERE source = 'lidarr' ORDER BY id DESC LIMIT 1",
+  ).get();
+  if (lastRun?.status !== "complete") return new Map();
+  const stored = new Map(
+    db.prepare(
+      `SELECT id,
+         CAST(json_extract(metadata_json, '$.id') AS TEXT) AS provider_id,
+         json_object(
+           'statistics', json_extract(metadata_json, '$.statistics'),
+           'lastInfoSync', json_extract(metadata_json, '$.lastInfoSync'),
+           'path', json_extract(metadata_json, '$.path')
+         ) AS fingerprint
+       FROM library_artists
+       WHERE json_valid(metadata_json)
+         AND json_extract(metadata_json, '$.librarySource') = 'lidarr'`,
+    ).all().map((row) => [row.provider_id, row]),
+  );
+  const unchanged = new Map();
+  for (const artist of artists) {
+    // A resource without statistics carries nothing to compare against.
+    if (!artist?.statistics || typeof artist.statistics !== "object") continue;
+    const row = stored.get(String(artist?.id));
+    if (row && row.fingerprint === artistFingerprint(artist)) unchanged.set(String(artist.id), row.id);
+  }
+  return unchanged;
+}
+
+const normalizeScopedArtistIds = (artistIds) => [
+  ...new Set(
+    (Array.isArray(artistIds) ? artistIds : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isSafeInteger(value) && value > 0),
+  ),
+];
+
+async function loadScopedArtists(client, artistIds) {
+  const artists = await mapWithConcurrency(artistIds, 4, async (artistId) => {
+    try {
+      const artist = await client.getArtist(artistId);
+      return artist && artist.id != null ? artist : null;
+    } catch {
+      return null;
+    }
+  });
+  const found = artists.filter(Boolean);
+  const albums = (await mapWithConcurrency(found, 4, async (artist) => {
+    if (typeof client.getAlbumsByArtistId === "function") {
+      return client.getAlbumsByArtistId(artist.id, { forceRefresh: true });
+    }
+    const all = await client.getAllAlbums({ forceRefresh: true });
+    return all.filter((album) => String(album?.artistId) === String(artist.id));
+  })).flat().filter(Boolean);
+  return { artists: found, albums };
+}
+
+// `artistIds` limits the re-index to those Lidarr artists: only their albums,
+// tracks, and files are fetched and reconciled, and only their media can be
+// marked unavailable. The scan run is recorded under the "lidarr-artist"
+// source so it neither counts as a completed full scan nor affects staleness.
+export async function indexLidarrLibrary({
+  client,
+  syncSearch = true,
+  artistIds = null,
+  force = false,
+} = {}) {
   if (!client || typeof client.isConfigured !== "function" || !client.isConfigured()) {
     return { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   }
 
-  const [artists, albums, rootFolders] = await Promise.all([
-    client.request("/artist", "GET", null, false, { forceRefresh: true }),
-    client.getAllAlbums({ forceRefresh: true }),
-    client.getRootFolders(),
-  ]);
+  const scopedArtistIds = artistIds == null ? null : normalizeScopedArtistIds(artistIds);
+  if (scopedArtistIds && scopedArtistIds.length === 0) {
+    return { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
+  }
+  let artists;
+  let albums;
+  let rootFolders;
+  if (scopedArtistIds) {
+    [{ artists, albums }, rootFolders] = await Promise.all([
+      loadScopedArtists(client, scopedArtistIds),
+      client.getRootFolders(),
+    ]);
+    if (artists.length === 0) {
+      return { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
+    }
+  } else {
+    [artists, albums, rootFolders] = await Promise.all([
+      client.request("/artist", "GET", null, false, { forceRefresh: true }),
+      client.getAllAlbums({ forceRefresh: true }),
+      client.getRootFolders(),
+    ]);
+  }
   if (
     Array.isArray(artists) &&
     artists.length === 0 &&
@@ -175,10 +272,18 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
     return { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   }
   const artistById = new Map((Array.isArray(artists) ? artists : []).map((item) => [String(item.id), item]));
+  // Maps Lidarr artist id to the canonical artist row id for skipped artists.
+  const unchangedArtists = scopedArtistIds || force === true
+    ? new Map()
+    : findUnchangedLidarrArtists([...artistById.values()]);
+  const changedAlbums = (Array.isArray(albums) ? albums : [])
+    .filter((album) => !unchangedArtists.has(String(album?.artistId)));
   const albumTrackData = await loadAlbumTrackData(
     client,
-    albums,
-    (Array.isArray(artists) ? artists : []).map((artist) => artist?.id),
+    changedAlbums,
+    [...artistById.values()]
+      .filter((artist) => !unchangedArtists.has(String(artist?.id)))
+      .map((artist) => artist?.id),
   );
   const tracksByAlbumId = new Map();
   const filesByAlbumId = new Map();
@@ -186,17 +291,31 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
     if (albumData.albumId) tracksByAlbumId.set(albumData.albumId, albumData.tracks);
     if (albumData.albumId) filesByAlbumId.set(albumData.albumId, buildFileIndex(albumData.files));
   }
-  const rootPath = (Array.isArray(rootFolders) ? rootFolders : [])
-    .map((folder) => text(folder?.path))
-    .filter(Boolean)
-    .join(";") || null;
-  const result = { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
+  const rootPath = scopedArtistIds
+    ? `artist:${scopedArtistIds.join(",")}`
+    : (Array.isArray(rootFolders) ? rootFolders : [])
+      .map((folder) => text(folder?.path))
+      .filter(Boolean)
+      .join(";") || null;
+  const result = {
+    filesSeen: 0,
+    filesIndexed: 0,
+    filesFailed: 0,
+    artistsSkipped: unchangedArtists.size,
+  };
   const tracksEnumerated = albumTrackData.some((albumData) => albumData.tracks.length > 0);
 
-  return withLibraryScan("lidarr", rootPath, async (scanId) => {
+  return withLibraryScan(scopedArtistIds ? "lidarr-artist" : "lidarr", rootPath, async (scanId) => {
     const indexedFiles = new Map();
-    const unseenPaths = getAvailableLibraryMediaPaths("lidarr");
-    for (const album of Array.isArray(albums) ? albums : []) {
+    const unseenPaths = scopedArtistIds ? new Set() : getAvailableLibraryMediaPaths("lidarr");
+    if (unchangedArtists.size) {
+      for (const filePath of getAvailableLibraryMediaPathsForArtists(
+        "lidarr",
+        [...unchangedArtists.values()],
+      )) unseenPaths.delete(filePath);
+    }
+    const resolvedTracks = [];
+    for (const album of changedAlbums) {
       for (const track of tracksByAlbumId.get(String(album?.id)) || []) {
         const resolvedFile = resolveTrackFile(
           track,
@@ -205,14 +324,17 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
         );
         if (!resolvedFile) continue;
         result.filesSeen += 1;
-        const stat = await readFileStats(resolvedFile.localPath);
-        if (!stat) {
-          result.filesFailed += 1;
-          continue;
-        }
-        indexedFiles.set(track, { resolvedFile, stat });
+        resolvedTracks.push({ track, resolvedFile });
       }
     }
+    await mapWithConcurrency(resolvedTracks, FILE_STAT_CONCURRENCY, async ({ track, resolvedFile }) => {
+      const stat = await readFileStats(resolvedFile.localPath);
+      if (!stat) {
+        result.filesFailed += 1;
+        return;
+      }
+      indexedFiles.set(track, { resolvedFile, stat });
+    });
 
     const artistRecordsById = db.transaction(() => {
       const records = new Map();
@@ -228,12 +350,18 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
           mbid: isUuid(artistProviderId) ? artistProviderId : null,
           name: artistName,
           sortName: artist.sortName || null,
-          metadata: { ...artist, librarySource: "lidarr" },
+          metadata: { ...slimLidarrArtist(artist), librarySource: "lidarr" },
           syncSearch,
         }));
       }
       return records;
     })();
+    if (scopedArtistIds) {
+      for (const filePath of getAvailableLibraryMediaPathsForArtists(
+        "lidarr",
+        [...artistRecordsById.values()].map((record) => record?.id),
+      )) unseenPaths.add(filePath);
+    }
 
     for (const album of Array.isArray(albums) ? albums : []) {
       const artist = artistById.get(String(album?.artistId));
@@ -262,7 +390,7 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
           title: text(album.title) || "Unknown Album",
           albumArtist: artistName,
           releaseDate: album.releaseDate || null,
-          metadata: { ...album, librarySource: "lidarr" },
+          metadata: { ...slimLidarrAlbum(album), librarySource: "lidarr" },
           syncSearch,
         });
         for (const track of tracksByAlbumId.get(String(album.id)) || []) {
@@ -276,7 +404,7 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
             mbid: isUuid(trackProviderId) ? trackProviderId : null,
             title: text(track.title || track.trackTitle) || "Unknown Track",
             artistName,
-            metadata: track,
+            metadata: slimLidarrTrack(track),
             syncSearch,
           });
           const trackNumber = Number(track.trackNumber || track.absoluteTrackNumber) || 0;

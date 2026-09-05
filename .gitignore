@@ -16,3 +16,5 @@ coverage/
 /.maintainer/
 /AGENTS.md
 /.agents/
+.omc
+.idea

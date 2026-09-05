@@ -3,7 +3,7 @@ import { requireAuth } from "../../../middleware/requirePermission.js";
 import { db } from "../../../config/db-sqlite.js";
 import { dbOps, userOps } from "../../../db/helpers/index.js";
 import { getTicketmasterApiKey, getLastfmApiKey } from "../../../services/apiClients/index.js";
-import { iterateCanonicalArtistProjection } from "../../../services/libraryQueryService.js";
+import { getCanonicalArtistKeys } from "../../../services/libraryQueryService.js";
 import {
   getDiscoveryCache,
   getDiscoveryFeedback,
@@ -91,7 +91,7 @@ export function registerShows(router) {
       const nearbyShows = await getNearbyShows({
         req,
         zipCode,
-        libraryArtists: () => [...iterateCanonicalArtistProjection({ pageSize: 100 })],
+        libraryArtists: () => getCanonicalArtistKeys(),
         recommendedArtists,
         trendingArtists,
         limit: req.query.limit,

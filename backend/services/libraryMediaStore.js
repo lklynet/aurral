@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { db, dbHelpers } from "../config/db-sqlite.js";
 import { invalidateCanonicalLibraryCache } from "./libraryQueryService.js";
 import {
+  findLibrarySearchDocumentGaps,
   removeLibrarySearchDocument,
   syncLibrarySearchAlbum,
   syncLibrarySearchArtist,
@@ -9,6 +10,18 @@ import {
 } from "./librarySearchIndex.js";
 
 const now = () => Date.now();
+
+// Static SQL is prepared once per process; the scan write path runs these
+// statements hundreds of thousands of times.
+const statements = new Map();
+const statement = (sql) => {
+  let prepared = statements.get(sql);
+  if (!prepared) {
+    prepared = db.prepare(sql);
+    statements.set(sql, prepared);
+  }
+  return prepared;
+};
 
 const stringify = (value) => dbHelpers.stringifyJSON(value) || null;
 
@@ -38,6 +51,7 @@ const LIDARR_METADATA_KEYS = [
 let libraryScanDepth = 0;
 let libraryCacheInvalidationPending = false;
 const libraryScanContext = new AsyncLocalStorage();
+const SEARCH_SYNC_BATCH_SIZE = 500;
 
 const invalidateLibraryCache = () => {
   const scan = libraryScanContext.getStore();
@@ -48,6 +62,78 @@ const invalidateLibraryCache = () => {
   }
   invalidateCanonicalLibraryCache();
 };
+
+const createSearchSyncSet = () => ({ artist: new Set(), album: new Set(), track: new Set() });
+
+// Scans write rows with `syncSearch: false` and record which entities changed;
+// the search documents for those entities are synced in batches when the scan
+// ends, instead of rebuilding the whole FTS index. Outside a scan the caller
+// opted out of search sync entirely, as before.
+const deferSearchSync = (kind, id) => {
+  const scan = libraryScanContext.getStore();
+  if (scan && Number.isSafeInteger(Number(id))) scan.search[kind].add(Number(id));
+};
+
+const syncSearchArtist = (artistId, syncSearch) => {
+  if (syncSearch) syncLibrarySearchArtist(artistId);
+  else deferSearchSync("artist", artistId);
+};
+
+const syncSearchAlbumTracks = (albumId) => {
+  for (const track of statement(
+    "SELECT track_id FROM library_album_tracks WHERE album_id = ?",
+  ).all(Number(albumId))) {
+    syncLibrarySearchTrack(track.track_id);
+  }
+};
+
+const syncSearchAlbum = (albumId, syncSearch) => {
+  if (!syncSearch) {
+    deferSearchSync("album", albumId);
+    return;
+  }
+  if (syncLibrarySearchAlbum(albumId)) syncSearchAlbumTracks(albumId);
+};
+
+const syncSearchTrack = (trackId, syncSearch) => {
+  if (syncSearch) syncLibrarySearchTrack(trackId);
+  else deferSearchSync("track", trackId);
+};
+
+const mergeSearchSyncSets = (target, source) => {
+  for (const kind of ["artist", "album", "track"]) {
+    for (const id of source[kind]) target[kind].add(id);
+  }
+};
+
+// Batched search-document sync for the given entity ids; yields to the event
+// loop between batches so request handling keeps running.
+export async function syncLibrarySearchEntities(search) {
+  const batches = [];
+  const chunk = (kind, ids, run) => {
+    const list = [...ids];
+    for (let index = 0; index < list.length; index += SEARCH_SYNC_BATCH_SIZE) {
+      batches.push([kind, list.slice(index, index + SEARCH_SYNC_BATCH_SIZE), run]);
+    }
+  };
+  // Artist sync cascades to albums and tracks only when the artist name
+  // changed, and album sync cascades to tracks only when the album document
+  // changed, so the order artist, album, track avoids re-syncing rows twice.
+  chunk("artist", search.artist, (id) => syncLibrarySearchArtist(id));
+  chunk("album", search.album, (id) => {
+    if (syncLibrarySearchAlbum(id)) syncSearchAlbumTracks(id);
+  });
+  chunk("track", search.track, (id) => syncLibrarySearchTrack(id));
+  let synced = 0;
+  for (const [, ids, run] of batches) {
+    db.transaction(() => {
+      for (const id of ids) run(id);
+    })();
+    synced += ids.length;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  return synced;
+}
 
 export function buildIdentityKey(prefix, value) {
   const normalized = normalizeText(value);
@@ -78,7 +164,7 @@ export function finishLibraryScan(scanId, {
   filesIndexed = 0,
   filesFailed = 0,
 } = {}) {
-  db.prepare(
+  statement(
     `UPDATE library_scan_runs
      SET status = ?, completed_at = ?, error = ?, files_seen = ?, files_indexed = ?, files_failed = ?
      WHERE id = ?`,
@@ -135,38 +221,42 @@ export function upsertLibraryArtist({
     };
     const mergeFallbackArtist = (fallback, resolved) => {
       if (!fallback || !resolved || fallback.id === resolved.id) return;
-      libraryChanged = db.prepare(
+      libraryChanged = statement(
         `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
          SELECT user_id, entity_kind, ?, created_at
          FROM subsonic_stars
          WHERE entity_kind = 'artist' AND entity_key = ?`,
       ).run(resolved.identity_key, fallback.identity_key).changes > 0 || libraryChanged;
-      libraryChanged = db.prepare(
+      libraryChanged = statement(
         "DELETE FROM subsonic_stars WHERE entity_kind = 'artist' AND entity_key = ?",
       ).run(fallback.identity_key).changes > 0 || libraryChanged;
-      libraryChanged = db.prepare("UPDATE library_albums SET artist_id = ? WHERE artist_id = ?")
+      const movedAlbumIds = statement("SELECT id FROM library_albums WHERE artist_id = ?")
+        .all(fallback.id).map((row) => row.id);
+      libraryChanged = statement("UPDATE library_albums SET artist_id = ? WHERE artist_id = ?")
         .run(resolved.id, fallback.id).changes > 0 || libraryChanged;
-      libraryChanged = db.prepare("DELETE FROM library_artists WHERE id = ?")
+      libraryChanged = statement("DELETE FROM library_artists WHERE id = ?")
         .run(fallback.id).changes > 0 || libraryChanged;
+      removeLibrarySearchDocument("artist", fallback.id);
+      for (const albumId of movedAlbumIds) syncSearchAlbum(albumId, syncSearch);
     };
     if (mbid) {
-      const resolved = db.prepare("SELECT id, identity_key FROM library_artists WHERE identity_key = ?").get(key);
+      const resolved = statement("SELECT id, identity_key FROM library_artists WHERE identity_key = ?").get(key);
       const fallback = fallbackKey === key
         ? null
         : findFallbackArtist();
       if (fallback && !resolved) {
-        libraryChanged = db.prepare(
+        libraryChanged = statement(
           `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
            SELECT user_id, entity_kind, ?, created_at
            FROM subsonic_stars
            WHERE entity_kind = 'artist' AND entity_key = ?`,
         ).run(key, fallback.identity_key).changes > 0 || libraryChanged;
-        libraryChanged = db.prepare(
+        libraryChanged = statement(
           "DELETE FROM subsonic_stars WHERE entity_kind = 'artist' AND entity_key = ?",
         ).run(fallback.identity_key).changes > 0 || libraryChanged;
       }
       if (fallback && !resolved) {
-        libraryChanged = db.prepare("UPDATE library_artists SET identity_key = ? WHERE id = ?")
+        libraryChanged = statement("UPDATE library_artists SET identity_key = ? WHERE id = ?")
           .run(key, fallback.id).changes > 0 || libraryChanged;
       } else if (fallback && resolved && fallback.id !== resolved.id) {
         mergeFallbackArtist(fallback, resolved);
@@ -175,11 +265,11 @@ export function upsertLibraryArtist({
       const resolved = findResolvedArtist();
       if (resolved) {
         mergeFallbackArtist(findFallbackArtist(), resolved);
-        if (syncSearch) syncLibrarySearchArtist(resolved.id);
+        syncSearchArtist(resolved.id, syncSearch);
         return resolved;
       }
     }
-    const existing = db.prepare("SELECT * FROM library_artists WHERE identity_key = ?").get(key);
+    const existing = statement("SELECT * FROM library_artists WHERE identity_key = ?").get(key);
     if (
       existing &&
       (artistMbid == null || artistMbid === existing.mbid) &&
@@ -190,7 +280,7 @@ export function upsertLibraryArtist({
       if (syncSearch) syncLibrarySearchArtist(existing.id);
       return existing;
     }
-    db.prepare(
+    statement(
       `INSERT INTO library_artists (identity_key, mbid, name, sort_name, metadata_json, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(identity_key) DO UPDATE SET
@@ -201,8 +291,8 @@ export function upsertLibraryArtist({
          updated_at = excluded.updated_at`,
     ).run(key, artistMbid, artistName, artistSortName, metadataText, timestamp, timestamp);
     libraryChanged = true;
-    const row = db.prepare("SELECT * FROM library_artists WHERE identity_key = ?").get(key);
-    if (syncSearch) syncLibrarySearchArtist(row?.id);
+    const row = statement("SELECT * FROM library_artists WHERE identity_key = ?").get(key);
+    syncSearchArtist(row?.id, syncSearch);
     return row;
   })();
   if (libraryChanged) invalidateLibraryCache();
@@ -275,7 +365,7 @@ export function upsertLibraryAlbum({
   }
   let libraryChanged = false;
   const album = db.transaction(() => {
-    const existing = db.prepare("SELECT * FROM library_albums WHERE identity_key = ?").get(key);
+    const existing = statement("SELECT * FROM library_albums WHERE identity_key = ?").get(key);
     if (
       existing &&
       (albumMbid == null || albumMbid === existing.mbid) &&
@@ -286,17 +376,10 @@ export function upsertLibraryAlbum({
       (albumReleaseDate == null || albumReleaseDate === existing.release_date) &&
       (metadataText == null || metadataText === existing.metadata_json)
     ) {
-      const searchChanged = syncSearch && syncLibrarySearchAlbum(existing.id);
-      if (searchChanged) {
-        for (const track of db.prepare(
-          "SELECT track_id FROM library_album_tracks WHERE album_id = ?",
-        ).all(existing.id)) {
-          syncLibrarySearchTrack(track.track_id);
-        }
-      }
+      if (syncSearch) syncSearchAlbum(existing.id, true);
       return existing;
     }
-    db.prepare(
+    statement(
       `INSERT INTO library_albums
         (identity_key, mbid, release_group_mbid, artist_id, title, album_artist, release_date, metadata_json, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -322,15 +405,8 @@ export function upsertLibraryAlbum({
       timestamp,
     );
     libraryChanged = true;
-    const row = db.prepare("SELECT * FROM library_albums WHERE identity_key = ?").get(key);
-    const searchChanged = syncSearch && syncLibrarySearchAlbum(row?.id);
-    if (row?.id && searchChanged) {
-      for (const track of db.prepare(
-        "SELECT track_id FROM library_album_tracks WHERE album_id = ?",
-      ).all(row.id)) {
-        syncLibrarySearchTrack(track.track_id);
-      }
-    }
+    const row = statement("SELECT * FROM library_albums WHERE identity_key = ?").get(key);
+    if (row?.id) syncSearchAlbum(row.id, syncSearch);
     return row;
   })();
   if (libraryChanged) invalidateLibraryCache();
@@ -354,7 +430,7 @@ export function upsertLibraryTrack({
   if (!key || !trackTitle) throw new Error("Library track identityKey and title are required");
   let libraryChanged = false;
   const track = db.transaction(() => {
-    const existing = db.prepare("SELECT * FROM library_tracks WHERE identity_key = ?").get(key);
+    const existing = statement("SELECT * FROM library_tracks WHERE identity_key = ?").get(key);
     if (
       existing &&
       (trackMbid == null || trackMbid === existing.mbid) &&
@@ -365,7 +441,7 @@ export function upsertLibraryTrack({
       if (syncSearch) syncLibrarySearchTrack(existing.id);
       return existing;
     }
-    db.prepare(
+    statement(
       `INSERT INTO library_tracks (identity_key, mbid, title, artist_name, metadata_json, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(identity_key) DO UPDATE SET
@@ -376,8 +452,8 @@ export function upsertLibraryTrack({
          updated_at = excluded.updated_at`,
     ).run(key, trackMbid, trackTitle, trackArtistName, metadataText, timestamp, timestamp);
     libraryChanged = true;
-    const row = db.prepare("SELECT * FROM library_tracks WHERE identity_key = ?").get(key);
-    if (syncSearch) syncLibrarySearchTrack(row?.id);
+    const row = statement("SELECT * FROM library_tracks WHERE identity_key = ?").get(key);
+    syncSearchTrack(row?.id, syncSearch);
     return row;
   })();
   if (libraryChanged) invalidateLibraryCache();
@@ -392,12 +468,13 @@ export function linkLibraryAlbumTrack({
   syncSearch = true,
 }) {
   const changed = db.transaction(() => {
-    const result = db.prepare(
+    const result = statement(
       `INSERT OR IGNORE INTO library_album_tracks
         (album_id, track_id, disc_number, track_number, created_at)
        VALUES (?, ?, ?, ?, ?)`,
     ).run(Number(albumId), Number(trackId), Number(discNumber) || 1, Number(trackNumber) || 0, now());
     if (syncSearch) syncLibrarySearchTrack(trackId);
+    else if (result.changes > 0) deferSearchSync("track", trackId);
     return result.changes > 0;
   })();
   if (changed) invalidateLibraryCache();
@@ -407,13 +484,13 @@ export function removeLibraryTrackIfNoAvailableMedia(trackId) {
   const normalizedTrackId = Number(trackId);
   if (!Number.isSafeInteger(normalizedTrackId)) return false;
   const removed = db.transaction(() => {
-    const mediaFiles = db.prepare(
+    const mediaFiles = statement(
       "SELECT album_id, available FROM library_media_files WHERE track_id = ?",
     ).all(normalizedTrackId);
     if (!mediaFiles.length || mediaFiles.some((file) => file.available === 1)) return false;
 
     const albumIds = new Set([
-      ...db.prepare(
+      ...statement(
         "SELECT album_id FROM library_album_tracks WHERE track_id = ?",
       ).all(normalizedTrackId).map((row) => row.album_id),
       ...mediaFiles.map((file) => file.album_id).filter((albumId) => albumId != null),
@@ -427,12 +504,12 @@ export function removeLibraryTrackIfNoAvailableMedia(trackId) {
     );
 
     removeLibrarySearchDocument("track", normalizedTrackId);
-    db.prepare("DELETE FROM library_media_files WHERE track_id = ?").run(normalizedTrackId);
-    db.prepare("DELETE FROM library_album_tracks WHERE track_id = ?").run(normalizedTrackId);
-    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(normalizedTrackId);
+    statement("DELETE FROM library_media_files WHERE track_id = ?").run(normalizedTrackId);
+    statement("DELETE FROM library_album_tracks WHERE track_id = ?").run(normalizedTrackId);
+    statement("DELETE FROM library_tracks WHERE id = ?").run(normalizedTrackId);
 
     for (const albumId of albumIds) {
-      const result = db.prepare(
+      const result = statement(
         `DELETE FROM library_albums
          WHERE id = ?
            AND NOT EXISTS (SELECT 1 FROM library_album_tracks WHERE album_id = ?)`,
@@ -440,7 +517,7 @@ export function removeLibraryTrackIfNoAvailableMedia(trackId) {
       if (result.changes > 0) removeLibrarySearchDocument("album", albumId);
     }
     for (const artistId of artistIds) {
-      const result = db.prepare(
+      const result = statement(
         `DELETE FROM library_artists
          WHERE id = ?
            AND NOT EXISTS (SELECT 1 FROM library_albums WHERE artist_id = ?)`,
@@ -456,10 +533,10 @@ export function removeLibraryTrackIfNoAvailableMedia(trackId) {
 export function removeLibraryAlbumTracksWithoutMedia(albumId, source, { syncSearch = true } = {}) {
   const mediaSource = normalizeText(source);
   const changed = db.transaction(() => {
-    const trackIds = db.prepare(
+    const trackIds = statement(
       "SELECT track_id FROM library_album_tracks WHERE album_id = ?",
     ).all(Number(albumId)).map((row) => row.track_id);
-    const result = db.prepare(
+    const result = statement(
       `DELETE FROM library_album_tracks
        WHERE album_id = ?
          AND NOT EXISTS (
@@ -479,8 +556,8 @@ export function removeLibraryAlbumTracksWithoutMedia(albumId, source, { syncSear
              AND media.available = 1
          )`,
     ).run(Number(albumId), mediaSource, mediaSource);
-    if (syncSearch) {
-      for (const trackId of trackIds) syncLibrarySearchTrack(trackId);
+    if (syncSearch || result.changes > 0) {
+      for (const trackId of trackIds) syncSearchTrack(trackId, syncSearch);
     }
     return result.changes > 0;
   })();
@@ -514,7 +591,7 @@ export function upsertLibraryMediaFile({
   const normalizedDurationMs = Number.isFinite(Number(durationMs)) ? Number(durationMs) : null;
   const qualityText = stringify(quality);
   const normalizedAvailable = available === true ? 1 : 0;
-  const existing = db.prepare(
+  const existing = statement(
     "SELECT * FROM library_media_files WHERE source = ? AND path = ?",
   ).get(fileSource, filePath);
   if (
@@ -531,7 +608,7 @@ export function upsertLibraryMediaFile({
     return existing;
   }
   const timestamp = now();
-  db.prepare(
+  statement(
     `INSERT INTO library_media_files
       (track_id, album_id, source, path, format, size, mtime_ms, duration_ms, quality_json, available, last_seen_scan_id, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -563,15 +640,32 @@ export function upsertLibraryMediaFile({
     timestamp,
   );
   invalidateLibraryCache();
-  return db.prepare("SELECT * FROM library_media_files WHERE source = ? AND path = ?")
+  return statement("SELECT * FROM library_media_files WHERE source = ? AND path = ?")
     .get(fileSource, filePath);
 }
 
 export function getAvailableLibraryMediaPaths(source) {
   return new Set(
-    db.prepare(
+    statement(
       "SELECT path FROM library_media_files WHERE source = ? AND available = 1",
     ).all(normalizeText(source)).map((row) => row.path),
+  );
+}
+
+// Available media paths for the given canonical artists only, used by scoped
+// Lidarr re-indexes so they never mark other artists' files unavailable.
+export function getAvailableLibraryMediaPathsForArtists(source, artistIds) {
+  const ids = [...new Set((Array.isArray(artistIds) ? artistIds : []).map(Number))]
+    .filter((id) => Number.isSafeInteger(id));
+  if (!ids.length) return new Set();
+  return new Set(
+    db.prepare(
+      `SELECT DISTINCT media.path
+       FROM library_media_files AS media
+       JOIN library_albums AS album ON album.id = media.album_id
+       WHERE media.source = ? AND media.available = 1
+         AND album.artist_id IN (${ids.map(() => "?").join(",")})`,
+    ).all(normalizeText(source), ...ids).map((row) => row.path),
   );
 }
 
@@ -579,7 +673,7 @@ export function markLibraryMediaFilesUnavailable(source, paths) {
   const mediaSource = normalizeText(source);
   const missingPaths = [...new Set(paths)].map(normalizeText).filter(Boolean);
   if (!mediaSource || missingPaths.length === 0) return 0;
-  const update = db.prepare(
+  const update = statement(
     `UPDATE library_media_files
      SET available = 0, updated_at = ?
      WHERE source = ? AND path = ? AND available = 1`,
@@ -594,7 +688,7 @@ export function markLibraryMediaFilesUnavailable(source, paths) {
 
 export async function withLibraryScan(source, rootPath, run) {
   const parentScan = libraryScanContext.getStore();
-  const scan = { changed: false };
+  const scan = { changed: false, search: createSearchSyncSet() };
   return libraryScanContext.run(scan, async () => {
     libraryScanDepth += 1;
     let scanId;
@@ -608,6 +702,10 @@ export async function withLibraryScan(source, rootPath, run) {
       throw error;
     } finally {
       if (scan.changed && parentScan) parentScan.changed = true;
+      // Rows written before a failure are committed, so their search documents
+      // must be synced on both paths. Nested scans hand off to the parent.
+      if (parentScan) mergeSearchSyncSets(parentScan.search, scan.search);
+      else await syncLibrarySearchEntities(scan.search);
       libraryScanDepth -= 1;
       if (libraryScanDepth === 0 && libraryCacheInvalidationPending) {
         libraryCacheInvalidationPending = false;
@@ -617,13 +715,19 @@ export async function withLibraryScan(source, rootPath, run) {
   });
 }
 
+// After a scan that failed part-way, reconcile documents with the entity
+// tables without rebuilding the whole index.
+export async function repairLibrarySearchDocuments() {
+  return syncLibrarySearchEntities(findLibrarySearchDocumentGaps());
+}
+
 export function getLibrarySnapshot() {
   return {
-    artists: db.prepare("SELECT * FROM library_artists ORDER BY name").all(),
-    albums: db.prepare("SELECT * FROM library_albums ORDER BY title").all(),
-    tracks: db.prepare("SELECT * FROM library_tracks ORDER BY title").all(),
-    albumTracks: db.prepare("SELECT * FROM library_album_tracks").all(),
-    files: db.prepare("SELECT * FROM library_media_files ORDER BY path").all(),
+    artists: statement("SELECT * FROM library_artists ORDER BY name").all(),
+    albums: statement("SELECT * FROM library_albums ORDER BY title").all(),
+    tracks: statement("SELECT * FROM library_tracks ORDER BY title").all(),
+    albumTracks: statement("SELECT * FROM library_album_tracks").all(),
+    files: statement("SELECT * FROM library_media_files ORDER BY path").all(),
   };
 }
 

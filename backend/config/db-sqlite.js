@@ -3,12 +3,15 @@ import path from "path";
 import fs from "fs";
 import { initializeSchemaOnStartup } from "./schema-migration-v2.js";
 import { initializeLibrarySearchIndex } from "./library-search-index.js";
+import { initializeLibraryDerivedData } from "./library-derived-data.js";
 import { syncDownloadFolderPath } from "../services/downloadFolderConfig.js";
 import { ensureDataDir } from "./data-dir.js";
+import { isMainThread } from "node:worker_threads";
+import { applySqliteTuning } from "./sqlite-tuning.js";
 
 const DATA_DIR = ensureDataDir();
 
-const DB_PATH = process.env.AURRAL_DB_PATH
+export const DB_PATH = process.env.AURRAL_DB_PATH
   ? path.resolve(process.env.AURRAL_DB_PATH)
   : path.join(DATA_DIR, "aurral.db");
 
@@ -19,10 +22,8 @@ if (!fs.existsSync(path.dirname(DB_PATH))) {
 const db = new Database(DB_PATH);
 
 db.pragma("journal_mode = WAL");
-db.pragma("busy_timeout = 5000");
 db.pragma("synchronous = NORMAL");
-db.pragma("cache_size = -24000");
-db.pragma("mmap_size = 25165824");
+applySqliteTuning(db, { worker: !isMainThread });
 
 function tryAddColumn(sql) {
   try {
@@ -621,7 +622,9 @@ export const dbHelpers = {
 };
 
 initializeSchemaOnStartup(db, dbHelpers);
+initializeLibraryDerivedData(db);
 initializeLibrarySearchIndex(db);
+if (isMainThread) db.pragma("optimize");
 
 const existingDownloadFolder = db
   .prepare("SELECT value FROM settings WHERE key = ?")

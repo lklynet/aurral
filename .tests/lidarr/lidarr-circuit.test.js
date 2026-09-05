@@ -441,7 +441,7 @@ test("artist add resolves a non-numeric Lidarr response ID before follow-up call
       );
       return;
     }
-    if (request.method === "GET" && request.url === "/api/v1/artist") {
+    if (request.method === "GET" && request.url === `/api/v1/artist?mbId=${artistMbid}`) {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(
         JSON.stringify([
@@ -531,7 +531,7 @@ test("artist add resolves a non-numeric Lidarr response ID before follow-up call
   assert.equal(requests.includes(`/api/v1/artist/${artistMbid}`), false);
   assert.deepEqual(requests, [
     "/api/v1/artist",
-    "/api/v1/artist",
+    `/api/v1/artist?mbId=${artistMbid}`,
     "/api/v1/artist/42",
     "/api/v1/artist/42",
   ]);
@@ -813,7 +813,7 @@ test("artist add fails when Lidarr cannot resolve a numeric ID", async (t) => {
         artistName: "Lena Raine",
       };
     }
-    if (endpoint === "/artist" && method === "GET") {
+    if (endpoint === `/artist?mbId=${artistMbid}` && method === "GET") {
       lookupCount += 1;
       if (lookupCount === 2) {
         assert.equal(options.forceRefresh, true);

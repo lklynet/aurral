@@ -2,10 +2,8 @@ import path from "node:path";
 import { db } from "../config/db-sqlite.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
 import { scanMusicRoot } from "./libraryFileScanner.js";
-import { upsertLibraryArtist } from "./libraryMediaStore.js";
+import { repairLibrarySearchDocuments, upsertLibraryArtist } from "./libraryMediaStore.js";
 import { indexLidarrLibrary } from "./libraryLidarrIndexer.js";
-import { rebuildLibrarySearchIndex } from "./librarySearchIndex.js";
-import { rebuildCanonicalGenreStats } from "./libraryQueryService.js";
 import { musicbrainzGetArtistNameByMbid } from "./apiClients/index.js";
 
 function getAurralJobMetadataByPath() {
@@ -58,26 +56,42 @@ async function canonicalizeAurralArtistNames(jobMetadataByPath) {
   }
 }
 
+// `artistIds` scopes the run to a Lidarr re-index of those artists and skips
+// the Aurral root scan, which Lidarr changes cannot affect.
 export async function scanConfiguredLibrary({
   musicRoot = resolvePlaylistRoot(),
   lidarrClient,
   includeLidarr = true,
+  artistIds = null,
+  force = false,
 } = {}) {
-  const jobMetadataByPath = getAurralJobMetadataByPath();
-  let local;
+  const scoped = Array.isArray(artistIds) && artistIds.length > 0;
+  const jobMetadataByPath = scoped ? new Map() : getAurralJobMetadataByPath();
+  // Each scan syncs the search documents of the rows it changed when it ends
+  // (see withLibraryScan), and the cache invalidation it triggers schedules
+  // the background genre snapshot refresh. A scan that fails part-way gets a
+  // gap repair instead of a full rebuild.
+  let local = { skipped: true, changed: false, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   let lidarr = { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   let scanFailed = false;
   try {
-    local = await scanMusicRoot({
-      rootPath: musicRoot,
-      source: "aurral",
-      metadataEnricher: (_metadata, filePath) => jobMetadataByPath.get(path.resolve(filePath)),
-      syncSearch: false,
-    });
-    await canonicalizeAurralArtistNames(jobMetadataByPath);
+    if (!scoped) {
+      local = await scanMusicRoot({
+        rootPath: musicRoot,
+        source: "aurral",
+        metadataEnricher: (_metadata, filePath) => jobMetadataByPath.get(path.resolve(filePath)),
+        syncSearch: false,
+      });
+      await canonicalizeAurralArtistNames(jobMetadataByPath);
+    }
     if (includeLidarr) {
       try {
-        lidarr = await indexLidarrLibrary({ client: lidarrClient, syncSearch: false });
+        lidarr = await indexLidarrLibrary({
+          client: lidarrClient,
+          syncSearch: false,
+          artistIds: scoped ? artistIds : null,
+          force: force === true,
+        });
       } catch (error) {
         scanFailed = true;
         lidarr = {
@@ -93,10 +107,10 @@ export async function scanConfiguredLibrary({
     scanFailed = true;
     throw error;
   } finally {
-    if (scanFailed || local?.changed || lidarr?.changed) {
-      rebuildLibrarySearchIndex();
-      rebuildCanonicalGenreStats();
-    }
+    if (scanFailed) await repairLibrarySearchDocuments();
   }
+  // A completed scan is the point where table shapes change the most, so
+  // refresh the planner statistics here (cheap: only stale tables are analysed).
+  db.pragma("optimize");
   return { local, lidarr };
 }

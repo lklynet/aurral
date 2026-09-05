@@ -93,7 +93,7 @@ test("artist key reads use identity columns and preserve metadata foreign IDs", 
     });
     const sql = prepared.find((entry) => entry.includes("FROM library_artists"));
     assert.ok(sql);
-    assert.match(sql, /SELECT id, identity_key, mbid, name, metadata_json/);
+    assert.match(sql, /json_extract\(metadata_json, '\$\.foreignArtistId'\)/);
     assert.doesNotMatch(sql, /JOIN|COUNT|library_albums/);
   } finally {
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
@@ -128,12 +128,18 @@ test("artist monitoring mutations dedupe canonical reconciliation scans", async 
     assert.deepEqual(JSON.parse(getLibraryScanQueue().getJob(jobId).payload), {
       force: false,
       includeLidarr: true,
+      artistIds: [9922],
     });
 
     await libraryManager.updateArtist("33333333-3333-4333-8333-333333333333", {
       monitorOption: "all",
     });
     assert.equal(getScheduledLibraryScanJobId(), jobId);
+    assert.deepEqual(
+      JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'pendingLibraryScanJob'").get().value)
+        .artistIds,
+      [9922],
+    );
   } finally {
     if (jobId) getLibraryScanQueue().cancel(jobId);
     clearScheduledLibraryScan();

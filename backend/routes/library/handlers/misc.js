@@ -9,7 +9,10 @@ import {
   getCanonicalLibraryReadModelForAlbumReferences,
   getCanonicalLibraryReadModelForArtists,
 } from "../../../services/canonicalLibraryReadAdapter.js";
-import { getCanonicalArtistMbids } from "../../../services/libraryQueryService.js";
+import {
+  getCanonicalArtistKeys,
+  getCanonicalArtistMbids,
+} from "../../../services/libraryQueryService.js";
 
 const ARTIST_LOOKUP_BATCH_MAX = 100;
 
@@ -305,9 +308,10 @@ export function registerMisc(router) {
 
   router.get("/recent", async (req, res) => {
     try {
-      const artists = await libraryManager.getAllArtists();
+      const artists = getCanonicalArtistKeys();
+      const addedTime = (artist) => new Date(artist.addedAt || artist.added || 0).getTime() || 0;
       const recent = [...artists]
-        .sort((a, b) => new Date(b.addedAt || b.added) - new Date(a.addedAt || a.added))
+        .sort((a, b) => addedTime(b) - addedTime(a))
         .slice(0, 20)
         .map((artist) => ({
           ...artist,

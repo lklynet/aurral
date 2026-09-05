@@ -1,6 +1,6 @@
 import {
   getCanonicalAlbumsByReleaseDate,
-  iterateCanonicalArtistProjection,
+  getCanonicalArtistKeys,
 } from "../libraryQueryService.js";
 import { libraryManager } from "../libraryManager.js";
 
@@ -56,7 +56,7 @@ export async function getRecentMissingReleases(limit = 24, options = {}) {
       missingOnly: true,
     });
   } else if (!artists) {
-    artists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
+    artists = getCanonicalArtistKeys();
   } else if (!albums) {
     canonicalAlbums = true;
     albums = getCanonicalAlbumsByReleaseDate({

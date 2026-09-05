@@ -19,6 +19,10 @@ const LIDARR_RETRY_ATTEMPTS = 2;
 const LIDARR_RETRY_DELAY_MS = 800;
 const LIDARR_STATUS_CACHE_MS = 10000;
 const LIDARR_ARTIST_INDEX_TTL_MS = 15 * 60 * 1000;
+// Lidarr binds the `mbId` filter on GET /artist as a GUID, so only
+// MusicBrainz-shaped ids can use it; provider ids such as "705@deezer" cannot.
+const MUSICBRAINZ_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ARTIST_BY_MBID_ENDPOINT_PREFIX = "/artist?mbId=";
 const LIDARR_ARTIST_INDEX_CACHE_MAX = 5000;
 const LIDARR_STATUS_CACHE_MAX = 100;
 const VALID_MONITOR_OPTIONS = new Set([
@@ -312,6 +316,11 @@ export class LidarrClient {
     if (endpoint === "/artist" && this._artistListCache) {
       return this._artistListCache.data;
     }
+    if (endpoint.startsWith(ARTIST_BY_MBID_ENDPOINT_PREFIX) && this._artistListCache) {
+      const mbid = decodeURIComponent(endpoint.slice(ARTIST_BY_MBID_ENDPOINT_PREFIX.length));
+      const list = Array.isArray(this._artistListCache.data) ? this._artistListCache.data : [];
+      return list.filter((artist) => artist?.foreignArtistId === mbid);
+    }
     if (endpoint === "/album" || endpoint.startsWith("/album?")) {
       const cached = this._albumCache.get(endpoint);
       if (cached) return cached.data;
@@ -394,6 +403,7 @@ export class LidarrClient {
   async request(endpoint, method = "GET", data = null, skipConfigUpdate = false, options = {}) {
     const shouldDedupeGet =
       endpoint === "/artist" ||
+      endpoint.startsWith(ARTIST_BY_MBID_ENDPOINT_PREFIX) ||
       endpoint.startsWith("/album") ||
       endpoint === "/queue" ||
       endpoint.startsWith("/history?") ||
@@ -1154,11 +1164,9 @@ export class LidarrClient {
     }
 
     const startedAt = Date.now();
-    const requestPromise = this.request("/artist", "GET", null, false, { forceRefresh })
-      .then((artists) => {
-        const list = Array.isArray(artists) ? artists : [];
-        this._populateArtistIndexes(list);
-        const artist = list.find(matchesArtistId) || null;
+    const requestPromise = this
+      ._fetchArtistByMbid([normalizedMbid, mappedLidarrArtistId], matchesArtistId, forceRefresh)
+      .then((artist) => {
         if (artist || !forceRefresh) {
           this._setArtistByMbidCacheEntry(normalizedMbid, artist);
         }
@@ -1179,6 +1187,37 @@ export class LidarrClient {
       this._artistByMbidInflight.set(normalizedMbid, requestPromise);
     }
     return requestPromise;
+  }
+
+  // Resolves one artist without downloading the whole library. Each
+  // MusicBrainz-shaped candidate id is asked for with `GET /artist?mbId=`,
+  // which returns at most one artist. Provider ids (for example "705@deezer",
+  // used when an artist has no MusicBrainz entry) cannot be bound as a GUID,
+  // so any such candidate falls back to the full list.
+  async _fetchArtistByMbid(candidates, matchesArtistId, forceRefresh) {
+    const ids = [...new Set(candidates.map((value) => String(value || "").trim()).filter(Boolean))];
+    if (ids.length > 0 && ids.every((id) => MUSICBRAINZ_ID_PATTERN.test(id))) {
+      for (const id of ids) {
+        const response = await this.request(
+          `${ARTIST_BY_MBID_ENDPOINT_PREFIX}${encodeURIComponent(id)}`,
+          "GET",
+          null,
+          false,
+          { forceRefresh },
+        );
+        const list = Array.isArray(response) ? response : [];
+        // A Lidarr build that ignores the filter answers with every artist;
+        // index those so later lookups are served from memory.
+        if (list.length > 1) this._populateArtistIndexes(list);
+        const artist = list.find(matchesArtistId);
+        if (artist) return artist;
+      }
+      return null;
+    }
+    const response = await this.request("/artist", "GET", null, false, { forceRefresh });
+    const list = Array.isArray(response) ? response : [];
+    this._populateArtistIndexes(list);
+    return list.find(matchesArtistId) || null;
   }
 
   async updateArtist(artistId, updates) {
@@ -1407,6 +1446,21 @@ export class LidarrClient {
 
   async getAllAlbums(options = {}) {
     const albums = await this.request("/album", "GET", null, false, options);
+    return Array.isArray(albums) ? albums : [];
+  }
+
+  async getAlbumsByArtistId(artistId, options = {}) {
+    const normalizedArtistId = normalizeLidarrArtistId(artistId);
+    if (!normalizedArtistId) {
+      throw new Error(`Lidarr artist ID must be numeric: ${artistId}`);
+    }
+    const albums = await this.request(
+      `/album?artistId=${normalizedArtistId}`,
+      "GET",
+      null,
+      false,
+      options,
+    );
     return Array.isArray(albums) ? albums : [];
   }
 

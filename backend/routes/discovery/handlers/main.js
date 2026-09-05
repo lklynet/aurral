@@ -5,7 +5,7 @@ import {
   serveCachedRecommendations,
 } from "../../../services/discovery/index.js";
 import { requireAuth } from "../../../middleware/requirePermission.js";
-import { getCanonicalArtistKeyProjection } from "../../../services/libraryQueryService.js";
+import { getCanonicalArtistKeys } from "../../../services/libraryQueryService.js";
 import {
   buildArtistKeySet,
   isLibraryArtist,
@@ -77,7 +77,7 @@ export function registerMain(router) {
       let recommendations = discoveryCache.recommendations || [];
       let globalTop = discoveryCache.globalTop || [];
 
-      const existingArtistKeys = buildArtistKeySet(getCanonicalArtistKeyProjection());
+      const existingArtistKeys = buildArtistKeySet(getCanonicalArtistKeys());
 
       recommendations = recommendations.filter(
         (artist) => !isLibraryArtist(artist, existingArtistKeys),

@@ -11,7 +11,7 @@ import {
 import {
   getCanonicalLibraryPage,
   getCanonicalLibraryForArtistReferences,
-  iterateCanonicalArtistProjection,
+  getCanonicalArtistKeys,
 } from "../libraryQueryService.js";
 import BoundedMap from "../boundedMap.js";
 const LASTFM_HARVEST_CONCURRENCY = 12;
@@ -475,7 +475,7 @@ export class WeeklyFlowPlaylistSource {
     }
 
     const promise = (async () => {
-      const artists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
+      const artists = getCanonicalArtistKeys();
       return this._buildArtistKeySet(artists);
     })();
     this.libraryArtistKeysCache = { promise };
@@ -2042,7 +2042,7 @@ export class WeeklyFlowPlaylistSource {
   async getMixTracks(limit, options = {}) {
     const artists = Array.isArray(options?.libraryArtists)
       ? options.libraryArtists
-      : [...iterateCanonicalArtistProjection({ pageSize: 100 })];
+      : getCanonicalArtistKeys();
     if (artists.length === 0) {
       throw new Error("No artists in library. Add artists to enable Mix.");
     }
