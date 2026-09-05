@@ -52,7 +52,7 @@ const seconds = (durationMs) => {
   return Number.isFinite(value) && value > 0 ? Math.round(value / 1000) : 0;
 };
 
-const PROTOCOL_DATE = "1970-01-01T00:00:00.000Z";
+const isoDate = (epochMs) => new Date(Number(epochMs) || Date.now()).toISOString();
 
 const year = (value) => {
   const match = /^(\d{4})/.exec(String(value || ""));
@@ -139,7 +139,7 @@ const toSong = (library, track, album = findAlbumForTrack(library, track)) => {
     albumArtists: [artistValue],
     artists: [artistValue],
     contentType: `audio/${format}`,
-    created: PROTOCOL_DATE,
+    created: isoDate(track.createdAt ?? file?.createdAt ?? file?.mtimeMs),
     track: Number(relation?.trackNumber) || 0,
     discNumber: Number(relation?.discNumber) || 1,
     coverArt: album ? coverArtForAlbum(album) : undefined,
@@ -182,7 +182,7 @@ const albumData = (library, album) => {
     parent: artistValue.id,
     isDir: false,
     isVideo: false,
-    created: PROTOCOL_DATE,
+    created: isoDate(album.createdAt),
     coverArt: coverArtForAlbum(album),
     songCount: tracks.length,
     duration: tracks.reduce((total, track) => total + seconds(firstFile(track)?.durationMs), 0),
@@ -310,7 +310,7 @@ function toPlaylistSong(
     artists: [artist],
     coverArt: albumMbid ? idFor("album", `release-group:${albumMbid}`) : undefined,
     contentType: `audio/${format}`,
-    created: PROTOCOL_DATE,
+    created: isoDate(job.createdAt),
     track: job.trackNumber || 0,
     discNumber: job.discNumber || 1,
     duration: seconds(job.durationMs),

@@ -54,12 +54,14 @@ const CANONICAL_SELECT = `SELECT
   album.album_artist AS album_artist,
   album.release_date AS album_release_date,
   album.metadata_json AS album_metadata_json,
+  album.created_at AS album_created_at,
   track.id AS track_id,
   track.identity_key AS track_identity_key,
   track.mbid AS track_mbid,
   track.title AS track_title,
   track.artist_name AS track_artist_name,
   track.metadata_json AS track_metadata_json,
+  track.created_at AS track_created_at,
   album_track.disc_number,
   album_track.track_number,
   media.id AS media_id,
@@ -71,7 +73,8 @@ const CANONICAL_SELECT = `SELECT
   media.mtime_ms AS media_mtime_ms,
   media.duration_ms AS media_duration_ms,
   media.quality_json AS media_quality_json,
-  media.available AS media_available`;
+  media.available AS media_available,
+  media.created_at AS media_created_at`;
 
 const albumMediaCondition = (mediaAlias, albumTrackAlias) =>
   `(${mediaAlias}.album_id = ${albumTrackAlias}.album_id OR ${mediaAlias}.album_id IS NULL)`;
@@ -110,6 +113,7 @@ function buildLibraryFromRows(rows) {
       title: row.album_title,
       albumArtist: row.album_artist,
       releaseDate: row.album_release_date,
+      createdAt: row.album_created_at,
       metadata: parseJson(row.album_metadata_json),
       trackIds: [],
       sources: [],
@@ -121,6 +125,7 @@ function buildLibraryFromRows(rows) {
       mbid: row.track_mbid,
       title: row.track_title,
       artistName: row.track_artist_name,
+      createdAt: row.track_created_at,
       metadata: parseJson(row.track_metadata_json),
       albums: [],
       files: [],
@@ -160,6 +165,7 @@ function buildLibraryFromRows(rows) {
         durationMs: row.media_duration_ms,
         quality: parseJson(row.media_quality_json),
         available: Boolean(row.media_available),
+        createdAt: row.media_created_at,
       };
       if (!track.files.some((entry) => entry.id === file.id)) track.files.push(file);
       if (file.available) {
@@ -1927,6 +1933,7 @@ function getAlbumTrackSummary(albumId, sourceFilter) {
       title: row.album_title,
       albumArtist: row.album_artist,
       releaseDate: row.album_release_date,
+      createdAt: row.album_created_at,
       metadata: parseJson(row.album_metadata_json),
       trackIds: [],
       sources,
