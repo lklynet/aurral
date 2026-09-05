@@ -807,6 +807,57 @@ export function getCanonicalLibraryForTrackIds({
   return getScopedCanonicalLibrary({ source, availableOnly, conditions, parameters });
 }
 
+// SQLite caps bound parameters per statement; keep each IN list comfortably below it.
+const LOOKUP_CHUNK_SIZE = 500;
+
+const chunked = (values) => {
+  const chunks = [];
+  for (let index = 0; index < values.length; index += LOOKUP_CHUNK_SIZE) {
+    chunks.push(values.slice(index, index + LOOKUP_CHUNK_SIZE));
+  }
+  return chunks;
+};
+
+export function getCanonicalLibraryForTrackMatches({
+  source = null,
+  availableOnly = false,
+  mbids = [],
+  titles = [],
+} = {}) {
+  const mbidValues = normalizeLookupValues(mbids);
+  const titleValues = normalizeLookupValues(titles);
+  if (!mbidValues.length && !titleValues.length) return { artists: [], albums: [], tracks: [] };
+  const clauses = [
+    ...chunked(mbidValues).map((chunk) => ({ sql: `track.mbid IN (${chunk.map(() => "?").join(",")})`, chunk })),
+    ...chunked(titleValues).map((chunk) => ({
+      sql: `track.title COLLATE NOCASE IN (${chunk.map(() => "?").join(",")})`,
+      chunk,
+    })),
+  ];
+  // Any-size input resolves in ceil(n / chunk) statements; a track matched by more than one
+  // clause is only kept once.
+  const merged = { artists: new Map(), albums: new Map(), tracks: new Map() };
+  for (let index = 0; index < clauses.length; index += 2) {
+    const group = clauses.slice(index, index + 2);
+    const library = getScopedCanonicalLibrary({
+      source,
+      availableOnly,
+      conditions: [`(${group.map((clause) => clause.sql).join(" OR ")})`],
+      parameters: group.flatMap((clause) => clause.chunk),
+    });
+    for (const key of Object.keys(merged)) {
+      for (const entity of library[key]) {
+        if (!merged[key].has(entity.id)) merged[key].set(entity.id, entity);
+      }
+    }
+  }
+  return {
+    artists: [...merged.artists.values()],
+    albums: [...merged.albums.values()],
+    tracks: [...merged.tracks.values()],
+  };
+}
+
 export function getCanonicalLibraryForAlbumReferences({
   source = null,
   availableOnly = false,

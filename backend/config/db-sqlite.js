@@ -296,6 +296,8 @@ db.exec(`
     ON library_album_tracks (track_id);
   CREATE INDEX IF NOT EXISTS idx_library_tracks_title
     ON library_tracks (title COLLATE NOCASE);
+  CREATE INDEX IF NOT EXISTS idx_library_tracks_mbid
+    ON library_tracks (mbid);
   CREATE INDEX IF NOT EXISTS idx_library_media_files_track_id
     ON library_media_files (track_id);
   CREATE INDEX IF NOT EXISTS idx_library_media_files_track_source_available

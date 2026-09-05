@@ -10,6 +10,7 @@ import {
   getCanonicalLibrary,
   getCanonicalLibraryForAlbumReferences,
   getCanonicalLibraryForArtistReferences,
+  getCanonicalLibraryForTrackMatches,
   getCanonicalSearchPage,
   getCanonicalTopTracks,
   getCanonicalTrack,
@@ -279,9 +280,13 @@ function playlistFromId(user, value) {
   return flowPlaylistConfig.getSharedPlaylistForUser(user, parsed.key);
 }
 
-function toPlaylistSong(playlist, kind, job, starredAt = null) {
-  // ponytail: one canonical lookup per playlist entry; batch by trackMbid if large synced playlists get slow.
-  const owned = findAvailableCanonicalFile(trackFromJob(job));
+function toPlaylistSong(
+  playlist,
+  kind,
+  job,
+  starredAt = null,
+  owned = findAvailableCanonicalFile(trackFromJob(job)),
+) {
   if (owned) {
     return {
       ...toSong(indexFocusedLibrary(owned.library, starredAt), owned.track),
@@ -591,44 +596,57 @@ const findReusableLibrarySource = (track) =>
       isSameTrack(job, track),
   );
 
-const findAvailableCanonicalFile = (track) => {
-  let library = indexFocusedLibrary(track?.trackMbid
-    ? getCanonicalTrack({
-        trackId: track.trackMbid,
-        source: "all",
-        availableOnly: true,
-      })
-    : getCanonicalTrackPage({
-        source: "all",
-        availableOnly: true,
-        query: track?.trackName,
-        artist: track?.artistName,
-        limit: 25,
-      }));
-  let candidate = library.tracks.find((entry) => isSameTrack(track, trackFromCanonical(library, entry)));
-  if (!candidate && track?.trackMbid) {
-    library = indexFocusedLibrary(getCanonicalTrackPage({
-      source: "all",
-      availableOnly: true,
-      query: track.trackName,
-      artist: track.artistName,
-      limit: 25,
-    }));
-    candidate = library.tracks.find((entry) => isSameTrack(track, trackFromCanonical(library, entry)));
+// Resolve playlist track descriptors to available library tracks. All descriptors of a batch are
+// looked up in one canonical query (by recording MBID and by title), then matched in memory with
+// the same rule the playlist code uses, so a 1000-entry playlist costs a couple of statements.
+export function resolveCanonicalTracks(descriptors) {
+  const items = (Array.isArray(descriptors) ? descriptors : []).map((entry) => normalizeSharedTrack(entry));
+  const present = items.filter(Boolean);
+  if (!present.length) return items.map(() => null);
+  const library = indexFocusedLibrary(getCanonicalLibraryForTrackMatches({
+    source: "all",
+    availableOnly: true,
+    mbids: present.map((track) => track.trackMbid),
+    titles: present.map((track) => track.trackName),
+  }));
+  const byTitle = new Map();
+  for (const track of library.tracks) {
+    const title = String(track.title || "").trim().toLowerCase();
+    if (!byTitle.has(title)) byTitle.set(title, []);
+    byTitle.get(title).push(track);
   }
-  const file = firstFile(candidate);
-  return file?.available && file.path
-    ? { file, library, track: candidate, albumName: findAlbumForTrack(library, candidate)?.title }
-    : null;
-};
+  return items.map((track) => {
+    if (!track) return null;
+    const candidates = byTitle.get(track.trackName.toLowerCase()) || [];
+    // Prefer the candidate sharing the recording MBID, then fall back to the name match.
+    const ordered = [
+      ...candidates.filter((entry) => track.trackMbid && entry.mbid === track.trackMbid),
+      ...candidates.filter((entry) => !track.trackMbid || entry.mbid !== track.trackMbid),
+    ];
+    const match = ordered.find((entry) => {
+      const file = firstFile(entry);
+      return file?.available && file.path && isSameTrack(track, trackFromCanonical(library, entry));
+    });
+    return match
+      ? { file: firstFile(match), library, track: match, albumName: findAlbumForTrack(library, match)?.title }
+      : null;
+  });
+}
 
-const canonicalStarRow = (user, row) => {
-  if (!["flow-song", "shared-song"].includes(row?.entity_kind)) return row;
-  const playlistSong = resolvePlaylistSong(user, idFor(row.entity_kind, row.entity_key));
-  const canonical = playlistSong ? findAvailableCanonicalFile(playlistSong.track)?.track : null;
-  return canonical
-    ? { ...row, entity_kind: "song", entity_key: canonical.identityKey }
-    : row;
+const findAvailableCanonicalFile = (track) => resolveCanonicalTracks([track])[0];
+
+// Map playlist-song star rows to their canonical song row when the entry is a library track.
+const canonicalStarRows = (user, rows) => {
+  const playlistSongs = rows.map((row) =>
+    ["flow-song", "shared-song"].includes(row?.entity_kind)
+      ? resolvePlaylistSong(user, idFor(row.entity_kind, row.entity_key))
+      : null,
+  );
+  const resolved = resolveCanonicalTracks(playlistSongs.map((song) => song?.track || null));
+  return rows.map((row, index) => {
+    const canonical = resolved[index]?.track;
+    return canonical ? { ...row, entity_kind: "song", entity_key: canonical.identityKey } : row;
+  });
 };
 
 const ensureLibraryJob = (track, createdJobIds = null) => {
@@ -844,21 +862,22 @@ export function unstar(user, value) {
 export function unstarMany(user, values) {
   const parsed = values.map(starTarget);
   if (!parsed.length || parsed.some((target) => !target) || !user?.id) return false;
-  const targetKeys = new Set(parsed.flatMap((target) => {
-    const row = { entity_kind: target.kind, entity_key: target.key };
-    const canonical = canonicalStarRow(user, row);
-    return [row, canonical].map((entry) => `${entry.entity_kind}:${entry.entity_key}`);
-  }));
+  const targetRows = parsed.map((target) => ({ entity_kind: target.kind, entity_key: target.key }));
+  const targetKeys = new Set(
+    [...targetRows, ...canonicalStarRows(user, targetRows)].map((entry) => `${entry.entity_kind}:${entry.entity_key}`),
+  );
+  const rows = starredRows(user);
+  const canonicalRows = canonicalStarRows(user, rows);
   const removeStars = db.transaction(() => {
-    for (const row of starredRows(user)) {
-      const canonical = canonicalStarRow(user, row);
+    rows.forEach((row, index) => {
+      const canonical = canonicalRows[index];
       if (
         targetKeys.has(`${row.entity_kind}:${row.entity_key}`) ||
         targetKeys.has(`${canonical.entity_kind}:${canonical.entity_key}`)
       ) {
         removeStarStmt.run(user.id, row.entity_kind, row.entity_key);
       }
-    }
+    });
   });
   removeStars();
   return true;
@@ -872,14 +891,12 @@ const starredAtFromRows = (rows) => new Map(rows.map((row) => [
 ]));
 
 // Star timestamps keyed by protocol id, with playlist-song stars resolved to their canonical track.
-const starredAtFor = (user) =>
-  starredAtFromRows(starredRows(user).map((row) => canonicalStarRow(user, row)));
+const starredAtFor = (user) => starredAtFromRows(canonicalStarRows(user, starredRows(user)));
 
 export function getStarredIdentityKeys(user) {
-  return new Set(starredRows(user).map((row) => {
-    const canonical = canonicalStarRow(user, row);
-    return `${canonical.entity_kind}:${canonical.entity_key}`;
-  }));
+  return new Set(
+    canonicalStarRows(user, starredRows(user)).map((row) => `${row.entity_kind}:${row.entity_key}`),
+  );
 }
 
 const buildStarred = (library, rows, user) => {
@@ -894,7 +911,8 @@ const buildStarred = (library, rows, user) => {
         : null;
       const job = separator > 0 ? downloadTracker.getJob(parsed.key.slice(separator + 1)) : null;
       if (playlist && playlistOwnsJob(playlist, job)) {
-        starred.song.push(toPlaylistSong(playlist, kind, job, library.starredAt));
+        // Rows still flagged as playlist songs did not resolve to a library track above.
+        starred.song.push(toPlaylistSong(playlist, kind, job, library.starredAt, null));
       }
       continue;
     }
@@ -908,7 +926,7 @@ const buildStarred = (library, rows, user) => {
 };
 
 export function getStarredWithLibrary(user) {
-  const rows = starredRows(user).map((row) => canonicalStarRow(user, row));
+  const rows = canonicalStarRows(user, starredRows(user));
   const canonicalRows = rows.filter((row) => ["artist", "album", "song"].includes(row.entity_kind));
   const library = getCanonicalLibrary({
     favoriteKeys: canonicalRows.map((row) => ({ kind: row.entity_kind, key: row.entity_key })),
@@ -979,6 +997,7 @@ export function getFlowPlaylist(value, user) {
   if (!playlist) return null;
   const jobs = flowJobs(playlist);
   const starredAt = starredAtFor(user);
+  const owned = resolveCanonicalTracks(jobs.map((job) => trackFromJob(job)));
   return {
     id: idFor(kind, playlist.id),
     name: playlist.name,
@@ -987,7 +1006,7 @@ export function getFlowPlaylist(value, user) {
     songCount: jobs.length,
     duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
     public: false,
-    entry: jobs.map((job) => toPlaylistSong(playlist, kind, job, starredAt)),
+    entry: jobs.map((job, index) => toPlaylistSong(playlist, kind, job, starredAt, owned[index])),
   };
 }
 
