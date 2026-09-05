@@ -115,6 +115,9 @@ test("returns the Subsonic invalid-credentials error", async () => {
 test("returns protocol errors for unsupported authentication and requests", async () => {
   const token = await request("ping", { p: "", t: "token", s: "salt", f: "json" });
   assert.equal(token.json.error.code, 41);
+  assert.match(token.json.error.helpUrl, /^https:\/\/docs\.aurral\.org\//);
+  const tokenXml = await request("ping", { p: "", t: "token", s: "salt" });
+  assert.match(tokenXml.body, /<error code="41" message="[^"]+" helpUrl="https:[^"]+"\/>/);
 
   const unsupported = await request("getVideos", { f: "json" });
   assert.deepEqual(unsupported.json.error, {
