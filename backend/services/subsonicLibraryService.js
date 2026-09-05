@@ -146,6 +146,7 @@ const toSong = (library, track, album = findAlbumForTrack(library, track)) => {
     suffix: format,
     path: idFor("song", track.identityKey),
     type: "music",
+    starred: library.starredAt?.get(`song:${track.identityKey}`),
   };
   const releaseYear = year(album?.releaseDate);
   if (releaseYear != null) song.year = releaseYear;
@@ -182,6 +183,7 @@ const albumData = (library, album) => {
     songCount: tracks.length,
     duration: tracks.reduce((total, track) => total + seconds(firstFile(track)?.durationMs), 0),
     song: [],
+    starred: library.starredAt?.get(`album:${album.identityKey}`),
   };
   const releaseYear = year(album.releaseDate);
   if (releaseYear != null) value.year = releaseYear;
@@ -211,6 +213,7 @@ const toArtist = (library, artist) => {
     coverArt: idFor("artist", artist.identityKey),
     albumCount: albums.length,
     album: albums.map((album) => toAlbumSummary(library, album)),
+    starred: library.starredAt?.get(`artist:${artist.identityKey}`),
   };
   if (genres.length) {
     value.genre = genres[0];
@@ -219,21 +222,23 @@ const toArtist = (library, artist) => {
   return value;
 };
 
-const toArtistSummary = (artist) => {
+const toArtistSummary = (artist, library = {}) => {
   const genres = entityGenres(artist);
   return {
     id: idFor("artist", artist.identityKey),
     name: artist.name,
     coverArt: idFor("artist", artist.identityKey),
     albumCount: artist.albumCount ?? artist.albumIds.length,
+    starred: library.starredAt?.get(`artist:${artist.identityKey}`),
     ...(genres.length
       ? { genre: genres[0], genres: genres.map((name) => ({ name })) }
       : {}),
   };
 };
 
-const indexFocusedLibrary = (library) => ({
+const indexFocusedLibrary = (library, starredAt = library.starredAt) => ({
   ...library,
+  starredAt,
   artistsById: new Map(library.artists.map((artist) => [artist.id, artist])),
   albumsById: new Map(library.albums.map((album) => [album.id, album])),
   tracksById: new Map(library.tracks.map((track) => [track.id, track])),
@@ -333,30 +338,33 @@ const flowJobs = (flow, { includePending = false } = {}) =>
 
 const playlistCoverArt = (kind, playlistId) => idFor(kind, playlistId);
 
-export function listArtists() {
-  return getCanonicalArtistPage({ source: "all", availableOnly: false }).artists.map(toArtistSummary);
+export function listArtists(user) {
+  const library = { starredAt: starredAtFor(user) };
+  return getCanonicalArtistPage({ source: "all", availableOnly: false }).artists.map(
+    (artist) => toArtistSummary(artist, library),
+  );
 }
 
-export function getArtist(value) {
+export function getArtist(value, user) {
   const parsed = parseId(value);
   if (parsed?.kind !== "artist") return null;
   const library = indexFocusedLibrary(getCanonicalLibraryForArtistReferences({
     source: "all",
     availableOnly: false,
     references: [parsed.key],
-  }));
+  }), starredAtFor(user));
   const artist = findCanonical(library, parsed);
   return artist?.identityKey ? toArtist(library, artist) : null;
 }
 
-export function getAlbum(value) {
+export function getAlbum(value, user) {
   const parsed = parseId(value);
   if (parsed?.kind !== "album") return null;
   const library = indexFocusedLibrary(getCanonicalLibraryForAlbumReferences({
     source: "all",
     availableOnly: false,
     references: [parsed.key],
-  }));
+  }), starredAtFor(user));
   const album = findCanonical(library, parsed);
   return album?.identityKey ? toAlbum(library, album) : null;
 }
@@ -371,18 +379,18 @@ export function getSong(value, user) {
     trackId: parsed.key,
     source: "all",
     availableOnly: false,
-  }));
+  }), starredAtFor(user));
   const track = findCanonical(library, parsed);
   return track?.identityKey ? toSong(library, track) : null;
 }
 
-export function getMusicDirectory(value) {
+export function getMusicDirectory(value, user) {
   if (value === "root" || value === "1") {
     const rootId = value === "1" ? "1" : "root";
     return {
       id: rootId,
       name: "Aurral",
-      child: listArtists().map((artist) => ({
+      child: listArtists(user).map((artist) => ({
         id: artist.id,
         parent: rootId,
         isDir: true,
@@ -393,17 +401,17 @@ export function getMusicDirectory(value) {
   }
   const parsed = parseId(value);
   if (parsed?.kind === "artist") {
-    const artist = getArtist(value);
+    const artist = getArtist(value, user);
     return artist ? { id: artist.id, name: artist.name, child: artist.album || [] } : null;
   }
   if (parsed?.kind === "album") {
-    const album = getAlbum(value);
+    const album = getAlbum(value, user);
     return album ? { id: album.id, name: album.name, child: album.song || [] } : null;
   }
   return null;
 }
 
-export function searchLibrary(query, options = {}) {
+export function searchLibrary(query, options = {}, user = null) {
   const needle = String(query || "").trim().toLocaleLowerCase();
   const result = getCanonicalSearchPage({
     source: "all",
@@ -416,17 +424,18 @@ export function searchLibrary(query, options = {}) {
     songLimit: normalizeLimit(options.songCount),
     songOffset: normalizeOffset(options.songOffset),
   });
-  const artistLibrary = indexFocusedLibrary({ artists: result.artists, albums: [], tracks: [] });
-  const albumLibrary = indexFocusedLibrary(result.albums);
-  const trackLibrary = indexFocusedLibrary(result.tracks);
+  const starredAt = starredAtFor(user);
+  const artistLibrary = indexFocusedLibrary({ artists: result.artists, albums: [], tracks: [] }, starredAt);
+  const albumLibrary = indexFocusedLibrary(result.albums, starredAt);
+  const trackLibrary = indexFocusedLibrary(result.tracks, starredAt);
   return {
-    artist: artistLibrary.artists.map(toArtistSummary),
+    artist: artistLibrary.artists.map((artist) => toArtistSummary(artist, artistLibrary)),
     album: albumLibrary.albums.map((album) => toAlbum(albumLibrary, album)),
     song: trackLibrary.tracks.map((track) => toSong(trackLibrary, track)),
   };
 }
 
-export function getAlbumList(options = {}) {
+export function getAlbumList(options = {}, user = null) {
   const type = String(options.type || "alphabeticalByName");
   if (type === "starred") return [];
   const library = indexFocusedLibrary(getCanonicalAlbumPage({
@@ -438,11 +447,11 @@ export function getAlbumList(options = {}) {
     toYear: options.toYear,
     offset: normalizeOffset(options.offset),
     limit: normalizeLimit(options.size),
-  }));
+  }), starredAtFor(user));
   return library.albums.map((album) => toAlbumSummary(library, album));
 }
 
-export function getSongsByGenre(genre, options = {}) {
+export function getSongsByGenre(genre, options = {}, user = null) {
   const target = String(genre || "").trim().toLocaleLowerCase();
   if (!target) return [];
   const library = indexFocusedLibrary(getCanonicalTrackPage({
@@ -451,7 +460,7 @@ export function getSongsByGenre(genre, options = {}) {
     genre: target,
     offset: normalizeOffset(options.offset),
     limit: normalizeLimit(options.count),
-  }));
+  }), starredAtFor(user));
   return library.tracks.map((track) => toSong(library, track));
 }
 
@@ -460,7 +469,7 @@ export function getGenres() {
 }
 
 const getStarsStmt = db.prepare(
-  "SELECT entity_kind, entity_key FROM subsonic_stars WHERE user_id = ? ORDER BY created_at, entity_kind, entity_key",
+  "SELECT entity_kind, entity_key, created_at FROM subsonic_stars WHERE user_id = ? ORDER BY created_at, entity_kind, entity_key",
 );
 const addStarStmt = db.prepare(
   "INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (?, ?, ?, ?)",
@@ -829,6 +838,15 @@ export function unstarMany(user, values) {
 
 const starredRows = (user) => (user?.id ? getStarsStmt.all(user.id) : []);
 
+const starredAtFromRows = (rows) => new Map(rows.map((row) => [
+  `${row.entity_kind}:${row.entity_key}`,
+  new Date(Number(row.created_at) || Date.now()).toISOString(),
+]));
+
+// Star timestamps keyed by protocol id, with playlist-song stars resolved to their canonical track.
+const starredAtFor = (user) =>
+  starredAtFromRows(starredRows(user).map((row) => canonicalStarRow(user, row)));
+
 export function getStarredIdentityKeys(user) {
   return new Set(starredRows(user).map((row) => {
     const canonical = canonicalStarRow(user, row);
@@ -854,7 +872,7 @@ const buildStarred = (library, rows, user) => {
     }
     const entity = findCanonical(library, parsed);
     if (!entity) continue;
-    if (parsed.kind === "artist") starred.artist.push(toArtistSummary(entity));
+    if (parsed.kind === "artist") starred.artist.push(toArtistSummary(entity, library));
     if (parsed.kind === "album") starred.album.push(toAlbumSummary(library, entity));
     if (parsed.kind === "song") starred.song.push(toSong(library, entity));
   }
@@ -867,7 +885,7 @@ export function getStarredWithLibrary(user) {
   const library = getCanonicalLibrary({
     favoriteKeys: canonicalRows.map((row) => ({ kind: row.entity_kind, key: row.entity_key })),
   });
-  return { starred: buildStarred(indexFocusedLibrary(library), rows, user), library };
+  return { starred: buildStarred(indexFocusedLibrary(library, starredAtFromRows(rows)), rows, user), library };
 }
 
 export function getStarred(user) {
@@ -878,7 +896,7 @@ export function getArtistInfo(value) {
   return getArtist(value) ? { similarArtist: [] } : null;
 }
 
-export function getTopSongs(artist, options = {}) {
+export function getTopSongs(artist, options = {}, user = null) {
   const target = String(artist || "").trim();
   if (!target) return [];
   const library = indexFocusedLibrary(getCanonicalTopTracks({
@@ -886,7 +904,7 @@ export function getTopSongs(artist, options = {}) {
     availableOnly: false,
     artist: target,
     limit: normalizeLimit(options.count),
-  }));
+  }), starredAtFor(user));
   return library.tracks.map((track) => toSong(library, track));
 }
 

@@ -283,7 +283,7 @@ async function handleSubsonicRequest(req, res) {
           size: getParameter(req, "size"),
           toYear: getParameter(req, "toYear"),
           type: getParameter(req, "type"),
-        }),
+        }, user),
       },
     });
   }
@@ -298,12 +298,12 @@ async function handleSubsonicRequest(req, res) {
         song: getSongsByGenre(genre, {
           count: getParameter(req, "count"),
           offset: getParameter(req, "offset"),
-        }),
+        }, user),
       },
     });
   }
   if (method === "getartists" || method === "getindexes") {
-    const indexes = groupArtists(listArtists());
+    const indexes = groupArtists(listArtists(user));
     return sendResponse(res, format, "ok", null, {
       [method === "getartists" ? "artists" : "indexes"]: {
         ignoredArticles: "The El La Los Las Le Les",
@@ -313,7 +313,7 @@ async function handleSubsonicRequest(req, res) {
     });
   }
   if (method === "getartist") {
-    const artist = getArtist(getParameter(req, "id"));
+    const artist = getArtist(getParameter(req, "id"), user);
     return artist
       ? sendResponse(res, format, "ok", null, { artist })
       : sendError(res, format, 70, "Requested data was not found");
@@ -349,7 +349,7 @@ async function handleSubsonicRequest(req, res) {
     return sendResponse(res, format, "ok", null, { [key]: { song: [] } });
   }
   if (method === "getalbum") {
-    const album = getAlbum(getParameter(req, "id"));
+    const album = getAlbum(getParameter(req, "id"), user);
     return album
       ? sendResponse(res, format, "ok", null, { album })
       : sendError(res, format, 70, "Requested data was not found");
@@ -361,7 +361,7 @@ async function handleSubsonicRequest(req, res) {
       : sendError(res, format, 70, "Requested data was not found");
   }
   if (method === "getmusicdirectory") {
-    const directory = getMusicDirectory(getParameter(req, "id"));
+    const directory = getMusicDirectory(getParameter(req, "id"), user);
     return directory
       ? sendResponse(res, format, "ok", null, { directory })
       : sendError(res, format, 70, "Requested data was not found");
@@ -369,7 +369,7 @@ async function handleSubsonicRequest(req, res) {
   if (method === "search3" || method === "search2") {
     const query = getParameter(req, "query");
     return sendResponse(res, format, "ok", null, {
-      [method === "search3" ? "searchResult3" : "searchResult2"]: searchLibrary(query, requestParameters(req)),
+      [method === "search3" ? "searchResult3" : "searchResult2"]: searchLibrary(query, requestParameters(req), user),
     });
   }
   if (method === "getplaylists") {
@@ -429,7 +429,7 @@ async function handleSubsonicRequest(req, res) {
     if (!artist) return sendError(res, format, 10, "Required parameter is missing: artist");
     return sendResponse(res, format, "ok", null, {
       topSongs: {
-        song: getTopSongs(artist, { count: getParameter(req, "count") }),
+        song: getTopSongs(artist, { count: getParameter(req, "count") }, user),
       },
     });
   }

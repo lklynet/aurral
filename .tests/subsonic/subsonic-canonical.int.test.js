@@ -328,16 +328,29 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.equal(starred.album[0].id, album.id);
   assert.equal(starred.artist[0].id, artist.id);
   assert.equal(responseJson(await request("getStarred2")).starred2.song[0].id, song.id);
+  assert.match(starred.song[0].starred, /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(responseJson(await request("getSong", { id: song.id })).song.starred, /^\d{4}-/);
+  assert.match(responseJson(await request("getAlbum", { id: album.id })).album.starred, /^\d{4}-/);
+  assert.match(responseJson(await request("getArtist", { id: artist.id })).artist.starred, /^\d{4}-/);
+  assert.match(
+    responseJson(await request("search3", { query: "Canonical" })).searchResult3.song[0].starred,
+    /^\d{4}-/,
+  );
   userOps.createUser("bob", hashPassword("bob-password"), "user");
   assert.deepEqual(
     responseJson(await request("getStarred", { u: "bob", p: "bob-password" })).starred,
     { album: [], artist: [], song: [] },
   );
   assert.equal(
+    responseJson(await request("getSong", { id: song.id, u: "bob", p: "bob-password" })).song.starred,
+    undefined,
+  );
+  assert.equal(
     responseJson(await request("unstar", { id: [song.id, album.id], artistId: artist.id })).status,
     "ok",
   );
   assert.deepEqual(responseJson(await request("getStarred")).starred, { album: [], artist: [], song: [] });
+  assert.equal(responseJson(await request("getSong", { id: song.id })).song.starred, undefined);
   assert.equal(
     responseJson(await request("star", { id: [song.id, "song:missing"] })).error.code,
     70,
