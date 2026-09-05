@@ -32,6 +32,11 @@ import { recordPlayEvent } from "../services/playEventService.js";
 const SUBSONIC_VERSION = "1.16.1";
 const SUBSONIC_NAMESPACE = "http://subsonic.org/restapi";
 const SUBSONIC_AUTH_HELP_URL = "https://docs.aurral.org/api/overview/";
+// OpenSubsonic extensions this server implements, advertised by getOpenSubsonicExtensions.
+const SUPPORTED_EXTENSIONS = [
+  { name: "formPost", versions: [1] },
+  { name: "topSongsByArtistId", versions: [1] },
+];
 const router = express.Router();
 
 // OpenSubsonic formPost: parameters may arrive in a urlencoded body; query wins on conflicts.
@@ -188,6 +193,14 @@ function handleBinaryError(res, message = "Requested media was not found") {
 }
 
 async function handleSubsonicRequest(req, res) {
+  const method = String(req.params.method || "").replace(/\.view$/i, "").toLowerCase();
+  if (method === "getopensubsonicextensions") {
+    // Must be reachable without any authentication parameters so clients can probe capabilities.
+    const format = requestedFormat(req);
+    if (!format) return sendError(res, "xml", 0, "Unsupported response format. Use xml or json.");
+    return sendResponse(res, format, "ok", null, { openSubsonicExtensions: SUPPORTED_EXTENSIONS });
+  }
+
   const validation = validateRequest(req, requestedFormat(req));
   if (validation.error) return sendError(res, validation.format, ...validation.error);
 
@@ -207,7 +220,6 @@ async function handleSubsonicRequest(req, res) {
   }
   req.user = user;
 
-  const method = String(req.params.method || "").replace(/\.view$/i, "").toLowerCase();
   if (method === "ping") return sendResponse(res, format);
   if (method === "getuser") {
     const isAdmin = req.user.role === "admin";
