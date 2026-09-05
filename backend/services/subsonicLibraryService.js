@@ -13,6 +13,7 @@ import {
   getCanonicalLibraryForTrackMatches,
   getCanonicalSearchPage,
   getCanonicalTopTracks,
+  getCanonicalLibraryLastModified,
   getCanonicalTrack,
   getCanonicalTrackPage,
 } from "./libraryQueryService.js";
@@ -363,6 +364,10 @@ const flowJobs = (flow, { includePending = false } = {}) =>
   );
 
 const playlistCoverArt = (kind, playlistId) => idFor(kind, playlistId);
+
+export function getLibraryLastModified() {
+  return getCanonicalLibraryLastModified() ?? 0;
+}
 
 export function listArtists(user) {
   const library = { starredAt: starredAtFor(user) };
