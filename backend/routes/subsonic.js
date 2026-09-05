@@ -32,6 +32,7 @@ import { logger } from "../services/logger.js";
 
 const SUBSONIC_VERSION = "1.16.1";
 const SUBSONIC_NAMESPACE = "http://subsonic.org/restapi";
+const SUBSONIC_AUTH_HELP_URL = "https://docs.aurral.org/api/overview/";
 const router = express.Router();
 
 const getParameter = (req, name) => {
@@ -105,7 +106,7 @@ function renderXml({ status, data = {}, error }) {
     .map(([key, value]) => `${key}="${escapeXml(value)}"`)
     .join(" ");
   const body = error
-    ? `<error code="${error.code}" message="${escapeXml(error.message)}"/>`
+    ? renderXmlElement("error", error)
     : Object.entries(data)
         .map(([key, value]) => renderXmlElement(key, value))
         .join("");
@@ -127,8 +128,8 @@ function sendResponse(res, format, status = "ok", error = null, data = {}) {
   );
 }
 
-function sendError(res, format, code, message) {
-  return sendResponse(res, format, "failed", { code, message });
+function sendError(res, format, code, message, helpUrl = undefined) {
+  return sendResponse(res, format, "failed", { code, message, helpUrl });
 }
 
 function requestedFormat(req) {
@@ -198,12 +199,9 @@ async function handleSubsonicRequest(req, res) {
       method: req.params.method,
       authentication: password ? "password" : "token",
     });
-    return sendError(
-      res,
-      format,
-      password ? 40 : 41,
-      password ? "Wrong username or password" : "Token authentication failed",
-    );
+    return password
+      ? sendError(res, format, 40, "Wrong username or password")
+      : sendError(res, format, 41, "Token authentication failed", SUBSONIC_AUTH_HELP_URL);
   }
   req.user = user;
 
