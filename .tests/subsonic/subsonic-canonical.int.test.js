@@ -297,6 +297,13 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.match(album.id, /^album:/);
   assert.equal(album.genre, "Rock");
   assert.deepEqual(responseJson(await request("getArtistInfo", { id: artist.id })).artistInfo.similarArtist, []);
+  assert.deepEqual(responseJson(await request("getArtistInfo2", { id: artist.id })).artistInfo2.similarArtist, []);
+  assert.equal(responseJson(await request("getArtistInfo2", { id: "artist:missing" })).error.code, 70);
+  assert.deepEqual(responseJson(await request("getAlbumInfo2", { id: album.id })).albumInfo, {});
+  assert.equal(responseJson(await request("getAlbumInfo2", { id: "album:missing" })).error.code, 70);
+  assert.deepEqual(responseJson(await request("getSimilarSongs2", { id: "song:missing" })).similarSongs2, { song: [] });
+  assert.deepEqual(responseJson(await request("getInternetRadioStations")).internetRadioStations, { internetRadioStation: [] });
+  assert.deepEqual(responseJson(await request("getPodcasts")).podcasts, { channel: [] });
   assert.equal(responseJson(await request("getTopSongs", { artist: "Canonical Artist" })).topSongs.song[0].title, "Canonical Song");
   assert.equal(responseJson(await request("getTopSongs", { id: artist.id })).topSongs.song[0].title, "Canonical Song");
   assert.equal(responseJson(await request("getTopSongs", { id: "artist:missing" })).error.code, 70);
