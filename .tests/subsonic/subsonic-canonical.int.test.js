@@ -298,6 +298,8 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.equal(album.genre, "Rock");
   assert.deepEqual(responseJson(await request("getArtistInfo", { id: artist.id })).artistInfo.similarArtist, []);
   assert.equal(responseJson(await request("getTopSongs", { artist: "Canonical Artist" })).topSongs.song[0].title, "Canonical Song");
+  assert.equal(responseJson(await request("getTopSongs", { id: artist.id })).topSongs.song[0].title, "Canonical Song");
+  assert.equal(responseJson(await request("getTopSongs", { id: "artist:missing" })).error.code, 70);
 
   const songResult = responseJson(await request("getAlbum", { id: album.id }));
   const song = songResult.album.song[0];
