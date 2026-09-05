@@ -316,8 +316,17 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.equal(responseJson(await request("getSong", { id: song.id })).song.title, "Canonical Song");
   assert.equal(song.contentType, "audio/flac");
   assert.equal(song.genre, "Rock");
+  assert.equal(song.musicBrainzId, "33333333-3333-4333-8333-333333333333");
+  assert.equal(song.mediaType, "song");
+  assert.equal(album.mediaType, "album");
+  assert.equal(artist.musicBrainzId, "11111111-1111-4111-8111-111111111111");
+  assert.equal(artist.mediaType, "artist");
+  assert.equal(album.musicBrainzId, "22222222-2222-4222-8222-222222222222");
+  assert.match((await request("getSong", { id: song.id, f: "xml" })).body, /musicBrainzId="33333333-/);
   assert.equal(song.path, song.id);
-  assert.deepEqual(song.artists, [{ id: artist.id, name: "Canonical Artist" }]);
+  assert.deepEqual(song.artists, [
+    { id: artist.id, name: "Canonical Artist", musicBrainzId: "11111111-1111-4111-8111-111111111111" },
+  ]);
 
   assert.equal(
     responseJson(await request("star", { id: [song.id, album.id], artistId: artist.id })).status,
