@@ -1006,6 +1006,10 @@ export function getFlowPlaylist(value, user) {
     songCount: jobs.length,
     duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
     public: false,
+    created: new Date(playlist.createdAt || Date.now()).toISOString(),
+    changed: new Date(
+      (kind === "flow" ? playlist.lastRunAt : playlist.importedAt) || playlist.createdAt || Date.now(),
+    ).toISOString(),
     entry: jobs.map((job, index) => toPlaylistSong(playlist, kind, job, starredAt, owned[index])),
   };
 }
