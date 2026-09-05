@@ -284,7 +284,15 @@ function playlistFromId(user, value) {
   return flowPlaylistConfig.getSharedPlaylistForUser(user, parsed.key);
 }
 
-function toPlaylistSong(playlist, kind, job) {
+function toPlaylistSong(playlist, kind, job, starredAt = null) {
+  // ponytail: one canonical lookup per playlist entry; batch by trackMbid if large synced playlists get slow.
+  const owned = findAvailableCanonicalFile(trackFromJob(job));
+  if (owned) {
+    return {
+      ...toSong(indexFocusedLibrary(owned.library, starredAt), owned.track),
+      parent: idFor(kind, playlist.id),
+    };
+  }
   const artist = protocolArtist(null, job.artistName || "Unknown Artist");
   const format = String(job.finalPath || "").split(".").pop()?.toLowerCase() || "mp3";
   const id = idFor(kind === "flow" ? "flow-song" : "shared-song", `${playlist.id}:${job.id}`);
@@ -389,7 +397,14 @@ export function getAlbum(value, user) {
 
 export function getSong(value, user) {
   const playlistEntry = playlistJobFromId(user, value);
-  if (playlistEntry) return toPlaylistSong(playlistEntry.playlist, playlistEntry.kind, playlistEntry.job);
+  if (playlistEntry) {
+    return toPlaylistSong(
+      playlistEntry.playlist,
+      playlistEntry.kind,
+      playlistEntry.job,
+      starredAtFor(user),
+    );
+  }
 
   const parsed = parseId(value);
   if (parsed?.kind !== "song") return null;
@@ -609,7 +624,7 @@ const findAvailableCanonicalFile = (track) => {
   const album = findAlbumForTrack(library, candidate);
   const file = firstFile(candidate, album?.id, album?.managedBy);
   return file?.available && file.path
-    ? { file, track: candidate, albumName: album?.title }
+    ? { file, library, track: candidate, albumName: album?.title }
     : null;
 };
 
@@ -885,7 +900,7 @@ const buildStarred = (library, rows, user) => {
         : null;
       const job = separator > 0 ? downloadTracker.getJob(parsed.key.slice(separator + 1)) : null;
       if (playlist && playlistOwnsJob(playlist, job)) {
-        starred.song.push(toPlaylistSong(playlist, kind, job));
+        starred.song.push(toPlaylistSong(playlist, kind, job, library.starredAt));
       }
       continue;
     }
@@ -969,6 +984,7 @@ export function getFlowPlaylist(value, user) {
   const playlist = playlistFromId(user, value);
   if (!playlist) return null;
   const jobs = flowJobs(playlist);
+  const starredAt = starredAtFor(user);
   return {
     id: idFor(kind, playlist.id),
     name: playlist.name,
@@ -977,7 +993,7 @@ export function getFlowPlaylist(value, user) {
     songCount: jobs.length,
     duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
     public: false,
-    entry: jobs.map((job) => toPlaylistSong(playlist, kind, job)),
+    entry: jobs.map((job) => toPlaylistSong(playlist, kind, job, starredAt)),
   };
 }
 
