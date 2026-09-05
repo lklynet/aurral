@@ -101,6 +101,7 @@ const findArtistForAlbum = (library, album) =>
 const protocolArtist = (artist, fallback = "Unknown Artist") => ({
   id: idFor("artist", artist?.identityKey || `name:artist:${fallback.toLocaleLowerCase()}`),
   name: artist?.name || fallback,
+  musicBrainzId: artist?.mbid || "",
 });
 
 const albumTracks = (library, album) =>
@@ -149,6 +150,8 @@ const toSong = (library, track, album = findAlbumForTrack(library, track)) => {
     path: idFor("song", track.identityKey),
     type: "music",
     starred: library.starredAt?.get(`song:${track.identityKey}`),
+    musicBrainzId: track.mbid || "",
+    mediaType: "song",
   };
   const releaseYear = year(album?.releaseDate);
   if (releaseYear != null) song.year = releaseYear;
@@ -189,6 +192,10 @@ const albumData = (library, album) => {
     ),
     song: [],
     starred: library.starredAt?.get(`album:${album.identityKey}`),
+    // OpenSubsonic wants the release MBID here; Lidarr-indexed albums only know the
+    // release-group id, so they report an empty value rather than a wrong one.
+    musicBrainzId: album.mbid || "",
+    mediaType: "album",
   };
   const releaseYear = year(album.releaseDate);
   if (releaseYear != null) value.year = releaseYear;
@@ -219,6 +226,8 @@ const toArtist = (library, artist) => {
     albumCount: albums.length,
     album: albums.map((album) => toAlbumSummary(library, album)),
     starred: library.starredAt?.get(`artist:${artist.identityKey}`),
+    musicBrainzId: artist.mbid || "",
+    mediaType: "artist",
   };
   if (genres.length) {
     value.genre = genres[0];
@@ -235,6 +244,8 @@ const toArtistSummary = (artist, library = {}) => {
     coverArt: idFor("artist", artist.identityKey),
     albumCount: artist.albumCount ?? artist.albumIds.length,
     starred: library.starredAt?.get(`artist:${artist.identityKey}`),
+    musicBrainzId: artist.mbid || "",
+    mediaType: "artist",
     ...(genres.length
       ? { genre: genres[0], genres: genres.map((name) => ({ name })) }
       : {}),
@@ -299,6 +310,8 @@ function toPlaylistSong(playlist, kind, job) {
     suffix: format,
     path: id,
     type: "music",
+    musicBrainzId: job.trackMbid || "",
+    mediaType: "song",
   };
 }
 
