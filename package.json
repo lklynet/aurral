@@ -49,5 +49,8 @@
     "better-sqlite3@12.10.0": true,
     "fsevents@2.3.3": true,
     "sharp@0.34.5": true
+  },
+  "devDependencies": {
+    "ajv": "^8.20.0"
   }
 }
