@@ -385,7 +385,11 @@ async function handleSubsonicRequest(req, res) {
       : sendError(res, format, 70, "Requested data was not found");
   }
   if (method === "gettopsongs") {
-    const artist = String(getParameter(req, "artist") || "").trim();
+    // OpenSubsonic topSongsByArtistId: an artist id takes precedence over the artist name.
+    const artistId = getParameter(req, "id");
+    const resolvedArtist = artistId ? getArtist(artistId) : null;
+    if (artistId && !resolvedArtist) return sendError(res, format, 70, "Requested data was not found");
+    const artist = resolvedArtist?.name || String(getParameter(req, "artist") || "").trim();
     if (!artist) return sendError(res, format, 10, "Required parameter is missing: artist");
     return sendResponse(res, format, "ok", null, {
       topSongs: {
