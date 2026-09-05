@@ -60,6 +60,7 @@ test("authenticates an Aurral user and returns JSON or XML envelopes", async () 
   assert.equal(json.json.version, "1.16.1");
   assert.equal(json.json.type, "Aurral");
   assert.equal(typeof json.json.serverVersion, "string");
+  assert.equal(json.json.openSubsonic, true);
   assert.equal(Object.hasOwn(json.json, "error"), false);
 
   const encoded = await request("ping", {
@@ -73,6 +74,7 @@ test("authenticates an Aurral user and returns JSON or XML envelopes", async () 
   assert.match(xml.contentType, /application\/xml/);
   assert.match(xml.body, /<subsonic-response[^>]+status="ok"/);
   assert.match(xml.body, /xmlns="http:\/\/subsonic\.org\/restapi"/);
+  assert.match(xml.body, /\stype="Aurral"\sserverVersion="[^"]+"\sopenSubsonic="true">/);
 });
 
 test("allows browser Subsonic clients without CORS configuration", async () => {
@@ -100,6 +102,41 @@ test("allows browser clients to read redirected artwork without CORS configurati
   assert.equal(response.headers.get("cross-origin-resource-policy"), "cross-origin");
 });
 
+test("exposes getOpenSubsonicExtensions without authentication", async () => {
+  const anonymous = await fetch(`http://127.0.0.1:${aurral.port}/rest/getOpenSubsonicExtensions.view?f=json`);
+  const body = JSON.parse(await anonymous.text())["subsonic-response"];
+  assert.equal(body.status, "ok");
+  assert.equal(body.openSubsonic, true);
+  assert.deepEqual(body.openSubsonicExtensions, [
+    { name: "formPost", versions: [1] },
+    { name: "topSongsByArtistId", versions: [1] },
+  ]);
+
+  const anonymousXml = await fetch(`http://127.0.0.1:${aurral.port}/rest/getOpenSubsonicExtensions`);
+  assert.match(await anonymousXml.text(), /<openSubsonicExtensions name="formPost"><versions>1<\/versions><\/openSubsonicExtensions>/);
+
+  const authenticated = await request("getOpenSubsonicExtensions", { f: "json" });
+  assert.equal(authenticated.json.openSubsonicExtensions.length, 2);
+});
+
+test("accepts form-encoded POST requests", async () => {
+  const response = await fetch(`http://127.0.0.1:${aurral.port}/rest/getUser.view`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ u: "alice", p: "password123", v: "1.16.1", c: "form-test", f: "json" }),
+  });
+  const body = JSON.parse(await response.text())["subsonic-response"];
+  assert.equal(body.status, "ok");
+  assert.equal(body.user.username, "alice");
+
+  const mixed = await fetch(`http://127.0.0.1:${aurral.port}/rest/ping.view?f=json&c=form-test`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ u: "alice", p: "password123", v: "1.16.1" }),
+  });
+  assert.equal(JSON.parse(await mixed.text())["subsonic-response"].status, "ok");
+});
+
 test("returns the Subsonic invalid-credentials error", async () => {
   const result = await request("ping", { p: "wrong-password", f: "json" });
   assert.equal(result.response.status, 200);
@@ -113,6 +150,9 @@ test("returns the Subsonic invalid-credentials error", async () => {
 test("returns protocol errors for unsupported authentication and requests", async () => {
   const token = await request("ping", { p: "", t: "token", s: "salt", f: "json" });
   assert.equal(token.json.error.code, 41);
+  assert.match(token.json.error.helpUrl, /^https:\/\/docs\.aurral\.org\//);
+  const tokenXml = await request("ping", { p: "", t: "token", s: "salt" });
+  assert.match(tokenXml.body, /<error code="41" message="[^"]+" helpUrl="https:[^"]+"\/>/);
 
   const unsupported = await request("getVideos", { f: "json" });
   assert.deepEqual(unsupported.json.error, {
