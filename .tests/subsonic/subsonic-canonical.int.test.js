@@ -448,6 +448,8 @@ test("exposes owned static playlists and keeps their entries playable", async ()
   assert.equal(shared.coverArt, shared.id);
 
   const playlist = responseJson(await request("getPlaylist", { id: shared.id })).playlist;
+  assert.match(playlist.created, /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(playlist.changed, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(playlist.entry[0].title, "Flow Song");
   assert.match(playlist.entry[0].id, /^shared-song:/);
   const artwork = await request("getCoverArt", { id: shared.coverArt });
