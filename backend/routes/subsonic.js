@@ -324,6 +324,27 @@ async function handleSubsonicRequest(req, res) {
       ? sendResponse(res, format, "ok", null, { artistInfo })
       : sendError(res, format, 70, "Requested data was not found");
   }
+  if (method === "getartistinfo2") {
+    const artistInfo2 = getArtistInfo(getParameter(req, "id"));
+    return artistInfo2
+      ? sendResponse(res, format, "ok", null, { artistInfo2 })
+      : sendError(res, format, 70, "Requested data was not found");
+  }
+  if (method === "getalbuminfo" || method === "getalbuminfo2") {
+    return getAlbum(getParameter(req, "id"))
+      ? sendResponse(res, format, "ok", null, { albumInfo: {} })
+      : sendError(res, format, 70, "Requested data was not found");
+  }
+  if (method === "getinternetradiostations") {
+    return sendResponse(res, format, "ok", null, { internetRadioStations: { internetRadioStation: [] } });
+  }
+  if (method === "getpodcasts") {
+    return sendResponse(res, format, "ok", null, { podcasts: { channel: [] } });
+  }
+  if (method === "getsimilarsongs" || method === "getsimilarsongs2") {
+    const key = method === "getsimilarsongs" ? "similarSongs" : "similarSongs2";
+    return sendResponse(res, format, "ok", null, { [key]: { song: [] } });
+  }
   if (method === "getalbum") {
     const album = getAlbum(getParameter(req, "id"));
     return album
