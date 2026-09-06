@@ -28,8 +28,7 @@
     "docker:run": "docker run -p 3001:3001 -v $(pwd)/backend/data:/app/backend/data aurral",
     "docs:dev": "npm run dev --prefix docs",
     "docs:build": "npm run build --prefix docs",
-    "site:generate:ascii-logo": "node scripts/video-to-ascii.mjs",
-    "hooks:install": "sh scripts/install-git-hooks.sh",
+    "site:generate:ascii-logo": "node scripts/video-to-ascii.mjs"
   },
   "keywords": [
     "lidarr",
