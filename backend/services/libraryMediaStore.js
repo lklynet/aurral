@@ -3,9 +3,12 @@ import { db, dbHelpers } from "../config/db-sqlite.js";
 import { invalidateCanonicalLibraryCache } from "./libraryQueryService.js";
 import {
   findLibrarySearchDocumentGaps,
+  libraryAlbumTrackIds,
+  libraryArtistAlbumIds,
   removeLibrarySearchDocument,
   syncLibrarySearchAlbum,
   syncLibrarySearchArtist,
+  syncLibrarySearchArtistDocument,
   syncLibrarySearchTrack,
 } from "./librarySearchIndex.js";
 
@@ -108,30 +111,37 @@ const mergeSearchSyncSets = (target, source) => {
 
 // Batched search-document sync for the given entity ids; yields to the event
 // loop between batches so request handling keeps running.
+//
+// A changed artist name cascades to its album and track documents, and a
+// changed album document to its tracks. The cascades are deferred into the
+// next phase instead of running inside the artist's batch, so every
+// transaction touches at most SEARCH_SYNC_BATCH_SIZE documents no matter how
+// large the renamed artist is, and a row reached by several paths is synced
+// once.
 export async function syncLibrarySearchEntities(search) {
-  const batches = [];
-  const chunk = (kind, ids, run) => {
+  const albumIds = new Set(search.album);
+  const trackIds = new Set(search.track);
+  let synced = 0;
+  const runBatches = async (ids, run) => {
     const list = [...ids];
     for (let index = 0; index < list.length; index += SEARCH_SYNC_BATCH_SIZE) {
-      batches.push([kind, list.slice(index, index + SEARCH_SYNC_BATCH_SIZE), run]);
+      const batch = list.slice(index, index + SEARCH_SYNC_BATCH_SIZE);
+      db.transaction(() => {
+        for (const id of batch) run(id);
+      })();
+      synced += batch.length;
+      await new Promise((resolve) => setImmediate(resolve));
     }
   };
-  // Artist sync cascades to albums and tracks only when the artist name
-  // changed, and album sync cascades to tracks only when the album document
-  // changed, so the order artist, album, track avoids re-syncing rows twice.
-  chunk("artist", search.artist, (id) => syncLibrarySearchArtist(id));
-  chunk("album", search.album, (id) => {
-    if (syncLibrarySearchAlbum(id)) syncSearchAlbumTracks(id);
+  await runBatches(search.artist, (id) => {
+    if (!syncLibrarySearchArtistDocument(id)) return;
+    for (const albumId of libraryArtistAlbumIds(id)) albumIds.add(albumId);
   });
-  chunk("track", search.track, (id) => syncLibrarySearchTrack(id));
-  let synced = 0;
-  for (const [, ids, run] of batches) {
-    db.transaction(() => {
-      for (const id of ids) run(id);
-    })();
-    synced += ids.length;
-    await new Promise((resolve) => setImmediate(resolve));
-  }
+  await runBatches(albumIds, (id) => {
+    if (!syncLibrarySearchAlbum(id)) return;
+    for (const trackId of libraryAlbumTrackIds(id)) trackIds.add(trackId);
+  });
+  await runBatches(trackIds, (id) => syncLibrarySearchTrack(id));
   return synced;
 }
 
@@ -155,6 +165,18 @@ export function beginLibraryScan({ source, rootPath = null } = {}) {
     )
     .run(normalizeText(source), rootPath ? normalizeText(rootPath) : null, startedAt);
   return Number(result.lastInsertRowid);
+}
+
+// Scan runs still marked running when a new scan starts belong to a worker
+// that died mid-scan (scans are serialized, so nothing else can own them).
+// Returns how many were closed so the caller can repair what the dead run
+// left inconsistent.
+export function failInterruptedLibraryScans() {
+  return statement(
+    `UPDATE library_scan_runs
+     SET status = 'failed', completed_at = ?, error = 'interrupted'
+     WHERE status = 'running'`,
+  ).run(now()).changes;
 }
 
 export function finishLibraryScan(scanId, {
@@ -715,8 +737,9 @@ export async function withLibraryScan(source, rootPath, run) {
   });
 }
 
-// After a scan that failed part-way, reconcile documents with the entity
-// tables without rebuilding the whole index.
+// After a scan that failed or was interrupted part-way, reconcile documents
+// with the entity tables (missing, orphaned, and stale) without rebuilding the
+// whole index.
 export async function repairLibrarySearchDocuments() {
   return syncLibrarySearchEntities(findLibrarySearchDocumentGaps());
 }

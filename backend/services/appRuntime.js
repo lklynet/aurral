@@ -143,6 +143,19 @@ export function startBackgroundWorkers({ logger = console } = {}) {
         error?.message || error,
       );
     });
+  import("./libraryIndexService.js")
+    .then(({ repairInterruptedLibraryScans }) => repairInterruptedLibraryScans())
+    .then((closed) => {
+      if (Number(closed || 0) > 0) {
+        logger.info?.(`[AppRuntime] Closed ${closed} interrupted library scan(s) on startup`);
+      }
+    })
+    .catch((error) => {
+      logger.warn?.(
+        "[AppRuntime] Failed to repair interrupted library scans on startup:",
+        error?.message || error,
+      );
+    });
   import("./aurralHistoryService.js")
     .then(({ syncProcessingActivityHistory }) => syncProcessingActivityHistory())
     .catch((error) => {

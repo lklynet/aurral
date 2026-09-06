@@ -79,7 +79,7 @@ test("Lidarr Download webhook re-indexes only the imported artist", () => {
   });
 });
 
-test("Lidarr delete webhooks schedule a full re-index", () => {
+test("Lidarr artist delete webhooks schedule a full re-index", () => {
   const response = createResponse();
   handleLidarrWebhook(
     { body: { eventType: "ArtistDelete", artist: { id: 77, name: "Gone Artist" } } },
@@ -93,6 +93,37 @@ test("Lidarr delete webhooks schedule a full re-index", () => {
     force: false,
     includeLidarr: true,
   });
+  getLibraryScanQueue().cancel(jobId);
+  clearScheduledLibraryScan();
+});
+
+test("Lidarr album delete webhooks re-index only the album's artist", () => {
+  const response = createResponse();
+  handleLidarrWebhook(
+    { body: { eventType: "AlbumDelete", artist: { id: 78 }, album: { id: 5, title: "Gone Album" } } },
+    response,
+  );
+
+  const jobId = getScheduledLibraryScanJobId();
+  assert.ok(jobId);
+  assert.deepEqual(response.result.body, { handled: true, scanJobId: jobId });
+  assert.deepEqual(JSON.parse(getLibraryScanQueue().getJob(jobId).payload), {
+    force: false,
+    includeLidarr: true,
+    artistIds: [78],
+  });
+  getLibraryScanQueue().cancel(jobId);
+  clearScheduledLibraryScan();
+
+  // Without an artist id the deletion cannot be scoped.
+  handleLidarrWebhook({ body: { eventType: "AlbumDelete", album: { id: 6 } } }, createResponse());
+  const fullJobId = getScheduledLibraryScanJobId();
+  assert.deepEqual(JSON.parse(getLibraryScanQueue().getJob(fullJobId).payload), {
+    force: false,
+    includeLidarr: true,
+  });
+  getLibraryScanQueue().cancel(fullJobId);
+  clearScheduledLibraryScan();
 });
 
 test.after(async () => {

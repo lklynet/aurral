@@ -9,14 +9,28 @@ import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
 
 // Lidarr writes album folders in bursts (files, artwork, nfo, temp names), so
 // a change only schedules a scan once the roots have been quiet for a while.
-const DEFAULT_DEBOUNCE_MS = (() => {
-  const configured = Number(process.env.LIBRARY_WATCH_DEBOUNCE_MS);
-  return Number.isFinite(configured) && configured >= 0 ? configured : 2 * 60 * 1000;
-})();
+const durationSetting = (name, fallback) => {
+  const configured = Number(process.env[name]);
+  return Number.isFinite(configured) && configured >= 0 ? configured : fallback;
+};
+const DEFAULT_DEBOUNCE_MS = durationSetting("LIBRARY_WATCH_DEBOUNCE_MS", 2 * 60 * 1000);
+// A long import (a whole discography, a large tag rewrite) never goes quiet
+// for the debounce window, so a burst is flushed after this long regardless.
+const DEFAULT_MAX_WAIT_MS = durationSetting("LIBRARY_WATCH_MAX_WAIT_MS", 10 * 60 * 1000);
 
-// Directories (no extension) still count: a moved or removed album folder only
-// reports the directory itself.
-function isIgnoredChange(root, filename) {
+const isExistingDirectory = (candidate) => {
+  try {
+    return fs.statSync(candidate).isDirectory();
+  } catch {
+    return false;
+  }
+};
+
+// Directories still count: a moved or removed album folder only reports the
+// directory itself, and a folder named like "Mr. Bungle" or "Vol. 2" has what
+// looks like an extension, so a path that exists as a directory is never
+// ignored.
+export function isIgnoredChange(root, filename) {
   if (filename == null || filename === "") return false;
   const changedPath = path.isAbsolute(String(filename))
     ? path.resolve(String(filename))
@@ -27,31 +41,46 @@ function isIgnoredChange(root, filename) {
   const baseName = path.basename(changedPath);
   if (baseName.startsWith(".")) return true;
   const extension = path.extname(baseName).toLowerCase();
-  return Boolean(extension) && !AUDIO_EXTENSIONS.has(extension);
+  if (!extension || AUDIO_EXTENSIONS.has(extension)) return false;
+  return !isExistingDirectory(changedPath);
 }
 
 export function createLibraryFileWatcher({
   roots = [],
   debounceMs = DEFAULT_DEBOUNCE_MS,
+  maxWaitMs = DEFAULT_MAX_WAIT_MS,
   watchImpl = fs.watch,
   onChange = () => scheduleLibraryScan(),
   onError = () => {},
 } = {}) {
   const watchers = [];
   let timer = null;
+  let maxWaitTimer = null;
   const changedRoots = new Set();
   const uniqueRoots = [...new Set(roots.map((root) => path.resolve(String(root || ""))).filter(Boolean))];
 
+  const flush = () => {
+    if (timer) clearTimeout(timer);
+    if (maxWaitTimer) clearTimeout(maxWaitTimer);
+    timer = null;
+    maxWaitTimer = null;
+    const roots = [...changedRoots];
+    changedRoots.clear();
+    if (roots.length) onChange(roots);
+  };
+
   const scheduleChange = (root) => {
     changedRoots.add(root);
+    // The quiet timer restarts on every change; the max-wait timer starts with
+    // the first change of a burst and is not restarted.
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
-      timer = null;
-      const roots = [...changedRoots];
-      changedRoots.clear();
-      onChange(roots);
-    }, Math.max(0, Number(debounceMs) || 0));
+    timer = setTimeout(flush, Math.max(0, Number(debounceMs) || 0));
     timer.unref?.();
+    const maxWait = Number(maxWaitMs);
+    if (!maxWaitTimer && Number.isFinite(maxWait) && maxWait > 0) {
+      maxWaitTimer = setTimeout(flush, maxWait);
+      maxWaitTimer.unref?.();
+    }
   };
 
   for (const root of uniqueRoots) {
@@ -69,7 +98,9 @@ export function createLibraryFileWatcher({
   return {
     close() {
       if (timer) clearTimeout(timer);
+      if (maxWaitTimer) clearTimeout(maxWaitTimer);
       timer = null;
+      maxWaitTimer = null;
       for (const watcher of watchers) watcher.close();
     },
   };

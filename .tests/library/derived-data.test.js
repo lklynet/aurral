@@ -114,7 +114,7 @@ test("startup creates the derived columns, indexes, table, and version marker", 
   assert.equal(initializeLibraryDerivedData(db), true, "missing marker triggers a backfill");
   assert.equal(
     db.prepare("SELECT value FROM settings WHERE key = 'libraryDerivedDataVersion'").get()?.value,
-    "1",
+    "2",
   );
   assert.equal(initializeLibraryDerivedData(db), false, "re-initialization skips the backfill");
 

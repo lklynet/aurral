@@ -150,10 +150,14 @@ Paged library queries are fine. The damage comes from whole-library paths on hot
   before, 1.7 KB after (36 ms to 3 ms on loopback; the real cost was the
   transfer over the network).
 - Fix-order item 9: done. `backend/config/sqlite-tuning.js` applies one
-  tuning to every connection: a 256 MB page cache on the main connection (a
-  quarter of that on the scan and genre-refresh worker connections), a 1 GB
+  tuning to every connection: a 64 MB page cache on the main connection (a
+  quarter of that on the scan and genre-refresh worker connections), a 256 MB
   memory map over the database file, and `temp_store = MEMORY` so sort and
-  group scratch b-trees never spill to temp files. `PRAGMA optimize` runs
+  group scratch b-trees never spill to temp files. The first cut shipped
+  256 MB and 1 GB; both budgets are counted in the process RSS (mapped file
+  pages included, even though the OS can reclaim them), which pushed a
+  production instance to 1.4 GB, so the defaults were lowered in the review
+  pass and the measurements below were retaken with them. `PRAGMA optimize` runs
   after startup and after every completed scan to keep planner statistics
   current. `AURRAL_SQLITE_CACHE_MB` and `AURRAL_SQLITE_MMAP_MB` override the
   defaults (documented in `docs/src/content/docs/admin/environment.mdx`).
@@ -162,6 +166,87 @@ Paged library queries are fine. The damage comes from whole-library paths on hot
   cache gains more): unfiltered album page 118 ms to 60 ms, track page 18 ms
   to 9 ms, tracks by genre 372 ms to 303 ms, search 605 ms to 560 ms, genre
   stats 137 ms to 94 ms, genre list 1 160 ms to 1 105 ms.
+
+### Adversarial review of the fix pass
+
+Three independent reviewers (queries and derived data, scan pipeline, Lidarr
+client and routes) went over commit `823ed6d8`. Everything rated medium or
+higher was fixed; the low findings are listed at the end.
+
+Fixed:
+
+- Fingerprint skip could lose data (scan, high). The skip compared against
+  a hash stored in the run table, so an artist whose files failed to stat or
+  whose run was interrupted could still be skipped next time. The
+  fingerprint now lives in `library_artists.lidarr_fingerprint`, is cleared
+  when the artist changes, and is stamped only after every album batch of
+  that artist committed with no failure.
+- Scoped scan merged into a running job was dropped (Lidarr, medium-high).
+  `scheduleLibraryScan` now merges only into a queued job; a request that
+  arrives while a scan is processing enqueues a fresh job, and a finished job
+  no longer wipes a registry that already points at a newer job.
+- Interrupted scans left stale search documents (scan, medium). A run left
+  `running` by a killed worker is closed as `failed` (`interrupted`) at
+  startup and before every scan, and `findLibrarySearchDocumentGaps`
+  compares document text against the expected text so the repair also
+  catches documents whose rows changed under them (1.0 s on 800k tracks).
+- Source-filtered genre stats were recomputed per request (queries, high).
+  The snapshot only covers the unfiltered variants; a filtered read used to
+  schedule a refresh whose completion evicted the memo, so a Subsonic client
+  filtering by source paid the full computation on every call. Filtered
+  variants are memoized until the next snapshot lands, the snapshot is loaded
+  into memory when it lands, and a failed refresh is retried after 60 s
+  instead of being dropped.
+- Insert triggers re-aggregated the whole track and album (queries, medium).
+  The insert triggers now raise `latest_media_at` in place
+  (`MAX(current, NEW.created_at)`); updates and deletes still re-aggregate.
+  Derived-data version bumped to 2 so the triggers are recreated on upgrade.
+  200k media inserts: 2.90 s to 2.35 s.
+- Deferred transactions could fail with `SQLITE_BUSY_SNAPSHOT` (queries,
+  medium). Scans write from a worker-thread connection; a main-thread
+  transaction that read before writing could not wait out `busy_timeout`.
+  `db.transaction` now begins `IMMEDIATE`; read-only callers can still ask
+  for `.deferred`.
+- Search sync batches were unbounded (queries, medium). A renamed artist
+  cascaded to every album and track document inside its own batch. Cascades
+  are deferred into the next phase, so every transaction touches at most 500
+  documents, and gap detection runs one transaction per entity kind.
+- File watcher never flushed a long burst and ignored folders with a period
+  in the name (scan, medium x2). A burst that never goes quiet is flushed
+  after `LIBRARY_WATCH_MAX_WAIT_MS` (default 10 min), and a path that exists
+  as a directory is never ignored by the extension filter ("Mr. Bungle").
+- Scoped scan marked files unavailable on truncated Lidarr responses and
+  missed deleted albums (scan, medium). Each scoped artist is reconciled
+  against Lidarr's `statistics.trackFileCount`: one that falls short keeps
+  its media and gets no fingerprint; one that reports zero files is
+  reconciled even when no track was enumerated.
+- `AlbumDelete` webhooks forced a full re-index (Lidarr, medium). The
+  payload carries the artist, so it is scoped like the other events; only
+  `ArtistDelete` needs the full reconciliation.
+- One failed album fetch failed the whole scoped scan (Lidarr, medium). The
+  artist whose album list could not be fetched is left out of the run
+  instead of aborting it or being indexed with no albums.
+- SQLite defaults sized for a small host (queries, medium; also observed as
+  1.4 GB RSS in production). Cache 256 MB to 64 MB, mmap 1 GB to 256 MB.
+  At 80k tracks the timings are identical; at 800k the album page goes from
+  60 ms to 107 ms and the map size, not the cache, is what matters, so
+  hosts with large libraries and RAM to spare should raise
+  `AURRAL_SQLITE_MMAP_MB`.
+
+Left as found (low):
+
+- Genre filter values are now trimmed before matching (the list always was),
+  so a filter with surrounding whitespace no longer matches.
+- `recentReleases.js` assigns into an object from the shared artist-keys
+  view; harmless today because the value is unchanged.
+- The derived-data version marker is written outside the backfill
+  transaction; only matters with two builds sharing one volume.
+- Media rows with a null `album_id` are not reached by the per-artist path
+  lookup used to protect skipped artists' files.
+- Every Lidarr Download event schedules a scan (they merge); `retag` is not
+  a Lidarr event name.
+- `slimFileTags` drops empty arrays, so the first scan after upgrade rewrites
+  Aurral track metadata once.
 
 ## Findings, ranked by severity
 

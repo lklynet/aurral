@@ -122,19 +122,73 @@ test("only artists whose statistics changed are re-read, and skipped media stays
   assert.deepEqual(availability(), { "Incremental 1": 1, "Incremental 2": 1 });
 });
 
-test("a forced scan and a scan after a failed run read every artist", async () => {
+const fingerprints = () => Object.fromEntries(
+  db.prepare("SELECT name, lidarr_fingerprint FROM library_artists ORDER BY name").all()
+    .map((row) => [row.name, row.lidarr_fingerprint]),
+);
+
+test("a forced scan reads every artist and leaves fresh fingerprints", async () => {
   const forcedCalls = [];
   const forced = await indexLidarrLibrary({ client: buildClient(forcedCalls), syncSearch: false, force: true });
   assert.equal(forced.artistsSkipped, 0);
   assert.equal(trackCalls(forcedCalls).length, 4);
-
-  finishLibraryScan(beginLibraryScan({ source: "lidarr" }), { status: "failed", error: "boom" });
-  const calls = [];
-  const result = await indexLidarrLibrary({ client: buildClient(calls), syncSearch: false });
-  assert.equal(result.artistsSkipped, 0);
-  assert.equal(trackCalls(calls).length, 4);
+  assert.ok(Object.values(fingerprints()).every((value) => typeof value === "string"));
 
   const again = [];
   assert.equal((await indexLidarrLibrary({ client: buildClient(again), syncSearch: false })).artistsSkipped, 2);
   assert.deepEqual(trackCalls(again), []);
+});
+
+test("an artist without a committed fingerprint is re-read even after a completed run", async () => {
+  // A scan killed after rewriting the artist row leaves the fingerprint
+  // cleared; a later completed run of any kind must not hide that.
+  db.prepare("UPDATE library_artists SET lidarr_fingerprint = NULL WHERE name = 'Incremental 1'").run();
+  finishLibraryScan(beginLibraryScan({ source: "lidarr-artist" }), { status: "complete" });
+  finishLibraryScan(beginLibraryScan({ source: "lidarr" }), { status: "complete" });
+
+  const calls = [];
+  const result = await indexLidarrLibrary({ client: buildClient(calls), syncSearch: false });
+  assert.equal(result.artistsSkipped, 1);
+  assert.deepEqual(trackCalls(calls), ["/track?albumId=10", "/trackfile?albumId=10"]);
+  assert.ok(typeof fingerprints()["Incremental 1"] === "string", "the re-read stamps the fingerprint");
+});
+
+test("an artist whose file could not be indexed gets no fingerprint", async () => {
+  statistics.set(2, { ...statistics.get(2), sizeOnDisk: 201 });
+  const missing = files.get(2);
+  await rm(missing);
+  try {
+    const calls = [];
+    const result = await indexLidarrLibrary({ client: buildClient(calls), syncSearch: false });
+    assert.equal(result.filesFailed, 1);
+    assert.equal(result.artistsSkipped, 1);
+    assert.equal(fingerprints()["Incremental 2"], null);
+  } finally {
+    await mkdir(path.dirname(missing), { recursive: true });
+    await writeFile(missing, "fixture");
+  }
+
+  const calls = [];
+  const result = await indexLidarrLibrary({ client: buildClient(calls), syncSearch: false });
+  assert.equal(result.filesFailed, 0);
+  assert.equal(result.artistsSkipped, 1);
+  assert.deepEqual(trackCalls(calls), ["/track?albumId=20", "/trackfile?albumId=20"]);
+  assert.ok(typeof fingerprints()["Incremental 2"] === "string");
+  assert.deepEqual(availability(), { "Incremental 1": 1, "Incremental 2": 1 });
+});
+
+test("a scoped re-index commits the fingerprint the next full scan trusts", async () => {
+  statistics.set(1, { ...statistics.get(1), sizeOnDisk: 102 });
+  const scopedCalls = [];
+  const client = buildClient(scopedCalls);
+  client.getArtist = async (id) => artistFor(Number(id));
+  client.getAlbumsByArtistId = async (id) => [albumFor(Number(id))];
+  const scoped = await indexLidarrLibrary({ client, syncSearch: false, artistIds: [1] });
+  assert.equal(scoped.filesIndexed, 1);
+  assert.deepEqual(trackCalls(scopedCalls), ["/track?albumId=10", "/trackfile?albumId=10"]);
+
+  const calls = [];
+  const full = await indexLidarrLibrary({ client: buildClient(calls), syncSearch: false });
+  assert.equal(full.artistsSkipped, 2);
+  assert.deepEqual(trackCalls(calls), []);
 });

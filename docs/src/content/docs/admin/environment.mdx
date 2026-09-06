@@ -17,8 +17,8 @@ Use the web UI for most settings. Use these variables for Docker deployment sett
 
 | Variable | Purpose |
 | -------- | ------- |
-| `AURRAL_SQLITE_CACHE_MB` | SQLite page cache for the main connection, in megabytes. Default `256`. Worker connections use a quarter of this value. Lower it on hosts with little RAM. |
-| `AURRAL_SQLITE_MMAP_MB` | Size of the memory-mapped window over the database file, in megabytes. Default `1024`. This is address space, not allocated RAM; the OS shares the pages with its file cache. Set `0` to disable. |
+| `AURRAL_SQLITE_CACHE_MB` | SQLite page cache for the main connection, in megabytes. Default `64`. Worker connections use a quarter of this value. Raise it on hosts with RAM to spare; lower it if the process is over budget. |
+| `AURRAL_SQLITE_MMAP_MB` | Size of the memory-mapped window over the database file, in megabytes. Default `256`. Mapped pages are shared with the OS file cache and can be reclaimed under pressure, but they are counted in the process RSS. Set `0` to disable. |
 
 ## Path mappings
 

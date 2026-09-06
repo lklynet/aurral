@@ -2,7 +2,11 @@ import path from "node:path";
 import { db } from "../config/db-sqlite.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
 import { scanMusicRoot } from "./libraryFileScanner.js";
-import { repairLibrarySearchDocuments, upsertLibraryArtist } from "./libraryMediaStore.js";
+import {
+  failInterruptedLibraryScans,
+  repairLibrarySearchDocuments,
+  upsertLibraryArtist,
+} from "./libraryMediaStore.js";
 import { indexLidarrLibrary } from "./libraryLidarrIndexer.js";
 import { musicbrainzGetArtistNameByMbid } from "./apiClients/index.js";
 
@@ -58,6 +62,15 @@ async function canonicalizeAurralArtistNames(jobMetadataByPath) {
 
 // `artistIds` scopes the run to a Lidarr re-index of those artists and skips
 // the Aurral root scan, which Lidarr changes cannot affect.
+// A run left "running" by a killed worker committed rows whose deferred search
+// sync never happened; close it and repair the documents it left stale. Runs
+// at startup and before every scan.
+export async function repairInterruptedLibraryScans() {
+  const closed = failInterruptedLibraryScans();
+  if (closed > 0) await repairLibrarySearchDocuments();
+  return closed;
+}
+
 export async function scanConfiguredLibrary({
   musicRoot = resolvePlaylistRoot(),
   lidarrClient,
@@ -74,6 +87,7 @@ export async function scanConfiguredLibrary({
   let local = { skipped: true, changed: false, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   let lidarr = { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   let scanFailed = false;
+  await repairInterruptedLibraryScans();
   try {
     if (!scoped) {
       local = await scanMusicRoot({

@@ -6,7 +6,7 @@
 //     so genre filters and genre statistics never json_each over blobs.
 // A version key in settings triggers a one-time backfill after upgrades.
 
-const DERIVED_DATA_VERSION = "1";
+const DERIVED_DATA_VERSION = "2";
 const VERSION_SETTING = "libraryDerivedDataVersion";
 
 const GENRE_ENTITIES = [
@@ -65,6 +65,22 @@ const albumRecencySql = (albumIdExpression) => `
     ), 0)
   WHERE id IN (${albumIdExpression});`;
 
+// Inserts are the bulk path (first scan, forced re-index), so they raise the
+// stored maximum in place instead of re-aggregating every media row of the
+// track and album; updates and deletes, which can lower it, re-aggregate.
+const raiseRecencySql = (table, idExpression, createdAt, available) => `
+  UPDATE ${table} SET
+    latest_media_at = MAX(latest_media_at, COALESCE(${createdAt}, 0)),
+    latest_available_media_at = CASE WHEN ${available} = 1
+      THEN MAX(latest_available_media_at, COALESCE(${createdAt}, 0))
+      ELSE latest_available_media_at END
+  WHERE id IN (${idExpression});`;
+
+// Media of one track that counts for one album (its own rows or unassigned).
+const trackMediaForAlbumSql = (trackId, albumId, extra = "") => `
+  COALESCE((SELECT MAX(created_at) FROM library_media_files
+    WHERE track_id = ${trackId} AND (album_id = ${albumId} OR album_id IS NULL)${extra}), 0)`;
+
 // Albums touched by a media row: its own album plus every album the track is
 // linked to (media with a NULL album_id counts for all of them).
 const mediaAlbumsSql = (row) => `
@@ -106,8 +122,8 @@ function createSchema(db) {
     CREATE TRIGGER IF NOT EXISTS library_media_files_recency_ai
     AFTER INSERT ON library_media_files
     BEGIN
-      ${trackRecencySql("NEW.track_id")}
-      ${albumRecencySql(mediaAlbumsSql("NEW"))}
+      ${raiseRecencySql("library_tracks", "NEW.track_id", "NEW.created_at", "NEW.available")}
+      ${raiseRecencySql("library_albums", mediaAlbumsSql("NEW"), "NEW.created_at", "NEW.available")}
     END;
 
     CREATE TRIGGER IF NOT EXISTS library_media_files_recency_au
@@ -127,7 +143,11 @@ function createSchema(db) {
     CREATE TRIGGER IF NOT EXISTS library_album_tracks_recency_ai
     AFTER INSERT ON library_album_tracks
     BEGIN
-      ${albumRecencySql("NEW.album_id")}
+      UPDATE library_albums SET
+        latest_media_at = MAX(latest_media_at, ${trackMediaForAlbumSql("NEW.track_id", "NEW.album_id")}),
+        latest_available_media_at = MAX(latest_available_media_at,
+          ${trackMediaForAlbumSql("NEW.track_id", "NEW.album_id", " AND available = 1")})
+      WHERE id = NEW.album_id;
     END;
 
     CREATE TRIGGER IF NOT EXISTS library_album_tracks_recency_ad

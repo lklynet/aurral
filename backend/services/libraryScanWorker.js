@@ -26,6 +26,12 @@ function hasLiveScanJob(jobId) {
   return Boolean(getLibraryScanQueue().getJob(jobId));
 }
 
+// A job that has started already read its registry entry, so later requests
+// must not merge into it (they would be dropped when it finishes).
+function isScanJobRunning(jobId) {
+  return getLibraryScanQueue().getJob(jobId)?.state === "processing";
+}
+
 export function getScheduledLibraryScanJobId() {
   return normalizeJobId(getScanRegistry().jobId);
 }
@@ -67,15 +73,17 @@ const registryEntry = (jobId, includeLidarr, artistIds = null, force = false) =>
   return entry;
 };
 
-// One live scan job at a time. `artistIds` requests a Lidarr re-index scoped
-// to those artists; scoped requests merge into a pending scoped job, and any
-// unscoped request upgrades a pending scoped job to a full scan.
+// One pending scan job at a time. `artistIds` requests a Lidarr re-index
+// scoped to those artists; scoped requests merge into a queued scoped job, and
+// any unscoped request upgrades a queued scoped job to a full scan. A request
+// that arrives while the pending job is already running gets a fresh job, so
+// nothing asked for after the running scan captured its options is lost.
 export function scheduleLibraryScan({ force = false, includeLidarr = true, artistIds = null } = {}) {
   const registry = getScanRegistry();
   const existingJobId = normalizeJobId(registry.jobId);
   const scoped = normalizeArtistIds(artistIds);
   const pendingScope = normalizeArtistIds(registry.artistIds);
-  if (existingJobId != null && hasLiveScanJob(existingJobId)) {
+  if (existingJobId != null && hasLiveScanJob(existingJobId) && !isScanJobRunning(existingJobId)) {
     // A forced request (manual refresh) turns the pending job into a forced
     // full scan, which disables the unchanged-artist skip.
     const pendingForce = registry.force === true || force === true;
@@ -195,12 +203,15 @@ const {
       return { action: "fail", message };
     }
     const registry = getScanRegistry();
-    setScanRegistry(registryEntry(
-      job.id,
-      registry.includeLidarr === true,
-      registry.artistIds,
-      registry.force === true,
-    ));
+    // A newer job may own the registry by now; its entry must survive.
+    if (Number(registry.jobId) === Number(job.id)) {
+      setScanRegistry(registryEntry(
+        job.id,
+        registry.includeLidarr === true,
+        registry.artistIds,
+        registry.force === true,
+      ));
+    }
     return { action: "retry", delayS: 60, message };
   },
   onJobSuccess: onLibraryScanSuccess,

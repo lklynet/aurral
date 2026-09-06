@@ -16,6 +16,7 @@ import {
 // thread. Readers see the previous snapshot until the refresh lands.
 
 const REFRESH_DEBOUNCE_MS = 15_000;
+const REFRESH_RETRY_MS = 60_000;
 const WORKER_URL = new URL("./libraryGenreRefreshWorker.js", import.meta.url);
 
 const statsCache = new Map();
@@ -37,20 +38,27 @@ const parseArray = (value) => {
 const readStored = (key) =>
   parseArray(db.prepare("SELECT value FROM settings WHERE key = ?").get(key)?.value);
 
+// The persisted snapshot covers the unfiltered variants only (see
+// computeLibraryGenreSnapshot); a source-filtered variant is computed on
+// demand and memoized until the next snapshot lands after a library change.
+const isSnapshotVariant = (prefix, sourceFilter, availableOnly) =>
+  sourceFilter == null && (prefix === GENRE_STATS_SETTING_PREFIX || availableOnly === false);
+
 function readCached(cache, prefix, sourceFilter, availableOnly, compute) {
   const cacheKey = genreCacheKey(sourceFilter, availableOnly);
   const cached = cache.get(cacheKey);
   if (cached) return cached;
-  const stored = readStored(`${prefix}${cacheKey}`);
+  const snapshotVariant = isSnapshotVariant(prefix, sourceFilter, availableOnly);
+  const stored = snapshotVariant ? readStored(`${prefix}${cacheKey}`) : null;
   if (stored) {
     cache.set(cacheKey, stored);
     return stored;
   }
-  // No snapshot yet (fresh database or first run after upgrade): compute inline
-  // once, and let the background refresh persist it for next time.
   const computed = compute();
   cache.set(cacheKey, computed);
-  scheduleLibraryGenreRefresh({ delayMs: 0 });
+  // No snapshot yet (fresh database or first run after upgrade): let the
+  // background refresh persist it for next time.
+  if (snapshotVariant) scheduleLibraryGenreRefresh({ delayMs: 0 });
   return computed;
 }
 
@@ -79,7 +87,16 @@ export function rebuildLibraryGenreSnapshot() {
 
 const applySnapshot = (entries) => {
   writeLibraryGenreSnapshot(db, entries);
+  // The snapshot reflects the library after the change that scheduled it, so
+  // every memo (including filtered variants) is stale; reload from the snapshot.
   clearLibraryGenreMemoryCache();
+  for (const [key, value] of entries) {
+    if (key.startsWith(GENRE_STATS_SETTING_PREFIX)) {
+      statsCache.set(key.slice(GENRE_STATS_SETTING_PREFIX.length), value);
+    } else if (key.startsWith(GENRE_LIST_SETTING_PREFIX)) {
+      listCache.set(key.slice(GENRE_LIST_SETTING_PREFIX.length), value);
+    }
+  }
 };
 
 function computeSnapshotInWorker() {
@@ -112,6 +129,10 @@ export function runLibraryGenreRefresh() {
       } while (refreshRequested);
     } catch (error) {
       console.error("[libraryGenreCache] genre refresh failed:", error);
+      // Keep serving the previous snapshot and try again later; a request that
+      // arrived during the failed run is folded into the retry.
+      refreshRequested = false;
+      scheduleLibraryGenreRefresh({ delayMs: REFRESH_RETRY_MS });
     } finally {
       activeRefresh = null;
     }

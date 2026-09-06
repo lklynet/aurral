@@ -4,9 +4,11 @@ import { recordAlbumImportCompleted } from "../services/aurralHistoryService.js"
 import { scheduleLibraryScan } from "../services/libraryScanWorker.js";
 
 // Events after which one artist's files changed in Lidarr: re-index that
-// artist only. Deletions fall back to a full scan.
-const ARTIST_SCOPED_EVENTS = new Set(["download", "rename", "retag", "trackretag"]);
-const FULL_SCAN_EVENTS = new Set(["artistdelete", "albumdelete"]);
+// artist only. A deleted album still belongs to an artist Lidarr knows, so it
+// is scoped too; a deleted artist is gone from Lidarr and needs the full
+// reconciliation to mark its files unavailable.
+const ARTIST_SCOPED_EVENTS = new Set(["download", "rename", "retag", "trackretag", "albumdelete"]);
+const FULL_SCAN_EVENTS = new Set(["artistdelete"]);
 
 const webhookArtistId = (body) => {
   const album = body?.album || body?.Album || {};
@@ -20,7 +22,9 @@ const scheduleWebhookScan = (eventType, body) => {
     if (FULL_SCAN_EVENTS.has(eventType)) return scheduleLibraryScan({ includeLidarr: true });
     if (!ARTIST_SCOPED_EVENTS.has(eventType)) return null;
     const artistId = webhookArtistId(body);
-    return artistId ? scheduleLibraryScan({ artistIds: [artistId] }) : null;
+    if (artistId) return scheduleLibraryScan({ artistIds: [artistId] });
+    // A delete without an artist id cannot be scoped; reconcile everything.
+    return eventType === "albumdelete" ? scheduleLibraryScan({ includeLidarr: true }) : null;
   } catch {
     return null;
   }

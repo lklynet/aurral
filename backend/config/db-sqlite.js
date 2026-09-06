@@ -25,6 +25,14 @@ db.pragma("journal_mode = WAL");
 db.pragma("synchronous = NORMAL");
 applySqliteTuning(db, { worker: !isMainThread });
 
+// Scans write on a second connection (worker thread). A deferred transaction
+// that reads before it writes cannot wait out busy_timeout when another
+// connection committed in between (SQLITE_BUSY_SNAPSHOT), so every explicit
+// transaction takes the write lock up front. Read-only callers that must not
+// wait on a writer can still use `db.transaction(fn).deferred`.
+const deferredTransaction = db.transaction.bind(db);
+db.transaction = (fn) => deferredTransaction(fn).immediate;
+
 function tryAddColumn(sql) {
   try {
     db.exec(sql);
@@ -401,6 +409,7 @@ db.exec(`
 `);
 
 tryAddColumn("ALTER TABLE library_media_files ADD COLUMN album_id INTEGER");
+tryAddColumn("ALTER TABLE library_artists ADD COLUMN lidarr_fingerprint TEXT");
 tryAddColumn("ALTER TABLE images_cache ADD COLUMN images_json TEXT");
 
 function hasUniqueIndex(columns) {

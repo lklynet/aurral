@@ -4,8 +4,8 @@ import Database from "better-sqlite3";
 import { applySqliteTuning, resolveSqliteTuning } from "../../backend/config/sqlite-tuning.js";
 
 test("resolveSqliteTuning uses the defaults when nothing is set", () => {
-  assert.deepEqual(resolveSqliteTuning({ env: {} }), { cacheMb: 256, mmapMb: 1024 });
-  assert.deepEqual(resolveSqliteTuning({ env: {}, worker: true }), { cacheMb: 64, mmapMb: 1024 });
+  assert.deepEqual(resolveSqliteTuning({ env: {} }), { cacheMb: 64, mmapMb: 256 });
+  assert.deepEqual(resolveSqliteTuning({ env: {}, worker: true }), { cacheMb: 16, mmapMb: 256 });
 });
 
 test("resolveSqliteTuning honours environment overrides and ignores bad values", () => {
@@ -14,7 +14,7 @@ test("resolveSqliteTuning honours environment overrides and ignores bad values",
   assert.deepEqual(resolveSqliteTuning({ env, worker: true }), { cacheMb: 128, mmapMb: 0 });
   assert.deepEqual(
     resolveSqliteTuning({ env: { AURRAL_SQLITE_CACHE_MB: "lots", AURRAL_SQLITE_MMAP_MB: "-5" } }),
-    { cacheMb: 256, mmapMb: 1024 },
+    { cacheMb: 64, mmapMb: 256 },
   );
   assert.equal(resolveSqliteTuning({ env: { AURRAL_SQLITE_CACHE_MB: "8" }, worker: true }).cacheMb, 16);
   assert.equal(resolveSqliteTuning({ env: { AURRAL_SQLITE_CACHE_MB: "999999" } }).cacheMb, 16384);

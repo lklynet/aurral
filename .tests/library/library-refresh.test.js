@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 process.env.NODE_ENV = "test";
 
@@ -25,7 +28,7 @@ const {
   getLibraryScanQueue,
   SCHEDULED_SYSTEM_TASKS,
 } = await import("../../backend/services/honkerDb.js");
-const { createLibraryFileWatcher } = await import(
+const { createLibraryFileWatcher, isIgnoredChange } = await import(
   "../../backend/services/libraryFileWatcher.js"
 );
 
@@ -120,25 +123,41 @@ test("library refresh queues a forced scan and exposes its queue status", async 
   }
 });
 
-test("library scan scheduling keeps one live job and recovers stale registry entries", () => {
+test("library scan scheduling keeps one pending job and recovers stale registry entries", () => {
   const queue = getLibraryScanQueue();
   clearScheduledLibraryScan();
   let firstJob;
   let secondJob;
+  let thirdJob;
   try {
     firstJob = scheduleLibraryScan();
+    assert.equal(scheduleLibraryScan(), firstJob, "requests merge into a queued job");
     const claimed = queue.claimOne("library-scan-test");
     assert.equal(claimed?.id, firstJob);
     assert.equal(claimScheduledLibraryScanJob(firstJob), true);
-    assert.equal(scheduleLibraryScan(), firstJob);
 
-    queue.cancel(firstJob);
-    secondJob = scheduleLibraryScan();
+    // The running job already read its options, so a new request cannot merge
+    // into it: it gets a fresh queued job that later requests merge into.
+    secondJob = scheduleLibraryScan({ artistIds: [7] });
     assert.notEqual(secondJob, firstJob);
     assert.equal(getScheduledLibraryScanJobId(), secondJob);
+    assert.equal(scheduleLibraryScan({ artistIds: [8] }), secondJob);
+    assert.deepEqual(
+      JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'pendingLibraryScanJob'").get().value).artistIds,
+      [7, 8],
+    );
+    onLibraryScanSuccess(null, { id: firstJob });
+    assert.equal(getScheduledLibraryScanJobId(), secondJob, "finishing the old job keeps the new registry");
+
+    queue.cancel(firstJob);
+    queue.cancel(secondJob);
+    thirdJob = scheduleLibraryScan();
+    assert.notEqual(thirdJob, secondJob);
+    assert.equal(getScheduledLibraryScanJobId(), thirdJob);
   } finally {
     if (firstJob) queue.cancel(firstJob);
     if (secondJob) queue.cancel(secondJob);
+    if (thirdJob) queue.cancel(thirdJob);
     clearScheduledLibraryScan();
   }
 });
@@ -236,6 +255,50 @@ test("library file watcher debounces library changes and ignores generated folde
   assert.equal(scheduled, 2);
 
   watcher.close();
+});
+
+test("library file watcher flushes a burst that never goes quiet after the max wait", async () => {
+  let onChange;
+  let scheduled = 0;
+  const watcher = createLibraryFileWatcher({
+    roots: [process.cwd()],
+    debounceMs: 20,
+    maxWaitMs: 60,
+    watchImpl: (_root, _options, callback) => {
+      onChange = callback;
+      return { close() {} };
+    },
+    onChange: () => {
+      scheduled += 1;
+    },
+  });
+
+  // A change every 10 ms keeps resetting the 20 ms quiet timer.
+  const burst = setInterval(() => onChange("change", "Artist/Album/track.flac"), 10);
+  await new Promise((resolve) => setTimeout(resolve, 45));
+  assert.equal(scheduled, 0);
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(scheduled, 1);
+  clearInterval(burst);
+  // The burst that continued after the flush is scheduled once it goes quiet.
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(scheduled, 2);
+
+  watcher.close();
+});
+
+test("library file watcher never ignores an existing directory named with a period", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-watch-"));
+  try {
+    await mkdir(path.join(root, "Mr. Bungle", "Disco Volante"), { recursive: true });
+    assert.equal(isIgnoredChange(root, "Mr. Bungle"), false);
+    assert.equal(isIgnoredChange(root, path.join("Mr. Bungle", "Disco Volante")), false);
+    assert.equal(isIgnoredChange(root, path.join("Mr. Bungle", "Disco Volante", "cover.jpg")), true);
+    assert.equal(isIgnoredChange(root, path.join("Mr. Bungle", "Disco Volante", "01.flac")), false);
+    assert.equal(isIgnoredChange(root, path.join("Mr. Bungle", "Disco Volante", ".partial")), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("artist-scoped scans merge into one job and upgrade to a full scan", () => {

@@ -166,26 +166,23 @@ const artistFingerprint = (artist) => JSON.stringify({
   path: artist?.path ?? null,
 });
 
-// Lidarr artists whose stored statistics, lastInfoSync, and path match the
-// fresh resource have no new, removed, upgraded, or retagged files, so their
-// track and file reads are skipped. Only trusted when the previous full Lidarr
-// scan completed; a failed run may have written artist rows without tracks.
+// Lidarr artists whose fingerprint (statistics, lastInfoSync, path) matches
+// the one recorded when their albums, tracks, and files were last fully
+// committed have no new, removed, upgraded, or retagged files, so their track
+// and file reads are skipped. The recorded fingerprint lives in
+// library_artists.lidarr_fingerprint: it is cleared when a scan starts
+// rewriting an artist and stamped only after that artist's media rows are
+// committed, so a scan killed part-way, a scoped run, or a stat failure never
+// leaves a fingerprint that hides missing media.
 function findUnchangedLidarrArtists(artists) {
-  const lastRun = db.prepare(
-    "SELECT status FROM library_scan_runs WHERE source = 'lidarr' ORDER BY id DESC LIMIT 1",
-  ).get();
-  if (lastRun?.status !== "complete") return new Map();
   const stored = new Map(
     db.prepare(
       `SELECT id,
          CAST(json_extract(metadata_json, '$.id') AS TEXT) AS provider_id,
-         json_object(
-           'statistics', json_extract(metadata_json, '$.statistics'),
-           'lastInfoSync', json_extract(metadata_json, '$.lastInfoSync'),
-           'path', json_extract(metadata_json, '$.path')
-         ) AS fingerprint
+         lidarr_fingerprint AS fingerprint
        FROM library_artists
-       WHERE json_valid(metadata_json)
+       WHERE lidarr_fingerprint IS NOT NULL
+         AND json_valid(metadata_json)
          AND json_extract(metadata_json, '$.librarySource') = 'lidarr'`,
     ).all().map((row) => [row.provider_id, row]),
   );
@@ -217,14 +214,25 @@ async function loadScopedArtists(client, artistIds) {
     }
   });
   const found = artists.filter(Boolean);
-  const albums = (await mapWithConcurrency(found, 4, async (artist) => {
-    if (typeof client.getAlbumsByArtistId === "function") {
-      return client.getAlbumsByArtistId(artist.id, { forceRefresh: true });
+  // An artist whose album list could not be fetched is left out entirely:
+  // indexing it with no albums would mark all of its files unavailable.
+  const albumsByArtist = await mapWithConcurrency(found, 4, async (artist) => {
+    try {
+      if (typeof client.getAlbumsByArtistId === "function") {
+        const list = await client.getAlbumsByArtistId(artist.id, { forceRefresh: true });
+        return Array.isArray(list) ? list : null;
+      }
+      const all = await client.getAllAlbums({ forceRefresh: true });
+      return Array.isArray(all)
+        ? all.filter((album) => String(album?.artistId) === String(artist.id))
+        : null;
+    } catch {
+      return null;
     }
-    const all = await client.getAllAlbums({ forceRefresh: true });
-    return all.filter((album) => String(album?.artistId) === String(artist.id));
-  })).flat().filter(Boolean);
-  return { artists: found, albums };
+  });
+  const loaded = found.filter((_artist, index) => albumsByArtist[index] != null);
+  const albums = albumsByArtist.filter(Boolean).flat().filter(Boolean);
+  return { artists: loaded, albums };
 }
 
 // `artistIds` limits the re-index to those Lidarr artists: only their albums,
@@ -314,6 +322,10 @@ export async function indexLidarrLibrary({
         [...unchangedArtists.values()],
       )) unseenPaths.delete(filePath);
     }
+    // Lidarr artist ids whose media could not be fully indexed this run; they
+    // get no fingerprint so the next scan re-reads them.
+    const failedArtistIds = new Set();
+    const indexedByArtist = new Map();
     const resolvedTracks = [];
     for (const album of changedAlbums) {
       for (const track of tracksByAlbumId.get(String(album?.id)) || []) {
@@ -324,18 +336,25 @@ export async function indexLidarrLibrary({
         );
         if (!resolvedFile) continue;
         result.filesSeen += 1;
-        resolvedTracks.push({ track, resolvedFile });
+        resolvedTracks.push({ track, resolvedFile, album });
       }
     }
-    await mapWithConcurrency(resolvedTracks, FILE_STAT_CONCURRENCY, async ({ track, resolvedFile }) => {
+    await mapWithConcurrency(resolvedTracks, FILE_STAT_CONCURRENCY, async ({ track, resolvedFile, album }) => {
       const stat = await readFileStats(resolvedFile.localPath);
       if (!stat) {
         result.filesFailed += 1;
+        failedArtistIds.add(String(album?.artistId));
         return;
       }
       indexedFiles.set(track, { resolvedFile, stat });
     });
 
+    // Cleared only when the artist really changed, so an unchanged rescan
+    // writes nothing; a scan killed after this point leaves NULL behind and
+    // the next scan re-reads the artist.
+    const clearFingerprint = db.prepare(
+      "UPDATE library_artists SET lidarr_fingerprint = NULL WHERE id = ? AND lidarr_fingerprint IS NOT ?",
+    );
     const artistRecordsById = db.transaction(() => {
       const records = new Map();
       for (const artist of artistById.values()) {
@@ -353,6 +372,9 @@ export async function indexLidarrLibrary({
           metadata: { ...slimLidarrArtist(artist), librarySource: "lidarr" },
           syncSearch,
         }));
+        if (!unchangedArtists.has(String(artist.id))) {
+          clearFingerprint.run(records.get(String(artist.id)).id, artistFingerprint(artist));
+        }
       }
       return records;
     })();
@@ -367,6 +389,7 @@ export async function indexLidarrLibrary({
       const artist = artistById.get(String(album?.artistId));
       if (!artist || !album?.id) {
         result.filesFailed += 1;
+        failedArtistIds.add(String(album?.artistId));
         continue;
       }
       const batch = db.transaction(() => {
@@ -438,12 +461,56 @@ export async function indexLidarrLibrary({
         return { filesIndexed, seenPaths };
       })();
       result.filesIndexed += batch.filesIndexed;
+      indexedByArtist.set(
+        String(artist.id),
+        (indexedByArtist.get(String(artist.id)) || 0) + batch.filesIndexed,
+      );
       for (const filePath of batch.seenPaths) unseenPaths.delete(filePath);
       await new Promise((resolve) => setImmediate(resolve));
     }
-    if (result.filesFailed === 0 && (result.filesIndexed > 0 || tracksEnumerated)) {
+    if (scopedArtistIds) {
+      // A scoped run only sees what Lidarr returned for these artists, so a
+      // truncated album or track list would look like deleted files. Each
+      // artist is reconciled against Lidarr's own file count; one that falls
+      // short keeps its media and gets no fingerprint.
+      for (const artist of artistById.values()) {
+        const expected = Number(artist?.statistics?.trackFileCount);
+        const indexed = indexedByArtist.get(String(artist.id)) || 0;
+        if (!Number.isFinite(expected) || indexed >= expected) continue;
+        failedArtistIds.add(String(artist.id));
+        const record = artistRecordsById.get(String(artist.id));
+        for (const filePath of getAvailableLibraryMediaPathsForArtists("lidarr", [record?.id])) {
+          unseenPaths.delete(filePath);
+        }
+      }
+    }
+    const artistReconciled = (artist) => {
+      if (failedArtistIds.has(String(artist.id))) return true;
+      if ((indexedByArtist.get(String(artist.id)) || 0) > 0) return true;
+      const expected = Number(artist?.statistics?.trackFileCount);
+      return Number.isFinite(expected) ? expected === 0 : tracksEnumerated;
+    };
+    const reconciled = scopedArtistIds
+      ? [...artistById.values()].every(artistReconciled)
+      : result.filesIndexed > 0 || tracksEnumerated;
+    if (result.filesFailed === 0 && reconciled) {
       markLibraryMediaFilesUnavailable("lidarr", unseenPaths);
     }
+    // Every album batch above is committed, so the artists indexed without a
+    // failure can now carry the fingerprint the next scan compares against.
+    const stampFingerprint = db.prepare(
+      "UPDATE library_artists SET lidarr_fingerprint = ? WHERE id = ? AND lidarr_fingerprint IS NOT ?",
+    );
+    db.transaction(() => {
+      for (const artist of artistById.values()) {
+        const lidarrArtistId = String(artist.id);
+        if (unchangedArtists.has(lidarrArtistId) || failedArtistIds.has(lidarrArtistId)) continue;
+        const record = artistRecordsById.get(lidarrArtistId);
+        if (!record?.id) continue;
+        const fingerprint = artistFingerprint(artist);
+        stampFingerprint.run(fingerprint, record.id, fingerprint);
+      }
+    })();
     return result;
   });
 }

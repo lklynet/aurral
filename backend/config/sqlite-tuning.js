@@ -6,11 +6,15 @@
 // budget; worker-thread connections (scan, genre refresh) get a smaller cache
 // because they run one job at a time and the map is shared by the OS anyway.
 //
-// Override with AURRAL_SQLITE_CACHE_MB and AURRAL_SQLITE_MMAP_MB (whole
-// megabytes; 0 disables the memory map).
-const DEFAULT_CACHE_MB = 256;
-const DEFAULT_MMAP_MB = 1024;
-// Worker connections get a quarter of the main budget (64 MB by default).
+// Both budgets show up in the process RSS (mapped file pages count even though
+// the OS can reclaim them), so the defaults are sized for a small self-hosted
+// box: the 64 MB cache holds the indexes of an 80k-track library and the
+// 256 MB map covers most of its database file. Raise them on hosts with RAM to
+// spare, or lower them, with AURRAL_SQLITE_CACHE_MB and AURRAL_SQLITE_MMAP_MB
+// (whole megabytes; 0 disables the memory map).
+const DEFAULT_CACHE_MB = 64;
+const DEFAULT_MMAP_MB = 256;
+// Worker connections get a quarter of the main budget (16 MB by default).
 const WORKER_CACHE_DIVISOR = 4;
 const MIN_WORKER_CACHE_MB = 16;
 const MAX_MB = 16 * 1024;

@@ -40,8 +40,19 @@ const trackFor = (artist) => ({
   trackFileId: artist.id * 1000,
 });
 
-// `missingFiles` lists artist ids whose track files Lidarr no longer reports.
-const buildClient = ({ missingFiles = [], calls = [] } = {}) => ({
+// `missingFiles` lists artist ids whose track files Lidarr no longer reports;
+// `trackFileCounts` adds Lidarr statistics per artist id; `missingTracks`
+// lists artist ids whose track list comes back empty; `albumErrors` lists
+// artist ids whose album fetch fails; `deletedAlbums` lists artist ids whose
+// albums Lidarr no longer has.
+const buildClient = ({
+  missingFiles = [],
+  trackFileCounts = null,
+  missingTracks = [],
+  albumErrors = [],
+  deletedAlbums = [],
+  calls = [],
+} = {}) => ({
   isConfigured: () => true,
   request: async (endpoint) => {
     calls.push(endpoint);
@@ -51,7 +62,9 @@ const buildClient = ({ missingFiles = [], calls = [] } = {}) => ({
     calls.push(`/artist/${artistId}`);
     const artist = ARTISTS.find((entry) => entry.id === Number(artistId));
     if (!artist) throw new Error("not found");
-    return artist;
+    return trackFileCounts && artist.id in trackFileCounts
+      ? { ...artist, statistics: { trackFileCount: trackFileCounts[artist.id] } }
+      : artist;
   },
   getAllAlbums: async () => {
     calls.push("/album");
@@ -59,10 +72,14 @@ const buildClient = ({ missingFiles = [], calls = [] } = {}) => ({
   },
   getAlbumsByArtistId: async (artistId) => {
     calls.push(`/album?artistId=${artistId}`);
+    if (albumErrors.includes(Number(artistId))) throw new Error("lidarr unavailable");
+    if (deletedAlbums.includes(Number(artistId))) return [];
     return ARTISTS.filter((artist) => artist.id === Number(artistId)).map(albumFor);
   },
   getTracksByAlbumId: async (albumId) =>
-    ARTISTS.filter((artist) => artist.id * 10 === Number(albumId)).map(trackFor),
+    ARTISTS
+      .filter((artist) => artist.id * 10 === Number(albumId) && !missingTracks.includes(artist.id))
+      .map(trackFor),
   getTrackFilesByAlbumId: async (albumId) =>
     ARTISTS
       .filter((artist) => artist.id * 10 === Number(albumId) && !missingFiles.includes(artist.id))
@@ -131,6 +148,57 @@ test("a scoped re-index of an artist Lidarr no longer has is skipped", async () 
   });
   assert.equal(result.skipped, true);
   assert.deepEqual(mediaAvailability(), { "Scoped One": 0, "Scoped Two": 1 });
+});
+
+const fingerprintOf = (name) =>
+  db.prepare("SELECT lidarr_fingerprint FROM library_artists WHERE name = ?").get(name).lidarr_fingerprint;
+
+test("a scoped re-index whose album fetch fails leaves the artist untouched", async () => {
+  await indexLidarrLibrary({ client: buildClient(), syncSearch: false, artistIds: [1] });
+  assert.deepEqual(mediaAvailability(), { "Scoped One": 1, "Scoped Two": 1 });
+
+  const result = await indexLidarrLibrary({
+    client: buildClient({ albumErrors: [1] }),
+    syncSearch: false,
+    artistIds: [1],
+  });
+  assert.equal(result.skipped, true);
+  assert.deepEqual(mediaAvailability(), { "Scoped One": 1, "Scoped Two": 1 });
+
+  // With a second artist in scope the failed one is dropped, the other reconciled.
+  const partial = await indexLidarrLibrary({
+    client: buildClient({ albumErrors: [1], missingFiles: [2] }),
+    syncSearch: false,
+    artistIds: [1, 2],
+  });
+  assert.equal(partial.skipped, undefined);
+  assert.deepEqual(mediaAvailability(), { "Scoped One": 1, "Scoped Two": 0 });
+});
+
+test("a scoped re-index keeps an artist's files when Lidarr returns fewer than it reports", async () => {
+  await indexLidarrLibrary({ client: buildClient(), syncSearch: false, artistIds: [2] });
+  assert.deepEqual(mediaAvailability(), { "Scoped One": 1, "Scoped Two": 1 });
+
+  // Lidarr says artist one has one file but the track list came back empty.
+  const truncated = await indexLidarrLibrary({
+    client: buildClient({ trackFileCounts: { 1: 1 }, missingTracks: [1] }),
+    syncSearch: false,
+    artistIds: [1],
+  });
+  assert.equal(truncated.filesIndexed, 0);
+  assert.equal(truncated.filesFailed, 0);
+  assert.deepEqual(mediaAvailability(), { "Scoped One": 1, "Scoped Two": 1 });
+  assert.equal(fingerprintOf("Scoped One"), null);
+
+  // The album really is gone: Lidarr reports zero files and no albums.
+  const deleted = await indexLidarrLibrary({
+    client: buildClient({ trackFileCounts: { 1: 0 }, deletedAlbums: [1] }),
+    syncSearch: false,
+    artistIds: [1],
+  });
+  assert.equal(deleted.filesIndexed, 0);
+  assert.deepEqual(mediaAvailability(), { "Scoped One": 0, "Scoped Two": 1 });
+  assert.ok(fingerprintOf("Scoped One"));
 });
 
 test("a scoped configured scan skips the Aurral root", async () => {

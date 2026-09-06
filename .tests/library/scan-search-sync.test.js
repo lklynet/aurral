@@ -139,6 +139,39 @@ test("an unchanged scan writes no search documents", async () => {
   assert.equal(documentsAfter - documentsBefore, 4);
 });
 
+test("a scan closes an interrupted run and repairs documents it left stale", async () => {
+  const mediaStore = await importFromRepo("backend/services/libraryMediaStore.js");
+  const searchIndex = await importFromRepo("backend/services/librarySearchIndex.js");
+  assert.deepEqual(
+    searchIndex.findLibrarySearchDocumentGaps(),
+    { artist: [], album: [], track: [] },
+    "a consistent index reports nothing to repair",
+  );
+  // A worker killed mid-scan committed the rename but never synced documents.
+  const interrupted = mediaStore.beginLibraryScan({ source: "lidarr" });
+  db.prepare("UPDATE library_artists SET name = 'Ghost Rename' WHERE name = 'Renamed Artist'").run();
+  assert.equal(
+    db.prepare("SELECT title FROM library_search_documents WHERE entity_kind = 'artist'").get().title,
+    "Renamed Artist",
+  );
+  assert.deepEqual(searchIndex.findLibrarySearchDocumentGaps().artist.length, 1);
+
+  const client = buildClient({ artistName: "Ghost Rename", albumTitle: "Sync Album", trackTitle: "Sync Track" });
+  await scanConfiguredLibrary({ musicRoot: path.join(root, "empty-aurral-root"), lidarrClient: client });
+
+  const run = db.prepare("SELECT status, error FROM library_scan_runs WHERE id = ?").get(interrupted);
+  assert.deepEqual(run, { status: "failed", error: "interrupted" });
+  assert.equal(
+    db.prepare("SELECT title FROM library_search_documents WHERE entity_kind = 'artist'").get().title,
+    "Ghost Rename",
+  );
+  assert.match(
+    db.prepare("SELECT artist_name FROM library_search_documents WHERE entity_kind = 'track'").get().artist_name,
+    /Ghost Rename/,
+  );
+  assert.deepEqual(searchIndex.findLibrarySearchDocumentGaps(), { artist: [], album: [], track: [] });
+});
+
 test("library changes keep the stored genre snapshot until the background refresh lands", async () => {
   queryService.rebuildCanonicalGenreStats();
   const storedKeys = () => db.prepare(
