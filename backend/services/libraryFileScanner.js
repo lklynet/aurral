@@ -12,9 +12,14 @@ import {
   upsertLibraryMediaFile,
   upsertLibraryTrack,
   withLibraryScan,
+  yieldWriteLock,
 } from "./libraryMediaStore.js";
 import { parseAurralIdentityComment } from "./playlistDownloadUtils.js";
 import { slimFileTags } from "./libraryMetadataProjection.js";
+
+// Each file is a handful of write statements; a yield every few files lets
+// the main thread take the write lock between them.
+const FILES_PER_YIELD = 20;
 
 const AUDIO_EXTENSIONS = new Set([
   ".aac",
@@ -263,6 +268,7 @@ export async function scanMusicRoot({
         } catch {
           result.filesFailed += 1;
         }
+        if (result.filesSeen % FILES_PER_YIELD === 0) await yieldWriteLock();
       }
       if (unseenPaths && result.filesFailed === 0) {
         markLibraryMediaFilesUnavailable(source, unseenPaths);

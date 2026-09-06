@@ -5,7 +5,7 @@ const THREAD_URL = new URL("./libraryScanThread.js", import.meta.url);
 
 let activeScan = null;
 
-function spawnScan({ includeLidarr, musicRoot, artistIds, force }) {
+function spawnScan({ includeLidarr, musicRoot, artistIds, force, includeLocal }) {
   return new Promise((resolve, reject) => {
     const worker = new Worker(THREAD_URL, {
       workerData: {
@@ -13,6 +13,7 @@ function spawnScan({ includeLidarr, musicRoot, artistIds, force }) {
         musicRoot: musicRoot || null,
         artistIds: Array.isArray(artistIds) && artistIds.length ? artistIds : null,
         force: force === true,
+        includeLocal: includeLocal === true,
       },
     });
     let settled = false;
@@ -46,10 +47,11 @@ export async function runLibraryScanInWorker({
   musicRoot = null,
   artistIds = null,
   force = false,
+  includeLocal = false,
 } = {}) {
   while (activeScan) await activeScan.catch(() => {});
   activeScan = (async () => {
-    const result = await spawnScan({ includeLidarr, musicRoot, artistIds, force });
+    const result = await spawnScan({ includeLidarr, musicRoot, artistIds, force, includeLocal });
     if (result?.local?.changed || result?.lidarr?.changed) invalidateCanonicalLibraryCache();
     return result;
   })();

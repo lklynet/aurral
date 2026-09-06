@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
 import { dbOps } from "../../backend/db/helpers/index.js";
-import { LidarrClient } from "../../backend/services/lidarrClient.js";
+import { CIRCUIT_BULK_COOLDOWN_MS, LidarrClient } from "../../backend/services/lidarrClient.js";
 
 test("isCircuitOpen returns stale GET cache instead of throwing", async () => {
   const client = new LidarrClient();
@@ -61,7 +61,7 @@ test("bulk track reads use Lidarr artist selectors", async (t) => {
 
 test("bulk reads wait for active requests before failing", async () => {
   const client = new LidarrClient();
-  const artistIds = Array.from({ length: 14 }, (_, index) => index + 1);
+  const artistIds = Array.from({ length: 6 }, (_, index) => index + 1);
   const started = [];
   let releaseFailure;
   let releasePending;
@@ -79,12 +79,12 @@ test("bulk reads wait for active requests before failing", async () => {
   client.request = async (endpoint) => {
     const artistId = Number(new URL(`http://localhost${endpoint}`).searchParams.get("artistId"));
     started.push(artistId);
-    if (started.length === 12) resolveInitialRequests();
+    if (started.length === 4) resolveInitialRequests();
     if (artistId === 1) {
       await failure;
       throw new Error("bulk track read failed");
     }
-    if (artistId <= 12) await pending;
+    if (artistId <= 4) await pending;
     return [];
   };
 
@@ -103,7 +103,45 @@ test("bulk reads wait for active requests before failing", async () => {
   releasePending();
   await assert.rejects(rejection, /bulk track read failed/);
   await delay(0);
-  assert.deepEqual(started, artistIds.slice(0, 12));
+  assert.deepEqual(started, artistIds.slice(0, 4));
+});
+
+test("a failed bulk read does not retry and opens the circuit for the long cooldown", async (t) => {
+  const requests = [];
+  const server = http.createServer((request, response) => {
+    requests.push(request.url);
+    response.writeHead(503, { "content-type": "application/json" });
+    response.end(JSON.stringify({ message: "busy" }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const address = server.address();
+  const client = new LidarrClient();
+  client._holdConfig = true;
+  client.config = {
+    url: `http://127.0.0.1:${address.port}`,
+    apiKey: "test",
+    timeoutMs: 2000,
+    bulkTimeoutMs: 2000,
+    circuitDisabled: false,
+  };
+  t.after(() => {
+    client._httpAgent.destroy();
+    client._httpsAgent.destroy();
+    client._httpsInsecureAgent.destroy();
+  });
+
+  await assert.rejects(client.getAllAlbums({ forceRefresh: true }), /503/);
+  assert.deepEqual(requests, ["/api/v1/album"], "bulk reads are not retried");
+  assert.equal(client.isCircuitOpen(), true);
+  assert.equal(client._circuitCooldownMs, CIRCUIT_BULK_COOLDOWN_MS);
+  // A non-bulk request while the circuit is open fails fast without a call.
+  await assert.rejects(client.request("/queue"), /circuit|unavailable|open/i);
+  assert.deepEqual(requests, ["/api/v1/album"]);
 });
 
 test("bulk track-file reads use bounded repeated ID selectors", async (t) => {

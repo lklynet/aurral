@@ -3,11 +3,19 @@ import { db } from "../config/db-sqlite.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
 import { scanMusicRoot } from "./libraryFileScanner.js";
 import {
+  beginLibraryScan,
   failInterruptedLibraryScans,
+  finishLibraryScan,
   repairLibrarySearchDocuments,
   upsertLibraryArtist,
 } from "./libraryMediaStore.js";
 import { indexLidarrLibrary } from "./libraryLidarrIndexer.js";
+import { logger } from "./logger.js";
+import { dbOps } from "../db/helpers/index.js";
+
+// Set when interrupted runs were closed on the main thread, so the next scan
+// worker knows a document repair is owed even though the runs are closed.
+const SEARCH_REPAIR_PENDING_KEY = "librarySearchRepairPending";
 import { musicbrainzGetArtistNameByMbid } from "./apiClients/index.js";
 
 function getAurralJobMetadataByPath() {
@@ -61,14 +69,40 @@ async function canonicalizeAurralArtistNames(jobMetadataByPath) {
 }
 
 // `artistIds` scopes the run to a Lidarr re-index of those artists and skips
-// the Aurral root scan, which Lidarr changes cannot affect.
+// the Aurral root scan, which Lidarr changes cannot affect, unless
+// `includeLocal` asks for both (the file watcher saw changes under both roots).
 // A run left "running" by a killed worker committed rows whose deferred search
-// sync never happened; close it and repair the documents it left stale. Runs
-// at startup and before every scan.
+// sync never happened; close it and repair the documents it left stale. The
+// repair compares whole tables, so it runs in the scan worker only; the main
+// thread closes the runs at startup and leaves a marker for the next scan.
 export async function repairInterruptedLibraryScans() {
   const closed = failInterruptedLibraryScans();
-  if (closed > 0) await repairLibrarySearchDocuments();
+  const pending = closed > 0 || dbOps.getJSONSetting(SEARCH_REPAIR_PENDING_KEY) === true;
+  if (pending) {
+    await repairLibrarySearchDocuments();
+    dbOps.setJSONSetting(SEARCH_REPAIR_PENDING_KEY, false);
+  }
   return closed;
+}
+
+export function closeInterruptedLibraryScans() {
+  const closed = failInterruptedLibraryScans();
+  if (closed > 0) dbOps.setJSONSetting(SEARCH_REPAIR_PENDING_KEY, true);
+  return closed;
+}
+
+// withLibraryScan records failures that happen inside the indexed phase; a
+// failure while the indexer is still pulling the Lidarr lists (the common
+// case for a timeout) has no run row yet, so one is written here.
+function recordFailedLidarrScan(source, rootPath, error) {
+  try {
+    const scanId = beginLibraryScan({ source, rootPath });
+    finishLibraryScan(scanId, { status: "failed", error: error?.message || String(error) });
+  } catch (storeError) {
+    logger.warn("library", "Could not record failed Lidarr scan", {
+      error: storeError?.message || String(storeError),
+    });
+  }
 }
 
 export async function scanConfiguredLibrary({
@@ -77,9 +111,11 @@ export async function scanConfiguredLibrary({
   includeLidarr = true,
   artistIds = null,
   force = false,
+  includeLocal = false,
 } = {}) {
   const scoped = Array.isArray(artistIds) && artistIds.length > 0;
-  const jobMetadataByPath = scoped ? new Map() : getAurralJobMetadataByPath();
+  const scanLocal = !scoped || includeLocal === true;
+  const jobMetadataByPath = scanLocal ? getAurralJobMetadataByPath() : new Map();
   // Each scan syncs the search documents of the rows it changed when it ends
   // (see withLibraryScan), and the cache invalidation it triggers schedules
   // the background genre snapshot refresh. A scan that fails part-way gets a
@@ -89,7 +125,7 @@ export async function scanConfiguredLibrary({
   let scanFailed = false;
   await repairInterruptedLibraryScans();
   try {
-    if (!scoped) {
+    if (scanLocal) {
       local = await scanMusicRoot({
         rootPath: musicRoot,
         source: "aurral",
@@ -107,14 +143,20 @@ export async function scanConfiguredLibrary({
           force: force === true,
         });
       } catch (error) {
+        // The Lidarr phase used to fail quietly here: the job completed, no
+        // run row recorded the error, and the next watcher flush repeated the
+        // same full pull against a Lidarr that had just timed out. The failure
+        // now fails the scan job (so the queue backs off and the retry cap
+        // applies), and a failed run row keeps the error visible in the UI
+        // when the indexer aborted before it opened one.
         scanFailed = true;
-        lidarr = {
-          skipped: false,
-          error: error.message,
-          filesSeen: 0,
-          filesIndexed: 0,
-          filesFailed: 0,
-        };
+        const scope = scoped ? `artist:${artistIds.join(",")}` : "full";
+        logger.error("library", "Lidarr library scan failed", {
+          scope,
+          error: error?.message || String(error),
+        });
+        recordFailedLidarrScan(scoped ? "lidarr-artist" : "lidarr", scope, error);
+        throw new Error(`Lidarr library scan failed: ${error?.message || error}`, { cause: error });
       }
     }
   } catch (error) {

@@ -55,6 +55,13 @@ let libraryScanDepth = 0;
 let libraryCacheInvalidationPending = false;
 const libraryScanContext = new AsyncLocalStorage();
 const SEARCH_SYNC_BATCH_SIZE = 500;
+// A scan worker running write transactions back to back re-takes the lock the
+// instant it commits, and the main thread's busy handler (which sleeps the
+// event loop) keeps losing the race. Sleeping between transactions hands the
+// lock to whoever is waiting. setImmediate is not enough: it yields the JS
+// loop but not the lock.
+const WRITE_YIELD_MS = 10;
+export const yieldWriteLock = () => new Promise((resolve) => setTimeout(resolve, WRITE_YIELD_MS));
 
 const invalidateLibraryCache = () => {
   const scan = libraryScanContext.getStore();
@@ -130,7 +137,7 @@ export async function syncLibrarySearchEntities(search) {
         for (const id of batch) run(id);
       })();
       synced += batch.length;
-      await new Promise((resolve) => setImmediate(resolve));
+      await yieldWriteLock();
     }
   };
   await runBatches(search.artist, (id) => {

@@ -18,6 +18,9 @@ Use the web UI for most settings. Use these variables for Docker deployment sett
 | Variable | Purpose |
 | -------- | ------- |
 | `AURRAL_SQLITE_CACHE_MB` | SQLite page cache for the main connection, in megabytes. Default `64`. Worker connections use a quarter of this value. Raise it on hosts with RAM to spare; lower it if the process is over budget. |
+| `AURRAL_MEMORY_WARN_MB` | Log a warning when the process RSS passes this many megabytes (at most every ten minutes). Default `1536`. The image also sets `NODE_OPTIONS=--max-old-space-size=2048` so the Node heap cannot grow without bound; override `NODE_OPTIONS` to change it. |
+| `LIDARR_BULK_TIMEOUT_MS` | Timeout for the bulk Lidarr reads a library scan makes (the full album list, per-artist track and file lists). Default `180000`. These reads do not retry, and a failure keeps Aurral off Lidarr for ten minutes. |
+| `LIBRARY_WATCH_FULL_SCAN_INTERVAL_MS` | Minimum time between full Lidarr pulls triggered by the file watcher. Default `3600000` (one hour). Changes the watcher can map to known artists re-index only those artists; everything else waits for the next allowed full pull or a Lidarr webhook. |
 | `AURRAL_SQLITE_MMAP_MB` | Size of the memory-mapped window over the database file, in megabytes. Default `256`. Mapped pages are shared with the OS file cache and can be reclaimed under pressure, but they are counted in the process RSS. Set `0` to disable. |
 
 ## Path mappings

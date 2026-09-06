@@ -633,7 +633,9 @@ export const dbHelpers = {
 initializeSchemaOnStartup(db, dbHelpers);
 initializeLibraryDerivedData(db);
 initializeLibrarySearchIndex(db);
-if (isMainThread) db.pragma("optimize");
+// PRAGMA optimize (ANALYZE) runs in the scan worker after a scan; on the main
+// thread it would hold the write lock and block the event loop for seconds on
+// a large library.
 
 const existingDownloadFolder = db
   .prepare("SELECT value FROM settings WHERE key = ?")

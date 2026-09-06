@@ -28,7 +28,7 @@ const {
   getLibraryScanQueue,
   SCHEDULED_SYSTEM_TASKS,
 } = await import("../../backend/services/honkerDb.js");
-const { createLibraryFileWatcher, isIgnoredChange } = await import(
+const { createLibraryFileWatcher, isIgnoredChange, planWatcherScan } = await import(
   "../../backend/services/libraryFileWatcher.js"
 );
 
@@ -221,6 +221,7 @@ test("library file watcher debounces library changes and ignores generated folde
   let onChange;
   let scheduled = 0;
   let changedRoots = [];
+  let changedDetails = null;
   const watcher = createLibraryFileWatcher({
     roots: [process.cwd()],
     debounceMs: 5,
@@ -228,9 +229,10 @@ test("library file watcher debounces library changes and ignores generated folde
       onChange = callback;
       return { close() {} };
     },
-    onChange: (roots) => {
+    onChange: (roots, details) => {
       scheduled += 1;
       changedRoots = roots;
+      changedDetails = details;
     },
   });
 
@@ -239,6 +241,10 @@ test("library file watcher debounces library changes and ignores generated folde
   await new Promise((resolve) => setTimeout(resolve, 15));
   assert.equal(scheduled, 1);
   assert.deepEqual(changedRoots, [process.cwd()]);
+  assert.deepEqual(changedDetails, {
+    paths: [path.join(process.cwd(), "Artist/Album/track.flac")],
+    overflow: false,
+  });
 
   onChange("change", "aurral-weekly-flow/flow/track.flac");
   onChange("change", "_staging/track.flac");
@@ -320,12 +326,21 @@ test("artist-scoped scans merge into one job and upgrade to a full scan", () => 
       artistIds: [11, 12],
     });
 
+    // A local-only request adds the Aurral root to the scoped job instead of
+    // upgrading it to a full Lidarr pull.
     assert.equal(scheduleLibraryScan({ includeLidarr: false }), jobId);
     assert.deepEqual(dbOps.getJSONSetting("pendingLibraryScanJob"), {
       jobId,
       includeLidarr: true,
+      artistIds: [11, 12],
+      includeLocal: true,
     });
-    // Once the pending job is a full scan, scoped requests ride along.
+    // A full request upgrades it, and scoped requests then ride along.
+    assert.equal(scheduleLibraryScan({ includeLidarr: true }), jobId);
+    assert.deepEqual(dbOps.getJSONSetting("pendingLibraryScanJob"), {
+      jobId,
+      includeLidarr: true,
+    });
     assert.equal(scheduleLibraryScan({ artistIds: [13] }), jobId);
     assert.deepEqual(dbOps.getJSONSetting("pendingLibraryScanJob"), {
       jobId,
@@ -338,6 +353,19 @@ test("artist-scoped scans merge into one job and upgrade to a full scan", () => 
     assert.deepEqual(dbOps.getJSONSetting("pendingLibraryScanJob"), {
       jobId: secondJob,
       includeLidarr: true,
+      artistIds: [14],
+      includeLocal: true,
+    });
+    assert.deepEqual(JSON.parse(queue.getJob(secondJob).payload), {
+      force: false,
+      includeLidarr: false,
+    });
+    assert.equal(claimScheduledLibraryScanJob(secondJob), true);
+    assert.deepEqual(dbOps.getJSONSetting("pendingLibraryScanJob"), {
+      jobId: secondJob,
+      includeLidarr: true,
+      artistIds: [14],
+      includeLocal: true,
     });
   } finally {
     if (jobId) queue.cancel(jobId);
@@ -362,4 +390,61 @@ test("artist-scoped scans do not count as a completed library scan", async () =>
     clearScheduledLibraryScan();
     db.prepare("DELETE FROM library_scan_runs WHERE source = 'lidarr-artist'").run();
   }
+});
+
+test("the file watcher maps changes to Lidarr artists and rate-limits full pulls", () => {
+  const playlistRoot = path.resolve("/srv/media/aurral");
+  const lidarrRoot = path.resolve("/srv/media/music");
+  const lidarrArtistFolders = [
+    { id: 4, localPath: path.join(lidarrRoot, "Adele") },
+    { id: 9, localPath: path.join(lidarrRoot, "Various", "Nested Artist") },
+  ];
+  const base = { playlistRoot, lidarrArtistFolders, fullScanIntervalMs: 3_600_000, now: 10_000_000 };
+
+  // Playlist root only: a local scan.
+  assert.deepEqual(
+    planWatcherScan({ ...base, changedRoots: [playlistRoot], paths: [path.join(playlistRoot, "a.flac")] }),
+    { requests: [{ includeLidarr: false }], fullScheduled: false, deferFull: false },
+  );
+  // Known artist folders: an artist-scoped re-index, no full pull.
+  assert.deepEqual(
+    planWatcherScan({
+      ...base,
+      changedRoots: [lidarrRoot],
+      paths: [
+        path.join(lidarrRoot, "Adele", "25", "01.flac"),
+        path.join(lidarrRoot, "Various", "Nested Artist", "x.flac"),
+      ],
+    }),
+    { requests: [{ artistIds: [4, 9], includeLocal: false }], fullScheduled: false, deferFull: false },
+  );
+  // Both roots: the scoped job also scans the Aurral root.
+  assert.deepEqual(
+    planWatcherScan({
+      ...base,
+      changedRoots: [lidarrRoot, playlistRoot],
+      paths: [path.join(lidarrRoot, "Adele", "01.flac"), path.join(playlistRoot, "b.flac")],
+    }).requests,
+    [{ artistIds: [4], includeLocal: true }],
+  );
+  // An unknown folder needs a full pull, allowed when none ran recently.
+  assert.deepEqual(
+    planWatcherScan({ ...base, changedRoots: [lidarrRoot], paths: [path.join(lidarrRoot, "New Artist", "01.flac")] }),
+    { requests: [{ includeLidarr: true }], fullScheduled: true, deferFull: false },
+  );
+  // ...and deferred, keeping the mapped work, when one ran within the interval.
+  assert.deepEqual(
+    planWatcherScan({
+      ...base,
+      lastFullScanAt: base.now - 60_000,
+      changedRoots: [lidarrRoot],
+      paths: [path.join(lidarrRoot, "New Artist", "01.flac"), path.join(lidarrRoot, "Adele", "02.flac")],
+    }),
+    { requests: [{ artistIds: [4], includeLocal: false }], fullScheduled: false, deferFull: true },
+  );
+  // An untracked burst counts as unresolved.
+  assert.deepEqual(
+    planWatcherScan({ ...base, lastFullScanAt: base.now, changedRoots: [lidarrRoot], paths: [], overflow: true }),
+    { requests: [], fullScheduled: false, deferFull: true },
+  );
 });

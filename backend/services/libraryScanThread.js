@@ -14,6 +14,7 @@ try {
     includeLidarr: workerData?.includeLidarr === true,
     artistIds: Array.isArray(workerData?.artistIds) ? workerData.artistIds : null,
     force: workerData?.force === true,
+    includeLocal: workerData?.includeLocal === true,
   });
   parentPort.postMessage({ type: "done", result: toPlain(result) });
 } catch (error) {

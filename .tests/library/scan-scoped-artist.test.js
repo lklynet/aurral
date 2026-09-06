@@ -215,3 +215,27 @@ test("a scoped configured scan skips the Aurral root", async () => {
     0,
   );
 });
+
+test("a Lidarr phase failure fails the scan and records a failed run", async () => {
+  const before = db.prepare("SELECT COUNT(*) AS count FROM library_scan_runs").get().count;
+  const client = buildClient();
+  client.getAllAlbums = async () => {
+    throw new Error("Lidarr API request failed - no response: This operation was aborted");
+  };
+  await assert.rejects(
+    scanConfiguredLibrary({ musicRoot: root, lidarrClient: client, includeLidarr: true }),
+    /Lidarr library scan failed: .*aborted/,
+  );
+  const run = db.prepare(
+    "SELECT source, root_path, status, error FROM library_scan_runs ORDER BY id DESC LIMIT 1",
+  ).get();
+  assert.equal(run.source, "lidarr");
+  assert.equal(run.root_path, "full");
+  assert.equal(run.status, "failed");
+  assert.match(run.error, /aborted/);
+  // The local phase still ran and recorded its own run.
+  const runs = db.prepare(
+    "SELECT source, status FROM library_scan_runs WHERE id > (SELECT MAX(id) FROM library_scan_runs) - ? ORDER BY id",
+  ).all(db.prepare("SELECT COUNT(*) AS count FROM library_scan_runs").get().count - before);
+  assert.deepEqual(runs.map((entry) => `${entry.source}:${entry.status}`), ["aurral:complete", "lidarr:failed"]);
+});

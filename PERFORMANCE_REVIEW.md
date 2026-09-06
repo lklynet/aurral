@@ -248,6 +248,76 @@ Left as found (low):
 - `slimFileTags` drops empty arrays, so the first scan after upgrade rewrites
   Aurral track metadata once.
 
+### Production incident: frozen UI and runaway memory on the nightly
+
+Observed after the fix pass shipped as the nightly: on a fresh boot the
+container sat at 1-2 % CPU while the UI would not load, and once the process
+grew until it took the host's memory. `GET /api/health/live`, which touches
+neither the database nor Lidarr, hung for the full 60 s probe timeout twice,
+then answered in 3.5 s, then in 30 ms: the event loop was blocked for minutes
+after startup.
+
+Causes, from the production database copy and the code:
+
+- **Main thread sleeping in SQLite lock waits.** better-sqlite3 is
+  synchronous, so a main-thread write waiting for the lock (queue claims,
+  settings, the honker heartbeat) sleeps the whole event loop for up to
+  `busy_timeout`. The scan worker committed one transaction after another
+  and re-took the lock the instant it released it, so the main thread kept
+  losing the race (writer starvation; the earlier "database is locked" after
+  25 s errors were the same thing). `PRAGMA optimize` at startup ran
+  `ANALYZE` on the main thread and held the lock for seconds on a large
+  library, and the interrupted-scan repair (a whole-table comparison) ran on
+  the main thread too. The `IMMEDIATE`-by-default transactions from the
+  review made every read-heavy transaction hold the write lock for its read
+  phase as well.
+- **Lidarr phase failed silently and was repeated.** Since the deploy no
+  Lidarr scan completed: each full pull of the 20.7k-album list timed out at
+  30 s, was retried, and after ~150 s the scan job was still marked
+  completed with no log line. The file watcher then scheduled a full Lidarr
+  scan on any change under the Lidarr root, so the same pull was repeated
+  every few minutes until Lidarr answered 503.
+- **No memory ceiling.** The image set no heap limit and the compose file no
+  container limit, so a runaway process grew until the host was
+  unresponsive.
+
+Fixes:
+
+- Main connection `busy_timeout` 5000 ms to 500 ms: a lost lock race costs a
+  request an error, not the whole app a freeze. Worker connections wait
+  30 s. `analysis_limit = 400` bounds `PRAGMA optimize`, which now runs only
+  in the scan worker after a scan; the startup `optimize` is gone.
+- Scan workers yield the lock: a 10 ms sleep between search-sync batches,
+  every 20 albums, every 20 files, and after each batch of 100 artist
+  upserts (previously one transaction for every artist). `setImmediate`
+  yields the JS loop but not the lock.
+- Search-document gap detection reads outside any transaction; only the
+  orphan delete holds the lock.
+- Startup only closes interrupted runs and leaves a marker; the document
+  repair they owe runs in the next scan worker.
+- The Lidarr phase of a scan logs and fails the scan job (queue retries with
+  backoff, three attempts), and records a failed run row when the indexer
+  aborted before opening one.
+- Bulk Lidarr reads (`/artist`, `/album`, per-artist `/track` and
+  `/trackfile`) use `LIDARR_BULK_TIMEOUT_MS` (default 180 s), never retry,
+  run at concurrency 4 instead of 12, and a failure opens the circuit for
+  10 minutes so a scan that just timed out cannot be repeated right away.
+- The file watcher maps changed paths to the Lidarr artist folders it has
+  indexed and schedules artist-scoped re-indexes; a local-only request
+  merges into a scoped job by adding the Aurral root (`includeLocal`)
+  instead of upgrading it to a full pull. A change it cannot map (a new
+  artist folder, an untracked burst over 500 paths) still needs a full pull,
+  allowed once per `LIBRARY_WATCH_FULL_SCAN_INTERVAL_MS` (default one hour)
+  and otherwise deferred until the interval has passed.
+- Guardrails: `NODE_OPTIONS=--max-old-space-size=2048` in the image,
+  `mem_limit: 3g` in the compose example, a process-memory line every minute
+  under verbose logs, and a warning when RSS passes `AURRAL_MEMORY_WARN_MB`
+  (default 1536).
+
+Not resolved by this pass: which allocation grew the process during the
+incident is unproven (the memory line exists to answer that next time), and
+the bursts of six websocket connections at page load remain unexplained.
+
 ## Findings, ranked by severity
 
 ### Critical

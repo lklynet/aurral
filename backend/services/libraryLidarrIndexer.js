@@ -13,10 +13,15 @@ import {
   upsertLibraryMediaFile,
   upsertLibraryTrack,
   withLibraryScan,
+  yieldWriteLock,
 } from "./libraryMediaStore.js";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
 import { slimLidarrAlbum, slimLidarrArtist, slimLidarrTrack } from "./libraryMetadataProjection.js";
 import { mapWithConcurrency } from "./discovery/helpers.js";
+
+// Batch sizes for the write loops; each batch is one short transaction.
+const ARTIST_UPSERT_BATCH_SIZE = 100;
+const ALBUMS_PER_YIELD = 20;
 
 const text = (value) => String(value || "").trim();
 
@@ -266,7 +271,7 @@ export async function indexLidarrLibrary({
     }
   } else {
     [artists, albums, rootFolders] = await Promise.all([
-      client.request("/artist", "GET", null, false, { forceRefresh: true }),
+      client.request("/artist", "GET", null, false, { forceRefresh: true, bulk: true }),
       client.getAllAlbums({ forceRefresh: true }),
       client.getRootFolders(),
     ]);
@@ -355,16 +360,19 @@ export async function indexLidarrLibrary({
     const clearFingerprint = db.prepare(
       "UPDATE library_artists SET lidarr_fingerprint = NULL WHERE id = ? AND lidarr_fingerprint IS NOT ?",
     );
-    const artistRecordsById = db.transaction(() => {
-      const records = new Map();
-      for (const artist of artistById.values()) {
+    // Artists go in batches of short transactions, with a yield between them,
+    // so the main thread can write while a large library is indexed.
+    const artistRecordsById = new Map();
+    const artistList = [...artistById.values()];
+    const upsertArtistBatch = db.transaction((batch) => {
+      for (const artist of batch) {
         const artistProviderId = text(artist.foreignArtistId);
         const artistName = text(artist.artistName || artist.name) || "Unknown Artist";
         const artistKey =
           (artistProviderId &&
             buildIdentityKey(isUuid(artistProviderId) ? "mbid" : "lidarr-artist", artistProviderId)) ||
           buildFallbackIdentityKey("lidarr-artist", artist.id, artistName);
-        records.set(String(artist.id), upsertLibraryArtist({
+        artistRecordsById.set(String(artist.id), upsertLibraryArtist({
           identityKey: artistKey,
           mbid: isUuid(artistProviderId) ? artistProviderId : null,
           name: artistName,
@@ -373,11 +381,14 @@ export async function indexLidarrLibrary({
           syncSearch,
         }));
         if (!unchangedArtists.has(String(artist.id))) {
-          clearFingerprint.run(records.get(String(artist.id)).id, artistFingerprint(artist));
+          clearFingerprint.run(artistRecordsById.get(String(artist.id)).id, artistFingerprint(artist));
         }
       }
-      return records;
-    })();
+    });
+    for (let index = 0; index < artistList.length; index += ARTIST_UPSERT_BATCH_SIZE) {
+      upsertArtistBatch(artistList.slice(index, index + ARTIST_UPSERT_BATCH_SIZE));
+      await yieldWriteLock();
+    }
     if (scopedArtistIds) {
       for (const filePath of getAvailableLibraryMediaPathsForArtists(
         "lidarr",
@@ -385,6 +396,7 @@ export async function indexLidarrLibrary({
       )) unseenPaths.add(filePath);
     }
 
+    let albumsSinceYield = 0;
     for (const album of Array.isArray(albums) ? albums : []) {
       const artist = artistById.get(String(album?.artistId));
       if (!artist || !album?.id) {
@@ -466,7 +478,14 @@ export async function indexLidarrLibrary({
         (indexedByArtist.get(String(artist.id)) || 0) + batch.filesIndexed,
       );
       for (const filePath of batch.seenPaths) unseenPaths.delete(filePath);
-      await new Promise((resolve) => setImmediate(resolve));
+      // Every album yields the JS loop; every ALBUMS_PER_YIELD albums the
+      // worker also sleeps so a waiting main-thread writer can take the lock.
+      if ((albumsSinceYield += 1) >= ALBUMS_PER_YIELD) {
+        albumsSinceYield = 0;
+        await yieldWriteLock();
+      } else {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
     }
     if (scopedArtistIds) {
       // A scoped run only sees what Lidarr returned for these artists, so a

@@ -34,9 +34,23 @@ export function resolveSqliteTuning({ worker = false, env = process.env } = {}) 
   };
 }
 
+// better-sqlite3 is synchronous, so a lock wait on the main connection sleeps
+// the whole event loop: every request, the websocket, the static files. The
+// main thread therefore waits only briefly (worker transactions are short and
+// yield between batches, see yieldWriteLock in libraryMediaStore) and fails
+// with SQLITE_BUSY instead of freezing the app. Worker threads have nothing
+// else to do, so they wait long enough to ride out anything the main thread
+// writes.
+const MAIN_BUSY_TIMEOUT_MS = 500;
+const WORKER_BUSY_TIMEOUT_MS = 30000;
+
 export function applySqliteTuning(db, options = {}) {
   const tuning = resolveSqliteTuning(options);
-  db.pragma("busy_timeout = 5000");
+  db.pragma(`busy_timeout = ${options.worker ? WORKER_BUSY_TIMEOUT_MS : MAIN_BUSY_TIMEOUT_MS}`);
+  // PRAGMA optimize runs ANALYZE on tables whose statistics went stale; the
+  // limit bounds each ANALYZE to a sample so a post-scan optimize on a large
+  // library holds the write lock for milliseconds, not seconds.
+  db.pragma("analysis_limit = 400");
   // Negative cache_size is a budget in KiB rather than a page count.
   db.pragma(`cache_size = -${tuning.cacheMb * 1024}`);
   db.pragma(`mmap_size = ${tuning.mmapMb * 1024 * 1024}`);

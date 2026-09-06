@@ -27,7 +27,18 @@ test("applySqliteTuning sets the connection pragmas", () => {
     assert.deepEqual(tuning, { cacheMb: 32, mmapMb: 16 });
     assert.equal(db.pragma("cache_size", { simple: true }), -32768);
     assert.equal(db.pragma("temp_store", { simple: true }), 2);
-    assert.equal(db.pragma("busy_timeout", { simple: true }), 5000);
+    assert.equal(db.pragma("busy_timeout", { simple: true }), 500);
+    assert.equal(db.pragma("analysis_limit", { simple: true }), 400);
+  } finally {
+    db.close();
+  }
+});
+
+test("worker connections wait longer for the write lock than the main thread", () => {
+  const db = new Database(":memory:");
+  try {
+    applySqliteTuning(db, { worker: true, env: {} });
+    assert.equal(db.pragma("busy_timeout", { simple: true }), 30000);
   } finally {
     db.close();
   }

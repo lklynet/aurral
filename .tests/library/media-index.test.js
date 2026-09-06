@@ -156,22 +156,26 @@ test("a failed provider scan repairs derived library indexes", async () => {
     .run(artist.id);
 
   try {
-    const result = await scanConfiguredLibrary({
-      musicRoot: root,
-      lidarrClient: {
-        isConfigured: () => true,
-        request: async () => {
-          throw new Error("Lidarr unavailable");
+    // The Lidarr failure fails the scan (so the job backs off) after the
+    // documents left stale by the aborted run are repaired.
+    await assert.rejects(
+      scanConfiguredLibrary({
+        musicRoot: root,
+        lidarrClient: {
+          isConfigured: () => true,
+          request: async () => {
+            throw new Error("Lidarr unavailable");
+          },
+          getAllAlbums: async () => [],
+          getRootFolders: async () => [],
         },
-        getAllAlbums: async () => [],
-        getRootFolders: async () => [],
-      },
-    });
+      }),
+      /Lidarr library scan failed: Lidarr unavailable/,
+    );
     const indexed = db.prepare(
       "SELECT 1 FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?",
     ).get(artist.id);
 
-    assert.equal(result.lidarr.error, "Lidarr unavailable");
     assert.equal(Boolean(indexed), true);
   } finally {
     db.prepare("DELETE FROM library_artists WHERE identity_key = ?").run(identityKey);
@@ -1295,20 +1299,22 @@ test("a Lidarr outage leaves the last indexed library available", async () => {
       },
     });
 
-    const result = await scanConfiguredLibrary({
-      musicRoot: path.join(root, "empty-aurral-root"),
-      lidarrClient: {
-        isConfigured: () => true,
-        request: async () => {
-          throw new Error("Lidarr unavailable");
+    await assert.rejects(
+      scanConfiguredLibrary({
+        musicRoot: path.join(root, "empty-aurral-root"),
+        lidarrClient: {
+          isConfigured: () => true,
+          request: async () => {
+            throw new Error("Lidarr unavailable");
+          },
+          getAllAlbums: async () => [],
+          getRootFolders: async () => [],
         },
-        getAllAlbums: async () => [],
-        getRootFolders: async () => [],
-      },
-    });
+      }),
+      /Lidarr library scan failed: Lidarr unavailable/,
+    );
     const file = getLibrarySnapshot().files.find((entry) => entry.path === filePath);
 
-    assert.equal(result.lidarr.error, "Lidarr unavailable");
     assert.equal(file?.available, 1);
   } finally {
     if (filePath) deleteIndexedFile("lidarr", filePath);

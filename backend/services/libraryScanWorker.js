@@ -53,6 +53,7 @@ export function clearScheduledLibraryScan(jobId = null) {
   delete registry.jobId;
   delete registry.includeLidarr;
   delete registry.artistIds;
+  delete registry.includeLocal;
   delete registry.force;
   setScanRegistry(registry);
 }
@@ -65,38 +66,59 @@ const normalizeArtistIds = (value) => [
   ),
 ];
 
-const registryEntry = (jobId, includeLidarr, artistIds = null, force = false) => {
+// `includeLocal` only means something on a scoped entry: the Aurral root is
+// scanned as well as the listed Lidarr artists. Unscoped entries always scan it.
+const registryEntry = (jobId, includeLidarr, artistIds = null, force = false, includeLocal = false) => {
   const entry = { jobId, includeLidarr: includeLidarr === true };
   const scoped = normalizeArtistIds(artistIds);
   if (scoped.length) entry.artistIds = scoped;
+  if (scoped.length && includeLocal === true) entry.includeLocal = true;
   if (force === true) entry.force = true;
   return entry;
 };
 
 // One pending scan job at a time. `artistIds` requests a Lidarr re-index
-// scoped to those artists; scoped requests merge into a queued scoped job, and
-// any unscoped request upgrades a queued scoped job to a full scan. A request
-// that arrives while the pending job is already running gets a fresh job, so
-// nothing asked for after the running scan captured its options is lost.
-export function scheduleLibraryScan({ force = false, includeLidarr = true, artistIds = null } = {}) {
+// scoped to those artists; scoped requests merge into a queued scoped job, a
+// local-only request (`includeLidarr: false`) merges into a queued scoped job
+// by adding the Aurral root to it, and a full request upgrades a queued
+// scoped or local-only job to a full scan. A request that arrives while the
+// pending job is already running gets a fresh job, so nothing asked for after
+// the running scan captured its options is lost.
+export function scheduleLibraryScan({
+  force = false,
+  includeLidarr = true,
+  artistIds = null,
+  includeLocal = false,
+} = {}) {
   const registry = getScanRegistry();
   const existingJobId = normalizeJobId(registry.jobId);
   const scoped = normalizeArtistIds(artistIds);
   const pendingScope = normalizeArtistIds(registry.artistIds);
+  const localRequest = includeLidarr !== true && scoped.length === 0;
   if (existingJobId != null && hasLiveScanJob(existingJobId) && !isScanJobRunning(existingJobId)) {
     // A forced request (manual refresh) turns the pending job into a forced
     // full scan, which disables the unchanged-artist skip.
     const pendingForce = registry.force === true || force === true;
+    const pendingLocal = registry.includeLocal === true;
     if (force === true && registry.force !== true) {
       setScanRegistry(registryEntry(existingJobId, true, null, true));
     } else if (scoped.length && pendingScope.length) {
       const merged = [...new Set([...pendingScope, ...scoped])];
-      if (merged.length !== pendingScope.length) {
-        setScanRegistry(registryEntry(existingJobId, true, merged, pendingForce));
+      const mergedLocal = pendingLocal || includeLocal === true;
+      if (merged.length !== pendingScope.length || mergedLocal !== pendingLocal) {
+        setScanRegistry(registryEntry(existingJobId, true, merged, pendingForce, mergedLocal));
+      }
+    } else if (pendingScope.length && localRequest) {
+      if (!pendingLocal) {
+        setScanRegistry(registryEntry(existingJobId, true, pendingScope, pendingForce, true));
       }
     } else if (pendingScope.length) {
       setScanRegistry(registryEntry(existingJobId, true, null, pendingForce));
-    } else if ((includeLidarr === true || scoped.length) && registry.includeLidarr !== true) {
+    } else if (scoped.length && registry.includeLidarr !== true) {
+      // Pending local-only scan plus a scoped request: scan the Aurral root
+      // and the listed artists, not the whole Lidarr library.
+      setScanRegistry(registryEntry(existingJobId, true, scoped, pendingForce, true));
+    } else if (includeLidarr === true && registry.includeLidarr !== true) {
       setScanRegistry(registryEntry(existingJobId, true, null, pendingForce));
     }
     return existingJobId;
@@ -104,8 +126,9 @@ export function scheduleLibraryScan({ force = false, includeLidarr = true, artis
   if (existingJobId != null) clearScheduledLibraryScan(existingJobId);
   const payload = { force: force === true, includeLidarr: includeLidarr === true || scoped.length > 0 };
   if (scoped.length) payload.artistIds = scoped;
+  if (scoped.length && includeLocal === true) payload.includeLocal = true;
   const jobId = enqueueLibraryScanJob(payload);
-  setScanRegistry(registryEntry(jobId, payload.includeLidarr, scoped, force));
+  setScanRegistry(registryEntry(jobId, payload.includeLidarr, scoped, force, includeLocal));
   return jobId;
 }
 
@@ -124,6 +147,7 @@ export function claimScheduledLibraryScanJob(jobId) {
     owned && registry.includeLidarr === true,
     owned ? registry.artistIds : null,
     owned && registry.force === true,
+    owned && registry.includeLocal === true,
   ));
   return true;
 }
@@ -192,7 +216,10 @@ const {
       ? normalizeArtistIds(registry.artistIds)
       : normalizeArtistIds(payload?.artistIds);
     const force = payload?.force === true || (owned && registry.force === true);
-    await runLibraryScanInWorker({ includeLidarr, artistIds, force });
+    const includeLocal = owned
+      ? registry.includeLocal === true
+      : payload?.includeLocal === true;
+    await runLibraryScanInWorker({ includeLidarr, artistIds, force, includeLocal });
     const { playlistManager } = await import("./weeklyFlow/weeklyFlowPlaylistManager.js");
     await playlistManager.scanLibrary();
     websocketService.broadcast("library", { type: "library_scan_completed" });
@@ -210,6 +237,7 @@ const {
         registry.includeLidarr === true,
         registry.artistIds,
         registry.force === true,
+        registry.includeLocal === true,
       ));
     }
     return { action: "retry", delayS: 60, message };

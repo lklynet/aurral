@@ -152,26 +152,25 @@ export function findLibrarySearchDocumentGaps() {
   const gaps = { artist: [], album: [], track: [] };
   if (!indexAvailable) return gaps;
   const tables = { artist: "library_artists", album: "library_albums", track: "library_tracks" };
-  // One transaction per kind: the track comparison is the slow one on a large
-  // library, and requests should not wait behind all three.
+  // The comparison is the slow part on a large library (seconds for tracks)
+  // and it only reads, so it runs as a plain read that never holds the write
+  // lock; the orphan delete is a short write of its own.
   for (const [kind, table] of Object.entries(tables)) {
-    db.transaction(() => {
-      db.prepare(
-        `DELETE FROM library_search_documents
-         WHERE entity_kind = ?
-           AND NOT EXISTS (SELECT 1 FROM ${table} AS entity WHERE entity.id = entity_id)`,
-      ).run(kind);
-      gaps[kind] = db.prepare(
-        `SELECT expected.id
-         FROM (${EXPECTED_DOCUMENT_SQL[kind]}) AS expected
-         LEFT JOIN library_search_documents AS document
-           ON document.entity_kind = ? AND document.entity_id = expected.id
-         WHERE document.id IS NULL
-            OR document.title IS NOT expected.title
-            OR document.artist_name IS NOT expected.artist_name
-            OR document.album_name IS NOT expected.album_name`,
-      ).all(kind).map((row) => row.id);
-    })();
+    db.prepare(
+      `DELETE FROM library_search_documents
+       WHERE entity_kind = ?
+         AND NOT EXISTS (SELECT 1 FROM ${table} AS entity WHERE entity.id = entity_id)`,
+    ).run(kind);
+    gaps[kind] = db.prepare(
+      `SELECT expected.id
+       FROM (${EXPECTED_DOCUMENT_SQL[kind]}) AS expected
+       LEFT JOIN library_search_documents AS document
+         ON document.entity_kind = ? AND document.entity_id = expected.id
+       WHERE document.id IS NULL
+          OR document.title IS NOT expected.title
+          OR document.artist_name IS NOT expected.artist_name
+          OR document.album_name IS NOT expected.album_name`,
+    ).all(kind).map((row) => row.id);
   }
   return gaps;
 }

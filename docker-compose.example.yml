@@ -7,6 +7,9 @@ services:
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
+    # Hard ceiling for the container; the image also caps the Node heap at
+    # 2 GB (NODE_OPTIONS). Raise both together for very large libraries.
+    mem_limit: 3g
     volumes:
       - ${MEDIA_ROOT:-/srv/media}:/data
       - ./config:/config

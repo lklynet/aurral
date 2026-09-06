@@ -5,7 +5,8 @@ import {
   startHonkerScheduler,
 } from "./honkerDb.js";
 import { startSystemTaskWorker } from "./systemTaskWorker.js";
-import { startLibraryScanWorker } from "./libraryScanWorker.js";
+import { scheduleLibraryScan, startLibraryScanWorker } from "./libraryScanWorker.js";
+import { logger as appLogger } from "./logger.js";
 import { startNotificationOutboxWorker } from "./notificationOutboxWorker.js";
 import { startPlayEventOutboxWorker } from "./playEventOutboxWorker.js";
 import { startSlskdOrchestratorWorker } from "./slskdOrchestratorWorker.js";
@@ -118,6 +119,52 @@ function stopWorkerSupervisor() {
     clearInterval(workerSupervisorInterval);
     workerSupervisorInterval = null;
   }
+  stopMemoryWatchdog();
+}
+
+// Process memory is logged once a minute under verbose logs, and a warning is
+// logged (at most every ten minutes) when the RSS passes AURRAL_MEMORY_WARN_MB,
+// so a runaway process shows up in the logs before it takes the host down.
+const MEMORY_WATCH_INTERVAL_MS = 60 * 1000;
+const MEMORY_WARN_REPEAT_MS = 10 * 60 * 1000;
+const DEFAULT_MEMORY_WARN_MB = 1536;
+let memoryWatchInterval = null;
+let lastMemoryWarnAt = 0;
+
+function memoryWarnMb() {
+  const configured = Number(process.env.AURRAL_MEMORY_WARN_MB);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_MEMORY_WARN_MB;
+}
+
+export function memorySample(usage = process.memoryUsage()) {
+  const mb = (bytes) => Math.round(Number(bytes || 0) / (1024 * 1024));
+  return {
+    rssMb: mb(usage.rss),
+    heapUsedMb: mb(usage.heapUsed),
+    heapTotalMb: mb(usage.heapTotal),
+    externalMb: mb(usage.external),
+    arrayBuffersMb: mb(usage.arrayBuffers),
+  };
+}
+
+function checkMemory(now = Date.now()) {
+  const sample = memorySample();
+  appLogger.debug("system", "Process memory", sample);
+  if (sample.rssMb >= memoryWarnMb() && now - lastMemoryWarnAt >= MEMORY_WARN_REPEAT_MS) {
+    lastMemoryWarnAt = now;
+    appLogger.warn("system", "Process memory is high", { ...sample, warnMb: memoryWarnMb() });
+  }
+}
+
+function startMemoryWatchdog() {
+  if (memoryWatchInterval || process.env.AURRAL_TEST_SERVER === "1") return;
+  memoryWatchInterval = setInterval(checkMemory, MEMORY_WATCH_INTERVAL_MS);
+  memoryWatchInterval.unref?.();
+}
+
+function stopMemoryWatchdog() {
+  if (memoryWatchInterval) clearInterval(memoryWatchInterval);
+  memoryWatchInterval = null;
 }
 
 registerHonkerShutdownHandler(() => {
@@ -143,19 +190,23 @@ export function startBackgroundWorkers({ logger = console } = {}) {
         error?.message || error,
       );
     });
+  // Closing the runs is one short UPDATE; the document repair they owe runs
+  // in the scan worker, never on this thread.
   import("./libraryIndexService.js")
-    .then(({ repairInterruptedLibraryScans }) => repairInterruptedLibraryScans())
+    .then(({ closeInterruptedLibraryScans }) => closeInterruptedLibraryScans())
     .then((closed) => {
       if (Number(closed || 0) > 0) {
         logger.info?.(`[AppRuntime] Closed ${closed} interrupted library scan(s) on startup`);
+        scheduleLibraryScan({ includeLidarr: false });
       }
     })
     .catch((error) => {
       logger.warn?.(
-        "[AppRuntime] Failed to repair interrupted library scans on startup:",
+        "[AppRuntime] Failed to close interrupted library scans on startup:",
         error?.message || error,
       );
     });
+  startMemoryWatchdog();
   import("./aurralHistoryService.js")
     .then(({ syncProcessingActivityHistory }) => syncProcessingActivityHistory())
     .catch((error) => {

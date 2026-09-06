@@ -10,6 +10,13 @@ import { musicbrainzGetArtistIdentityByMbid } from "./apiClients/musicbrainz.js"
 const CIRCUIT_COOLDOWN_MS = 60000;
 const CIRCUIT_FAILURE_THRESHOLD = 3;
 const LIDARR_MAX_CONCURRENT = 12;
+// Bulk reads (the full album list, per-artist track and file lists) are the
+// requests that hurt a busy Lidarr: they run with fewer concurrent calls, a
+// longer timeout, no automatic retry, and a failure opens the circuit for a
+// long cooldown so a scan that just timed out is not repeated right away.
+export const LIDARR_BULK_CONCURRENCY = 4;
+export const LIDARR_BULK_TIMEOUT_MS = 180000;
+export const CIRCUIT_BULK_COOLDOWN_MS = 10 * 60 * 1000;
 export const LIDARR_TRACK_FILE_ID_BATCH_SIZE = 400;
 const LIDARR_ALBUM_LOOKUP_CONCURRENCY = 6;
 export const LIDARR_ALBUM_LOOKUP_BATCH_MAX = 100;
@@ -171,6 +178,7 @@ export class LidarrClient {
     this.apiPath = "/api/v1";
     this._circuitOpen = false;
     this._circuitOpenedAt = 0;
+    this._circuitCooldownMs = CIRCUIT_COOLDOWN_MS;
     this._circuitFailures = 0;
     this._lastCircuitFailureAt = 0;
     this._circuitProbe = null;
@@ -274,11 +282,12 @@ export class LidarrClient {
     }
   }
 
-  _openCircuit(now = Date.now()) {
+  _openCircuit(now = Date.now(), cooldownMs = CIRCUIT_COOLDOWN_MS) {
     this._circuitFailures = Math.max(this._circuitFailures, CIRCUIT_FAILURE_THRESHOLD);
     this._lastCircuitFailureAt = now;
     this._circuitOpen = true;
     this._circuitOpenedAt = now;
+    this._circuitCooldownMs = Math.max(Number(cooldownMs) || 0, CIRCUIT_COOLDOWN_MS);
   }
 
   _resetCircuitState() {
@@ -286,6 +295,7 @@ export class LidarrClient {
     this._lastCircuitFailureAt = 0;
     this._circuitOpen = false;
     this._circuitOpenedAt = 0;
+    this._circuitCooldownMs = CIRCUIT_COOLDOWN_MS;
   }
 
   _startCircuitProbe() {
@@ -308,7 +318,7 @@ export class LidarrClient {
 
   isCircuitOpen() {
     if (this.config?.circuitDisabled) return false;
-    return this._circuitOpen && Date.now() - this._circuitOpenedAt < CIRCUIT_COOLDOWN_MS;
+    return this._circuitOpen && Date.now() - this._circuitOpenedAt < this._circuitCooldownMs;
   }
 
   _staleGetCache(method, endpoint) {
@@ -350,6 +360,10 @@ export class LidarrClient {
 
     const envTimeoutMs = Number(process.env.LIDARR_TIMEOUT_MS);
     const timeoutMs = Number.isFinite(envTimeoutMs) && envTimeoutMs > 0 ? envTimeoutMs : 30000;
+    const envBulkTimeoutMs = Number(process.env.LIDARR_BULK_TIMEOUT_MS);
+    const bulkTimeoutMs = Number.isFinite(envBulkTimeoutMs) && envBulkTimeoutMs > 0
+      ? Math.max(envBulkTimeoutMs, timeoutMs)
+      : Math.max(LIDARR_BULK_TIMEOUT_MS, timeoutMs);
 
     const circuitDisabled =
       process.env.LIDARR_CIRCUIT_DISABLED === "true" || process.env.LIDARR_CIRCUIT_DISABLED === "1";
@@ -359,6 +373,7 @@ export class LidarrClient {
       apiKey: (dbConfig.apiKey || process.env.LIDARR_API_KEY || "").trim(),
       insecure: !!insecure,
       timeoutMs,
+      bulkTimeoutMs,
       circuitDisabled,
     };
 
@@ -368,6 +383,7 @@ export class LidarrClient {
       previousConfig.apiKey !== newConfig.apiKey ||
       previousConfig.insecure !== newConfig.insecure ||
       previousConfig.timeoutMs !== newConfig.timeoutMs ||
+      previousConfig.bulkTimeoutMs !== newConfig.bulkTimeoutMs ||
       previousConfig.circuitDisabled !== newConfig.circuitDisabled;
 
     this.config = newConfig;
@@ -504,7 +520,9 @@ export class LidarrClient {
       this._statusCache.delete("/command");
     }
 
-    for (let attempt = 1; attempt <= LIDARR_RETRY_ATTEMPTS; attempt++) {
+    const bulk = options.bulk === true;
+    const retryAttempts = bulk ? 1 : LIDARR_RETRY_ATTEMPTS;
+    for (let attempt = 1; attempt <= retryAttempts; attempt++) {
       try {
         await this._acquireSlot();
         try {
@@ -520,7 +538,7 @@ export class LidarrClient {
               "Content-Type": "application/json",
               Accept: "application/json",
             },
-            timeout: this.config.timeoutMs,
+            timeout: bulk ? this.config.bulkTimeoutMs : this.config.timeoutMs,
             httpAgent: this._httpAgent,
             httpsAgent:
               isHttps && this.config.insecure ? this._httpsInsecureAgent : this._httpsAgent,
@@ -578,14 +596,25 @@ export class LidarrClient {
         const isNoResponse = !error.response && (error.request || isTimeout);
         const isTransientStatus = typeof status === "number" && status >= 500;
 
-        if (attempt < LIDARR_RETRY_ATTEMPTS && (isNoResponse || isTransientStatus)) {
+        if (attempt < retryAttempts && (isNoResponse || isTransientStatus)) {
           await new Promise((resolve) => setTimeout(resolve, LIDARR_RETRY_DELAY_MS));
           continue;
         }
 
         const transientFailure = isNoResponse || isTransientStatus;
         if (!this.config.circuitDisabled && transientFailure) {
-          if (circuitProbe) {
+          if (bulk) {
+            // A bulk pull that timed out or 5xx'd means Lidarr is under
+            // load; keep every caller off it for the long cooldown instead
+            // of letting the next scan repeat the same pull in a minute.
+            this._openCircuit(Date.now(), CIRCUIT_BULK_COOLDOWN_MS);
+            logger.warn("lidarr", "Bulk Lidarr request failed, circuit opened", {
+              endpoint,
+              status: status ?? null,
+              timeout: isTimeout,
+              cooldownMs: CIRCUIT_BULK_COOLDOWN_MS,
+            });
+          } else if (circuitProbe) {
             this._openCircuit();
           } else {
             this._registerCircuitFailure();
@@ -1342,7 +1371,8 @@ export class LidarrClient {
   }
 
   async getAllTracks(options = {}) {
-    const { artistIds, throwOnError = false, ...requestOptions } = options;
+    const { artistIds, throwOnError = false, ...rest } = options;
+    const requestOptions = { ...rest, bulk: true };
     try {
       const normalizedArtistIds = normalizeLidarrArtistIds(artistIds);
       if (normalizedArtistIds.length === 0) {
@@ -1350,7 +1380,7 @@ export class LidarrClient {
       }
       const results = await mapWithConcurrency(
         normalizedArtistIds,
-        LIDARR_MAX_CONCURRENT,
+        LIDARR_BULK_CONCURRENCY,
         async (artistId) => {
           const result = await this.request(
             `/track?artistId=${artistId}`,
@@ -1373,7 +1403,8 @@ export class LidarrClient {
   }
 
   async getAllTrackFiles(options = {}) {
-    const { artistIds, throwOnError = false, ...requestOptions } = options;
+    const { artistIds, throwOnError = false, ...rest } = options;
+    const requestOptions = { ...rest, bulk: true };
     try {
       const normalizedArtistIds = normalizeLidarrArtistIds(artistIds);
       if (normalizedArtistIds.length === 0) {
@@ -1381,7 +1412,7 @@ export class LidarrClient {
       }
       const results = await mapWithConcurrency(
         normalizedArtistIds,
-        LIDARR_MAX_CONCURRENT,
+        LIDARR_BULK_CONCURRENCY,
         async (artistId) => {
           const result = await this.request(
             `/trackfile?artistId=${artistId}`,
@@ -1404,7 +1435,8 @@ export class LidarrClient {
   }
 
   async getTrackFilesByIds(trackFileIds, options = {}) {
-    const { throwOnError = false, ...requestOptions } = options;
+    const { throwOnError = false, ...rest } = options;
+    const requestOptions = { ...rest, bulk: true };
     try {
       const normalizedTrackFileIds = normalizeLidarrTrackFileIds(trackFileIds);
       if (normalizedTrackFileIds.length === 0) return [];
@@ -1420,7 +1452,7 @@ export class LidarrClient {
       }
       const results = await mapWithConcurrency(
         batches,
-        LIDARR_MAX_CONCURRENT,
+        LIDARR_BULK_CONCURRENCY,
         async (batch) => {
           const query = batch
             .map((trackFileId) => `trackFileIds=${encodeURIComponent(trackFileId)}`)
@@ -1445,7 +1477,7 @@ export class LidarrClient {
   }
 
   async getAllAlbums(options = {}) {
-    const albums = await this.request("/album", "GET", null, false, options);
+    const albums = await this.request("/album", "GET", null, false, { ...options, bulk: true });
     return Array.isArray(albums) ? albums : [];
   }
 
