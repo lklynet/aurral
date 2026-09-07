@@ -82,6 +82,7 @@ export const normalizeSettings = (savedSettings) => {
         url: "",
         username: "",
         password: "",
+        prefixOwnerUsername: true,
         ...(savedSettings.integrations?.navidrome || {}),
       },
       plex: {

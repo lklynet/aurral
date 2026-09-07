@@ -54,6 +54,7 @@ const defaultSettings = {
       url: "",
       username: "",
       password: "",
+      prefixOwnerUsername: true,
     },
     plex: {
       url: "",

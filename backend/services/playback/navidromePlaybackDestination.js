@@ -32,8 +32,20 @@ export const navidromeSettings = Object.freeze({
     Object.freeze({ key: "url", label: "Server URL", type: "url", required: true }),
     Object.freeze({ key: "username", label: "Username", type: "text", required: true }),
     Object.freeze({ key: "password", label: "Password", type: "password", required: true, secret: true }),
+    Object.freeze({
+      key: "prefixOwnerUsername",
+      label: "Prefix playlist names with the owner username",
+      type: "toggle",
+      section: "Behavior",
+      hint: "When enabled, flow playlists are published as \"username - playlist name\".",
+    }),
   ]),
-  defaults: Object.freeze({ url: "", username: "", password: "" }),
+  defaults: Object.freeze({
+    url: "",
+    username: "",
+    password: "",
+    prefixOwnerUsername: true,
+  }),
   validation: Object.freeze({ required: ["url", "username", "password"], url: ["url"] }),
   testConnection: true,
 });
@@ -60,6 +72,7 @@ export class NavidromePlaybackDestination {
     this.mediaLibraryRoot = this.weeklyFlowRoot;
     this.libraryRoot = path.join(this.playlistLibraryRoot, "_playlists");
     this.client = client;
+    this._prefixOwnerUsername = true;
     this._configKey = "";
     this._playlists = null;
     this._pendingSnapshots = new Map();
@@ -73,9 +86,11 @@ export class NavidromePlaybackDestination {
       url: config.url || "",
       username: config.username || "",
       password: config.password || "",
+      prefixOwnerUsername: config.prefixOwnerUsername !== false,
     });
     if (key === this._configKey) return;
     this._configKey = key;
+    this._prefixOwnerUsername = config.prefixOwnerUsername !== false;
     this._playlists = null;
     this._pendingSnapshots.clear();
     this._syncHashes.clear();
@@ -101,7 +116,9 @@ export class NavidromePlaybackDestination {
 
   getPlaylistNames({ entityId, ownerUserId = null, displayName } = {}) {
     const name = String(displayName || "").trim();
-    const owner = ownerUserId == null ? null : userOps.getUserById(ownerUserId);
+    const owner = this._prefixOwnerUsername && ownerUserId != null
+      ? userOps.getUserById(ownerUserId)
+      : null;
     const current = owner?.username ? `${owner.username} - ${name}` : name;
     const shared = Boolean(flowPlaylistConfig.getSharedPlaylist(entityId));
     const legacy = shared

@@ -12,6 +12,7 @@ test("playback adapters expose declarative connection settings without credentia
       { key: "url", type: "url", secret: undefined },
       { key: "username", type: "text", secret: undefined },
       { key: "password", type: "password", secret: true },
+      { key: "prefixOwnerUsername", type: "toggle", secret: undefined },
     ],
   );
   assert.equal(settings.plex.customUi, "plex");
