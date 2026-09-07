@@ -34,7 +34,7 @@
     "music-metadata": "^11.15.0",
     "openid-client": "^6.8.7",
     "sharp": "^0.35.4",
-    "undici": "^8.10.0",
+    "undici": "^8.10.1",
     "ws": "^8.21.3"
   }
 }
