@@ -16,6 +16,7 @@ const [
   trackerModule,
   reuseModule,
   playlistConfigModule,
+  playlistManagerModule,
 ] = await setupIsolatedBackend(
   "weekly-flow-file-reuse",
   "backend/config/db-sqlite.js",
@@ -23,10 +24,12 @@ const [
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
   "backend/services/weeklyFlow/weeklyFlowFileReuse.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
+  "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
 );
 
 const { downloadTracker } = trackerModule;
 const { flowPlaylistConfig } = playlistConfigModule;
+const { playlistManager } = playlistManagerModule;
 const {
   pathsShareDevice,
   reuseTrackForPlaylist,
@@ -98,6 +101,33 @@ test("reuseTrackForPlaylist references a completed Aurral track path", async () 
   assert.equal(result.finalPath, sourcePath);
   assert.equal(downloadTracker.getJob(result.jobId)?.status, "done");
   assert.equal(downloadTracker.getJob(result.jobId)?.finalPath, sourcePath);
+});
+
+test("reusing an existing track for a flow does not schedule a full library scan", async (t) => {
+  const track = {
+    artistName: "System of a Down",
+    trackName: "Chop Suey",
+    albumName: "Toxicity",
+  };
+  const sourcePath = path.join(
+    weeklyFlowRoot,
+    "System of a Down",
+    "Toxicity",
+    "Chop Suey.flac",
+  );
+  await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+  await fs.writeFile(sourcePath, "audio");
+  const scheduleScanLibrary = t.mock.method(playlistManager, "scheduleScanLibrary", () => 1);
+  t.mock.method(playlistManager, "refreshPlaylist", async () => null);
+
+  const result = await reuseTrackForPlaylist(track, "flow-playlist", {
+    existingFileMode: "reuse",
+    weeklyFlowRoot,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(result.reused, true);
+  assert.equal(scheduleScanLibrary.mock.callCount(), 0);
 });
 
 test("reuseTrackForPlaylist detects and reuses local audio file from disk without prior tracker job (#741)", async () => {

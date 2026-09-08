@@ -19,7 +19,9 @@ const [
   { processDeemixPipelinePayload },
   { dbOps },
   { db },
-  { blockPipelineJobForReview },
+  pipelineHelpersModule,
+  playlistManagerModule,
+  weeklyFlowWorkerModule,
 ] = await setupIsolatedBackend(
   "download-review-routing",
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
@@ -29,7 +31,13 @@ const [
   "backend/db/helpers/index.js",
   "backend/config/db-sqlite.js",
   "backend/services/pipelineHelpers.js",
+  "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
+  "backend/services/weeklyFlow/weeklyFlowWorker.js",
 );
+
+const { blockPipelineJobForReview, finalizePipelineJobSuccess } = pipelineHelpersModule;
+const { playlistManager } = playlistManagerModule;
+const { weeklyFlowWorker } = weeklyFlowWorkerModule;
 
 test.beforeEach(() => {
   resetDatabase(db);
@@ -37,6 +45,28 @@ test.beforeEach(() => {
 
 test.after(async () => {
   await cleanupIsolatedState(isolatedState);
+});
+
+test("pipeline completion leaves the library scan to playlist completion", async (t) => {
+  const scheduleScanLibrary = t.mock.method(playlistManager, "scheduleScanLibrary", () => 1);
+  t.mock.method(playlistManager, "refreshPlaylist", async () => null);
+  t.mock.method(weeklyFlowWorker, "wake", () => {});
+  t.mock.method(weeklyFlowWorker, "checkPlaylistComplete", async () => {});
+
+  await finalizePipelineJobSuccess({
+    downloadTracker: {
+      setDone() {},
+    },
+    job: {
+      id: "pipeline-job",
+      playlistType: "flow-playlist",
+      artistName: "Artist",
+      trackName: "Track",
+    },
+    committedFinalPath: "/library/Artist/Track.flac",
+  });
+
+  assert.equal(scheduleScanLibrary.mock.callCount(), 0);
 });
 
 async function writeOneSecondMp3(filePath) {
