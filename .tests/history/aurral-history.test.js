@@ -177,6 +177,39 @@ test("getAurralHistoryRequests reconciles completed download jobs", async () => 
   assert.equal(entry?.inQueue, false);
 });
 
+test("getAurralHistoryRequests reconciles pending queued jobs as reused when tracker job is done", async () => {
+  const jobId = downloadTracker.addJob(
+    {
+      artistName: "Artist",
+      trackName: "Reused Song",
+    },
+    "playlist-1",
+  );
+  upsertAurralHistory({
+    referenceId: jobId,
+    kind: "track_download",
+    title: "Queueing Reused Song",
+    subtitle: "Artist · Playlist",
+    status: "pending",
+    statusLabel: "Queued",
+    metadata: {
+      jobId,
+      trackName: "Reused Song",
+      artistName: "Artist",
+      playlistId: "playlist-1",
+    },
+    createdAt: Date.now() - 60 * 1000,
+  });
+  downloadTracker.setDone(jobId, "/tmp/reused-song.flac", "Album");
+
+  const entries = await getAurralHistoryRequests();
+  const entry = entries.find((item) => item.jobId === jobId);
+
+  assert.equal(entry?.status, "completed");
+  assert.equal(entry?.statusLabel, "Reused");
+  assert.equal(entry?.inQueue, false);
+});
+
 test("queued library track jobs appear in activity immediately", async () => {
   const jobId = downloadTracker.addJob(
     {

@@ -7,6 +7,11 @@ export function resolveLidarrTestCredentials(query = {}, configuredClient = null
     return { url: testUrl, apiKey: testApiKey, usingProvided: true };
   }
   configuredClient?.updateConfig?.();
+  if (configuredClient?.isEnabled?.() === false) {
+    const error = new Error("Lidarr is disabled");
+    error.statusCode = 400;
+    throw error;
+  }
   const config = configuredClient?.getConfig?.() || {};
   return {
     url: String(config.url || "").trim(),

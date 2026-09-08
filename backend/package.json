@@ -32,9 +32,9 @@
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
     "music-metadata": "^11.15.0",
-    "openid-client": "^6.8.7",
+    "openid-client": "^6.8.8",
     "sharp": "^0.35.4",
-    "undici": "^8.10.0",
+    "undici": "^8.10.2",
     "ws": "^8.21.3"
   }
 }
