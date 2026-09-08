@@ -23,7 +23,16 @@ function normalizeJobId(value) {
 }
 
 function hasLiveScanJob(jobId) {
-  return Boolean(getLibraryScanQueue().getJob(jobId));
+  const queue = getLibraryScanQueue();
+  const job = queue.getJob(jobId);
+  if (!job) return false;
+  if (job.state !== "processing") return true;
+  const claimExpiresAt = Number(job.claim_expires_at ?? job.claimExpiresAt);
+  if (!Number.isFinite(claimExpiresAt) || claimExpiresAt > Math.floor(Date.now() / 1000)) {
+    return true;
+  }
+  queue.cancel(jobId);
+  return false;
 }
 
 export function getScheduledLibraryScanJobId() {

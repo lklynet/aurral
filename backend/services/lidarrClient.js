@@ -1419,7 +1419,30 @@ export class LidarrClient {
   }
 
   async getAllAlbums(options = {}) {
-    const albums = await this.request("/album", "GET", null, false, options);
+    const { artistIds, ...requestOptions } = options;
+    if (Array.isArray(artistIds)) {
+      const normalizedArtistIds = normalizeLidarrArtistIds(artistIds);
+      if (normalizedArtistIds.length === 0) return [];
+      const results = await mapWithConcurrency(
+        normalizedArtistIds,
+        LIDARR_MAX_CONCURRENT,
+        async (artistId) => {
+          const albums = await this.request(
+            `/album?artistId=${artistId}`,
+            "GET",
+            null,
+            false,
+            requestOptions,
+          );
+          if (Array.isArray(albums)) return albums;
+          if (albums?.records && Array.isArray(albums.records)) return albums.records;
+          return [];
+        },
+        { stopOnError: true },
+      );
+      return results.flat();
+    }
+    const albums = await this.request("/album", "GET", null, false, requestOptions);
     return Array.isArray(albums) ? albums : [];
   }
 

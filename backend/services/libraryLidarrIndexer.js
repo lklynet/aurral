@@ -161,9 +161,12 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
     return { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   }
 
-  const [artists, albums, rootFolders] = await Promise.all([
-    client.request("/artist", "GET", null, false, { forceRefresh: true }),
-    client.getAllAlbums({ forceRefresh: true }),
+  const artists = await client.request("/artist", "GET", null, false, { forceRefresh: true });
+  const [albums, rootFolders] = await Promise.all([
+    client.getAllAlbums({
+      artistIds: (Array.isArray(artists) ? artists : []).map((artist) => artist?.id),
+      forceRefresh: true,
+    }),
     client.getRootFolders(),
   ]);
   if (

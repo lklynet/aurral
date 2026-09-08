@@ -59,6 +59,40 @@ test("bulk track reads use Lidarr artist selectors", async (t) => {
   client._httpsInsecureAgent.destroy();
 });
 
+test("bulk album reads use Lidarr artist selectors when requested", async (t) => {
+  const requests = [];
+  const server = http.createServer((request, response) => {
+    requests.push(request.url);
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end("[]");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const address = server.address();
+  const client = new LidarrClient();
+  client._holdConfig = true;
+  client.config = {
+    url: `http://127.0.0.1:${address.port}`,
+    apiKey: "test",
+    timeoutMs: 2000,
+    circuitDisabled: true,
+  };
+
+  await client.getAllAlbums({ artistIds: [7, 8], forceRefresh: true });
+
+  assert.deepEqual(requests.sort(), [
+    "/api/v1/album?artistId=7",
+    "/api/v1/album?artistId=8",
+  ]);
+  client._httpAgent.destroy();
+  client._httpsAgent.destroy();
+  client._httpsInsecureAgent.destroy();
+});
+
 test("bulk reads wait for active requests before failing", async () => {
   const client = new LidarrClient();
   const artistIds = Array.from({ length: 14 }, (_, index) => index + 1);

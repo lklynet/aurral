@@ -143,6 +143,35 @@ test("library scan scheduling keeps one live job and recovers stale registry ent
   }
 });
 
+test("library refresh replaces a scan whose processing claim expired", () => {
+  const queue = getLibraryScanQueue();
+  clearScheduledLibraryScan();
+  let staleJobId;
+  let replacementJobId;
+  try {
+    staleJobId = scheduleLibraryScan();
+    const claimed = queue.claimOne("stale-library-scan-test");
+    assert.equal(claimed?.id, staleJobId);
+    db.prepare("UPDATE _honker_live SET claim_expires_at = ? WHERE id = ?").run(
+      Math.floor(Date.now() / 1000) - 1,
+      staleJobId,
+    );
+
+    replacementJobId = scheduleLibraryScan({ force: true });
+
+    assert.notEqual(replacementJobId, staleJobId);
+    assert.equal(queue.getJob(staleJobId), null);
+    assert.deepEqual(JSON.parse(queue.getJob(replacementJobId).payload), {
+      force: true,
+      includeLidarr: true,
+    });
+  } finally {
+    if (staleJobId) queue.cancel(staleJobId);
+    if (replacementJobId) queue.cancel(replacementJobId);
+    clearScheduledLibraryScan();
+  }
+});
+
 test("a full refresh upgrades a pending local-only scan", () => {
   const queue = getLibraryScanQueue();
   clearScheduledLibraryScan();
