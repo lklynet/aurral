@@ -61,6 +61,7 @@ export function registerShows(router) {
       }
 
       const zipCode = String(req.query.zip || "").trim();
+      const countryCode = String(req.query.country || "").trim();
       const settings = dbOps.getSettings();
       const configuredRadius = Number(
         settings.integrations?.ticketmaster?.searchRadiusMiles,
@@ -91,6 +92,7 @@ export function registerShows(router) {
       const nearbyShows = await getNearbyShows({
         req,
         zipCode,
+        countryCode,
         libraryArtists: () => [...iterateCanonicalArtistProjection({ pageSize: 100 })],
         recommendedArtists,
         trendingArtists,

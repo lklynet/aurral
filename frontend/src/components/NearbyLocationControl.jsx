@@ -13,6 +13,7 @@ function getNearbyCityLabel(location) {
 function NearbyLocationControl({
   locationMode,
   appliedZip,
+  appliedCountry,
   location,
   onSelectYourLocation,
   onStartCustomLocation,
@@ -23,6 +24,7 @@ function NearbyLocationControl({
   const zipInputRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [zipDraft, setZipDraft] = useState(appliedZip);
+  const [countryDraft, setCountryDraft] = useState(appliedCountry || "");
   const [showZipForm, setShowZipForm] = useState(false);
   const zipModeActive = locationMode === "zip";
   const cityLabel = getNearbyCityLabel(location);
@@ -30,7 +32,8 @@ function NearbyLocationControl({
 
   useEffect(() => {
     setZipDraft(appliedZip);
-  }, [appliedZip]);
+    setCountryDraft(appliedCountry || "");
+  }, [appliedCountry, appliedZip]);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -62,8 +65,9 @@ function NearbyLocationControl({
 
   const saveZip = () => {
     const sanitized = zipDraft.trim();
-    if (!sanitized) return;
-    onApplyZip(sanitized);
+    const country = countryDraft.trim().toUpperCase();
+    if (!sanitized || (country && !/^[A-Z]{2}$/.test(country))) return;
+    onApplyZip(sanitized, country);
     closeMenu();
   };
 
@@ -109,6 +113,7 @@ function NearbyLocationControl({
               onStartCustomLocation();
               setShowZipForm(true);
               setZipDraft(appliedZip);
+              setCountryDraft(appliedCountry || "");
             }}
             className={`artist-menu-item${zipModeActive ? " is-active" : ""}`}
           >
@@ -133,6 +138,25 @@ function NearbyLocationControl({
                   placeholder="ZIP or postal code"
                 />
               </div>
+              <div className="artist-nearby-zip-editor__field">
+                <label htmlFor="nearby-location-country">Country code (optional)</label>
+                <input
+                  id="nearby-location-country"
+                  type="text"
+                  value={countryDraft}
+                  onChange={(event) => setCountryDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    event.preventDefault();
+                    saveZip();
+                  }}
+                  className="artist-nearby-zip-editor__input"
+                  placeholder="e.g. FR"
+                  maxLength={2}
+                  autoCapitalize="characters"
+                  autoComplete="country"
+                />
+              </div>
               <div className="artist-nearby-zip-editor__actions">
                 <button type="button" onClick={closeMenu} className="btn btn-secondary btn-sm">
                   Cancel
@@ -141,7 +165,10 @@ function NearbyLocationControl({
                   type="button"
                   onClick={saveZip}
                   className="btn btn-primary btn-sm"
-                  disabled={!zipDraft.trim()}
+                  disabled={
+                    !zipDraft.trim() ||
+                    (countryDraft.trim() && !/^[A-Za-z]{2}$/.test(countryDraft.trim()))
+                  }
                 >
                   Save
                 </button>
