@@ -16,7 +16,7 @@ const [isolatedState, { db }, dbHelpers, authModule, sessionModule] = await setu
 );
 
 const { dbOps, userOps } = dbHelpers;
-const { issueProxySession, resolveProxyUser, resolveRequestUser } = authModule;
+const { isProxyAuthEnabled, issueProxySession, resolveProxyUser, resolveRequestUser } = authModule;
 const { getSessionByToken } = sessionModule;
 
 const completeOnboarding = () => dbOps.updateSettings({ onboardingComplete: true });
@@ -104,6 +104,18 @@ test("proxy auth does not create users from untrusted proxy IPs", () => {
   );
 
   assert.equal(resolved, null);
+  assert.equal(userOps.getAllUsers().length, 0);
+});
+
+test("explicitly disabling proxy auth overrides a configured header", () => {
+  process.env.AUTH_PROXY_ENABLED = "false";
+  process.env.AUTH_PROXY_HEADER = "x-authentik-username";
+
+  assert.equal(isProxyAuthEnabled(), false);
+  assert.equal(
+    resolveProxyUser(proxyRequest({ "x-authentik-username": "mallory" })),
+    null,
+  );
   assert.equal(userOps.getAllUsers().length, 0);
 });
 

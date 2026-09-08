@@ -80,7 +80,9 @@ export const rotateApiKey = () => {
 };
 
 export const isProxyAuthEnabled = () => {
-  if (process.env.AUTH_PROXY_ENABLED === "true") return true;
+  if (process.env.AUTH_PROXY_ENABLED !== undefined) {
+    return process.env.AUTH_PROXY_ENABLED === "true";
+  }
   return !!process.env.AUTH_PROXY_HEADER;
 };
 
