@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { access, mkdir } from "node:fs/promises";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 
 import {
@@ -381,5 +381,88 @@ test("deemix drops its queue entry before a track goes to review", async () => {
     assert.deepEqual(removed, ["track_1_1"]);
   } finally {
     await server.close();
+  }
+});
+
+test("deemix reuses an existing final path instead of creating a duplicate", async () => {
+  const sourcePath = path.join(
+    process.env.DOWNLOAD_FOLDER,
+    "deemix-duplicate-source",
+    "Artist Name - Correct Track.mp3",
+  );
+  const destination = "deemix-duplicate/Artist Name/Album Name";
+  const targetPath = path.join(
+    process.env.WEEKLY_FLOW_FOLDER,
+    destination,
+    "Correct Track.mp3",
+  );
+  await writeOneSecondMp3(sourcePath);
+  await mkdir(path.dirname(targetPath), { recursive: true });
+  await writeFile(targetPath, "existing-audio", "utf8");
+  const server = await createMockHttpServer((req, res) => {
+    req.resume();
+    const url = new URL(req.url, "http://deemix.test");
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify(
+        url.pathname === "/api/getQueue"
+          ? { queue: { track_1_1: { status: "completed", files: [{ path: sourcePath }] } } }
+          : { result: true },
+      ),
+    );
+  });
+
+  let jobId;
+  try {
+    dbOps.updateSettings({
+      integrations: { deemix: { enabled: true, url: server.url, bitrate: 1 } },
+    });
+    jobId = downloadTracker.addJob(
+      {
+        artistName: "Artist Name",
+        trackName: "Correct Track",
+        albumName: "Album Name",
+        durationMs: 1000,
+      },
+      "deemix-duplicate",
+    );
+    downloadTracker.setDownloading(jobId);
+
+    const polled = await processDeemixPipelinePayload(
+      {
+        phase: "poll",
+        source: "deemix",
+        jobId,
+        queueUuid: "track_1_1",
+        destination,
+        candidate: {
+          raw: {
+            id: "1",
+            title: "Correct Track",
+            artist: "Artist Name",
+            album: "Album Name",
+            file: "Artist Name - Correct Track",
+          },
+        },
+        candidateIndex: 0,
+      },
+      { failOrTryNextSource: failIfPipelineFallsThrough },
+    );
+
+    const result = await processDeemixPipelinePayload(polled, {
+      failOrTryNextSource: failIfPipelineFallsThrough,
+    });
+
+    assert.equal(result, null);
+    assert.equal(downloadTracker.getJob(jobId)?.status, "done");
+    assert.equal(downloadTracker.getJob(jobId)?.finalPath, targetPath);
+    assert.equal(await readFile(targetPath, "utf8"), "existing-audio");
+    await assert.rejects(() => access(sourcePath));
+    await assert.rejects(() => access(path.join(path.dirname(targetPath), "Correct Track (2).mp3")));
+  } finally {
+    if (jobId) downloadTracker.removeJob(jobId);
+    await server.close();
+    await rm(path.dirname(targetPath), { recursive: true, force: true });
+    await rm(path.dirname(sourcePath), { recursive: true, force: true });
   }
 });
