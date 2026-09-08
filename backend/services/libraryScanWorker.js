@@ -150,7 +150,10 @@ const {
     const includeLidarr =
       payload?.includeLidarr === true ||
       (Number(registry.jobId) === Number(job.id) && registry.includeLidarr === true);
-    await scanConfiguredLibrary({ lidarrClient, includeLidarr });
+    const scanResult = await scanConfiguredLibrary({ lidarrClient, includeLidarr });
+    if (scanResult?.lidarr?.error) {
+      throw new Error(`Lidarr library indexing failed: ${scanResult.lidarr.error}`);
+    }
     const { playlistManager } = await import("./weeklyFlow/weeklyFlowPlaylistManager.js");
     await playlistManager.scanLibrary();
     websocketService.broadcast("library", { type: "library_scan_completed" });
