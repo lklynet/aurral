@@ -649,11 +649,13 @@ function readFileNameArtistTitle(context, filePath) {
   }, null);
 }
 
-function collectArtistTags(common) {
+function collectArtistTags(common, candidate) {
   return [
     common?.artist,
     ...(Array.isArray(common?.artists) ? common.artists : []),
     common?.albumartist,
+    candidate?.raw?.channel,
+    candidate?.raw?.uploader,
   ].filter(Boolean);
 }
 
@@ -1160,7 +1162,7 @@ export async function validateDownloadedTrack(filePath, candidate, context) {
   );
   const artistScore = Math.max(
     0,
-    ...collectArtistTags(metadata).map((tag) => pickBestArtistScore(context, tag)),
+    ...collectArtistTags(metadata, candidate).map((tag) => pickBestArtistScore(context, tag)),
     pickBestArtistScore(context, remoteFilename),
   );
   const albumScore = albumName

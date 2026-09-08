@@ -218,6 +218,51 @@ test("yt-dlp sends weak title matches to review", async () => {
   await access(filePath);
 });
 
+test("yt-dlp sends other identity mismatches to review", async () => {
+  const jobId = downloadTracker.addJob(
+    {
+      artistName: "Artist Name",
+      trackName: "Correct Track",
+      albumName: "",
+      durationMs: 1000,
+    },
+    "ytdlp-weak-artist-review",
+  );
+  downloadTracker.setDownloading(jobId);
+  const filePath = path.join(
+    process.env.DOWNLOAD_FOLDER,
+    ".ytdlp-staging",
+    jobId,
+    "Correct.mp3",
+  );
+  await writeOneSecondMp3(filePath);
+
+  const result = await processYtdlpPipelinePayload(
+    {
+      phase: "finalize",
+      source: "ytdlp",
+      jobId,
+      downloadedPath: filePath,
+      destination: "ytdlp-weak-artist-review/Artist Name",
+      candidate: {
+        raw: {
+          id: "video-weak-artist",
+          title: "Correct",
+        },
+      },
+      candidateIndex: 0,
+    },
+    { failOrTryNextSource: failIfPipelineFallsThrough },
+  );
+
+  assert.equal(result, null);
+  const job = downloadTracker.getJob(jobId);
+  assert.equal(job.status, "blocked");
+  assert.match(job.error, /^weak-artist-match:/);
+  assert.equal(job.stagingPath, filePath);
+  await access(filePath);
+});
+
 test("Usenet sends its best plausible duration mismatch to review", async () => {
   const server = await createMockHttpServer((req, res) => {
     req.resume();
