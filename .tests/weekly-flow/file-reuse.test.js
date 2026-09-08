@@ -104,6 +104,7 @@ test("reuseTrackForPlaylist references a completed Aurral track path", async () 
 });
 
 test("reusing an existing track for a flow does not schedule a full library scan", async (t) => {
+  const flow = flowPlaylistConfig.createFlow({ name: "Reuse Flow", size: 10 });
   const track = {
     artistName: "System of a Down",
     trackName: "Chop Suey",
@@ -111,6 +112,8 @@ test("reusing an existing track for a flow does not schedule a full library scan
   };
   const sourcePath = path.join(
     weeklyFlowRoot,
+    "_flows",
+    flow.id,
     "System of a Down",
     "Toxicity",
     "Chop Suey.flac",
@@ -120,7 +123,7 @@ test("reusing an existing track for a flow does not schedule a full library scan
   const scheduleScanLibrary = t.mock.method(playlistManager, "scheduleScanLibrary", () => 1);
   t.mock.method(playlistManager, "refreshPlaylist", async () => null);
 
-  const result = await reuseTrackForPlaylist(track, "flow-playlist", {
+  const result = await reuseTrackForPlaylist(track, flow.id, {
     existingFileMode: "reuse",
     weeklyFlowRoot,
   });
@@ -278,7 +281,7 @@ test("restoreCompletedTrack requeues done jobs when the file and reuse source ar
   assert.equal(downloadTracker.getJob(jobId)?.finalPath, null);
 });
 
-test("repairJobsUnderRemovedPlaylistDir requeues other playlists that reused a deleted flow folder", async () => {
+test("repairJobsUnderRemovedPlaylistDir requeues other playlists that reused a deleted flow folder", async (t) => {
   const track = {
     artistName: "Metric",
     trackName: "Victim of Luck",
@@ -295,6 +298,7 @@ test("repairJobsUnderRemovedPlaylistDir requeues other playlists that reused a d
   );
   const jobId = downloadTracker.addJob(track, "active-playlist");
   downloadTracker.setDone(jobId, reusedPath, track.albumName);
+  const scheduleScanLibrary = t.mock.method(playlistManager, "scheduleScanLibrary", () => 1);
 
   const result = await repairJobsUnderRemovedPlaylistDir(deletedFlowId, {
     existingFileMode: "reuse",
@@ -305,6 +309,7 @@ test("repairJobsUnderRemovedPlaylistDir requeues other playlists that reused a d
   assert.equal(result.requeued, 1);
   assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
   assert.equal(downloadTracker.getJob(jobId)?.finalPath, null);
+  assert.equal(scheduleScanLibrary.mock.callCount(), 0);
 });
 
 test("repairOrphanedPlaylistTrackPaths finds removed playlist ids from missing file paths", async () => {
@@ -336,7 +341,7 @@ test("repairOrphanedPlaylistTrackPaths finds removed playlist ids from missing f
   assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
 });
 
-test("repairReusableTrackLinks requeues missing completed tracks and refreshes playlists", async () => {
+test("repairReusableTrackLinks requeues missing completed tracks and refreshes playlists", async (t) => {
   const track = {
     artistName: "Portishead",
     trackName: "Glory Box",
@@ -350,6 +355,7 @@ test("repairReusableTrackLinks requeues missing completed tracks and refreshes p
   );
   const jobId = downloadTracker.addJob(track, "flow-playlist");
   downloadTracker.setDone(jobId, missingPath, track.albumName);
+  const scheduleScanLibrary = t.mock.method(playlistManager, "scheduleScanLibrary", () => 1);
 
   const result = await repairReusableTrackLinks({
     existingFileMode: "reuse",
@@ -359,6 +365,34 @@ test("repairReusableTrackLinks requeues missing completed tracks and refreshes p
 
   assert.equal(result.requeued, 1);
   assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
+  assert.equal(scheduleScanLibrary.mock.callCount(), 0);
+});
+
+test("repairReusableTrackLinks scans after repairing a library track", async (t) => {
+  const track = {
+    artistName: "Portishead",
+    trackName: "Glory Box",
+    albumName: "Dummy",
+  };
+  const sourcePath = path.join(isolatedState.baseDir, "library-source.flac");
+  await fs.writeFile(sourcePath, "audio");
+  const missingPath = path.join(weeklyFlowRoot, "Portishead", "Dummy", "Glory Box.flac");
+  const jobId = downloadTracker.addJob(track, "library");
+  downloadTracker.setDone(jobId, missingPath, track.albumName);
+  const scheduleScanLibrary = t.mock.method(playlistManager, "scheduleScanLibrary", () => 1);
+
+  const result = await repairReusableTrackLinks({
+    existingFileMode: "reuse",
+    weeklyFlowRoot,
+    resolveSource: async () => ({
+      source: { sourceType: "aurral", sourcePath, albumName: track.albumName },
+      reason: null,
+    }),
+  });
+
+  assert.equal(result.repaired, 1);
+  assert.equal(downloadTracker.getJob(jobId)?.finalPath, sourcePath);
+  assert.equal(scheduleScanLibrary.mock.callCount(), 1);
 });
 
 test("reuseTrackForPlaylist path-shares flow files until refresh relocates them", async () => {

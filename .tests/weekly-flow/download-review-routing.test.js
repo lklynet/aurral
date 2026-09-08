@@ -49,9 +49,13 @@ test.after(async () => {
 
 test("pipeline completion leaves the library scan to playlist completion", async (t) => {
   const scheduleScanLibrary = t.mock.method(playlistManager, "scheduleScanLibrary", () => 1);
-  t.mock.method(playlistManager, "refreshPlaylist", async () => null);
-  t.mock.method(weeklyFlowWorker, "wake", () => {});
-  t.mock.method(weeklyFlowWorker, "checkPlaylistComplete", async () => {});
+  const refreshPlaylist = t.mock.method(playlistManager, "refreshPlaylist", async () => null);
+  const wake = t.mock.method(weeklyFlowWorker, "wake", () => {});
+  const checkPlaylistComplete = t.mock.method(
+    weeklyFlowWorker,
+    "checkPlaylistComplete",
+    async () => {},
+  );
 
   await finalizePipelineJobSuccess({
     downloadTracker: {
@@ -67,6 +71,12 @@ test("pipeline completion leaves the library scan to playlist completion", async
   });
 
   assert.equal(scheduleScanLibrary.mock.callCount(), 0);
+  assert.deepEqual(refreshPlaylist.mock.calls.map((call) => call.arguments), [["flow-playlist"]]);
+  assert.deepEqual(wake.mock.calls.map((call) => call.arguments), [[0]]);
+  assert.deepEqual(
+    checkPlaylistComplete.mock.calls.map((call) => call.arguments),
+    [["flow-playlist"]],
+  );
 });
 
 async function writeOneSecondMp3(filePath) {

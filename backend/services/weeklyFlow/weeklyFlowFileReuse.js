@@ -730,7 +730,7 @@ export async function repairJobsUnderRemovedPlaylistDir(playlistType, options = 
     for (const changedPlaylistType of changedPlaylistTypes) {
       await playlistManager.refreshPlaylist(changedPlaylistType).catch(() => {});
     }
-    playlistManager.scheduleScanLibrary();
+    if (changedPlaylistTypes.has("library")) playlistManager.scheduleScanLibrary();
   }
 
   return {
@@ -862,7 +862,7 @@ export async function repairReusableTrackLinks(options = {}) {
     for (const playlistType of changedPlaylistTypes) {
       await playlistManager.refreshPlaylist(playlistType).catch(() => {});
     }
-    playlistManager.scheduleScanLibrary();
+    if (changedPlaylistTypes.has("library")) playlistManager.scheduleScanLibrary();
     if (requeued > 0) {
       const [{ weeklyFlowWorker }, { restartWorkerIfPending }] = await Promise.all([
         import("./weeklyFlowWorker.js"),
