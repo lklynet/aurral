@@ -76,6 +76,13 @@ export function registerFlows(router) {
 
   router.post("/flows", async (req, res) => {
     try {
+      const ownerUserId = Number(req.user?.id);
+      if (!Number.isSafeInteger(ownerUserId) || ownerUserId <= 0) {
+        return res.status(400).json({
+          error: "Flow ownership requires a real user",
+          message: "Authenticate as a user account before creating a flow.",
+        });
+      }
       const {
         name,
         mix,
@@ -105,7 +112,7 @@ export function registerFlows(router) {
         relatedArtists,
         scheduleDays,
         scheduleTime,
-        ownerUserId: req.user.id,
+        ownerUserId,
       });
       await playlistManager.ensureSmartPlaylists();
       res.json({ success: true, flow });
