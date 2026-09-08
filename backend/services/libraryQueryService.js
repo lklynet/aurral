@@ -4,9 +4,18 @@ import {
   rebuildStoredLibraryGenreStats,
 } from "../config/library-search-index.js";
 import { getLibrarySearchMatch } from "./librarySearchIndex.js";
+import {
+  getManagedByMap,
+  invalidateLibraryManagementCache,
+  onLibraryManagementChange,
+} from "./libraryManagementStore.js";
 
 const SOURCES = new Set(["aurral", "lidarr"]);
 const libraryCache = new Map();
+
+onLibraryManagementChange(() => {
+  libraryCache.clear();
+});
 const PAGE_KINDS = new Set(["artists", "albums", "tracks", "genres"]);
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 100;
@@ -85,6 +94,8 @@ const CANONICAL_FROM = `FROM library_artists AS artist
     AND ${albumMediaCondition("media", "album_track")}`;
 
 function buildLibraryFromRows(rows) {
+  const artistManagement = getManagedByMap("artist");
+  const albumManagement = getManagedByMap("album");
   const artists = new Map();
   const albums = new Map();
   const tracks = new Map();
@@ -101,6 +112,8 @@ function buildLibraryFromRows(rows) {
       sources: [],
       available: false,
     });
+    artist.managedBy = artistManagement.get(row.artist_id)?.managedBy ?? null;
+    artist.monitorMode = artistManagement.get(row.artist_id)?.monitorMode ?? null;
     const album = createEntity(albums, row.album_id, {
       id: row.album_id,
       identityKey: row.album_identity_key,
@@ -115,6 +128,8 @@ function buildLibraryFromRows(rows) {
       sources: [],
       available: false,
     });
+    album.managedBy = albumManagement.get(row.album_id)?.managedBy ?? null;
+    album.monitorMode = albumManagement.get(row.album_id)?.monitorMode ?? null;
     const track = createEntity(tracks, row.track_id, {
       id: row.track_id,
       identityKey: row.track_identity_key,
@@ -244,11 +259,14 @@ const canonicalArtistProjection = (row) => {
       .filter(Boolean),
   );
   if (metadata.librarySource === "lidarr") sources.add("lidarr");
+  const management = getManagedByMap("artist").get(Number(row.id)) || null;
   return {
     id: String(row.id),
     canonicalId: String(row.id),
     providerId,
     lidarrManaged: metadata.librarySource === "lidarr",
+    managedBy: management?.managedBy ?? null,
+    monitorMode: management?.monitorMode ?? null,
     mbid: row.mbid || null,
     foreignArtistId: metadata.foreignArtistId || row.mbid || row.identity_key,
     artistName: row.name,
@@ -1064,6 +1082,7 @@ export function getCanonicalArtistPage({
 } = {}) {
   const sourceFilter = normalizeSource(source);
   const media = pageMediaExists("artists", sourceFilter, availableOnly);
+  const artistManagement = getManagedByMap("artist");
   const conditions = [media.sql];
   const parameters = [...media.parameters];
   const normalizedQuery = text(query).toLocaleLowerCase();
@@ -1141,6 +1160,8 @@ export function getCanonicalArtistPage({
       metadata: parseJson(row.artist_metadata_json),
       albumIds: [],
       albumCount: Number(row.album_count || 0),
+      managedBy: artistManagement.get(row.artist_id)?.managedBy ?? null,
+      monitorMode: artistManagement.get(row.artist_id)?.monitorMode ?? null,
       sources: [],
       available: availableOnly === true,
     }]));
@@ -1192,6 +1213,8 @@ export function getCanonicalArtistPage({
     albumCount: Number(row.album_count || 0),
     trackCount: Number(row.track_count || 0),
     sizeOnDisk: Number(row.size_on_disk || 0),
+    managedBy: artistManagement.get(row.artist_id)?.managedBy ?? null,
+    monitorMode: artistManagement.get(row.artist_id)?.monitorMode ?? null,
     sources: parseSources(row.sources),
     available: Boolean(row.available),
   }]));
@@ -1855,6 +1878,8 @@ function getAlbumTrackSummary(albumId, sourceFilter) {
   ).get(...parameters);
   if (!row) return { artist: null, album: null };
   const sources = parseSources(row.sources);
+  const artistManagement = getManagedByMap("artist").get(row.artist_id) || null;
+  const albumManagement = getManagedByMap("album").get(row.album_id) || null;
   return {
     artist: {
       id: row.artist_id,
@@ -1864,6 +1889,8 @@ function getAlbumTrackSummary(albumId, sourceFilter) {
       sortName: row.artist_sort_name,
       metadata: parseJson(row.artist_metadata_json),
       albumIds: [row.album_id],
+      managedBy: artistManagement?.managedBy ?? null,
+      monitorMode: artistManagement?.monitorMode ?? null,
       sources,
       available: Boolean(row.available),
     },
@@ -1878,6 +1905,8 @@ function getAlbumTrackSummary(albumId, sourceFilter) {
       releaseDate: row.album_release_date,
       metadata: parseJson(row.album_metadata_json),
       trackIds: [],
+      managedBy: albumManagement?.managedBy ?? null,
+      monitorMode: albumManagement?.monitorMode ?? null,
       sources,
       available: Boolean(row.available),
     },
@@ -2168,6 +2197,7 @@ export function rebuildCanonicalGenreStats() {
 export function invalidateCanonicalLibraryCache({ persistedGenres = true } = {}) {
   libraryCache.clear();
   genreStatsCache.clear();
+  invalidateLibraryManagementCache();
   if (persistedGenres) {
     db.prepare("DELETE FROM settings WHERE key LIKE ?").run(`${GENRE_STATS_SETTING_PREFIX}%`);
   }
