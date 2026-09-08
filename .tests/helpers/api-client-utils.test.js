@@ -114,6 +114,71 @@ test("fetch timeouts expose an axios-compatible timeout code", async () => {
   }
 });
 
+test("uses environment proxy settings when NODE_USE_ENV_PROXY is enabled", async () => {
+  let targetHits = 0;
+  let proxyHits = 0;
+  const target = http.createServer((_request, response) => {
+    targetHits += 1;
+    response.end("direct");
+  });
+  const proxy = http.createServer((_request, response) => {
+    proxyHits += 1;
+    response.end("proxied");
+  });
+  await Promise.all([
+    new Promise((resolve) => target.listen(0, "127.0.0.1", resolve)),
+    new Promise((resolve) => proxy.listen(0, "127.0.0.1", resolve)),
+  ]);
+
+  const saved = Object.fromEntries(
+    ["NODE_USE_ENV_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"]
+      .map((name) => [name, process.env[name]]),
+  );
+  const restoreEnvironment = () => {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  };
+
+  try {
+    const proxyUrl = `http://127.0.0.1:${proxy.address().port}`;
+    process.env.NODE_USE_ENV_PROXY = "1";
+    process.env.HTTP_PROXY = proxyUrl;
+    process.env.HTTPS_PROXY = proxyUrl;
+    process.env.http_proxy = proxyUrl;
+    process.env.https_proxy = proxyUrl;
+    process.env.NO_PROXY = "";
+    process.env.no_proxy = "";
+
+    const response = await axios.get(`http://127.0.0.1:${target.address().port}`);
+    assert.equal(response.data, "proxied");
+    assert.equal(proxyHits, 1);
+    assert.equal(targetHits, 0);
+
+    process.env.NO_PROXY = "127.0.0.1";
+    process.env.no_proxy = "127.0.0.1";
+    const noProxyResponse = await axios.get(`http://127.0.0.1:${target.address().port}`);
+    assert.equal(noProxyResponse.data, "direct");
+    assert.equal(proxyHits, 1);
+    assert.equal(targetHits, 1);
+
+    delete process.env.NODE_USE_ENV_PROXY;
+    process.env.NO_PROXY = "";
+    process.env.no_proxy = "";
+    const disabledResponse = await axios.get(`http://127.0.0.1:${target.address().port}`);
+    assert.equal(disabledResponse.data, "direct");
+    assert.equal(proxyHits, 1);
+    assert.equal(targetHits, 2);
+  } finally {
+    restoreEnvironment();
+    await Promise.all([
+      new Promise((resolve) => target.close(resolve)),
+      new Promise((resolve) => proxy.close(resolve)),
+    ]);
+  }
+});
+
 test("public-only transport rejects socket failures without an uncaught exception", () => {
   const moduleUrl = new URL("../../lib/axiosFetch.js", import.meta.url).href;
   const result = spawnSync(process.execPath, ["--input-type=module", "--eval", `
