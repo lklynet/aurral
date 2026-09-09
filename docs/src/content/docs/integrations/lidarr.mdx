@@ -78,7 +78,10 @@ which notifications are sent.
 If the file does not appear in **Library**, use the **Refresh** button there.
 Refresh waits for the canonical scan to finish. If it still does not appear,
 run **Test library access** and check [Filesystem and mounts](/getting-started/storage/)
-for a path mismatch.
+for a path mismatch. If Lidarr fails during refresh, Aurral retries the scan
+instead of reporting it complete and writes the provider error to the server
+log. No-response errors include the request method, endpoint, and configured
+timeout.
 
 See [Library access fails on a folder that is not your root folder](/admin/troubleshooting/#library-access-fails-on-a-folder-that-is-not-your-root-folder).
 

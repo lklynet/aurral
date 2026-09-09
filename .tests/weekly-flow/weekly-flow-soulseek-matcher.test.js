@@ -952,6 +952,25 @@ test("validateDownloadedTrack scores identity before final quality admission", a
   assert.ok(accepted.scores.title >= 82);
 });
 
+test("validateDownloadedTrack uses yt-dlp channel metadata as an artist signal", async () => {
+  const validated = await validateDownloadedTrack(
+    "/tmp/does-not-exist.mp3",
+    {
+      raw: {
+        channel: "Drake",
+        file: "0 to 100 The Catch Up.mp3",
+      },
+    },
+    {
+      artistName: "Drake",
+      trackName: "0 to 100 / The Catch Up",
+    },
+  );
+
+  assert.equal(validated.scores.artist, 100);
+  assert.match(validated.reason, /^quality-unknown:/);
+});
+
 test("validateDownloadedTrack accepts a remote filename that omits the requested version suffix", async () => {
   const validated = await validateDownloadedTrack(
     "/tmp/does-not-exist.mp3",

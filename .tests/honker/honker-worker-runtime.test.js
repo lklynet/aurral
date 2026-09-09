@@ -41,6 +41,22 @@ test("getHonkerQueueNextClaimAt reports delayed queue work", () => {
   assert.equal(nextClaimAt, runAt);
 });
 
+test("task status reports queued jobs beyond the live row display limit", async () => {
+  const queue = honkerDb.getPipelineQueue();
+  const jobIds = [];
+  for (let index = 0; index < 501; index += 1) {
+    jobIds.push(queue.enqueue({ kind: `queue-count-${index}` }));
+  }
+
+  try {
+    const status = await taskStatus.getHonkerTaskStatus();
+    const worker = status.workers.find((entry) => entry.queue === "slskd-pipeline");
+    assert.equal(worker?.queued, 501);
+  } finally {
+    for (const jobId of jobIds) queue.cancel(jobId);
+  }
+});
+
 test("withJobHeartbeat extends job claim while work runs", async () => {
   const queue = honkerDb.getLibraryScanQueue();
   const jobId = queue.enqueue({ kind: "heartbeat-test" });
