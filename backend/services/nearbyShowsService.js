@@ -53,6 +53,14 @@ const normalizeUsZip = (value) =>
     .trim()
     .split("-")[0];
 
+const sanitizeCountryCode = (value) => {
+  const country = String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z]/g, "")
+    .toUpperCase();
+  return country.length === 2 ? country : "";
+};
+
 const sanitizeIpAddress = (value) => {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -184,15 +192,17 @@ const getTicketmasterLocationParams = (location, radiusMiles) => {
   throw new Error("Unable to determine a search location");
 };
 
-const resolveZipLocation = async (zipCode) => {
+const resolveZipLocation = async (zipCode, countryCode) => {
   const zip = sanitizeZipCode(zipCode);
   if (!zip) return null;
+  const normalizedCountryCode = sanitizeCountryCode(countryCode);
   const normalizedZip = isLikelyUsZip(zip) ? normalizeUsZip(zip) : zip;
-  const cached = zipLocationCache.get(normalizedZip);
+  const cacheKey = `${normalizedCountryCode || "auto"}:${normalizedZip}`;
+  const cached = zipLocationCache.get(cacheKey);
   if (cached) return cached;
-  return runSharedInflight(nearbyShowsInflight, `zip:${normalizedZip}`, async (signal) => {
+  return runSharedInflight(nearbyShowsInflight, `zip:${cacheKey}`, async (signal) => {
     try {
-      if (isLikelyUsZip(normalizedZip)) {
+      if (isLikelyUsZip(normalizedZip) && (!normalizedCountryCode || normalizedCountryCode === "US")) {
         const response = await axios.get(
           `https://api.zippopotam.us/us/${encodeURIComponent(normalizedZip)}`,
           {
@@ -218,7 +228,7 @@ const resolveZipLocation = async (zipCode) => {
             longitude: place.longitude != null ? Number(place.longitude) : null,
           };
           location.label = buildLocationLabel(location);
-          zipLocationCache.set(normalizedZip, location);
+          zipLocationCache.set(cacheKey, location);
           return location;
         }
       }
@@ -227,7 +237,9 @@ const resolveZipLocation = async (zipCode) => {
       const response = await axios.get("https://nominatim.openstreetmap.org/search", {
         params: {
           postalcode: normalizedZip,
-          countrycodes: isLikelyUsZip(normalizedZip) ? "us" : undefined,
+          countrycodes:
+            normalizedCountryCode?.toLowerCase() ||
+            (isLikelyUsZip(normalizedZip) ? "us" : undefined),
           format: "jsonv2",
           addressdetails: 1,
           limit: 1,
@@ -249,12 +261,14 @@ const resolveZipLocation = async (zipCode) => {
         city: address.city || address.town || address.village || null,
         region: address.state || null,
         regionCode: null,
-        countryCode: address.country_code ? String(address.country_code).toUpperCase() : null,
+        countryCode: address.country_code
+          ? String(address.country_code).toUpperCase()
+          : normalizedCountryCode || null,
         latitude: result.lat != null ? Number(result.lat) : null,
         longitude: result.lon != null ? Number(result.lon) : null,
       };
       location.label = buildLocationLabel(location);
-      zipLocationCache.set(normalizedZip, location);
+      zipLocationCache.set(cacheKey, location);
       return location;
     } catch {
       return null;
@@ -302,6 +316,7 @@ const fetchTicketmasterEvents = async ({ location, radiusMiles }) => {
   if (!apiKey) return [];
   const cacheKey = JSON.stringify({
     postalCode: location.postalCode || null,
+    countryCode: location.countryCode || null,
     latitude: location.latitude || null,
     longitude: location.longitude || null,
     radiusMiles,
@@ -410,6 +425,7 @@ const sortShows = (shows) =>
 export const getNearbyShows = async ({
   req,
   zipCode,
+  countryCode,
   libraryArtists = [],
   recommendedArtists = [],
   trendingArtists = [],
@@ -419,7 +435,10 @@ export const getNearbyShows = async ({
 }) => {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || DEFAULT_SHOW_LIMIT, MAX_SHOW_LIMIT));
   const sanitizedZipCode = sanitizeZipCode(zipCode);
-  const locationKey = sanitizedZipCode || getForwardedIp(req);
+  const sanitizedCountryCode = sanitizeCountryCode(countryCode);
+  const locationKey = sanitizedZipCode
+    ? `${sanitizedCountryCode || "auto"}:${sanitizedZipCode}`
+    : getForwardedIp(req);
   const resultCacheKey = responseCacheKey
     ? JSON.stringify([responseCacheKey, locationKey, radiusMiles, resolvedLimit])
     : null;
@@ -429,14 +448,14 @@ export const getNearbyShows = async ({
   let location;
   if (sanitizedZipCode) {
     location =
-      (await resolveZipLocation(sanitizedZipCode)) || {
+      (await resolveZipLocation(sanitizedZipCode, sanitizedCountryCode)) || {
         source: "zip",
         resolved: false,
         postalCode: sanitizedZipCode,
         city: null,
         region: null,
         regionCode: null,
-        countryCode: isLikelyUsZip(sanitizedZipCode) ? "US" : null,
+        countryCode: sanitizedCountryCode || (isLikelyUsZip(sanitizedZipCode) ? "US" : null),
         latitude: null,
         longitude: null,
         label: sanitizedZipCode,

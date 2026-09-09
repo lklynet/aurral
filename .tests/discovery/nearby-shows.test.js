@@ -79,6 +79,31 @@ test("marks an unresolved postal code instead of returning a normal empty locati
   assert.deepEqual(result.recommendedShows, []);
 });
 
+test("uses an explicit country when resolving an ambiguous postal code", async (t) => {
+  let nominatimParams;
+  t.mock.method(axios, "get", async (url, options = {}) => {
+    if (url.includes("zippopotam")) return { data: { places: [] } };
+    if (url === "https://nominatim.openstreetmap.org/search") {
+      nominatimParams = options.params;
+      return {
+        data: [{
+          address: { city: "Paris", country_code: "fr" },
+          lat: "48.8566",
+          lon: "2.3522",
+        }],
+      };
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  });
+
+  const result = await getNearbyShows({ zipCode: "75001", countryCode: "FR" });
+
+  assert.equal(nominatimParams.postalcode, "75001");
+  assert.equal(nominatimParams.countrycodes, "fr");
+  assert.equal(result.location.city, "Paris");
+  assert.equal(result.location.countryCode, "FR");
+});
+
 test("reuses a cached shows response without rebuilding artist maps", async (t) => {
   let artistReads = 0;
   t.mock.method(axios, "get", async (url) => {

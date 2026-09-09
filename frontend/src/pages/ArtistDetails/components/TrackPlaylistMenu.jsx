@@ -332,7 +332,8 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
       setOpenSubmenu(false);
       onOpenChange?.(false);
     };
-    const handleViewportChange = () => {
+    const handleViewportChange = (event) => {
+      if (event?.type === "scroll" && menuRef.current?.contains(event.target)) return;
       setOpen(false);
       setOpenSubmenu(false);
       onOpenChange?.(false);

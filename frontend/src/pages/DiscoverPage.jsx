@@ -71,6 +71,7 @@ function DiscoverPage() {
     nearbyShowsLoading,
     nearbyShowsError,
     nearbyLocationMode,
+    appliedNearbyCountry,
     setNearbyLocationMode,
     appliedNearbyZip,
     setAppliedNearbyZip,
@@ -715,6 +716,7 @@ function DiscoverPage() {
           <NearbyLocationControl
             locationMode={nearbyLocationMode}
             appliedZip={appliedNearbyZip}
+            appliedCountry={appliedNearbyCountry}
             location={nearbyShowsData?.location}
             onSelectYourLocation={() => setNearbyLocationMode("ip")}
             onStartCustomLocation={() => setNearbyLocationMode("zip")}
