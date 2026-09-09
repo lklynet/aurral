@@ -441,10 +441,11 @@ export function enqueueHonkerStartupTasks() {
 export function findActiveHonkerJob(
   queueName,
   predicate = () => true,
-  { recoverExpired = false } = {},
+  { recoverExpired = false, payloadKind = "" } = {},
 ) {
   const safeQueue = String(queueName || "").trim();
   if (!safeQueue) return null;
+  const safePayloadKind = String(payloadKind || "").trim();
   const queue = getHonkerQueueByName(safeQueue);
   if (recoverExpired) {
     try {
@@ -452,11 +453,18 @@ export function findActiveHonkerJob(
     } catch {}
   }
   const now = Math.floor(Date.now() / 1000);
+  const payloadKindFilter = safePayloadKind
+    ? "AND json_extract(payload, '$.kind') = ?"
+    : "";
+  const parameters = safePayloadKind
+    ? [safeQueue, safePayloadKind, now]
+    : [safeQueue, now];
   const rows = getHonkerDb().query(
     `
       SELECT id, payload, state, run_at, claim_expires_at, attempts
       FROM _honker_live
       WHERE queue = ?
+        ${payloadKindFilter}
         AND (
           state = 'pending'
           OR (state = 'processing' AND (claim_expires_at IS NULL OR claim_expires_at > ?))
@@ -464,7 +472,7 @@ export function findActiveHonkerJob(
       ORDER BY id ASC
       LIMIT 100
     `,
-    [safeQueue, now],
+    parameters,
   );
   for (const row of rows) {
     const payload = parseHonkerPayload(row.payload);

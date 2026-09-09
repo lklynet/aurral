@@ -188,7 +188,7 @@ function scheduleLidarrRetry() {
       const existing = findActiveHonkerJob(
         "system-task",
         (payload) => payload?.kind === "lidarr-retry",
-        { recoverExpired: true },
+        { recoverExpired: true, payloadKind: "lidarr-retry" },
       );
       if (existing?.state === "pending") return;
       enqueueSystemTaskJob({ kind: "lidarr-retry" }, { delaySeconds: 60 });

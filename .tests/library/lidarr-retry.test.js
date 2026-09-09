@@ -45,6 +45,10 @@ test("unavailable Lidarr keeps one retry job and continues its retry chain", asy
     throw new Error("provider unavailable");
   });
   const queue = honkerDb.getSystemTaskQueue();
+  const backlogRunAt = Math.floor(Date.now() / 1000) + 3600;
+  for (let index = 0; index < 101; index += 1) {
+    queue.enqueue({ kind: `older-system-task-${index}` }, { runAt: backlogRunAt });
+  }
 
   await libraryManager.syncLidarrArtists();
   for (let index = 0; index < 5; index += 1) {
