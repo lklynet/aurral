@@ -111,7 +111,7 @@ test("publishes, updates, scans, and deletes a managed playlist", async () => {
     assert.deepEqual(calls[1], {
       operation: "update",
       playlistId: "playlist-1",
-      payload: { name: "Fresh Weekly", itemIds: ["jellyfin-track-1", "jellyfin-track-2"] },
+      payload: { name: "Fresh Weekly", itemIds: ["jellyfin-track-1", "jellyfin-track-2"], userId },
     });
 
     assert.equal((await destination.requestScan()).ok, true);
@@ -153,7 +153,7 @@ test("preserves repeated resolved tracks in a playlist", async () => {
   }
 });
 
-test("publishes to the Jellyfin user matching the Aurral username", async () => {
+test("publishes and updates as the Jellyfin user matching the Aurral username", async () => {
   const calls = [];
   const owner = userOps.createUser("ambi", "hash", "user");
   const destination = new JellyfinPlaybackDestination(weeklyFlowRoot, {
@@ -177,6 +177,12 @@ test("publishes to the Jellyfin user matching the Aurral username", async () => 
       ).jellyfinUserId,
       "jellyfin-ambi",
     );
+    const updated = await destination.publishPlaylist(
+      snapshot({ ownerUserId: owner.id, displayName: "Renamed owner playlist" }),
+    );
+    assert.equal(updated.ok, true);
+    assert.equal(calls[1].operation, "update");
+    assert.equal(calls[1].payload.userId, "jellyfin-ambi");
   } finally {
     if (originalMappings == null) delete process.env.PATH_MAPPINGS;
     else process.env.PATH_MAPPINGS = originalMappings;
