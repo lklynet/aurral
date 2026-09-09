@@ -29,17 +29,32 @@ jobs:
             exit 0
           fi
 
-          if [ "$(id -u)" -eq 0 ]; then
-            apt-get update
-            apt-get install -y ffmpeg fontconfig fonts-dejavu-core fonts-noto-color-emoji
-          elif command -v sudo >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg fontconfig fonts-dejavu-core fonts-noto-color-emoji
-          else
-            echo "ffmpeg and fontconfig are required for validation."
-            echo "Install ffmpeg, fontconfig, fonts-dejavu-core, and fonts-noto-color-emoji on the runner."
-            exit 1
+          apt_prefix=()
+          if [ "$(id -u)" -ne 0 ]; then
+            if command -v sudo >/dev/null 2>&1; then
+              apt_prefix=(sudo)
+            else
+              echo "ffmpeg and fontconfig are required for validation."
+              echo "Install ffmpeg, fontconfig, fonts-dejavu-core, and fonts-noto-color-emoji on the runner."
+              exit 1
+            fi
           fi
+
+          chrome_sources=()
+          restore_chrome_sources() {
+            for source in "${chrome_sources[@]}"; do
+              "${apt_prefix[@]}" mv "$source.disabled" "$source"
+            done
+          }
+          trap restore_chrome_sources EXIT
+
+          while IFS= read -r source; do
+            "${apt_prefix[@]}" mv "$source" "$source.disabled"
+            chrome_sources+=("$source")
+          done < <(grep -ril 'dl.google.com/linux/chrome' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null || true)
+
+          "${apt_prefix[@]}" apt-get update
+          "${apt_prefix[@]}" apt-get install -y ffmpeg fontconfig fonts-dejavu-core fonts-noto-color-emoji
 
       - run: npm ci
 
