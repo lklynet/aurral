@@ -7,16 +7,25 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps }, playlistConfigModule, flowHandlerUtils] =
+const [
+  isolatedState,
+  { db },
+  { dbOps },
+  playlistConfigModule,
+  flowHandlerUtils,
+  flowHandlersModule,
+] =
   await setupIsolatedBackend(
     "playlist-config",
     "backend/config/db-sqlite.js",
     "backend/db/helpers/index.js",
     "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
     "backend/routes/weeklyFlow/handlers/utils.js",
+    "backend/routes/weeklyFlow/handlers/flows.js",
   );
 const { flowPlaylistConfig, normalizeImportSource, tracksShareMembership } = playlistConfigModule;
 const { validateFlowPayload } = flowHandlerUtils;
+const { registerFlows } = flowHandlersModule;
 
 test.beforeEach(() => {
   resetDatabase(db);
@@ -107,6 +116,42 @@ test("normalizes invalid playlist owners to null", () => {
   flowPlaylistConfig.deleteFlow(unowned.id);
   flowPlaylistConfig.deleteSharedPlaylist(unownedPlaylist.id);
   flowPlaylistConfig.deleteFlow(owned.id);
+});
+
+test("rejects flow creation without a real user owner", async () => {
+  const beforeFlowIds = flowPlaylistConfig.getFlows().map((flow) => flow.id);
+  let createHandler;
+  const router = {
+    post(path, ...handlers) {
+      if (path === "/flows") createHandler = handlers.at(-1);
+    },
+    put() {},
+    delete() {},
+    get() {},
+  };
+  registerFlows(router);
+
+  const response = {
+    statusCode: 200,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(body) {
+      this.body = body;
+      return this;
+    },
+  };
+
+  await createHandler({ body: {}, user: { id: -1, role: "admin" } }, response);
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.body.error, "Flow ownership requires a real user");
+  assert.deepEqual(
+    flowPlaylistConfig.getFlows().map((flow) => flow.id),
+    beforeFlowIds,
+  );
 });
 
 test("defaults listening history on and persists a flow opt-out", () => {

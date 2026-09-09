@@ -93,6 +93,42 @@ test("bulk album reads use Lidarr artist selectors when requested", async (t) =>
   client._httpsInsecureAgent.destroy();
 });
 
+test("no-response Lidarr errors identify the endpoint and timeout", async (t) => {
+  const server = http.createServer((request) => request.destroy());
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const address = server.address();
+  const client = new LidarrClient();
+  client._holdConfig = true;
+  client.config = {
+    url: `http://127.0.0.1:${address.port}`,
+    apiKey: "test",
+    timeoutMs: 2000,
+    circuitDisabled: true,
+  };
+  const originalConsoleError = console.error;
+  const errors = [];
+  console.error = (...args) => errors.push(args);
+  t.after(() => {
+    console.error = originalConsoleError;
+    client._httpAgent.destroy();
+    client._httpsAgent.destroy();
+    client._httpsInsecureAgent.destroy();
+  });
+
+  await assert.rejects(
+    client.request("/album?artistId=7"),
+    /GET \/album: This operation was aborted|GET \/album: fetch failed/,
+  );
+  assert.match(JSON.stringify(errors), /Lidarr API request failed with no response/);
+  assert.match(JSON.stringify(errors), /timeoutMs/);
+  assert.match(JSON.stringify(errors), /\/album/);
+});
+
 test("bulk reads wait for active requests before failing", async () => {
   const client = new LidarrClient();
   const artistIds = Array.from({ length: 14 }, (_, index) => index + 1);

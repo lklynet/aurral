@@ -42,6 +42,8 @@ When a downloaded file matches the requested track but its duration differs sign
 
 Aurral removes its own queue entry from deemix before it imports the file, including for a track it retains for review, so a repeated request downloads again instead of matching a finished queue item.
 
+If a repeated deemix completion targets a file that is already in the playlist library, Aurral keeps the existing file instead of creating a numbered duplicate.
+
 deemix can also serve quality upgrades. Its bitrate setting fixes the tier it delivers, so Aurral compares that tier against the tier of the file you already have and skips deemix when it cannot improve on it. A deemix set to FLAC upgrades an MP3, and a deemix set to MP3 128 is not asked to upgrade anything better. Downloaded files are checked against the quality profile as well, so a track is never replaced by a worse one.
 
 ## Download source priority

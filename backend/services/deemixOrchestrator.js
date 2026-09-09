@@ -306,7 +306,9 @@ async function handleDeemixFinalize(payload, helpers) {
   const finalDir = joinUnderRoot(playlistRoot, destination);
   const finalName = `${sanitizePathPart(job.trackName, "Unknown Track")}${ext || ".flac"}`;
   const finalPath = path.join(finalDir, finalName);
-  const committedFinalPath = await commitImportToPlaylistLibrary(filePath, finalPath);
+  const committedFinalPath = await commitImportToPlaylistLibrary(filePath, finalPath, {
+    reuseExisting: true,
+  });
   return finalizePipelineJobSuccess({
     downloadTracker,
     job,
