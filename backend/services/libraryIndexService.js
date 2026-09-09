@@ -7,6 +7,7 @@ import { indexLidarrLibrary } from "./libraryLidarrIndexer.js";
 import { rebuildLibrarySearchIndex } from "./librarySearchIndex.js";
 import { rebuildCanonicalGenreStats } from "./libraryQueryService.js";
 import { musicbrainzGetArtistNameByMbid } from "./apiClients/index.js";
+import { logger } from "./logger.js";
 
 function getAurralJobMetadataByPath() {
   const rows = db
@@ -80,9 +81,12 @@ export async function scanConfiguredLibrary({
         lidarr = await indexLidarrLibrary({ client: lidarrClient, syncSearch: false });
       } catch (error) {
         scanFailed = true;
+        logger.error("library", "Lidarr library indexing failed", {
+          message: error?.message || String(error),
+        });
         lidarr = {
           skipped: false,
-          error: error.message,
+          error: error?.message || String(error),
           filesSeen: 0,
           filesIndexed: 0,
           filesFailed: 0,
