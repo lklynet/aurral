@@ -183,8 +183,7 @@ async function handleYtdlpFinalize(payload, helpers) {
     resolvedTrack,
   );
   if (!validation.valid) {
-    const reviewable =
-      validation.blocked || validation.scores?.matchReason === "weak-title-match";
+    const reviewable = validation.blocked || Boolean(validation.scores?.matchReason);
     if (reviewable && blockPipelineJobForReview({
       downloadTracker,
       job,
