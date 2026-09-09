@@ -15,7 +15,7 @@ const [isolatedState, { db }, subsonic, libraryStore] =
     "backend/services/libraryMediaStore.js",
   );
 
-const { getAlbumList, getTopSongs, starMany } = subsonic;
+const { getAlbumList, getMusicDirectory, getTopSongs, starMany } = subsonic;
 
 const {
   linkLibraryAlbumTrack,
@@ -125,4 +125,12 @@ test("returns top songs only for the requested artist", () => {
     getTopSongs("  test-artist:artist-a  ", { count: 10 }).map((song) => song.title),
     ["New Song", "Old Song"],
   );
+});
+
+test("marks album entries as directories in artist music directories", () => {
+  const directory = getMusicDirectory(`artist:${encodeURIComponent("test-artist:artist-a")}`);
+
+  assert.ok(directory);
+  assert.equal(directory.child.length, 2);
+  assert.equal(directory.child.every((album) => album.isDir === true), true);
 });

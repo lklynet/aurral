@@ -175,7 +175,7 @@ const albumData = (library, album) => {
     artistId: artistValue.id,
     artists: [artistValue],
     parent: artistValue.id,
-    isDir: false,
+    isDir: true,
     isVideo: false,
     created: PROTOCOL_DATE,
     coverArt: coverArtForAlbum(album),
