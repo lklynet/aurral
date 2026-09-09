@@ -184,7 +184,13 @@ async function getLidarrClient() {
 
 function scheduleLidarrRetry() {
   import("./honkerDb.js")
-    .then(({ enqueueSystemTaskJob }) => {
+    .then(({ enqueueSystemTaskJob, findActiveHonkerJob }) => {
+      const existing = findActiveHonkerJob(
+        "system-task",
+        (payload) => payload?.kind === "lidarr-retry",
+        { recoverExpired: true, payloadKind: "lidarr-retry" },
+      );
+      if (existing?.state === "pending") return;
       enqueueSystemTaskJob({ kind: "lidarr-retry" }, { delaySeconds: 60 });
     })
     .catch((err) => { logger.warn('library', err); });
@@ -897,8 +903,11 @@ export class LibraryManager {
         if (!lidarr || !lidarr.isConfigured()) {
           return _cachedArtists;
         }
-        if (_lastLidarrFailureAt && Date.now() - _lastLidarrFailureAt < LIDARR_RETRY_MS) {
-          scheduleLidarrRetry();
+        if (
+          forceRefresh !== true &&
+          _lastLidarrFailureAt &&
+          Date.now() - _lastLidarrFailureAt < LIDARR_RETRY_MS
+        ) {
           return _cachedArtists;
         }
         try {
@@ -945,7 +954,6 @@ export class LibraryManager {
         return Array.isArray(_cachedArtists) ? _cachedArtists.slice(0, limit) : [];
       }
       if (_lastLidarrFailureAt && Date.now() - _lastLidarrFailureAt < LIDARR_RETRY_MS) {
-        scheduleLidarrRetry();
         return Array.isArray(_cachedArtists) ? _cachedArtists.slice(0, limit) : [];
       }
       const normalizedLimit = Math.max(0, limit);
