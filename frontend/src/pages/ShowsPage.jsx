@@ -43,6 +43,7 @@ function ShowsPage() {
     error: showsError,
     locationMode,
     appliedZip,
+    appliedCountry,
     setLocationMode,
     setAppliedZip,
     locationLabel,
@@ -77,6 +78,7 @@ function ShowsPage() {
           <NearbyLocationControl
             locationMode={locationMode}
             appliedZip={appliedZip}
+            appliedCountry={appliedCountry}
             location={showsData?.location}
             onSelectYourLocation={() => setLocationMode("ip")}
             onStartCustomLocation={() => setLocationMode("zip")}
