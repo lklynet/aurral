@@ -127,10 +127,21 @@ async function resolveAvailableTargetPath(targetPath) {
   return path.join(dir, `${base} (${Date.now()})${ext}`);
 }
 
-export async function commitImportToPlaylistLibrary(sourcePath, targetPath) {
+export async function commitImportToPlaylistLibrary(
+  sourcePath,
+  targetPath,
+  { reuseExisting = false } = {},
+) {
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
   if (path.resolve(sourcePath) === path.resolve(targetPath)) {
     return targetPath;
+  }
+  if (reuseExisting) {
+    const existing = await fs.stat(targetPath).catch(() => null);
+    if (existing?.isFile()) {
+      await fs.rm(sourcePath, { force: true });
+      return targetPath;
+    }
   }
   const resolvedTarget = await resolveAvailableTargetPath(targetPath);
   try {

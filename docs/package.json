@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@astrojs/starlight": "^0.41.5",
-    "astro": "^7.1.6"
+    "astro": "^7.3.2"
   },
   "engines": {
     "node": ">=20"
