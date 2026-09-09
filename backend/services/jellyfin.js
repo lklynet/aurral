@@ -131,11 +131,20 @@ export class JellyfinClient {
 
   async addPlaylistItems(playlistId, itemIds, userId = this.userId) {
     const batchSize = 50;
-    for (let start = 0; start < itemIds.length; start += batchSize) {
+    let start = 0;
+    while (start < itemIds.length) {
+      const batch = [];
+      const seen = new Set();
+      // End the batch before a repeat; do not drop it or change its position.
+      while (start < itemIds.length && batch.length < batchSize && !seen.has(itemIds[start])) {
+        const id = itemIds[start++];
+        batch.push(id);
+        seen.add(id);
+      }
       await this.request(
         "POST",
         `/Playlists/${encodeURIComponent(playlistId)}/Items`,
-        { params: { userId, ids: itemIds.slice(start, start + batchSize).join(",") } },
+        { params: { userId, ids: batch.join(",") } },
       );
     }
   }
@@ -200,16 +209,31 @@ export class JellyfinClient {
     }
   }
 
+  async getPlaylistMetadata(playlistId, userId = this.userId) {
+    try {
+      return await this.request("GET", `/Items/${encodeURIComponent(playlistId)}`, {
+        params: { userId },
+      });
+    } catch (error) {
+      // Before Jellyfin 10.9, the user ID was part of this route's path.
+      if (error?.response?.status !== 405) throw error;
+      return this.request(
+        "GET",
+        `/Users/${encodeURIComponent(userId)}/Items/${encodeURIComponent(playlistId)}`,
+      );
+    }
+  }
+
   async updatePlaylist(playlistId, { name, itemIds, userId = this.userId }) {
     // The playlist metadata endpoint expects a logged-in user, not an API key.
     const endpoint = `/Items/${encodeURIComponent(playlistId)}`;
-    const playlist = await this.request("GET", endpoint, { params: { userId } });
+    const playlist = await this.getPlaylistMetadata(playlistId, userId);
     if (playlist?.Type !== "Playlist" || String(playlist.Id) !== String(playlistId)) {
       throw new Error("Jellyfin returned unexpected playlist metadata");
     }
     if (playlist.Name !== name) {
       await this.request("POST", endpoint, { data: { ...playlist, Name: name } });
-      const renamed = await this.request("GET", endpoint, { params: { userId } });
+      const renamed = await this.getPlaylistMetadata(playlistId, userId);
       if (renamed?.Name !== name) {
         throw new Error("Jellyfin playlist rename verification failed");
       }
