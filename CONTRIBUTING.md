@@ -63,3 +63,13 @@ Large changes are not automatically wrong, but they need a clear reason and a na
 Keep UI changes focused and explain any new interaction in the pull request.
 
 Before opening the pull request, run the checks that apply to your change and describe any manual testing in the pull request. Maintainers may ask for a smaller diff, more context, or a separate pull request.
+
+## Run browser smoke tests
+
+Start the candidate application before running the browser suite. Set `AURRAL_BASE_URL` to its URL, and set `AUTH_USER` and `AUTH_PASSWORD` to disposable test credentials.
+
+```sh
+AURRAL_BASE_URL=http://127.0.0.1:3017 AUTH_USER=... AUTH_PASSWORD=... npm run test:e2e
+```
+
+The command installs Chromium before running Playwright. Non-loopback URLs must use HTTPS.
