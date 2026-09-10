@@ -210,7 +210,7 @@ router.get("/listenbrainz/link", requireAuth, (req, res) => {
   res.json({ connected: Boolean(connection), displayName: connection?.displayName || null });
 });
 
-router.put("/listenbrainz/link", requireAuth, async (req, res) => {
+router.put("/listenbrainz/link", requireAuth, requireUserAccount, async (req, res) => {
   const token = String(req.body?.token || "").trim();
   if (!token) return res.status(400).json({ error: "Token is required" });
   let validation;
@@ -245,7 +245,7 @@ router.delete("/listenbrainz/link", requireAuth, (req, res) => {
   res.status(204).end();
 });
 
-router.put("/koito/link", requirePermission("accessSettings"), async (req, res) => {
+router.put("/koito/link", requirePermission("accessSettings"), requireUserAccount, async (req, res) => {
   const rawUrl = String(req.body?.url || userOps.getUserById(req.user.id)?.listenHistoryUrl || "").trim();
   const validation = validateExternalUrl(rawUrl);
   const token = String(req.body?.token || "").trim();

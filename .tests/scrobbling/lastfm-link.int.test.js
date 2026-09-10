@@ -42,7 +42,7 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("Last.fm link requires a real user identity", async () => {
+test("user-owned mutations require a real user identity", async () => {
   const apiKeyResponse = await fetch(
     `http://127.0.0.1:${server.port}/api/scrobbling/lastfm/link`,
     { headers: { "X-Api-Key": apiKey } },
@@ -59,15 +59,18 @@ test("Last.fm link requires a real user identity", async () => {
     0,
   );
 
-  for (const [path, body] of [
+  for (const [method, path, body] of [
     [
+      "POST",
       "/api/play-events",
       { trackId: "track-1", title: "Track", artist: "Artist" },
     ],
-    ["/api/library/favorites", { ids: ["artist:missing"], starred: true }],
+    ["POST", "/api/library/favorites", { ids: ["artist:missing"], starred: true }],
+    ["PUT", "/api/scrobbling/listenbrainz/link", {}],
+    ["PUT", "/api/scrobbling/koito/link", {}],
   ]) {
     const response = await fetch(`http://127.0.0.1:${server.port}${path}`, {
-      method: "POST",
+      method,
       headers: {
         "Content-Type": "application/json",
         "X-Api-Key": apiKey,

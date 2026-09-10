@@ -344,7 +344,7 @@ Every route in this section requires an administrator.
 
 ## Scrobbling and play events
 
-The instance API key has no user identity. Last.fm linking and local play-event
+The instance API key has no user identity. Account linking and local play-event
 recording require a user's login session.
 
 | Method | Path | Purpose |
@@ -354,9 +354,9 @@ recording require a user's login session.
 | `GET` | `/api/scrobbling/lastfm/link/callback` | Complete Last.fm linking |
 | `DELETE` | `/api/scrobbling/lastfm/link` | Unlink Last.fm |
 | `GET` | `/api/scrobbling/listenbrainz/link` | Read ListenBrainz linking |
-| `PUT` | `/api/scrobbling/listenbrainz/link` | Link ListenBrainz |
+| `PUT` | `/api/scrobbling/listenbrainz/link` | Link ListenBrainz; requires a user session |
 | `DELETE` | `/api/scrobbling/listenbrainz/link` | Unlink ListenBrainz |
-| `PUT` | `/api/scrobbling/koito/link` | Configure Koito |
+| `PUT` | `/api/scrobbling/koito/link` | Configure Koito; requires a user session |
 | `DELETE` | `/api/scrobbling/koito/link` | Unlink Koito |
 | `GET` | `/api/play-events` | Read local play history |
 | `POST` | `/api/play-events` | Record a local play event; requires a user session |

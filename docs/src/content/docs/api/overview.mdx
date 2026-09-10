@@ -44,8 +44,9 @@ have read-only access.
 
 The API key identifies the Aurral installation, not a user account. Use a
 user's login session for operations that create or update user-owned data, such
-as Last.fm account linking, local play events, and library favorites. Aurral
-returns `403` when an API key calls one of these operations.
+as Last.fm, ListenBrainz, or Koito account linking, local play events, and
+library favorites. Aurral returns `403` when an API key calls one of these
+operations.
 
 Keep the key in a secret store. If your integration needs read access, make
 only `GET` requests. After you rotate the key, the old key does not operate.
