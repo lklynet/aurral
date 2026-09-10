@@ -296,7 +296,8 @@ function toPlaylistSong(
   }
   const artist = protocolArtist(null, job.artistName || "Unknown Artist");
   const format = String(job.finalPath || "").split(".").pop()?.toLowerCase() || "mp3";
-  const id = idFor(kind === "flow" ? "flow-song" : "shared-song", `${playlist.id}:${job.id}`);
+  const songKind = kind === "flow" ? "flow-song" : "shared-song";
+  const id = idFor(songKind, `${playlist.id}:${job.id}`);
   const albumMbid = String(job.releaseGroupMbid || job.albumMbid || "").trim();
   return {
     id,
@@ -312,6 +313,8 @@ function toPlaylistSong(
     coverArt: albumMbid ? idFor("album", `release-group:${albumMbid}`) : undefined,
     contentType: `audio/${format}`,
     created: isoDate(job.createdAt),
+    // Stars on unmatched playlist songs stay keyed by the playlist song, not a canonical track.
+    starred: starredAt?.get(`${songKind}:${playlist.id}:${job.id}`),
     track: job.trackNumber || 0,
     discNumber: job.discNumber || 1,
     duration: seconds(job.durationMs),

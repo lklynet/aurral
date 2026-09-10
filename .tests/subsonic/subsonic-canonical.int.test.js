@@ -672,7 +672,13 @@ test("favorites can keep Flow tracks and respect the auto-keep setting", async (
     ).get("library", "Favorite Song")),
     false,
   );
-  assert.equal(responseJson(await request("getStarred")).starred.song[0].id, entry.id);
+  const starredEntry = responseJson(await request("getStarred")).starred.song[0];
+  assert.equal(starredEntry.id, entry.id);
+  assert.match(starredEntry.starred, /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(
+    responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry[0].starred,
+    /^\d{4}-\d{2}-\d{2}T/,
+  );
   assert.equal((await saveSettings({ favoriteAutoKeep: true })).status, 200);
   assert.equal(responseJson(await request("unstar", { id: entry.id })).status, "ok");
   assert.equal(responseJson(await request("star", { id: entry.id })).status, "ok");
@@ -682,6 +688,10 @@ test("favorites can keep Flow tracks and respect the auto-keep setting", async (
   assert.ok(autoKeepJob);
   downloadTracker.removeJob(autoKeepJob.id);
   assert.equal(responseJson(await request("unstar", { id: entry.id })).status, "ok");
+  assert.equal(
+    responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry[0].starred,
+    undefined,
+  );
 });
 
 test("favoriting a synced playlist track keeps it when the source removes it", async () => {
