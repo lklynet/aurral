@@ -1,5 +1,8 @@
 import express from "express";
-import { requireAuth } from "../middleware/requirePermission.js";
+import {
+  requireAuth,
+  requireUserAccount,
+} from "../middleware/requirePermission.js";
 import { getPlayHistory, recordPlayEvent } from "../services/playEventService.js";
 
 const router = express.Router();
@@ -9,7 +12,7 @@ router.get("/", (req, res) => {
   res.json({ events: getPlayHistory(req.user.id, req.query) });
 });
 
-router.post("/", (req, res) => {
+router.post("/", requireUserAccount, (req, res) => {
   try {
     res.status(201).json({ event: recordPlayEvent(req.user.id, req.body) });
   } catch (error) {

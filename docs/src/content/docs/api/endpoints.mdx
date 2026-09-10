@@ -86,7 +86,7 @@ instance API key for WebSocket connections.
 | `GET` | `/api/library/refresh/:jobId` | Read canonical library scan status |
 | `GET` | `/api/library/canonical` | Read a bounded canonical page; provide a supported `kind` and `pageSize` (1-100) |
 | `GET` | `/api/library/favorites` | Read the current user's library favorites |
-| `POST` | `/api/library/favorites` | Add or remove a library favorite |
+| `POST` | `/api/library/favorites` | Add or remove a library favorite; requires a user session |
 | `GET` | `/api/library/playback-queue` | Build a bounded playback queue page; optional `page` and `pageSize` (1-100) |
 | `GET` | `/api/library/stream/:songId` | Stream a library song |
 | `GET` | `/api/library/canonical-stream/:trackId` | Stream a canonical library track |
@@ -344,10 +344,13 @@ Every route in this section requires an administrator.
 
 ## Scrobbling and play events
 
+The instance API key has no user identity. Last.fm linking and local play-event
+recording require a user's login session.
+
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/scrobbling/status` | Read scrobbling provider status |
-| `GET` | `/api/scrobbling/lastfm/link` | Start or read Last.fm linking |
+| `GET` | `/api/scrobbling/lastfm/link` | Start or read Last.fm linking; requires a user session |
 | `GET` | `/api/scrobbling/lastfm/link/callback` | Complete Last.fm linking |
 | `DELETE` | `/api/scrobbling/lastfm/link` | Unlink Last.fm |
 | `GET` | `/api/scrobbling/listenbrainz/link` | Read ListenBrainz linking |
@@ -356,7 +359,7 @@ Every route in this section requires an administrator.
 | `PUT` | `/api/scrobbling/koito/link` | Configure Koito |
 | `DELETE` | `/api/scrobbling/koito/link` | Unlink Koito |
 | `GET` | `/api/play-events` | Read local play history |
-| `POST` | `/api/play-events` | Record a local play event |
+| `POST` | `/api/play-events` | Record a local play event; requires a user session |
 
 ## Onboarding
 

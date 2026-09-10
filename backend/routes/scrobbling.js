@@ -3,7 +3,11 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypt
 import { db } from "../config/db-sqlite.js";
 import { getLastfmApiKey, getLastfmApiSecret, lastfmGetSession, listenbrainzValidateToken } from "../services/apiClients/index.js";
 import { userOps } from "../db/helpers/index.js";
-import { requireAuth, requirePermission } from "../middleware/requirePermission.js";
+import {
+  requireAuth,
+  requirePermission,
+  requireUserAccount,
+} from "../middleware/requirePermission.js";
 import { validateExternalUrl } from "../middleware/urlValidator.js";
 import { getKoitoListenBrainzBaseUrl, normalizeKoitoBaseUrl } from "../services/koitoClient.js";
 import { getScrobbleEncryptionKey, scrobbleConnectionStore } from "../services/scrobbleConnectionStore.js";
@@ -124,7 +128,7 @@ router.get("/status", requireAuth, (req, res) => {
   res.json(status);
 });
 
-router.get("/lastfm/link", requireAuth, (req, res) => {
+router.get("/lastfm/link", requireAuth, requireUserAccount, (req, res) => {
   const configured = Boolean(getLastfmApiKey() && getLastfmApiSecret());
   if (!configured) {
     return res.status(400).json({ error: "Last.fm API key and secret are required first." });

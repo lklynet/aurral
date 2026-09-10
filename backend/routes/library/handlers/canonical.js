@@ -1,5 +1,8 @@
 import { noCache } from "../../../middleware/cache.js";
-import { requireAuth } from "../../../middleware/requirePermission.js";
+import {
+  requireAuth,
+  requireUserAccount,
+} from "../../../middleware/requirePermission.js";
 import { dbOps } from "../../../db/helpers/index.js";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
 import {
@@ -169,7 +172,7 @@ export function registerCanonical(router) {
     res.json({ ...starred, library: toPublicLibrary(library) });
   });
 
-  router.post("/favorites", requireAuth, noCache, (req, res) => {
+  router.post("/favorites", requireAuth, requireUserAccount, noCache, (req, res) => {
     const ids = Array.isArray(req.body?.ids)
       ? req.body.ids.map((id) => String(id || "").trim()).filter(Boolean)
       : [];
