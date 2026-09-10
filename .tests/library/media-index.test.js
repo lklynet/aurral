@@ -8,6 +8,7 @@ import { db } from "../../backend/config/db-sqlite.js";
 import {
   getCanonicalArtistProjection,
   getCanonicalLibrary,
+  getCanonicalLibraryLastModified,
   getCanonicalLibraryPage,
   invalidateCanonicalLibraryCache,
 } from "../../backend/services/libraryQueryService.js";
@@ -15,6 +16,7 @@ import {
   buildFallbackIdentityKey,
   getLibrarySnapshot,
   linkLibraryAlbumTrack,
+  removeLibraryAlbumTracksWithoutMedia,
   upsertLibraryAlbum,
   upsertLibraryArtist,
   upsertLibraryMediaFile,
@@ -1376,5 +1378,62 @@ test("a Lidarr rescan marks the final removed media file unavailable", async () 
   } finally {
     if (filePath) deleteIndexedFile("lidarr", filePath);
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("album/track relation changes move the canonical library timestamp", async () => {
+  const identityKey = `name:relation-timestamp-${process.pid}`;
+  const artist = upsertLibraryArtist({ identityKey, name: "Relation Timestamp", syncSearch: false });
+  const album = upsertLibraryAlbum({
+    identityKey: `${identityKey}:album`,
+    artistId: artist.id,
+    title: "Relation Timestamp Album",
+    syncSearch: false,
+  });
+  const tracks = ["kept", "dropped"].map((suffix) => upsertLibraryTrack({
+    identityKey: `${identityKey}:${suffix}`,
+    title: `Relation Timestamp ${suffix}`,
+    artistName: "Relation Timestamp",
+    syncSearch: false,
+  }));
+  const albumUpdatedAt = () =>
+    db.prepare("SELECT updated_at FROM library_albums WHERE id = ?").get(album.id)?.updated_at;
+  // Park the timestamp in the past so a bump is unambiguous at millisecond resolution.
+  const parkTimestamp = () =>
+    db.prepare("UPDATE library_albums SET updated_at = 1 WHERE id = ?").run(album.id);
+  const relationCount = () =>
+    db.prepare("SELECT COUNT(*) AS total FROM library_album_tracks WHERE album_id = ?")
+      .get(album.id).total;
+
+  try {
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: tracks[0].id, syncSearch: false });
+    upsertLibraryMediaFile({
+      trackId: tracks[0].id,
+      albumId: album.id,
+      source: "aurral",
+      path: `/tmp/relation-timestamp-${process.pid}.flac`,
+      available: true,
+    });
+
+    parkTimestamp();
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: tracks[1].id, syncSearch: false });
+    assert.equal(relationCount(), 2);
+    assert.ok(albumUpdatedAt() > 1, "linking a track must refresh the album timestamp");
+    assert.ok(getCanonicalLibraryLastModified() >= albumUpdatedAt());
+
+    parkTimestamp();
+    removeLibraryAlbumTracksWithoutMedia(album.id, "aurral", { syncSearch: false });
+    assert.equal(relationCount(), 1);
+    assert.ok(albumUpdatedAt() > 1, "dropping a track must refresh the album timestamp");
+    assert.ok(getCanonicalLibraryLastModified() >= albumUpdatedAt());
+  } finally {
+    for (const track of tracks) {
+      db.prepare("DELETE FROM library_media_files WHERE track_id = ?").run(track.id);
+      db.prepare("DELETE FROM library_album_tracks WHERE track_id = ?").run(track.id);
+      db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    }
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    invalidateCanonicalLibraryCache();
   }
 });
