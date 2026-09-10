@@ -368,8 +368,11 @@ const flowJobs = (flow, { includePending = false } = {}) =>
 
 const playlistCoverArt = (kind, playlistId) => idFor(kind, playlistId);
 
-export function getLibraryLastModified() {
-  return getCanonicalLibraryLastModified() ?? 0;
+// Stars are per-user library state, so a star change has to move the timestamp too or clients
+// keep the starred values they cached before it.
+export function getLibraryLastModified(user) {
+  const stars = user?.id ? Number(getStarsChangedStmt.get(user.id)?.changed_at) || 0 : 0;
+  return Math.max(getCanonicalLibraryLastModified() ?? 0, stars);
 }
 
 export function listArtists(user) {
@@ -517,6 +520,13 @@ const addStarStmt = db.prepare(
 );
 const removeStarStmt = db.prepare(
   "DELETE FROM subsonic_stars WHERE user_id = ? AND entity_kind = ? AND entity_key = ?",
+);
+const touchStarsStmt = db.prepare(
+  `INSERT INTO subsonic_star_changes (user_id, changed_at) VALUES (?, ?)
+   ON CONFLICT(user_id) DO UPDATE SET changed_at = excluded.changed_at`,
+);
+const getStarsChangedStmt = db.prepare(
+  "SELECT changed_at FROM subsonic_star_changes WHERE user_id = ?",
 );
 
 const isSameTrack = (left, right) => tracksShareMembership(left, right);
@@ -857,7 +867,11 @@ export function starMany(user, values, { skipCanonicalValidation = false } = {})
     }
   }
   const addStars = db.transaction(() => {
-    for (const target of parsed) addStarStmt.run(user.id, target.kind, target.key, Date.now());
+    let changed = false;
+    for (const target of parsed) {
+      changed = addStarStmt.run(user.id, target.kind, target.key, Date.now()).changes > 0 || changed;
+    }
+    if (changed) touchStarsStmt.run(user.id, Date.now());
   });
   addStars();
   return true;
@@ -877,15 +891,17 @@ export function unstarMany(user, values) {
   const rows = starredRows(user);
   const canonicalRows = canonicalStarRows(user, rows);
   const removeStars = db.transaction(() => {
+    let changed = false;
     rows.forEach((row, index) => {
       const canonical = canonicalRows[index];
       if (
         targetKeys.has(`${row.entity_kind}:${row.entity_key}`) ||
         targetKeys.has(`${canonical.entity_kind}:${canonical.entity_key}`)
       ) {
-        removeStarStmt.run(user.id, row.entity_kind, row.entity_key);
+        changed = removeStarStmt.run(user.id, row.entity_kind, row.entity_key).changes > 0 || changed;
       }
     });
+    if (changed) touchStarsStmt.run(user.id, Date.now());
   });
   removeStars();
   return true;

@@ -379,6 +379,27 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.equal(responseJson(missingArtist).error.code, 10);
 });
 
+test("getIndexes reports star changes through lastModified", async () => {
+  const artistId = responseJson(await request("getArtists")).artists.index[0].artist[0].id;
+  const indexesSince = async (ifModifiedSince) =>
+    responseJson(await request("getIndexes", { ifModifiedSince })).indexes;
+  const firstArtist = (indexes) => indexes.index[0].artist[0];
+
+  const beforeStar = responseJson(await request("getIndexes")).indexes.lastModified;
+  assert.equal(responseJson(await request("star", { artistId })).status, "ok");
+  const starred = await indexesSince(beforeStar);
+  assert.ok(starred.lastModified > beforeStar);
+  assert.match(firstArtist(starred).starred, /^\d{4}-\d{2}-\d{2}T/);
+
+  // Unstarring deletes the row, so the timestamp must still move forward, never back.
+  assert.equal(responseJson(await request("unstar", { artistId })).status, "ok");
+  const unstarred = await indexesSince(starred.lastModified);
+  assert.ok(unstarred.lastModified > starred.lastModified);
+  assert.equal(firstArtist(unstarred).starred, undefined);
+
+  assert.equal((await indexesSince(unstarred.lastModified)).index, undefined);
+});
+
 test("emits OpenSubsonic XML envelopes and elements", async () => {
   const userXml = await request("getUser", { f: "xml" });
   assert.match(

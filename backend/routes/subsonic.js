@@ -310,7 +310,7 @@ async function handleSubsonicRequest(req, res) {
     });
   }
   if (method === "getindexes") {
-    const lastModified = getLibraryLastModified();
+    const lastModified = getLibraryLastModified(user);
     const ifModifiedSince = Number.parseInt(getParameter(req, "ifModifiedSince"), 10);
     const unchanged = Number.isFinite(ifModifiedSince) && ifModifiedSince >= lastModified;
     return sendResponse(res, format, "ok", null, {
