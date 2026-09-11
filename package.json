@@ -18,6 +18,7 @@
     "lint:backend": "eslint backend lib --no-config-lookup --rule 'no-unused-vars:[error,{\"argsIgnorePattern\":\"^_\",\"caughtErrors\":\"none\",\"varsIgnorePattern\":\"^_\"}]'",
     "test": "node --test --import ./.tests/setup-env.js --test-concurrency=4 $(find .tests -name '*.test.js' -not -name '*.int.test.js' -print)",
     "test:integration": "node --test --import ./.tests/setup-env.js --test-concurrency=1 $(find .tests -name '*.int.test.js' -print)",
+    "test:e2e": "playwright install chromium && playwright test",
     "perf:library": "node scripts/benchmark-library.mjs",
     "dev": "node scripts/dev.mjs",
     "wait-and-dev:frontend": "while ! curl -s http://localhost:3001/api/health; do sleep 1; done && npm run dev --workspace frontend",
@@ -49,5 +50,8 @@
     "better-sqlite3@12.10.0": true,
     "fsevents@2.3.3": true,
     "sharp@0.34.5": true
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
   }
 }

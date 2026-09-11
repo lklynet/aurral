@@ -292,6 +292,7 @@ export class JellyfinPlaybackDestination {
         const updated = await this.client.updatePlaylist(playlistId, {
           name: snapshot.displayName,
           itemIds,
+          userId: jellyfinUserId,
         });
         playlistId = itemId(updated) || playlistId;
       } catch (error) {
