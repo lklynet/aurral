@@ -641,27 +641,34 @@ export function resolveCanonicalTracks(descriptors) {
     titles: present.map((track) => track.trackName),
   }));
   const byTitle = new Map();
+  const byMbid = new Map();
   for (const track of library.tracks) {
     const title = String(track.title || "").trim().toLowerCase();
     if (!byTitle.has(title)) byTitle.set(title, []);
     byTitle.get(title).push(track);
+    if (track.mbid && !byMbid.has(track.mbid)) byMbid.set(track.mbid, track);
   }
+  const resolveFile = (entry) => {
+    const album = findAlbumForTrack(library, entry);
+    return { album, file: firstFile(entry, album?.id, album?.managedBy) };
+  };
+  const playable = (entry) => {
+    const { file } = resolveFile(entry);
+    return Boolean(file?.available && file.path);
+  };
   return items.map((track) => {
     if (!track) return null;
+    // A shared recording MBID identifies the track even when the titles differ (remaster, typo).
+    const byId = track.trackMbid ? byMbid.get(track.trackMbid) : null;
     const candidates = byTitle.get(track.trackName.toLowerCase()) || [];
-    // Prefer the candidate sharing the recording MBID, then fall back to the name match.
-    const ordered = [
-      ...candidates.filter((entry) => track.trackMbid && entry.mbid === track.trackMbid),
-      ...candidates.filter((entry) => !track.trackMbid || entry.mbid !== track.trackMbid),
-    ];
-    for (const entry of ordered) {
-      const album = findAlbumForTrack(library, entry);
-      const file = firstFile(entry, album?.id, album?.managedBy);
-      if (file?.available && file.path && isSameTrack(track, trackFromCanonical(library, entry))) {
-        return { file, library, track: entry, albumName: album?.title };
-      }
-    }
-    return null;
+    const match = byId && playable(byId)
+      ? byId
+      : candidates.find(
+        (entry) => playable(entry) && isSameTrack(track, trackFromCanonical(library, entry)),
+      );
+    if (!match) return null;
+    const { album, file } = resolveFile(match);
+    return { file, library, track: match, albumName: album?.title };
   });
 }
 
