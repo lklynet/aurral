@@ -471,6 +471,8 @@ db.exec(`
     ON library_media_files (album_id, source, available);
   CREATE INDEX IF NOT EXISTS idx_library_media_files_track_album_source_available
     ON library_media_files (track_id, album_id, source, available);
+  CREATE INDEX IF NOT EXISTS idx_library_media_files_track_album_source_available_created
+    ON library_media_files (track_id, album_id, source, available, created_at DESC);
 `);
 
 const duplicateLidarrArtistIds = db

@@ -965,7 +965,7 @@ const recentMediaOrder = (kind, sourceFilter, availableOnly, direction) => {
     return `COALESCE((
       SELECT MAX(page_media.created_at)
       FROM library_album_tracks AS page_album_track
-      JOIN library_media_files AS page_media INDEXED BY idx_library_media_files_track_album_source_available
+      JOIN library_media_files AS page_media INDEXED BY idx_library_media_files_track_album_source_available_created
         ON page_media.track_id = page_album_track.track_id
       WHERE page_album_track.album_id = album.id
         AND ${albumMediaCondition("page_media", "page_album_track")}${mediaFilter}
@@ -973,7 +973,7 @@ const recentMediaOrder = (kind, sourceFilter, availableOnly, direction) => {
   }
   return `COALESCE((
     SELECT MAX(page_media.created_at)
-    FROM library_media_files AS page_media INDEXED BY idx_library_media_files_track_album_source_available
+    FROM library_media_files AS page_media INDEXED BY idx_library_media_files_track_album_source_available_created
     WHERE page_media.track_id = track.id${mediaFilter}
   ), 0) ${orderDirection}, track.title COLLATE NOCASE ${direction === "desc" ? "DESC" : "ASC"}`;
 };
