@@ -9,6 +9,7 @@ import {
   invalidateLibraryManagementCache,
   onLibraryManagementChange,
 } from "./libraryManagementStore.js";
+import { selectCanonicalFile } from "./canonicalFileSelector.js";
 
 const SOURCES = new Set(["aurral", "lidarr"]);
 const libraryCache = new Map();
@@ -101,13 +102,23 @@ function buildLibraryFromRows(rows) {
   const tracks = new Map();
 
   for (const row of rows) {
+    const artistMetadata = parseJson(row.artist_metadata_json);
+    const albumMetadata = parseJson(row.album_metadata_json);
+    const trackMetadata = parseJson(row.track_metadata_json);
     const artist = createEntity(artists, row.artist_id, {
       id: row.artist_id,
+      canonicalId: String(row.artist_id),
       identityKey: row.artist_identity_key,
       mbid: row.artist_mbid,
       name: row.artist_name,
       sortName: row.artist_sort_name,
-      metadata: parseJson(row.artist_metadata_json),
+      metadata: artistMetadata,
+      providerId: artistMetadata?.id ?? null,
+      monitored: artistMetadata?.monitored === true,
+      monitorOption:
+        artistMetadata?.monitor ||
+        artistMetadata?.addOptions?.monitor ||
+        "none",
       albumIds: [],
       sources: [],
       available: false,
@@ -116,6 +127,7 @@ function buildLibraryFromRows(rows) {
     artist.monitorMode = artistManagement.get(row.artist_id)?.monitorMode ?? null;
     const album = createEntity(albums, row.album_id, {
       id: row.album_id,
+      canonicalId: String(row.album_id),
       identityKey: row.album_identity_key,
       mbid: row.album_mbid,
       releaseGroupMbid: row.album_release_group_mbid,
@@ -123,7 +135,13 @@ function buildLibraryFromRows(rows) {
       title: row.album_title,
       albumArtist: row.album_artist,
       releaseDate: row.album_release_date,
-      metadata: parseJson(row.album_metadata_json),
+      metadata: albumMetadata,
+      providerId: albumMetadata?.id ?? null,
+      monitored: albumMetadata?.monitored === true,
+      monitorOption:
+        albumMetadata?.monitor ||
+        albumMetadata?.addOptions?.monitor ||
+        "none",
       trackIds: [],
       sources: [],
       available: false,
@@ -132,16 +150,21 @@ function buildLibraryFromRows(rows) {
     album.monitorMode = albumManagement.get(row.album_id)?.monitorMode ?? null;
     const track = createEntity(tracks, row.track_id, {
       id: row.track_id,
+      canonicalId: String(row.track_id),
       identityKey: row.track_identity_key,
       mbid: row.track_mbid,
       title: row.track_title,
       artistName: row.track_artist_name,
-      metadata: parseJson(row.track_metadata_json),
+      metadata: trackMetadata,
+      providerId: trackMetadata?.id ?? null,
       albums: [],
       files: [],
       sources: [],
       available: false,
     });
+    track.managedBy = album.managedBy ?? null;
+    track.monitorMode = album.monitorMode ?? null;
+    track.monitored = album.monitored;
 
     if (!artist.albumIds.includes(album.id)) artist.albumIds.push(album.id);
     if (!album.trackIds.includes(track.id)) album.trackIds.push(track.id);
@@ -187,9 +210,12 @@ function buildLibraryFromRows(rows) {
 
   for (const entity of [...artists.values(), ...albums.values(), ...tracks.values()]) {
     entity.sources.sort();
+    entity.source = entity.sources.length === 1 ? entity.sources[0] : null;
   }
   for (const track of tracks.values()) {
-    track.files.sort((left, right) => left.path.localeCompare(right.path));
+    track.files.sort((left, right) =>
+      String(left.path || "").localeCompare(String(right.path || "")),
+    );
   }
 
   return {
@@ -426,6 +452,8 @@ export function* iterateCanonicalArtistProjection({ pageSize = 100 } = {}) {
 const canonicalDateAlbumProjection = (row) => {
   const metadata = parseJson(row.metadata_json) || {};
   const artistMetadata = parseJson(row.artist_metadata_json) || {};
+  const sources = parseSources(row.sources);
+  const management = getManagedByMap("album").get(Number(row.id)) || null;
   const trackCount = Number(row.track_count || 0);
   const availableTrackCount = Number(row.available_track_count || 0);
   return {
@@ -440,11 +468,17 @@ const canonicalDateAlbumProjection = (row) => {
       artistMetadata.foreignArtistId || row.artist_mbid || row.artist_identity_key,
     mbid: row.mbid || row.release_group_mbid || null,
     releaseGroupMbid: row.release_group_mbid || null,
-    foreignAlbumId: row.mbid || row.release_group_mbid || row.identity_key,
+    foreignAlbumId:
+      metadata.foreignAlbumId || row.mbid || row.release_group_mbid || row.identity_key,
     albumName: row.title,
     title: row.title,
     releaseDate: row.release_date,
     monitored: metadata.monitored === true,
+    managedBy: management?.managedBy ?? null,
+    monitorMode: management?.monitorMode ?? null,
+    source: sources.length === 1 ? sources[0] : null,
+    sources,
+    available: Boolean(row.available),
     albumType: metadata.albumType || metadata.releaseType || null,
     trackCount,
     availableTrackCount,
@@ -524,7 +558,9 @@ export function getCanonicalAlbumsByReleaseDate({
       album.*,
       COUNT(DISTINCT album_track.track_id) AS track_count,
       COUNT(DISTINCT CASE WHEN media.available = 1 THEN album_track.track_id END) AS available_track_count,
-      COALESCE(SUM(CASE WHEN media.available = 1 THEN media.size ELSE 0 END), 0) AS size_on_disk
+      COALESCE(SUM(CASE WHEN media.available = 1 THEN media.size ELSE 0 END), 0) AS size_on_disk,
+      GROUP_CONCAT(DISTINCT media.source) AS sources,
+      MAX(media.available) AS available
     FROM date_albums AS album
     LEFT JOIN library_album_tracks AS album_track ON album_track.album_id = album.id
     LEFT JOIN library_media_files AS media
@@ -541,35 +577,36 @@ export function getCanonicalTrackPath(albumReference, trackReference) {
   const trackValue = String(trackReference ?? "").trim();
   if (!albumValue || !trackValue) return null;
 
-  const album = /^[1-9]\d*$/.test(albumValue)
-    ? db.prepare("SELECT id FROM library_albums WHERE id = ?").get(albumValue)
-    : db.prepare(
-      `SELECT id FROM library_albums
-       WHERE identity_key = ? OR mbid = ? OR release_group_mbid = ?
+  const album = db.prepare(
+    `SELECT id FROM library_albums
+       WHERE id = ? OR identity_key = ? OR mbid = ? OR release_group_mbid = ? OR
+         (json_valid(metadata_json) AND CAST(json_extract(metadata_json, '$.id') AS TEXT) = ?)
        LIMIT 1`,
-    ).get(albumValue, albumValue, albumValue);
-  const track = /^[1-9]\d*$/.test(trackValue)
-    ? db.prepare("SELECT id FROM library_tracks WHERE id = ?").get(trackValue)
-    : db.prepare(
-      `SELECT id FROM library_tracks
-       WHERE identity_key = ? OR mbid = ?
+  ).get(albumValue, albumValue, albumValue, albumValue, albumValue);
+  const track = db.prepare(
+    `SELECT id FROM library_tracks
+       WHERE id = ? OR identity_key = ? OR mbid = ? OR
+         (json_valid(metadata_json) AND CAST(json_extract(metadata_json, '$.id') AS TEXT) = ?)
        LIMIT 1`,
-    ).get(trackValue, trackValue);
+  ).get(trackValue, trackValue, trackValue, trackValue);
   if (!album || !track) return null;
 
-  return db.prepare(
-    `SELECT media.path
+  const files = db.prepare(
+    `SELECT media.id,
+            media.album_id AS albumId,
+            media.source,
+            media.path,
+            media.available
      FROM library_media_files AS media
      JOIN library_album_tracks AS album_track
        ON album_track.album_id = ? AND album_track.track_id = media.track_id
      WHERE media.track_id = ?
        AND media.available = 1
        AND (media.album_id = ? OR media.album_id IS NULL)
-     ORDER BY media.album_id = ? DESC,
-              media.source = 'lidarr' DESC,
-              media.path COLLATE NOCASE
-     LIMIT 1`,
-  ).get(album.id, track.id, album.id, album.id)?.path || null;
+     ORDER BY media.path COLLATE NOCASE`,
+  ).all(album.id, track.id, album.id);
+  const managedBy = getManagedByMap("album").get(Number(album.id))?.managedBy || null;
+  return selectCanonicalFile(files, album.id, managedBy)?.path || null;
 }
 
 export function getCanonicalTrack({
@@ -585,11 +622,17 @@ export function getCanonicalTrack({
   const conditions = [];
   const parameters = [];
   if (Number.isSafeInteger(numericId) && numericId > 0) {
-    conditions.push("track.id = ?");
-    parameters.push(numericId);
+    conditions.push(`(
+      track.id = ? OR
+      (json_valid(track.metadata_json) AND CAST(json_extract(track.metadata_json, '$.id') AS TEXT) = ?)
+    )`);
+    parameters.push(numericId, reference);
   } else {
-    conditions.push("(track.identity_key = ? OR track.mbid = ?)");
-    parameters.push(reference, reference);
+    conditions.push(`(
+      track.identity_key = ? OR track.mbid = ? OR
+      (json_valid(track.metadata_json) AND CAST(json_extract(track.metadata_json, '$.id') AS TEXT) = ?)
+    )`);
+    parameters.push(reference, reference, reference);
   }
   if (albumId !== null && albumId !== undefined && String(albumId).trim()) {
     conditions.push("album.id = ?");
@@ -832,10 +875,16 @@ export function getCanonicalLibraryForAlbumReferences({
 } = {}) {
   const references = normalizeLookupValues(requestedReferences);
   if (!references.length) return { artists: [], albums: [], tracks: [] };
+  const columns = ["identity_key", "mbid", "release_group_mbid"];
+  if (references.some((reference) => /^\d+$/.test(reference))) {
+    columns.push(
+      "CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.id') END AS TEXT)",
+    );
+  }
   const ids = resolveCanonicalReferenceIds(
     "library_albums",
     references,
-    ["identity_key", "mbid", "release_group_mbid"],
+    columns,
   );
   if (!ids.length) return { artists: [], albums: [], tracks: [] };
   const sourceFilter = normalizeSource(source);
@@ -1151,20 +1200,27 @@ export function getCanonicalArtistPage({
          ${albumFilter}
        GROUP BY artist.id`,
     ).all(...ids, ...(sourceFilter ? [sourceFilter] : []));
-    const byId = new Map(rows.map((row) => [row.artist_id, {
-      id: row.artist_id,
-      identityKey: row.artist_identity_key,
-      mbid: row.artist_mbid,
-      name: row.artist_name,
-      sortName: row.artist_sort_name,
-      metadata: parseJson(row.artist_metadata_json),
-      albumIds: [],
-      albumCount: Number(row.album_count || 0),
-      managedBy: artistManagement.get(row.artist_id)?.managedBy ?? null,
-      monitorMode: artistManagement.get(row.artist_id)?.monitorMode ?? null,
-      sources: [],
-      available: availableOnly === true,
-    }]));
+    const byId = new Map(rows.map((row) => {
+      const metadata = parseJson(row.artist_metadata_json);
+      return [row.artist_id, {
+        id: row.artist_id,
+        canonicalId: String(row.artist_id),
+        identityKey: row.artist_identity_key,
+        mbid: row.artist_mbid,
+        name: row.artist_name,
+        sortName: row.artist_sort_name,
+        metadata,
+        providerId: metadata?.id ?? null,
+        albumIds: [],
+        albumCount: Number(row.album_count || 0),
+        managedBy: artistManagement.get(row.artist_id)?.managedBy ?? null,
+        monitorMode: artistManagement.get(row.artist_id)?.monitorMode ?? null,
+        sources: [],
+        source: null,
+        monitored: metadata?.monitored === true,
+        available: availableOnly === true,
+      }];
+    }));
     return { artists: ids.map((id) => byId.get(id)).filter(Boolean), albums: [], tracks: [] };
   }
 
@@ -1202,22 +1258,30 @@ export function getCanonicalArtistPage({
      ORDER BY coalesce(artist.sort_name, artist.name) COLLATE NOCASE,
        artist.name COLLATE NOCASE`,
   ).all(...aggregateParameters);
-  const byId = new Map(rows.map((row) => [row.artist_id, {
-    id: row.artist_id,
-    identityKey: row.artist_identity_key,
-    mbid: row.artist_mbid,
-    name: row.artist_name,
-    sortName: row.artist_sort_name,
-    metadata: parseJson(row.artist_metadata_json),
-    albumIds: [],
-    albumCount: Number(row.album_count || 0),
-    trackCount: Number(row.track_count || 0),
-    sizeOnDisk: Number(row.size_on_disk || 0),
-    managedBy: artistManagement.get(row.artist_id)?.managedBy ?? null,
-    monitorMode: artistManagement.get(row.artist_id)?.monitorMode ?? null,
-    sources: parseSources(row.sources),
-    available: Boolean(row.available),
-  }]));
+  const byId = new Map(rows.map((row) => {
+    const metadata = parseJson(row.artist_metadata_json);
+    const sources = parseSources(row.sources);
+    return [row.artist_id, {
+      id: row.artist_id,
+      canonicalId: String(row.artist_id),
+      identityKey: row.artist_identity_key,
+      mbid: row.artist_mbid,
+      name: row.artist_name,
+      sortName: row.artist_sort_name,
+      metadata,
+      providerId: metadata?.id ?? null,
+      albumIds: [],
+      albumCount: Number(row.album_count || 0),
+      trackCount: Number(row.track_count || 0),
+      sizeOnDisk: Number(row.size_on_disk || 0),
+      managedBy: artistManagement.get(row.artist_id)?.managedBy ?? null,
+      monitorMode: artistManagement.get(row.artist_id)?.monitorMode ?? null,
+      sources,
+      source: sources.length === 1 ? sources[0] : null,
+      monitored: metadata?.monitored === true,
+      available: Boolean(row.available),
+    }];
+  }));
   return { artists: ids.map((id) => byId.get(id)).filter(Boolean), albums: [], tracks: [] };
 }
 

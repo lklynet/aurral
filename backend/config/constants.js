@@ -115,6 +115,8 @@ export const defaultData = {
         url: "",
         externalUrl: "",
         apiKey: "",
+        rootFolderPath: null,
+        rootFolderPaths: [],
         qualityProfileId: null,
         metadataProfileId: null,
         tagId: null,

@@ -7,6 +7,7 @@ import {
   findCanonicalArtist,
   findCanonicalTracksForAlbum,
 } from "../../backend/services/canonicalLibraryReadAdapter.js";
+import { selectCanonicalFile } from "../../backend/services/canonicalFileSelector.js";
 
 const library = {
   artists: [
@@ -111,4 +112,13 @@ test("canonical read model keeps flow-like records out when the index excludes t
   });
 
   assert.deepEqual(result, { artists: [], albums: [], tracks: [] });
+});
+
+test("canonical file reads prefer the album manager before Lidarr", () => {
+  const file = selectCanonicalFile([
+    { albumId: 2, source: "lidarr", path: "/music/lidarr.flac", available: true },
+    { albumId: 2, source: "aurral", path: "/music/aurral.flac", available: true },
+  ], 2, "aurral");
+
+  assert.equal(file.path, "/music/aurral.flac");
 });

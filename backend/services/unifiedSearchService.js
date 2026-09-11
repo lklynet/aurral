@@ -5,7 +5,9 @@ import {
 } from "./providers/brainzmashRanking.js";
 import { getMetadataBaseUrl } from "./providers/brainzmashProvider.js";
 import { searchAlbums, searchArtists } from "./providers/brainzmashProvider.js";
-import { flowPlaylistConfig } from "./weeklyFlow/weeklyFlowPlaylistConfig.js";import { getCachedArtists } from "./libraryManager.js";
+import { flowPlaylistConfig } from "./weeklyFlow/weeklyFlowPlaylistConfig.js";
+import { getCachedArtists } from "./libraryManager.js";
+import { getCanonicalSearchPage } from "./libraryQueryService.js";
 import { getDiscoveryCache } from "./discovery/index.js";
 import { compareSearchResults, getLocalMatchThreshold } from "./searchRanking.js";
 import { parsePositiveInt } from "./searchService.js";
@@ -631,13 +633,47 @@ export function searchLocalFromData(
 async function searchLocalLibrary(query, limit, user) {
   try {
     const context = getSearchContext(user);
+    const canonical = getCanonicalSearchPage({
+      source: "all",
+      availableOnly: true,
+      query,
+      artistLimit: limit,
+      albumLimit: 0,
+      songLimit: limit,
+    });
+    const albums = new Map(
+      [
+        ...(canonical.albums?.albums || []),
+        ...(canonical.tracks?.albums || []),
+      ].map((album) => [album.id, album]),
+    );
+    const artists = [
+      ...context.artists,
+      ...(canonical.artists || []),
+      ...(canonical.tracks?.artists || []),
+    ];
+    const tracks = (canonical.tracks?.tracks || []).map((track) => {
+      const album = track.albums
+        ?.map((entry) => albums.get(entry.albumId))
+        .find(Boolean);
+      const artist = artists.find((entry) => entry.id === album?.artistId);
+      return {
+        id: track.id,
+        title: track.title,
+        artistName: artist?.name || track.artistName,
+        albumTitle: album?.title || null,
+        streamPath: album
+          ? `/library/canonical-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`
+          : null,
+      };
+    });
     return {
       context,
       library: searchLocalFromData(
         query,
         {
-          artists: context.artists,
-          tracks: context.tracks,
+          artists,
+          tracks: [...context.tracks, ...tracks],
         },
         limit,
       ),

@@ -31,8 +31,8 @@ media for the track is available, it also removes the canonical track and any
 empty album or artist record. If one of several files cannot be deleted, Aurral
 keeps the track until a later deletion succeeds.
 
-Navidrome remains optional. Lidarr remains the library provider when it is
-configured.
+Navidrome remains optional. Lidarr is optional. When it is configured, Aurral
+uses it for managed library changes and explicit provider actions.
 
 ## Aurral-owned storage
 
@@ -46,14 +46,15 @@ promote a Flow track when **Favorite Flow tracks** is enabled in **Settings > Sy
 ## When new files appear
 
 Aurral keeps the canonical library in its own database. It scans the Aurral
-root and the root folders reported by Lidarr. The scan records the provider
+root and the saved Lidarr root folders locally. The scan records provider
 identities, album and track metadata, and the readable media files that belong
-to them.
+to them. A manual or watcher scan does not request Lidarr artist, album, track,
+or track-file data.
 
-When Lidarr imports a download, or a file changes in the Aurral root, Aurral's
-filesystem watcher queues a scan. The watcher waits briefly for a file move or
-rename to finish and ignores `_playlists`, `_staging`, `_fallback`, hidden
-folders, `_flows`, and `aurral-weekly-flow`.
+When a file changes in a watched Aurral or Lidarr root, Aurral's filesystem
+watcher queues a local scan. The watcher waits briefly for a file move or rename
+to finish and ignores `_playlists`, `_staging`, `_fallback`, hidden folders,
+`_flows`, and `aurral-weekly-flow`.
 
 When the scan completes, an open Library page reloads its canonical records
 automatically. The home page and **Newest** album or track sorting use the time
@@ -67,10 +68,13 @@ scans. When files change, the filesystem watcher queues a scan; use the
 starts a scan, waits for it to finish, and reloads the page from the updated
 canonical records.
 
-If Discover says an album is in Lidarr but Library does not show it, check the
-Lidarr path mapping first. Aurral must be able to read the path Lidarr reports.
-Then use **Refresh** in Library. See [Filesystem and mounts](/getting-started/storage/)
+When Lidarr is configured, check the Lidarr path mapping if Discover says an
+album is in Lidarr but Library does not show it. Aurral must be able to read the
+saved root path. Then use **Refresh** in Library. See [Filesystem and mounts](/getting-started/storage/)
 and [Lidarr library access](/integrations/lidarr/#library-access-check).
+
+When you disable Lidarr, Aurral keeps indexed Lidarr media visible and stops
+watching and scanning those roots until you enable Lidarr again.
 
 Use the search field in the toolbar to filter the current section.
 

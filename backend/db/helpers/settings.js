@@ -78,6 +78,12 @@ let settingsCache = null;
 let settingsCacheTime = 0;
 const SETTINGS_CACHE_TTL = 60000;
 
+const normalizeLidarrRootFolderPaths = (paths) => [...new Set(
+  (Array.isArray(paths) ? paths : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean),
+)];
+
 export const dbOps = {
   getJSONSetting(key) {
     return dbHelpers.parseJSON(getSettingStmt.get(key)?.value) || null;
@@ -96,6 +102,26 @@ export const dbOps = {
       `user:${parseInt(userId, 10)}:discoverLayout`,
       layout,
     );
+  },
+
+  setLidarrRootFolderPaths(paths) {
+    const settings = dbOps.getSettings();
+    const normalized = normalizeLidarrRootFolderPaths(paths);
+    const currentIntegrations = settings.integrations || {};
+    const currentLidarr = currentIntegrations.lidarr || {};
+    if (JSON.stringify(currentLidarr.rootFolderPaths || []) === JSON.stringify(normalized)) {
+      return normalized;
+    }
+    dbOps.updateSettings({
+      integrations: {
+        ...currentIntegrations,
+        lidarr: {
+          ...currentLidarr,
+          rootFolderPaths: normalized,
+        },
+      },
+    });
+    return normalized;
   },
 
   getSettings() {

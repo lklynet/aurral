@@ -1,13 +1,14 @@
 import path from "node:path";
 import { db } from "../config/db-sqlite.js";
+import { dbOps } from "../db/helpers/index.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
-import { scanMusicRoot } from "./libraryFileScanner.js";
+import { scanMusicRoot, scanMusicRoots } from "./libraryFileScanner.js";
 import { upsertLibraryArtist } from "./libraryMediaStore.js";
-import { indexLidarrLibrary } from "./libraryLidarrIndexer.js";
 import { rebuildLibrarySearchIndex } from "./librarySearchIndex.js";
 import { rebuildCanonicalGenreStats } from "./libraryQueryService.js";
 import { musicbrainzGetArtistNameByMbid } from "./apiClients/index.js";
 import { logger } from "./logger.js";
+import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
 
 function getAurralJobMetadataByPath() {
   const rows = db
@@ -59,10 +60,28 @@ async function canonicalizeAurralArtistNames(jobMetadataByPath) {
   }
 }
 
+function configuredLidarrRoots(lidarrClient, override) {
+  if (Array.isArray(override)) return override;
+  const fromClient = lidarrClient?.getConfiguredRootFolderPaths?.();
+  if (Array.isArray(fromClient) && fromClient.length > 0) return fromClient;
+  const settings = dbOps.getSettings();
+  const lidarr = settings.integrations?.lidarr || {};
+  return [
+    ...(Array.isArray(lidarr.rootFolderPaths) ? lidarr.rootFolderPaths : []),
+    lidarr.rootFolderPath,
+  ].filter(Boolean);
+}
+
+function isLidarrScanEnabled(lidarrClient) {
+  if (typeof lidarrClient?.isEnabled === "function") return lidarrClient.isEnabled();
+  return dbOps.getSettings().integrations?.lidarr?.enabled !== false;
+}
+
 export async function scanConfiguredLibrary({
   musicRoot = resolvePlaylistRoot(),
   lidarrClient,
   includeLidarr = true,
+  lidarrRoots = null,
 } = {}) {
   const jobMetadataByPath = getAurralJobMetadataByPath();
   let local;
@@ -76,12 +95,18 @@ export async function scanConfiguredLibrary({
       syncSearch: false,
     });
     await canonicalizeAurralArtistNames(jobMetadataByPath);
-    if (includeLidarr) {
+    const configuredRoots = configuredLidarrRoots(lidarrClient, lidarrRoots)
+      .map((root) => resolveLocalPath(root, getPathMappings("lidarr")));
+    if (includeLidarr && isLidarrScanEnabled(lidarrClient) && configuredRoots.length > 0) {
       try {
-        lidarr = await indexLidarrLibrary({ client: lidarrClient, syncSearch: false });
+        lidarr = await scanMusicRoots({
+          rootPaths: configuredRoots,
+          source: "lidarr",
+          syncSearch: false,
+        });
       } catch (error) {
         scanFailed = true;
-        logger.error("library", "Lidarr library indexing failed", {
+        logger.error("library", "Lidarr root scan failed", {
           message: error?.message || String(error),
         });
         lidarr = {
