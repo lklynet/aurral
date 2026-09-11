@@ -529,6 +529,14 @@ const getStarsChangedStmt = db.prepare(
   "SELECT changed_at FROM subsonic_star_changes WHERE user_id = ?",
 );
 
+// Clients compare lastModified for equality/greater-than, so a star change must land strictly after
+// both the previous star timestamp and the library timestamp even on a fast clock.
+const touchStars = (userId) => {
+  const previous = Number(getStarsChangedStmt.get(userId)?.changed_at) || 0;
+  const floor = Math.max(previous, getCanonicalLibraryLastModified() ?? 0);
+  touchStarsStmt.run(userId, Math.max(Date.now(), floor + 1));
+};
+
 const isSameTrack = (left, right) => tracksShareMembership(left, right);
 
 const trackFromJob = (job) => normalizeSharedTrack({
@@ -871,7 +879,7 @@ export function starMany(user, values, { skipCanonicalValidation = false } = {})
     for (const target of parsed) {
       changed = addStarStmt.run(user.id, target.kind, target.key, Date.now()).changes > 0 || changed;
     }
-    if (changed) touchStarsStmt.run(user.id, Date.now());
+    if (changed) touchStars(user.id);
   });
   addStars();
   return true;
@@ -901,7 +909,7 @@ export function unstarMany(user, values) {
         changed = removeStarStmt.run(user.id, row.entity_kind, row.entity_key).changes > 0 || changed;
       }
     });
-    if (changed) touchStarsStmt.run(user.id, Date.now());
+    if (changed) touchStars(user.id);
   });
   removeStars();
   return true;
