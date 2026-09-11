@@ -56,9 +56,27 @@ const normalizeMbid = (value) => text(first(value)) || null;
 
 const normalizeMetadata = (metadata) => metadata?.common || {};
 
+const parseNativeAurralIdentityComment = (metadata) => {
+  for (const tags of Object.values(metadata?.native || {})) {
+    if (!Array.isArray(tags)) continue;
+
+    for (const tag of tags) {
+      const id = String(tag?.id || "").toLowerCase();
+      if (id !== "txxx:comment" && id !== "comm") continue;
+
+      const embedded = parseAurralIdentityComment(tag?.value);
+      if (embedded) return embedded;
+    }
+  }
+
+  return null;
+};
+
 const applyMetadataEnrichment = (metadata, enrichment = null) => {
   const common = { ...normalizeMetadata(metadata) };
-  const embedded = parseAurralIdentityComment(common.comment);
+  const embedded =
+    parseAurralIdentityComment(common.comment) ||
+    parseNativeAurralIdentityComment(metadata);
   if ((!enrichment || typeof enrichment !== "object") && !embedded) return metadata;
   const trusted = { ...(embedded || {}), ...(enrichment || {}) };
   const fallbackFields = {

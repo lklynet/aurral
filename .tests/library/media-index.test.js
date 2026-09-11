@@ -506,6 +506,60 @@ test("scanMusicRoot reads Aurral identity markers from portable comments", async
   }
 });
 
+test("scanMusicRoot reads Aurral identity markers from native ID3 comments", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-native-comment-metadata-"));
+  const source = `test-native-comment-metadata-${process.pid}`;
+  let filePath;
+
+  try {
+    filePath = await createAudioFile(root, "Aurral Artist/Aurral Album/01 Track.mp3");
+
+    await scanMusicRoot({
+      rootPath: root,
+      source,
+      metadataReader: async () => ({
+        common: {
+          albumartist: "Aurral Artist",
+          artist: "Aurral Artist",
+          album: "Aurral Album",
+          title: "Track",
+          musicbrainz_trackid: "44444444-4444-4444-8444-444444444444",
+        },
+        native: {
+          "ID3v2.4": [
+            {
+              id: "TXXX:comment",
+              value:
+                'AURRAL_IDS={"artistMbid":"11111111-1111-4111-8111-111111111111","albumMbid":"22222222-2222-4222-8222-222222222222","trackMbid":"33333333-3333-4333-8333-333333333333"}',
+            },
+          ],
+        },
+        format: {},
+      }),
+    });
+
+    const indexed = db.prepare(
+      `SELECT artist.mbid AS artistMbid, album.release_group_mbid AS releaseGroupMbid,
+        track.mbid AS trackMbid
+       FROM library_media_files AS media
+       JOIN library_tracks AS track ON track.id = media.track_id
+       JOIN library_album_tracks AS album_track ON album_track.track_id = track.id
+       JOIN library_albums AS album ON album.id = album_track.album_id
+       JOIN library_artists AS artist ON artist.id = album.artist_id
+       WHERE media.source = ? AND media.path = ?`,
+    ).get(source, filePath);
+
+    assert.deepEqual(indexed, {
+      artistMbid: "11111111-1111-4111-8111-111111111111",
+      releaseGroupMbid: "22222222-2222-4222-8222-222222222222",
+      trackMbid: "33333333-3333-4333-8333-333333333333",
+    });
+  } finally {
+    if (filePath) deleteIndexedFile(source, filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a successful rescan marks removed files unavailable without removing media records", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-reconcile-"));
   const source = `test-reconcile-${process.pid}`;
