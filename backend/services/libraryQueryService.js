@@ -1935,6 +1935,7 @@ function getAlbumTrackSummary(albumId, sourceFilter) {
        album.title AS album_title,
        album.album_artist AS album_artist,
        album.release_date AS album_release_date,
+       album.created_at AS album_created_at,
        album.metadata_json AS album_metadata_json,
        GROUP_CONCAT(DISTINCT media.source) AS sources,
        MAX(media.available) AS available
