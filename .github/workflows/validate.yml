@@ -2,6 +2,12 @@ name: Validate
 
 on:
   workflow_call:
+    inputs:
+      serial_tests:
+        description: Run test files sequentially to avoid shared Vite cache and port collisions.
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -61,7 +67,13 @@ jobs:
       - run: npm run lint
 
       - name: Run test suite
+        if: ${{ !inputs.serial_tests }}
         run: npm test
+
+      - name: Run test suite sequentially
+        if: ${{ inputs.serial_tests }}
+        timeout-minutes: 15
+        run: node --test --import ./.tests/setup-env.js --test-concurrency=1 $(find .tests -name '*.test.js' -not -name '*.int.test.js' -print)
 
       - name: Build app
         run: npm run build

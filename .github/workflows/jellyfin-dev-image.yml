@@ -16,6 +16,8 @@ jobs:
   validate:
     if: github.repository == 'ApolloVulpez/aurral' && github.ref == 'refs/heads/jellyfin-preserve-additions'
     uses: ./.github/workflows/validate.yml
+    with:
+      serial_tests: true
 
   publish-image:
     if: github.repository == 'ApolloVulpez/aurral' && github.ref == 'refs/heads/jellyfin-preserve-additions'
