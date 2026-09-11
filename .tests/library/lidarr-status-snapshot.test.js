@@ -11,6 +11,25 @@ import {
 import { LidarrClient, lidarrClient } from "../../backend/services/lidarrClient.js";
 import { buildLidarrRequests } from "../../backend/services/lidarrRequestBuilder.js";
 
+test("disabled status reads stay local", async (t) => {
+  t.mock.method(lidarrClient, "isConfigured", () => false);
+  t.mock.method(lidarrClient, "isCircuitOpen", () => false);
+  const request = t.mock.method(lidarrClient, "request", async () => {
+    throw new Error("disabled status reads must not call Lidarr");
+  });
+  invalidateAllDownloadStatusesCache();
+
+  assert.deepEqual(await getDownloadStatusesForAlbumIds([10]), {});
+  const snapshot = await getLidarrStatusSnapshot({ force: true });
+  assert.deepEqual(snapshot.provider, {
+    queue: [],
+    history: { records: [] },
+    commands: [],
+  });
+  assert.deepEqual(snapshot.statuses, {});
+  assert.equal(request.mock.callCount(), 0);
+});
+
 test("Lidarr status consumers share refreshes, idle, failure, and recovery state", async (t) => {
   let active = false;
   let fail = false;

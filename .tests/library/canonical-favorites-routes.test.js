@@ -197,6 +197,15 @@ test("canonical library pages return bounded collection responses", () => {
   assert.equal(response.body.total, 3);
   assert.equal(response.body.items.length, 1);
   assert.equal(response.body.items[0].artistName, "Favorite Artist");
+  assert.equal(
+    String(response.body.items[0].canonicalId),
+    String(response.body.items[0].id),
+  );
+  assert.equal(response.body.items[0].providerId, null);
+  assert.equal(response.body.items[0].source, "aurral");
+  assert.equal(response.body.items[0].available, true);
+  assert.equal(response.body.items[0].managedBy, null);
+  assert.equal(response.body.items[0].monitorMode, null);
   assert.equal(response.body.albums[0].trackCount, 2);
   assert.equal(response.body.albums[0].availableTrackCount, 1);
   assert.equal(response.body.hasMore, true);
@@ -209,6 +218,12 @@ test("canonical library pages return bounded collection responses", () => {
   );
   assert.equal(availableResponse.body.items[0].trackCount, 2);
   assert.equal(availableResponse.body.items[0].availableTrackCount, 1);
+  assert.equal(
+    String(availableResponse.body.items[0].canonicalId),
+    String(availableResponse.body.items[0].id),
+  );
+  assert.equal(availableResponse.body.items[0].source, "aurral");
+  assert.equal(availableResponse.body.items[0].available, true);
 
   const artistResponse = responseFor();
   getRoute("GET /canonical")(
@@ -216,6 +231,22 @@ test("canonical library pages return bounded collection responses", () => {
     artistResponse,
   );
   assert.equal(artistResponse.body.items[0].userFavorite, true);
+});
+
+test("canonical track responses expose additive ownership fields", () => {
+  const response = responseFor();
+  getRoute("GET /canonical")(
+    { user, query: { kind: "tracks", page: "1", pageSize: "1", availableOnly: "false" } },
+    response,
+  );
+
+  const track = response.body.items[0];
+  assert.equal(String(track.canonicalId), String(track.id));
+  assert.equal(track.providerId, null);
+  assert.equal(track.source, "aurral");
+  assert.equal(track.available, true);
+  assert.equal(track.managedBy, null);
+  assert.equal(track.monitorMode, null);
 });
 
 test("canonical library rejects unbounded requests", () => {

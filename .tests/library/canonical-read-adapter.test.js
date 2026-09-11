@@ -7,6 +7,7 @@ import {
   findCanonicalArtist,
   findCanonicalTracksForAlbum,
 } from "../../backend/services/canonicalLibraryReadAdapter.js";
+import { selectCanonicalFile } from "../../backend/services/canonicalFileSelector.js";
 
 const library = {
   artists: [
@@ -75,6 +76,22 @@ test("canonical read model maps the existing root to Library-shaped records", ()
   assert.equal(result.tracks[0].path, "/music/Root Artist/Root Album/01 Root Track.flac");
 });
 
+test("canonical album statistics exclude unavailable file sizes", () => {
+  const result = buildCanonicalLibraryReadModel({
+    artists: [{ id: 11, name: "Unavailable Artist", albumIds: [12] }],
+    albums: [{ id: 12, artistId: 11, title: "Unavailable Album", trackIds: [13] }],
+    tracks: [{
+      id: 13,
+      title: "Unavailable Track",
+      albums: [{ albumId: 12 }],
+      files: [{ path: "/music/unavailable.flac", size: 456, available: false }],
+    }],
+  });
+
+  assert.equal(result.albums[0].statistics.trackFileCount, 0);
+  assert.equal(result.albums[0].statistics.sizeOnDisk, 0);
+});
+
 test("canonical read model preserves non-MBID provider artist identity", () => {
   const result = buildCanonicalLibraryReadModel({
     artists: [
@@ -111,4 +128,13 @@ test("canonical read model keeps flow-like records out when the index excludes t
   });
 
   assert.deepEqual(result, { artists: [], albums: [], tracks: [] });
+});
+
+test("canonical file reads prefer the album manager before Lidarr", () => {
+  const file = selectCanonicalFile([
+    { albumId: 2, source: "lidarr", path: "/music/lidarr.flac", available: true },
+    { albumId: 2, source: "aurral", path: "/music/aurral.flac", available: true },
+  ], 2, "aurral");
+
+  assert.equal(file.path, "/music/aurral.flac");
 });

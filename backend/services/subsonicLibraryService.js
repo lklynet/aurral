@@ -29,6 +29,7 @@ import { playlistManager } from "./weeklyFlow/weeklyFlowPlaylistManager.js";
 import { weeklyFlowWorker } from "./weeklyFlow/weeklyFlowWorker.js";
 import { hasPermission } from "../middleware/auth.js";
 import { recordTrackJobQueued } from "./aurralHistoryService.js";
+import { selectCanonicalFile } from "./canonicalFileSelector.js";
 
 const idFor = (kind, key) => `${kind}:${encodeURIComponent(String(key))}`;
 const LIBRARY_IMAGE_PROFILE = "library";
@@ -43,8 +44,8 @@ const parseId = (value) => {
   }
 };
 
-const firstFile = (track) =>
-  (track?.files || []).find((file) => file.available) || (track?.files || [])[0] || null;
+const firstFile = (track, albumId = null, managedBy = null) =>
+  selectCanonicalFile(track?.files, albumId, managedBy);
 
 const seconds = (durationMs) => {
   const value = Number(durationMs);
@@ -115,7 +116,7 @@ const coverArtForAlbum = (album) => idFor("album", album.identityKey);
 
 const toSong = (library, track, album = findAlbumForTrack(library, track)) => {
   const artist = findArtistForAlbum(library, album);
-  const file = firstFile(track);
+  const file = firstFile(track, album?.id, album?.managedBy);
   const genres = [...new Set([
     ...entityGenres(artist),
     ...entityGenres(album),
@@ -180,7 +181,10 @@ const albumData = (library, album) => {
     created: PROTOCOL_DATE,
     coverArt: coverArtForAlbum(album),
     songCount: tracks.length,
-    duration: tracks.reduce((total, track) => total + seconds(firstFile(track)?.durationMs), 0),
+    duration: tracks.reduce(
+      (total, track) => total + seconds(firstFile(track, album.id, album.managedBy)?.durationMs),
+      0,
+    ),
     song: [],
   };
   const releaseYear = year(album.releaseDate);
@@ -496,7 +500,7 @@ const trackFromCanonical = (library, track) => {
     albumMbid: album?.mbid || album?.releaseGroupMbid,
     trackMbid: track?.mbid,
     releaseYear: year(album?.releaseDate),
-    durationMs: firstFile(track)?.durationMs,
+    durationMs: firstFile(track, album?.id, album?.managedBy)?.durationMs,
     trackNumber: track?.albums?.[0]?.trackNumber,
   });
 };
@@ -579,9 +583,10 @@ const findAvailableCanonicalFile = (track) => {
     }));
     candidate = library.tracks.find((entry) => isSameTrack(track, trackFromCanonical(library, entry)));
   }
-  const file = firstFile(candidate);
+  const album = findAlbumForTrack(library, candidate);
+  const file = firstFile(candidate, album?.id, album?.managedBy);
   return file?.available && file.path
-    ? { file, track: candidate, albumName: findAlbumForTrack(library, candidate)?.title }
+    ? { file, track: candidate, albumName: album?.title }
     : null;
 };
 
@@ -960,7 +965,8 @@ export function resolveStreamPath(value, user) {
     availableOnly: false,
   }));
   const track = findCanonical(library, parsed);
-  const file = firstFile(track);
+  const album = findAlbumForTrack(library, track);
+  const file = firstFile(track, album?.id, album?.managedBy);
   return file?.available && file.path ? file.path : null;
 }
 

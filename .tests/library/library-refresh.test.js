@@ -25,9 +25,10 @@ const {
   getLibraryScanQueue,
   SCHEDULED_SYSTEM_TASKS,
 } = await import("../../backend/services/honkerDb.js");
-const { createLibraryFileWatcher } = await import(
+const { createLibraryFileWatcher, resolveLibraryWatchRoots } = await import(
   "../../backend/services/libraryFileWatcher.js"
 );
+const { lidarrClient } = await import("../../backend/services/lidarrClient.js");
 
 test("library scans are not scheduled as a recurring background task", () => {
   assert.equal(
@@ -256,4 +257,16 @@ test("library file watcher debounces library changes and ignores generated folde
   assert.equal(scheduled, 1);
 
   watcher.close();
+});
+
+test("library watcher reuses configured roots without querying Lidarr", (t) => {
+  const rootPath = "/data/music";
+  t.mock.method(lidarrClient, "isEnabled", () => true);
+  t.mock.method(lidarrClient, "getConfiguredRootFolderPaths", () => [rootPath]);
+  const rootRequest = t.mock.method(lidarrClient, "getRootFolders", async () => {
+    throw new Error("watcher should not discover roots");
+  });
+
+  assert.equal(resolveLibraryWatchRoots().includes(rootPath), true);
+  assert.equal(rootRequest.mock.callCount(), 0);
 });

@@ -36,6 +36,14 @@ function normalizeRootFolderPath(value) {
   return normalized || null;
 }
 
+function normalizeRootFolderPaths(values) {
+  return [...new Set(
+    (Array.isArray(values) ? values : [])
+      .map(normalizeRootFolderPath)
+      .filter(Boolean),
+  )];
+}
+
 function normalizeProfileId(value) {
   if (value === null || value === undefined || value === "") {
     return null;
@@ -178,6 +186,7 @@ export class LidarrClient {
     this._albumCache = new BoundedMap(LIDARR_ARTIST_ALBUM_CACHE_MAX);
     this._albumMbidIndex = null;
     this._statusCache = new BoundedMap(LIDARR_STATUS_CACHE_MAX);
+    this._rootFoldersCache = null;
     this._inflightGets = new Map();
     this._httpAgent = new http.Agent({
       keepAlive: true,
@@ -312,6 +321,9 @@ export class LidarrClient {
     if (endpoint === "/artist" && this._artistListCache) {
       return this._artistListCache.data;
     }
+    if (endpoint === "/rootFolder" && this._rootFoldersCache) {
+      return this._rootFoldersCache.data;
+    }
     if (endpoint === "/album" || endpoint.startsWith("/album?")) {
       const cached = this._albumCache.get(endpoint);
       if (cached) return cached.data;
@@ -348,6 +360,8 @@ export class LidarrClient {
     const newConfig = {
       url: url,
       apiKey: (dbConfig.apiKey || process.env.LIDARR_API_KEY || "").trim(),
+      rootFolderPath: normalizeRootFolderPath(dbConfig.rootFolderPath),
+      rootFolderPaths: normalizeRootFolderPaths(dbConfig.rootFolderPaths),
       insecure: !!insecure,
       timeoutMs,
       circuitDisabled,
@@ -358,6 +372,8 @@ export class LidarrClient {
       !previousConfig ||
       previousConfig.url !== newConfig.url ||
       previousConfig.apiKey !== newConfig.apiKey ||
+      previousConfig.rootFolderPath !== newConfig.rootFolderPath ||
+      JSON.stringify(previousConfig.rootFolderPaths) !== JSON.stringify(newConfig.rootFolderPaths) ||
       previousConfig.insecure !== newConfig.insecure ||
       previousConfig.timeoutMs !== newConfig.timeoutMs ||
       previousConfig.circuitDisabled !== newConfig.circuitDisabled ||
@@ -369,6 +385,7 @@ export class LidarrClient {
       this._invalidateArtistIndexes();
       this._albumCache = new BoundedMap(LIDARR_ARTIST_ALBUM_CACHE_MAX);
       this._statusCache.clear();
+      this._rootFoldersCache = null;
     }
   }
 
@@ -404,6 +421,7 @@ export class LidarrClient {
   async request(endpoint, method = "GET", data = null, skipConfigUpdate = false, options = {}) {
     const shouldDedupeGet =
       endpoint === "/artist" ||
+      endpoint === "/rootFolder" ||
       endpoint.startsWith("/album") ||
       endpoint === "/queue" ||
       endpoint.startsWith("/history?") ||
@@ -744,8 +762,34 @@ export class LidarrClient {
     }
   }
 
-  async getRootFolders() {
-    return this.request("/rootFolder");
+  getConfiguredRootFolderPaths() {
+    this.updateConfig();
+    return normalizeRootFolderPaths([
+      ...this.config.rootFolderPaths,
+      this.config.rootFolderPath,
+    ]);
+  }
+
+  async getRootFolders({ forceRefresh = false } = {}) {
+    this.updateConfig();
+    if (!forceRefresh && this._rootFoldersCache) return this._rootFoldersCache.data;
+    const configured = this.getConfiguredRootFolderPaths();
+    if (!forceRefresh && configured.length > 0) {
+      const folders = configured.map((path) => ({ path }));
+      this._rootFoldersCache = { data: folders, at: Date.now() };
+      return folders;
+    }
+    const folders = mapRootFolders(await this.request(
+      "/rootFolder",
+      "GET",
+      null,
+      false,
+      { forceRefresh },
+    ));
+    this._rootFoldersCache = { data: folders, at: Date.now() };
+    const paths = folders.map((folder) => folder.path);
+    this.config.rootFolderPaths = dbOps.setLidarrRootFolderPaths(paths);
+    return folders;
   }
 
   async getTags(skipConfigUpdate = false) {

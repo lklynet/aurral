@@ -44,6 +44,22 @@ test("searchLocalFromData returns library artist and track matches", () => {
   assert.equal(result.tracks[0].inLibrary, true);
 });
 
+test("searchLocalFromData does not let duplicate artist projections consume result slots", () => {
+  const result = searchLocalFromData(
+    "artist",
+    {
+      artists: [
+        { canonicalId: "1", id: "provider-1", artistName: "Artist One" },
+        { canonicalId: "1", id: "provider-1", artistName: "Artist One" },
+        { canonicalId: "2", id: "provider-2", artistName: "Artist Two" },
+      ],
+    },
+    2,
+  );
+
+  assert.deepEqual(result.artists.map((artist) => artist.name), ["Artist One", "Artist Two"]);
+});
+
 test("searchLocalFromData ignores library artists that only share article words", () => {
   const result = searchLocalFromData(
     "the used",
@@ -287,5 +303,4 @@ test("applyCatalogSearchContext preserves artist bucket order", () => {
   assert.equal(catalog.artists[0].name, "The Used");
   assert.equal(catalog.tracks[0].title, "The Band the Used");
 });
-
 

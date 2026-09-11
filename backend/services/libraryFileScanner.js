@@ -273,4 +273,58 @@ export async function scanMusicRoot({
   return scanResult;
 }
 
+export async function scanMusicRoots({ rootPaths = [], ...options } = {}) {
+  const roots = [...new Set(
+    (Array.isArray(rootPaths) ? rootPaths : [])
+      .map((rootPath) => String(rootPath ?? "").trim())
+      .filter(Boolean)
+      .map((rootPath) => path.resolve(rootPath)),
+  )];
+  const unseenPaths = getAvailableLibraryMediaPaths(options.source || "aurral");
+  const result = { filesSeen: 0, filesIndexed: 0, filesFailed: 0, changed: false };
+  const scannedRoots = [];
+
+  for (const rootPath of roots) {
+    let rootStat;
+    try {
+      rootStat = await fs.stat(rootPath);
+    } catch (error) {
+      if (error?.code === "ENOENT") continue;
+      result.filesFailed += 1;
+      continue;
+    }
+    if (!rootStat.isDirectory()) {
+      result.filesFailed += 1;
+      continue;
+    }
+
+    try {
+      const filePaths = [];
+      for await (const filePath of walkAudioFiles(rootPath)) filePaths.push(filePath);
+      const scan = await scanMusicRoot({ ...options, rootPath, filePaths });
+      result.filesSeen += scan.filesSeen;
+      result.filesIndexed += scan.filesIndexed;
+      result.filesFailed += scan.filesFailed;
+      result.changed ||= scan.changed;
+      for (const filePath of filePaths) unseenPaths.delete(filePath);
+      if (scan.filesFailed === 0) scannedRoots.push(rootPath);
+    } catch {
+      result.filesFailed += 1;
+    }
+  }
+
+  if (scannedRoots.length > 0) {
+    const missingPaths = [...unseenPaths].filter((filePath) =>
+      scannedRoots.some((rootPath) => {
+        const relative = path.relative(rootPath, filePath);
+        return relative && !relative.startsWith("..") && !path.isAbsolute(relative);
+      }),
+    );
+    result.changed = markLibraryMediaFilesUnavailable(options.source || "aurral", missingPaths) > 0
+      || result.changed;
+  }
+
+  return result;
+}
+
 export { buildMetadataRecord, readPathFallback, AUDIO_EXTENSIONS };

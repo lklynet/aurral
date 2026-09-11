@@ -65,6 +65,148 @@ test("stable artist and discovery reads do not call Lidarr", async (t) => {
   }
 });
 
+test("optional Lidarr reads use indexed Aurral media without provider calls", async (t) => {
+  const key = `optional-lidarr-read-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({
+    identityKey: `${key}:artist`,
+    mbid: `${key}-artist-mbid`,
+    name: "Optional Read Artist",
+    metadata: { id: 9911, monitored: true },
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: `${key}:album`,
+    artistId: artist.id,
+    title: "Optional Read Album",
+    metadata: { id: 9922, foreignAlbumId: `${key}-album`, monitored: true },
+  });
+  const track = upsertLibraryTrack({
+    identityKey: `${key}:track`,
+    title: "Optional Read Track",
+    artistName: artist.name,
+    metadata: { id: 9933, foreignRecordingId: `${key}-track` },
+  });
+  const filePath = `/tmp/${key}.flac`;
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "aurral",
+    path: filePath,
+    available: true,
+  });
+  t.mock.method(lidarrClient, "isConfigured", () => false);
+  const request = t.mock.method(lidarrClient, "request", async () => {
+    throw new Error("optional reads must not call Lidarr");
+  });
+  for (const method of [
+    "getArtistByMbid",
+    "getArtist",
+    "getAlbum",
+    "getTracksByAlbumId",
+    "getTrackFilesByAlbumId",
+  ]) {
+    t.mock.method(lidarrClient, method, async () => {
+      throw new Error("optional reads must not call Lidarr");
+    });
+  }
+
+  try {
+    const [byMbid, byId, albums, byAlbumId, tracks, queue] = await Promise.all([
+      libraryManager.getArtist(artist.mbid),
+      libraryManager.getArtistById(9911),
+      libraryManager.getAlbums(9911),
+      libraryManager.getAlbumById(9922),
+      libraryManager.getTracks(9922),
+      libraryManager.getPlaybackQueue({ pageSize: 10 }),
+    ]);
+    assert.equal(byMbid.canonicalId, String(artist.id));
+    assert.equal(byId.canonicalId, String(artist.id));
+    assert.equal(albums[0].canonicalId, String(album.id));
+    assert.equal(albums[0].providerId, 9922);
+    assert.equal(byAlbumId.canonicalId, String(album.id));
+    assert.equal(byAlbumId.providerId, 9922);
+    assert.equal(tracks[0].canonicalId, String(track.id));
+    assert.equal(tracks[0].providerId, 9933);
+    assert.equal(
+      queue.find((entry) => entry.id === `lib-${artist.id}-${album.id}-${track.id}`)?.streamPath,
+      `/library/canonical-stream/${album.id}/${track.id}`,
+    );
+    assert.equal(request.mock.callCount(), 0);
+  } finally {
+    db.prepare("DELETE FROM library_media_files WHERE path = ?").run(filePath);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  }
+});
+
+test("configured Lidarr read failures fall back to the canonical index", async (t) => {
+  const key = `fallback-lidarr-read-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({
+    identityKey: `${key}:artist`,
+    mbid: `${key}-artist-mbid`,
+    name: "Fallback Read Artist",
+    metadata: { id: 9941 },
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: `${key}:album`,
+    artistId: artist.id,
+    title: "Fallback Read Album",
+    metadata: { id: 9942 },
+  });
+  const track = upsertLibraryTrack({
+    identityKey: `${key}:track`,
+    title: "Fallback Read Track",
+    metadata: { id: 9943 },
+  });
+  const filePath = `/tmp/${key}.flac`;
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "aurral",
+    path: filePath,
+    available: true,
+  });
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  t.mock.method(lidarrClient, "getArtistByMbid", async () => {
+    throw new Error("Lidarr connection refused");
+  });
+  t.mock.method(lidarrClient, "getArtist", async () => {
+    throw new Error("Lidarr connection refused");
+  });
+  t.mock.method(lidarrClient, "getHistory", async () => {
+    throw new Error("Lidarr connection refused");
+  });
+  t.mock.method(lidarrClient, "getAlbum", async () => {
+    throw new Error("Lidarr connection refused");
+  });
+
+  try {
+    const [byMbid, byId, recent, albums, byAlbumId, tracks] = await Promise.all([
+      libraryManager.getArtist(artist.mbid),
+      libraryManager.getArtistById(9941),
+      libraryManager.getRecentArtists(10),
+      libraryManager.getAlbums(9941),
+      libraryManager.getAlbumById(9942),
+      libraryManager.getTracks(9942),
+    ]);
+    assert.equal(byMbid?.canonicalId, String(artist.id));
+    assert.equal(byId?.canonicalId, String(artist.id));
+    assert.ok(recent.some((entry) => entry.id === String(artist.id)));
+    assert.equal(albums[0]?.canonicalId, String(album.id));
+    assert.equal(byAlbumId?.canonicalId, String(album.id));
+    assert.equal(tracks[0]?.canonicalId, String(track.id));
+  } finally {
+    db.prepare("DELETE FROM library_media_files WHERE path = ?").run(filePath);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  }
+});
+
 test("artist key reads use identity columns and preserve metadata foreign IDs", (t) => {
   const identityKey = `artist-key-read:${Date.now()}`;
   const foreignArtistId = "artist-key-foreign-id";
