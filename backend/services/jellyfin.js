@@ -176,6 +176,26 @@ export class JellyfinClient {
     }
   }
 
+  /**
+   * Synchronize Aurral's contributions without rebuilding the Jellyfin playlist.
+   * Existing untracked entries retain their order and are not claimed as owned;
+   * missing tracks are appended and safely distinguishable owned surplus is removed.
+   * Ambiguous duplicate groups are preserved. Ownership checkpoints can be written
+   * before completion, so callers should persist them even if a later request fails.
+   *
+   * @param {string} playlistId - Jellyfin playlist to update.
+   * @param {string[]} itemIds - Desired Jellyfin audio IDs, including repetitions.
+   * @param {object} [options={}] - User context and persisted ownership state.
+   * @param {string} [options.userId=this.userId] - Jellyfin user accessing the playlist.
+   * @param {string[]} [options.managedItemIds=[]] - Previously tracked contributions;
+   *   each repetition represents one owned occurrence. Empty history protects existing entries.
+   * @param {function(string[]): (void|Promise<void>)} [options.onManagedItemsChange]
+   *   - Awaited callback that persists changed ownership checkpoints.
+   * @returns {Promise<string[]>} Remaining tracked IDs, with occurrence counts preserved;
+   *   their order is not the playlist's ordering.
+   * @throws {Error} If IDs are invalid, a request or checkpoint fails, or verification fails.
+   *   Completed incremental changes are not rolled back.
+   */
   async syncPlaylistItems(playlistId, itemIds, {
     userId = this.userId,
     managedItemIds = [],

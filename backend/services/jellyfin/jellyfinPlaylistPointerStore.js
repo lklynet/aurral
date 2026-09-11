@@ -15,7 +15,13 @@ const writeStore = (store) => {
   upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
 };
 
-// Legacy or malformed history must not authorize deletion of remote entries.
+/**
+ * Copy valid persisted ownership IDs without removing repeated occurrences.
+ * Legacy or malformed history becomes empty so it cannot authorize deletions.
+ *
+ * @param {unknown} ids - Stored ownership history to validate.
+ * @returns {string[]} A fresh copy of valid IDs, or an empty array if any value is invalid.
+ */
 const normalizeManagedIds = (ids) => Array.isArray(ids)
   && ids.every((id) => typeof id === "string" && id.length > 0 && id === id.trim())
   ? [...ids]
