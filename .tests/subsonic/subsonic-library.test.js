@@ -163,6 +163,7 @@ test("resolves playlist descriptors to library tracks in bulk", () => {
     { artistName: "Artist B", trackName: "Mbid Song", trackMbid: "44444444-4444-4444-8444-444444444444" },
     { artistName: "Artist B", trackName: "Old Song" },
     null,
+    { artistName: "Artist B", trackName: "Mbid Song (Remaster)", trackMbid: "44444444-4444-4444-8444-444444444444" },
     ...Array.from({ length: 1000 }, (_, index) => ({ artistName: "Artist A", trackName: `Missing ${index}` })),
   ];
   const prepare = db.prepare;
@@ -183,6 +184,8 @@ test("resolves playlist descriptors to library tracks in bulk", () => {
   assert.equal(resolved[1].track.identityKey, "test-track:Mbid Song");
   assert.equal(resolved[2], null);
   assert.equal(resolved[3], null);
-  assert.equal(resolved.slice(4).every((entry) => entry === null), true);
+  // Same recording MBID, different title: the canonical track (and its playlist id) still wins.
+  assert.equal(resolved[4].track.identityKey, "test-track:Mbid Song");
+  assert.equal(resolved.slice(5).every((entry) => entry === null), true);
   assert.ok(statements <= 4, `expected a handful of statements, ran ${statements}`);
 });
