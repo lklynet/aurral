@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import test from "node:test";
+import { JellyfinClient } from "../../backend/services/jellyfin.js";
 import {
   cleanupIsolatedState,
   resetDatabase,
@@ -52,7 +53,10 @@ function makeClient(calls) {
       return { Id: "playlist-1" };
     },
     updatePlaylist: async (playlistId, payload) => {
-      calls.push({ operation: "update", playlistId, payload });
+      const { onManagedItemsChange, ...recorded } = payload;
+      calls.push({ operation: "update", playlistId, payload: recorded });
+      await onManagedItemsChange(payload.itemIds);
+      return { Id: playlistId, managedItemIds: payload.itemIds };
     },
     deletePlaylist: async (playlistId) => {
       calls.push({ operation: "delete", playlistId });
@@ -103,6 +107,10 @@ test("publishes, updates, scans, and deletes a managed playlist", async () => {
       jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId).playlistId,
       "playlist-1",
     );
+    assert.deepEqual(
+      jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId).managedItemIds,
+      ["jellyfin-track-1", "jellyfin-track-2"],
+    );
 
     assert.equal(
       (await destination.publishPlaylist(snapshot({ displayName: "Fresh Weekly" }))).ok,
@@ -111,7 +119,10 @@ test("publishes, updates, scans, and deletes a managed playlist", async () => {
     assert.deepEqual(calls[1], {
       operation: "update",
       playlistId: "playlist-1",
-      payload: { name: "Fresh Weekly", itemIds: ["jellyfin-track-1", "jellyfin-track-2"], userId },
+      payload: {
+        name: "Fresh Weekly", itemIds: ["jellyfin-track-1", "jellyfin-track-2"], userId,
+        managedItemIds: ["jellyfin-track-1", "jellyfin-track-2"],
+      },
     });
 
     assert.equal((await destination.requestScan()).ok, true);
@@ -123,6 +134,121 @@ test("publishes, updates, scans, and deletes a managed playlist", async () => {
     if (originalMappings == null) delete process.env.PATH_MAPPINGS;
     else process.env.PATH_MAPPINGS = originalMappings;
   }
+});
+
+function makeSyncingClient(initialIds) {
+  const client = new JellyfinClient("http://jellyfin.local", "key", userId);
+  const state = { ids: [...initialIds], deleted: false };
+  client.getAudioItems = makeClient([]).getAudioItems;
+  client.getPlaylistMetadata = async () => ({ Id: "playlist-1", Type: "Playlist", Name: "Discover Weekly" });
+  client.getPlaylistItems = async () => state.ids.map((id) => ({ Id: id, PlaylistItemId: `entry-${id}` }));
+  client.request = async (method, endpoint, { params } = {}) => {
+    assert.equal(endpoint, "/Playlists/playlist-1/Items");
+    if (method === "POST") {
+      assert.equal(params.userId, userId);
+      state.ids.push(...params.ids.split(","));
+    } else if (method === "DELETE") {
+      state.ids = state.ids.filter((id) => !params.entryIds.split(",").includes(`entry-${id}`));
+    } else assert.fail(`Unexpected request: ${method}`);
+  };
+  client.deletePlaylist = async () => { state.deleted = true; state.ids = []; };
+  return { client, state };
+}
+
+test("ownership survives destination recreation and an empty source preserves Jellyfin additions", async () => {
+  const { client, state } = makeSyncingClient(["jellyfin-track-2", "custom"]);
+  jellyfinPlaylistPointerStore.setPointer("flow-jellyfin", userId, {
+    playlistId: "playlist-1", title: "Discover Weekly", serverUrl: client.url,
+    jellyfinUserId: userId, managedItemIds: ["jellyfin-track-2"],
+  });
+  const source = snapshot({ tracks: [snapshot().tracks[1]] });
+  let destination = new JellyfinPlaybackDestination(weeklyFlowRoot, { client });
+  assert.equal((await destination.publishPlaylist(source)).ok, true);
+  state.ids.push("custom-after-sync");
+
+  // No in-memory hashes or ownership can carry over to the new instance.
+  destination = new JellyfinPlaybackDestination(weeklyFlowRoot, { client });
+  assert.equal((await destination.publishPlaylist(snapshot({ tracks: [] }))).ok, true);
+  assert.deepEqual(state.ids, ["custom", "custom-after-sync"]);
+  assert.equal(state.deleted, false);
+  assert.deepEqual(jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId).managedItemIds, []);
+  assert.equal((await destination.publishPlaylist(source)).ok, true);
+  assert.deepEqual(state.ids, ["custom", "custom-after-sync", "jellyfin-track-2"]);
+  assert.deepEqual(jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId).managedItemIds, ["jellyfin-track-2"]);
+});
+
+test("an old pointer without ownership preserves existing tracks during sync and emptying", async () => {
+  const { client, state } = makeSyncingClient(["legacy", "jellyfin-track-2", "custom"]);
+  // Write the pre-upgrade representation, without managedItemIds.
+  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(
+    "jellyfinPlaylistPointers",
+    JSON.stringify({ "flow-jellyfin": { [userId]: {
+      playlistId: "playlist-1", serverUrl: client.url, jellyfinUserId: userId,
+    } } }),
+  );
+  assert.deepEqual(jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId).managedItemIds, []);
+  const destination = new JellyfinPlaybackDestination(weeklyFlowRoot, { client });
+  assert.equal((await destination.publishPlaylist(snapshot({ tracks: [snapshot().tracks[1]] }))).ok, true);
+  assert.equal((await destination.publishPlaylist(snapshot({ tracks: [] }))).ok, true);
+  assert.deepEqual(state.ids, ["legacy", "jellyfin-track-2", "custom"]);
+  assert.equal(state.deleted, false);
+});
+
+test("confirmed additions remain owned after a failed deletion and destination restart", async () => {
+  const { client, state } = makeSyncingClient(["old-owned", "custom"]);
+  jellyfinPlaylistPointerStore.setPointer("flow-jellyfin", userId, {
+    playlistId: "playlist-1", serverUrl: client.url,
+    jellyfinUserId: userId, managedItemIds: ["old-owned"],
+  });
+  const request = client.request;
+  let fail = true;
+  client.request = async (method, ...args) => {
+    if (method === "DELETE" && fail) {
+      fail = false;
+      throw new Error("delete failed");
+    }
+    return request(method, ...args);
+  };
+  let destination = new JellyfinPlaybackDestination(weeklyFlowRoot, { client });
+  // Keep this test deterministic; exercise retry explicitly after recreation.
+  destination._scheduleCatchup = () => {};
+  const source = snapshot({ tracks: [snapshot().tracks[1]] });
+  assert.equal((await destination.publishPlaylist(source)).ok, false);
+  assert.deepEqual(state.ids, ["old-owned", "custom", "jellyfin-track-2"]);
+  assert.deepEqual(jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId).managedItemIds,
+    ["old-owned", "jellyfin-track-2"]);
+
+  destination = new JellyfinPlaybackDestination(weeklyFlowRoot, { client });
+  assert.equal((await destination.publishPlaylist(source)).ok, true);
+  assert.deepEqual(state.ids, ["custom", "jellyfin-track-2"]);
+  assert.deepEqual(jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId).managedItemIds,
+    ["jellyfin-track-2"]);
+});
+
+test("pointer ownership is isolated by owner and malformed history grants no deletion rights", () => {
+  const pointers = {
+    entity: {
+      first: { playlistId: "first", managedItemIds: ["one", "one"] },
+      second: { playlistId: "second", managedItemIds: ["two"] },
+      invalid: { playlistId: "invalid", managedItemIds: ["valid", null] },
+    },
+  };
+  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(
+    "jellyfinPlaylistPointers", JSON.stringify(pointers),
+  );
+  const first = jellyfinPlaylistPointerStore.getPointer("entity", "first");
+  assert.deepEqual(first.managedItemIds, ["one", "one"]);
+  first.managedItemIds.push("not-persisted");
+  assert.deepEqual(jellyfinPlaylistPointerStore.getPointer("entity", "first").managedItemIds, ["one", "one"]);
+  assert.deepEqual(jellyfinPlaylistPointerStore.getPointer("entity", "second").managedItemIds, ["two"]);
+  assert.deepEqual(jellyfinPlaylistPointerStore.getPointer("entity", "invalid").managedItemIds, []);
+});
+
+test("an empty source without a remote pointer does not create a playlist", async () => {
+  const calls = [];
+  const destination = new JellyfinPlaybackDestination(weeklyFlowRoot, { client: makeClient(calls) });
+  assert.equal((await destination.publishPlaylist(snapshot({ tracks: [] }))).ok, true);
+  assert.deepEqual(calls, []);
 });
 
 test("preserves repeated resolved tracks in a playlist", async () => {

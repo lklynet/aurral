@@ -275,8 +275,7 @@ export class JellyfinPlaybackDestination {
       reusable = null;
     }
     const itemIds = this._resolveItemIds(snapshot, jellyfinUserId);
-    if (!snapshot.tracks.length) {
-      await this._deleteCurrent(snapshot);
+    if (!snapshot.tracks.length && !reusable) {
       this._pendingSnapshots.delete(cacheKey);
       return playbackOperationSuccess();
     }
@@ -287,14 +286,28 @@ export class JellyfinPlaybackDestination {
     if (!unresolved && this._syncHashes.get(cacheKey) === hash) return playbackOperationSuccess();
 
     let playlistId = reusable?.playlistId || null;
+    let managedItemIds = reusable?.managedItemIds || [];
+    const saveManagedItems = (ids) => {
+      managedItemIds = ids;
+      jellyfinPlaylistPointerStore.setPointer(snapshot.entityId, targetKey, {
+        playlistId,
+        title: snapshot.displayName,
+        serverUrl: this.client.url,
+        jellyfinUserId,
+        managedItemIds,
+      });
+    };
     if (playlistId) {
       try {
         const updated = await this.client.updatePlaylist(playlistId, {
           name: snapshot.displayName,
           itemIds,
           userId: jellyfinUserId,
+          managedItemIds,
+          onManagedItemsChange: saveManagedItems,
         });
         playlistId = itemId(updated) || playlistId;
+        managedItemIds = updated.managedItemIds;
       } catch (error) {
         if (!isNotFound(error)) throw error;
         playlistId = null;
@@ -302,12 +315,18 @@ export class JellyfinPlaybackDestination {
       }
     }
     if (!playlistId) {
+      if (!snapshot.tracks.length) {
+        this._pendingSnapshots.delete(cacheKey);
+        this._syncHashes.delete(cacheKey);
+        return playbackOperationSuccess();
+      }
       const created = await this.client.createPlaylist({
         name: snapshot.displayName,
         itemIds,
         userId: jellyfinUserId,
       });
       playlistId = itemId(created);
+      managedItemIds = itemIds;
     }
     if (!playlistId) throw new Error("Jellyfin did not return a playlist ID");
     jellyfinPlaylistPointerStore.setPointer(snapshot.entityId, targetKey, {
@@ -315,6 +334,7 @@ export class JellyfinPlaybackDestination {
       title: snapshot.displayName,
       serverUrl: this.client.url,
       jellyfinUserId,
+      managedItemIds,
     });
     if (unresolved) {
       this._pendingSnapshots.set(cacheKey, snapshot);

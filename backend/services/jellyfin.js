@@ -129,7 +129,7 @@ export class JellyfinClient {
     }
   }
 
-  async addPlaylistItems(playlistId, itemIds, userId = this.userId) {
+  async addPlaylistItems(playlistId, itemIds, userId = this.userId, onBatchAdded = () => {}) {
     const batchSize = 50;
     let start = 0;
     while (start < itemIds.length) {
@@ -146,6 +146,7 @@ export class JellyfinClient {
         `/Playlists/${encodeURIComponent(playlistId)}/Items`,
         { params: { userId, ids: batch.join(",") } },
       );
+      await onBatchAdded(batch);
     }
   }
 
@@ -156,55 +157,6 @@ export class JellyfinClient {
         "DELETE",
         `/Playlists/${encodeURIComponent(playlistId)}/Items`,
         { params: { entryIds: entryIds.slice(start, start + batchSize).join(",") } },
-      );
-    }
-  }
-
-  async replacePlaylistItems(playlistId, itemIds, userId = this.userId) {
-    if (!Array.isArray(itemIds) || itemIds.some((id) => typeof id !== "string" || !id.trim())) {
-      throw new Error("Jellyfin playlist item IDs must be non-empty strings");
-    }
-    const desiredIds = itemIds.map((id) => id.trim());
-    const readIds = (items, key) => items.map((item) => {
-      const id = item?.[key];
-      if (typeof id !== "string" || !id.trim()) {
-        throw new Error(`Jellyfin playlist entry is missing ${key}`);
-      }
-      return id.trim();
-    });
-    const sameIds = (left, right) =>
-      left.length === right.length && left.every((id, index) => id === right[index]);
-
-    const original = await this.getPlaylistItems(playlistId, userId);
-    const originalIds = readIds(original, "Id");
-    if (sameIds(originalIds, desiredIds)) return;
-    readIds(original, "PlaylistItemId");
-
-    const replace = async (entries, ids) => {
-      // Remove first: Jellyfin can reuse entry IDs for repeated tracks.
-      await this.removePlaylistItems(playlistId, readIds(entries, "PlaylistItemId"));
-      await this.addPlaylistItems(playlistId, ids, userId);
-      const actual = await this.getPlaylistItems(playlistId, userId);
-      if (!sameIds(readIds(actual, "Id"), ids)) {
-        throw new Error("Jellyfin playlist verification failed");
-      }
-    };
-
-    try {
-      await replace(original, desiredIds);
-    } catch (error) {
-      try {
-        const current = await this.getPlaylistItems(playlistId, userId);
-        await replace(current, originalIds);
-      } catch (restoreError) {
-        throw new Error(
-          `Jellyfin playlist update failed: ${error.message}. Restoring previous contents also failed: ${restoreError.message}`,
-          { cause: error },
-        );
-      }
-      throw new Error(
-        `Jellyfin playlist update failed; previous contents restored: ${error.message}`,
-        { cause: error },
       );
     }
   }
@@ -224,7 +176,122 @@ export class JellyfinClient {
     }
   }
 
-  async updatePlaylist(playlistId, { name, itemIds, userId = this.userId }) {
+  async syncPlaylistItems(playlistId, itemIds, {
+    userId = this.userId,
+    managedItemIds = [],
+    onManagedItemsChange = () => {},
+  } = {}) {
+    const validIds = (ids) => Array.isArray(ids)
+      && ids.every((id) => typeof id === "string" && id.length > 0 && id === id.trim());
+    if (!validIds(itemIds) || !validIds(managedItemIds)) {
+      throw new Error("Jellyfin playlist item IDs must be non-empty strings");
+    }
+    const counts = (ids) => {
+      const result = new Map();
+      for (const id of ids) result.set(id, (result.get(id) || 0) + 1);
+      return result;
+    };
+    const read = async () => {
+      const entries = await this.getPlaylistItems(playlistId, userId);
+      if (!validIds(entries.map((entry) => entry?.Id))) {
+        throw new Error("Jellyfin playlist entry is missing Id");
+      }
+      return entries;
+    };
+    const desired = counts(itemIds);
+    const managed = counts(managedItemIds);
+    let lastCheckpoint = managedItemIds;
+    const checkpoint = async () => {
+      const ids = [...managed].flatMap(([id, count]) => Array(count).fill(id));
+      if (ids.length !== lastCheckpoint.length || ids.some((id, index) => id !== lastCheckpoint[index])) {
+        await onManagedItemsChange(ids);
+        lastCheckpoint = ids;
+      }
+      return ids;
+    };
+    let entries = await read();
+    let current = counts(entries.map((entry) => entry.Id));
+    // Missing ownership history means existing entries belong to Jellyfin.
+    // Never acquire ownership of a pre-existing matching track by guessing.
+    for (const [id, count] of managed) managed.set(id, Math.min(count, current.get(id) || 0));
+    await checkpoint();
+
+    const missing = [];
+    const available = new Map(current);
+    for (const id of itemIds) {
+      if (available.get(id)) available.set(id, available.get(id) - 1);
+      else missing.push(id);
+    }
+    // Add first, without clearing the playlist. Checkpoint confirmed batches so
+    // a later failed request or restart cannot turn them into untracked extras.
+    await this.addPlaylistItems(playlistId, missing, userId, async (batch) => {
+      for (const id of batch) managed.set(id, (managed.get(id) || 0) + 1);
+      await checkpoint();
+    });
+    if (missing.length) {
+      entries = await read();
+      current = counts(entries.map((entry) => entry.Id));
+      for (const [id, count] of managed) managed.set(id, Math.min(count, current.get(id) || 0));
+      await checkpoint();
+      if ([...desired].some(([id, count]) => (current.get(id) || 0) < count)) {
+        throw new Error("Jellyfin playlist addition verification failed");
+      }
+    }
+
+    const groups = new Map();
+    for (const entry of entries) {
+      const group = groups.get(entry.PlaylistItemId) || [];
+      group.push(entry.Id);
+      groups.set(entry.PlaylistItemId, group);
+    }
+    const removableGroups = new Map();
+    for (const [entryId, ids] of groups) {
+      const id = ids[0];
+      if (typeof entryId !== "string" || !entryId.trim()
+        || ids.some((candidate) => candidate !== id)) continue;
+      const candidates = removableGroups.get(id) || [];
+      candidates.push({ entryId, id, count: ids.length });
+      removableGroups.set(id, candidates);
+    }
+    const removals = [];
+    for (const [id, ownedCount] of managed) {
+      let surplus = ownedCount - (desired.get(id) || 0);
+      if (surplus <= 0) continue;
+      // Repeated tracks may share an entry ID. If there are user copies of the
+      // same track, leave all copies alone rather than risk deleting theirs.
+      if ((current.get(id) || 0) > ownedCount) {
+        managed.set(id, ownedCount - surplus);
+        continue;
+      }
+      for (const group of removableGroups.get(id) || []) {
+        if (group.count > surplus) continue;
+        removals.push(group);
+        surplus -= group.count;
+      }
+      // An inseparable duplicate group must stay; relinquish its surplus.
+      if (surplus > 0) managed.set(id, ownedCount - surplus);
+    }
+    await checkpoint();
+    if (removals.length) {
+      await this.removePlaylistItems(playlistId, removals.map(({ entryId }) => entryId));
+      // Verify before recording a deletion as complete. A failed/partial
+      // deletion retains its ownership for the next attempt.
+      const remaining = await read();
+      const remainingEntryIds = new Set(remaining.map((entry) => entry.PlaylistItemId));
+      for (const { entryId, id, count } of removals) {
+        if (!remainingEntryIds.has(entryId)) managed.set(id, managed.get(id) - count);
+      }
+      await checkpoint();
+      if (removals.some(({ entryId }) => remainingEntryIds.has(entryId))) {
+        throw new Error("Jellyfin playlist removal verification failed");
+      }
+    }
+    return checkpoint();
+  }
+
+  async updatePlaylist(playlistId, {
+    name, itemIds, userId = this.userId, managedItemIds = [], onManagedItemsChange,
+  }) {
     // The playlist metadata endpoint expects a logged-in user, not an API key.
     const endpoint = `/Items/${encodeURIComponent(playlistId)}`;
     const playlist = await this.getPlaylistMetadata(playlistId, userId);
@@ -238,9 +305,11 @@ export class JellyfinClient {
         throw new Error("Jellyfin playlist rename verification failed");
       }
     }
-    await this.replacePlaylistItems(playlistId, itemIds, userId);
+    const managed = await this.syncPlaylistItems(playlistId, itemIds, {
+      userId, managedItemIds, onManagedItemsChange,
+    });
 
-    return { Id: String(playlistId) };
+    return { Id: String(playlistId), managedItemIds: managed };
   }
 
   async deletePlaylist(playlistId, userId = this.userId) {
