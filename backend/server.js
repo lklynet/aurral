@@ -211,7 +211,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/scrobbling", scrobblingRouter);
 app.use("/api/play-events", playEventsRouter);
 app.use("/api/image-proxy", imageProxyRouter);
-app.use("/rest", subsonicRouter);
+app.use("/rest", express.urlencoded({ extended: false }), subsonicRouter);
 
 app.get("/sso/callback", async (req, res) => {
   try {

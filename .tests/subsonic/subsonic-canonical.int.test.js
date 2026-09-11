@@ -275,6 +275,11 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.equal(license.license.valid, true);
   const indexes = responseJson(await request("getIndexes"));
   assert.equal(typeof indexes.indexes.lastModified, "number");
+  assert.ok(indexes.indexes.lastModified > 0);
+  assert.equal(responseJson(await request("getIndexes")).indexes.lastModified, indexes.indexes.lastModified);
+  const unchanged = responseJson(await request("getIndexes", { ifModifiedSince: indexes.indexes.lastModified }));
+  assert.equal(unchanged.indexes.index, undefined);
+  assert.ok(Array.isArray(indexes.indexes.index));
   const albumList = responseJson(await request("getAlbumList2", { type: "newest", size: 10 }));
   assert.equal(albumList.albumList2.album[0].title, "Canonical Album");
   assert.deepEqual(responseJson(await request("getGenres")).genres.genre, [
@@ -297,16 +302,40 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.match(album.id, /^album:/);
   assert.equal(album.genre, "Rock");
   assert.deepEqual(responseJson(await request("getArtistInfo", { id: artist.id })).artistInfo.similarArtist, []);
+  assert.deepEqual(responseJson(await request("getArtistInfo2", { id: artist.id })).artistInfo2.similarArtist, []);
+  assert.equal(responseJson(await request("getArtistInfo2", { id: "artist:missing" })).error.code, 70);
+  assert.deepEqual(responseJson(await request("getAlbumInfo2", { id: album.id })).albumInfo, {});
+  assert.equal(responseJson(await request("getAlbumInfo2", { id: "album:missing" })).error.code, 70);
+  assert.deepEqual(responseJson(await request("getSimilarSongs2", { id: "song:missing" })).similarSongs2, { song: [] });
+  assert.deepEqual(responseJson(await request("getLyrics", { artist: "Canonical Artist", title: "Canonical Song" })).lyrics, { value: "" });
+  assert.match((await request("getLyrics", { artist: "Canonical Artist", title: "Canonical Song", f: "xml" })).body, /<lyrics\/>/);
+  assert.deepEqual(responseJson(await request("getInternetRadioStations")).internetRadioStations, { internetRadioStation: [] });
+  assert.deepEqual(responseJson(await request("getPodcasts")).podcasts, { channel: [] });
   assert.equal(responseJson(await request("getTopSongs", { artist: "Canonical Artist" })).topSongs.song[0].title, "Canonical Song");
+  assert.equal(responseJson(await request("getTopSongs", { id: artist.id })).topSongs.song[0].title, "Canonical Song");
+  assert.equal(responseJson(await request("getTopSongs", { id: "artist:missing" })).error.code, 70);
 
   const songResult = responseJson(await request("getAlbum", { id: album.id }));
   const song = songResult.album.song[0];
   assert.match(song.id, /^song:/);
   assert.equal(responseJson(await request("getSong", { id: song.id })).song.title, "Canonical Song");
   assert.equal(song.contentType, "audio/flac");
+  assert.match(song.created, /^\d{4}-\d{2}-\d{2}T/);
+  assert.notEqual(song.created.slice(0, 4), "1970");
+  assert.match(album.created, /^\d{4}-\d{2}-\d{2}T/);
+  assert.notEqual(album.created.slice(0, 4), "1970");
   assert.equal(song.genre, "Rock");
+  assert.equal(song.musicBrainzId, "33333333-3333-4333-8333-333333333333");
+  assert.equal(song.mediaType, "song");
+  assert.equal(album.mediaType, "album");
+  assert.equal(artist.musicBrainzId, "11111111-1111-4111-8111-111111111111");
+  assert.equal(artist.mediaType, "artist");
+  assert.equal(album.musicBrainzId, "22222222-2222-4222-8222-222222222222");
+  assert.match((await request("getSong", { id: song.id, f: "xml" })).body, /musicBrainzId="33333333-/);
   assert.equal(song.path, song.id);
-  assert.deepEqual(song.artists, [{ id: artist.id, name: "Canonical Artist" }]);
+  assert.deepEqual(song.artists, [
+    { id: artist.id, name: "Canonical Artist", musicBrainzId: "11111111-1111-4111-8111-111111111111" },
+  ]);
 
   assert.equal(
     responseJson(await request("star", { id: [song.id, album.id], artistId: artist.id })).status,
@@ -317,16 +346,29 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.equal(starred.album[0].id, album.id);
   assert.equal(starred.artist[0].id, artist.id);
   assert.equal(responseJson(await request("getStarred2")).starred2.song[0].id, song.id);
+  assert.match(starred.song[0].starred, /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(responseJson(await request("getSong", { id: song.id })).song.starred, /^\d{4}-/);
+  assert.match(responseJson(await request("getAlbum", { id: album.id })).album.starred, /^\d{4}-/);
+  assert.match(responseJson(await request("getArtist", { id: artist.id })).artist.starred, /^\d{4}-/);
+  assert.match(
+    responseJson(await request("search3", { query: "Canonical" })).searchResult3.song[0].starred,
+    /^\d{4}-/,
+  );
   userOps.createUser("bob", hashPassword("bob-password"), "user");
   assert.deepEqual(
     responseJson(await request("getStarred", { u: "bob", p: "bob-password" })).starred,
     { album: [], artist: [], song: [] },
   );
   assert.equal(
+    responseJson(await request("getSong", { id: song.id, u: "bob", p: "bob-password" })).song.starred,
+    undefined,
+  );
+  assert.equal(
     responseJson(await request("unstar", { id: [song.id, album.id], artistId: artist.id })).status,
     "ok",
   );
   assert.deepEqual(responseJson(await request("getStarred")).starred, { album: [], artist: [], song: [] });
+  assert.equal(responseJson(await request("getSong", { id: song.id })).song.starred, undefined);
   assert.equal(
     responseJson(await request("star", { id: [song.id, "song:missing"] })).error.code,
     70,
@@ -337,12 +379,35 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.equal(responseJson(missingArtist).error.code, 10);
 });
 
-test("emits schema-compatible XML for strict Subsonic clients", async () => {
+test("getIndexes reports star changes through lastModified", async () => {
+  const artistId = responseJson(await request("getArtists")).artists.index[0].artist[0].id;
+  const indexesSince = async (ifModifiedSince) =>
+    responseJson(await request("getIndexes", { ifModifiedSince })).indexes;
+  const firstArtist = (indexes) => indexes.index[0].artist[0];
+
+  const beforeStar = responseJson(await request("getIndexes")).indexes.lastModified;
+  assert.equal(responseJson(await request("star", { artistId })).status, "ok");
+  const starred = await indexesSince(beforeStar);
+  assert.ok(starred.lastModified > beforeStar);
+  assert.match(firstArtist(starred).starred, /^\d{4}-\d{2}-\d{2}T/);
+
+  // Unstarring deletes the row, so the timestamp must still move forward, never back.
+  assert.equal(responseJson(await request("unstar", { artistId })).status, "ok");
+  const unstarred = await indexesSince(starred.lastModified);
+  assert.ok(unstarred.lastModified > starred.lastModified);
+  assert.equal(firstArtist(unstarred).starred, undefined);
+
+  assert.equal((await indexesSince(unstarred.lastModified)).index, undefined);
+});
+
+test("emits OpenSubsonic XML envelopes and elements", async () => {
   const userXml = await request("getUser", { f: "xml" });
-  assert.match(userXml.body, /<subsonic-response xmlns="http:\/\/subsonic\.org\/restapi" status="ok" version="1\.16\.1">/);
+  assert.match(
+    userXml.body,
+    /<subsonic-response xmlns="http:\/\/subsonic\.org\/restapi" status="ok" version="1\.16\.1" type="Aurral" serverVersion="[^"]+" openSubsonic="true">/,
+  );
   assert.match(userXml.body, /videoConversionRole="false"/);
   assert.match(userXml.body, /<folder>1<\/folder>/);
-  assert.doesNotMatch(userXml.body, /\stype="Aurral"|\sserverVersion=/);
 
   const foldersXml = await request("getMusicFolders", { f: "xml" });
   assert.match(foldersXml.body, /<musicFolder id="1" name="Aurral"\/>/);
@@ -409,6 +474,8 @@ test("exposes owned static playlists and keeps their entries playable", async ()
   assert.equal(shared.coverArt, shared.id);
 
   const playlist = responseJson(await request("getPlaylist", { id: shared.id })).playlist;
+  assert.match(playlist.created, /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(playlist.changed, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(playlist.entry[0].title, "Flow Song");
   assert.match(playlist.entry[0].id, /^shared-song:/);
   const artwork = await request("getCoverArt", { id: shared.coverArt });
@@ -433,6 +500,23 @@ test("exposes owned static playlists and keeps their entries playable", async ()
   const stream = await request("stream", { id: song.id });
   assert.equal(stream.response.status, 200);
   assert.equal(stream.body, "0123456789");
+});
+
+test("returns canonical song ids for playlist entries that exist in the library", async () => {
+  const playlist = responseJson(await request("getPlaylist", {
+    id: `shared:${encodeURIComponent(canonicalFavoritePlaylist.id)}`,
+  })).playlist;
+  assert.equal(playlist.entry.length, 1);
+  assert.match(playlist.entry[0].id, /^song:/);
+  assert.equal(playlist.entry[0].parent, playlist.id);
+  assert.equal(playlist.entry[0].title, "Canonical Song");
+  assert.equal(playlist.entry[0].musicBrainzId, "33333333-3333-4333-8333-333333333333");
+  const artistId = responseJson(await request("getArtists")).artists.index[0].artist[0].id;
+  const album = responseJson(await request("getArtist", { id: artistId })).artist.album[0];
+  const canonicalSong = responseJson(await request("getAlbum", { id: album.id })).album.song[0];
+  assert.equal(playlist.entry[0].id, canonicalSong.id);
+  const stream = await request("stream", { id: playlist.entry[0].id });
+  assert.equal(stream.response.status, 200);
 });
 
 test("does not expose another user's static playlist", async () => {
@@ -609,7 +693,13 @@ test("favorites can keep Flow tracks and respect the auto-keep setting", async (
     ).get("library", "Favorite Song")),
     false,
   );
-  assert.equal(responseJson(await request("getStarred")).starred.song[0].id, entry.id);
+  const starredEntry = responseJson(await request("getStarred")).starred.song[0];
+  assert.equal(starredEntry.id, entry.id);
+  assert.match(starredEntry.starred, /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(
+    responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry[0].starred,
+    /^\d{4}-\d{2}-\d{2}T/,
+  );
   assert.equal((await saveSettings({ favoriteAutoKeep: true })).status, 200);
   assert.equal(responseJson(await request("unstar", { id: entry.id })).status, "ok");
   assert.equal(responseJson(await request("star", { id: entry.id })).status, "ok");
@@ -619,6 +709,10 @@ test("favorites can keep Flow tracks and respect the auto-keep setting", async (
   assert.ok(autoKeepJob);
   downloadTracker.removeJob(autoKeepJob.id);
   assert.equal(responseJson(await request("unstar", { id: entry.id })).status, "ok");
+  assert.equal(
+    responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry[0].starred,
+    undefined,
+  );
 });
 
 test("favoriting a synced playlist track keeps it when the source removes it", async () => {
