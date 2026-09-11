@@ -7,13 +7,14 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps }, { registerGeneral }, { playlistManager }] =
+const [isolatedState, { db }, { dbOps }, { registerGeneral }, { playlistManager }, { lidarrClient }] =
   await setupIsolatedBackend(
     "general-settings",
     "backend/config/db-sqlite.js",
     "backend/db/helpers/index.js",
     "backend/routes/settings/handlers/general.js",
     "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
+    "backend/services/lidarrClient.js",
   );
 
 test.beforeEach(() => {
@@ -179,4 +180,61 @@ test("does not warn about lidarr roots while lidarr is disabled", async () => {
 
   const current = await getSettings();
   assert.deepEqual(current.body.rootWarnings, []);
+});
+
+test("clears saved Lidarr roots when the connection identity changes", async (t) => {
+  const { postSettings } = captureSettingsRoutes();
+  dbOps.updateSettings({
+    integrations: {
+      lidarr: {
+        url: "http://old-lidarr:8686",
+        apiKey: "old-key",
+        rootFolderPath: "/old/music",
+        rootFolderPaths: ["/old/music", "/old/other"],
+      },
+    },
+  });
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  const refresh = t.mock.method(lidarrClient, "getRootFolders", async () => {
+    throw new Error("new Lidarr is unavailable");
+  });
+
+  const response = await postSettings({
+    integrations: {
+      lidarr: { url: "http://new-lidarr:8686", apiKey: "new-key" },
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(refresh.mock.callCount(), 1);
+  assert.deepEqual(dbOps.getSettings().integrations.lidarr.rootFolderPaths, []);
+  assert.equal(dbOps.getSettings().integrations.lidarr.rootFolderPath, null);
+});
+
+test("preserves saved Lidarr roots when discovery fails for the same connection", async (t) => {
+  const { postSettings } = captureSettingsRoutes();
+  dbOps.updateSettings({
+    integrations: {
+      lidarr: {
+        url: "http://lidarr:8686",
+        apiKey: "key",
+        rootFolderPath: "/old/music",
+        rootFolderPaths: ["/old/music"],
+      },
+    },
+  });
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  t.mock.method(lidarrClient, "getRootFolders", async () => {
+    throw new Error("Lidarr is temporarily unavailable");
+  });
+
+  const response = await postSettings({
+    integrations: {
+      lidarr: { rootFolderPath: "/new/default" },
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(dbOps.getSettings().integrations.lidarr.rootFolderPaths, ["/old/music"]);
+  assert.equal(dbOps.getSettings().integrations.lidarr.rootFolderPath, "/new/default");
 });

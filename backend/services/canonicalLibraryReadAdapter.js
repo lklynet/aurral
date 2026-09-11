@@ -68,7 +68,7 @@ const buildAlbum = (album, artistsById, tracksById, managementByAlbumId = new Ma
     .filter(Boolean);
   const sizeOnDisk = albumTracks.reduce((total, track) => {
     const file = selectCanonicalFile(track.files, album.id, album.managedBy);
-    return total + Number(file?.size || 0);
+    return total + (file?.available ? Number(file.size || 0) : 0);
   }, 0);
   const trackFileCount = albumTracks.filter((track) =>
     albumFiles(track, album.id).some((file) => file.available),

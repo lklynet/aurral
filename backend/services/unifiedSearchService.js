@@ -120,6 +120,19 @@ function addArtistToIndex(index, artist, target = "library") {
   addCount(index.playlistArtistNames, normalizeKey(name));
 }
 
+function dedupeSearchArtists(artists) {
+  const seen = new Set();
+  return (Array.isArray(artists) ? artists : []).filter((artist) => {
+    const stableField = ["canonicalId", "id", "mbid", "foreignArtistId", "artistMbid", "identityKey"]
+      .find((field) => String(artist?.[field] ?? "").trim());
+    if (!stableField) return true;
+    const key = `${stableField}:${String(artist[stableField]).trim()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function addPlaylistTrackToIndex(index, track) {
   const artistName = String(track?.artistName || track?.artist || "").trim();
   const title = String(track?.trackName || track?.title || track?.name || "").trim();
@@ -572,7 +585,7 @@ export function searchLocalFromData(
     return { artists: [], tracks: [] };
   }
 
-  const artistResults = artists
+  const artistResults = dedupeSearchArtists(artists)
     .map((artist) => {
       const name = String(artist?.artistName || artist?.name || "").trim();
       const mbid = artist?.mbid || artist?.foreignArtistId || artist?.artistMbid || artist?.id || null;
@@ -647,11 +660,11 @@ async function searchLocalLibrary(query, limit, user) {
         ...(canonical.tracks?.albums || []),
       ].map((album) => [album.id, album]),
     );
-    const artists = [
+    const artists = dedupeSearchArtists([
       ...context.artists,
       ...(canonical.artists || []),
       ...(canonical.tracks?.artists || []),
-    ];
+    ]);
     const tracks = (canonical.tracks?.tracks || []).map((track) => {
       const album = track.albums
         ?.map((entry) => albums.get(entry.albumId))

@@ -144,6 +144,25 @@ test("a local-only configured scan does not contact Lidarr", async () => {
   }
 });
 
+test("root scans ignore empty root values instead of scanning the process directory", async () => {
+  const source = `empty-root-scan-${process.pid}-${Date.now()}`;
+  try {
+    const result = await scanMusicRoots({
+      rootPaths: ["", "  ", null],
+      source,
+      syncSearch: false,
+    });
+
+    assert.deepEqual(result, { filesSeen: 0, filesIndexed: 0, filesFailed: 0, changed: false });
+    assert.equal(
+      db.prepare("SELECT COUNT(*) AS count FROM library_scan_runs WHERE source = ?").get(source).count,
+      0,
+    );
+  } finally {
+    db.prepare("DELETE FROM library_scan_runs WHERE source = ?").run(source);
+  }
+});
+
 test("a configured scan does not contact Lidarr without discovered roots", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-failed-index-repair-"));
   const identityKey = `name:failed-index-repair-${process.pid}`;

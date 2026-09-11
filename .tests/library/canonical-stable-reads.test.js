@@ -141,6 +141,72 @@ test("optional Lidarr reads use indexed Aurral media without provider calls", as
   }
 });
 
+test("configured Lidarr read failures fall back to the canonical index", async (t) => {
+  const key = `fallback-lidarr-read-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({
+    identityKey: `${key}:artist`,
+    mbid: `${key}-artist-mbid`,
+    name: "Fallback Read Artist",
+    metadata: { id: 9941 },
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: `${key}:album`,
+    artistId: artist.id,
+    title: "Fallback Read Album",
+    metadata: { id: 9942 },
+  });
+  const track = upsertLibraryTrack({
+    identityKey: `${key}:track`,
+    title: "Fallback Read Track",
+    metadata: { id: 9943 },
+  });
+  const filePath = `/tmp/${key}.flac`;
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "aurral",
+    path: filePath,
+    available: true,
+  });
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  t.mock.method(lidarrClient, "getArtistByMbid", async () => {
+    throw new Error("Lidarr connection refused");
+  });
+  t.mock.method(lidarrClient, "getArtist", async () => {
+    throw new Error("Lidarr connection refused");
+  });
+  t.mock.method(lidarrClient, "getHistory", async () => {
+    throw new Error("Lidarr connection refused");
+  });
+  t.mock.method(lidarrClient, "getAlbum", async () => {
+    throw new Error("Lidarr connection refused");
+  });
+
+  try {
+    const [byMbid, byId, recent, albums, byAlbumId, tracks] = await Promise.all([
+      libraryManager.getArtist(artist.mbid),
+      libraryManager.getArtistById(9941),
+      libraryManager.getRecentArtists(10),
+      libraryManager.getAlbums(9941),
+      libraryManager.getAlbumById(9942),
+      libraryManager.getTracks(9942),
+    ]);
+    assert.equal(byMbid?.canonicalId, String(artist.id));
+    assert.equal(byId?.canonicalId, String(artist.id));
+    assert.ok(recent.some((entry) => entry.id === String(artist.id)));
+    assert.equal(albums[0]?.canonicalId, String(album.id));
+    assert.equal(byAlbumId?.canonicalId, String(album.id));
+    assert.equal(tracks[0]?.canonicalId, String(track.id));
+  } finally {
+    db.prepare("DELETE FROM library_media_files WHERE path = ?").run(filePath);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  }
+});
+
 test("artist key reads use identity columns and preserve metadata foreign IDs", (t) => {
   const identityKey = `artist-key-read:${Date.now()}`;
   const foreignArtistId = "artist-key-foreign-id";

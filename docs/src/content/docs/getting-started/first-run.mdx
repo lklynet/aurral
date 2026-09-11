@@ -23,7 +23,7 @@ Complete [Filesystem and mounts](/getting-started/storage/) first. The short ver
 3. Set **Downloads Folder > Path** to a writable path inside Aurral, such as `/data/downloads/aurral`.
 4. Open **Settings > Storage health**, select **Run Checks**, and fix failed checks.
 5. If you use Lidarr, open **Settings > Lidarr**.
-6. Enter the Lidarr URL that Aurral can reach. In one Docker Compose network this is often `http://lidarr:8686`.
+6. Prefer an HTTPS Lidarr URL. In a trusted, isolated Docker Compose network, `http://lidarr:8686` is also acceptable because Aurral sends the Lidarr API key to this URL.
 7. Enter the Lidarr API key and select **Test connection**.
 8. Select **Test library access** after the connection test passes.
 9. Connect the download clients and playback server that you use. Navidrome and Plex are optional

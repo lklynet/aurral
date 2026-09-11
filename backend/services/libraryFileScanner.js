@@ -276,8 +276,9 @@ export async function scanMusicRoot({
 export async function scanMusicRoots({ rootPaths = [], ...options } = {}) {
   const roots = [...new Set(
     (Array.isArray(rootPaths) ? rootPaths : [])
-      .map((rootPath) => path.resolve(String(rootPath || "")))
-      .filter(Boolean),
+      .map((rootPath) => String(rootPath ?? "").trim())
+      .filter(Boolean)
+      .map((rootPath) => path.resolve(rootPath)),
   )];
   const unseenPaths = getAvailableLibraryMediaPaths(options.source || "aurral");
   const result = { filesSeen: 0, filesIndexed: 0, filesFailed: 0, changed: false };

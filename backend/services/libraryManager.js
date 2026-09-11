@@ -162,6 +162,52 @@ function canonicalLibraryForAlbum(reference) {
   });
 }
 
+function canonicalAlbumsForArtist(reference) {
+  const library = canonicalLibraryForArtist(reference);
+  const artistId = library.albums[0]?.artistId;
+  const artist = library.artists.find((entry) => entry.id === artistId);
+  return library.albums.map((album) => mapCanonicalAlbum(album, artist, library.tracks));
+}
+
+function canonicalAlbumForReference(reference) {
+  const library = canonicalLibraryForAlbum(reference);
+  const album = library.albums[0];
+  if (!album) return null;
+  const artist = library.artists.find((entry) => entry.id === album.artistId);
+  return mapCanonicalAlbum(album, artist, library.tracks);
+}
+
+function canonicalTracksForAlbum(reference) {
+  const library = canonicalLibraryForAlbum(reference);
+  const album = library.albums[0];
+  if (!album) return [];
+  return library.tracks
+    .filter((track) => track.albums.some((entry) => entry.albumId === album.id))
+    .map((track) => mapCanonicalTrack(track, album));
+}
+
+function canonicalRecentArtists(limit) {
+  const normalizedLimit = Math.max(0, Number(limit) || 0);
+  return normalizedLimit === 0
+    ? []
+    : getCanonicalArtistProjection({ pageSize: normalizedLimit });
+}
+
+function cachedOrCanonicalRecentArtists(limit) {
+  const normalizedLimit = Math.max(0, Number(limit) || 0);
+  if (normalizedLimit === 0) return [];
+  if (Array.isArray(_cachedArtists) && _cachedArtists.length > 0) {
+    return _cachedArtists.slice(0, normalizedLimit);
+  }
+  return canonicalRecentArtists(normalizedLimit);
+}
+
+function isLidarrNotFoundError(error) {
+  return error?.response?.status === 404 ||
+    error?.status === 404 ||
+    /\b404\b|not found in lidarr/i.test(String(error?.message || ""));
+}
+
 function removeLibraryDownloadJobs(track) {
   const normalize = (value) => String(value || "").trim().toLocaleLowerCase();
   const trackMbid = normalize(track?.mbid);
@@ -241,6 +287,18 @@ function findCachedArtistByMbid(mbid) {
     _cachedArtists.find((artist) => artist?.mbid === mbid || artist?.foreignArtistId === mbid) ||
     null
   );
+}
+
+function findCachedArtistById(id) {
+  const value = String(id ?? "").trim();
+  if (!value || !Array.isArray(_cachedArtists) || _cachedArtists.length === 0) {
+    return null;
+  }
+  return _cachedArtists.find((artist) =>
+    [artist?.id, artist?.canonicalId, artist?.providerId].some(
+      (candidate) => String(candidate ?? "").trim() === value,
+    ),
+  ) || null;
 }
 
 function upsertCachedArtist(mappedArtist) {
@@ -886,7 +944,10 @@ export class LibraryManager {
       const mappedArtist = this.mapLidarrArtist(lidarrArtist);
       upsertCachedArtist(mappedArtist);
       return mappedArtist;
-    } catch {
+    } catch (error) {
+      if (!isLidarrNotFoundError(error)) {
+        return findCachedArtistByMbid(mbid) || canonicalArtistFallback(mbid);
+      }
       return null;
     }
   }
@@ -899,6 +960,9 @@ export class LibraryManager {
       await this.backfillLidarrArtistMappings([lidarrArtist]);
       return this.mapLidarrArtist(lidarrArtist);
     } catch (error) {
+      if (!isLidarrNotFoundError(error)) {
+        return findCachedArtistById(id) || canonicalArtistFallback(id);
+      }
       return null;
     }
   }
@@ -1041,13 +1105,10 @@ export class LibraryManager {
     try {
       const lidarr = await getLidarrClient();
       if (!lidarr || !lidarr.isConfigured()) {
-        const normalizedLimit = Math.max(0, Number(limit) || 0);
-        return normalizedLimit === 0
-          ? []
-          : getCanonicalArtistProjection({ pageSize: normalizedLimit });
+        return canonicalRecentArtists(limit);
       }
       if (_lastLidarrFailureAt && Date.now() - _lastLidarrFailureAt < LIDARR_RETRY_MS) {
-        return Array.isArray(_cachedArtists) ? _cachedArtists.slice(0, limit) : [];
+        return cachedOrCanonicalRecentArtists(limit);
       }
       const normalizedLimit = Math.max(0, limit);
       const normalizedPool = Math.max(normalizedLimit, poolSize);
@@ -1079,7 +1140,7 @@ export class LibraryManager {
             }
           } catch {}
         }
-        return Array.isArray(_cachedArtists) ? _cachedArtists.slice(0, normalizedLimit) : [];
+        return cachedOrCanonicalRecentArtists(normalizedLimit);
       }
       const picked = artistIds.sort(() => 0.5 - Math.random()).slice(0, normalizedLimit);
       const artists = await Promise.all(picked.map((id) => lidarr.getArtist(id).catch(() => null)));
@@ -1098,9 +1159,9 @@ export class LibraryManager {
           .slice(0, Math.max(0, normalizedLimit - mapped.length));
         return [...mapped, ...extra];
       }
-      return mapped;
+      return mapped.length > 0 ? mapped : canonicalRecentArtists(normalizedLimit);
     } catch (_) {
-      return Array.isArray(_cachedArtists) ? _cachedArtists.slice(0, limit) : [];
+      return cachedOrCanonicalRecentArtists(limit);
     }
   }
 
@@ -1565,9 +1626,7 @@ export class LibraryManager {
   async getAlbums(artistId, lidarrArtist = null, options = {}) {
     const lidarr = await getLidarrClient();
     if (!lidarr || !lidarr.isConfigured()) {
-      const library = canonicalLibraryForArtist(artistId);
-      const artist = library.artists.find((entry) => entry.id === library.albums[0]?.artistId);
-      return library.albums.map((album) => mapCanonicalAlbum(album, artist, library.tracks));
+      return canonicalAlbumsForArtist(artistId);
     }
     try {
       const resolvedArtist = lidarrArtist || (await lidarr.getArtist(artistId));
@@ -1586,18 +1645,16 @@ export class LibraryManager {
         : [];
       return artistAlbums.map((a) => this.mapLidarrAlbum(a, resolvedArtist));
     } catch (error) {
-      logger.error('library', `[LibraryManager] Failed to fetch albums from Lidarr: ${error.message}`);      return [];
+      if (isLidarrNotFoundError(error)) return [];
+      logger.error('library', `[LibraryManager] Failed to fetch albums from Lidarr: ${error.message}`);
+      return canonicalAlbumsForArtist(artistId);
     }
   }
 
   async getAlbumById(id) {
     const lidarr = await getLidarrClient();
     if (!lidarr || !lidarr.isConfigured()) {
-      const library = canonicalLibraryForAlbum(id);
-      const album = library.albums[0];
-      if (!album) return null;
-      const artist = library.artists.find((entry) => entry.id === album.artistId);
-      return mapCanonicalAlbum(album, artist, library.tracks);
+      return canonicalAlbumForReference(id);
     }
     if (!id || id === "undefined" || id === "null") {
       return null;
@@ -1610,10 +1667,8 @@ export class LibraryManager {
       const lidarrArtist = await lidarr.getArtist(lidarrAlbum.artistId);
       return this.mapLidarrAlbum(lidarrAlbum, lidarrArtist);
     } catch (error) {
-      if (error.response?.status === 404 || error.message?.includes("404")) {
-        return null;
-      }
-      return null;
+      if (isLidarrNotFoundError(error)) return null;
+      return canonicalAlbumForReference(id);
     }
   }
 
@@ -1849,12 +1904,7 @@ export class LibraryManager {
 
     const lidarr = await getLidarrClient();
     if (!lidarr || !lidarr.isConfigured()) {
-      const library = canonicalLibraryForAlbum(albumId);
-      const album = library.albums[0];
-      if (!album) return [];
-      return library.tracks
-        .filter((track) => track.albums.some((entry) => entry.albumId === album.id))
-        .map((track) => mapCanonicalTrack(track, album));
+      return canonicalTracksForAlbum(albumId);
     }
 
     const key = String(albumId);
@@ -1954,10 +2004,9 @@ export class LibraryManager {
       if (cached) {
         return cached.tracks;
       }
-      if (error.message && error.message.includes("404")) {
-        return [];
-      }
-      logger.error('library', `[LibraryManager] Failed to fetch tracks from Lidarr: ${error.message}`);      return [];
+      if (isLidarrNotFoundError(error)) return [];
+      logger.error('library', `[LibraryManager] Failed to fetch tracks from Lidarr: ${error.message}`);
+      return canonicalTracksForAlbum(albumId);
     }
   }
 

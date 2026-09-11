@@ -118,6 +118,74 @@ test("getCanonicalTrackPath keeps shared tracks scoped to the requested album", 
   }
 });
 
+test("canonical references prefer the canonical ID over a provider ID collision", () => {
+  const key = `query-reference-collision-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({
+    identityKey: `${key}:artist`,
+    name: "Reference Collision Artist",
+  });
+  const providerAlbum = upsertLibraryAlbum({
+    identityKey: `${key}:provider-album`,
+    artistId: artist.id,
+    title: "Provider Album",
+    metadata: { id: 999001 },
+  });
+  const targetAlbum = upsertLibraryAlbum({
+    identityKey: `${key}:target-album`,
+    artistId: artist.id,
+    title: "Target Album",
+  });
+  const providerTrack = upsertLibraryTrack({
+    identityKey: `${key}:provider-track`,
+    title: "Provider Track",
+    metadata: { id: 999002 },
+  });
+  const targetTrack = upsertLibraryTrack({
+    identityKey: `${key}:target-track`,
+    title: "Target Track",
+  });
+  const targetPath = `/tmp/${key}.flac`;
+  db.prepare("UPDATE library_albums SET metadata_json = ? WHERE id = ?")
+    .run(JSON.stringify({ id: targetAlbum.id }), providerAlbum.id);
+  db.prepare("UPDATE library_tracks SET metadata_json = ? WHERE id = ?")
+    .run(JSON.stringify({ id: targetTrack.id }), providerTrack.id);
+  linkLibraryAlbumTrack({ albumId: targetAlbum.id, trackId: targetTrack.id });
+  upsertLibraryMediaFile({
+    trackId: targetTrack.id,
+    albumId: targetAlbum.id,
+    source: "aurral",
+    path: targetPath,
+    available: true,
+  });
+
+  try {
+    assert.equal(getCanonicalTrackPath(targetAlbum.id, targetTrack.id), targetPath);
+    assert.deepEqual(
+      getCanonicalTrack({ trackId: targetTrack.id }).tracks.map((track) => track.id),
+      [targetTrack.id],
+    );
+    assert.deepEqual(
+      getCanonicalLibraryForAlbumReferences({ references: [targetAlbum.id] }).albums
+        .map((album) => album.id),
+      [targetAlbum.id],
+    );
+  } finally {
+    db.prepare("DELETE FROM library_media_files WHERE path = ?").run(targetPath);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? OR track_id = ?")
+      .run(targetAlbum.id, targetTrack.id);
+    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(
+      providerTrack.id,
+      targetTrack.id,
+    );
+    db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)").run(
+      providerAlbum.id,
+      targetAlbum.id,
+    );
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    invalidateCanonicalLibraryCache();
+  }
+});
+
 test("focused track, ownership, count, and sample queries stay bounded", () => {
   const key = `query-focused-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({

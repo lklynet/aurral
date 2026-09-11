@@ -577,18 +577,19 @@ export function getCanonicalTrackPath(albumReference, trackReference) {
   const trackValue = String(trackReference ?? "").trim();
   if (!albumValue || !trackValue) return null;
 
-  const album = db.prepare(
-    `SELECT id FROM library_albums
-       WHERE id = ? OR identity_key = ? OR mbid = ? OR release_group_mbid = ? OR
-         (json_valid(metadata_json) AND CAST(json_extract(metadata_json, '$.id') AS TEXT) = ?)
-       LIMIT 1`,
-  ).get(albumValue, albumValue, albumValue, albumValue, albumValue);
-  const track = db.prepare(
-    `SELECT id FROM library_tracks
-       WHERE id = ? OR identity_key = ? OR mbid = ? OR
-         (json_valid(metadata_json) AND CAST(json_extract(metadata_json, '$.id') AS TEXT) = ?)
-       LIMIT 1`,
-  ).get(trackValue, trackValue, trackValue, trackValue);
+  const [albumId] = resolveCanonicalReferenceIds("library_albums", [albumValue], [
+    "identity_key",
+    "mbid",
+    "release_group_mbid",
+    "CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.id') END AS TEXT)",
+  ]);
+  const [trackId] = resolveCanonicalReferenceIds("library_tracks", [trackValue], [
+    "identity_key",
+    "mbid",
+    "CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.id') END AS TEXT)",
+  ]);
+  const album = albumId ? { id: albumId } : null;
+  const track = trackId ? { id: trackId } : null;
   if (!album || !track) return null;
 
   const files = db.prepare(
@@ -618,22 +619,14 @@ export function getCanonicalTrack({
   const reference = String(trackId ?? "").trim();
   if (!reference) return { artists: [], albums: [], tracks: [] };
 
-  const numericId = /^\d+$/.test(reference) ? Number(reference) : null;
-  const conditions = [];
-  const parameters = [];
-  if (Number.isSafeInteger(numericId) && numericId > 0) {
-    conditions.push(`(
-      track.id = ? OR
-      (json_valid(track.metadata_json) AND CAST(json_extract(track.metadata_json, '$.id') AS TEXT) = ?)
-    )`);
-    parameters.push(numericId, reference);
-  } else {
-    conditions.push(`(
-      track.identity_key = ? OR track.mbid = ? OR
-      (json_valid(track.metadata_json) AND CAST(json_extract(track.metadata_json, '$.id') AS TEXT) = ?)
-    )`);
-    parameters.push(reference, reference, reference);
-  }
+  const [resolvedTrackId] = resolveCanonicalReferenceIds("library_tracks", [reference], [
+    "identity_key",
+    "mbid",
+    "CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.id') END AS TEXT)",
+  ]);
+  if (!resolvedTrackId) return { artists: [], albums: [], tracks: [] };
+  const conditions = ["track.id = ?"];
+  const parameters = [resolvedTrackId];
   if (albumId !== null && albumId !== undefined && String(albumId).trim()) {
     conditions.push("album.id = ?");
     parameters.push(Number(albumId));
@@ -802,22 +795,32 @@ function getCanonicalLibraryForIds(kind, ids, source, availableOnly) {
 }
 
 function resolveCanonicalReferenceIds(table, references, columns) {
-  const numericIds = references
-    .filter((reference) => /^\d+$/.test(reference))
-    .map(Number);
-  const queries = [];
-  const parameters = [];
-  if (numericIds.length) {
-    queries.push(`SELECT id FROM ${table} WHERE id IN (${numericIds.map(() => "?").join(",")})`);
-    parameters.push(...numericIds);
-  }
-  for (const column of columns) {
-    queries.push(
-      `SELECT id FROM ${table} WHERE ${column} IN (${references.map(() => "?").join(",")})`,
-    );
-    parameters.push(...references);
-  }
-  return db.prepare(queries.join(" UNION ")).all(...parameters).map((row) => row.id);
+  const requested = references.map(() => "(?, ?)").join(", ");
+  const canonicalCandidates = `(
+    SELECT canonical.id
+    FROM ${table} AS canonical
+    WHERE canonical.id = requested.canonical_id
+    LIMIT 1
+  )`;
+  const aliasCandidates = columns.map((column) => `(
+    SELECT alias.id
+    FROM ${table} AS alias
+    WHERE ${column} = requested.reference
+    ORDER BY alias.id
+    LIMIT 1
+  )`);
+  const sql = `
+    SELECT id FROM ${table}
+    WHERE id IN (
+      WITH requested(reference, canonical_id) AS (VALUES ${requested})
+      SELECT COALESCE(${[canonicalCandidates, ...aliasCandidates].join(",")})
+      FROM requested
+    )`;
+  const parameters = references.flatMap((reference) => {
+    const numericId = /^\d+$/.test(reference) ? Number(reference) : null;
+    return [reference, Number.isSafeInteger(numericId) && numericId > 0 ? numericId : null];
+  });
+  return db.prepare(sql).all(...parameters).map((row) => row.id);
 }
 
 export function getCanonicalLibraryForArtistReferences({
@@ -875,12 +878,12 @@ export function getCanonicalLibraryForAlbumReferences({
 } = {}) {
   const references = normalizeLookupValues(requestedReferences);
   if (!references.length) return { artists: [], albums: [], tracks: [] };
-  const columns = ["identity_key", "mbid", "release_group_mbid"];
-  if (references.some((reference) => /^\d+$/.test(reference))) {
-    columns.push(
-      "CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.id') END AS TEXT)",
-    );
-  }
+  const columns = [
+    "identity_key",
+    "mbid",
+    "release_group_mbid",
+    "CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.id') END AS TEXT)",
+  ];
   const ids = resolveCanonicalReferenceIds(
     "library_albums",
     references,

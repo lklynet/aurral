@@ -13,12 +13,15 @@ import { getCanonicalArtistMbids } from "../../../services/libraryQueryService.j
 
 const ARTIST_LOOKUP_BATCH_MAX = 100;
 
-const canonicalAlbumLookup = (albums, reference) =>
-  albums.find((album) =>
-    [album.id, album.providerId, album.mbid, album.releaseGroupMbid, album.foreignAlbumId, album.identityKey].some(
-      (value) => String(value || "").trim() === String(reference || "").trim(),
+const canonicalAlbumLookup = (albums, reference) => {
+  const value = String(reference || "").trim();
+  if (!value) return undefined;
+  return albums.find((album) =>
+    [album.foreignAlbumId, album.mbid, album.releaseGroupMbid, album.identityKey].some(
+      (candidate) => String(candidate || "").trim() === value,
     ),
   );
+};
 
 const canonicalAlbumResult = (album, ownedTrackMbids = []) => ({
   inLibrary: true,

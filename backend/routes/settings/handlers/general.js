@@ -53,6 +53,14 @@ function didLidarrRootDiscoveryChange(previousSettings, nextSettings) {
     .some((key) => JSON.stringify(previous[key]) !== JSON.stringify(next[key]));
 }
 
+function didLidarrConnectionChange(previousSettings, nextSettings) {
+  const previous = previousSettings?.integrations?.lidarr || {};
+  const next = nextSettings?.integrations?.lidarr || {};
+  return ["url", "apiKey"].some(
+    (key) => JSON.stringify(previous[key]) !== JSON.stringify(next[key]),
+  );
+}
+
 export function registerGeneral(router) {
   router.post("/navidrome/test", testNavidromeConnection);
 
@@ -529,6 +537,17 @@ export function registerGeneral(router) {
       }
       if (updatedSettings?.integrations?.musicbrainz) {
         delete updatedSettings.integrations.musicbrainz;
+      }
+
+      if (didLidarrConnectionChange(currentSettings, updatedSettings)) {
+        updatedSettings.integrations = {
+          ...updatedSettings.integrations,
+          lidarr: {
+            ...(updatedSettings.integrations?.lidarr || {}),
+            rootFolderPath: null,
+            rootFolderPaths: [],
+          },
+        };
       }
 
       dbOps.updateSettings(updatedSettings);
