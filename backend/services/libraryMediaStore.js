@@ -630,12 +630,5 @@ export function getLibrarySnapshot() {
 }
 
 export function getLibraryMediaFile({ source, path }) {
-  return db
-    .prepare(
-      `SELECT *
-       FROM library_media_files
-       WHERE source = ? AND path = ?
-       LIMIT 1`,
-    )
-    .get(normalizeText(source), normalizeText(path));
+  return getLibraryMediaFileStmt.get(normalizeText(source), normalizeText(path));
 }
