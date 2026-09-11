@@ -35,6 +35,27 @@ const LIDARR_METADATA_KEYS = [
   "statistics",
 ];
 
+const getLibraryMediaFileStmt = db.prepare(
+  "SELECT * FROM library_media_files WHERE source = ? AND path = ?",
+);
+const upsertLibraryMediaFileStmt = db.prepare(
+  `INSERT INTO library_media_files
+    (track_id, album_id, source, path, format, size, mtime_ms, duration_ms, quality_json, available, last_seen_scan_id, created_at, updated_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+   ON CONFLICT(source, path) DO UPDATE SET
+     track_id = excluded.track_id,
+     album_id = COALESCE(excluded.album_id, library_media_files.album_id),
+     source = excluded.source,
+     format = excluded.format,
+     size = excluded.size,
+     mtime_ms = excluded.mtime_ms,
+     duration_ms = excluded.duration_ms,
+     quality_json = COALESCE(excluded.quality_json, library_media_files.quality_json),
+     available = excluded.available,
+     last_seen_scan_id = excluded.last_seen_scan_id,
+     updated_at = excluded.updated_at`,
+);
+
 let libraryScanDepth = 0;
 let libraryCacheInvalidationPending = false;
 const libraryScanContext = new AsyncLocalStorage();
@@ -514,9 +535,7 @@ export function upsertLibraryMediaFile({
   const normalizedDurationMs = Number.isFinite(Number(durationMs)) ? Number(durationMs) : null;
   const qualityText = stringify(quality);
   const normalizedAvailable = available === true ? 1 : 0;
-  const existing = db.prepare(
-    "SELECT * FROM library_media_files WHERE source = ? AND path = ?",
-  ).get(fileSource, filePath);
+  const existing = getLibraryMediaFileStmt.get(fileSource, filePath);
   if (
     existing &&
     Number(trackId) === existing.track_id &&
@@ -531,23 +550,7 @@ export function upsertLibraryMediaFile({
     return existing;
   }
   const timestamp = now();
-  db.prepare(
-    `INSERT INTO library_media_files
-      (track_id, album_id, source, path, format, size, mtime_ms, duration_ms, quality_json, available, last_seen_scan_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(source, path) DO UPDATE SET
-       track_id = excluded.track_id,
-       album_id = COALESCE(excluded.album_id, library_media_files.album_id),
-       source = excluded.source,
-       format = excluded.format,
-       size = excluded.size,
-       mtime_ms = excluded.mtime_ms,
-       duration_ms = excluded.duration_ms,
-       quality_json = COALESCE(excluded.quality_json, library_media_files.quality_json),
-       available = excluded.available,
-       last_seen_scan_id = excluded.last_seen_scan_id,
-       updated_at = excluded.updated_at`,
-  ).run(
+  upsertLibraryMediaFileStmt.run(
     Number(trackId),
     normalizedAlbumId,
     fileSource,
@@ -563,8 +566,7 @@ export function upsertLibraryMediaFile({
     timestamp,
   );
   invalidateLibraryCache();
-  return db.prepare("SELECT * FROM library_media_files WHERE source = ? AND path = ?")
-    .get(fileSource, filePath);
+  return getLibraryMediaFileStmt.get(fileSource, filePath);
 }
 
 export function getAvailableLibraryMediaPaths(source) {
