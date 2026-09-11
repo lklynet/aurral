@@ -958,7 +958,12 @@ const buildStarred = (library, rows, user) => {
 };
 
 export function getStarredWithLibrary(user) {
-  const rows = canonicalStarRows(user, starredRows(user));
+  // Several playlist-song stars can resolve to the same library track; render it once.
+  const seen = new Set();
+  const rows = canonicalStarRows(user, starredRows(user)).filter((row) => {
+    const key = `${row.entity_kind}:${row.entity_key}`;
+    return seen.has(key) ? false : seen.add(key);
+  });
   const canonicalRows = rows.filter((row) => ["artist", "album", "song"].includes(row.entity_kind));
   const library = getCanonicalLibrary({
     favoriteKeys: canonicalRows.map((row) => ({ kind: row.entity_kind, key: row.entity_key })),
