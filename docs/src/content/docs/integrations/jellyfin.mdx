@@ -17,6 +17,18 @@ Aurral creates or updates playlists for enabled flows and shared playlists when 
 
 For owner-scoped playlists, Aurral matches the Aurral username to a Jellyfin username using an exact, case-insensitive comparison. It creates a private playlist owned by the matching Jellyfin user. If no matching user exists, the playlist is not published to Jellyfin.
 
+## Playlist edits in Jellyfin
+
+Playlist membership sync is one-way, but no longer replaces the entire Jellyfin playlist. Songs added directly in Jellyfin or a Jellyfin client stay in Jellyfin; they are not imported into Aurral. Existing entries keep their order and missing Aurral tracks are appended.
+
+Aurral records the tracks it supplies in its persistent playlist settings. Subsequent syncs can remove those tracks when they leave the published Aurral playlist, without clearing Jellyfin-only additions. Emptying the Aurral playlist also preserves Jellyfin-only entries. A matching song already present in Jellyfin satisfies the request without adding another copy or claiming ownership of it.
+
+Existing playlists from before this tracking was introduced have no ownership history, so their existing contents are preserved. Aurral only starts tracking newly supplied entries. Keep the Aurral `/config` volume persistent to retain this history across restarts.
+
+If repeated copies cannot be safely distinguished, Aurral preserves them rather than risk deleting a user's copy. A failed or interrupted add with an unknown outcome may likewise leave an untracked entry; a retry checks what is already present instead of adding it again.
+
+This is not two-way editing: removing an Aurral-supplied song in Jellyfin does not remove it in Aurral, and a later sync may add it back. Deleting or disabling the whole flow/shared playlist still removes its managed Jellyfin playlist, as before. Owner changes and legacy public-playlist cleanup also retain their existing behavior.
+
 ## Matching and scans
 
 Aurral reads the matched Jellyfin user's accessible audio library and matches tracks by exact Jellyfin library path first. It uses a unique MusicBrainz recording ID only when the path does not match. It does not use title or artist guesses. Only matched tracks are published, so unavailable tracks do not prevent the rest of a playlist from syncing.
