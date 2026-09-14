@@ -99,14 +99,20 @@ export function scheduleLibraryScan({
         nextRegistry.changedPaths = [];
         nextRegistry.fullRescanPending = true;
       } else if (nextRegistry.fullRescanPending !== true) {
-        nextRegistry.changedPaths = mergeChangedPaths(nextRegistry.changedPaths, requestedPaths);
+        const mergedPaths = mergeChangedPaths(nextRegistry.changedPaths, requestedPaths);
+        if (mergedPaths === null) {
+          nextRegistry.changedPaths = [];
+          nextRegistry.fullRescanPending = true;
+        } else {
+          nextRegistry.changedPaths = mergedPaths;
+        }
       }
     } else if (fullScanRequested) {
       delete nextRegistry.changedPaths;
-    } else if ("changedPaths" in nextRegistry) {
-      nextRegistry.changedPaths = mergeChangedPaths(nextRegistry.changedPaths, requestedPaths);
-    } else {
-      nextRegistry.changedPaths = requestedPaths;
+    } else if (Array.isArray(nextRegistry.changedPaths)) {
+      const mergedPaths = mergeChangedPaths(nextRegistry.changedPaths, requestedPaths);
+      if (mergedPaths === null) delete nextRegistry.changedPaths;
+      else nextRegistry.changedPaths = mergedPaths;
     }
     setScanRegistry(nextRegistry);
     return existingJobId;
@@ -117,9 +123,18 @@ export function scheduleLibraryScan({
   const recoveredFullScan = registry.inFlightActive === true && !Array.isArray(registry.inFlightPaths);
   const recoveredForce = registry.force === true;
   if (existingJobId != null) clearScheduledLibraryScan(existingJobId);
-  const fullScan = fullScanRequested || recoveredFullScan;
+  const mustRunFullScan = fullScanRequested ||
+    recoveredFullScan ||
+    registry.fullRescanPending === true;
   const effectiveForce = force === true || recoveredForce;
-  const effectivePaths = fullScan ? null : mergeChangedPaths(recoveredPaths, requestedPaths);
+  const effectivePaths = mustRunFullScan
+    ? null
+    : normalizeChangedPaths([
+        ...(Array.isArray(recoveredPaths) ? recoveredPaths : []),
+        ...(Array.isArray(registry.changedPaths) ? registry.changedPaths : []),
+        ...(Array.isArray(requestedPaths) ? requestedPaths : []),
+      ]);
+  const fullScan = mustRunFullScan || effectivePaths === null;
   const jobId = enqueueLibraryScanJob({
     force: effectiveForce,
     includeLidarr: includeLidarr === true,

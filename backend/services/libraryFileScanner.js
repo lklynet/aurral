@@ -207,7 +207,8 @@ async function resolveChangedFiles(rootPath, changedPaths) {
     let stat = null;
     let missing = false;
     try {
-      stat = await fs.stat(changedPath);
+      stat = await fs.lstat(changedPath);
+      if (stat.isSymbolicLink()) continue;
     } catch (error) {
       missing = error?.code === "ENOENT";
       if (!missing && !AUDIO_EXTENSIONS.has(path.extname(changedPath).toLowerCase())) {

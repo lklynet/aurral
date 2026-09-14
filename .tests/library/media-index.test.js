@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -799,6 +799,37 @@ test("a targeted rescan marks a deleted changed file unavailable", async () => {
   } finally {
     if (filePath) deleteIndexedFile(source, filePath);
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a targeted rescan ignores symbolic links", async () => {
+  const roots = await Promise.all([
+    mkdtemp(path.join(tmpdir(), "aurral-library-symlink-root-")),
+    mkdtemp(path.join(tmpdir(), "aurral-library-symlink-outside-")),
+  ]);
+  const source = `test-symlink-${process.pid}`;
+  let linkPath;
+  try {
+    const outsidePath = await createAudioFile(roots[1], "Artist/Album/01 Track.flac");
+    linkPath = path.join(roots[0], "linked.flac");
+    await symlink(outsidePath, linkPath);
+    let metadataReads = 0;
+
+    await scanMusicRoot({
+      rootPath: roots[0],
+      source,
+      changedPaths: [linkPath],
+      metadataReader: async () => {
+        metadataReads += 1;
+        return metadata;
+      },
+    });
+
+    assert.equal(metadataReads, 0);
+    assert.equal(getLibrarySnapshot().files.some((file) => file.path === linkPath), false);
+  } finally {
+    if (linkPath) deleteIndexedFile(source, linkPath);
+    await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
   }
 });
 
