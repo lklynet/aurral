@@ -15,6 +15,18 @@ const writeStore = (store) => {
   upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
 };
 
+/**
+ * Copy valid persisted ownership IDs without removing repeated occurrences.
+ * Legacy or malformed history becomes empty so it cannot authorize deletions.
+ *
+ * @param {unknown} ids - Stored ownership history to validate.
+ * @returns {string[]} A fresh copy of valid IDs, or an empty array if any value is invalid.
+ */
+const normalizeManagedIds = (ids) => Array.isArray(ids)
+  && ids.every((id) => typeof id === "string" && id.length > 0 && id === id.trim())
+  ? [...ids]
+  : [];
+
 const normalizePointer = (raw) => {
   if (!raw || typeof raw !== "object") return null;
   const playlistId = raw.playlistId != null ? String(raw.playlistId) : null;
@@ -25,6 +37,7 @@ const normalizePointer = (raw) => {
     serverUrl: String(raw.serverUrl || ""),
     jellyfinUserId:
       raw.jellyfinUserId != null ? String(raw.jellyfinUserId) : null,
+    managedItemIds: normalizeManagedIds(raw.managedItemIds),
     updatedAt: Number(raw.updatedAt) || Date.now(),
   };
 };
@@ -34,7 +47,9 @@ export const jellyfinPlaylistPointerStore = {
     return normalizePointer(readStore()[entityId]?.[targetKey] || null);
   },
 
-  setPointer(entityId, targetKey, { playlistId, title, serverUrl, jellyfinUserId = null }) {
+  setPointer(entityId, targetKey, {
+    playlistId, title, serverUrl, jellyfinUserId = null, managedItemIds = [],
+  }) {
     const store = readStore();
     if (!store[entityId]) store[entityId] = {};
     store[entityId][targetKey] = {
@@ -44,6 +59,7 @@ export const jellyfinPlaylistPointerStore = {
       updatedAt: Date.now(),
       jellyfinUserId:
         jellyfinUserId != null ? String(jellyfinUserId) : null,
+      managedItemIds: normalizeManagedIds(managedItemIds),
     };
     writeStore(store);
   },
