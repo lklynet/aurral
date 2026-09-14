@@ -16,6 +16,7 @@ import {
 } from "../../../services/downloadFolderConfig.js";
 import { normalizePathMappings } from "../../../services/pathMappings.js";
 import { logger } from "../../../services/logger.js";
+import { normalizeLidarrApiKey, normalizeLidarrUrl } from "../../../services/lidarrClient.js";
 import { testNavidromeConnection } from "../../shared/navidromeTest.js";
 import { mergePlexIntegration } from "./plexSettings.js";
 import { getNewsSettings, normalizeNewsFeeds, normalizeNewsGroups } from "../../../services/apiClients/config.js";
@@ -56,9 +57,8 @@ function didLidarrRootDiscoveryChange(previousSettings, nextSettings) {
 function didLidarrConnectionChange(previousSettings, nextSettings) {
   const previous = previousSettings?.integrations?.lidarr || {};
   const next = nextSettings?.integrations?.lidarr || {};
-  return ["url", "apiKey"].some(
-    (key) => JSON.stringify(previous[key]) !== JSON.stringify(next[key]),
-  );
+  return normalizeLidarrUrl(previous.url) !== normalizeLidarrUrl(next.url) ||
+    normalizeLidarrApiKey(previous.apiKey) !== normalizeLidarrApiKey(next.apiKey);
 }
 
 export function registerGeneral(router) {

@@ -238,3 +238,31 @@ test("preserves saved Lidarr roots when discovery fails for the same connection"
   assert.deepEqual(dbOps.getSettings().integrations.lidarr.rootFolderPaths, ["/old/music"]);
   assert.equal(dbOps.getSettings().integrations.lidarr.rootFolderPath, "/new/default");
 });
+
+test("preserves saved Lidarr roots for equivalent normalized connection values", async (t) => {
+  const { postSettings } = captureSettingsRoutes();
+  dbOps.updateSettings({
+    integrations: {
+      lidarr: {
+        url: "http://lidarr:8686/",
+        apiKey: " key ",
+        rootFolderPath: "/old/music",
+        rootFolderPaths: ["/old/music"],
+      },
+    },
+  });
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  t.mock.method(lidarrClient, "getRootFolders", async () => {
+    throw new Error("Lidarr is temporarily unavailable");
+  });
+
+  const response = await postSettings({
+    integrations: {
+      lidarr: { url: "http://lidarr:8686", apiKey: "key" },
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(dbOps.getSettings().integrations.lidarr.rootFolderPaths, ["/old/music"]);
+  assert.equal(dbOps.getSettings().integrations.lidarr.rootFolderPath, "/old/music");
+});

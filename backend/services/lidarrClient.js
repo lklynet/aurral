@@ -31,6 +31,14 @@ const VALID_MONITOR_OPTIONS = new Set([
   "first",
 ]);
 
+export function normalizeLidarrUrl(value) {
+  return String(value || "").replace(/\/+$/, "");
+}
+
+export function normalizeLidarrApiKey(value) {
+  return String(value || "").trim();
+}
+
 function normalizeRootFolderPath(value) {
   const normalized = String(value || "").trim();
   return normalized || null;
@@ -344,7 +352,7 @@ export class LidarrClient {
     const dbConfig = settings.integrations?.lidarr || {};
     let url = dbConfig.url || process.env.LIDARR_URL || "http://localhost:8686";
 
-    url = url.replace(/\/+$/, "");
+    url = normalizeLidarrUrl(url);
 
     const insecure =
       dbConfig.insecure === true ||
@@ -359,7 +367,7 @@ export class LidarrClient {
 
     const newConfig = {
       url: url,
-      apiKey: (dbConfig.apiKey || process.env.LIDARR_API_KEY || "").trim(),
+      apiKey: normalizeLidarrApiKey(dbConfig.apiKey || process.env.LIDARR_API_KEY || ""),
       rootFolderPath: normalizeRootFolderPath(dbConfig.rootFolderPath),
       rootFolderPaths: normalizeRootFolderPaths(dbConfig.rootFolderPaths),
       insecure: !!insecure,
