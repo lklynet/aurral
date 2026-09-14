@@ -1,3 +1,4 @@
+import path from "node:path";
 import createHonkerWorker from "./honkerWorkerFactory.js";
 import { db } from "../config/db-sqlite.js";
 import { dbOps } from "../db/helpers/index.js";
@@ -7,6 +8,7 @@ import { websocketService } from "./websocketService.js";
 
 const WORKER_NAME = "library-scan";
 const LIBRARY_SCAN_REGISTRY_KEY = "pendingLibraryScanJob";
+const MAX_CHANGED_PATHS = 4096;
 
 function getScanRegistry() {
   const raw = dbOps.getJSONSetting(LIBRARY_SCAN_REGISTRY_KEY);
@@ -20,6 +22,24 @@ function setScanRegistry(registry) {
 function normalizeJobId(value) {
   const jobId = Number(value);
   return Number.isSafeInteger(jobId) && jobId > 0 ? jobId : null;
+}
+
+function normalizeChangedPaths(paths) {
+  if (!Array.isArray(paths)) return null;
+  const normalized = [...new Set(
+    paths
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .map((value) => path.resolve(value)),
+  )];
+  return normalized.length > MAX_CHANGED_PATHS ? null : normalized;
+}
+
+function mergeChangedPaths(left, right) {
+  return normalizeChangedPaths([
+    ...(Array.isArray(left) ? left : []),
+    ...(Array.isArray(right) ? right : []),
+  ]);
 }
 
 function hasLiveScanJob(jobId) {
@@ -53,24 +73,61 @@ export function clearScheduledLibraryScan(jobId = null) {
   if (jobId != null && Number(registry.jobId) !== Number(jobId)) return;
   delete registry.jobId;
   delete registry.includeLidarr;
+  delete registry.force;
+  delete registry.changedPaths;
+  delete registry.inFlightActive;
+  delete registry.inFlightPaths;
+  delete registry.fullRescanPending;
   setScanRegistry(registry);
 }
 
-export function scheduleLibraryScan({ force = false, includeLidarr = true } = {}) {
+export function scheduleLibraryScan({
+  force = false,
+  includeLidarr = true,
+  changedPaths = null,
+} = {}) {
   const registry = getScanRegistry();
+  const requestedPaths = normalizeChangedPaths(changedPaths);
+  const fullScanRequested = force === true || requestedPaths === null;
   const existingJobId = normalizeJobId(registry.jobId);
   if (existingJobId != null && hasLiveScanJob(existingJobId)) {
-    if (includeLidarr === true && registry.includeLidarr !== true) {
-      setScanRegistry({ jobId: existingJobId, includeLidarr: true });
+    const nextRegistry = { ...registry };
+    if (includeLidarr === true) nextRegistry.includeLidarr = true;
+    if (force === true) nextRegistry.force = true;
+    if (registry.inFlightActive === true) {
+      if (fullScanRequested) {
+        nextRegistry.changedPaths = [];
+        nextRegistry.fullRescanPending = true;
+      } else if (nextRegistry.fullRescanPending !== true) {
+        nextRegistry.changedPaths = mergeChangedPaths(nextRegistry.changedPaths, requestedPaths);
+      }
+    } else if (fullScanRequested) {
+      delete nextRegistry.changedPaths;
+    } else if ("changedPaths" in nextRegistry) {
+      nextRegistry.changedPaths = mergeChangedPaths(nextRegistry.changedPaths, requestedPaths);
+    } else {
+      nextRegistry.changedPaths = requestedPaths;
     }
+    setScanRegistry(nextRegistry);
     return existingJobId;
   }
+  const recoveredPaths = registry.inFlightActive === true && Array.isArray(registry.inFlightPaths)
+    ? registry.inFlightPaths
+    : null;
+  const recoveredFullScan = registry.inFlightActive === true && !Array.isArray(registry.inFlightPaths);
+  const recoveredForce = registry.force === true;
   if (existingJobId != null) clearScheduledLibraryScan(existingJobId);
+  const fullScan = fullScanRequested || recoveredFullScan;
+  const effectiveForce = force === true || recoveredForce;
+  const effectivePaths = fullScan ? null : mergeChangedPaths(recoveredPaths, requestedPaths);
   const jobId = enqueueLibraryScanJob({
-    force: force === true,
+    force: effectiveForce,
     includeLidarr: includeLidarr === true,
   });
-  setScanRegistry({ jobId, includeLidarr: includeLidarr === true });
+  const nextRegistry = { jobId, includeLidarr: includeLidarr === true };
+  if (effectiveForce) nextRegistry.force = true;
+  if (!fullScan) nextRegistry.changedPaths = effectivePaths;
+  setScanRegistry(nextRegistry);
   return jobId;
 }
 
@@ -83,16 +140,35 @@ export function claimScheduledLibraryScanJob(jobId) {
     if (hasLiveScanJob(scheduledJobId)) return false;
     clearScheduledLibraryScan(scheduledJobId);
   }
-  setScanRegistry({
+  const nextRegistry = {
     jobId: normalizedJobId,
     includeLidarr:
       Number(registry.jobId) === normalizedJobId && registry.includeLidarr === true,
-  });
+  };
+  if (Number(registry.jobId) === normalizedJobId) {
+    for (const key of ["force", "changedPaths", "inFlightActive", "inFlightPaths", "fullRescanPending"]) {
+      if (key in registry) nextRegistry[key] = registry[key];
+    }
+  }
+  setScanRegistry(nextRegistry);
   return true;
 }
 
 export function onLibraryScanSuccess(_payload, job) {
+  const registry = getScanRegistry();
+  if (Number(registry.jobId) !== Number(job.id)) return;
+  const pendingFullScan = registry.fullRescanPending === true;
+  const pendingPaths = Array.isArray(registry.changedPaths) ? registry.changedPaths : [];
+  const includeLidarr = registry.includeLidarr === true;
+  const force = registry.force === true;
   clearScheduledLibraryScan(job.id);
+  if (pendingFullScan || pendingPaths.length > 0) {
+    scheduleLibraryScan({
+      force,
+      includeLidarr,
+      changedPaths: pendingFullScan ? null : pendingPaths,
+    });
+  }
 }
 
 export function onLibraryScanFinalFailure(job) {
@@ -150,7 +226,24 @@ const {
     const includeLidarr =
       payload?.includeLidarr === true ||
       (Number(registry.jobId) === Number(job.id) && registry.includeLidarr === true);
-    const scanResult = await scanConfiguredLibrary({ lidarrClient, includeLidarr });
+    const force = payload?.force === true ||
+      (Number(registry.jobId) === Number(job.id) && registry.force === true);
+    const changedPaths = Array.isArray(registry.changedPaths) ? registry.changedPaths : null;
+    if (Number(registry.jobId) === Number(job.id)) {
+      setScanRegistry({
+        ...registry,
+        changedPaths: [],
+        inFlightActive: true,
+        inFlightPaths: changedPaths,
+        fullRescanPending: false,
+      });
+    }
+    const scanResult = await scanConfiguredLibrary({
+      lidarrClient,
+      includeLidarr,
+      changedPaths,
+      force,
+    });
     if (scanResult?.lidarr?.error) {
       throw new Error(`Lidarr library indexing failed: ${scanResult.lidarr.error}`);
     }
@@ -163,10 +256,23 @@ const {
     if (job.attempts >= 3) {
       return { action: "fail", message };
     }
-    setScanRegistry({
+    const registry = getScanRegistry();
+    const active = registry.inFlightActive === true;
+    const fullScan = registry.fullRescanPending === true ||
+      (active && !Array.isArray(registry.inFlightPaths)) ||
+      (!active && !("changedPaths" in registry));
+    const nextRegistry = {
       jobId: job.id,
-      includeLidarr: getScanRegistry().includeLidarr === true,
-    });
+      includeLidarr: registry.includeLidarr === true,
+    };
+    if (registry.force === true) nextRegistry.force = true;
+    if (!fullScan) {
+      nextRegistry.changedPaths = mergeChangedPaths(
+        registry.changedPaths,
+        registry.inFlightPaths,
+      );
+    }
+    setScanRegistry(nextRegistry);
     return { action: "retry", delayS: 60, message };
   },
   onJobSuccess: onLibraryScanSuccess,

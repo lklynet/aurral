@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import path from "node:path";
 
 process.env.NODE_ENV = "test";
 
@@ -191,6 +192,28 @@ test("a full refresh upgrades a pending local-only scan", () => {
   }
 });
 
+test("pending watcher scans merge changed paths into one job", () => {
+  const queue = getLibraryScanQueue();
+  clearScheduledLibraryScan();
+  let jobId;
+  try {
+    jobId = scheduleLibraryScan({
+      includeLidarr: false,
+      changedPaths: ["/data/music/Artist/Album/01 Track.flac"],
+    });
+    assert.equal(scheduleLibraryScan({
+      changedPaths: ["/data/music/Artist/Album/02 Track.flac"],
+    }), jobId);
+    assert.deepEqual(dbOps.getJSONSetting("pendingLibraryScanJob").changedPaths, [
+      "/data/music/Artist/Album/01 Track.flac",
+      "/data/music/Artist/Album/02 Track.flac",
+    ]);
+  } finally {
+    if (jobId) queue.cancel(jobId);
+    clearScheduledLibraryScan();
+  }
+});
+
 test("claiming an unregistered scan does not inherit stale Lidarr mode", () => {
   const queue = getLibraryScanQueue();
   clearScheduledLibraryScan();
@@ -232,6 +255,7 @@ test("library file watcher debounces library changes and ignores generated folde
   let onChange;
   let scheduled = 0;
   let changedRoots = [];
+  let changedPaths = [];
   const watcher = createLibraryFileWatcher({
     roots: [process.cwd()],
     debounceMs: 5,
@@ -239,9 +263,10 @@ test("library file watcher debounces library changes and ignores generated folde
       onChange = callback;
       return { close() {} };
     },
-    onChange: (roots) => {
+    onChange: (roots, paths) => {
       scheduled += 1;
       changedRoots = roots;
+      changedPaths = paths;
     },
   });
 
@@ -250,6 +275,9 @@ test("library file watcher debounces library changes and ignores generated folde
   await new Promise((resolve) => setTimeout(resolve, 15));
   assert.equal(scheduled, 1);
   assert.deepEqual(changedRoots, [process.cwd()]);
+  assert.deepEqual(changedPaths, [
+    path.join(process.cwd(), "Artist/Album/track.flac"),
+  ]);
 
   onChange("change", "aurral-weekly-flow/flow/track.flac");
   onChange("change", "_staging/track.flac");

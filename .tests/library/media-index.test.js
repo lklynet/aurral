@@ -725,6 +725,83 @@ test("a partial rescan preserves the last known-good file availability", async (
   }
 });
 
+test("an unchanged local rescan skips metadata parsing", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-unchanged-"));
+  const source = `test-unchanged-${process.pid}`;
+  let filePath;
+  let metadataReads = 0;
+  try {
+    filePath = await createAudioFile(root, "Artist/Album/01 Track.flac");
+    const metadataReader = async () => {
+      metadataReads += 1;
+      return metadata;
+    };
+
+    await scanMusicRoot({ rootPath: root, source, metadataReader });
+    await scanMusicRoot({ rootPath: root, source, metadataReader });
+
+    assert.equal(metadataReads, 1);
+  } finally {
+    if (filePath) deleteIndexedFile(source, filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a targeted local rescan only parses changed files", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-targeted-"));
+  const source = `test-targeted-${process.pid}`;
+  const filePaths = [];
+  const metadataReads = [];
+  const metadataReader = async (filePath) => {
+    metadataReads.push(filePath);
+    return metadata;
+  };
+  try {
+    filePaths.push(await createAudioFile(root, "Artist/Album/01 First.flac"));
+    filePaths.push(await createAudioFile(root, "Artist/Album/02 Second.flac"));
+
+    await scanMusicRoot({ rootPath: root, source, metadataReader });
+    metadataReads.length = 0;
+    await writeFile(filePaths[0], "changed");
+    await scanMusicRoot({
+      rootPath: root,
+      source,
+      changedPaths: [filePaths[0]],
+      metadataReader,
+    });
+
+    assert.deepEqual(metadataReads, [filePaths[0]]);
+  } finally {
+    for (const filePath of filePaths) deleteIndexedFile(source, filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a targeted rescan marks a deleted changed file unavailable", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-targeted-delete-"));
+  const source = `test-targeted-delete-${process.pid}`;
+  let filePath;
+  try {
+    filePath = await createAudioFile(root, "Artist/Album/01 Track.flac");
+    await scanMusicRoot({ rootPath: root, source, metadataReader: async () => metadata });
+    await rm(filePath);
+    await scanMusicRoot({
+      rootPath: root,
+      source,
+      changedPaths: [filePath],
+      metadataReader: async () => metadata,
+    });
+
+    assert.equal(
+      getLibrarySnapshot().files.find((file) => file.path === filePath)?.available,
+      0,
+    );
+  } finally {
+    if (filePath) deleteIndexedFile(source, filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("indexLidarrLibrary imports logical media and readable track files", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-index-"));
   let filePath;

@@ -52,9 +52,10 @@ to them. A manual or watcher scan does not request Lidarr artist, album, track,
 or track-file data.
 
 When a file changes in a watched Aurral or Lidarr root, Aurral's filesystem
-watcher queues a local scan. The watcher waits briefly for a file move or rename
-to finish and ignores `_playlists`, `_staging`, `_fallback`, hidden folders,
-`_flows`, and `aurral-weekly-flow`.
+watcher queues a targeted local scan for the changed file or folder. Unchanged
+files are skipped using their stored size and modification time. The watcher
+waits briefly for a file move or rename to finish and ignores `_playlists`,
+`_staging`, `_fallback`, hidden folders, `_flows`, and `aurral-weekly-flow`.
 
 When the scan completes, an open Library page reloads its canonical records
 automatically. The home page and **Newest** album or track sorting use the time

@@ -23,22 +23,32 @@ export function createLibraryFileWatcher({
   roots = [],
   debounceMs = DEFAULT_DEBOUNCE_MS,
   watchImpl = fs.watch,
-  onChange = () => scheduleLibraryScan(),
+  onChange = (_roots, changedPaths) => scheduleLibraryScan({ changedPaths }),
   onError = () => {},
 } = {}) {
   const watchers = [];
   let timer = null;
   const changedRoots = new Set();
+  const changedPaths = new Set();
   const uniqueRoots = [...new Set(roots.map((root) => path.resolve(String(root || ""))).filter(Boolean))];
 
-  const scheduleChange = (root) => {
+  const scheduleChange = (root, filename) => {
     changedRoots.add(root);
+    changedPaths.add(
+      filename == null || filename === ""
+        ? root
+        : path.isAbsolute(String(filename))
+          ? path.resolve(String(filename))
+          : path.resolve(root, String(filename)),
+    );
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
       const roots = [...changedRoots];
+      const paths = [...changedPaths];
       changedRoots.clear();
-      onChange(roots);
+      changedPaths.clear();
+      onChange(roots, paths);
     }, Math.max(0, Number(debounceMs) || 0));
     timer.unref?.();
   };
@@ -47,7 +57,7 @@ export function createLibraryFileWatcher({
     if (!fs.existsSync(root)) continue;
     try {
       const watcher = watchImpl(root, { recursive: true }, (_eventType, filename) => {
-        if (!isIgnoredChange(root, filename)) scheduleChange(root);
+        if (!isIgnoredChange(root, filename)) scheduleChange(root, filename);
       });
       watchers.push(watcher);
     } catch (error) {
@@ -59,6 +69,8 @@ export function createLibraryFileWatcher({
     close() {
       if (timer) clearTimeout(timer);
       timer = null;
+      changedRoots.clear();
+      changedPaths.clear();
       for (const watcher of watchers) watcher.close();
     },
   };
@@ -85,8 +97,9 @@ export async function refreshLibraryFileWatcher({ logger = console } = {}) {
   const playlistRoot = path.resolve(resolvePlaylistRoot());
   activeWatcher = createLibraryFileWatcher({
     roots: resolveLibraryWatchRoots(),
-    onChange: (changedRoots) => scheduleLibraryScan({
+    onChange: (changedRoots, changedPaths) => scheduleLibraryScan({
       includeLidarr: changedRoots.some((root) => path.resolve(root) !== playlistRoot),
+      changedPaths,
     }),
     onError: (error, root) => {
       logger.warn?.(`[Library] Failed to watch ${root}:`, error?.message || error);

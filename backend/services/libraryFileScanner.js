@@ -4,6 +4,7 @@ import { parseFile } from "music-metadata";
 import {
   buildFallbackIdentityKey,
   buildIdentityKey,
+  getLibraryMediaFile,
   getAvailableLibraryMediaPaths,
   linkLibraryAlbumTrack,
   markLibraryMediaFilesUnavailable,
@@ -188,41 +189,115 @@ async function* walkAudioFiles(rootPath) {
   }
 }
 
+function isPathWithin(rootPath, candidatePath) {
+  const relative = path.relative(path.resolve(rootPath), path.resolve(candidatePath));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+async function resolveChangedFiles(rootPath, changedPaths) {
+  const filePaths = new Set();
+  const reconcilePaths = new Set();
+
+  for (const value of Array.isArray(changedPaths) ? changedPaths : []) {
+    const rawPath = String(value || "").trim();
+    if (!rawPath) continue;
+    const changedPath = path.resolve(rawPath);
+    if (!isPathWithin(rootPath, changedPath)) continue;
+
+    let stat = null;
+    let missing = false;
+    try {
+      stat = await fs.stat(changedPath);
+    } catch (error) {
+      missing = error?.code === "ENOENT";
+      if (!missing && !AUDIO_EXTENSIONS.has(path.extname(changedPath).toLowerCase())) {
+        continue;
+      }
+    }
+
+    if (stat?.isDirectory()) {
+      reconcilePaths.add(changedPath);
+      try {
+        for await (const filePath of walkAudioFiles(changedPath)) filePaths.add(filePath);
+      } catch (error) {
+        if (error?.code !== "ENOENT") reconcilePaths.delete(changedPath);
+      }
+      continue;
+    }
+
+    if (stat?.isFile() || missing || AUDIO_EXTENSIONS.has(path.extname(changedPath).toLowerCase())) {
+      filePaths.add(changedPath);
+      reconcilePaths.add(changedPath);
+      continue;
+    }
+
+    reconcilePaths.add(changedPath);
+  }
+
+  return {
+    filePaths: [...filePaths],
+    reconcilePaths: [...reconcilePaths],
+  };
+}
+
+function normalizeScanPaths(rootPath, filePaths) {
+  return [...new Set(
+    (Array.isArray(filePaths) ? filePaths : [])
+      .map((filePath) => path.resolve(String(filePath || "")))
+      .filter((filePath) => isPathWithin(rootPath, filePath)),
+  )];
+}
+
 export async function scanMusicRoot({
   rootPath,
   source = "aurral",
   filePaths = null,
+  changedPaths = null,
+  force = false,
   metadataReader = parseFile,
   metadataEnricher = null,
   syncSearch = true,
 } = {}) {
   const resolvedRoot = path.resolve(String(rootPath || ""));
   await fs.mkdir(resolvedRoot, { recursive: true });
-  const requestedFiles = Array.isArray(filePaths)
-    ? [...new Set(filePaths.map((filePath) => path.resolve(String(filePath || ""))))].filter(
-        (filePath) => {
-          const relative = path.relative(resolvedRoot, filePath);
-          return (
-            relative &&
-            !relative.startsWith("..") &&
-            !path.isAbsolute(relative) &&
-            AUDIO_EXTENSIONS.has(path.extname(filePath).toLowerCase())
-          );
-        },
-      )
+  const changed = Array.isArray(changedPaths)
+    ? await resolveChangedFiles(resolvedRoot, changedPaths)
     : null;
+  const requestedFiles = changed
+    ? normalizeScanPaths(resolvedRoot, changed.filePaths).filter((filePath) =>
+        AUDIO_EXTENSIONS.has(path.extname(filePath).toLowerCase()),
+      )
+    : Array.isArray(filePaths)
+      ? normalizeScanPaths(resolvedRoot, filePaths).filter((filePath) =>
+          AUDIO_EXTENSIONS.has(path.extname(filePath).toLowerCase()),
+        )
+      : null;
+  const reconcilePaths = changed?.reconcilePaths || null;
   const result = { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   const unseenPaths = requestedFiles ? null : getAvailableLibraryMediaPaths(source);
+  const seenPaths = new Set();
+  const failedPaths = new Set();
+  const missingFilePaths = new Set();
   const scanResult = await withLibraryScan(source, resolvedRoot, (scanId) => {
     const run = async () => {
       const files = requestedFiles || walkAudioFiles(resolvedRoot);
       for await (const filePath of files) {
         result.filesSeen += 1;
         try {
-          const [metadata, stat] = await Promise.all([
-            metadataReader(filePath, { skipCovers: true }),
-            fs.stat(filePath),
-          ]);
+          const stat = await fs.stat(filePath);
+          const existing = getLibraryMediaFile({ source, path: filePath });
+          if (
+            force !== true &&
+            existing?.available === 1 &&
+            Number(existing.size) === stat.size &&
+            Number(existing.mtime_ms) === stat.mtimeMs
+          ) {
+            unseenPaths?.delete(filePath);
+            seenPaths.add(filePath);
+            result.filesIndexed += 1;
+            continue;
+          }
+          const metadata = await metadataReader(filePath, { skipCovers: true });
           const enrichedMetadata = applyMetadataEnrichment(
             metadata,
             typeof metadataEnricher === "function"
@@ -276,13 +351,31 @@ export async function scanMusicRoot({
             scanId,
           });
           unseenPaths?.delete(filePath);
+          seenPaths.add(filePath);
           result.filesIndexed += 1;
-        } catch {
+        } catch (error) {
           result.filesFailed += 1;
+          if (error?.code === "ENOENT") missingFilePaths.add(filePath);
+          else failedPaths.add(filePath);
         }
       }
       if (unseenPaths && result.filesFailed === 0) {
         markLibraryMediaFilesUnavailable(source, unseenPaths);
+      }
+      if (requestedFiles) {
+        const scopes = reconcilePaths || requestedFiles;
+        const missingIndexedPaths = [...getAvailableLibraryMediaPaths(source)].filter((filePath) =>
+          scopes.some((scope) => isPathWithin(scope, filePath)) &&
+          !seenPaths.has(filePath) &&
+          !failedPaths.has(filePath),
+        );
+        const unavailablePaths = [
+          ...missingFilePaths,
+          ...missingIndexedPaths,
+        ];
+        if (unavailablePaths.length > 0) {
+          markLibraryMediaFilesUnavailable(source, unavailablePaths);
+        }
       }
       return result;
     };
@@ -291,13 +384,30 @@ export async function scanMusicRoot({
   return scanResult;
 }
 
-export async function scanMusicRoots({ rootPaths = [], ...options } = {}) {
+export async function scanMusicRoots({ rootPaths = [], changedPaths = null, ...options } = {}) {
   const roots = [...new Set(
     (Array.isArray(rootPaths) ? rootPaths : [])
       .map((rootPath) => String(rootPath ?? "").trim())
       .filter(Boolean)
       .map((rootPath) => path.resolve(rootPath)),
   )];
+  if (Array.isArray(changedPaths)) {
+    const result = { filesSeen: 0, filesIndexed: 0, filesFailed: 0, changed: false };
+    for (const rootPath of roots) {
+      const paths = changedPaths.filter((changedPath) => isPathWithin(rootPath, changedPath));
+      if (paths.length === 0) continue;
+      try {
+        const scan = await scanMusicRoot({ ...options, rootPath, changedPaths: paths });
+        result.filesSeen += scan.filesSeen;
+        result.filesIndexed += scan.filesIndexed;
+        result.filesFailed += scan.filesFailed;
+        result.changed ||= scan.changed;
+      } catch {
+        result.filesFailed += 1;
+      }
+    }
+    return result;
+  }
   const unseenPaths = getAvailableLibraryMediaPaths(options.source || "aurral");
   const result = { filesSeen: 0, filesIndexed: 0, filesFailed: 0, changed: false };
   const scannedRoots = [];

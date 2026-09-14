@@ -38,9 +38,10 @@ function getAurralJobMetadataByPath() {
   return byPath;
 }
 
-async function canonicalizeAurralArtistNames(jobMetadataByPath) {
+async function canonicalizeAurralArtistNames(jobMetadataByPath, paths = null) {
   const candidates = new Map();
-  for (const metadata of jobMetadataByPath.values()) {
+  for (const [filePath, metadata] of jobMetadataByPath) {
+    if (Array.isArray(paths) && !paths.some((rootPath) => isPathWithin(rootPath, filePath))) continue;
     const artistMbid = String(metadata?.artistMbid || "").trim();
     const artistName = String(metadata?.artistName || "").trim();
     if (!artistMbid || !/[;,×!]/.test(artistName) || candidates.has(artistMbid)) continue;
@@ -77,30 +78,61 @@ function isLidarrScanEnabled(lidarrClient) {
   return dbOps.getSettings().integrations?.lidarr?.enabled !== false;
 }
 
+function isPathWithin(rootPath, candidatePath) {
+  const relative = path.relative(path.resolve(rootPath), path.resolve(candidatePath));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function pathsWithin(rootPath, paths) {
+  return (Array.isArray(paths) ? paths : []).filter((candidatePath) =>
+    isPathWithin(rootPath, candidatePath),
+  );
+}
+
+const skippedScan = () => ({
+  skipped: true,
+  filesSeen: 0,
+  filesIndexed: 0,
+  filesFailed: 0,
+  changed: false,
+});
+
 export async function scanConfiguredLibrary({
   musicRoot = resolvePlaylistRoot(),
   lidarrClient,
   includeLidarr = true,
   lidarrRoots = null,
+  changedPaths = null,
+  force = false,
 } = {}) {
   const jobMetadataByPath = getAurralJobMetadataByPath();
+  const targeted = Array.isArray(changedPaths);
+  const localPaths = pathsWithin(musicRoot, changedPaths);
   let local;
   let lidarr = { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   let scanFailed = false;
   try {
-    local = await scanMusicRoot({
-      rootPath: musicRoot,
-      source: "aurral",
-      metadataEnricher: (_metadata, filePath) => jobMetadataByPath.get(path.resolve(filePath)),
-      syncSearch: false,
-    });
-    await canonicalizeAurralArtistNames(jobMetadataByPath);
+    local = targeted && localPaths.length === 0
+      ? skippedScan()
+      : await scanMusicRoot({
+          rootPath: musicRoot,
+          source: "aurral",
+          changedPaths: targeted ? localPaths : null,
+          force,
+          metadataEnricher: (_metadata, filePath) => jobMetadataByPath.get(path.resolve(filePath)),
+          syncSearch: false,
+        });
+    if (!targeted || localPaths.length > 0) {
+      await canonicalizeAurralArtistNames(jobMetadataByPath, targeted ? localPaths : null);
+    }
     const configuredRoots = configuredLidarrRoots(lidarrClient, lidarrRoots)
       .map((root) => resolveLocalPath(root, getPathMappings("lidarr")));
     if (includeLidarr && isLidarrScanEnabled(lidarrClient) && configuredRoots.length > 0) {
       try {
         lidarr = await scanMusicRoots({
           rootPaths: configuredRoots,
+          changedPaths: targeted ? changedPaths : null,
+          force,
           source: "lidarr",
           syncSearch: false,
         });
