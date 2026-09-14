@@ -13,12 +13,15 @@ import { getCanonicalArtistMbids } from "../../../services/libraryQueryService.j
 
 const ARTIST_LOOKUP_BATCH_MAX = 100;
 
-const canonicalAlbumLookup = (albums, reference) =>
-  albums.find((album) =>
-    [album.mbid, album.releaseGroupMbid, album.identityKey].some(
-      (value) => String(value || "").trim() === String(reference || "").trim(),
+const canonicalAlbumLookup = (albums, reference) => {
+  const value = String(reference || "").trim();
+  if (!value) return undefined;
+  return albums.find((album) =>
+    [album.foreignAlbumId, album.mbid, album.releaseGroupMbid, album.identityKey].some(
+      (candidate) => String(candidate || "").trim() === value,
     ),
   );
+};
 
 const canonicalAlbumResult = (album, ownedTrackMbids = []) => ({
   inLibrary: true,
@@ -127,7 +130,11 @@ export function registerMisc(router) {
   router.get("/rootfolder", async (req, res) => {
     try {
       const { lidarrClient } = await import("../../../services/lidarrClient.js");
-      if (!lidarrClient.isConfigured()) {
+      const configured = lidarrClient.getConfiguredRootFolderPaths();
+      if (!lidarrClient.isEnabled()) {
+        return res.json(configured.map((path) => ({ path })));
+      }
+      if (!lidarrClient.isConfigured() && configured.length === 0) {
         return res.json([]);
       }
       const rootFolders = await lidarrClient.getRootFolders();

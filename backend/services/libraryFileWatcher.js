@@ -64,17 +64,14 @@ export function createLibraryFileWatcher({
   };
 }
 
-async function resolveLibraryWatchRoots() {
+export function resolveLibraryWatchRoots() {
   const roots = [resolvePlaylistRoot()];
-  if (lidarrClient.isConfigured()) {
-    try {
-      const rootFolders = await lidarrClient.getRootFolders();
-      roots.push(
-        ...(Array.isArray(rootFolders)
-          ? rootFolders.map((folder) => resolveLocalPath(folder?.path, getPathMappings("lidarr")))
-          : []),
-      );
-    } catch {}
+  if (lidarrClient.isEnabled()) {
+    roots.push(
+      ...lidarrClient
+        .getConfiguredRootFolderPaths()
+        .map((root) => resolveLocalPath(root, getPathMappings("lidarr"))),
+    );
   }
   return roots.filter(Boolean);
 }
@@ -87,7 +84,7 @@ export async function refreshLibraryFileWatcher({ logger = console } = {}) {
   activeWatcher?.close();
   const playlistRoot = path.resolve(resolvePlaylistRoot());
   activeWatcher = createLibraryFileWatcher({
-    roots: await resolveLibraryWatchRoots(),
+    roots: resolveLibraryWatchRoots(),
     onChange: (changedRoots) => scheduleLibraryScan({
       includeLidarr: changedRoots.some((root) => path.resolve(root) !== playlistRoot),
     }),

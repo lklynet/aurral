@@ -17,6 +17,7 @@ import {
 } from "../../../services/downloadFolderConfig.js";
 import { normalizePathMappings } from "../../../services/pathMappings.js";
 import { logger } from "../../../services/logger.js";
+import { normalizeLidarrApiKey, normalizeLidarrUrl } from "../../../services/lidarrClient.js";
 import { testNavidromeConnection } from "../../shared/navidromeTest.js";
 import { mergePlexIntegration } from "./plexSettings.js";
 import { getNewsSettings, normalizeNewsFeeds, normalizeNewsGroups } from "../../../services/apiClients/config.js";
@@ -34,11 +35,31 @@ function mergeIntegrations(existing, input, keys) {
 
 function resolveLibraryRootWarnings(settings) {
   const aurralRoot = settings?.downloadFolderPath || resolvePlaylistRoot();
+  const configuredLidarr = settings?.integrations?.lidarr || {};
   const lidarrRoots =
-    settings?.integrations?.lidarr?.enabled === false
+    configuredLidarr.enabled === false
       ? []
-      : [settings?.integrations?.lidarr?.rootFolderPath];
+      : [
+          ...(Array.isArray(configuredLidarr.rootFolderPaths)
+            ? configuredLidarr.rootFolderPaths
+            : []),
+          configuredLidarr.rootFolderPath,
+        ];
   return computeLibraryRootOverlaps({ aurralRoot, lidarrRoots });
+}
+
+function didLidarrRootDiscoveryChange(previousSettings, nextSettings) {
+  const previous = previousSettings?.integrations?.lidarr || {};
+  const next = nextSettings?.integrations?.lidarr || {};
+  return ["url", "apiKey", "enabled", "insecure", "rootFolderPath", "rootFolderPaths"]
+    .some((key) => JSON.stringify(previous[key]) !== JSON.stringify(next[key]));
+}
+
+function didLidarrConnectionChange(previousSettings, nextSettings) {
+  const previous = previousSettings?.integrations?.lidarr || {};
+  const next = nextSettings?.integrations?.lidarr || {};
+  return normalizeLidarrUrl(previous.url) !== normalizeLidarrUrl(next.url) ||
+    normalizeLidarrApiKey(previous.apiKey) !== normalizeLidarrApiKey(next.apiKey);
 }
 
 export function registerGeneral(router) {
@@ -519,7 +540,29 @@ export function registerGeneral(router) {
         delete updatedSettings.integrations.musicbrainz;
       }
 
+      if (didLidarrConnectionChange(currentSettings, updatedSettings)) {
+        updatedSettings.integrations = {
+          ...updatedSettings.integrations,
+          lidarr: {
+            ...(updatedSettings.integrations?.lidarr || {}),
+            rootFolderPath: null,
+            rootFolderPaths: [],
+          },
+        };
+      }
+
       dbOps.updateSettings(updatedSettings);
+      const { lidarrClient } = await import("../../../services/lidarrClient.js");
+      lidarrClient.updateConfig();
+      if (didLidarrRootDiscoveryChange(currentSettings, updatedSettings) && lidarrClient.isConfigured()) {
+        try {
+          await lidarrClient.getRootFolders({ forceRefresh: true });
+        } catch (error) {
+          logger.warn("settings", "Failed to refresh Lidarr root folders:", {
+            message: error.message,
+          });
+        }
+      }
       const { downloadClientRegistry } = await import(
         "../../../services/download/downloadClientSettings.js"
       );

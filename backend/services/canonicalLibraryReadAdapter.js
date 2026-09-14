@@ -7,24 +7,15 @@ import {
   getCanonicalTrackPath,
 } from "./libraryQueryService.js";
 import { getManagedByMap } from "./libraryManagementStore.js";
+import { selectCanonicalFile } from "./canonicalFileSelector.js";
 
 const albumFiles = (track, albumId) =>
   (track.files || []).filter((file) => file.albumId == null || file.albumId === albumId);
 
-const firstAvailableFile = (track, albumId) => {
-  const albumSpecific = (track.files || []).filter((file) => file.albumId === albumId);
-  const unscoped = (track.files || []).filter((file) => file.albumId == null);
-  return albumSpecific.find((file) => file.available)
-    || unscoped.find((file) => file.available)
-    || albumSpecific[0]
-    || unscoped[0]
-    || null;
-};
-
 const recordMatches = (record, reference) => {
   const value = String(reference ?? "").trim();
   if (!value) return false;
-  return [record.id, record.mbid, record.identityKey].some(
+  return [record.id, record.canonicalId, record.providerId, record.mbid, record.identityKey].some(
     (candidate) => String(candidate ?? "").trim() === value,
   );
 };
@@ -44,6 +35,7 @@ const buildArtist = (artist, albumsByArtistId, managementByArtistId = new Map())
     id: artist.id,
     canonicalId: artist.id,
     providerId,
+    source: artist.source || (artist.sources?.length === 1 ? artist.sources[0] : null),
     managedBy: management?.managedBy ?? null,
     monitorMode: management?.monitorMode ?? null,
     mbid: artist.mbid,
@@ -75,8 +67,8 @@ const buildAlbum = (album, artistsById, tracksById, managementByAlbumId = new Ma
     .map((trackId) => tracksById.get(trackId))
     .filter(Boolean);
   const sizeOnDisk = albumTracks.reduce((total, track) => {
-    const file = firstAvailableFile(track, album.id);
-    return total + Number(file?.size || 0);
+    const file = selectCanonicalFile(track.files, album.id, album.managedBy);
+    return total + (file?.available ? Number(file.size || 0) : 0);
   }, 0);
   const trackFileCount = albumTracks.filter((track) =>
     albumFiles(track, album.id).some((file) => file.available),
@@ -88,6 +80,7 @@ const buildAlbum = (album, artistsById, tracksById, managementByAlbumId = new Ma
     canonicalId: album.id,
     identityKey: album.identityKey,
     providerId,
+    source: album.source || (album.sources?.length === 1 ? album.sources[0] : null),
     managedBy: management?.managedBy ?? null,
     monitorMode: management?.monitorMode ?? null,
     providerArtistId: album.metadata?.artistId ?? null,
@@ -96,7 +89,8 @@ const buildAlbum = (album, artistsById, tracksById, managementByAlbumId = new Ma
     artistName: artist?.name || album.albumArtist,
     mbid: album.mbid || album.releaseGroupMbid,
     releaseGroupMbid: album.releaseGroupMbid || null,
-    foreignAlbumId: album.mbid || album.releaseGroupMbid || album.identityKey,
+    foreignAlbumId:
+      album.metadata?.foreignAlbumId || album.mbid || album.releaseGroupMbid || album.identityKey,
     albumName: album.title,
     title: album.title,
     releaseDate: album.releaseDate,
@@ -116,13 +110,17 @@ const buildAlbum = (album, artistsById, tracksById, managementByAlbumId = new Ma
 };
 
 const buildTrack = (track, album) => {
-  const file = firstAvailableFile(track, album.id);
+  const file = selectCanonicalFile(track.files, album.id, album.managedBy);
   const relation = track.albums.find((entry) => entry.albumId === album.id);
   return {
     id: track.id,
+    canonicalId: track.id,
+    providerId: track.metadata?.id ?? null,
     albumId: album.id,
     artistId: album.artistId,
     mbid: track.mbid,
+    foreignTrackId:
+      track.metadata?.foreignRecordingId || track.metadata?.foreignTrackId || track.mbid || track.identityKey,
     trackName: track.title,
     title: track.title,
     trackNumber: relation?.trackNumber || 0,
@@ -133,6 +131,9 @@ const buildTrack = (track, album) => {
     streamFormat: file?.format || null,
     addedAt: null,
     source: file?.source || null,
+    managedBy: album.managedBy ?? null,
+    monitorMode: album.monitorMode ?? null,
+    monitored: Boolean(album.metadata?.monitored),
     available: Boolean(file?.available),
     sources: track.sources,
   };
@@ -236,7 +237,7 @@ export function findCanonicalAlbumsForArtist(albums, reference) {
 
   return albums.filter(
     (album) =>
-      [album.artistId, album.artistMbid].some(
+      [album.artistId, album.providerArtistId, album.artistMbid].some(
         (candidate) => String(candidate ?? "").trim() === normalizedReference,
       ),
   );

@@ -5,10 +5,14 @@ import { dbOps, userOps } from "../db/helpers/index.js";
 import { hasPermission } from "../middleware/auth.js";
 import {
   iterateCanonicalArtistProjection,
+  getCanonicalArtistProjection,
+  getCanonicalLibraryForAlbumReferences,
+  getCanonicalLibraryForArtistReferences,
   getCanonicalLibraryPage,
   getCanonicalTrack,
   invalidateCanonicalLibraryCache,
 } from "./libraryQueryService.js";
+import { selectCanonicalFile } from "./canonicalFileSelector.js";
 import { scheduleLibraryScan } from "./libraryScanWorker.js";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 import {
@@ -62,6 +66,146 @@ const ALBUM_OWNED_BY_DIFFERENT_ARTIST_ERROR =
 function scheduleCanonicalLibraryReconciliation() {
   invalidateCanonicalLibraryCache();
   return scheduleLibraryScan({ includeLidarr: true });
+}
+
+function mapCanonicalAlbum(album, artist, tracks = []) {
+  const albumTrackIds = Array.isArray(album.trackIds) ? album.trackIds : [];
+  const albumTracks = tracks.filter((track) => albumTrackIds.includes(track.id));
+  const files = albumTracks.map((track) =>
+    selectCanonicalFile(track.files, album.id, album.managedBy),
+  );
+  const availableFiles = files.filter((file) => file?.available);
+  const trackCount = albumTracks.length;
+  return {
+    id: String(album.id),
+    canonicalId: String(album.id),
+    providerId: album.metadata?.id ?? null,
+    artistId: String(album.artistId),
+    artistName: artist?.name || album.albumArtist || null,
+    artistMbid: artist?.mbid || null,
+    mbid: album.mbid || album.releaseGroupMbid || null,
+    releaseGroupMbid: album.releaseGroupMbid || null,
+    foreignAlbumId:
+      album.metadata?.foreignAlbumId || album.mbid || album.releaseGroupMbid || album.identityKey,
+    albumName: album.title,
+    title: album.title,
+    path: album.metadata?.path || null,
+    addedAt: album.metadata?.added || null,
+    releaseDate: album.releaseDate || null,
+    monitored: album.metadata?.monitored === true,
+    managedBy: album.managedBy || null,
+    monitorMode: album.monitorMode || null,
+    sources: album.sources,
+    available: Boolean(album.available),
+    statistics: {
+      trackCount,
+      trackFileCount: availableFiles.length,
+      sizeOnDisk: availableFiles.reduce((total, file) => total + Number(file.size || 0), 0),
+      percentOfTracks: trackCount > 0
+        ? Math.round((availableFiles.length / trackCount) * 100)
+        : 0,
+    },
+  };
+}
+
+function mapCanonicalTrack(track, album) {
+  const file = selectCanonicalFile(track.files, album?.id, album?.managedBy);
+  const relation = (track.albums || []).find((entry) => entry.albumId === album?.id);
+  return {
+    id: String(track.id),
+    canonicalId: String(track.id),
+    providerId: track.metadata?.id ?? null,
+    albumId: album ? String(album.id) : null,
+    artistId: album ? String(album.artistId) : null,
+    mbid: track.mbid || null,
+    foreignTrackId:
+      track.metadata?.foreignRecordingId || track.metadata?.foreignTrackId || track.mbid || track.identityKey,
+    trackName: track.title,
+    title: track.title,
+    trackNumber: relation?.trackNumber || 0,
+    discNumber: relation?.discNumber || 1,
+    path: file?.path || null,
+    hasFile: Boolean(file?.available),
+    available: Boolean(file?.available),
+    source: file?.source || null,
+    managedBy: album?.managedBy || null,
+    monitorMode: album?.monitorMode || null,
+    monitored: album?.metadata?.monitored === true,
+    sources: track.sources,
+    size: Number(file?.size || 0),
+    quality:
+      file?.quality?.audioFormat ||
+      file?.quality?.quality?.name ||
+      file?.quality?.format ||
+      null,
+    addedAt: track.metadata?.added || null,
+  };
+}
+
+function canonicalArtistFallback(reference) {
+  return getCanonicalArtistProjection({ reference })[0] || null;
+}
+
+function canonicalLibraryForArtist(reference) {
+  return getCanonicalLibraryForArtistReferences({
+    source: "all",
+    availableOnly: false,
+    references: [reference],
+  });
+}
+
+function canonicalLibraryForAlbum(reference) {
+  return getCanonicalLibraryForAlbumReferences({
+    source: "all",
+    availableOnly: false,
+    references: [reference],
+  });
+}
+
+function canonicalAlbumsForArtist(reference) {
+  const library = canonicalLibraryForArtist(reference);
+  const artistId = library.albums[0]?.artistId;
+  const artist = library.artists.find((entry) => entry.id === artistId);
+  return library.albums.map((album) => mapCanonicalAlbum(album, artist, library.tracks));
+}
+
+function canonicalAlbumForReference(reference) {
+  const library = canonicalLibraryForAlbum(reference);
+  const album = library.albums[0];
+  if (!album) return null;
+  const artist = library.artists.find((entry) => entry.id === album.artistId);
+  return mapCanonicalAlbum(album, artist, library.tracks);
+}
+
+function canonicalTracksForAlbum(reference) {
+  const library = canonicalLibraryForAlbum(reference);
+  const album = library.albums[0];
+  if (!album) return [];
+  return library.tracks
+    .filter((track) => track.albums.some((entry) => entry.albumId === album.id))
+    .map((track) => mapCanonicalTrack(track, album));
+}
+
+function canonicalRecentArtists(limit) {
+  const normalizedLimit = Math.max(0, Number(limit) || 0);
+  return normalizedLimit === 0
+    ? []
+    : getCanonicalArtistProjection({ pageSize: normalizedLimit });
+}
+
+function cachedOrCanonicalRecentArtists(limit) {
+  const normalizedLimit = Math.max(0, Number(limit) || 0);
+  if (normalizedLimit === 0) return [];
+  if (Array.isArray(_cachedArtists) && _cachedArtists.length > 0) {
+    return _cachedArtists.slice(0, normalizedLimit);
+  }
+  return canonicalRecentArtists(normalizedLimit);
+}
+
+function isLidarrNotFoundError(error) {
+  return error?.response?.status === 404 ||
+    error?.status === 404 ||
+    /\b404\b|not found in lidarr/i.test(String(error?.message || ""));
 }
 
 function removeLibraryDownloadJobs(track) {
@@ -145,6 +289,18 @@ function findCachedArtistByMbid(mbid) {
   );
 }
 
+function findCachedArtistById(id) {
+  const value = String(id ?? "").trim();
+  if (!value || !Array.isArray(_cachedArtists) || _cachedArtists.length === 0) {
+    return null;
+  }
+  return _cachedArtists.find((artist) =>
+    [artist?.id, artist?.canonicalId, artist?.providerId].some(
+      (candidate) => String(candidate ?? "").trim() === value,
+    ),
+  ) || null;
+}
+
 function upsertCachedArtist(mappedArtist) {
   if (!mappedArtist) return;
   const mbid = mappedArtist.mbid || mappedArtist.foreignArtistId;
@@ -197,11 +353,12 @@ function scheduleLidarrRetry() {
 }
 
 export function getCachedArtistCount() {
-  return Array.isArray(_cachedArtists) ? _cachedArtists.length : 0;
+  return getCachedArtists().length;
 }
 
 export function getCachedArtists() {
-  return Array.isArray(_cachedArtists) ? _cachedArtists : [];
+  const canonical = getCanonicalArtistProjection({ pageSize: 10000 });
+  return canonical.length > 0 ? canonical : (Array.isArray(_cachedArtists) ? _cachedArtists : []);
 }
 
 function getSettings() {
@@ -306,13 +463,8 @@ export function buildPlaybackQueueFromCanonicalLibrary({ artists = [], albums = 
     for (const trackId of album.trackIds || []) {
       const track = tracksById.get(trackId);
       if (!track) continue;
-      const file = (track.files || []).find(
-        (entry) =>
-          entry.available &&
-          entry.source === "lidarr" &&
-          (entry.albumId == null || entry.albumId === album.id),
-      );
-      if (!file) continue;
+      const file = selectCanonicalFile(track.files, album.id, album.managedBy);
+      if (!file?.available) continue;
       const relation = (track.albums || []).find((entry) => entry.albumId === album.id);
       queue.push({
         id: `lib-${album.artistId}-${album.id}-${track.id}`,
@@ -779,9 +931,7 @@ export class LibraryManager {
 
   async getArtist(mbid, { forceRefresh = false } = {}) {
     const lidarr = await getLidarrClient();
-    if (!lidarr || !lidarr.isConfigured()) {
-      return null;
-    }
+    if (!lidarr || !lidarr.isConfigured()) return canonicalArtistFallback(mbid);
     if (!forceRefresh) {
       const cachedArtist = findCachedArtistByMbid(mbid);
       if (cachedArtist) {
@@ -794,21 +944,25 @@ export class LibraryManager {
       const mappedArtist = this.mapLidarrArtist(lidarrArtist);
       upsertCachedArtist(mappedArtist);
       return mappedArtist;
-    } catch {
+    } catch (error) {
+      if (!isLidarrNotFoundError(error)) {
+        return findCachedArtistByMbid(mbid) || canonicalArtistFallback(mbid);
+      }
       return null;
     }
   }
 
   async getArtistById(id) {
     const lidarr = await getLidarrClient();
-    if (!lidarr || !lidarr.isConfigured()) {
-      return null;
-    }
+    if (!lidarr || !lidarr.isConfigured()) return canonicalArtistFallback(id);
     try {
       const lidarrArtist = await lidarr.getArtist(id);
       await this.backfillLidarrArtistMappings([lidarrArtist]);
       return this.mapLidarrArtist(lidarrArtist);
     } catch (error) {
+      if (!isLidarrNotFoundError(error)) {
+        return findCachedArtistById(id) || canonicalArtistFallback(id);
+      }
       return null;
     }
   }
@@ -951,10 +1105,10 @@ export class LibraryManager {
     try {
       const lidarr = await getLidarrClient();
       if (!lidarr || !lidarr.isConfigured()) {
-        return Array.isArray(_cachedArtists) ? _cachedArtists.slice(0, limit) : [];
+        return canonicalRecentArtists(limit);
       }
       if (_lastLidarrFailureAt && Date.now() - _lastLidarrFailureAt < LIDARR_RETRY_MS) {
-        return Array.isArray(_cachedArtists) ? _cachedArtists.slice(0, limit) : [];
+        return cachedOrCanonicalRecentArtists(limit);
       }
       const normalizedLimit = Math.max(0, limit);
       const normalizedPool = Math.max(normalizedLimit, poolSize);
@@ -986,7 +1140,7 @@ export class LibraryManager {
             }
           } catch {}
         }
-        return Array.isArray(_cachedArtists) ? _cachedArtists.slice(0, normalizedLimit) : [];
+        return cachedOrCanonicalRecentArtists(normalizedLimit);
       }
       const picked = artistIds.sort(() => 0.5 - Math.random()).slice(0, normalizedLimit);
       const artists = await Promise.all(picked.map((id) => lidarr.getArtist(id).catch(() => null)));
@@ -1005,9 +1159,9 @@ export class LibraryManager {
           .slice(0, Math.max(0, normalizedLimit - mapped.length));
         return [...mapped, ...extra];
       }
-      return mapped;
+      return mapped.length > 0 ? mapped : canonicalRecentArtists(normalizedLimit);
     } catch (_) {
-      return Array.isArray(_cachedArtists) ? _cachedArtists.slice(0, limit) : [];
+      return cachedOrCanonicalRecentArtists(limit);
     }
   }
 
@@ -1472,7 +1626,7 @@ export class LibraryManager {
   async getAlbums(artistId, lidarrArtist = null, options = {}) {
     const lidarr = await getLidarrClient();
     if (!lidarr || !lidarr.isConfigured()) {
-      return [];
+      return canonicalAlbumsForArtist(artistId);
     }
     try {
       const resolvedArtist = lidarrArtist || (await lidarr.getArtist(artistId));
@@ -1491,14 +1645,16 @@ export class LibraryManager {
         : [];
       return artistAlbums.map((a) => this.mapLidarrAlbum(a, resolvedArtist));
     } catch (error) {
-      logger.error('library', `[LibraryManager] Failed to fetch albums from Lidarr: ${error.message}`);      return [];
+      if (isLidarrNotFoundError(error)) return [];
+      logger.error('library', `[LibraryManager] Failed to fetch albums from Lidarr: ${error.message}`);
+      return canonicalAlbumsForArtist(artistId);
     }
   }
 
   async getAlbumById(id) {
     const lidarr = await getLidarrClient();
     if (!lidarr || !lidarr.isConfigured()) {
-      return null;
+      return canonicalAlbumForReference(id);
     }
     if (!id || id === "undefined" || id === "null") {
       return null;
@@ -1511,10 +1667,8 @@ export class LibraryManager {
       const lidarrArtist = await lidarr.getArtist(lidarrAlbum.artistId);
       return this.mapLidarrAlbum(lidarrAlbum, lidarrArtist);
     } catch (error) {
-      if (error.response?.status === 404 || error.message?.includes("404")) {
-        return null;
-      }
-      return null;
+      if (isLidarrNotFoundError(error)) return null;
+      return canonicalAlbumForReference(id);
     }
   }
 
@@ -1748,15 +1902,15 @@ export class LibraryManager {
       return [];
     }
 
+    const lidarr = await getLidarrClient();
+    if (!lidarr || !lidarr.isConfigured()) {
+      return canonicalTracksForAlbum(albumId);
+    }
+
     const key = String(albumId);
     const cached = _tracksCache.get(key);
     if (cached && cached.expires > Date.now()) {
       return cached.tracks;
-    }
-
-    const lidarr = await getLidarrClient();
-    if (!lidarr || !lidarr.isConfigured()) {
-      return [];
     }
     try {
       const lidarrAlbum = await lidarr.getAlbum(albumId);
@@ -1850,17 +2004,16 @@ export class LibraryManager {
       if (cached) {
         return cached.tracks;
       }
-      if (error.message && error.message.includes("404")) {
-        return [];
-      }
-      logger.error('library', `[LibraryManager] Failed to fetch tracks from Lidarr: ${error.message}`);      return [];
+      if (isLidarrNotFoundError(error)) return [];
+      logger.error('library', `[LibraryManager] Failed to fetch tracks from Lidarr: ${error.message}`);
+      return canonicalTracksForAlbum(albumId);
     }
   }
 
   async getPlaybackQueue({ page = 1, pageSize = 100 } = {}) {
     return buildPlaybackQueueFromCanonicalLibrary(
       getCanonicalLibraryPage({
-        source: "lidarr",
+        source: "all",
         availableOnly: true,
         kind: "tracks",
         page,

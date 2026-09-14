@@ -24,6 +24,7 @@ const { downloadTracker } = await importFromRepo(
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
 );
 const { getHonkerDb } = await importFromRepo("backend/services/honkerDb.js");
+const { lidarrClient } = await importFromRepo("backend/services/lidarrClient.js");
 
 test.beforeEach(() => {
   resetDatabase(db);
@@ -31,6 +32,16 @@ test.beforeEach(() => {
   transaction.execute("DELETE FROM _honker_live WHERE queue = ?", ["weekly-flow-operation"]);
   transaction.commit();
   downloadTracker.clearAll();
+});
+
+test("activity reads stay local when Lidarr is disabled", async (t) => {
+  t.mock.method(lidarrClient, "isConfigured", () => false);
+  const request = t.mock.method(lidarrClient, "request", async () => {
+    throw new Error("disabled activity reads must not call Lidarr");
+  });
+
+  assert.deepEqual(await getAurralHistoryRequests(lidarrClient), []);
+  assert.equal(request.mock.callCount(), 0);
 });
 
 test.after(async () => {

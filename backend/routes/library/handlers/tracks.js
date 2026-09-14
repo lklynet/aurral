@@ -10,7 +10,6 @@ import path from "path";
 import { logger } from "../../../services/logger.js";
 import {
   findCanonicalTracksForAlbum,
-  getCanonicalLibraryReadModelForAlbumIds,
   getCanonicalLibraryReadModelForAlbumReferences,
   resolveCanonicalTrackPath,
 } from "../../../services/canonicalLibraryReadAdapter.js";
@@ -96,10 +95,10 @@ export function registerTracks(router) {
 
       if (req.query.readPath === "canonical") {
         let canonical = albumId
-          ? getCanonicalLibraryReadModelForAlbumIds({
+          ? getCanonicalLibraryReadModelForAlbumReferences({
               source: req.query.source || "all",
               availableOnly: true,
-              ids: [albumId],
+              references: [albumId],
             })
           : getCanonicalLibraryReadModelForAlbumReferences({
               source: req.query.source || "all",
@@ -118,7 +117,7 @@ export function registerTracks(router) {
           .filter(Boolean)
           .map((reference) =>
             albums.find((candidate) =>
-              [candidate.id, candidate.mbid, candidate.foreignAlbumId].some(
+              [candidate.id, candidate.providerId, candidate.mbid, candidate.foreignAlbumId].some(
                 (value) => String(value ?? "") === String(reference),
               ),
             ),

@@ -3,7 +3,9 @@ title: Lidarr
 description: Connect Lidarr for library management, requests, and library file access.
 ---
 
-Aurral requires Lidarr in this release. Aurral adds artists and albums, reads library state, and shows queue and history status through Lidarr. Separate Aurral-only and split-root ownership modes are not part of this release.
+Lidarr is optional. Connect it when you want Lidarr to manage artists and
+albums, or when you want Aurral to show Lidarr queue and history status. Aurral
+can browse, search, play, stream, and scan indexed files without Lidarr.
 
 The Lidarr integration has two parts:
 
@@ -26,9 +28,9 @@ Enter these values in first-run setup or in **Settings > Lidarr**:
 
 ## Library display
 
-Lidarr reports an artist's full discography, including albums you have not
-downloaded. **Show available music only** (in **Settings > Lidarr**) keeps the
-Library focused on music you actually have:
+When Lidarr is configured, it reports an artist's full discography, including
+albums you have not downloaded. **Show available music only** (in **Settings >
+Lidarr**) keeps the Library focused on music you actually have:
 
 - When **on** (the default), the Library — the Albums list, Album artists list,
   and the home **Recently added** shelf — shows only albums with downloaded
@@ -42,6 +44,9 @@ This setting only changes what the Library **lists**. You can still search for
 and request unmonitored or undownloaded albums from the artist's discography,
 and the request and monitor workflows are unchanged.
 
+Without Lidarr, the Library lists the artists, albums, and tracks that Aurral
+has indexed from its configured roots.
+
 ## Metadata providers
 
 Aurral keeps the MusicBrainz UUID for artist routes and stores Lidarr's provider ID separately. If Lidarr uses a provider such as Tubifarry Deezer or Discogs, Aurral verifies the submitted MusicBrainz artist, accepts names recorded as MusicBrainz aliases, uses Lidarr's lookup to identify the active provider, and retries a provider-ID format error with the canonical provider ID. Existing provider-ID artists are verified and backfilled when Aurral reads the library. If the identities do not match, search for the artist in Lidarr first or use MusicBrainz metadata.
@@ -52,11 +57,16 @@ Aurral tests file access at paths that Lidarr reports. If the test fails, mount 
 
 The check samples a track from an artist inside a root folder. It falls back to an artist outside them and then reports that the artist was left behind by a root folder change.
 
-After Lidarr imports a file, Aurral watches the configured Lidarr root folders
-and queues a canonical library scan. Aurral does not need a second import step
-in Lidarr. The file must still be readable at the path Lidarr reports. The
-canonical Library uses the MusicBrainz and provider identities that Aurral reads
-from the file and from Lidarr.
+After a file changes in a configured Lidarr root, Aurral watches the root and
+queues a local canonical library scan. Aurral does not request Lidarr artist,
+album, track, or track-file data during that scan. The file must be readable at
+the saved root path. The canonical Library uses the MusicBrainz and provider
+identities that Aurral reads from the file and from Lidarr.
+
+Aurral stores discovered Lidarr root paths locally. It refreshes the Lidarr
+`/rootFolder` endpoint when it connects, reconnects, or the root configuration
+changes. If you disable Lidarr, Aurral keeps indexed Lidarr media visible and
+does not scan those roots until you enable Lidarr again.
 
 ## Request availability notifications
 
@@ -91,7 +101,8 @@ This mapping only helps Aurral read Lidarr files. Navidrome must scan the corres
 
 ## Safety
 
-Artist and album changes go through Lidarr. Aurral does not write directly into your root music library.
+When Lidarr is configured, artist and album changes go through Lidarr. Aurral
+does not write directly into a Lidarr root music library.
 
 ## Import list feeds
 

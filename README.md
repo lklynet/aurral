@@ -69,7 +69,7 @@ Set `MEDIA_ROOT` to the **same host media path that Lidarr already mounts**. Kee
 docker compose up -d
 ```
 
-Open `http://localhost:3001`, create your admin account, and connect Lidarr.
+Open `http://localhost:3001` and create your admin account. Connect Lidarr if you want managed library changes and provider status.
 
 Want the latest merged changes? Use `ghcr.io/lklynet/aurral:nightly`. Nightly
 builds may be less stable than releases; see the [Docker image channels](https://docs.aurral.org/getting-started/docker/#which-image-tag-to-use).

@@ -1,9 +1,9 @@
 ---
 title: First run
-description: Create your admin account, connect Lidarr, and verify the filesystem before playback setup.
+description: Create your admin account, configure the filesystem, and optionally connect Lidarr before playback setup.
 ---
 
-First, create the admin account and connect Lidarr. Then configure the filesystem before you connect a download client or playback server.
+First, create the admin account and configure the filesystem. Connect Lidarr if you want managed library changes, requests, or provider status.
 
 ![Aurral Lidarr connection settings](../../../assets/screenshots/settings-lidarr.webp)
 
@@ -11,25 +11,27 @@ First, create the admin account and connect Lidarr. Then configure the filesyste
 
 Complete [Filesystem and mounts](/getting-started/storage/) first. The short version is:
 
-- Mount the same host media root in Aurral, Lidarr, and the services you use.
+- Mount the same host media root in Aurral and the services you use.
+- If you use Lidarr, mount its library root in Aurral at the same container path.
 - Use the same container path, normally `/data`.
 - Keep Aurral's `/config` mount separate.
 
 ## First-run steps
 
 1. Open Aurral and create your admin account.
-2. Open **Settings > Lidarr**.
-3. Enter the Lidarr URL that Aurral can reach. In one Docker Compose network this is often `http://lidarr:8686`.
-4. Enter the Lidarr API key and select **Test connection**.
-5. Open **Settings > Download clients**.
-6. Set **Downloads Folder > Path** to a writable path inside Aurral, such as `/data/downloads/aurral`.
-7. Open **Settings > Storage health**, select **Run Checks**, and fix failed checks.
-8. Open **Settings > Lidarr** and select **Test library access**.
+2. Open **Settings > Download clients**.
+3. Set **Downloads Folder > Path** to a writable path inside Aurral, such as `/data/downloads/aurral`.
+4. Open **Settings > Storage health**, select **Run Checks**, and fix failed checks.
+5. If you use Lidarr, open **Settings > Lidarr**.
+6. Prefer an HTTPS Lidarr URL. In a trusted, isolated Docker Compose network, `http://lidarr:8686` is also acceptable because Aurral sends the Lidarr API key to this URL.
+7. Enter the Lidarr API key and select **Test connection**.
+8. Select **Test library access** after the connection test passes.
 9. Connect the download clients and playback server that you use. Navidrome and Plex are optional
    destinations. Aurral can play indexed media in the built-in player when the canonical file is readable.
 
 The Lidarr connection test checks the API. The library-access and storage checks verify that Aurral
-can read the files and write the Downloads Folder. The **Aurral-native playback** check reports
+can read the files and write the Downloads Folder. Aurral can run these filesystem checks without
+Lidarr. The **Aurral-native playback** check reports
 whether indexed media is ready to play. The built-in Subsonic service is available at `/rest` for
 compatible external players.
 
