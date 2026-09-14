@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { dbOps } from "../../../db/helpers/index.js";
 import {
   DATE_TIME_FORMATS,
@@ -589,19 +590,30 @@ export function registerGeneral(router) {
           { priority: -10 },
         );
       }
-      if (integrations?.navidrome || integrations?.jellyfin) {
+      const playbackSettingsChanged = ["navidrome", "jellyfin"].some((key) =>
+        !isDeepStrictEqual(
+          currentSettings.integrations?.[key],
+          updatedSettings.integrations?.[key],
+        ));
+      if (playbackSettingsChanged) {
         const { playlistManager } = await import(
           "../../../services/weeklyFlow/weeklyFlowPlaylistManager.js"
         );
         playlistManager.updateConfig(false);
-        try {
-          await playlistManager.ensureSmartPlaylists();
-        } catch (error) {
-          logger.warn("settings", "Failed to initialize playback playlists:", {
-            message: error.message,
+        // Library enumeration can take minutes. Saving settings must not wait
+        // for it, but the scan still needs to follow playlist initialization.
+        playlistManager.ensureSmartPlaylists()
+          .catch((error) => {
+            logger.warn("settings", "Failed to initialize playback playlists:", {
+              message: error.message,
+            });
+          })
+          .then(() => playlistManager.scheduleScanLibrary(true))
+          .catch((error) => {
+            logger.warn("settings", "Failed to schedule playback library scan:", {
+              message: error.message,
+            });
           });
-        }
-        playlistManager.scheduleScanLibrary(true);
       }
       const reconciled = reconcileLocalNetworkBypassSetting().settings;
       if (

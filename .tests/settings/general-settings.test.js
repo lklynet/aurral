@@ -22,72 +22,128 @@ test.beforeEach(() => {
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
 });
 
-test.after(() => cleanupIsolatedState(isolatedState));
+test.after(async () => {
+  db.close();
+  await cleanupIsolatedState(isolatedState);
+});
 
-test("schedules the library scan after playlist initialization settles", async () => {
-  const events = [];
-  let releaseInitialization;
-  const initialization = new Promise((resolve) => {
-    releaseInitialization = resolve;
-  });
-  const originalUpdateConfig = playlistManager.updateConfig;
-  const originalEnsureSmartPlaylists = playlistManager.ensureSmartPlaylists;
-  const originalScheduleScanLibrary = playlistManager.scheduleScanLibrary;
-
-  try {
-    playlistManager.updateConfig = () => {};
-    playlistManager.ensureSmartPlaylists = async () => {
+for (const fails of [false, true]) {
+  test(`saves settings before slow playback initialization ${fails ? "fails" : "finishes"}`, async (t) => {
+    const events = [];
+    const { logger } = await import("../../backend/services/logger.js");
+    const warnings = t.mock.method(logger, "warn", () => {});
+    let releaseInitialization;
+    const initialization = new Promise((resolve) => {
+      releaseInitialization = resolve;
+    });
+    let markStarted;
+    const started = new Promise((resolve) => { markStarted = resolve; });
+    t.mock.method(playlistManager, "updateConfig", () => {});
+    t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {
       events.push("ensure-start");
+      markStarted();
       await initialization;
       events.push("ensure-end");
-    };
-    playlistManager.scheduleScanLibrary = () => {
-      events.push("scan");
-    };
-
-    const routes = {};
-    registerGeneral({
-      get(path, ...handlers) {
-        routes[`GET ${path}`] = handlers.at(-1);
-      },
-      post(path, ...handlers) {
-        routes[`POST ${path}`] = handlers.at(-1);
-      },
+      if (fails) throw new Error("Jellyfin library unavailable");
     });
+    t.mock.method(playlistManager, "scheduleScanLibrary", (force) => {
+      assert.equal(force, true);
+      events.push("scan");
+    });
+    const { postSettings } = captureSettingsRoutes();
+    let response;
+    const handlerPromise = postSettings({
+      integrations: { jellyfin: { url: "http://jellyfin.local", apiKey: "key", userId: "user" } },
+    }).then((saved) => { response = saved; });
 
-    let statusCode = 200;
-    let responseBody;
-    const response = {
-      status(code) {
-        statusCode = code;
-        return this;
-      },
-      json(body) {
-        responseBody = body;
-        return this;
-      },
-    };
-    const handlerPromise = routes["POST /"](
-      {
-        body: { integrations: { jellyfin: { url: "", apiKey: "", userId: "" } } },
-        user: { id: 1 },
-      },
-      response,
-    );
-
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(events, ["ensure-start"]);
-
-    releaseInitialization();
-    await handlerPromise;
-    assert.equal(statusCode, 200);
-    assert.ok(responseBody);
+    try {
+      await started;
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.deepEqual(events, ["ensure-start"]);
+      assert.ok(response, "settings response must not wait for the Jellyfin library");
+      assert.equal(response.statusCode, 200);
+      assert.equal(response.body.integrations.jellyfin.url, "http://jellyfin.local");
+      assert.equal(dbOps.getSettings().integrations.jellyfin.url, "http://jellyfin.local");
+    } finally {
+      releaseInitialization();
+      await handlerPromise;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
     assert.deepEqual(events, ["ensure-start", "ensure-end", "scan"]);
-  } finally {
-    playlistManager.updateConfig = originalUpdateConfig;
-    playlistManager.ensureSmartPlaylists = originalEnsureSmartPlaylists;
-    playlistManager.scheduleScanLibrary = originalScheduleScanLibrary;
-  }
+    assert.equal(warnings.mock.callCount(), fails ? 1 : 0);
+    if (fails) {
+      assert.deepEqual(warnings.mock.calls[0].arguments, [
+        "settings", "Failed to initialize playback playlists:",
+        { message: "Jellyfin library unavailable" },
+      ]);
+    }
+  });
+}
+
+test("saving unrelated settings with unchanged playback configuration skips initialization and scans", async (t) => {
+  const update = t.mock.method(playlistManager, "updateConfig", () => {});
+  const ensure = t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
+  const scan = t.mock.method(playlistManager, "scheduleScanLibrary", () => {});
+  dbOps.updateSettings({ integrations: {
+    jellyfin: { url: "http://jellyfin.local", apiKey: "key", userId: "user" },
+    navidrome: { url: "http://navidrome.local", username: "user", password: "password" },
+  } });
+  const { postSettings } = captureSettingsRoutes();
+  const current = dbOps.getSettings();
+  const response = await postSettings({
+    integrations: {
+      ...current.integrations,
+      jellyfin: { userId: "user", apiKey: "key", url: "http://jellyfin.local" },
+      deemix: { enabled: true, url: "http://deemix.local", bitrate: 9 },
+    },
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(dbOps.getSettings().integrations.deemix.url, "http://deemix.local");
+
+  const partial = await postSettings({ integrations: { jellyfin: { userId: "user" } } });
+  assert.equal(partial.statusCode, 200);
+  const unrelated = await postSettings({ dateTimeFormat: "year-first" });
+  assert.equal(unrelated.statusCode, 200);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(update.mock.callCount(), 0);
+  assert.equal(ensure.mock.callCount(), 0);
+  assert.equal(scan.mock.callCount(), 0);
+});
+
+for (const key of ["jellyfin", "navidrome"]) {
+  test(`refreshes playback when ${key} settings change or are cleared`, async (t) => {
+    const update = t.mock.method(playlistManager, "updateConfig", () => {});
+    const ensure = t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
+    const scan = t.mock.method(playlistManager, "scheduleScanLibrary", () => {});
+    const { postSettings } = captureSettingsRoutes();
+    for (const url of [`http://${key}.local`, ""]) {
+      const response = await postSettings({ integrations: { [key]: { url } } });
+      assert.equal(response.statusCode, 200);
+      assert.equal(dbOps.getSettings().integrations[key].url, url);
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.equal(update.mock.callCount(), 2);
+    assert.equal(ensure.mock.callCount(), 2);
+    assert.equal(scan.mock.callCount(), 2);
+  });
+}
+
+test("logs background scan scheduling failures without failing the settings save", async (t) => {
+  const { logger } = await import("../../backend/services/logger.js");
+  const warnings = t.mock.method(logger, "warn", () => {});
+  t.mock.method(playlistManager, "updateConfig", () => {});
+  t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
+  t.mock.method(playlistManager, "scheduleScanLibrary", () => {
+    throw new Error("Scan queue unavailable");
+  });
+  const { postSettings } = captureSettingsRoutes();
+  const response = await postSettings({ integrations: { jellyfin: { url: "http://jellyfin.local" } } });
+  assert.equal(response.statusCode, 200);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(warnings.mock.calls[0].arguments, [
+    "settings", "Failed to schedule playback library scan:",
+    { message: "Scan queue unavailable" },
+  ]);
 });
 
 function captureSettingsRoutes() {
