@@ -405,6 +405,12 @@ export function upsertLibraryTrack({
   return track;
 }
 
+// library_album_tracks has no updated_at and rows are deleted outright, so relation changes ride
+// on the album's timestamp to stay visible in getCanonicalLibraryLastModified.
+const touchLibraryAlbum = (albumId) => {
+  db.prepare("UPDATE library_albums SET updated_at = ? WHERE id = ?").run(now(), Number(albumId));
+};
+
 export function linkLibraryAlbumTrack({
   albumId,
   trackId,
@@ -418,6 +424,7 @@ export function linkLibraryAlbumTrack({
         (album_id, track_id, disc_number, track_number, created_at)
        VALUES (?, ?, ?, ?, ?)`,
     ).run(Number(albumId), Number(trackId), Number(discNumber) || 1, Number(trackNumber) || 0, now());
+    if (result.changes > 0) touchLibraryAlbum(albumId);
     if (syncSearch) syncLibrarySearchTrack(trackId);
     return result.changes > 0;
   })();
@@ -459,6 +466,7 @@ export function removeLibraryTrackIfNoAvailableMedia(trackId) {
            AND NOT EXISTS (SELECT 1 FROM library_album_tracks WHERE album_id = ?)`,
       ).run(albumId, albumId);
       if (result.changes > 0) removeLibrarySearchDocument("album", albumId);
+      else touchLibraryAlbum(albumId);
     }
     for (const artistId of artistIds) {
       const result = db.prepare(
@@ -500,6 +508,7 @@ export function removeLibraryAlbumTracksWithoutMedia(albumId, source, { syncSear
              AND media.available = 1
          )`,
     ).run(Number(albumId), mediaSource, mediaSource);
+    if (result.changes > 0) touchLibraryAlbum(albumId);
     if (syncSearch) {
       for (const trackId of trackIds) syncLibrarySearchTrack(trackId);
     }

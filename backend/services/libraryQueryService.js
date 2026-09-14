@@ -63,12 +63,14 @@ const CANONICAL_SELECT = `SELECT
   album.album_artist AS album_artist,
   album.release_date AS album_release_date,
   album.metadata_json AS album_metadata_json,
+  album.created_at AS album_created_at,
   track.id AS track_id,
   track.identity_key AS track_identity_key,
   track.mbid AS track_mbid,
   track.title AS track_title,
   track.artist_name AS track_artist_name,
   track.metadata_json AS track_metadata_json,
+  track.created_at AS track_created_at,
   album_track.disc_number,
   album_track.track_number,
   media.id AS media_id,
@@ -80,7 +82,8 @@ const CANONICAL_SELECT = `SELECT
   media.mtime_ms AS media_mtime_ms,
   media.duration_ms AS media_duration_ms,
   media.quality_json AS media_quality_json,
-  media.available AS media_available`;
+  media.available AS media_available,
+  media.created_at AS media_created_at`;
 
 const albumMediaCondition = (mediaAlias, albumTrackAlias) =>
   `(${mediaAlias}.album_id = ${albumTrackAlias}.album_id OR ${mediaAlias}.album_id IS NULL)`;
@@ -123,6 +126,7 @@ function buildLibraryFromRows(rows) {
       title: row.album_title,
       albumArtist: row.album_artist,
       releaseDate: row.album_release_date,
+      createdAt: row.album_created_at,
       metadata: parseJson(row.album_metadata_json),
       trackIds: [],
       sources: [],
@@ -136,6 +140,7 @@ function buildLibraryFromRows(rows) {
       mbid: row.track_mbid,
       title: row.track_title,
       artistName: row.track_artist_name,
+      createdAt: row.track_created_at,
       metadata: parseJson(row.track_metadata_json),
       albums: [],
       files: [],
@@ -175,6 +180,7 @@ function buildLibraryFromRows(rows) {
         durationMs: row.media_duration_ms,
         quality: parseJson(row.media_quality_json),
         available: Boolean(row.media_available),
+        createdAt: row.media_created_at,
       };
       if (!track.files.some((entry) => entry.id === file.id)) track.files.push(file);
       if (file.available) {
@@ -536,6 +542,18 @@ export function getCanonicalAlbumsByReleaseDate({
   return rows.map(canonicalDateAlbumProjection);
 }
 
+export function getCanonicalLibraryLastModified() {
+  const row = db.prepare(
+    `SELECT MAX(updated_at) AS last_modified FROM (
+       SELECT MAX(updated_at) AS updated_at FROM library_artists
+       UNION ALL SELECT MAX(updated_at) FROM library_albums
+       UNION ALL SELECT MAX(updated_at) FROM library_tracks
+       UNION ALL SELECT MAX(updated_at) FROM library_media_files
+     )`,
+  ).get();
+  return Number(row?.last_modified) || null;
+}
+
 export function getCanonicalTrackPath(albumReference, trackReference) {
   const albumValue = String(albumReference ?? "").trim();
   const trackValue = String(trackReference ?? "").trim();
@@ -823,6 +841,57 @@ export function getCanonicalLibraryForTrackIds({
     parameters.push(Number(albumId));
   }
   return getScopedCanonicalLibrary({ source, availableOnly, conditions, parameters });
+}
+
+// SQLite caps bound parameters per statement; keep each IN list comfortably below it.
+const LOOKUP_CHUNK_SIZE = 500;
+
+const chunked = (values) => {
+  const chunks = [];
+  for (let index = 0; index < values.length; index += LOOKUP_CHUNK_SIZE) {
+    chunks.push(values.slice(index, index + LOOKUP_CHUNK_SIZE));
+  }
+  return chunks;
+};
+
+export function getCanonicalLibraryForTrackMatches({
+  source = null,
+  availableOnly = false,
+  mbids = [],
+  titles = [],
+} = {}) {
+  const mbidValues = normalizeLookupValues(mbids);
+  const titleValues = normalizeLookupValues(titles);
+  if (!mbidValues.length && !titleValues.length) return { artists: [], albums: [], tracks: [] };
+  const clauses = [
+    ...chunked(mbidValues).map((chunk) => ({ sql: `track.mbid IN (${chunk.map(() => "?").join(",")})`, chunk })),
+    ...chunked(titleValues).map((chunk) => ({
+      sql: `track.title COLLATE NOCASE IN (${chunk.map(() => "?").join(",")})`,
+      chunk,
+    })),
+  ];
+  // Any-size input resolves in ceil(n / chunk) statements; a track matched by more than one
+  // clause is only kept once.
+  const merged = { artists: new Map(), albums: new Map(), tracks: new Map() };
+  for (let index = 0; index < clauses.length; index += 2) {
+    const group = clauses.slice(index, index + 2);
+    const library = getScopedCanonicalLibrary({
+      source,
+      availableOnly,
+      conditions: [`(${group.map((clause) => clause.sql).join(" OR ")})`],
+      parameters: group.flatMap((clause) => clause.chunk),
+    });
+    for (const key of Object.keys(merged)) {
+      for (const entity of library[key]) {
+        if (!merged[key].has(entity.id)) merged[key].set(entity.id, entity);
+      }
+    }
+  }
+  return {
+    artists: [...merged.artists.values()],
+    albums: [...merged.albums.values()],
+    tracks: [...merged.tracks.values()],
+  };
 }
 
 export function getCanonicalLibraryForAlbumReferences({
@@ -1866,6 +1935,7 @@ function getAlbumTrackSummary(albumId, sourceFilter) {
        album.title AS album_title,
        album.album_artist AS album_artist,
        album.release_date AS album_release_date,
+       album.created_at AS album_created_at,
        album.metadata_json AS album_metadata_json,
        GROUP_CONCAT(DISTINCT media.source) AS sources,
        MAX(media.available) AS available
@@ -1903,6 +1973,7 @@ function getAlbumTrackSummary(albumId, sourceFilter) {
       title: row.album_title,
       albumArtist: row.album_artist,
       releaseDate: row.album_release_date,
+      createdAt: row.album_created_at,
       metadata: parseJson(row.album_metadata_json),
       trackIds: [],
       managedBy: albumManagement?.managedBy ?? null,
