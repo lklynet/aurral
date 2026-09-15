@@ -31,6 +31,7 @@ export const defaultData = {
         url: "",
         username: "",
         password: "",
+        prefixOwnerUsername: true,
       },
       plex: {
         url: "",

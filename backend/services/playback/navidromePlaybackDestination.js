@@ -32,8 +32,20 @@ export const navidromeSettings = Object.freeze({
     Object.freeze({ key: "url", label: "Server URL", type: "url", required: true }),
     Object.freeze({ key: "username", label: "Username", type: "text", required: true }),
     Object.freeze({ key: "password", label: "Password", type: "password", required: true, secret: true }),
+    Object.freeze({
+      key: "prefixOwnerUsername",
+      label: "Prefix playlist names with the owner username",
+      type: "toggle",
+      section: "Behavior",
+      hint: "When enabled, flow playlists are published as \"username - playlist name\".",
+    }),
   ]),
-  defaults: Object.freeze({ url: "", username: "", password: "" }),
+  defaults: Object.freeze({
+    url: "",
+    username: "",
+    password: "",
+    prefixOwnerUsername: true,
+  }),
   validation: Object.freeze({ required: ["url", "username", "password"], url: ["url"] }),
   testConnection: true,
 });
@@ -60,7 +72,9 @@ export class NavidromePlaybackDestination {
     this.mediaLibraryRoot = this.weeklyFlowRoot;
     this.libraryRoot = path.join(this.playlistLibraryRoot, "_playlists");
     this.client = client;
-    this._configKey = "";
+    this._prefixOwnerUsername = true;
+    this._connectionKey = JSON.stringify({ url: "", username: "", password: "" });
+    this._configGeneration = 0;
     this._playlists = null;
     this._pendingSnapshots = new Map();
     this._catchupRunning = false;
@@ -69,19 +83,32 @@ export class NavidromePlaybackDestination {
   }
 
   updateConfig(config = {}) {
-    const key = JSON.stringify({
+    const connectionKey = JSON.stringify({
       url: config.url || "",
       username: config.username || "",
       password: config.password || "",
     });
-    if (key === this._configKey) return;
-    this._configKey = key;
-    this._playlists = null;
-    this._pendingSnapshots.clear();
-    this._syncHashes.clear();
-    this.client = config.url && config.username && config.password
-      ? new NavidromeClient(config.url, config.username, config.password)
-      : null;
+    const prefixOwnerUsername = config.prefixOwnerUsername !== false;
+    const connectionChanged = connectionKey !== this._connectionKey;
+    const namingChanged = prefixOwnerUsername !== this._prefixOwnerUsername;
+    if (!connectionChanged && !namingChanged) return;
+
+    this._connectionKey = connectionKey;
+    this._prefixOwnerUsername = prefixOwnerUsername;
+
+    if (connectionChanged) {
+      this._playlists = null;
+      this._pendingSnapshots.clear();
+      this._syncHashes.clear();
+      this._configGeneration += 1;
+      this.client = config.url && config.username && config.password
+        ? new NavidromeClient(config.url, config.username, config.password)
+        : null;
+    } else {
+      this._playlists = null;
+      this._syncHashes.clear();
+      this._configGeneration += 1;
+    }
   }
 
   isConfigured() {
@@ -102,12 +129,16 @@ export class NavidromePlaybackDestination {
   getPlaylistNames({ entityId, ownerUserId = null, displayName } = {}) {
     const name = String(displayName || "").trim();
     const owner = ownerUserId == null ? null : userOps.getUserById(ownerUserId);
-    const current = owner?.username ? `${owner.username} - ${name}` : name;
+    const prefixed = owner?.username ? `${owner.username} - ${name}` : name;
+    const current = this._prefixOwnerUsername ? prefixed : name;
     const shared = Boolean(flowPlaylistConfig.getSharedPlaylist(entityId));
     const legacy = shared
-      ? [name, `[AS] ${name}`, `Aurral Shared ${name}`]
-      : [name, `[A] ${name}`, `Aurral ${name}`];
-    return { current, legacy: legacy.filter((candidate) => candidate !== current) };
+      ? [name, `[AS] ${name}`, `Aurral Shared ${name}`, prefixed]
+      : [name, `[A] ${name}`, `Aurral ${name}`, prefixed];
+    return {
+      current,
+      legacy: [...new Set(legacy)].filter((candidate) => candidate !== current),
+    };
   }
 
   getPlaylistName(playlist) {
@@ -362,6 +393,7 @@ export class NavidromePlaybackDestination {
   }
 
   async _publishPlaylist(snapshot) {
+    const configGeneration = this._configGeneration;
     await fs.mkdir(this.libraryRoot, { recursive: true });
     const { current, legacy } = this.getPlaylistNames(snapshot);
     const targetKey = this._targetKey(snapshot.ownerUserId);
@@ -514,7 +546,9 @@ export class NavidromePlaybackDestination {
       ...ARTWORK_FILE_EXTENSIONS,
       ARTWORK_SUPPRESS_SUFFIX,
     ]);
-    this._syncHashes.set(syncKey, syncHash);
+    if (configGeneration === this._configGeneration) {
+      this._syncHashes.set(syncKey, syncHash);
+    }
     return playbackOperationSuccess();
   }
 

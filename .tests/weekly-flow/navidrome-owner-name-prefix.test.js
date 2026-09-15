@@ -36,8 +36,11 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-function makeManager() {
+function makeManager({ prefixOwnerUsername } = {}) {
   const manager = new WeeklyFlowPlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
+  if (prefixOwnerUsername !== undefined) {
+    manager.navidromeDestination.updateConfig({ prefixOwnerUsername });
+  }
   const created = [];
   manager.navidromeDestination.client = {
     created,
@@ -61,7 +64,7 @@ function makeManager() {
 }
 
 test("the Navidrome adapter keeps an unowned flow name bare", () => {
-  const manager = makeManager();
+  const manager = makeManager({ prefixOwnerUsername: true });
   const names = manager.navidromeDestination.getPlaylistNames({
     displayName: "Weekend Vibes",
   });
@@ -69,9 +72,9 @@ test("the Navidrome adapter keeps an unowned flow name bare", () => {
   assert.deepEqual(names.legacy, ["[A] Weekend Vibes", "Aurral Weekend Vibes"]);
 });
 
-test("the Navidrome adapter prefixes an owned flow and keeps legacy names", () => {
+test("the Navidrome adapter prefixes an owned flow name when enabled", () => {
   const jody = userOps.createUser("jody", "hash", "user");
-  const manager = makeManager();
+  const manager = makeManager({ prefixOwnerUsername: true });
   const names = manager.navidromeDestination.getPlaylistNames({
     ownerUserId: jody.id,
     displayName: "Weekend Vibes",
@@ -84,10 +87,10 @@ test("the Navidrome adapter prefixes an owned flow and keeps legacy names", () =
   ]);
 });
 
-test("the Navidrome adapter prefixes an owned shared playlist and keeps legacy names", () => {
+test("the Navidrome adapter prefixes an owned shared playlist name when enabled", () => {
   const jody = userOps.createUser("jody", "hash", "user");
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "80s Anthems" });
-  const manager = makeManager();
+  const manager = makeManager({ prefixOwnerUsername: true });
   const names = manager.navidromeDestination.getPlaylistNames({
     entityId: playlist.id,
     ownerUserId: jody.id,
@@ -102,6 +105,58 @@ test("the Navidrome adapter prefixes an owned shared playlist and keeps legacy n
   flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
 });
 
+test("the Navidrome adapter keeps owned flow names bare when the toggle is off", () => {
+  const jody = userOps.createUser("jody", "hash", "user");
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "80s Anthems" });
+  const manager = makeManager({ prefixOwnerUsername: false });
+
+  const flow = manager.navidromeDestination.getPlaylistNames({
+    ownerUserId: jody.id,
+    displayName: "Weekend Vibes",
+  });
+  assert.equal(flow.current, "Weekend Vibes");
+  assert.deepEqual(flow.legacy, [
+    "[A] Weekend Vibes",
+    "Aurral Weekend Vibes",
+    "jody - Weekend Vibes",
+  ]);
+
+  const shared = manager.navidromeDestination.getPlaylistNames({
+    entityId: playlist.id,
+    ownerUserId: jody.id,
+    displayName: "80s Anthems",
+  });
+  assert.equal(shared.current, "80s Anthems");
+  assert.deepEqual(shared.legacy, [
+    "[AS] 80s Anthems",
+    "Aurral Shared 80s Anthems",
+    "jody - 80s Anthems",
+  ]);
+  flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+});
+
+test("switching off the prefix deletes a leftover prefixed playlist with no pointer mapping", async () => {
+  const jody = userOps.createUser("jody", "hash", "user");
+  const flow = flowPlaylistConfig.createFlow({ name: "Weekend Vibes", ownerUserId: jody.id });
+  flowPlaylistConfig.setEnabled(flow.id, true);
+
+  const manager = makeManager({ prefixOwnerUsername: false });
+
+  // Existing native playlist from before the toggle flip; no pointer recorded for it.
+  manager.navidromeDestination.client.getPlaylists = async () => [
+    { id: "existing-1", name: "jody - Weekend Vibes" },
+  ];
+  const deleted = [];
+  manager.navidromeDestination.client.deletePlaylist = async (id) => {
+    deleted.push(id);
+  };
+
+  await manager.ensurePlaylists();
+
+  assert.deepEqual(manager.navidromeDestination.client.created, ["Weekend Vibes"]);
+  assert.deepEqual(deleted, ["existing-1"]);
+});
+
 test("two different owners can use the same native playlist name", async () => {
   const gordon = userOps.createUser("gordon", "hash", "admin");
   const jody = userOps.createUser("jody", "hash", "user");
@@ -113,11 +168,11 @@ test("two different owners can use the same native playlist name", async () => {
   const jodyFlow = flowPlaylistConfig.createFlow({ name: "Weekend Vibes", ownerUserId: jody.id });
   flowPlaylistConfig.setEnabled(jodyFlow.id, true);
 
-  const manager = makeManager();
+  const manager = makeManager({ prefixOwnerUsername: false });
   await manager.ensurePlaylists();
 
   assert.deepEqual(
     manager.navidromeDestination.client.created.sort(),
-    ["gordon - Weekend Vibes", "jody - Weekend Vibes"].sort(),
+    ["Weekend Vibes", "Weekend Vibes"].sort(),
   );
 });
