@@ -1,11 +1,11 @@
-import fs from "node:fs";
 import path from "node:path";
 
 import { resolvePlaylistRoot } from "./playlistPaths.js";
 import { isLibraryScanExcludedDirectory } from "./libraryFileScanner.js";
 import { lidarrClient } from "./lidarrClient.js";
 import { scheduleLibraryScan } from "./libraryScanWorker.js";
-import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
+import { getPathMappings } from "./pathMappings.js";
+import { createIsolatedLibraryWatcher } from "./libraryWatchProcess.js";
 
 const DEFAULT_DEBOUNCE_MS = 2000;
 
@@ -22,17 +22,25 @@ function isIgnoredChange(root, filename) {
 export function createLibraryFileWatcher({
   roots = [],
   debounceMs = DEFAULT_DEBOUNCE_MS,
-  watchImpl = fs.watch,
+  watchImpl = createIsolatedLibraryWatcher,
   onChange = (_roots, changedPaths) => scheduleLibraryScan({ changedPaths }),
   onError = () => {},
 } = {}) {
   const watchers = [];
+  let closed = false;
   let timer = null;
   const changedRoots = new Set();
   const changedPaths = new Set();
-  const uniqueRoots = [...new Set(roots.map((root) => path.resolve(String(root || ""))).filter(Boolean))];
+  const watchRoots = new Map();
+  for (const entry of roots) {
+    const root = String(entry?.path ?? entry ?? "");
+    if (!root) continue;
+    const key = path.resolve(root);
+    if (!watchRoots.has(key)) watchRoots.set(key, { root, pathMappings: entry?.pathMappings || [] });
+  }
 
   const scheduleChange = (root, filename) => {
+    if (closed) return;
     changedRoots.add(root);
     changedPaths.add(
       filename == null || filename === ""
@@ -53,11 +61,13 @@ export function createLibraryFileWatcher({
     timer.unref?.();
   };
 
-  for (const root of uniqueRoots) {
-    if (!fs.existsSync(root)) continue;
+  for (const { root, pathMappings } of watchRoots.values()) {
     try {
-      const watcher = watchImpl(root, { recursive: true }, (_eventType, filename) => {
-        if (!isIgnoredChange(root, filename)) scheduleChange(root, filename);
+      const watcher = watchImpl(root, { recursive: true, pathMappings }, (_eventType, filename, resolvedRoot = path.resolve(root)) => {
+        if (!isIgnoredChange(resolvedRoot, filename)) scheduleChange(resolvedRoot, filename);
+      });
+      watcher.on?.("error", (error) => {
+        if (!closed) onError(error, root);
       });
       watchers.push(watcher);
     } catch (error) {
@@ -67,6 +77,7 @@ export function createLibraryFileWatcher({
 
   return {
     close() {
+      closed = true;
       if (timer) clearTimeout(timer);
       timer = null;
       changedRoots.clear();
@@ -79,10 +90,13 @@ export function createLibraryFileWatcher({
 export function resolveLibraryWatchRoots() {
   const roots = [resolvePlaylistRoot()];
   if (lidarrClient.isEnabled()) {
+    // Path mapping checks whether the original path exists; defer that I/O to
+    // the watcher child along with recursive watcher creation.
     roots.push(
       ...lidarrClient
         .getConfiguredRootFolderPaths()
-        .map((root) => resolveLocalPath(root, getPathMappings("lidarr"))),
+        .filter(Boolean)
+        .map((root) => ({ path: root, pathMappings: getPathMappings("lidarr") })),
     );
   }
   return roots.filter(Boolean);
@@ -102,7 +116,7 @@ export async function refreshLibraryFileWatcher({ logger = console } = {}) {
       changedPaths,
     }),
     onError: (error, root) => {
-      logger.warn?.(`[Library] Failed to watch ${root}:`, error?.message || error);
+      logger.warn?.(`[Library] Automatic file watching disabled for ${root}; manual library refresh is still available:`, error?.message || error);
     },
   });
   return true;
