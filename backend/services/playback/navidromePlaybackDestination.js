@@ -73,7 +73,8 @@ export class NavidromePlaybackDestination {
     this.libraryRoot = path.join(this.playlistLibraryRoot, "_playlists");
     this.client = client;
     this._prefixOwnerUsername = true;
-    this._configKey = "";
+    this._connectionKey = JSON.stringify({ url: "", username: "", password: "" });
+    this._configGeneration = 0;
     this._playlists = null;
     this._pendingSnapshots = new Map();
     this._catchupRunning = false;
@@ -99,12 +100,14 @@ export class NavidromePlaybackDestination {
       this._playlists = null;
       this._pendingSnapshots.clear();
       this._syncHashes.clear();
+      this._configGeneration += 1;
       this.client = config.url && config.username && config.password
         ? new NavidromeClient(config.url, config.username, config.password)
         : null;
     } else {
       this._playlists = null;
       this._syncHashes.clear();
+      this._configGeneration += 1;
     }
   }
 
@@ -390,6 +393,7 @@ export class NavidromePlaybackDestination {
   }
 
   async _publishPlaylist(snapshot) {
+    const configGeneration = this._configGeneration;
     await fs.mkdir(this.libraryRoot, { recursive: true });
     const { current, legacy } = this.getPlaylistNames(snapshot);
     const targetKey = this._targetKey(snapshot.ownerUserId);
@@ -542,7 +546,9 @@ export class NavidromePlaybackDestination {
       ...ARTWORK_FILE_EXTENSIONS,
       ARTWORK_SUPPRESS_SUFFIX,
     ]);
-    this._syncHashes.set(syncKey, syncHash);
+    if (configGeneration === this._configGeneration) {
+      this._syncHashes.set(syncKey, syncHash);
+    }
     return playbackOperationSuccess();
   }
 
