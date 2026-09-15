@@ -506,7 +506,9 @@ export async function updateSharedPlaylist({
       const { createPlaybackDeletionGuard } = await import("../playback/playbackFileRetention.js");
       const protectPlayback = !(deleteUnsharedFiles && !mergeImportSource);
       const deletionGuard = protectPlayback
-        ? createPlaybackDeletionGuard({ excludeEntityIds: [safePlaylistId] })
+        ? createPlaybackDeletionGuard({
+          excludeEntityIds: [safePlaylistId], playlistRoot: weeklyFlowWorker.weeklyFlowRoot,
+        })
         : { canDelete: async () => true };
       for (const job of existingJobs) {
         const identity = buildSharedTrackIdentity(job);

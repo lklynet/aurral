@@ -62,6 +62,53 @@ test("Navidrome protects relative playlist paths across library roots", async ()
   ]);
 });
 
+for (const singletonPlaylist of [false, true]) {
+  for (const singletonEntry of [false, true]) {
+    test(`Navidrome accepts ${singletonPlaylist ? "singleton" : "array"} playlists with ${singletonEntry ? "singleton" : "array"} entries`, async () => {
+      const client = new NavidromeClient("http://navidrome.local", "admin", "password");
+      const playlist = { id: "saved" };
+      const entry = { path: "Artist/Track.flac" };
+      let detailReads = 0;
+      client.request = async (endpoint, params) => {
+        if (endpoint === "getUser") return { user: { adminRole: true } };
+        if (endpoint === "getPlaylists") return { playlists: {
+          playlist: singletonPlaylist ? playlist : [playlist],
+        } };
+        assert.equal(endpoint, "getPlaylist");
+        assert.equal(params.id, "saved");
+        detailReads += 1;
+        return { playlist: { songCount: 1, entry: singletonEntry ? entry : [entry] } };
+      };
+      client.getLibraries = async () => [{ path: "/music" }];
+      assert.deepEqual(await client.getPlaylistTrackPaths(), ["/music/Artist/Track.flac"]);
+      assert.deepEqual(await client.getPlaylistTrackPaths(new Set(["saved"])), []);
+      assert.equal(detailReads, 1);
+    });
+  }
+}
+
+test("Navidrome accepts empty collections but still rejects malformed and truncated singleton responses", async () => {
+  const client = new NavidromeClient("http://navidrome.local", "admin", "password");
+  let playlists = {};
+  let detail = { songCount: 0 };
+  client.request = async (endpoint) => {
+    if (endpoint === "getUser") return { user: { adminRole: true } };
+    if (endpoint === "getPlaylists") return { playlists };
+    return { playlist: detail };
+  };
+  assert.deepEqual(await client.getPlaylistTrackPaths(), []);
+  playlists = { playlist: { id: "saved" } };
+  assert.deepEqual(await client.getPlaylistTrackPaths(), []);
+  detail = { songCount: 2, entry: { path: "/music/Track.flac" } };
+  await assert.rejects(client.getPlaylistTrackPaths(), /Incomplete/);
+  detail = { songCount: 1, entry: "invalid" };
+  await assert.rejects(client.getPlaylistTrackPaths(), /no file path/);
+  playlists = { playlist: "invalid" };
+  await assert.rejects(client.getPlaylistTrackPaths(), /missing its ID/);
+  playlists = null;
+  await assert.rejects(client.getPlaylistTrackPaths(), /Invalid/);
+});
+
 test("Navidrome refuses limited playlist visibility", async () => {
   const client = new NavidromeClient("http://navidrome.local", "listener", "password");
   client.request = async () => ({ user: { adminRole: false } });
@@ -119,4 +166,16 @@ for (const Client of [JellyfinClient, NavidromeClient, PlexClient]) {
 test("usage pagination rejects repeated pages and malformed totals", async () => {
   await assert.rejects(readPlaylistPages(async () => ({ items: [{ id: "track" }] })), /did not advance/);
   await assert.rejects(readPlaylistPages(async () => ({ items: [], total: "3" })), /Invalid/);
+});
+
+test("usage pagination rejects a page that exceeds its declared total", async () => {
+  await assert.rejects(readPlaylistPages(async () => ({
+    items: [{ id: "a" }], total: 0,
+  })), /exceeds its declared total/);
+  await assert.rejects(readPlaylistPages(async (start) => ({
+    items: start === 0 ? [{ id: "a" }] : [{ id: "b" }, { id: "c" }], total: 2,
+  })), /exceeds its declared total/);
+  assert.deepEqual(await readPlaylistPages(async () => ({
+    items: [{ id: "a" }], total: 1,
+  })), [{ id: "a" }]);
 });

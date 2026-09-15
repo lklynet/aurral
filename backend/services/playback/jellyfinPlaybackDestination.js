@@ -82,7 +82,7 @@ export class JellyfinPlaybackDestination {
   async getReferencedPaths({ excludeEntityIds = [] } = {}) {
     const excluded = new Set(excludeEntityIds.flatMap((id) =>
       jellyfinPlaylistPointerStore.getPointersForEntity(id)
-        .filter((pointer) => pointer.serverUrl === this.client.url)
+        .filter((pointer) => !pointer.serverUrl || pointer.serverUrl === this.client.url)
         .map((pointer) => pointer.playlistId)));
     const paths = await this.client.getPlaylistTrackPaths(excluded);
     return { ok: true, paths: paths.map((file) => resolveLocalPath(file, getPathMappings("jellyfin"))) };

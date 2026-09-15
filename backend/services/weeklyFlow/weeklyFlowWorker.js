@@ -864,8 +864,9 @@ export class WeeklyFlowWorker {
               `[WeeklyFlowWorker] All jobs complete for ${playlistType}, ensuring playlists...`,
             );
             try {
-              const { removeUnusedPlaybackFiles } = await import("../playback/playbackFileRetention.js");
-              await removeUnusedPlaybackFiles(path.join(this.weeklyFlowRoot, "_fallback"));
+              const { removeUnusedPlaybackFiles, createPlaybackDeletionGuard } = await import("../playback/playbackFileRetention.js");
+              await removeUnusedPlaybackFiles(path.join(this.weeklyFlowRoot, "_fallback"),
+                createPlaybackDeletionGuard({ playlistRoot: this.weeklyFlowRoot }));
             } catch {}
             try {
               playlistManager.updateConfig(false);

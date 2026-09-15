@@ -17,7 +17,8 @@ export async function readPlaylistPages(fetchPage) {
     if (signature === previousPage) throw new Error("Playlist pagination did not advance");
     previousPage = signature;
     result.push(...items);
-    if (total != null && result.length >= total) return result;
+    if (total != null && result.length > total) throw new Error("Playlist usage response exceeds its declared total");
+    if (total != null && result.length === total) return result;
   }
   throw new Error("Playlist usage response exceeded the page limit");
 }

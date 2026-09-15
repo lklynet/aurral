@@ -315,10 +315,10 @@ export class WeeklyFlowPlaylistManager {
         : flowPlaylistConfig.getFlows().map((flow) => flow.id);
     const fallbackDir = path.join(this.weeklyFlowRoot, "_fallback");
     const deletionGuard = protectPlayback
-      ? createPlaybackDeletionGuard({ excludeEntityIds: targets })
+      ? createPlaybackDeletionGuard({ excludeEntityIds: targets, playlistRoot: this.weeklyFlowRoot })
       : { canDelete: async () => true };
     try {
-      await removeUnusedPlaybackFiles(fallbackDir, deletionGuard);
+      await removeUnusedPlaybackFiles(fallbackDir, deletionGuard, { protectPlayback });
     } catch {}
 
     for (const playlistType of targets) {
@@ -338,9 +338,9 @@ export class WeeklyFlowPlaylistManager {
           deletionGuard,
           protectPlayback,
         });
-        await removeUnusedPlaybackFiles(playlistDir, deletionGuard);
+        await removeUnusedPlaybackFiles(playlistDir, deletionGuard, { protectPlayback });
         await removeUnusedPlaybackFiles(
-          path.join(this.weeklyFlowRoot, AURRAL_FLOWS_DIR, playlistType), deletionGuard,
+          path.join(this.weeklyFlowRoot, AURRAL_FLOWS_DIR, playlistType), deletionGuard, { protectPlayback },
         );
         console.log(`[WeeklyFlowPlaylistManager] Cleaned unused files for ${playlistType}`);
       } catch (error) {

@@ -562,7 +562,9 @@ export async function migrateAurralDownloadFolder(options = {}) {
     if (flow && jobsForSource.length === 0) {
       try {
         if (!deletionGuards.has(playlistId)) {
-          deletionGuards.set(playlistId, createPlaybackDeletionGuard({ excludeEntityIds: [playlistId] }));
+          deletionGuards.set(playlistId, createPlaybackDeletionGuard({
+            excludeEntityIds: [playlistId], playlistRoot: rootPath,
+          }));
         }
         if (!(await deletionGuards.get(playlistId).canDelete(sourcePath))) {
           retainItem(state, sourcePath, "retained for playback playlist protection", logger);

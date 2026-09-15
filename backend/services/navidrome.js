@@ -208,17 +208,20 @@ export class NavidromeClient {
       throw new Error("Navidrome playlist protection requires an admin account to see private playlists");
     }
     const data = await this.request("getPlaylists", {}, { timeout: 30_000 });
-    if (!data?.playlists || !Array.isArray(data.playlists.playlist ?? [])) {
+    if (!data?.playlists || typeof data.playlists !== "object" || Array.isArray(data.playlists)) {
       throw new Error("Invalid Navidrome playlist list");
     }
+    const rawPlaylists = data.playlists.playlist ?? [];
+    const playlists = Array.isArray(rawPlaylists) ? rawPlaylists : [rawPlaylists];
     const paths = new Set();
     let libraries;
-    for (const playlist of data.playlists.playlist || []) {
+    for (const playlist of playlists) {
       if (!playlist?.id) throw new Error("Navidrome playlist is missing its ID");
       if (excludedIds.has(String(playlist.id))) continue;
       const detail = (await this.request("getPlaylist", { id: playlist.id }, { timeout: 30_000 }))?.playlist;
-      const entries = detail?.entry ?? [];
-      if (!detail || !Array.isArray(entries) || !Number.isSafeInteger(detail.songCount)
+      const rawEntries = detail?.entry ?? [];
+      const entries = Array.isArray(rawEntries) ? rawEntries : [rawEntries];
+      if (!detail || !Number.isSafeInteger(detail.songCount)
         || entries.length !== detail.songCount) {
         throw new Error("Incomplete Navidrome playlist contents");
       }

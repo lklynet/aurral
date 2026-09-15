@@ -370,7 +370,9 @@ export async function relocateSharedFilesBeforePlaylistRemoval(playlistType, opt
   }
 
   let relocated = 0;
-  const deletionGuard = options.deletionGuard || createPlaybackDeletionGuard({ excludeEntityIds: [safePlaylistType] });
+  const deletionGuard = options.deletionGuard || createPlaybackDeletionGuard({
+    excludeEntityIds: [safePlaylistType], playlistRoot: weeklyFlowRoot,
+  });
   for (const [oldPath, jobs] of byPath) {
     if (!(await deletionGuard.canDelete(oldPath))) continue;
     const survivor = sortReusableJobs(jobs)[0];
@@ -428,7 +430,7 @@ export async function removePlaylistFileIfUnshared(finalPath, playlistId, option
   const others = matchingJobs.filter((job) => !excludeJobIds.has(String(job.id || "")));
   const deletionGuard = options.deletionGuard || (options.protectPlayback === false
     ? { canDelete: async () => true }
-    : createPlaybackDeletionGuard({ excludeEntityIds: [safePlaylistId] }));
+    : createPlaybackDeletionGuard({ excludeEntityIds: [safePlaylistId], playlistRoot: weeklyFlowRoot }));
   if (!(await deletionGuard.canDelete(resolved))) return { action: "retained" };
   if (others.length > 0) {
     const survivor = sortReusableJobs(others)[0];

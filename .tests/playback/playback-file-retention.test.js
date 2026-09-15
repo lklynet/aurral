@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../helpers/backendTestHarness.js";
 import { PlaybackDestinationRegistry } from "../../backend/services/playback/playbackDestinationRegistry.js";
+import { localFileKey } from "../../backend/services/playback/playlistUsage.js";
 
 const [state, { db }, { dbOps }, retention, { playlistManager }, { downloadTracker }, reuse, { flowPlaylistConfig }] = await setupIsolatedBackend(
   "playback-file-retention",
@@ -21,7 +22,7 @@ const root = process.env.WEEKLY_FLOW_FOLDER;
 test.beforeEach(async () => {
   resetDatabase(db);
   downloadTracker.clearAll();
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [], onboardingComplete: true });
+  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [], onboardingComplete: true, downloadFolderPath: root });
   await fs.rm(root, { recursive: true, force: true });
 });
 test.after(async () => { db.close(); await cleanupIsolatedState(state); });
@@ -267,4 +268,105 @@ test("startup migration leaves an externally referenced orphan at its original p
   await fs.access(file);
   await migrateAurralDownloadFolder(options);
   await fs.access(file);
+});
+
+test("Jellyfin excludes legacy outgoing pointers but keeps pointers from other servers separate", async () => {
+  const { JellyfinPlaybackDestination } = await import("../../backend/services/playback/jellyfinPlaybackDestination.js");
+  const { jellyfinPlaylistPointerStore: pointers } = await import("../../backend/services/jellyfin/jellyfinPlaylistPointerStore.js");
+  pointers.setPointer("flow", "legacy", { playlistId: "legacy" });
+  pointers.setPointer("flow", "current", { playlistId: "current", serverUrl: "http://current" });
+  pointers.setPointer("flow", "other-server", { playlistId: "other", serverUrl: "http://other" });
+  pointers.setPointer("another-flow", "legacy", { playlistId: "keep" });
+  const playback = new JellyfinPlaybackDestination(root, { client: {
+    url: "http://current",
+    async getPlaylistTrackPaths(excluded) {
+      assert.deepEqual([...excluded].sort(), ["current", "legacy"]);
+      return [];
+    },
+  } });
+  await playback.getReferencedPaths({ excludeEntityIds: ["flow"] });
+});
+
+test("retained retries preserve exclusions and share a snapshot only within matching groups", async (t) => {
+  const first = await makeFile("_flows/a/first.flac");
+  const second = await makeFile("_flows/a/second.flac");
+  const third = await makeFile("_flows/b/third.flac");
+  const external = await makeFile("_flows/a/external.flac");
+  const registry = new PlaybackDestinationRegistry([destination("jellyfin", true,
+    async () => ({ ok: true, paths: [first, second, third, external] }))]);
+  for (const [file, excludeEntityIds] of [
+    [first, ["a", "old-a"]], [second, ["old-a", "a", "a"]],
+    [third, ["b"]], [external, ["a", "old-a"]],
+  ]) {
+    await createPlaybackDeletionGuard({ registry, excludeEntityIds }).canDelete(file);
+  }
+  const calls = [];
+  t.mock.method(playlistManager.destinationRegistry, "run", async (_operation, { excludeEntityIds }) => {
+    calls.push(excludeEntityIds);
+    return [{ ok: true, paths: excludeEntityIds.includes("a") ? [third, external] : [first, second, external] }];
+  });
+  await retryPlaybackRetainedFiles();
+  for (const file of [first, second, third]) await assert.rejects(fs.access(file), { code: "ENOENT" });
+  await fs.access(external);
+  assert.deepEqual(calls, [["a", "old-a"], ["b"]]);
+  assert.deepEqual(dbOps.getJSONSetting("playbackRetainedFiles")[localFileKey(external)].excludeEntityIds, ["a", "old-a"]);
+});
+
+for (const changeBeforeReset of [false, true]) {
+  test(`retained files use their recorded root when settings change ${changeBeforeReset ? "before" : "after"} cleanup`, async (t) => {
+    const file = await makeFile("_flows/old-root/saved.flac");
+    const newRoot = path.join(state.baseDir, "new-downloads");
+    await fs.mkdir(newRoot, { recursive: true });
+    const unrelated = path.join(newRoot, "unrelated.flac");
+    await fs.writeFile(unrelated, "unrelated");
+    let unavailable = true;
+    t.mock.method(playlistManager.destinationRegistry, "run", async () =>
+      unavailable ? [{ ok: false }] : [{ ok: true, paths: [] }]);
+    if (changeBeforeReset) dbOps.updateSettings({ downloadFolderPath: newRoot });
+    await playlistManager.weeklyReset(["old-root"]);
+    if (!changeBeforeReset) dbOps.updateSettings({ downloadFolderPath: newRoot });
+    await retryPlaybackRetainedFiles();
+    await fs.access(file);
+    assert.equal(dbOps.getJSONSetting("playbackRetainedFiles")[localFileKey(file)].playlistRoot, path.resolve(root));
+    unavailable = false;
+    await retryPlaybackRetainedFiles();
+    await assert.rejects(fs.access(file), { code: "ENOENT" });
+    assert.equal(isPlaybackRetainedFile(file), false);
+    assert.equal(await fs.readFile(unrelated, "utf8"), "unrelated");
+  });
+}
+
+test("retry accepts legacy records only inside the current root and rejects mismatched recorded roots", async (t) => {
+  const legacy = await makeFile("_flows/legacy/saved.flac");
+  const mismatch = await makeFile("_flows/mismatch/saved.flac");
+  dbOps.setJSONSetting("playbackRetainedFiles", {
+    [localFileKey(legacy)]: { excludeEntityIds: ["legacy"] },
+    [localFileKey(mismatch)]: { playlistRoot: path.join(state.baseDir, "different-root") },
+  });
+  t.mock.method(playlistManager.destinationRegistry, "run", async (_operation, { excludeEntityIds }) => {
+    assert.deepEqual(excludeEntityIds, ["legacy"]);
+    return [{ ok: true, paths: [] }];
+  });
+  await retryPlaybackRetainedFiles();
+  await assert.rejects(fs.access(legacy), { code: "ENOENT" });
+  await fs.access(mismatch);
+});
+
+test("explicit reset removes symbolic links without touching their targets; automatic cleanup leaves links alone", async (t) => {
+  const target = path.join(state.baseDir, "linked-library");
+  await fs.mkdir(target, { recursive: true });
+  const targetFile = path.join(target, "saved.flac");
+  await fs.writeFile(targetFile, "external audio");
+  const links = ["_flows/linked/link", "aurral-weekly-flow/linked/link", "_fallback/link"];
+  for (const relative of links) {
+    const link = path.join(root, relative);
+    await fs.mkdir(path.dirname(link), { recursive: true });
+    await fs.symlink(target, link, process.platform === "win32" ? "junction" : "dir");
+  }
+  t.mock.method(playlistManager.destinationRegistry, "run", async () => { assert.fail("symbolic link cleanup queried playback"); });
+  await playlistManager.weeklyReset(["linked"]);
+  for (const relative of links) assert.equal((await fs.lstat(path.join(root, relative))).isSymbolicLink(), true);
+  await playlistManager.weeklyReset(["linked"], { protectPlayback: false });
+  for (const relative of links) await assert.rejects(fs.lstat(path.dirname(path.join(root, relative))), { code: "ENOENT" });
+  assert.equal(await fs.readFile(targetFile, "utf8"), "external audio");
 });
