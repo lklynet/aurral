@@ -61,6 +61,8 @@ for (const triggerSearch of [false, true]) {
       assert.deepEqual(wanted.map((album) => album.foreignAlbumId), ["requested-album"]);
       assert.equal(albums[1].monitored, false);
       assert.equal(artist.monitorNewItems, "none");
+      assert.equal(postedArtist.monitor, "missing");
+      assert.equal(postedArtist.addOptions.monitor, "missing");
       assert.equal(postedArtist.addOptions.searchForMissingAlbums, triggerSearch);
     });
   }
