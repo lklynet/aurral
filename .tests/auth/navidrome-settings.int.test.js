@@ -43,10 +43,10 @@ async function apiFetch(path, options = {}) {
   return { response, payload };
 }
 
-async function waitForLibraryRequest() {
+async function waitForLibraryRequest(startIndex) {
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
-    const request = navidromeRequests.find(
+    const request = navidromeRequests.slice(startIndex).find(
       ({ method, url }) => method === "POST" && url.pathname === "/api/library",
     );
     if (request) return request;
@@ -113,6 +113,7 @@ test("admin can update and test Navidrome after onboarding", async () => {
     username: "local-user",
     password: "local-password",
   };
+  const requestStartIndex = navidromeRequests.length;
   const saved = await apiFetch("/api/settings", {
     method: "POST",
     body: JSON.stringify({
@@ -130,7 +131,7 @@ test("admin can update and test Navidrome after onboarding", async () => {
   assert.equal(saved.payload.integrations.navidrome.username, "local-user");
   assert.equal(Object.hasOwn(saved.payload.integrations.navidrome, "m3uPathMode"), false);
   assert.equal(Object.hasOwn(saved.payload.integrations.navidrome, "pathMappings"), false);
-  const libraryRequest = await waitForLibraryRequest();
+  const libraryRequest = await waitForLibraryRequest(requestStartIndex);
   assert.deepEqual(libraryRequest?.body, {
     name: "Aurral Playlists",
     path: path.join(isolatedState.baseDir, "weekly-flow"),
