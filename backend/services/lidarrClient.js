@@ -773,7 +773,7 @@ export class LidarrClient {
   getConfiguredRootFolderPaths() {
     this.updateConfig();
     return normalizeRootFolderPaths([
-      ...this.config.rootFolderPaths,
+      ...(Array.isArray(this.config.rootFolderPaths) ? this.config.rootFolderPaths : []),
       this.config.rootFolderPath,
     ]);
   }
