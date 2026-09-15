@@ -27,6 +27,10 @@ const normalizePointer = (raw) => {
 };
 
 export const navidromePlaylistPointerStore = {
+  getPointersForEntity(entityId) {
+    return Object.values(readStore()[entityId] || {}).map(normalizePointer).filter(Boolean);
+  },
+
   getPointer(entityId, targetKey) {
     return normalizePointer(readStore()[entityId]?.[targetKey] || null);
   },

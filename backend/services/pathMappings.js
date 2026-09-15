@@ -11,6 +11,7 @@ const PATH_MAPPING_SOURCES = new Set([
   "deemix",
   "plex",
   "jellyfin",
+  "navidrome",
 ]);
 
 export function syncPathMappings(value) {

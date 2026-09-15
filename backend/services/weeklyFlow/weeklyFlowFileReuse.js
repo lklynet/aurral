@@ -21,6 +21,11 @@ import {
 } from "../playlistPaths.js";
 import { getPathMappings, resolveLocalPath } from "../pathMappings.js";
 import { normalizeExistingFileMode } from "./weeklyFlowFileReuseMode.js";
+import {
+  createPlaybackDeletionGuard,
+  forgetPlaybackRetainedFile,
+  isPlaybackRetainedFile,
+} from "../playback/playbackFileRetention.js";
 export {
   EXISTING_FILE_MODES,
   normalizeExistingFileMode,
@@ -295,6 +300,7 @@ export async function adoptFileIntoPlaylist(sourcePath, targetPlaylistType, week
   const root = path.resolve(weeklyFlowRoot || resolveWeeklyFlowRoot());
   const resolvedSource = path.resolve(remapLegacyWeeklyFlowPath(sourcePath, root));
   if (!safeTarget || !(await fileExists(resolvedSource))) return null;
+  if (options.protectPlayback !== false && isPlaybackRetainedFile(resolvedSource)) return resolvedSource;
 
   const knownFlow = isFlowPlaylistType(safeTarget);
   const knownPlaylist = isCanonicalPlaylistType(safeTarget);
@@ -364,13 +370,15 @@ export async function relocateSharedFilesBeforePlaylistRemoval(playlistType, opt
   }
 
   let relocated = 0;
+  const deletionGuard = options.deletionGuard || createPlaybackDeletionGuard({ excludeEntityIds: [safePlaylistType] });
   for (const [oldPath, jobs] of byPath) {
+    if (!(await deletionGuard.canDelete(oldPath))) continue;
     const survivor = sortReusableJobs(jobs)[0];
     const nextPath = await adoptFileIntoPlaylist(
       oldPath,
       survivor.playlistType,
       weeklyFlowRoot,
-      { track: survivor },
+      { track: survivor, protectPlayback: options.protectPlayback },
     );
     if (nextPath) relocated += 1;
   }
@@ -418,16 +426,22 @@ export async function removePlaylistFileIfUnshared(finalPath, playlistId, option
     return { action: "skipped" };
   }
   const others = matchingJobs.filter((job) => !excludeJobIds.has(String(job.id || "")));
+  const deletionGuard = options.deletionGuard || (options.protectPlayback === false
+    ? { canDelete: async () => true }
+    : createPlaybackDeletionGuard({ excludeEntityIds: [safePlaylistId] }));
+  if (!(await deletionGuard.canDelete(resolved))) return { action: "retained" };
   if (others.length > 0) {
     const survivor = sortReusableJobs(others)[0];
     const nextPath = await adoptFileIntoPlaylist(
       resolved,
       survivor.playlistType,
       weeklyFlowRoot,
+      { protectPlayback: options.protectPlayback },
     );
     return { action: nextPath ? "relocated" : "skipped" };
   }
   await fs.rm(resolved, { force: true });
+  forgetPlaybackRetainedFile(resolved);
   return { action: "deleted" };
 }
 

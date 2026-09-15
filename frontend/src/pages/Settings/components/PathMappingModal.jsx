@@ -15,6 +15,7 @@ const PATH_MAPPING_SOURCE_OPTIONS = [
   { value: "deemix", label: "deemix" },
   { value: "plex", label: "Plex" },
   { value: "jellyfin", label: "Jellyfin" },
+  { value: "navidrome", label: "Navidrome" },
 ];
 
 const EMPTY_MAPPING = { source: "all", remote: "", local: "" };

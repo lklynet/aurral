@@ -1,5 +1,4 @@
 import path from "path";
-import fs from "fs/promises";
 import { downloadTracker } from "./weeklyFlowDownloadTracker.js";
 import { playlistManager } from "./weeklyFlowPlaylistManager.js";
 import { flowPlaylistConfig } from "./weeklyFlowPlaylistConfig.js";
@@ -865,10 +864,8 @@ export class WeeklyFlowWorker {
               `[WeeklyFlowWorker] All jobs complete for ${playlistType}, ensuring playlists...`,
             );
             try {
-              await fs.rm(path.join(this.weeklyFlowRoot, "_fallback"), {
-                recursive: true,
-                force: true,
-              });
+              const { removeUnusedPlaybackFiles } = await import("../playback/playbackFileRetention.js");
+              await removeUnusedPlaybackFiles(path.join(this.weeklyFlowRoot, "_fallback"));
             } catch {}
             try {
               playlistManager.updateConfig(false);

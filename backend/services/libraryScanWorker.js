@@ -237,6 +237,8 @@ const {
   processJob: async (payload, job) => {
     const { lidarrClient } = await import("./lidarrClient.js");
     const { scanConfiguredLibrary } = await import("./libraryIndexService.js");
+    const { retryPlaybackRetainedFiles } = await import("./playback/playbackFileRetention.js");
+    await retryPlaybackRetainedFiles();
     const registry = getScanRegistry();
     const includeLidarr =
       payload?.includeLidarr === true ||

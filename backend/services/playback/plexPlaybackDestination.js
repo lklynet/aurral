@@ -5,6 +5,7 @@ import { userOps } from "../../db/helpers/index.js";
 import { PlexClient } from "../plex.js";
 import { plexConnectionStore } from "../plex/plexConnectionStore.js";
 import { plexPlaylistPointerStore } from "../plex/plexPlaylistPointerStore.js";
+import { isPlaybackRetainedFile } from "./playbackFileRetention.js";
 import { getPathMappings, resolveLocalPath } from "../pathMappings.js";
 import {
   AURRAL_FLOWS_DIR,
@@ -78,6 +79,27 @@ export class PlexPlaybackDestination {
 
   isConfigured() {
     return Boolean(this.client?.isConfigured());
+  }
+
+  async getReferencedPaths({ excludeEntityIds = [] } = {}) {
+    const excluded = new Set(excludeEntityIds.flatMap((id) =>
+      plexPlaylistPointerStore.getPointersForEntity(id).map((pointer) => pointer.ratingKey)));
+    const clients = new Map([[this.client.token, this.client]]);
+    const cache = new Map();
+    for (const user of userOps.getAllUsers()) {
+      const client = this._ownerClient(user.id, cache);
+      if (client) clients.set(client.token, client);
+    }
+    const paths = new Set();
+    for (const client of clients.values()) {
+      for (const file of await client.getPlaylistTrackPaths(excluded)) {
+        const relative = this._relativeManagedPath(file);
+        paths.add(relative == null
+          ? resolveLocalPath(file, getPathMappings("plex"))
+          : path.resolve(this.weeklyFlowRoot, relative));
+      }
+    }
+    return { ok: true, paths: [...paths] };
   }
 
   _libraryPath() {
@@ -314,6 +336,7 @@ export class PlexPlaybackDestination {
     const entityRoot = path.join(this.weeklyFlowRoot, AURRAL_FLOWS_DIR, snapshot.entityId);
     for (const [localPath, group] of managedByPath) {
       if (!isPathInsideRoot(localPath, entityRoot)) continue;
+      if (isPlaybackRetainedFile(localPath)) continue;
       try {
         await fs.access(localPath);
       } catch {

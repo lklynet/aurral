@@ -19,15 +19,11 @@ For owner-scoped playlists, Aurral matches the Aurral username to a Jellyfin use
 
 ## Playlist edits in Jellyfin
 
-Playlist membership sync is one-way, but no longer replaces the entire Jellyfin playlist. Songs added directly in Jellyfin or a Jellyfin client stay in Jellyfin; they are not imported into Aurral. Existing entries keep their order and missing Aurral tracks are appended.
+You can add songs directly to a playlist in Jellyfin or a client such as Feishin. Aurral keeps those additions when it updates the playlist, but they do not appear in Aurral.
 
-Aurral records the tracks it supplies in its persistent playlist settings. Subsequent syncs can remove those tracks when they leave the published Aurral playlist, without clearing Jellyfin-only additions. Emptying the Aurral playlist also preserves Jellyfin-only entries. A matching song already present in Jellyfin satisfies the request without adding another copy or claiming ownership of it.
+To remove a song supplied by Aurral, remove it in Aurral. If you remove it only in Jellyfin, Aurral may add it back during the next update.
 
-Existing playlists from before this tracking was introduced have no ownership history, so their existing contents are preserved. Aurral only starts tracking newly supplied entries. Keep the Aurral `/config` volume persistent to retain this history across restarts.
-
-If repeated copies cannot be safely distinguished, Aurral preserves them rather than risk deleting a user's copy. A failed or interrupted add with an unknown outcome may likewise leave an untracked entry; a retry checks what is already present instead of adding it again.
-
-This is not two-way editing: removing an Aurral-supplied song in Jellyfin does not remove it in Aurral, and a later sync may add it back. Deleting or disabling the whole flow/shared playlist still removes its managed Jellyfin playlist, as before. Owner changes and legacy public-playlist cleanup also retain their existing behavior.
+Deleting a flow or shared playlist in Aurral, or disabling a flow, also deletes its Jellyfin playlist, including any additions you made to that playlist.
 
 ## Matching and scans
 

@@ -1,4 +1,5 @@
 import axios from "../../lib/axiosFetch.js";
+import { readPlaylistPages, requirePlaylistPath } from "./playback/playlistUsage.js";
 
 const CLIENT_NAME = "Aurral";
 const CLIENT_VERSION = "1.0.0";
@@ -44,6 +45,40 @@ export class JellyfinClient {
   }
   async getUsers() {
     return this.request("GET", "/Users");
+  }
+
+  async getPlaylistTrackPaths(excludedIds = new Set()) {
+    // An API key can enumerate users; query each user's private playlists too.
+    const users = await this.getUsers();
+    if (!Array.isArray(users) || !users.length || users.some((user) => !user?.Id)) {
+      throw new Error("Cannot enumerate Jellyfin users for playlist protection");
+    }
+    const paths = new Set();
+    for (const user of users) {
+      const playlists = await readPlaylistPages(async (startIndex) => {
+        const page = await this.request("GET", "/Items", { params: {
+          userId: user.Id, recursive: true, includeItemTypes: "Playlist",
+          startIndex, limit: 200, enableTotalRecordCount: true,
+        } });
+        return { items: page?.Items, total: page?.TotalRecordCount };
+      });
+      for (const playlist of playlists) {
+        if (!playlist?.Id) throw new Error("Jellyfin playlist is missing its ID");
+        const id = String(playlist.Id);
+        if (excludedIds.has(id)) continue;
+        const entries = await readPlaylistPages(async (startIndex) => {
+          const page = await this.request("GET", `/Playlists/${encodeURIComponent(id)}/Items`, {
+            params: { userId: user.Id, startIndex, limit: 200, fields: "Path", enableImages: false },
+          });
+          return { items: page?.Items, total: page?.TotalRecordCount };
+        });
+        for (const entry of entries) {
+          if (entry.Type && entry.Type !== "Audio") continue;
+          paths.add(requirePlaylistPath(entry.Path));
+        }
+      }
+    }
+    return [...paths];
   }
 
   async findUserByUsername(username) {

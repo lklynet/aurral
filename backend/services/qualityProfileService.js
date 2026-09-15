@@ -201,7 +201,10 @@ export async function finalizeQualityUpgradeSuccess(upgradeJob, finalPath, quali
   for (const playlistId of playlistIds) await playlistManager.refreshPlaylist(playlistId);
   playlistManager.scheduleScanLibrary();
   if (oldPath !== finalPath && isAurralOwnedPath(oldPath)) {
-    await fs.rm(oldPath, { force: true }).catch(() => {});
+    const { createPlaybackDeletionGuard } = await import("./playback/playbackFileRetention.js");
+    if (await createPlaybackDeletionGuard().canDelete(oldPath)) {
+      await fs.rm(oldPath, { force: true }).catch(() => {});
+    }
   }
   const { recordTrackJobActivity } = await import("./aurralHistoryService.js");
   recordTrackJobActivity({

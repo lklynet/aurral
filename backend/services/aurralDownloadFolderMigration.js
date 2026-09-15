@@ -527,7 +527,14 @@ export async function migrateAurralDownloadFolder(options = {}) {
     failures: [],
   };
 
+  const { isPlaybackRetainedFile, createPlaybackDeletionGuard } = await import("./playback/playbackFileRetention.js");
+  const deletionGuards = new Map();
   for (const sourcePath of files) {
+    if (isPlaybackRetainedFile(sourcePath)) {
+      retainItem(state, sourcePath, "retained for playback playlist protection", logger);
+      result.retained += 1;
+      continue;
+    }
     const jobsForSource = jobsByPath.get(sourcePath) || [];
     let stat;
     try {
@@ -554,6 +561,14 @@ export async function migrateAurralDownloadFolder(options = {}) {
     }
     if (flow && jobsForSource.length === 0) {
       try {
+        if (!deletionGuards.has(playlistId)) {
+          deletionGuards.set(playlistId, createPlaybackDeletionGuard({ excludeEntityIds: [playlistId] }));
+        }
+        if (!(await deletionGuards.get(playlistId).canDelete(sourcePath))) {
+          retainItem(state, sourcePath, "retained for playback playlist protection", logger);
+          result.retained += 1;
+          continue;
+        }
         await removeSource(sourcePath, rootPath);
         state.items[sourcePath] = { status: "removed", reason: "unkept flow media", updatedAt: Date.now() };
         saveMigrationState(state);

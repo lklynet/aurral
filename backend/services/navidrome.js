@@ -1,6 +1,7 @@
 import axios from "../../lib/axiosFetch.js";
 import crypto from "crypto";
 import { logger } from "./logger.js";
+import { requirePlaylistPath, isAbsoluteMediaPath } from "./playback/playlistUsage.js";
 
 const LEGACY_LIBRARY_DIR = "aurral-weekly-flow";
 const PLAYLIST_LIBRARY_NAME = "Aurral Playlists";
@@ -62,7 +63,7 @@ export class NavidromeClient {
     };
   }
 
-  async request(endpoint, params = {}) {
+  async request(endpoint, params = {}, { timeout = 0 } = {}) {
     if (!this.isConfigured()) throw new Error("Navidrome not configured");
 
     try {
@@ -79,7 +80,7 @@ export class NavidromeClient {
           const endpointUrl = `${this.url}/rest/${endpoint}`;
           const response = endpoint === "updatePlaylist"
             ? await axios.post(endpointUrl, query, { preserveMethodOnRedirect: true })
-            : await axios.get(`${endpointUrl}?${query}`);
+            : await axios.get(`${endpointUrl}?${query}`, { timeout });
 
           if (response.data["subsonic-response"]?.status === "failed") {
             const responseError = response.data["subsonic-response"].error || {};
@@ -201,6 +202,44 @@ export class NavidromeClient {
     return Array.isArray(playlists) ? playlists : [playlists];
   }
 
+  async getPlaylistTrackPaths(excludedIds = new Set()) {
+    const account = await this.request("getUser", { username: this.user }, { timeout: 30_000 });
+    if (account?.user?.adminRole !== true) {
+      throw new Error("Navidrome playlist protection requires an admin account to see private playlists");
+    }
+    const data = await this.request("getPlaylists", {}, { timeout: 30_000 });
+    if (!data?.playlists || !Array.isArray(data.playlists.playlist ?? [])) {
+      throw new Error("Invalid Navidrome playlist list");
+    }
+    const paths = new Set();
+    let libraries;
+    for (const playlist of data.playlists.playlist || []) {
+      if (!playlist?.id) throw new Error("Navidrome playlist is missing its ID");
+      if (excludedIds.has(String(playlist.id))) continue;
+      const detail = (await this.request("getPlaylist", { id: playlist.id }, { timeout: 30_000 }))?.playlist;
+      const entries = detail?.entry ?? [];
+      if (!detail || !Array.isArray(entries) || !Number.isSafeInteger(detail.songCount)
+        || entries.length !== detail.songCount) {
+        throw new Error("Incomplete Navidrome playlist contents");
+      }
+      for (const entry of entries) {
+        const file = requirePlaylistPath(entry.path);
+        if (isAbsoluteMediaPath(file)) {
+          paths.add(file);
+          continue;
+        }
+        libraries ??= await this.getLibraries({ timeout: 30_000 });
+        if (!Array.isArray(libraries) || !libraries.length) {
+          throw new Error("Cannot resolve Navidrome playlist track paths");
+        }
+        // Subsonic paths may be relative and omit the library ID. Protect all
+        // possible library roots rather than guess which copy is referenced.
+        for (const library of libraries) paths.add(`${requirePlaylistPath(library.path)}/${file}`);
+      }
+    }
+    return [...paths];
+  }
+
   async getPlaylist(id) {
     const data = await this.request("getPlaylist", { id });
     return data.playlist || null;
@@ -287,13 +326,13 @@ export class NavidromeClient {
     }
   }
 
-  async _nativeLogin() {
+  async _nativeLogin({ timeout = 0 } = {}) {
     if (!this.isConfigured()) throw new Error("Navidrome not configured");
     if (!this._nativeTokenPromise) {
       this._nativeTokenPromise = axios.post(
         `${this.url}/auth/login`,
         { username: this.user, password: this.password },
-        { headers: { "Content-Type": "application/json" } },
+        { headers: { "Content-Type": "application/json" }, timeout },
       ).then(({ data }) => {
         const token = data.token || data.Token;
         if (!token) throw new Error("No token in login response");
@@ -306,7 +345,7 @@ export class NavidromeClient {
     return this._nativeTokenPromise;
   }
 
-  async _nativeRequest(method, path, body = null) {
+  async _nativeRequest(method, path, body = null, { timeout = 0 } = {}) {
     const base = this.url;
     const url = path.startsWith("/") ? `${base}${path}` : `${base}/api/${path}`;
     let tokenRefreshes = 0;
@@ -314,7 +353,7 @@ export class NavidromeClient {
     for (;;) {
       let tokenPromise = this._nativeTokenPromise;
       if (!tokenPromise) {
-        const token = await this._nativeLogin();
+        const token = await this._nativeLogin({ timeout });
         tokenPromise = this._nativeTokenPromise || Promise.resolve(token);
       }
       const token = await tokenPromise;
@@ -325,7 +364,7 @@ export class NavidromeClient {
       try {
         let response;
         if (method === "GET") {
-          response = await axios.get(url, { headers });
+          response = await axios.get(url, { headers, timeout });
         } else if (method === "POST") {
           response = await axios.post(url, body, { headers });
         } else if (method === "PUT") {
@@ -434,8 +473,8 @@ export class NavidromeClient {
     return this._requestPlaylistArtwork("DELETE", playlistId);
   }
 
-  async getLibraries() {
-    return this._nativeRequest("GET", "/api/library");
+  async getLibraries(options = {}) {
+    return this._nativeRequest("GET", "/api/library", null, options);
   }
 
   async createLibrary(name, path) {
