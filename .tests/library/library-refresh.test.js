@@ -449,3 +449,70 @@ test("library watcher scans the resolved local root received from its child", as
   assert.deepEqual(watched[0].options.pathMappings, [{ remote: "/remote-library", local: localRoot }]);
   assert.deepEqual(scanned, [{ roots: [localRoot], paths: [path.join(localRoot, "Artist/track.flac")] }]);
 });
+
+function createMappedWatcherTest(t) {
+  const localRoot = path.resolve("/shared-library");
+  const children = [];
+  const scanned = [];
+  const errors = [];
+  const watcher = createLibraryFileWatcher({
+    roots: ["/remote-one", "/remote-two", "/remote-three"].map((remote) => ({
+      path: remote, pathMappings: [{ remote, local: localRoot }],
+    })),
+    debounceMs: 1,
+    watchImpl: (_root, _options, callback) => {
+      const child = new EventEmitter();
+      child.closed = 0;
+      child.close = () => { child.closed++; child.emit("close"); };
+      child.change = (filename) => callback("change", filename, localRoot);
+      children.push(child);
+      return child;
+    },
+    onChange: (roots, paths) => scanned.push({ roots, paths }),
+    onError: (error) => errors.push(error),
+  });
+  t.after(() => watcher.close());
+  return { localRoot, watcher, children, scanned, errors };
+}
+
+for (const firstReady of [0, 1]) {
+  test(`library watcher keeps the first ready local-root owner (ready index ${firstReady})`, async (t) => {
+    const { localRoot, watcher, children, scanned, errors } = createMappedWatcherTest(t);
+    const owner = children[firstReady];
+    const duplicate = children[1 - firstReady];
+    owner.emit("ready", localRoot);
+    duplicate.emit("ready", localRoot);
+    assert.equal(owner.closed, 0);
+    assert.equal(duplicate.closed, 1);
+    // Closing a duplicate must not release the surviving watcher's root.
+    children[2].emit("ready", path.join(localRoot, "."));
+    assert.equal(children[2].closed, 1);
+    duplicate.change("duplicate.flac");
+    duplicate.emit("error", new Error("Late duplicate error"));
+    owner.change("kept.flac");
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    assert.deepEqual(scanned, [{ roots: [localRoot], paths: [path.join(localRoot, "kept.flac")] }]);
+    assert.equal(errors.length, 0);
+    watcher.close();
+    watcher.close();
+    assert.deepEqual(children.map((child) => child.closed), [1, 1, 1]);
+    owner.emit("ready", localRoot);
+    owner.change("after-close.flac");
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    assert.equal(scanned.length, 1);
+  });
+}
+
+for (const outcome of ["close", "error"]) {
+  test(`library watcher releases local-root ownership after ${outcome}`, (t) => {
+    const { localRoot, children, errors } = createMappedWatcherTest(t);
+    children[0].emit("ready", localRoot);
+    if (outcome === "close") children[0].close();
+    else children[0].emit("error", new Error("Watcher failed"));
+    children[1].emit("ready", localRoot);
+    assert.equal(children[1].closed, 0);
+    children[2].emit("ready", localRoot);
+    assert.equal(children[2].closed, 1);
+    assert.equal(errors.length, outcome === "error" ? 1 : 0);
+  });
+}

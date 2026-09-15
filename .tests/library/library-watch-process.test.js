@@ -52,8 +52,11 @@ test("a ready watcher continues delivering events past the setup deadline", (t) 
   const changes = [];
   const watcher = createIsolatedLibraryWatcher("/healthy", {}, (...args) => changes.push(args), { forkImpl: () => child });
   t.after(() => watcher.close());
+  const readyRoots = [];
+  watcher.on("ready", (root) => readyRoots.push(root));
   watcher.on("error", (error) => assert.fail(error.message));
-  child.emit("message", { type: "ready" });
+  child.emit("message", { type: "ready", root: "/resolved-library" });
+  assert.deepEqual(readyRoots, ["/resolved-library"]);
   t.mock.timers.tick(20_000);
   child.emit("message", { type: "change", eventType: "rename", filename: "album/track.flac" });
   assert.deepEqual(changes, [["rename", "album/track.flac", undefined]]);
@@ -64,11 +67,15 @@ test("closing during startup cancels the deadline without reporting a failure", 
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const child = fakeChild();
   const watcher = createIsolatedLibraryWatcher("/closing", {}, () => assert.fail("closed watcher changed"), { forkImpl: () => child });
+  let closed = 0;
+  watcher.on("close", () => { closed++; });
   watcher.on("error", (error) => assert.fail(error.message));
   watcher.close();
   t.mock.timers.tick(20_000);
   child.emit("message", { type: "change", filename: null });
   child.emit("exit", null, "SIGKILL");
+  watcher.close();
+  assert.equal(closed, 1);
   assert.deepEqual(child.signals, ["SIGKILL"]);
 });
 
@@ -114,7 +121,8 @@ test(`real recursive watcher reports nested changes and exits on close (mapped: 
   watcher = createIsolatedLibraryWatcher(requestedRoot, { pathMappings: [{ remote: requestedRoot, local: root }] }, (_type, filename, watchedRoot) => changes.emit("change", filename, watchedRoot), {
     forkImpl: (...args) => { child = fork(...args); return child; },
   });
-  await once(watcher, "ready");
+  const [readyRoot] = await once(watcher, "ready");
+  assert.equal(readyRoot, root);
   const changed = once(changes, "change");
   await writeFile(path.join(album, "track.flac"), "test");
   const [filename, watchedRoot] = await changed;

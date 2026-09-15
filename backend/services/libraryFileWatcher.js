@@ -26,7 +26,8 @@ export function createLibraryFileWatcher({
   onChange = (_roots, changedPaths) => scheduleLibraryScan({ changedPaths }),
   onError = () => {},
 } = {}) {
-  const watchers = [];
+  const watchers = new Set();
+  const activeRoots = new Map();
   let closed = false;
   let timer = null;
   const changedRoots = new Set();
@@ -63,13 +64,42 @@ export function createLibraryFileWatcher({
 
   for (const { root, pathMappings } of watchRoots.values()) {
     try {
+      let stopped = false;
+      let duplicate = false;
+      let failureReported = false;
+      let resolvedKey = null;
       const watcher = watchImpl(root, { recursive: true, pathMappings }, (_eventType, filename, resolvedRoot = path.resolve(root)) => {
+        if (closed || stopped) return;
         if (!isIgnoredChange(resolvedRoot, filename)) scheduleChange(resolvedRoot, filename);
       });
-      watcher.on?.("error", (error) => {
-        if (!closed) onError(error, root);
+      const releaseRoot = () => {
+        stopped = true;
+        watchers.delete(watcher);
+        if (activeRoots.get(resolvedKey) === watcher) activeRoots.delete(resolvedKey);
+      };
+      const stopWatcher = () => {
+        if (stopped) return;
+        releaseRoot();
+        watcher.close();
+      };
+      watchers.add(watcher);
+      watcher.on?.("ready", (resolvedRoot) => {
+        if (closed || stopped || resolvedKey !== null) return;
+        resolvedKey = path.resolve(resolvedRoot);
+        if (activeRoots.has(resolvedKey)) {
+          duplicate = true;
+          stopWatcher();
+        } else {
+          activeRoots.set(resolvedKey, watcher);
+        }
       });
-      watchers.push(watcher);
+      watcher.on?.("close", releaseRoot);
+      watcher.on?.("error", (error) => {
+        if (closed || duplicate || failureReported) return;
+        failureReported = true;
+        stopWatcher();
+        onError(error, root);
+      });
     } catch (error) {
       onError(error, root);
     }
@@ -77,12 +107,15 @@ export function createLibraryFileWatcher({
 
   return {
     close() {
+      if (closed) return;
       closed = true;
       if (timer) clearTimeout(timer);
       timer = null;
       changedRoots.clear();
       changedPaths.clear();
       for (const watcher of watchers) watcher.close();
+      watchers.clear();
+      activeRoots.clear();
     },
   };
 }

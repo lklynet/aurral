@@ -29,6 +29,7 @@ export function createIsolatedLibraryWatcher(root, { pathMappings = [] } = {}, o
     clearTimeout(timer);
     // SIGTERM cannot interrupt a JS-blocked watcher setup on every platform.
     if (child.exitCode == null && child.signalCode == null) child.kill("SIGKILL");
+    watcher.emit("close");
   };
 
   function fail(error) {
@@ -41,7 +42,7 @@ export function createIsolatedLibraryWatcher(root, { pathMappings = [] } = {}, o
     if (closed) return;
     if (message?.type === "ready") {
       clearTimeout(timer);
-      watcher.emit("ready");
+      watcher.emit("ready", message.root);
     } else if (message?.type === "change") {
       onChange(message.eventType, message.filename, message.root);
     } else if (message?.type === "error") {

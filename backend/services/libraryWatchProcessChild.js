@@ -28,7 +28,7 @@ try {
     send({ type: "change", root, eventType, filename: filename == null ? null : String(filename) });
   });
   watcher.on("error", fail);
-  send({ type: "ready" });
+  send({ type: "ready", root });
 } catch (error) {
   fail(error);
 }
