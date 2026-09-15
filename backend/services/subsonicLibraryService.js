@@ -31,7 +31,8 @@ import { hasPermission } from "../middleware/auth.js";
 import { recordTrackJobQueued } from "./aurralHistoryService.js";
 import { selectCanonicalFile } from "./canonicalFileSelector.js";
 
-const idFor = (kind, key) => `${kind}:${encodeURIComponent(String(key))}`;
+const idFor = (kind, key) =>
+  `${kind}:${encodeURIComponent(String(key)).replaceAll("%3A", ":")}`;
 const LIBRARY_IMAGE_PROFILE = "library";
 
 const parseId = (value) => {

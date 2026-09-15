@@ -15,7 +15,14 @@ const [isolatedState, { db }, subsonic, libraryStore] =
     "backend/services/libraryMediaStore.js",
   );
 
-const { getAlbumList, getMusicDirectory, getTopSongs, starMany } = subsonic;
+const {
+  getAlbumList,
+  getMusicDirectory,
+  getTopSongs,
+  idFor,
+  parseId,
+  starMany,
+} = subsonic;
 
 const {
   linkLibraryAlbumTrack,
@@ -47,6 +54,21 @@ function addAlbum({ artist, title, releaseDate, trackTitle }) {
     available: true,
   });
 }
+
+test("keeps Subsonic IDs readable while safely encoding key content", () => {
+  const key = "release-group:44444444-4444-4444-8444-444444444444";
+  const specialKey = `${key}%&`;
+  const encoded = `album:${encodeURIComponent(key)}`;
+
+  assert.equal(idFor("album", key), `album:${key}`);
+  assert.deepEqual(parseId(idFor("album", key)), { kind: "album", key });
+  assert.equal(idFor("album", specialKey), `album:${key}%25%26`);
+  assert.deepEqual(parseId(idFor("album", specialKey)), {
+    kind: "album",
+    key: specialKey,
+  });
+  assert.deepEqual(parseId(encoded), { kind: "album", key });
+});
 
 test("starMany validates duplicate and equivalent encoded canonical targets", () => {
   const user = db.prepare(
