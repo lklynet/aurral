@@ -15,6 +15,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
+import TooltipButton from "../../../components/TooltipButton";
 import { getFlowTrackDisplayNumber, sortFlowTracks } from "../../../utils/flowTrackSort";
 import { Link } from "react-router-dom";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
@@ -22,6 +23,7 @@ import { normalizeFlowTrack } from "../../../utils/audioQueue";
 import { TrackPlaylistMenu, TrackPlaylistSubmenu } from "../../ArtistDetails/components/TrackPlaylistMenu";
 import { LibraryItemMenu } from "../../../components/LibraryItemMenu";
 import { PlaylistArtworkThumb } from "./PlaylistArtworkThumb.jsx";
+import { getTrackAvailability } from "../trackAvailability.js";
 
 function getTrackStatusMeta(status) {
   switch (String(status || "").toLowerCase()) {
@@ -428,6 +430,7 @@ export function FlowTracksPanel({
   showPlaybackControls = true,
   trackTitleLabel = "Song",
   showTrackArtwork = false,
+  showTrackAvailability = false,
   artworkByAlbumMbid = {},
   showDuration = false,
   hideAlbumColumn = false,
@@ -826,11 +829,12 @@ export function FlowTracksPanel({
                 const canReSearch =
                   typeof onReSearchTrack === "function" &&
                   !!track.id &&
-                  (track.status === "failed" ||
+                  (track.status === "failed" || !showTrackAvailability &&
                     track.status === "done" &&
                       track.qualityOwned === true &&
                       track.qualityState !== "preferred");
                 const isReSearching = reSearchingTrackIds[track.id] === true;
+                const availability = showTrackAvailability ? getTrackAvailability(track) : null;
                 const isDeleting = deletingTrackId === track.id;
                 const isCurrent = track.id === currentTrackId && isCurrentPlaying;
                 const trackFavoriteId = getTrackFavoriteId?.(track) || "";
@@ -900,10 +904,21 @@ export function FlowTracksPanel({
                     ) : null}
                     <td
                       className="flow-page__tracks-table-song"
-                      title={track.trackName}
+                      title={showTrackAvailability ? undefined : track.trackName}
                     >
-                      <span className="flow-page__tracks-table-cell-text">
-                        {track.trackName}
+                      <span className={showTrackAvailability ? "flow-page__track-title-availability" : undefined}>
+                        {showTrackAvailability ? (
+                          <TooltipButton
+                            className="flow-page__track-availability-indicator"
+                            label={availability.label}
+                          >
+                            <span
+                              className={`flow-page__track-status-dot flow-page__track-status-dot--${availability.status}`}
+                              aria-hidden="true"
+                            />
+                          </TooltipButton>
+                        ) : null}
+                        <span className="flow-page__tracks-table-cell-text" title={track.trackName}>{track.trackName}</span>
                       </span>
                     </td>
                     <td
