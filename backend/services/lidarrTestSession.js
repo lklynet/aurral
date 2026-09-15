@@ -44,6 +44,8 @@ export async function withTemporaryLidarrClient(url, apiKey, fn) {
     insecure: originalConfig.insecure,
     timeoutMs: originalConfig.timeoutMs,
     circuitDisabled: true,
+    rootFolderPath: null,
+    rootFolderPaths: [],
   };
   lidarrClient.apiPath = "/api/v1";
 
