@@ -79,9 +79,10 @@ export async function getArtistLibraryLookup(mbid) {
   });
   const artist = artists.find((candidate) => candidate.mbid === mbid);
   const { lidarrClient } = await import("../../../services/lidarrClient.js");
+  const lidarrConfigured = lidarrClient.isConfigured();
   let lidarrArtist;
   let lidarrAlbums;
-  if (lidarrClient.isConfigured()) {
+  if (lidarrConfigured) {
     try {
       lidarrArtist = await lidarrClient.getArtistByMbid(mbid, { forceRefresh: true });
       if (lidarrArtist) {
@@ -110,7 +111,7 @@ export async function getArtistLibraryLookup(mbid) {
       canonical: true,
     };
   }
-  if (lidarrArtist === undefined && artist) {
+  if (lidarrArtist === undefined && artist && (!lidarrConfigured || artist.lidarrManaged)) {
     return {
       exists: true,
       artist: toLibraryArtist(artist),

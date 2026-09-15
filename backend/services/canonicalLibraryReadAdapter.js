@@ -35,6 +35,7 @@ const buildArtist = (artist, albumsByArtistId, managementByArtistId = new Map())
     id: artist.id,
     canonicalId: artist.id,
     providerId,
+    lidarrManaged: artist.metadata?.librarySource === "lidarr",
     source: artist.source || (artist.sources?.length === 1 ? artist.sources[0] : null),
     managedBy: management?.managedBy ?? null,
     monitorMode: management?.monitorMode ?? null,
