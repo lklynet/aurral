@@ -44,7 +44,7 @@ import {
   isEditorialFlow,
 } from "./flows/flowStats";
 import { getPlaylistRunActivity } from "./flows/flowRunActivity";
-import { countAvailableTracks } from "./flows/trackAvailability.js";
+import { countAvailableTracks, getTrackSearchAction } from "./flows/trackAvailability.js";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.js";
 import {
   getCanonicalLibraryPage,
@@ -1069,11 +1069,13 @@ function FlowPage({ mode = "all" }) {
   const handleReSearchTrack = async (flowId, track, isSharedPlaylist = false) => {
     const jobId = track?.id;
     if (!flowId || !jobId || reSearchingTrackIds[jobId]) return;
+    const searchAction = getTrackSearchAction(track, isSharedPlaylist);
+    if (!searchAction) return;
     setReSearchingTrackIds((prev) => ({
       ...prev,
       [jobId]: true,
     }));
-    if (track.status !== "done" && flowId === selectedId) {
+    if (searchAction === "research" && flowId === selectedId) {
       queryClient.setQueryData(queryKeys.playlistJobs(flowId), (prev) =>
         (prev || []).map((entry) =>
           entry?.id === jobId
@@ -1088,7 +1090,7 @@ function FlowPage({ mode = "all" }) {
       );
     }
     try {
-      if (track.status === "done") {
+      if (searchAction === "upgrade") {
         const result = await searchTrackUpgrade(flowId, jobId);
         showSuccess(
           result?.alreadyQueued

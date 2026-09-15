@@ -23,7 +23,7 @@ import { normalizeFlowTrack } from "../../../utils/audioQueue";
 import { TrackPlaylistMenu, TrackPlaylistSubmenu } from "../../ArtistDetails/components/TrackPlaylistMenu";
 import { LibraryItemMenu } from "../../../components/LibraryItemMenu";
 import { PlaylistArtworkThumb } from "./PlaylistArtworkThumb.jsx";
-import { getTrackAvailability } from "../trackAvailability.js";
+import { getTrackAvailability, getTrackSearchAction } from "../trackAvailability.js";
 
 function getTrackStatusMeta(status) {
   switch (String(status || "").toLowerCase()) {
@@ -195,6 +195,7 @@ function FlowTrackKebabMenu({
   onNavigateAlbum,
   onNavigateArtist,
   canReSearch,
+  searchAction,
   isReSearching,
   canDelete,
   isDeleting,
@@ -256,7 +257,7 @@ function FlowTrackKebabMenu({
     canReSearch
       ? {
           id: "re-search",
-          label: track.status === "done" ? "Search for upgrade" : "Re-search",
+          label: searchAction === "upgrade" ? "Search for upgrade" : "Re-search",
           icon: Search,
           disabled: isReSearching,
           onSelect: () => onReSearch?.(track),
@@ -826,13 +827,11 @@ export function FlowTracksPanel({
                   !!track.streamUrl;
                 const canDelete =
                   typeof onDeleteTrack === "function" && !!track.id;
+                const searchAction = getTrackSearchAction(track, showTrackAvailability);
                 const canReSearch =
                   typeof onReSearchTrack === "function" &&
                   !!track.id &&
-                  (track.status === "failed" || !showTrackAvailability &&
-                    track.status === "done" &&
-                      track.qualityOwned === true &&
-                      track.qualityState !== "preferred");
+                  searchAction !== null;
                 const isReSearching = reSearchingTrackIds[track.id] === true;
                 const availability = showTrackAvailability ? getTrackAvailability(track) : null;
                 const isDeleting = deletingTrackId === track.id;
@@ -1011,6 +1010,7 @@ export function FlowTracksPanel({
                                 onNavigateAlbum={onNavigateAlbum}
                                 onNavigateArtist={onNavigateArtist}
                                 canReSearch={canReSearch}
+                                searchAction={searchAction}
                                 isReSearching={isReSearching}
                                 canDelete={canDelete}
                                 isDeleting={isDeleting}
@@ -1027,8 +1027,8 @@ export function FlowTracksPanel({
                                     type="button"
                                     onClick={() => onReSearchTrack(track)}
                                     className="btn btn-secondary btn-icon btn-xs"
-                                    aria-label={`${track.status === "done" ? "Search for an upgrade to" : "Re-search"} ${track.trackName}`}
-                                    title={`${track.status === "done" ? "Search for an upgrade to" : "Re-search"} ${track.trackName}`}
+                                    aria-label={`${searchAction === "upgrade" ? "Search for an upgrade to" : "Re-search"} ${track.trackName}`}
+                                    title={`${searchAction === "upgrade" ? "Search for an upgrade to" : "Re-search"} ${track.trackName}`}
                                     disabled={isReSearching}
                                   >
                                     {isReSearching ? (
