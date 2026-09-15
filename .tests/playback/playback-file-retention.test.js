@@ -270,6 +270,60 @@ test("startup migration leaves an externally referenced orphan at its original p
   await fs.access(file);
 });
 
+for (const mode of ["completed-flow", "shared-direct", "shared-batch", "shared-batch-without-job"]) {
+  for (const usage of ["referenced", "unavailable", "unused"]) {
+    test(`indexed migration checks ${mode} sources when playback usage is ${usage}`, async (t) => {
+      const { migrateAurralDownloadFolder } = await import("../../backend/services/aurralDownloadFolderMigration.js");
+      const isFlow = mode === "completed-flow";
+      const playlist = isFlow
+        ? flowPlaylistConfig.createFlow({ name: `${mode}-${usage}`, enabled: true })
+        : flowPlaylistConfig.createSharedPlaylist({ name: `${mode}-${usage}` });
+      const source = await makeFile(`aurral-weekly-flow/${playlist.id}/Artist/Album/Saved.flac`);
+      const destinationPath = isFlow
+        ? path.join(root, "_flows", playlist.id, "Artist/Album/Saved.flac")
+        : path.join(root, "Artist/Album/Saved.flac");
+      let jobId;
+      if (mode !== "shared-batch-without-job") {
+        jobId = downloadTracker.addJob({ artistName: "Artist", albumName: "Album", trackName: "Saved" }, playlist.id);
+        downloadTracker.setDone(jobId, source);
+      }
+      let currentUsage = usage;
+      const checks = t.mock.method(playlistManager.destinationRegistry, "run", async (_operation, { excludeEntityIds }) => {
+        assert.deepEqual(excludeEntityIds, [playlist.id]);
+        return currentUsage === "unavailable" ? [{ ok: false }] : [{ ok: true, paths: currentUsage === "referenced" ? [source] : [] }];
+      });
+      const options = {
+        root, logger: { warn() {} },
+        metadataReader: async () => ({ common: { albumartist: "Artist", album: "Album", title: "Saved" } }),
+        ...(mode === "shared-direct" ? { indexDestination: async () => {} } : {}),
+      };
+      const first = await migrateAurralDownloadFolder(options);
+      assert.equal(first.failed, 0);
+      assert.equal(checks.mock.callCount(), 1);
+      assert.equal(await fs.readFile(destinationPath, "utf8"), "audio");
+      if (jobId) assert.equal(downloadTracker.getJob(jobId).finalPath, destinationPath);
+      if (usage === "unused") {
+        assert.equal(first.migrated, 1);
+        await assert.rejects(fs.access(source), { code: "ENOENT" });
+        return;
+      }
+      assert.equal(first.retained, 1);
+      assert.equal(first.migrated, 0);
+      assert.equal(isPlaybackRetainedFile(source), true);
+      assert.equal(await fs.readFile(source, "utf8"), "audio");
+      await migrateAurralDownloadFolder(options);
+      await fs.access(source);
+      currentUsage = "unused";
+      await retryPlaybackRetainedFiles();
+      await assert.rejects(fs.access(source), { code: "ENOENT" });
+      assert.equal(isPlaybackRetainedFile(source), false);
+      await fs.access(destinationPath);
+      const final = await migrateAurralDownloadFolder(options);
+      assert.equal(final.status, "complete");
+    });
+  }
+}
+
 test("Jellyfin excludes legacy outgoing pointers but keeps pointers from other servers separate", async () => {
   const { JellyfinPlaybackDestination } = await import("../../backend/services/playback/jellyfinPlaybackDestination.js");
   const { jellyfinPlaylistPointerStore: pointers } = await import("../../backend/services/jellyfin/jellyfinPlaylistPointerStore.js");

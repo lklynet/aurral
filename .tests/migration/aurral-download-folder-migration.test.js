@@ -41,6 +41,7 @@ test.beforeEach(async () => {
 });
 
 test.after(async () => {
+  db.close();
   await cleanupIsolatedState(isolatedState);
 });
 
