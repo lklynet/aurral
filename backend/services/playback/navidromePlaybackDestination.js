@@ -116,15 +116,17 @@ export class NavidromePlaybackDestination {
 
   getPlaylistNames({ entityId, ownerUserId = null, displayName } = {}) {
     const name = String(displayName || "").trim();
-    const owner = this._prefixOwnerUsername && ownerUserId != null
-      ? userOps.getUserById(ownerUserId)
-      : null;
-    const current = owner?.username ? `${owner.username} - ${name}` : name;
+    const owner = ownerUserId == null ? null : userOps.getUserById(ownerUserId);
+    const prefixed = owner?.username ? `${owner.username} - ${name}` : name;
+    const current = this._prefixOwnerUsername ? prefixed : name;
     const shared = Boolean(flowPlaylistConfig.getSharedPlaylist(entityId));
     const legacy = shared
-      ? [name, `[AS] ${name}`, `Aurral Shared ${name}`]
-      : [name, `[A] ${name}`, `Aurral ${name}`];
-    return { current, legacy: legacy.filter((candidate) => candidate !== current) };
+      ? [name, `[AS] ${name}`, `Aurral Shared ${name}`, prefixed]
+      : [name, `[A] ${name}`, `Aurral ${name}`, prefixed];
+    return {
+      current,
+      legacy: [...new Set(legacy)].filter((candidate) => candidate !== current),
+    };
   }
 
   getPlaylistName(playlist) {

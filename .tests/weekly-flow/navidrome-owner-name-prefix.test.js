@@ -113,7 +113,11 @@ test("the Navidrome adapter keeps owned flow names bare when the toggle is off",
     displayName: "Weekend Vibes",
   });
   assert.equal(flow.current, "Weekend Vibes");
-  assert.deepEqual(flow.legacy, ["[A] Weekend Vibes", "Aurral Weekend Vibes"]);
+  assert.deepEqual(flow.legacy, [
+    "[A] Weekend Vibes",
+    "Aurral Weekend Vibes",
+    "jody - Weekend Vibes",
+  ]);
 
   const shared = manager.navidromeDestination.getPlaylistNames({
     entityId: playlist.id,
@@ -121,8 +125,35 @@ test("the Navidrome adapter keeps owned flow names bare when the toggle is off",
     displayName: "80s Anthems",
   });
   assert.equal(shared.current, "80s Anthems");
-  assert.deepEqual(shared.legacy, ["[AS] 80s Anthems", "Aurral Shared 80s Anthems"]);
+  assert.deepEqual(shared.legacy, [
+    "[AS] 80s Anthems",
+    "Aurral Shared 80s Anthems",
+    "jody - 80s Anthems",
+  ]);
   flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+});
+
+test("switching off the prefix deletes a leftover prefixed playlist with no pointer mapping", async () => {
+  const jody = userOps.createUser("jody", "hash", "user");
+  const flow = flowPlaylistConfig.createFlow({ name: "Weekend Vibes", ownerUserId: jody.id });
+  flowPlaylistConfig.setEnabled(flow.id, true);
+
+  const manager = makeManager();
+  manager.navidromeDestination.updateConfig({ prefixOwnerUsername: false });
+
+  // Existing native playlist from before the toggle flip; no pointer recorded for it.
+  manager.navidromeDestination.client.getPlaylists = async () => [
+    { id: "existing-1", name: "jody - Weekend Vibes" },
+  ];
+  const deleted = [];
+  manager.navidromeDestination.client.deletePlaylist = async (id) => {
+    deleted.push(id);
+  };
+
+  await manager.ensurePlaylists();
+
+  assert.deepEqual(manager.navidromeDestination.client.created, ["Weekend Vibes"]);
+  assert.deepEqual(deleted, ["existing-1"]);
 });
 
 test("two different owners can use the same native playlist name", async () => {
