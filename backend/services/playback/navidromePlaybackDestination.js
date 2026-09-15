@@ -82,21 +82,30 @@ export class NavidromePlaybackDestination {
   }
 
   updateConfig(config = {}) {
-    const key = JSON.stringify({
+    const connectionKey = JSON.stringify({
       url: config.url || "",
       username: config.username || "",
       password: config.password || "",
-      prefixOwnerUsername: config.prefixOwnerUsername !== false,
     });
-    if (key === this._configKey) return;
-    this._configKey = key;
-    this._prefixOwnerUsername = config.prefixOwnerUsername !== false;
-    this._playlists = null;
-    this._pendingSnapshots.clear();
-    this._syncHashes.clear();
-    this.client = config.url && config.username && config.password
-      ? new NavidromeClient(config.url, config.username, config.password)
-      : null;
+    const prefixOwnerUsername = config.prefixOwnerUsername !== false;
+    const connectionChanged = connectionKey !== this._connectionKey;
+    const namingChanged = prefixOwnerUsername !== this._prefixOwnerUsername;
+    if (!connectionChanged && !namingChanged) return;
+
+    this._connectionKey = connectionKey;
+    this._prefixOwnerUsername = prefixOwnerUsername;
+
+    if (connectionChanged) {
+      this._playlists = null;
+      this._pendingSnapshots.clear();
+      this._syncHashes.clear();
+      this.client = config.url && config.username && config.password
+        ? new NavidromeClient(config.url, config.username, config.password)
+        : null;
+    } else {
+      this._playlists = null;
+      this._syncHashes.clear();
+    }
   }
 
   isConfigured() {
