@@ -67,21 +67,21 @@ export async function applyLidarrCommunityGuide(lidarrClient) {
             implementation: "ReleaseGroupSpecification",
             negate: false,
             required: false,
-            fields: { value: "\\bDeVOiD\\b" },
+            fields: [{ name: "value", value: "\\bDeVOiD\\b" }],
           },
           {
             name: "PERFECT",
             implementation: "ReleaseGroupSpecification",
             negate: false,
             required: false,
-            fields: { value: "\\bPERFECT\\b" },
+            fields: [{ name: "value", value: "\\bPERFECT\\b" }],
           },
           {
             name: "ENRiCH",
             implementation: "ReleaseGroupSpecification",
             negate: false,
             required: false,
-            fields: { value: "\\bENRiCH\\b" },
+            fields: [{ name: "value", value: "\\bENRiCH\\b" }],
           },
         ],
       },
@@ -94,7 +94,7 @@ export async function applyLidarrCommunityGuide(lidarrClient) {
             implementation: "ReleaseTitleSpecification",
             negate: false,
             required: false,
-            fields: { value: "\\bCD\\b" },
+            fields: [{ name: "value", value: "\\bCD\\b" }],
           },
         ],
       },
@@ -107,7 +107,7 @@ export async function applyLidarrCommunityGuide(lidarrClient) {
             implementation: "ReleaseTitleSpecification",
             negate: false,
             required: false,
-            fields: { value: "\\bWEB\\b" },
+            fields: [{ name: "value", value: "\\bWEB\\b" }],
           },
         ],
       },
@@ -120,7 +120,7 @@ export async function applyLidarrCommunityGuide(lidarrClient) {
             implementation: "ReleaseTitleSpecification",
             negate: false,
             required: false,
-            fields: { value: "\\blossless\\b" },
+            fields: [{ name: "value", value: "\\blossless\\b" }],
           },
         ],
       },
@@ -133,7 +133,7 @@ export async function applyLidarrCommunityGuide(lidarrClient) {
             implementation: "ReleaseTitleSpecification",
             negate: false,
             required: false,
-            fields: { value: "\\bVinyl\\b" },
+            fields: [{ name: "value", value: "\\bVinyl\\b" }],
           },
         ],
       },
@@ -154,6 +154,10 @@ export async function applyLidarrCommunityGuide(lidarrClient) {
       } else {
         results.customFormats.push(existing);
       }
+    }
+
+    if (results.errors.length > 0) {
+      throw new Error(`Failed to apply custom formats: ${results.errors.join(" ")}`);
     }
 
     const releaseProfilePayload = {
@@ -346,7 +350,8 @@ export async function applyLidarrCommunityGuide(lidarrClient) {
   const profileItems = [...otherItems, ...selectedItems];
   const flacQualityId = qualityItemMap.get("FLAC")?.quality?.id;
 
-  const formatItems = results.customFormats.map((cf) => {
+  const allCustomFormats = await lidarrClient.getCustomFormats();
+  const formatItems = allCustomFormats.map((cf) => {
     const scores = {
       "Preferred Groups": 10,
       CD: 2,
