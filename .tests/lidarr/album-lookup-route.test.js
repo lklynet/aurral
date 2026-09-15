@@ -150,6 +150,64 @@ test("artist lookup follows fresh Lidarr artist and album membership while the c
   }
 });
 
+test("artist lookup does not restore an Aurral-only artist after a Lidarr error", async (t) => {
+  const mbid = "88888888-8888-4888-8888-888888888888";
+  const key = `artist-lookup-aurral-only-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({
+    identityKey: `${key}:artist`,
+    mbid,
+    name: "Aurral-only Artist",
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: `${key}:album`,
+    artistId: artist.id,
+    title: "Aurral-only Album",
+  });
+  const track = upsertLibraryTrack({
+    identityKey: `${key}:track`,
+    title: "Aurral-only Track",
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  invalidateCanonicalLibraryCache();
+
+  const routes = new Map();
+  registerMisc({
+    get(path, handler) {
+      routes.set(path, handler);
+    },
+    post() {},
+  });
+  let lookupCount = 0;
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  t.mock.method(lidarrClient, "getArtistByMbid", async () => {
+    lookupCount += 1;
+    if (lookupCount === 1) return null;
+    throw new Error("Lidarr connection refused");
+  });
+
+  let body;
+  const response = {
+    json(value) {
+      body = value;
+      return this;
+    },
+  };
+
+  try {
+    await routes.get("/lookup/:mbid")({ params: { mbid } }, response);
+    assert.equal(body?.exists, false);
+
+    await routes.get("/lookup/:mbid")({ params: { mbid } }, response);
+    assert.equal(body?.exists, false);
+  } finally {
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    invalidateCanonicalLibraryCache();
+  }
+});
+
 test("artist lookup sees a fresh Lidarr add before the canonical index catches up", async (t) => {
   const mbid = "66666666-6666-4666-8666-666666666666";
   const routes = new Map();
