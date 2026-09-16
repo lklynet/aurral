@@ -630,7 +630,9 @@ test("scanMusicRoot reads Aurral identity markers from grouping tags", async () 
       metadataReader: async () => ({
         common: {
           grouping:
-            'AURRAL_IDS={"artistMbid":"11111111-1111-4111-1111-111111111111","albumMbid":"22222222-2222-2222-2222-222222222222","trackMbid":"33333333-3333-3333-3333-333333333333"}',
+            'AURRAL_IDS={"trackMbid":"33333333-3333-3333-3333-333333333333"}',
+          comment:
+            'AURRAL_IDS={"artistMbid":"11111111-1111-4111-1111-111111111111","albumMbid":"22222222-2222-2222-2222-222222222222"}',
         },
         format: {},
       }),

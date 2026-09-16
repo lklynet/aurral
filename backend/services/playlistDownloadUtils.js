@@ -237,10 +237,11 @@ export async function repairYtdlpMetadata(jobs = []) {
         [common.albumartist, job.artistName],
         [common.album, job.albumName],
       ].filter(([, value]) => String(value || "").trim());
-      const embeddedIdentity =
-        parseAurralIdentityComment(common.grouping) ||
-        parseAurralIdentityComment(common.comment) ||
-        {};
+      const embeddedIdentity = Object.assign(
+        {},
+        parseAurralIdentityComment(common.comment) || {},
+        parseAurralIdentityComment(common.grouping) || {},
+      );
       const expectedIdentity = [
         [
           common.musicbrainz_albumartistid ||
