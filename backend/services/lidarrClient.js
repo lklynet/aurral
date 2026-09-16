@@ -178,7 +178,8 @@ function findQualityProfile(qualityProfiles, qualityProfileId) {
 }
 
 export class LidarrClient {
-  constructor() {
+  constructor({ persistRootFolderPaths = true } = {}) {
+    this._persistRootFolderPaths = persistRootFolderPaths;
     this.config = null;
     this.apiPath = "/api/v1";
     this._circuitOpen = false;
@@ -796,7 +797,9 @@ export class LidarrClient {
     ));
     this._rootFoldersCache = { data: folders, at: Date.now() };
     const paths = folders.map((folder) => folder.path);
-    this.config.rootFolderPaths = dbOps.setLidarrRootFolderPaths(paths);
+    this.config.rootFolderPaths = this._persistRootFolderPaths
+      ? dbOps.setLidarrRootFolderPaths(paths)
+      : paths;
     return folders;
   }
 
