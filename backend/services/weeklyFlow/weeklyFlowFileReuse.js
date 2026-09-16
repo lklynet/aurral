@@ -11,7 +11,12 @@ import {
   findCanonicalTracksForAlbum,
 } from "../canonicalLibraryReadAdapter.js";
 import { getCanonicalLibraryForArtistReferences } from "../libraryQueryService.js";
-import { commitImportToPlaylistLibrary, sanitizePathPart } from "../playlistDownloadUtils.js";
+import { scheduleLibraryScan as scheduleLibraryScanJob } from "../libraryScanWorker.js";
+import {
+  commitImportToPlaylistLibrary,
+  joinUnderRoot,
+  sanitizePathPart,
+} from "../playlistDownloadUtils.js";
 import {
   AURRAL_FLOWS_DIR,
   isPathInsideRoot,
@@ -253,6 +258,7 @@ async function findAurralSource(track, options = {}) {
   const candidates = [];
   for (const job of downloadTracker.getAll()) {
     if (!job || job.status !== "done") continue;
+    if (options.allowLidarr === false && job.managedBy === "lidarr") continue;
     if (excludeJobIds.has(String(job.id || ""))) continue;
     if (!job.finalPath || typeof job.finalPath !== "string") continue;
     const matches = targetPlaylistType === "library"
@@ -341,7 +347,7 @@ export async function adoptFileIntoPlaylist(sourcePath, targetPlaylistType, week
   const albumDir = sanitizePathPart(options.track?.albumName || segments.at(-2), "Unknown Album");
   const fileName = path.basename(resolvedSource);
   const destPath = canonical
-    ? path.join(targetRoot, artistDir, albumDir, fileName)
+    ? joinUnderRoot(targetRoot, path.join(artistDir, albumDir), fileName)
     : path.join(targetRoot, relative);
   const committed = await commitImportToPlaylistLibrary(resolvedSource, destPath);
   retargetJobsToPath(resolvedSource, committed, root);
@@ -606,8 +612,10 @@ export async function resolveReusableTrackSource(track, options = {}) {
 
   const aurralSource = await findAurralSource(track, options);
   if (aurralSource) return { source: aurralSource, reason: null };
-  const lidarrSource = await findLidarrSource(track, options);
-  if (lidarrSource) return { source: lidarrSource, reason: null };
+  if (options.allowLidarr !== false) {
+    const lidarrSource = await findLidarrSource(track, options);
+    if (lidarrSource) return { source: lidarrSource, reason: null };
+  }
   return { source: null, reason: "No reusable Aurral or Lidarr file found" };
 }
 
@@ -627,8 +635,10 @@ export async function resolveRepairTrackSource(track, options = {}) {
   const localSource = await findLocalExistingSource(track, options);
   if (localSource) return { source: localSource, reason: null };
 
-  const lidarrSource = await findLidarrSource(track, options);
-  if (lidarrSource) return { source: lidarrSource, reason: null };
+  if (options.allowLidarr !== false) {
+    const lidarrSource = await findLidarrSource(track, options);
+    if (lidarrSource) return { source: lidarrSource, reason: null };
+  }
   const aurralSource = await findAurralSource(track, options);
   if (aurralSource) return { source: aurralSource, reason: null };
   return { source: null, reason: "No reusable Aurral or Lidarr file found" };
@@ -655,6 +665,7 @@ export async function restoreCompletedTrack(job, options = {}) {
     existingFileMode: mode,
     targetPlaylistType: job.playlistType,
     excludeJobIds: [job.id],
+    allowLidarr: options.allowLidarr ?? !job.requestGroupId,
   });
   if (source) {
     const sourcePath = path.resolve(source.sourcePath);
@@ -901,10 +912,19 @@ export async function repairReusableTrackLinks(options = {}) {
   };
 }
 
-async function refreshPlaylistAfterReuse(playlistType, scheduleLibraryScan = false) {
+async function refreshPlaylistAfterReuse(
+  playlistType,
+  shouldScheduleLibraryScan = false,
+  changedPaths = null,
+) {
   const { playlistManager } = await import("./weeklyFlowPlaylistManager.js");
   await playlistManager.refreshPlaylist(playlistType);
-  if (scheduleLibraryScan) playlistManager.scheduleScanLibrary();
+  if (!shouldScheduleLibraryScan) return;
+  if (Array.isArray(changedPaths)) {
+    scheduleLibraryScanJob({ includeLidarr: false, changedPaths });
+  } else {
+    playlistManager.scheduleScanLibrary();
+  }
 }
 
 export async function reuseTrackForPlaylist(track, playlistType, options = {}) {
@@ -977,7 +997,12 @@ export async function reuseTrackForPlaylist(track, playlistType, options = {}) {
       )
       .catch(() => {});
   }
-  refreshPlaylistAfterReuse(playlistType, targetPlaylistType === "library").catch((error) => {
+  refreshPlaylistAfterReuse(
+    playlistType,
+    targetPlaylistType === "library",
+    options.libraryScanChangedPaths ||
+      (options.allowLidarr === false ? [finalPath] : null),
+  ).catch((error) => {
     console.warn(
       `[WeeklyFlowReuse] Failed to refresh playlist ${playlistType}: ${error?.message || error}`,
     );

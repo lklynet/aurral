@@ -104,6 +104,10 @@ instance API key for WebSocket connections.
 | `POST` | `/api/library/downloads/album` | Monitor an album and optionally run the configured search |
 | `POST` | `/api/library/downloads/album/search` | Trigger a Lidarr album search |
 
+The artist and album add routes accept an optional `managedBy` value of
+`aurral` or `lidarr`. If the value is absent, Aurral uses the user's saved
+library-owner preference and falls back to Lidarr when Lidarr is connected.
+
 `POST /api/library/downloads/track` requires an authenticated user with the
 `addAlbum` permission.
 

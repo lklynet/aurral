@@ -5,7 +5,7 @@ description: Connect Lidarr for library management, requests, and library file a
 
 Lidarr is optional. Connect it when you want Lidarr to manage artists and
 albums, or when you want Aurral to show Lidarr queue and history status. Aurral
-can browse, search, play, stream, and scan indexed files without Lidarr.
+can add and acquire artists and albums in its own root without Lidarr.
 
 The Lidarr integration has two parts:
 
@@ -41,8 +41,10 @@ Lidarr**) keeps the Library focused on music you actually have:
   including albums with no files (labelled `0/10 available`).
 
 This setting only changes what the Library **lists**. You can still search for
-and request unmonitored or undownloaded albums from the artist's discography,
-and the request and monitor workflows are unchanged.
+and request unmonitored or undownloaded albums from the artist's discography.
+An add or request can choose Aurral or Lidarr when both managers are
+available. Without an explicit choice, Aurral uses the saved library-owner
+preference and falls back to Lidarr when it is connected.
 
 Without Lidarr, the Library lists the artists, albums, and tracks that Aurral
 has indexed from its configured roots.
@@ -101,8 +103,9 @@ This mapping only helps Aurral read Lidarr files. Navidrome must scan the corres
 
 ## Safety
 
-When Lidarr is configured, artist and album changes go through Lidarr. Aurral
-does not write directly into a Lidarr root music library.
+Lidarr-owned artist and album changes go through Lidarr. Aurral-owned changes
+write to the configured Aurral root. Aurral does not write into the Lidarr
+root music library.
 
 ## Import list feeds
 
