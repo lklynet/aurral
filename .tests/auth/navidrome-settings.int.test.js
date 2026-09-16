@@ -43,11 +43,36 @@ async function apiFetch(path, options = {}) {
   return { response, payload };
 }
 
+async function waitForLibraryRequest(startIndex) {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const request = navidromeRequests.slice(startIndex).find(
+      ({ method, url }) => method === "POST" && url.pathname === "/api/library",
+    );
+    if (request) return request;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("Timed out waiting for Navidrome library creation");
+}
+
+async function waitForLibraryVerification(startIndex) {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const request = navidromeRequests.slice(startIndex).find(
+      ({ method, url }) => method === "GET" && url.pathname === "/api/library",
+    );
+    if (request) return request;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("Timed out waiting for Navidrome library verification");
+}
+
 test.before(async () => {
   resetDatabase(db);
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
   userOps.createUser("admin", bcrypt.hashSync("password123", 4), "admin");
 
+  const libraries = [];
   navidrome = http.createServer((req, res) => {
     const url = new URL(req.url || "/", "http://127.0.0.1");
     let requestBody = "";
@@ -66,11 +91,13 @@ test.before(async () => {
         return;
       }
       if (url.pathname === "/api/library" && req.method === "GET") {
-        res.end(JSON.stringify([]));
+        res.end(JSON.stringify(libraries));
         return;
       }
       if (url.pathname === "/api/library" && req.method === "POST") {
-        res.end(JSON.stringify({ id: "library-1", ...body }));
+        const library = { id: `library-${libraries.length + 1}`, ...body };
+        libraries.push(library);
+        res.end(JSON.stringify(library));
         return;
       }
       res.end(JSON.stringify({ "subsonic-response": { status: "ok", version: "1.16.1" } }));
@@ -101,6 +128,7 @@ test("admin can update and test Navidrome after onboarding", async () => {
     username: "local-user",
     password: "local-password",
   };
+  const requestStartIndex = navidromeRequests.length;
   const saved = await apiFetch("/api/settings", {
     method: "POST",
     body: JSON.stringify({
@@ -118,9 +146,8 @@ test("admin can update and test Navidrome after onboarding", async () => {
   assert.equal(saved.payload.integrations.navidrome.username, "local-user");
   assert.equal(Object.hasOwn(saved.payload.integrations.navidrome, "m3uPathMode"), false);
   assert.equal(Object.hasOwn(saved.payload.integrations.navidrome, "pathMappings"), false);
-  const libraryRequest = navidromeRequests.find(
-    ({ method, url }) => method === "POST" && url.pathname === "/api/library",
-  );
+  const libraryRequest = await waitForLibraryRequest(requestStartIndex);
+  await waitForLibraryVerification(requestStartIndex);
   assert.deepEqual(libraryRequest?.body, {
     name: "Aurral Playlists",
     path: path.join(isolatedState.baseDir, "weekly-flow"),

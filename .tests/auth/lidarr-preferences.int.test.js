@@ -539,8 +539,8 @@ test("POST /library/artists applies monitoring options", async () => {
       mbid: "58585858-5858-5858-5858-585858585858",
       body: { artistName: "Album Only Artist", releaseGroupMbid: albumMbid },
       monitor: {
-        monitor: "none",
-        addMonitor: "none",
+        monitor: "missing",
+        addMonitor: "missing",
         searchForMissingAlbums: false,
         albumsToMonitor: [albumMbid],
       },

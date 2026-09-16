@@ -15,7 +15,10 @@ const [isolatedState, { db }, { dbOps }] = await setupIsolatedBackend(
 
 const { lidarrClient } = await import("../../backend/services/lidarrClient.js");
 const { registerMisc } = await import("../../backend/routes/library/handlers/misc.js");
-const { resolveLidarrTestCredentials } = await import(
+const {
+  resolveLidarrTestCredentials,
+  withTemporaryLidarrClient,
+} = await import(
   "../../backend/services/lidarrTestSession.js"
 );
 
@@ -146,4 +149,24 @@ test("re-enabling restores configured behavior without losing settings", () => {
   assert.equal(lidarrClient.isEnabled(), true);
   assert.equal(lidarrClient.isConfigured(), true);
   assert.equal(lidarrClient.getConfig().apiKey, "saved-key");
+});
+
+test("library root reads survive a temporary Lidarr settings call", async () => {
+  setLidarrSettings({
+    url: "http://saved-lidarr:8686",
+    apiKey: "saved-key",
+    enabled: true,
+    rootFolderPath: "/saved/music",
+    rootFolderPaths: ["/saved/music"],
+  });
+
+  await withTemporaryLidarrClient(
+    "http://settings-lidarr:8686",
+    "temporary-key",
+    async (temporaryClient) => {
+      delete temporaryClient.config.rootFolderPaths;
+      assert.deepEqual(temporaryClient.getConfiguredRootFolderPaths(), []);
+      assert.deepEqual(lidarrClient.getConfiguredRootFolderPaths(), ["/saved/music"]);
+    },
+  );
 });
