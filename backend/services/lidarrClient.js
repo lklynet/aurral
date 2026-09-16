@@ -988,10 +988,16 @@ export class LidarrClient {
     const requestedMonitorOption = normalizeMonitorOption(
       options.monitorOption || options.monitor || "none",
     );
-    const monitoring = getArtistMonitoringPayload(requestedMonitorOption);
     const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
     const albumMbid = String(options.albumMbid || "").trim();
     const albumsToMonitor = albumOnly && albumMbid ? [albumMbid] : [];
+    // Lidarr disables the artist for "none", even with explicit albumsToMonitor.
+    // The explicit album list takes precedence over "missing", so other albums stay unmonitored.
+    const monitoring = getArtistMonitoringPayload(
+      albumsToMonitor.length > 0 && requestedMonitorOption === "none"
+        ? "missing"
+        : requestedMonitorOption,
+    );
 
     const qualityProfileId = resolved.qualityProfileId;
     const defaultMetadataProfileId = settings.integrations?.lidarr?.metadataProfileId;
