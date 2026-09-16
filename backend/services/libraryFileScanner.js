@@ -75,11 +75,19 @@ const parseNativeAurralIdentityComment = (metadata) => {
 
 const applyMetadataEnrichment = (metadata, enrichment = null) => {
   const common = { ...normalizeMetadata(metadata) };
-  const embedded =
-    parseAurralIdentityComment(common.comment) ||
-    parseNativeAurralIdentityComment(metadata);
-  if ((!enrichment || typeof enrichment !== "object") && !embedded) return metadata;
-  const trusted = { ...(embedded || {}), ...(enrichment || {}) };
+  const embedded = Object.assign(
+    {},
+    parseNativeAurralIdentityComment(metadata) || {},
+    parseAurralIdentityComment(common.comment) || {},
+    parseAurralIdentityComment(common.grouping) || {},
+  );
+  if (
+    (!enrichment || typeof enrichment !== "object") &&
+    Object.keys(embedded).length === 0
+  ) {
+    return metadata;
+  }
+  const trusted = { ...embedded, ...(enrichment || {}) };
   const fallbackFields = {
     albumartist: trusted.artistName,
     artist: trusted.artistName,

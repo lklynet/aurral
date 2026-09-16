@@ -182,7 +182,7 @@ export async function writeAudioMetadata(filePath, metadata = {}) {
     ["musicbrainz_releasegroupid", metadata.albumMbid],
     ["musicbrainz_recordingid", metadata.trackMbid],
     ["musicbrainz_trackid", metadata.trackMbid],
-    ["comment", buildAurralIdentityComment(metadata)],
+    ["grouping", buildAurralIdentityComment(metadata)],
     ["date", metadata.releaseYear],
     ["track", normalizePositiveInteger(metadata.trackNumber)],
   ].filter(([, value]) => value != null && String(value).trim());
@@ -237,7 +237,11 @@ export async function repairYtdlpMetadata(jobs = []) {
         [common.albumartist, job.artistName],
         [common.album, job.albumName],
       ].filter(([, value]) => String(value || "").trim());
-      const embeddedIdentity = parseAurralIdentityComment(common.comment) || {};
+      const embeddedIdentity = Object.assign(
+        {},
+        parseAurralIdentityComment(common.comment) || {},
+        parseAurralIdentityComment(common.grouping) || {},
+      );
       const expectedIdentity = [
         [
           common.musicbrainz_albumartistid ||

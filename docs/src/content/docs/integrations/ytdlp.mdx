@@ -37,6 +37,8 @@ Aurral also applies the global quality profile. It rejects the final file if its
 
 After validation, Aurral writes the playlist's title, artist, album, album artist, year, and track number into the audio file. This metadata lets tag-based libraries such as Navidrome organize yt-dlp downloads correctly.
 
+Aurral stores its internal identity marker in the grouping tag instead of the comment tag, so Navidrome does not show it as the track description. Existing files with the older comment marker remain readable.
+
 When a downloaded file matches the requested track but its duration differs significantly, Aurral retains it under **Activity > Queue** for preview, approval, or denial.
 
 Audio from YouTube is usually lossy. Prefer slskd or Usenet when you want higher quality.
