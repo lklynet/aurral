@@ -164,6 +164,7 @@ test("library root reads survive a temporary Lidarr settings call", async () => 
     "http://settings-lidarr:8686",
     "temporary-key",
     async (temporaryClient) => {
+      delete temporaryClient.config.rootFolderPaths;
       assert.deepEqual(temporaryClient.getConfiguredRootFolderPaths(), []);
       assert.deepEqual(lidarrClient.getConfiguredRootFolderPaths(), ["/saved/music"]);
     },
