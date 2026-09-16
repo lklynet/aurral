@@ -76,6 +76,7 @@ const parseNativeAurralIdentityComment = (metadata) => {
 const applyMetadataEnrichment = (metadata, enrichment = null) => {
   const common = { ...normalizeMetadata(metadata) };
   const embedded =
+    parseAurralIdentityComment(common.grouping) ||
     parseAurralIdentityComment(common.comment) ||
     parseNativeAurralIdentityComment(metadata);
   if ((!enrichment || typeof enrichment !== "object") && !embedded) return metadata;
