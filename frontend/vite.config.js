@@ -57,6 +57,9 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: "dist",
       emptyOutDir: true,
+      // Avoid speculative modulepreload requests that Chrome reports as unused
+      // when a service worker controls the page and routes load on demand.
+      modulePreload: false,
     },
     server: {
       port: 3000,
