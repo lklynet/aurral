@@ -38,11 +38,14 @@ test("exact structured match is accepted with a wide runner-up gap", { skip: ski
     ],
   });
   assert.equal(outcome.ok, true);
-  assert.equal(outcome.result.bestCandidateIndex, 0);
   assert.equal(outcome.result.matches[0].distance <= 0.04, true);
-  assert.ok(outcome.result.gap > 0.1, `expected a meaningful gap, got ${outcome.result.gap}`);
-  // beets reports distances and thresholds; Aurral derives recommendations.
-  assert.equal(outcome.result.thresholds.strongRecThresh, 0.04);
+  const distances = outcome.result.matches
+    .map((match) => match.distance)
+    .sort((left, right) => left - right);
+  assert.ok(distances[1] - distances[0] > 0.1, `expected a meaningful gap, got ${distances}`);
+  // beets reports raw distance evidence; Aurral derives recommendations and
+  // best-vs-runner-up policy in the shared identity evaluator.
+  assert.equal(outcome.result.operation, "track_distance");
 });
 
 test("diacritics and punctuation fold into a strong match", { skip: skipReason }, async () => {
@@ -54,7 +57,6 @@ test("diacritics and punctuation fold into a strong match", { skip: skipReason }
     ],
   });
   assert.equal(outcome.ok, true);
-  assert.equal(outcome.result.bestCandidateIndex, 0);
   assert.ok(outcome.result.matches[0].distance <= 0.04);
 });
 
@@ -68,9 +70,11 @@ test("remix and radio edit candidates rank below the original mix", { skip: skip
     ],
   });
   assert.equal(outcome.ok, true);
-  assert.equal(outcome.result.bestCandidateIndex, 1);
+  const original = outcome.result.matches.find((match) => match.candidateIndex === 1);
+  const radio = outcome.result.matches.find((match) => match.candidateIndex === 0);
   const remix = outcome.result.matches.find((match) => match.candidateIndex === 2);
-  assert.ok(remix.distance > outcome.result.matches[1].distance);
+  assert.ok(radio.distance > original.distance);
+  assert.ok(remix.distance > original.distance);
 });
 
 test("MBID conflicts only count when both sides carry identifiers", { skip: skipReason }, async () => {

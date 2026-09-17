@@ -7,6 +7,7 @@ import {
   detectNoise,
   buildRequestVariantProfile,
 } from "../../backend/services/trackMatching/semanticPolicy.js";
+import { evaluateTrackIdentity } from "../../backend/services/trackMatching/identityPolicy.js";
 
 test("extractVariants detects variant descriptors without inventing them", () => {
   assert.deepEqual(
@@ -126,4 +127,33 @@ test("re-recordings contradict; ordinary remasters do not", () => {
   });
   assert.equal(remaster.compatible, true);
   assert.equal(remaster.contradictions.length, 0);
+});
+
+test("the shared identity evaluator applies semantic conflicts at both stages", () => {
+  const request = { artistName: "Daft Punk", trackName: "Get Lucky" };
+  const candidate = { title: "Get Lucky (Karaoke Version)", artists: ["Daft Punk"] };
+  const match = {
+    distance: 0,
+    penalties: { track_title: 0, track_artist: 0 },
+    maxDistance: 1,
+    rawDistance: 0,
+  };
+
+  const preDownload = evaluateTrackIdentity({
+    request,
+    candidate,
+    match,
+    phase: "pre",
+  });
+  const postDownload = evaluateTrackIdentity({
+    request,
+    candidate,
+    match,
+    phase: "post",
+  });
+
+  assert.equal(preDownload.decision, "reject");
+  assert.equal(postDownload.decision, "CONFLICTED");
+  assert.ok(preDownload.contradictions.includes("karaoke"));
+  assert.deepEqual(postDownload.contradictions, preDownload.contradictions);
 });

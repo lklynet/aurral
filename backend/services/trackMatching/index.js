@@ -1,6 +1,8 @@
 export { buildTrackRequest } from "./trackIdentity.js";
 export {
   normalizeCandidate,
+  SOURCE_CAPABILITIES,
+  getCapabilities,
   parseFilenameArtistTitle,
   splitArtistTitleSegments,
   getFileBaseName,
@@ -19,11 +21,6 @@ export {
   stripPromoDescriptors,
 } from "./semanticPolicy.js";
 export {
-  SOURCE_CAPABILITIES,
-  getCapabilities,
-  hasStructuredMetadata,
-} from "./sourceCapabilities.js";
-export {
   runMatcherOperation,
   isBeetsMatcherAvailable,
   resetMatcherAvailability,
@@ -35,9 +32,12 @@ export {
 export {
   evaluateTrackCandidates,
   prefilterCandidates,
+} from "./decisionEngine.js";
+export {
+  evaluateTrackIdentity,
   recommendationFromDistance,
   MATCHER_UNAVAILABLE_MESSAGE,
-} from "./decisionEngine.js";
+} from "./identityPolicy.js";
 export {
   validateDownloadedTrackFile,
   selectVerifiedDownloadedFile,
@@ -49,6 +49,5 @@ export {
   hasUsableSearchCandidates,
   toPipelineCandidate,
   usableEvaluationEntries,
-  logSearchOutcome,
 } from "./sourceSearch.js";
 export { buildSoulseekCandidates, isReleaseFolderPlausible } from "./providers/soulseekProvider.js";

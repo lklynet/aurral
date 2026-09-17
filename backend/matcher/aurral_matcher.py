@@ -12,10 +12,7 @@ import json
 import sys
 
 PROTOCOL_VERSION = 1
-MATCH_CONFIG = {
-    "strong_rec_thresh": 0.04,
-    "medium_rec_thresh": 0.25,
-    "rec_gap_thresh": 0.25,
+BEETS_MATCH_CONFIG = {
     "track_length_grace": 10,
     "track_length_max": 30,
 }
@@ -79,18 +76,12 @@ def build_item(payload: dict, candidate: dict | None = None):
 
     fields = {"title": text(payload.get("title") or payload.get("trackName")) or ""}
     fields["artist"] = artist(payload) or ""
-    album = text(payload.get("albumName") or payload.get("album"))
-    if album:
-        fields["album"] = album
     if (duration := duration_seconds(payload)) is not None:
         fields["length"] = duration
     if (track := integer(payload.get("trackNumber") or payload.get("track"))) is not None:
         fields["track"] = track
     if (disc := integer(payload.get("discNumber") or payload.get("disc"))) is not None:
         fields["disc"] = disc
-    if (year := integer(payload.get("releaseYear") or payload.get("year"))) is not None:
-        fields["year"] = year
-
     item = Item(**fields)
     expected_mbid = text(payload.get("recordingMbid") or payload.get("trackMbid"))
     candidate_mbid = text((candidate or {}).get("recordingMbid") or (candidate or {}).get("trackMbid"))
@@ -107,16 +98,12 @@ def build_track_info(payload: dict):
         "artist": artist(payload) or "",
         "data_source": text(payload.get("source")) or "aurral",
     }
-    if album := text(payload.get("album")):
-        fields["album"] = album
     if duration := duration_seconds(payload):
         fields["length"] = duration
     if (track := integer(payload.get("trackNumber"))) is not None:
         fields["index"] = track
     if (disc := integer(payload.get("discNumber"))) is not None:
         fields["medium"] = disc
-    if (year := integer(payload.get("year"))) is not None:
-        fields["year"] = year
     mbid = text(payload.get("recordingMbid") or payload.get("trackMbid"))
     if mbid:
         fields["track_id"] = mbid
@@ -127,18 +114,10 @@ def distance_evidence(distance) -> dict:
     return {key: round(distance[key], 6) for key in distance.keys()}
 
 
-def thresholds() -> dict:
-    return {
-        "strongRecThresh": MATCH_CONFIG["strong_rec_thresh"],
-        "mediumRecThresh": MATCH_CONFIG["medium_rec_thresh"],
-        "recGapThresh": MATCH_CONFIG["rec_gap_thresh"],
-    }
-
-
 def configure_beets() -> None:
     from beets import config
 
-    for key, value in MATCH_CONFIG.items():
+    for key, value in BEETS_MATCH_CONFIG.items():
         config["match"][key].set(value)
 
 
@@ -149,7 +128,6 @@ def operation_health(_: dict) -> dict:
         "ok": True,
         "operation": "health",
         "beetsVersion": beets.__version__,
-        "thresholds": thresholds(),
     }
 
 
@@ -188,23 +166,15 @@ def operation_track_distance(payload: dict) -> dict:
             }
         )
 
-    scored = [match for match in matches if not match.get("skipped")]
-    scored.sort(key=lambda match: (match["distance"], match["candidateIndex"]))
-    best = scored[0] if scored else None
-    runner_up = scored[1] if len(scored) > 1 else None
     return {
         "ok": True,
         "operation": "track_distance",
         "matches": matches,
-        "bestCandidateIndex": best["candidateIndex"] if best else None,
-        "runnerUpCandidateIndex": runner_up["candidateIndex"] if runner_up else None,
-        "gap": round(runner_up["distance"] - best["distance"], 6) if best and runner_up else None,
-        "thresholds": thresholds(),
     }
 
 
 def operation_assign_items(payload: dict) -> dict:
-    from beets.autotag import assign_items, track_distance
+    from beets.autotag import assign_items
 
     files = payload.get("files")
     release_tracks = payload.get("releaseTracks")
@@ -230,13 +200,10 @@ def operation_assign_items(payload: dict) -> dict:
     track_index = {id(track): index for index, track in enumerate(tracks)}
     assignments = []
     for item, track in pairs:
-        distance = track_distance(item, track, incl_artist=True)
         assignments.append(
             {
                 "fileIndex": item_index[id(item)],
                 "releaseTrackIndex": track_index[id(track)],
-                "distance": round(distance.distance, 6),
-                "penalties": distance_evidence(distance),
             }
         )
     assignments.sort(key=lambda entry: entry["fileIndex"])

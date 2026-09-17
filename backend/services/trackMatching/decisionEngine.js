@@ -7,7 +7,7 @@
 // album/year evidence, best-vs-runner-up separation, and the accept/verify/
 // review/reject mapping. No private beets internals are involved: the
 // recommendation policy below is derived from the public distance plus the
-// configured thresholds the Python matcher echoes back.
+// thresholds owned by the shared identity evaluator.
 //
 // Pipeline:
 //   canonical request
@@ -30,15 +30,15 @@
 // a clear diagnostic.
 
 import { buildTrackRequest } from "./trackIdentity.js";
-import { normalizeCandidate } from "./candidateNormalizer.js";
-import {
-  checkVariantCompatibility,
-  detectNoise,
-  getCoreTitle,
-} from "./semanticPolicy.js";
-import { getCapabilities } from "./sourceCapabilities.js";
+import { getCapabilities, normalizeCandidate } from "./candidateNormalizer.js";
+import { getCoreTitle } from "./semanticPolicy.js";
 import { runMatcherOperation } from "./beetsClient.js";
-import { getNormalizedText, scoreTextMatch } from "../providers/brainzmashRanking.js";
+import { getNormalizedText } from "../providers/brainzmashRanking.js";
+import {
+  DEFAULT_MATCH_THRESHOLDS,
+  MATCHER_UNAVAILABLE_MESSAGE,
+  evaluateTrackIdentity,
+} from "./identityPolicy.js";
 import { logger } from "../logger.js";
 
 const DECISION_RANK = { accept: 0, verify: 1, review: 2, reject: 3, error: 4 };
@@ -49,56 +49,6 @@ const ACCEPT_GAP_THRESHOLD = 0.1;
 // Runner-up distances above this are not "decent" competitors, so the gap to
 // them says nothing about ambiguity.
 const COMPETITIVE_RUNNER_UP_DISTANCE = 0.25;
-// With both sides carrying a recording MBID, beets penalizes a mismatch
-// heavily, but the conflict is decided here, explicitly, before scoring.
-const MBID_MATCH_DISTANCE_OVERRIDE = 0;
-// Base duration tolerance: a fixed 25s window, widened to 18% of the
-// expected duration for longer tracks (the same gate the previous per-source
-// matchers applied to advertised lengths).
-const DURATION_BASE_TOLERANCE_MS = 25000;
-// Coarse Node-only title floor used by the search early-exit and the
-// pre-beets gate. beets makes the real call; this keeps obviously unrelated
-// results from ending a search early.
-const TITLE_PLAUSIBILITY_FLOOR = 40;
-
-export function isWithinBaseDurationTolerance(durationDiffMs, expectedDurationMs) {
-  return (
-    durationDiffMs <= DURATION_BASE_TOLERANCE_MS ||
-    durationDiffMs <= Math.max(12000, expectedDurationMs * 0.18)
-  );
-}
-
-// Cheap title plausibility check: does this candidate even claim to be the
-// requested track? Runs on the best available title claim and the raw
-// string, so "Artist - Track" file names and structured titles both pass.
-function titlePlausibilityScore(request, candidate) {
-  const scores = [
-    scoreTextMatch(candidate.filenameTitle || candidate.title, request.trackName),
-    scoreTextMatch(candidate.title, request.trackName),
-    scoreTextMatch(getCoreTitle(candidate.title || ""), request.trackName),
-  ];
-  if (request.artistName) {
-    scores.push(
-      scoreTextMatch(candidate.title || "", `${request.artistName} ${request.trackName}`),
-    );
-  }
-  return Math.max(...scores);
-}
-
-function checkTitlePlausibility(request, candidate) {
-  // A matching recording MBID overrides any text gate.
-  const expectedMbid = String(request.recordingMbid || "").trim();
-  const candidateMbid = String(candidate.recordingMbid || "").trim();
-  if (expectedMbid && candidateMbid && expectedMbid.toLowerCase() === candidateMbid.toLowerCase()) {
-    return { plausible: true };
-  }
-  const score = titlePlausibilityScore(request, candidate);
-  return { plausible: score >= TITLE_PLAUSIBILITY_FLOOR, score };
-}
-
-export const MATCHER_UNAVAILABLE_MESSAGE =
-  "Track matcher (bundled beets runtime) is unavailable. Verify the Aurral image installation; matching cannot fall back to a weaker algorithm.";
-
 // A semantic duplicate of the best candidate: same normalized core title,
 // same primary artist, same duration to the second. Only true duplicates
 // share a key — they neither create nor relieve runner-up ambiguity.
@@ -119,13 +69,6 @@ function round6(value) {
   return Number.isFinite(value) ? Math.round(value * 1e6) / 1e6 : null;
 }
 
-export function recommendationFromDistance(distance, thresholds) {
-  if (!Number.isFinite(distance)) return "none";
-  if (distance < thresholds.strongRecThresh) return "strong";
-  if (distance <= thresholds.mediumRecThresh) return "medium";
-  return "low";
-}
-
 function proposalRecommendation(sortedDistances, thresholds) {
   if (sortedDistances.length === 0) return "none";
   const best = sortedDistances[0];
@@ -138,74 +81,6 @@ function proposalRecommendation(sortedDistances, thresholds) {
     return "low";
   }
   return "none";
-}
-
-// Recording-MBID comparison. Entity discipline: only `.recordingMbid` fields
-// are ever compared here, and every producer of `recordingMbid`/`trackMbid`
-// is a recording-entity source (MusicBrainz recording lookups, embedded
-// `musicbrainz_recordingid` tags). Release, release-group, and artist MBIDs
-// live in their own fields and never enter this comparison — a release-group
-// MBID in `albumMbid` must neither satisfy nor contradict a recording check.
-function checkRecordingMbid(request, candidate) {
-  const expected = String(request.recordingMbid || "").trim() || null;
-  const actual = String(candidate.recordingMbid || "").trim() || null;
-  if (!expected || !actual) return { conflict: false, match: false };
-  const conflict = expected.toLowerCase() !== actual.toLowerCase();
-  return { conflict, match: !conflict };
-}
-
-// A sibling track from the same release whose title beats the requested one
-// in the candidate's own title means the candidate is probably that other
-// track (e.g. "01 Hole in the Sheet" vs requested "Hole in the Sheet" when
-// the folder holds both).
-function checkSiblingTrackConflict(request, candidate) {
-  const titles = Array.isArray(request.albumTrackTitles)
-    ? request.albumTrackTitles
-    : [];
-  if (titles.length === 0) return { conflict: false, bestOther: 0 };
-  const candidateText = candidate.filenameTitle || candidate.title || "";
-  const targetKey = getNormalizedText(getCoreTitle(request.trackName));
-  const bestOther = titles
-    .filter((title) => getNormalizedText(getCoreTitle(title)) !== targetKey)
-    .reduce((best, title) => Math.max(best, scoreTextMatch(candidateText, title)), 0);
-  const ownScore = scoreTextMatch(candidateText, request.trackName);
-  return {
-    conflict: bestOther >= 90 && bestOther >= ownScore + 25,
-    nearConflict: bestOther >= 82 && bestOther >= ownScore + 15,
-    bestOther,
-    ownScore,
-  };
-}
-
-function checkTrackNumberMismatch(request, candidate) {
-  const expected = Number(request.trackNumber);
-  if (!Number.isFinite(expected) || expected <= 0) return false;
-  const actual = Number(candidate.trackNumber);
-  return (
-    Number.isFinite(actual) &&
-    actual > 0 &&
-    expected !== actual
-  );
-}
-
-function albumEvidence(request, candidate) {
-  if (!request.albumName || !candidate.album) return null;
-  return scoreTextMatch(candidate.album, request.albumName, { extended: true });
-}
-
-function yearEvidence(request, candidate, folderEvidence = null) {
-  const expected = request.releaseYear ? String(request.releaseYear) : null;
-  if (!expected) return { conflicting: false, matched: false };
-  const years = new Set();
-  if (candidate.year) years.add(String(candidate.year));
-  if (Array.isArray(folderEvidence?.years)) {
-    for (const year of folderEvidence.years) years.add(String(year));
-  }
-  if (years.size === 0) return { conflicting: false, matched: false };
-  return {
-    conflicting: !years.has(expected),
-    matched: years.has(expected),
-  };
 }
 
 function compareEvaluations(left, right) {
@@ -241,37 +116,29 @@ export function prefilterCandidates({ request, source, candidates = [] } = {}) {
   const normalized = normalizeSourceCandidates(source, candidates, capabilities, trackRequest);
   return normalized.map((candidate, index) => {
     const base = { candidateIndex: index, candidate };
-    if (candidate.provider?.locked) {
-      return { ...base, rejected: true, reason: "locked" };
-    }
-    const mbid = checkRecordingMbid(trackRequest, candidate);
-    if (mbid.conflict) {
+    const policy = evaluateTrackIdentity({
+      request: trackRequest,
+      candidate,
+      source,
+      phase: "prefilter",
+    });
+    if (policy.rejected) {
       return {
         ...base,
         rejected: true,
-        reason: "recording-mbid-conflict",
-        contradictions: ["recording-mbid-conflict"],
+        reason: policy.reason,
+        contradictions: policy.contradictions,
+        noise: policy.noise,
+        reasons: policy.reasons,
       };
     }
-    const variantCheck = checkVariantCompatibility(trackRequest, candidate);
-    if (variantCheck.contradictions.length > 0) {
-      return {
-        ...base,
-        rejected: true,
-        reason: "contradiction",
-        contradictions: variantCheck.contradictions,
-        variantScore: variantCheck.variantScore,
-      };
-    }
-    const plausibility = checkTitlePlausibility(trackRequest, candidate);
-    if (!plausibility.plausible) {
-      return { ...base, rejected: true, reason: "weak-title-match" };
-    }
-    const noise = detectNoise([candidate.title, candidate.filename].filter(Boolean).join(" "));
-    if (noise.length > 0) {
-      return { ...base, rejected: true, reason: "noise", noise };
-    }
-    return { ...base, rejected: false, noise, variantScore: variantCheck.variantScore, mbidMatch: mbid.match };
+    return {
+      ...base,
+      rejected: false,
+      noise: policy.noise,
+      variantScore: policy.variant.variantScore,
+      mbidMatch: policy.identifier.match,
+    };
   });
 }
 
@@ -312,96 +179,24 @@ export async function evaluateTrackCandidates({
   const evaluations = [];
   const rankableCandidates = [];
   const rankableIndexes = [];
-  const rankableMbidMatches = [];
-  const rankableSibling = [];
 
   normalized.forEach((candidate, index) => {
     const evidence = readProviderEvidence(candidate, index) || {};
-    if (candidate.provider?.locked) {
+    const policy = evaluateTrackIdentity({
+      request: trackRequest,
+      candidate,
+      source,
+      providerEvidence: evidence,
+      phase: "pre",
+      allowNoisyCandidates: options.allowNoisyCandidates === true,
+    });
+    if (policy.rejected) {
       evaluations.push(
-        buildRejectEvaluation(candidate, index, "locked", {
-          reasons: ["candidate is locked on the provider"],
-        }),
-      );
-      return;
-    }
-    // Provider artist evidence: a filename that confidently names a
-    // different artist (with no folder to vouch for it) is a contradiction.
-    if (evidence.folder?.artistContradicted || evidence.folder?.ambiguousTitleAlbumArtist) {
-      evaluations.push(
-        buildRejectEvaluation(candidate, index, evidence.folder.artistContradicted ? "artist-mismatch" : "ambiguous-title-album-artist", {
-          contradictions: [evidence.folder.artistContradicted ? "artist-mismatch" : "ambiguous-title-album-artist"],
-          reasons: evidence.folder.artistContradicted
-            ? [`filename names a different artist (${evidence.folder.filenameArtist})`]
-            : ["same-titled single offered by a folder that names no requested artist"],
-        }),
-      );
-      return;
-    }
-    // Semantic contradictions are the identity statement — check them before
-    // mechanical gates so rejection reasons stay informative.
-    const variantCheck = checkVariantCompatibility(trackRequest, candidate);
-    if (variantCheck.contradictions.length > 0) {
-      evaluations.push(
-        buildRejectEvaluation(candidate, index, "contradiction", {
-          contradictions: variantCheck.contradictions,
-          variantScore: variantCheck.variantScore,
-          reasons: variantCheck.contradictions.map(
-            (label) => `semantic contradiction: ${label}`,
-          ),
-        }),
-      );
-      return;
-    }
-    const plausibility = checkTitlePlausibility(trackRequest, candidate);
-    if (!plausibility.plausible) {
-      evaluations.push(
-        buildRejectEvaluation(candidate, index, "weak-title-match", {
-          reasons: [
-            `candidate title does not plausibly name the requested track (score ${plausibility.score})`,
-          ],
-        }),
-      );
-      return;
-    }
-    // Advertised-duration gate (Aurral policy): when the provider states a
-    // length and it sits outside the base tolerance window, the file is a
-    // different version — beets' soft duration penalty is not the place to
-    // enforce this hard boundary.
-    const expectedDurationMs = Number(trackRequest.durationMs || 0);
-    const advertisedDurationMs = Number(evidence.advertisedDurationMs ?? candidate.durationMs ?? 0);
-    if (
-      expectedDurationMs > 0 &&
-      advertisedDurationMs > 0 &&
-      !isWithinBaseDurationTolerance(Math.abs(advertisedDurationMs - expectedDurationMs), expectedDurationMs)
-    ) {
-      evaluations.push(
-        buildRejectEvaluation(candidate, index, "advertised-duration-mismatch", {
-          reasons: [
-            `advertised duration ${advertisedDurationMs}ms is outside tolerance for ${expectedDurationMs}ms`,
-          ],
-        }),
-      );
-      return;
-    }
-    const mbid = checkRecordingMbid(trackRequest, candidate);
-    if (mbid.conflict) {
-      evaluations.push(
-        buildRejectEvaluation(candidate, index, "recording-mbid-conflict", {
-          contradictions: ["recording-mbid-conflict"],
-          aurralEvidence: { recordingMbid: { expected: trackRequest.recordingMbid, candidate: candidate.recordingMbid } },
-          reasons: ["candidate recording MBID conflicts with the requested recording"],
-        }),
-      );
-      return;
-    }
-    const noise = detectNoise([candidate.title, candidate.filename].filter(Boolean).join(" "));
-    if (noise.length > 0 && !options.allowNoisyCandidates) {
-      evaluations.push(
-        buildRejectEvaluation(candidate, index, "noise", {
-          noise,
-          variantScore: variantCheck.variantScore,
-          reasons: noise.map((label) => `noise: ${label}`),
+        buildRejectEvaluation(candidate, index, policy.reason, {
+          contradictions: policy.contradictions,
+          noise: policy.noise,
+          variantScore: policy.variant.variantScore,
+          reasons: policy.reasons,
         }),
       );
       return;
@@ -410,15 +205,13 @@ export async function evaluateTrackCandidates({
       candidateIndex: index,
       candidate,
       pending: true,
-      variantScore: variantCheck.variantScore,
-      noise,
-      mbidMatch: mbid.match,
+      variantScore: policy.variant.variantScore,
+      noise: policy.noise,
+      mbidMatch: policy.identifier.match,
       providerEvidence: evidence,
     });
     rankableCandidates.push(candidate);
     rankableIndexes.push(index);
-    rankableMbidMatches.push(mbid.match);
-    rankableSibling.push(checkSiblingTrackConflict(trackRequest, candidate));
   });
 
   const matcherOutcome = await runMatcherOperation(
@@ -453,11 +246,7 @@ export async function evaluateTrackCandidates({
     };
   }
 
-  const thresholds = matcherOutcome.result?.thresholds || {
-    strongRecThresh: 0.04,
-    mediumRecThresh: 0.25,
-    recGapThresh: 0.25,
-  };
+  const thresholds = matcherOutcome.result?.thresholds || DEFAULT_MATCH_THRESHOLDS;
   const matchByIndex = new Map(
     (matcherOutcome.result?.matches || []).map((match) => [match.candidateIndex, match]),
   );
@@ -465,7 +254,6 @@ export async function evaluateTrackCandidates({
   rankableIndexes.forEach((candidateIndex, position) => {
     const evaluation = evaluations[candidateIndex];
     const match = matchByIndex.get(position);
-    const sibling = rankableSibling[position];
     const evidence = evaluation.providerEvidence || {};
     delete evaluation.pending;
     if (!match || match.skipped) {
@@ -473,124 +261,36 @@ export async function evaluateTrackCandidates({
       evaluation.reason = match?.reason || "missing-title";
       return;
     }
-    const distance = match.distance;
-    const album = albumEvidence(trackRequest, evaluation.candidate);
-    const year = yearEvidence(trackRequest, evaluation.candidate, evidence.folder);
-    const mbidMatch = rankableMbidMatches[position];
-    const recommendation = recommendationFromDistance(distance, thresholds);
-    const reasons = [`beets distance ${distance}`, `recommendation ${recommendation}`];
-    const aurralEvidence = {
-      album,
-      year: {
-        expected: trackRequest.releaseYear || null,
-        candidate: evaluation.candidate.year || null,
-        ...year,
+    const policy = evaluateTrackIdentity({
+      request: trackRequest,
+      candidate: evaluation.candidate,
+      source,
+      providerEvidence: evidence,
+      match,
+      thresholds,
+      phase: "pre",
+      allowNoisyCandidates: options.allowNoisyCandidates === true,
+    });
+    Object.assign(evaluation, {
+      decision: policy.decision,
+      reason: policy.reason,
+      contradictions: policy.contradictions,
+      noise: policy.noise,
+      distance: policy.distance,
+      penalties: policy.penalties,
+      maxDistance: policy.maxDistance,
+      rawDistance: policy.rawDistance,
+      recommendation: policy.recommendation,
+      albumScore: policy.aurralEvidence.album,
+      aurralEvidence: {
+        ...policy.aurralEvidence,
+        year: {
+          expected: trackRequest.releaseYear || null,
+          ...policy.aurralEvidence.year,
+        },
       },
-      trackNumber: {
-        expected: trackRequest.trackNumber || null,
-        candidate: evaluation.candidate.trackNumber || null,
-        mismatch: checkTrackNumberMismatch(trackRequest, evaluation.candidate),
-      },
-      recordingMbid: mbidMatch
-        ? { match: true, mbid: evaluation.candidate.recordingMbid }
-        : null,
-      folder: evidence.folder || null,
-    };
-
-    // A matched recording MBID is decisive positive evidence: the provider
-    // asserts the exact recording Aurral asked for.
-    if (mbidMatch) {
-      evaluation.decision = "accept";
-      evaluation.distance = MBID_MATCH_DISTANCE_OVERRIDE;
-      evaluation.recommendation = "strong";
-      evaluation.reasons = [
-        "recording MBID matches the requested recording",
-        ...reasons,
-      ];
-      Object.assign(evaluation, {
-        penalties: match.penalties || {},
-        maxDistance: match.maxDistance,
-        rawDistance: match.rawDistance,
-        albumScore: album,
-        aurralEvidence,
-      });
-      return;
-    }
-
-    let decision;
-    if (recommendation === "strong") {
-      decision = "accept";
-      reasons.push("strong metadata match");
-    } else if (recommendation === "medium") {
-      decision = "verify";
-      reasons.push("moderate metadata match, post-download verification required");
-    } else {
-      decision = "review";
-      reasons.push("weak metadata evidence");
-    }
-    if (sibling.conflict) {
-      decision = "reject";
-      evaluation.reason = "sibling-track-conflict";
-      reasons.push("candidate title names a sibling track from the same release");
-    } else if (sibling.nearConflict && decision === "accept") {
-      decision = "verify";
-      reasons.push("candidate title is close to a sibling track from the same release");
-    }
-    // Nobody involved names the requested artist: the file may still be
-    // right (sloppy rips), but it downloads under strict validation only.
-    if (decision === "accept" && evidence.folder?.artistMissing) {
-      decision = "verify";
-      reasons.push("no source names the requested artist; downgraded accept to verify");
-    }
-    // Structured provider artist clearly conflicts with the request: the
-    // same title sung by someone else is a different recording, not a
-    // plausible version of it.
-    if (
-      capabilities.structuredArtist &&
-      Number(match.penalties.track_artist ?? 0) >= 0.15 &&
-      decision !== "reject"
-    ) {
-      decision = "reject";
-      evaluation.reason = "artist-mismatch";
-      reasons.push("provider artist conflicts with the requested artist");
-    }
-    // Album and year are supporting evidence for track identity: the same
-    // recording legitimately appears on singles, compilations, and reissues.
-    // Weak album evidence or a conflicting year downgrades an accept but
-    // never upgrades anything.
-    if (decision === "accept" && album != null && album < 35) {
-      decision = "verify";
-      reasons.push(`weak album evidence (${album}) downgraded accept to verify`);
-    }
-    if (decision === "accept" && year.conflicting) {
-      decision = "verify";
-      reasons.push("conflicting year evidence downgraded accept to verify");
-    }
-    // A wrong track number with a title that does not near-exactly match the
-    // request means the candidate is probably a neighboring track from the
-    // release. beets already penalizes the index conflict; only a
-    // near-exact title rescues the candidate (it is probably the right
-    // recording at the wrong position).
-    const titlePenalty = Number(match.penalties?.track_title ?? 0);
-    if (
-      decision !== "reject" &&
-      aurralEvidence.trackNumber.mismatch &&
-      titlePenalty >= 0.05
-    ) {
-      decision = "reject";
-      evaluation.reason = "track-number-mismatch";
-      reasons.push("track number mismatch with imperfect title evidence");
-    }
-
-    evaluation.decision = decision;
-    evaluation.distance = distance;
-    evaluation.penalties = match.penalties || {};
-    evaluation.maxDistance = match.maxDistance;
-    evaluation.rawDistance = match.rawDistance;
-    evaluation.recommendation = recommendation;
-    evaluation.albumScore = album;
-    evaluation.aurralEvidence = aurralEvidence;
-    evaluation.reasons = reasons;
+      reasons: policy.reasons,
+    });
   });
 
   const scored = evaluations

@@ -21,15 +21,17 @@
 import { parseFile } from "music-metadata";
 import { buildTrackRequest } from "./trackIdentity.js";
 import { getFileName, getFileBaseName, claimedTitle } from "./candidateNormalizer.js";
-import { checkVariantCompatibility, detectNoise, getCoreTitle, extractVariants } from "./semanticPolicy.js";
+import { getCoreTitle, extractVariants } from "./semanticPolicy.js";
 import { runMatcherOperation } from "./beetsClient.js";
 import {
   toProtocolRequest,
-  recommendationFromDistance,
-  isWithinBaseDurationTolerance,
-  MATCHER_UNAVAILABLE_MESSAGE,
 } from "./decisionEngine.js";
-import { getNormalizedText, scoreTextMatch } from "../providers/brainzmashRanking.js";
+import { getNormalizedText } from "../providers/brainzmashRanking.js";
+import {
+  DEFAULT_MATCH_THRESHOLDS,
+  MATCHER_UNAVAILABLE_MESSAGE,
+  evaluateTrackIdentity,
+} from "./identityPolicy.js";
 import { validateParsedQuality } from "../qualityProfileService.js";
 import { logger } from "../logger.js";
 
@@ -125,27 +127,6 @@ export function buildActualFileCandidate(parsed, filePath, source, preDownloadCa
   };
 }
 
-function parsedFileTitleEvidence(request, actual) {
-  const ownScore = scoreTextMatch(actual.title, request.trackName);
-  const targetKey = getNormalizedText(getCoreTitle(request.trackName));
-  const bestSibling = (request.albumTrackTitles || [])
-    .filter((title) => getNormalizedText(getCoreTitle(title)) !== targetKey)
-    .reduce((best, title) => Math.max(best, scoreTextMatch(actual.title, title)), 0);
-  return { ownScore, bestSibling };
-}
-
-// Recording-MBID comparison, post-download. Entity discipline: only the
-// expected `recordingMbid` and the embedded `musicbrainz_recordingid` tag
-// enter this comparison; `musicbrainz_albumid` (release entity) is captured
-// as release evidence and never compared against a recording ID.
-function readIdentifierPair(request, actual) {
-  const expected = String(request.recordingMbid || "").trim() || null;
-  const candidate = String(actual.recordingMbid || "").trim() || null;
-  if (!expected || !candidate) return { present: false, conflict: false, match: false };
-  const match = expected.toLowerCase() === candidate.toLowerCase();
-  return { present: true, conflict: !match, match };
-}
-
 export async function validateDownloadedTrackFile({
   request,
   context,
@@ -173,12 +154,7 @@ export async function validateDownloadedTrackFile({
   }
 
   const actual = buildActualFileCandidate(parsed, filePath, source, candidate);
-  const expectedDurationMs = Number(trackRequest.durationMs || 0);
   const actualDurationMs = actual.durationMs;
-  const durationDiffMs =
-    expectedDurationMs > 0 && actualDurationMs != null
-      ? Math.abs(actualDurationMs - expectedDurationMs)
-      : null;
 
   const quality = validateParsedQuality(parsed, filePath, {
     upgradeForJobId: trackRequest.upgradeForJobId || null,
@@ -197,59 +173,38 @@ export async function validateDownloadedTrackFile({
     };
   }
 
-  // Semantic contradictions on the ORIGINAL tags. Junk ("Karaoke Version"
-  // burned into the tags) is auto-rejected; it is never review material.
-  const variantCheck = checkVariantCompatibility(trackRequest, {
+  // Validate semantic and identifier evidence on the ORIGINAL tags. Junk
+  // ("Karaoke Version" burned into the tags) is auto-rejected; it is never
+  // review material.
+  const identityCandidate = {
     ...actual,
     variants: {
       ...extractVariants([actual.title, actual.filename].filter(Boolean).join(" ")),
       ...(candidate?.variants && typeof candidate.variants === "object" ? candidate.variants : {}),
     },
+  };
+  const hardIdentity = evaluateTrackIdentity({
+    request: trackRequest,
+    candidate: identityCandidate,
+    source,
+    phase: "post",
+    strict,
   });
-  if (variantCheck.contradictions.length > 0) {
-    logger.debug("matcher", "post-download contradiction", {
+  if (hardIdentity.rejected) {
+    const reason = hardIdentity.reason === "contradiction"
+      ? `downloaded file contradicts the requested version: ${hardIdentity.contradictions.join(", ")}`
+      : hardIdentity.reason === "noise"
+        ? `downloaded file looks like noise: ${hardIdentity.noise.join(", ")}`
+        : hardIdentity.reasons?.[0] || hardIdentity.reason;
+    return {
+      decision: hardIdentity.decision,
+      valid: false,
+      blocked: false,
+      reason,
+      contradictions: hardIdentity.contradictions,
+      noise: hardIdentity.noise,
+      filePath,
       source,
-      contradictions: variantCheck.contradictions,
-    });
-    return {
-      decision: POST_DOWNLOAD_DECISIONS.CONFLICTED,
-      valid: false,
-      blocked: false,
-      reason: `downloaded file contradicts the requested version: ${variantCheck.contradictions.join(", ")}`,
-      contradictions: variantCheck.contradictions,
-      filePath,
-      actualDurationMs,
-      quality: quality.quality,
-      actual: { tags: actual, durationMs: actualDurationMs },
-      parsedTags: actual,
-    };
-  }
-
-  const noise = detectNoise([actual.title, actual.filename].filter(Boolean).join(" "));
-  if (noise.length > 0) {
-    return {
-      decision: POST_DOWNLOAD_DECISIONS.CONFLICTED,
-      valid: false,
-      blocked: false,
-      reason: `downloaded file looks like noise: ${noise.join(", ")}`,
-      noise,
-      filePath,
-      actualDurationMs,
-      quality: quality.quality,
-      actual: { tags: actual, durationMs: actualDurationMs },
-      parsedTags: actual,
-    };
-  }
-
-  const identifier = readIdentifierPair(trackRequest, actual);
-  if (identifier.conflict) {
-    return {
-      decision: POST_DOWNLOAD_DECISIONS.CONFLICTED,
-      valid: false,
-      blocked: false,
-      reason: "embedded recording MBID conflicts with the requested recording",
-      contradictions: ["recording-mbid-conflict"],
-      filePath,
       actualDurationMs,
       quality: quality.quality,
       actual: { tags: actual, durationMs: actualDurationMs },
@@ -258,8 +213,7 @@ export async function validateDownloadedTrackFile({
   }
 
   // One beets track_distance call with the actual-file candidate against the
-  // requested track. The expected recording MBID only competes when the file
-  // embeds one (identifier conflicts are decided above).
+  // requested track. Identifier conflicts were already decided above.
   const matcherOutcome = await runMatcherOperation(
     "track_distance",
     {
@@ -267,15 +221,15 @@ export async function validateDownloadedTrackFile({
       candidates: [
         {
           source,
-          title: actual.cleanedTitle || actual.title,
-          artist: actual.artists[0],
-          artists: actual.artists,
-          album: actual.album,
+          title: identityCandidate.cleanedTitle || identityCandidate.title,
+          artist: identityCandidate.artists[0],
+          artists: identityCandidate.artists,
+          album: identityCandidate.album,
           durationMs: actualDurationMs,
-          year: actual.year,
-          trackNumber: actual.trackNumber,
-          discNumber: actual.discNumber,
-          recordingMbid: identifier.present ? actual.recordingMbid : null,
+          year: identityCandidate.year,
+          trackNumber: identityCandidate.trackNumber,
+          discNumber: identityCandidate.discNumber,
+          recordingMbid: identityCandidate.recordingMbid,
         },
       ],
     },
@@ -305,99 +259,49 @@ export async function validateDownloadedTrackFile({
   }
 
   const match = matcherOutcome.result?.matches?.[0] || null;
-  const thresholds = matcherOutcome.result?.thresholds || {
-    strongRecThresh: 0.04,
-    mediumRecThresh: 0.25,
-    recGapThresh: 0.25,
-  };
-  const distance = match?.distance ?? null;
-  const recommendation = recommendationFromDistance(distance, thresholds);
-
-  const titleEvidence = parsedFileTitleEvidence(trackRequest, actual);
-  const durationOk =
-    durationDiffMs == null
-      ? true
-      : strict
-        ? isWithinBaseDurationTolerance(durationDiffMs, expectedDurationMs)
-        : isWithinBaseDurationTolerance(durationDiffMs, expectedDurationMs) ||
-          durationDiffMs <= Math.max(60000, expectedDurationMs * 0.45);
-
+  if (!match || match.skipped) {
+    return {
+      decision: POST_DOWNLOAD_DECISIONS.CONFLICTED,
+      valid: false,
+      blocked: false,
+      reason: match?.reason || "downloaded file has no usable title",
+      filePath,
+      source,
+      actualDurationMs,
+      quality: quality.quality,
+      actual: { tags: actual, durationMs: actualDurationMs },
+      parsedTags: actual,
+    };
+  }
+  const thresholds = matcherOutcome.result?.thresholds || DEFAULT_MATCH_THRESHOLDS;
+  const identity = evaluateTrackIdentity({
+    request: trackRequest,
+    candidate: identityCandidate,
+    source,
+    match,
+    thresholds,
+    strict,
+    phase: "post",
+  });
+  const decision = identity.decision;
+  const reason = identity.reason;
   const beetsEvidence = {
-    distance,
-    penalties: match?.penalties || {},
-    maxDistance: match?.maxDistance ?? null,
-    rawDistance: match?.rawDistance ?? null,
-    recommendation,
+    distance: identity.distance,
+    penalties: identity.penalties,
+    maxDistance: identity.maxDistance,
+    rawDistance: identity.rawDistance,
+    recommendation: identity.recommendation,
     thresholds,
   };
-  const aurralEvidence = {
-    duration: {
-      expectedMs: expectedDurationMs || null,
-      actualMs: actualDurationMs,
-      diffMs: durationDiffMs,
-      withinBaseTolerance: durationDiffMs == null ? true : isWithinBaseDurationTolerance(durationDiffMs, expectedDurationMs),
-    },
-    titleEvidence,
-    recordingMbid: identifier.present ? { match: identifier.match, mbid: actual.recordingMbid } : null,
-    album: actual.album ? scoreTextMatch(actual.album, trackRequest.albumName || "", { extended: true }) : null,
-    trackNumber: {
-      expected: trackRequest.trackNumber || null,
-      actual: actual.trackNumber,
-      mismatch:
-        Number.isFinite(Number(trackRequest.trackNumber)) &&
-        Number(trackRequest.trackNumber) > 0 &&
-        actual.trackNumber != null &&
-        actual.trackNumber !== Number(trackRequest.trackNumber),
-    },
-    tags: {
-      title: actual.title,
-      artists: actual.artists,
-      album: actual.album,
-      year: actual.year,
-    },
-  };
-
-  let decision;
-  let reason = null;
-  // Near-exact identity tags: the file claims to be the requested recording.
-  // beets omits zero penalties from its evidence, so absence means "matched".
-  const tagsMatchStrongly =
-    Number(beetsEvidence.penalties.track_title ?? 0) < 0.05 &&
-    Number(beetsEvidence.penalties.track_artist ?? 0) < 0.05;
-  const shapeAgrees = durationOk && !aurralEvidence.trackNumber.mismatch;
-  if (identifier.match) {
-    decision = durationOk ? POST_DOWNLOAD_DECISIONS.VERIFIED : POST_DOWNLOAD_DECISIONS.AMBIGUOUS;
-    reason = durationOk ? null : "recording MBID matches but the duration conflicts";
-  } else if (tagsMatchStrongly && shapeAgrees) {
-    decision = POST_DOWNLOAD_DECISIONS.VERIFIED;
-  } else if (tagsMatchStrongly) {
-    // Tags claim the right track but the audio shape disagrees — credible
-    // conflicting evidence, not junk.
-    decision = POST_DOWNLOAD_DECISIONS.AMBIGUOUS;
-    reason = !durationOk
-      ? `duration mismatch: expected ${expectedDurationMs}ms, actual ${actualDurationMs}ms`
-      : `track number mismatch: expected ${trackRequest.trackNumber}, actual ${actual.trackNumber}`;
-  } else if (recommendation === "medium" && shapeAgrees) {
-    decision = POST_DOWNLOAD_DECISIONS.AMBIGUOUS;
-    reason = `moderate identity match (distance ${distance})`;
-  } else {
-    decision = POST_DOWNLOAD_DECISIONS.CONFLICTED;
-    reason = `downloaded file does not match the requested track (distance ${distance})`;
-  }
-
-  if (decision === POST_DOWNLOAD_DECISIONS.VERIFIED && titleEvidence.bestSibling >= 95 && titleEvidence.bestSibling > titleEvidence.ownScore + 20) {
-    decision = POST_DOWNLOAD_DECISIONS.CONFLICTED;
-    reason = "embedded title names a sibling track from the requested release";
-  }
 
   const verified = decision === POST_DOWNLOAD_DECISIONS.VERIFIED;
   logger.debug("matcher", "post-download validation", {
     source,
     stage: "post-download",
     decision,
-    distance,
-    recommendation,
-    durationDiffMs,
+    distance: identity.distance,
+    recommendation: identity.recommendation,
+    durationDiffMs: identity.aurralEvidence.duration?.diffMs ?? null,
   });
 
   return {
@@ -406,13 +310,14 @@ export async function validateDownloadedTrackFile({
     // AMBIGUOUS is review-worthy; CONFLICTED is not (junk is auto-rejected).
     blocked: decision === POST_DOWNLOAD_DECISIONS.AMBIGUOUS,
     reason,
-    contradictions: variantCheck.contradictions,
+    contradictions: identity.contradictions,
+    noise: identity.noise,
     filePath,
     source,
-    distance,
-    recommendation,
+    distance: identity.distance,
+    recommendation: identity.recommendation,
     beets: beetsEvidence,
-    aurralEvidence,
+    aurralEvidence: identity.aurralEvidence,
     actualDurationMs,
     quality: quality.quality,
     strict,

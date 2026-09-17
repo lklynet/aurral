@@ -1,8 +1,65 @@
 // Canonical candidate-track model and provider result normalization.
 //
 // Different download sources expose very different evidence. The normalizer
-// keeps only what a source actually provides (see sourceCapabilities.js) and
+// keeps only what a source actually provides and
 // never fabricates values.
+
+export const SOURCE_CAPABILITIES = {
+  deemix: {
+    structuredArtist: true,
+    structuredAlbum: true,
+    structuredDuration: true,
+    providerTrackId: true,
+    filename: false,
+    directoryContext: false,
+    releaseContext: false,
+  },
+  ytdlp: {
+    structuredArtist: false,
+    structuredAlbum: false,
+    structuredDuration: true,
+    providerTrackId: true,
+    uploaderChannel: true,
+    filename: false,
+    directoryContext: false,
+    releaseContext: false,
+  },
+  soulseek: {
+    structuredArtist: false,
+    structuredAlbum: false,
+    structuredDuration: false,
+    providerTrackId: false,
+    filename: true,
+    directoryContext: true,
+    advertisedDuration: true,
+    releaseContext: false,
+  },
+  usenet: {
+    structuredArtist: false,
+    structuredAlbum: false,
+    structuredDuration: false,
+    providerTrackId: false,
+    filename: true,
+    filenameMayBeUnavailablePreDownload: true,
+    releaseContext: true,
+    directoryContext: true,
+  },
+};
+
+const DEFAULT_CAPABILITIES = Object.freeze({
+  structuredArtist: false,
+  structuredAlbum: false,
+  structuredDuration: false,
+  providerTrackId: false,
+  filename: false,
+  directoryContext: false,
+  releaseContext: false,
+});
+
+export function getCapabilities(source) {
+  const key = String(source || "").toLowerCase();
+  return SOURCE_CAPABILITIES[key] || { ...DEFAULT_CAPABILITIES };
+}
 
 function cleanText(value) {
   return String(value ?? "").trim() || null;
