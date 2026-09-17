@@ -154,6 +154,38 @@ verifies the Python interpreter, the pinned beets version, and the protocol
 version; results are cached in the health payload, not re-discovered per
 request.
 
+## Known gap: independent audio verification (Chromaprint/AcoustID)
+
+**Not implemented.** Today there is no audio fingerprinting anywhere in the
+pipeline: no `fpcalc`/Chromaprint binary in the image, no `pyacoustid`
+dependency, and no `fingerprint_file` matcher operation (the protocol
+reserves the name). Every accept decision rests on metadata plus provider
+identifiers.
+
+That means metadata-indistinguishable false positives can still pass:
+re-recordings, covers whose tags claim the original artist, uploads with
+forged tags, and descriptor-less edits. The full list is in the PR
+description; the system's answer today is retry/verify/review, never silent
+acceptance of *contradicted* evidence.
+
+Follow-up plan (deliberately small and opt-in, never fingerprint-by-default):
+
+1. Add an optional `fingerprint_file` operation to `aurral_matcher.py` that
+   shells out to `fpcalc` and returns a raw fingerprint. No AcoustID lookup
+   inside the matcher.
+2. Add `chromaprint-tools` (LGPL `fpcalc`) to the Dockerfile in its own
+   layer; keep the image functional when the binary is absent.
+3. Node side: an `escalateWithFingerprint()` helper in `trackMatching/` that
+   runs ONLY when a post-download result is `AMBIGUOUS` (or a pre-download
+   near-tie needs a tiebreak), queries the AcoustID API with the fingerprint,
+   and feeds the returned recording title/artist/MBID back through the same
+   semantic policy + distance comparison.
+4. Rate limiting via the existing `requests-ratelimiter` dependency AcoustID
+   requires an API key; ship without one set, treat missing key as
+   "escalation unavailable" and keep today's retry/review behavior.
+5. Regression fixtures: the metadata-indistinguishable re-recording case
+   flips from accept to reject when the fingerprint escalates.
+
 ## Performance
 
 Each search makes exactly ONE `rank_tracks` call for the whole candidate

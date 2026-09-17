@@ -61,7 +61,7 @@ const DURATION_BASE_TOLERANCE_MS = 25000;
 // results from ending a search early.
 const TITLE_PLAUSIBILITY_FLOOR = 40;
 
-function isWithinBaseDurationTolerance(durationDiffMs, expectedDurationMs) {
+export function isWithinBaseDurationTolerance(durationDiffMs, expectedDurationMs) {
   return (
     durationDiffMs <= DURATION_BASE_TOLERANCE_MS ||
     durationDiffMs <= Math.max(12000, expectedDurationMs * 0.18)
@@ -99,6 +99,26 @@ function checkTitlePlausibility(request, candidate) {
 export const MATCHER_UNAVAILABLE_MESSAGE =
   "Track matcher (bundled beets runtime) is unavailable. Verify the Aurral image installation; matching cannot fall back to a weaker algorithm.";
 
+// A semantic duplicate of the best candidate: same normalized core title,
+// same primary artist, same duration to the second. Only true duplicates
+// share a key — they neither create nor relieve runner-up ambiguity.
+function semanticIdentityKey(evaluation) {
+  const candidate = evaluation.candidate || {};
+  return [
+    getNormalizedText(
+      getCoreTitle(candidate.filenameTitle || candidate.cleanedTitle || candidate.title || ""),
+    ),
+    getNormalizedText(candidate.artists?.[0] || ""),
+    candidate.durationMs != null && Number.isFinite(Number(candidate.durationMs))
+      ? Math.round(Number(candidate.durationMs) / 1000)
+      : "unknown",
+  ].join("\0");
+}
+
+function round6(value) {
+  return Number.isFinite(value) ? Math.round(value * 1e6) / 1e6 : null;
+}
+
 export function recommendationFromDistance(distance, thresholds) {
   if (!Number.isFinite(distance)) return "none";
   if (distance < thresholds.strongRecThresh) return "strong";
@@ -120,6 +140,12 @@ function proposalRecommendation(sortedDistances, thresholds) {
   return "none";
 }
 
+// Recording-MBID comparison. Entity discipline: only `.recordingMbid` fields
+// are ever compared here, and every producer of `recordingMbid`/`trackMbid`
+// is a recording-entity source (MusicBrainz recording lookups, embedded
+// `musicbrainz_recordingid` tags). Release, release-group, and artist MBIDs
+// live in their own fields and never enter this comparison — a release-group
+// MBID in `albumMbid` must neither satisfy nor contradict a recording check.
 function checkRecordingMbid(request, candidate) {
   const expected = String(request.recordingMbid || "").trim() || null;
   const actual = String(candidate.recordingMbid || "").trim() || null;
@@ -570,19 +596,30 @@ export async function evaluateTrackCandidates({
   const scored = evaluations
     .filter((evaluation) => evaluation.pending !== true && Number.isFinite(evaluation.distance))
     .sort((left, right) => left.distance - right.distance);
-  const gap = matcherOutcome.result?.gap ?? null;
   const proposal = proposalRecommendation(
     scored.map((evaluation) => evaluation.distance),
     thresholds,
   );
 
-  // Best-vs-runner-up separation is mandatory for acceptance: a strong best
-  // candidate that barely beats a competitive runner-up is a near-tie, and
-  // near-ties download under strict validation instead of acceptance. An
-  // exact tie (gap 0) is a duplicated upload of the same recording — the
-  // absolute distance decides there, not the separation.
+  // Best-vs-runner-up separation is mandatory for acceptance. The runner-up
+  // that matters is the first one that is NOT a semantic duplicate of the
+  // best (same normalized title, artist, and duration): duplicated uploads of
+  // the same recording neither create ambiguity nor rescue it. An exact tie
+  // between distinct identities must therefore never bypass the check — only
+  // a true duplicate absence does.
   const best = scored[0] || null;
-  const runnerUp = scored[1] || null;
+  const bestKey = best ? semanticIdentityKey(best) : null;
+  let runnerUp = null;
+  for (let index = 1; index < scored.length; index += 1) {
+    if (semanticIdentityKey(scored[index]) === bestKey) {
+      scored[index].duplicateOfBest = true;
+      continue;
+    }
+    runnerUp = scored[index];
+    break;
+  }
+  const gap =
+    best && runnerUp ? round6(runnerUp.distance - best.distance) : null;
   const isNearTie =
     best &&
     runnerUp &&

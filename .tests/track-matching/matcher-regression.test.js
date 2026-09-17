@@ -238,3 +238,115 @@ test("canonical track request normalization is stable for the corpus", () => {
   assert.equal(request.recordingMbid, null);
   assert.equal(request.variants.live, false);
 });
+
+test("duplicate uploads do not create runner-up ambiguity; distinct competitors do", { skip: skipReason }, async () => {
+  const evaluation = await evaluateTrackCandidates({
+    source: "deemix",
+    context: GET_LUCKY,
+    candidates: [
+      { id: "copy-a", title: "Get Lucky", artist: "Daft Punk", durationSec: 248 },
+      { id: "copy-b", title: "Get Lucky", artist: "Daft Punk", durationSec: 248 },
+      { id: "copy-c", title: "Get Lucky", artist: "Daft Punk", durationSec: 248.2 },
+    ],
+  });
+  // Three identical uploads of the same recording: no distinct runner-up
+  // exists, so the accept stands and the gap is null.
+  assert.equal(evaluation.decision, "accept");
+  assert.equal(evaluation.gap, null);
+  assert.equal(evaluation.evaluations.filter((entry) => entry.duplicateOfBest).length, 2);
+
+  // A distinct competitor (different artist identity) reintroduces the
+  // separation requirement. A remaster of the same recording would NOT:
+  // the dedup key deliberately treats same-title/same-artist/same-duration
+  // remasters as the same acceptable recording.
+  const withCompetitor = await evaluateTrackCandidates({
+    source: "deemix",
+    context: GET_LUCKY,
+    candidates: [
+      { id: "copy-a", title: "Get Lucky", artist: "Daft Punk", durationSec: 248 },
+      { id: "copy-b", title: "Get Lucky", artist: "Daft Punk", durationSec: 248 },
+      { id: "near-artist", title: "Get Lucky (feat. Pharrell Williams)", artist: "Daft Punk feat. Pharrell Williams", durationSec: 248 },
+    ],
+  });
+  assert.ok(withCompetitor.gap != null, "gap is measured to the first distinct runner-up");
+  assert.equal(withCompetitor.gap > 0, true);
+});
+
+test("same-recording duplicates (deluxe/remaster cuts) keep a single accept and stay usable", { skip: skipReason }, async () => {
+  // Same title, artist, and duration but a different release: per the
+  // same-recording policy these are the same recording, so they share the
+  // semantic dedup key. They must not create runner-up ambiguity.
+  const evaluation = await evaluateTrackCandidates({
+    source: "deemix",
+    context: GET_LUCKY,
+    candidates: [
+      { id: "album-cut", title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories", durationSec: 248 },
+      { id: "deluxe-cut", title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories (10th Anniversary Edition)", durationSec: 248 },
+    ],
+  });
+  const usable = evaluation.evaluations.filter(
+    (entry) => entry.decision === "accept" || entry.decision === "verify",
+  );
+  // Duplicates of an accepted recording are equally acceptable — the point
+  // is that they neither create nor relieve runner-up ambiguity.
+  assert.equal(usable.length, 2);
+  assert.equal(usable.filter((entry) => entry.duplicateOfBest).length, 1);
+  assert.equal(evaluation.gap, null, "no distinct runner-up: no ambiguity to resolve");
+  assert.equal(evaluation.decision, "accept");
+});
+
+test("metadata-indistinguishable re-recording is accepted today (fingerprinting gap)", { skip: skipReason }, async () => {
+  // An artist re-records their own song years later. Title and duration are
+  // nearly identical and no descriptor marks the new version. Metadata
+  // alone cannot separate the performances: this pins today's behavior so
+  // the future fingerprint escalation changes it deliberately.
+  const evaluation = await evaluateTrackCandidates({
+    source: "deemix",
+    context: {
+      artistName: "Jonny Kestrel",
+      trackName: "Northern Line",
+      releaseYear: 2013,
+      durationMs: 215000,
+    },
+    candidates: [
+      // The 2019 re-recording, indistinguishable by metadata.
+      { id: "rerecording", title: "Northern Line", artist: "Jonny Kestrel", durationSec: 215.4 },
+    ],
+  });
+  assert.equal(evaluation.decision, "accept");
+  assert.equal(
+    (evaluation.evaluations[0].contradictions ?? []).length,
+    0,
+    "no metadata evidence exists to reject this candidate",
+  );
+});
+
+test("recording MBID comparisons never cross entity types", { skip: skipReason }, async () => {
+  // A release-group MBID in the expected album slot must neither satisfy nor
+  // contradict the recording check.
+  const request = { ...GET_LUCKY, albumMbid: "rg-abc", recordingMbid: null };
+  const candidateWithReleaseGroupAsRecording = {
+    id: "weird-provider",
+    title: "Get Lucky",
+    artist: "Daft Punk",
+    durationSec: 248,
+    recordingMbid: "rg-abc",
+  };
+  const evaluation = await evaluateTrackCandidates({
+    source: "deemix",
+    context: request,
+    candidates: [candidateWithReleaseGroupAsRecording],
+  });
+  // No expected recording MBID: no identifier comparison happens at all, so
+  // the candidate is judged on metadata alone.
+  assert.notEqual(evaluation.evaluations[0].reason, "recording-mbid-conflict");
+  assert.equal(evaluation.evaluations[0].aurralEvidence.recordingMbid, null);
+
+  // A conflicting recording MBID stays a hard contradiction.
+  const conflict = await evaluateTrackCandidates({
+    source: "deemix",
+    context: { ...GET_LUCKY, recordingMbid: "rec-real" },
+    candidates: [{ id: "c", title: "Get Lucky", artist: "Daft Punk", durationSec: 248, recordingMbid: "rec-other" }],
+  });
+  assert.equal(conflict.evaluations[0].reason, "recording-mbid-conflict");
+});

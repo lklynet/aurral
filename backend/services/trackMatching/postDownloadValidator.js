@@ -23,7 +23,12 @@ import { buildTrackRequest } from "./trackIdentity.js";
 import { getFileName, getFileBaseName, claimedTitle } from "./candidateNormalizer.js";
 import { checkVariantCompatibility, detectNoise, getCoreTitle, extractVariants } from "./semanticPolicy.js";
 import { runMatcherOperation } from "./beetsClient.js";
-import { toProtocolRequest, recommendationFromDistance, MATCHER_UNAVAILABLE_MESSAGE } from "./decisionEngine.js";
+import {
+  toProtocolRequest,
+  recommendationFromDistance,
+  isWithinBaseDurationTolerance,
+  MATCHER_UNAVAILABLE_MESSAGE,
+} from "./decisionEngine.js";
 import { getNormalizedText, scoreTextMatch } from "../providers/brainzmashRanking.js";
 import { validateParsedQuality } from "../qualityProfileService.js";
 import { logger } from "../logger.js";
@@ -34,15 +39,6 @@ export const POST_DOWNLOAD_DECISIONS = {
   AMBIGUOUS: "AMBIGUOUS",
   FAILED: "FAILED",
 };
-
-const DURATION_BASE_TOLERANCE_MS = 25000;
-
-function isDurationWithinBaseTolerance(durationDiffMs, expectedDurationMs) {
-  return (
-    durationDiffMs <= DURATION_BASE_TOLERANCE_MS ||
-    durationDiffMs <= Math.max(12000, expectedDurationMs * 0.18)
-  );
-}
 
 function readTagText(value) {
   return String(value || "").trim() || null;
@@ -138,6 +134,10 @@ function parsedFileTitleEvidence(request, actual) {
   return { ownScore, bestSibling };
 }
 
+// Recording-MBID comparison, post-download. Entity discipline: only the
+// expected `recordingMbid` and the embedded `musicbrainz_recordingid` tag
+// enter this comparison; `musicbrainz_albumid` (release entity) is captured
+// as release evidence and never compared against a recording ID.
 function readIdentifierPair(request, actual) {
   const expected = String(request.recordingMbid || "").trim() || null;
   const candidate = String(actual.recordingMbid || "").trim() || null;
@@ -318,8 +318,8 @@ export async function validateDownloadedTrackFile({
     durationDiffMs == null
       ? true
       : strict
-        ? isDurationWithinBaseTolerance(durationDiffMs, expectedDurationMs)
-        : isDurationWithinBaseTolerance(durationDiffMs, expectedDurationMs) ||
+        ? isWithinBaseDurationTolerance(durationDiffMs, expectedDurationMs)
+        : isWithinBaseDurationTolerance(durationDiffMs, expectedDurationMs) ||
           durationDiffMs <= Math.max(60000, expectedDurationMs * 0.45);
 
   const beetsEvidence = {
@@ -335,7 +335,7 @@ export async function validateDownloadedTrackFile({
       expectedMs: expectedDurationMs || null,
       actualMs: actualDurationMs,
       diffMs: durationDiffMs,
-      withinBaseTolerance: durationDiffMs == null ? true : isDurationWithinBaseTolerance(durationDiffMs, expectedDurationMs),
+      withinBaseTolerance: durationDiffMs == null ? true : isWithinBaseDurationTolerance(durationDiffMs, expectedDurationMs),
     },
     titleEvidence,
     recordingMbid: identifier.present ? { match: identifier.match, mbid: actual.recordingMbid } : null,

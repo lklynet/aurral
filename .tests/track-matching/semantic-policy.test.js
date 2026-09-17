@@ -83,3 +83,47 @@ test("detectNoise flags downloader junk", () => {
   assert.deepEqual(detectNoise("Get Lucky (Reaction)"), ["reaction"]);
   assert.deepEqual(detectNoise("Get Lucky official audio"), []);
 });
+
+test("clean/explicit hard-conflicts only when the requested rating is explicitly known", () => {
+  // Requested a clean version, offered explicit: hard contradiction.
+  const cleanRequest = { trackName: "Song (Clean Version)" };
+  const explicitCandidate = { title: "Song (Explicit)" };
+  const cleanCheck = checkVariantCompatibility(cleanRequest, explicitCandidate);
+  assert.equal(cleanCheck.compatible, false);
+  assert.ok(cleanCheck.contradictions.includes("content-rating-explicit"));
+
+  // Unqualified request: an explicit candidate is soft evidence, never a
+  // contradiction.
+  const plainRequest = { trackName: "Song" };
+  const softCheck = checkVariantCompatibility(plainRequest, explicitCandidate);
+  assert.equal(softCheck.compatible, true);
+
+  // Requested explicit, offered clean: also a hard contradiction.
+  const explicitRequest = { trackName: "Song (Explicit)" };
+  const cleanCandidate = { title: "Song (Clean Version)" };
+  const explicitCheck = checkVariantCompatibility(explicitRequest, cleanCandidate);
+  assert.equal(explicitCheck.compatible, false);
+  assert.ok(explicitCheck.contradictions.includes("content-rating-clean"));
+});
+
+test("re-recordings contradict; ordinary remasters do not", () => {
+  const plainRequest = { trackName: "Song" };
+  // A re-recording is a different performance of the work.
+  const rerecorded = checkVariantCompatibility(plainRequest, {
+    title: "Song (2020 Rerecorded Version)",
+  });
+  assert.equal(rerecorded.compatible, false);
+  assert.ok(rerecorded.contradictions.includes("cover"));
+
+  const rerecorded2 = checkVariantCompatibility(plainRequest, {
+    title: "Song (Re-Recorded)",
+  });
+  assert.equal(rerecorded2.compatible, false);
+
+  // A remaster of the same recording stays compatible.
+  const remaster = checkVariantCompatibility(plainRequest, {
+    title: "Song (2011 Remaster)",
+  });
+  assert.equal(remaster.compatible, true);
+  assert.equal(remaster.contradictions.length, 0);
+});
