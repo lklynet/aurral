@@ -119,7 +119,7 @@ export function getDownloadSourceNotConfiguredMessage() {
   if (!status.usenet.configured) pieces.push("Prowlarr + NZBGet or SABnzbd");
   if (!status.deemix.configured) pieces.push("deemix");
   if (!status.ytdlp.configured) pieces.push("yt-dlp");
-  return `No download source is configured. Configure ${pieces.join(" or ")} in Settings > Integrations to enable downloads for flows and playlists.`;
+  return `No download source is configured. Configure ${pieces.join(" or ")} in Settings > Download clients; configure Prowlarr under Settings > Indexers to enable downloads for flows and playlists.`;
 }
 
 export function getSourceLabel(sourceId) {
