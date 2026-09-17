@@ -11,6 +11,7 @@ import {
 } from "./weeklyFlow/weeklyFlowSoulseekSearch.js";
 import {
   buildSourceCandidates,
+  buildSoulseekCandidates,
   prefilterCandidates,
   toPipelineCandidate,
   usableEvaluationEntries,
@@ -81,12 +82,16 @@ export function buildSlskdSearchTierGroups(resolvedTrack) {
 
 export function hasSlskdSearchCandidates(aggregated, resolvedTrack, searchOptions) {
   // Node-only pre-filter: no matcher process is spawned during searches.
+  // Soulseek folder plausibility is source evidence, not a fuzzy identity
+  // score; use it here so an early exit cannot be triggered by unrelated
+  // same-format files while beets remains the only title/artist matcher.
+  const built = buildSoulseekCandidates(aggregated, resolvedTrack, searchOptions);
   const prefiltered = prefilterCandidates({
     request: resolvedTrack,
     source: "soulseek",
-    candidates: aggregated,
+    candidates: built.candidates,
   })
-    .filter((entry) => !entry.rejected)
+    .filter((entry, index) => !entry.rejected && built.providerEvidence[index]?.folder?.plausible)
     .map((entry) => entry.candidate);
   const eligible = orderAdvertisedQualityCandidates(prefiltered, {
     profile: searchOptions?.qualityProfile || getQualityProfile(),
