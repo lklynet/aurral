@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { buildTrackRequest } from "../../backend/services/trackMatching/trackIdentity.js";
 import {
   normalizeCandidate,
+  getCapabilities,
+  SOURCE_CAPABILITIES,
   parseFilenameArtistTitle,
   getFileBaseName,
 } from "../../backend/services/trackMatching/candidateNormalizer.js";
-import { getCapabilities, SOURCE_CAPABILITIES } from "../../backend/services/trackMatching/sourceCapabilities.js";
 
 test("buildTrackRequest keeps established Aurral field names", () => {
   const request = buildTrackRequest({

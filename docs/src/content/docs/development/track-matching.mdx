@@ -49,9 +49,8 @@ Key modules:
 | Module | Role |
 | --- | --- |
 | `backend/services/trackMatching/trackIdentity.js` | Canonical TrackRequest from the resolved track context |
-| `backend/services/trackMatching/candidateNormalizer.js` | Provider results to canonical CandidateTrack |
+| `backend/services/trackMatching/candidateNormalizer.js` | Provider results to canonical CandidateTrack and per-source evidence capabilities |
 | `backend/services/trackMatching/semanticPolicy.js` | Variant extraction, contradiction detection, noise rejection |
-| `backend/services/trackMatching/sourceCapabilities.js` | Per-source evidence capabilities |
 | `backend/services/trackMatching/beetsClient.js` | Node-to-Python JSON bridge with timeouts and structured errors |
 | `backend/services/trackMatching/decisionEngine.js` | Pre-download decisions (`accept`, `verify`, `reject`, `review`) |
 | `backend/matcher/aurral_matcher.py` | Python bridge to beets (pinned `beets==2.14.0`) |
@@ -78,7 +77,7 @@ Fuzzy title evidence never overrides them.
 
 ## Adding a new download source
 
-1. Add a capabilities entry in `sourceCapabilities.js` describing which
+1. Add a capabilities entry in `candidateNormalizer.js` describing which
    evidence the source actually provides.
 2. Map the source's raw results with `normalizeCandidate()` (or feed the
    canonical shape directly).

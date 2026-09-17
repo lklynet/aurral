@@ -12,19 +12,7 @@
 
 import { buildTrackRequest } from "./trackIdentity.js";
 import { prefilterCandidates, evaluateTrackCandidates } from "./decisionEngine.js";
-import { getCapabilities } from "./sourceCapabilities.js";
-import { normalizeCandidate } from "./candidateNormalizer.js";
 import { buildSoulseekCandidates } from "./providers/soulseekProvider.js";
-import { logger } from "../logger.js";
-
-function soulseekOptions(options = {}) {
-  return {
-    isUserBlacklisted:
-      typeof options.isUserBlacklisted === "function" ? options.isUserBlacklisted : () => false,
-    getUserQueuePenalty:
-      typeof options.getUserQueuePenalty === "function" ? options.getUserQueuePenalty : () => 0,
-  };
-}
 
 export async function buildSourceCandidates({
   source,
@@ -37,7 +25,7 @@ export async function buildSourceCandidates({
   const trackRequest = request || buildTrackRequest(context);
   const rawResults = results ?? candidates ?? [];
   if (source === "soulseek") {
-    const built = buildSoulseekCandidates(rawResults, trackRequest, soulseekOptions(options));
+    const built = buildSoulseekCandidates(rawResults, trackRequest, options);
     return evaluateTrackCandidates({
       request: trackRequest,
       source,
@@ -60,26 +48,8 @@ export async function buildSourceCandidates({
 export function hasUsableSearchCandidates({ source, results = [], request, context } = {}) {
   const trackRequest = request || buildTrackRequest(context);
   if (!trackRequest.trackName) return false;
-  const capabilities = getCapabilities(source);
-  const usable = results.some((entry) => {
-    const candidate = entry?.source
-      ? entry
-      : normalizeCandidate(source, entry, {
-          capabilities,
-          parseFilename: Boolean(capabilities.filename && !entry?.title),
-          knownArtistNames: [trackRequest.artistName, ...(trackRequest.artistAliases || [])].filter(
-            Boolean,
-          ),
-        });
-    if (!candidate) return false;
-    const prefiltered = prefilterCandidates({
-      request: trackRequest,
-      source,
-      candidates: [candidate],
-    })[0];
-    return prefiltered ? !prefiltered.rejected : false;
-  });
-  return usable;
+  return prefilterCandidates({ request: trackRequest, source, candidates: results })
+    .some((entry) => !entry.rejected);
 }
 
 // Payload shape the download orchestrators carry between phases.
@@ -109,18 +79,4 @@ export function usableEvaluationEntries(evaluation) {
   return (evaluation?.evaluations || []).filter((entry) =>
     ["accept", "verify", "review"].includes(entry.decision),
   );
-}
-
-export function logSearchOutcome(source, evaluation, details = {}) {
-  logger.debug("matcher", "search ranking complete", {
-    source,
-    stage: "pre-download",
-    decision: evaluation?.decision,
-    recommendation: evaluation?.recommendation,
-    candidateCount: evaluation?.candidates?.length ?? 0,
-    bestDistance: evaluation?.evaluations?.find((entry) => Number.isFinite(entry.distance))
-      ?.distance ?? null,
-    gap: evaluation?.gap ?? null,
-    ...details,
-  });
 }

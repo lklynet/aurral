@@ -10,10 +10,9 @@ import {
   normalizeCandidate,
   getFileBaseName,
   getFileExtension,
-  getFileName,
 } from "../candidateNormalizer.js";
-import { scoreTextMatch, getNormalizedText } from "../../providers/brainzmashRanking.js";
-import { groupFlowSearchResults, isLockedSearchResult } from "../../weeklyFlow/weeklyFlowSoulseekSearch.js";
+import { getNormalizedText } from "../../providers/brainzmashRanking.js";
+import { groupFlowSearchResults } from "../../weeklyFlow/weeklyFlowSoulseekSearch.js";
 
 const AUDIO_EXTENSIONS = new Set([
   ".flac",
@@ -65,39 +64,48 @@ function artistNames(request) {
     .filter(Boolean);
 }
 
-function scoreAgainstPath(text, target) {
-  const fullText = String(text || "");
-  let best = scoreTextMatch(fullText, target);
-  for (const segment of String(text || "").split(/[\\/]+/)) {
-    const score = scoreTextMatch(segment, target);
-    if (score >= 92) best = Math.max(best, score);
-  }
-  return best;
+function pathContainsLabel(text, target) {
+  const label = getNormalizedText(target);
+  if (!label) return false;
+  return String(text || "")
+    .split(/[\\/]+/)
+    .some((segment) => {
+      const normalized = getNormalizedText(segment);
+      return normalized === label || normalized.includes(label);
+    });
 }
 
 function bestArtistScore(request, text) {
   return artistNames(request).reduce(
-    (best, entry) => Math.max(best, scoreAgainstPath(text, entry)),
+    (best, entry) => Math.max(best, pathContainsLabel(text, entry) ? 100 : 0),
     0,
+  );
+}
+
+function comparableTrackTitle(fileName, request) {
+  const parsed = parseFilenameArtistTitle(fileName, request);
+  const title = parsed?.title || String(fileName || "");
+  return getNormalizedText(
+    title.replace(/\s*[[(]?(?:flac|mp3|m4a|aac|alac|wav|ogg|opus)[)\]]?\s*$/i, ""),
   );
 }
 
 function scoreTracklistMatch(audioFiles, request) {
   const titles = Array.isArray(request?.albumTrackTitles) ? request.albumTrackTitles : [];
   if (titles.length === 0) return { score: 0, matchedCount: 0, ratio: 0 };
-  const fileNames = (audioFiles || []).map((item) => getFileBaseName(String(item?.file || "")));
+  const fileNames = (audioFiles || []).map((item) =>
+    comparableTrackTitle(getFileBaseName(String(item?.file || "")), request),
+  );
   if (fileNames.length === 0) return { score: 0, matchedCount: 0, ratio: 0 };
   const usedFiles = new Set();
   let matchedCount = 0;
   for (const title of titles) {
-    let bestScore = 0;
     let bestIndex = -1;
     for (let index = 0; index < fileNames.length; index += 1) {
       if (usedFiles.has(index)) continue;
-      const matchScore = scoreTextMatch(fileNames[index], title);
-      if (matchScore >= 75 && matchScore > bestScore) {
-        bestScore = matchScore;
+      if (fileNames[index] === getNormalizedText(title)) {
         bestIndex = index;
+        break;
       }
     }
     if (bestIndex >= 0) {
@@ -149,7 +157,7 @@ function buildFolderEvidence(group, request, options = {}) {
   const directoryText = String(group.directoryPath || "");
   const albumName = readComparableAlbumName(request);
   const artistScore = bestArtistScore(request, directoryText);
-  const albumScore = albumName ? scoreAgainstPath(directoryText, albumName) : 0;
+  const albumScore = albumName && pathContainsLabel(directoryText, albumName) ? 100 : 0;
   const years = extractYears(directoryText);
   const expectedYear = request?.releaseYear ? String(request.releaseYear) : null;
   const audioFiles = group.audioFiles || [];
@@ -312,5 +320,3 @@ export function buildSoulseekCandidates(results, request, options = {}) {
     groups,
   };
 }
-
-export { getFileName, isLockedSearchResult };
