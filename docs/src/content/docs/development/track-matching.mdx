@@ -188,10 +188,10 @@ Follow-up plan (deliberately small and opt-in, never fingerprint-by-default):
 
 ## Performance
 
-Each search makes exactly ONE `rank_tracks` call for the whole candidate
+Each search makes exactly ONE `track_distance` call for the whole candidate
 pool; the search early-exit gates (`hasUsableSearchCandidates`,
 `hasSlskdSearchCandidates`) are Node-only and never spawn Python. Release
-post-download uses one `match_release` call (beets `assign_items`) plus
+post-download uses one `assign_items` call (beets `assign_items`) plus
 per-file validation only for the assigned file.
 
 ## Technical reference: first integration (phases 1-2)

@@ -3,7 +3,7 @@
 // Every download source routes its raw search results through here:
 //   raw results → provider adapter (evidence + canonical candidates)
 //     → semantic pre-filter (Node-only, no Python)
-//     → ONE beets rank_tracks call for the whole result set
+//     → ONE beets track_distance call for the whole result set
 //     → per-candidate decisions
 //
 // `hasUsableSearchCandidates` is the cheap Node-only early-exit used while

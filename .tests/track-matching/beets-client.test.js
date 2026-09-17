@@ -24,7 +24,7 @@ test("beets client speaks the JSON protocol through a stub matcher", { skip: has
 });
 
 test("beets client surfaces structured errors from the matcher", { skip: hasSystemPython ? false : "python3 unavailable" }, async () => {
-  const outcome = await runMatcherOperation("rank_tracks", {}, { pythonPath: "python3", scriptPath: stub("stub_fail.py") });
+  const outcome = await runMatcherOperation("track_distance", {}, { pythonPath: "python3", scriptPath: stub("stub_fail.py") });
   assert.equal(outcome.ok, false);
   assert.equal(outcome.error.code, "internal_error");
   assert.equal(outcome.error.message, "stub failure");

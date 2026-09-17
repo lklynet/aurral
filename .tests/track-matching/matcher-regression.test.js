@@ -29,7 +29,7 @@ test("health operation reports the pinned beets version", { skip: skipReason }, 
 });
 
 test("exact structured match is accepted with a wide runner-up gap", { skip: skipReason }, async () => {
-  const outcome = await runMatcherOperation("rank_tracks", {
+  const outcome = await runMatcherOperation("track_distance", {
     expected: { ...GET_LUCKY },
     candidates: [
       { source: "deemix", title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories", durationMs: 248000 },
@@ -46,7 +46,7 @@ test("exact structured match is accepted with a wide runner-up gap", { skip: ski
 });
 
 test("diacritics and punctuation fold into a strong match", { skip: skipReason }, async () => {
-  const outcome = await runMatcherOperation("rank_tracks", {
+  const outcome = await runMatcherOperation("track_distance", {
     expected: { artistName: "Sigur Rós", trackName: "Hoppípolla", durationMs: 275000 },
     candidates: [
       { source: "deemix", title: "Hoppipolla", artist: "Sigur Ros", durationMs: 275000 },
@@ -59,7 +59,7 @@ test("diacritics and punctuation fold into a strong match", { skip: skipReason }
 });
 
 test("remix and radio edit candidates rank below the original mix", { skip: skipReason }, async () => {
-  const outcome = await runMatcherOperation("rank_tracks", {
+  const outcome = await runMatcherOperation("track_distance", {
     expected: { ...GET_LUCKY },
     candidates: [
       { source: "deemix", title: "Get Lucky (Radio Edit)", artist: "Daft Punk", durationMs: 248000 },
@@ -74,7 +74,7 @@ test("remix and radio edit candidates rank below the original mix", { skip: skip
 });
 
 test("MBID conflicts only count when both sides carry identifiers", { skip: skipReason }, async () => {
-  const withMbid = await runMatcherOperation("rank_tracks", {
+  const withMbid = await runMatcherOperation("track_distance", {
     expected: { ...GET_LUCKY, recordingMbid: "rec-known" },
     candidates: [
       { source: "deemix", title: "Get Lucky", artist: "Daft Punk", durationMs: 248000 },
@@ -86,7 +86,7 @@ test("MBID conflicts only count when both sides carry identifiers", { skip: skip
     "a missing candidate MBID must not veto an otherwise exact match",
   );
 
-  const mismatched = await runMatcherOperation("rank_tracks", {
+  const mismatched = await runMatcherOperation("track_distance", {
     expected: { ...GET_LUCKY, recordingMbid: "rec-known" },
     candidates: [
       { source: "deemix", title: "Get Lucky", artist: "Daft Punk", durationMs: 248000, recordingMbid: "rec-other" },
@@ -97,13 +97,13 @@ test("MBID conflicts only count when both sides carry identifiers", { skip: skip
 });
 
 test("malformed requests produce structured errors", { skip: skipReason }, async () => {
-  const outcome = await runMatcherOperation("rank_tracks", { candidates: [] });
+  const outcome = await runMatcherOperation("track_distance", { candidates: [] });
   assert.equal(outcome.ok, false);
   assert.equal(outcome.error.code, "invalid_request");
 });
 
-test("match_release assigns scrambled files to the right release tracks", { skip: skipReason }, async () => {
-  const outcome = await runMatcherOperation("match_release", {
+test("assign_items assigns scrambled files to the right release tracks", { skip: skipReason }, async () => {
+  const outcome = await runMatcherOperation("assign_items", {
     files: [
       { title: "The Game of Love", artist: "Daft Punk", durationMs: 325000 },
       { title: "Give Life Back to Music", artist: "Daft Punk", durationMs: 271000 },

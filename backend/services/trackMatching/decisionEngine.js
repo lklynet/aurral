@@ -12,7 +12,7 @@
 // Pipeline:
 //   canonical request
 //     → Aurral pre-filter (contradictions, MBID conflicts, noise: no Python)
-//     → one beets rank_tracks call for all survivors
+//     → one beets track_distance call for all survivors
 //     → Aurral decision policy per candidate
 //
 // Decision states:
@@ -422,7 +422,7 @@ export async function evaluateTrackCandidates({
   });
 
   const matcherOutcome = await runMatcherOperation(
-    "rank_tracks",
+    "track_distance",
     {
       expected: toProtocolRequest(trackRequest),
       candidates: rankableCandidates.map(toProtocolCandidate),

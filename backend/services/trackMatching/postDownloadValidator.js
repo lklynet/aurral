@@ -257,11 +257,11 @@ export async function validateDownloadedTrackFile({
     };
   }
 
-  // One beets rank_tracks call with the actual-file candidate against the
+  // One beets track_distance call with the actual-file candidate against the
   // requested track. The expected recording MBID only competes when the file
   // embeds one (identifier conflicts are decided above).
   const matcherOutcome = await runMatcherOperation(
-    "rank_tracks",
+    "track_distance",
     {
       expected: toProtocolRequest(trackRequest),
       candidates: [
@@ -422,7 +422,7 @@ export async function validateDownloadedTrackFile({
 }
 
 // Selects the best matching audio file from a downloaded release folder.
-// Uses beets' assign_items (match_release) when the request carries a
+// Uses beets' assign_items when the request carries a
 // tracklist so the right file is picked even among same-looking names;
 // otherwise every file is validated individually and the strongest VERIFIED
 // result wins.
@@ -462,7 +462,7 @@ export async function selectVerifiedDownloadedFile({
     );
     if (targetIndex === -1) targetIndex = 0;
     const outcome = await runMatcherOperation(
-      "match_release",
+      "assign_items",
       {
         files: parsedFiles.map(({ parsed, filePath }) => ({
           title: readTagText(parsed?.common?.title) || getFileName(filePath),
