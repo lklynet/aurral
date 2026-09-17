@@ -372,12 +372,13 @@ export async function scanMusicRoot({
         markLibraryMediaFilesUnavailable(source, unseenPaths);
       }
       if (requestedFiles) {
-        const scopes = reconcilePaths || requestedFiles;
-        const missingIndexedPaths = [...getAvailableLibraryMediaPaths(source)].filter((filePath) =>
-          scopes.some((scope) => isPathWithin(scope, filePath)) &&
-          !seenPaths.has(filePath) &&
-          !failedPaths.has(filePath),
-        );
+        const missingIndexedPaths = collectMissingIndexedPaths({
+          indexedPaths: getAvailableLibraryMediaPaths(source),
+          scopes: reconcilePaths || requestedFiles,
+          scopesAreDirectories: Boolean(reconcilePaths),
+          seenPaths,
+          failedPaths,
+        });
         const unavailablePaths = [
           ...missingFilePaths,
           ...missingIndexedPaths,
@@ -462,6 +463,43 @@ export async function scanMusicRoots({ rootPaths = [], changedPaths = null, ...o
   }
 
   return result;
+}
+
+// Reconcile is what marks an indexed file unavailable when a scan covered its location
+// but never saw the file. Order matters here for more than style. A whole-library scan
+// passes every audio file as its own scope, so `scopes` and `indexedPaths` are both the
+// size of the library, and comparing each pair with path.relative() is quadratic: on a
+// 17k-file library that pinned one core for over eight minutes with the event loop
+// blocked, so every request Aurral received in that window timed out. The cheap Set
+// lookups settle almost every path on their own, because a scanned file is always in
+// seenPaths, so they run first and the containment check only ever sees the leftovers.
+// When the scopes are files rather than directories, containment is plain equality, so
+// resolve them once into a Set instead of calling path.relative() per pair.
+export function collectMissingIndexedPaths({
+  indexedPaths,
+  scopes,
+  scopesAreDirectories,
+  seenPaths,
+  failedPaths,
+}) {
+  const candidates = [...indexedPaths].filter(
+    (filePath) => !seenPaths.has(filePath) && !failedPaths.has(filePath),
+  );
+  if (candidates.length === 0) return [];
+
+  if (!scopesAreDirectories) {
+    const requested = new Set(scopes.map((scope) => path.resolve(scope)));
+    return candidates.filter((filePath) => requested.has(path.resolve(filePath)));
+  }
+
+  const roots = scopes.map((scope) => path.resolve(scope));
+  return candidates.filter((filePath) => {
+    const candidatePath = path.resolve(filePath);
+    return roots.some((root) => {
+      const relative = path.relative(root, candidatePath);
+      return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+    });
+  });
 }
 
 export { buildMetadataRecord, readPathFallback, AUDIO_EXTENSIONS };
