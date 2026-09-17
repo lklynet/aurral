@@ -14,16 +14,6 @@ else:
                 "protocol": 1,
                 "operation": request.get("operation"),
                 "beetsVersion": "stub-1.0.0",
-                "matches": [
-                    {
-                        "candidateIndex": 0,
-                        "distance": 0.0,
-                        "recommendation": "strong",
-                    }
-                ],
-                "bestCandidateIndex": 0,
-                "gap": 0.2,
-                "recommendation": "strong",
             }
         )
     )
