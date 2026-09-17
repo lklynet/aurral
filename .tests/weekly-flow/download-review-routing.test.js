@@ -18,7 +18,7 @@ import {
 const [
   isolatedState,
   { downloadTracker },
-  { processYtdlpPipelinePayload },
+  { processYtdlpPipelinePayload, isYtdlpLiveResult },
   { processUsenetPipelinePayload },
   { processDeemixPipelinePayload },
   { dbOps },
@@ -48,6 +48,14 @@ const matcherAvailable = await isBeetsMatcherAvailable();
 const btest = (name, fn) => test(name, { skip: matcherAvailable ? false : "beets not installed for any available Python interpreter" }, fn);
 const { playlistManager } = playlistManagerModule;
 const { weeklyFlowWorker } = weeklyFlowWorkerModule;
+
+test("yt-dlp keeps ordinary not-live results and excludes live statuses", () => {
+  assert.equal(isYtdlpLiveResult({ liveStatus: "not_live" }), false);
+  assert.equal(isYtdlpLiveResult({ liveStatus: "is_live" }), true);
+  assert.equal(isYtdlpLiveResult({ liveStatus: "was_live" }), true);
+  assert.equal(isYtdlpLiveResult({ liveStatus: "post_live" }), true);
+  assert.equal(isYtdlpLiveResult({ liveStatus: "is_upcoming" }), true);
+});
 
 test.beforeEach(() => {
   resetDatabase(db);

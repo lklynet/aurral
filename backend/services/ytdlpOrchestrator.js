@@ -30,6 +30,11 @@ import {
 } from "./pipelineHelpers.js";
 
 const ytdlpClient = getDownloadClient("ytdlp");
+const LIVE_STATUSES = new Set(["is_live", "was_live", "post_live", "is_upcoming"]);
+
+export function isYtdlpLiveResult(result) {
+  return LIVE_STATUSES.has(String(result?.liveStatus || "").trim().toLowerCase());
+}
 
 function hasEnoughCandidates(aggregated, resolvedTrack) {
   // Node-only pre-filter: no matcher process is spawned during searches.
@@ -82,7 +87,7 @@ async function handleYtdlpSearch(payload, helpers) {
 
   // Live streams are not recordings of the requested track.
   const downloadableResults = aggregated.filter(
-    (result) => !String(result?.liveStatus || "").toLowerCase().includes("live"),
+    (result) => !isYtdlpLiveResult(result),
   );
   const evaluation = await buildSourceCandidates({
     source: "ytdlp",
