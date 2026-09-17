@@ -3,11 +3,15 @@ import fs from "fs/promises";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger } from "./logger.js";
-import { validateDownloadedTrack } from "./weeklyFlow/weeklyFlowSoulseekMatcher.js";
 import {
-  buildYtdlpSearchQueries,
-  rankYtdlpResults,
-} from "./weeklyFlow/weeklyFlowYtdlpMatcher.js";
+  buildSourceCandidates,
+  hasUsableSearchCandidates,
+  toPipelineCandidate,
+  usableEvaluationEntries,
+  validateDownloadedTrackFile,
+  MATCHER_UNAVAILABLE_MESSAGE,
+} from "./trackMatching/index.js";
+import { buildYtdlpSearchQueries } from "./weeklyFlow/weeklyFlowYtdlpSearch.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
 import {
   buildResolvedPlaylistTrack as buildResolvedTrack,
@@ -28,7 +32,12 @@ import {
 const ytdlpClient = getDownloadClient("ytdlp");
 
 function hasEnoughCandidates(aggregated, resolvedTrack) {
-  return rankYtdlpResults(aggregated, resolvedTrack).some((entry) => entry.preDownloadValid);
+  // Node-only pre-filter: no matcher process is spawned during searches.
+  return hasUsableSearchCandidates({
+    source: "ytdlp",
+    results: aggregated,
+    request: resolvedTrack,
+  });
 }
 
 async function handleYtdlpSearch(payload, helpers) {
@@ -71,16 +80,29 @@ async function handleYtdlpSearch(payload, helpers) {
     }
   }
 
-  const ranked = rankYtdlpResults(aggregated, resolvedTrack);
+  // Live streams are not recordings of the requested track.
+  const downloadableResults = aggregated.filter(
+    (result) => !String(result?.liveStatus || "").toLowerCase().includes("live"),
+  );
+  const evaluation = await buildSourceCandidates({
+    source: "ytdlp",
+    results: downloadableResults,
+    request: resolvedTrack,
+  });
+  if (evaluation.decision === "error") {
+    return helpers.failOrTryNextSource(payload, job, MATCHER_UNAVAILABLE_MESSAGE, {
+      queryCount: queries.length,
+      rawResultCount: aggregated.length,
+    });
+  }
   const deniedIds = new Set(
     (Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [])
       .filter((entry) => Array.isArray(entry) && entry[0] === "ytdlp")
       .map((entry) => String(entry[1] || "").trim()),
   );
-  const candidates =
-    deniedIds.size > 0
-      ? ranked.filter((entry) => !deniedIds.has(String(entry?.raw?.id || "").trim()))
-      : ranked;
+  const candidates = usableEvaluationEntries(evaluation)
+    .filter((entry) => !deniedIds.has(String(entry.candidate?.provider?.id || "").trim()))
+    .map(toPipelineCandidate);
   if (candidates.length === 0) {
     const message =
       lastError && aggregated.length === 0
@@ -89,7 +111,7 @@ async function handleYtdlpSearch(payload, helpers) {
     return helpers.failOrTryNextSource(payload, job, message, {
       queryCount: queries.length,
       rawResultCount: aggregated.length,
-      rankedCount: ranked.length,
+      rankedCount: evaluation.evaluations.length,
     });
   }
   return {
@@ -171,25 +193,25 @@ async function handleYtdlpFinalize(payload, helpers) {
     return helpers.failOrTryNextSource(payload, job, "yt-dlp download missing output file");
   }
 
-  const validation = await validateDownloadedTrack(
+  const validation = await validateDownloadedTrackFile({
+    request: resolvedTrack,
+    candidate: candidate?.candidate || candidate,
     filePath,
-    {
-      ...candidate,
-      raw: {
-        ...(candidate?.raw || {}),
-        file: candidate?.raw?.title || filePath,
-      },
+    source: "ytdlp",
+    options: {
+      strict: candidate?.evaluation?.decision !== "accept",
     },
-    resolvedTrack,
-  );
+  });
   if (!validation.valid) {
-    const reviewable = validation.blocked || Boolean(validation.scores?.matchReason);
-    if (reviewable && blockPipelineJobForReview({
-      downloadTracker,
-      job,
-      validation: { ...validation, blocked: true },
-      sourcePath: filePath,
-    })) {
+    if (
+      validation.blocked &&
+      blockPipelineJobForReview({
+        downloadTracker,
+        job,
+        validation,
+        sourcePath: filePath,
+      })
+    ) {
       return null;
     }
     await fs.rm(filePath, { force: true }).catch(() => {});

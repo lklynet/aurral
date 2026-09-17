@@ -1,0 +1,168 @@
+---
+title: Track matching architecture
+description: How Aurral matches and validates music downloads with the bundled beets engine.
+---
+
+Aurral bundles the [beets](https://beets.io) autotagging engine internally as
+the generic music-identity layer for track matching. This page explains the
+integration boundary, the architecture, and how to extend it.
+
+## What beets does (and does not) do here
+
+beets ships inside the normal Aurral image. As a user you never install it,
+configure it, run a `beets` container, or use `beet import`. It is an internal
+implementation detail.
+
+beets is used only as a **matching engine**:
+
+- metadata distance/scoring between the requested track and candidates
+- duration comparison with configurable tolerance
+- recommendation strength (strong/medium/low/none) and best-vs-runner-up gap
+- multi-track assignment for release-level evidence
+- later: Chromaprint/AcoustID escalation
+
+Aurral remains responsible for everything else: provider searches, download
+orchestration, quality profiles, provider-specific behavior, filesystem
+placement, metadata writing, library management, user review, and
+retries/fallbacks.
+
+## Architecture
+
+```text
+Canonical TrackRequest
+        |
+ provider searches (unchanged)
+        |
+normalizeCandidate()  -> canonical CandidateTrack
+        |
+Aurral semantic policy  -- obvious contradictions reject before scoring
+        |
+beets matching engine (JSON over stdin/stdout to backend/matcher/aurral_matcher.py)
+        |
+ranked candidates + recommendation + gap
+        |
+accept / verify / reject / review decision
+```
+
+Key modules:
+
+| Module | Role |
+| --- | --- |
+| `backend/services/trackMatching/trackIdentity.js` | Canonical TrackRequest from the resolved track context |
+| `backend/services/trackMatching/candidateNormalizer.js` | Provider results to canonical CandidateTrack |
+| `backend/services/trackMatching/semanticPolicy.js` | Variant extraction, contradiction detection, noise rejection |
+| `backend/services/trackMatching/sourceCapabilities.js` | Per-source evidence capabilities |
+| `backend/services/trackMatching/beetsClient.js` | Node-to-Python JSON bridge with timeouts and structured errors |
+| `backend/services/trackMatching/decisionEngine.js` | Pre-download decisions (`accept`, `verify`, `reject`, `review`) |
+| `backend/matcher/aurral_matcher.py` | Python bridge to beets (pinned `beets==2.14.0`) |
+
+beets is pinned in `backend/matcher/requirements.txt` and installed into a
+build-time venv at `/opt/aurral-matcher` by the Dockerfile. The Node bridge
+resolves the interpreter in order: `AURRAL_MATCHER_PYTHON` env override,
+the bundled venv, then `python3` on `PATH`.
+
+The matcher never performs network lookups during candidate ranking, never
+reads a user beets config, and never touches a beets library database.
+Failures surface as structured errors and never crash download orchestration.
+
+## Decision states
+
+- `accept` — strong beets recommendation; safe to download
+- `verify` — moderate match; download only with strict post-download validation
+- `review` — weak evidence; hold for review after alternatives are exhausted
+- `reject` — semantic contradiction or unusable candidate
+
+Semantic contradictions (requested studio version vs offered karaoke, live,
+nightcore, slowed, remix, …) are hard rejections decided before beets scoring.
+Fuzzy title evidence never overrides them.
+
+## Adding a new download source
+
+1. Add a capabilities entry in `sourceCapabilities.js` describing which
+   evidence the source actually provides.
+2. Map the source's raw results with `normalizeCandidate()` (or feed the
+   canonical shape directly).
+3. Call `evaluateTrackCandidates({ source, context, candidates })` and act on
+   the returned decision states.
+
+## Matcher regression fixtures
+
+Tests live in `.tests/track-matching/`. The beets-backed tests skip
+automatically when beets is unavailable and run in CI against the pinned
+version. Every historical false positive should become a regression fixture:
+add the expected track, the candidate, and the expected decision to
+`matcher-regression.test.js`.
+
+## Migration history
+
+The unified system replaced four per-source matchers in a single cutover:
+
+- `weeklyFlowSoulseekMatcher.js` (filename/path parsing, release-folder
+  grouping, tracklist scoring, variant extraction, duration gates, quality
+  admission, post-download validation) — split into
+  `weeklyFlowSoulseekSearch.js` (queries, grouping, attempt selection),
+  `trackMatching/providers/soulseekProvider.js` (folder/artist evidence and
+  canonical candidates), the shared decision engine (identity), and
+  `trackMatching/postDownloadValidator.js` (post-download). Deleted.
+- `weeklyFlowDeemixMatcher.js` (structured title/artist/album/duration
+  scoring) — query construction moved to `weeklyFlowDeemixSearch.js` +
+  shared engine. Deleted.
+- `weeklyFlowYtdlpMatcher.js` (title/channel scoring, junk patterns) — query
+  construction and channel evidence moved to `weeklyFlowYtdlpSearch.js`,
+  junk/version detection moved to the shared semantic policy. Deleted.
+- `weeklyFlowUsenetMatcher.js` → renamed
+  `weeklyFlowUsenetReleaseSearch.js`: release-level pre-download scoring is
+  provider acquisition context; post-download identity uses the shared
+  validator and beets' `assign_items`.
+
+## Same-recording policy
+
+Aurral accepts the same underlying recording even when the release or master
+differs:
+
+| Requested | Offered | Verdict |
+| --- | --- | --- |
+| studio | remaster of the same recording | accept |
+| studio | compilation appearance of the same recording | accept |
+| studio | radio edit | reject (unless the edit was requested) |
+| studio | live / acoustic / karaoke / nightcore / cover / demo / instrumental | reject (unless requested) |
+| original | later re-recording | reject |
+
+Album and year are supporting evidence: a weak album match or a conflicting
+year downgrades an acceptance to `verify` (strict post-download validation)
+but never upgrades a weak match.
+
+## Candidate-gap handling
+
+A strong best candidate is only accepted when it is separated from the
+runner-up (gap >= 0.1 or the runner-up is not competitive, i.e. its distance
+is above 0.25). Near-ties download under strict post-download validation
+instead of acceptance; exact duplicates (gap 0) are the same recording and
+keep the accept.
+
+An exact recording-MBID match is decisive positive evidence. A known
+conflicting recording MBID is a hard contradiction; Aurral never fuzzy-matches
+across an identifier conflict. MBIDs are never compared across entity types.
+
+## Failure behavior
+
+beets is part of the Aurral image. If the matcher is unavailable there is no
+fallback to weaker matching: attempts fail with a clear diagnostic, jobs
+retry/fail through the normal source-fallback path, and the health endpoint
+reports the matcher runtime status (`matcher.available`). A startup self-test
+verifies the Python interpreter, the pinned beets version, and the protocol
+version; results are cached in the health payload, not re-discovered per
+request.
+
+## Performance
+
+Each search makes exactly ONE `rank_tracks` call for the whole candidate
+pool; the search early-exit gates (`hasUsableSearchCandidates`,
+`hasSlskdSearchCandidates`) are Node-only and never spawn Python. Release
+post-download uses one `match_release` call (beets `assign_items`) plus
+per-file validation only for the assigned file.
+
+## Technical reference: first integration (phases 1-2)
+
+These sections record the research the original foundation was built on; the
+architecture above supersedes the per-source matchers described here.

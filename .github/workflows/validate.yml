@@ -58,6 +58,13 @@ jobs:
 
       - run: npm ci
 
+      - name: Set up bundled beets matcher runtime
+        run: |
+          matcher_venv="${RUNNER_TEMP:-/tmp}/aurral-beets-venv"
+          python3 -m venv "$matcher_venv"
+          "$matcher_venv/bin/pip" install --no-compile -r backend/matcher/requirements.txt
+          echo "AURRAL_MATCHER_PYTHON=$matcher_venv/bin/python" >> "$GITHUB_ENV"
+
       - run: npm run lint
 
       - name: Run test suite

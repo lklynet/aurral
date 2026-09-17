@@ -35,6 +35,7 @@ import { noCache } from "../middleware/cache.js";
 import { requireAuth } from "../middleware/requirePermission.js";
 import { getImageProxyCacheSizeBytes } from "../services/imageProxyService.js";
 import { getDownloadSourceStatus } from "../services/downloadSourceService.js";
+import { getMatcherRuntimeStatus } from "../services/trackMatching/index.js";
 import {
   DISCOVERY_PROVIDER_LASTFM,
   DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK,
@@ -252,6 +253,7 @@ function buildBootstrapPayload(req) {
     dateTimeFormat: settings.dateTimeFormat,
     timestamp: new Date().toISOString(),
     appVersion: APP_VERSION,
+    matcher: getMatcherRuntimeStatus(),
   };
 
   if (currentUser) {

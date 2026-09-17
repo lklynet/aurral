@@ -10,6 +10,10 @@ import {
   createMockHttpServer,
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
+import {
+  isBeetsMatcherAvailable,
+  resetMatcherAvailability,
+} from "../../backend/services/trackMatching/index.js";
 
 const [
   isolatedState,
@@ -36,6 +40,12 @@ const [
 );
 
 const { blockPipelineJobForReview, finalizePipelineJobSuccess } = pipelineHelpersModule;
+
+// The unified download pipeline validates identity through the bundled beets
+// matcher; without it these end-to-end flows cannot run.
+resetMatcherAvailability();
+const matcherAvailable = await isBeetsMatcherAvailable();
+const btest = (name, fn) => test(name, { skip: matcherAvailable ? false : "beets not installed for any available Python interpreter" }, fn);
 const { playlistManager } = playlistManagerModule;
 const { weeklyFlowWorker } = weeklyFlowWorkerModule;
 
@@ -128,11 +138,11 @@ async function assertReviewable(jobId, filePath, source) {
   assert.equal(job.status, "blocked");
   assert.equal(job.downloadSource, source);
   assert.equal(job.stagingPath, filePath);
-  assert.match(job.error, /^blocked-duration-mismatch:/);
+  assert.match(job.error, /duration mismatch/);
   await access(filePath);
 }
 
-test("yt-dlp sends plausible duration mismatches to review", async () => {
+btest("yt-dlp sends plausible duration mismatches to review", async () => {
   const jobId = addDurationMismatchJob("ytdlp-review");
   const filePath = path.join(
     process.env.DOWNLOAD_FOLDER,
@@ -167,7 +177,7 @@ test("yt-dlp sends plausible duration mismatches to review", async () => {
   await assertReviewable(jobId, filePath, "ytdlp");
 });
 
-test("yt-dlp sends weak title matches to review", async () => {
+btest("yt-dlp auto-rejects weak title matches instead of reviewing them", async () => {
   const jobId = downloadTracker.addJob(
     {
       artistName: "Artist Name",
@@ -192,6 +202,7 @@ test("yt-dlp sends weak title matches to review", async () => {
     remoteFilename: "Artist Name - Wrong Track",
   });
 
+  const sourceFailures = [];
   const result = await processYtdlpPipelinePayload(
     {
       phase: "finalize",
@@ -207,18 +218,21 @@ test("yt-dlp sends weak title matches to review", async () => {
       },
       candidateIndex: 0,
     },
-    { failOrTryNextSource: failIfPipelineFallsThrough },
+    {
+      failOrTryNextSource: (payload, job, reason) => {
+        sourceFailures.push(reason);
+        return null;
+      },
+    },
   );
 
   assert.equal(result, null);
-  const job = downloadTracker.getJob(jobId);
-  assert.equal(job.status, "blocked");
-  assert.match(job.error, /^weak-title-match:/);
-  assert.equal(job.stagingPath, filePath);
-  await access(filePath);
+  await assert.rejects(() => access(filePath), undefined, "the wrong-track file must be removed");
+  assert.equal(sourceFailures.length, 1);
+  assert.match(sourceFailures[0], /does not match the requested track/);
 });
 
-test("yt-dlp sends other identity mismatches to review", async () => {
+btest("yt-dlp holds partially-matching identity for review", async () => {
   const jobId = downloadTracker.addJob(
     {
       artistName: "Artist Name",
@@ -258,12 +272,12 @@ test("yt-dlp sends other identity mismatches to review", async () => {
   assert.equal(result, null);
   const job = downloadTracker.getJob(jobId);
   assert.equal(job.status, "blocked");
-  assert.match(job.error, /^weak-artist-match:/);
+  assert.match(job.error, /moderate identity match|does not match/);
   assert.equal(job.stagingPath, filePath);
   await access(filePath);
 });
 
-test("Usenet sends its best plausible duration mismatch to review", async () => {
+btest("Usenet sends its best plausible duration mismatch to review", async () => {
   const server = await createMockHttpServer((req, res) => {
     req.resume();
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -358,7 +372,7 @@ test("upgrade duration mismatches remain available for review", async () => {
   await access(candidatePath);
 });
 
-test("deemix drops its queue entry before a track goes to review", async () => {
+btest("deemix drops its queue entry before a track goes to review", async () => {
   const removed = [];
   const filePath = path.join(
     process.env.DOWNLOAD_FOLDER,
@@ -429,7 +443,7 @@ test("deemix drops its queue entry before a track goes to review", async () => {
   }
 });
 
-test("deemix reuses an existing final path instead of creating a duplicate", async () => {
+btest("deemix reuses an existing final path instead of creating a duplicate", async () => {
   const sourcePath = path.join(
     process.env.DOWNLOAD_FOLDER,
     "deemix-duplicate-source",

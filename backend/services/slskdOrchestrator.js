@@ -7,10 +7,16 @@ import { enqueuePipelineJob } from "./honkerDb.js";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 import {
   buildFlowSearchTiers,
-  rankFlowSearchResults,
   selectRankedMatchAttempts,
-  validateDownloadedTrack,
-} from "./weeklyFlow/weeklyFlowSoulseekMatcher.js";
+} from "./weeklyFlow/weeklyFlowSoulseekSearch.js";
+import {
+  buildSourceCandidates,
+  prefilterCandidates,
+  toPipelineCandidate,
+  usableEvaluationEntries,
+  validateDownloadedTrackFile,
+  MATCHER_UNAVAILABLE_MESSAGE,
+} from "./trackMatching/index.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
 import {
@@ -43,7 +49,11 @@ import {
 } from "./pipelineHelpers.js";
 
 import { getQualityProfile } from "./qualityProfileService.js";
-import { getQualityTier, orderAdvertisedQualityCandidates } from "./qualityProfileModel.js";
+import {
+  getAdvertisedQualityRank,
+  getQualityTier,
+  orderAdvertisedQualityCandidates,
+} from "./qualityProfileModel.js";
 
 const slskdClient = getDownloadClient("slskd");
 
@@ -70,9 +80,15 @@ export function buildSlskdSearchTierGroups(resolvedTrack) {
 }
 
 export function hasSlskdSearchCandidates(aggregated, resolvedTrack, searchOptions) {
-  const ranked = rankFlowSearchResults(aggregated, resolvedTrack, searchOptions)
-    .filter((entry) => entry.preDownloadValid);
-  const eligible = orderAdvertisedQualityCandidates(ranked, {
+  // Node-only pre-filter: no matcher process is spawned during searches.
+  const prefiltered = prefilterCandidates({
+    request: resolvedTrack,
+    source: "soulseek",
+    candidates: aggregated,
+  })
+    .filter((entry) => !entry.rejected)
+    .map((entry) => entry.candidate);
+  const eligible = orderAdvertisedQualityCandidates(prefiltered, {
     profile: searchOptions?.qualityProfile || getQualityProfile(),
     currentTier: searchOptions?.currentTier || null,
     upgrade: searchOptions?.upgrade === true,
@@ -769,15 +785,53 @@ async function handleSearch(payload) {
     updateSlskdMetaStmt.run(searchIdRef.value, null, null, null, job.id);
     job.slskdSearchId = searchIdRef.value;
   }
-  const ranked = rankFlowSearchResults(aggregated, resolvedTrack, searchOptions);
-  const orderForQuality = (entries) => orderAdvertisedQualityCandidates(entries, {
+  const rankingOptions = { ...searchOptions };
+  const historyOptions = buildSlskdRankingHistoryOptions();
+  const evaluation = await buildSourceCandidates({
+    source: "soulseek",
+    results: aggregated,
+    request: resolvedTrack,
+    options: {
+      ...rankingOptions,
+      isUserBlacklisted: historyOptions.isUserBlacklisted,
+      getUserQueuePenalty: historyOptions.getUserQueuePenalty,
+    },
+  });
+  if (evaluation.decision === "error") {
+    logger.error("slskd", "Unified matcher unavailable during slskd ranking", {
+      jobId: job.id,
+      code: evaluation.error?.code,
+    });
+    return failOrTryNextSource(payload, job, MATCHER_UNAVAILABLE_MESSAGE, {
+      queryCount: queries.length,
+      rawResultCount: aggregated.length,
+    });
+  }
+  // Identity first (evaluation order), then quality profile preference, then
+  // per-user queue history as a tie-break within the same quality tier.
+  const qualityOrdered = orderAdvertisedQualityCandidates(usableEvaluationEntries(evaluation), {
     profile: getQualityProfile(),
     currentTier,
     upgrade: payload.upgrade === true,
-    readName: (entry) => entry?.raw?.file,
-    readBitrate: (entry) => entry?.raw?.bitrate ?? entry?.raw?.bitRate,
+    readName: (entry) => entry.candidate?.raw?.file,
+    readBitrate: (entry) => entry.candidate?.raw?.bitrate ?? entry.candidate?.raw?.bitRate,
   });
-  const eligible = orderForQuality(ranked.filter((entry) => entry.preDownloadValid));
+  const profile = getQualityProfile();
+  const ordered = qualityOrdered
+    .map((entry) => ({
+      entry,
+      tierRank: getAdvertisedQualityRank(
+        entry.candidate?.raw?.file,
+        entry.candidate?.raw?.bitrate ?? entry.candidate?.raw?.bitRate,
+        profile,
+      ),
+      queuePenalty: Number(historyOptions.getUserQueuePenalty?.(entry.candidate?.raw?.user) || 0),
+    }))
+    .sort(
+      (left, right) =>
+        left.tierRank - right.tierRank || left.queuePenalty - right.queuePenalty,
+    )
+    .map(({ entry }) => entry);
   const deniedSources = Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [];
   const deniedSourceKeys = new Set(
     deniedSources
@@ -785,19 +839,14 @@ async function handleSearch(payload) {
       .map((entry) => String(entry[1] || "").trim().toLowerCase()),
   );
   const filteredPool = deniedSourceKeys.size > 0
-    ? eligible.filter((entry) => {
-        const user = String(entry?.raw?.user || "").trim().toLowerCase();
-        const file = String(entry?.raw?.file || "").trim().toLowerCase();
+    ? ordered.filter((entry) => {
+        const user = String(entry.candidate?.raw?.user || "").trim().toLowerCase();
+        const file = String(entry.candidate?.raw?.file || "").trim().toLowerCase();
         return !deniedSourceKeys.has(`${user}\0${file}`);
       })
-    : eligible;
+    : ordered;
   const candidates = selectRankedMatchAttempts(filteredPool, MAX_DOWNLOAD_CANDIDATES).map(
-    (entry) => ({
-      raw: entry.raw,
-      score: entry.score,
-      resolvedAlbumName: entry.resolvedAlbumName,
-      preDownloadValid: entry.preDownloadValid === true,
-    }),
+    toPipelineCandidate,
   );
   if (candidates.length === 0) {
     logger.warn("slskd", "No slskd download candidates after search", {
@@ -806,8 +855,8 @@ async function handleSearch(payload) {
       trackName: job.trackName,
       queryCount: queries.length,
       rawResultCount: aggregated.length,
-      rankedCount: ranked.length,
-      eligibleCount: eligible.length,
+      rankedCount: evaluation.evaluations.length,
+      eligibleCount: ordered.length,
     });
     if (searchIds.length > 0) {
       await slskdClient
@@ -816,8 +865,8 @@ async function handleSearch(payload) {
     return failOrTryNextSource(payload, job, "No suitable slskd search results", {
       queryCount: queries.length,
       rawResultCount: aggregated.length,
-      rankedCount: ranked.length,
-      eligibleCount: eligible.length,
+      rankedCount: evaluation.evaluations.length,
+      eligibleCount: ordered.length,
     });
   }
   return {
@@ -1032,18 +1081,22 @@ async function handleFinalize(payload) {
     ...buildResolvedTrack(job, payload.track),
     upgradeForJobId: payload.upgradeForJobId || null,
   };
-  const validation = await validateDownloadedTrack(
-    sourcePath,
-    candidate,
-    resolvedTrack,
-  );
+  const validation = await validateDownloadedTrackFile({
+    request: resolvedTrack,
+    candidate: candidate?.candidate || candidate,
+    filePath: sourcePath,
+    source: "soulseek",
+    options: {
+      strict: candidate?.evaluation?.decision !== "accept",
+    },
+  });
   if (!validation.valid) {
     logger.warn("slskd", "slskd download validation failed", {
       jobId: job.id,
       artistName: job.artistName,
       trackName: job.trackName,
       candidateIndex,
-      preDownloadValid: candidate?.preDownloadValid === true,
+      decision: candidate?.evaluation?.decision || null,
       expectedDurationMs: buildResolvedTrack(job, payload.track).durationMs,
       actualDurationMs: validation.actualDurationMs ?? null,
       reason: validation.reason,
