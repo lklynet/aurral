@@ -25,7 +25,7 @@ jobs:
 
       - name: Ensure validation runtime dependencies
         run: |
-          if command -v fc-match >/dev/null 2>&1 && command -v ffmpeg >/dev/null 2>&1 && [ "$(fc-match -f '%{family}' 'Noto Color Emoji')" = "Noto Color Emoji" ] && python3 -c 'import ensurepip' >/dev/null 2>&1; then
+          if command -v fc-match >/dev/null 2>&1 && command -v ffmpeg >/dev/null 2>&1 && [ "$(fc-match -f '%{family}' 'Noto Color Emoji')" = "Noto Color Emoji" ]; then
             exit 0
           fi
 
@@ -34,13 +34,11 @@ jobs:
             if command -v sudo >/dev/null 2>&1; then
               apt_prefix=(sudo)
             else
-              echo "ffmpeg, fontconfig, and Python venv support are required for validation."
-              echo "Install ffmpeg, fontconfig, fonts-dejavu-core, fonts-noto-color-emoji, and the matching python3.x-venv package on the runner."
+              echo "ffmpeg and fontconfig are required for validation."
+              echo "Install ffmpeg, fontconfig, fonts-dejavu-core, and fonts-noto-color-emoji on the runner."
               exit 1
             fi
           fi
-
-          python_venv_package="$(python3 -c 'import sys; print(f"python{sys.version_info.major}.{sys.version_info.minor}-venv")')"
 
           chrome_sources=()
           restore_chrome_sources() {
@@ -56,16 +54,36 @@ jobs:
           done < <(grep -ril 'dl.google.com/linux/chrome' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null || true)
 
           "${apt_prefix[@]}" apt-get update
-          "${apt_prefix[@]}" apt-get install -y ffmpeg fontconfig fonts-dejavu-core fonts-noto-color-emoji "$python_venv_package"
+          "${apt_prefix[@]}" apt-get install -y ffmpeg fontconfig fonts-dejavu-core fonts-noto-color-emoji
 
       - run: npm ci
 
       - name: Set up bundled beets matcher runtime
         run: |
-          matcher_venv="${RUNNER_TEMP:-/tmp}/aurral-beets-venv"
-          python3 -m venv "$matcher_venv"
-          "$matcher_venv/bin/pip" install --no-compile -r backend/matcher/requirements.txt
-          echo "AURRAL_MATCHER_PYTHON=$matcher_venv/bin/python" >> "$GITHUB_ENV"
+          matcher_root="${RUNNER_TEMP:-/tmp}/aurral-beets"
+          matcher_venv="$matcher_root-venv"
+          if python3 -m venv "$matcher_venv" >/dev/null 2>&1; then
+            "$matcher_venv/bin/pip" install --no-compile -r backend/matcher/requirements.txt
+            echo "AURRAL_MATCHER_PYTHON=$matcher_venv/bin/python" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          echo "Python venv support is unavailable; using an isolated pip target instead."
+          rm -rf "$matcher_venv"
+          matcher_pythonpath="$matcher_root-pythonpath"
+          rm -rf "$matcher_pythonpath"
+          pip_command=(python3 -m pip)
+          if ! "${pip_command[@]}" --version >/dev/null 2>&1; then
+            if command -v pip3 >/dev/null 2>&1; then
+              pip_command=(pip3)
+            else
+              echo "Python venv support and pip are required for the bundled beets matcher."
+              exit 1
+            fi
+          fi
+          "${pip_command[@]}" install --no-compile --target "$matcher_pythonpath" -r backend/matcher/requirements.txt
+          echo "AURRAL_MATCHER_PYTHON=python3" >> "$GITHUB_ENV"
+          echo "PYTHONPATH=$matcher_pythonpath${PYTHONPATH:+:$PYTHONPATH}" >> "$GITHUB_ENV"
 
       - run: npm run lint
 
