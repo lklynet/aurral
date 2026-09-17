@@ -406,6 +406,7 @@ export async function selectVerifiedDownloadedFile({
   }
 
   let best = null;
+  let strongestRejected = null;
   for (const { filePath } of parsedFiles) {
     const validation = await validateDownloadedTrackFile({
       request: trackRequest,
@@ -420,6 +421,13 @@ export async function selectVerifiedDownloadedFile({
       validation.decision !== POST_DOWNLOAD_DECISIONS.VERIFIED &&
       validation.decision !== POST_DOWNLOAD_DECISIONS.AMBIGUOUS
     ) {
+      const hasError = Boolean(validation.error);
+      const hasStrongerEvidence =
+        !strongestRejected ||
+        (hasError && !strongestRejected.error) ||
+        (hasError === Boolean(strongestRejected.error) &&
+          (validation.distance ?? Infinity) < (strongestRejected.distance ?? Infinity));
+      if (hasStrongerEvidence) strongestRejected = validation;
       continue;
     }
     const rank = validation.decision === POST_DOWNLOAD_DECISIONS.VERIFIED ? 0 : 1;
@@ -429,6 +437,6 @@ export async function selectVerifiedDownloadedFile({
       (rank === best.rank && (validation.distance ?? Infinity) < (best.validation.distance ?? Infinity));
     if (better) best = { filePath, validation, rank };
   }
-  if (!best) return { filePath: null, validation: null };
+  if (!best) return { filePath: null, validation: strongestRejected };
   return { filePath: best.filePath, validation: best.validation };
 }

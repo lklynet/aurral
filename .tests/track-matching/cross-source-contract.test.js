@@ -21,7 +21,11 @@ const beetsAvailable = await (async () => {
   return isBeetsMatcherAvailable();
 })();
 const skip = beetsAvailable ? false : "beets not installed for any available Python interpreter";
-const btest = (name, fn) => test(name, { skip }, fn);
+const btest = (name, optionsOrFn, maybeFn) => {
+  const options = typeof optionsOrFn === "function" ? {} : optionsOrFn || {};
+  const fn = typeof optionsOrFn === "function" ? optionsOrFn : maybeFn;
+  return test(name, { ...options, skip: options.skip || skip }, fn);
+};
 
 const TRUTH = {
   artistName: "Daft Punk",

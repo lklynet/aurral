@@ -10,10 +10,9 @@ import {
 import { evaluateTrackIdentity } from "../../backend/services/trackMatching/identityPolicy.js";
 
 test("extractVariants detects variant descriptors without inventing them", () => {
-  assert.deepEqual(
-    extractVariants("Get Lucky").live && extractVariants("Get Lucky").karaoke,
-    false,
-  );
+  const plain = extractVariants("Get Lucky");
+  assert.equal(plain.live, false);
+  assert.equal(plain.karaoke, false);
   const live = extractVariants("Get Lucky (Live at Wembley)");
   assert.equal(live.live, true);
   const slowed = extractVariants("Get Lucky - Slowed + Reverb");
@@ -23,6 +22,8 @@ test("extractVariants detects variant descriptors without inventing them", () =>
   assert.equal(remix.mixVariant, "remix");
   const radio = extractVariants("Get Lucky (Radio Edit)");
   assert.equal(radio.mixVariant, "radio_edit");
+  assert.equal(extractVariants("Get Lucky (Original Mix)").mixVariant, null);
+  assert.equal(extractVariants("Get Lucky (Album Mix)").mixVariant, null);
   const karaoke = extractVariants("Get Lucky Karaoke Version");
   assert.equal(karaoke.karaoke, true);
 });

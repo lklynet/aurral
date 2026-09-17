@@ -77,6 +77,7 @@ export async function runMatcherOperation(operation, payload = {}, options = {})
   let settled = false;
   let stdoutText = "";
   let stderrText = "";
+  let deadlineTimer = null;
 
   const timer = setTimeout(() => {
     if (settled || child.exitCode !== null || child.signalCode !== null) return;
@@ -105,7 +106,11 @@ export async function runMatcherOperation(operation, payload = {}, options = {})
         return { exit: await waitForExit(child), deadlineExceeded: false };
       })(),
       new Promise((resolve) => {
-        setTimeout(() => resolve({ exit: null, deadlineExceeded: true }), deadline);
+        deadlineTimer = setTimeout(
+          () => resolve({ exit: null, deadlineExceeded: true }),
+          deadline,
+        );
+        deadlineTimer.unref?.();
       }),
     ]);
     settled = true;
@@ -172,6 +177,7 @@ export async function runMatcherOperation(operation, payload = {}, options = {})
     return { ok: false, error: normalizeMatcherFailure("matcher_error", String(error?.message || error), stderrText) };
   } finally {
     clearTimeout(timer);
+    clearTimeout(deadlineTimer);
   }
 }
 

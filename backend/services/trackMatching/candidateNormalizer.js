@@ -121,12 +121,13 @@ export function claimedTitle(title) {
   return segments[segments.length - 1];
 }
 
-function readArtists(raw) {
+function readArtists(raw, capabilities) {
+  if (capabilities?.structuredArtist !== true) return [];
   if (Array.isArray(raw.artists)) {
     const names = raw.artists.map((entry) => cleanText(entry)).filter(Boolean);
     if (names.length > 0) return names;
   }
-  const artist = cleanText(raw.artistName || raw.artist || raw.channel || raw.uploader);
+  const artist = cleanText(raw.artistName || raw.artist);
   return artist ? [artist] : [];
 }
 
@@ -145,7 +146,7 @@ function readQuality(raw, capabilities) {
 }
 
 export function normalizeCandidate(source, raw = {}, options = {}) {
-  const capabilities = options.capabilities || null;
+  const capabilities = options.capabilities || getCapabilities(source);
   const filePath = cleanText(raw.file || raw.path || raw.filename);
   const fileName = filePath ? getFileName(filePath) : null;
   const baseName = fileName ? getFileBaseName(fileName) : null;
@@ -163,7 +164,7 @@ export function normalizeCandidate(source, raw = {}, options = {}) {
     ? parseFilenameArtistTitle(baseName, options.knownArtistNames || [])
     : { artist: null, title: null };
 
-  const artists = readArtists(raw);
+  const artists = readArtists(raw, capabilities);
   if (filenameArtist && !artists.some((name) => name.toLowerCase() === filenameArtist.toLowerCase())) {
     artists.push(filenameArtist);
   }
@@ -187,7 +188,7 @@ export function normalizeCandidate(source, raw = {}, options = {}) {
     quality: readQuality(raw, capabilities),
     provider: {
       id: cleanText(raw.id || raw.guid),
-      uploader: cleanText(raw.user || raw.uploader || raw.uploaderId),
+      uploader: cleanText(raw.user || raw.channel || raw.uploader || raw.uploaderId),
       speed: positiveNumber(raw.speed),
       url: cleanText(raw.url || raw.downloadUrl),
       slots: raw.slots === true,

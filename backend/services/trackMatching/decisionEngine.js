@@ -214,6 +214,28 @@ export async function evaluateTrackCandidates({
     rankableIndexes.push(index);
   });
 
+  if (rankableCandidates.length === 0) {
+    const orderedEvaluations = evaluations.sort(compareEvaluations);
+    const summary = {
+      decision: "reject",
+      recommendation: "none",
+      gap: null,
+      thresholds: DEFAULT_MATCH_THRESHOLDS,
+      bestCandidateIndex: null,
+      runnerUpCandidateIndex: null,
+    };
+    return {
+      decision: summary.decision,
+      recommendation: summary.recommendation,
+      gap: summary.gap,
+      thresholds: summary.thresholds,
+      request: trackRequest,
+      candidates: normalized,
+      evaluations: orderedEvaluations,
+      summary,
+    };
+  }
+
   const matcherOutcome = await runMatcherOperation(
     "track_distance",
     {
@@ -390,11 +412,19 @@ export function toProtocolRequest(request) {
 
 function toProtocolCandidate(candidate) {
   const scoringTitle = candidate.filenameTitle || candidate.cleanedTitle || candidate.title;
+  // yt-dlp's channel is source evidence, not a structured artist tag. Keep it
+  // out of the canonical candidate identity while still letting beets score
+  // the provider's artist claim with the rest of the generic evidence.
+  const matcherArtists = candidate.artists?.length
+    ? candidate.artists
+    : candidate.source === "ytdlp" && candidate.provider?.uploader
+      ? [candidate.provider.uploader]
+      : undefined;
   return {
     source: candidate.source || null,
     title: getCoreTitle(scoringTitle),
-    artists: candidate.artists?.length ? candidate.artists : undefined,
-    artist: candidate.artists?.[0],
+    artists: matcherArtists,
+    artist: matcherArtists?.[0],
     album: candidate.album || undefined,
     durationMs: candidate.durationMs || undefined,
     year: candidate.year || undefined,

@@ -232,6 +232,22 @@ test("unified matcher failure surfaces a clean error decision", async () => {
   resetMatcherAvailability();
 });
 
+test("candidates rejected by semantic policy do not invoke the matcher", async () => {
+  const evaluation = await evaluateTrackCandidates({
+    source: "deemix",
+    context: GET_LUCKY,
+    candidates: [{ id: "karaoke", title: "Get Lucky (Karaoke Version)", artist: "Daft Punk", durationSec: 248 }],
+    options: {
+      pythonPath: "/nonexistent/python-binary",
+      scriptPath: "/nonexistent/aurral_matcher.py",
+    },
+  });
+  assert.equal(evaluation.decision, "reject");
+  assert.equal(evaluation.summary.decision, "reject");
+  assert.equal(evaluation.evaluations[0].decision, "reject");
+  assert.equal(evaluation.error, undefined);
+});
+
 test("canonical track request normalization is stable for the corpus", () => {
   const request = buildTrackRequest({
     ...GET_LUCKY,

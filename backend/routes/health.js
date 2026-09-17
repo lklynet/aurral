@@ -234,6 +234,17 @@ async function buildSystemPayload(settings) {
   };
 }
 
+function serializeBootstrapMatcherStatus(status, authenticated) {
+  if (authenticated) return status;
+  return {
+    available: Boolean(status.available),
+    checked: Boolean(status.checked),
+    error: status.error
+      ? { code: status.error.code || "matcher_error" }
+      : null,
+  };
+}
+
 function buildBootstrapPayload(req) {
   lidarrClient.updateConfig();
   const settings = dbOps.getSettings();
@@ -253,7 +264,10 @@ function buildBootstrapPayload(req) {
     dateTimeFormat: settings.dateTimeFormat,
     timestamp: new Date().toISOString(),
     appVersion: APP_VERSION,
-    matcher: getMatcherRuntimeStatus(),
+    matcher: serializeBootstrapMatcherStatus(
+      getMatcherRuntimeStatus(),
+      Boolean(currentUser),
+    ),
   };
 
   if (currentUser) {

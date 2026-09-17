@@ -56,6 +56,18 @@ test("normalizeCandidate preserves only evidence a source provides", () => {
   assert.equal(candidate.year, null);
 });
 
+test("normalizeCandidate keeps yt-dlp channel evidence out of structured artists", () => {
+  const candidate = normalizeCandidate("ytdlp", {
+    id: "video-1",
+    title: "Daft Punk - Get Lucky (Official Audio)",
+    channel: "Daft Punk",
+    uploader: "Daft Punk",
+    durationSec: 248,
+  });
+  assert.deepEqual(candidate.artists, []);
+  assert.equal(candidate.provider.uploader, "Daft Punk");
+});
+
 test("normalizeCandidate parses filename evidence for filename-based sources", () => {
   const candidate = normalizeCandidate(
     "soulseek",

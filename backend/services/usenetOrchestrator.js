@@ -392,7 +392,7 @@ async function handleUsenetFinalize(payload, helpers) {
   if (!found.filePath) {
     const reason =
       found.validation?.reason ||
-      (found.validation?.decision === "error" || found.validation?.error
+      (found.validation?.error
         ? MATCHER_UNAVAILABLE_MESSAGE
         : "Usenet download completed, but no matching audio file was found");
     if (getUsenetClientKey() === "sabnzbd") {

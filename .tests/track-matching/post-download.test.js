@@ -21,7 +21,11 @@ import {
 resetMatcherAvailability();
 const beetsAvailable = await isBeetsMatcherAvailable();
 const skip = beetsAvailable ? false : "beets not installed for any available Python interpreter";
-const btest = (name, fn) => test(name, { skip }, fn);
+const btest = (name, optionsOrFn, maybeFn) => {
+  const options = typeof optionsOrFn === "function" ? {} : optionsOrFn || {};
+  const fn = typeof optionsOrFn === "function" ? optionsOrFn : maybeFn;
+  return test(name, { ...options, skip: options.skip || skip }, fn);
+};
 const test_ = test;
 
 const hasFfmpeg = (() => {
@@ -366,7 +370,23 @@ test("release selection without a usable file reports no path", { skip: hasFfmpe
   });
   // Conflicted files are never handed back as import candidates.
   assert.equal(selection.filePath, null);
-  assert.equal(selection.validation, null);
+  assert.equal(selection.validation.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+  assert.match(selection.validation.reason, /does not match/i);
+});
+
+test("release selection preserves matcher diagnostics when no file is usable", async () => {
+  const selection = await selectVerifiedDownloadedFile({
+    request: GET_LUCKY,
+    filePaths: ["/staging/Get Lucky.flac"],
+    source: "deemix",
+    options: {
+      parseFile: stubParseFile(stubParsed({ title: "Get Lucky", artist: "Daft Punk" })),
+      pythonPath: "/nonexistent/python-binary",
+    },
+  });
+  assert.equal(selection.filePath, null);
+  assert.equal(selection.validation.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+  assert.equal(selection.validation.error.code, "python_unavailable");
 });
 
 test("release selection with an unreadable file set returns nothing usable", { skip: hasFfmpeg ? false : "ffmpeg unavailable" }, async () => {
