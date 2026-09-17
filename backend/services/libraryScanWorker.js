@@ -4,6 +4,7 @@ import { db } from "../config/db-sqlite.js";
 import { dbOps } from "../db/helpers/index.js";
 import { enqueueLibraryScanJob, getLibraryScanQueue } from "./honkerDb.js";
 import { isHonkerDatabaseClosedError } from "./honkerWorkerRuntime.js";
+import { resolveLibraryScanChangedPaths } from "./libraryScanRequest.js";
 import { websocketService } from "./websocketService.js";
 
 const WORKER_NAME = "library-scan";
@@ -245,7 +246,7 @@ const {
       (Number(registry.jobId) === Number(job.id) && registry.includeLidarr === true);
     const force = payload?.force === true ||
       (Number(registry.jobId) === Number(job.id) && registry.force === true);
-    const changedPaths = Array.isArray(registry.changedPaths) ? registry.changedPaths : null;
+    const changedPaths = resolveLibraryScanChangedPaths(registry, force);
     if (Number(registry.jobId) === Number(job.id)) {
       setScanRegistry({
         ...registry,
