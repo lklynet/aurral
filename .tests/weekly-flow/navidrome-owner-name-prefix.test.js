@@ -155,6 +155,7 @@ test("switching off the prefix deletes a leftover prefixed playlist with no poin
 
   assert.deepEqual(manager.navidromeDestination.client.created, ["Weekend Vibes"]);
   assert.deepEqual(deleted, ["existing-1"]);
+  flowPlaylistConfig.deleteFlow(flow.id);
 });
 
 test("two different owners can use the same native playlist name", async () => {
