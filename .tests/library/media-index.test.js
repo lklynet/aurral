@@ -21,7 +21,11 @@ import {
   upsertLibraryTrack,
   withLibraryScan,
 } from "../../backend/services/libraryMediaStore.js";
-import { scanMusicRoot, scanMusicRoots } from "../../backend/services/libraryFileScanner.js";
+import {
+  createPathScopeMatcher,
+  scanMusicRoot,
+  scanMusicRoots,
+} from "../../backend/services/libraryFileScanner.js";
 import { indexLidarrLibrary } from "../../backend/services/libraryLidarrIndexer.js";
 import { scanConfiguredLibrary } from "../../backend/services/libraryIndexService.js";
 
@@ -839,6 +843,55 @@ test("a targeted rescan marks a deleted changed file unavailable", async () => {
     );
   } finally {
     if (filePath) deleteIndexedFile(source, filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("path scope matching handles large watcher batches without pairwise comparisons", () => {
+  const root = path.join(tmpdir(), "aurral-large-path-scope");
+  const scopes = Array.from(
+    { length: 4096 },
+    (_, index) => path.join(root, `Artist ${index}`, "Album", `${index}.flac`),
+  );
+  const matchesScope = createPathScopeMatcher(scopes);
+  const startedAt = performance.now();
+
+  for (let index = 0; index < scopes.length; index += 1) {
+    assert.equal(matchesScope(scopes[index]), true);
+    assert.equal(
+      matchesScope(path.join(root, `Unrelated ${index}`, "Album", `${index}.flac`)),
+      false,
+    );
+  }
+
+  assert.ok(performance.now() - startedAt < 2_000);
+});
+
+test("a targeted directory rescan marks only removed descendants unavailable", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-targeted-directory-"));
+  const source = `test-targeted-directory-${process.pid}`;
+  const removedDirectory = path.join(root, "Artist", "Removed Album");
+  const filePaths = [];
+  try {
+    filePaths.push(await createAudioFile(root, "Artist/Removed Album/01 First.flac"));
+    filePaths.push(await createAudioFile(root, "Artist/Removed Album/02 Second.flac"));
+    filePaths.push(await createAudioFile(root, "Artist/Kept Album/01 Kept.flac"));
+    await scanMusicRoot({ rootPath: root, source, metadataReader: async () => metadata });
+
+    await rm(removedDirectory, { recursive: true });
+    await scanMusicRoot({
+      rootPath: root,
+      source,
+      changedPaths: [removedDirectory],
+      metadataReader: async () => metadata,
+    });
+
+    const files = getLibrarySnapshot().files;
+    assert.equal(files.find((file) => file.path === filePaths[0])?.available, 0);
+    assert.equal(files.find((file) => file.path === filePaths[1])?.available, 0);
+    assert.equal(files.find((file) => file.path === filePaths[2])?.available, 1);
+  } finally {
+    for (const filePath of filePaths) deleteIndexedFile(source, filePath);
     await rm(root, { recursive: true, force: true });
   }
 });
