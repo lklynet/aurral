@@ -12222,6 +12222,35 @@ button.native-library-genre-row:focus-visible {
   white-space: nowrap;
 }
 
+.flow-page__track-title-availability {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.flow-page__track-title-availability .flow-page__track-status-dot {
+  flex-shrink: 0;
+}
+
+.flow-page__track-availability-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1rem;
+  min-height: 1.5rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: help;
+}
+
+.flow-page__track-availability-indicator:focus-visible {
+  outline: 2px solid var(--aurral-text);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
 .flow-page__tracks-table-head th {
   padding: 0.75rem 0.5rem;
   color: var(--aurral-text-muted);
