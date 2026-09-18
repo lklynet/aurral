@@ -28,6 +28,7 @@ import {
   unstarMany,
 } from "../services/subsonicLibraryService.js";
 import { recordPlayEvent } from "../services/playEventService.js";
+import { logger } from "../services/logger.js";
 
 const SUBSONIC_VERSION = "1.16.1";
 const SUBSONIC_NAMESPACE = "http://subsonic.org/restapi";
@@ -191,6 +192,11 @@ async function handleSubsonicRequest(req, res) {
       : resolveUser(getParameter(req, "u"), decodedPassword)
     : resolveSubsonicTokenUser(getParameter(req, "u"), token, salt);
   if (!user) {
+    logger.debug("subsonic", "Authentication failed", {
+      username: getParameter(req, "u"),
+      method: req.params.method,
+      authentication: password ? "password" : "token",
+    });
     return sendError(
       res,
       format,

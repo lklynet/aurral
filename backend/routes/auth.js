@@ -28,9 +28,11 @@ router.post("/login", async (req, res) => {
     if (!user || !verifyPassword(password, user.passwordHash)) {
       return res.status(401).json({ error: "Invalid username or password" });
     }
+    const updates = { subsonicPassword: password };
     if (needsRehash(user.passwordHash)) {
-      userOps.updateUser(user.id, { passwordHash: hashPassword(password) });
+      updates.passwordHash = hashPassword(password);
     }
+    userOps.updateUser(user.id, updates);
     const session = createSession(user.id, req.ip || null, req.headers["user-agent"] || null);
     res.json({
       token: session.token,

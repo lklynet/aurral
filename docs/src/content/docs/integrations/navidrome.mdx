@@ -17,7 +17,9 @@ Favoriting a Flow or shared-playlist entry uses the same canonical acquisition b
 
 ## Connect a Subsonic client
 
-Point the client at the Aurral URL and use the Aurral account from onboarding. Aurral enables browser Subsonic clients on `/rest` without an additional CORS setting. Feishin can connect with its default token authentication when you use that configured account. Feishin can also use password authentication when you set `LEGACY_AUTHENTICATION=true` in Feishin's environment, not Aurral's. When Feishin locks server settings, also set `SERVER_LOCK=true` in Feishin's environment.
+Point the client at the Aurral URL and use any local Aurral account. Aurral enables browser Subsonic clients on `/rest` without an additional CORS setting. Feishin can connect with its default token authentication. Feishin can also use password authentication when you set `LEGACY_AUTHENTICATION=true` in Feishin's environment. When Feishin locks server settings, set `SERVER_LOCK=true` in Feishin's environment.
+
+Subsonic token authentication uses the account's Aurral password. Accounts created before per-user Subsonic credentials were added need to sign in to Aurral once after upgrading, or have an administrator reset their password, before a token-only client can connect. Proxy- or OIDC-created accounts do not have a local Aurral password until an administrator sets one.
 
 Use the Aurral URL as the Feishin server URL. Set the server type to `Subsonic`. Feishin then shows canonical tracks, flow playlists, and shared playlists that the account can access. A playlist entry remains playable while its canonical file is readable.
 

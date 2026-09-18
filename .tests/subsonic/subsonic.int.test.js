@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import test from "node:test";
 
 import {
@@ -45,6 +46,7 @@ test.before(async () => {
   resetDatabase(db);
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
   userOps.createUser("alice", hashPassword("password123"), "user");
+  userOps.createUser("bob", hashPassword("bob-password"), "user");
   aurral = await startServerProcess({ extraEnv: { CORS_ORIGIN: "" } });
 });
 
@@ -73,6 +75,66 @@ test("authenticates an Aurral user and returns JSON or XML envelopes", async () 
   assert.match(xml.contentType, /application\/xml/);
   assert.match(xml.body, /<subsonic-response[^>]+status="ok"/);
   assert.match(xml.body, /xmlns="http:\/\/subsonic\.org\/restapi"/);
+});
+
+test("supports token auth for every local user and syncs password changes", async () => {
+  const loginResponse = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "bob", password: "bob-password" }),
+  });
+  assert.equal(loginResponse.status, 200);
+  const login = await loginResponse.json();
+  assert.equal(typeof login.token, "string");
+
+  const storedSecret = db
+    .prepare("SELECT subsonic_password FROM users WHERE username = ?")
+    .get("bob");
+  assert.match(storedSecret.subsonic_password, /^AURRAL_ENC:/);
+  assert.equal(storedSecret.subsonic_password.includes("bob-password"), false);
+
+  const salt = "bob-salt";
+  const token = (password) =>
+    crypto.createHash("md5").update(`${password}${salt}`).digest("hex");
+  const initialToken = await request("ping", {
+    u: "bob",
+    p: "",
+    t: token("bob-password"),
+    s: salt,
+    f: "json",
+  });
+  assert.equal(initialToken.json.status, "ok");
+
+  const passwordChange = await fetch(`http://127.0.0.1:${aurral.port}/api/users/me/password`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${login.token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      currentPassword: "bob-password",
+      newPassword: "bob-new-password",
+    }),
+  });
+  assert.equal(passwordChange.status, 200);
+
+  const oldToken = await request("ping", {
+    u: "bob",
+    p: "",
+    t: token("bob-password"),
+    s: salt,
+    f: "json",
+  });
+  assert.equal(oldToken.json.error.code, 41);
+
+  const newToken = await request("ping", {
+    u: "bob",
+    p: "",
+    t: token("bob-new-password"),
+    s: salt,
+    f: "json",
+  });
+  assert.equal(newToken.json.status, "ok");
 });
 
 test("allows browser Subsonic clients without CORS configuration", async () => {
