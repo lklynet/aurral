@@ -55,11 +55,26 @@ export function registerAlbums(router) {
     requirePermission("addAlbum"),
     async (req, res) => {
       try {
-        const { artistId, releaseGroupMbid, albumName } = req.body;
+        const {
+          artistId,
+          releaseGroupMbid,
+          albumName,
+          managedBy: requestedManagedBy,
+        } = req.body;
 
         if (!artistId || !releaseGroupMbid || !albumName) {
           return res.status(400).json({
             error: "artistId, releaseGroupMbid, and albumName are required",
+          });
+        }
+
+        let managedBy;
+        try {
+          managedBy = await libraryManager.resolveManagedBy(requestedManagedBy, req.user);
+        } catch (error) {
+          return res.status(error.statusCode || 400).json({
+            error: error.message,
+            code: error.code || null,
           });
         }
 
@@ -68,7 +83,7 @@ export function registerAlbums(router) {
           const { resolveDeezerAlbumToMbid } = await import(
             "../../../services/apiClients/index.js"
           );
-          const artist = await libraryManager.getArtistById(artistId);
+          const artist = await libraryManager.getArtistById(artistId, { managedBy });
           const artistName = artist?.artistName || "";
           mbid =
             (await resolveDeezerAlbumToMbid(
@@ -85,10 +100,13 @@ export function registerAlbums(router) {
         }
 
         const settings = dbOps.getSettings();
-        const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
+        const searchOnAdd = managedBy === "lidarr" &&
+          (settings.integrations?.lidarr?.searchOnAdd ?? false);
 
         const album = await libraryManager.addAlbum(artistId, mbid, albumName, {
           triggerSearch: searchOnAdd,
+          managedBy,
+          user: req.user,
         });
         if (album?.error) {
           logger.error("library", `Failed to add album ${albumName}:`, {
@@ -101,6 +119,13 @@ export function registerAlbums(router) {
           return res.status(statusCode).json({
             error: "Failed to add album",
             message: album.error,
+            code: album.code || null,
+            managedBy: album.managedBy || null,
+            sources: album.sources || [],
+            canonicalId: album.canonicalId || null,
+            providerId: album.providerId || null,
+            availability: album.availability || null,
+            conflict: album.conflict || null,
           });
         }
         if (album.artistName && album.albumName) {
@@ -116,7 +141,7 @@ export function registerAlbums(router) {
           albumName: album.albumName || albumName,
           artistName: album.artistName,
           artistMbid: album.mbid || album.foreignAlbumId,
-          searching: searchOnAdd,
+          searching: managedBy === "lidarr" && searchOnAdd,
           user: req.user,
         });
         return res.status(201).json({ ...album, queued: false });
@@ -141,6 +166,7 @@ export function registerAlbums(router) {
           artistMbid,
           artistName,
           triggerSearch = false,
+          managedBy: requestedManagedBy,
         } = req.body || {};
 
         if (!albumMbid || !albumName || !artistMbid || !artistName) {
@@ -155,14 +181,14 @@ export function registerAlbums(router) {
           artistName,
           artistMbid,
           triggerSearch,
+          managedBy: requestedManagedBy,
           user: req.user,
         });
         const settings = dbOps.getSettings();
         const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
-        const searching =
-          triggerSearch === true ||
-          searchOnAdd ||
-          result?.status === "searching";
+        const searching = result?.managedBy === "aurral"
+          ? result?.status === "queued"
+          : triggerSearch === true || searchOnAdd || result?.status === "searching";
         const { recordAlbumRequested, recordAlbumSearchCompleted } = await import(
           "../../../services/aurralHistoryService.js"
         );
@@ -180,7 +206,12 @@ export function registerAlbums(router) {
         if (result?.status === "available") {
           recordAlbumSearchCompleted(historyAlbum);
         }
-        return res.status(201).json({ ...result, queued: false });
+        return res.status(201).json({
+          ...result,
+          queued: result?.managedBy === "aurral"
+            ? (result?.jobIds?.length || 0) > 0
+            : false,
+        });
       } catch (error) {
         const statusCode =
           Number.isInteger(error?.statusCode) && error.statusCode >= 400
@@ -188,6 +219,13 @@ export function registerAlbums(router) {
             : 500;
         res.status(statusCode).json({
           error: error.message || "Failed to request album",
+          code: error.code || null,
+          managedBy: error.managedBy || null,
+          sources: error.sources || [],
+          canonicalId: error.canonicalId || null,
+          providerId: error.providerId || null,
+          availability: error.availability || null,
+          conflict: error.conflict || null,
         });
       }
     },

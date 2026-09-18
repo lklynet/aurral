@@ -3,11 +3,14 @@ import fs from "fs/promises";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger } from "./logger.js";
-import { validateDownloadedTrack } from "./weeklyFlow/weeklyFlowSoulseekMatcher.js";
 import {
-  buildDeemixSearchQueries,
-  rankDeemixResults,
-} from "./weeklyFlow/weeklyFlowDeemixMatcher.js";
+  buildSourceCandidates,
+  hasUsableSearchCandidates,
+  toPipelineCandidate,
+  usableEvaluationEntries,
+  validateDownloadedTrackFile,
+} from "./trackMatching/index.js";
+import { buildDeemixSearchQueries } from "./weeklyFlow/weeklyFlowDeemixSearch.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
 import {
@@ -37,7 +40,14 @@ function getDeemixClient() {
 }
 
 function hasEnoughCandidates(aggregated, resolvedTrack) {
-  return rankDeemixResults(aggregated, resolvedTrack).some((entry) => entry.preDownloadValid);
+  // Availability is provider-specific evidence the shared engine never sees.
+  const availableResults = aggregated.filter((result) => result?.readable !== false);
+  // Node-only pre-filter: no matcher process is spawned during searches.
+  return hasUsableSearchCandidates({
+    source: "deemix",
+    results: availableResults,
+    request: resolvedTrack,
+  });
 }
 
 // The configured bitrate fixes the tier, so an upgrade that deemix cannot
@@ -113,16 +123,27 @@ async function handleDeemixSearch(payload, helpers) {
     }
   }
 
-  const ranked = rankDeemixResults(aggregated, resolvedTrack);
+  // Availability is provider-specific evidence the shared engine never sees.
+  const availableResults = aggregated.filter((result) => result?.readable !== false);
+  const evaluation = await buildSourceCandidates({
+    source: "deemix",
+    results: availableResults,
+    request: resolvedTrack,
+  });
+  if (evaluation.decision === "error") {
+    return helpers.failOrTryNextSource(payload, job, evaluation.error?.message || "track matcher unavailable", {
+      queryCount: queries.length,
+      rawResultCount: aggregated.length,
+    });
+  }
   const deniedIds = new Set(
     (Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [])
       .filter((entry) => Array.isArray(entry) && entry[0] === "deemix")
       .map((entry) => String(entry[1] || "").trim()),
   );
-  const candidates =
-    deniedIds.size > 0
-      ? ranked.filter((entry) => !deniedIds.has(String(entry?.raw?.id || "").trim()))
-      : ranked;
+  const candidates = usableEvaluationEntries(evaluation)
+    .filter((entry) => !deniedIds.has(String(entry.candidate?.provider?.id || "").trim()))
+    .map(toPipelineCandidate);
   if (candidates.length === 0) {
     const message =
       lastError && aggregated.length === 0
@@ -131,7 +152,7 @@ async function handleDeemixSearch(payload, helpers) {
     return helpers.failOrTryNextSource(payload, job, message, {
       queryCount: queries.length,
       rawResultCount: aggregated.length,
-      rankedCount: ranked.length,
+      rankedCount: evaluation.evaluations.length,
     });
   }
   return {
@@ -268,14 +289,15 @@ async function handleDeemixFinalize(payload, helpers) {
     return helpers.failOrTryNextSource(payload, job, reason);
   }
 
-  const validation = await validateDownloadedTrack(
+  const validation = await validateDownloadedTrackFile({
+    request: resolvedTrack,
+    candidate: candidate?.candidate || candidate,
     filePath,
-    {
-      ...candidate,
-      raw: { ...(candidate?.raw || {}), file: candidate?.raw?.file || filePath },
+    source: "deemix",
+    options: {
+      strict: candidate?.evaluation?.decision !== "accept",
     },
-    resolvedTrack,
-  );
+  });
   if (!validation.valid) {
     if (
       blockPipelineJobForReview({
