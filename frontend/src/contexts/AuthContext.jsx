@@ -14,6 +14,7 @@ import {
 import { clearLibraryFavoritesCache } from "../utils/api/endpoints/library.js";
 import { setDateTimeFormat } from "../utils/dateTime.js";
 import { queryClient } from "../queryClient.js";
+import { hasAppCapability as readAppCapability } from "../utils/appCapabilities.js";
 
 const AuthContext = createContext(null);
 
@@ -159,6 +160,11 @@ export const AuthProvider = ({ children }) => {
     return !!user.permissions?.[perm];
   }, [user]);
 
+  const hasCapability = useCallback(
+    (capability) => readAppCapability(bootstrap?.capabilities, capability),
+    [bootstrap?.capabilities],
+  );
+
   const canLogOut = !bootstrap?.proxyAuthEnabled || !!bootstrap?.proxyLogoutUrl;
 
   return (
@@ -175,7 +181,8 @@ export const AuthProvider = ({ children }) => {
         onboardingRequired,
         refreshAuth: checkAuthStatus,
         hasPermission,
-      }), [isAuthenticated, isLoading, user, bootstrap, login, logout, canLogOut, authRequired, onboardingRequired, checkAuthStatus, hasPermission])}
+        hasCapability,
+      }), [isAuthenticated, isLoading, user, bootstrap, login, logout, canLogOut, authRequired, onboardingRequired, checkAuthStatus, hasPermission, hasCapability])}
     >
       {children}
     </AuthContext.Provider>

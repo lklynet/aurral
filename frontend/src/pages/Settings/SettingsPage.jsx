@@ -26,15 +26,18 @@ import "./settingsArr.css";
 
 function SettingsPage() {
   const { showSuccess, showError, showInfo } = useToast();
-  const { user: authUser } = useAuth();
+  const { user: authUser, bootstrap } = useAuth();
   const { tab: tabParam } = useParams();
 
-  const tabs = useSettingsTabs(authUser);
+  const tabs = useSettingsTabs(authUser, bootstrap?.capabilities);
   const data = useSettingsData(showSuccess, showError, showInfo, tabs.activeTab);
   const users = useSettingsUsers(authUser, showSuccess, showError, tabs.activeTab);
 
   const normalizedParam = normalizeSettingsTabId(tabParam);
-  const shouldRedirect = authUser?.role === "admin" && tabParam && normalizedParam !== tabParam;
+  const shouldRedirect =
+    authUser?.role === "admin" &&
+    tabParam &&
+    (normalizedParam !== tabParam || normalizedParam !== tabs.activeTab);
 
   const settingsTitle = useMemo(() => {
     return tabs.activeTabMeta ? `${tabs.activeTabMeta.label} - Settings` : "Settings";

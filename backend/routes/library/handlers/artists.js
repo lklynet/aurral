@@ -8,8 +8,9 @@ import {
 import { logger } from "../../../services/logger.js";
 import { getCanonicalLibraryReadModelForArtistPage } from "../../../services/canonicalLibraryReadAdapter.js";
 import { getCanonicalArtistProjection } from "../../../services/libraryQueryService.js";
+import { requireAppCapability } from "../../../middleware/appProfile.js";
 export function registerArtists(router) {
-  router.get("/artists", cacheMiddleware(120), async (req, res) => {
+  router.get("/artists", requireAppCapability("localLibrary"), cacheMiddleware(120), async (req, res) => {
     try {
       const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10000, 1), 10000);
       const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
@@ -39,7 +40,7 @@ export function registerArtists(router) {
     }
   });
 
-  router.get("/artists/:mbid", cacheMiddleware(120), async (req, res) => {
+  router.get("/artists/:mbid", requireAppCapability("localLibrary"), cacheMiddleware(120), async (req, res) => {
     try {
       const { mbid } = req.params;
       if (!UUID_REGEX.test(mbid)) {

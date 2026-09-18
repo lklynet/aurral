@@ -65,8 +65,9 @@ function Layout({ children, headerActions }) {
   });
   const [isResizing, setIsResizing] = useState(false);
   const location = useLocation();
-  const { authRequired, canLogOut, logout, user } = useAuth();
+  const { authRequired, canLogOut, logout, user, hasCapability } = useAuth();
   const { isActive: isPlayerActive } = useAudioQueue();
+  const playbackEnabled = hasCapability("playback");
   const isArtistDetailsRoute = /^\/artist\/[^/]+(\/(albums|appears-on|release\/[^/]+))?$/.test(
     location.pathname,
   );
@@ -140,29 +141,33 @@ function Layout({ children, headerActions }) {
   const mobilePrimaryItems = useMemo(() => {
     const items = [
       { path: "/discover", label: "Discover", icon: Sparkles },
-      { path: "/library", label: "Library", icon: Library },
-      {
+      ...(hasCapability("localLibrary")
+        ? [{ path: "/library", label: "Library", icon: Library }]
+        : []),
+      ...(hasCapability("flows") ? [{
         path: "/playlists",
         label: "Playlists",
         icon: AudioWaveform,
         permission: "accessFlow",
-      },
+      }] : []),
     ];
     return items.filter(
       (item) =>
         !item.permission || user?.role === "admin" || !!user?.permissions?.[item.permission],
     );
-  }, [user]);
+  }, [hasCapability, user]);
 
   const mobileOverflowItems = useMemo(() => {
     const items = [
-      { path: "/shows/all", label: "Shows", icon: Ticket },
-      {
+      ...(hasCapability("fullFeatures")
+        ? [{ path: "/shows/all", label: "Shows", icon: Ticket }]
+        : []),
+      ...(hasCapability("flows") ? [{
         path: "/flows",
         label: "Flows",
         icon: Workflow,
         permission: "accessFlow",
-      },
+      }] : []),
       { path: "/activity/queue", label: "Activity", icon: Activity },
       { path: "/profile", label: "Profile", icon: User },
       {
@@ -176,7 +181,7 @@ function Layout({ children, headerActions }) {
       (item) =>
         !item.permission || user?.role === "admin" || !!user?.permissions?.[item.permission],
     );
-  }, [user]);
+  }, [hasCapability, user]);
 
   const persistSidebarWidth = useCallback((width) => {
     const nextWidth = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.round(width)));
@@ -416,7 +421,7 @@ function Layout({ children, headerActions }) {
             : sidebarMode === "icons"
               ? " app-content--sidebar-icons"
               : ""
-        }${isPlayerActive ? " app-content--player-active" : ""}`}
+        }${playbackEnabled && isPlayerActive ? " app-content--player-active" : ""}`}
       >
         <header className="app-topbar">
           <TooltipButton
@@ -431,7 +436,7 @@ function Layout({ children, headerActions }) {
           <GlobalSearch settingsMode={isSettingsRoute} />
 
           <div className="app-header-actions">
-            <InboxMenu />
+            {hasCapability("fullFeatures") ? <InboxMenu /> : null}
             <UserProfileMenu />
             {headerActions}
           </div>
@@ -442,7 +447,7 @@ function Layout({ children, headerActions }) {
             className={`app-main${
               isArtistDetailsRoute ? " app-main--artist-details" : ""
             }${isSettingsRoute ? " app-main--settings" : ""}${
-              isPlayerActive ? " app-main--player-active" : ""
+              playbackEnabled && isPlayerActive ? " app-main--player-active" : ""
             }`}
             ref={mainScrollRef}
             onScroll={() => {
@@ -474,7 +479,7 @@ function Layout({ children, headerActions }) {
           </div>
         </div>
 
-        <GlobalPlayerBar />
+        {playbackEnabled ? <GlobalPlayerBar /> : null}
 
         {mobileMenuPresence !== "closed" && (
           <div

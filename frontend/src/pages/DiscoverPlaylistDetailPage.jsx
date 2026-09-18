@@ -13,6 +13,7 @@ import { useSharedPlaylists } from "../hooks/useSharedPlaylists";
 import { useDiscoverData } from "./useDiscoverData";
 import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { useToast } from "../contexts/ToastContext";
+import { useAuth } from "../contexts/AuthContext";
 import { extractTwoToneGradientFromImage } from "../utils/imageColors";
 import { reserveUniquePlaylistName } from "./ArtistDetails/utils";
 import { ArrowLeft, Crosshair } from "lucide-react";
@@ -59,6 +60,9 @@ export default function DiscoverPlaylistDetailPage() {
   const { data, error } = useDiscoverData();
   const navigate = useDiscoverNavigation();
   const { showSuccess, showError } = useToast();
+  const { hasCapability } = useAuth();
+  const flowsEnabled = hasCapability("flows");
+  const playbackEnabled = hasCapability("playback");
 
   const playlist = useMemo(() => {
     const playlists = data?.discoverPlaylists || [];
@@ -111,7 +115,7 @@ export default function DiscoverPlaylistDetailPage() {
     playlistsError: playlistMenuError,
     setPlaylistsError: setPlaylistMenuError,
     loadSharedPlaylists,
-  } = useSharedPlaylists();
+  } = useSharedPlaylists({ enabled: flowsEnabled });
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
 
   const getDefaultPlaylistName = useCallback(
@@ -363,24 +367,26 @@ export default function DiscoverPlaylistDetailPage() {
             {playlist.trackCount || 0} tracks
           </p>
 
-          <div className="discover-playlist-detail__actions">
-            <button
-              type="button"
-              className="btn btn-surface btn-sm"
-              disabled={isBusy}
-              onClick={handleAdoptFlow}
-            >
-              {playlist.adoptedFlowId ? "Open rotating flow" : "Add as rotating flow"}
-            </button>
-            <button
-              type="button"
-              className="btn btn-surface btn-sm"
-              disabled={isBusy}
-              onClick={handleAdoptPlaylist}
-            >
-              {playlist.adoptedPlaylistId ? "Open static playlist" : "Add as static playlist"}
-            </button>
-          </div>
+          {flowsEnabled ? (
+            <div className="discover-playlist-detail__actions">
+              <button
+                type="button"
+                className="btn btn-surface btn-sm"
+                disabled={isBusy}
+                onClick={handleAdoptFlow}
+              >
+                {playlist.adoptedFlowId ? "Open rotating flow" : "Add as rotating flow"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-surface btn-sm"
+                disabled={isBusy}
+                onClick={handleAdoptPlaylist}
+              >
+                {playlist.adoptedPlaylistId ? "Open static playlist" : "Add as static playlist"}
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -396,7 +402,7 @@ export default function DiscoverPlaylistDetailPage() {
           label: playlist.name,
           recordHistory: false,
         }}
-        showPlaybackControls={playlist.type === "editorial"}
+        showPlaybackControls={playbackEnabled && playlist.type === "editorial"}
         hideAlbumColumn={!hasAlbumMetadata}
         hideStatusColumn
         hideQualityColumn
@@ -408,7 +414,7 @@ export default function DiscoverPlaylistDetailPage() {
         playlistMenuError={playlistMenuError}
         getDefaultPlaylistName={getDefaultPlaylistName}
         onLoadPlaylists={loadSharedPlaylists}
-        onAddTrackToPlaylist={handleAddTrackToPlaylist}
+        onAddTrackToPlaylist={flowsEnabled ? handleAddTrackToPlaylist : null}
         onNavigateArtist={handleNavigateArtist}
       />
     </div>

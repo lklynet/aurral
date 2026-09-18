@@ -66,7 +66,11 @@ function ArtistDetailsPage() {
     [locationState?.inLibrary, locationState?.libraryArtist],
   );
   const { showSuccess, showError } = useToast();
-  const { hasPermission } = useAuth();
+  const { hasPermission, hasCapability } = useAuth();
+  const playbackEnabled = hasCapability("playback");
+  const flowsEnabled = hasCapability("flows");
+  const downloadsEnabled = hasCapability("downloads");
+  const localLibraryEnabled = hasCapability("localLibrary");
   const similarArtistsScrollRef = useRef(null);
   const [showEditIdsModal, setShowEditIdsModal] = useState(false);
   const [idsError, setIdsError] = useState("");
@@ -81,7 +85,7 @@ function ArtistDetailsPage() {
     playlistsError: playlistModalError,
     setPlaylistsError: setPlaylistModalError,
     loadSharedPlaylists,
-  } = useSharedPlaylists();
+  } = useSharedPlaylists({ enabled: flowsEnabled });
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
   const [libraryTrackSavingKeys, setLibraryTrackSavingKeys] = useState(() => new Set());
   const [visibleReleaseGroupCoverIds, setVisibleReleaseGroupCoverIds] = useState([]);
@@ -116,6 +120,7 @@ function ArtistDetailsPage() {
     ],
     initialLibraryHint,
     appearsOnLimit: ARTIST_DETAILS_APPEARS_ON_LIMIT,
+    libraryEnabled: localLibraryEnabled,
   });
   const canAddArtist = hasPermission("addArtist");
   const {
@@ -233,6 +238,7 @@ function ArtistDetailsPage() {
     appSettings,
     showSuccess,
     showError,
+    libraryEnabled: localLibraryEnabled,
   });
 
   useArtistSearchFocus({
@@ -528,6 +534,7 @@ function ArtistDetailsPage() {
         onTasteFeedback={handleCurrentArtistTasteFeedback}
         tasteFeedbackUsed={currentArtistFeedback}
         tasteActionPending={tasteActionPending}
+        playbackEnabled={playbackEnabled}
       />
 
       <ArtistDetailsPreviewTracks
@@ -538,8 +545,8 @@ function ArtistDetailsPage() {
         playingPreviewId={playingPreviewId}
         isArtistPlaybackActive={isArtistPlaybackActive}
         handlePreviewPlay={handlePreviewPlay}
-        onAddTrackToPlaylist={handlePreviewTrackAdd}
-        onAddTrackToLibrary={handleTrackAddToLibrary}
+        onAddTrackToPlaylist={flowsEnabled ? handlePreviewTrackAdd : null}
+        onAddTrackToLibrary={downloadsEnabled ? handleTrackAddToLibrary : null}
         libraryTrackSavingKeys={libraryTrackSavingKeys}
         resolveMembershipTrack={buildPreviewTrackPayload}
         playlists={sharedPlaylists}
@@ -548,6 +555,7 @@ function ArtistDetailsPage() {
         playlistError={playlistModalError}
         getDefaultPlaylistName={getDefaultTrackPlaylistName}
         onLoadPlaylists={loadSharedPlaylists}
+        playbackEnabled={playbackEnabled}
       />
 
       <ArtistDetailsDownloadTargets
@@ -562,8 +570,8 @@ function ArtistDetailsPage() {
         handleRequestAlbum={library.handleRequestAlbum}
         playbackSource={playbackSource}
         artistName={artistDisplayName}
-        onAddTrackToPlaylist={handleReleaseTrackAdd}
-        onAddTrackToLibrary={handleTrackAddToLibrary}
+        onAddTrackToPlaylist={flowsEnabled ? handleReleaseTrackAdd : null}
+        onAddTrackToLibrary={downloadsEnabled ? handleTrackAddToLibrary : null}
         libraryTrackSavingKeys={libraryTrackSavingKeys}
         resolveMembershipTrack={buildReleaseTrackPayload}
         playlists={sharedPlaylists}
@@ -572,9 +580,10 @@ function ArtistDetailsPage() {
         playlistError={playlistModalError}
         getDefaultPlaylistName={getDefaultTrackPlaylistName}
         onLoadPlaylists={loadSharedPlaylists}
+        playbackEnabled={playbackEnabled}
       />
 
-      {existsInLibrary && libraryAlbums && libraryAlbums.length > 0 && (
+      {localLibraryEnabled && existsInLibrary && libraryAlbums && libraryAlbums.length > 0 && (
         <ArtistDetailsLibraryAlbums
           artist={artist}
           libraryAlbums={libraryAlbums}
@@ -667,6 +676,8 @@ function ArtistDetailsPage() {
           onAddToLibrary={handleAddSimilarArtistToLibrary}
           onArtistFeedback={handleArtistTasteFeedback}
           artistFeedbackLookup={artistFeedbackLookup}
+          libraryEnabled={localLibraryEnabled}
+          playbackEnabled={playbackEnabled}
         />
       )}
 

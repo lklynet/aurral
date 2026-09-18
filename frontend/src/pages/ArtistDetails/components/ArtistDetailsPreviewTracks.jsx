@@ -22,6 +22,7 @@ export function ArtistDetailsPreviewTracks({
   playlistError,
   getDefaultPlaylistName,
   onLoadPlaylists,
+  playbackEnabled = true,
 }) {
   const topTrack = useMemo(
     () => (Array.isArray(previewTracks) ? previewTracks[0] : null),
@@ -93,20 +94,24 @@ export function ArtistDetailsPreviewTracks({
               return (
                 <div key={trackId} className="artist-track-row artist-track-row--preview">
                   <span className="artist-track-number">{index + 1}</span>
-                  <button
-                    type="button"
-                    onClick={() => handlePreviewPlay(track)}
-                    disabled={!track.preview_url}
-                    className="btn btn-surface btn-track-play-lg"
-                    aria-label={isPlaying ? "Pause preview" : "Play preview"}
-                    title={isPlaying ? "Pause preview" : "Play preview"}
-                  >
-                    {isPlaying ? (
-                      <Pause className="artist-icon-sm" />
-                    ) : (
-                      <Play className="artist-icon-sm" />
-                    )}
-                  </button>
+                  {playbackEnabled ? (
+                    <button
+                      type="button"
+                      onClick={() => handlePreviewPlay(track)}
+                      disabled={!track.preview_url}
+                      className="btn btn-surface btn-track-play-lg"
+                      aria-label={isPlaying ? "Pause preview" : "Play preview"}
+                      title={isPlaying ? "Pause preview" : "Play preview"}
+                    >
+                      {isPlaying ? (
+                        <Pause className="artist-icon-sm" />
+                      ) : (
+                        <Play className="artist-icon-sm" />
+                      )}
+                    </button>
+                  ) : (
+                    <span aria-hidden="true" />
+                  )}
                   <div className="artist-track-cell">
                     <p className="artist-track-title">{track.title}</p>
                     <p className="artist-track-subtitle">{track.album || "Preview available"}</p>

@@ -29,6 +29,7 @@ test("Diet keeps shared Lidarr and Last.fm capabilities without media features",
     requests: true,
     lidarr: true,
     lastfm: true,
+    fullFeatures: false,
     localLibrary: false,
     downloads: false,
     playback: false,
@@ -42,6 +43,7 @@ test("Full keeps the existing media capabilities", () => {
   const capabilities = getAppCapabilities(APP_PROFILES.FULL);
   assert.equal(capabilities.profile, APP_PROFILES.FULL);
   assert.equal(capabilities.localLibrary, true);
+  assert.equal(capabilities.fullFeatures, true);
   assert.equal(capabilities.downloads, true);
   assert.equal(capabilities.playback, true);
   assert.equal(capabilities.flows, true);

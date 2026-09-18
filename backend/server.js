@@ -45,6 +45,7 @@ import newsRouter from "./routes/news.js";
 import subsonicRouter from "./routes/subsonic.js";
 import scrobblingRouter from "./routes/scrobbling.js";
 import playEventsRouter from "./routes/playEvents.js";
+import { requireAppCapability } from "./middleware/appProfile.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -203,15 +204,15 @@ app.use("/api/health", healthRouter);
 app.use("/api/filesystem", filesystemRouter);
 app.use("/api/feeds", lidarrFeedRouter);
 app.use("/api/playlists", weeklyFlowRouter);
-app.use("/api/weekly-flow", (req, res) => {
+app.use("/api/weekly-flow", requireAppCapability("flows"), (req, res) => {
   const parsed = new URL(req.originalUrl, "http://localhost");
   res.redirect(308, `/api/playlists${parsed.pathname}${parsed.search}`);
 });
 app.use("/api/auth", authRouter);
 app.use("/api/scrobbling", scrobblingRouter);
-app.use("/api/play-events", playEventsRouter);
+app.use("/api/play-events", requireAppCapability("playback"), playEventsRouter);
 app.use("/api/image-proxy", imageProxyRouter);
-app.use("/rest", subsonicRouter);
+app.use("/rest", requireAppCapability("playback"), subsonicRouter);
 
 app.get("/sso/callback", async (req, res) => {
   try {

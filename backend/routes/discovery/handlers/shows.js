@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { requireAuth } from "../../../middleware/requirePermission.js";
+import { requireAppCapability } from "../../../middleware/appProfile.js";
 import { db } from "../../../config/db-sqlite.js";
 import { dbOps, userOps } from "../../../db/helpers/index.js";
 import { getTicketmasterApiKey, getLastfmApiKey } from "../../../services/apiClients/index.js";
@@ -45,7 +46,7 @@ export const buildShowsResponseCacheKey = ({
   ]);
 
 export function registerShows(router) {
-  router.get("/nearby-shows", requireAuth, async (req, res) => {
+  router.get("/nearby-shows", requireAppCapability("fullFeatures"), requireAuth, async (req, res) => {
     try {
       const apiKey = getTicketmasterApiKey();
       if (!apiKey) {

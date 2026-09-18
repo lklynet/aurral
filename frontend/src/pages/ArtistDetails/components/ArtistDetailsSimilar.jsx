@@ -17,6 +17,8 @@ export function ArtistDetailsSimilar({
   onAddToLibrary,
   onArtistFeedback,
   artistFeedbackLookup,
+  libraryEnabled = true,
+  playbackEnabled = true,
 }) {
   const [libraryLookup, setLibraryLookup] = useState({});
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -48,6 +50,10 @@ export function ArtistDetailsSimilar({
   );
 
   useEffect(() => {
+    if (!libraryEnabled) {
+      setLibraryLookup({});
+      return undefined;
+    }
     const cached = readLibraryLookupCache(artistIds);
     setLibraryLookup(cached);
     const missing = artistIds.filter((id) => cached[id] === undefined);
@@ -69,7 +75,7 @@ export function ArtistDetailsSimilar({
     return () => {
       cancelled = true;
     };
-  }, [artistIds]);
+  }, [artistIds, libraryEnabled]);
 
   useEffect(() => {
     const node = similarArtistsScrollRef?.current;
@@ -139,7 +145,7 @@ export function ArtistDetailsSimilar({
                     onArtistClick(
                       similar.id,
                       similar.name,
-                      typeof libraryLookup[artistId] === "boolean"
+                      libraryEnabled && typeof libraryLookup[artistId] === "boolean"
                         ? libraryLookup[artistId]
                         : undefined,
                     )
@@ -150,7 +156,7 @@ export function ArtistDetailsSimilar({
                       onArtistClick(
                         similar.id,
                         similar.name,
-                        typeof libraryLookup[artistId] === "boolean"
+                        libraryEnabled && typeof libraryLookup[artistId] === "boolean"
                           ? libraryLookup[artistId]
                           : undefined,
                       );
@@ -167,8 +173,8 @@ export function ArtistDetailsSimilar({
                       alt={similar.name}
                       className=""
                       loading="eager"
-                      enablePreviewPlayback
-                      isInLibrary={!!libraryLookup[artistId]}
+                      enablePreviewPlayback={playbackEnabled}
+                      isInLibrary={libraryEnabled && !!libraryLookup[artistId]}
                     />
 
                     {similar.match && (
@@ -178,12 +184,14 @@ export function ArtistDetailsSimilar({
                   <div className="artist-similar-name-row">
                     <div className="artist-similar-name-block">
                       <h3 className="artist-similar-name">{similar.name}</h3>
-                      {artistId && libraryLookup[artistId] && <SearchLibraryCheck size="sm" />}
+                      {libraryEnabled && artistId && libraryLookup[artistId] && (
+                        <SearchLibraryCheck size="sm" />
+                      )}
                     </div>
                     <div onClick={(event) => event.stopPropagation()} role="none">
                       <ArtistContextMenu
                         artist={similar}
-                        isInLibrary={!!libraryLookup[artistId]}
+                        isInLibrary={libraryEnabled && !!libraryLookup[artistId]}
                         canAddArtist={canAddArtist}
                         onAddToLibrary={onAddToLibrary}
                         onFeedback={onArtistFeedback}

@@ -1,5 +1,6 @@
 import express from "express";
 import { requireAuth } from "../middleware/requirePermission.js";
+import { requireAppCapability } from "../middleware/appProfile.js";
 import {
   getLibraryNews,
   disableNewsFeed,
@@ -9,18 +10,18 @@ import {
 
 const router = express.Router();
 
-router.get("/preferences", requireAuth, (req, res) => {
+router.get("/preferences", requireAppCapability("fullFeatures"), requireAuth, (req, res) => {
   return res.json(getNewsPreferences(req.user.id));
 });
 
-router.patch("/preferences", requireAuth, (req, res) => {
+router.patch("/preferences", requireAppCapability("fullFeatures"), requireAuth, (req, res) => {
   if (!Array.isArray(req.body?.blockedPublishers)) {
     return res.status(400).json({ error: "blockedPublishers must be an array" });
   }
   return res.json(updateNewsPreferences(req.user.id, req.body));
 });
 
-router.post("/feeds/disable", requireAuth, (req, res) => {
+router.post("/feeds/disable", requireAppCapability("fullFeatures"), requireAuth, (req, res) => {
   const sourceUrl = String(req.body?.sourceUrl || "").trim();
   const sourceName = String(req.body?.sourceName || "").trim();
   if (!sourceUrl && !sourceName) {
@@ -29,7 +30,7 @@ router.post("/feeds/disable", requireAuth, (req, res) => {
   return res.json(disableNewsFeed(sourceUrl, sourceName));
 });
 
-router.get("/", requireAuth, async (req, res) => {
+router.get("/", requireAppCapability("fullFeatures"), requireAuth, async (req, res) => {
   try {
     const limit = Math.max(1, Math.min(100, Number.parseInt(req.query.limit, 10) || 60));
     const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);

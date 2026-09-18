@@ -32,8 +32,9 @@ import { queryClient, queryKeys } from "../queryClient.js";
 const getArtistId = (artist) => getArtistRecordId(artist);
 
 export function useDiscoverData() {
-  const { user: authUser, hasPermission, bootstrap } = useAuth();
+  const { user: authUser, hasPermission, bootstrap, hasCapability } = useAuth();
   const { showSuccess, showError } = useToast();
+  const localLibraryEnabled = hasCapability("localLibrary");
   const [ticketmasterConfigured, setTicketmasterConfigured] = useState(true);
   const {
     data: nearbyShowsData,
@@ -44,7 +45,7 @@ export function useDiscoverData() {
     appliedCountry: appliedNearbyCountry,
     setLocationMode: setNearbyLocationMode,
     setAppliedZip: setAppliedNearbyZip,
-  } = useNearbyShows({ enabled: ticketmasterConfigured });
+  } = useNearbyShows({ enabled: ticketmasterConfigured && hasCapability("fullFeatures") });
 
   const discoveryQueryKey = useMemo(
     () => queryKeys.discovery(authUser?.id),
@@ -86,6 +87,7 @@ export function useDiscoverData() {
       ? getStoredRecentlyAddedAt(authUser?.id)
       : undefined,
     staleTime: 5 * 60 * 1000,
+    enabled: localLibraryEnabled,
   });
   const recentReleasesQuery = useQuery({
     queryKey: queryKeys.recentReleases(authUser?.id),
@@ -95,9 +97,10 @@ export function useDiscoverData() {
       ? getStoredRecentReleasesAt(authUser?.id)
       : undefined,
     staleTime: 5 * 60 * 1000,
+    enabled: localLibraryEnabled,
   });
-  const recentlyAdded = recentlyAddedQuery.data || [];
-  const recentReleases = recentReleasesQuery.data || [];
+  const recentlyAdded = localLibraryEnabled ? recentlyAddedQuery.data || [] : [];
+  const recentReleases = localLibraryEnabled ? recentReleasesQuery.data || [] : [];
   const [pendingRecentReleaseIds, setPendingRecentReleaseIds] = useState({});
   const [error, setError] = useState(null);
   const [libraryLookup, setLibraryLookup] = useState({});

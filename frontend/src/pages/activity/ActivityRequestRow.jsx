@@ -65,6 +65,9 @@ export default function ActivityRequestRow({
   onDeny,
   onPreview,
   onInfo,
+  playbackEnabled = true,
+  flowsEnabled = true,
+  downloadsEnabled = true,
 }) {
   const isSlskd = request.source === "slskd";
   const isUsenet = request.source === "nzbget" || request.source === "sabnzbd";
@@ -92,7 +95,10 @@ export default function ActivityRequestRow({
   const StatusIcon = status.icon;
   const timelineTime = formatTimelineTime(request.requestedAt);
   const canReSearch =
-    request.canReSearch === true && request.albumId && !reSearchingAlbumIds[request.albumId];
+    downloadsEnabled &&
+    request.canReSearch === true &&
+    request.albumId &&
+    !reSearchingAlbumIds[request.albumId];
   const isReSearching = Boolean(request.albumId && reSearchingAlbumIds[request.albumId]);
   const isApproving = approvingJobId === request.jobId;
   const isDenying = denyingJobId === request.jobId;
@@ -167,33 +173,39 @@ export default function ActivityRequestRow({
         {timelineTime}
       </time>
       <div className="activity-row__actions" onClick={(event) => event.stopPropagation()}>
-        {isBlockedTrack ? (
+        {isBlockedTrack && (playbackEnabled || flowsEnabled) ? (
           <>
-            <TooltipButton
-              className="native-library-icon-button"
-              onClick={() => onPreview(request.jobId, trackName, request.artistName)}
-              label={isThisPlaying ? "Pause preview" : "Preview track"}
-            >
-              {isThisPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
-            </TooltipButton>
-            <TooltipButton
-              className="native-library-icon-button activity-row__action--approve"
-              onClick={() => onApprove(request.jobId)}
-              disabled={isApproving || isDenying}
-              aria-busy={isApproving}
-              label="Approve track"
-            >
-              {isApproving ? <DotLoader size="sm" label={null} /> : <CheckCircle2 aria-hidden="true" />}
-            </TooltipButton>
-            <TooltipButton
-              className="native-library-icon-button activity-row__action--deny"
-              onClick={() => onDeny(request.jobId)}
-              disabled={isApproving || isDenying}
-              aria-busy={isDenying}
-              label="Deny track"
-            >
-              {isDenying ? <DotLoader size="sm" label={null} /> : <XCircle aria-hidden="true" />}
-            </TooltipButton>
+            {playbackEnabled ? (
+              <TooltipButton
+                className="native-library-icon-button"
+                onClick={() => onPreview(request.jobId, trackName, request.artistName)}
+                label={isThisPlaying ? "Pause preview" : "Preview track"}
+              >
+                {isThisPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+              </TooltipButton>
+            ) : null}
+            {flowsEnabled ? (
+              <>
+                <TooltipButton
+                  className="native-library-icon-button activity-row__action--approve"
+                  onClick={() => onApprove(request.jobId)}
+                  disabled={isApproving || isDenying}
+                  aria-busy={isApproving}
+                  label="Approve track"
+                >
+                  {isApproving ? <DotLoader size="sm" label={null} /> : <CheckCircle2 aria-hidden="true" />}
+                </TooltipButton>
+                <TooltipButton
+                  className="native-library-icon-button activity-row__action--deny"
+                  onClick={() => onDeny(request.jobId)}
+                  disabled={isApproving || isDenying}
+                  aria-busy={isDenying}
+                  label="Deny track"
+                >
+                  {isDenying ? <DotLoader size="sm" label={null} /> : <XCircle aria-hidden="true" />}
+                </TooltipButton>
+              </>
+            ) : null}
           </>
         ) : null}
         {canReSearch ? (

@@ -45,8 +45,11 @@ function ActivityPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { view: viewParam } = useParams();
-  const { user } = useAuth();
-  const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
+  const { user, hasCapability } = useAuth();
+  const flowsEnabled = hasCapability("flows");
+  const playbackEnabled = hasCapability("playback");
+  const downloadsEnabled = hasCapability("downloads");
+  const hasFlowAccess = flowsEnabled && (user?.role === "admin" || !!user?.permissions?.accessFlow);
   const [localError, setLocalError] = useState(null);
   const [visibleCount, setVisibleCount] = useState(ACTIVITY_PAGE_SIZE);
   const [reSearchingAlbumIds, setReSearchingAlbumIds] = useState({});
@@ -92,6 +95,7 @@ function ActivityPage() {
     (message) => {
       if (message?.type === "download_statuses") refreshFromStatusEvent();
     },
+    { enabled: hasCapability("downloads") },
   );
   const { isConnected: playlistsWsConnected } = useWebSocketChannel(
     "weekly-flow",
@@ -499,6 +503,9 @@ function ActivityPage() {
                   onDeny={handleDenyBlockedJob}
                   onPreview={handleReviewPreview}
                   onInfo={setInfoRequest}
+                  playbackEnabled={playbackEnabled}
+                  flowsEnabled={flowsEnabled}
+                  downloadsEnabled={downloadsEnabled}
                 />
               );
               return row;

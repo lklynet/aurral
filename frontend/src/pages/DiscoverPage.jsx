@@ -44,11 +44,13 @@ const getArtistId = (artist) => getArtistRecordId(artist);
 
 function DiscoverPage() {
   useDocumentTitle("Discover");
-  const { user: authUser, hasPermission, bootstrap } = useAuth();
+  const { user: authUser, hasPermission, bootstrap, hasCapability } = useAuth();
   const navigate = useDiscoverNavigation();
   const { showSuccess, showError } = useToast();
-  const canAdoptPlaylist = hasPermission("accessFlow");
-  const newsConfigured = bootstrap?.newsConfigured === true;
+  const canAdoptPlaylist = hasCapability("flows") && hasPermission("accessFlow");
+  const newsConfigured = hasCapability("fullFeatures") && bootstrap?.newsConfigured === true;
+  const canOpenLibrary = hasCapability("localLibrary");
+  const playbackEnabled = hasCapability("playback");
   const {
     articles: newsArticles,
     loading: newsLoading,
@@ -260,20 +262,22 @@ function DiscoverPage() {
 
   const sectionAvailability = useMemo(
     () => ({
-      recentlyAdded: recentlyAdded.length > 0,
-      playlists: displayDiscoverPlaylists.length > 0 || !!playlistsUpdating,
-      recentReleases: recentReleases.length > 0,
+      recentlyAdded: canOpenLibrary && recentlyAdded.length > 0,
+      playlists: hasCapability("flows") &&
+        (displayDiscoverPlaylists.length > 0 || !!playlistsUpdating),
+      recentReleases: canOpenLibrary && recentReleases.length > 0,
       news: newsConfigured,
       recommended:
         !isListenBrainzFallback &&
         (recommendations.length > 0 ||
           isUpdating ||
           capabilities?.personalizedRecommendations !== false),
-      recommendedShows: ticketmasterConfigured,
+      recommendedShows: hasCapability("fullFeatures") && ticketmasterConfigured,
       globalTop: globalTop.length > 0,
       genreSections: genreSections.length > 0,
     }),
     [
+      canOpenLibrary,
       recentlyAdded,
       displayDiscoverPlaylists,
       playlistsUpdating,
@@ -285,6 +289,7 @@ function DiscoverPage() {
       capabilities,
       isListenBrainzFallback,
       isUpdating,
+      hasCapability,
       ticketmasterConfigured,
     ],
   );
@@ -403,6 +408,7 @@ function DiscoverPage() {
   );
 
   const discoverArtistIds = useMemo(() => {
+    if (!canOpenLibrary) return [];
     const ids = new Set();
     for (const artist of data?.recommendations || []) {
       const id = getArtistId(artist);
@@ -423,11 +429,15 @@ function DiscoverPage() {
       if (id) ids.add(id);
     }
     return [...ids];
-  }, [data, genreSections, recentlyAdded]);
+  }, [canOpenLibrary, data, genreSections, recentlyAdded]);
 
   const discoverArtistIdsKey = discoverArtistIds.join(",");
 
   useEffect(() => {
+    if (!canOpenLibrary) {
+      setLibraryLookup({});
+      return undefined;
+    }
     if (discoverArtistIds.length === 0) return;
     const cached = readLibraryLookupCache(discoverArtistIds);
     if (Object.keys(cached).length > 0) {
@@ -451,7 +461,7 @@ function DiscoverPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [discoverArtistIdsKey]);
+  }, [canOpenLibrary, discoverArtistIdsKey]);
 
   const openDiscoverModal = () => {
     setDraftSections(displayDiscoverSections.map((item) => ({ ...item })));
@@ -493,8 +503,9 @@ function DiscoverPage() {
                   artist={artist}
                   isInLibrary={!!libraryLookup[getArtistId(artist)]}
                   canAddArtist={canAddArtist}
+                  playbackEnabled={playbackEnabled}
                   onNavigate={navigate}
-                  onOpenInLibrary={handleOpenArtistInLibrary}
+                  onOpenInLibrary={canOpenLibrary ? handleOpenArtistInLibrary : null}
                   onAddToLibrary={handleAddArtistToLibrary}
                   onFeedback={handleDiscoveryFeedback}
                   feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
@@ -526,8 +537,9 @@ function DiscoverPage() {
                     status="available"
                     isInLibrary={!!libraryLookup[artistId]}
                     canAddArtist={false}
+                    playbackEnabled={playbackEnabled}
                     onNavigate={navigate}
-                    onOpenInLibrary={handleOpenArtistInLibrary}
+                    onOpenInLibrary={canOpenLibrary ? handleOpenArtistInLibrary : null}
                     artist={{
                       id: artistId,
                       name: artist.artistName,
@@ -634,8 +646,9 @@ function DiscoverPage() {
                     artist={artist}
                     isInLibrary={!!libraryLookup[getArtistId(artist)]}
                     canAddArtist={canAddArtist}
+                    playbackEnabled={playbackEnabled}
                     onNavigate={navigate}
-                    onOpenInLibrary={handleOpenArtistInLibrary}
+                    onOpenInLibrary={canOpenLibrary ? handleOpenArtistInLibrary : null}
                     onAddToLibrary={handleAddArtistToLibrary}
                     onFeedback={handleDiscoveryFeedback}
                     feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
@@ -694,13 +707,15 @@ function DiscoverPage() {
                     Search Artists
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => navigate("/library")}
-                  className="btn btn-secondary btn--bold btn-min-h"
-                >
-                  Browse Library
-                </button>
+                {canOpenLibrary ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate("/library")}
+                    className="btn btn-secondary btn--bold btn-min-h"
+                  >
+                    Browse Library
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -837,8 +852,9 @@ function DiscoverPage() {
                   }}
                   isInLibrary={!!libraryLookup[getArtistId(artist)]}
                   canAddArtist={canAddArtist}
+                  playbackEnabled={playbackEnabled}
                   onNavigate={navigate}
-                  onOpenInLibrary={handleOpenArtistInLibrary}
+                  onOpenInLibrary={canOpenLibrary ? handleOpenArtistInLibrary : null}
                   onAddToLibrary={handleAddArtistToLibrary}
                   onFeedback={handleDiscoveryFeedback}
                   feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
@@ -877,8 +893,9 @@ function DiscoverPage() {
                       artist={artist}
                       isInLibrary={!!libraryLookup[getArtistId(artist)]}
                       canAddArtist={canAddArtist}
+                      playbackEnabled={playbackEnabled}
                       onNavigate={navigate}
-                      onOpenInLibrary={handleOpenArtistInLibrary}
+                      onOpenInLibrary={canOpenLibrary ? handleOpenArtistInLibrary : null}
                       onAddToLibrary={handleAddArtistToLibrary}
                       onFeedback={handleDiscoveryFeedback}
                       feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}

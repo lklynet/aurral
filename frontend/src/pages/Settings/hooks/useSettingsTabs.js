@@ -4,11 +4,10 @@ import {
   DEFAULT_SETTINGS_TAB,
   getSettingsTabById,
   normalizeSettingsTabId,
-  SETTINGS_NAV_TABS,
-  SETTINGS_TAB_IDS,
+  getAvailableSettingsTabs,
 } from "../settingsTabsConfig";
 
-export function useSettingsTabs(authUser) {
+export function useSettingsTabs(authUser, capabilities) {
   const navigate = useNavigate();
   const { tab: tabParam } = useParams();
 
@@ -16,13 +15,14 @@ export function useSettingsTabs(authUser) {
     if (authUser?.role !== "admin") {
       return [];
     }
-    return SETTINGS_NAV_TABS;
-  }, [authUser?.role]);
+    return getAvailableSettingsTabs(capabilities);
+  }, [authUser?.role, capabilities]);
 
   const activeTab = useMemo(() => {
     const normalized = normalizeSettingsTabId(tabParam);
-    return SETTINGS_TAB_IDS.includes(normalized) ? normalized : DEFAULT_SETTINGS_TAB;
-  }, [tabParam]);
+    const availableIds = tabs.map((tab) => tab.id);
+    return availableIds.includes(normalized) ? normalized : availableIds[0] || DEFAULT_SETTINGS_TAB;
+  }, [tabParam, tabs]);
 
   const activeTabMeta = useMemo(() => getSettingsTabById(activeTab), [activeTab]);
 

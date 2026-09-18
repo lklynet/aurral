@@ -12,23 +12,28 @@ import {
   Server,
   Users,
 } from "lucide-react";
+import { filterByCapabilities } from "../../utils/appCapabilities.js";
 
 export const SETTINGS_TABS = [
   { id: "system", label: "System", icon: Monitor },
-  { id: "storage-health", label: "Storage health", icon: HardDrive },
-  { id: "tasks", label: "Tasks", icon: ListChecks },
+  { id: "storage-health", label: "Storage health", icon: HardDrive, requiredCapabilities: ["localLibrary"] },
+  { id: "tasks", label: "Tasks", icon: ListChecks, requiredCapabilities: ["flows"] },
   { id: "lidarr", label: "Lidarr", icon: Server },
-  { id: "indexers", label: "Indexers", icon: DatabaseSearch },
-  { id: "download-clients", label: "Download clients", icon: Download },
-  { id: "playback", label: "Playback", icon: Music },
+  { id: "indexers", label: "Indexers", icon: DatabaseSearch, requiredCapabilities: ["fullFeatures"] },
+  { id: "download-clients", label: "Download clients", icon: Download, requiredCapabilities: ["fullFeatures"] },
+  { id: "playback", label: "Playback", icon: Music, requiredCapabilities: ["playback"] },
   { id: "connect", label: "Connect", icon: Bell },
-  { id: "rss-news", label: "RSS news", icon: Rss },
+  { id: "rss-news", label: "RSS news", icon: Rss, requiredCapabilities: ["fullFeatures"] },
   { id: "discover", label: "Discover", icon: Compass },
   { id: "metadata", label: "Metadata", icon: Database, hidden: true },
   { id: "users", label: "Users", icon: Users },
 ];
 
 export const SETTINGS_NAV_TABS = SETTINGS_TABS.filter((tab) => !tab.hidden);
+
+export function getAvailableSettingsTabs(capabilities) {
+  return filterByCapabilities(SETTINGS_NAV_TABS, capabilities);
+}
 
 const SETTINGS_SEARCH_METADATA = {
   system: {
@@ -212,6 +217,34 @@ const SETTINGS_SEARCH_METADATA = {
       "Recommended artist news": "inbox RSS",
       Discoveries: "inbox recommendations",
     },
+    requiredCapabilities: {
+      Gotify: ["fullFeatures"],
+      Ticketmaster: ["fullFeatures"],
+      Inbox: ["fullFeatures"],
+      Webhooks: ["fullFeatures"],
+      "Notification events": ["fullFeatures"],
+      "Server URL": ["fullFeatures"],
+      "Application token": ["fullFeatures"],
+      "API secret": ["fullFeatures"],
+      "Consumer key": ["fullFeatures"],
+      "Search radius (miles)": ["fullFeatures"],
+      "Local discovery": ["fullFeatures"],
+      "Include recommended artists in local shows": ["fullFeatures"],
+      "Include trending artists in local shows": ["fullFeatures"],
+      URL: ["fullFeatures"],
+      Headers: ["fullFeatures"],
+      Body: ["fullFeatures"],
+      "Discover updated": ["fullFeatures"],
+      "Weekly flow finished": ["fullFeatures"],
+      "Request made": ["fullFeatures"],
+      "Request available": ["fullFeatures"],
+      "Enable inbox": ["fullFeatures"],
+      "Upcoming releases": ["fullFeatures"],
+      "Upcoming shows": ["fullFeatures"],
+      "Library artist news": ["fullFeatures"],
+      "Recommended artist news": ["fullFeatures"],
+      Discoveries: ["fullFeatures"],
+    },
   },
   "rss-news": {
     sections: ["RSS news", "Custom feeds", "Feed groups"],
@@ -280,26 +313,28 @@ const normalizeSearchText = (value) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
-const createSettingsSearchItem = (tab, kind, label, keywords = "") => ({
+const createSettingsSearchItem = (tab, kind, label, keywords = "", requiredCapabilities) => ({
   id: tab.id,
   key: `${tab.id}:${kind}:${label}`,
   label,
   kind,
   tabLabel: tab.label,
+  requiredCapabilities: requiredCapabilities || tab.requiredCapabilities || [],
   searchText: normalizeSearchText(`${tab.label} ${tab.id} ${label} ${keywords}`),
 });
 
 export const SETTINGS_SEARCH_ITEMS = SETTINGS_TABS.flatMap((tab) => {
   const metadata = SETTINGS_SEARCH_METADATA[tab.id] || {};
   const items = [createSettingsSearchItem(tab, "page", tab.label, tab.id)];
+  const getRequiredCapabilities = (label) => metadata.requiredCapabilities?.[label];
 
   for (const section of metadata.sections || []) {
-    items.push(createSettingsSearchItem(tab, "section", section));
+    items.push(createSettingsSearchItem(tab, "section", section, "", getRequiredCapabilities(section)));
   }
 
   for (const [service, keywords] of Object.entries(metadata.services || {})) {
     if (service.toLowerCase() !== tab.label.toLowerCase()) {
-      items.push(createSettingsSearchItem(tab, "service", service, keywords));
+      items.push(createSettingsSearchItem(tab, "service", service, keywords, getRequiredCapabilities(service)));
     }
   }
 
@@ -307,18 +342,21 @@ export const SETTINGS_SEARCH_ITEMS = SETTINGS_TABS.flatMap((tab) => {
     const existing = items.find((item) => item.label.toLowerCase() === field.toLowerCase());
     if (existing) {
       existing.searchText = normalizeSearchText(`${existing.searchText} ${keywords}`);
+      existing.requiredCapabilities = [
+        ...new Set([...existing.requiredCapabilities, ...(getRequiredCapabilities(field) || [])]),
+      ];
     } else {
-      items.push(createSettingsSearchItem(tab, "setting", field, keywords));
+      items.push(createSettingsSearchItem(tab, "setting", field, keywords, getRequiredCapabilities(field)));
     }
   }
 
   return items;
 });
 
-export function searchSettingsItems(query) {
+export function searchSettingsItems(query, capabilities) {
   const terms = normalizeSearchText(query).split(" ").filter(Boolean);
   if (!terms.length) return [];
-  return SETTINGS_SEARCH_ITEMS.filter((item) =>
+  return filterByCapabilities(SETTINGS_SEARCH_ITEMS, capabilities).filter((item) =>
     terms.every((term) => item.searchText.includes(term)),
   );
 }

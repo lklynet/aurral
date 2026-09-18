@@ -93,8 +93,12 @@ function ReleasePage() {
   const { state: locationState } = useLocation();
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
-  const { hasPermission } = useAuth();
+  const { hasPermission, hasCapability } = useAuth();
   const canAddAlbum = hasPermission("addAlbum");
+  const playbackEnabled = hasCapability("playback");
+  const flowsEnabled = hasCapability("flows");
+  const downloadsEnabled = hasCapability("downloads");
+  const localLibraryEnabled = hasCapability("localLibrary");
 
   const artistName = locationState?.artistName || "";
   const focusTrackMbid = locationState?.focusTrackMbid || null;
@@ -126,7 +130,7 @@ function ReleasePage() {
     playlistsError: playlistModalError,
     setPlaylistsError: setPlaylistModalError,
     loadSharedPlaylists,
-  } = useSharedPlaylists();
+  } = useSharedPlaylists({ enabled: flowsEnabled });
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
   const [libraryTrackSavingKey, setLibraryTrackSavingKey] = useState("");
   const downloadTrackMutation = useMutation({ mutationFn: downloadTrackToLibrary });
@@ -584,7 +588,7 @@ function ReleasePage() {
             <p className="artist-card-meta release-page__meta">{releaseMeta}</p>
           ) : null}
           <div className="release-page__actions">
-            {libraryInfo?.canonicalInLibrary ? (
+            {localLibraryEnabled && libraryInfo?.canonicalInLibrary ? (
               <button
                 type="button"
                 className="btn btn-surface btn-sm release-page__external-link"
@@ -637,8 +641,8 @@ function ReleasePage() {
             id: releaseMbid,
             label: releaseTitle,
           }}
-          onAddTrackToPlaylist={handleReleaseTrackAdd}
-          onAddTrackToLibrary={handleReleaseTrackAddToLibrary}
+          onAddTrackToPlaylist={flowsEnabled ? handleReleaseTrackAdd : null}
+          onAddTrackToLibrary={downloadsEnabled ? handleReleaseTrackAddToLibrary : null}
           libraryTrackSavingKey={libraryTrackSavingKey}
           ownedTrackMbids={libraryInfo?.ownedTrackMbids}
           resolveMembershipTrack={buildReleaseTrackPayload}
@@ -649,6 +653,7 @@ function ReleasePage() {
           getDefaultPlaylistName={getDefaultTrackPlaylistName}
           onLoadPlaylists={loadSharedPlaylists}
           highlightTrackId={focusTrackMbid}
+          playbackEnabled={playbackEnabled}
         />
       </div>
     </div>

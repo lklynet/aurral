@@ -42,7 +42,7 @@ function getPreviewLabel(item, previewTracks) {
   return null;
 }
 
-function TopResultArtwork({ item, artistImages, albumCovers, isInLibrary }) {
+function TopResultArtwork({ item, artistImages, albumCovers, isInLibrary, playbackEnabled }) {
   if (item.type === "artist") {
     const artistId = getArtistRecordId(item);
     return (
@@ -54,7 +54,7 @@ function TopResultArtwork({ item, artistImages, albumCovers, isInLibrary }) {
         className="search-top-artist__image"
         showLoading={false}
         enableBackendFallback={false}
-        enablePreviewPlayback
+        enablePreviewPlayback={playbackEnabled}
         isInLibrary={isInLibrary}
       />
     );
@@ -109,6 +109,7 @@ function SearchTopArtistCard({
   navigate,
   query = "",
   previewTracks = [],
+  playbackEnabled = true,
 }) {
   const result = item || legacyArtist;
   const label = getPrimaryLabel(result);
@@ -152,7 +153,13 @@ function SearchTopArtistCard({
               isArtist ? "" : " search-top-artist__image-wrap--square"
             }`}
           >
-            <TopResultArtwork item={result} artistImages={artistImages} albumCovers={albumCovers} isInLibrary={isInLibrary} />
+            <TopResultArtwork
+              item={result}
+              artistImages={artistImages}
+              albumCovers={albumCovers}
+              isInLibrary={isInLibrary}
+              playbackEnabled={playbackEnabled}
+            />
           </span>
 
           <span className="search-top-artist__copy">

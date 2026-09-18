@@ -10,6 +10,7 @@ import {
   getCanonicalLibraryReadModelForArtists,
 } from "../../../services/canonicalLibraryReadAdapter.js";
 import { getCanonicalArtistMbids } from "../../../services/libraryQueryService.js";
+import { requireAppCapability } from "../../../middleware/appProfile.js";
 
 const ARTIST_LOOKUP_BATCH_MAX = 100;
 
@@ -128,7 +129,7 @@ export async function getArtistLibraryLookup(mbid) {
 }
 
 export function registerMisc(router) {
-  router.get("/rootfolder", async (req, res) => {
+  router.get("/rootfolder", requireAppCapability("localLibrary"), async (req, res) => {
     try {
       const { lidarrClient } = await import("../../../services/lidarrClient.js");
       const configured = lidarrClient.getConfiguredRootFolderPaths();
@@ -311,7 +312,7 @@ export function registerMisc(router) {
     }
   });
 
-  router.get("/recent", async (req, res) => {
+  router.get("/recent", requireAppCapability("localLibrary"), async (req, res) => {
     try {
       const artists = await libraryManager.getAllArtists();
       const recent = [...artists]
@@ -332,7 +333,7 @@ export function registerMisc(router) {
     }
   });
 
-  router.get("/recent-releases", async (req, res) => {
+  router.get("/recent-releases", requireAppCapability("localLibrary"), async (req, res) => {
     try {
       const { getRecentMissingReleases } = await import(
         "../../../services/discovery/recentReleases.js"

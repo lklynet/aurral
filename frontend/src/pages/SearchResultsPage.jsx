@@ -142,8 +142,10 @@ function SearchResultsPage() {
   const albumOptionsMenuRef = useRef(null);
   const recommendedToolbarRef = useRef(null);
   const navigate = useDiscoverNavigation();
-  const { hasPermission, bootstrap } = useAuth();
+  const { hasPermission, bootstrap, hasCapability } = useAuth();
   const { showSuccess, showError } = useToast();
+  const localLibraryEnabled = hasCapability("localLibrary");
+  const playbackEnabled = hasCapability("playback");
 
   const trimmedQuery = useMemo(() => query.trim(), [query]);
   const normalizedType = useMemo(() => {
@@ -172,6 +174,7 @@ function SearchResultsPage() {
   const { lookup: artistFeedbackLookup, submitFeedback } = useArtistTasteFeedback();
   const canAddArtist = hasPermission("addArtist");
   const canAddAlbum = hasPermission("addAlbum");
+  const canUseFlows = hasCapability("flows");
   const updateAlbumSort = useCallback(
     (nextSort) => {
       const params = new URLSearchParams(searchParams);
@@ -385,7 +388,7 @@ function SearchResultsPage() {
   }, [isAlbumSearch, isUnifiedSearch, results, unifiedResults]);
 
   useEffect(() => {
-    if (!isUnifiedSearch || !unifiedResults) return undefined;
+    if (!localLibraryEnabled || !isUnifiedSearch || !unifiedResults) return undefined;
     const artists = (unifiedResults.catalog?.artists || []).filter((artist) => artist?.id);
     const ids = artists.map((artist) => artist.id);
     if (ids.length === 0) return undefined;
@@ -407,7 +410,7 @@ function SearchResultsPage() {
     return () => {
       cancelled = true;
     };
-  }, [isUnifiedSearch, unifiedResults, libraryLookup]);
+  }, [isUnifiedSearch, libraryLookup, localLibraryEnabled, unifiedResults]);
 
   useEffect(() => {
     if (isAlbumSearch) return undefined;
@@ -479,7 +482,7 @@ function SearchResultsPage() {
   }, [artistImages, isAlbumSearch, isUnifiedSearch, results, unifiedResults]);
 
   useEffect(() => {
-    if (isAlbumSearch || isUnifiedSearch) return undefined;
+    if (!localLibraryEnabled || isAlbumSearch || isUnifiedSearch) return undefined;
     let cancelled = false;
     const ids = results.map((artist) => getArtistRecordId(artist)).filter(Boolean);
     if (ids.length === 0) {
@@ -510,7 +513,7 @@ function SearchResultsPage() {
     return () => {
       cancelled = true;
     };
-  }, [results, libraryLookup, isAlbumSearch, isUnifiedSearch]);
+  }, [results, libraryLookup, isAlbumSearch, isUnifiedSearch, localLibraryEnabled]);
 
   useEffect(() => {
     if (!isUnifiedSearch || !unifiedResults?.catalog?.albums?.length) {
@@ -987,14 +990,16 @@ function SearchResultsPage() {
       if (item.type === "album") {
         return isAlbumCompleteInLibrary({ status: item.status });
       }
-      if (item.inLibrary) return true;
       if (item.type === "artist") {
+        if (!localLibraryEnabled) return false;
+        if (item.inLibrary) return true;
         const artistId = getArtistRecordId(item);
         return artistId ? !!libraryLookup[artistId] : false;
       }
+      if (item.inLibrary) return true;
       return false;
     },
-    [libraryLookup],
+    [libraryLookup, localLibraryEnabled],
   );
 
   const renderSearchResultAction = useCallback(
@@ -1002,6 +1007,7 @@ function SearchResultsPage() {
       if (!item || item.type === "playlist") return null;
 
       if (item.type === "track") {
+        if (!canUseFlows) return null;
         const savingKey = String(
           item.id ?? item.trackMbid ?? `${item.artistName || ""}:${item.title || ""}`,
         );
@@ -1066,6 +1072,7 @@ function SearchResultsPage() {
     [
       canAddAlbum,
       canAddArtist,
+      canUseFlows,
       handleAlbumAction,
       handleArtistAction,
       handleSearchTrackAdd,
@@ -1087,15 +1094,18 @@ function SearchResultsPage() {
       artistImages,
       albumCovers,
       renderAction: renderSearchResultAction,
+      playbackEnabled,
     }),
-    [albumCovers, artistImages, navigate, renderSearchResultAction, trimmedQuery],
+    [albumCovers, artistImages, navigate, playbackEnabled, renderSearchResultAction, trimmedQuery],
   );
 
   const searchLibraryFlags = useMemo(() => {
     const artistIds = new Set(
-      Object.entries(libraryLookup)
-        .filter(([, inLibrary]) => inLibrary)
-        .map(([id]) => id),
+      localLibraryEnabled
+        ? Object.entries(libraryLookup)
+            .filter(([, inLibrary]) => inLibrary)
+            .map(([id]) => id)
+        : [],
     );
     const albumIds = new Set();
     for (const [albumId, entry] of Object.entries(albumLibraryLookup)) {
@@ -1109,7 +1119,7 @@ function SearchResultsPage() {
       }
     }
     return { artistIds, albumIds };
-  }, [albumLibraryLookup, libraryLookup, unifiedResults]);
+  }, [albumLibraryLookup, libraryLookup, localLibraryEnabled, unifiedResults]);
 
   const unifiedView = useMemo(() => {
     if (!isUnifiedSearch || !unifiedResults) {
@@ -1592,6 +1602,7 @@ function SearchResultsPage() {
                           libraryLookup={libraryLookup}
                           navigate={navigate}
                           query={trimmedQuery}
+                          playbackEnabled={playbackEnabled}
                         />
                       )}
                       {unifiedView.mixedItems.length > 0 && (
@@ -1627,6 +1638,7 @@ function SearchResultsPage() {
                       onArtistFeedback={handleArtistFeedback}
                       artistFeedbackLookup={artistFeedbackLookup}
                       variant="round"
+                      playbackEnabled={playbackEnabled}
                     />
                   )}
 
@@ -1663,6 +1675,7 @@ function SearchResultsPage() {
                   onAddArtistToLibrary={handleArtistAction}
                   onArtistFeedback={handleArtistFeedback}
                   artistFeedbackLookup={artistFeedbackLookup}
+                  playbackEnabled={playbackEnabled}
                   variant={
                     ["recommended", "trending", "tag"].includes(normalizedType)
                       ? recommendedViewMode

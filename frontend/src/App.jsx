@@ -97,6 +97,23 @@ const PermissionRoute = ({ children, permission }) => {
   return children;
 };
 
+const CapabilityRoute = ({ children, capability, redirectTo = "/" }) => {
+  const { hasCapability } = useAuth();
+  if (!hasCapability(capability)) {
+    return <Navigate to={redirectTo} replace />;
+  }
+  return children;
+};
+
+const ActivityRoute = ({ children }) => {
+  const { view } = useParams();
+  const { hasCapability } = useAuth();
+  if (view === "missing" && !hasCapability("flows")) {
+    return <Navigate to="/activity/queue" replace />;
+  }
+  return children;
+};
+
 function AppContent() {
   const basePath = getAppBasePath();
   const [isHealthy, setIsHealthy] = useState(null);
@@ -105,7 +122,7 @@ function AppContent() {
   const [appVersion, setAppVersion] = useState(null);
   const discoveryToastShownRef = useRef(false);
   const healthCheckInFlightRef = useRef(false);
-  const { isAuthenticated, user, bootstrap, refreshAuth } = useAuth();
+  const { isAuthenticated, user, bootstrap, refreshAuth, hasCapability } = useAuth();
   const { showSuccess, showError } = useToast();
 
   const { isConnected: appSocketConnected } = useWebSocketChannel("discovery", (msg) => {
@@ -243,7 +260,7 @@ function AppContent() {
                     </div>
                   )}
 
-                  {isHealthy && !rootFolderConfigured && (
+                  {isHealthy && hasCapability("localLibrary") && !rootFolderConfigured && (
                     <div className="app-status-banner app-status-banner--warning">
                       <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
                       <p className="app-status-banner__text app-status-banner__text--warning">
@@ -255,40 +272,44 @@ function AppContent() {
                   <Suspense fallback={<PageLoader />}>
                     <Routes>
                       <Route path="/" element={<DiscoverPage />} />
-                      <Route path="/shows" element={<Navigate to="/shows/all" replace />} />
-                      <Route path="/shows/:filter" element={<ShowsPage />} />
+                      <Route path="/shows" element={<CapabilityRoute capability="fullFeatures"><Navigate to="/shows/all" replace /></CapabilityRoute>} />
+                      <Route path="/shows/:filter" element={<CapabilityRoute capability="fullFeatures"><ShowsPage /></CapabilityRoute>} />
                       <Route path="/search" element={<SearchResultsPage />} />
                       <Route path="/discover" element={<Navigate to="/" replace />} />
                       <Route path="/discover/playlists/:presetId" element={<DiscoverPlaylistDetailPage />} />
                       <Route path="/discover/playlists" element={<DiscoverPlaylistsPage />} />
-                      <Route path="/discover/news" element={<NewsPage />} />
+                      <Route path="/discover/news" element={<CapabilityRoute capability="fullFeatures"><NewsPage /></CapabilityRoute>} />
                       <Route
                         path="/library/playlists"
                         element={
-                          <PermissionRoute permission="accessFlow">
-                            <FlowPage mode="playlists" />
-                          </PermissionRoute>
+                          <CapabilityRoute capability="flows">
+                            <PermissionRoute permission="accessFlow">
+                              <FlowPage mode="playlists" />
+                            </PermissionRoute>
+                          </CapabilityRoute>
                         }
                       />
-                      <Route path="/library/album/:albumId" element={<LibraryPage />} />
-                      <Route path="/library/artist/:artistId" element={<LibraryPage />} />
-                      <Route path="/library/:section?" element={<LibraryPage />} />
+                      <Route path="/library/album/:albumId" element={<CapabilityRoute capability="localLibrary"><LibraryPage /></CapabilityRoute>} />
+                      <Route path="/library/artist/:artistId" element={<CapabilityRoute capability="localLibrary"><LibraryPage /></CapabilityRoute>} />
+                      <Route path="/library/:section?" element={<CapabilityRoute capability="localLibrary"><LibraryPage /></CapabilityRoute>} />
                       <Route
                         path="/flows"
                         element={
-                          <PermissionRoute permission="accessFlow">
-                            <FlowPage mode="flows" />
-                          </PermissionRoute>
+                          <CapabilityRoute capability="flows">
+                            <PermissionRoute permission="accessFlow">
+                              <FlowPage mode="flows" />
+                            </PermissionRoute>
+                          </CapabilityRoute>
                         }
                       />
-                      <Route path="/playlists" element={<Navigate to="/library/playlists" replace />} />
-                      <Route path="/flow" element={<Navigate to="/flows" replace />} />
+                      <Route path="/playlists" element={<CapabilityRoute capability="flows"><Navigate to="/library/playlists" replace /></CapabilityRoute>} />
+                      <Route path="/flow" element={<CapabilityRoute capability="flows"><Navigate to="/flows" replace /></CapabilityRoute>} />
                       <Route path="/downloads" element={<Navigate to="/activity/queue" replace />} />
                       <Route path="/requests" element={<Navigate to="/activity/queue" replace />} />
                       <Route path="/history" element={<Navigate to="/activity/history" replace />} />
                       <Route path="/history/:legacyTab" element={<LegacyHistoryRedirect />} />
                       <Route path="/activity" element={<ActivityRootRedirect />} />
-                      <Route path="/activity/:view" element={<ActivityPage />} />
+                      <Route path="/activity/:view" element={<ActivityRoute><ActivityPage /></ActivityRoute>} />
                       <Route path="/activity/:view/:source" element={<ActivitySourceRedirect />} />
                       <Route
                         path="/artist/:mbid/albums"

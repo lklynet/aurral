@@ -28,6 +28,7 @@ export function ArtistDetailsReleaseTrackList({
   getDefaultPlaylistName,
   onLoadPlaylists,
   highlightTrackId = null,
+  playbackEnabled = true,
 }) {
   const rowRefs = useRef({});
   const ownedTrackSet = new Set((Array.isArray(ownedTrackMbids) ? ownedTrackMbids : []).map(String));
@@ -138,13 +139,15 @@ export function ArtistDetailsReleaseTrackList({
         </div>
       ) : tracks?.length ? (
         <>
-          <ArtistTrackListToolbar
-            disabled={toolbarDisabled}
-            isPlaying={isListPlaying}
-            isShuffleEnabled={isShuffleEnabled}
-            onPlayAll={handlePlayAll}
-            onShufflePlay={handleShufflePlay}
-          />
+          {playbackEnabled ? (
+            <ArtistTrackListToolbar
+              disabled={toolbarDisabled}
+              isPlaying={isListPlaying}
+              isShuffleEnabled={isShuffleEnabled}
+              onPlayAll={handlePlayAll}
+              onShufflePlay={handleShufflePlay}
+            />
+          ) : null}
           <div className="artist-track-list__rows">
             {tracks.map((track, index) => {
               const currentTrackId = String(track.id ?? track.mbid ?? `${trackKey}-${index}`);
@@ -169,7 +172,7 @@ export function ArtistDetailsReleaseTrackList({
                   <span className="artist-track-number">
                     {track.trackNumber || track.position || index + 1}
                   </span>
-                  {track.preview_url ? (
+                  {playbackEnabled && track.preview_url ? (
                     <TrackPlayButton
                       track={track}
                       isPlaying={isPlaying}

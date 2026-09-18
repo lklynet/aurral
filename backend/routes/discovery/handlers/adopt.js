@@ -1,9 +1,11 @@
 import { requireAuth, requirePermission } from "../../../middleware/requirePermission.js";
+import { requireAppCapability } from "../../../middleware/appProfile.js";
 import { handleDiscoverAdoptError } from "./utils.js";
 
 export function registerAdopt(router) {
   router.post(
     "/playlists/adopt",
+    requireAppCapability("flows"),
     requireAuth,
     requirePermission("accessFlow"),
     async (req, res) => {
@@ -29,6 +31,7 @@ export function registerAdopt(router) {
 
   router.post(
     "/playlists/adopt-playlist",
+    requireAppCapability("flows"),
     requireAuth,
     requirePermission("accessFlow"),
     async (req, res) => {

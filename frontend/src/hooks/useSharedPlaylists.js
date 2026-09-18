@@ -2,14 +2,18 @@ import { useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getFlowStatus } from "../utils/api/endpoints/playlists.js";
 import { useToast } from "../contexts/ToastContext";
+import { useAuth } from "../contexts/AuthContext";
 import { queryClient, queryKeys } from "../queryClient.js";
 
-export function useSharedPlaylists() {
+export function useSharedPlaylists({ enabled = true } = {}) {
   const { showError } = useToast();
+  const { bootstrap, hasCapability } = useAuth();
+  const queryEnabled = enabled && bootstrap !== null && hasCapability("flows");
   const [playlistsError, setPlaylistsError] = useState("");
   const query = useQuery({
     queryKey: queryKeys.playlistStatus,
     queryFn: ({ signal }) => getFlowStatus({ signal, bypassCache: true }),
+    enabled: queryEnabled,
     staleTime: 4_000,
   });
   const sharedPlaylists = Array.isArray(query.data?.sharedPlaylists)
@@ -24,6 +28,7 @@ export function useSharedPlaylists() {
   }, []);
 
   const loadSharedPlaylists = useCallback(async () => {
+    if (!queryEnabled) return [];
     setPlaylistsError("");
     try {
       const { data } = await refetch({ throwOnError: true });
@@ -39,12 +44,12 @@ export function useSharedPlaylists() {
       showError(message);
       return null;
     }
-  }, [refetch, showError]);
+  }, [queryEnabled, refetch, showError]);
 
   return {
     sharedPlaylists,
     setSharedPlaylists,
-    playlistsLoading: query.isLoading,
+    playlistsLoading: queryEnabled && query.isLoading,
     playlistsError: playlistsError || query.error?.response?.data?.message || query.error?.message || "",
     setPlaylistsError,
     loadSharedPlaylists,

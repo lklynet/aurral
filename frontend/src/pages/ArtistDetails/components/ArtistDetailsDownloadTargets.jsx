@@ -59,6 +59,7 @@ export function ArtistDetailsDownloadTargets({
   playlistError,
   getDefaultPlaylistName,
   onLoadPlaylists,
+  playbackEnabled = true,
 }) {
   const missingReleasePick = useMemo(
     () => buildAurralPick({ releaseGroups, getAlbumStatus }),
@@ -236,15 +237,17 @@ export function ArtistDetailsDownloadTargets({
               </div>
             ) : tracks.length ? (
               <>
-                <div className="artist-pick-panel__tracks-header">
-                  <ArtistTrackListToolbar
-                    disabled={toolbarDisabled}
-                    isPlaying={isListPlaying}
-                    isShuffleEnabled={isShuffleEnabled}
-                    onPlayAll={handlePlayAll}
-                    onShufflePlay={handleShufflePlay}
-                  />
-                </div>
+                {playbackEnabled ? (
+                  <div className="artist-pick-panel__tracks-header">
+                    <ArtistTrackListToolbar
+                      disabled={toolbarDisabled}
+                      isPlaying={isListPlaying}
+                      isShuffleEnabled={isShuffleEnabled}
+                      onPlayAll={handlePlayAll}
+                      onShufflePlay={handleShufflePlay}
+                    />
+                  </div>
+                ) : null}
                 <div className="artist-pick-panel__track-grid">
                   {visibleTracks.map((track, index) => {
                     const currentTrackId = String(track.id ?? track.mbid ?? `pick-${index}`);
@@ -258,7 +261,7 @@ export function ArtistDetailsDownloadTargets({
                         <span className="artist-track-number">
                           {track.trackNumber || track.position || index + 1}
                         </span>
-                        {track.preview_url ? (
+                        {playbackEnabled && track.preview_url ? (
                           <TrackPlayButton
                             track={track}
                             isPlaying={isPlaying}

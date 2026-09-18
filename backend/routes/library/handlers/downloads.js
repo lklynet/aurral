@@ -9,6 +9,7 @@ import {
 } from "../../../services/albumSearchState.js";
 import { logger } from "../../../services/logger.js";
 import { getCanonicalTrackOwnership } from "../../../services/libraryQueryService.js";
+import { requireAppCapability } from "../../../middleware/appProfile.js";
 
 const STALE_GRABBED_MS = 15 * 60 * 1000;
 const ACTIVE_STATUS_CACHE_MS = 10 * 1000;
@@ -345,7 +346,7 @@ export const getAllDownloadStatuses = async () =>
   (await getLidarrStatusSnapshot()).statuses;
 
 export function registerDownloads(router) {
-  router.post("/downloads/track", requireAuth, requirePermission("addAlbum"), async (req, res) => {
+  router.post("/downloads/track", requireAppCapability("downloads"), requireAuth, requirePermission("addAlbum"), async (req, res) => {
     const body = req.body || {};
     const track = {
       artistName: String(body.artistName || "").trim(),
@@ -450,7 +451,7 @@ export function registerDownloads(router) {
     }
   });
 
-  router.post("/downloads/album", requireAuth, requirePermission("addAlbum"), async (req, res) => {
+  router.post("/downloads/album", requireAppCapability("downloads"), requireAuth, requirePermission("addAlbum"), async (req, res) => {
     try {
       const { albumId } = req.body;
 
@@ -514,6 +515,7 @@ export function registerDownloads(router) {
 
   router.post(
     "/downloads/album/search",
+    requireAppCapability("downloads"),
     requireAuth,
     requirePermission("addAlbum"),
     async (req, res) => {

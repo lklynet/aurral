@@ -80,6 +80,7 @@ export const ArtistCard = memo(
     onAddToLibrary,
     onFeedback,
     feedbackUsed = {},
+    playbackEnabled = true,
   }) => {
     const navigateTo = artist.navigateTo || artist.id;
     const hasValidMbid = navigateTo && navigateTo !== "null" && navigateTo !== "undefined";
@@ -112,7 +113,7 @@ export const ArtistCard = memo(
             alt={artist.name}
             className="artist-discover-card__image"
             showLoading={false}
-            enablePreviewPlayback={hasValidMbid}
+            enablePreviewPlayback={playbackEnabled && hasValidMbid}
             isInLibrary={isInLibrary}
           />
         </div>
@@ -166,6 +167,7 @@ export const ArtistCard = memo(
       prevProps.status === nextProps.status &&
       prevProps.isInLibrary === nextProps.isInLibrary &&
       prevProps.canAddArtist === nextProps.canAddArtist &&
+      prevProps.playbackEnabled === nextProps.playbackEnabled &&
       prevProps.feedbackUsed?.more_like_this === nextProps.feedbackUsed?.more_like_this &&
       prevProps.feedbackUsed?.less_like_this === nextProps.feedbackUsed?.less_like_this &&
       prevProps.feedbackUsed?.block_artist === nextProps.feedbackUsed?.block_artist &&

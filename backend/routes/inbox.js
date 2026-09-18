@@ -2,6 +2,7 @@ import express from "express";
 import { dbOps } from "../db/helpers/index.js";
 import { hasPermission } from "../middleware/auth.js";
 import { requireAuth } from "../middleware/requirePermission.js";
+import { requireAppCapability } from "../middleware/appProfile.js";
 import { libraryManager } from "../services/libraryManager.js";
 import {
   enqueueInboxRefreshForUser,
@@ -17,6 +18,8 @@ const lastManualRefresh = new Map();
 const DISCOVERY_DISMISSAL_MS = 90 * 24 * 60 * 60 * 1000;
 
 const getUserId = (req) => Number(req.user?.id);
+
+router.use(requireAppCapability("fullFeatures"));
 
 async function addInboxItem(item, user) {
   const metadata = item.metadata || {};

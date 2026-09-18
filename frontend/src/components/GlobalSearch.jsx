@@ -61,7 +61,7 @@ function GlobalSearch({ settingsMode = false }) {
   const { schedule: scheduleSuggest, cancel: cancelSuggest } = useDebouncedTask();
   const navigate = useNavigate();
   const location = useLocation();
-  const { hasPermission, bootstrap } = useAuth();
+  const { hasPermission, bootstrap, hasCapability } = useAuth();
   const { showSuccess, showError } = useToast();
   const {
     sharedPlaylists,
@@ -73,6 +73,7 @@ function GlobalSearch({ settingsMode = false }) {
   } = useSharedPlaylists();
   const canAddArtist = hasPermission("addArtist");
   const canAddAlbum = hasPermission("addAlbum");
+  const canUseFlows = hasCapability("flows");
   const [pendingArtistIds, setPendingArtistIds] = useState({});
   const [pendingAlbumIds, setPendingAlbumIds] = useState({});
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
@@ -84,8 +85,8 @@ function GlobalSearch({ settingsMode = false }) {
 
   const settingsSearchResults = useMemo(() => {
     if (!settingsMode) return [];
-    return searchSettingsItems(searchQuery);
-  }, [searchQuery, settingsMode]);
+    return searchSettingsItems(searchQuery, bootstrap?.capabilities);
+  }, [bootstrap?.capabilities, searchQuery, settingsMode]);
 
   const showRecentSearches = useMemo(
     () =>
@@ -524,6 +525,7 @@ function GlobalSearch({ settingsMode = false }) {
       }
 
       if (item.type === "track") {
+        if (!canUseFlows) return null;
         const savingKey = getTrackSavingKey(item);
         return (
           <TrackPlaylistMenu
@@ -546,6 +548,7 @@ function GlobalSearch({ settingsMode = false }) {
     [
       canAddAlbum,
       canAddArtist,
+      canUseFlows,
       handleAlbumAction,
       handleArtistAction,
       handleSearchTrackAdd,

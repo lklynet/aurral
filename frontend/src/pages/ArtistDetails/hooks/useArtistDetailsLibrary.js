@@ -66,6 +66,7 @@ export function useArtistDetailsLibrary({
   appSettings,
   showSuccess,
   showError,
+  libraryEnabled = true,
 }) {
   const [requestingAlbum, setRequestingAlbum] = useState(null);
   const [removingAlbum, setRemovingAlbum] = useState(null);
@@ -90,28 +91,32 @@ export function useArtistDetailsLibrary({
   const deletedAlbumAtRef = useRef({});
   const libraryAlbumIdsRef = useRef([]);
   const libraryAlbumsRef = useRef(libraryAlbums);
-  const { isConnected: downloadStatusWsConnected } = useWebSocketChannel("downloads", (msg) => {
-    if (msg?.type !== "download_statuses") return;
-    const albumIds = libraryAlbumIdsRef.current;
-    if (!albumIds.length) return;
-    const incoming = msg.statuses || {};
-    const next = {};
-    for (const id of albumIds) {
-      if (incoming[id]) next[id] = incoming[id];
-    }
-    if (requestingAlbum) {
-      const album = libraryAlbumsRef.current.find(
-        (a) => a.mbid === requestingAlbum || a.foreignAlbumId === requestingAlbum,
-      );
-      if (album && incoming[String(album.id)]) {
-        setRequestingAlbum(null);
+  const { isConnected: downloadStatusWsConnected } = useWebSocketChannel(
+    "downloads",
+    (msg) => {
+      if (msg?.type !== "download_statuses") return;
+      const albumIds = libraryAlbumIdsRef.current;
+      if (!albumIds.length) return;
+      const incoming = msg.statuses || {};
+      const next = {};
+      for (const id of albumIds) {
+        if (incoming[id]) next[id] = incoming[id];
       }
-    }
-    queryClient.setQueryData(queryKeys.downloadStatus(albumIds), (previous = {}) => ({
-      ...previous,
-      ...next,
-    }));
-  });
+      if (requestingAlbum) {
+        const album = libraryAlbumsRef.current.find(
+          (a) => a.mbid === requestingAlbum || a.foreignAlbumId === requestingAlbum,
+        );
+        if (album && incoming[String(album.id)]) {
+          setRequestingAlbum(null);
+        }
+      }
+      queryClient.setQueryData(queryKeys.downloadStatus(albumIds), (previous = {}) => ({
+        ...previous,
+        ...next,
+      }));
+    },
+    { enabled: libraryEnabled },
+  );
   const lidarrPreferencesQuery = useQuery({
     queryKey: queryKeys.lidarrPreferences("current"),
     queryFn: ({ signal }) => getMyLidarrPreferences({ signal }),
@@ -126,7 +131,7 @@ export function useArtistDetailsLibrary({
     queryKey: queryKeys.downloadStatus(downloadStatusIds),
     queryFn: ({ signal }) =>
       getDownloadStatus(downloadStatusIds, { signal, bypassCache: true }),
-    enabled: Boolean(libraryArtist && downloadStatusIds.length),
+    enabled: libraryEnabled && Boolean(libraryArtist && downloadStatusIds.length),
     staleTime: 4_000,
     refetchInterval: (currentQuery) => {
       if (
@@ -160,7 +165,7 @@ export function useArtistDetailsLibrary({
   const libraryAlbumsQuery = useQuery({
     queryKey: libraryAlbumsQueryKey,
     queryFn: ({ signal }) => getLibraryAlbums(libraryArtist.id, { signal }),
-    enabled: Boolean(libraryArtist?.id),
+    enabled: libraryEnabled && Boolean(libraryArtist?.id),
     initialData: libraryAlbums,
     initialDataUpdatedAt: 0,
     staleTime: 0,
@@ -465,6 +470,10 @@ export function useArtistDetailsLibrary({
           : {}),
         ...(Object.hasOwn(overrides, "tagId") ? { tagId: overrides.tagId } : {}),
       });
+      if (!libraryEnabled) {
+        showSuccess(`${artist.name} added to Lidarr successfully!`);
+        return true;
+      }
       let fullArtist = await resolveArtistFromAddResponse(result, {
         refresh: true,
         hydrateAlbums: true,
@@ -522,6 +531,10 @@ export function useArtistDetailsLibrary({
       const addedAlbum = result?.album;
       if (!addedArtist?.id || !addedAlbum?.id) {
         throw new Error("Lidarr did not return the completed album request");
+      }
+      if (!libraryEnabled) {
+        showSuccess(`Downloading album: ${title}`);
+        return;
       }
 
       setLibraryArtist({
@@ -724,6 +737,7 @@ export function useArtistDetailsLibrary({
   };
 
   const getAlbumStatus = (releaseGroupId) => {
+    if (!libraryEnabled) return null;
     if (!existsInLibrary || !libraryArtist || libraryAlbums.length === 0) {
       return null;
     }

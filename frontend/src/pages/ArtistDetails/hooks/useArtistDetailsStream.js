@@ -71,7 +71,12 @@ const getAppearsOnCoverIds = (releaseGroups, limit) => {
 export function useArtistDetailsStream(
   mbid,
   artistNameFromNav,
-  { visibleCoverIds = EMPTY_ARRAY, initialLibraryHint = null, appearsOnLimit = null } = {},
+  {
+    visibleCoverIds = EMPTY_ARRAY,
+    initialLibraryHint = null,
+    appearsOnLimit = null,
+    libraryEnabled = true,
+  } = {},
 ) {
   const initialArtist = buildInitialArtist(mbid, artistNameFromNav);
   const normalizedAppearsOnLimit = normalizePositiveLimit(appearsOnLimit);
@@ -79,8 +84,8 @@ export function useArtistDetailsStream(
   const visibleCoverIdsKey = Array.isArray(visibleCoverIds)
     ? visibleCoverIds.filter(Boolean).join("\0")
     : "";
-  const initialLibraryExists = initialLibraryHint?.existsInLibrary;
-  const initialLibraryArtist = initialLibraryHint?.libraryArtist || null;
+  const initialLibraryExists = libraryEnabled ? initialLibraryHint?.existsInLibrary : undefined;
+  const initialLibraryArtist = libraryEnabled ? initialLibraryHint?.libraryArtist || null : null;
   const stableInitialLibraryHint = useMemo(
     () => ({
       existsInLibrary: initialLibraryExists,
@@ -88,7 +93,7 @@ export function useArtistDetailsStream(
     }),
     [initialLibraryExists, initialLibraryArtist],
   );
-  const cachedLookupMap = mbid ? readLibraryLookupCache([mbid]) : {};
+  const cachedLookupMap = libraryEnabled && mbid ? readLibraryLookupCache([mbid]) : {};
   const cachedLookup = cachedLookupMap?.[mbid];
   const seededExistsInLibrary =
     stableInitialLibraryHint.existsInLibrary === true || cachedLookup === true ? true : undefined;
@@ -137,7 +142,7 @@ export function useArtistDetailsStream(
       if (message?.type !== "library_scan_completed") return;
       libraryRefreshRef.current?.();
     },
-    { enabled: Boolean(mbid) },
+    { enabled: Boolean(mbid) && libraryEnabled },
   );
 
   if (artistMbidRef.current !== mbid) {
@@ -166,7 +171,7 @@ export function useArtistDetailsStream(
     if (!mbid) return;
     const requestId = ++streamRequestRef.current;
     const isCurrentRequest = () => streamRequestRef.current === requestId;
-    const nextCachedLookup = readLibraryLookupCache([mbid])?.[mbid];
+    const nextCachedLookup = libraryEnabled ? readLibraryLookupCache([mbid])?.[mbid] : undefined;
     optimisticLibraryLookupRef.current = nextCachedLookup === true;
     const nextSeededExistsInLibrary =
       stableInitialLibraryHint.existsInLibrary === true || nextCachedLookup === true
@@ -268,6 +273,13 @@ export function useArtistDetailsStream(
     };
 
     const loadLibraryFallback = async ({ bypassCache = false } = {}) => {
+      if (!libraryEnabled) {
+        setLoadingLibrary(false);
+        setExistsInLibrary(false);
+        setLibraryArtist(null);
+        setLibraryAlbums([]);
+        return;
+      }
       setLoadingLibrary(true);
       try {
         const lookup = await lookupArtistInLibrary(mbid, { bypassCache });
@@ -454,6 +466,10 @@ export function useArtistDetailsStream(
 
     eventSource.addEventListener("library", (event) => {
       try {
+        if (!libraryEnabled) {
+          setLoadingLibrary(false);
+          return;
+        }
         const data = JSON.parse(event.data);
         if (!isCurrentRequest()) return;
         libraryReceived = true;
@@ -529,6 +545,7 @@ export function useArtistDetailsStream(
     stableInitialLibraryHint,
     appearsOnLimitKey,
     normalizedAppearsOnLimit,
+    libraryEnabled,
   ]);
 
   useEffect(() => {

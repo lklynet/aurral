@@ -11,9 +11,10 @@ import { logger } from "../../../services/logger.js";
 import {
   getCanonicalLibraryReadModelForArtistReferences,
 } from "../../../services/canonicalLibraryReadAdapter.js";
+import { requireAppCapability } from "../../../middleware/appProfile.js";
 
 export function registerAlbums(router) {
-  router.get("/albums", cacheMiddleware(5), async (req, res) => {
+  router.get("/albums", requireAppCapability("localLibrary"), cacheMiddleware(5), async (req, res) => {
     try {
       const { artistId } = req.query;
       if (!artistId) {
@@ -231,7 +232,7 @@ export function registerAlbums(router) {
     },
   );
 
-  router.get("/albums/:id", cacheMiddleware(120), async (req, res) => {
+  router.get("/albums/:id", requireAppCapability("localLibrary"), cacheMiddleware(120), async (req, res) => {
     try {
       const { id } = req.params;
       const album = await libraryManager.getAlbumById(id);

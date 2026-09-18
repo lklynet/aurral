@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { testGotifyConnection } from "../../../utils/api/endpoints/settings.js";
 
 import { Plus, Trash2, GripVertical } from "lucide-react";
+import { useAuth } from "../../../contexts/AuthContext";
 import { SettingsInput, SettingsTextarea } from "./SettingsField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
 import {
@@ -30,6 +31,7 @@ export function SettingsConnectTab({
   showSuccess,
   showError,
 }) {
+  const { hasCapability } = useAuth();
   const [activeModal, setActiveModal] = useState(null);
   const [testStatus, setTestStatus] = useState(null);
   const gotify = settings.integrations?.gotify || {};
@@ -39,6 +41,7 @@ export function SettingsConnectTab({
   const gotifyConfigured = Boolean(gotify.url && gotify.token);
   const lastfmConfigured = Boolean(health?.lastfmConfigured);
   const ticketmasterConfigured = Boolean(health?.ticketmasterConfigured);
+  const fullFeaturesEnabled = hasCapability("fullFeatures");
 
   const webhooks = settings.integrations?.webhooks || [];
   const webhookEvents = settings.integrations?.webhookEvents || {};
@@ -191,49 +194,56 @@ export function SettingsConnectTab({
         <SettingsArrFieldSet legend="Connections">
           <SettingsArrCardGrid>
             <IntegrationCard
-              title="Gotify"
-              subtitle="Push notifications"
-              status={getConfiguredStatus(gotifyConfigured)}
-              meta={gotify.url ? gotify.url.replace(/^https?:\/\//, "") : "Mobile alerts"}
-              onClick={() => setActiveModal("gotify")}
-            />
-            <IntegrationCard
               title="Last.fm"
-              subtitle="Recommendations and scrobbling"
+              subtitle={fullFeaturesEnabled ? "Recommendations and scrobbling" : "Personalized recommendations"}
               status={getConfiguredStatus(lastfmConfigured)}
               meta={
-                lastfm.apiKey && lastfm.apiSecret
-                  ? "API key and secret configured"
-                  : lastfm.apiKey
-                    ? "API secret required for scrobbling"
-                    : "API key required"
+                lastfm.apiKey
+                  ? fullFeaturesEnabled && lastfm.apiSecret
+                    ? "API key and secret configured"
+                    : fullFeaturesEnabled
+                      ? "API secret required for scrobbling"
+                      : "API key configured"
+                  : "API key required"
               }
               onClick={() => setActiveModal("lastfm")}
             />
-            <IntegrationCard
-              title="Ticketmaster"
-              subtitle="Local shows"
-              status={getConfiguredStatus(ticketmasterConfigured)}
-              meta={`${ticketmaster.searchRadiusMiles ?? 250} mi radius`}
-              onClick={() => setActiveModal("ticketmaster")}
-            />
+            {fullFeaturesEnabled ? (
+              <IntegrationCard
+                title="Gotify"
+                subtitle="Push notifications"
+                status={getConfiguredStatus(gotifyConfigured)}
+                meta={gotify.url ? gotify.url.replace(/^https?:\/\//, "") : "Mobile alerts"}
+                onClick={() => setActiveModal("gotify")}
+              />
+            ) : null}
+            {fullFeaturesEnabled ? (
+              <IntegrationCard
+                title="Ticketmaster"
+                subtitle="Local shows"
+                status={getConfiguredStatus(ticketmasterConfigured)}
+                meta={`${ticketmaster.searchRadiusMiles ?? 250} mi radius`}
+                onClick={() => setActiveModal("ticketmaster")}
+              />
+            ) : null}
           </SettingsArrCardGrid>
         </SettingsArrFieldSet>
 
-        <SettingsArrFieldSet
-          legend="Webhooks"
-          actions={
-            <button
-              type="button"
-              className="arr-btn"
-              onClick={addWebhook}
-              disabled={webhooks.length >= 5}
-            >
-              <Plus className="artist-icon-xs" aria-hidden />
-              Add webhook
-            </button>
-          }
-        >
+        {fullFeaturesEnabled ? (
+          <SettingsArrFieldSet
+            legend="Webhooks"
+            actions={
+              <button
+                type="button"
+                className="arr-btn"
+                onClick={addWebhook}
+                disabled={webhooks.length >= 5}
+              >
+                <Plus className="artist-icon-xs" aria-hidden />
+                Add webhook
+              </button>
+            }
+          >
           {!webhooks.length ? (
             <p className="arr-form-help">
               No webhooks configured. Click &ldquo;Add webhook&rdquo; to create one.
@@ -387,9 +397,11 @@ export function SettingsConnectTab({
               </SettingsArrFormGroup>
             </div>
           ))}
-        </SettingsArrFieldSet>
+          </SettingsArrFieldSet>
+        ) : null}
 
-        <SettingsArrFieldSet legend="Notification events">
+        {fullFeaturesEnabled ? (
+          <SettingsArrFieldSet legend="Notification events">
           <SettingsArrFormGroup label="Discover updated">
             <PillToggle
               checked={webhookEvents.notifyDiscoveryUpdated || false}
@@ -434,9 +446,11 @@ export function SettingsConnectTab({
               }
             />
           </SettingsArrFormGroup>
-        </SettingsArrFieldSet>
+          </SettingsArrFieldSet>
+        ) : null}
 
-        <SettingsArrFieldSet legend="Inbox">
+        {fullFeaturesEnabled ? (
+          <SettingsArrFieldSet legend="Inbox">
           <SettingsArrFormGroup label="Enable inbox" labelFor="inbox-enabled">
             <PillToggle
               id="inbox-enabled"
@@ -489,10 +503,11 @@ export function SettingsConnectTab({
             />
           </SettingsArrFormGroup>
           </div>
-        </SettingsArrFieldSet>
+          </SettingsArrFieldSet>
+        ) : null}
       </form>
 
-      {activeModal === "gotify" && (
+      {fullFeaturesEnabled && activeModal === "gotify" && (
         <SettingsIntegrationModal
           title="Gotify"
           onClose={() => setActiveModal(null)}
@@ -559,8 +574,10 @@ export function SettingsConnectTab({
       {activeModal === "lastfm" && (
         <SettingsIntegrationModal title="Last.fm" onClose={() => setActiveModal(null)}>
           <SettingsModalIntro>
-            Aurral uses the API key for recommendations and discovery data. The API secret is also
-            required to connect a Last.fm account for scrobbling in Playback.
+            Aurral uses the API key for recommendations and discovery data.
+            {fullFeaturesEnabled
+              ? " The API secret is also required to connect a Last.fm account for scrobbling in Playback."
+              : " An API secret is optional for Diet deployments."}
           </SettingsModalIntro>
           <SettingsModalSection title="API">
             <SettingsModalField label="API key">
@@ -585,7 +602,7 @@ export function SettingsConnectTab({
         </SettingsIntegrationModal>
       )}
 
-      {activeModal === "ticketmaster" && (
+      {fullFeaturesEnabled && activeModal === "ticketmaster" && (
         <SettingsIntegrationModal title="Ticketmaster" onClose={() => setActiveModal(null)}>
           <SettingsModalCallout>
             <a

@@ -6,6 +6,7 @@ import { DotLoader } from "../../../components/DotLoader";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { formatDateTime } from "../../../utils/dateTime.js";
+import { useAuth } from "../../../contexts/AuthContext";
 
 const AUTO_REFRESH_OPTIONS = [
   { value: 24, label: "Daily" },
@@ -55,6 +56,8 @@ export function SettingsDiscoverTab({
   handleRefreshDiscovery,
   handleClearCache,
 }) {
+  const { hasCapability } = useAuth();
+  const flowsEnabled = hasCapability("flows");
   const [lastfmBannerDismissed, setLastfmBannerDismissed] = useState(
     readLastfmDiscoverBannerDismissed,
   );
@@ -97,7 +100,9 @@ export function SettingsDiscoverTab({
                 <Link to="/settings/connect" className="arr-link">
                   Connect
                 </Link>{" "}
-                  for personalized recommendations, tags, and weekly flows.
+                {flowsEnabled
+                  ? "for personalized recommendations, tags, and weekly flows."
+                  : "for personalized recommendations and tags."}
               </p>
             </div>
             <button
@@ -197,21 +202,23 @@ export function SettingsDiscoverTab({
                   }}
                 />
               </SettingsArrFormGroup>
-              <SettingsArrFormGroup
-                label="Recommended playlists"
-                help="Personalized playlists; off shows editorial playlists only."
-              >
-                <PillToggle
-                  className="settings-toggle"
-                  checked={discoveryPersonalizedEnabled}
-                  onChange={(e) =>
-                    updateLastfmDiscovery({
-                      discoveryPersonalizedEnabled: e.target.checked,
-                    })
-                  }
-                  aria-label="Recommended playlists"
-                />
-              </SettingsArrFormGroup>
+              {flowsEnabled ? (
+                <SettingsArrFormGroup
+                  label="Recommended playlists"
+                  help="Personalized playlists; off shows editorial playlists only."
+                >
+                  <PillToggle
+                    className="settings-toggle"
+                    checked={discoveryPersonalizedEnabled}
+                    onChange={(e) =>
+                      updateLastfmDiscovery({
+                        discoveryPersonalizedEnabled: e.target.checked,
+                      })
+                    }
+                    aria-label="Recommended playlists"
+                  />
+                </SettingsArrFormGroup>
+              ) : null}
             </>
           ) : null}
         </SettingsArrFieldSet>

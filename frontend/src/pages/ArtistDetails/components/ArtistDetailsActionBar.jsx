@@ -42,6 +42,7 @@ export function ArtistDetailsActionBar({
   onTasteFeedback,
   tasteFeedbackUsed = {},
   tasteActionPending = null,
+  playbackEnabled = true,
 }) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const currentMonitorOption = library.getCurrentMonitorOption?.();
@@ -166,22 +167,24 @@ export function ArtistDetailsActionBar({
     <div className="artist-action-bar">
       <div className="artist-action-bar__inner">
         <div className="artist-action-bar__group">
-          <button
-            type="button"
-            onClick={handlePreviewPlayAll}
-            disabled={buildingQueue}
-            className="btn btn-accent btn-round-lg"
-            aria-label={isPreviewPlaying ? "Pause playback" : "Play artist"}
-            title={isPreviewPlaying ? "Pause playback" : "Play artist"}
-          >
-            {buildingQueue ? (
-              <DotLoader size="md" label={null} />
-            ) : isPreviewPlaying ? (
-              <Pause className="artist-icon-md" />
-            ) : (
-              <Play className="artist-icon-md" />
-            )}
-          </button>
+          {playbackEnabled && (
+            <button
+              type="button"
+              onClick={handlePreviewPlayAll}
+              disabled={buildingQueue}
+              className="btn btn-accent btn-round-lg"
+              aria-label={isPreviewPlaying ? "Pause playback" : "Play artist"}
+              title={isPreviewPlaying ? "Pause playback" : "Play artist"}
+            >
+              {buildingQueue ? (
+                <DotLoader size="md" label={null} />
+              ) : isPreviewPlaying ? (
+                <Pause className="artist-icon-md" />
+              ) : (
+                <Play className="artist-icon-md" />
+              )}
+            </button>
+          )}
           {renderLibraryAction()}
         </div>
 

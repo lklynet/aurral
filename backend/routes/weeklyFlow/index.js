@@ -9,8 +9,10 @@ import { registerSpotifyImport } from "./handlers/spotifyImport.js";
 import { registerListenBrainzImport } from "./handlers/listenbrainzImport.js";
 import { registerLastfmImport } from "./handlers/lastfmImport.js";
 import { registerJobs } from "./handlers/jobs.js";
+import { requireAppCapability } from "../../middleware/appProfile.js";
 
 const router = express.Router();
+router.use(requireAppCapability("flows"));
 
 registerStream(router);
 registerArtworkServe(router);

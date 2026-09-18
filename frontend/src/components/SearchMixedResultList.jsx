@@ -61,7 +61,7 @@ function getSecondaryLabel(item) {
   return null;
 }
 
-function ResultThumbnail({ item, artistImages, albumCovers }) {
+function ResultThumbnail({ item, artistImages, albumCovers, playbackEnabled }) {
   if (item.type === "artist") {
     const artistId = getArtistRecordId(item);
     return (
@@ -74,7 +74,7 @@ function ResultThumbnail({ item, artistImages, albumCovers }) {
           className="search-mixed-results__image"
           showLoading={false}
           enableBackendFallback={false}
-          enablePreviewPlayback
+          enablePreviewPlayback={playbackEnabled}
         />
       </span>
     );
@@ -117,6 +117,7 @@ function SearchMixedResultList({
   artistImages = {},
   albumCovers = {},
   renderAction = null,
+  playbackEnabled = true,
 }) {
   if (!items.length) return null;
 
@@ -147,6 +148,7 @@ function SearchMixedResultList({
                   item={item}
                   artistImages={artistImages}
                   albumCovers={albumCovers}
+                  playbackEnabled={playbackEnabled}
                 />
                 <span className="search-mixed-results__copy">
                   <span className="search-mixed-results__title" title={primaryLabel}>

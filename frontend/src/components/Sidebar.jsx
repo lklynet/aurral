@@ -14,7 +14,10 @@ import {
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useFlowWorkerActivity } from "../pages/flows/useFlowWorkerActivity";
-import { DEFAULT_SETTINGS_TAB, SETTINGS_NAV_TABS } from "../pages/Settings/settingsTabsConfig";
+import {
+  DEFAULT_SETTINGS_TAB,
+  getAvailableSettingsTabs,
+} from "../pages/Settings/settingsTabsConfig";
 import { DEFAULT_SHOWS_FILTER, SHOWS_FILTERS } from "../navigation/showsNavConfig";
 import {
   ACTIVITY_VIEWS,
@@ -34,20 +37,21 @@ import SidebarStageBackdrop, {
 
 function Sidebar({ mode, width = 208, settingsMode = false }) {
   const location = useLocation();
-  const { user, bootstrap } = useAuth();
+  const { user, bootstrap, hasCapability } = useAuth();
   const [showStageBackdrop, setShowStageBackdrop] = useState(() =>
     getSidebarStageBackdropEnabled(user?.id),
   );
   const stageBackdropVariant = showStageBackdrop
     ? resolveSidebarStageBackdropVariant()
     : null;
-  const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
+  const hasFlowAccess = hasCapability("flows") &&
+    (user?.role === "admin" || !!user?.permissions?.accessFlow);
   const canAccessSettings = user?.role === "admin" || !!user?.permissions?.accessSettings;
   const { hasReview: hasReviewAlert } = useFlowWorkerActivity({
     enabled: hasFlowAccess,
   });
   const { hasFailure: hasStorageFailure } = useStorageHealth({
-    enabled: canAccessSettings,
+    enabled: canAccessSettings && hasCapability("localLibrary"),
   });
   const [isDesktop, setIsDesktop] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(min-width: 768px)").matches : true,
@@ -79,8 +83,8 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
 
   const settingsTabs = useMemo(() => {
     if (!canAccessSettings) return [];
-    return SETTINGS_NAV_TABS;
-  }, [canAccessSettings]);
+    return getAvailableSettingsTabs(bootstrap?.capabilities);
+  }, [bootstrap?.capabilities, canAccessSettings]);
 
   const activeSettingsTab = useMemo(() => {
     if (!isOnSettings) return null;
@@ -175,14 +179,14 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
         icon: Sparkles,
         section: "discover",
       },
-      {
+      ...(hasCapability("localLibrary") ? [{
         path: "/library",
         label: "Library",
         icon: Library,
         section: "library",
         subnav: libraryViews,
-      },
-      ...(ticketmasterConfigured
+      }] : []),
+      ...(hasCapability("fullFeatures") && ticketmasterConfigured
         ? [
             {
               path: `/shows/${DEFAULT_SHOWS_FILTER}`,
@@ -194,7 +198,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
             },
           ]
         : []),
-      ...(newsConfigured
+      ...(hasCapability("fullFeatures") && newsConfigured
         ? [
             {
               path: "/discover/news",
@@ -204,12 +208,12 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
             },
           ]
         : []),
-      {
+      ...(hasCapability("flows") ? [{
         path: "/flows",
         label: "Flows",
         icon: AudioWaveform,
         permission: "accessFlow",
-      },
+      }] : []),
       {
         path: buildActivityPath(DEFAULT_ACTIVITY_VIEW),
         basePath: "/activity",
@@ -218,21 +222,21 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
         section: "activity",
         subnav: ACTIVITY_VIEWS.filter((view) => view.id !== "missing"),
       },
-      {
+      ...(hasCapability("flows") ? [{
         path: buildWantedPath(),
         label: "Wanted",
         icon: AlertTriangle,
         section: "wanted",
         subnav: WANTED_VIEWS,
         permission: "accessFlow",
-      },
+      }] : []),
       { path: "/blocklist", label: "Blocklist", icon: Ban },
     ];
     return items.filter(
       (item) =>
         !item.permission || user?.role === "admin" || !!user?.permissions?.[item.permission],
     );
-  }, [newsConfigured, ticketmasterConfigured, user]);
+  }, [hasCapability, newsConfigured, ticketmasterConfigured, user]);
 
   const translateClass = mode === "hidden" ? "-translate-x-full" : "translate-x-0";
 

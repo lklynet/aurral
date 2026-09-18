@@ -4,7 +4,14 @@ import { ArtistContextMenu } from "./ArtistContextMenu";
 import { getArtistFeedbackFlags } from "../utils/discoveryFeedback";
 import { getArtistRecordId } from "../utils/artistTaste";
 
-function TagRecommendedArtistCover({ artist, artistId, artistImages, isInLibrary, className = "" }) {
+function TagRecommendedArtistCover({
+  artist,
+  artistId,
+  artistImages,
+  isInLibrary,
+  playbackEnabled,
+  className = "",
+}) {
   const coverSrc = artistImages[artistId] || artist.image || artist.imageUrl || "";
 
   return (
@@ -17,7 +24,7 @@ function TagRecommendedArtistCover({ artist, artistId, artistImages, isInLibrary
         className="artist-discover-card__image"
         showLoading={false}
         enableBackendFallback={false}
-        enablePreviewPlayback
+        enablePreviewPlayback={playbackEnabled}
         isInLibrary={isInLibrary}
       />
     </div>
@@ -36,6 +43,7 @@ function SearchArtistResults({
   artistFeedbackLookup,
   variant = "square",
   gridColumns,
+  playbackEnabled = true,
 }) {
   const formatLifeSpan = (artist) => {
     const begin = artist?.begin || artist?.["life-span"]?.begin || artist?.lifeSpan?.begin;
@@ -122,6 +130,7 @@ function SearchArtistResults({
             artistId={artistId}
             artistImages={artistImages}
             isInLibrary={!!libraryLookup[artistId]}
+            playbackEnabled={playbackEnabled}
             className={isList ? "artist-list-cover" : ""}
           />
         ) : (
@@ -134,7 +143,7 @@ function SearchArtistResults({
               className="artist-discover-card__image"
               showLoading={false}
               enableBackendFallback={false}
-              enablePreviewPlayback
+              enablePreviewPlayback={playbackEnabled}
               isInLibrary={!!libraryLookup[artistId]}
             />
           </div>
