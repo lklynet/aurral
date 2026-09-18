@@ -66,7 +66,10 @@ def artist(payload: dict) -> str | None:
         value = text(payload.get(key))
         if value:
             return value
-    names = [text(value) for value in payload.get("artists", [])]
+    artists = payload.get("artists")
+    if not isinstance(artists, list):
+        return None
+    names = [text(value) for value in artists]
     names = [value for value in names if value]
     return "; ".join(names) if names else None
 
