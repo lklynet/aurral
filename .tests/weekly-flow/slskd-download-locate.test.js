@@ -88,6 +88,26 @@ test("locateCompletedDownload uses transfer filename when slskd reports a local 
   await fs.rm(root, { recursive: true, force: true });
 });
 
+test("locateCompletedDownload skips a missing slskd root and checks the playlist root", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-slskd-fallback-"));
+  const missingSlskdRoot = path.join(root, "missing-slskd");
+  const playlistRoot = path.join(root, "playlists");
+  const remote = "Artist\\Album\\01 - Track.flac";
+  const expectedPath = path.join(playlistRoot, "Album", "01 - Track.flac");
+  await fs.mkdir(path.dirname(expectedPath), { recursive: true });
+  await fs.writeFile(expectedPath, "audio", "utf8");
+
+  const resolved = await locateCompletedDownload(
+    missingSlskdRoot,
+    playlistRoot,
+    remote,
+  );
+
+  assert.equal(resolved, expectedPath);
+  assert.equal(Array.isArray(resolved), false);
+  await fs.rm(root, { recursive: true, force: true });
+});
+
 test("commitImportToPlaylistLibrary moves without overwriting existing targets", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-import-commit-"));
   const source = path.join(root, "slskd", "Track.flac");
