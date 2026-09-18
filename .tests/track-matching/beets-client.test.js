@@ -7,6 +7,7 @@ import {
   runMatcherOperation,
   resetMatcherAvailability,
   isBeetsMatcherAvailable,
+  verifyMatcherRuntime,
 } from "../../backend/services/trackMatching/beetsClient.js";
 
 const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "matcher");
@@ -21,6 +22,19 @@ test("beets client speaks the JSON protocol through a stub matcher", { skip: has
   const outcome = await runMatcherOperation("health", {}, { pythonPath: "python3", scriptPath: stub("stub_ok.py") });
   assert.equal(outcome.ok, true);
   assert.equal(outcome.result.beetsVersion, "stub-1.0.0");
+});
+
+test("runtime self-test rejects an unpinned beets version", { skip: hasSystemPython ? false : "python3 unavailable" }, async () => {
+  const status = await verifyMatcherRuntime({
+    pythonPath: "python3",
+    scriptPath: stub("stub_ok.py"),
+  });
+  assert.equal(status.available, false);
+  assert.equal(status.beetsVersion, null);
+  assert.equal(status.protocolVersion, null);
+  assert.equal(status.error.code, "version_mismatch");
+  assert.equal(status.error.found, "stub-1.0.0");
+  assert.equal(status.error.required, "2.14.0");
 });
 
 test("beets client surfaces structured errors from the matcher", { skip: hasSystemPython ? false : "python3 unavailable" }, async () => {

@@ -8,6 +8,7 @@ import {
   stripReleaseTypeSuffix,
   stripVersionSuffix,
 } from "../../backend/services/weeklyFlow/weeklyFlowSoulseekSearch.js";
+import { toPipelineCandidate } from "../../backend/services/trackMatching/sourceSearch.js";
 
 test("bypassBannedArtistTerm replaces the first character of each artist word", () => {
   assert.equal(bypassBannedArtistTerm("Franz Ferdinand"), "*ranz *erdinand");
@@ -128,5 +129,31 @@ test("selectRankedMatchAttempts spreads early attempts across users before reusi
   assert.deepEqual(
     selected.map((entry) => entry.raw.user),
     ["queuedUser", "altUser", "thirdUser"],
+  );
+});
+
+test("pipeline candidates preserve raw user/file identity for diversity selection", () => {
+  const evaluations = [
+    {
+      candidate: { raw: { user: "first-user", file: "A\\Song.flac" } },
+      decision: "accept",
+      score: 1,
+      reasons: [],
+    },
+    {
+      candidate: { raw: { user: "second-user", file: "B\\Song.flac" } },
+      decision: "verify",
+      score: 0.5,
+      reasons: [],
+    },
+  ];
+
+  const pipelineCandidates = evaluations.map(toPipelineCandidate);
+  assert.deepEqual(
+    pipelineCandidates.map((entry) => [entry.raw.user, entry.raw.file]),
+    [
+      ["first-user", "A\\Song.flac"],
+      ["second-user", "B\\Song.flac"],
+    ],
   );
 });

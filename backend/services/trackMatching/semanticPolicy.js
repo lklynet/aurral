@@ -17,7 +17,7 @@ const MIX_VARIANT_PATTERNS = [
   {
     value: "remix",
     pattern:
-      /\b(?:remix|rework|bootleg|vip\s?(?:mix|edit)|mashup|mash-up|mix\s?(?:2024|20\d\d))\b/,
+      /\b(?:remix|rework|bootleg|vip\s?(?:mix|edit)|mash\s?-?\s?up|mix\s?(?:2024|20\d\d))\b/,
   },
 ];
 

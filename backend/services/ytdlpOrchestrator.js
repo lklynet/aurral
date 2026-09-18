@@ -36,11 +36,11 @@ export function isYtdlpLiveResult(result) {
   return LIVE_STATUSES.has(String(result?.liveStatus || "").trim().toLowerCase());
 }
 
-function hasEnoughCandidates(aggregated, resolvedTrack) {
+export function hasEnoughCandidates(aggregated, resolvedTrack) {
   // Node-only pre-filter: no matcher process is spawned during searches.
   return hasUsableSearchCandidates({
     source: "ytdlp",
-    results: aggregated,
+    results: aggregated.filter((result) => !isYtdlpLiveResult(result)),
     request: resolvedTrack,
   });
 }

@@ -266,15 +266,22 @@ export async function verifyMatcherRuntime(options = {}) {
     });
     return runtimeStatus;
   }
-  runtimeStatus.available = true;
-  runtimeStatus.beetsVersion = beetsVersion;
-  runtimeStatus.protocolVersion = protocolVersion;
-  if (beetsVersion && beetsVersion !== PINNED_BEETS_VERSION) {
-    logger.warn(MATCHER_CATEGORY, "bundled beets version differs from the pinned version", {
+  if (beetsVersion !== PINNED_BEETS_VERSION) {
+    runtimeStatus.error = {
+      code: "version_mismatch",
+      message: `beets ${beetsVersion || "unknown"} != required ${PINNED_BEETS_VERSION}`,
+      found: beetsVersion,
+      required: PINNED_BEETS_VERSION,
+    };
+    logger.error(MATCHER_CATEGORY, "bundled beets version differs from the pinned version", {
       found: beetsVersion,
       pinned: PINNED_BEETS_VERSION,
     });
+    return runtimeStatus;
   }
+  runtimeStatus.available = true;
+  runtimeStatus.beetsVersion = beetsVersion;
+  runtimeStatus.protocolVersion = protocolVersion;
   logger.info(MATCHER_CATEGORY, "beets matcher runtime ready", { beetsVersion });
   return runtimeStatus;
 }

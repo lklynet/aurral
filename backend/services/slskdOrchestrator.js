@@ -812,8 +812,9 @@ async function handleSearch(payload) {
       rawResultCount: aggregated.length,
     });
   }
-  // Identity first (evaluation order), then quality profile preference, then
-  // per-user queue history as a tie-break within the same quality tier.
+  // Quality profile preference is primary here. Preserve the matcher decision
+  // and distance order within each quality tier; queue history only breaks a
+  // true identity tie and must never move review candidates ahead of accepts.
   const qualityOrdered = orderAdvertisedQualityCandidates(usableEvaluationEntries(evaluation), {
     profile: getQualityProfile(),
     currentTier,
@@ -823,18 +824,27 @@ async function handleSearch(payload) {
   });
   const profile = getQualityProfile();
   const ordered = qualityOrdered
-    .map((entry) => ({
+    .map((entry, index) => ({
       entry,
+      originalOrder: index,
       tierRank: getAdvertisedQualityRank(
         entry.candidate?.raw?.file,
         entry.candidate?.raw?.bitrate ?? entry.candidate?.raw?.bitRate,
         profile,
       ),
+      decisionRank: { accept: 0, verify: 1, review: 2 }[entry.decision] ?? 3,
+      distance: Number.isFinite(entry.distance) ? entry.distance : Number.POSITIVE_INFINITY,
+      variantScore: Number(entry.variantScore || 0),
       queuePenalty: Number(historyOptions.getUserQueuePenalty?.(entry.candidate?.raw?.user) || 0),
     }))
     .sort(
       (left, right) =>
-        left.tierRank - right.tierRank || left.queuePenalty - right.queuePenalty,
+        left.tierRank - right.tierRank ||
+        left.decisionRank - right.decisionRank ||
+        left.distance - right.distance ||
+        right.variantScore - left.variantScore ||
+        left.queuePenalty - right.queuePenalty ||
+        left.originalOrder - right.originalOrder,
     )
     .map(({ entry }) => entry);
   const deniedSources = Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [];
@@ -850,8 +860,9 @@ async function handleSearch(payload) {
         return !deniedSourceKeys.has(`${user}\0${file}`);
       })
     : ordered;
-  const candidates = selectRankedMatchAttempts(filteredPool, MAX_DOWNLOAD_CANDIDATES).map(
-    toPipelineCandidate,
+  const candidates = selectRankedMatchAttempts(
+    filteredPool.map(toPipelineCandidate),
+    MAX_DOWNLOAD_CANDIDATES,
   );
   if (candidates.length === 0) {
     logger.warn("slskd", "No slskd download candidates after search", {

@@ -119,15 +119,15 @@ function uniqueResolvedPaths(values, source) {
   return out;
 }
 
-async function collectDownloadedAudioFiles(historyItem, client) {
-  const directories = await client.getDownloadDirectories();
+export async function collectDownloadedAudioFiles(historyItem) {
   const clientKey = getUsenetClientKey();
   const roots = uniqueResolvedPaths([
     historyItem?.FinalDir,
     historyItem?.DestDir,
     historyItem?.storage,
-    directories.completedPath,
-    directories.destDir,
+    historyItem?.path,
+    historyItem?.folder,
+    historyItem?.dir,
   ], clientKey);
   const files = [];
   for (const root of roots) {
@@ -375,7 +375,7 @@ async function handleUsenetFinalize(payload, helpers) {
     upgradeForJobId: payload.upgradeForJobId || null,
   };
   const found = await validateDownloadedRelease(
-    await collectDownloadedAudioFiles(historyItem, client),
+    await collectDownloadedAudioFiles(historyItem),
     candidate,
     resolvedTrack,
   );

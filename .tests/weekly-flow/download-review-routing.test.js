@@ -18,8 +18,8 @@ import {
 const [
   isolatedState,
   { downloadTracker },
-  { processYtdlpPipelinePayload, isYtdlpLiveResult },
-  { processUsenetPipelinePayload },
+  { processYtdlpPipelinePayload, isYtdlpLiveResult, hasEnoughCandidates },
+  { processUsenetPipelinePayload, collectDownloadedAudioFiles },
   { processDeemixPipelinePayload },
   { dbOps },
   { db },
@@ -55,6 +55,45 @@ test("yt-dlp keeps ordinary not-live results and excludes live statuses", () => 
   assert.equal(isYtdlpLiveResult({ liveStatus: "was_live" }), true);
   assert.equal(isYtdlpLiveResult({ liveStatus: "post_live" }), true);
   assert.equal(isYtdlpLiveResult({ liveStatus: "is_upcoming" }), true);
+});
+
+test("yt-dlp live results cannot satisfy the search early-exit check", () => {
+  const request = {
+    artistName: "Artist Name",
+    trackName: "Correct Track",
+    durationMs: 1000,
+  };
+  assert.equal(
+    hasEnoughCandidates(
+      [{
+        id: "live-video",
+        title: "Artist Name - Correct Track",
+        channel: "Artist Name",
+        durationSec: 1,
+        liveStatus: "is_live",
+      }],
+      request,
+    ),
+    false,
+  );
+});
+
+test("Usenet file collection only scans the current history directory", async () => {
+  const sharedRoot = path.join(process.env.DOWNLOAD_FOLDER, "usenet-shared-root");
+  const currentRoot = path.join(sharedRoot, "current-release");
+  const unrelatedPath = path.join(sharedRoot, "unrelated.mp3");
+  const currentPath = path.join(currentRoot, "current.mp3");
+  await mkdir(currentRoot, { recursive: true });
+  await writeFile(unrelatedPath, "unrelated");
+  await writeFile(currentPath, "current");
+
+  try {
+    const files = await collectDownloadedAudioFiles({ FinalDir: currentRoot });
+    assert.deepEqual(files, [currentPath]);
+    assert.deepEqual(await collectDownloadedAudioFiles({}), []);
+  } finally {
+    await rm(sharedRoot, { recursive: true, force: true });
+  }
 });
 
 test.beforeEach(() => {

@@ -133,6 +133,25 @@ test("conflicting embedded recording MBID is a hard conflict", async () => {
   assert.ok(outcome.contradictions.includes("recording-mbid-conflict"));
 });
 
+test("trackMbid from a resolved download request is checked as recording identity", async () => {
+  const outcome = await validateDownloadedTrackFile({
+    request: { ...GET_LUCKY, trackMbid: "rec-requested" },
+    filePath: "/staging/Get Lucky.flac",
+    source: "deemix",
+    options: {
+      parseFile: stubParseFile(
+        stubParsed({
+          title: "Get Lucky",
+          artist: "Daft Punk",
+          mbid: "rec-different",
+        }),
+      ),
+    },
+  });
+  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+  assert.ok(outcome.contradictions.includes("recording-mbid-conflict"));
+});
+
 btest("matching embedded recording MBID verifies even with odd tags", async () => {
   const outcome = await validateDownloadedTrackFile({
     request: { ...GET_LUCKY, recordingMbid: "rec-known" },

@@ -46,6 +46,14 @@ function readTagText(value) {
   return String(value || "").trim() || null;
 }
 
+function normalizeValidationRequest(request, context) {
+  const source = request || context || {};
+  return {
+    ...buildTrackRequest(source),
+    upgradeForJobId: source.upgradeForJobId || null,
+  };
+}
+
 // "01 Correct Track" -> "Correct Track"; "07. Song" -> "Song". A bare space
 // separator only counts when the remainder keeps more than one word, so
 // numeric titles such as "99 Problems" survive.
@@ -135,7 +143,7 @@ export async function validateDownloadedTrackFile({
   source,
   options = {},
 } = {}) {
-  const trackRequest = request || buildTrackRequest(context);
+  const trackRequest = normalizeValidationRequest(request, context);
   const strict = options.strict === true;
   const parseFn = options.parseFile || parseFile;
 
@@ -339,7 +347,7 @@ export async function selectVerifiedDownloadedFile({
   source,
   options = {},
 } = {}) {
-  const trackRequest = request || buildTrackRequest(context);
+  const trackRequest = normalizeValidationRequest(request, context);
   const parseFn = options.parseFile || parseFile;
   if (!Array.isArray(filePaths) || filePaths.length === 0) {
     return { filePath: null, validation: null };

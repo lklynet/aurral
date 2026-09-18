@@ -20,6 +20,9 @@ test("extractVariants detects variant descriptors without inventing them", () =>
   const remix = extractVariants("Get Lucky (Daft Punk Remix)");
   assert.equal(remix.remix, true);
   assert.equal(remix.mixVariant, "remix");
+  assert.equal(extractVariants("Get Lucky (Mash-Up)").remix, true);
+  assert.equal(extractVariants("Get Lucky (Mash Up)").remix, true);
+  assert.equal(extractVariants("Get Lucky (Mashup)").remix, true);
   const radio = extractVariants("Get Lucky (Radio Edit)");
   assert.equal(radio.mixVariant, "radio_edit");
   assert.equal(extractVariants("Get Lucky (Original Mix)").mixVariant, null);
