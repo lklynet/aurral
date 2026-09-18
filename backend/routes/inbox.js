@@ -45,7 +45,7 @@ async function addInboxItem(item, user) {
     return libraryManager.addArtistWithResolvedOptions(
       metadata.artistMbid,
       metadata.artistName,
-      options,
+      { ...options, user },
     );
   }
   const error = new Error("This inbox item cannot be added");

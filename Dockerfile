@@ -38,6 +38,22 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     node -e "require('sharp')" && \
     node --input-type=module -e "import honker from '@russellthehippo/honker-node'; honker.open('/tmp/honker-smoke.db'); console.log('honker ok')"
 
+# Bundled beets matcher. Aurral owns this venv; users never install or run
+# beets themselves and no extra service or port is involved.
+FROM node-base AS matcher-deps
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY backend/matcher/requirements.txt /tmp/aurral-matcher-requirements.txt
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+RUN python3 -m venv /opt/aurral-matcher && \
+    /opt/aurral-matcher/bin/pip install --no-compile -r /tmp/aurral-matcher-requirements.txt && \
+    /opt/aurral-matcher/bin/python -c "import beets; assert beets.__version__ == '2.14.0'"
+
 FROM node-base AS runtime
 
 WORKDIR /app
@@ -68,6 +84,7 @@ COPY package*.json ./
 COPY backend/package*.json ./backend/
 COPY frontend/package*.json ./frontend/
 COPY --from=backend-deps /app/node_modules ./node_modules
+COPY --from=matcher-deps /opt/aurral-matcher /opt/aurral-matcher
 
 COPY backend/ ./backend/
 COPY lib/ ./lib/

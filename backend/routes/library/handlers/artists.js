@@ -76,6 +76,7 @@ export function registerArtists(router) {
         qualityProfileId,
         tagId,
         releaseGroupMbid,
+        managedBy: requestedManagedBy,
       } = req.body;
 
       if (!mbid || !artistName) {
@@ -88,12 +89,17 @@ export function registerArtists(router) {
         return res.status(400).json({ error: "Invalid MBID format" });
       }
 
-      const { lidarrClient } = await import("../../../services/lidarrClient.js");
-      if (!lidarrClient || !lidarrClient.isConfigured()) {
-        return res.status(503).json({ error: "Lidarr is not configured" });
+      let managedBy;
+      try {
+        managedBy = await libraryManager.resolveManagedBy(requestedManagedBy, req.user);
+      } catch (error) {
+        return res.status(error.statusCode || 400).json({
+          error: error.message,
+          code: error.code || null,
+        });
       }
 
-      const existingArtist = await libraryManager.getArtist(mbid);
+      const existingArtist = await libraryManager.getArtist(mbid, { managedBy });
       if (existingArtist?.id) {
         return res.status(200).json({
           queued: false,
@@ -111,6 +117,7 @@ export function registerArtists(router) {
       try {
         preparedAddOptions = await libraryManager.resolveArtistAddOptions({
           user: req.user,
+          managedBy,
           quality,
           monitorOption,
           rootFolderPath,
@@ -136,15 +143,20 @@ export function registerArtists(router) {
       const artist = await libraryManager.addArtistWithResolvedOptions(
         mbid,
         artistName,
-        preparedAddOptions,
+        { ...preparedAddOptions, user: req.user },
       );
       if (artist?.error) {
         logger.error("library", `Failed to add artist ${artistName}:`, {
           message: artist.error,
         });
-        return res.status(503).json({
+        const statusCode =
+          Number.isInteger(artist.statusCode) && artist.statusCode >= 400
+            ? artist.statusCode
+            : 503;
+        return res.status(statusCode).json({
           error: "Failed to add artist",
           message: artist.error,
+          code: artist.code || null,
         });
       }
 
