@@ -202,6 +202,31 @@ function isPathWithin(rootPath, candidatePath) {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
+const normalizePathKey = (value) => {
+  const resolved = path.resolve(String(value || ""));
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+};
+
+export function createPathScopeMatcher(scopes = []) {
+  const scopeKeys = new Set(
+    (Array.isArray(scopes) ? scopes : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .map(normalizePathKey),
+  );
+
+  return (candidatePath) => {
+    if (!String(candidatePath || "").trim() || scopeKeys.size === 0) return false;
+    let currentPath = path.resolve(String(candidatePath));
+    while (true) {
+      if (scopeKeys.has(normalizePathKey(currentPath))) return true;
+      const parentPath = path.dirname(currentPath);
+      if (parentPath === currentPath) return false;
+      currentPath = parentPath;
+    }
+  };
+}
+
 async function resolveChangedFiles(rootPath, changedPaths) {
   const filePaths = new Set();
   const reconcilePaths = new Set();
@@ -373,8 +398,9 @@ export async function scanMusicRoot({
       }
       if (requestedFiles) {
         const scopes = reconcilePaths || requestedFiles;
+        const matchesReconcileScope = createPathScopeMatcher(scopes);
         const missingIndexedPaths = [...getAvailableLibraryMediaPaths(source)].filter((filePath) =>
-          scopes.some((scope) => isPathWithin(scope, filePath)) &&
+          matchesReconcileScope(filePath) &&
           !seenPaths.has(filePath) &&
           !failedPaths.has(filePath),
         );

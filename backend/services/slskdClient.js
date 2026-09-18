@@ -32,9 +32,9 @@ export const slskdSettings = Object.freeze({
       key: "apiKey",
       label: "API key",
       type: "password",
-      required: true,
       secret: true,
       section: "Connection",
+      hint: "Optional - leave empty when slskd authentication is disabled (for example behind an authenticating reverse proxy).",
     }),
     Object.freeze({
       key: "priority",
@@ -58,7 +58,7 @@ export const slskdSettings = Object.freeze({
     priority: 10,
     cleanupAfterRuns: false,
   }),
-  validation: Object.freeze({ required: ["url", "apiKey"], url: ["url"] }),
+  validation: Object.freeze({ required: ["url"], url: ["url"] }),
   testConnection: true,
 });
 
@@ -106,16 +106,17 @@ function buildClientFromCredentials(url, apiKey) {
     .trim()
     .replace(/\/+$/, "");
   const trimmedKey = String(apiKey || "").trim();
-  if (!trimmedUrl || !trimmedKey) {
+  if (!trimmedUrl) {
     throw new Error("slskd not configured");
+  }
+  const headers = { Accept: "application/json" };
+  if (trimmedKey) {
+    headers["X-API-KEY"] = trimmedKey;
   }
   return axios.create({
     baseURL: trimmedUrl,
     timeout: 60000,
-    headers: {
-      "X-API-KEY": trimmedKey,
-      Accept: "application/json",
-    },
+    headers,
     validateStatus: () => true,
   });
 }
@@ -245,18 +246,18 @@ export class SlskdClient {
   }
 
   isConfigured() {
-    const { url, apiKey, slskd } = getSettings(this._config);
-    return slskd.enabled !== false && !!(url && apiKey);
+    const { url, slskd } = getSettings(this._config);
+    return slskd.enabled !== false && !!url;
   }
 
   async testConnection({ force = false } = {}) {
     const { url, apiKey } = getSettings(this._config);
-    if (!url || !apiKey) {
+    if (!url) {
       return {
         ok: false,
         configured: false,
         connected: false,
-        message: "slskd URL and API key are required",
+        message: "slskd URL is required",
       };
     }
     const settingsKey = getSettingsKey({ url, apiKey });
@@ -318,7 +319,7 @@ export class SlskdClient {
 
   getStatus() {
     const { url, apiKey } = getSettings(this._config);
-    const configured = !!(url && apiKey);
+    const configured = !!url;
     const cached =
       connectionCache.settingsKey === getSettingsKey({ url, apiKey })
         ? connectionCache.result

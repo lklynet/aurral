@@ -1,3 +1,11 @@
+// Usenet release-candidate scoring.
+//
+// Usenet results are releases, not individual tracks, so pre-download
+// ranking stays release-oriented (title identity gate plus format/size/noise
+// tie-breakers). Post-download identity is validated by the shared
+// trackMatching engine: downloaded files are assigned to expected tracks
+// with beets' assignment and validated per file.
+
 import path from "path";
 import {
   normalizeReleaseText as normalizeText,
@@ -124,7 +132,7 @@ export function rankUsenetReleases(releases, context, options = {}) {
         raw: { release, file: title, size: Number(release.size || 0), downloadUrl: release.downloadUrl, indexerId: release.indexerId, indexer: release.indexer, guid: release.guid },
         score: 0,
         resolvedAlbumName: null,
-        preDownloadValid: false,
+        releaseAdmissible: false,
         scores: { artist: 0, track: 0, album: 0, year: 0, format: 0, size: 0 },
       });
       continue;
@@ -141,7 +149,7 @@ export function rankUsenetReleases(releases, context, options = {}) {
         raw: { release, file: title, size: Number(release.size || 0), downloadUrl: release.downloadUrl, indexerId: release.indexerId, indexer: release.indexer, guid: release.guid },
         score: 0,
         resolvedAlbumName: null,
-        preDownloadValid: false,
+        releaseAdmissible: false,
         scores: { artist: hasArtist ? 100 : 0, track: trackScore, album: albumScore, year: 0, format: 0, size: 0 },
       });
       continue;
@@ -159,13 +167,13 @@ export function rankUsenetReleases(releases, context, options = {}) {
       raw: { release, file: title, size: Number(release.size || 0), downloadUrl: release.downloadUrl, indexerId: release.indexerId, indexer: release.indexer, guid: release.guid },
       score: tieScore,
       resolvedAlbumName: hasAlbum ? albumName : null,
-      preDownloadValid: true,
+      releaseAdmissible: true,
       scores: { artist: 100, track: trackScore, album: albumScore, year: yearScore, format: formatScore, size: sizeScore },
     });
   }
   return ranked.sort((left, right) => {
-    if (left.preDownloadValid !== right.preDownloadValid) {
-      return left.preDownloadValid ? -1 : 1;
+    if (left.releaseAdmissible !== right.releaseAdmissible) {
+      return left.releaseAdmissible ? -1 : 1;
     }
     if (right.score !== left.score) return right.score - left.score;
     return String(left.raw.file).localeCompare(String(right.raw.file));
@@ -179,7 +187,7 @@ export function selectRankedUsenetCandidates(ranked, limit = 5) {
   const seenKeys = new Set();
   for (const candidate of Array.isArray(ranked) ? ranked : []) {
     if (selected.length >= max) break;
-    if (!candidate?.preDownloadValid) continue;
+    if (!candidate?.releaseAdmissible) continue;
     const key = releaseKey(candidate.raw?.release);
     const indexerId = String(candidate.raw?.indexerId || "");
     if (seenKeys.has(key) || (indexerId && seenIndexers.has(indexerId))) continue;
@@ -204,36 +212,3 @@ export function isAudioFile(filePath) {
     ".aac", ".opus", ".alac", ".ape", ".wma",
   ].includes(ext);
 }
-
-// ponytail: self-check — fails if the identity gate regresses
-function _check() {
-  const assert = (cond, msg) => { if (!cond) throw new Error(msg); };
-  const make = (t, c) => ({ title: t, downloadUrl: 'http://x', protocol: 'usenet', categories: [3040], guid: t, size: 5e6, ...c });
-  const ctx = (a, t, al) => ({ artistName: a, trackName: t, albumName: al });
-
-  const reject = (releases, context, why) => {
-    const r = rankUsenetReleases(releases, context);
-    assert(r.some(x => !x.preDownloadValid), `FAIL: should reject ${why}`);
-  };
-  const accept = (releases, context, why) => {
-    const r = rankUsenetReleases(releases, context);
-    assert(r.some(x => x.preDownloadValid), `FAIL: should accept ${why}`);
-  };
-
-  reject([make('Led Zeppelin - Gallows Pole (1970) FLAC')], ctx('Gallows', 'Outside Art', 'Grey Britain'), 'Led Zep substring');
-  reject([make('Various - Punk Comp (2005)')], ctx('Gallows', 'Outside Art'), 'no-artist noise');
-  reject([make('Gallows Pole (2010) FLAC')], ctx('Gallows', 'Outside Art'), 'artist-only no track');
-  accept([make('Gallows - Outside Art FLAC')], ctx('Gallows', 'Outside Art'), 'artist+track');
-  accept([make('Gallows - Grey Britain 2009')], ctx('Gallows', 'Outside Art', 'Grey Britain'), 'artist+album');
-  accept([make('Beatles - Abbey Road 1969 FLAC')], ctx('The Beatles', 'Come Together', 'Abbey Road'), 'The Beatles stripped');
-
-  const hasConflict = rankUsenetReleases(
-    [make('Gallows - Outside Art FLAC')],
-    { ...ctx('Gallows', 'Outside Art'), releaseYear: '2024' },
-  );
-  assert(hasConflict[0].preDownloadValid, 'tie-breaker should not affect identity gate');
-
-  console.log('[matcher] self-check OK');
-}
-
-if (process.argv[1]?.endsWith('weeklyFlowUsenetMatcher.js')) _check();

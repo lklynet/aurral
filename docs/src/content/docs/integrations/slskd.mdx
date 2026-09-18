@@ -12,6 +12,8 @@ slskd downloads flow and playlist tracks from Soulseek. Aurral can also use [Use
 1. Mount the same media root in Aurral and slskd at the same container path. See [Filesystem and mounts](/getting-started/storage/).
 2. Connect slskd in **Settings > Download clients > slskd**.
 
+The API key is optional. Leave it empty when slskd runs with authentication disabled - for example `SLSKD_NO_AUTH=true`, `--no-auth`, or `web.authentication.disabled: true` - such as when an authenticating reverse proxy sits in front of slskd.
+
 Aurral uses the slskd API and reads the completed files from the path slskd reports. It then moves those files into your Downloads Folder path.
 
 If slskd runs on Windows and reports host paths, mount the parent folder into Aurral. For example, slskd can report `N:\...`.

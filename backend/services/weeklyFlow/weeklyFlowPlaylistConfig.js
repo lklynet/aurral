@@ -487,6 +487,7 @@ const normalizeSharedPlaylist = (playlist) => {
       String(playlist?.description || "").trim() ||
       resolvePresetDescription(playlist?.discoverPresetId),
     importSource,
+    showTrackAvailability: playlist?.showTrackAvailability === true,
     importedAt:
       playlist?.importedAt != null && Number.isFinite(Number(playlist.importedAt))
         ? Number(playlist.importedAt)
@@ -961,6 +962,7 @@ export const flowPlaylistConfig = {
       ...current,
       name: nextName,
       sourceName: updates?.sourceName ?? current.sourceName,
+      showTrackAvailability: updates?.showTrackAvailability ?? current.showTrackAvailability,
       sourceFlowId: updates?.sourceFlowId ?? current.sourceFlowId,
       discoverPresetId: updates?.discoverPresetId ?? current.discoverPresetId,
       importSource:
