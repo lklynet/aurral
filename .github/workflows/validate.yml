@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'lklynet' && 'aurral-personal' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -57,6 +57,13 @@ jobs:
           "${apt_prefix[@]}" apt-get install -y ffmpeg fontconfig fonts-dejavu-core fonts-noto-color-emoji
 
       - run: npm ci
+
+      - name: Set up bundled beets matcher runtime
+        run: |
+          matcher_venv="${RUNNER_TEMP:-/tmp}/aurral-beets-venv"
+          python3 -m venv "$matcher_venv"
+          "$matcher_venv/bin/pip" install --no-compile -r backend/matcher/requirements.txt
+          echo "AURRAL_MATCHER_PYTHON=$matcher_venv/bin/python" >> "$GITHUB_ENV"
 
       - run: npm run lint
 
@@ -147,5 +154,18 @@ jobs:
 
           docker exec "$CONTAINER" node --input-type=module -e \
             'import fs from "node:fs/promises"; const status = await fs.readFile("/proc/1/status", "utf8"); const groups = status.match(/^Groups:\s*(.*)$/m)?.[1].trim().split(/\s+/).filter(Boolean) || []; if (!groups.includes("3001")) { console.error(status); process.exit(1); }'
+
+          # The bundled beets matcher is production-critical: run the packaged
+          # interpreter against the packaged matcher script and confirm the
+          # pinned version answers a health request.
+          matcher_health="$(docker exec "$CONTAINER" sh -c \
+            'printf "{\"protocol\":1,\"operation\":\"health\"}" | /opt/aurral-matcher/bin/python backend/matcher/aurral_matcher.py')"
+          echo "$matcher_health"
+          echo "$matcher_health" | grep -q '"ok":true' || { echo "packaged matcher did not answer health"; exit 1; }
+          echo "$matcher_health" | grep -q '"beetsVersion":"2.14.0"' || { echo "packaged beets is not the pinned version"; exit 1; }
+
+          # The running app must have completed the matcher startup self-test.
+          docker exec "$CONTAINER" node -e \
+            'fetch("http://127.0.0.1:3001/api/health").then((r) => r.json()).then((body) => { if (body.matcher?.available !== true) { console.error("matcher runtime not available in health payload:", JSON.stringify(body.matcher)); process.exit(1); } })'
 
           docker logs "$CONTAINER"

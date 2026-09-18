@@ -782,6 +782,7 @@ export class WeeklyFlowWorker {
           weeklyFlowRoot: this.weeklyFlowRoot,
           existingJobId: job.id,
           excludeJobIds: [job.id],
+          allowLidarr: !job.requestGroupId,
         });
         if (reuse.reused) {
           this._dropOverflowPendingJobs(job.playlistType);

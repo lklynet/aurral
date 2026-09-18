@@ -204,7 +204,7 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
     }
     const hash = hashPassword(password);
     const perms = permissions ? { ...userOps.getDefaultPermissions(), ...permissions } : null;
-    const created = userOps.createUser(un, hash, role, perms);
+    const created = userOps.createUser(un, hash, role, perms, password);
     if (!created) {
       return res.status(500).json({ error: "Failed to create user" });
     }
@@ -270,6 +270,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
           return res.status(400).json({ error: passwordValidation.error });
         }
         updates.passwordHash = hashPassword(password);
+        updates.subsonicPassword = password;
       }
       if (Object.keys(updates).length === 0) {
         return res.json({
@@ -297,6 +298,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
         return res.status(400).json({ error: passwordValidation.error });
       }
       updates.passwordHash = hashPassword(password);
+      updates.subsonicPassword = password;
     }
     if (permissions !== undefined) updates.permissions = permissions;
     if (role !== undefined) updates.role = role;
@@ -578,7 +580,10 @@ router.post("/me/password", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Current password is incorrect" });
     }
     const hash = hashPassword(newPassword);
-    userOps.updateUser(req.user.id, { passwordHash: hash });
+    userOps.updateUser(req.user.id, {
+      passwordHash: hash,
+      subsonicPassword: newPassword,
+    });
     deleteSessionsByUserId(req.user.id);
     res.json({ success: true });
   } catch (e) {

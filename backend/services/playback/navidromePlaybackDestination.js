@@ -486,7 +486,7 @@ export class NavidromePlaybackDestination {
       this._scheduleCatchup();
       return playbackOperationSuccess();
     }
-    if (pointer && hasUnresolvedSongs) {
+    if (pointer && hasUnresolvedSongs && !songIds.length) {
       this._pendingSnapshots.set(`${snapshot.entityId}:${targetKey}`, snapshot);
       this._scheduleCatchup();
       return playbackOperationSuccess();

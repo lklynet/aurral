@@ -699,6 +699,7 @@ test("publishes resolved songs and catches up when Navidrome indexes the rest", 
     displayName: playlist.name,
     tracks: [
       { path: "/music/ready.flac", title: "Ready", artist: "Artist" },
+      { path: "/music/later.flac", title: "Later", artist: "Artist" },
       { path: "/music/missing.flac", title: "Missing", artist: "Artist" },
     ],
   });
@@ -714,12 +715,23 @@ test("publishes resolved songs and catches up when Navidrome indexes the rest", 
   assert.deepEqual(client.calls.created, [
     { name: "Catch-up", songIds: ["ready-song"] },
   ]);
+  songs.Later = { id: "later-song" };
+  await destination.publishPlaylist(snapshot);
+  assert.equal(scheduleCalls, 2);
+  assert.deepEqual(client.calls.updated, [
+    { id: "created", name: "Catch-up", songIds: ["ready-song", "later-song"] },
+  ]);
   songs.Missing = { id: "missing-song" };
   scheduleCatchup([0]);
   while (destination._catchupRunning) await new Promise((resolve) => setTimeout(resolve, 1));
 
   assert.deepEqual(client.calls.updated, [
-    { id: "created", name: "Catch-up", songIds: ["ready-song", "missing-song"] },
+    { id: "created", name: "Catch-up", songIds: ["ready-song", "later-song"] },
+    {
+      id: "created",
+      name: "Catch-up",
+      songIds: ["ready-song", "later-song", "missing-song"],
+    },
   ]);
   await assert.rejects(fs.access(path.join(destination.libraryRoot, "Catch-up.m3u")));
 });

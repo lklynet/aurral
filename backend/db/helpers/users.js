@@ -1,4 +1,6 @@
 import { db, dbHelpers } from "../../config/db-sqlite.js";
+import { decryptWithKey, encryptWithKey } from "../../config/encryption.js";
+import { getSettingsEncryptionKey } from "./settings.js";
 import {
   DEFAULT_LISTEN_HISTORY_PROVIDER,
   getListenHistoryProfile,
@@ -19,10 +21,16 @@ const getUserAuthByIdStmt = db.prepare(
 );
 const countUsersStmt = db.prepare("SELECT COUNT(*) AS count FROM users");
 const insertUserStmt = db.prepare(
-  "INSERT INTO users (username, password_hash, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id) VALUES (?, ?, ?, ?, ?, ?)"
+  "INSERT INTO users (username, password_hash, subsonic_password, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id) VALUES (?, ?, ?, ?, ?, ?, ?)"
 );
 const updateUserStmt = db.prepare(
-  "UPDATE users SET username = ?, password_hash = ?, role = ?, permissions = ?, lastfm_username = ?, listen_history_provider = ?, listen_history_username = ?, listen_history_url = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, default_library_owner = ? WHERE id = ?"
+  "UPDATE users SET username = ?, password_hash = ?, subsonic_password = ?, role = ?, permissions = ?, lastfm_username = ?, listen_history_provider = ?, listen_history_username = ?, listen_history_url = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, default_library_owner = ? WHERE id = ?"
+);
+const getSubsonicPasswordByIdStmt = db.prepare(
+  "SELECT subsonic_password FROM users WHERE id = ?",
+);
+const updateSubsonicPasswordStmt = db.prepare(
+  "UPDATE users SET subsonic_password = ? WHERE id = ?",
 );
 const deleteUserStmt = db.prepare("DELETE FROM users WHERE id = ?");
 const getAllListeningHistoryUsersStmt = db.prepare(
@@ -43,6 +51,17 @@ function normalizeDefaultLibraryOwner(value) {
   if (value === null || value === "") return null;
   const normalized = String(value || "").trim().toLowerCase();
   return normalized === "aurral" || normalized === "lidarr" ? normalized : null;
+}
+
+function encryptSubsonicPassword(password) {
+  const value = password == null ? "" : String(password);
+  return value ? encryptWithKey(value, getSettingsEncryptionKey()) : null;
+}
+
+function decryptSubsonicPassword(value) {
+  if (!value) return null;
+  const decrypted = decryptWithKey(value, getSettingsEncryptionKey());
+  return decrypted || null;
 }
 
 export const userOps = {
@@ -106,6 +125,20 @@ export const userOps = {
       defaultLibraryOwner: normalizeDefaultLibraryOwner(row.default_library_owner),
     };
   },
+  getSubsonicPasswordById(id) {
+    const row = getSubsonicPasswordByIdStmt.get(parseInt(id, 10));
+    return decryptSubsonicPassword(row?.subsonic_password);
+  },
+  syncSubsonicPassword(id, password) {
+    const userId = parseInt(id, 10);
+    const row = getSubsonicPasswordByIdStmt.get(userId);
+    if (!row) return false;
+    const current = decryptSubsonicPassword(row.subsonic_password);
+    const next = password == null ? "" : String(password);
+    if (current === (next || null)) return false;
+    updateSubsonicPasswordStmt.run(encryptSubsonicPassword(next), userId);
+    return true;
+  },
   countUsers() {
     return countUsersStmt.get().count;
   },
@@ -127,7 +160,13 @@ export const userOps = {
       defaultLibraryOwner: normalizeDefaultLibraryOwner(r.default_library_owner),
     }));
   },
-  createUser(username, passwordHash, role = "user", permissions = null) {
+  createUser(
+    username,
+    passwordHash,
+    role = "user",
+    permissions = null,
+    subsonicPassword = null,
+  ) {
     const un = String(username).trim();
     if (!un) return null;
     const perms = permissions
@@ -137,6 +176,7 @@ export const userOps = {
       const result = insertUserStmt.run(
         un.toLowerCase(),
         passwordHash,
+        encryptSubsonicPassword(subsonicPassword),
         role,
         dbHelpers.stringifyJSON(perms),
         null,
@@ -161,7 +201,8 @@ export const userOps = {
   },
   updateUser(id, data) {
     const existing = userOps.getUserById(id);
-    if (!existing) return null;
+    const existingRow = getUserByIdStmt.get(parseInt(id, 10));
+    if (!existing || !existingRow) return null;
     const username =
       data.username !== undefined
         ? String(data.username).trim()
@@ -170,6 +211,14 @@ export const userOps = {
       data.passwordHash !== undefined
         ? data.passwordHash
         : existing.passwordHash;
+    const passwordHashChanged =
+      data.passwordHash !== undefined && data.passwordHash !== existing.passwordHash;
+    const subsonicPassword =
+      data.subsonicPassword !== undefined
+        ? encryptSubsonicPassword(data.subsonicPassword)
+        : passwordHashChanged
+          ? null
+          : existingRow.subsonic_password || null;
     const role = data.role !== undefined ? data.role : existing.role;
     const permissions =
       data.permissions !== undefined
@@ -228,6 +277,7 @@ export const userOps = {
       updateUserStmt.run(
         username.toLowerCase(),
         passwordHash,
+        subsonicPassword,
         role,
         dbHelpers.stringifyJSON(permissions),
         lastfmUsername,

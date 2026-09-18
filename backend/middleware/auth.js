@@ -10,6 +10,13 @@ const safeCompare = (a, b) => {
   return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
 };
 
+function createSubsonicToken(password, salt) {
+  // Subsonic requires MD5(password + salt) for token authentication; this digest is never stored.
+  //
+  // codeql[js/insufficient-password-hash]
+  return crypto.createHash("md5").update(`${password}${salt}`).digest("hex");
+}
+
 const DEFAULT_PROXY_HEADER = "x-forwarded-user";
 const STREAM_TOKEN_TTL_MS = 2 * 60 * 1000;
 const streamTokenStore = new Map();
@@ -512,7 +519,7 @@ function migrateLegacyAdmin() {
   const authPassword = settings.integrations?.general?.authPassword;
   if (!onboardingComplete || !authPassword) return;
   const hash = hashPassword(authPassword);
-  userOps.createUser(authUser, hash, "admin", null);
+  userOps.createUser(authUser, hash, "admin", null, authPassword);
 }
 
 export function resolveUser(username, password) {
@@ -527,7 +534,12 @@ export function resolveUser(username, password) {
   if (!u || !password) return null;
   if (!verifyPassword(password, u.passwordHash)) return null;
   if (needsRehash(u.passwordHash)) {
-    userOps.updateUser(u.id, { passwordHash: hashPassword(password) });
+    userOps.updateUser(u.id, {
+      passwordHash: hashPassword(password),
+      subsonicPassword: password,
+    });
+  } else {
+    userOps.syncSubsonicPassword(u.id, password);
   }
   const perms = buildPermissions(u.role, u.permissions);
   return {
@@ -540,20 +552,26 @@ export function resolveUser(username, password) {
 
 export function resolveSubsonicTokenUser(username, token, salt) {
   if (!/^[a-f\d]{32}$/i.test(String(token || "")) || !String(salt || "")) return null;
-  if (
-    !safeCompare(
-      String(username || "").trim().toLowerCase(),
-      String(getAuthUser()).trim().toLowerCase(),
-    )
-  ) return null;
+  if (userOps.countUsers() === 0) migrateLegacyAdmin();
+  const normalizedUsername = String(username || "").trim().toLowerCase();
+  const user = userOps.getUserByUsername(normalizedUsername);
+  if (!user) return null;
 
-  const matchedPassword = getAuthPassword().find((password) =>
-    safeCompare(
-      crypto.createHash("md5").update(`${password}${salt}`).digest("hex"),
-      token,
-    ),
-  );
-  return matchedPassword ? resolveUser(username, matchedPassword) : null;
+  let password = userOps.getSubsonicPasswordById(user.id);
+  if (
+    !password &&
+    safeCompare(normalizedUsername, String(getAuthUser()).trim().toLowerCase())
+  ) {
+    password = getAuthPassword().find((candidate) =>
+      safeCompare(createSubsonicToken(candidate, salt), token),
+    );
+  }
+  if (!password) return null;
+
+  const expectedToken = createSubsonicToken(password, salt);
+  return safeCompare(expectedToken, token)
+    ? resolveUser(normalizedUsername, password)
+    : null;
 }
 
 function legacyAuth(username, password) {

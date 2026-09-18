@@ -103,7 +103,13 @@ export function joinUnderRoot(root, relativePath, fileName = null) {
   if (fileName) {
     parts.push(fileName);
   }
-  return path.join(root, ...parts);
+  const resolvedRoot = path.resolve(root);
+  const resolvedPath = path.resolve(resolvedRoot, ...parts);
+  const relative = path.relative(resolvedRoot, resolvedPath);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error("Destination must remain inside the configured root");
+  }
+  return resolvedPath;
 }
 
 async function fileExists(filePath) {

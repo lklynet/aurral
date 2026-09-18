@@ -132,9 +132,10 @@ function main() {
     resultUser = userOps.updateUser(existing.id, {
       passwordHash: hash,
       role: "admin",
+      subsonicPassword: password,
     });
   } else {
-    resultUser = userOps.createUser(username, hash, "admin", null);
+    resultUser = userOps.createUser(username, hash, "admin", null, password);
   }
 
   if (!resultUser) {

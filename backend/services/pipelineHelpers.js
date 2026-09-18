@@ -67,6 +67,14 @@ export async function finalizePipelineJobSuccess({
   downloadTracker.setDone(job.id, committedFinalPath, album);
   if (quality) downloadTracker.updateQuality(job.id, quality);
 
+  if (job.playlistType === "library" && job.managedBy === "aurral" && committedFinalPath) {
+    const { scheduleLibraryScan } = await import("./libraryScanWorker.js");
+    scheduleLibraryScan({
+      includeLidarr: false,
+      changedPaths: [committedFinalPath],
+    });
+  }
+
   if (onSuccess) await onSuccess();
 
   import("./aurralHistoryService.js")

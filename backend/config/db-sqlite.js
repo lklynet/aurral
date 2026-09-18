@@ -62,6 +62,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
+    subsonic_password TEXT,
     role TEXT NOT NULL DEFAULT 'user',
     permissions TEXT,
     discover_layout TEXT
@@ -587,6 +588,9 @@ if (!userColumns.includes("listen_history_url")) {
 }
 if (!userColumns.includes("default_library_owner")) {
   tryAddColumn("ALTER TABLE users ADD COLUMN default_library_owner TEXT");
+}
+if (!userColumns.includes("subsonic_password")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN subsonic_password TEXT");
 }
 
 db.exec(`
