@@ -62,6 +62,7 @@ def integer(value) -> int | None:
 
 
 def artist(payload: dict) -> str | None:
+    """Read an optional artist name or list from a matcher payload."""
     for key in ("artistName", "artist"):
         value = text(payload.get(key))
         if value:
