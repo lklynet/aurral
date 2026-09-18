@@ -10,6 +10,13 @@ const safeCompare = (a, b) => {
   return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
 };
 
+function createSubsonicToken(password, salt) {
+  // Subsonic requires MD5(password + salt) for token authentication; this digest is never stored.
+  //
+  // codeql[js/insufficient-password-hash]
+  return crypto.createHash("md5").update(`${password}${salt}`).digest("hex");
+}
+
 const DEFAULT_PROXY_HEADER = "x-forwarded-user";
 const STREAM_TOKEN_TTL_MS = 2 * 60 * 1000;
 const streamTokenStore = new Map();
@@ -526,11 +533,14 @@ export function resolveUser(username, password) {
   const u = userOps.getUserByUsername(un);
   if (!u || !password) return null;
   if (!verifyPassword(password, u.passwordHash)) return null;
-  const updates = { subsonicPassword: password };
   if (needsRehash(u.passwordHash)) {
-    updates.passwordHash = hashPassword(password);
+    userOps.updateUser(u.id, {
+      passwordHash: hashPassword(password),
+      subsonicPassword: password,
+    });
+  } else {
+    userOps.syncSubsonicPassword(u.id, password);
   }
-  userOps.updateUser(u.id, updates);
   const perms = buildPermissions(u.role, u.permissions);
   return {
     id: u.id,
@@ -553,18 +563,12 @@ export function resolveSubsonicTokenUser(username, token, salt) {
     safeCompare(normalizedUsername, String(getAuthUser()).trim().toLowerCase())
   ) {
     password = getAuthPassword().find((candidate) =>
-      safeCompare(
-        crypto.createHash("md5").update(`${candidate}${salt}`).digest("hex"),
-        token,
-      ),
+      safeCompare(createSubsonicToken(candidate, salt), token),
     );
   }
   if (!password) return null;
 
-  const expectedToken = crypto
-    .createHash("md5")
-    .update(`${password}${salt}`)
-    .digest("hex");
+  const expectedToken = createSubsonicToken(password, salt);
   return safeCompare(expectedToken, token)
     ? resolveUser(normalizedUsername, password)
     : null;
