@@ -23,7 +23,7 @@ const [
   "backend/services/nzbgetClient.js",
   "backend/services/sabnzbdClient.js",
   "backend/services/downloadSourceService.js",
-  "backend/services/weeklyFlow/weeklyFlowUsenetMatcher.js",
+  "backend/services/weeklyFlow/weeklyFlowUsenetReleaseSearch.js",
   "backend/db/helpers/index.js",
   "backend/config/db-sqlite.js",
 );
@@ -299,7 +299,7 @@ test("Usenet matcher prefers matching audio releases and keeps fallback candidat
   );
 
   assert.equal(ranked[0].raw.release.title, "Example Artist - Bright Static (2024) FLAC");
-  assert.equal(ranked[0].preDownloadValid, true);
+  assert.equal(ranked[0].releaseAdmissible, true);
   const selected = selectRankedUsenetCandidates(ranked, 2);
   assert.equal(selected.length, 2);
 });

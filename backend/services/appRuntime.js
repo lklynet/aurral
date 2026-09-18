@@ -22,6 +22,7 @@ import {
 } from "./libraryFileWatcher.js";
 import { registerHonkerShutdownHandler } from "./honkerWorkerRuntime.js";
 import { HONKER_QUEUE_NAMES } from "./honkerDb.js";
+import { verifyMatcherRuntime } from "./trackMatching/index.js";
 
 let backgroundWorkersStarted = false;
 let workerSupervisorStarted = false;
@@ -165,4 +166,12 @@ export function startBackgroundWorkers({ logger = console } = {}) {
 export function initializeAppRuntime({ logger = console } = {}) {
   startHonkerScheduler();
   startBackgroundWorkers({ logger });
+  // The bundled beets matcher is production-critical for downloads; a broken
+  // Python/beets installation must be obvious at startup.
+  void verifyMatcherRuntime().catch((error) => {
+    logger.warn?.(
+      "[AppRuntime] Track matcher self-test crashed:",
+      error?.message || error,
+    );
+  });
 }
