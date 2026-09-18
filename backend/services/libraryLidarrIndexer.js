@@ -14,9 +14,23 @@ import {
   withLibraryScan,
 } from "./libraryMediaStore.js";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
+import {
+  getLibraryManagementEntry,
+  setLibraryManagement,
+} from "./libraryManagementStore.js";
 import { mapWithConcurrency } from "./discovery/helpers.js";
 
 const text = (value) => String(value || "").trim();
+
+function ensureLidarrManagement(entityKind, entityId, monitorMode = null) {
+  if (getLibraryManagementEntry(entityKind, entityId)) return;
+  setLibraryManagement({
+    entityKind,
+    entityId,
+    managedBy: "lidarr",
+    monitorMode,
+  });
+}
 
 const isUuid = (value) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -237,6 +251,14 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
       }
       return records;
     })();
+    for (const [artistId, artistRecord] of artistRecordsById) {
+      const artist = artistById.get(artistId);
+      ensureLidarrManagement(
+        "artist",
+        artistRecord.id,
+        artist?.monitor || artist?.addOptions?.monitor || null,
+      );
+    }
 
     for (const album of Array.isArray(albums) ? albums : []) {
       const artist = artistById.get(String(album?.artistId));
@@ -310,9 +332,15 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
           seenPaths.push(resolvedFile.localPath);
           filesIndexed += 1;
         }
-        return { filesIndexed, seenPaths };
+        return {
+          filesIndexed,
+          seenPaths,
+          albumId: albumRecord.id,
+          monitorMode: album.monitor || album.addOptions?.monitor || null,
+        };
       })();
       result.filesIndexed += batch.filesIndexed;
+      ensureLidarrManagement("album", batch.albumId, batch.monitorMode);
       for (const filePath of batch.seenPaths) unseenPaths.delete(filePath);
       await new Promise((resolve) => setImmediate(resolve));
     }
