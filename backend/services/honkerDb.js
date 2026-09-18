@@ -4,6 +4,7 @@ import honker from "@russellthehippo/honker-node";
 import { resolveAurralDataDir } from "../config/data-dir.js";
 import { dbOps } from "../db/helpers/index.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
+import { hasAppCapability } from "../config/app-profile.js";
 
 export const PLAYLIST_STARTUP_MIGRATION_VERSION = 1;
 export const PLAYLIST_STARTUP_MIGRATION_SETTING = "playlistStartupMigration";
@@ -361,6 +362,9 @@ export function enqueuePlayEventDelivery(payload) {
 }
 
 export function bootstrapHonkerSchedules() {
+  if (!hasAppCapability("backgroundWorkers")) {
+    return false;
+  }
   const scheduler = getHonkerDb().scheduler();
   const canonicalByName = new Map(SCHEDULED_SYSTEM_TASKS.map((task) => [task.name, task]));
   const existingByName = new Map(scheduler.list().map((row) => [row.name, row]));
@@ -412,9 +416,13 @@ export function bootstrapHonkerSchedules() {
       scheduler.resume(task.name);
     }
   }
+  return true;
 }
 
 export function enqueueHonkerStartupTasks() {
+  if (!hasAppCapability("backgroundWorkers")) {
+    return false;
+  }
   const enqueueIfAbsent = (payload, options) => {
     const existing = findActiveHonkerJob(
       "system-task",
@@ -436,6 +444,7 @@ export function enqueueHonkerStartupTasks() {
   enqueueIfAbsent({ kind: "weekly-flow-startup-check" }, { delaySeconds: 5, priority: 5 });
   enqueueIfAbsent({ kind: "discovery-bootstrap" }, { delaySeconds: 15, priority: 5 });
   enqueueIfAbsent({ kind: "library-index-bootstrap" }, { delaySeconds: 8, priority: 0 });
+  return true;
 }
 
 export function findActiveHonkerJob(

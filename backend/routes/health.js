@@ -41,6 +41,11 @@ import {
   DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK,
   getDiscoveryCapabilities,
 } from "../services/listenbrainzDiscoveryFallback.js";
+import {
+  APP_CAPABILITIES,
+  APP_PROFILE,
+  hasAppCapability,
+} from "../config/app-profile.js";
 
 const router = express.Router();
 const STARTED_AT = Date.now();
@@ -256,6 +261,8 @@ function buildBootstrapPayload(req) {
   const oidcInfo = getOidcBootstrapInfo();
   const payload = {
     status: "ok",
+    profile: APP_PROFILE,
+    capabilities: { ...APP_CAPABILITIES },
     authRequired,
     proxyAuthEnabled: isProxyAuthEnabled(),
     oidcEnabled: oidcInfo.oidcEnabled,
@@ -265,7 +272,9 @@ function buildBootstrapPayload(req) {
     timestamp: new Date().toISOString(),
     appVersion: APP_VERSION,
     matcher: serializeBootstrapMatcherStatus(
-      getMatcherRuntimeStatus(),
+      hasAppCapability("matcher")
+        ? getMatcherRuntimeStatus()
+        : { available: false, checked: false, error: null },
       Boolean(currentUser),
     ),
   };

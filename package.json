@@ -26,6 +26,7 @@
     "dev:frontend": "npm run dev --workspace frontend",
     "auth:reset-admin-password": "npm run auth:reset-admin-password --workspace backend",
     "docker:build": "docker build -t aurral .",
+    "docker:build:diet": "docker build --target runtime-diet -t aurral-diet .",
     "docker:run": "docker run -p 3001:3001 -v $(pwd)/backend/data:/app/backend/data aurral",
     "docs:dev": "npm run dev --prefix docs",
     "docs:build": "npm run build --prefix docs",

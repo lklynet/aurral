@@ -54,37 +54,25 @@ RUN python3 -m venv /opt/aurral-matcher && \
     /opt/aurral-matcher/bin/pip install --no-compile -r /tmp/aurral-matcher-requirements.txt && \
     /opt/aurral-matcher/bin/python -c "import beets; assert beets.__version__ == '2.14.0'"
 
-FROM node-base AS runtime
+FROM node-base AS runtime-common
 
 WORKDIR /app
 
+# Honker's native SQLite binding dynamically links against this library.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gosu \
-    fontconfig \
-    fonts-dejavu-core \
-    fonts-noto-color-emoji \
-    python3 \
-    ffmpeg \
     ca-certificates \
-    libjemalloc2 \
+    libsqlite3-0 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 1001 nodejs \
     && useradd --uid 1001 --gid nodejs --shell /usr/sbin/nologin --create-home nodejs \
     && mkdir -p /app/backend/data /config \
     && chown -R nodejs:nodejs /app/backend/data /config
 
-ENV LD_PRELOAD=libjemalloc.so.2
-
-ADD --chmod=755 --checksum=sha256:1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6 \
-    https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp \
-    /usr/local/bin/yt-dlp
-RUN yt-dlp --version
-
 COPY package*.json ./
 COPY backend/package*.json ./backend/
 COPY frontend/package*.json ./frontend/
 COPY --from=backend-deps /app/node_modules ./node_modules
-COPY --from=matcher-deps /opt/aurral-matcher /opt/aurral-matcher
 
 COPY backend/ ./backend/
 COPY lib/ ./lib/
@@ -98,3 +86,29 @@ EXPOSE 3001
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "backend/server.js"]
+
+FROM runtime-common AS runtime-diet
+
+ENV AURRAL_PROFILE=diet
+
+FROM runtime-common AS runtime
+
+ENV AURRAL_PROFILE=full
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fontconfig \
+    fonts-dejavu-core \
+    fonts-noto-color-emoji \
+    python3 \
+    ffmpeg \
+    libjemalloc2 \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV LD_PRELOAD=libjemalloc.so.2
+
+ADD --chmod=755 --checksum=sha256:1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6 \
+    https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp \
+    /usr/local/bin/yt-dlp
+RUN yt-dlp --version
+
+COPY --from=matcher-deps /opt/aurral-matcher /opt/aurral-matcher

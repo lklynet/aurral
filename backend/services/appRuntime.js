@@ -23,6 +23,7 @@ import {
 import { registerHonkerShutdownHandler } from "./honkerWorkerRuntime.js";
 import { HONKER_QUEUE_NAMES } from "./honkerDb.js";
 import { verifyMatcherRuntime } from "./trackMatching/index.js";
+import { hasAppCapability } from "../config/app-profile.js";
 
 let backgroundWorkersStarted = false;
 let workerSupervisorStarted = false;
@@ -127,7 +128,11 @@ registerHonkerShutdownHandler(() => {
 });
 
 export function startBackgroundWorkers({ logger = console } = {}) {
-  if (backgroundWorkersStarted || process.env.AURRAL_TEST_SERVER === "1") {
+  if (
+    !hasAppCapability("backgroundWorkers") ||
+    backgroundWorkersStarted ||
+    process.env.AURRAL_TEST_SERVER === "1"
+  ) {
     return false;
   }
   backgroundWorkersStarted = true;
@@ -164,14 +169,20 @@ export function startBackgroundWorkers({ logger = console } = {}) {
 }
 
 export function initializeAppRuntime({ logger = console } = {}) {
+  if (!hasAppCapability("backgroundWorkers")) {
+    return false;
+  }
   startHonkerScheduler();
   startBackgroundWorkers({ logger });
   // The bundled beets matcher is production-critical for downloads; a broken
   // Python/beets installation must be obvious at startup.
-  void verifyMatcherRuntime().catch((error) => {
-    logger.warn?.(
-      "[AppRuntime] Track matcher self-test crashed:",
-      error?.message || error,
-    );
-  });
+  if (hasAppCapability("matcher")) {
+    void verifyMatcherRuntime().catch((error) => {
+      logger.warn?.(
+        "[AppRuntime] Track matcher self-test crashed:",
+        error?.message || error,
+      );
+    });
+  }
+  return true;
 }
