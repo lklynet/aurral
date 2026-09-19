@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { getDiscoveryCapabilities } from "../../backend/services/listenbrainzDiscoveryFallback.js";
 
 test("discovery worker progress and completed data reach the API cache", async () => {
   const { dbOps } = await import("../../backend/db/helpers/index.js");
@@ -28,10 +29,13 @@ test("discovery worker progress and completed data reach the API cache", async (
   const lastUpdated = new Date().toISOString();
   dbOps.updateDiscoveryCache({
     recommendations: [{ id: "worker-artist", name: "Worker Artist" }],
+    provider: "listenbrainz-fallback",
     lastUpdated,
   });
   await emit({ isUpdating: false, phase: "completed", progress: 100 });
   assert.equal(getDiscoveryCache().isUpdating, false);
   assert.equal(getDiscoveryCache().lastUpdated, dbOps.getDiscoveryCache().lastUpdated);
   assert.equal(getDiscoveryCache().recommendations[0].name, "Worker Artist");
+  assert.equal(getDiscoveryCache().provider, "listenbrainz-fallback");
+  assert.deepEqual(getDiscoveryCache().capabilities, getDiscoveryCapabilities(false));
 });

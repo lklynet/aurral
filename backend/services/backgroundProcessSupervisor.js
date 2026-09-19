@@ -239,6 +239,18 @@ export function createBackgroundProcessSupervisor({
     });
   }
 
+  function wake(group) {
+    const child = children.get(group);
+    if (!child || child.connected === false) return false;
+    try {
+      child.send({ type: "queue-wake" });
+      return true;
+    } catch (error) {
+      logger.warn?.(`[BackgroundWorkers] Could not wake ${group}:`, error);
+      return false;
+    }
+  }
+
   return {
     start,
     stop,
@@ -246,5 +258,6 @@ export function createBackgroundProcessSupervisor({
     getWorkerStatuses: () => [...workerStatuses.values()].flat(),
     getFlowStatus: () => flowStatuses.get("flow") || null,
     request,
+    wake,
   };
 }

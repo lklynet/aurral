@@ -1052,7 +1052,7 @@ function createRemoteWeeklyFlowWorker() {
     waitForIdle: () => call("waitForIdle", [], 30 * 60 * 1000),
     clearIncompleteRetry: (id) => call("clearIncompleteRetry", [id]),
     clearPlaylistRunState: (id) => call("clearPlaylistRunState", [id]),
-    pruneOrphanedJobState: () => notify("pruneOrphanedJobState"),
+    pruneOrphanedJobState: () => call("pruneOrphanedJobState"),
     scheduleReuseLinkRepair: (force) => notify("scheduleReuseLinkRepair", [force]),
   };
 }

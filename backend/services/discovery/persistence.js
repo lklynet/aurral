@@ -170,7 +170,7 @@ export const getDiscoveryCache = (listenHistoryProfile = null) => {
 export function synchronizeDiscoveryCacheFromWorker(update = {}) {
   if (!update || typeof update !== "object") return;
   if (update.isUpdating === false || update.playlistsUpdating === false) {
-    Object.assign(discoveryCache, dbOps.getDiscoveryCache());
+    reloadDiscoveryPersistedCache();
   }
   for (const key of [
     "recommendations", "globalTop", "basedOn", "topTags", "topGenres",

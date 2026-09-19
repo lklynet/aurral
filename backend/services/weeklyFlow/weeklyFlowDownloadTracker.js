@@ -51,7 +51,7 @@ const liveDoneWithPathStmt = db.prepare(
    ORDER BY created_at, id LIMIT ?`,
 );
 const livePendingStmt = db.prepare(
-  `SELECT * FROM ${JOBS_TABLE} WHERE status = 'pending'
+  `SELECT * FROM ${JOBS_TABLE} WHERE status = 'pending' AND upgrade_for_job_id IS NULL
    ORDER BY created_at, id LIMIT ?`,
 );
 const liveActivePlaylistStmt = db.prepare(
@@ -538,8 +538,11 @@ export class WeeklyFlowDownloadTracker {
       }
       this.jobs.set(job.id, job);
     }
-    for (const job of this.jobs.values()) {
-      if (job.status === "pending" && job.upgradeForJobId) this.removeJob(job.id);
+    if (process.env.AURRAL_BACKGROUND_WORKER_GROUP === "flow" ||
+        process.env.NODE_ENV === "test" || process.env.AURRAL_TEST_SERVER === "1") {
+      for (const job of this.jobs.values()) {
+        if (job.status === "pending" && job.upgradeForJobId) this.removeJob(job.id);
+      }
     }
     this._rebuildStatsByPlaylistType();
   }

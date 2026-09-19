@@ -5,7 +5,7 @@ if (!ISOLATED_WORKER_GROUPS.includes(group) || !process.send) {
   throw new Error("Background worker process requires a supervised queue group");
 }
 
-const { startWorkerSupervisor } = await import("./appRuntime.js");
+const { startWorkerSupervisor, wakeQueuedBackgroundWork } = await import("./appRuntime.js");
 const { getHonkerWorkerStatuses, shutdownHonkerInfrastructure } =
   await import("./honkerWorkerRuntime.js");
 const flowWorker = group === "flow"
@@ -83,6 +83,7 @@ async function stop() {
 process.on("message", (message) => {
   if (message?.type === "shutdown") void stop();
   if (message?.type === "flow-command") void handleFlowCommand(message);
+  if (message?.type === "queue-wake") wakeQueuedBackgroundWork(group);
 });
 process.once("SIGTERM", () => { void stop(); });
 process.once("SIGINT", () => { void stop(); });

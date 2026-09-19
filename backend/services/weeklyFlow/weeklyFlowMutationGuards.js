@@ -50,10 +50,20 @@ export async function beginPlaylistMutation(playlistTypes, { clearPending = true
     throw error;
   }
   return async () => {
+    let firstError = null;
     for (const playlistType of types) {
-      await weeklyFlowWorker.unblockPlaylist(playlistType);
+      try {
+        await weeklyFlowWorker.unblockPlaylist(playlistType);
+      } catch (error) {
+        firstError ??= error;
+      }
     }
-    await weeklyFlowWorker.pruneOrphanedJobState();
+    try {
+      await weeklyFlowWorker.pruneOrphanedJobState();
+    } catch (error) {
+      firstError ??= error;
+    }
+    if (firstError) throw firstError;
   };
 }
 

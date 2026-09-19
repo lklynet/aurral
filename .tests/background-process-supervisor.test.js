@@ -89,9 +89,13 @@ test("supervisor starts each group, forwards messages, and stops without respawn
   });
   assert.deepEqual(supervisor.getWorkerStatuses(), [{ name: "library-scan", running: true }]);
 
+  assert.equal(supervisor.wake("discovery"), true);
+  assert.deepEqual(launches[1].child.sent, [{ type: "queue-wake" }]);
+  assert.equal(supervisor.wake("missing"), false);
+
   await supervisor.stop();
   assert.deepEqual(launches.map(({ child }) => child.sent),
-    [[{ type: "shutdown" }], [{ type: "shutdown" }]]);
+    [[{ type: "shutdown" }], [{ type: "queue-wake" }, { type: "shutdown" }]]);
   assert.deepEqual(supervisor.getGroups(), []);
   assert.deepEqual(supervisor.getWorkerStatuses(), []);
 });

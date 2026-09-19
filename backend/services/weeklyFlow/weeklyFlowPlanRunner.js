@@ -29,23 +29,36 @@ export function createFlowPlanRunner({ forkProcess = fork, timeoutMs = PLAN_TIME
       }
 
       let settled = false;
-      const finish = (error, plan) => {
+      const finish = (error, plan, acknowledge = false) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         child.removeListener("message", onMessage);
         child.removeListener("error", onError);
         child.removeListener("exit", onExit);
+        if (acknowledge && child.exitCode === null && child.signalCode === null) {
+          const exitTimer = setTimeout(() => {
+            try { child.kill(); } catch {}
+          }, 5000);
+          exitTimer.unref?.();
+          child.once("exit", () => clearTimeout(exitTimer));
+          try {
+            child.send({ type: "flow-plan-ack" });
+          } catch {
+            clearTimeout(exitTimer);
+            try { child.kill(); } catch {}
+          }
+        }
         if (error) reject(error);
         else resolve(plan);
-        if (child.exitCode === null && child.signalCode === null) {
+        if (!acknowledge && child.exitCode === null && child.signalCode === null) {
           try { child.kill(); } catch {}
         }
       };
       const onMessage = (message) => {
-        if (message?.type === "flow-plan-result") finish(null, message.plan);
+        if (message?.type === "flow-plan-result") finish(null, message.plan, true);
         if (message?.type === "flow-plan-error") {
-          finish(new Error(message.error || "Flow planning failed"));
+          finish(new Error(message.error || "Flow planning failed"), null, true);
         }
       };
       const onError = (error) => finish(error);

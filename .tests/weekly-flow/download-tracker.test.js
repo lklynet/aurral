@@ -89,6 +89,26 @@ test("a web-side tracker does not reset an active flow download on import", () =
   }
 });
 
+test("a web-side tracker preserves pending upgrades but excludes them from normal pending work", () => {
+  const tracker = new WeeklyFlowDownloadTracker();
+  const sourceId = tracker.addJob({ artistName: "Artist", trackName: "Song" }, "playlist");
+  tracker.setDone(sourceId, "/library/Song.mp3", "Album");
+  tracker.updateQuality(sourceId, { tier: "mp3-128", format: "mp3" });
+  const upgradeId = tracker.addUpgradeJob(tracker.getJob(sourceId));
+  assert.ok(upgradeId);
+  const pendingId = tracker.addJob({ artistName: "Artist", trackName: "Other" }, "playlist");
+  const previousEnv = process.env.NODE_ENV;
+  try {
+    process.env.NODE_ENV = "production";
+    const webTracker = new WeeklyFlowDownloadTracker();
+    assert.equal(webTracker.getJob(upgradeId)?.status, "pending");
+    assert.equal(tracker.getJob(upgradeId)?.status, "pending");
+    assert.deepEqual(webTracker.peekPending(10).map((job) => job.id), [pendingId]);
+  } finally {
+    process.env.NODE_ENV = previousEnv;
+  }
+});
+
 test("worker does not select a job that is already active", () => {
   const tracker = trackerModule.downloadTracker;
   const worker = new WeeklyFlowWorker(isolatedState.baseDir);

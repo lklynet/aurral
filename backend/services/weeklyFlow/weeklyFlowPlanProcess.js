@@ -4,7 +4,13 @@ if (!process.send) {
   throw new Error("Flow planner requires a supervised parent process");
 }
 
-process.once("message", async (message) => {
+let awaitingAcknowledgement = false;
+let resultExitCode = 0;
+
+process.on("message", async (message) => {
+  if (message?.type === "flow-plan-ack" && awaitingAcknowledgement) {
+    process.exit(resultExitCode);
+  }
   if (message?.type !== "build-flow-plan") return;
   try {
     dbOps.invalidateSettingsCache();
@@ -12,10 +18,13 @@ process.once("message", async (message) => {
     reloadDiscoveryPersistedCache();
     const { playlistSource } = await import("./weeklyFlowPlaylistSource.js");
     const plan = await playlistSource.buildFlowRunPlan(message.flow, message.options);
-    process.send({ type: "flow-plan-result", plan }, () => process.exit(0));
+    resultExitCode = 0;
+    awaitingAcknowledgement = true;
+    process.send({ type: "flow-plan-result", plan });
   } catch (error) {
-    process.send({ type: "flow-plan-error", error: error?.message || String(error) },
-      () => process.exit(1));
+    resultExitCode = 1;
+    awaitingAcknowledgement = true;
+    process.send({ type: "flow-plan-error", error: error?.message || String(error) });
   }
 });
 

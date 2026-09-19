@@ -160,6 +160,10 @@ export async function forwardWorkerBroadcast(message) {
   websocketService.broadcast(message.channel, message.data);
 }
 
+export function wakeQueuedBackgroundWork(group = supervisedGroup) {
+  checkQueuedBackgroundWork(group);
+}
+
 export async function recoverExitedWorkerJobs(group, pid, logger = console, reason = null) {
   if (!Number.isInteger(pid) || pid <= 0) return;
   const workerId = `aurral-${pid}`;
@@ -235,7 +239,9 @@ export function startBackgroundWorkers({ logger = console } = {}) {
     logger,
     onMessage(message, _group, child) {
       if (message?.type === "queue-wake") {
-        if (isQueueOwnedByGroup(message.queue)) checkQueuedBackgroundWork();
+        const owner = ISOLATED_QUEUE_GROUPS[message.queue];
+        if (owner) backgroundProcessSupervisor.wake(owner);
+        else if (isQueueOwnedByGroup(message.queue)) checkQueuedBackgroundWork();
         return;
       }
       if (message?.type === "flow-client-request") {

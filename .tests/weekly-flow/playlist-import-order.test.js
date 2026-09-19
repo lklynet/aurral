@@ -6,6 +6,7 @@ import path from "path";
 import {
   setupIsolatedBackend,
   cleanupIsolatedState,
+  importFromRepo,
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
@@ -60,6 +61,27 @@ const { lastfmStationClient } = lastfmStationsModule;
 const { syncSharedPlaylistImport } = importSyncModule;
 
 const weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER;
+
+test("mutation release unblocks every playlist and prunes after an unblock error", async (t) => {
+  const { beginPlaylistMutation } = await importFromRepo(
+    "backend/services/weeklyFlow/weeklyFlowMutationGuards.js",
+  );
+  const calls = [];
+  t.mock.method(weeklyFlowWorker, "blockPlaylist", async () => true);
+  t.mock.method(weeklyFlowWorker, "clearIncompleteRetry", async () => {});
+  t.mock.method(weeklyFlowWorker, "waitForPlaylistIdle", async () => {});
+  t.mock.method(weeklyFlowWorker, "unblockPlaylist", async (id) => {
+    calls.push(`unblock:${id}`);
+    if (id === "first") throw new Error("unblock failed");
+  });
+  t.mock.method(weeklyFlowWorker, "pruneOrphanedJobState", async () => {
+    calls.push("prune");
+  });
+
+  const release = await beginPlaylistMutation(["first", "second"], { clearPending: false });
+  await assert.rejects(release(), /unblock failed/);
+  assert.deepEqual(calls, ["unblock:first", "unblock:second", "prune"]);
+});
 
 async function writeReusableTrack(track, playlistType = "source-playlist") {
   const sourcePath = path.join(
