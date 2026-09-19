@@ -270,6 +270,7 @@ test("artist monitoring mutations dedupe canonical reconciliation scans", async 
     assert.deepEqual(JSON.parse(getLibraryScanQueue().getJob(jobId).payload), {
       force: false,
       includeLidarr: true,
+      changedPaths: null,
     });
 
     await libraryManager.updateArtist("33333333-3333-4333-8333-333333333333", {
