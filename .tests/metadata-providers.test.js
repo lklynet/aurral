@@ -129,6 +129,47 @@ test("stale album metadata is served while one refresh runs in the background", 
   }
 });
 
+test("missing entity metadata is negatively cached for repeated lookups", async () => {
+  const previousSettings = dbOps.getSettings();
+  let requests = 0;
+  const server = await createMockHttpServer((_request, response) => {
+    requests += 1;
+    response.statusCode = 404;
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ error: "Album not found" }));
+  });
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    await assert.rejects(
+      () => getAlbumByMbid("missing-album"),
+      (error) => error.response?.status === 404,
+    );
+    await assert.rejects(
+      () => getAlbumByMbid("missing-album"),
+      (error) => error.response?.status === 404,
+    );
+    assert.equal(requests, 1);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
 test("search metadata continues to share fresh cache entries", async () => {
   const previousSettings = dbOps.getSettings();
   let requests = 0;

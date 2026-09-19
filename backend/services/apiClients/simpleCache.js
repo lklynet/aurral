@@ -39,6 +39,9 @@ export default function createCache(
       // ponytail: FIFO cap; switch to measured LRU only if cache churn becomes material.
       if (cache.size > maxEntries) cache.delete(cache.keys().next().value);
     },
+    delete(key) {
+      cache.delete(key);
+    },
     flushAll() {
       cache.clear();
     },

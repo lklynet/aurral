@@ -29,6 +29,7 @@ import { runSharedInflight } from "../sharedInflight.js";
 const METADATA_ENTITY_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
 const METADATA_ENTITY_STALE_TTL_SECONDS = 30 * 24 * 60 * 60;
 const METADATA_SEARCH_CACHE_TTL_SECONDS = 24 * 60 * 60;
+const METADATA_NOT_FOUND_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const METADATA_CACHE_MAX_ENTRIES = 20_000;
 const METADATA_REQUEST_MIN_INTERVAL_MS = 100;
 const METADATA_REQUEST_TIMEOUT_MS = 8000;
@@ -37,6 +38,10 @@ const METADATA_MAX_QUEUED_REQUESTS = Math.floor(
 ) - 1;
 const providerCache = createCache(
   METADATA_ENTITY_CACHE_TTL_SECONDS,
+  METADATA_CACHE_MAX_ENTRIES,
+);
+const metadataNotFoundCache = createCache(
+  METADATA_NOT_FOUND_CACHE_TTL_SECONDS,
   METADATA_CACHE_MAX_ENTRIES,
 );
 const releaseCache = createCache(300);
@@ -48,6 +53,7 @@ const METADATA_MAX_RETRIES = 1;
 
 export function clearMetadataProviderCaches() {
   providerCache.flushAll();
+  metadataNotFoundCache.flushAll();
   releaseCache.flushAll();
   providerInflightRequests.clear();
 }
@@ -96,6 +102,17 @@ function getUserAgent() {
   return `${APP_NAME}/${APP_VERSION}`;
 }
 
+function isEntityMetadataPath(path) {
+  return /^\/(?:album|artist)\/[^/]+$/.test(path);
+}
+
+function createMetadataNotFoundError() {
+  const error = new Error("Metadata resource not found");
+  error.code = "ERR_METADATA_NOT_FOUND";
+  error.response = { status: 404 };
+  return error;
+}
+
 function isRetryable(error) {
   return (
     ["ECONNABORTED", "ETIMEDOUT", "ECONNRESET", "ENOTFOUND", "EAI_AGAIN"].includes(error?.code) ||
@@ -104,7 +121,7 @@ function isRetryable(error) {
 }
 
 function getMetadataCachePolicy(path) {
-  if (/^\/(?:album|artist)\/[^/]+$/.test(path)) {
+  if (isEntityMetadataPath(path)) {
     return {
       freshTtlSeconds: METADATA_ENTITY_CACHE_TTL_SECONDS,
       staleTtlSeconds: METADATA_ENTITY_STALE_TTL_SECONDS,
@@ -156,6 +173,10 @@ function refreshMetadata(cacheKey, path, params, { signal } = {}) {
           error?.response?.status != null
             ? `HTTP ${error.response.status}`
             : error?.code || error?.message || "Unknown error";
+        if (error?.response?.status === 404 && isEntityMetadataPath(path)) {
+          providerCache.delete(cacheKey);
+          metadataNotFoundCache.set(cacheKey, true);
+        }
         if (attempt === METADATA_MAX_RETRIES || !isRetryable(error)) throw error;
         await new Promise((resolve, reject) => {
           const onAbort = () => {
@@ -178,6 +199,9 @@ function refreshMetadata(cacheKey, path, params, { signal } = {}) {
 async function request(path, params = {}, { signal } = {}) {
   const baseUrl = getMetadataBaseUrl();
   const cacheKey = `${baseUrl}${path}:${JSON.stringify(params)}`;
+  if (metadataNotFoundCache.get(cacheKey)) {
+    throw createMetadataNotFoundError();
+  }
   const cached = providerCache.getWithStale(cacheKey);
   if (cached) {
     if (cached.stale) {
