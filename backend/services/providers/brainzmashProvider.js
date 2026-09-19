@@ -174,7 +174,9 @@ function getMetadataCircuitError(baseUrl) {
 function openMetadataCircuit(baseUrl, status, error) {
   const cooldownMs =
     status === 403 ? METADATA_FORBIDDEN_COOLDOWN_MS : getRetryAfterMs(error);
-  const cooldown = { baseUrl, until: Date.now() + cooldownMs };
+  const currentCooldown = status === 403 ? forbiddenCooldown : rateLimitCooldown;
+  const currentUntil = currentCooldown.baseUrl === baseUrl ? currentCooldown.until : 0;
+  const cooldown = { baseUrl, until: Math.max(currentUntil, Date.now() + cooldownMs) };
   if (status === 403) forbiddenCooldown = cooldown;
   else rateLimitCooldown = cooldown;
 }
