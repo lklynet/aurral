@@ -157,7 +157,7 @@ jobs:
 
           # The bundled beets matcher is production-critical: run the packaged
           # interpreter against the packaged matcher script and confirm the
-          # pinned version answers a health request.
+          # pinned version answers a health request that also scores a track.
           matcher_health="$(docker exec "$CONTAINER" sh -c \
             'printf "{\"protocol\":1,\"operation\":\"health\"}" | /opt/aurral-matcher/bin/python backend/matcher/aurral_matcher.py')"
           echo "$matcher_health"

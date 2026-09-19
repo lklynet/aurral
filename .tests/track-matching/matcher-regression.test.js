@@ -1,8 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import {
+  getMatcherScriptPath,
   isBeetsMatcherAvailable,
   resetMatcherAvailability,
+  resolveMatcherPythonPath,
   runMatcherOperation,
 } from "../../backend/services/trackMatching/beetsClient.js";
 import { evaluateTrackCandidates } from "../../backend/services/trackMatching/decisionEngine.js";
@@ -37,6 +43,39 @@ test("track distance tolerates providers that send null artist lists", { skip: s
   });
   assert.equal(outcome.ok, true);
   assert.equal(outcome.result.matches[0].distance, 0);
+});
+
+test("matcher scores tracks without a writable Beets user config", { skip: skipReason }, () => {
+  const directory = mkdtempSync(join(tmpdir(), "aurral-beets-config-"));
+  try {
+    // Beets must not try to create or read this invalid user-config path.
+    const configPath = join(directory, "config-file-not-directory");
+    writeFileSync(configPath, "invalid user config");
+    for (const request of [
+      { protocol: 1, operation: "health" },
+      {
+        protocol: 1,
+        operation: "track_distance",
+        expected: { artistName: "Aurral", trackName: "Matcher Probe" },
+        candidates: [{ artistName: "Aurral", title: "Matcher Probe" }],
+      },
+    ]) {
+      const result = spawnSync(resolveMatcherPythonPath(), [getMatcherScriptPath()], {
+        input: JSON.stringify(request),
+        encoding: "utf8",
+        timeout: 15000,
+        env: { ...process.env, BEETSDIR: configPath },
+      });
+      assert.equal(result.status, 0, `${request.operation}: ${result.stderr || result.stdout}`);
+      const response = JSON.parse(result.stdout);
+      assert.equal(response.ok, true);
+      if (request.operation === "track_distance") {
+        assert.equal(response.matches[0].distance, 0);
+      }
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("exact structured match is accepted with a wide runner-up gap", { skip: skipReason }, async () => {
