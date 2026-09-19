@@ -72,6 +72,10 @@ export async function cleanupIsolatedState(paths) {
     const honkerDb = await importFromRepo("backend/services/honkerDb.js");
     honkerDb.closeHonkerDb();
   } catch {}
+  try {
+    const { db } = await importFromRepo("backend/config/db-sqlite.js");
+    if (db.open) db.close();
+  } catch {}
   await rm(paths.baseDir, { recursive: true, force: true });
 }
 

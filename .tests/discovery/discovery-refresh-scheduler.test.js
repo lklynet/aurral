@@ -19,7 +19,6 @@ const {
   bootstrapDiscoveryRefresh,
   enqueueDiscoveryRefresh,
   enqueueDiscoveryRefreshIfNeeded,
-  markDiscoveryRefreshDequeued,
   recoverDeadDiscoveryRefresh,
   scheduleNextDiscoveryRefresh,
 } = refreshScheduler;
@@ -106,7 +105,6 @@ function setDiscoveryCache(overrides = {}) {
 
 test.beforeEach(() => {
   clearDiscoveryRefreshJobs();
-  markDiscoveryRefreshDequeued();
   setDiscoveryCache();
   releaseHeldGlobalRefreshLock();
   clearLibraryArtists();
@@ -116,7 +114,6 @@ test.after(async () => {
   if (originalLastfmApiKey === undefined) delete process.env.LASTFM_API_KEY;
   else process.env.LASTFM_API_KEY = originalLastfmApiKey;
   releaseHeldGlobalRefreshLock();
-  markDiscoveryRefreshDequeued();
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -236,7 +233,6 @@ test("stale and incomplete discovery caches retry", async () => {
   assert.equal(discoveryRefreshPayloads()[0].reason, "startup");
 
   clearDiscoveryRefreshJobs();
-  markDiscoveryRefreshDequeued();
   setDiscoveryCache({ recommendations: [{ id: "partial" }] });
 
   await bootstrapDiscoveryRefresh();
@@ -250,6 +246,19 @@ test("repeated startup checks do not create duplicate active refresh jobs", asyn
   await bootstrapDiscoveryRefresh();
   await bootstrapDiscoveryRefresh();
 
+  assert.equal(countDiscoveryRefreshJobs(), 1);
+});
+
+test("a completed discovery queue job no longer blocks the next refresh", () => {
+  process.env.LASTFM_API_KEY = "test-key";
+  const first = enqueueDiscoveryRefresh({ reason: "manual" });
+  assert.equal(first.enqueued, true);
+  const claimed = honkerDbModule.getDiscoveryRefreshQueue().claimOne("aurral-test-worker");
+  assert.ok(claimed);
+  claimed.ack();
+
+  const second = enqueueDiscoveryRefresh({ reason: "manual" });
+  assert.equal(second.enqueued, true);
   assert.equal(countDiscoveryRefreshJobs(), 1);
 });
 
@@ -319,7 +328,6 @@ test("enqueueDiscoveryRefresh does not treat cache.isUpdating alone as in-progre
 
 test("enqueueDiscoveryRefresh queues immediate refresh", () => {
   const cache = getDiscoveryCache();
-  markDiscoveryRefreshDequeued();
   cache.isUpdating = false;
   const result = enqueueDiscoveryRefresh({ reason: "manual" });
   assert.equal(result.enqueued, true);

@@ -6,6 +6,7 @@ import path from "path";
 import {
   setupIsolatedBackend,
   cleanupIsolatedState,
+  importFromRepo,
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
@@ -56,6 +57,10 @@ test.beforeEach(async () => {
 });
 
 test.after(async () => {
+  const { weeklyFlowWorker } = await importFromRepo(
+    "backend/services/weeklyFlow/weeklyFlowWorker.js",
+  );
+  await weeklyFlowWorker.stopAndDrain();
   await cleanupIsolatedState(isolatedState);
 });
 

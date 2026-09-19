@@ -37,6 +37,10 @@ import {
   queueQualityUpgrade,
   runQualityUpgradeCheck,
 } from "../../../services/qualityProfileService.js";
+import {
+  isFlowOwnerProcess,
+  requestFlowOwner,
+} from "../../../services/weeklyFlow/weeklyFlowOwnerClient.js";
 
 const getAccessiblePlaylistIds = (user) => [
   ...new Set([
@@ -44,6 +48,14 @@ const getAccessiblePlaylistIds = (user) => [
     ...flowPlaylistConfig.getSharedPlaylistsForUser(user),
   ].map((playlist) => playlist.id)),
 ];
+
+async function runQualityChecksLocally(playlistIds) {
+  let queued = 0;
+  for (const playlistId of playlistIds) {
+    queued += await runQualityUpgradeCheck({ force: true, playlistId, limit: 500 });
+  }
+  return queued;
+}
 
 export function registerJobs(router) {
   router.get("/status", noCache, (req, res) => {
@@ -117,10 +129,11 @@ export function registerJobs(router) {
 
   router.post("/quality-upgrades", async (req, res) => {
     const playlistIds = getAccessiblePlaylistIds(req.user);
-    let queued = 0;
-    for (const playlistId of playlistIds) {
-      queued += await runQualityUpgradeCheck({ force: true, playlistId, limit: 500 });
-    }
+    const queued = isFlowOwnerProcess()
+      ? await runQualityChecksLocally(playlistIds)
+      : await requestFlowOwner("runQualityUpgradeChecks", [playlistIds, 500], {
+        timeoutMs: 30 * 60 * 1000,
+      });
     if (queued > 0) invalidateRequestsCache();
     return res.json({
       success: true,
@@ -138,7 +151,11 @@ export function registerJobs(router) {
     if (!job || job.playlistType !== playlistId) {
       return res.status(404).json({ error: "Track not found" });
     }
-    const result = await queueQualityUpgrade(job);
+    const result = isFlowOwnerProcess()
+      ? await queueQualityUpgrade(job)
+      : await requestFlowOwner("queueQualityUpgradeForJob", [job.id], {
+        timeoutMs: 10 * 60 * 1000,
+      });
     if (result === "already-queued") {
       return res.json({ success: true, queued: 0, alreadyQueued: true, jobId });
     }
@@ -154,7 +171,11 @@ export function registerJobs(router) {
     if (!canAccessPlaylistType(req.user, playlistId)) {
       return res.status(404).json({ error: "Playlist not found" });
     }
-    const queued = await runQualityUpgradeCheck({ force: true, playlistId, limit: 500 });
+    const queued = isFlowOwnerProcess()
+      ? await runQualityChecksLocally([playlistId])
+      : await requestFlowOwner("runQualityUpgradeChecks", [[playlistId], 500], {
+        timeoutMs: 30 * 60 * 1000,
+      });
     if (queued > 0) invalidateRequestsCache();
     return res.json({ success: true, queued });
   });
@@ -177,7 +198,7 @@ export function registerJobs(router) {
       if (paused) {
         await pauseSharedPlaylistRetryCycle(playlistId);
       } else {
-        weeklyFlowWorker.setRetryCyclePaused(playlistId, false);
+        await weeklyFlowWorker.setRetryCyclePaused(playlistId, false);
         await weeklyFlowWorker.retryIncompletePlaylist(playlistId);
       }
       return res.json({
@@ -215,7 +236,7 @@ export function registerJobs(router) {
         });
       }
     }
-    const settings = weeklyFlowWorker.updateWorkerSettings({
+    const settings = await weeklyFlowWorker.updateWorkerSettings({
       concurrency,
       existingFileMode,
     });

@@ -16,8 +16,6 @@ import {
 
 const DISCOVERY_GLOBAL_REFRESH_LOCK = "discovery-global-refresh";
 
-let discoveryRefreshQueued = false;
-
 function isWorkerAlive(workerId) {
   const match = /^aurral-(\d+)$/.exec(String(workerId || ""));
   if (!match) return true;
@@ -136,8 +134,16 @@ export function pruneDuplicateScheduledDiscoveryRefreshes() {
   }
 }
 
-export function markDiscoveryRefreshDequeued() {
-  discoveryRefreshQueued = false;
+function hasQueuedDiscoveryRefresh() {
+  const now = Math.floor(Date.now() / 1000);
+  const rows = getHonkerDb().query(
+    "SELECT payload, state, run_at FROM _honker_live WHERE queue = 'discovery-refresh' AND state IN ('pending', 'processing')",
+  );
+  return rows.some((row) => {
+    if (row.state === "processing") return true;
+    const payload = parseQueuedPayload(row.payload);
+    return payload.scheduleOnly !== true || Number(row.run_at) <= now;
+  });
 }
 
 export async function isDiscoveryRefreshConfigured() {
@@ -192,7 +198,6 @@ export function enqueueDiscoveryRefresh(options = {}) {
   const cache = getDiscoveryCache();
 
   if (!scheduleOnly && force && recoverDeadDiscoveryRefresh()) {
-    discoveryRefreshQueued = false;
     cache.isUpdating = false;
     clearDiscoveryUpdateProgress();
   }
@@ -204,10 +209,9 @@ export function enqueueDiscoveryRefresh(options = {}) {
       }
       return { enqueued: false, reason: "updating" };
     }
-    if (!force && discoveryRefreshQueued) {
+    if (!force && hasQueuedDiscoveryRefresh()) {
       return { enqueued: false, reason: "queued" };
     }
-    discoveryRefreshQueued = true;
     if (!cache.isUpdating) {
       cache.isUpdating = true;
       emitDiscoveryQueued(reason);
@@ -228,7 +232,6 @@ export function enqueueDiscoveryRefresh(options = {}) {
     );
   } catch (error) {
     if (!scheduleOnly) {
-      discoveryRefreshQueued = false;
       cache.isUpdating = false;
     }
     throw error;
@@ -265,11 +268,16 @@ export async function enqueueDiscoveryRefreshIfNeeded(options = {}) {
 export async function bootstrapDiscoveryRefresh() {
   recoverDeadDiscoveryRefresh();
   const cache = getDiscoveryCache();
+  const queued = hasQueuedDiscoveryRefresh();
   if (
     !isHonkerLockHeld("discovery-global-refresh") &&
-    !discoveryRefreshQueued
-  ) {    cache.isUpdating = false;
+    !queued
+  ) {
+    cache.isUpdating = false;
     clearDiscoveryUpdateProgress();
+  } else if (queued && !cache.isUpdating) {
+    cache.isUpdating = true;
+    emitDiscoveryQueued("startup");
   }
 
   if (!(await isDiscoveryRefreshConfigured())) {

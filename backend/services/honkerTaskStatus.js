@@ -10,6 +10,20 @@ export const QUEUE_DEFINITIONS = [
     worker: "system-task",
   },
   {
+    queue: "system-task-maintenance",
+    label: "Background Maintenance",
+    workerLabel: "Background Maintenance Worker",
+    description: "Runs cleanup, news refreshes, and playlist schedule checks.",
+    worker: "system-task-maintenance",
+  },
+  {
+    queue: "system-task-inbox",
+    label: "Inbox Refreshes",
+    workerLabel: "Inbox Refresh Worker",
+    description: "Refreshes inbox content outside the web process.",
+    worker: "system-task-inbox",
+  },
+  {
     queue: "weekly-flow-operation",
     label: "Playlist Operations",
     workerLabel: "Playlist Operation Worker",
@@ -390,7 +404,8 @@ export function describeHonkerTask(queue, payloadValue) {
   const payload = parsePayload(payloadValue) || {};
   const safeQueue = String(queue || "").trim();
 
-  if (safeQueue === "system-task")
+  if (safeQueue === "system-task" || safeQueue === "system-task-maintenance" ||
+      safeQueue === "system-task-inbox")
     return systemTaskInfo(String(payload?.kind || "").trim()).label;
   if (safeQueue === "discovery-refresh") return discoveryRefreshInfo(payload).label;
   if (safeQueue === "_outbox:notifications")
@@ -415,7 +430,8 @@ function describeHonkerTaskDetail(queue, payloadValue) {
   const payload = parsePayload(payloadValue) || {};
   const safeQueue = String(queue || "").trim();
 
-  if (safeQueue === "system-task")
+  if (safeQueue === "system-task" || safeQueue === "system-task-maintenance" ||
+      safeQueue === "system-task-inbox")
     return systemTaskInfo(String(payload?.kind || "").trim()).description;
   if (safeQueue === "discovery-refresh") return discoveryRefreshInfo(payload).description;
 
@@ -430,7 +446,8 @@ function summarizePayload(queue, payloadValue) {
     return "";
   }
 
-  if (queue === "system-task") {
+  if (queue === "system-task" || queue === "system-task-maintenance" ||
+      queue === "system-task-inbox") {
     return "";
   }
 
@@ -888,7 +905,10 @@ function readQueueStats(liveRows = [], liveStats = [], scheduledRows = []) {
 async function readWorkerStatuses() {
   try {
     const { getHonkerWorkerStatuses } = await import("./honkerWorkerRuntime.js");
-    return getHonkerWorkerStatuses();
+    const { getIsolatedWorkerStatuses } = await import("./appRuntime.js");
+    const statuses = new Map(getHonkerWorkerStatuses().map((worker) => [worker.name, worker]));
+    for (const worker of getIsolatedWorkerStatuses()) statuses.set(worker.name, worker);
+    return [...statuses.values()];
   } catch {
     return [];
   }

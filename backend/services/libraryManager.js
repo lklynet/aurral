@@ -71,6 +71,12 @@ let _lastFullArtistFetchAt = 0;
 let _artistsCachedAt = 0;
 let _artistsInflight = null;
 const _tracksCache = new Map();
+export function invalidateLidarrArtistCache() {
+  _cachedArtists = [];
+  _artistsCachedAt = 0;
+  _lastLidarrFailureAt = 0;
+  _tracksCache.clear();
+}
 const _artistMonitoringRepairs = new Map();
 const _albumAddInflight = new Map();
 const _artistMappingInflight = new Map();

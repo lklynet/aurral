@@ -4,12 +4,15 @@ import honker from "@russellthehippo/honker-node";
 import { resolveAurralDataDir } from "../config/data-dir.js";
 import { dbOps } from "../db/helpers/index.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
+import { shouldStartQueueHere } from "./backgroundWorkerQueues.js";
 
 export const PLAYLIST_STARTUP_MIGRATION_VERSION = 1;
 export const PLAYLIST_STARTUP_MIGRATION_SETTING = "playlistStartupMigration";
 
 export const HONKER_QUEUE_NAMES = [
   "system-task",
+  "system-task-maintenance",
+  "system-task-inbox",
   "weekly-flow-operation",
   "slskd-pipeline",
   "playlist-retry",
@@ -51,13 +54,13 @@ export function getHonkerOpenOptions() {
 export const SCHEDULED_SYSTEM_TASKS = [
   {
     name: "weekly-flow-refresh",
-    queue: "system-task",
+    queue: "system-task-maintenance",
     schedule: "@every 1h",
     payload: { kind: "weekly-flow-refresh" },
   },
   {
     name: "session-cleanup",
-    queue: "system-task",
+    queue: "system-task-maintenance",
     schedule: "@every 1h",
     payload: { kind: "session-cleanup" },
   },
@@ -82,13 +85,13 @@ export const SCHEDULED_SYSTEM_TASKS = [
   },
   {
     name: "inbox-refresh",
-    queue: "system-task",
+    queue: "system-task-inbox",
     schedule: "@every 24h",
     payload: { kind: "inbox-refresh" },
   },
   {
     name: "news-refresh",
-    queue: "system-task",
+    queue: "system-task-maintenance",
     schedule: "@every 15m",
     payload: { kind: "news-refresh" },
   },
@@ -174,10 +177,12 @@ function createHonkerQueue({
     const runAt = resolveEnqueueRunAt(options);
     const priority = defaultPriorityFn(payload, options);
     const jobId = q.enqueue(payload, { priority, runAt });
-    if (!(skipInTest && process.env.NODE_ENV === "test")) {
+    if (shouldStartQueueHere(name) && !(skipInTest && process.env.NODE_ENV === "test")) {
       import(workerModule)
         .then((mod) => mod[workerStartFn]())
         .catch((err) => { console.warn(err); });
+    } else if (process.env.AURRAL_BACKGROUND_WORKER_GROUP && process.connected) {
+      process.send({ type: "queue-wake", queue: name });
     }
     return jobId;
   }
@@ -293,7 +298,39 @@ const systemTask = registerQueue({
 });
 
 export const getSystemTaskQueue = systemTask.getQueue;
-export const enqueueSystemTaskJob = systemTask.enqueueJob;
+
+const maintenanceTask = registerQueue({
+  name: "system-task-maintenance",
+  visibilityTimeoutS: 3600,
+  maxAttempts: 3,
+  workerModule: "./systemTaskWorker.js",
+  workerStartFn: "startMaintenanceTaskWorker",
+});
+export const getMaintenanceTaskQueue = maintenanceTask.getQueue;
+
+const inboxTask = registerQueue({
+  name: "system-task-inbox",
+  visibilityTimeoutS: 3600,
+  maxAttempts: 3,
+  workerModule: "./systemTaskWorker.js",
+  workerStartFn: "startInboxTaskWorker",
+});
+export const getInboxTaskQueue = inboxTask.getQueue;
+
+export function getSystemTaskQueueName(kind) {
+  if (kind === "inbox-refresh") return "system-task-inbox";
+  if (kind === "session-cleanup" || kind === "news-refresh" ||
+      kind === "weekly-flow-refresh") return "system-task-maintenance";
+  return "system-task";
+}
+
+export function enqueueSystemTaskJob(payload, options) {
+  switch (getSystemTaskQueueName(payload?.kind)) {
+    case "system-task-inbox": return inboxTask.enqueueJob(payload, options);
+    case "system-task-maintenance": return maintenanceTask.enqueueJob(payload, options);
+    default: return systemTask.enqueueJob(payload, options);
+  }
+}
 
 const libraryScan = registerQueue({
   name: "library-scan",
@@ -329,11 +366,14 @@ export function getNotificationOutbox() {
 
 export function enqueueNotification(payload) {
   const jobId = getNotificationOutbox().enqueue(payload);
-  import("./notificationOutboxWorker.js")
-    .then(({ startNotificationOutboxWorker }) =>
-      startNotificationOutboxWorker(),
-    )
-    .catch((err) => { console.warn(err); });  return jobId;
+  if (shouldStartQueueHere("_outbox:notifications")) {
+    import("./notificationOutboxWorker.js")
+      .then(({ startNotificationOutboxWorker }) => startNotificationOutboxWorker())
+      .catch((err) => { console.warn(err); });
+  } else if (process.env.AURRAL_BACKGROUND_WORKER_GROUP && process.connected) {
+    process.send({ type: "queue-wake", queue: "_outbox:notifications" });
+  }
+  return jobId;
 }
 
 export function getPlayEventOutbox() {
@@ -354,9 +394,13 @@ export function getPlayEventOutbox() {
 
 export function enqueuePlayEventDelivery(payload) {
   const jobId = getPlayEventOutbox().enqueue(payload);
-  import("./playEventOutboxWorker.js")
-    .then(({ startPlayEventOutboxWorker }) => startPlayEventOutboxWorker())
-    .catch((err) => { console.warn(err); });
+  if (shouldStartQueueHere("_outbox:play-events")) {
+    import("./playEventOutboxWorker.js")
+      .then(({ startPlayEventOutboxWorker }) => startPlayEventOutboxWorker())
+      .catch((err) => { console.warn(err); });
+  } else if (process.env.AURRAL_BACKGROUND_WORKER_GROUP && process.connected) {
+    process.send({ type: "queue-wake", queue: "_outbox:play-events" });
+  }
   return jobId;
 }
 
@@ -417,7 +461,7 @@ export function bootstrapHonkerSchedules() {
 export function enqueueHonkerStartupTasks() {
   const enqueueIfAbsent = (payload, options) => {
     const existing = findActiveHonkerJob(
-      "system-task",
+      getSystemTaskQueueName(payload.kind),
       (candidate) => candidate?.kind === payload.kind,
       { recoverExpired: true },
     );

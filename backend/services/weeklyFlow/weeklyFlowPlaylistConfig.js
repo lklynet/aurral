@@ -17,6 +17,17 @@ const DEFAULT_SCHEDULE_TIME = "00:00";
 const DAY_MS = 24 * 60 * 60 * 1000;
 let cachedFlows = null;
 let cachedSharedPlaylists = null;
+let flowsCachedAt = 0;
+let sharedPlaylistsCachedAt = 0;
+const childCacheExpired = (cachedAt) =>
+  !!process.env.AURRAL_BACKGROUND_WORKER_GROUP && Date.now() - cachedAt >= 2000;
+
+export function invalidateFlowPlaylistConfigCache() {
+  cachedFlows = null;
+  cachedSharedPlaylists = null;
+  flowsCachedAt = 0;
+  sharedPlaylistsCachedAt = 0;
+}
 
 const clampSize = (value) => {
   const n = Number(value);
@@ -502,9 +513,10 @@ const normalizeSharedPlaylist = (playlist) => {
 };
 
 const getStoredFlows = () => {
-  if (cachedFlows) {
+  if (cachedFlows && !childCacheExpired(flowsCachedAt)) {
     return cachedFlows;
   }
+  flowsCachedAt = Date.now();
   const settings = dbOps.getSettings();
   const stored = settings.flows;
   if (Array.isArray(stored) && stored.length > 0) {
@@ -548,6 +560,7 @@ const getStoredFlows = () => {
 
 const setFlows = (flows) => {
   cachedFlows = flows;
+  flowsCachedAt = Date.now();
   const current = dbOps.getSettings();
   dbOps.updateSettings({
     ...current,
@@ -556,9 +569,10 @@ const setFlows = (flows) => {
 };
 
 const getStoredSharedPlaylists = () => {
-  if (cachedSharedPlaylists) {
+  if (cachedSharedPlaylists && !childCacheExpired(sharedPlaylistsCachedAt)) {
     return cachedSharedPlaylists;
   }
+  sharedPlaylistsCachedAt = Date.now();
   const settings = dbOps.getSettings();
   const stored = settings.sharedPlaylists;
   if (Array.isArray(stored)) {
@@ -585,6 +599,7 @@ const getStoredSharedPlaylists = () => {
 
 const setSharedPlaylists = (playlists) => {
   cachedSharedPlaylists = playlists;
+  sharedPlaylistsCachedAt = Date.now();
   const current = dbOps.getSettings();
   dbOps.updateSettings({
     ...current,

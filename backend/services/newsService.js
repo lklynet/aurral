@@ -18,6 +18,10 @@ const MAX_BLOCKED_PUBLISHERS = 100;
 let refreshPromise = null;
 const newsResponseCache = createCache(5 * 60, 100);
 
+export function invalidateNewsResponseCache() {
+  newsResponseCache.flushAll();
+}
+
 const normalizeBlockedPublishers = (publishers) => {
   const seen = new Set();
   return (Array.isArray(publishers) ? publishers : [])

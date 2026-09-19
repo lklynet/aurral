@@ -170,7 +170,7 @@ export function getWeeklyFlowStatusSnapshot({
   const sharedStats = aggregateStats(scopedStats, sharedPlaylistIds);
   const nextRunMessage = formatNextRunMessage(flowsWithOwners);
   const operationQueue = weeklyFlowOperationQueue.getStatus();
-  const operationWorker = getWeeklyFlowOperationWorkerStatus();
+  const operationWorker = workerStatus?.operationWorker || getWeeklyFlowOperationWorkerStatus();
   const queueLabel = String(operationQueue?.currentLabel || operationWorker?.currentLabel || "");
   let phase = "idle";
   let message = "Idle";

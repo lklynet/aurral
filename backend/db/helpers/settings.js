@@ -85,6 +85,11 @@ const normalizeLidarrRootFolderPaths = (paths) => [...new Set(
 )];
 
 export const dbOps = {
+  invalidateSettingsCache() {
+    settingsCache = null;
+    settingsCacheTime = 0;
+  },
+
   getJSONSetting(key) {
     return dbHelpers.parseJSON(getSettingStmt.get(key)?.value) || null;
   },
@@ -126,7 +131,8 @@ export const dbOps = {
 
   getSettings() {
     const now = Date.now();
-    if (settingsCache && now - settingsCacheTime < SETTINGS_CACHE_TTL) {
+    const cacheTtl = process.env.AURRAL_BACKGROUND_WORKER_GROUP ? 2000 : SETTINGS_CACHE_TTL;
+    if (settingsCache && now - settingsCacheTime < cacheTtl) {
       return settingsCache;
     }
 

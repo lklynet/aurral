@@ -158,6 +158,10 @@ class WebSocketService {
   }
 
   broadcast(channel, data) {
+    if (process.env.AURRAL_BACKGROUND_WORKER_GROUP && process.connected && process.send) {
+      process.send({ type: 'websocket-broadcast', channel, data });
+      return 0;
+    }
     const message = JSON.stringify({
       channel,
       timestamp: Date.now(),

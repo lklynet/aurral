@@ -1,5 +1,7 @@
 import createHonkerWorker from "./honkerWorkerFactory.js";
 import {
+  getInboxTaskQueue,
+  getMaintenanceTaskQueue,
   getSystemTaskQueue,
   PLAYLIST_STARTUP_MIGRATION_SETTING,
   PLAYLIST_STARTUP_MIGRATION_VERSION,
@@ -181,6 +183,9 @@ export async function processSystemTask(payload = {}, job = null) {
     case "lidarr-retry": {
       const { libraryManager } = await import("./libraryManager.js");
       await libraryManager.syncLidarrArtists({ forceRefresh: true });
+      if (process.connected && process.send) {
+        process.send({ type: "cache-invalidate", cache: "lidarr-artists" });
+      }
       return;
     }
     default:
@@ -205,3 +210,26 @@ export {
   stopSystemTaskWorker,
   isSystemTaskWorkerRunning,
 };
+
+const { start: startMaintenanceTaskWorker } = createHonkerWorker({
+  name: "system-task-maintenance",
+  getQueue: getMaintenanceTaskQueue,
+  processJob: processSystemTask,
+  idlePollS: 10,
+  retryDelayS: 120,
+  onJobSuccess(payload) {
+    if (payload?.kind === "news-refresh" && process.connected && process.send) {
+      process.send({ type: "cache-invalidate", cache: "news" });
+    }
+  },
+});
+
+const { start: startInboxTaskWorker } = createHonkerWorker({
+  name: "system-task-inbox",
+  getQueue: getInboxTaskQueue,
+  processJob: processSystemTask,
+  idlePollS: 10,
+  retryDelayS: 120,
+});
+
+export { startMaintenanceTaskWorker, startInboxTaskWorker };

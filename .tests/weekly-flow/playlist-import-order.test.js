@@ -45,7 +45,12 @@ const {
   orderJobsBySharedPlaylistTracks,
   rebuildSharedPlaylistTracksFromJobs,
 } = playlistConfigModule;
-const { appendSharedPlaylistTracks, processWeeklyFlowOperation, updateSharedPlaylist } = operationsModule;
+const {
+  appendSharedPlaylistTracks,
+  markLatestWeeklyFlowOperationToken,
+  processWeeklyFlowOperation,
+  updateSharedPlaylist,
+} = operationsModule;
 const { weeklyFlowWorker } = workerModule;
 const { playlistSource } = playlistSourceModule;
 const { playlistManager } = playlistManagerModule;
@@ -240,6 +245,49 @@ test("flow refresh clears playback before downloads finish", async () => {
     flowPlaylistConfig.scheduleNextRun = originalScheduleNextRun;
     weeklyFlowWorker.stop();
   }
+});
+
+test("a failed flow plan leaves the current playlist and jobs untouched", async () => {
+  const originalBuildPlan = playlistSource.buildFlowRunPlan;
+  const originalReset = playlistManager.weeklyReset;
+  let resets = 0;
+  try {
+    dbOps.updateSettings({
+      ...dbOps.getSettings(),
+      integrations: {
+        lastfm: { apiKey: "test" },
+        slskd: { enabled: true, url: "http://slskd", apiKey: "test" },
+      },
+    });
+    const flow = flowPlaylistConfig.createFlow({
+      name: "Plan Failure",
+      mix: { discover: 100, mix: 0, trending: 0, focus: 0 },
+      size: 1,
+      scheduleDays: [1],
+    });
+    flowPlaylistConfig.setEnabled(flow.id, true);
+    const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Track" }, flow.id);
+    playlistSource.buildFlowRunPlan = async () => { throw new Error("Planning unavailable"); };
+    playlistManager.weeklyReset = async () => { resets += 1; };
+
+    await assert.rejects(
+      processWeeklyFlowOperation({ kind: "scheduled-flow-refresh", flowId: flow.id }),
+      /Planning unavailable/,
+    );
+    assert.equal(resets, 0);
+    assert.ok(downloadTracker.getJob(jobId));
+  } finally {
+    playlistSource.buildFlowRunPlan = originalBuildPlan;
+    playlistManager.weeklyReset = originalReset;
+    weeklyFlowWorker.stop();
+  }
+});
+
+test("flow operation tokens are stored separately for each playlist", () => {
+  markLatestWeeklyFlowOperationToken("flow:one", "first");
+  markLatestWeeklyFlowOperationToken("flow:two", "second");
+  assert.equal(dbOps.getJSONSetting("weeklyFlowOperationTokens:flow%3Aone"), "first");
+  assert.equal(dbOps.getJSONSetting("weeklyFlowOperationTokens:flow%3Atwo"), "second");
 });
 
 test("deleting a track keeps remaining import order in config", async () => {

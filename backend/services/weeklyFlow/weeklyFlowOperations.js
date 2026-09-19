@@ -40,6 +40,8 @@ import { schedulePlaylistMbidEnrichment } from "../playlistMbidEnrichmentService
 import { filterBlockedArtistsForUser } from "../discovery/feedback.js";
 
 const OPERATION_TOKENS_KEY = "weeklyFlowOperationTokens";
+const operationTokenKey = (scope) =>
+  `${OPERATION_TOKENS_KEY}:${encodeURIComponent(scope)}`;
 
 export function createWeeklyFlowOperationToken() {
   return `${Date.now()}-${randomUUID()}`;
@@ -49,19 +51,17 @@ export function markLatestWeeklyFlowOperationToken(scope, token) {
   const safeScope = String(scope || "").trim();
   const safeToken = String(token || "").trim();
   if (!safeScope || !safeToken) return;
-  const current = dbOps.getJSONSetting(OPERATION_TOKENS_KEY) || {};
-  dbOps.setJSONSetting(OPERATION_TOKENS_KEY, {
-    ...current,
-    [safeScope]: safeToken,
-  });
+  dbOps.setJSONSetting(operationTokenKey(safeScope), safeToken);
 }
 
 function isLatestWeeklyFlowOperationToken(scope, token) {
   const safeScope = String(scope || "").trim();
   const safeToken = String(token || "").trim();
   if (!safeScope || !safeToken) return true;
-  const current = dbOps.getJSONSetting(OPERATION_TOKENS_KEY) || {};
-  return current[safeScope] === safeToken;
+  const current = dbOps.getJSONSetting(operationTokenKey(safeScope));
+  if (current != null) return current === safeToken;
+  const legacy = dbOps.getJSONSetting(OPERATION_TOKENS_KEY) || {};
+  return legacy[safeScope] === safeToken;
 }
 
 function normalizeTrackList(value) {
@@ -244,6 +244,15 @@ async function runFlowSeed({
   const unavailableError = getUnavailableFlowSourceError(flow.mix);
   if (unavailableError) throw new Error(unavailableError);
 
+  const effectiveSize =
+    Number.isFinite(Number(size)) && Number(size) > 0
+      ? Number(size)
+      : flow.size || DEFAULT_SIZE;
+  const flowSnapshot = JSON.stringify(flow);
+  const preparedPlan = await weeklyFlowWorker.prepareFlowRunPlan(flow, {
+    size: effectiveSize,
+  });
+
   const result = await withPlaylistMutation(safeFlowId, async () => {
     if (!isLatestWeeklyFlowOperationToken(tokenScope, token)) {
       return { cancelled: true };
@@ -251,6 +260,9 @@ async function runFlowSeed({
     const latestFlow = flowPlaylistConfig.getFlow(safeFlowId);
     if (!latestFlow) return { missing: true };
     if (requireEnabled && latestFlow.enabled !== true) return { skipped: true };
+    if (JSON.stringify(latestFlow) !== flowSnapshot) {
+      throw new Error("Flow settings changed while planning; retrying");
+    }
 
     recordFlowGenerationStarted({ flowId: safeFlowId });
     playlistManager.updateConfig(false);
@@ -261,12 +273,9 @@ async function runFlowSeed({
     if (!isLatestWeeklyFlowOperationToken(tokenScope, token)) {
       return { cancelled: true };
     }
-    const effectiveSize =
-      Number.isFinite(Number(size)) && Number(size) > 0
-        ? Number(size)
-        : latestFlow.size || DEFAULT_SIZE;
     const seeded = await weeklyFlowWorker.seedFlowRun(safeFlowId, latestFlow, {
       size: effectiveSize,
+      plan: preparedPlan,
     });
     await playlistManager.refreshPlaylist(safeFlowId);
     if (scheduleNext) {
@@ -279,6 +288,20 @@ async function runFlowSeed({
       empty: Number(seeded?.tracksQueued || 0) === 0,
       flowName: latestFlow.name,
     };
+  }, {
+    clearPending: false,
+    beforeMutation() {
+      if (!isLatestWeeklyFlowOperationToken(tokenScope, token)) {
+        return { cancelled: true };
+      }
+      const current = flowPlaylistConfig.getFlow(safeFlowId);
+      if (!current) return { missing: true };
+      if (requireEnabled && current.enabled !== true) return { skipped: true };
+      if (JSON.stringify(current) !== flowSnapshot) {
+        throw new Error("Flow settings changed while planning; retrying");
+      }
+      return undefined;
+    },
   });
 
   if (result?.tracksQueued > 0) {

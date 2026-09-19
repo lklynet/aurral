@@ -12,6 +12,7 @@ import { getNewsForUser, getNewsPreferences } from "./newsService.js";
 import {
   enqueueSystemTaskJob,
   findActiveHonkerJob,
+  getSystemTaskQueueName,
   withHonkerLock,
 } from "./honkerDb.js";
 
@@ -71,6 +72,17 @@ const getStoredRefreshStatus = (userId) =>
     jobId: null,
   };
 
+const findActiveInboxRefreshJob = (userId, options = {}) =>
+  findActiveHonkerJob(
+    getSystemTaskQueueName("inbox-refresh"),
+    (payload) => payload?.kind === "inbox-refresh" && Number(payload.userId) === userId,
+    options,
+  ) || findActiveHonkerJob(
+    "system-task",
+    (payload) => payload?.kind === "inbox-refresh" && Number(payload.userId) === userId,
+    options,
+  );
+
 const setStoredRefreshStatus = (userId, status) => {
   db.transaction(() => {
     dbOps.setJSONSetting(getInboxRefreshStatusKey(userId), {
@@ -95,12 +107,7 @@ export function getInboxRefreshStatus(userId) {
   }
 
   const stored = getStoredRefreshStatus(normalizedUserId);
-  const job = findActiveHonkerJob(
-    "system-task",
-    (payload) =>
-      payload?.kind === "inbox-refresh" && Number(payload.userId) === normalizedUserId,
-    { recoverExpired: false },
-  );
+  const job = findActiveInboxRefreshJob(normalizedUserId);
   if (job) {
     return {
       ...stored,
@@ -435,12 +442,7 @@ export async function enqueueInboxRefreshForUser(
   const normalizedUserId = normalizeUserId(userId);
   if (!normalizedUserId) throw new Error("A valid user is required");
   return withHonkerLock(`inbox-refresh:${normalizedUserId}`, async () => {
-    const existing = findActiveHonkerJob(
-      "system-task",
-      (payload) =>
-        payload?.kind === "inbox-refresh" && Number(payload.userId) === normalizedUserId,
-      { recoverExpired: true },
-    );
+    const existing = findActiveInboxRefreshJob(normalizedUserId, { recoverExpired: true });
     if (existing) {
       return {
         queued: false,

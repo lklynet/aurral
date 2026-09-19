@@ -32,7 +32,7 @@ const {
   getInboxRefreshStatus,
   refreshInboxForUser,
 } = inboxService;
-const { enqueueHonkerStartupTasks, getHonkerDb, getSystemTaskQueue } = honkerDb;
+const { enqueueHonkerStartupTasks, getHonkerDb, getInboxTaskQueue } = honkerDb;
 const { processSystemTask } = systemTaskWorker;
 
 let userId;
@@ -46,7 +46,7 @@ function clearRefreshState() {
 }
 
 test.before(() => {
-  getSystemTaskQueue();
+  getInboxTaskQueue();
   userId = userOps.createUser("inbox-refresh-user", "password-hash").id;
   upsertLibraryArtist({
     identityKey: "artist:inbox-refresh",
@@ -66,7 +66,7 @@ test.after(async () => {
 test("GET inbox reads cached rows without creating refresh work", () => {
   const result = getInboxForUser(userId);
   const jobs = getHonkerDb().query(
-    "SELECT id FROM _honker_live WHERE queue = 'system-task'",
+    "SELECT id FROM _honker_live WHERE queue = 'system-task-inbox'",
   );
 
   assert.equal(result.refreshStatus.status, "idle");
@@ -75,7 +75,7 @@ test("GET inbox reads cached rows without creating refresh work", () => {
 });
 
 test("manual refreshes deduplicate per user and survive a Honker reopen", async () => {
-  const queue = getSystemTaskQueue();
+  const queue = getInboxTaskQueue();
   const originalEnqueue = queue.enqueue;
   queue.enqueue = function enqueueWithFutureRunAt(payload, options = {}) {
     return originalEnqueue.call(this, payload, {
@@ -98,7 +98,7 @@ test("manual refreshes deduplicate per user and survive a Honker reopen", async 
   assert.equal(second.jobId, first.jobId);
   assert.equal(
     getHonkerDb().query(
-      "SELECT id FROM _honker_live WHERE queue = 'system-task' AND state = 'pending'",
+      "SELECT id FROM _honker_live WHERE queue = 'system-task-inbox' AND state = 'pending'",
     ).length,
     1,
   );
@@ -110,7 +110,7 @@ test("manual refreshes deduplicate per user and survive a Honker reopen", async 
 });
 
 test("a removed queued refresh is reported stale", async () => {
-  const queue = getSystemTaskQueue();
+  const queue = getInboxTaskQueue();
   const originalEnqueue = queue.enqueue;
   queue.enqueue = function enqueueWithFutureRunAt(payload, options = {}) {
     return originalEnqueue.call(this, payload, {
@@ -162,7 +162,7 @@ test("expired inbox leases are reported stale and recovered without overlap", as
   assert.equal(
     getHonkerDb().query(
       `SELECT id FROM _honker_live
-       WHERE queue = 'system-task'
+       WHERE queue = 'system-task-inbox'
          AND (state = 'pending' OR (state = 'processing' AND claim_expires_at > ?))`,
       [Math.floor(Date.now() / 1000)],
     ).length,

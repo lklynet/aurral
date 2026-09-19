@@ -7,6 +7,7 @@ import {
   withJobHeartbeat,
 } from "./honkerWorkerRuntime.js";
 import { getWorkerId } from "./honkerDb.js";
+import { shouldStartQueueHere } from "./backgroundWorkerQueues.js";
 
 export default function createHonkerWorker({
   name,
@@ -80,6 +81,19 @@ export default function createHonkerWorker({
       })) {
         idleController.disarm();
         if (!running || stopRequested) break;
+        if (process.env.AURRAL_BACKGROUND_WORKER_GROUP) {
+          const [{ dbOps }, { invalidateFlowPlaylistConfigCache }] = await Promise.all([
+            import("../db/helpers/index.js"),
+            import("./weeklyFlow/weeklyFlowPlaylistConfig.js"),
+          ]);
+          dbOps.invalidateSettingsCache();
+          invalidateFlowPlaylistConfigCache();
+          if (process.env.AURRAL_BACKGROUND_WORKER_GROUP.startsWith("discovery-") ||
+              process.env.AURRAL_BACKGROUND_WORKER_GROUP === "inbox") {
+            const { reloadDiscoveryPersistedCache } = await import("./discovery/persistence.js");
+            reloadDiscoveryPersistedCache();
+          }
+        }
         if (typeof filterJob === "function" && filterJob(job) === false) {
           job.ack();
           idleController.arm();
@@ -87,6 +101,9 @@ export default function createHonkerWorker({
         }
         if (typeof onJobDequeue === "function") {
           onJobDequeue(job.payload, job);
+        }
+        if (process.env.AURRAL_BACKGROUND_WORKER_GROUP && process.connected && process.send) {
+          process.send({ type: "job-started", queue: name, jobId: job.id });
         }
         try {
           await withJobHeartbeat(job, queue, () => processJob(job.payload, job));
@@ -96,6 +113,10 @@ export default function createHonkerWorker({
           }
         } catch (error) {
           await handleJobFailure(error, job, queue);
+        } finally {
+          if (process.env.AURRAL_BACKGROUND_WORKER_GROUP && process.connected && process.send) {
+            process.send({ type: "job-finished", queue: name, jobId: job.id });
+          }
         }
         idleController.arm();
       }
@@ -122,7 +143,7 @@ export default function createHonkerWorker({
   }
 
   function start() {
-    if (running || isHonkerShuttingDown()) return;
+    if (running || isHonkerShuttingDown() || !shouldStartQueueHere(name)) return;
     if (typeof onStart === "function" && onStart() === false) return;
     running = true;
     stopRequested = false;

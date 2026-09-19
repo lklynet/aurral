@@ -1,6 +1,7 @@
 import { downloadTracker } from "./weeklyFlowDownloadTracker.js";
 import { weeklyFlowWorker } from "./weeklyFlowWorker.js";
 import { withHonkerLock } from "../honkerDb.js";
+import { isFlowOwnerProcess, requestFlowOwner } from "./weeklyFlowOwnerClient.js";
 
 const normalizePlaylistTypes = (playlistTypes) => [
   ...new Set(
@@ -28,39 +29,46 @@ async function withPlaylistLocks(playlistTypes, operation) {
 
 export async function beginPlaylistMutation(playlistTypes, { clearPending = true } = {}) {
   const types = normalizePlaylistTypes(playlistTypes);
-  for (const playlistType of types) {
-    weeklyFlowWorker.blockPlaylist(playlistType);
-    weeklyFlowWorker.clearIncompleteRetry(playlistType);
-    if (clearPending) {
-      downloadTracker.clearPendingByPlaylistType(playlistType);
-    }
-  }
+  const blocked = [];
   try {
+    for (const playlistType of types) {
+      await weeklyFlowWorker.blockPlaylist(playlistType);
+      blocked.push(playlistType);
+      await weeklyFlowWorker.clearIncompleteRetry(playlistType);
+      if (clearPending) {
+        if (isFlowOwnerProcess()) downloadTracker.clearPendingByPlaylistType(playlistType);
+        else await requestFlowOwner("clearPendingByPlaylist", [playlistType]);
+      }
+    }
     await Promise.all(
       types.map((playlistType) => weeklyFlowWorker.waitForPlaylistIdle(playlistType)),
     );
   } catch (error) {
-    for (const playlistType of types) {
-      weeklyFlowWorker.unblockPlaylist(playlistType);
+    for (const playlistType of blocked) {
+      try { await weeklyFlowWorker.unblockPlaylist(playlistType); } catch {}
     }
     throw error;
   }
-  return () => {
+  return async () => {
     for (const playlistType of types) {
-      weeklyFlowWorker.unblockPlaylist(playlistType);
+      await weeklyFlowWorker.unblockPlaylist(playlistType);
     }
-    weeklyFlowWorker.pruneOrphanedJobState();
+    await weeklyFlowWorker.pruneOrphanedJobState();
   };
 }
 
 export async function withPlaylistMutation(playlistTypes, operation, options = {}) {
   const types = normalizePlaylistTypes(playlistTypes);
   return withPlaylistLocks(types, async () => {
+    if (typeof options.beforeMutation === "function") {
+      const preflight = await options.beforeMutation();
+      if (preflight !== undefined) return preflight;
+    }
     const releaseMutation = await beginPlaylistMutation(types, options);
     try {
       return await operation();
     } finally {
-      releaseMutation();
+      await releaseMutation();
     }
   });
 }

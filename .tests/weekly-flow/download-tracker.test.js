@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import Database from "better-sqlite3";
 
 import {
   setupIsolatedBackend,
@@ -27,6 +28,7 @@ test.beforeEach(async () => {
 });
 
 test.after(async () => {
+  db.close();
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -48,6 +50,43 @@ test("getNextPendingMatching skips future-dated retry jobs and returns ready wor
   );
 
   assert.equal(ready?.id, secondId);
+});
+
+test("a web-side tracker reads job changes made by the flow owner", () => {
+  const tracker = new WeeklyFlowDownloadTracker();
+  const id = tracker.addJob({ artistName: "Artist", trackName: "Song" }, "playlist");
+  const flowConnection = new Database(isolatedState.dbPath);
+  try {
+    flowConnection.prepare(
+      "UPDATE playlist_download_jobs SET status = 'done' WHERE id = ?",
+    ).run(id);
+    const previousEnv = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = "production";
+      assert.equal(tracker.getJob(id)?.status, "done");
+      assert.equal(tracker.getStats().done, 1);
+      assert.equal(tracker.getStatsByPlaylistType(["playlist"]).playlist.done, 1);
+      assert.deepEqual(tracker.getByPlaylistType("playlist").map((job) => job.id), [id]);
+    } finally {
+      process.env.NODE_ENV = previousEnv;
+    }
+  } finally {
+    flowConnection.close();
+  }
+});
+
+test("a web-side tracker does not reset an active flow download on import", () => {
+  const tracker = new WeeklyFlowDownloadTracker();
+  const id = tracker.addJob({ artistName: "Artist", trackName: "Song" }, "playlist");
+  tracker.setDownloading(id);
+  const previousEnv = process.env.NODE_ENV;
+  try {
+    process.env.NODE_ENV = "production";
+    const webTracker = new WeeklyFlowDownloadTracker();
+    assert.equal(webTracker.getJob(id)?.status, "downloading");
+  } finally {
+    process.env.NODE_ENV = previousEnv;
+  }
 });
 
 test("worker does not select a job that is already active", () => {

@@ -3,6 +3,7 @@ import { downloadTracker } from "./weeklyFlowDownloadTracker.js";
 import { playlistManager } from "./weeklyFlowPlaylistManager.js";
 import { flowPlaylistConfig } from "./weeklyFlowPlaylistConfig.js";
 import { playlistSource } from "./weeklyFlowPlaylistSource.js";
+import { buildFlowRunPlanIsolated } from "./weeklyFlowPlanRunner.js";
 import { dbOps, userOps } from "../../db/helpers/index.js";
 import { resolveWeeklyFlowTrackContext } from "./weeklyFlowTrackResolver.js";
 import { getListenHistoryProfile } from "../listeningHistory.js";
@@ -18,6 +19,11 @@ import {
 } from "../playlistPaths.js";
 import { startSlskdOrchestratorWorker } from "../slskdOrchestratorWorker.js";
 import { withHonkerLock } from "../honkerDb.js";
+import {
+  getFlowOwnerStatus,
+  isFlowOwnerProcess,
+  requestFlowOwner,
+} from "./weeklyFlowOwnerClient.js";
 import {
   getDownloadSourceNotConfiguredMessage,
   isAnyDownloadSourceConfigured,
@@ -432,21 +438,25 @@ export class WeeklyFlowWorker {
     };
   }
 
-  async seedFlowRun(playlistType, flow, options = {}) {
-    const key = String(playlistType || "").trim();
-    if (!key || !flow) {
-      return { tracksQueued: 0, jobIds: [], reserveTracks: 0 };
-    }
+  async prepareFlowRunPlan(flow, options = {}) {
     const sizeOverride =
       Number.isFinite(Number(options?.size)) && Number(options.size) > 0
         ? Math.round(Number(options.size))
         : null;
-    const plan = await playlistSource.buildFlowRunPlan(
+    return buildFlowRunPlanIsolated(
       sizeOverride ? { ...flow, size: sizeOverride } : flow,
       {
         listenHistoryProfile: this._getFlowListenHistoryProfile(flow),
       },
     );
+  }
+
+  async seedFlowRun(playlistType, flow, options = {}) {
+    const key = String(playlistType || "").trim();
+    if (!key || !flow) {
+      return { tracksQueued: 0, jobIds: [], reserveTracks: 0 };
+    }
+    const plan = options?.plan || await this.prepareFlowRunPlan(flow, options);
     this.clearPlaylistRunState(key);
     this.setPlaylistRunPlan(key, plan);
     const primaryTracks = Array.isArray(plan?.primaryTracks) ? plan.primaryTracks : [];
@@ -993,4 +1003,60 @@ export class WeeklyFlowWorker {
   }
 }
 
-export const weeklyFlowWorker = new WeeklyFlowWorker();
+function createRemoteWeeklyFlowWorker() {
+  const reader = new WeeklyFlowWorker();
+  const call = (method, args = [], timeoutMs = 30000) =>
+    requestFlowOwner(method, args, { timeoutMs });
+  const notify = (method, args = []) => {
+    void call(method, args).catch((error) => {
+      console.warn(`[WeeklyFlowWorker] ${method} could not reach flow owner:`, error.message);
+    });
+  };
+  return {
+    weeklyFlowRoot: reader.weeklyFlowRoot,
+    get running() { return getFlowOwnerStatus()?.running === true; },
+    getStatus() {
+      return getFlowOwnerStatus() || {
+        running: false,
+        processing: false,
+        activeCount: 0,
+        currentJob: null,
+        stats: downloadTracker.getStats(),
+        settings: reader.getWorkerSettings(),
+      };
+    },
+    getWorkerSettings: (...args) => reader.getWorkerSettings(...args),
+    getRetryCyclePausedMap: (...args) => reader.getRetryCyclePausedMap(...args),
+    getIncompleteRetryMap: (...args) => reader.getIncompleteRetryMap(...args),
+    getScheduledRetryJobId: (...args) => reader.getScheduledRetryJobId(...args),
+    start: () => call("start"),
+    stop: () => notify("stop"),
+    stopAndDrain: () => call("stopAndDrain", [], 30 * 60 * 1000),
+    wake: (delayMs = 0) => notify("wakeOrStart", [delayMs]),
+    researchMissingTracks: (id) => call("researchMissingTracks", [id], 10 * 60 * 1000),
+    retryIncompletePlaylist: (id) => call("retryIncompletePlaylist", [id], 10 * 60 * 1000),
+    setRetryCyclePaused: async (id, paused) => {
+      const result = await call("setRetryCyclePaused", [id, paused]);
+      dbOps.invalidateSettingsCache();
+      return result;
+    },
+    updateWorkerSettings: async (settings) => {
+      const result = await call("updateWorkerSettings", [settings]);
+      dbOps.invalidateSettingsCache();
+      return result;
+    },
+    checkPlaylistComplete: (id) => call("checkPlaylistComplete", [id], 10 * 60 * 1000),
+    blockPlaylist: (id) => call("blockPlaylist", [id]),
+    unblockPlaylist: (id) => call("unblockPlaylist", [id]),
+    waitForPlaylistIdle: (id) => call("waitForPlaylistIdle", [id], 30 * 60 * 1000),
+    waitForIdle: () => call("waitForIdle", [], 30 * 60 * 1000),
+    clearIncompleteRetry: (id) => call("clearIncompleteRetry", [id]),
+    clearPlaylistRunState: (id) => call("clearPlaylistRunState", [id]),
+    pruneOrphanedJobState: () => notify("pruneOrphanedJobState"),
+    scheduleReuseLinkRepair: (force) => notify("scheduleReuseLinkRepair", [force]),
+  };
+}
+
+export const weeklyFlowWorker = isFlowOwnerProcess()
+  ? new WeeklyFlowWorker()
+  : createRemoteWeeklyFlowWorker();

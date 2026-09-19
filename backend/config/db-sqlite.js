@@ -630,6 +630,26 @@ export const dbHelpers = {
 };
 
 initializeSchemaOnStartup(db, dbHelpers);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS playlist_download_jobs_revision (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    revision INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT OR IGNORE INTO playlist_download_jobs_revision (id, revision) VALUES (1, 0);
+  CREATE TRIGGER IF NOT EXISTS playlist_download_jobs_revision_insert
+    AFTER INSERT ON playlist_download_jobs BEGIN
+      UPDATE playlist_download_jobs_revision SET revision = revision + 1 WHERE id = 1;
+    END;
+  CREATE TRIGGER IF NOT EXISTS playlist_download_jobs_revision_update
+    AFTER UPDATE ON playlist_download_jobs BEGIN
+      UPDATE playlist_download_jobs_revision SET revision = revision + 1 WHERE id = 1;
+    END;
+  CREATE TRIGGER IF NOT EXISTS playlist_download_jobs_revision_delete
+    AFTER DELETE ON playlist_download_jobs BEGIN
+      UPDATE playlist_download_jobs_revision SET revision = revision + 1 WHERE id = 1;
+    END;
+`);
 initializeLibrarySearchIndex(db);
 
 const existingDownloadFolder = db

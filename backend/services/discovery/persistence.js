@@ -77,6 +77,16 @@ export function resetDiscoveryModuleCache() {
   discoveryCache = { ...EMPTY_CACHE };
 }
 
+export function reloadDiscoveryPersistedCache() {
+  const persisted = dbOps.getDiscoveryCache();
+  Object.assign(discoveryCache, persisted, {
+    provider: persisted.provider || DISCOVERY_PROVIDER_LASTFM,
+    capabilities: getDiscoveryCapabilities(
+      (persisted.provider || DISCOVERY_PROVIDER_LASTFM) === DISCOVERY_PROVIDER_LASTFM,
+    ),
+  });
+}
+
 export const getDiscoveryCache = (listenHistoryProfile = null) => {
   const cacheNamespace =
     typeof listenHistoryProfile === "string"
@@ -156,6 +166,32 @@ export const getDiscoveryCache = (listenHistoryProfile = null) => {
 
   return discoveryCache;
 };
+
+export function synchronizeDiscoveryCacheFromWorker(update = {}) {
+  if (!update || typeof update !== "object") return;
+  if (update.isUpdating === false || update.playlistsUpdating === false) {
+    Object.assign(discoveryCache, dbOps.getDiscoveryCache());
+  }
+  for (const key of [
+    "recommendations", "globalTop", "basedOn", "topTags", "topGenres",
+    "fallbackGenres", "discoverPlaylists", "provider", "capabilities",
+    "lastUpdated", "recommendationQuality", "isEnriching", "discoveryRunId",
+    "enrichmentStartedAt", "enrichmentCompletedAt", "enrichmentProgressMessage",
+  ]) {
+    if (Object.hasOwn(update, key)) discoveryCache[key] = update[key];
+  }
+  for (const key of [
+    "isUpdating", "updatePhase", "updateProgress", "updateProgressMessage",
+    "playlistsUpdating", "playlistsUpdateMessage",
+  ]) {
+    if (Object.hasOwn(update, key)) discoveryCache[key] = update[key];
+  }
+  if (Object.hasOwn(update, "phase")) discoveryCache.updatePhase = update.phase;
+  if (Object.hasOwn(update, "progress")) discoveryCache.updateProgress = update.progress;
+  if (Object.hasOwn(update, "progressMessage")) {
+    discoveryCache.updateProgressMessage = update.progressMessage;
+  }
+}
 
 export const getUserDiscoveryCacheStaleness = (cacheNamespace) => {
   const data = dbOps.getDiscoveryCache(cacheNamespace);
