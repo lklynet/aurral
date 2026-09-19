@@ -21,7 +21,12 @@ const {
   getMetadataProviderHealthSnapshot,
   getMusicbrainzApiBaseUrl,
 } = apiClients;
-const { clearMetadataProviderCaches, getArtistByMbid } = brainzmashProvider;
+const {
+  clearMetadataProviderCaches,
+  getAlbumByMbid,
+  getArtistByMbid,
+  searchArtists,
+} = brainzmashProvider;
 
 test.after(async () => {
   await cleanupIsolatedState(isolatedState);
@@ -69,6 +74,96 @@ test("custom BrainzMash base URL is respected end to end", () => {
   });
 
   assert.equal(getMusicbrainzApiBaseUrl(), "https://brainzmash.example.net");
+});
+
+test("stale album metadata is served while one refresh runs in the background", async () => {
+  const previousSettings = dbOps.getSettings();
+  const serverResponses = ["Album v1", "Album v2"];
+  let requests = 0;
+  const server = await createMockHttpServer((_request, response) => {
+    response.setHeader("content-type", "application/json");
+    const title = serverResponses[Math.min(requests, serverResponses.length - 1)];
+    requests += 1;
+    response.end(JSON.stringify({ id: "album-1", title }));
+  });
+  const originalNow = Date.now;
+  let now = 1_000_000;
+
+  try {
+    Date.now = () => now;
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    const first = await getAlbumByMbid("album-1");
+    assert.equal(first.title, "Album v1");
+    assert.equal(requests, 1);
+
+    now += 7 * 24 * 60 * 60 * 1000 + 1_000;
+    const [stale, staleAgain] = await Promise.all([
+      getAlbumByMbid("album-1"),
+      getAlbumByMbid("album-1"),
+    ]);
+    assert.equal(stale.title, "Album v1");
+    assert.equal(staleAgain.title, "Album v1");
+
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    assert.equal(requests, 2);
+    const refreshed = await getAlbumByMbid("album-1");
+    assert.equal(refreshed.title, "Album v2");
+  } finally {
+    Date.now = originalNow;
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("search metadata continues to share fresh cache entries", async () => {
+  const previousSettings = dbOps.getSettings();
+  let requests = 0;
+  const server = await createMockHttpServer((_request, response) => {
+    response.setHeader("content-type", "application/json");
+    requests += 1;
+    response.end(JSON.stringify([{ id: `artist-${requests}`, name: "Artist" }]));
+  });
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    const first = await searchArtists("artist", { limit: 10 });
+    assert.equal(first.items[0].id, "artist-1");
+    assert.equal(requests, 1);
+
+    const second = await searchArtists("artist", { limit: 10 });
+    assert.equal(second.items[0].id, "artist-1");
+    assert.equal(requests, 1);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
 });
 
 test("provider health snapshot reports BrainzMash state", () => {

@@ -26,14 +26,19 @@ import { selectBestAlbumImage } from "../imageService.js";
 import createRateLimiter from "../apiClients/rateLimiter.js";
 import { runSharedInflight } from "../sharedInflight.js";
 
-const METADATA_CACHE_TTL_SECONDS = 24 * 60 * 60;
+const METADATA_ENTITY_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
+const METADATA_ENTITY_STALE_TTL_SECONDS = 30 * 24 * 60 * 60;
+const METADATA_SEARCH_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const METADATA_CACHE_MAX_ENTRIES = 20_000;
 const METADATA_REQUEST_MIN_INTERVAL_MS = 100;
 const METADATA_REQUEST_TIMEOUT_MS = 8000;
 const METADATA_MAX_QUEUED_REQUESTS = Math.floor(
   METADATA_REQUEST_TIMEOUT_MS / METADATA_REQUEST_MIN_INTERVAL_MS,
 ) - 1;
-const providerCache = createCache(METADATA_CACHE_TTL_SECONDS, METADATA_CACHE_MAX_ENTRIES);
+const providerCache = createCache(
+  METADATA_ENTITY_CACHE_TTL_SECONDS,
+  METADATA_CACHE_MAX_ENTRIES,
+);
 const releaseCache = createCache(300);
 const providerInflightRequests = new Map();
 const providerRequestLimiter = createRateLimiter(METADATA_REQUEST_MIN_INTERVAL_MS, {
@@ -98,11 +103,22 @@ function isRetryable(error) {
   );
 }
 
-async function request(path, params = {}, { signal } = {}) {
+function getMetadataCachePolicy(path) {
+  if (/^\/(?:album|artist)\/[^/]+$/.test(path)) {
+    return {
+      freshTtlSeconds: METADATA_ENTITY_CACHE_TTL_SECONDS,
+      staleTtlSeconds: METADATA_ENTITY_STALE_TTL_SECONDS,
+    };
+  }
+  return {
+    freshTtlSeconds: METADATA_SEARCH_CACHE_TTL_SECONDS,
+    staleTtlSeconds: 0,
+  };
+}
+
+function refreshMetadata(cacheKey, path, params, { signal } = {}) {
   const baseUrl = getMetadataBaseUrl();
-  const cacheKey = `${baseUrl}${path}:${JSON.stringify(params)}`;
-  const cached = providerCache.get(cacheKey);
-  if (cached) return cached;
+  const cachePolicy = getMetadataCachePolicy(path);
   healthState.activeBaseUrl = baseUrl;
   healthState.lastCheckedAt = nowIso();
 
@@ -124,7 +140,12 @@ async function request(path, params = {}, { signal } = {}) {
             }),
           { signal: sharedSignal, timeoutMs: METADATA_REQUEST_TIMEOUT_MS },
         );
-        providerCache.set(cacheKey, response.data);
+        providerCache.set(
+          cacheKey,
+          response.data,
+          cachePolicy.freshTtlSeconds,
+          cachePolicy.staleTtlSeconds,
+        );
         healthState.lastSuccessAt = healthState.lastCheckedAt;
         healthState.lastFailureReason = "";
         return response.data;
@@ -152,6 +173,19 @@ async function request(path, params = {}, { signal } = {}) {
     }
     throw new Error("Metadata provider request failed");
   }, { signal });
+}
+
+async function request(path, params = {}, { signal } = {}) {
+  const baseUrl = getMetadataBaseUrl();
+  const cacheKey = `${baseUrl}${path}:${JSON.stringify(params)}`;
+  const cached = providerCache.getWithStale(cacheKey);
+  if (cached) {
+    if (cached.stale) {
+      void refreshMetadata(cacheKey, path, params).catch(() => {});
+    }
+    return cached.value;
+  }
+  return refreshMetadata(cacheKey, path, params, { signal });
 }
 
 function applyReleaseTypeFilter(albums, releaseTypes = []) {
