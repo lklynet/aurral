@@ -62,11 +62,15 @@ def integer(value) -> int | None:
 
 
 def artist(payload: dict) -> str | None:
+    """Read an optional artist name or list from a matcher payload."""
     for key in ("artistName", "artist"):
         value = text(payload.get(key))
         if value:
             return value
-    names = [text(value) for value in payload.get("artists", [])]
+    artists = payload.get("artists")
+    if not isinstance(artists, list):
+        return None
+    names = [text(value) for value in artists]
     names = [value for value in names if value]
     return "; ".join(names) if names else None
 

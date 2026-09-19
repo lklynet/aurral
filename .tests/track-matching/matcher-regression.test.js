@@ -28,6 +28,17 @@ test("health operation reports the pinned beets version", { skip: skipReason }, 
   assert.match(outcome.result.beetsVersion, /^\d+\.\d+\.\d+$/);
 });
 
+test("track distance tolerates providers that send null artist lists", { skip: skipReason }, async () => {
+  const outcome = await runMatcherOperation("track_distance", {
+    expected: { artistName: "Daft Punk", trackName: "Get Lucky", durationMs: 248000 },
+    candidates: [
+      { source: "ytdlp", title: "Get Lucky", artist: null, artists: null, durationMs: 248000 },
+    ],
+  });
+  assert.equal(outcome.ok, true);
+  assert.equal(outcome.result.matches[0].distance, 0);
+});
+
 test("exact structured match is accepted with a wide runner-up gap", { skip: skipReason }, async () => {
   const outcome = await runMatcherOperation("track_distance", {
     expected: { ...GET_LUCKY },
