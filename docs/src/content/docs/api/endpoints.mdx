@@ -197,6 +197,19 @@ names. The response includes `refresh.checkedArtistCount`,
 | `POST` | `/api/inbox/read-all` | Mark the current user's Inbox items as read |
 | `PATCH` | `/api/inbox/:id` | Read, save, unsave, dismiss, or add an Inbox item |
 
+## Lyrics
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/lyrics` | Look a track's lyrics up through the enabled providers |
+
+`/api/lyrics` requires `artist` and `title` query parameters and accepts
+optional `album` and `duration` (seconds) to narrow the match. Providers are
+asked in priority order until one answers. The response carries `provider`,
+`instrumental`, `plain`, and `synced`; `synced` is an LRC-style string and is
+empty when only unsynchronised lyrics exist. A track no provider knows returns
+`404`.
+
 ## Playlists and flows
 
 The canonical prefix is `/api/playlists`. The legacy `/api/weekly-flow`
@@ -345,6 +358,8 @@ Every route in this section requires an administrator.
 | `POST` | `/api/settings/navidrome/test` | Test Navidrome credentials |
 | `GET` | `/api/settings/playback` | Read playback settings |
 | `POST` | `/api/settings/playback/:key/test` | Test a playback integration |
+| `GET` | `/api/settings/lyrics` | Read lyrics provider settings metadata |
+| `POST` | `/api/settings/lyrics/:key/test` | Test a lyrics provider |
 
 ## Scrobbling and play events
 

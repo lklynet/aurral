@@ -71,6 +71,7 @@ export default defineConfig({
             { slug: "integrations/ytdlp" },
             { slug: "integrations/deemix" },
             { slug: "integrations/usenet" },
+            { slug: "integrations/lrclib" },
             { slug: "integrations/navidrome" },
             { slug: "integrations/plex" },
             { slug: "integrations/jellyfin" },

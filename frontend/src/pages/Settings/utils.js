@@ -183,6 +183,12 @@ export const normalizeSettings = (savedSettings) => {
         priority: 15,
         ...(savedSettings.integrations?.deemix || {}),
       },
+      lrclib: {
+        enabled: false,
+        url: "",
+        priority: 10,
+        ...(savedSettings.integrations?.lrclib || {}),
+      },
       ticketmaster: {
         apiKey: "",
         searchRadiusMiles: 250,

@@ -15,6 +15,7 @@ import { SettingsIndexersSection } from "./components/SettingsIndexersSection";
 import { SettingsDownloadClientsSection } from "./components/SettingsDownloadClientsSection";
 import { SettingsTasksTab } from "./components/SettingsTasksTab";
 import { SettingsPlaybackTab } from "./components/SettingsPlaybackTab";
+import { SettingsLyricsSection } from "./components/SettingsLyricsSection";
 import { SettingsConnectTab } from "./components/SettingsConnectTab";
 import { SettingsRssNewsTab } from "./components/SettingsRssNewsTab";
 import { SettingsDiscoverTab } from "./components/SettingsDiscoverTab";
@@ -156,6 +157,21 @@ function SettingsPage() {
             showError={showError}
             showInfo={showInfo}
           />
+        );
+      case "lyrics":
+        return (
+          <div className="arr-page">
+            <form onSubmit={data.handleSaveSettings} className="arr-form" autoComplete="off">
+              <SettingsLyricsSection
+                settings={data.settings}
+                lyricsProviderSettings={data.lyricsProviderSettings}
+                updateSettings={data.updateSettings}
+                handleSaveSettings={data.handleSaveSettings}
+                showSuccess={showSuccess}
+                showError={showError}
+              />
+            </form>
+          </div>
         );
       case "connect":
         return (

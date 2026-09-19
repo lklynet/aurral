@@ -6,6 +6,7 @@ import {
   fetchAppSettings,
   fetchPlaybackSettings,
   fetchDownloadClientSettings,
+  fetchLyricsProviderSettings,
   updateAppSettings,
   getLidarrRootFolders,
   getLidarrProfiles,
@@ -299,6 +300,12 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
     enabled: false,
     staleTime: 30_000,
   });
+  const lyricsProviderQuery = useQuery({
+    queryKey: queryKeys.lyricsProviderSettings,
+    queryFn: ({ signal }) => fetchLyricsProviderSettings({ signal }),
+    enabled: false,
+    staleTime: 30_000,
+  });
   const settingsSaveMutation = useMutation({
     mutationFn: updateAppSettings,
     onSuccess: (savedSettings) => {
@@ -329,11 +336,13 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
   const loadingLidarrTags = lidarrTagsQuery.isFetching;
   const playbackSettings = playbackQuery.data?.destinations || null;
   const downloadClientSettings = downloadClientQuery.data?.clients || null;
+  const lyricsProviderSettings = lyricsProviderQuery.data?.providers || null;
   const saving = settingsSaveMutation.isPending;
   const { mutateAsync: saveSettings } = settingsSaveMutation;
   const { refetch: refetchSettings } = settingsQuery;
   const { refetch: refetchPlayback } = playbackQuery;
   const { refetch: refetchDownloadClients } = downloadClientQuery;
+  const { refetch: refetchLyricsProviders } = lyricsProviderQuery;
 
   const applyHealthUpdate = useCallback((healthData, { allowClearRefreshing = true } = {}) => {
     setHealth(healthData);
@@ -405,6 +414,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
         refetchSettings({ throwOnError: true }),
         refetchPlayback({ throwOnError: false }),
         refetchDownloadClients({ throwOnError: false }),
+        refetchLyricsProviders({ throwOnError: false }),
       ]);
       const savedSettings = settingsResult.data;
       const updatedSettings = normalizeSettings(savedSettings);
@@ -431,6 +441,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
     }
   }, [
     refetchDownloadClients,
+    refetchLyricsProviders,
     refetchPlayback,
     refetchSettings,
     refreshHealth,
@@ -712,6 +723,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
     settingsLoaded,
     playbackSettings,
     downloadClientSettings,
+    lyricsProviderSettings,
     updateSettings,
     originalSettings,
     hasUnsavedChanges,

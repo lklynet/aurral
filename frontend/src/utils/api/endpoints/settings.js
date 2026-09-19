@@ -64,6 +64,19 @@ export const getDownloadClientSettings = () =>
 export const testDownloadClientConnection = (key, config) =>
   postData(`/settings/download-clients/${encodeURIComponent(key)}/test`, config);
 
+export const fetchLyricsProviderSettings = ({ signal } = {}) =>
+  getData("/settings/lyrics", { signal });
+
+export const getLyricsProviderSettings = () =>
+  queryClient.fetchQuery({
+    queryKey: queryKeys.lyricsProviderSettings,
+    queryFn: ({ signal }) => fetchLyricsProviderSettings({ signal }),
+    staleTime: 30_000,
+  });
+
+export const testLyricsProviderConnection = (key, config) =>
+  postData(`/settings/lyrics/${encodeURIComponent(key)}/test`, config);
+
 export const updateAppSettings = (settings) => postData("/settings", settings);
 
 export const getLidarrRootFolders = (url, apiKey, { signal } = {}) =>

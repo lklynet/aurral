@@ -1,0 +1,31 @@
+---
+title: LRCLIB
+description: Community synced lyrics for Aurral.
+---
+
+[LRCLIB](https://lrclib.net) is a free, open database of plain and synced lyrics built for self-hosted music players. It needs no account and no API key.
+
+LRCLIB is the first provider in Aurral's lyrics manager. More providers can be added alongside it, and Aurral asks each one in priority order until it gets an answer.
+
+Lyrics are copyrighted works, and LRCLIB's entries are contributed by its users rather than licensed from publishers. Aurral ships no lyrics of its own and contacts no provider until you enable one.
+
+## Setup
+
+1. Open **Settings > Lyrics > LRCLIB**.
+2. Turn on **Enable LRCLIB**.
+3. Leave **Server URL** blank to use the public instance at `https://lrclib.net`, or enter the address of your own instance.
+4. If necessary, set **Provider priority**. Lower numbers are asked first.
+5. Select **Test connection**.
+6. Settings save automatically after each change.
+
+## Behavior
+
+Aurral looks a track up by artist, title, album, and duration. LRCLIB matches on duration within a couple of seconds, so an exact lookup is tried first and a search by artist and title is used as a fallback.
+
+When more than one result matches, Aurral prefers the one carrying timestamps, so a synced result wins over a plain one.
+
+Aurral identifies itself to LRCLIB with its version, which is what the LRCLIB maintainer asks integrations to do.
+
+## Self-hosting
+
+LRCLIB publishes its server under an MIT license and uploads full database dumps, so you can run your own instance and point **Server URL** at it. Aurral does not require the instance to be reachable from the internet.

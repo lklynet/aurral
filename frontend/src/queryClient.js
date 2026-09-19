@@ -28,6 +28,7 @@ export const queryKeys = {
   appSettings: ["settings", "app"],
   playbackSettings: ["settings", "playback"],
   downloadClientSettings: ["settings", "download-clients"],
+  lyricsProviderSettings: ["settings", "lyrics"],
   lidarrRootFolders: (url, credentialsRevision = 0) => [
     "settings",
     "lidarr",

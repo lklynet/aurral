@@ -377,6 +377,31 @@ export function registerGeneral(router) {
           : 15;
         integrations.deemix = nextDeemix;
       }
+
+      if (integrations?.lrclib) {
+        const nextLrclib = {
+          ...(currentSettings.integrations?.lrclib || {}),
+          ...integrations.lrclib,
+        };
+        const trimmedUrl = String(nextLrclib.url || "").trim();
+        if (trimmedUrl) {
+          const urlValidation = validateExternalUrl(trimmedUrl);
+          if (!urlValidation.valid) {
+            return res.status(400).json({
+              error: `Invalid LRCLIB URL: ${urlValidation.error}`,
+            });
+          }
+          nextLrclib.url = urlValidation.url.replace(/\/+$/, "");
+        } else {
+          nextLrclib.url = "";
+        }
+        nextLrclib.enabled = nextLrclib.enabled === true;
+        const priority = Number.parseInt(nextLrclib.priority, 10);
+        nextLrclib.priority = Number.isFinite(priority)
+          ? Math.min(1000, Math.max(1, priority))
+          : 10;
+        integrations.lrclib = nextLrclib;
+      }
       if (integrations?.ytdlp) {
         const nextYtdlp = {
           ...(currentSettings.integrations?.ytdlp || {}),
@@ -412,7 +437,7 @@ export function registerGeneral(router) {
         integrations.news = nextNews;
       }
 
-      const INTEGRATION_KEYS = ["lidarr", "navidrome", "jellyfin", "slskd", "prowlarr", "nzbget", "sabnzbd", "ytdlp", "deemix", "lastfm", "ticketmaster", "news", "metadata", "general", "gotify", "webhookEvents"];
+      const INTEGRATION_KEYS = ["lidarr", "navidrome", "jellyfin", "slskd", "prowlarr", "nzbget", "sabnzbd", "ytdlp", "deemix", "lrclib", "lastfm", "ticketmaster", "news", "metadata", "general", "gotify", "webhookEvents"];
       let mergedIntegrations =
         currentSettings.integrations || defaultData.settings.integrations || {};
       if (integrations) {

@@ -322,3 +322,28 @@ test("preserves saved Lidarr roots for equivalent normalized connection values",
   assert.deepEqual(dbOps.getSettings().integrations.lidarr.rootFolderPaths, ["/old/music"]);
   assert.equal(dbOps.getSettings().integrations.lidarr.rootFolderPath, "/old/music");
 });
+
+test("saving a lyrics provider validates and normalizes its server URL", async () => {
+  const { postSettings, getSettings } = captureSettingsRoutes();
+
+  const blocked = await postSettings({
+    integrations: { lrclib: { enabled: true, url: "http://169.254.169.254" } },
+  });
+  assert.equal(blocked.statusCode, 400);
+  assert.match(blocked.body.error, /Invalid LRCLIB URL/);
+
+  // A self-hosted instance on a private network stays allowed, and a blank URL
+  // keeps meaning "use the public instance".
+  const selfHosted = await postSettings({
+    integrations: { lrclib: { enabled: true, url: "http://lrclib.local:3000/", priority: "3" } },
+  });
+  assert.equal(selfHosted.statusCode, 200);
+  const saved = (await getSettings()).body.integrations.lrclib;
+  assert.equal(saved.url, "http://lrclib.local:3000");
+  assert.equal(saved.enabled, true);
+  assert.equal(saved.priority, 3);
+
+  const blank = await postSettings({ integrations: { lrclib: { enabled: false, url: "" } } });
+  assert.equal(blank.statusCode, 200);
+  assert.equal((await getSettings()).body.integrations.lrclib.url, "");
+});

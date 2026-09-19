@@ -5,6 +5,7 @@ import {
   Download,
   HardDrive,
   ListChecks,
+  MicVocal,
   Monitor,
   Music,
   Rss,
@@ -21,6 +22,7 @@ export const SETTINGS_TABS = [
   { id: "indexers", label: "Indexers", icon: DatabaseSearch },
   { id: "download-clients", label: "Download clients", icon: Download },
   { id: "playback", label: "Playback", icon: Music },
+  { id: "lyrics", label: "Lyrics", icon: MicVocal },
   { id: "connect", label: "Connect", icon: Bell },
   { id: "rss-news", label: "RSS news", icon: Rss },
   { id: "discover", label: "Discover", icon: Compass },
@@ -177,6 +179,17 @@ const SETTINGS_SEARCH_METADATA = {
       "Last.fm": "scrobbling OAuth account",
       ListenBrainz: "scrobbling user token",
       Koito: "scrobbling API key URL",
+    },
+  },
+  lyrics: {
+    sections: ["Lyrics providers", "Connection", "Lyrics"],
+    services: {
+      LRCLIB: "community synced lyrics database lrc",
+    },
+    fields: {
+      "Enable LRCLIB": "lyrics provider on off",
+      "Server URL": "LRCLIB address host connection self-hosted instance",
+      "Provider priority": "lyrics provider order preference",
     },
   },
   connect: {
