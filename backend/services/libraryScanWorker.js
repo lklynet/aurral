@@ -171,23 +171,34 @@ export function scheduleLibraryScan({
         ...(Array.isArray(requestedPaths) ? requestedPaths : []),
       ]);
   const fullScan = mustRunFullScan || effectivePaths === null;
+  const effectiveIncludeLidarr = includeLidarr === true ||
+    (existingJobId != null && registry.includeLidarr === true);
   const jobId = enqueueLibraryScanJob({
     force: effectiveForce,
-    includeLidarr: includeLidarr === true,
+    includeLidarr: effectiveIncludeLidarr,
+    changedPaths: fullScan ? null : effectivePaths,
   });
-  const nextRegistry = { jobId, includeLidarr: includeLidarr === true };
+  const nextRegistry = { jobId, includeLidarr: effectiveIncludeLidarr };
   if (effectiveForce) nextRegistry.force = true;
   if (!fullScan) nextRegistry.changedPaths = effectivePaths;
   if (!setScanRegistryIfUnchanged(snapshot, nextRegistry)) {
+    if (getScheduledLibraryScanJobId() === jobId && hasLiveScanJob(jobId)) {
+      return scheduleLibraryScan({ force, includeLidarr, changedPaths });
+    }
     getLibraryScanQueue().cancel(jobId);
     return scheduleLibraryScan({ force, includeLidarr, changedPaths });
   }
   return jobId;
 }
 
-export function claimScheduledLibraryScanJob(jobId) {
+export function claimScheduledLibraryScanJob(jobId, jobPayload = null) {
   const normalizedJobId = normalizeJobId(jobId);
   if (normalizedJobId == null) return false;
+  const rawPayload = jobPayload ?? getLibraryScanQueue().getJob(normalizedJobId)?.payload;
+  let payload = rawPayload;
+  if (typeof rawPayload === "string") {
+    try { payload = JSON.parse(rawPayload); } catch { payload = {}; }
+  }
   const scheduledJobId = normalizeJobId(getScanRegistry().jobId);
   if (scheduledJobId != null && scheduledJobId !== normalizedJobId) {
     if (hasLiveScanJob(scheduledJobId)) return false;
@@ -197,13 +208,32 @@ export function claimScheduledLibraryScanJob(jobId) {
     const currentJobId = normalizeJobId(registry.jobId);
     if (currentJobId !== scheduledJobId && currentJobId !== normalizedJobId) return false;
     const isCurrentJob = currentJobId === normalizedJobId;
-    const nextRegistry = {
-      jobId: normalizedJobId,
-      includeLidarr: isCurrentJob && registry.includeLidarr === true,
-    };
+    const nextRegistry = { jobId: normalizedJobId, includeLidarr: false };
     if (isCurrentJob) {
+      nextRegistry.includeLidarr = registry.includeLidarr === true;
       for (const key of ["force", "changedPaths", "inFlightActive", "inFlightPaths", "fullRescanPending"]) {
         if (key in registry) nextRegistry[key] = registry[key];
+      }
+    } else {
+      const hasRecoveryState = currentJobId != null ||
+        Array.isArray(registry.changedPaths) || registry.inFlightActive === true ||
+        registry.fullRescanPending === true || registry.force === true;
+      nextRegistry.includeLidarr = payload?.includeLidarr === true ||
+        (hasRecoveryState && registry.includeLidarr === true);
+      if (payload?.force === true || (hasRecoveryState && registry.force === true)) {
+        nextRegistry.force = true;
+      }
+      const oldFullScan = hasRecoveryState && (
+        registry.fullRescanPending === true ||
+        (registry.inFlightActive === true && !Array.isArray(registry.inFlightPaths)) ||
+        (currentJobId != null && registry.inFlightActive !== true && !Array.isArray(registry.changedPaths))
+      );
+      if (!oldFullScan && Array.isArray(payload?.changedPaths)) {
+        nextRegistry.changedPaths = normalizeChangedPaths([
+          ...(Array.isArray(registry.inFlightPaths) ? registry.inFlightPaths : []),
+          ...(Array.isArray(registry.changedPaths) ? registry.changedPaths : []),
+          ...payload.changedPaths,
+        ]);
       }
     }
     setScanRegistry(nextRegistry);
@@ -324,7 +354,7 @@ const {
   idlePollS: 10,
   retryDelayS: 60,
   filterJob(job) {
-    return claimScheduledLibraryScanJob(job.id);
+    return claimScheduledLibraryScanJob(job.id, job.payload);
   },
   processJob: async (payload, job) => {
     const { lidarrClient } = await import("./lidarrClient.js");
