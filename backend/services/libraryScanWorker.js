@@ -42,6 +42,17 @@ function setScanRegistryIfUnchanged(snapshot, registry) {
     : updateScanRegistryStmt.run(value, LIBRARY_SCAN_REGISTRY_KEY, snapshot.value).changes === 1;
 }
 
+function withoutScheduledScan(registry) {
+  const nextRegistry = { ...registry };
+  for (const key of [
+    "jobId", "includeLidarr", "force", "changedPaths", "inFlightActive",
+    "inFlightPaths", "fullRescanPending",
+  ]) {
+    delete nextRegistry[key];
+  }
+  return nextRegistry;
+}
+
 function normalizeJobId(value) {
   const jobId = Number(value);
   return Number.isSafeInteger(jobId) && jobId > 0 ? jobId : null;
@@ -96,14 +107,7 @@ export function clearScheduledLibraryScan(jobId = null) {
     const registry = snapshot.registry;
     if (!("jobId" in registry)) return;
     if (jobId != null && Number(registry.jobId) !== Number(jobId)) return;
-    delete registry.jobId;
-    delete registry.includeLidarr;
-    delete registry.force;
-    delete registry.changedPaths;
-    delete registry.inFlightActive;
-    delete registry.inFlightPaths;
-    delete registry.fullRescanPending;
-    if (setScanRegistryIfUnchanged(snapshot, registry)) return;
+    if (setScanRegistryIfUnchanged(snapshot, withoutScheduledScan(registry))) return;
   }
 }
 
@@ -184,41 +188,71 @@ export function scheduleLibraryScan({
 export function claimScheduledLibraryScanJob(jobId) {
   const normalizedJobId = normalizeJobId(jobId);
   if (normalizedJobId == null) return false;
-  const registry = getScanRegistry();
-  const scheduledJobId = getScheduledLibraryScanJobId();
+  const scheduledJobId = normalizeJobId(getScanRegistry().jobId);
   if (scheduledJobId != null && scheduledJobId !== normalizedJobId) {
     if (hasLiveScanJob(scheduledJobId)) return false;
-    clearScheduledLibraryScan(scheduledJobId);
   }
-  const nextRegistry = {
-    jobId: normalizedJobId,
-    includeLidarr:
-      Number(registry.jobId) === normalizedJobId && registry.includeLidarr === true,
-  };
-  if (Number(registry.jobId) === normalizedJobId) {
-    for (const key of ["force", "changedPaths", "inFlightActive", "inFlightPaths", "fullRescanPending"]) {
-      if (key in registry) nextRegistry[key] = registry[key];
+  return db.transaction(() => {
+    const registry = getScanRegistry();
+    const currentJobId = normalizeJobId(registry.jobId);
+    if (currentJobId !== scheduledJobId && currentJobId !== normalizedJobId) return false;
+    const isCurrentJob = currentJobId === normalizedJobId;
+    const nextRegistry = {
+      jobId: normalizedJobId,
+      includeLidarr: isCurrentJob && registry.includeLidarr === true,
+    };
+    if (isCurrentJob) {
+      for (const key of ["force", "changedPaths", "inFlightActive", "inFlightPaths", "fullRescanPending"]) {
+        if (key in registry) nextRegistry[key] = registry[key];
+      }
     }
-  }
-  setScanRegistry(nextRegistry);
-  return true;
+    setScanRegistry(nextRegistry);
+    return true;
+  }).immediate();
 }
 
 export function onLibraryScanSuccess(_payload, job) {
-  const registry = getScanRegistry();
-  if (Number(registry.jobId) !== Number(job.id)) return;
-  const pendingFullScan = registry.fullRescanPending === true;
-  const pendingPaths = Array.isArray(registry.changedPaths) ? registry.changedPaths : [];
-  const includeLidarr = registry.includeLidarr === true;
-  const force = registry.force === true;
-  clearScheduledLibraryScan(job.id);
-  if (pendingFullScan || pendingPaths.length > 0) {
+  const pending = db.transaction(() => {
+    const registry = getScanRegistry();
+    if (Number(registry.jobId) !== Number(job.id)) return null;
+    const result = {
+      fullScan: registry.fullRescanPending === true,
+      paths: Array.isArray(registry.changedPaths) ? registry.changedPaths : [],
+      includeLidarr: registry.includeLidarr === true,
+      force: registry.force === true,
+    };
+    setScanRegistry(withoutScheduledScan(registry));
+    return result;
+  }).immediate();
+  if (pending && (pending.fullScan || pending.paths.length > 0)) {
     scheduleLibraryScan({
-      force,
-      includeLidarr,
-      changedPaths: pendingFullScan ? null : pendingPaths,
+      force: pending.force,
+      includeLidarr: pending.includeLidarr,
+      changedPaths: pending.fullScan ? null : pending.paths,
     });
   }
+}
+
+export function beginLibraryScanJob(jobId, payload) {
+  return db.transaction(() => {
+    const registry = getScanRegistry();
+    const isCurrentJob = Number(registry.jobId) === Number(jobId);
+    const includeLidarr = payload?.includeLidarr === true ||
+      (isCurrentJob && registry.includeLidarr === true);
+    const force = payload?.force === true ||
+      (isCurrentJob && registry.force === true);
+    const changedPaths = resolveLibraryScanChangedPaths(registry, force);
+    if (isCurrentJob) {
+      setScanRegistry({
+        ...registry,
+        changedPaths: [],
+        inFlightActive: true,
+        inFlightPaths: changedPaths,
+        fullRescanPending: false,
+      });
+    }
+    return { includeLidarr, force, changedPaths };
+  }).immediate();
 }
 
 export function onLibraryScanFinalFailure(job) {
@@ -297,22 +331,7 @@ const {
     const { scanConfiguredLibrary } = await import("./libraryIndexService.js");
     const { retryPlaybackRetainedFiles } = await import("./playback/playbackFileRetention.js");
     await retryPlaybackRetainedFiles();
-    const registry = getScanRegistry();
-    const includeLidarr =
-      payload?.includeLidarr === true ||
-      (Number(registry.jobId) === Number(job.id) && registry.includeLidarr === true);
-    const force = payload?.force === true ||
-      (Number(registry.jobId) === Number(job.id) && registry.force === true);
-    const changedPaths = resolveLibraryScanChangedPaths(registry, force);
-    if (Number(registry.jobId) === Number(job.id)) {
-      setScanRegistry({
-        ...registry,
-        changedPaths: [],
-        inFlightActive: true,
-        inFlightPaths: changedPaths,
-        fullRescanPending: false,
-      });
-    }
+    const { includeLidarr, force, changedPaths } = beginLibraryScanJob(job.id, payload);
     const scanResult = await scanConfiguredLibrary({
       lidarrClient,
       includeLidarr,

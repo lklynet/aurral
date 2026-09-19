@@ -34,20 +34,28 @@ export function createFlowPlanRunner({ forkProcess = fork, timeoutMs = PLAN_TIME
         settled = true;
         clearTimeout(timer);
         child.removeListener("message", onMessage);
-        child.removeListener("error", onError);
         child.removeListener("exit", onExit);
         if (acknowledge && child.exitCode === null && child.signalCode === null) {
           const exitTimer = setTimeout(() => {
             try { child.kill(); } catch {}
           }, 5000);
           exitTimer.unref?.();
-          child.once("exit", () => clearTimeout(exitTimer));
+          child.once("exit", () => {
+            clearTimeout(exitTimer);
+            child.removeListener("error", onError);
+          });
           try {
-            child.send({ type: "flow-plan-ack" });
+            child.send({ type: "flow-plan-ack" }, (sendError) => {
+              if (!sendError) return;
+              clearTimeout(exitTimer);
+              try { child.kill(); } catch {}
+            });
           } catch {
             clearTimeout(exitTimer);
             try { child.kill(); } catch {}
           }
+        } else {
+          child.removeListener("error", onError);
         }
         if (error) reject(error);
         else resolve(plan);
@@ -68,7 +76,7 @@ export function createFlowPlanRunner({ forkProcess = fork, timeoutMs = PLAN_TIME
         finish(new Error("Flow planning timed out"));
       }, timeoutMs);
       child.on("message", onMessage);
-      child.once("error", onError);
+      child.on("error", onError);
       child.once("exit", onExit);
       try {
         child.send({ type: "build-flow-plan", flow, options });

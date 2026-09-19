@@ -8,10 +8,11 @@ function fakePlanner() {
   child.exitCode = null;
   child.signalCode = null;
   child.killed = false;
-  child.send = (message) => {
+  child.send = (message, callback) => {
     if (message.type === "flow-plan-ack") {
       child.acknowledged = true;
       child.exitCode = 0;
+      callback?.(null);
       queueMicrotask(() => child.emit("exit", 0, null));
     } else {
       child.request = message;
@@ -68,6 +69,30 @@ test("flow planning acknowledges an error before the planner exits", async () =>
     await assert.rejects(pending, /Plan failed/);
     assert.equal(child.acknowledged, true);
     assert.equal(child.killed, false);
+  } finally {
+    if (prior === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = prior;
+  }
+});
+
+test("planner acknowledgement failures are handled while the child is exiting", async () => {
+  const prior = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
+  const child = fakePlanner();
+  let ackCallback;
+  child.send = (message, callback) => {
+    if (message.type === "flow-plan-ack") ackCallback = callback;
+  };
+  try {
+    const run = createFlowPlanRunner({ forkProcess: () => child, timeoutMs: 500 });
+    const pending = run({ id: "flow-4" });
+    child.emit("message", { type: "flow-plan-result", plan: { primaryTracks: [] } });
+    await pending;
+    assert.doesNotThrow(() => child.emit("error", new Error("child exited")));
+    ackCallback(new Error("IPC closed"));
+    assert.equal(child.killed, true);
+    child.emit("exit", 1, null);
+    assert.equal(child.listenerCount("error"), 0);
   } finally {
     if (prior === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = prior;
