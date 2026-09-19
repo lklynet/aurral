@@ -117,9 +117,39 @@ test("stale album metadata is served while one refresh runs in the background", 
     assert.equal(stale.title, "Album v1");
     assert.equal(staleAgain.title, "Album v1");
 
-    await new Promise((resolve) => setTimeout(resolve, 180));
+    const refreshed = await new Promise((resolve, reject) => {
+      let settled = false;
+      let pollTimer;
+      const timeout = setTimeout(
+        () => {
+          settled = true;
+          clearTimeout(pollTimer);
+          reject(new Error("Timed out waiting for the stale metadata refresh"));
+        },
+        1000,
+      );
+      const poll = async () => {
+        if (settled) return;
+        try {
+          const album = await getAlbumByMbid("album-1");
+          if (settled) return;
+          if (album.title === "Album v2") {
+            settled = true;
+            clearTimeout(timeout);
+            resolve(album);
+            return;
+          }
+          pollTimer = setTimeout(poll, 10);
+        } catch (error) {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          reject(error);
+        }
+      };
+      poll();
+    });
     assert.equal(requests, 2);
-    const refreshed = await getAlbumByMbid("album-1");
     assert.equal(refreshed.title, "Album v2");
   } finally {
     Date.now = originalNow;
@@ -261,13 +291,24 @@ test("a metadata 403 opens a local blocked cooldown for subsequent requests", as
   }
 });
 
-test("search metadata continues to share fresh cache entries", async () => {
+test("search metadata coalesces concurrent misses and shares fresh cache entries", async () => {
   const previousSettings = dbOps.getSettings();
   let requests = 0;
+  let resolveRequestStarted;
+  let releaseResponse;
+  const requestStarted = new Promise((resolve) => {
+    resolveRequestStarted = resolve;
+  });
+  const responseReleased = new Promise((resolve) => {
+    releaseResponse = resolve;
+  });
   const server = await createMockHttpServer((_request, response) => {
     response.setHeader("content-type", "application/json");
-    requests += 1;
-    response.end(JSON.stringify([{ id: `artist-${requests}`, name: "Artist" }]));
+    const requestNumber = ++requests;
+    resolveRequestStarted();
+    responseReleased.then(() => {
+      response.end(JSON.stringify([{ id: `artist-${requestNumber}`, name: "Artist" }]));
+    });
   });
   try {
     dbOps.updateSettings({
@@ -284,11 +325,12 @@ test("search metadata continues to share fresh cache entries", async () => {
     });
     clearMetadataProviderCaches();
 
-    const first = await searchArtists("artist", { limit: 10 });
+    const firstRequest = searchArtists("artist", { limit: 10 });
+    await requestStarted;
+    const secondRequest = searchArtists("artist", { limit: 10 });
+    releaseResponse();
+    const [first, second] = await Promise.all([firstRequest, secondRequest]);
     assert.equal(first.items[0].id, "artist-1");
-    assert.equal(requests, 1);
-
-    const second = await searchArtists("artist", { limit: 10 });
     assert.equal(second.items[0].id, "artist-1");
     assert.equal(requests, 1);
   } finally {
