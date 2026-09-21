@@ -319,6 +319,7 @@ export function registerFlows(router) {
         name: requestedName || `${flow.name} Static`,
         sourceName: flow.name,
         sourceFlowId: flowId,
+        recordHistory: flow.recordHistory !== false,
         tracks,
         ownerUserId: flow.ownerUserId ?? req.user.id,
       });
