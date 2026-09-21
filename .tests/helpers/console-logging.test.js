@@ -3,6 +3,22 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 
 import { isVerboseConsoleEnabled } from "../../backend/config/constants.js";
+import { safeLogDiagnostic } from "../../backend/services/logger.js";
+
+test("log diagnostics redact credentials, collapse lines, and cap length", () => {
+  const error = new Error(
+    "Request to https://user:pass@example.test/api?token=url-secret failed\n" +
+      "Authorization: Bearer bearer-secret token=token-secret ARL=arl-secret",
+  );
+  error.stack = "stack-secret";
+  const diagnostic = safeLogDiagnostic(error);
+  assert.match(diagnostic, /Request to \[redacted URL\] failed/);
+  assert.doesNotMatch(diagnostic, /url-secret|bearer-secret|token-secret|arl-secret|stack-secret|\n/);
+  assert.equal(safeLogDiagnostic("Cookie: session=cookie-secret"), "Cookie=[redacted]");
+  assert.equal(safeLogDiagnostic({ message: "token=object-secret" }), "token=[redacted]");
+  assert.equal(safeLogDiagnostic("x".repeat(1000)).length, 501);
+  assert.equal(safeLogDiagnostic("Connection refused"), "Connection refused");
+});
 
 test("verbose console mode respects explicit environment values", () => {
   assert.equal(isVerboseConsoleEnabled({ AURRAL_VERBOSE_LOGS: "true" }), true);

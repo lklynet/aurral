@@ -2,7 +2,7 @@ import path from "path";
 import fs from "fs/promises";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 import { getDownloadClient } from "./download/downloadClientSettings.js";
-import { logger } from "./logger.js";
+import { logger, safeLogDiagnostic } from "./logger.js";
 import {
   buildSourceCandidates,
   hasUsableSearchCandidates,
@@ -96,7 +96,10 @@ async function handleDeemixSearch(payload, helpers) {
   import("./aurralHistoryService.js")
     .then(({ recordTrackJobSearching }) => recordTrackJobSearching(job))
     .catch((err) => {
-      console.warn(err);
+      logger.warn("deemix", "Could not record search history", {
+        jobId: job.id,
+        reason: safeLogDiagnostic(err),
+      });
     });
 
   const resolvedTrack = {
@@ -114,10 +117,10 @@ async function handleDeemixSearch(payload, helpers) {
       const results = await client.search(query, { limit: SEARCH_LIMIT });
       mergeSearchResults(aggregated, seen, results, (entry) => String(entry.id || "").trim());
     } catch (error) {
-      lastError = error?.message || String(error);
+      lastError = safeLogDiagnostic(error);
       logger.warn("deemix", "deemix search failed", {
         jobId: job.id,
-        query,
+        query: safeLogDiagnostic(query),
         error: lastError,
       });
     }
@@ -131,7 +134,7 @@ async function handleDeemixSearch(payload, helpers) {
     request: resolvedTrack,
   });
   if (evaluation.decision === "error") {
-    return helpers.failOrTryNextSource(payload, job, evaluation.error?.message || "track matcher unavailable", {
+    return helpers.failOrTryNextSource(payload, job, safeLogDiagnostic(evaluation.error?.message || "track matcher unavailable"), {
       queryCount: queries.length,
       rawResultCount: aggregated.length,
     });
@@ -179,7 +182,10 @@ async function handleDeemixDownload(payload, helpers) {
   import("./aurralHistoryService.js")
     .then(({ recordTrackJobDownloading }) => recordTrackJobDownloading(job))
     .catch((err) => {
-      console.warn(err);
+      logger.warn("deemix", "Could not record download history", {
+        jobId: job.id,
+        reason: safeLogDiagnostic(err),
+      });
     });
 
   const client = getDeemixClient();
@@ -187,10 +193,9 @@ async function handleDeemixDownload(payload, helpers) {
   try {
     queueUuid = await client.addToQueue(url, candidate.raw.id);
   } catch (error) {
-    const message = error?.message || String(error);
+    const message = safeLogDiagnostic(error);
     logger.warn("deemix", "deemix queue submission failed", {
       jobId: job.id,
-      url,
       error: message,
     });
     if (hasNextCandidate(payload)) {
@@ -230,7 +235,7 @@ async function handleDeemixPoll(payload, helpers) {
     await client.removeFromQueue(payload.queueUuid).catch((error) => {
       logger.warn("deemix", "Could not remove timed-out queue item", {
         jobId: job.id,
-        reason: error?.message || String(error),
+        reason: safeLogDiagnostic(error),
       });
     });
     if (hasNextCandidate(payload)) {
@@ -245,8 +250,8 @@ async function handleDeemixPoll(payload, helpers) {
   } catch (error) {
     logger.warn("deemix", "deemix queue poll failed", {
       jobId: job.id,
-      uuid: payload.queueUuid,
-      error: error?.message || String(error),
+      uuid: safeLogDiagnostic(payload.queueUuid),
+      error: safeLogDiagnostic(error),
     });
     return { ...payload, phase: "poll", delaySeconds: POLL_DELAY_SECONDS, pollAttempts };
   }
@@ -260,10 +265,10 @@ async function handleDeemixPoll(payload, helpers) {
     await client.removeFromQueue(payload.queueUuid).catch((error) => {
       logger.warn("deemix", "Could not remove failed queue item", {
         jobId: job.id,
-        reason: error?.message || String(error),
+        reason: safeLogDiagnostic(error),
       });
     });
-    const reason = readQueueError(queueItem) || `deemix download ${status || "failed"}`;
+    const reason = safeLogDiagnostic(readQueueError(queueItem) || `deemix download ${status || "failed"}`);
     if (hasNextCandidate(payload)) {
       return buildNextCandidatePayload(payload, { queueUuid: null });
     }
@@ -281,7 +286,7 @@ async function handleDeemixFinalize(payload, helpers) {
     .catch((error) => {
       logger.warn("deemix", "Could not remove completed queue item", {
         jobId: payload.jobId,
-        reason: error?.message || String(error),
+        reason: safeLogDiagnostic(error),
       });
     });
   const job = downloadTracker.getJob(payload.jobId);
@@ -324,7 +329,7 @@ async function handleDeemixFinalize(payload, helpers) {
     ) {
       return null;
     }
-    const reason = validation.reason || "deemix download failed track validation";
+    const reason = safeLogDiagnostic(validation.reason || "deemix download failed track validation");
     if (hasNextCandidate(payload)) {
       return buildNextCandidatePayload(payload, { queueUuid: null, downloadedPath: null });
     }
@@ -335,7 +340,10 @@ async function handleDeemixFinalize(payload, helpers) {
   import("./aurralHistoryService.js")
     .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
     .catch((err) => {
-      console.warn(err);
+      logger.warn("deemix", "Could not record file move history", {
+        jobId: job.id,
+        reason: safeLogDiagnostic(err),
+      });
     });
   const playlistRoot = resolvePlaylistRoot();
   const destination = String(payload.destination || "").trim();
