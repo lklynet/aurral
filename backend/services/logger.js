@@ -3,13 +3,28 @@ import { isVerboseConsoleEnabled } from "../config/constants.js";
 const verboseEnabled = isVerboseConsoleEnabled();
 
 const MAX_LOG_DIAGNOSTIC_LENGTH = 500;
+const MAX_HTML_TITLE_SCAN_LENGTH = 8192;
 const SENSITIVE_LOG_KEY = /^(?:arl|authorization|(?:set[_-]?)?cookie|password|(?:client[_-]?)?secret|session|(?:access[_-]?|refresh[_-]?|auth[_-]?)?token|(?:x[_-]?)?api[_-]?key)$/i;
+
+function htmlErrorTitle(raw) {
+  const head = raw.slice(0, MAX_HTML_TITLE_SCAN_LENGTH);
+  const lowerHead = head.toLowerCase();
+  const start = lowerHead.indexOf("<title");
+  if (start < 0) return null;
+  const openEnd = head.indexOf(">", start + 6);
+  const nextTag = head.indexOf("<", start + 1);
+  if (openEnd < 0 || openEnd - start > 256 || (nextTag >= 0 && nextTag < openEnd)) return null;
+  const close = lowerHead.indexOf("</title>", openEnd + 1);
+  const nestedTag = head.indexOf("<", openEnd + 1);
+  if (close < 0 || close - openEnd - 1 > 200 || nestedTag !== close) return null;
+  return head.slice(openEnd + 1, close).trim() || null;
+}
 
 export function safeLogDiagnostic(value) {
   const raw = typeof value?.message === "string" ? value.message : String(value ?? "");
   const isHtml = /^\s*(?:<!doctype html|<html\b)/i.test(raw);
   const status = Number(value?.statusCode ?? value?.response?.status);
-  const title = isHtml ? raw.match(/<title[^>]*>([^<]{1,200})<\/title>/i)?.[1]?.trim() : null;
+  const title = isHtml ? htmlErrorTitle(raw) : null;
   const diagnostic = isHtml
     ? `Upstream HTML error${Number.isInteger(status) && status >= 400 ? ` (${status})` : ""}${title ? `: ${title}` : ""}`
     : raw;

@@ -31,6 +31,19 @@ test("log diagnostics redact credentials, collapse lines, and cap length", () =>
   assert.equal(safeLogDiagnostic(htmlError), "Upstream HTML error (524): 524: A timeout occurred");
 });
 
+test("HTML error titles are extracted without repeated scans of malformed input", () => {
+  assert.equal(
+    safeLogDiagnostic("<html><head><TITLE class=\"status\">Gateway error</TITLE></head></html>"),
+    "Upstream HTML error: Gateway error",
+  );
+  const malformed = `<!doctype html><html><head>${"<title".repeat(5000)}</head></html>`;
+  assert.equal(safeLogDiagnostic(malformed), "Upstream HTML error");
+  assert.equal(
+    safeLogDiagnostic(`<html><title>${"x".repeat(201)}</title></html>`),
+    "Upstream HTML error",
+  );
+});
+
 test("logger sink redacts nested provider diagnostics and credential fields", async () => {
   const output = [];
   const originalError = console.error;
