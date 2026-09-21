@@ -227,7 +227,12 @@ async function handleDeemixPoll(payload, helpers) {
   const client = getDeemixClient();
   const pollAttempts = Number(payload.pollAttempts || 0) + 1;
   if (pollAttempts > MAX_POLL_ATTEMPTS) {
-    await client.removeFromQueue(payload.queueUuid).catch(() => {});
+    await client.removeFromQueue(payload.queueUuid).catch((error) => {
+      logger.warn("deemix", "Could not remove timed-out queue item", {
+        jobId: job.id,
+        reason: error?.message || String(error),
+      });
+    });
     if (hasNextCandidate(payload)) {
       return buildNextCandidatePayload(payload, { queueUuid: null });
     }
@@ -252,7 +257,12 @@ async function handleDeemixPoll(payload, helpers) {
   }
   const downloadedPath = readQueuedFilePath(queueItem);
   if (!downloadedPath) {
-    await client.removeFromQueue(payload.queueUuid).catch(() => {});
+    await client.removeFromQueue(payload.queueUuid).catch((error) => {
+      logger.warn("deemix", "Could not remove failed queue item", {
+        jobId: job.id,
+        reason: error?.message || String(error),
+      });
+    });
     const reason = readQueueError(queueItem) || `deemix download ${status || "failed"}`;
     if (hasNextCandidate(payload)) {
       return buildNextCandidatePayload(payload, { queueUuid: null });
@@ -268,7 +278,12 @@ async function handleDeemixFinalize(payload, helpers) {
   // Dropping it once here covers every exit below, a job held for review included.
   await getDeemixClient()
     .removeFromQueue(payload.queueUuid)
-    .catch(() => {});
+    .catch((error) => {
+      logger.warn("deemix", "Could not remove completed queue item", {
+        jobId: payload.jobId,
+        reason: error?.message || String(error),
+      });
+    });
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;

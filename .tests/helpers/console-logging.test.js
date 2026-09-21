@@ -62,12 +62,14 @@ test("regular logger hides routine info and debug output", async () => {
       `../../backend/services/logger.js?regular-test=${Date.now()}`
     );
     logger.info("test", "routine info");
+    logger.info("playlist-import", "Playlist import job completed");
     logger.debug("test", "debug detail");
     logger.warn("test", "important warning");
 
     const rendered = (entry) => entry.slice(1).map(String).join(" ");
 
     assert.doesNotMatch(output.map(rendered).join("\n"), /routine info|debug detail/);
+    assert.match(output.map(rendered).join("\n"), /Playlist import job completed/);
     assert.match(output.map(rendered).join("\n"), /important warning/);
   } finally {
     if (previousVerboseLogs === undefined) delete process.env.AURRAL_VERBOSE_LOGS;
@@ -91,6 +93,9 @@ test("regular console keeps startup and problem messages", async () => {
     false,
   );
   assert.equal(shouldEmitDefaultConsoleMessage("warn", ["warning"]), true);
+  assert.equal(shouldEmitDefaultConsoleMessage("log", ["Playlist import queued"]), true);
+  assert.equal(shouldEmitDefaultConsoleMessage("log", ["Playlist import job completed"]), true);
+  assert.equal(shouldEmitDefaultConsoleMessage("log", ["Playlist import sync completed"]), true);
   assert.equal(shouldEmitDefaultConsoleMessage("debug", ["details"]), false);
 });
 

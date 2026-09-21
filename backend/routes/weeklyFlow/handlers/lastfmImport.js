@@ -3,6 +3,7 @@ import {
   fetchImportedPlaylistTracks,
 } from "../../../services/importLists/importPlaylist.js";
 import { lastfmStationClient } from "../../../services/importLists/lastfmStations.js";
+import { logger } from "../../../services/logger.js";
 
 const getErrorStatus = (error) => error?.statusCode || error?.response?.status || 500;
 
@@ -20,6 +21,9 @@ export function registerLastfmImport(router) {
         : req.query?.username;
       res.json(await lastfmStationClient.listPlaylists(req.user.id, requestedUsername));
     } catch (error) {
+      logger.warn("playlist-import", "Last.fm station listing failed", {
+        reason: error?.message || String(error),
+      });
       res.status(getErrorStatus(error)).json({
         error: "Failed to fetch Last.fm stations",
         message: error?.message || "Unknown error",
@@ -40,6 +44,9 @@ export function registerLastfmImport(router) {
         previewTracks: tracks.slice(0, 3),
       });
     } catch (error) {
+      logger.warn("playlist-import", "Last.fm station preview failed", {
+        reason: error?.message || String(error),
+      });
       res.status(getErrorStatus(error)).json({
         error: "Failed to preview Last.fm station",
         message: error?.message || "Unknown error",
@@ -48,6 +55,7 @@ export function registerLastfmImport(router) {
   });
 
   router.post("/import/lastfm", async (req, res) => {
+    let stage = "fetch";
     try {
       const playlistImport = getPlaylistImport(req.body);
       const name = String(req.body?.name || "").trim();
@@ -59,10 +67,11 @@ export function registerLastfmImport(router) {
         return res.status(400).json({ error: "playlistId is required" });
       }
       if (!name) return res.status(400).json({ error: "name is required" });
-      const { tracks, user } = await fetchImportedPlaylistTracks({
+      const { tracks, stats, user } = await fetchImportedPlaylistTracks({
         userId: req.user.id,
         ...playlistImport,
       });
+      stage = "enqueue";
       const result = await enqueueImportedPlaylist({
         ownerUserId: req.user.id,
         name,
@@ -71,6 +80,7 @@ export function registerLastfmImport(router) {
         externalUsername: playlistImport.externalUsername || user || "",
         externalName,
         tracks,
+        sourceStats: stats,
         syncEnabled,
         syncIntervalHours,
         keepRemovedTracks,
@@ -84,12 +94,21 @@ export function registerLastfmImport(router) {
       });
     } catch (error) {
       if (error?.code === "SHARED_PLAYLIST_NAME_CONFLICT") {
+        logger.debug("playlist-import", "Last.fm station import name already exists", {
+          playlistName: String(req.body?.name || "").trim() || null,
+        });
         return res.status(409).json({
           error: "Playlist name already exists",
           message: error.message,
         });
       }
-      res.status(getErrorStatus(error)).json({
+      const status = getErrorStatus(error);
+      logger[status >= 500 ? "error" : "warn"]("playlist-import", "Last.fm station import request failed", {
+        playlistName: String(req.body?.name || "").trim() || null,
+        stage,
+        reason: error?.message || String(error),
+      });
+      res.status(status).json({
         error: "Failed to import Last.fm station",
         message: error?.message || "Unknown error",
       });

@@ -5,6 +5,7 @@ import { listenbrainzPlaylistClient } from "./listenbrainzPlaylists.js";
 import { lastfmStationClient } from "./lastfmStations.js";
 import { normalizeImportSource } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { weeklyFlowOperationQueue } from "../weeklyFlow/weeklyFlowOperationQueue.js";
+import { logger } from "../logger.js";
 
 export async function fetchImportedPlaylistTracks({
   provider,
@@ -41,6 +42,7 @@ export async function enqueueImportedPlaylist({
   externalUsername,
   externalName,
   tracks,
+  sourceStats = null,
   syncEnabled,
   syncIntervalHours,
   keepRemovedTracks,
@@ -66,6 +68,14 @@ export async function enqueueImportedPlaylist({
     tracks,
     ownerUserId,
     importSource,
+  });
+  logger.info("playlist-import", "Playlist import queued", {
+    provider,
+    playlistName: name,
+    playlistId: safePlaylistId,
+    operationId: result.operationId,
+    trackCount: tracks.length,
+    ...(sourceStats ? { skipped: sourceStats } : {}),
   });
   return { ...result, tracksQueued: tracks.length };
 }

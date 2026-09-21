@@ -708,7 +708,10 @@ export class WeeklyFlowWorker {
             downloadTracker.setFailed(job.id, error.message);
             import("../aurralHistoryService.js")
               .then(({ recordTrackJobFailed }) => recordTrackJobFailed(job, error.message))
-              .catch(() => {});
+              .catch((historyError) => {
+                console.warn(`[WeeklyFlowWorker] Could not record failed job ${job.id} in history:`,
+                  historyError?.message || historyError);
+              });
             await this.checkPlaylistComplete(job.playlistType);
           })
           .finally(() => {

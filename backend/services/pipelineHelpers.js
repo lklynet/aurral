@@ -1,3 +1,5 @@
+import { logger } from "./logger.js";
+
 export function getPayloadCandidate(payload) {
   const candidateIndex = Number(payload?.candidateIndex || 0);
   return (
@@ -47,7 +49,12 @@ export function blockPipelineJobForReview({
   if (!downloadTracker.setBlocked(job.id, reason, stagingPath)) return false;
   import("./aurralHistoryService.js")
     .then(({ recordTrackJobBlocked }) => recordTrackJobBlocked(job, reason))
-    .catch(() => {});
+    .catch((error) => {
+      logger.warn("history", "Could not record blocked download job", {
+        jobId: job.id,
+        reason: error?.message || String(error),
+      });
+    });
   return true;
 }
 
@@ -79,7 +86,12 @@ export async function finalizePipelineJobSuccess({
 
   import("./aurralHistoryService.js")
     .then(({ recordTrackJobCompleted }) => recordTrackJobCompleted(job))
-    .catch(() => {});
+    .catch((error) => {
+      logger.warn("history", "Could not record completed download job", {
+        jobId: job.id,
+        reason: error?.message || String(error),
+      });
+    });
 
   const playlistType = job.playlistId || job.playlistType;
   const { playlistManager } = await import("./weeklyFlow/weeklyFlowPlaylistManager.js");

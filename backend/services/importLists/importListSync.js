@@ -1,6 +1,7 @@
 import { flowPlaylistConfig } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { fetchImportedPlaylistTracks } from "./importPlaylist.js";
 import { updateSharedPlaylist } from "../weeklyFlow/weeklyFlowOperations.js";
+import { logger } from "../logger.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -55,6 +56,14 @@ export async function syncSharedPlaylistImport({
       importSource: syncImportSource,
       mergeImportSource: true,
     });
+    logger.info("playlist-import", "Playlist import sync completed", {
+      provider: playlist.importSource.provider,
+      playlistName: playlist.name,
+      playlistId: playlist.id,
+      trackCount: tracks.length,
+      tracksQueued: Number(result?.tracksQueued || 0),
+      tracksReused: Number(result?.tracksReused || 0),
+    });
     return {
       skipped: false,
       trackCount: tracks.length,
@@ -62,6 +71,12 @@ export async function syncSharedPlaylistImport({
       tracksReused: Number(result?.tracksReused || 0),
     };
   } catch (error) {
+    logger.error("playlist-import", "Playlist import sync failed", {
+      provider: playlist.importSource.provider,
+      playlistName: playlist.name,
+      playlistId: playlist.id,
+      reason: error?.message || String(error),
+    });
     const latestPlaylist = flowPlaylistConfig.getSharedPlaylist(playlist.id);
     flowPlaylistConfig.updateSharedPlaylist(playlist.id, {
       importSource: {
