@@ -27,6 +27,16 @@ const updateAvailability = (id, enabled, user = { id: 1, role: "user" }) => {
   }, response);
   return response;
 };
+const updateRecordHistory = (id, enabled, user = { id: 1, role: "user" }) => {
+  const response = { statusCode: 200, body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; return this; },
+  };
+  handlers.get("/shared-playlists/:playlistId/record-history")({
+    params: { playlistId: id }, body: { enabled }, user,
+  }, response);
+  return response;
+};
 
 test.beforeEach(() => {
   for (const playlist of flowPlaylistConfig.getSharedPlaylists()) {
@@ -73,8 +83,46 @@ test("availability validates input and respects playlist ownership", () => {
   assert.equal(updateAvailability(playlist.id, true, { id: 2, role: "admin" }).statusCode, 200);
 });
 
+test("history is enabled by default, persists per playlist, and does not queue playback changes", async (t) => {
+  t.mock.method(weeklyFlowOperationQueue, "enqueuePayload", () => { throw new Error("History preferences must not queue downloads"); });
+  const first = flowPlaylistConfig.createSharedPlaylist({ name: "History On", ownerUserId: 1 });
+  const second = flowPlaylistConfig.createSharedPlaylist({ name: "History Off", ownerUserId: 1, recordHistory: false });
+
+  assert.equal(first.recordHistory, true);
+  assert.equal(second.recordHistory, false);
+  assert.equal(updateRecordHistory(first.id, false).body.recordHistory, false);
+  assert.equal(flowPlaylistConfig.getSharedPlaylist(first.id).recordHistory, false);
+  assert.equal(flowPlaylistConfig.getSharedPlaylist(second.id).recordHistory, false);
+  assert.equal(dbOps.getSettings().sharedPlaylists.find((p) => p.id === first.id).recordHistory, false);
+
+  const { flowPlaylistConfig: reloaded } = await import("../../backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js?record-history-saved");
+  assert.equal(reloaded.getSharedPlaylist(first.id).recordHistory, false);
+  assert.equal(reloaded.getSharedPlaylist(second.id).recordHistory, false);
+  const snapshot = getWeeklyFlowStatusSnapshot({ user: { id: 1, role: "user" } });
+  assert.equal(snapshot.sharedPlaylists.find((p) => p.id === first.id).recordHistory, false);
+  assert.equal(updateRecordHistory(first.id, true).body.recordHistory, true);
+  assert.equal(flowPlaylistConfig.getSharedPlaylist(first.id).recordHistory, true);
+});
+
+test("history preference validates input and respects playlist ownership", () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Private History", ownerUserId: 1 });
+  for (const value of ["true", 1, null, undefined]) {
+    assert.equal(updateRecordHistory(playlist.id, value).statusCode, 400);
+  }
+  assert.equal(updateRecordHistory(playlist.id, false, { id: 2, role: "user" }).statusCode, 404);
+  assert.equal(updateRecordHistory("missing", false).statusCode, 404);
+  assert.equal(flowPlaylistConfig.getSharedPlaylist(playlist.id).recordHistory, true);
+  assert.equal(updateRecordHistory(playlist.id, false, { id: 2, role: "admin" }).statusCode, 200);
+});
+
 test("existing playlists without the preference start disabled after loading", async () => {
   dbOps.updateSettings({ sharedPlaylists: [{ id: "legacy", name: "Existing", ownerUserId: 1, tracks: [] }] });
   const { flowPlaylistConfig: reloaded } = await import("../../backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js?availability-reload");
   assert.equal(reloaded.getSharedPlaylist("legacy").showTrackAvailability, false);
+});
+
+test("existing playlists without history preference start enabled after loading", async () => {
+  dbOps.updateSettings({ sharedPlaylists: [{ id: "legacy-history", name: "Existing", ownerUserId: 1, tracks: [] }] });
+  const { flowPlaylistConfig: reloaded } = await import("../../backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js?history-reload");
+  assert.equal(reloaded.getSharedPlaylist("legacy-history").recordHistory, true);
 });

@@ -157,6 +157,20 @@ export function registerSharedPlaylists(router) {
     return res.json({ success: true, showTrackAvailability: playlist.showTrackAvailability });
   });
 
+  router.put("/shared-playlists/:playlistId/record-history", (req, res) => {
+    const { playlistId } = req.params;
+    if (!getAccessibleSharedPlaylist(req.user, playlistId)) {
+      return res.status(404).json({ error: "Shared playlist not found" });
+    }
+    if (typeof req.body?.enabled !== "boolean") {
+      return res.status(400).json({ error: "enabled must be a boolean" });
+    }
+    const playlist = flowPlaylistConfig.updateSharedPlaylist(playlistId, {
+      recordHistory: req.body.enabled,
+    });
+    return res.json({ success: true, recordHistory: playlist.recordHistory });
+  });
+
   router.put("/shared-playlists/:playlistId", async (req, res) => {
     try {
       const { playlistId } = req.params;
