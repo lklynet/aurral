@@ -1205,6 +1205,29 @@
   border-bottom: 0.0625rem solid var(--aurral-border);
 }
 
+.arr-webhook-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.arr-webhook-card__test-status {
+  margin: 0 0 0.75rem;
+  color: var(--arr-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.arr-webhook-card__test-status--success {
+  color: var(--aurral-success);
+}
+
+.arr-webhook-card__test-status--error {
+  color: var(--aurral-danger);
+}
+
 .arr-webhook-card__title {
   display: flex;
   align-items: center;

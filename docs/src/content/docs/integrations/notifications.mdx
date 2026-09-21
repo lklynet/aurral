@@ -44,3 +44,19 @@ Toggle which events fire for your webhooks:
 - **Notify when a request is available**
 
 Aurral does not send events that you turn off, even if you configured webhook URLs.
+
+Select **Test webhook** on a webhook card to send that webhook's current URL,
+body, and headers immediately. The test does not depend on the notification
+event switches and does not save the settings. A blank body sends a `GET`
+request. A body sends a `POST` request with the same placeholder interpolation
+used by notification events.
+
+Test requests use these placeholder values:
+
+- `$event`: `webhookTest`
+- `$flowName`: `Aurral webhook test`
+- `$flowPath`: `/aurral/test-webhook`
+- `$albumName`: `Test album`
+- `$artistName`: `Test artist`
+- `$username`: `webhook-test-user`
+- `$userId`: `webhook-test-user`

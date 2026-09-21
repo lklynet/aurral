@@ -15,8 +15,14 @@ const [isolatedState, { db }, { dbOps }, notifications] = await setupIsolatedBac
   "backend/services/notificationService.js",
 );
 
-const { interpolateBody, deliverQueuedNotification, notifyRequestMade, notifyRequestAvailable, notifyWeeklyFlowDone } =
-  notifications;
+const {
+  interpolateBody,
+  deliverQueuedNotification,
+  sendWebhookTest,
+  notifyRequestMade,
+  notifyRequestAvailable,
+  notifyWeeklyFlowDone,
+} = notifications;
 
 async function withCaptureServer(handler) {
   const requests = [];
@@ -32,6 +38,7 @@ async function withCaptureServer(handler) {
       requests.push({
         method: req.method,
         url: req.url,
+        headers: req.headers,
         body,
       });
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -155,6 +162,46 @@ test("deliverQueuedNotification interpolates request webhook bodies", async () =
       by: "alice",
       event: "notifyRequestAvailable",
     });
+  });
+});
+
+test("sendWebhookTest sends a GET without requiring a notification event", async () => {
+  await withCaptureServer(async ({ baseUrl, waitFor }) => {
+    await sendWebhookTest({
+      url: `${baseUrl}/hook`,
+      body: "",
+      headers: [{ key: "X-Webhook-Test", value: "get" }],
+    });
+
+    const requests = await waitFor(1);
+    assert.equal(requests[0].method, "GET");
+    assert.equal(requests[0].url, "/hook");
+    assert.equal(requests[0].body, null);
+    assert.equal(requests[0].headers["x-webhook-test"], "get");
+  });
+});
+
+test("sendWebhookTest sends a POST with fixed placeholder values and headers", async () => {
+  await withCaptureServer(async ({ baseUrl, waitFor }) => {
+    await sendWebhookTest({
+      url: `${baseUrl}/hook`,
+      body: '{"event":"$event","flow":"$flowName","path":"$flowPath","album":"$albumName","artist":"$artistName","user":"$username","id":"$userId"}',
+      headers: [{ key: "X-Webhook-Test", value: "post" }],
+    });
+
+    const requests = await waitFor(1);
+    assert.equal(requests[0].method, "POST");
+    assert.equal(requests[0].url, "/hook");
+    assert.deepEqual(requests[0].body, {
+      event: "webhookTest",
+      flow: "Aurral webhook test",
+      path: "/aurral/test-webhook",
+      album: "Test album",
+      artist: "Test artist",
+      user: "webhook-test-user",
+      id: "webhook-test-user",
+    });
+    assert.equal(requests[0].headers["x-webhook-test"], "post");
   });
 });
 

@@ -127,5 +127,8 @@ export const clearSettingsStaleTasks = () =>
 export const testGotifyConnection = (url, token) =>
   postData("/settings/gotify/test", { url, token });
 
+export const testWebhookConnection = (webhook) =>
+  postData("/settings/webhook/test", webhook);
+
 export const applyLidarrCommunityGuide = () =>
   postData("/settings/lidarr/apply-community-guide");

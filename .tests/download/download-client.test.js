@@ -213,3 +213,94 @@ test("download client test routes validate transient URLs", async () => {
     message: "Server URL: Target host is blocked",
   });
 });
+
+function getWebhookTestRoute() {
+  const routes = [];
+  const router = {
+    get(path, handler) {
+      routes.push({ method: "GET", path, handler });
+    },
+    post(path, handler) {
+      routes.push({ method: "POST", path, handler });
+    },
+  };
+  registerDownloadClients(router);
+  return routes.find(({ method, path }) => method === "POST" && path === "/webhook/test");
+}
+
+function makeResponse() {
+  return {
+    statusCode: 200,
+    payload: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(payload) {
+      this.payload = payload;
+      return this;
+    },
+  };
+}
+
+async function withWebhookReceiver(status, handler) {
+  const requests = [];
+  const server = createServer((req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      requests.push({ method: req.method, url: req.url, headers: req.headers, body: Buffer.concat(chunks).toString("utf8") });
+      res.writeHead(status, { "content-type": "text/plain" });
+      res.end("receiver response");
+    });
+  });
+
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const { port } = server.address();
+    await handler({ url: `http://127.0.0.1:${port}/hook`, requests });
+  } finally {
+    await new Promise((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+}
+
+test("webhook test route sends a GET and returns success", async () => {
+  const route = getWebhookTestRoute();
+  await withWebhookReceiver(200, async ({ url, requests }) => {
+    const response = makeResponse();
+    await route.handler({ body: { url, body: "", headers: [] } }, response);
+
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.payload, { success: true, message: "Test webhook sent" });
+    assert.equal(requests[0].method, "GET");
+    assert.equal(requests[0].url, "/hook");
+  });
+});
+
+test("webhook test route rejects missing, non-HTTP(S), and blocked URLs", async () => {
+  const route = getWebhookTestRoute();
+  for (const body of [{}, { url: "ftp://example.com/hook" }, { url: "http://169.254.169.254" }]) {
+    const response = makeResponse();
+    await route.handler({ body }, response);
+    assert.equal(response.statusCode, 400);
+  }
+});
+
+test("webhook test route reports receiver failures", async () => {
+  const route = getWebhookTestRoute();
+  await withWebhookReceiver(500, async ({ url }) => {
+    const response = makeResponse();
+    await route.handler({ body: { url, body: "", headers: [] } }, response);
+
+    assert.equal(response.statusCode, 500);
+    assert.deepEqual(response.payload, {
+      error: "Webhook test failed",
+      message: "Request failed with status code 500",
+    });
+  });
+});
