@@ -180,7 +180,7 @@ test("preserves Subsonic error codes for missing native IDs", async () => {
   }
 });
 
-test("replaces playlist entries with repeated Subsonic parameters", async () => {
+test("replaces playlist entries without changing visibility", async () => {
   const originalFetch = globalThis.fetch;
   const requests = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -206,7 +206,7 @@ test("replaces playlist entries with repeated Subsonic parameters", async () => 
   assert.deepEqual(requests[1].init.body.getAll("songIndexToRemove"), ["0", "1"]);
   assert.deepEqual(requests[1].init.body.getAll("songIdToAdd"), ["song-1", "song-2"]);
   assert.equal(requests[1].init.body.get("name"), "Renamed");
-  assert.equal(requests[1].init.body.get("public"), "true");
+  assert.equal(requests[1].init.body.has("public"), false);
 });
 
 test("batches large playlist replacement requests", async () => {

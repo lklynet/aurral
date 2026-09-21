@@ -278,7 +278,6 @@ export class NavidromeClient {
     await this.request("updatePlaylist", {
       playlistId,
       name,
-      public: true,
       songIndexToRemove: entries.map((_, index) => index),
       songIdToAdd: ids.slice(0, PLAYLIST_SONG_BATCH_SIZE),
     });
