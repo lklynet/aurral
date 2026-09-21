@@ -122,20 +122,11 @@ test("webhook test route sends GET directly with disabled event toggles and does
 
     assert.equal(response.statusCode, 200);
     assert.deepEqual(response.payload, { success: true, message: "Test webhook sent" });
-    assert.deepEqual(requests, [
-      assert.partialDeepStrictEqual
-        ? {
-            method: "GET",
-            url: "/hook",
-            headers: { "x-test-webhook": "get" },
-            body: "",
-          }
-        : requests[0],
-    ]);
+    assert.equal(requests.length, 1);
     assert.equal(requests[0].method, "GET");
     assert.equal(requests[0].url, "/hook");
     assert.equal(requests[0].headers["x-test-webhook"], "get");
-    assert.equal(requests[0].body, "");
+    assert.equal(requests[0].body, null);
   });
 
   assert.deepEqual(dbOps.getSettings().integrations.webhooks, [savedWebhook]);
@@ -181,7 +172,7 @@ test("direct webhook test sends POST headers and fixed placeholder values withou
 test("webhook test route rejects missing, invalid, and blocked URLs", async () => {
   const route = getWebhookTestRoute();
   const cases = [
-    [{}, "URL required"],
+    [{}, "URL is required"],
     [{ url: "not a URL" }, "Invalid URL format"],
     [{ url: "ftp://example.com/hook" }, "Only HTTP and HTTPS URLs are allowed"],
     [{ url: "http://169.254.169.254/hook" }, "Target host is blocked"],

@@ -159,4 +159,31 @@ export function registerDownloadClients(router) {
         .json({ error: "Gotify test failed", message: msg });
     }
   });
+
+  router.post("/webhook/test", async (req, res) => {
+    const webhook =
+      req.body && typeof req.body === "object" && !Array.isArray(req.body)
+        ? { ...req.body }
+        : {};
+    const urlValidation = validateExternalUrl(webhook.url);
+    if (!urlValidation.valid) {
+      return res.status(400).json({ error: urlValidation.error });
+    }
+
+    try {
+      const { sendWebhookTest } =
+        await import("../../../services/notificationService.js");
+      await sendWebhookTest({ ...webhook, url: urlValidation.url });
+      return res.json({ success: true, message: "Test webhook sent" });
+    } catch (error) {
+      const status = error.response?.status;
+      const msg =
+        error.response?.data?.description ||
+        error.response?.data?.error ||
+        error.message;
+      return res
+        .status(status && status >= 400 ? status : 500)
+        .json({ error: "Webhook test failed", message: msg });
+    }
+  });
 }
