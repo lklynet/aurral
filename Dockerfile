@@ -73,7 +73,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && mkdir -p /app/backend/data /config \
     && chown -R nodejs:nodejs /app/backend/data /config
 
-ENV LD_PRELOAD=libjemalloc.so.2
+ENV LD_PRELOAD=libjemalloc.so.2 \
+    MALLOC_CONF=background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000
 
 ADD --chmod=755 --checksum=sha256:1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6 \
     https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp \
