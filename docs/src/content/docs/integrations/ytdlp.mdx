@@ -9,9 +9,9 @@ yt-dlp extracts audio with ffmpeg. Aurral stages the audio outside your media pa
 
 The default staging path is `/config/_staging`. To use another disk, mount it in the Aurral container and set **Settings > Download clients > yt-dlp > Staging path**. Keep this path outside every media-server library.
 
-You do not need a separate daemon. The Docker image includes `yt-dlp` and `ffmpeg`.
+You do not need a separate daemon. The Docker image includes `yt-dlp`, `ffmpeg`, and Node. Aurral enables Node as yt-dlp's JavaScript runtime for current YouTube extraction.
 
-For a bare-metal installation, install both programs on the host. Make sure that `yt-dlp` is on `PATH`.
+For a bare-metal installation, install `yt-dlp` and `ffmpeg` on the host. A supported JavaScript runtime such as Node or Deno is recommended for current YouTube extraction. Make sure that `yt-dlp` and the runtime are on `PATH`.
 
 ## Setup
 

@@ -20,6 +20,7 @@ const [
   { weeklyFlowWorker },
   { queueQualityUpgrade },
   { registerJobs },
+  libraryStore,
 ] = await setupIsolatedBackend(
   "approved-import-path",
   "backend/config/db-sqlite.js",
@@ -30,6 +31,7 @@ const [
   "backend/services/weeklyFlow/weeklyFlowWorker.js",
   "backend/services/qualityProfileService.js",
   "backend/routes/weeklyFlow/handlers/jobs.js",
+  "backend/services/libraryMediaStore.js",
 );
 
 const app = express();
@@ -77,6 +79,64 @@ test.beforeEach(async () => {
     downloadFolderPath: process.env.DOWNLOAD_FOLDER,
     playlistArtwork: { style: "aurral" },
   });
+});
+
+test("playlist jobs annotate tracks that are already in the canonical library", async () => {
+  const playlistId = "library-ownership-annotation";
+  flowPlaylistConfig.createSharedPlaylist({
+    id: playlistId,
+    name: "Library ownership",
+    tracks: [
+      { artistName: "Owned Artist", trackName: "Owned Track", trackMbid: "owned-mbid" },
+      { artistName: "Missing Artist", trackName: "Missing Track", trackMbid: "missing-mbid" },
+    ],
+  });
+  const ownedArtist = libraryStore.upsertLibraryArtist({
+    identityKey: "owned-playlist-artist",
+    name: "Owned Artist",
+  });
+  const ownedAlbum = libraryStore.upsertLibraryAlbum({
+    identityKey: "owned-playlist-album",
+    artistId: ownedArtist.id,
+    title: "Owned Album",
+  });
+  const ownedTrack = libraryStore.upsertLibraryTrack({
+    identityKey: "owned-playlist-track",
+    mbid: "owned-mbid",
+    title: "Owned Track",
+    artistName: "Owned Artist",
+  });
+  libraryStore.linkLibraryAlbumTrack({
+    albumId: ownedAlbum.id,
+    trackId: ownedTrack.id,
+    trackNumber: 1,
+  });
+  libraryStore.upsertLibraryMediaFile({
+    trackId: ownedTrack.id,
+    albumId: ownedAlbum.id,
+    source: "aurral",
+    path: "/library/Owned Artist/Owned Album/Owned Track.flac",
+    available: true,
+  });
+  downloadTracker.addJobs(
+    [
+      { artistName: "Owned Artist", trackName: "Owned Track", trackMbid: "owned-mbid" },
+      { artistName: "Missing Artist", trackName: "Missing Track", trackMbid: "missing-mbid" },
+    ],
+    playlistId,
+  );
+
+  const response = await fetch(`${baseUrl}/jobs/${playlistId}`);
+  const payload = await response.json();
+
+  assert.equal(response.status, 200, JSON.stringify(payload));
+  assert.deepEqual(
+    payload.map((job) => [job.trackName, job.libraryOwned]),
+    [
+      ["Owned Track", true],
+      ["Missing Track", false],
+    ],
+  );
 });
 
 test.after(async () => {

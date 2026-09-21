@@ -21,6 +21,7 @@ const PAGE_KINDS = new Set(["artists", "albums", "tracks", "genres"]);
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 100;
 const MAX_ARTIST_PROJECTION_PAGE_SIZE = 10000;
+const TRACK_OWNERSHIP_BATCH_SIZE = 200;
 
 const parseJson = (value) => {
   if (!value) return null;
@@ -674,6 +675,83 @@ export function getCanonicalTrackOwnership({
        WHERE ${conditions.join(" AND ")}
      ) AS owned`,
   ).get(...parameters)?.owned);
+}
+
+function normalizeTrackOwnershipReference(track) {
+  const trackMbid = String(track?.trackMbid || "").trim();
+  if (trackMbid) return { kind: "mbid", value: trackMbid };
+
+  const artistName = String(track?.artistName || "").trim();
+  const trackName = String(track?.trackName || "").trim();
+  if (!artistName || !trackName) return null;
+  return {
+    kind: "names",
+    artistName,
+    trackName,
+    key: `${artistName.toLowerCase()}\u0000${trackName.toLowerCase()}`,
+  };
+}
+
+function getTrackOwnershipReferenceKey(reference) {
+  if (!reference) return "";
+  return `${reference.kind}:${reference.kind === "mbid" ? reference.value : reference.key}`;
+}
+
+export function getCanonicalTrackOwnershipBatch(tracks, { source = null } = {}) {
+  const sourceFilter = normalizeSource(source);
+  const references = (Array.isArray(tracks) ? tracks : []).map(
+    normalizeTrackOwnershipReference,
+  );
+  const uniqueReferences = new Map();
+  for (const reference of references) {
+    const key = getTrackOwnershipReferenceKey(reference);
+    if (key && !uniqueReferences.has(key)) uniqueReferences.set(key, reference);
+  }
+
+  const ownedMbids = new Set();
+  const ownedNames = new Set();
+  const values = [...uniqueReferences.values()];
+  for (let index = 0; index < values.length; index += TRACK_OWNERSHIP_BATCH_SIZE) {
+    const batch = values.slice(index, index + TRACK_OWNERSHIP_BATCH_SIZE);
+    const conditions = ["media.available = 1"];
+    const parameters = [];
+    if (sourceFilter) {
+      conditions.push("media.source = ?");
+      parameters.push(sourceFilter);
+    }
+    const referenceConditions = batch.map((reference) => {
+      if (reference.kind === "mbid") {
+        parameters.push(reference.value);
+        return "track.mbid = ?";
+      }
+      parameters.push(reference.artistName, reference.trackName);
+      return "(lower(coalesce(track.artist_name, '')) = lower(?) AND lower(track.title) = lower(?))";
+    });
+    const rows = db.prepare(
+      `SELECT track.mbid AS track_mbid,
+              track.artist_name AS track_artist_name,
+              track.title AS track_title
+       ${CANONICAL_FROM}
+       WHERE ${conditions.join(" AND ")}
+         AND (${referenceConditions.join(" OR ")})`,
+    ).all(...parameters);
+    for (const row of rows) {
+      const trackMbid = String(row.track_mbid || "").trim();
+      if (trackMbid) ownedMbids.add(trackMbid);
+      const artistName = String(row.track_artist_name || "").trim();
+      const trackName = String(row.track_title || "").trim();
+      if (artistName && trackName) {
+        ownedNames.add(`${artistName.toLowerCase()}\u0000${trackName.toLowerCase()}`);
+      }
+    }
+  }
+
+  return references.map((reference) => {
+    if (!reference) return false;
+    return reference.kind === "mbid"
+      ? ownedMbids.has(reference.value)
+      : ownedNames.has(reference.key);
+  });
 }
 
 export function getCanonicalTrackCount({ source = null, availableOnly = false } = {}) {
