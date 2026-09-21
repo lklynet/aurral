@@ -74,7 +74,7 @@ export function buildYtdlpInvocationArgs(
   { nodeAvailable = resolveBinaryExists("node") } = {},
 ) {
   return [
-    ...(nodeAvailable ? ["--js-runtimes", "node"] : []),
+    ...(nodeAvailable ? ["--no-js-runtimes", "--js-runtimes", "node"] : []),
     ...args,
   ];
 }

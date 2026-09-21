@@ -8,6 +8,7 @@ test("yt-dlp invocations use Node for YouTube JavaScript challenges when availab
       nodeAvailable: true,
     }),
     [
+      "--no-js-runtimes",
       "--js-runtimes",
       "node",
       "--no-playlist",
