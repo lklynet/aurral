@@ -103,6 +103,9 @@ export const updateSharedPlaylist = (playlistId, payload) =>
 export const setPlaylistTrackAvailability = (playlistId, enabled) =>
   putData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/track-availability`, { enabled });
 
+export const setPlaylistRecordHistory = (playlistId, enabled) =>
+  putData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/record-history`, { enabled });
+
 export const addSharedPlaylistTracks = (playlistId, payload) =>
   postData(
     `/playlists/shared-playlists/${playlistId}/tracks`,
