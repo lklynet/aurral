@@ -1,6 +1,7 @@
 import { flowPlaylistConfig } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { fetchImportedPlaylistTracks } from "./importPlaylist.js";
 import { updateSharedPlaylist } from "../weeklyFlow/weeklyFlowOperations.js";
+import { logger } from "../logger.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -31,6 +32,7 @@ export async function syncSharedPlaylistImport({
     throw error;
   }
   const ownerUserId = playlist.ownerUserId ?? user?.id;
+  let stage = "fetching-source";
   try {
     const externalPlaylistId = String(playlist.importSource?.externalId || "").trim();
     const tracks = (
@@ -47,6 +49,7 @@ export async function syncSharedPlaylistImport({
       lastSyncError: null,
       lastSyncTrackCount: tracks.length,
     };
+    stage = "updating-playlist";
     const result = await updateSharedPlaylist({
       playlistId: playlist.id,
       tracks,
@@ -62,13 +65,29 @@ export async function syncSharedPlaylistImport({
       tracksReused: Number(result?.tracksReused || 0),
     };
   } catch (error) {
-    const latestPlaylist = flowPlaylistConfig.getSharedPlaylist(playlist.id);
-    flowPlaylistConfig.updateSharedPlaylist(playlist.id, {
-      importSource: {
-        ...(latestPlaylist?.importSource || playlist.importSource),
-        lastSyncError: String(error?.message || "Playlist sync failed"),
-      },
-    });
+    if (error?.code === "SQLITE_BUSY" || /database is locked/i.test(String(error?.message || ""))) {
+      logger.error("playlist-import", "SQLite lock interrupted playlist sync", {
+        playlistId: playlist.id,
+        provider: playlist.importSource.provider,
+        stage,
+        code: error?.code || null,
+        stackFrames: String(error?.stack || "").split("\n").slice(1, 7).map((line) => line.trim()),
+      });
+    }
+    try {
+      const latestPlaylist = flowPlaylistConfig.getSharedPlaylist(playlist.id);
+      flowPlaylistConfig.updateSharedPlaylist(playlist.id, {
+        importSource: {
+          ...(latestPlaylist?.importSource || playlist.importSource),
+          lastSyncError: String(error?.message || "Playlist sync failed"),
+        },
+      });
+    } catch (persistError) {
+      logger.warn("playlist-import", "Could not save playlist sync failure", {
+        playlistId: playlist.id,
+        code: persistError?.code || null,
+      });
+    }
     throw error;
   }
 }

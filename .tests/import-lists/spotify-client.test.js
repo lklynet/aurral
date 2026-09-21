@@ -23,6 +23,60 @@ test.beforeEach(() => {
   spotifyClient.clearPlaylistTrackCache();
 });
 
+test("playlist track fetch follows every page of Spotify's current items endpoint", async () => {
+  spotifyConnectionStore.saveConnection(7, {
+    accessToken: "valid-access-token",
+    refreshToken: "valid-refresh-token",
+    expiresAt: Date.now() + 60 * 60 * 1000,
+  });
+  const requests = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(input);
+    requests.push(url);
+    if (requests.length === 1) {
+      return new Response(JSON.stringify({
+        items: [{ item: { name: "First" } }],
+        next: "https://api.spotify.com/v1/playlists/playlist/items?offset=50&limit=50",
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify({
+      items: [{ item: { name: "Second" } }],
+      next: null,
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  const items = await spotifyClient.listPlaylistTracks(7, "playlist");
+  assert.deepEqual(items.map((entry) => entry.item.name), ["First", "Second"]);
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].pathname, "/v1/playlists/playlist/items");
+  assert.equal(requests[0].searchParams.get("limit"), "50");
+  assert.match(requests[0].searchParams.get("fields"), /item\(type,name/);
+  assert.equal(requests[1].searchParams.get("offset"), "50");
+});
+
+test("playlist track fetch falls back for a followed playlist the items endpoint cannot read", async () => {
+  spotifyConnectionStore.saveConnection(7, {
+    accessToken: "valid-access-token",
+    refreshToken: "valid-refresh-token",
+    expiresAt: Date.now() + 60 * 60 * 1000,
+  });
+  const requests = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(input);
+    requests.push(url);
+    if (requests.length === 1) return new Response("Forbidden", { status: 403 });
+    return new Response(JSON.stringify({
+      items: [{ track: { name: "Followed Playlist Track" } }],
+      next: null,
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  const items = await spotifyClient.listPlaylistTracks(7, "followed-playlist");
+  assert.equal(items[0].track.name, "Followed Playlist Track");
+  assert.equal(requests[0].pathname, "/v1/playlists/followed-playlist/items");
+  assert.equal(requests[1].pathname, "/v1/playlists/followed-playlist/tracks");
+});
+
 test.after(async () => {
   globalThis.fetch = originalFetch;
   await cleanupIsolatedState(isolatedState);

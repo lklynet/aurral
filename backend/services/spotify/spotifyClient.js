@@ -200,15 +200,23 @@ export const spotifyClient = {
 
     const request = fetchAllPages(
       userId,
-      `/playlists/${encodeURIComponent(playlistId)}/tracks`,
+      `/playlists/${encodeURIComponent(playlistId)}/items`,
       {
         searchParams: {
-          limit: 100,
+          limit: 50,
           fields:
-            "items(track(name,artists(name),album(name))),next",
+            "items(item(type,name,artists(name),album(name)),track(type,name,artists(name),album(name))),next",
         },
       },
-    ).then((items) => {
+    ).catch((error) => {
+      if (error?.statusCode !== 403 && error?.statusCode !== 404) throw error;
+      return fetchAllPages(userId, `/playlists/${encodeURIComponent(playlistId)}/tracks`, {
+        searchParams: {
+          limit: 100,
+          fields: "items(track(type,name,artists(name),album(name))),next",
+        },
+      });
+    }).then((items) => {
       if (getPlaylistTrackGeneration(userId) !== generation) {
         throw createAuthRequiredError("Spotify connection expired");
       }

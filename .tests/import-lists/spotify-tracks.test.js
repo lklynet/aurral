@@ -41,6 +41,30 @@ test("parseSpotifyPlaylistItems keeps tracks when spotify fields omit type", () 
   assert.equal(tracks[0].trackName, "No Type Field");
 });
 
+test("parseSpotifyPlaylistItems accepts the current item wrapper and legacy track wrapper", () => {
+  const { tracks, stats } = parseSpotifyPlaylistItems([
+    {
+      item: {
+        type: "track",
+        name: "Current Wrapper",
+        artists: [{ name: "Artist A" }],
+        album: { name: "Album A" },
+      },
+    },
+    {
+      track: {
+        type: "track",
+        name: "Legacy Wrapper",
+        artists: [{ name: "Artist B" }],
+        album: { name: "Album B" },
+      },
+    },
+    { item: null },
+  ]);
+  assert.deepEqual(tracks.map((track) => track.trackName), ["Current Wrapper", "Legacy Wrapper"]);
+  assert.equal(stats.unavailable, 1);
+});
+
 test("parseSpotifyPlaylistItems reports skipped spotify entries", () => {
   const { tracks, stats } = parseSpotifyPlaylistItems([
     { track: null },

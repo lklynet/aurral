@@ -9,7 +9,7 @@ export function parseSpotifyPlaylistItems(items = []) {
   };
   const raw = [];
   for (const item of items) {
-    const track = item?.track;
+    const track = item?.item ?? item?.track;
     if (!track) {
       stats.unavailable += 1;
       continue;
