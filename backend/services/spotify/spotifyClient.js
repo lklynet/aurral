@@ -5,6 +5,7 @@ import {
 import { spotifyConnectionStore } from "./spotifyConnectionStore.js";
 import createCache from "../apiClients/simpleCache.js";
 import { runSharedInflight } from "../sharedInflight.js";
+import { logger } from "../logger.js";
 
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 export const SPOTIFY_AUTH_REQUIRED_CODE = "SPOTIFY_AUTH_REQUIRED";
@@ -149,7 +150,7 @@ async function spotifyRequest(userId, path, { searchParams, url: absoluteUrl } =
   return response.json();
 }
 
-async function fetchAllPages(userId, path, { searchParams, itemsKey = "items" } = {}) {
+async function fetchAllPages(userId, path, { searchParams, itemsKey = "items", onPage } = {}) {
   const items = [];
   let nextUrl = null;
   while (true) {
@@ -157,6 +158,13 @@ async function fetchAllPages(userId, path, { searchParams, itemsKey = "items" } 
       ? await spotifyRequest(userId, null, { url: nextUrl })
       : await spotifyRequest(userId, path, { searchParams });
     const pageItems = Array.isArray(payload?.[itemsKey]) ? payload[itemsKey] : [];
+    onPage?.({
+      offset: payload?.offset != null && Number.isFinite(Number(payload.offset))
+        ? Number(payload.offset) : null,
+      total: payload?.total != null && Number.isFinite(Number(payload.total))
+        ? Number(payload.total) : null,
+      itemCount: pageItems.length,
+    });
     items.push(...pageItems);
     nextUrl = payload?.next || null;
     if (!nextUrl) break;
@@ -198,6 +206,7 @@ export const spotifyClient = {
       if (inflight) return inflight;
     }
 
+    const pages = [];
     const request = fetchAllPages(
       userId,
       `/playlists/${encodeURIComponent(playlistId)}/tracks`,
@@ -205,12 +214,27 @@ export const spotifyClient = {
         searchParams: {
           limit: 100,
           fields:
-            "items(track(name,artists(name),album(name))),next",
+            "items(track(name,artists(name),album(name))),next,total,offset",
         },
+        onPage: (page) => pages.push(page),
       },
     ).then((items) => {
       if (getPlaylistTrackGeneration(userId) !== generation) {
         throw createAuthRequiredError("Spotify connection expired");
+      }
+      logger.info("playlist-import", "Spotify playlist fetch completed", {
+        playlistId,
+        spotifyReportedTotal: pages[0]?.total ?? null,
+        fetchedEntryCount: items.length,
+        pageCount: pages.length,
+      });
+      if (pages[0]?.total != null && (
+        pages[0].total !== items.length || pages.some((page) => page.total !== pages[0].total)
+      )) {
+        logger.warn("playlist-import", "Spotify playlist page counts differ", {
+          playlistId,
+          pages,
+        });
       }
       playlistTrackCache.set(cacheKey, items);
       return items;

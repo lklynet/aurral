@@ -30,6 +30,7 @@ import { weeklyFlowWorker } from "./weeklyFlow/weeklyFlowWorker.js";
 import { hasPermission } from "../middleware/auth.js";
 import { recordTrackJobQueued } from "./aurralHistoryService.js";
 import { selectCanonicalFile } from "./canonicalFileSelector.js";
+import { logger } from "./logger.js";
 
 const idFor = (kind, key) =>
   `${kind}:${encodeURIComponent(String(key)).replaceAll("%3A", ":")}`;
@@ -607,7 +608,12 @@ const ensureLibraryJob = (track, createdJobIds = null) => {
       downloadTracker.setPending(existing.id, "Requested again", { asRetryCycle: true });
     }
     if (existing.status !== "done") {
-      weeklyFlowWorker.start().catch(() => {});
+      weeklyFlowWorker.start().catch((error) => {
+        logger.error("subsonic", "Could not start download for a playlist track", {
+          jobId: existing.id,
+          reason: error?.message || String(error),
+        });
+      });
     }
     return existing.id;
   }
@@ -631,7 +637,12 @@ const ensureLibraryJob = (track, createdJobIds = null) => {
     return jobId;
   }
   recordTrackJobQueued(downloadTracker.getJob(jobId));
-  weeklyFlowWorker.start().catch(() => {});
+  weeklyFlowWorker.start().catch((error) => {
+    logger.error("subsonic", "Could not start download for a playlist track", {
+      jobId,
+      reason: error?.message || String(error),
+    });
+  });
   return jobId;
 };
 
@@ -651,7 +662,12 @@ const refreshSubsonicPlaylist = (playlistId) => {
   Promise.all([
     playlistManager.ensureSmartPlaylists(),
     playlistManager.refreshPlaylist(playlistId),
-  ]).catch(() => {});
+  ]).catch((error) => {
+    logger.error("subsonic", "Could not refresh playlist", {
+      playlistId,
+      reason: error?.message || String(error),
+    });
+  });
   playlistManager.scheduleScanLibrary();
 };
 
@@ -752,7 +768,12 @@ export function deleteSubsonicPlaylist(user, playlistId) {
   const deleted = flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
   if (deleted) {
     playlistManager.updateConfig(false);
-    playlistManager.deletePlaybackPlaylist(playlist).catch(() => {});
+    playlistManager.deletePlaybackPlaylist(playlist).catch((error) => {
+      logger.error("subsonic", "Could not remove playlist from playback services", {
+        playlistId: playlist.id,
+        reason: error?.message || String(error),
+      });
+    });
   }
   return deleted;
 }

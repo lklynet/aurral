@@ -3,6 +3,7 @@ import {
   fetchImportedPlaylistTracks,
 } from "../../../services/importLists/importPlaylist.js";
 import { listenbrainzPlaylistClient } from "../../../services/importLists/listenbrainzPlaylists.js";
+import { logger, safeLogDiagnostic } from "../../../services/logger.js";
 
 const getErrorStatus = (error) => error?.statusCode || error?.response?.status || 500;
 
@@ -21,6 +22,9 @@ export function registerListenBrainzImport(router) {
     try {
       res.json(await listenbrainzPlaylistClient.listPlaylists(req.user.id));
     } catch (error) {
+      logger.warn("playlist-import", "ListenBrainz playlist listing failed", {
+        reason: safeLogDiagnostic(error),
+      });
       res.status(getErrorStatus(error)).json({
         error: "Failed to fetch ListenBrainz playlists",
         message: error?.message || "Unknown error",
@@ -44,6 +48,9 @@ export function registerListenBrainzImport(router) {
         previewTracks: tracks.slice(0, 3),
       });
     } catch (error) {
+      logger.warn("playlist-import", "ListenBrainz playlist preview failed", {
+        reason: safeLogDiagnostic(error),
+      });
       res.status(getErrorStatus(error)).json({
         error: "Failed to preview ListenBrainz playlist",
         message: error?.message || "Unknown error",
@@ -52,6 +59,7 @@ export function registerListenBrainzImport(router) {
   });
 
   router.post("/import/listenbrainz", async (req, res) => {
+    let stage = "fetch";
     try {
       const playlistImport = getPlaylistImport(req.body);
       const name = String(req.body?.name || "").trim();
@@ -64,10 +72,11 @@ export function registerListenBrainzImport(router) {
         return res.status(400).json({ error: "playlistId is required" });
       }
       if (!name) return res.status(400).json({ error: "name is required" });
-      const { tracks } = await fetchImportedPlaylistTracks({
+      const { tracks, stats } = await fetchImportedPlaylistTracks({
         userId: req.user.id,
         ...playlistImport,
       });
+      stage = "enqueue";
       const result = await enqueueImportedPlaylist({
         ownerUserId: req.user.id,
         name,
@@ -75,6 +84,7 @@ export function registerListenBrainzImport(router) {
         ...playlistImport,
         externalName,
         tracks,
+        sourceStats: stats,
         syncEnabled,
         syncIntervalHours,
         keepRemovedTracks,
@@ -88,12 +98,21 @@ export function registerListenBrainzImport(router) {
       });
     } catch (error) {
       if (error?.code === "SHARED_PLAYLIST_NAME_CONFLICT") {
+        logger.debug("playlist-import", "ListenBrainz playlist import name already exists", {
+          playlistName: String(req.body?.name || "").trim() || null,
+        });
         return res.status(409).json({
           error: "Playlist name already exists",
           message: error.message,
         });
       }
-      res.status(getErrorStatus(error)).json({
+      const status = getErrorStatus(error);
+      logger[status >= 500 ? "error" : "warn"]("playlist-import", "ListenBrainz playlist import request failed", {
+        playlistName: String(req.body?.name || "").trim() || null,
+        stage,
+        reason: safeLogDiagnostic(error),
+      });
+      res.status(status).json({
         error: "Failed to import ListenBrainz playlist",
         message: error?.message || "Unknown error",
       });

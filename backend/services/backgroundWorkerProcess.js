@@ -1,4 +1,5 @@
 import { ISOLATED_WORKER_GROUPS, isQueueOwnedByGroup } from "./backgroundWorkerQueues.js";
+import { logger } from "./logger.js";
 
 const group = process.env.AURRAL_BACKGROUND_WORKER_GROUP;
 if (!ISOLATED_WORKER_GROUPS.includes(group) || !process.send) {
@@ -67,6 +68,12 @@ async function handleFlowCommand(message) {
       process.send({ type: "flow-response", requestId, result });
     }
   } catch (error) {
+    logger.error("workers", "Flow worker command failed", {
+      group,
+      method,
+      requestId,
+      reason: error?.message || String(error),
+    });
     if (process.connected) {
       process.send({ type: "flow-response", requestId, error: error?.message || String(error) });
     }

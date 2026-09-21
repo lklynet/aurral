@@ -22,6 +22,9 @@ const [
   playlistManagerModule,
   spotifyClientModule,
   importSyncModule,
+  importPlaylistModule,
+  operationQueueModule,
+  loggerModule,
   listenbrainzPlaylistsModule,
   lastfmStationsModule,
 ] = await setupIsolatedBackend(
@@ -36,6 +39,9 @@ const [
   "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
   "backend/services/spotify/spotifyClient.js",
   "backend/services/importLists/importListSync.js",
+  "backend/services/importLists/importPlaylist.js",
+  "backend/services/weeklyFlow/weeklyFlowOperationQueue.js",
+  "backend/services/logger.js",
   "backend/services/importLists/listenbrainzPlaylists.js",
   "backend/services/importLists/lastfmStations.js",
 );
@@ -59,6 +65,9 @@ const { spotifyClient } = spotifyClientModule;
 const { listenbrainzPlaylistClient } = listenbrainzPlaylistsModule;
 const { lastfmStationClient } = lastfmStationsModule;
 const { syncSharedPlaylistImport } = importSyncModule;
+const { enqueueImportedPlaylist } = importPlaylistModule;
+const { weeklyFlowOperationQueue } = operationQueueModule;
+const { logger } = loggerModule;
 
 const weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER;
 
@@ -112,6 +121,146 @@ test.beforeEach(async () => {
   downloadTracker.clearAll();
   weeklyFlowWorker.stop();
   await fs.rm(weeklyFlowRoot, { recursive: true, force: true });
+});
+
+test("import enqueue logs a queued operation without claiming completion", async (t) => {
+  const messages = [];
+  const enqueue = t.mock.method(weeklyFlowOperationQueue, "enqueuePayload", async () => ({
+    queued: true,
+    operationId: 42,
+  }));
+  t.mock.method(logger, "info", (_category, message, details) => {
+    messages.push({ message, details });
+  });
+
+  const result = await enqueueImportedPlaylist({
+    ownerUserId: 7,
+    name: "Imported Mix",
+    provider: "spotify-playlist",
+    externalId: "external-playlist",
+    tracks: [{ artistName: "Artist", trackName: "Song" }],
+    sourceStats: { unavailable: 2, podcast: 1, incomplete: 0, duplicate: 0 },
+    syncEnabled: false,
+  });
+
+  assert.equal(enqueue.mock.callCount(), 1);
+  assert.equal(result.queued, true);
+  assert.deepEqual(messages.map((entry) => entry.message), ["Playlist import queued"]);
+  assert.equal(messages[0].details.provider, "spotify-playlist");
+  assert.equal(messages[0].details.playlistName, "Imported Mix");
+  assert.equal(messages[0].details.operationId, 42);
+  assert.equal(messages[0].details.trackCount, 1);
+  assert.equal(messages[0].details.skipped.unavailable, 2);
+  assert.ok(messages[0].details.playlistId);
+  assert.equal(JSON.stringify(messages).includes("external-playlist"), false);
+});
+
+const waitForImportLog = async (mock, message) => {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const call = mock.mock.calls.find((entry) => entry.arguments[1] === message);
+    if (call) return call.arguments[2];
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for ${message}`);
+};
+
+test("background import logs completion only after the playlist exists", async (t) => {
+  const info = t.mock.method(logger, "info", () => {});
+  const { stopWeeklyFlowOperationWorker } = await importFromRepo(
+    "backend/services/weeklyFlow/weeklyFlowOperationWorker.js",
+  );
+  try {
+    await enqueueImportedPlaylist({
+      ownerUserId: 7,
+      name: "Completed Import",
+      provider: "spotify-playlist",
+      externalId: "external-playlist",
+      tracks: [],
+      syncEnabled: false,
+    });
+    const completed = await waitForImportLog(info, "Playlist import job completed");
+    const started = info.mock.calls.find((call) =>
+      call.arguments[1] === "Playlist import job started");
+    assert.ok(started);
+    assert.equal(started.arguments[2].operationId, completed.operationId);
+    assert.equal(completed.provider, "spotify-playlist");
+    assert.equal(completed.playlistName, "Completed Import");
+    assert.ok(flowPlaylistConfig.getSharedPlaylist(completed.playlistId));
+    assert.ok(completed.operationId);
+    assert.equal(completed.trackCount, 0);
+  } finally {
+    await stopWeeklyFlowOperationWorker();
+  }
+});
+
+test("background import logs a permanent failure with its reason", async (t) => {
+  const errors = t.mock.method(logger, "error", () => {});
+  const { stopWeeklyFlowOperationWorker } = await importFromRepo(
+    "backend/services/weeklyFlow/weeklyFlowOperationWorker.js",
+  );
+  flowPlaylistConfig.createSharedPlaylist({
+    name: "Duplicate Import",
+    ownerUserId: 7,
+    tracks: [],
+  });
+  try {
+    await enqueueImportedPlaylist({
+      ownerUserId: 7,
+      name: "Duplicate Import",
+      provider: "listenbrainz-playlist",
+      externalId: "external-playlist",
+      tracks: [],
+      syncEnabled: false,
+    });
+    const failed = await waitForImportLog(errors, "Playlist import failed");
+    assert.equal(failed.provider, "listenbrainz-playlist");
+    assert.match(failed.reason, /already exists/i);
+    assert.ok(failed.operationId);
+  } finally {
+    await stopWeeklyFlowOperationWorker();
+  }
+});
+
+test("external import routes log fetch failures with the provider reason", async (t) => {
+  const [spotifyRoutes, listenbrainzRoutes, lastfmRoutes] = await Promise.all([
+    importFromRepo("backend/routes/weeklyFlow/handlers/spotifyImport.js"),
+    importFromRepo("backend/routes/weeklyFlow/handlers/listenbrainzImport.js"),
+    importFromRepo("backend/routes/weeklyFlow/handlers/lastfmImport.js"),
+  ]);
+  const handlers = new Map();
+  const router = {
+    get() {},
+    delete() {},
+    post(route, handler) { handlers.set(route, handler); },
+  };
+  spotifyRoutes.registerSpotifyImport(router);
+  listenbrainzRoutes.registerListenBrainzImport(router);
+  lastfmRoutes.registerLastfmImport(router);
+  const failures = t.mock.method(logger, "error", () => {});
+  const providers = [
+    ["/import/spotify", spotifyClient, "listPlaylistTracks", "Spotify timed out"],
+    ["/import/listenbrainz", listenbrainzPlaylistClient, "getPlaylistTracks", "ListenBrainz timed out"],
+    ["/import/lastfm", lastfmStationClient, "getStationTracks", "Last.fm timed out"],
+  ];
+
+  for (const [route, client, method, reason] of providers) {
+    t.mock.method(client, method, async () => { throw new Error(reason); });
+    const response = {
+      statusCode: 200,
+      status(code) { this.statusCode = code; return this; },
+      json(body) { this.body = body; return this; },
+    };
+    await handlers.get(route)({
+      user: { id: 7 },
+      body: { playlistId: "external-playlist", name: "Test Mix", username: "listener" },
+    }, response);
+    assert.equal(response.statusCode, 500);
+    const logged = failures.mock.calls.at(-1);
+    assert.equal(logged?.arguments[2]?.playlistName, "Test Mix");
+    assert.equal(logged?.arguments[2]?.stage, "fetch");
+    assert.equal(logged?.arguments[2]?.reason, reason);
+  }
 });
 
 test.after(async () => {
@@ -434,10 +583,11 @@ test("replacing a shared playlist removes Spotify tracks and honors file retenti
   }
 });
 
-test("ListenBrainz sync uses the shared import update path", async () => {
+test("ListenBrainz sync uses the shared import update path", async (t) => {
   const originalStart = weeklyFlowWorker.start;
   const originalGetGeneratedPlaylistTracks =
     listenbrainzPlaylistClient.getGeneratedPlaylistTracks;
+  const info = t.mock.method(logger, "info", () => {});
   weeklyFlowWorker.start = async () => false;
   try {
     const playlist = flowPlaylistConfig.createSharedPlaylist({
@@ -476,10 +626,151 @@ test("ListenBrainz sync uses the shared import update path", async () => {
         reason: null,
       },
     ]);
+    const completed = info.mock.calls.find((call) =>
+      call.arguments[1] === "Playlist import sync completed");
+    assert.equal(completed?.arguments[2]?.playlistId, playlist.id);
+    assert.equal(completed?.arguments[2]?.playlistTrackCount, 1);
+    assert.equal(completed?.arguments[2]?.tracksAdded, 1);
+    assert.equal(completed?.arguments[2]?.tracksRemoved, 1);
   } finally {
     listenbrainzPlaylistClient.getGeneratedPlaylistTracks = originalGetGeneratedPlaylistTracks;
     weeklyFlowWorker.start = originalStart;
     weeklyFlowWorker.stop();
+  }
+});
+
+test("Spotify sync logs replacement tracks and excluded entries separately from download jobs", async (t) => {
+  const originalStart = weeklyFlowWorker.start;
+  const originalListPlaylistTracks = spotifyClient.listPlaylistTracks;
+  const info = t.mock.method(logger, "info", () => {});
+  weeklyFlowWorker.start = async () => false;
+  try {
+    const keep = { artistName: "Artist", trackName: "Keep", albumName: "Album" };
+    const removed = { artistName: "Artist", trackName: "Removed", albumName: "Album" };
+    const playlist = flowPlaylistConfig.createSharedPlaylist({
+      name: "Spotify Replacement",
+      ownerUserId: 7,
+      tracks: [keep, removed],
+      importSource: {
+        provider: "spotify-playlist",
+        externalId: "replacement-id",
+        syncEnabled: true,
+        syncIntervalHours: 24,
+      },
+    });
+    spotifyClient.listPlaylistTracks = async () => [
+      { track: { name: "Keep", artists: [{ name: "Artist" }], album: { name: "Album" } } },
+      { track: { name: "New", artists: [{ name: "Artist" }], album: { name: "Album" } } },
+      { track: null },
+    ];
+
+    const result = await syncSharedPlaylistImport({
+      playlistId: playlist.id,
+      user: { id: 7 },
+      force: true,
+    });
+
+    assert.equal(result.trackCount, 2);
+    assert.equal(result.tracksQueued, 2);
+    assert.equal(flowPlaylistConfig.getSharedPlaylist(playlist.id).trackCount, 2);
+    const completed = info.mock.calls.find((call) =>
+      call.arguments[1] === "Playlist import sync completed");
+    assert.equal(completed?.arguments[2]?.previousTrackCount, 2);
+    assert.equal(completed?.arguments[2]?.sourceEntryCount, 3);
+    assert.equal(completed?.arguments[2]?.acceptedTrackCount, 2);
+    assert.equal(completed?.arguments[2]?.playlistTrackCount, 2);
+    assert.equal(completed?.arguments[2]?.tracksAdded, 1);
+    assert.equal(completed?.arguments[2]?.tracksRemoved, 1);
+    assert.equal(completed?.arguments[2]?.acceptedNotStoredCount, 0);
+    assert.equal(completed?.arguments[2]?.sourceSkipped.unavailable, 1);
+  } finally {
+    spotifyClient.listPlaylistTracks = originalListPlaylistTracks;
+    weeklyFlowWorker.start = originalStart;
+    weeklyFlowWorker.stop();
+  }
+});
+
+test("Spotify sync identifies source tracks dropped before playlist storage", async (t) => {
+  const originalStart = weeklyFlowWorker.start;
+  const originalListPlaylistTracks = spotifyClient.listPlaylistTracks;
+  const { addDiscoveryFeedback } = await importFromRepo(
+    "backend/services/discovery/feedback.js",
+  );
+  const info = t.mock.method(logger, "info", () => {});
+  weeklyFlowWorker.start = async () => false;
+  try {
+    addDiscoveryFeedback("7", { artistName: "Blocked Artist", action: "block_artist" });
+    const playlist = flowPlaylistConfig.createSharedPlaylist({
+      name: "Filtered Spotify Import",
+      ownerUserId: 7,
+      tracks: [],
+      importSource: {
+        provider: "spotify-playlist",
+        externalId: "filtered-id",
+        syncEnabled: true,
+        syncIntervalHours: 24,
+      },
+    });
+    spotifyClient.listPlaylistTracks = async () => [
+      { track: { name: "Excluded", artists: [{ name: "Blocked Artist" }] } },
+      { track: { name: "Included", artists: [{ name: "Allowed Artist" }] } },
+    ];
+
+    const result = await syncSharedPlaylistImport({
+      playlistId: playlist.id,
+      user: { id: 7 },
+      force: true,
+    });
+
+    assert.equal(result.trackCount, 2);
+    const completed = info.mock.calls.find((call) =>
+      call.arguments[1] === "Playlist import sync completed");
+    assert.equal(completed?.arguments[2]?.sourceEntryCount, 2);
+    assert.equal(completed?.arguments[2]?.acceptedTrackCount, 2);
+    assert.equal(completed?.arguments[2]?.acceptedNotStoredCount, 1);
+    assert.equal(completed?.arguments[2]?.playlistTrackCount, 1);
+  } finally {
+    spotifyClient.listPlaylistTracks = originalListPlaylistTracks;
+    weeklyFlowWorker.start = originalStart;
+    weeklyFlowWorker.stop();
+  }
+});
+
+test("failed import sync logs the reason and preserves it on the playlist", async (t) => {
+  const originalGetGeneratedPlaylistTracks =
+    listenbrainzPlaylistClient.getGeneratedPlaylistTracks;
+  const errors = t.mock.method(logger, "error", () => {});
+  try {
+    const playlist = flowPlaylistConfig.createSharedPlaylist({
+      name: "Unavailable Mix",
+      ownerUserId: 7,
+      tracks: [{ artistName: "Old Artist", trackName: "Old Song" }],
+      importSource: {
+        provider: "listenbrainz-createdfor",
+        externalId: "weekly-jams",
+        syncEnabled: true,
+        syncIntervalHours: 24,
+      },
+    });
+    listenbrainzPlaylistClient.getGeneratedPlaylistTracks = async () => {
+      throw new Error("ListenBrainz request timed out");
+    };
+
+    await assert.rejects(
+      syncSharedPlaylistImport({ playlistId: playlist.id, user: { id: 7 }, force: true }),
+      /ListenBrainz request timed out/,
+    );
+
+    const failed = errors.mock.calls.find((call) =>
+      call.arguments[1] === "Playlist import sync failed");
+    assert.equal(failed?.arguments[2]?.playlistId, playlist.id);
+    assert.equal(failed?.arguments[2]?.reason, "ListenBrainz request timed out");
+    assert.equal(
+      flowPlaylistConfig.getSharedPlaylist(playlist.id).importSource.lastSyncError,
+      "ListenBrainz request timed out",
+    );
+  } finally {
+    listenbrainzPlaylistClient.getGeneratedPlaylistTracks = originalGetGeneratedPlaylistTracks;
   }
 });
 

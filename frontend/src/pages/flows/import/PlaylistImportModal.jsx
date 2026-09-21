@@ -482,7 +482,7 @@ export function PlaylistImportModal({
         syncIntervalHours,
         keepRemovedTracks,
       });
-      showSuccess?.(`Imported ${finalName} from ${providerLabel}`);
+      showSuccess?.(`Queued import of ${finalName} from ${providerLabel}`);
       onImported?.();
       onClose?.();
     } catch (error) {

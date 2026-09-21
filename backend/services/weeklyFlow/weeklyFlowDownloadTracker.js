@@ -13,6 +13,7 @@ import {
   buildAurralTrackDestination,
 } from "../playlistPaths.js";
 import { flowPlaylistConfig } from "./weeklyFlowPlaylistConfig.js";
+import { logger } from "../logger.js";
 
 const parseDeniedSources = (raw) => {
   if (!raw) return [];
@@ -1186,7 +1187,12 @@ export class WeeklyFlowDownloadTracker {
             recordTrackJobFailed(job, job.error || error);
           }
         })
-        .catch(() => {});
+        .catch((historyError) => {
+          logger.warn("history", "Could not record failed download jobs", {
+            jobCount: failedJobs.length,
+            reason: historyError?.message || String(historyError),
+          });
+        });
     }
     return count;
   }

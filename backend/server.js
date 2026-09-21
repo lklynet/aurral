@@ -10,6 +10,7 @@ import dns from "node:dns";
 dns.setDefaultResultOrder("ipv4first");
 
 import { authMiddleware, isProxyAuthEnabled } from "./middleware/auth.js";
+import { createRequestFailureLogger } from "./middleware/requestFailureLogger.js";
 import { handleOidcCallback, isOidcEnabled } from "./services/oidcAuth.js";
 import { logger } from "./services/logger.js";
 import { websocketService } from "./services/websocketService.js";
@@ -142,6 +143,7 @@ if (process.env.OIDC_DOMAIN) {
 }
 
 app.use(corsMiddleware);
+app.use(createRequestFailureLogger());
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -264,6 +266,7 @@ if (fs.existsSync(frontendDist)) {
 
 app.use((err, req, res, next) => {
   logger.error("system", "Express error:", err || "(no error object)");
+  res.locals.failureLogged = true;
   if (res.headersSent) return next(err);
   if (err?.type === "entity.too.large" || err?.status === 413) {
     return res.status(413).json({

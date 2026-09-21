@@ -7,6 +7,7 @@ import { buildFlowRunPlanIsolated } from "./weeklyFlowPlanRunner.js";
 import { dbOps, userOps } from "../../db/helpers/index.js";
 import { resolveWeeklyFlowTrackContext } from "./weeklyFlowTrackResolver.js";
 import { getListenHistoryProfile } from "../listeningHistory.js";
+import { safeLogDiagnostic } from "../logger.js";
 import {
   normalizeExistingFileMode,
   repairOrphanedPlaylistTrackPaths,
@@ -708,7 +709,10 @@ export class WeeklyFlowWorker {
             downloadTracker.setFailed(job.id, error.message);
             import("../aurralHistoryService.js")
               .then(({ recordTrackJobFailed }) => recordTrackJobFailed(job, error.message))
-              .catch(() => {});
+              .catch((historyError) => {
+                console.warn(`[WeeklyFlowWorker] Could not record failed job ${job.id} in history:`,
+                  safeLogDiagnostic(historyError));
+              });
             await this.checkPlaylistComplete(job.playlistType);
           })
           .finally(() => {

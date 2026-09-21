@@ -4,7 +4,7 @@ import {
   SPOTIFY_AUTH_REQUIRED_CODE,
   spotifyClient,
 } from "../../../services/spotify/spotifyClient.js";
-import { logger } from "../../../services/logger.js";
+import { logger, safeLogDiagnostic } from "../../../services/logger.js";
 import {
   enqueueImportedPlaylist,
   fetchImportedPlaylistTracks,
@@ -108,6 +108,9 @@ export function registerSpotifyImport(router) {
       const payload = await spotifyClient.listPlaylists(req.user.id);
       res.json(payload);
     } catch (error) {
+      logger.warn("playlist-import", "Spotify playlist listing failed", {
+        reason: safeLogDiagnostic(error),
+      });
       sendSpotifyError(res, error, "Failed to fetch Spotify playlists");
     }
   });
@@ -131,11 +134,15 @@ export function registerSpotifyImport(router) {
         previewTracks: tracks.slice(0, 3),
       });
     } catch (error) {
+      logger.warn("playlist-import", "Spotify playlist preview failed", {
+        reason: safeLogDiagnostic(error),
+      });
       sendSpotifyError(res, error, "Failed to preview Spotify playlist");
     }
   });
 
   router.post("/import/spotify", async (req, res) => {
+    let stage = "fetch";
     try {
       const playlistId = String(req.body?.playlistId || "").trim();
       const name = String(req.body?.name || "").trim();
@@ -152,11 +159,12 @@ export function registerSpotifyImport(router) {
       if (!name) {
         return res.status(400).json({ error: "name is required" });
       }
-      const { tracks } = await fetchImportedPlaylistTracks({
+      const { tracks, stats } = await fetchImportedPlaylistTracks({
         provider: "spotify-playlist",
         userId: req.user.id,
         externalId: playlistId,
       });
+      stage = "enqueue";
       const result = await enqueueImportedPlaylist({
         ownerUserId: req.user.id,
         name,
@@ -165,6 +173,7 @@ export function registerSpotifyImport(router) {
         externalId: playlistId,
         externalName,
         tracks,
+        sourceStats: stats,
         syncEnabled,
         syncIntervalHours,
         keepRemovedTracks,
@@ -178,11 +187,20 @@ export function registerSpotifyImport(router) {
       });
     } catch (error) {
       if (error?.code === "SHARED_PLAYLIST_NAME_CONFLICT") {
+        logger.debug("playlist-import", "Spotify playlist import name already exists", {
+          playlistName: String(req.body?.name || "").trim() || null,
+        });
         return res.status(409).json({
           error: "Playlist name already exists",
           message: error.message,
         });
       }
+      const status = error?.code === SPOTIFY_AUTH_REQUIRED_CODE ? 401 : error?.statusCode || 500;
+      logger[status >= 500 ? "error" : "warn"]("playlist-import", "Spotify playlist import request failed", {
+        playlistName: String(req.body?.name || "").trim() || null,
+        stage,
+        reason: safeLogDiagnostic(error),
+      });
       sendSpotifyError(res, error, "Failed to import Spotify playlist");
     }
   });

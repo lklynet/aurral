@@ -115,6 +115,36 @@ test("pending track requests cannot repopulate cache after invalidation", async 
   assert.equal(requestCount, 3);
 });
 
+test("playlist fetch follows every Spotify page and requests the declared total", async () => {
+  spotifyConnectionStore.saveConnection(7, {
+    accessToken: "valid-access-token",
+    refreshToken: "valid-refresh-token",
+    expiresAt: Date.now() + 60 * 60 * 1000,
+  });
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    const offset = Number(new URL(url).searchParams.get("offset") || 0);
+    return new Response(JSON.stringify({
+      items: [{ track: { name: `Song ${offset}` } }],
+      total: 2,
+      offset,
+      next: offset === 0
+        ? "https://api.spotify.com/v1/playlists/playlist/tracks?offset=1&limit=1"
+        : null,
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const items = await spotifyClient.listPlaylistTracks(7, "playlist", { forceRefresh: true });
+  assert.deepEqual(items.map((item) => item.track.name), ["Song 0", "Song 1"]);
+  assert.equal(urls.length, 2);
+  assert.match(new URL(urls[0]).searchParams.get("fields"), /\btotal\b/);
+  assert.match(new URL(urls[0]).searchParams.get("fields"), /\boffset\b/);
+});
+
 test("stale refresh failures cannot clear a newly connected account", async () => {
   spotifyConnectionStore.saveConnection(7, {
     accessToken: "old-access-token",

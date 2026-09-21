@@ -2,6 +2,7 @@ import { downloadTracker } from "./weeklyFlowDownloadTracker.js";
 import { weeklyFlowWorker } from "./weeklyFlowWorker.js";
 import { withHonkerLock } from "../honkerDb.js";
 import { isFlowOwnerProcess, requestFlowOwner } from "./weeklyFlowOwnerClient.js";
+import { logger } from "../logger.js";
 
 const normalizePlaylistTypes = (playlistTypes) => [
   ...new Set(
@@ -45,7 +46,14 @@ export async function beginPlaylistMutation(playlistTypes, { clearPending = true
     );
   } catch (error) {
     for (const playlistType of blocked) {
-      try { await weeklyFlowWorker.unblockPlaylist(playlistType); } catch {}
+      try {
+        await weeklyFlowWorker.unblockPlaylist(playlistType);
+      } catch (unblockError) {
+        logger.warn("playlists", "Could not unblock playlist after mutation setup failed", {
+          playlistId: playlistType,
+          reason: unblockError?.message || String(unblockError),
+        });
+      }
     }
     throw error;
   }
