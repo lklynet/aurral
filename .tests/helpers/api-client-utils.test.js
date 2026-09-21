@@ -80,6 +80,29 @@ test("TTL cache evicts its oldest entry at the size limit", () => {
   assert.equal(cache.get("third"), 3);
 });
 
+test("TTL cache serves stale values during the configured stale window", () => {
+  let now = 1_000;
+  const cache = createCache(300, 2, { now: () => now });
+  cache.set("album", { id: "album-1" }, 10, 20);
+
+  now += 11_000;
+
+  assert.deepEqual(cache.getWithStale("album"), {
+    value: { id: "album-1" },
+    stale: true,
+  });
+});
+
+test("TTL cache removes values after the stale window", () => {
+  let now = 1_000;
+  const cache = createCache(300, 2, { now: () => now });
+  cache.set("album", { id: "album-1" }, 10, 20);
+
+  now += 31_000;
+
+  assert.equal(cache.getWithStale("album"), undefined);
+});
+
 test("fetch transport failures expose axios-compatible request metadata", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => {
