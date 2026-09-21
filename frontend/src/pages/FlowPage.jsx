@@ -24,6 +24,7 @@ import {
   reSearchFlowTrack,
   reSearchSharedPlaylistTrack,
   setPlaylistTrackAvailability,
+  setPlaylistRecordHistory,
   searchTrackUpgrade,
   searchPlaylistUpgrades,
   syncSharedPlaylistImport,
@@ -223,6 +224,7 @@ function FlowPage({ mode = "all" }) {
   const [syncingImportPlaylistId, setSyncingImportPlaylistId] = useState(null);
   const [updatingSyncIntervalPlaylistId, setUpdatingSyncIntervalPlaylistId] = useState(null);
   const [updatingAvailabilityPlaylistId, setUpdatingAvailabilityPlaylistId] = useState(null);
+  const [updatingRecordHistoryId, setUpdatingRecordHistoryId] = useState(null);
   const [savingToPlaylistId, setSavingToPlaylistId] = useState(null);
   const [deletingTrackId, setDeletingTrackId] = useState(null);
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
@@ -1066,6 +1068,40 @@ function FlowPage({ mode = "all" }) {
     }
   };
 
+  const handleUpdateRecordHistory = async (entry, enabled) => {
+    if (!entry?.id || updatingRecordHistoryId) return;
+    setUpdatingRecordHistoryId(entry.id);
+    try {
+      if (entry.kind === "flow") {
+        const currentFlow = effectiveFlowList.find((flow) => flow.id === entry.id);
+        await updateFlow(entry.id, { recordHistory: enabled });
+        setSimpleDrafts((prev) => ({
+          ...prev,
+          [entry.id]: {
+            ...(prev[entry.id] || (currentFlow ? flowToForm(currentFlow) : {})),
+            recordHistory: enabled,
+          },
+        }));
+      } else {
+        const result = await setPlaylistRecordHistory(entry.id, enabled);
+        queryClient.setQueryData(queryKeys.playlistStatus, (current) => current ? ({
+          ...current,
+          sharedPlaylists: current.sharedPlaylists.map((playlist) =>
+            playlist.id === entry.id
+              ? { ...playlist, recordHistory: result.recordHistory }
+              : playlist,
+          ),
+        }) : current);
+      }
+      showSuccess(enabled ? "Listening history enabled" : "Listening history disabled");
+      await fetchStatus();
+    } catch (err) {
+      showError(getApiErrorMessage(err, "Failed to update listening history setting"));
+    } finally {
+      setUpdatingRecordHistoryId(null);
+    }
+  };
+
   const handleReSearchTrack = async (flowId, track, isSharedPlaylist = false) => {
     const jobId = track?.id;
     if (!flowId || !jobId || reSearchingTrackIds[jobId]) return;
@@ -1486,7 +1522,9 @@ function FlowPage({ mode = "all" }) {
         type: selectedIsFlow ? "flow" : "playlist",
         id: selectedEntry.id,
         label: selectedFlow?.name || selectedPlaylist?.name || selectedEntry.name || "Playlist",
-        recordHistory: selectedIsFlow ? selectedFlow?.recordHistory !== false : true,
+        recordHistory: selectedIsFlow
+          ? selectedFlow?.recordHistory !== false
+          : selectedPlaylist?.recordHistory !== false,
       }
     : null;
   const flowEnabled = selectedFlow?.enabled === true;
@@ -1592,6 +1630,20 @@ function FlowPage({ mode = "all" }) {
     <MoreMenu activeButtonClass="btn-neutral-active">
       {selectedIsFlow && selectedFlow ? (
         <>
+          <div
+            className="flow-page__menu-sync-toggle-row"
+            onClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <span className="flow-page__menu-sync-label">Record listening history</span>
+            <PillToggle
+              checked={selectedFlow.recordHistory !== false}
+              onChange={(event) => handleUpdateRecordHistory(selectedFlow, event.target.checked)}
+              disabled={updatingRecordHistoryId === selectedFlow.id}
+              aria-label={`Record listening history ${selectedFlow.recordHistory !== false ? "on" : "off"}`}
+            />
+          </div>
+          <div className="flow-page__menu-divider" />
           <button
             type="button"
             className="artist-menu-item"
@@ -1746,6 +1798,19 @@ function FlowPage({ mode = "all" }) {
               </div>
             </>
           ) : null}
+          <div
+            className="flow-page__menu-sync-toggle-row"
+            onClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <span className="flow-page__menu-sync-label">Record listening history</span>
+            <PillToggle
+              checked={selectedPlaylist.recordHistory !== false}
+              onChange={(event) => handleUpdateRecordHistory(selectedPlaylist, event.target.checked)}
+              disabled={updatingRecordHistoryId === selectedPlaylist.id}
+              aria-label={`Record listening history ${selectedPlaylist.recordHistory !== false ? "on" : "off"}`}
+            />
+          </div>
           <div
             className="flow-page__menu-sync-toggle-row"
             onClick={(event) => event.stopPropagation()}
