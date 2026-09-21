@@ -23,7 +23,11 @@ import { normalizeFlowTrack } from "../../../utils/audioQueue";
 import { TrackPlaylistMenu, TrackPlaylistSubmenu } from "../../ArtistDetails/components/TrackPlaylistMenu";
 import { LibraryItemMenu } from "../../../components/LibraryItemMenu";
 import { PlaylistArtworkThumb } from "./PlaylistArtworkThumb.jsx";
-import { getTrackAvailability, getTrackSearchAction } from "../trackAvailability.js";
+import {
+  getTrackAvailability,
+  getTrackSearchAction,
+  shouldShowAddToLibrary,
+} from "../trackAvailability.js";
 
 function getTrackStatusMeta(status) {
   switch (String(status || "").toLowerCase()) {
@@ -207,6 +211,7 @@ function FlowTrackKebabMenu({
   const trackLabel = track?.trackName || "track";
   const canNavigateAlbum = Boolean(track?.albumMbid && onNavigateAlbum);
   const canNavigateArtist = Boolean(track?.artistMbid && onNavigateArtist);
+  const canAddToLibrary = shouldShowAddToLibrary(track, onAddToLibrary);
   const actionItems = [
     onPlay
       ? {
@@ -217,7 +222,7 @@ function FlowTrackKebabMenu({
           onSelect: () => onPlay(track),
         }
       : null,
-    onAddToLibrary
+    canAddToLibrary
       ? {
           id: "add-library",
           label: "Add to library",
@@ -274,7 +279,7 @@ function FlowTrackKebabMenu({
         }
       : null,
   ].filter(Boolean);
-  const additionalItemsAfter = onAddToLibrary
+  const additionalItemsAfter = canAddToLibrary
     ? "add-library"
     : canReSearch
       ? "re-search"

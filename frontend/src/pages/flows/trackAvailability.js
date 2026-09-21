@@ -16,3 +16,7 @@ export function getTrackSearchAction(track, showTrackAvailability = false) {
   if (showTrackAvailability) return track.streamUrl ? null : "research";
   return track.qualityOwned === true && track.qualityState !== "preferred" ? "upgrade" : null;
 }
+
+export function shouldShowAddToLibrary(track, onAddToLibrary) {
+  return typeof onAddToLibrary === "function" && track?.libraryOwned !== true;
+}

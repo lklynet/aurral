@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { countAvailableTracks, getTrackAvailability, getTrackSearchAction } from "../../frontend/src/pages/flows/trackAvailability.js";
+import {
+  countAvailableTracks,
+  getTrackAvailability,
+  getTrackSearchAction,
+  shouldShowAddToLibrary,
+} from "../../frontend/src/pages/flows/trackAvailability.js";
 
 test("availability counts playable completed tracks, including tracks reused from another playlist", () => {
   const tracks = [
@@ -44,4 +49,13 @@ test("existing flow searches retain their upgrade eligibility rules", () => {
   assert.equal(getTrackSearchAction({ status: "done", qualityOwned: true, qualityState: "upgrade" }), "upgrade");
   assert.equal(getTrackSearchAction({ status: "done", qualityOwned: true, qualityState: "preferred" }), null);
   assert.equal(getTrackSearchAction({ status: "done", qualityOwned: false, qualityState: "upgrade" }), null);
+});
+
+test("library-owned tracks do not offer the add-to-library action", () => {
+  const addToLibrary = () => {};
+
+  assert.equal(shouldShowAddToLibrary({ libraryOwned: true }, addToLibrary), false);
+  assert.equal(shouldShowAddToLibrary({ libraryOwned: false }, addToLibrary), true);
+  assert.equal(shouldShowAddToLibrary({}, addToLibrary), true);
+  assert.equal(shouldShowAddToLibrary({ libraryOwned: true }, null), false);
 });

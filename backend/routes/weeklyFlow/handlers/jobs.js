@@ -37,6 +37,7 @@ import {
   queueQualityUpgrade,
   runQualityUpgradeCheck,
 } from "../../../services/qualityProfileService.js";
+import { getCanonicalTrackOwnershipBatch } from "../../../services/libraryQueryService.js";
 import {
   isFlowOwnerProcess,
   requestFlowOwner,
@@ -99,7 +100,16 @@ export function registerJobs(router) {
       );
     }
     const profile = getQualityProfile();
-    res.json(filterJobsForUser(req.user, jobs).map((job) => decorateJobQuality(job, profile)));
+    const accessibleJobs = filterJobsForUser(req.user, jobs).map((job) =>
+      decorateJobQuality(job, profile),
+    );
+    const libraryOwnership = getCanonicalTrackOwnershipBatch(accessibleJobs);
+    res.json(
+      accessibleJobs.map((job, index) => ({
+        ...job,
+        libraryOwned: libraryOwnership[index] === true,
+      })),
+    );
   });
 
   router.get("/jobs", noCache, (req, res) => {
