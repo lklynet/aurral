@@ -110,7 +110,8 @@ test("tests the selected webhook without saving settings", async ({ page }) => {
     await expect(card).toBeVisible();
     const settingsPosts = [];
     const onRequest = (request) => {
-      if (request.method() === "POST" && request.url().includes("/api/settings")) {
+      const requestUrl = new URL(request.url());
+      if (request.method() === "POST" && requestUrl.pathname === "/api/settings") {
         settingsPosts.push(request);
       }
     };

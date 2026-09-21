@@ -23,6 +23,9 @@ import {
 import PillToggle from "../../../components/PillToggle";
 import { DotLoader } from "../../../components/DotLoader";
 import { getConfiguredStatus } from "../utils/integrationStatus";
+
+const EMPTY_WEBHOOKS = Object.freeze([]);
+
 export function SettingsConnectTab({
   settings,
   updateSettings,
@@ -45,10 +48,17 @@ export function SettingsConnectTab({
   const lastfmConfigured = Boolean(health?.lastfmConfigured);
   const ticketmasterConfigured = Boolean(health?.ticketmasterConfigured);
 
-  const webhooks = settings.integrations?.webhooks || [];
+  const configuredWebhooks = settings.integrations?.webhooks;
+  const webhooks = configuredWebhooks || EMPTY_WEBHOOKS;
   const webhookEvents = settings.integrations?.webhookEvents || {};
+  const webhookRevisionRef = useRef(0);
+
+  useEffect(() => {
+    webhookRevisionRef.current += 1;
+  }, [configuredWebhooks]);
 
   const updateWebhooks = (newWebhooks) => {
+    webhookRevisionRef.current += 1;
     updateSettings({
       ...settings,
       integrations: {
@@ -162,11 +172,13 @@ export function SettingsConnectTab({
 
     setWebhookTestStatus(null);
     setTestingWebhookIndex(index);
+    const testRevision = webhookRevisionRef.current;
     try {
       await testWebhookConnection({
         ...webhook,
         url,
       });
+      if (webhookRevisionRef.current !== testRevision) return;
       setWebhookTestStatus({
         index,
         tone: "success",
@@ -174,6 +186,7 @@ export function SettingsConnectTab({
       });
       showSuccess("Test webhook sent.");
     } catch (err) {
+      if (webhookRevisionRef.current !== testRevision) return;
       const message =
         err.response?.data?.message || err.response?.data?.error || err.message;
       setWebhookTestStatus({
