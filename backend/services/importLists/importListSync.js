@@ -1,7 +1,7 @@
 import { flowPlaylistConfig } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { fetchImportedPlaylistTracks } from "./importPlaylist.js";
 import { updateSharedPlaylist } from "../weeklyFlow/weeklyFlowOperations.js";
-import { buildSharedTrackIdentity } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
+import { buildImportTrackIdentity } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { logger } from "../logger.js";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -60,13 +60,13 @@ export async function syncSharedPlaylistImport({
       throw new Error("Playlist was removed while syncing");
     }
     const previousIdentities = new Set(
-      (playlist.tracks || []).map(buildSharedTrackIdentity),
+      (playlist.tracks || []).map(buildImportTrackIdentity),
     );
     const currentIdentities = new Set(
-      (result.playlist.tracks || []).map(buildSharedTrackIdentity),
+      (result.playlist.tracks || []).map(buildImportTrackIdentity),
     );
     const acceptedNotStored = tracks.filter(
-      (track) => !currentIdentities.has(buildSharedTrackIdentity(track)),
+      (track) => !currentIdentities.has(buildImportTrackIdentity(track)),
     );
     const tracksAdded = [...currentIdentities].filter((id) => !previousIdentities.has(id)).length;
     const tracksRemoved = [...previousIdentities].filter((id) => !currentIdentities.has(id)).length;

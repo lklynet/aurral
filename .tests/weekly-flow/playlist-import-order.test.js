@@ -692,6 +692,73 @@ test("Spotify sync reports replacement tracks, excluded entries, and download jo
   }
 });
 
+test("Spotify sync retains unchanged enriched jobs and removes obsolete pending jobs", async (t) => {
+  const originalStart = weeklyFlowWorker.start;
+  const originalListPlaylistTracks = spotifyClient.listPlaylistTracks;
+  const info = t.mock.method(logger, "info", () => {});
+  weeklyFlowWorker.start = async () => false;
+  try {
+    const unchanged = {
+      artistName: "Artist",
+      trackName: "Keep",
+      albumName: "Album",
+      artistMbid: "11111111-1111-1111-1111-111111111111",
+    };
+    const completedTrack = {
+      artistName: "Artist",
+      trackName: "Completed",
+      albumName: "Album",
+      albumMbid: "22222222-2222-2222-2222-222222222222",
+    };
+    const obsolete = { artistName: "Artist", trackName: "Remove", albumName: "Album" };
+    const playlist = flowPlaylistConfig.createSharedPlaylist({
+      name: "Spotify Job Retention",
+      ownerUserId: 7,
+      tracks: [unchanged, completedTrack, obsolete],
+      importSource: {
+        provider: "spotify-playlist",
+        externalId: "job-retention-id",
+        syncEnabled: true,
+        syncIntervalHours: 24,
+      },
+    });
+    const unchangedJobId = downloadTracker.addJob(unchanged, playlist.id);
+    const completedJobId = downloadTracker.addJob(completedTrack, playlist.id);
+    await fs.mkdir(weeklyFlowRoot, { recursive: true });
+    const completedPath = path.join(weeklyFlowRoot, "spotify-retained-completed.flac");
+    await fs.writeFile(completedPath, "audio");
+    downloadTracker.setDone(completedJobId, completedPath, completedTrack.albumName);
+    const obsoleteJobId = downloadTracker.addJob(obsolete, playlist.id);
+    spotifyClient.listPlaylistTracks = async () => [
+      { item: { name: "Keep", artists: [{ name: "Artist" }], album: { name: "Album" } } },
+      { item: { name: "Completed", artists: [{ name: "Artist" }], album: { name: "Album" } } },
+    ];
+
+    const result = await syncSharedPlaylistImport({
+      playlistId: playlist.id,
+      user: { id: 7 },
+      force: true,
+    });
+
+    assert.equal(result.trackCount, 2);
+    assert.equal(result.tracksQueued, 0);
+    assert.equal(result.tracksAdded, 0);
+    assert.equal(result.tracksRemoved, 1);
+    assert.ok(downloadTracker.getJob(unchangedJobId));
+    assert.equal(downloadTracker.getJob(completedJobId)?.status, "done");
+    await fs.access(completedPath);
+    assert.equal(downloadTracker.getJob(obsoleteJobId), null);
+    const completed = info.mock.calls.find((call) =>
+      call.arguments[1] === "Playlist import sync completed");
+    assert.equal(completed?.arguments[2]?.tracksAdded, 0);
+    assert.equal(completed?.arguments[2]?.tracksRemoved, 1);
+  } finally {
+    spotifyClient.listPlaylistTracks = originalListPlaylistTracks;
+    weeklyFlowWorker.start = originalStart;
+    weeklyFlowWorker.stop();
+  }
+});
+
 test("Spotify sync identifies source tracks dropped before playlist storage", async (t) => {
   const originalStart = weeklyFlowWorker.start;
   const originalListPlaylistTracks = spotifyClient.listPlaylistTracks;

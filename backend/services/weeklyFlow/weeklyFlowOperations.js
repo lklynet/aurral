@@ -7,6 +7,7 @@ import {
   recordTrackJobQueued,
 } from "../aurralHistoryService.js";
 import {
+  buildImportTrackIdentity,
   buildSharedTrackIdentity,
   dedupeSharedTracks,
   filterMissingSharedTracks,
@@ -526,6 +527,7 @@ export async function updateSharedPlaylist({
         : null;
       const existingJobs = downloadTracker.getByPlaylistType(safePlaylistId);
       const reusableJobsByIdentity = new Map();
+      const reusableJobsByImportIdentity = new Map();
       const { createPlaybackDeletionGuard } = await import("../playback/playbackFileRetention.js");
       const protectPlayback = !(deleteUnsharedFiles && !mergeImportSource);
       const deletionGuard = protectPlayback
@@ -538,13 +540,23 @@ export async function updateSharedPlaylist({
         const current = reusableJobsByIdentity.get(identity) || [];
         current.push(job);
         reusableJobsByIdentity.set(identity, current);
+        if (mergeImportSource) {
+          const importIdentity = buildImportTrackIdentity(job);
+          const importJobs = reusableJobsByImportIdentity.get(importIdentity) || [];
+          importJobs.push(job);
+          reusableJobsByImportIdentity.set(importIdentity, importJobs);
+        }
       }
       for (const [identity, jobsForIdentity] of reusableJobsByIdentity.entries()) {
         reusableJobsByIdentity.set(identity, sortJobsForTrackReuse(jobsForIdentity));
       }
+      for (const [identity, jobsForIdentity] of reusableJobsByImportIdentity.entries()) {
+        reusableJobsByImportIdentity.set(identity, sortJobsForTrackReuse(jobsForIdentity));
+      }
 
       const matchedJobIds = new Set();
       const tracksNeedingWork = [];
+      const tracksWithoutExactJob = [];
       for (const track of normalizedTracks) {
         const identity = buildSharedTrackIdentity(track);
         const reusableJobs = reusableJobsByIdentity.get(identity) || [];
@@ -552,8 +564,17 @@ export async function updateSharedPlaylist({
         if (matchedJob) {
           matchedJobIds.add(matchedJob.id);
         } else {
-          tracksNeedingWork.push(track);
+          tracksWithoutExactJob.push(track);
         }
+      }
+      for (const track of tracksWithoutExactJob) {
+        const reusableJobs = reusableJobsByImportIdentity.get(buildImportTrackIdentity(track)) || [];
+        while (reusableJobs.length > 0 && matchedJobIds.has(reusableJobs[0].id)) {
+          reusableJobs.shift();
+        }
+        const matchedJob = reusableJobs.shift();
+        if (matchedJob) matchedJobIds.add(matchedJob.id);
+        else tracksNeedingWork.push(track);
       }
 
       for (const job of existingJobs) {
@@ -583,7 +604,7 @@ export async function updateSharedPlaylist({
       });
       const queued = await queueTracksForPlaylist(tracksNeedingWork, safePlaylistId);
       tracksQueued = queued.jobIds.length;
-    });
+    }, { clearPending: !mergeImportSource });
     weeklyFlowWorker.pruneOrphanedJobState();
   }
 
