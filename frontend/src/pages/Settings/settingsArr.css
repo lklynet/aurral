@@ -1737,6 +1737,10 @@
   right: 0.75rem;
 }
 
+.settings-arr .settings-connect-webhooks .arr-fieldset__body {
+  padding-top: 2.5rem;
+}
+
 .settings-arr .settings-page__inline-row {
   gap: 0.375rem;
 }
@@ -2259,6 +2263,10 @@
     position: static;
     flex-wrap: wrap;
     margin: -0.25rem 0.75rem 0.625rem;
+  }
+
+  .settings-arr .settings-connect-webhooks .arr-fieldset__body {
+    padding-top: 0;
   }
 
   .settings-storage-health__toolbar {

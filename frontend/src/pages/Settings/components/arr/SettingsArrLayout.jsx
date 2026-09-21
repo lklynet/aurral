@@ -1,10 +1,13 @@
 import { useId } from "react";
 
-export function SettingsArrFieldSet({ legend, actions = null, children }) {
+export function SettingsArrFieldSet({ legend, actions = null, className = "", children }) {
   const headingId = useId();
 
   return (
-    <fieldset className="arr-fieldset" aria-labelledby={headingId}>
+    <fieldset
+      className={`arr-fieldset${className ? ` ${className}` : ""}`}
+      aria-labelledby={headingId}
+    >
       <legend id={headingId} className="arr-fieldset__legend">
         {legend}
       </legend>

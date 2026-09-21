@@ -275,6 +275,7 @@ export function SettingsConnectTab({
 
         <SettingsArrFieldSet
           legend="Webhooks"
+          className="settings-connect-webhooks"
           actions={
             <button
               type="button"
