@@ -158,10 +158,11 @@ export async function startServerProcess({
   port,
   extraEnv = {},
 } = {}) {
+  // Keep automatic ports above Fetch's highest blocked port (10080).
   const chosenPort =
     Number.isInteger(port) && port > 0
       ? port
-      : 4100 + Math.floor(Math.random() * 1000);
+      : 11000 + Math.floor(Math.random() * 1000);
   const child = spawn("node", ["backend/server.js"], {
     cwd: repoRoot,
     env: {
