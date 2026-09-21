@@ -18,6 +18,9 @@ test("log diagnostics redact credentials, collapse lines, and cap length", () =>
   assert.equal(safeLogDiagnostic({ message: "token=object-secret" }), "token=[redacted]");
   assert.equal(safeLogDiagnostic("x".repeat(1000)).length, 501);
   assert.equal(safeLogDiagnostic("Connection refused"), "Connection refused");
+  const htmlError = new Error("<!DOCTYPE html><html><head><title>524: A timeout occurred</title></head><body>large page</body></html>");
+  htmlError.statusCode = 524;
+  assert.equal(safeLogDiagnostic(htmlError), "Upstream HTML error (524): 524: A timeout occurred");
 });
 
 test("verbose console mode respects explicit environment values", () => {

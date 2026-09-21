@@ -6,7 +6,13 @@ const MAX_LOG_DIAGNOSTIC_LENGTH = 500;
 
 export function safeLogDiagnostic(value) {
   const raw = typeof value?.message === "string" ? value.message : String(value ?? "");
-  const redacted = raw
+  const isHtml = /^\s*(?:<!doctype html|<html\b)/i.test(raw);
+  const status = Number(value?.statusCode ?? value?.response?.status);
+  const title = isHtml ? raw.match(/<title[^>]*>([^<]{1,200})<\/title>/i)?.[1]?.trim() : null;
+  const diagnostic = isHtml
+    ? `Upstream HTML error${Number.isInteger(status) && status >= 400 ? ` (${status})` : ""}${title ? `: ${title}` : ""}`
+    : raw;
+  const redacted = diagnostic
     .replace(/https?:\/\/[^\s"'<>]+/gi, "[redacted URL]")
     .replace(/\b(Bearer|Basic)\s+[^\s,;"'}]+/gi, "$1 [redacted]")
     .replace(/\b(cookie|set-cookie)\b["']?\s*[:=]\s*[^\r\n}]+/gi, "$1=[redacted]")

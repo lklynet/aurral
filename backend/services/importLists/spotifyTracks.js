@@ -15,7 +15,7 @@ export function parseSpotifyPlaylistItems(items = []) {
   for (const [index, item] of items.entries()) {
     const position = index + 1;
     if (item?.item && !item?.track) stats.itemOnly += 1;
-    const track = item?.item || item?.track;
+    const track = item?.track;
     if (!track) {
       stats.unavailable += 1;
       excluded.push({ position, reason: "unavailable" });

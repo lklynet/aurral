@@ -1145,10 +1145,10 @@ function FlowPage({ mode = "all" }) {
       if (result?.skipped) {
         showSuccess("Playlist is already up to date");
       } else {
-        const added = Number(result?.tracksAdded || 0);
+        const queued = Number(result?.tracksQueued || 0);
         showSuccess(
-          added > 0
-            ? `Synced ${added} new track${added !== 1 ? "s" : ""} from ${providerLabel}`
+          queued > 0
+            ? `Synced ${queued} new track${queued !== 1 ? "s" : ""} from ${providerLabel}`
             : `${providerLabel} playlist synced`,
         );
       }

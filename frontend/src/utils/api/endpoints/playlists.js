@@ -200,9 +200,7 @@ export const importLastfmPlaylist = (payload) =>
   postData("/playlists/import/lastfm", payload);
 
 export const syncSharedPlaylistImport = (playlistId) =>
-  postData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/sync`, undefined, {
-    timeout: 5 * 60 * 1000,
-  });
+  postData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/sync`);
 
 export const getFlowLidarrImportListUrl = (flowId) =>
   getData(`/playlists/flows/${encodeURIComponent(flowId)}/lidarr-import-list`);

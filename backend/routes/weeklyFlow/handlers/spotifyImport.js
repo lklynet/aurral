@@ -4,7 +4,7 @@ import {
   SPOTIFY_AUTH_REQUIRED_CODE,
   spotifyClient,
 } from "../../../services/spotify/spotifyClient.js";
-import { logger } from "../../../services/logger.js";
+import { logger, safeLogDiagnostic } from "../../../services/logger.js";
 import {
   enqueueImportedPlaylist,
   fetchImportedPlaylistTracks,
@@ -109,7 +109,7 @@ export function registerSpotifyImport(router) {
       res.json(payload);
     } catch (error) {
       logger.warn("playlist-import", "Spotify playlist listing failed", {
-        reason: error?.message || String(error),
+        reason: safeLogDiagnostic(error),
       });
       sendSpotifyError(res, error, "Failed to fetch Spotify playlists");
     }
@@ -135,7 +135,7 @@ export function registerSpotifyImport(router) {
       });
     } catch (error) {
       logger.warn("playlist-import", "Spotify playlist preview failed", {
-        reason: error?.message || String(error),
+        reason: safeLogDiagnostic(error),
       });
       sendSpotifyError(res, error, "Failed to preview Spotify playlist");
     }
@@ -199,7 +199,7 @@ export function registerSpotifyImport(router) {
       logger[status >= 500 ? "error" : "warn"]("playlist-import", "Spotify playlist import request failed", {
         playlistName: String(req.body?.name || "").trim() || null,
         stage,
-        reason: error?.message || String(error),
+        reason: safeLogDiagnostic(error),
       });
       sendSpotifyError(res, error, "Failed to import Spotify playlist");
     }

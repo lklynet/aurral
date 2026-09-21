@@ -343,11 +343,6 @@ export const buildSharedTrackIdentity = (track) =>
     String(track?.releaseYear || "").trim(),
   ].join("\u0001");
 
-export const buildImportTrackIdentity = (track) =>
-  [track?.artistName, track?.trackName, track?.albumName]
-    .map((value) => String(value || "").trim().toLowerCase())
-    .join("\u0001");
-
 export const buildCoreTrackIdentity = (track) => {
   const artistName = String(track?.artistName || "").trim().toLowerCase();
   const trackName = String(track?.trackName || "").trim().toLowerCase();

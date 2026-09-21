@@ -3,7 +3,7 @@ import {
   fetchImportedPlaylistTracks,
 } from "../../../services/importLists/importPlaylist.js";
 import { lastfmStationClient } from "../../../services/importLists/lastfmStations.js";
-import { logger } from "../../../services/logger.js";
+import { logger, safeLogDiagnostic } from "../../../services/logger.js";
 
 const getErrorStatus = (error) => error?.statusCode || error?.response?.status || 500;
 
@@ -22,7 +22,7 @@ export function registerLastfmImport(router) {
       res.json(await lastfmStationClient.listPlaylists(req.user.id, requestedUsername));
     } catch (error) {
       logger.warn("playlist-import", "Last.fm station listing failed", {
-        reason: error?.message || String(error),
+        reason: safeLogDiagnostic(error),
       });
       res.status(getErrorStatus(error)).json({
         error: "Failed to fetch Last.fm stations",
@@ -45,7 +45,7 @@ export function registerLastfmImport(router) {
       });
     } catch (error) {
       logger.warn("playlist-import", "Last.fm station preview failed", {
-        reason: error?.message || String(error),
+        reason: safeLogDiagnostic(error),
       });
       res.status(getErrorStatus(error)).json({
         error: "Failed to preview Last.fm station",
@@ -106,7 +106,7 @@ export function registerLastfmImport(router) {
       logger[status >= 500 ? "error" : "warn"]("playlist-import", "Last.fm station import request failed", {
         playlistName: String(req.body?.name || "").trim() || null,
         stage,
-        reason: error?.message || String(error),
+        reason: safeLogDiagnostic(error),
       });
       res.status(status).json({
         error: "Failed to import Last.fm station",

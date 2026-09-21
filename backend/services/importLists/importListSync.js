@@ -1,8 +1,8 @@
 import { flowPlaylistConfig } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { fetchImportedPlaylistTracks } from "./importPlaylist.js";
 import { updateSharedPlaylist } from "../weeklyFlow/weeklyFlowOperations.js";
-import { buildImportTrackIdentity } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
-import { logger } from "../logger.js";
+import { buildSharedTrackIdentity } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
+import { logger, safeLogDiagnostic } from "../logger.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -56,17 +56,14 @@ export async function syncSharedPlaylistImport({
       importSource: syncImportSource,
       mergeImportSource: true,
     });
-    if (!result?.success || !result.playlist) {
-      throw new Error("Playlist was removed while syncing");
-    }
     const previousIdentities = new Set(
-      (playlist.tracks || []).map(buildImportTrackIdentity),
+      (playlist.tracks || []).map(buildSharedTrackIdentity),
     );
     const currentIdentities = new Set(
-      (result.playlist.tracks || []).map(buildImportTrackIdentity),
+      (result?.playlist?.tracks || []).map(buildSharedTrackIdentity),
     );
     const acceptedNotStored = tracks.filter(
-      (track) => !currentIdentities.has(buildImportTrackIdentity(track)),
+      (track) => !currentIdentities.has(buildSharedTrackIdentity(track)),
     );
     const tracksAdded = [...currentIdentities].filter((id) => !previousIdentities.has(id)).length;
     const tracksRemoved = [...previousIdentities].filter((id) => !currentIdentities.has(id)).length;
@@ -108,7 +105,7 @@ export async function syncSharedPlaylistImport({
       spotifyItemOnlyCount: Number(stats.itemOnly || 0),
       acceptedNotStoredCount: acceptedNotStored.length,
       previousTrackCount: playlist.tracks?.length || 0,
-      playlistTrackCount: result.playlist.tracks?.length || 0,
+      playlistTrackCount: result?.playlist?.tracks?.length || 0,
       tracksAdded,
       tracksRemoved,
       tracksQueued: Number(result?.tracksQueued || 0),
@@ -116,21 +113,16 @@ export async function syncSharedPlaylistImport({
     });
     return {
       skipped: false,
-      trackCount: result.playlist.tracks?.length || 0,
-      sourceEntryCount,
-      acceptedTrackCount: tracks.length,
-      acceptedNotStoredCount: acceptedNotStored.length,
-      tracksAdded,
-      tracksRemoved,
+      trackCount: tracks.length,
       tracksQueued: Number(result?.tracksQueued || 0),
-      sourceSkipped,
+      tracksReused: Number(result?.tracksReused || 0),
     };
   } catch (error) {
     logger.error("playlist-import", "Playlist import sync failed", {
       provider: playlist.importSource.provider,
       playlistName: playlist.name,
       playlistId: playlist.id,
-      reason: error?.message || String(error),
+      reason: safeLogDiagnostic(error),
     });
     const latestPlaylist = flowPlaylistConfig.getSharedPlaylist(playlist.id);
     flowPlaylistConfig.updateSharedPlaylist(playlist.id, {

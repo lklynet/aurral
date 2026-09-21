@@ -3,7 +3,7 @@ import {
   fetchImportedPlaylistTracks,
 } from "../../../services/importLists/importPlaylist.js";
 import { listenbrainzPlaylistClient } from "../../../services/importLists/listenbrainzPlaylists.js";
-import { logger } from "../../../services/logger.js";
+import { logger, safeLogDiagnostic } from "../../../services/logger.js";
 
 const getErrorStatus = (error) => error?.statusCode || error?.response?.status || 500;
 
@@ -23,7 +23,7 @@ export function registerListenBrainzImport(router) {
       res.json(await listenbrainzPlaylistClient.listPlaylists(req.user.id));
     } catch (error) {
       logger.warn("playlist-import", "ListenBrainz playlist listing failed", {
-        reason: error?.message || String(error),
+        reason: safeLogDiagnostic(error),
       });
       res.status(getErrorStatus(error)).json({
         error: "Failed to fetch ListenBrainz playlists",
@@ -49,7 +49,7 @@ export function registerListenBrainzImport(router) {
       });
     } catch (error) {
       logger.warn("playlist-import", "ListenBrainz playlist preview failed", {
-        reason: error?.message || String(error),
+        reason: safeLogDiagnostic(error),
       });
       res.status(getErrorStatus(error)).json({
         error: "Failed to preview ListenBrainz playlist",
@@ -110,7 +110,7 @@ export function registerListenBrainzImport(router) {
       logger[status >= 500 ? "error" : "warn"]("playlist-import", "ListenBrainz playlist import request failed", {
         playlistName: String(req.body?.name || "").trim() || null,
         stage,
-        reason: error?.message || String(error),
+        reason: safeLogDiagnostic(error),
       });
       res.status(status).json({
         error: "Failed to import ListenBrainz playlist",

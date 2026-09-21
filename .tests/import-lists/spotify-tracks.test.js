@@ -70,22 +70,6 @@ test("parseSpotifyPlaylistItems reports skipped spotify entries", () => {
   ]);
 });
 
-test("parseSpotifyPlaylistItems accepts entries using Spotify's item field", () => {
-  const { tracks, stats } = parseSpotifyPlaylistItems([
-    {
-      item: {
-        type: "track",
-        name: "New field song",
-        artists: [{ name: "Artist" }],
-        album: { name: "Album" },
-      },
-    },
-  ]);
-  assert.equal(tracks.length, 1);
-  assert.equal(tracks[0].trackName, "New field song");
-  assert.equal(stats.itemOnly, 1);
-});
-
 test("parseSpotifyPlaylistItems identifies duplicate source positions", () => {
   const { tracks, stats, excluded } = parseSpotifyPlaylistItems([
     { track: { name: "Same Song", artists: [{ name: "Artist" }], album: { name: "Album" } } },
