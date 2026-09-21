@@ -69,13 +69,23 @@ function resolveBinaryExists(binary) {
   });
 }
 
+export function buildYtdlpInvocationArgs(
+  args,
+  { nodeAvailable = resolveBinaryExists("node") } = {},
+) {
+  return [
+    ...(nodeAvailable ? ["--js-runtimes", "node"] : []),
+    ...args,
+  ];
+}
+
 function isConfiguredFor(config = null) {
   return isEnabledFor(config) && resolveBinaryExists(getBinaryPath());
 }
 
 function runYtdlp(args, { timeoutMs = 120000, cwd } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(getBinaryPath(), args, {
+    const child = spawn(getBinaryPath(), buildYtdlpInvocationArgs(args), {
       cwd,
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
