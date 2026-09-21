@@ -17,7 +17,7 @@ export async function fetchImportedPlaylistTracks({
   if (provider === "spotify-playlist") {
     const items = await spotifyClient.listPlaylistTracks(userId, externalId, { forceRefresh });
     const parsed = parseSpotifyPlaylistItems(items);
-    return { tracks: parsed.tracks, stats: parsed.stats };
+    return parsed;
   }
   if (provider === "listenbrainz-playlist") {
     return listenbrainzPlaylistClient.getPlaylistTracks(userId, externalId);

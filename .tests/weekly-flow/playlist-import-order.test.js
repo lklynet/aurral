@@ -629,9 +629,111 @@ test("ListenBrainz sync uses the shared import update path", async (t) => {
     const completed = info.mock.calls.find((call) =>
       call.arguments[1] === "Playlist import sync completed");
     assert.equal(completed?.arguments[2]?.playlistId, playlist.id);
-    assert.equal(completed?.arguments[2]?.trackCount, 1);
+    assert.equal(completed?.arguments[2]?.playlistTrackCount, 1);
+    assert.equal(completed?.arguments[2]?.tracksAdded, 1);
+    assert.equal(completed?.arguments[2]?.tracksRemoved, 1);
   } finally {
     listenbrainzPlaylistClient.getGeneratedPlaylistTracks = originalGetGeneratedPlaylistTracks;
+    weeklyFlowWorker.start = originalStart;
+    weeklyFlowWorker.stop();
+  }
+});
+
+test("Spotify sync reports replacement tracks, excluded entries, and download jobs separately", async (t) => {
+  const originalStart = weeklyFlowWorker.start;
+  const originalListPlaylistTracks = spotifyClient.listPlaylistTracks;
+  const info = t.mock.method(logger, "info", () => {});
+  weeklyFlowWorker.start = async () => false;
+  try {
+    const keep = { artistName: "Artist", trackName: "Keep", albumName: "Album" };
+    const removed = { artistName: "Artist", trackName: "Removed", albumName: "Album" };
+    const playlist = flowPlaylistConfig.createSharedPlaylist({
+      name: "Spotify Replacement",
+      ownerUserId: 7,
+      tracks: [keep, removed],
+      importSource: {
+        provider: "spotify-playlist",
+        externalId: "replacement-id",
+        syncEnabled: true,
+        syncIntervalHours: 24,
+      },
+    });
+    spotifyClient.listPlaylistTracks = async () => [
+      { track: { name: "Keep", artists: [{ name: "Artist" }], album: { name: "Album" } } },
+      { item: { type: "track", name: "New", artists: [{ name: "Artist" }], album: { name: "Album" } } },
+      { track: null },
+    ];
+
+    const result = await syncSharedPlaylistImport({
+      playlistId: playlist.id,
+      user: { id: 7 },
+      force: true,
+    });
+
+    assert.equal(result.sourceEntryCount, 3);
+    assert.equal(result.trackCount, 2);
+    assert.equal(result.tracksAdded, 1);
+    assert.equal(result.tracksRemoved, 1);
+    assert.equal(result.tracksQueued, 2);
+    assert.equal(result.acceptedTrackCount, 2);
+    assert.equal(result.acceptedNotStoredCount, 0);
+    assert.equal(result.sourceSkipped.unavailable, 1);
+    assert.equal(flowPlaylistConfig.getSharedPlaylist(playlist.id).trackCount, 2);
+    const completed = info.mock.calls.find((call) =>
+      call.arguments[1] === "Playlist import sync completed");
+    assert.equal(completed?.arguments[2]?.previousTrackCount, 2);
+    assert.equal(completed?.arguments[2]?.playlistTrackCount, 2);
+    assert.equal(completed?.arguments[2]?.acceptedNotStoredCount, 0);
+    assert.equal(completed?.arguments[2]?.spotifyItemOnlyCount, 1);
+  } finally {
+    spotifyClient.listPlaylistTracks = originalListPlaylistTracks;
+    weeklyFlowWorker.start = originalStart;
+    weeklyFlowWorker.stop();
+  }
+});
+
+test("Spotify sync identifies source tracks dropped before playlist storage", async (t) => {
+  const originalStart = weeklyFlowWorker.start;
+  const originalListPlaylistTracks = spotifyClient.listPlaylistTracks;
+  const { addDiscoveryFeedback } = await importFromRepo(
+    "backend/services/discovery/feedback.js",
+  );
+  const info = t.mock.method(logger, "info", () => {});
+  weeklyFlowWorker.start = async () => false;
+  try {
+    addDiscoveryFeedback("7", { artistName: "Blocked Artist", action: "block_artist" });
+    const playlist = flowPlaylistConfig.createSharedPlaylist({
+      name: "Filtered Spotify Import",
+      ownerUserId: 7,
+      tracks: [],
+      importSource: {
+        provider: "spotify-playlist",
+        externalId: "filtered-id",
+        syncEnabled: true,
+        syncIntervalHours: 24,
+      },
+    });
+    spotifyClient.listPlaylistTracks = async () => [
+      { track: { name: "Excluded", artists: [{ name: "Blocked Artist" }] } },
+      { track: { name: "Included", artists: [{ name: "Allowed Artist" }] } },
+    ];
+
+    const result = await syncSharedPlaylistImport({
+      playlistId: playlist.id,
+      user: { id: 7 },
+      force: true,
+    });
+
+    assert.equal(result.sourceEntryCount, 2);
+    assert.equal(result.acceptedTrackCount, 2);
+    assert.equal(result.acceptedNotStoredCount, 1);
+    assert.equal(result.trackCount, 1);
+    const completed = info.mock.calls.find((call) =>
+      call.arguments[1] === "Playlist import sync completed");
+    assert.equal(completed?.arguments[2]?.acceptedNotStoredCount, 1);
+    assert.equal(completed?.arguments[2]?.playlistTrackCount, 1);
+  } finally {
+    spotifyClient.listPlaylistTracks = originalListPlaylistTracks;
     weeklyFlowWorker.start = originalStart;
     weeklyFlowWorker.stop();
   }
