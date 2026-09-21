@@ -7,6 +7,7 @@ import { buildFlowRunPlanIsolated } from "./weeklyFlowPlanRunner.js";
 import { dbOps, userOps } from "../../db/helpers/index.js";
 import { resolveWeeklyFlowTrackContext } from "./weeklyFlowTrackResolver.js";
 import { getListenHistoryProfile } from "../listeningHistory.js";
+import { safeLogDiagnostic } from "../logger.js";
 import {
   normalizeExistingFileMode,
   repairOrphanedPlaylistTrackPaths,
@@ -710,7 +711,7 @@ export class WeeklyFlowWorker {
               .then(({ recordTrackJobFailed }) => recordTrackJobFailed(job, error.message))
               .catch((historyError) => {
                 console.warn(`[WeeklyFlowWorker] Could not record failed job ${job.id} in history:`,
-                  historyError?.message || historyError);
+                  safeLogDiagnostic(historyError));
               });
             await this.checkPlaylistComplete(job.playlistType);
           })

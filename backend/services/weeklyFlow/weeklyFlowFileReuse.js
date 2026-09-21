@@ -26,6 +26,7 @@ import {
 } from "../playlistPaths.js";
 import { getPathMappings, resolveLocalPath } from "../pathMappings.js";
 import { normalizeExistingFileMode } from "./weeklyFlowFileReuseMode.js";
+import { safeLogDiagnostic } from "../logger.js";
 import {
   createPlaybackDeletionGuard,
   forgetPlaybackRetainedFile,
@@ -756,8 +757,8 @@ export async function repairJobsUnderRemovedPlaylistDir(playlistType, options = 
     const { playlistManager } = await import("./weeklyFlowPlaylistManager.js");
     for (const changedPlaylistType of changedPlaylistTypes) {
       await playlistManager.refreshPlaylist(changedPlaylistType).catch((error) => {
-        console.warn(`[WeeklyFlowReuse] Could not refresh playlist ${changedPlaylistType}:`,
-          error?.message || error);
+        console.warn(`[WeeklyFlowReuse] Could not refresh playlist ${safeLogDiagnostic(changedPlaylistType)}:`,
+          safeLogDiagnostic(error));
       });
     }
     if (changedPlaylistTypes.has("library")) playlistManager.scheduleScanLibrary();
@@ -891,8 +892,8 @@ export async function repairReusableTrackLinks(options = {}) {
     const { playlistManager } = await import("./weeklyFlowPlaylistManager.js");
     for (const playlistType of changedPlaylistTypes) {
       await playlistManager.refreshPlaylist(playlistType).catch((error) => {
-        console.warn(`[WeeklyFlowReuse] Could not refresh playlist ${playlistType}:`,
-          error?.message || error);
+        console.warn(`[WeeklyFlowReuse] Could not refresh playlist ${safeLogDiagnostic(playlistType)}:`,
+          safeLogDiagnostic(error));
       });
     }
     if (changedPlaylistTypes.has("library")) playlistManager.scheduleScanLibrary();

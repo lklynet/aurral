@@ -3,6 +3,7 @@ import { isVerboseConsoleEnabled } from "../config/constants.js";
 const verboseEnabled = isVerboseConsoleEnabled();
 
 const MAX_LOG_DIAGNOSTIC_LENGTH = 500;
+const SENSITIVE_LOG_KEY = /^(?:arl|authorization|(?:set[_-]?)?cookie|password|(?:client[_-]?)?secret|session|(?:access[_-]?|refresh[_-]?|auth[_-]?)?token|(?:x[_-]?)?api[_-]?key)$/i;
 
 export function safeLogDiagnostic(value) {
   const raw = typeof value?.message === "string" ? value.message : String(value ?? "");
@@ -17,12 +18,26 @@ export function safeLogDiagnostic(value) {
     .replace(/\b(Bearer|Basic)\s+[^\s,;"'}]+/gi, "$1 [redacted]")
     .replace(/\b(cookie|set-cookie)\b["']?\s*[:=]\s*[^\r\n}]+/gi, "$1=[redacted]")
     .replace(/["']?\b(arl|access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|token|session|password|secret|authorization)\b["']?\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;&}]+)/gi, "$1=[redacted]")
+    .replace(/(["'])(?:[a-z]:\\|\/(?!api(?:\/|$)|rest(?:\/|$)))[^"'\r\n]+\1/gi, "$1[redacted path]$1")
+    .replace(/(?:\b[a-z]:\\|(?<![\w/])\/(?!api(?:\/|$)|rest(?:\/|$)))[^\s"'<>]+/gi, "[redacted path]")
     .replace(/\b[a-f0-9]{64,}\b/gi, "[redacted]")
     .replace(/[\x00-\x1f\x7f]+/g, " ")
     .trim();
   return redacted.length > MAX_LOG_DIAGNOSTIC_LENGTH
     ? `${redacted.slice(0, MAX_LOG_DIAGNOSTIC_LENGTH)}…`
     : redacted;
+}
+
+function safeLogData(value, depth = 0, seen = new WeakSet()) {
+  if (typeof value === "string" || value instanceof Error) return safeLogDiagnostic(value);
+  if (value == null || typeof value !== "object") return value;
+  if (depth >= 5 || seen.has(value)) return "[omitted]";
+  seen.add(value);
+  if (Array.isArray(value)) return value.slice(0, 100).map((item) => safeLogData(item, depth + 1, seen));
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+    key,
+    SENSITIVE_LOG_KEY.test(key) ? "[redacted]" : safeLogData(item, depth + 1, seen),
+  ]));
 }
 
 const DEFAULT_VISIBLE_MESSAGES = [
@@ -73,14 +88,15 @@ function log(level, category, message, data = {}) {
     level === "info" &&
     !DEFAULT_VISIBLE_MESSAGES.some((pattern) => pattern.test(String(message)))
   ) return;
-  const line = `[${level}] [${category}] ${message}`;
+  const line = `[${level}] [${safeLogDiagnostic(category)}] ${safeLogDiagnostic(message)}`;
   const keys = Object.keys(data).length;
+  const safeData = keys > 0 ? safeLogData(data) : data;
   if (level === "error") {
-    keys > 0 ? console.error("%s", line, data) : console.error("%s", line);
+    keys > 0 ? console.error("%s", line, safeData) : console.error("%s", line);
   } else if (level === "warn") {
-    keys > 0 ? console.warn("%s", line, data) : console.warn("%s", line);
+    keys > 0 ? console.warn("%s", line, safeData) : console.warn("%s", line);
   } else {
-    keys > 0 ? console.log("%s", line, data) : console.log("%s", line);
+    keys > 0 ? console.log("%s", line, safeData) : console.log("%s", line);
   }
 }
 

@@ -18,11 +18,37 @@ test("log diagnostics redact credentials, collapse lines, and cap length", () =>
   assert.equal(safeLogDiagnostic({ message: "token=object-secret" }), "token=[redacted]");
   assert.equal(safeLogDiagnostic('client_secret=snake-value "clientSecret": "camel-value"'),
     "client_secret=[redacted] clientSecret=[redacted]");
+  assert.equal(safeLogDiagnostic("Could not read /config/private/provider.json"),
+    "Could not read [redacted path]");
+  assert.equal(safeLogDiagnostic("Could not read /volume-one/private/provider.json"),
+    "Could not read [redacted path]");
+  assert.equal(safeLogDiagnostic('Could not read "C:\\Users\\Jane Doe\\secret.json"'),
+    'Could not read "[redacted path]"');
   assert.equal(safeLogDiagnostic("x".repeat(1000)).length, 501);
   assert.equal(safeLogDiagnostic("Connection refused"), "Connection refused");
   const htmlError = new Error("<!DOCTYPE html><html><head><title>524: A timeout occurred</title></head><body>large page</body></html>");
   htmlError.statusCode = 524;
   assert.equal(safeLogDiagnostic(htmlError), "Upstream HTML error (524): 524: A timeout occurred");
+});
+
+test("logger sink redacts nested provider diagnostics and credential fields", async () => {
+  const output = [];
+  const originalError = console.error;
+  console.error = (...args) => output.push(args);
+  try {
+    const { logger } = await import(`../../backend/services/logger.js?safety-test=${Date.now()}`);
+    logger.error("workers", "Provider failed", {
+      reason: new Error("Failed at /config/private/provider.json: https://user:pass@example.test/?token=url-secret"),
+      headers: { authorization: "Bearer bearer-secret", clientSecret: "client-secret" },
+    });
+    const rendered = JSON.stringify(output);
+    assert.match(rendered, /Provider failed|redacted/);
+    assert.doesNotMatch(rendered, /\/config\/private|user:pass|url-secret|bearer-secret|client-secret/);
+    assert.equal(output[0][2].headers.authorization, "[redacted]");
+    assert.equal(output[0][2].headers.clientSecret, "[redacted]");
+  } finally {
+    console.error = originalError;
+  }
 });
 
 test("verbose console mode respects explicit environment values", () => {

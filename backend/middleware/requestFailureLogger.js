@@ -1,9 +1,11 @@
-import { logger } from "../services/logger.js";
+import { logger, safeLogDiagnostic } from "../services/logger.js";
 
 const MAX_LOG_VALUE_LENGTH = 300;
 
 function logValue(value) {
-  return typeof value === "string" ? value.slice(0, MAX_LOG_VALUE_LENGTH) : null;
+  return typeof value === "string"
+    ? safeLogDiagnostic(value).slice(0, MAX_LOG_VALUE_LENGTH)
+    : null;
 }
 
 export function createRequestFailureLogger(log = logger) {

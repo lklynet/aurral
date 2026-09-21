@@ -36,6 +36,22 @@ test("failed API responses log method, endpoint, status and response reason with
   }]]);
 });
 
+test("failed API response reasons redact credentials and file paths before logging", () => {
+  const events = sendRequest({
+    status: 502,
+    body: {
+      message: "Provider failed at https://user:pass@example.test/api?token=url-secret " +
+        "Authorization: Bearer bearer-secret clientSecret=client-secret " +
+        "while reading /config/private/provider.json",
+    },
+  });
+  const reason = events[0][2].reason;
+  assert.match(reason, /Provider failed/);
+  assert.match(reason, /\[redacted URL\]/);
+  assert.doesNotMatch(reason, /url-secret|bearer-secret|client-secret|\/config\/private|user:pass/);
+  assert.ok(reason.length <= 300);
+});
+
 test("routine client errors and errors already logged by Express are not duplicated", () => {
   assert.deepEqual(sendRequest({ status: 404, body: { error: "Not found" } }), []);
   assert.deepEqual(sendRequest({ status: 500, body: { error: "Failure" }, alreadyLogged: true }), []);
