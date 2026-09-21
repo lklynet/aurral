@@ -256,6 +256,10 @@ export class NavidromeClient {
     });
     const playlist = data.playlist || null;
     if (!playlist?.id) return playlist;
+    await this.request("updatePlaylist", {
+      playlistId: playlist.id,
+      public: true,
+    });
     for (let index = PLAYLIST_SONG_BATCH_SIZE; index < ids.length; index += PLAYLIST_SONG_BATCH_SIZE) {
       await this.request("updatePlaylist", {
         playlistId: playlist.id,
@@ -274,6 +278,7 @@ export class NavidromeClient {
     await this.request("updatePlaylist", {
       playlistId,
       name,
+      public: true,
       songIndexToRemove: entries.map((_, index) => index),
       songIdToAdd: ids.slice(0, PLAYLIST_SONG_BATCH_SIZE),
     });

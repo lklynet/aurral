@@ -93,6 +93,8 @@ Reused Lidarr tracks do not need matching path strings because Aurral resolves i
 
 Aurral stores the Navidrome playlist ID for each flow or shared playlist. Names are only display values, so a rename updates the same Navidrome playlist.
 
+Aurral-managed Navidrome playlists are public. New playlists are marked public after creation, and the next sync repairs existing private Aurral playlists. Every Navidrome account can see and play them, while playlist changes remain owned by the configured Navidrome account.
+
 Aurral also uploads its generated playlist artwork to API playlists and updates it when you change or regenerate artwork in Aurral. Aurral revalidates its local artwork response after restart, so the image stays current in the Aurral UI. Navidrome uses that uploaded image instead of its automatic tiled artwork when custom playlist artwork is supported.
 
 If Navidrome is unavailable during a playlist update, Aurral keeps the stored playlist ID and queues the snapshot for its existing catch-up attempts.
