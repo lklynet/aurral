@@ -62,6 +62,57 @@ const { syncSharedPlaylistImport } = importSyncModule;
 
 const weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER;
 
+test("import sync delegates to the flow owner without blocking the web event loop", async () => {
+  const { configureFlowOwnerClient } = await importFromRepo(
+    "backend/services/weeklyFlow/weeklyFlowOwnerClient.js",
+  );
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalTestServer = process.env.AURRAL_TEST_SERVER;
+  let resolveWorker;
+  let request;
+  const workerResult = new Promise((resolve) => { resolveWorker = resolve; });
+  configureFlowOwnerClient({
+    request: (method, args, options) => {
+      request = { method, args, options };
+      return workerResult;
+    },
+    getStatus: () => null,
+  });
+  process.env.NODE_ENV = "production";
+  delete process.env.AURRAL_TEST_SERVER;
+  try {
+    const sync = syncSharedPlaylistImport({
+      playlistId: "playlist-id",
+      user: { id: 7, role: "admin", token: "not-for-worker" },
+      force: true,
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(request.method, "syncSharedPlaylistImport");
+    assert.deepEqual(request.args, [{
+      playlistId: "playlist-id", user: { id: 7, role: "admin" }, force: true,
+    }]);
+    assert.equal(request.options.timeoutMs, 5 * 60 * 1000);
+    resolveWorker({ ok: true, result: { trackCount: 3, tracksQueued: 1 } });
+    assert.deepEqual(await sync, { trackCount: 3, tracksQueued: 1 });
+    configureFlowOwnerClient({
+      request: async () => ({
+        ok: false,
+        error: { message: "Spotify connection expired", code: "SPOTIFY_AUTH_REQUIRED", statusCode: 401 },
+      }),
+      getStatus: () => null,
+    });
+    await assert.rejects(
+      syncSharedPlaylistImport({ playlistId: "playlist-id", user: { id: 7 }, force: true }),
+      (error) => error.code === "SPOTIFY_AUTH_REQUIRED" && error.statusCode === 401,
+    );
+  } finally {
+    configureFlowOwnerClient({ request: null, getStatus: () => null });
+    process.env.NODE_ENV = originalNodeEnv;
+    if (originalTestServer === undefined) delete process.env.AURRAL_TEST_SERVER;
+    else process.env.AURRAL_TEST_SERVER = originalTestServer;
+  }
+});
+
 test("mutation release unblocks every playlist and prunes after an unblock error", async (t) => {
   const { beginPlaylistMutation } = await importFromRepo(
     "backend/services/weeklyFlow/weeklyFlowMutationGuards.js",
