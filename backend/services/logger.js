@@ -16,7 +16,7 @@ export function safeLogDiagnostic(value) {
     .replace(/https?:\/\/[^\s"'<>]+/gi, "[redacted URL]")
     .replace(/\b(Bearer|Basic)\s+[^\s,;"'}]+/gi, "$1 [redacted]")
     .replace(/\b(cookie|set-cookie)\b["']?\s*[:=]\s*[^\r\n}]+/gi, "$1=[redacted]")
-    .replace(/\b(arl|access[_-]?token|refresh[_-]?token|api[_-]?key|token|session|password|secret|authorization)\b["']?\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;&}]+)/gi, "$1=[redacted]")
+    .replace(/["']?\b(arl|access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|token|session|password|secret|authorization)\b["']?\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;&}]+)/gi, "$1=[redacted]")
     .replace(/\b[a-f0-9]{64,}\b/gi, "[redacted]")
     .replace(/[\x00-\x1f\x7f]+/g, " ")
     .trim();

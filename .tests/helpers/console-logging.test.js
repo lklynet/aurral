@@ -16,6 +16,8 @@ test("log diagnostics redact credentials, collapse lines, and cap length", () =>
   assert.doesNotMatch(diagnostic, /url-secret|bearer-secret|token-secret|arl-secret|stack-secret|\n/);
   assert.equal(safeLogDiagnostic("Cookie: session=cookie-secret"), "Cookie=[redacted]");
   assert.equal(safeLogDiagnostic({ message: "token=object-secret" }), "token=[redacted]");
+  assert.equal(safeLogDiagnostic('client_secret=snake-value "clientSecret": "camel-value"'),
+    "client_secret=[redacted] clientSecret=[redacted]");
   assert.equal(safeLogDiagnostic("x".repeat(1000)).length, 501);
   assert.equal(safeLogDiagnostic("Connection refused"), "Connection refused");
   const htmlError = new Error("<!DOCTYPE html><html><head><title>524: A timeout occurred</title></head><body>large page</body></html>");
