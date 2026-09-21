@@ -256,6 +256,10 @@ export class NavidromeClient {
     });
     const playlist = data.playlist || null;
     if (!playlist?.id) return playlist;
+    await this.request("updatePlaylist", {
+      playlistId: playlist.id,
+      public: true,
+    });
     for (let index = PLAYLIST_SONG_BATCH_SIZE; index < ids.length; index += PLAYLIST_SONG_BATCH_SIZE) {
       await this.request("updatePlaylist", {
         playlistId: playlist.id,

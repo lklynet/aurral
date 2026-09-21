@@ -26,8 +26,35 @@ test("creates a distinct playlist without looking up matching display names", as
   }
 
   assert.equal(playlist.id, "new-id");
-  assert.equal(urls.length, 1);
+  assert.equal(urls.length, 2);
   assert.equal(urls[0].pathname, "/rest/createPlaylist");
+  assert.equal(urls[1].pathname, "/rest/updatePlaylist");
+});
+
+test("makes newly created playlists public", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, init = {}) => {
+    requests.push({ url: new URL(url), init });
+    return jsonResponse({
+      "subsonic-response": {
+        status: "ok",
+        ...(requests.length === 1 ? { playlist: { id: "new-id" } } : {}),
+      },
+    });
+  };
+
+  try {
+    await new NavidromeClient("http://navidrome.test", "user", "password")
+      .createPlaylist("Shared", ["song-1"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].url.pathname, "/rest/updatePlaylist");
+  assert.equal(requests[1].init.body.get("playlistId"), "new-id");
+  assert.equal(requests[1].init.body.get("public"), "true");
 });
 
 test("retries Navidrome rate limits", async () => {
@@ -124,11 +151,12 @@ test("batches large playlist creation requests", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requests.length, 9);
+  assert.equal(requests.length, 10);
   assert.equal(requests[0].url.pathname, "/rest/createPlaylist");
   assert.equal(requests[0].url.searchParams.getAll("songId").length, 50);
   assert.equal(requests[1].url.pathname, "/rest/updatePlaylist");
-  assert.equal(requests[1].init.body.getAll("songIdToAdd").length, 50);
+  assert.equal(requests[1].init.body.get("public"), "true");
+  assert.equal(requests[2].init.body.getAll("songIdToAdd").length, 50);
   assert.ok(requests.every(({ url }) => url.toString().length < 8192));
 });
 
@@ -152,7 +180,7 @@ test("preserves Subsonic error codes for missing native IDs", async () => {
   }
 });
 
-test("replaces playlist entries with repeated Subsonic parameters", async () => {
+test("replaces playlist entries without changing visibility", async () => {
   const originalFetch = globalThis.fetch;
   const requests = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -178,6 +206,7 @@ test("replaces playlist entries with repeated Subsonic parameters", async () => 
   assert.deepEqual(requests[1].init.body.getAll("songIndexToRemove"), ["0", "1"]);
   assert.deepEqual(requests[1].init.body.getAll("songIdToAdd"), ["song-1", "song-2"]);
   assert.equal(requests[1].init.body.get("name"), "Renamed");
+  assert.equal(requests[1].init.body.has("public"), false);
 });
 
 test("batches large playlist replacement requests", async () => {
