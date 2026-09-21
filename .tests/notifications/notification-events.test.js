@@ -319,7 +319,7 @@ test("failed notification delivery is logged without an unhandled rejection", as
     assert.deepEqual(failedLog[failedLog.length - 1], {
       kind: "webhooks",
       event: "notifyRequestMade",
-      receiver: `http://127.0.0.1:${port}/hook`,
+      receiver: "[redacted URL]",
       status: 500,
       message: "Request failed with status code 500",
     });

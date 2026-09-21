@@ -49,10 +49,13 @@ function safeLogData(value, depth = 0, seen = new WeakSet()) {
   if (depth >= 5 || seen.has(value)) return "[omitted]";
   seen.add(value);
   if (Array.isArray(value)) return value.slice(0, 100).map((item) => safeLogData(item, depth + 1, seen));
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [
-    key,
-    SENSITIVE_LOG_KEY.test(key) ? "[redacted]" : safeLogData(item, depth + 1, seen),
-  ]));
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+    if (SENSITIVE_LOG_KEY.test(key)) return [key, "[redacted]"];
+    const safeEndpoint = key === "endpoint" && typeof item === "string" &&
+      /^\/[a-z0-9/_.:-]+$/i.test(item) &&
+      !item.split("/").some((part) => part === ".." || /(?:token|secret|password|api[_-]?key)/i.test(part));
+    return [key, safeEndpoint ? item.slice(0, MAX_LOG_DIAGNOSTIC_LENGTH) : safeLogData(item, depth + 1, seen)];
+  }));
 }
 
 const DEFAULT_VISIBLE_MESSAGES = [

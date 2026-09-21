@@ -53,12 +53,16 @@ test("logger sink redacts nested provider diagnostics and credential fields", as
     logger.error("workers", "Provider failed", {
       reason: new Error("Failed at /config/private/provider.json: https://user:pass@example.test/?token=url-secret"),
       headers: { authorization: "Bearer bearer-secret", clientSecret: "client-secret" },
+      endpoint: "/album",
     });
     const rendered = JSON.stringify(output);
     assert.match(rendered, /Provider failed|redacted/);
     assert.doesNotMatch(rendered, /\/config\/private|user:pass|url-secret|bearer-secret|client-secret/);
     assert.equal(output[0][2].headers.authorization, "[redacted]");
     assert.equal(output[0][2].headers.clientSecret, "[redacted]");
+    assert.equal(output[0][2].endpoint, "/album");
+    logger.error("workers", "Unsafe endpoint", { endpoint: "/album?token=endpoint-secret" });
+    assert.doesNotMatch(JSON.stringify(output[1]), /endpoint-secret/);
   } finally {
     console.error = originalError;
   }
