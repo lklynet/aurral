@@ -75,7 +75,13 @@ export async function generateDiscoverPlaylistArtwork(playlist, options = {}) {
   });
 }
 
-const ARTWORK_CONCURRENCY = 3;
+const ARTWORK_CONCURRENCY = Math.max(
+  1,
+  Math.min(
+    3,
+    Math.floor(Number(process.env.AURRAL_DISCOVERY_ARTWORK_CONCURRENCY) || 1),
+  ),
+);
 
 async function attemptArtworkForPlaylist(playlist, style) {
   if (!playlist?.presetId || playlist.trackCount <= 0) return playlist;
