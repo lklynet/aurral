@@ -209,10 +209,10 @@ export const spotifyClient = {
     const pages = [];
     const request = fetchAllPages(
       userId,
-      `/playlists/${encodeURIComponent(playlistId)}/tracks`,
+      `/playlists/${encodeURIComponent(playlistId)}/items`,
       {
         searchParams: {
-          limit: 100,
+          limit: 50,
           fields:
             "items(item(type,name,artists(name),album(name)),track(type,name,artists(name),album(name))),next,total,offset",
         },

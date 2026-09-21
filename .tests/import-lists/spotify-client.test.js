@@ -130,7 +130,7 @@ test("playlist fetch follows every Spotify page and requests the declared total"
       total: 2,
       offset,
       next: offset === 0
-        ? "https://api.spotify.com/v1/playlists/playlist/tracks?offset=1&limit=1"
+        ? "https://api.spotify.com/v1/playlists/playlist/items?offset=1&limit=1"
         : null,
     }), {
       status: 200,
@@ -141,6 +141,8 @@ test("playlist fetch follows every Spotify page and requests the declared total"
   const items = await spotifyClient.listPlaylistTracks(7, "playlist", { forceRefresh: true });
   assert.deepEqual(items.map((item) => item.track.name), ["Song 0", "Song 1"]);
   assert.equal(urls.length, 2);
+  assert.ok(urls.every((url) => new URL(url).pathname === "/v1/playlists/playlist/items"));
+  assert.equal(new URL(urls[0]).searchParams.get("limit"), "50");
   assert.match(new URL(urls[0]).searchParams.get("fields"), /\btotal\b/);
   assert.match(new URL(urls[0]).searchParams.get("fields"), /\bitem\(/);
 });
