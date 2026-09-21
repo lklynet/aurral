@@ -66,6 +66,10 @@ link_compat_paths() {
 }
 
 if [ "$(id -u)" = "0" ]; then
+    runtime_ld_preload="${LD_PRELOAD:-}"
+    runtime_malloc_conf="${MALLOC_CONF:-}"
+    unset LD_PRELOAD MALLOC_CONF
+
     target_uid="${AURRAL_UID:-${PUID:-}}"
     target_gid="${AURRAL_GID:-${PGID:-}}"
 
@@ -104,7 +108,11 @@ if [ "$(id -u)" = "0" ]; then
     mkdir -p "$AURRAL_DATA_DIR"
     chown -R "$target_uid:$target_gid" /config /app/backend/data "$AURRAL_DATA_DIR"
 
-    exec setpriv --reuid "$target_uid" --regid "$target_gid" --groups "$target_gid" env AURRAL_DATA_DIR="$AURRAL_DATA_DIR" "$@"
+    exec setpriv --reuid "$target_uid" --regid "$target_gid" --groups "$target_gid" env \
+      AURRAL_DATA_DIR="$AURRAL_DATA_DIR" \
+      LD_PRELOAD="$runtime_ld_preload" \
+      MALLOC_CONF="$runtime_malloc_conf" \
+      "$@"
 fi
 
 if [ -z "${AURRAL_DATA_DIR:-}" ]; then
