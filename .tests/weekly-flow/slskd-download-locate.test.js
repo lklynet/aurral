@@ -102,23 +102,26 @@ test("locateCompletedDownload uses transfer filename when slskd reports a local 
 
 test("locateCompletedDownload uses the completed transfer size when the search size is absent", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-slskd-locate-"));
-  const remote = "Artist\\Album\\01 - Track.flac";
-  const expectedPath = path.join(root, "Album", "01 - Track.flac");
-  const decoyPath = path.join(root, "Other Album", "01 - Track.flac");
-  await fs.mkdir(path.dirname(expectedPath), { recursive: true });
-  await fs.mkdir(path.dirname(decoyPath), { recursive: true });
-  await fs.writeFile(expectedPath, "complete-audio", "utf8");
-  await fs.writeFile(decoyPath, "partial", "utf8");
+  try {
+    const remote = "Artist\\Album\\01 - Track.flac";
+    const expectedPath = path.join(root, "Album", "01 - Track.flac");
+    const decoyPath = path.join(root, "Other Album", "01 - Track.flac");
+    await fs.mkdir(path.dirname(expectedPath), { recursive: true });
+    await fs.mkdir(path.dirname(decoyPath), { recursive: true });
+    await fs.writeFile(expectedPath, "complete-audio", "utf8");
+    await fs.writeFile(decoyPath, "partial", "utf8");
 
-  const resolved = await locateCompletedDownload(root, null, remote, {
-    transfer: {
-      size: Buffer.byteLength("complete-audio"),
-      bytesTransferred: Buffer.byteLength("complete-audio"),
-    },
-  });
+    const resolved = await locateCompletedDownload(root, null, remote, {
+      transfer: {
+        size: Buffer.byteLength("complete-audio"),
+        bytesTransferred: Buffer.byteLength("complete-audio"),
+      },
+    });
 
-  assert.equal(resolved, expectedPath);
-  await fs.rm(root, { recursive: true, force: true });
+    assert.equal(resolved, expectedPath);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
 });
 
 test("locateCompletedDownload skips a missing slskd root and checks the playlist root", async () => {

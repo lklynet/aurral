@@ -397,7 +397,7 @@ btest("release selection: the file assigned to the requested track is the verifi
   assert.equal(selection.validation.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
 });
 
-test("release selection without a usable file reports no path", { skip: hasFfmpeg ? false : "ffmpeg unavailable" }, async () => {
+btest("release selection without a usable file reports no path", { skip: hasFfmpeg ? false : "ffmpeg unavailable" }, async () => {
   const filePath = generateTaggedAudio("wrong - Other Artist.mp3", {
     title: "Something Else Completely",
     artist: "Other Artist",

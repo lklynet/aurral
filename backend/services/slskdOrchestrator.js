@@ -291,7 +291,7 @@ async function pollSlskdEventsForCandidate(payload) {
     if (!type.includes("DownloadFileComplete")) continue;
     const data = readEventData(event);
     const transfer = data?.transfer || data?.Transfer || null;
-    if (hasCompleteSlskdTransferBytes(transfer)) completionTransfer = transfer;
+    if (transfer) completionTransfer = transfer;
   }
   return { eventOffset: nextOffset, completionTransfer };
 }
@@ -1045,6 +1045,20 @@ async function handlePoll(payload) {
     eventOffset: eventSignal.eventOffset ?? payload.eventOffset,
   };
   if (eventSignal.completionTransfer) {
+    const transfer = eventSignal.completionTransfer;
+    if (!hasCompleteSlskdTransferBytes(transfer)) {
+      const reason = "slskd reported a completed transfer before all bytes arrived";
+      await cleanupTransferForPayload(basePayload, transfer);
+      const nextPayload = retrySameCandidateOrNext(
+        basePayload,
+        job,
+        "transfer_incomplete",
+        reason,
+        { transfer },
+      );
+      if (nextPayload) return nextPayload;
+      return failOrTryNextSource(basePayload, job, reason);
+    }
     const candidate = getPayloadCandidate(basePayload);
     return {
       ...basePayload,
