@@ -105,6 +105,23 @@ test("job cancellation remains effective after the tracker row is removed", () =
   assert.equal(isPipelinePayloadActive(payload), false);
 });
 
+test("pending selection excludes durably cancelled jobs", () => {
+  const playlistId = "cancelled-pending-selection";
+  const cancelledJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Cancelled Song" },
+    playlistId,
+  );
+  cancelDownloadJob(cancelledJobId);
+
+  assert.equal(downloadTracker.getNextPending(), null);
+
+  const activeJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Active Song" },
+    playlistId,
+  );
+  assert.equal(downloadTracker.getNextPending()?.id, activeJobId);
+});
+
 test("deletion marks queued work cancelled before the background operation starts", () => {
   const playlistId = "immediate-delete";
   flowPlaylistConfig.createSharedPlaylist({

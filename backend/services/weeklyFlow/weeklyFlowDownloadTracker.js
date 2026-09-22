@@ -909,7 +909,17 @@ export class WeeklyFlowDownloadTracker {
   getNextPendingMatching(predicate = null, lastPlaylistType = null) {
     const accepts = typeof predicate === "function" ? predicate : () => true;
     const canProcess = (job) =>
-      job && job.status === "pending" && !this._shouldSkipForWorker(job) && accepts(job);
+      job &&
+      job.status === "pending" &&
+      !this._shouldSkipForWorker(job) &&
+      isPipelinePayloadActive({
+        jobId: job.id,
+        playlistId: job.playlistId || job.playlistType,
+        playlistGeneration: getPlaylistDownloadGeneration(
+          job.playlistId || job.playlistType,
+        ),
+      }) &&
+      accepts(job);
     this.pendingFreshQueue = this._compactPendingQueue(this.pendingFreshQueue);
     const nextFresh = this._pickPendingFromQueue(this.pendingFreshQueue, lastPlaylistType);
     if (canProcess(nextFresh)) return nextFresh;
