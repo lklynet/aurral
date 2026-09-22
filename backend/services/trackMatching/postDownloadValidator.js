@@ -39,6 +39,7 @@ import { logger } from "../logger.js";
 
 const execFileAsync = promisify(execFile);
 const AUDIO_INTEGRITY_TIMEOUT_MS = 120000;
+const AUDIO_INTEGRITY_DURATION_TOLERANCE_MS = 2000;
 
 export const POST_DOWNLOAD_DECISIONS = {
   VERIFIED: "VERIFIED",
@@ -79,16 +80,24 @@ export function readDurationMsFromParsed(parsed) {
   return seconds > 0 ? Math.round(seconds * 1000) : null;
 }
 
+function readDecodedDurationMs(progressOutput) {
+  const matches = [...String(progressOutput || "").matchAll(/(?:^|\n)out_time_ms=(\d+)/g)];
+  const value = Number(matches.at(-1)?.[1] || 0) / 1000;
+  return value > 0 ? value : null;
+}
+
 export async function validateAudioFileIntegrity(filePath, options = {}) {
   const execute = options.execFile || execFileAsync;
   const timeoutMs = Number(options.timeoutMs || AUDIO_INTEGRITY_TIMEOUT_MS);
   try {
-    await execute(
+    const result = await execute(
       options.binary || "ffmpeg",
       [
         "-hide_banner",
         "-loglevel",
         "error",
+        "-err_detect",
+        "explode",
         "-xerror",
         "-nostdin",
         "-i",
@@ -97,11 +106,28 @@ export async function validateAudioFileIntegrity(filePath, options = {}) {
         "0:a:0",
         "-f",
         "null",
+        "-stats_period",
+        "3600",
+        "-progress",
+        "pipe:1",
         "-",
       ],
       { timeout: timeoutMs },
     );
-    return { valid: true };
+    const decodedDurationMs = readDecodedDurationMs(result?.stdout);
+    const expectedDurationMs = Number(options.expectedDurationMs || 0);
+    if (
+      expectedDurationMs > 0 &&
+      (!decodedDurationMs || decodedDurationMs + AUDIO_INTEGRITY_DURATION_TOLERANCE_MS < expectedDurationMs)
+    ) {
+      return {
+        valid: false,
+        reason: "downloaded audio decode duration is shorter than its container duration",
+        decodedDurationMs,
+        expectedDurationMs,
+      };
+    }
+    return { valid: true, decodedDurationMs };
   } catch (error) {
     return {
       valid: false,
@@ -202,7 +228,10 @@ export async function validateDownloadedTrackFile({
   const actualDurationMs = actual.durationMs;
 
   if (options.checkIntegrity === true) {
-    const integrity = await validateAudioFileIntegrity(filePath, options);
+    const integrity = await validateAudioFileIntegrity(filePath, {
+      ...options,
+      expectedDurationMs: options.expectedDurationMs ?? actualDurationMs,
+    });
     if (!integrity.valid) {
       return {
         decision: POST_DOWNLOAD_DECISIONS.FAILED,
