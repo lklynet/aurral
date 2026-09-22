@@ -68,6 +68,49 @@ test("buildFlowSearchTiers uses a short album-first plan", () => {
   );
 });
 
+test("buildFlowSearchTiers adds an album-only query after artist album tiers", () => {
+  const context = {
+    artistName: "Rihanna",
+    trackName: "Umbrella",
+    albumName: "Good Girl Gone Bad",
+    releaseYear: "2007",
+  };
+  const tiers = buildFlowSearchTiers(context);
+
+  const wildcardAlbumIndex = tiers.findIndex((tier) => tier.name === "wildcard_album");
+  const albumOnlyIndex = tiers.findIndex((tier) => tier.name === "album_only");
+  const albumTrackIndex = tiers.findIndex((tier) => tier.name === "album_track");
+  const primaryTrack = tiers.find((tier) => tier.name === "primary_track");
+
+  assert.deepEqual(tiers[albumOnlyIndex]?.queries, ["Good Girl Gone Bad"]);
+  assert.equal(tiers[albumOnlyIndex]?.tier, 2);
+  assert.ok(wildcardAlbumIndex < albumOnlyIndex);
+  assert.ok(albumOnlyIndex < albumTrackIndex);
+  assert.equal(tiers[albumTrackIndex]?.tier, 3);
+  assert.equal(primaryTrack?.tier, 4);
+});
+
+test("buildFlowSearchTiers adds album-only search without an artist and skips blank albums", () => {
+  const withoutArtist = buildFlowSearchTiers({
+    artistName: "",
+    trackName: "Umbrella",
+    albumName: "Good Girl Gone Bad",
+    releaseYear: "2007",
+  });
+  const withoutAlbum = buildFlowSearchTiers({
+    artistName: "Rihanna",
+    trackName: "Umbrella",
+    albumName: "  ",
+    releaseYear: "2007",
+  });
+
+  assert.deepEqual(
+    withoutArtist.find((tier) => tier.name === "album_only")?.queries,
+    ["Good Girl Gone Bad"],
+  );
+  assert.equal(withoutAlbum.some((tier) => tier.name === "album_only"), false);
+});
+
 test("buildFlowSearchTiers appends an artist + title fallback tier after album tiers", () => {
   const tiers = buildFlowSearchTiers({
     artistName: "Massive Attack",

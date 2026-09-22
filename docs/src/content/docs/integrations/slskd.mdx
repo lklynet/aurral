@@ -5,6 +5,10 @@ description: Soulseek-backed downloads for flows and playlists.
 
 slskd downloads flow and playlist tracks from Soulseek. Aurral can also use [Usenet](/integrations/usenet/) through Prowlarr and SABnzbd/NZBGet.
 
+## Search behavior
+
+When artist details are available, Aurral tries artist-and-album searches first. If they return too few suitable candidates, it searches for the album title alone, then tries the album and track titles together. Without artist details, Aurral starts with the album title alone. It still matches each search result and validates downloaded files before accepting them.
+
 ![Aurral history with slskd downloads](../../../assets/screenshots/history.webp)
 
 ## Setup

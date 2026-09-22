@@ -159,6 +159,11 @@ function buildWildcardAlbumTierQueries(ctx) {
   return uniqueQueries(queries, 3);
 }
 
+function buildAlbumOnlyTierQueries(ctx) {
+  if (!ctx.albumName) return [];
+  return uniqueQueries([ctx.albumName], 1);
+}
+
 function buildAlbumTrackTierQueries(ctx) {
   const queries = [];
   const primaryTrack = ctx.trackVariants[0] || ctx.trackName;
@@ -186,9 +191,13 @@ export function buildFlowSearchTiers(context) {
   if (wildcardAlbum.length > 0) {
     tiers.push({ tier: 1, name: "wildcard_album", queries: wildcardAlbum });
   }
+  const albumOnly = buildAlbumOnlyTierQueries(ctx);
+  if (albumOnly.length > 0) {
+    tiers.push({ tier: 2, name: "album_only", queries: albumOnly });
+  }
   const albumTrack = buildAlbumTrackTierQueries(ctx);
   if (albumTrack.length > 0) {
-    tiers.push({ tier: 2, name: "album_track", queries: albumTrack });
+    tiers.push({ tier: albumOnly.length > 0 ? 3 : 2, name: "album_track", queries: albumTrack });
   }
   const priorQueries = new Set(
     tiers.flatMap((tier) => tier.queries.map((query) => query.toLowerCase())),
@@ -197,7 +206,14 @@ export function buildFlowSearchTiers(context) {
     (query) => !priorQueries.has(query.toLowerCase()),
   );
   if (primaryTrack.length > 0) {
-    tiers.push({ tier: tiers.length === 0 ? 0 : 3, name: "primary_track", queries: primaryTrack });
+    let primaryTrackTier = 3;
+    if (albumOnly.length > 0) primaryTrackTier = 4;
+    if (tiers.length === 0) primaryTrackTier = 0;
+    tiers.push({
+      tier: primaryTrackTier,
+      name: "primary_track",
+      queries: primaryTrack,
+    });
   }
   return tiers;
 }

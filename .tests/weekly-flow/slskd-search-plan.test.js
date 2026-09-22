@@ -30,6 +30,10 @@ test("buildSlskdSearchTierGroups uses a short album-first search plan", () => {
         tier.queries.includes("*rom *utumn *o *shes The Fiction We Live"),
     ),
   );
+  const wildcardAlbumIndex = tiers.findIndex((tier) => tier.name === "wildcard_album");
+  const albumOnlyIndex = tiers.findIndex((tier) => tier.name === "album_only");
+  assert.deepEqual(tiers[albumOnlyIndex]?.queries, ["The Fiction We Live"]);
+  assert.ok(wildcardAlbumIndex < albumOnlyIndex);
   assert.ok(
     tiers.some(
       (tier) =>
@@ -37,6 +41,7 @@ test("buildSlskdSearchTierGroups uses a short album-first search plan", () => {
         tier.queries.includes("The Fiction We Live The After Dinner Payback"),
     ),
   );
+  assert.ok(albumOnlyIndex < tiers.findIndex((tier) => tier.name === "album_track"));
 });
 
 test("hasSlskdSearchCandidates is false when no results are valid candidates", () => {

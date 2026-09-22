@@ -11,6 +11,8 @@ import {
 const [
   isolatedState,
   { prowlarrClient },
+  { downloadTracker },
+  { processUsenetPipelinePayload },
   { nzbgetClient },
   { SabnzbdClient },
   { getEnabledDownloadSources },
@@ -20,6 +22,8 @@ const [
 ] = await setupIsolatedBackend(
   "usenet-integration",
   "backend/services/prowlarrClient.js",
+  "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+  "backend/services/usenetOrchestrator.js",
   "backend/services/nzbgetClient.js",
   "backend/services/sabnzbdClient.js",
   "backend/services/downloadSourceService.js",
@@ -147,6 +151,80 @@ test("Prowlarr client lists enabled Usenet indexers and searches audio releases"
       `${server.url}/api/v1/indexer/1/download?link=abc`,
     );
     assert.ok(requests.some((entry) => entry.startsWith("/api/v1/search")));
+  } finally {
+    await server.close();
+  }
+});
+
+test("Usenet flow search tries the album-only query after artist-album queries", async () => {
+  const queries = [];
+  const server = await createMockHttpServer((req, res) => {
+    const url = new URL(req.url, "http://mock");
+    if (url.pathname === "/api/v1/indexer") {
+      sendJson(res, 200, [
+        {
+          id: 1,
+          name: "Music One",
+          enable: true,
+          protocol: "usenet",
+          supportsSearch: true,
+          priority: 5,
+          capabilities: { categories: [{ id: 3010 }] },
+        },
+      ]);
+      return;
+    }
+    if (url.pathname === "/api/v1/search") {
+      queries.push(url.searchParams.get("query"));
+      sendJson(res, 200, []);
+      return;
+    }
+    sendJson(res, 404, {});
+  });
+
+  try {
+    dbOps.updateSettings({
+      integrations: {
+        prowlarr: {
+          enabled: true,
+          url: server.url,
+          apiKey: "prowlarr-key",
+          categories: [3000],
+        },
+      },
+    });
+    const jobId = downloadTracker.addJob(
+      {
+        artistName: "Rihanna",
+        trackName: "Umbrella",
+        albumName: "Good Girl Gone Bad",
+        releaseYear: "2007",
+        durationMs: 250000,
+      },
+      "usenet-album-only-fallback",
+    );
+
+    const result = await processUsenetPipelinePayload(
+      { phase: "search", source: "usenet", jobId },
+      {
+        failOrTryNextSource: (_payload, _job, message, details) => ({ message, details }),
+      },
+    );
+
+    const albumOnlyIndex = queries.indexOf("Good Girl Gone Bad");
+    const albumTrackIndex = queries.indexOf("Good Girl Gone Bad Umbrella");
+    assert.ok(albumOnlyIndex > 0);
+    assert.ok(albumTrackIndex > albumOnlyIndex);
+    assert.ok(
+      [
+        "Rihanna Good Girl Gone Bad 2007",
+        "Rihanna Good Girl Gone Bad",
+        "*ihanna Good Girl Gone Bad 2007",
+        "*ihanna Good Girl Gone Bad",
+      ].every((query) => queries.indexOf(query) >= 0 && queries.indexOf(query) < albumOnlyIndex),
+    );
+    assert.equal(result.message, "No suitable Usenet search results");
+    assert.equal(result.details.queryCount, queries.length);
   } finally {
     await server.close();
   }

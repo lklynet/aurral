@@ -18,3 +18,7 @@ playwright-report/
 /.maintainer/
 /AGENTS.md
 /.agents/
+
+# Local planning artifacts
+/SPEC.md
+/tasks/

@@ -12,6 +12,10 @@ Enable and connect both components:
 - The download client in **Settings > Download clients**
 - Prowlarr in **Settings > Indexers**
 
+## Search behavior
+
+When artist details are available, Aurral tries artist-and-album searches first. If they return too few suitable releases, it searches for the album title alone, then tries the album and track titles together. Without artist details, Aurral starts with the album title alone. Results still go through release matching, and Aurral validates downloaded files before importing them.
+
 ## Setup overview
 
 1. Run Prowlarr with at least one Usenet audio indexer configured.
