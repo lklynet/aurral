@@ -108,8 +108,8 @@ test("locateCompletedDownload uses the completed transfer size when the search s
     const decoyPath = path.join(root, "Other Album", "01 - Track.flac");
     await fs.mkdir(path.dirname(expectedPath), { recursive: true });
     await fs.mkdir(path.dirname(decoyPath), { recursive: true });
-    await fs.writeFile(expectedPath, "complete-audio", "utf8");
-    await fs.writeFile(decoyPath, "partial", "utf8");
+    await fs.writeFile(expectedPath, "partial", "utf8");
+    await fs.writeFile(decoyPath, "complete-audio", "utf8");
 
     const resolved = await locateCompletedDownload(root, null, remote, {
       transfer: {
@@ -118,7 +118,7 @@ test("locateCompletedDownload uses the completed transfer size when the search s
       },
     });
 
-    assert.equal(resolved, expectedPath);
+    assert.equal(resolved, decoyPath);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
