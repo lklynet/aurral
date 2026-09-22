@@ -1,8 +1,13 @@
-import { flowPlaylistConfig } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
+import {
+  flowPlaylistConfig,
+  invalidateFlowPlaylistConfigCache,
+} from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { fetchImportedPlaylistTracks } from "./importPlaylist.js";
 import { updateSharedPlaylist } from "../weeklyFlow/weeklyFlowOperations.js";
 import { buildSharedTrackIdentity } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { logger, safeLogDiagnostic } from "../logger.js";
+import { dbOps } from "../../db/helpers/index.js";
+import { isFlowOwnerProcess, requestFlowOwner } from "../weeklyFlow/weeklyFlowOwnerClient.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -15,7 +20,30 @@ export function isImportSourceDue(importSource, now = Date.now()) {
   return !lastSyncAt || now - lastSyncAt >= intervalMs;
 }
 
-export async function syncSharedPlaylistImport({
+export async function syncSharedPlaylistImport(options = {}) {
+  if (isFlowOwnerProcess()) return syncSharedPlaylistImportHere(options);
+  const { playlistId, user, force = false } = options;
+  try {
+    const response = await requestFlowOwner("syncSharedPlaylistImport", [{
+      playlistId,
+      user: { id: user?.id, role: user?.role },
+      force,
+    }], { timeoutMs: 5 * 60 * 1000 });
+    if (response?.ok === false) {
+      const error = new Error(response.error?.message || "Playlist sync failed");
+      if (response.error?.code) error.code = response.error.code;
+      if (response.error?.statusCode) error.statusCode = response.error.statusCode;
+      throw error;
+    }
+    if (response?.ok !== true) throw new Error("Invalid playlist sync worker response");
+    return response.result;
+  } finally {
+    dbOps.invalidateSettingsCache();
+    invalidateFlowPlaylistConfigCache();
+  }
+}
+
+async function syncSharedPlaylistImportHere({
   playlistId,
   user,
   force = false,

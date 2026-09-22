@@ -220,6 +220,26 @@ export async function sendGotifyTest(url, token) {
   return response.status === 200;
 }
 
+const WEBHOOK_TEST_VARS = Object.freeze({
+  flowPath: "/aurral/test-webhook",
+  flowName: "Aurral webhook test",
+  albumName: "Test album",
+  artistName: "Test artist",
+  username: "webhook-test-user",
+  userId: "webhook-test-user",
+});
+
+export async function sendWebhookTest(webhook) {
+  await sendWebhooksDirect(
+    {
+      webhooks: [webhook],
+      webhookEvents: { webhookTest: true },
+    },
+    "webhookTest",
+    WEBHOOK_TEST_VARS,
+  );
+}
+
 export async function notifyDiscoveryUpdated() {
   const settings = dbOps.getSettings();
   const gotify = settings.integrations?.gotify || {};

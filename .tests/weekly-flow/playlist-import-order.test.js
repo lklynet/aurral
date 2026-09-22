@@ -71,6 +71,62 @@ const { logger } = loggerModule;
 
 const weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER;
 
+test("import sync delegates to the flow owner without blocking the web event loop", async () => {
+  const { configureFlowOwnerClient } = await importFromRepo(
+    "backend/services/weeklyFlow/weeklyFlowOwnerClient.js",
+  );
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalTestServer = process.env.AURRAL_TEST_SERVER;
+  let resolveWorker;
+  let request;
+  const workerResult = new Promise((resolve) => { resolveWorker = resolve; });
+  configureFlowOwnerClient({
+    request: (method, args, options) => {
+      request = { method, args, options };
+      return workerResult;
+    },
+    getStatus: () => null,
+  });
+  process.env.NODE_ENV = "production";
+  delete process.env.AURRAL_TEST_SERVER;
+  try {
+    const sync = syncSharedPlaylistImport({
+      playlistId: "playlist-id",
+      user: { id: 7, role: "admin", token: "not-for-worker" },
+      force: true,
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(request.method, "syncSharedPlaylistImport");
+    assert.deepEqual(request.args, [{
+      playlistId: "playlist-id", user: { id: 7, role: "admin" }, force: true,
+    }]);
+    assert.equal(request.options.timeoutMs, 5 * 60 * 1000);
+    resolveWorker({ ok: true, result: { trackCount: 1001, tracksQueued: 1 } });
+    assert.deepEqual(await sync, { trackCount: 1001, tracksQueued: 1 });
+
+    configureFlowOwnerClient({
+      request: async () => ({
+        ok: false,
+        error: {
+          message: "Spotify connection expired",
+          code: "SPOTIFY_AUTH_REQUIRED",
+          statusCode: 401,
+        },
+      }),
+      getStatus: () => null,
+    });
+    await assert.rejects(
+      syncSharedPlaylistImport({ playlistId: "playlist-id", user: { id: 7 }, force: true }),
+      (error) => error.code === "SPOTIFY_AUTH_REQUIRED" && error.statusCode === 401,
+    );
+  } finally {
+    configureFlowOwnerClient({ request: null, getStatus: () => null });
+    process.env.NODE_ENV = originalNodeEnv;
+    if (originalTestServer === undefined) delete process.env.AURRAL_TEST_SERVER;
+    else process.env.AURRAL_TEST_SERVER = originalTestServer;
+  }
+});
+
 test("mutation release unblocks every playlist and prunes after an unblock error", async (t) => {
   const { beginPlaylistMutation } = await importFromRepo(
     "backend/services/weeklyFlow/weeklyFlowMutationGuards.js",
@@ -577,6 +633,61 @@ test("replacing a shared playlist removes Spotify tracks and honors file retenti
     });
     assert.deepEqual(flowPlaylistConfig.getSharedPlaylist(deletePlaylist.id).tracks, []);
     await assert.rejects(fs.access(deletePath));
+  } finally {
+    weeklyFlowWorker.start = originalStart;
+    weeklyFlowWorker.stop();
+  }
+});
+
+test("imported playlist sync preserves enriched jobs while replacing removed tracks", async () => {
+  const originalStart = weeklyFlowWorker.start;
+  weeklyFlowWorker.start = async () => false;
+  try {
+    const pending = {
+      artistName: "Artist", trackName: "Pending", albumName: "Album",
+      artistMbid: "11111111-1111-1111-1111-111111111111",
+    };
+    const completed = {
+      artistName: "Artist", trackName: "Completed", albumName: "Album",
+      albumMbid: "22222222-2222-2222-2222-222222222222",
+    };
+    const removed = { artistName: "Artist", trackName: "Removed", albumName: "Album" };
+    const playlist = flowPlaylistConfig.createSharedPlaylist({
+      name: "Imported Job Retention",
+      ownerUserId: 7,
+      tracks: [pending, completed, removed],
+      importSource: {
+        provider: "spotify-playlist",
+        externalId: "imported-id",
+        syncEnabled: true,
+        syncIntervalHours: 24,
+      },
+    });
+    const pendingJobId = downloadTracker.addJob(pending, playlist.id);
+    const completedJobId = downloadTracker.addJob(completed, playlist.id);
+    await fs.mkdir(weeklyFlowRoot, { recursive: true });
+    const completedPath = path.join(weeklyFlowRoot, "imported-retained-completed.flac");
+    await fs.writeFile(completedPath, "audio");
+    downloadTracker.setDone(completedJobId, completedPath, completed.albumName);
+    const removedJobId = downloadTracker.addJob(removed, playlist.id);
+
+    const result = await updateSharedPlaylist({
+      playlistId: playlist.id,
+      tracks: [
+        { artistName: "Artist", trackName: "Pending", albumName: "Album" },
+        { artistName: "Artist", trackName: "Completed", albumName: "Album" },
+        { artistName: "Artist", trackName: "New", albumName: "Album" },
+      ],
+      hasTracksUpdate: true,
+      mergeImportSource: true,
+    });
+
+    assert.equal(result.tracksQueued, 1);
+    assert.ok(downloadTracker.getJob(pendingJobId));
+    assert.equal(downloadTracker.getJob(completedJobId)?.status, "done");
+    await fs.access(completedPath);
+    assert.equal(downloadTracker.getJob(removedJobId), null);
+    assert.ok(downloadTracker.getByPlaylistType(playlist.id).some((job) => job.trackName === "New"));
   } finally {
     weeklyFlowWorker.start = originalStart;
     weeklyFlowWorker.stop();

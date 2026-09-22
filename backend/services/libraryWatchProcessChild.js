@@ -24,6 +24,8 @@ process.on("disconnect", stop);
 
 try {
   const root = resolveLocalPath(process.argv[2], JSON.parse(process.argv[3] || "[]"));
+  // Node.js 24+ can return an idle recursive watcher for a missing Linux root.
+  fs.statSync(root);
   watcher = fs.watch(root, { recursive: true }, (eventType, filename) => {
     send({ type: "change", root, eventType, filename: filename == null ? null : String(filename) });
   });

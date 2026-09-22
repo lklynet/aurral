@@ -25,6 +25,20 @@ function fakeChild() {
   return child;
 }
 
+function waitForWatcherStartup(watcher) {
+  return new Promise((resolve) => {
+    const finish = (outcome) => {
+      watcher.off("ready", onReady);
+      watcher.off("error", onError);
+      resolve(outcome);
+    };
+    const onReady = (root) => finish({ type: "ready", root });
+    const onError = (error) => finish({ type: "error", error });
+    watcher.once("ready", onReady);
+    watcher.once("error", onError);
+  });
+}
+
 test("slow watcher setup times out once and ignores late messages", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const child = fakeChild();
@@ -157,11 +171,12 @@ test(`HTTP remains responsive while child ${operation} blocks synchronously`, { 
 });
 }
 
-test("a missing root is reported through the child without synchronous filesystem access", { timeout: 10_000 }, async (t) => {
+test("a missing root reports ENOENT instead of becoming ready", { timeout: 5_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-watch-missing-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const watcher = createIsolatedLibraryWatcher(path.join(root, "absent"), {}, () => {});
+  const watcher = createIsolatedLibraryWatcher(path.join(root, "absent"), {}, () => {}, { startupTimeoutMs: 2000 });
   t.after(() => watcher.close());
-  const error = await new Promise((resolve) => watcher.once("error", resolve));
-  assert.equal(error.code, "ENOENT");
+  const outcome = await waitForWatcherStartup(watcher);
+  assert.equal(outcome.type, "error", `Missing library root unexpectedly became ready: ${outcome.root}`);
+  assert.equal(outcome.error.code, "ENOENT", `Missing library root reported ${outcome.error.code}: ${outcome.error.message}`);
 });

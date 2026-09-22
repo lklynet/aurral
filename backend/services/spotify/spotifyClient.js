@@ -34,6 +34,19 @@ const createAuthRequiredError = (message) => {
   return error;
 };
 
+const createIncompletePlaylistError = (playlistId, reportedTotal, fetchedCount) => {
+  const message = reportedTotal == null
+    ? "Spotify did not report a playlist item total"
+    : `Spotify returned ${fetchedCount} of ${reportedTotal} playlist items`;
+  const error = new Error(message);
+  error.code = "SPOTIFY_INCOMPLETE_PLAYLIST";
+  error.statusCode = 502;
+  error.playlistId = playlistId;
+  error.reportedTotal = reportedTotal;
+  error.fetchedCount = fetchedCount;
+  return error;
+};
+
 const invalidateConnection = (userId, expectedConnection) => {
   if (spotifyConnectionStore.clearConnectionIfMatches(userId, expectedConnection)) {
     bumpPlaylistTrackGeneration(userId);
@@ -188,7 +201,7 @@ export const spotifyClient = {
         .map((playlist) => ({
           id: String(playlist?.id || "").trim(),
           name: String(playlist?.name || "").trim(),
-          trackCount: Number(playlist?.tracks?.total || 0),
+          trackCount: Number(playlist?.items?.total ?? playlist?.tracks?.total ?? 0),
         }))
         .filter((playlist) => playlist.id && playlist.name)
         .sort((a, b) => a.name.localeCompare(b.name)),
@@ -209,12 +222,13 @@ export const spotifyClient = {
     const pages = [];
     const request = fetchAllPages(
       userId,
-      `/playlists/${encodeURIComponent(playlistId)}/tracks`,
+      `/playlists/${encodeURIComponent(playlistId)}/items`,
       {
         searchParams: {
-          limit: 100,
+          limit: 50,
+          additional_types: "episode",
           fields:
-            "items(track(name,artists(name),album(name))),next,total,offset",
+            "items(item(type,name,artists(name),album(name))),next,total,offset",
         },
         onPage: (page) => pages.push(page),
       },
@@ -222,20 +236,24 @@ export const spotifyClient = {
       if (getPlaylistTrackGeneration(userId) !== generation) {
         throw createAuthRequiredError("Spotify connection expired");
       }
+      const reportedTotal = pages[0]?.total ?? null;
+      const pageTotalsDiffer = pages.some((page) => page.total !== reportedTotal);
+      if (reportedTotal == null || pageTotalsDiffer || reportedTotal !== items.length) {
+        logger.warn("playlist-import", "Spotify playlist response incomplete", {
+          playlistId,
+          spotifyReportedTotal: reportedTotal,
+          fetchedEntryCount: items.length,
+          pageCount: pages.length,
+          pages,
+        });
+        throw createIncompletePlaylistError(playlistId, reportedTotal, items.length);
+      }
       logger.info("playlist-import", "Spotify playlist fetch completed", {
         playlistId,
-        spotifyReportedTotal: pages[0]?.total ?? null,
+        spotifyReportedTotal: reportedTotal,
         fetchedEntryCount: items.length,
         pageCount: pages.length,
       });
-      if (pages[0]?.total != null && (
-        pages[0].total !== items.length || pages.some((page) => page.total !== pages[0].total)
-      )) {
-        logger.warn("playlist-import", "Spotify playlist page counts differ", {
-          playlistId,
-          pages,
-        });
-      }
       playlistTrackCache.set(cacheKey, items);
       return items;
     });

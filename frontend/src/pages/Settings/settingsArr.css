@@ -1205,6 +1205,29 @@
   border-bottom: 0.0625rem solid var(--aurral-border);
 }
 
+.arr-webhook-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.arr-webhook-card__test-status {
+  margin: 0 0 0.75rem;
+  color: var(--arr-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.arr-webhook-card__test-status--success {
+  color: var(--aurral-success);
+}
+
+.arr-webhook-card__test-status--error {
+  color: var(--aurral-danger);
+}
+
 .arr-webhook-card__title {
   display: flex;
   align-items: center;
@@ -1712,6 +1735,10 @@
 .settings-arr .arr-fieldset__actions {
   top: 0;
   right: 0.75rem;
+}
+
+.settings-arr .settings-connect-webhooks .arr-fieldset__body {
+  padding-top: 2.5rem;
 }
 
 .settings-arr .settings-page__inline-row {
@@ -2236,6 +2263,10 @@
     position: static;
     flex-wrap: wrap;
     margin: -0.25rem 0.75rem 0.625rem;
+  }
+
+  .settings-arr .settings-connect-webhooks .arr-fieldset__body {
+    padding-top: 0;
   }
 
   .settings-storage-health__toolbar {

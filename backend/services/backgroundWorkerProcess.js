@@ -24,7 +24,7 @@ const FLOW_COMMANDS = new Set([
   "waitForPlaylistIdle", "waitForIdle", "clearIncompleteRetry",
   "clearPlaylistRunState", "pruneOrphanedJobState", "scheduleReuseLinkRepair",
   "runQualityUpgradeChecks", "queueQualityUpgradeForJob", "clearPendingByPlaylist",
-  "wakeOrStart",
+  "wakeOrStart", "syncSharedPlaylistImport",
 ]);
 
 async function handleFlowCommand(message) {
@@ -60,6 +60,20 @@ async function handleFlowCommand(message) {
         import("./weeklyFlow/weeklyFlowDownloadTracker.js"),
       ]);
       result = await queueQualityUpgrade(downloadTracker.getJob(args[0]));
+    } else if (method === "syncSharedPlaylistImport") {
+      const { syncSharedPlaylistImport } = await import("./importLists/importListSync.js");
+      try {
+        result = { ok: true, result: await syncSharedPlaylistImport(args[0]) };
+      } catch (error) {
+        result = {
+          ok: false,
+          error: {
+            message: error?.message || "Playlist sync failed",
+            code: error?.code || null,
+            statusCode: error?.statusCode || null,
+          },
+        };
+      }
     } else {
       result = await flowWorker[method](...args);
     }
