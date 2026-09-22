@@ -115,7 +115,7 @@ test("pending track requests cannot repopulate cache after invalidation", async 
   assert.equal(requestCount, 3);
 });
 
-test("playlist fetch follows every Spotify page and requests the declared total", async () => {
+test("playlist fetch follows every current Spotify page without a client-side size cap", async () => {
   spotifyConnectionStore.saveConnection(7, {
     accessToken: "valid-access-token",
     refreshToken: "valid-refresh-token",
@@ -125,12 +125,16 @@ test("playlist fetch follows every Spotify page and requests the declared total"
   globalThis.fetch = async (url) => {
     urls.push(String(url));
     const offset = Number(new URL(url).searchParams.get("offset") || 0);
+    const total = 1001;
+    const pageSize = Math.min(50, total - offset);
     return new Response(JSON.stringify({
-      items: [{ track: { name: `Song ${offset}` } }],
-      total: 2,
+      items: Array.from({ length: pageSize }, (_, index) => ({
+        item: { name: `Song ${offset + index}` },
+      })),
+      total,
       offset,
-      next: offset === 0
-        ? "https://api.spotify.com/v1/playlists/playlist/tracks?offset=1&limit=1"
+      next: offset + pageSize < total
+        ? `https://api.spotify.com/v1/playlists/playlist/items?offset=${offset + pageSize}&limit=50`
         : null,
     }), {
       status: 200,
@@ -139,10 +143,57 @@ test("playlist fetch follows every Spotify page and requests the declared total"
   };
 
   const items = await spotifyClient.listPlaylistTracks(7, "playlist", { forceRefresh: true });
-  assert.deepEqual(items.map((item) => item.track.name), ["Song 0", "Song 1"]);
-  assert.equal(urls.length, 2);
+  assert.equal(items.length, 1001);
+  assert.equal(items.at(-1).item.name, "Song 1000");
+  assert.equal(urls.length, 21);
+  assert.equal(new URL(urls[0]).pathname, "/v1/playlists/playlist/items");
+  assert.equal(new URL(urls[0]).searchParams.get("limit"), "50");
+  assert.match(new URL(urls[0]).searchParams.get("fields"), /items\(item\(/);
+  assert.equal(new URL(urls[0]).searchParams.get("additional_types"), "episode");
   assert.match(new URL(urls[0]).searchParams.get("fields"), /\btotal\b/);
   assert.match(new URL(urls[0]).searchParams.get("fields"), /\boffset\b/);
+});
+
+test("playlist fetch rejects a response that stops before Spotify's declared total", async () => {
+  spotifyConnectionStore.saveConnection(7, {
+    accessToken: "valid-access-token",
+    refreshToken: "valid-refresh-token",
+    expiresAt: Date.now() + 60 * 60 * 1000,
+  });
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    items: [{ item: { name: "Only Song" } }],
+    total: 1001,
+    offset: 0,
+    next: null,
+  }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
+  await assert.rejects(
+    spotifyClient.listPlaylistTracks(7, "playlist", { forceRefresh: true }),
+    (error) => error?.code === "SPOTIFY_INCOMPLETE_PLAYLIST" &&
+      error?.statusCode === 502 &&
+      /1 of 1001/.test(error.message),
+  );
+});
+
+test("playlist listing reads the current Spotify items total", async () => {
+  spotifyConnectionStore.saveConnection(7, {
+    accessToken: "valid-access-token",
+    refreshToken: "valid-refresh-token",
+    expiresAt: Date.now() + 60 * 60 * 1000,
+  });
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    items: [{ id: "playlist", name: "Large Playlist", items: { total: 1001 } }],
+    next: null,
+  }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
+  const result = await spotifyClient.listPlaylists(7);
+  assert.deepEqual(result.playlists, [{ id: "playlist", name: "Large Playlist", trackCount: 1001 }]);
 });
 
 test("stale refresh failures cannot clear a newly connected account", async () => {
