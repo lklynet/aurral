@@ -552,6 +552,46 @@ test("re-adopts a stale playlist pointer by name before tracks resolve", async (
   assert.equal(navidromePlaylistPointerStore.getPointer(flow.id, String(owner.id)), null);
 });
 
+test("revalidates a rekeyed pointer after publishing the same snapshot", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Same Snapshot Revalidation" });
+  const client = createClient({
+    playlists: [{ id: "original-id", name: playlist.name }],
+    songs: { Song: { id: "song-1" } },
+  });
+  navidromePlaylistPointerStore.setPointer(playlist.id, "global", {
+    playlistId: "original-id",
+    title: playlist.name,
+  });
+  const destination = new NavidromePlaybackDestination(weeklyFlowRoot, { client });
+  const snapshot = createPlaybackPlaylistSnapshot({
+    entityId: playlist.id,
+    displayName: playlist.name,
+    tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
+  });
+
+  await destination.publishPlaylist(snapshot);
+  assert.equal(
+    navidromePlaylistPointerStore.getPointer(playlist.id, "global").playlistId,
+    "original-id",
+  );
+
+  const nativePlaylists = await client.getPlaylists();
+  nativePlaylists[0].id = "rekeyed-id";
+  rejectMissingPlaylist(client, "original-id");
+
+  await destination.publishPlaylist(snapshot);
+
+  assert.equal(
+    navidromePlaylistPointerStore.getPointer(playlist.id, "global").playlistId,
+    "rekeyed-id",
+  );
+  assert.deepEqual(client.calls.updated, [
+    { id: "original-id", name: playlist.name, songIds: ["song-1"] },
+    { id: "rekeyed-id", name: playlist.name, songIds: ["song-1"] },
+  ]);
+  assert.deepEqual(client.calls.created, []);
+});
+
 test("re-adopts a stale playlist pointer by its import comment", async () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Rekey Comment Recovery" });
   const nativePlaylist = {

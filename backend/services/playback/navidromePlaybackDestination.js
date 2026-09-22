@@ -402,9 +402,6 @@ export class NavidromePlaybackDestination {
     let pointer = navidromePlaylistPointerStore.getPointer(snapshot.entityId, targetKey);
     let stalePointerTitle = null;
     let stalePointerDetected = false;
-    if (pointer && this._syncHashes.get(syncKey) === syncHash) {
-      return playbackOperationSuccess();
-    }
     if (pointer && typeof this.client.getPlaylist === "function") {
       let nativePlaylist;
       let pointerIsStale = false;
@@ -427,6 +424,9 @@ export class NavidromePlaybackDestination {
           pointer = null;
         }
       }
+    }
+    if (pointer && this._syncHashes.get(syncKey) === syncHash) {
+      return playbackOperationSuccess();
     }
     const files = await fs.readdir(this.libraryRoot).catch(() => []);
     const normalizeTrackPath = (value) => path
