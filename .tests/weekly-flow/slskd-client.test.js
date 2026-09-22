@@ -477,6 +477,7 @@ test("cleanupAfterRun removes Aurral-owned searches and transfers", async () => 
     assert.equal(result.searchesRemoved, 1);
     assert.equal(result.transfersRemoved, 1);
     assert.equal(result.downloadsRemoved, true);
+    assert.deepEqual(result.cleanedSearchIds, ["search-owned"]);
     assert.deepEqual(
       calls.map((call) => `${call.method} ${call.url}`),
       [

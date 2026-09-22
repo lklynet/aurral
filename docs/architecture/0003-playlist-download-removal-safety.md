@@ -14,6 +14,7 @@ Treat playlist removal as a durable cancellation boundary.
 
 - SQLite stores a cancellation state and a generation for each playlist.
 - SQLite stores cancellation tombstones for individual jobs.
+- For providers whose work can outlive a pipeline payload, SQLite records the operation ID as soon as work is created; the durable provider-work path currently covers slskd searches.
 - Playlist-scoped cleanup includes quality-upgrade jobs whose owning playlist ID is stored separately from their queue type.
 - Each new download payload carries the playlist generation.
 - The delete path marks the playlist cancelled before it waits for the playlist mutation lock.
@@ -27,9 +28,9 @@ When a playlist is created again with the same ID, Aurral advances the generatio
 
 Aurral cancels provider work when the adapter exposes a verified operation:
 
-- slskd searches and transfer IDs found in the pipeline payload are deleted.
+- slskd searches recorded durably or found in the pipeline payload are deleted; transfer IDs found in the pipeline payload are also deleted.
 - deemix queue items are removed.
-- SABnzbd history items are removed when a job has a known ID.
+- SABnzbd queue and history items are removed when a job has a known ID.
 - yt-dlp staging is removed, and an active yt-dlp process checks the durable job cancellation state.
 
 The NZBGet adapter does not expose a verified queue-cancel operation. Aurral therefore stops the Aurral pipeline and refuses to import a result after removal, but it does not claim that NZBGet stopped the remote download.

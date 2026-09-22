@@ -34,6 +34,16 @@ const cancelJobStmt = db.prepare(
    VALUES (?, ?)`,
 );
 
+const providerWorkInsertStmt = db.prepare(
+  `INSERT OR IGNORE INTO weekly_flow_download_provider_work
+   (job_id, playlist_id, provider, work_id, username, created_at)
+   VALUES (?, ?, ?, ?, ?, ?)`,
+);
+const providerWorkDeleteStmt = db.prepare(
+  `DELETE FROM weekly_flow_download_provider_work
+   WHERE provider = ? AND work_id = ?`,
+);
+
 function normalizeId(value) {
   return String(value || "").trim();
 }
@@ -106,6 +116,72 @@ export function cancelDownloadJobs(jobIds = []) {
     return changes;
   });
   return cancel();
+}
+
+export function registerDownloadProviderWork({
+  jobId,
+  playlistId,
+  provider,
+  workId,
+  username = "",
+} = {}) {
+  const safeJobId = normalizeId(jobId);
+  const safePlaylistId = normalizeId(playlistId);
+  const safeProvider = normalizeId(provider);
+  const safeWorkId = normalizeId(workId);
+  const safeUsername = normalizeId(username);
+  if (!safeJobId || !safeProvider || !safeWorkId) return false;
+  providerWorkInsertStmt.run(
+    safeJobId,
+    safePlaylistId,
+    safeProvider,
+    safeWorkId,
+    safeUsername,
+    Date.now(),
+  );
+  return true;
+}
+
+export function listDownloadProviderWork({
+  jobIds = [],
+  playlistId = null,
+  provider = null,
+} = {}) {
+  const safeJobIds = [...new Set(
+    (Array.isArray(jobIds) ? jobIds : []).map(normalizeId).filter(Boolean),
+  )];
+  const safePlaylistId = normalizeId(playlistId);
+  const safeProvider = normalizeId(provider);
+  const clauses = [];
+  const params = [];
+  if (safeProvider) {
+    clauses.push("provider = ?");
+    params.push(safeProvider);
+  }
+  const scope = [];
+  if (safePlaylistId) {
+    scope.push("playlist_id = ?");
+    params.push(safePlaylistId);
+  }
+  if (safeJobIds.length > 0) {
+    scope.push(`job_id IN (${safeJobIds.map(() => "?").join(", ")})`);
+    params.push(...safeJobIds);
+  }
+  if (scope.length === 0) return [];
+  clauses.push(`(${scope.join(" OR ")})`);
+  return db.prepare(
+    `SELECT job_id, playlist_id, provider, work_id, username, created_at
+     FROM weekly_flow_download_provider_work
+     WHERE ${clauses.join(" AND ")}
+     ORDER BY created_at, work_id`,
+  ).all(...params);
+}
+
+export function clearDownloadProviderWork({ provider, workId } = {}) {
+  const safeProvider = normalizeId(provider);
+  const safeWorkId = normalizeId(workId);
+  if (!safeProvider || !safeWorkId) return 0;
+  return providerWorkDeleteStmt.run(safeProvider, safeWorkId).changes;
 }
 
 export function isDownloadJobCancelled(jobId) {

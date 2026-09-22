@@ -8,6 +8,8 @@ import { logger } from "../logger.js";
 import {
   cancelDownloadJobs,
   cancelPlaylistDownloadGeneration,
+  clearDownloadProviderWork,
+  listDownloadProviderWork,
 } from "./weeklyFlowDownloadCancellation.js";
 
 const PIPELINE_QUEUE = "slskd-pipeline";
@@ -64,7 +66,7 @@ function getJobById(jobs, jobId) {
   return jobs.find((job) => normalizeId(job?.id) === safeJobId) || null;
 }
 
-async function cancelSlskdWork(payloads, jobs) {
+async function cancelSlskdWork(payloads, jobs, providerWork = []) {
   const client = getDownloadClient("slskd");
   const searchIds = new Set();
   const transfers = new Map();
@@ -86,13 +88,20 @@ async function cancelSlskdWork(payloads, jobs) {
       transfers.set(`${username}\0${transferId}`, { id: transferId, username });
     }
   }
+  for (const work of providerWork) {
+    if (work?.provider !== "slskd-search") continue;
+    const searchId = normalizeId(work.work_id);
+    if (searchId) searchIds.add(searchId);
+  }
   for (const searchId of searchIds) {
-    await client.deleteSearch(searchId).catch((error) => {
+    const deleted = await client.deleteSearch(searchId).catch((error) => {
       logger.warn("slskd", "Could not cancel a removed playlist search", {
         searchId,
         reason: error?.message || String(error),
       });
+      return false;
     });
+    if (deleted) clearDownloadProviderWork({ provider: "slskd-search", workId: searchId });
   }
   for (const transfer of transfers.values()) {
     await client.deleteTransfer(transfer.username, transfer.id, { remove: true }).catch((error) => {
@@ -145,6 +154,12 @@ async function cancelSabnzbdWork(payloads, jobs) {
     }
   }
   for (const id of ids) {
+    await client.deleteQueueItem(id).catch((error) => {
+      logger.warn("sabnzbd", "Could not cancel a removed playlist queue item", {
+        id,
+        reason: error?.message || String(error),
+      });
+    });
     await client.deleteHistoryItem(id).catch((error) => {
       logger.warn("sabnzbd", "Could not remove a deleted playlist history item", {
         id,
@@ -180,9 +195,9 @@ async function cancelYtdlpWork(payloads, jobs) {
   return { stagingJobs: ids.size };
 }
 
-async function cancelProviderWork(payloads, jobs) {
+async function cancelProviderWork(payloads, jobs, providerWork = []) {
   const [slskd, deemix, sabnzbd, ytdlp] = await Promise.all([
-    cancelSlskdWork(payloads, jobs),
+    cancelSlskdWork(payloads, jobs, providerWork),
     cancelDeemixWork(payloads, jobs),
     cancelSabnzbdWork(payloads, jobs),
     cancelYtdlpWork(payloads, jobs),
@@ -277,11 +292,16 @@ export async function cancelDownloadWorkForJobs(jobs = [], { lock = true } = {})
   const playlistIds = normalizedJobs
     .map((job) => normalizeId(job?.playlistId || job?.playlistType))
     .filter(Boolean);
+  const cancel = () => {
+    const providerWork = listDownloadProviderWork({
+      jobIds: normalizedJobs.map((job) => job.id),
+      provider: "slskd-search",
+    });
+    return cancelProviderWork(pipeline.payloads, normalizedJobs, providerWork);
+  };
   const providers = lock
-    ? await withPlaylistCancellationLocks(playlistIds, () =>
-        cancelProviderWork(pipeline.payloads, normalizedJobs),
-      )
-    : await cancelProviderWork(pipeline.payloads, normalizedJobs);
+    ? await withPlaylistCancellationLocks(playlistIds, cancel)
+    : await cancel();
   return {
     cancelled: pipeline.cancelled,
     provider: providers,
@@ -294,9 +314,13 @@ export async function cancelPlaylistDownloadWork(playlistId, jobs = []) {
   if (!safePlaylistId) return { cancelled: 0, generation: 0 };
   const { generation, jobs: normalizedJobs } = cancellation;
   const activePipeline = cancelPipelineRows(safePlaylistId, normalizedJobs);
-  const providers = await withPlaylistCancellationLocks([safePlaylistId], () =>
-    cancelProviderWork(activePipeline.payloads, normalizedJobs),
-  );
+  const providers = await withPlaylistCancellationLocks([safePlaylistId], () => {
+    const providerWork = listDownloadProviderWork({
+      playlistId: safePlaylistId,
+      provider: "slskd-search",
+    });
+    return cancelProviderWork(activePipeline.payloads, normalizedJobs, providerWork);
+  });
   return {
     generation,
     cancelled: activePipeline.cancelled,

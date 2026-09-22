@@ -182,6 +182,22 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_weekly_flow_download_job_cancellations_time
     ON weekly_flow_download_job_cancellations(cancelled_at);
 
+  CREATE TABLE IF NOT EXISTS weekly_flow_download_provider_work (
+    job_id TEXT NOT NULL,
+    playlist_id TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL,
+    work_id TEXT NOT NULL,
+    username TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (job_id, provider, work_id, username)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_weekly_flow_download_provider_work_job
+    ON weekly_flow_download_provider_work(job_id, provider);
+
+  CREATE INDEX IF NOT EXISTS idx_weekly_flow_download_provider_work_playlist
+    ON weekly_flow_download_provider_work(playlist_id, provider);
+
   CREATE TABLE IF NOT EXISTS deezer_mbid_cache (
     cache_key TEXT PRIMARY KEY,
     mbid TEXT NOT NULL

@@ -18,6 +18,7 @@ const RESET_TABLES = [
   "playlist_download_jobs",
   "weekly_flow_download_job_cancellations",
   "weekly_flow_download_cancellations",
+  "weekly_flow_download_provider_work",
   "inbox_items",
   "users",
   "discovery_cache",

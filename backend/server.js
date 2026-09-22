@@ -253,7 +253,7 @@ if (fs.existsSync(frontendDist)) {
     if (req.path.startsWith("/api")) {
       return res.status(404).json({ error: "Not found" });
     }
-    res.sendFile(path.join(frontendDist, "index.html"));
+    res.sendFile("index.html", { root: frontendDist });
   });
 } else {
   app.get(frontendFallbackRoute, (req, res) => {

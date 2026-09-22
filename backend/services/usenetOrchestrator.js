@@ -57,8 +57,15 @@ function getSabnzbdClient() {
   return getDownloadClient("sabnzbd");
 }
 
-function removeSabnzbdHistoryItem(nzbId, jobId) {
-  getSabnzbdClient().deleteHistoryItem(nzbId).catch((error) => {
+function removeSabnzbdItem(nzbId, jobId) {
+  const client = getSabnzbdClient();
+  client.deleteQueueItem(nzbId).catch((error) => {
+    logger.warn("usenet", "Could not remove SABnzbd queue item", {
+      jobId,
+      reason: error?.message || String(error),
+    });
+  });
+  client.deleteHistoryItem(nzbId).catch((error) => {
     logger.warn("usenet", "Could not remove SABnzbd history item", {
       jobId,
       reason: error?.message || String(error),
@@ -300,7 +307,7 @@ async function handleUsenetDownload(payload, helpers) {
     return helpers.failOrTryNextSource(payload, job, message);
   }
   if (!isPipelinePayloadActive(payload)) {
-    if (clientKey === "sabnzbd") removeSabnzbdHistoryItem(appended.nzbId, job.id);
+    if (clientKey === "sabnzbd") removeSabnzbdItem(appended.nzbId, job.id);
     return null;
   }
   downloadTracker.updateDownloadMetadata(job.id, {
@@ -333,7 +340,7 @@ async function handleUsenetPoll(payload, helpers) {
   const pollAttempts = Number(payload.pollAttempts || 0) + 1;
   if (pollAttempts > MAX_POLL_ATTEMPTS) {
     if (getUsenetClientKey() === "sabnzbd") {
-      removeSabnzbdHistoryItem(payload.nzbId, job.id);
+      removeSabnzbdItem(payload.nzbId, job.id);
     }
     if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, { nzbId: null, history: null });
     return helpers.failOrTryNextSource(payload, job, "Usenet polling timed out");
@@ -353,7 +360,7 @@ async function handleUsenetPoll(payload, helpers) {
     }
     if (state === "failed") {
       if (getUsenetClientKey() === "sabnzbd") {
-        removeSabnzbdHistoryItem(payload.nzbId, job.id);
+        removeSabnzbdItem(payload.nzbId, job.id);
       }
       if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, { nzbId: null, history: null });
       return helpers.failOrTryNextSource(
@@ -399,7 +406,7 @@ async function handleUsenetFinalize(payload, helpers) {
   );
   if (!isPipelinePayloadActive(payload)) {
     if (found.filePath) await fs.rm(found.filePath, { force: true }).catch(() => {});
-    if (job.downloadClient === "sabnzbd") removeSabnzbdHistoryItem(payload.nzbId, job.id);
+    if (job.downloadClient === "sabnzbd") removeSabnzbdItem(payload.nzbId, job.id);
     return null;
   }
   if (
@@ -419,7 +426,7 @@ async function handleUsenetFinalize(payload, helpers) {
         ? MATCHER_UNAVAILABLE_MESSAGE
         : "Usenet download completed, but no matching audio file was found");
     if (getUsenetClientKey() === "sabnzbd") {
-      removeSabnzbdHistoryItem(payload.nzbId, job.id);
+      removeSabnzbdItem(payload.nzbId, job.id);
     }
     if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, { nzbId: null, history: null });
     return helpers.failOrTryNextSource(payload, job, reason);
@@ -441,7 +448,7 @@ async function handleUsenetFinalize(payload, helpers) {
       finalPath,
     );
     if (getUsenetClientKey() === "sabnzbd") {
-      removeSabnzbdHistoryItem(payload.nzbId, job.id);
+      removeSabnzbdItem(payload.nzbId, job.id);
     }
     return finalizePipelineJobSuccess({
       downloadTracker,

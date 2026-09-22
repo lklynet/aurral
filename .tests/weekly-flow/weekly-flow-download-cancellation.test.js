@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   setupIsolatedBackend,
   cleanupIsolatedState,
+  createMockHttpServer,
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
@@ -18,6 +19,7 @@ const [
   workerModule,
   honkerModule,
   cancellationServiceModule,
+  dbHelpersModule,
 ] = await setupIsolatedBackend(
   "weekly-flow-download-cancellation",
   "backend/config/db-sqlite.js",
@@ -29,6 +31,7 @@ const [
   "backend/services/weeklyFlow/weeklyFlowWorker.js",
   "backend/services/honkerDb.js",
   "backend/services/weeklyFlow/weeklyFlowDownloadCancellationService.js",
+  "backend/db/helpers/index.js",
 );
 
 const {
@@ -37,6 +40,8 @@ const {
   cancelPlaylistDownloadGeneration,
   getPlaylistDownloadGeneration,
   isPipelinePayloadActive,
+  listDownloadProviderWork,
+  registerDownloadProviderWork,
 } = cancellationModule;
 const { downloadTracker } = trackerModule;
 const { flowPlaylistConfig } = playlistConfigModule;
@@ -45,6 +50,7 @@ const { playlistManager } = playlistManagerModule;
 const { weeklyFlowWorker } = workerModule;
 const { enqueuePipelineJob, listHonkerJobs } = honkerModule;
 const { markPlaylistDownloadWorkCancelled } = cancellationServiceModule;
+const { dbOps } = dbHelpersModule;
 
 test.beforeEach(async () => {
   await resetDatabase(db);
@@ -226,4 +232,101 @@ test("shared playlist track replacement cancels dependent quality upgrades", asy
     playlistGeneration: generation,
   }), false);
   assert.equal(listHonkerJobs("slskd-pipeline").some((row) => row.id === queueJobId), false);
+});
+
+test("playlist deletion cancels durably recorded slskd searches", async (t) => {
+  const playlistId = "provider-work-playlist";
+  const jobId = "provider-work-job";
+  const originalSettings = dbOps.getSettings();
+  const deleteRequests = [];
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    deleteRequests.push(`${request.method} ${request.url}`);
+    response.writeHead(204);
+    response.end();
+  });
+
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...(originalSettings.integrations || {}),
+      slskd: { enabled: true, url: mock.url, apiKey: "test-key" },
+    },
+  });
+  flowPlaylistConfig.createSharedPlaylist({
+    id: playlistId,
+    name: "Provider Work Playlist",
+    tracks: [],
+  });
+  downloadTracker.addJob(
+    { id: jobId, artistName: "Artist", trackName: "Song" },
+    playlistId,
+  );
+  registerDownloadProviderWork({
+    jobId,
+    playlistId,
+    provider: "slskd-search",
+    workId: "search-durable",
+  });
+
+  try {
+    assert.equal(listDownloadProviderWork({ playlistId, provider: "slskd-search" }).length, 1);
+    await cancellationServiceModule.cancelPlaylistDownloadWork(
+      playlistId,
+      downloadTracker.getByPlaylistId(playlistId),
+    );
+    assert.deepEqual(deleteRequests, ["DELETE /api/v0/searches/search-durable"]);
+    assert.equal(listDownloadProviderWork({ playlistId, provider: "slskd-search" }).length, 0);
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    await mock.close();
+  }
+});
+
+test("failed provider cancellation keeps durable slskd work for a later retry", async () => {
+  const playlistId = "provider-work-retry-playlist";
+  const jobId = "provider-work-retry-job";
+  const originalSettings = dbOps.getSettings();
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    response.writeHead(503);
+    response.end();
+  });
+
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...(originalSettings.integrations || {}),
+      slskd: { enabled: true, url: mock.url, apiKey: "test-key" },
+    },
+  });
+  flowPlaylistConfig.createSharedPlaylist({
+    id: playlistId,
+    name: "Provider Work Retry Playlist",
+    tracks: [],
+  });
+  downloadTracker.addJob(
+    { id: jobId, artistName: "Artist", trackName: "Song" },
+    playlistId,
+  );
+  registerDownloadProviderWork({
+    jobId,
+    playlistId,
+    provider: "slskd-search",
+    workId: "search-retry",
+  });
+
+  try {
+    await cancellationServiceModule.cancelPlaylistDownloadWork(
+      playlistId,
+      downloadTracker.getByPlaylistId(playlistId),
+    );
+    assert.equal(
+      listDownloadProviderWork({ playlistId, provider: "slskd-search" }).length,
+      1,
+    );
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    await mock.close();
+  }
 });

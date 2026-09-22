@@ -684,6 +684,7 @@ export class SlskdClient {
     return withHonkerLock("slskd-api", async () => {
       let searchesRemoved = 0;
       let transfersRemoved = 0;
+      const cleanedSearchIds = [];
       const ownedOnly = options.ownedOnly !== false;
       const explicitSearchIds = Array.isArray(options.searchIds) ? options.searchIds : [];
       const explicitTransfers = Array.isArray(options.transfers) ? options.transfers : [];
@@ -717,6 +718,7 @@ export class SlskdClient {
       for (const searchId of [...new Set(searchIds)]) {
         if (await this.deleteSearch(searchId)) {
           searchesRemoved += 1;
+          cleanedSearchIds.push(searchId);
         }
       }
 
@@ -742,7 +744,12 @@ export class SlskdClient {
         transfersRemoved,
         downloadsRemoved,
       });
-      return { searchesRemoved, transfersRemoved, downloadsRemoved };
+      return {
+        searchesRemoved,
+        transfersRemoved,
+        downloadsRemoved,
+        cleanedSearchIds,
+      };
     });
   }
 }
