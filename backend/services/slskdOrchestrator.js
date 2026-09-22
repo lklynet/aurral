@@ -152,6 +152,33 @@ function readTransferId(transfer) {
   ).trim();
 }
 
+function readNonNegativeNumber(value) {
+  if (value == null || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
+export function readSlskdTransferMetrics(transfer) {
+  return {
+    size: readNonNegativeNumber(transfer?.size ?? transfer?.Size),
+    bytesTransferred: readNonNegativeNumber(
+      transfer?.bytesTransferred ?? transfer?.BytesTransferred,
+    ),
+  };
+}
+
+export function hasCompleteSlskdTransferBytes(transfer) {
+  const { size, bytesTransferred } = readSlskdTransferMetrics(transfer);
+  return size != null && size > 0 && bytesTransferred != null && bytesTransferred === size;
+}
+
+function getExpectedSlskdDownloadSize(candidateSize, transfer) {
+  const transferSize = readSlskdTransferMetrics(transfer).size;
+  if (transferSize != null && transferSize > 0) return transferSize;
+  const expected = readNonNegativeNumber(candidateSize);
+  return expected != null && expected > 0 ? expected : 0;
+}
+
 function getPayloadSearchIds(payload) {
   const ids = [];
   if (Array.isArray(payload?.searchIds)) ids.push(...payload.searchIds);
@@ -261,8 +288,10 @@ async function pollSlskdEventsForCandidate(payload) {
       continue;
     }
     if (!eventMatchesCandidate(event, candidate)) continue;
+    if (!type.includes("DownloadFileComplete")) continue;
     const data = readEventData(event);
-    completionTransfer = data?.transfer || data?.Transfer || data || null;
+    const transfer = data?.transfer || data?.Transfer || null;
+    if (hasCompleteSlskdTransferBytes(transfer)) completionTransfer = transfer;
   }
   return { eventOffset: nextOffset, completionTransfer };
 }
@@ -532,7 +561,10 @@ function pickBestFileMatch(matches, expectedSizeBytes) {
 }
 
 export async function locateCompletedDownload(slskdRoot, playlistRoot, remoteFile, options = {}) {
-  const expectedSizeBytes = Number(options.expectedSizeBytes || 0);
+  const expectedSizeBytes = getExpectedSlskdDownloadSize(
+    options.expectedSizeBytes,
+    options.transfer,
+  );
   const transferFilename = readTransferFilename(options.transfer);
   const transferPath = resolveTransferLocalPath(transferFilename, slskdRoot);
   if (transferPath) {
@@ -910,6 +942,26 @@ async function handleDownload(payload) {
   if (!candidate?.raw?.user || !candidate?.raw?.file) {
     return failOrTryNextSource(payload, job, "No download candidate available");
   }
+  const candidateSize = readNonNegativeNumber(candidate.raw.size);
+  if (candidateSize == null || candidateSize <= 0) {
+    const reason = "slskd candidate did not advertise a usable file size";
+    logger.warn("slskd", reason, {
+      jobId: job.id,
+      username: candidate.raw.user,
+      file: candidate.raw.file,
+      candidateIndex: index,
+    });
+    const nextIndex = index + 1;
+    if (nextIndex < candidates.length) {
+      return {
+        ...payload,
+        phase: "download",
+        candidateIndex: nextIndex,
+        pollAttempts: 0,
+      };
+    }
+    return failOrTryNextSource(payload, job, reason);
+  }
   const searchId = payload.searchId || null;
   updateSlskdMetaStmt.run(searchId, null, candidate.raw.user, candidate.raw.file, job.id);
   downloadTracker.updateDownloadMetadata(job.id, {
@@ -925,7 +977,7 @@ async function handleDownload(payload) {
       files: [
         {
           filename: candidate.raw.file,
-          size: Number(candidate.raw.size || 0),
+          size: candidateSize,
         },
       ],
       options: {
@@ -1036,6 +1088,19 @@ async function handlePoll(payload) {
         pollAttempts,
       };
     }
+    if (!hasCompleteSlskdTransferBytes(transfer)) {
+      const reason = "slskd reported a completed transfer before all bytes arrived";
+      await cleanupTransferForPayload(basePayload, transfer);
+      const nextPayload = retrySameCandidateOrNext(
+        basePayload,
+        job,
+        "transfer_incomplete",
+        reason,
+        { transfer },
+      );
+      if (nextPayload) return nextPayload;
+      return failOrTryNextSource(basePayload, job, reason);
+    }
     const candidate = getPayloadCandidate(basePayload);
     return {
       ...basePayload,
@@ -1071,8 +1136,21 @@ async function handleFinalize(payload) {
   const { fileName } = parseSlskdRemoteFile(remoteFile);
   const transfers = readBatchTransfers(payload.batch);
   const transfer = transfers[0] || null;
+  if (!hasCompleteSlskdTransferBytes(transfer)) {
+    const reason = "slskd completion did not include a complete byte count";
+    await cleanupTransferForPayload(payload, transfer);
+    const nextPayload = retrySameCandidateOrNext(
+      payload,
+      job,
+      "transfer_incomplete",
+      reason,
+      { transfer },
+    );
+    if (nextPayload) return nextPayload;
+    return failOrTryNextSource(payload, job, reason);
+  }
   const sourcePath = await locateCompletedDownload(slskdRoot, playlistRoot, remoteFile, {
-    expectedSizeBytes: Number(candidate?.raw?.size || 0),
+    expectedSizeBytes: getExpectedSlskdDownloadSize(candidate?.raw?.size, transfer),
     transfer,
   });
   if (typeof sourcePath !== "string" || !sourcePath.trim()) {
@@ -1104,6 +1182,7 @@ async function handleFinalize(payload) {
     source: "soulseek",
     options: {
       strict: candidate?.evaluation?.decision !== "accept",
+      checkIntegrity: true,
     },
   });
   if (!validation.valid) {

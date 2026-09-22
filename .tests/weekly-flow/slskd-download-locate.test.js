@@ -6,10 +6,22 @@ import path from "path";
 
 import {
   commitImportToPlaylistLibrary,
+  hasCompleteSlskdTransferBytes,
   locateCompletedDownload,
   parseSlskdRemoteFile,
   predictSlskdLocalPathCandidates,
+  readSlskdTransferMetrics,
 } from "../../backend/services/slskdOrchestrator.js";
+
+test("slskd completion requires the transfer byte count to reach its advertised size", () => {
+  assert.deepEqual(readSlskdTransferMetrics({ Size: "320", BytesTransferred: "319" }), {
+    size: 320,
+    bytesTransferred: 319,
+  });
+  assert.equal(hasCompleteSlskdTransferBytes({ Size: 320, BytesTransferred: 319 }), false);
+  assert.equal(hasCompleteSlskdTransferBytes({ size: 320, bytesTransferred: 320 }), true);
+  assert.equal(hasCompleteSlskdTransferBytes({ Size: 0, BytesTransferred: 0 }), false);
+});
 
 test("parseSlskdRemoteFile reads parent folder and basename from remote paths", () => {
   assert.deepEqual(
@@ -85,6 +97,27 @@ test("locateCompletedDownload uses transfer filename when slskd reports a local 
   });
 
   assert.equal(resolved, localPath);
+  await fs.rm(root, { recursive: true, force: true });
+});
+
+test("locateCompletedDownload uses the completed transfer size when the search size is absent", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-slskd-locate-"));
+  const remote = "Artist\\Album\\01 - Track.flac";
+  const expectedPath = path.join(root, "Album", "01 - Track.flac");
+  const decoyPath = path.join(root, "Other Album", "01 - Track.flac");
+  await fs.mkdir(path.dirname(expectedPath), { recursive: true });
+  await fs.mkdir(path.dirname(decoyPath), { recursive: true });
+  await fs.writeFile(expectedPath, "complete-audio", "utf8");
+  await fs.writeFile(decoyPath, "partial", "utf8");
+
+  const resolved = await locateCompletedDownload(root, null, remote, {
+    transfer: {
+      size: Buffer.byteLength("complete-audio"),
+      bytesTransferred: Buffer.byteLength("complete-audio"),
+    },
+  });
+
+  assert.equal(resolved, expectedPath);
   await fs.rm(root, { recursive: true, force: true });
 });
 

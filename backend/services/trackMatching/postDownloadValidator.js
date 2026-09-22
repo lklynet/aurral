@@ -18,6 +18,8 @@
 // `valid`/`blocked` fields (VERIFIED→valid, AMBIGUOUS→blocked) so the
 // existing review routing keeps working unchanged.
 
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { parseFile } from "music-metadata";
 import { buildTrackRequest } from "./trackIdentity.js";
 import { getFileName, getFileBaseName, claimedTitle } from "./candidateNormalizer.js";
@@ -34,6 +36,9 @@ import {
 } from "./identityPolicy.js";
 import { validateParsedQuality } from "../qualityProfileService.js";
 import { logger } from "../logger.js";
+
+const execFileAsync = promisify(execFile);
+const AUDIO_INTEGRITY_TIMEOUT_MS = 120000;
 
 export const POST_DOWNLOAD_DECISIONS = {
   VERIFIED: "VERIFIED",
@@ -72,6 +77,38 @@ function stripLeadingTrackNumber(baseName) {
 export function readDurationMsFromParsed(parsed) {
   const seconds = Number(parsed?.format?.duration || 0);
   return seconds > 0 ? Math.round(seconds * 1000) : null;
+}
+
+export async function validateAudioFileIntegrity(filePath, options = {}) {
+  const execute = options.execFile || execFileAsync;
+  const timeoutMs = Number(options.timeoutMs || AUDIO_INTEGRITY_TIMEOUT_MS);
+  try {
+    await execute(
+      options.binary || "ffmpeg",
+      [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-xerror",
+        "-nostdin",
+        "-i",
+        filePath,
+        "-map",
+        "0:a:0",
+        "-f",
+        "null",
+        "-",
+      ],
+      { timeout: timeoutMs },
+    );
+    return { valid: true };
+  } catch (error) {
+    return {
+      valid: false,
+      reason: "downloaded audio failed the integrity check",
+      errorCode: error?.code || null,
+    };
+  }
 }
 
 // Builds the canonical candidate representation from what the FILE itself
@@ -163,6 +200,24 @@ export async function validateDownloadedTrackFile({
 
   const actual = buildActualFileCandidate(parsed, filePath, source, candidate);
   const actualDurationMs = actual.durationMs;
+
+  if (options.checkIntegrity === true) {
+    const integrity = await validateAudioFileIntegrity(filePath, options);
+    if (!integrity.valid) {
+      return {
+        decision: POST_DOWNLOAD_DECISIONS.FAILED,
+        valid: false,
+        blocked: false,
+        reason: integrity.reason,
+        filePath,
+        source,
+        actualDurationMs,
+        actual: { tags: actual, durationMs: actualDurationMs },
+        actualIntegrity: integrity,
+        parsedTags: actual,
+      };
+    }
+  }
 
   const quality = validateParsedQuality(parsed, filePath, {
     upgradeForJobId: trackRequest.upgradeForJobId || null,

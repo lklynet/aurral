@@ -238,6 +238,26 @@ test("unreadable files fail", async () => {
   assert.equal(outcome.valid, false);
 });
 
+test("integrity failures are rejected before post-download matching", async () => {
+  const outcome = await validateDownloadedTrackFile({
+    request: GET_LUCKY,
+    filePath: "/staging/truncated.flac",
+    source: "soulseek",
+    options: {
+      parseFile: stubParseFile(
+        stubParsed({ title: "Get Lucky", artist: "Daft Punk" }),
+      ),
+      checkIntegrity: true,
+      execFile: async () => {
+        throw new Error("decoder error");
+      },
+    },
+  });
+  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.FAILED);
+  assert.equal(outcome.valid, false);
+  assert.match(outcome.reason, /integrity/i);
+});
+
 test("matcher unavailability is a controlled conflict with the diagnostic, never an accept", async () => {
   const outcome = await validateDownloadedTrackFile({
     request: GET_LUCKY,
