@@ -31,6 +31,7 @@ import {
   getLibraryManagementEntry,
   setLibraryManagement,
 } from "./libraryManagementStore.js";
+import { cancelDownloadWorkForJobs } from "./weeklyFlow/weeklyFlowDownloadCancellationService.js";
 const normalizeTypeName = (value) =>
   String(value || "")
     .toLowerCase()
@@ -285,11 +286,26 @@ function removeLibraryDownloadJobs(track) {
       : matchesName;
     if (matchesTrack) {
       removedJobIds.add(job.id);
-      downloadTracker.removeJob(job.id);
     }
+  }
+  void cancelDownloadWorkForJobs(
+    jobs.filter((job) => removedJobIds.has(job.id)),
+  ).catch((error) => {
+    logger.warn("library", "Could not cancel removed library downloads", {
+      reason: error?.message || String(error),
+    });
+  });
+  for (const job of jobs) {
+    if (removedJobIds.has(job.id)) downloadTracker.removeJob(job.id);
   }
   for (const job of jobs) {
     if (job.upgradeForJobId && removedJobIds.has(job.upgradeForJobId)) {
+      void cancelDownloadWorkForJobs([job]).catch((error) => {
+        logger.warn("library", "Could not cancel removed library upgrade", {
+          jobId: job.id,
+          reason: error?.message || String(error),
+        });
+      });
       downloadTracker.removeJob(job.id);
     }
   }

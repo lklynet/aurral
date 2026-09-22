@@ -83,7 +83,7 @@ function isConfiguredFor(config = null) {
   return isEnabledFor(config) && resolveBinaryExists(getBinaryPath());
 }
 
-function runYtdlp(args, { timeoutMs = 120000, cwd } = {}) {
+function runYtdlp(args, { timeoutMs = 120000, cwd, shouldCancel } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(getBinaryPath(), buildYtdlpInvocationArgs(args), {
       cwd,
@@ -92,10 +92,37 @@ function runYtdlp(args, { timeoutMs = 120000, cwd } = {}) {
     });
     let stdout = "";
     let stderr = "";
+    let settled = false;
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      reject(new Error(`yt-dlp timed out after ${timeoutMs}ms`));
+      const error = new Error(`yt-dlp timed out after ${timeoutMs}ms`);
+      error.code = "DOWNLOAD_TIMEOUT";
+      settleReject(error);
     }, timeoutMs);
+    const cancellationTimer = typeof shouldCancel === "function"
+      ? setInterval(() => {
+          let cancelled = false;
+          try {
+            cancelled = shouldCancel() === true;
+          } catch {}
+          if (!cancelled) return;
+          child.kill("SIGTERM");
+          const error = new Error("yt-dlp download cancelled");
+          error.code = "DOWNLOAD_CANCELLED";
+          settleReject(error);
+        }, 250)
+      : null;
+    if (typeof cancellationTimer?.unref === "function") cancellationTimer.unref();
+    function clearTimers() {
+      clearTimeout(timer);
+      if (cancellationTimer) clearInterval(cancellationTimer);
+    }
+    function settleReject(error) {
+      if (settled) return;
+      settled = true;
+      clearTimers();
+      reject(error);
+    }
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
     });
@@ -103,11 +130,12 @@ function runYtdlp(args, { timeoutMs = 120000, cwd } = {}) {
       stderr += chunk.toString();
     });
     child.on("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
+      settleReject(error);
     });
     child.on("close", (code) => {
-      clearTimeout(timer);
+      if (settled) return;
+      settled = true;
+      clearTimers();
       if (code !== 0) {
         const detail = String(stderr || stdout || "").trim().slice(-500);
         reject(new Error(detail || `yt-dlp exited with code ${code}`));
@@ -200,7 +228,7 @@ async function findDownloadedAudio(dir) {
   return null;
 }
 
-async function downloadAudioFor(config = null, videoUrl, { jobId } = {}) {
+async function downloadAudioFor(config = null, videoUrl, { jobId, shouldCancel } = {}) {
   const url = String(videoUrl || "").trim();
   if (!url) throw new Error("Missing yt-dlp download URL");
   const stagingDir = resolveStagingDir(config, jobId);
@@ -222,7 +250,7 @@ async function downloadAudioFor(config = null, videoUrl, { jobId } = {}) {
         "--",
         url,
       ],
-      { timeoutMs: DOWNLOAD_TIMEOUT_MS, cwd: stagingDir },
+      { timeoutMs: DOWNLOAD_TIMEOUT_MS, cwd: stagingDir, shouldCancel },
     );
   } catch (error) {
     await fsPromises.rm(stagingDir, { recursive: true, force: true }).catch(() => {});

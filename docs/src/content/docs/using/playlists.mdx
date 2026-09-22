@@ -32,6 +32,14 @@ If all download sources fail, the track stays in the failed state after an Aurra
 
 Select **Re-search missing** from the playlist menu to try the track again.
 
+## Remove a playlist or track
+
+Playlist deletion and track removal cancel the Aurral pipeline before they clear the download job. The delete action can stay queued while Aurral cleans the playback playlist and files.
+
+If a provider finishes a request after removal, Aurral does not import that result into the removed playlist. A provider may still show its own remote work until that provider reports the cancellation or completion.
+
+When you create a playlist again with the same ID, old download work remains tied to the removed generation and cannot attach to the new playlist.
+
 ## Import and Lidarr sync
 
 Use **Import playlist** for Spotify, Last.fm, ListenBrainz, or a JSON tracklist. Connect Spotify in the import flow. Connect ListenBrainz in **Settings > Playback**; configure a Last.fm username in **Profile**. See [Playlist imports](/using/playlist-imports/).

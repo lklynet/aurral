@@ -31,6 +31,10 @@ import { hasPermission } from "../middleware/auth.js";
 import { recordTrackJobQueued } from "./aurralHistoryService.js";
 import { selectCanonicalFile } from "./canonicalFileSelector.js";
 import { logger } from "./logger.js";
+import {
+  cancelDownloadWorkForJobs,
+  markPlaylistDownloadWorkCancelled,
+} from "./weeklyFlow/weeklyFlowDownloadCancellationService.js";
 
 const idFor = (kind, key) =>
   `${kind}:${encodeURIComponent(String(key)).replaceAll("%3A", ":")}`;
@@ -652,7 +656,15 @@ const toCanonicalPlaylistTrack = (track, canonicalJobId) => ({
 });
 
 const removeLegacyPlaylistJobs = (playlistId) => {
-  for (const job of downloadTracker.getByPlaylistType(playlistId)) {
+  const jobs = downloadTracker.getByPlaylistId(playlistId);
+  markPlaylistDownloadWorkCancelled(playlistId, jobs);
+  void cancelDownloadWorkForJobs(jobs).catch((error) => {
+    logger.warn("subsonic", "Could not cancel removed playlist downloads", {
+      playlistId,
+      reason: error?.message || String(error),
+    });
+  });
+  for (const job of jobs) {
     downloadTracker.removeJob(job.id);
   }
 };

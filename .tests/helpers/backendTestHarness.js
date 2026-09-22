@@ -16,6 +16,8 @@ const RESET_TABLES = [
   "honker_task_runs",
   "slskd_transfer_history",
   "playlist_download_jobs",
+  "weekly_flow_download_job_cancellations",
+  "weekly_flow_download_cancellations",
   "inbox_items",
   "users",
   "discovery_cache",

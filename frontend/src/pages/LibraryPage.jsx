@@ -884,8 +884,12 @@ function LibraryPage() {
       setPlaylistSavingKey(key);
       setPlaylistsError("");
       try {
-        await deleteSharedPlaylistTrack(target.playlistId, target.jobId);
-        showSuccess(`Removed ${track?.title || "track"} from playlist`);
+        const result = await deleteSharedPlaylistTrack(target.playlistId, target.jobId);
+        showSuccess(
+          result?.queued
+            ? `Removal queued for ${track?.title || "track"}`
+            : `Removed ${track?.title || "track"} from playlist`,
+        );
         const nextPlaylists = await loadSharedPlaylists();
         if (nextPlaylists) setSharedPlaylists(nextPlaylists);
       } catch (requestError) {

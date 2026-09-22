@@ -167,6 +167,21 @@ db.exec(`
     upgrade_for_job_id TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS weekly_flow_download_cancellations (
+    playlist_id TEXT PRIMARY KEY,
+    generation INTEGER NOT NULL DEFAULT 0,
+    state TEXT NOT NULL DEFAULT 'active',
+    changed_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS weekly_flow_download_job_cancellations (
+    job_id TEXT PRIMARY KEY,
+    cancelled_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_weekly_flow_download_job_cancellations_time
+    ON weekly_flow_download_job_cancellations(cancelled_at);
+
   CREATE TABLE IF NOT EXISTS deezer_mbid_cache (
     cache_key TEXT PRIMARY KEY,
     mbid TEXT NOT NULL

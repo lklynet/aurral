@@ -30,6 +30,10 @@ import {
   blockPipelineJobForReview,
   finalizePipelineJobSuccess,
 } from "./pipelineHelpers.js";
+import {
+  isPipelinePayloadActive,
+  withPipelineCommitLock,
+} from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
 
 const SEARCH_LIMIT = 10;
 const POLL_DELAY_SECONDS = 3;
@@ -204,6 +208,11 @@ async function handleDeemixDownload(payload, helpers) {
     return helpers.failOrTryNextSource(payload, job, message);
   }
 
+  if (!isPipelinePayloadActive(payload)) {
+    await client.removeFromQueue(queueUuid).catch(() => {});
+    return null;
+  }
+
   downloadTracker.updateDownloadMetadata(job.id, {
     downloadSource: "deemix",
     downloadClient: "deemix",
@@ -318,6 +327,10 @@ async function handleDeemixFinalize(payload, helpers) {
       strict: candidate?.evaluation?.decision !== "accept",
     },
   });
+  if (!isPipelinePayloadActive(payload)) {
+    await fs.rm(filePath, { force: true }).catch(() => {});
+    return null;
+  }
   if (!validation.valid) {
     if (
       blockPipelineJobForReview({
@@ -336,31 +349,38 @@ async function handleDeemixFinalize(payload, helpers) {
     return helpers.failOrTryNextSource(payload, job, reason);
   }
 
-  await writeAudioMetadata(filePath, resolvedTrack);
-  import("./aurralHistoryService.js")
-    .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
-    .catch((err) => {
-      logger.warn("deemix", "Could not record file move history", {
-        jobId: job.id,
-        reason: safeLogDiagnostic(err),
-      });
-    });
   const playlistRoot = resolvePlaylistRoot();
   const destination = String(payload.destination || "").trim();
   const ext = path.extname(filePath).toLowerCase();
   const finalDir = joinUnderRoot(playlistRoot, destination);
   const finalName = `${sanitizePathPart(job.trackName, "Unknown Track")}${ext || ".flac"}`;
   const finalPath = path.join(finalDir, finalName);
-  const committedFinalPath = await commitImportToPlaylistLibrary(filePath, finalPath, {
-    reuseExisting: true,
+  const committed = await withPipelineCommitLock(payload, async () => {
+    await writeAudioMetadata(filePath, resolvedTrack);
+    import("./aurralHistoryService.js")
+      .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
+      .catch((err) => {
+        logger.warn("deemix", "Could not record file move history", {
+          jobId: job.id,
+          reason: safeLogDiagnostic(err),
+        });
+      });
+    const committedFinalPath = await commitImportToPlaylistLibrary(filePath, finalPath, {
+      reuseExisting: true,
+    });
+    return finalizePipelineJobSuccess({
+      downloadTracker,
+      job,
+      committedFinalPath,
+      album: candidate?.resolvedAlbumName || job.albumName,
+      quality: validation.quality,
+    });
   });
-  return finalizePipelineJobSuccess({
-    downloadTracker,
-    job,
-    committedFinalPath,
-    album: candidate?.resolvedAlbumName || job.albumName,
-    quality: validation.quality,
-  });
+  if (committed.cancelled) {
+    await fs.rm(filePath, { force: true }).catch(() => {});
+    return null;
+  }
+  return committed.result;
 }
 
 export async function processDeemixPipelinePayload(payload, helpers = {}) {
@@ -369,6 +389,10 @@ export async function processDeemixPipelinePayload(payload, helpers = {}) {
     jobId: payload.jobId,
     source: payload.source,
   });
+  if (!isPipelinePayloadActive(payload)) {
+    await getDeemixClient().removeFromQueue(payload.queueUuid).catch(() => {});
+    return null;
+  }
   switch (payload.phase) {
     case "search":
       return handleDeemixSearch(payload, helpers);

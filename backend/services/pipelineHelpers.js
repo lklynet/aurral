@@ -71,7 +71,7 @@ export async function finalizePipelineJobSuccess({
     if (onSuccess) await onSuccess();
     return finalizeQualityUpgradeSuccess(job, committedFinalPath, quality);
   }
-  downloadTracker.setDone(job.id, committedFinalPath, album);
+  if (downloadTracker.setDone(job.id, committedFinalPath, album) === false) return null;
   if (quality) downloadTracker.updateQuality(job.id, quality);
 
   if (job.playlistType === "library" && job.managedBy === "aurral" && committedFinalPath) {

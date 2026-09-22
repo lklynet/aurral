@@ -433,6 +433,8 @@ export class SlskdClient {
   async waitForSearch(searchId, timeoutMs = DEFAULT_SEARCH_TIMEOUT_MS, options = {}) {
     const earlyExitWhen =
       typeof options.earlyExitWhen === "function" ? options.earlyExitWhen : null;
+    const shouldCancel =
+      typeof options.shouldCancel === "function" ? options.shouldCancel : null;
     const emptyTimeoutMs = Math.max(
       0,
       Number(options.emptyTimeoutMs ?? DEFAULT_EMPTY_SEARCH_TIMEOUT_MS),
@@ -452,6 +454,10 @@ export class SlskdClient {
     let hasSeenFiles = false;
     while (true) {
       const data = await this.getSearch(searchId);
+      if (shouldCancel?.()) {
+        await this.deleteSearch(searchId).catch(() => {});
+        return null;
+      }
       const flattenedCount = this.flattenSearchResults(data).length;
       const fileCount = Number(data?.fileCount || data?.FileCount || 0);
       totalFiles = Math.max(totalFiles, fileCount, flattenedCount);

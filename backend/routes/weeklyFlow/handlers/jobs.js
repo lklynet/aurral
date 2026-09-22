@@ -27,6 +27,10 @@ import {
   sanitizePathPart,
 } from "../../../services/playlistDownloadUtils.js";
 import { finalizePipelineJobSuccess } from "../../../services/pipelineHelpers.js";
+import {
+  getPlaylistDownloadGeneration,
+  withPipelineCommitLock,
+} from "../../../services/weeklyFlow/weeklyFlowDownloadCancellation.js";
 import path from "path";
 import fs from "fs/promises";
 import { invalidateRequestsCache } from "../../requests.js";
@@ -309,16 +313,29 @@ export function registerJobs(router) {
     const finalName = `${sanitizePathPart(job.trackName, "Unknown Track")}${ext || ".mp3"}`;
     const finalPath = path.join(finalDir, finalName);
     try {
-      const committedPath = await commitImportToPlaylistLibrary(sourcePath, finalPath);
-      await finalizePipelineJobSuccess({
-        downloadTracker,
-        job,
-        committedFinalPath: committedPath,
-        album: job.albumName,
-      });
+      const committed = await withPipelineCommitLock(
+        {
+          jobId: job.id,
+          playlistId,
+          playlistGeneration: getPlaylistDownloadGeneration(playlistId),
+        },
+        async () => {
+          const committedPath = await commitImportToPlaylistLibrary(sourcePath, finalPath);
+          await finalizePipelineJobSuccess({
+            downloadTracker,
+            job,
+            committedFinalPath: committedPath,
+            album: job.albumName,
+          });
+          return committedPath;
+        },
+      );
+      if (committed.cancelled) {
+        return res.status(409).json({ error: "Download job was removed" });
+      }
       await classifyQualityJob(downloadTracker.getJob(job.id));
       invalidateRequestsCache();
-      res.json({ success: true, path: committedPath });
+      res.json({ success: true, path: committed.result });
     } catch (error) {
       res.status(500).json({ error: "Import failed", message: error.message });
     }

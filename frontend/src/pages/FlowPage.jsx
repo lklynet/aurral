@@ -459,11 +459,11 @@ function FlowPage({ mode = "all" }) {
     setDeletingId(confirmDelete.flowId);
     try {
       if (confirmDelete.kind === "shared") {
-        await deleteSharedPlaylist(confirmDelete.flowId);
-        showSuccess("Shared playlist deleted");
+        const result = await deleteSharedPlaylist(confirmDelete.flowId);
+        showSuccess(result?.queued ? "Shared playlist removal queued" : "Shared playlist deleted");
       } else {
-        await deleteFlow(confirmDelete.flowId);
-        showSuccess("Flow deleted");
+        const result = await deleteFlow(confirmDelete.flowId);
+        showSuccess(result?.queued ? "Flow removal queued" : "Flow deleted");
       }
       await fetchStatus();
       if (selectedId === confirmDelete.flowId) {
@@ -1030,8 +1030,12 @@ function FlowPage({ mode = "all" }) {
     if (!playlistId || !jobId || deletingTrackId === jobId) return;
     setDeletingTrackId(jobId);
     try {
-      await deleteSharedPlaylistTrack(playlistId, jobId);
-      showSuccess(`Removed ${track.trackName || "track"}`);
+      const result = await deleteSharedPlaylistTrack(playlistId, jobId);
+      showSuccess(
+        result?.queued
+          ? `Removal queued for ${track.trackName || "track"}`
+          : `Removed ${track.trackName || "track"}`,
+      );
       await fetchStatus();
       await fetchFlowTracks(playlistId, { showSpinner: false });
     } catch (err) {
@@ -1402,7 +1406,9 @@ function FlowPage({ mode = "all" }) {
       }
     }
     if (removed > 0) {
-      showSuccess(`Removed ${removed} track${removed !== 1 ? "s" : ""}`);
+      showSuccess(
+        `Removal queued for ${removed} track${removed !== 1 ? "s" : ""}`,
+      );
     }
     if (failed.length > 0) {
       showError(`Failed to remove: ${failed.join(", ")}`);

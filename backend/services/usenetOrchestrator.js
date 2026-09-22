@@ -31,6 +31,10 @@ import {
   blockPipelineJobForReview,
   finalizePipelineJobSuccess,
 } from "./pipelineHelpers.js";
+import {
+  isPipelinePayloadActive,
+  withPipelineCommitLock,
+} from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
 import { getQualityProfile } from "./qualityProfileService.js";
 import { orderAdvertisedQualityCandidates } from "./qualityProfileModel.js";
 
@@ -295,6 +299,10 @@ async function handleUsenetDownload(payload, helpers) {
     if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, { nzbId: null, history: null });
     return helpers.failOrTryNextSource(payload, job, message);
   }
+  if (!isPipelinePayloadActive(payload)) {
+    if (clientKey === "sabnzbd") removeSabnzbdHistoryItem(appended.nzbId, job.id);
+    return null;
+  }
   downloadTracker.updateDownloadMetadata(job.id, {
     downloadSource: "usenet",
     downloadClient: clientKey,
@@ -310,6 +318,7 @@ async function handleUsenetDownload(payload, helpers) {
     ...payload,
     phase: "poll",
     source: "usenet",
+    downloadClient: clientKey,
     nzbId: appended.nzbId,
     candidate,
     candidateIndex: index,
@@ -388,6 +397,11 @@ async function handleUsenetFinalize(payload, helpers) {
     candidate,
     resolvedTrack,
   );
+  if (!isPipelinePayloadActive(payload)) {
+    if (found.filePath) await fs.rm(found.filePath, { force: true }).catch(() => {});
+    if (job.downloadClient === "sabnzbd") removeSabnzbdHistoryItem(payload.nzbId, job.id);
+    return null;
+  }
   if (
     blockPipelineJobForReview({
       downloadTracker,
@@ -411,34 +425,42 @@ async function handleUsenetFinalize(payload, helpers) {
     return helpers.failOrTryNextSource(payload, job, reason);
   }
 
-  import("./aurralHistoryService.js")
-    .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
-    .catch((err) => { console.warn(err); });
   const playlistRoot = resolvePlaylistRoot();
   const destination = String(payload.destination || "").trim();
   const ext = path.extname(found.filePath).toLowerCase();
   const finalDir = joinUnderRoot(playlistRoot, destination);
   const finalName = `${sanitizePathPart(job.trackName, "Unknown Track")}${ext || ".mp3"}`;
   const finalPath = path.join(finalDir, finalName);
-  await writeAudioMetadata(found.filePath, resolvedTrack);
-  const committedFinalPath = await commitImportToPlaylistLibrary(
-    found.filePath,
-    finalPath,
-  );
-  if (getUsenetClientKey() === "sabnzbd") {
-    removeSabnzbdHistoryItem(payload.nzbId, job.id);
-  }
-  return finalizePipelineJobSuccess({
-    downloadTracker,
-    job,
-    committedFinalPath,
-    album: candidate?.resolvedAlbumName || job.albumName,
-    quality: found.validation?.quality,
+  const committed = await withPipelineCommitLock(payload, async () => {
+    import("./aurralHistoryService.js")
+      .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
+      .catch((err) => { console.warn(err); });
+    await writeAudioMetadata(found.filePath, resolvedTrack);
+    const committedFinalPath = await commitImportToPlaylistLibrary(
+      found.filePath,
+      finalPath,
+    );
+    if (getUsenetClientKey() === "sabnzbd") {
+      removeSabnzbdHistoryItem(payload.nzbId, job.id);
+    }
+    return finalizePipelineJobSuccess({
+      downloadTracker,
+      job,
+      committedFinalPath,
+      album: candidate?.resolvedAlbumName || job.albumName,
+      quality: found.validation?.quality,
+    });
   });
+  if (committed.cancelled) {
+    await fs.rm(found.filePath, { force: true }).catch(() => {});
+    return null;
+  }
+  return committed.result;
 }
 
 export async function processUsenetPipelinePayload(payload, helpers = {}) {
   logger.debug("slskd", "usenet pipeline phase", { phase: payload.phase, jobId: payload.jobId, source: payload.source });
+  if (!isPipelinePayloadActive(payload)) return null;
   switch (payload.phase) {
     case "search":
       return handleUsenetSearch(payload, helpers);

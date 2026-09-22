@@ -143,7 +143,7 @@ function resolveEnqueueRunAt(options) {
   return null;
 }
 
-function parseHonkerPayload(value) {
+export function parseHonkerPayload(value) {
   try {
     const payload = typeof value === "string" ? JSON.parse(value) : value;
     return payload && typeof payload === "object" && !Array.isArray(payload)
@@ -152,6 +152,20 @@ function parseHonkerPayload(value) {
   } catch {
     return null;
   }
+}
+
+export function listHonkerJobs(queueName) {
+  const safeQueue = String(queueName || "").trim();
+  if (!safeQueue) return [];
+  return getHonkerDb()
+    .query(
+      `SELECT id, payload, state, run_at, claim_expires_at, attempts
+       FROM _honker_live
+       WHERE queue = ?
+       ORDER BY id ASC`,
+      [safeQueue],
+    )
+    .map((row) => ({ ...row, payload: parseHonkerPayload(row.payload) }));
 }
 
 function createHonkerQueue({

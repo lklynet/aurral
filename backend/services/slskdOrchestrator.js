@@ -48,6 +48,10 @@ import {
   blockPipelineJobForReview,
   finalizePipelineJobSuccess,
 } from "./pipelineHelpers.js";
+import {
+  isPipelinePayloadActive,
+  withPipelineCommitLock,
+} from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
 
 import { getQualityProfile } from "./qualityProfileService.js";
 import {
@@ -409,6 +413,7 @@ async function failOrTryNextSource(payload, job, message, logDetails = {}) {
 export async function failPipelineJob(payload, message) {
   const jobId = payload?.jobId;
   if (!jobId) return;
+  if (!isPipelinePayloadActive(payload)) return;
   const job = downloadTracker.getJob(jobId);
   if (!job) return;
   if (job.status === "downloading" || job.status === "pending") {
@@ -709,6 +714,7 @@ async function runSearchQuery(
   searchOptions,
   aggregated,
   seen,
+  isCancelled = () => false,
 ) {
   const created = await slskdClient.createSearch(query);
   if (Array.isArray(searchIds)) {
@@ -717,7 +723,12 @@ async function runSearchQuery(
   if (!searchIdRef.value) {
     searchIdRef.value = created.id;
   }
+  if (isCancelled()) {
+    await slskdClient.deleteSearch(created.id).catch(() => {});
+    return [];
+  }
   const completed = await slskdClient.waitForSearch(created.id, undefined, {
+    shouldCancel: isCancelled,
     earlyExitWhen: (data) =>
       hasSlskdSearchCandidates(
         probeAggregatedResults(aggregated, slskdClient.flattenSearchResults(data), seen),
@@ -725,6 +736,10 @@ async function runSearchQuery(
         searchOptions,
       ),
   });
+  if (isCancelled()) {
+    await slskdClient.deleteSearch(created.id).catch(() => {});
+    return [];
+  }
   const results = slskdClient.flattenSearchResults(completed);
   const shouldCancel = hasSlskdSearchCandidates(
     probeAggregatedResults(aggregated, results, seen),
@@ -779,8 +794,10 @@ async function handleSearch(payload) {
         searchOptions,
         aggregated,
         seen,
+        () => !isPipelinePayloadActive(payload),
       );
       mergeSearchResults(aggregated, seen, results, (result) => `${result.user}\0${result.file}`);
+      if (!isPipelinePayloadActive(payload)) return null;
       if (hasSlskdSearchCandidates(aggregated, resolvedTrack, searchOptions)) {
         break;
       }
@@ -954,6 +971,23 @@ async function handleDownload(payload) {
     }
     return failOrTryNextSource(payload, job, message);
   }
+  if (result.transferId) {
+    downloadTracker.updateDownloadMetadata(job.id, {
+      downloadClient: "slskd",
+      downloadClientId: result.transferId,
+    });
+  }
+  if (!isPipelinePayloadActive(payload)) {
+    const transferId = readTransferId(result?.legacyTransfer || result?.transfers?.[0] || result);
+    const transferUsername = String(result?.username || candidate.raw.user || "").trim();
+    if (transferId && transferUsername) {
+      await slskdClient.deleteTransfer(transferUsername, transferId, { remove: true }).catch(() => {});
+    }
+    for (const searchId of getPayloadSearchIds(payload)) {
+      await slskdClient.deleteSearch(searchId).catch(() => {});
+    }
+    return null;
+  }
   updateSlskdMetaStmt.run(null, result.batchId || null, null, null, job.id);
   job.slskdBatchId = result.batchId || null;
   const eventOffset =
@@ -1106,6 +1140,16 @@ async function handleFinalize(payload) {
       strict: candidate?.evaluation?.decision !== "accept",
     },
   });
+  if (!isPipelinePayloadActive(payload)) {
+    await cleanupRejectedDownload({
+      sourcePath,
+      slskdRoot,
+      playlistRoot,
+      transfer,
+      username: candidate?.raw?.user,
+    });
+    return null;
+  }
   if (!validation.valid) {
     logger.warn("slskd", "slskd download validation failed", {
       jobId: job.id,
@@ -1155,36 +1199,51 @@ async function handleFinalize(payload) {
       : null;    if (nextPayload) return nextPayload;
     return failOrTryNextSource(payload, job, validation.reason || "Download validation failed");
   }
-  await writeAudioMetadata(sourcePath, resolvedTrack);
-  import("./aurralHistoryService.js")
-    .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
-    .catch((err) => { logger.warn("slskd", "Failed to record track job moving", { jobId: job.id, error: err?.message || String(err) }); });
-  const committedFinalPath = await commitImportToPlaylistLibrary(
-    sourcePath,
-    finalPath,
-  );  if (slskdRoot) {
-    await cleanupEmptyAncestors(path.dirname(sourcePath), slskdRoot).catch(() => {});
+  const committed = await withPipelineCommitLock(payload, async () => {
+    await writeAudioMetadata(sourcePath, resolvedTrack);
+    import("./aurralHistoryService.js")
+      .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
+      .catch((err) => { logger.warn("slskd", "Failed to record track job moving", { jobId: job.id, error: err?.message || String(err) }); });
+    const committedFinalPath = await commitImportToPlaylistLibrary(
+      sourcePath,
+      finalPath,
+    );
+    if (slskdRoot) {
+      await cleanupEmptyAncestors(path.dirname(sourcePath), slskdRoot).catch(() => {});
+    }
+    recordPayloadOutcome(job, payload, "success", null, {
+      transfer,
+      sourcePath,
+      finalPath: committedFinalPath,
+      validation,
+    });
+    return finalizePipelineJobSuccess({
+      downloadTracker,
+      job,
+      committedFinalPath,
+      album: candidate?.resolvedAlbumName || job.albumName,
+      quality: validation.quality,
+      onSuccess: () => cleanupSuccessfulRunArtifacts(payload, transfer),
+    });
+  });
+  if (committed.cancelled) {
+    await cleanupRejectedDownload({
+      sourcePath,
+      slskdRoot,
+      playlistRoot,
+      transfer,
+      username: candidate?.raw?.user,
+    });
+    return null;
   }
-  recordPayloadOutcome(job, payload, "success", null, {
-    transfer,
-    sourcePath,
-    finalPath: committedFinalPath,
-    validation,
-  });
-  return finalizePipelineJobSuccess({
-    downloadTracker,
-    job,
-    committedFinalPath,
-    album: candidate?.resolvedAlbumName || job.albumName,
-    quality: validation.quality,
-    onSuccess: () => cleanupSuccessfulRunArtifacts(payload, transfer),
-  });
+  return committed.result;
 }
 
 export async function processPipelinePayload(payload) {
   if (!payload || !payload.phase || !payload.jobId) {
     throw new Error("Invalid pipeline payload");
   }
+  if (!isPipelinePayloadActive(payload)) return null;
   if (!isAnyDownloadSourceConfigured()) {
     const job = downloadTracker.getJob(payload.jobId);
     if (job) {
@@ -1248,6 +1307,7 @@ export async function processPipelinePayload(payload) {
 
 export async function continuePipeline(payload) {
   if (!payload) return;
+  if (!isPipelinePayloadActive(payload)) return;
   if (payload.delaySeconds) {
     enqueuePipelineJob(payload, {
       delaySeconds: Number(payload.delaySeconds),

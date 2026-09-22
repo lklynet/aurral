@@ -30,6 +30,12 @@ description: Common setup and runtime issues.
 - Make sure that the cutoff and tier order match the quality that you want.
 - Check job states on the Playlists or Flows page and **Activity**.
 
+## Removed playlist tracks still appear in Activity
+
+Playlist and flow deletion run in the background. The page reports **removal queued** until the operation worker finishes.
+
+If a download client still shows work after Aurral removes the playlist, check that client's queue. Aurral blocks the removed job from creating a playlist file. NZBGet has no verified queue-cancel operation in the current adapter, so NZBGet may finish or remove the remote request on its own.
+
 ## Files do not appear in Navidrome
 
 - Make sure that Aurral mounts the same media root as Lidarr ([Filesystem and mounts](/getting-started/storage/)).

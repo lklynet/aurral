@@ -14,6 +14,12 @@ import {
 } from "../playlistPaths.js";
 import { flowPlaylistConfig } from "./weeklyFlowPlaylistConfig.js";
 import { logger } from "../logger.js";
+import {
+  cancelDownloadJob,
+  cancelDownloadJobs,
+  getPlaylistDownloadGeneration,
+  isPipelinePayloadActive,
+} from "./weeklyFlowDownloadCancellation.js";
 
 const parseDeniedSources = (raw) => {
   if (!raw) return [];
@@ -33,6 +39,11 @@ const persistedRevisionStmt = db.prepare(
 const liveJobStmt = db.prepare(`SELECT * FROM ${JOBS_TABLE} WHERE id = ?`);
 const livePlaylistJobsStmt = db.prepare(
   `SELECT * FROM ${JOBS_TABLE} WHERE playlist_type = ? ORDER BY created_at, id`,
+);
+const livePlaylistIdJobsStmt = db.prepare(
+  `SELECT * FROM ${JOBS_TABLE}
+   WHERE playlist_id = ? OR playlist_type = ?
+   ORDER BY created_at, id`,
 );
 const livePlaylistJobsLimitedStmt = db.prepare(
   `SELECT * FROM ${JOBS_TABLE} WHERE playlist_type = ? ORDER BY created_at, id LIMIT ?`,
@@ -255,6 +266,7 @@ function buildPipelinePayload(job) {
     phase: "search",
     jobId: job.id,
     playlistId,
+    playlistGeneration: getPlaylistDownloadGeneration(playlistId),
     track: {
       artistName: job.artistName,
       trackName: job.trackName,
@@ -408,7 +420,9 @@ export class WeeklyFlowDownloadTracker {
     const job = this.jobs.get(jobId);
     if (!job || job.status !== "pending") return false;
     if (this.isSlskdDispatched(jobId)) return false;
-    enqueuePipelineJob(buildPipelinePayload(job));
+    const payload = buildPipelinePayload(job);
+    if (!isPipelinePayloadActive(payload)) return false;
+    enqueuePipelineJob(payload);
     this.markSlskdDispatched(jobId);
     return true;
   }
@@ -837,6 +851,7 @@ export class WeeklyFlowDownloadTracker {
   removeJob(id) {
     const job = this.jobs.get(id);
     if (!job) return false;
+    cancelDownloadJob(id);
     this.clearSlskdPipelineState(id);
     this.jobs.delete(id);
     this.pendingSet.delete(id);
@@ -1094,6 +1109,16 @@ export class WeeklyFlowDownloadTracker {
     return sortByCreatedAt(jobs);
   }
 
+  getByPlaylistId(playlistId) {
+    const safePlaylistId = String(playlistId || "").trim();
+    if (!safePlaylistId) return [];
+    return sortByCreatedAt(
+      [...this.jobs.values()].filter(
+        (job) => job.playlistId === safePlaylistId || job.playlistType === safePlaylistId,
+      ),
+    );
+  }
+
   getByStatus(status) {
     const jobs = [];
     for (const job of this.jobs.values()) {
@@ -1248,6 +1273,7 @@ export class WeeklyFlowDownloadTracker {
         toDelete.push(id);
       }
     }
+    cancelDownloadJobs(toDelete);
     for (const id of toDelete) {
       this.jobs.delete(id);
       if (cleanPending) {
@@ -1270,6 +1296,14 @@ export class WeeklyFlowDownloadTracker {
 
   clearByPlaylistType(playlistType) {
     return this._deleteJobsWhere((job) => job.playlistType === playlistType);
+  }
+
+  clearByPlaylistId(playlistId) {
+    const safePlaylistId = String(playlistId || "").trim();
+    if (!safePlaylistId) return 0;
+    return this._deleteJobsWhere(
+      (job) => job.playlistId === safePlaylistId || job.playlistType === safePlaylistId,
+    );
   }
 
   clearPendingByPlaylistType(playlistType) {
@@ -1317,6 +1351,9 @@ function readTrackerFromDatabase(name, args) {
       : livePlaylistJobsStmt.all(first ?? null);
     return liveJobs(rows);
   }
+  if (name === "getByPlaylistId") {
+    return liveJobs(livePlaylistIdJobsStmt.all(first ?? null, first ?? null));
+  }
   if (name === "getByStatus") return liveJobs(liveStatusJobsStmt.all(first ?? null));
   if (name === "getDoneWithFinalPath") {
     const limit = Number.isFinite(Number(first)) && Number(first) > 0 ? Math.floor(Number(first)) : 500;
@@ -1356,7 +1393,7 @@ function readTrackerFromDatabase(name, args) {
 }
 
 const LIVE_READ_METHODS = new Set([
-  "getJob", "getAll", "getByPlaylistType", "getByStatus", "getDoneWithFinalPath",
+  "getJob", "getAll", "getByPlaylistType", "getByPlaylistId", "getByStatus", "getDoneWithFinalPath",
   "getNextPending", "peekPending", "hasActiveJobsForPlaylist", "getRevision",
   "getStats", "getStatsByPlaylistType", "getPlaylistTypeStats",
 ]);

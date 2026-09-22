@@ -25,6 +25,7 @@ import {
   queueFlowSideEffect,
   enqueueResearchTrack,
 } from "./utils.js";
+import { markPlaylistDownloadWorkCancelled } from "../../../services/weeklyFlow/weeklyFlowDownloadCancellationService.js";
 
 export function registerFlows(router) {
   router.post("/start/:flowId", async (req, res) => {
@@ -198,6 +199,7 @@ export function registerFlows(router) {
       if (!getAccessibleFlow(req.user, flowId)) {
         return res.status(404).json({ error: "Flow not found" });
       }
+      markPlaylistDownloadWorkCancelled(flowId, downloadTracker.getByPlaylistId(flowId));
       const { token, tokenScope } = markFlowMutationToken(flowId);
       const deleted = await weeklyFlowOperationQueue.enqueuePayload({
         kind: "delete-flow",
@@ -258,6 +260,7 @@ export function registerFlows(router) {
         queueFlowSideEffect("enable-flow-refresh", "enable", flowId);
       } else {
         flowPlaylistConfig.setEnabled(flowId, false);
+        markPlaylistDownloadWorkCancelled(flowId, downloadTracker.getByPlaylistId(flowId));
         await playlistManager.ensureSmartPlaylists();
 
         res.json({

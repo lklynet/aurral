@@ -11,6 +11,10 @@ import {
   getAccessibleSharedPlaylist,
 } from "./utils.js";
 import { normalizeImportSource } from "../../../services/weeklyFlow/weeklyFlowPlaylistConfig.js";
+import {
+  markDownloadWorkCancelledForJobs,
+  markPlaylistDownloadWorkCancelled,
+} from "../../../services/weeklyFlow/weeklyFlowDownloadCancellationService.js";
 
 async function createOrImportSharedPlaylist(req, res, { requireTracks, label }) {
   const {
@@ -273,6 +277,9 @@ export function registerSharedPlaylists(router) {
         if (!job || (job.playlistType !== playlistId && !playlistReferencesJob)) {
           return res.status(404).json({ error: "Track not found" });
         }
+        if (!playlistReferencesJob) {
+          markDownloadWorkCancelledForJobs([job]);
+        }
         const result = await weeklyFlowOperationQueue.enqueuePayload({
           kind: "shared-playlist-delete-track",
           label: `shared-playlist:${playlistId}:track:${jobId}:delete`,
@@ -344,6 +351,7 @@ export function registerSharedPlaylists(router) {
       if (!exists) {
         return res.status(404).json({ error: "Shared playlist not found" });
       }
+      markPlaylistDownloadWorkCancelled(playlistId, downloadTracker.getByPlaylistId(playlistId));
 
       const deleted = await weeklyFlowOperationQueue.enqueuePayload({
         kind: "shared-playlist-delete",
