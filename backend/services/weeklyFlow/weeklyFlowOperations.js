@@ -7,6 +7,7 @@ import {
   recordTrackJobQueued,
 } from "../aurralHistoryService.js";
 import {
+  buildImportTrackIdentity,
   buildSharedTrackIdentity,
   dedupeSharedTracks,
   filterMissingSharedTracks,
@@ -495,6 +496,7 @@ export async function updateSharedPlaylist({
     : String(currentPlaylist.name || "").trim();
   let playlist = null;
   let tracksQueued = 0;
+  let tracksReused = 0;
   if (!hasTracksUpdate) {
     await withPlaylistMutation(safePlaylistId, async () => {
       const lockedPlaylist = flowPlaylistConfig.getSharedPlaylist(safePlaylistId);
@@ -526,6 +528,7 @@ export async function updateSharedPlaylist({
         : null;
       const existingJobs = downloadTracker.getByPlaylistType(safePlaylistId);
       const reusableJobsByIdentity = new Map();
+      const reusableJobsByImportIdentity = new Map();
       const { createPlaybackDeletionGuard } = await import("../playback/playbackFileRetention.js");
       const protectPlayback = !(deleteUnsharedFiles && !mergeImportSource);
       const deletionGuard = protectPlayback
@@ -538,22 +541,44 @@ export async function updateSharedPlaylist({
         const current = reusableJobsByIdentity.get(identity) || [];
         current.push(job);
         reusableJobsByIdentity.set(identity, current);
+        if (mergeImportSource) {
+          const importIdentity = buildImportTrackIdentity(job);
+          const importJobs = reusableJobsByImportIdentity.get(importIdentity) || [];
+          importJobs.push(job);
+          reusableJobsByImportIdentity.set(importIdentity, importJobs);
+        }
       }
       for (const [identity, jobsForIdentity] of reusableJobsByIdentity.entries()) {
         reusableJobsByIdentity.set(identity, sortJobsForTrackReuse(jobsForIdentity));
       }
+      for (const [identity, jobsForIdentity] of reusableJobsByImportIdentity.entries()) {
+        reusableJobsByImportIdentity.set(identity, sortJobsForTrackReuse(jobsForIdentity));
+      }
 
       const matchedJobIds = new Set();
       const tracksNeedingWork = [];
+      const tracksWithoutExactJob = [];
+      const takeReusableJob = (jobs) => {
+        const index = jobs.findIndex((job) => !matchedJobIds.has(job.id));
+        if (index < 0) return null;
+        const [job] = jobs.splice(index, 1);
+        return job;
+      };
       for (const track of normalizedTracks) {
         const identity = buildSharedTrackIdentity(track);
         const reusableJobs = reusableJobsByIdentity.get(identity) || [];
-        const matchedJob = reusableJobs.shift();
+        const matchedJob = takeReusableJob(reusableJobs);
         if (matchedJob) {
           matchedJobIds.add(matchedJob.id);
         } else {
-          tracksNeedingWork.push(track);
+          tracksWithoutExactJob.push(track);
         }
+      }
+      for (const track of tracksWithoutExactJob) {
+        const reusableJobs = reusableJobsByImportIdentity.get(buildImportTrackIdentity(track)) || [];
+        const matchedJob = takeReusableJob(reusableJobs);
+        if (matchedJob) matchedJobIds.add(matchedJob.id);
+        else tracksNeedingWork.push(track);
       }
 
       for (const job of existingJobs) {
@@ -583,7 +608,8 @@ export async function updateSharedPlaylist({
       });
       const queued = await queueTracksForPlaylist(tracksNeedingWork, safePlaylistId);
       tracksQueued = queued.jobIds.length;
-    });
+      tracksReused = matchedJobIds.size + queued.reusedJobIds.length;
+    }, { clearPending: !mergeImportSource });
     weeklyFlowWorker.pruneOrphanedJobState();
   }
 
@@ -598,7 +624,7 @@ export async function updateSharedPlaylist({
     reason: hasTracksUpdate ? "shared-playlist-track-update" : "shared-playlist-update",
     priority: 5,
   });
-  return { success: true, playlist, tracksQueued };
+  return { success: true, playlist, tracksQueued, tracksReused };
 }
 
 async function deleteSharedPlaylistTrack({ playlistId, jobId } = {}) {

@@ -583,6 +583,61 @@ test("replacing a shared playlist removes Spotify tracks and honors file retenti
   }
 });
 
+test("imported playlist sync preserves enriched jobs while replacing removed tracks", async () => {
+  const originalStart = weeklyFlowWorker.start;
+  weeklyFlowWorker.start = async () => false;
+  try {
+    const pending = {
+      artistName: "Artist", trackName: "Pending", albumName: "Album",
+      artistMbid: "11111111-1111-1111-1111-111111111111",
+    };
+    const completed = {
+      artistName: "Artist", trackName: "Completed", albumName: "Album",
+      albumMbid: "22222222-2222-2222-2222-222222222222",
+    };
+    const removed = { artistName: "Artist", trackName: "Removed", albumName: "Album" };
+    const playlist = flowPlaylistConfig.createSharedPlaylist({
+      name: "Imported Job Retention",
+      ownerUserId: 7,
+      tracks: [pending, completed, removed],
+      importSource: {
+        provider: "spotify-playlist",
+        externalId: "imported-id",
+        syncEnabled: true,
+        syncIntervalHours: 24,
+      },
+    });
+    const pendingJobId = downloadTracker.addJob(pending, playlist.id);
+    const completedJobId = downloadTracker.addJob(completed, playlist.id);
+    await fs.mkdir(weeklyFlowRoot, { recursive: true });
+    const completedPath = path.join(weeklyFlowRoot, "imported-retained-completed.flac");
+    await fs.writeFile(completedPath, "audio");
+    downloadTracker.setDone(completedJobId, completedPath, completed.albumName);
+    const removedJobId = downloadTracker.addJob(removed, playlist.id);
+
+    const result = await updateSharedPlaylist({
+      playlistId: playlist.id,
+      tracks: [
+        { artistName: "Artist", trackName: "Pending", albumName: "Album" },
+        { artistName: "Artist", trackName: "Completed", albumName: "Album" },
+        { artistName: "Artist", trackName: "New", albumName: "Album" },
+      ],
+      hasTracksUpdate: true,
+      mergeImportSource: true,
+    });
+
+    assert.equal(result.tracksQueued, 1);
+    assert.ok(downloadTracker.getJob(pendingJobId));
+    assert.equal(downloadTracker.getJob(completedJobId)?.status, "done");
+    await fs.access(completedPath);
+    assert.equal(downloadTracker.getJob(removedJobId), null);
+    assert.ok(downloadTracker.getByPlaylistType(playlist.id).some((job) => job.trackName === "New"));
+  } finally {
+    weeklyFlowWorker.start = originalStart;
+    weeklyFlowWorker.stop();
+  }
+});
+
 test("ListenBrainz sync uses the shared import update path", async (t) => {
   const originalStart = weeklyFlowWorker.start;
   const originalGetGeneratedPlaylistTracks =
