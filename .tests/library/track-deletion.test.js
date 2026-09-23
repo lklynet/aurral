@@ -261,6 +261,7 @@ test("keeps a library job and track when provider cancellation fails, then retri
     const failedDeletion = await libraryManager.deleteTrack(track.id);
 
     assert.equal(failedDeletion.success, false);
+    assert.equal(failedDeletion.code, "download_cancellation_failed");
     assert.notEqual(downloadTracker.getJob(jobId), null);
     assert.equal(listDownloadProviderWork({ jobIds: [jobId] }).length, 1);
     await access(filePath);

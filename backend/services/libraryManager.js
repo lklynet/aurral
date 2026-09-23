@@ -2389,7 +2389,16 @@ export class LibraryManager {
       const lidarrFiles = track.files.filter((file) => file.source === "lidarr" && file.available);
       if (aurralFiles.length > 0 && lidarrFiles.length === 0) {
         const paths = [...new Set(aurralFiles.map((file) => file.path))];
-        await removeLibraryDownloadJobs(track);
+        try {
+          await removeLibraryDownloadJobs(track);
+        } catch (error) {
+          logger.error("library", `[LibraryManager] Failed to cancel track downloads: ${error.message}`);
+          return {
+            success: false,
+            code: "download_cancellation_failed",
+            error: error.message,
+          };
+        }
         try {
           const deletionResults = await Promise.allSettled(paths.map(async (filePath) => {
             try {
