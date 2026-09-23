@@ -1,0 +1,66 @@
+---
+title: UI design system
+description: How to use Aurral's theme tokens and shared controls.
+---
+
+Aurral's direction emphasizes music-focused browsing, compact neutral surfaces, accessible states, functional restraint, purposeful imagery, and useful spacing. Aurral's theme tokens and shared controls remain the source of truth.
+
+## Run the UI checks
+
+Run `npm run lint:ui` from the repository root to check stylesheets and JSX. Run `npm run lint` to include the UI checks with the other lint rules.
+
+The UI checks run in the existing frontend lint step, so CI reports violations through the root lint command.
+
+## Use Aurral theme tokens
+
+Add global design tokens to `frontend/src/index.css`. The CSS checker reads token names from that file, so do not copy the token list into another config.
+
+Use an existing `--aurral-*` token for theme colors, surfaces, borders, rings, shadows, spacing, and radii. CSS and JSX inline styles cannot use literal colors for Aurral theme styling. Use `var(--aurral-text)` instead of `#171717`, for example.
+
+The blocking rules check static color values and undefined `--aurral-*` references in CSS and JSX. Use spacing, radius, and shadow tokens when their roles fit; the checker does not infer whether every local geometry value should use a particular token, so review those choices with the component's layout.
+
+Name a new token for its role. Use `light-dark()` when the role needs different values in light and dark themes. Keep local variables when they derive from Aurral tokens or hold runtime values such as dimensions and progress.
+
+Artwork can use colors extracted from the artwork. Keep those values tied to artwork content. Do not use artwork colors for Aurral controls or page chrome. The checker allows the fallback used by the discover playlist artwork treatment.
+
+## Reuse shared controls
+
+Use `.btn` with the existing variant classes for standard actions:
+
+```jsx
+<button type="button" className="btn btn-primary">
+  Save
+</button>
+```
+
+Use `TooltipButton` for icon-only actions. Give it a `label`, and include `.btn` with the button variants:
+
+```jsx
+<TooltipButton label="Refresh" className="btn btn-ghost btn-icon" onClick={refresh}>
+  <RefreshCw aria-hidden="true" />
+</TooltipButton>
+```
+
+Use `Tooltip` for a custom tooltip on another element. ESLint rejects native `title` tooltips on HTML elements. Keep `iframe` titles for accessible frame names.
+
+```jsx
+<Tooltip content={fullTrackName}>
+  <span className="track-title">{fullTrackName}</span>
+</Tooltip>
+```
+
+Use `AddActionButton` for actions that add an item to Lidarr. It includes the standard button classes and the loading state.
+
+Keep a component-specific control class when the control has a dedicated layout or interaction. The button rule checks bare buttons and classes in the `.btn-*` family. The theme-token checks still apply to custom CSS and inline styles.
+
+Menu items and switches have different roles. Use `role="menuitem"` or `role="switch"` only when the control has that behavior.
+
+## Add a narrow exception
+
+Add an entry to `frontend/eslint-rules/shared-control-exceptions.json` only when an existing control must keep a different pattern. Each entry needs a unique `id`, a source `file`, one exact class, class expression, or role, and a reason.
+
+The checker matches exceptions by both file and selector. It does not support file or directory-wide ignores. Add a rule test for each exception.
+
+## Review the visual result
+
+The linter checks token use and a few shared controls. It cannot judge spacing, visual hierarchy, interaction states, keyboard flow, responsive behavior, or whether a new component fits Aurral's existing patterns. Review those details against the current interface and style references when you change UI.

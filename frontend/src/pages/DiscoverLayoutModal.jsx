@@ -20,6 +20,7 @@ import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifi
 import { GripVertical, X } from "lucide-react";
 import { DotLoader } from "../components/DotLoader";
 import { useModalDialog } from "../hooks/useModalDialog.js";
+import TooltipButton from "../components/TooltipButton";
 
 const FALLBACK_GENRE_SECTION_PREFIX = "fallbackGenre:";
 
@@ -148,7 +149,7 @@ export function DiscoverLayoutModal({
               Drag to reorder. Use Active/Hidden to choose what appears.
             </p>
           </div>
-          <button
+          <TooltipButton
             type="button"
             className="btn btn-ghost btn-icon-square"
             onClick={onClose}
@@ -157,7 +158,7 @@ export function DiscoverLayoutModal({
             title="Close"
           >
             <X className="artist-icon-md" />
-          </button>
+          </TooltipButton>
         </div>
 
         <DndContext

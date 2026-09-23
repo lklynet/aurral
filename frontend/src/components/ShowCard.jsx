@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Clock, MapPin, Music } from "lucide-react";
 import { formatDate, formatTime } from "../utils/dateTime.js";
+import Tooltip from "./Tooltip";
 
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -147,12 +148,13 @@ const ShowCard = memo(({ show }) => {
         <div className="artist-show-card__body-heading">
           <p className="artist-show-card__body-artist--discover artist-truncate">{artistLabel}</p>
           <h3 className="artist-show-card__body-title--discover">
-            <span
-              className="artist-show-card__body-title-text--discover artist-truncate"
-              title={eventLabel}
-            >
-              {eventLabel}
-            </span>
+            <Tooltip content={eventLabel}>
+              <span
+                className="artist-show-card__body-title-text--discover artist-truncate"
+              >
+                {eventLabel}
+              </span>
+            </Tooltip>
           </h3>
         </div>
         <ShowMeta

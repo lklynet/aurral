@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { ListMusic, MoreVertical, Plus, RefreshCw } from "lucide-react";
 import { DotLoader } from "./DotLoader";
+import TooltipButton from "./TooltipButton";
 
 const getMenuHorizontalAnchorRect = (button) => {
   const discoverCard = button.closest(".artist-discover-card");
@@ -203,7 +204,7 @@ export function DiscoverPlaylistContextMenu({
       style={{ position: "relative", flexShrink: 0 }}
       onClick={(event) => event.stopPropagation()}
     >
-      <button
+      <TooltipButton
         ref={menuButtonRef}
         type="button"
         onClick={(event) => {
@@ -214,7 +215,7 @@ export function DiscoverPlaylistContextMenu({
             openMenu();
           }
         }}
-        className={triggerClassName}
+        className={"btn " + (triggerClassName)}
         disabled={isBusy}
         aria-label={`Playlist options for ${playlistName}`}
         title={`Playlist options for ${playlistName}`}
@@ -230,7 +231,7 @@ export function DiscoverPlaylistContextMenu({
         ) : (
           <MoreVertical className="artist-icon-sm" />
         )}
-      </button>
+      </TooltipButton>
       {showMenu && menuPosition
         ? createPortal(
             <div

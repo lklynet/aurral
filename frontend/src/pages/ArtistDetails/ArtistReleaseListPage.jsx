@@ -42,6 +42,8 @@ import {
   getReleaseGroupRatingsBatch,
 } from "../../utils/api/endpoints/artists.js";
 import { queryKeys } from "../../queryClient.js";
+import TooltipButton from "../../components/TooltipButton";
+import Tooltip from "../../components/Tooltip";
 
 const RELEASE_PAGE_SIZE = 24;
 
@@ -447,10 +449,12 @@ function ArtistReleaseListPage({ mode = "releases" }) {
               </span>
             )}
             {isComplete ? (
-              <span className="artist-release-card__status" title="Complete">
-                <SearchLibraryCheck size="overlay" />
-                <span className="sr-only">Complete</span>
-              </span>
+              <Tooltip content="Complete">
+                <span className="artist-release-card__status" >
+                  <SearchLibraryCheck size="overlay" />
+                  <span className="sr-only">Complete</span>
+                </span>
+              </Tooltip>
             ) : canAddAlbum ? (
               <div onClick={(event) => event.stopPropagation()}>
                 <AddActionButton
@@ -485,10 +489,12 @@ function ArtistReleaseListPage({ mode = "releases" }) {
           )}
           <div className="artist-release-card__action">
             {isComplete ? (
-              <span className="artist-release-card__status" title="Complete">
-                <SearchLibraryCheck size="overlay" />
-                <span className="sr-only">Complete</span>
-              </span>
+              <Tooltip content="Complete">
+                <span className="artist-release-card__status" >
+                  <SearchLibraryCheck size="overlay" />
+                  <span className="sr-only">Complete</span>
+                </span>
+              </Tooltip>
             ) : canAddAlbum ? (
               <div onClick={(event) => event.stopPropagation()}>
                 <AddActionButton
@@ -504,12 +510,13 @@ function ArtistReleaseListPage({ mode = "releases" }) {
             ) : null}
           </div>
         </div>
-        <h2
-          className={`artist-release-card__title ${isAppearsOn ? "artist-clamp-2" : "artist-truncate"}`}
-          title={releaseGroup.title}
-        >
-          {releaseGroup.title}
-        </h2>
+        <Tooltip content={releaseGroup.title}>
+          <h2
+            className={`artist-release-card__title ${isAppearsOn ? "artist-clamp-2" : "artist-truncate"}`}
+          >
+            {releaseGroup.title}
+          </h2>
+        </Tooltip>
         <p className="artist-release-card__meta artist-truncate">{metaLabel}</p>
         {isAppearsOn && releaseGroup._appearsOnTrack ? (
           <p className="artist-release-card__meta artist-truncate">
@@ -621,7 +628,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
           </div>
 
           <div className="library-page__view-controls">
-            <button
+            <TooltipButton
               type="button"
               onClick={() => handleViewModeChange(viewMode === "grid" ? "list" : "grid")}
               className="btn btn-icon-square library-page__view-toggle"
@@ -633,7 +640,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
               ) : (
                 <LayoutGrid className="artist-icon-sm" />
               )}
-            </button>
+            </TooltipButton>
           </div>
         </div>
 

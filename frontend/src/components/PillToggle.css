@@ -31,9 +31,7 @@
   bottom: var(--thumb-offset);
   border-radius: var(--aurral-radius-round);
   background-color: var(--aurral-text-muted);
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.38),
-    0 0 0 1px rgba(255, 255, 255, 0.08);
+  box-shadow: var(--aurral-shadow-toggle-thumb);
   transition:
     transform 0.28s ease,
     background-color 0.2s ease,
@@ -51,7 +49,7 @@
   transform: translateX(var(--thumb-travel));
   background-color: var(--aurral-control-on-contrast);
   box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.42),
+    var(--aurral-shadow-toggle-thumb-checked),
     0 0 0 1px color-mix(in srgb, var(--aurral-control-on-contrast) 35%, transparent);
 }
 
@@ -59,7 +57,7 @@
   outline: none;
   box-shadow:
     0 0 0 3px var(--aurral-ring),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+    var(--aurral-shadow-toggle-focus-inset);
 }
 
 .pill-toggle[aria-checked="true"]:focus-visible {

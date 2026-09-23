@@ -8,6 +8,7 @@ import { ArtistContextMenu } from "../components/ArtistContextMenu";
 import SearchLibraryCheck from "../components/SearchLibraryCheck";
 import { getReleaseNavigationTarget } from "../utils/searchNavigation";
 import { formatDate } from "../utils/dateTime.js";
+import Tooltip from "../components/Tooltip";
 const parseCalendarDate = (value) => {
   if (!value) return null;
   const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -120,23 +121,28 @@ export const ArtistCard = memo(
         <div className="artist-discover-card__content">
           <div className="artist-discover-card__text">
             <div className="artist-card-title-row--discover">
-              <span
-                className={`artist-card-title--discover${hasValidMbid ? "" : " is-disabled"}`}
-                title={artist.name}
-              >
-                {artist.name}
-              </span>
+              <Tooltip content={artist.name}>
+                <span
+                  className={`artist-card-title--discover${hasValidMbid ? "" : " is-disabled"}`}
+                >
+                  {artist.name}
+                </span>
+              </Tooltip>
               {isInLibrary && <SearchLibraryCheck size="discover" />}
             </div>
             {artistMetaText ? (
-              <p className="artist-card-meta--discover" title={artistMetaText || undefined}>
-                {artistMetaText}
-              </p>
+              <Tooltip content={artistMetaText || undefined}>
+                <p className="artist-card-meta--discover" >
+                  {artistMetaText}
+                </p>
+              </Tooltip>
             ) : null}
             {artist.subtitle && (
-              <p className="artist-card-meta--discover" title={artist.subtitle}>
-                {artist.subtitle}
-              </p>
+              <Tooltip content={artist.subtitle}>
+                <p className="artist-card-meta--discover" >
+                  {artist.subtitle}
+                </p>
+              </Tooltip>
             )}
           </div>
           <div onClick={(event) => event.stopPropagation()} role="none">
@@ -276,10 +282,12 @@ export const AlbumCard = memo(
           </div>
           {isComplete ? (
             <div className="artist-discover-card__action">
-              <span className="artist-release-card__status" title="In library">
-                <SearchLibraryCheck size="overlay" />
-                <span className="sr-only">In library</span>
-              </span>
+              <Tooltip content="In library">
+                <span className="artist-release-card__status" >
+                  <SearchLibraryCheck size="overlay" />
+                  <span className="sr-only">In library</span>
+                </span>
+              </Tooltip>
             </div>
           ) : canAddAlbum && typeof onAlbumAction === "function" ? (
             <div
@@ -302,20 +310,25 @@ export const AlbumCard = memo(
         <div className="artist-discover-card__content">
           <div className="artist-discover-card__text">
             <div className="artist-card-title-row--discover">
-              <span
-                className={`artist-card-title--discover${canOpen ? "" : " is-disabled"}`}
-                title={album.albumName}
-              >
-                {album.albumName}
-              </span>
+              <Tooltip content={album.albumName}>
+                <span
+                  className={`artist-card-title--discover${canOpen ? "" : " is-disabled"}`}
+                >
+                  {album.albumName}
+                </span>
+              </Tooltip>
             </div>
-            <p className="artist-card-meta--discover" title={albumArtistText}>
-              {albumArtistText}
-            </p>
-            {albumReleaseText && (
-              <p className="artist-card-meta--discover" title={albumReleaseText}>
-                {albumReleaseText}
+            <Tooltip content={albumArtistText}>
+              <p className="artist-card-meta--discover" >
+                {albumArtistText}
               </p>
+            </Tooltip>
+            {albumReleaseText && (
+              <Tooltip content={albumReleaseText}>
+                <p className="artist-card-meta--discover" >
+                  {albumReleaseText}
+                </p>
+              </Tooltip>
             )}
           </div>
         </div>

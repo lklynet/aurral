@@ -5,6 +5,7 @@ import { useArtistPreviewPlayback } from "../hooks/useArtistPreviewPlayback";
 
 import { Music, Play } from "lucide-react";
 import { DotLoader } from "./DotLoader";
+import Tooltip from "./Tooltip";
 const queue = [];
 let active = 0;
 const MAX_CONCURRENT = 4;
@@ -257,22 +258,23 @@ const ArtistImage = ({
   };
 
   const previewButton = canPlayArtistPreview ? (
-    <span
-      role="button"
-      tabIndex={isLoadingPreview ? -1 : 0}
-      className={`artist-image-preview-button${isArtistPreviewActive ? " is-active" : ""}${isLoadingPreview ? " is-loading" : ""}`}
-      onClick={handlePreviewClick}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); playArtistPreview(); } }}
-      aria-disabled={isLoadingPreview}
-      aria-label={`Play ${artistName || "artist"} top tracks`}
-      title={`Play ${artistName || "artist"} top tracks`}
-    >
-      {isLoadingPreview ? (
-        <DotLoader size="md" label={null} className="artist-image-preview-button__icon" />
-      ) : (
-        <Play className="artist-image-preview-button__icon" fill="currentColor" />
-      )}
-    </span>
+    <Tooltip content={`Play ${artistName || "artist"} top tracks`}>
+      <span
+        role="button"
+        tabIndex={isLoadingPreview ? -1 : 0}
+        className={`artist-image-preview-button${isArtistPreviewActive ? " is-active" : ""}${isLoadingPreview ? " is-loading" : ""}`}
+        onClick={handlePreviewClick}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); playArtistPreview(); } }}
+        aria-disabled={isLoadingPreview}
+        aria-label={`Play ${artistName || "artist"} top tracks`}
+      >
+        {isLoadingPreview ? (
+          <DotLoader size="md" label={null} className="artist-image-preview-button__icon" />
+        ) : (
+          <Play className="artist-image-preview-button__icon" fill="currentColor" />
+        )}
+      </span>
+    </Tooltip>
   ) : null;
 
   const showPlaceholder = !currentSrc;

@@ -39,6 +39,7 @@ import {
   resolveReleaseLibraryDisplay,
   sumTrackDurationMs,
 } from "./utils";
+import Tooltip from "../../components/Tooltip";
 const getReleaseTypeLabel = (release) => {
   const types = [
     release?.["primary-type"],
@@ -594,12 +595,13 @@ function ReleasePage() {
                 Open in library
               </button>
             ) : libraryDisplay.label ? (
-              <span
-                className={`release-page__library-status release-page__library-status--${libraryDisplay.kind}`}
-                title={libraryDisplay.label}
-              >
-                <span>{libraryDisplay.label}</span>
-              </span>
+              <Tooltip content={libraryDisplay.label}>
+                <span
+                  className={`release-page__library-status release-page__library-status--${libraryDisplay.kind}`}
+                >
+                  <span>{libraryDisplay.label}</span>
+                </span>
+              </Tooltip>
             ) : null}
             {canAddAlbum && !isComplete ? (
               <AddActionButton

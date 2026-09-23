@@ -6,6 +6,7 @@ import { SettingsSystemSection } from "./SettingsStorageSection";
 import { SettingsSelect } from "./SettingsField";
 import PillToggle from "../../../components/PillToggle";
 import { setDateTimeFormat } from "../../../utils/dateTime.js";
+import Tooltip from "../../../components/Tooltip";
 
 export function SettingsSystemTab({ health, settings, updateSettings, showSuccess, showError }) {
   const [apiKey, setApiKey] = useState(null);
@@ -150,36 +151,40 @@ export function SettingsSystemTab({ health, settings, updateSettings, showSucces
                 <p className="settings-system__description">Keep this key private.</p>
               </div>
               <div className="settings-system__api-value">
-                <code className="settings-system__api-key" title="API key">
-                  {apiKey}
-                </code>
-                <button
-                  type="button"
-                  className="arr-btn arr-btn--ghost arr-btn--icon"
-                  onClick={handleCopy}
-                  title={copied ? "Copied" : "Copy to clipboard"}
-                  aria-label={copied ? "Copied" : "Copy API key"}
-                >
-                  {copied ? (
-                    <Check className="artist-icon-xs" />
-                  ) : (
-                    <Copy className="artist-icon-xs" />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  className="arr-btn arr-btn--ghost arr-btn--icon"
-                  onClick={handleRotate}
-                  disabled={rotating}
-                  title="Rotate API key"
-                  aria-label="Rotate API key"
-                >
-                  {rotating ? (
-                    <DotLoader size="xs" label={null} />
-                  ) : (
-                    <RotateCcw className="artist-icon-xs" aria-hidden />
-                  )}
-                </button>
+                <Tooltip content="API key">
+                  <code className="settings-system__api-key" >
+                    {apiKey}
+                  </code>
+                </Tooltip>
+                <Tooltip content={copied ? "Copied" : "Copy to clipboard"}>
+                  <button
+                    type="button"
+                    className="arr-btn arr-btn--ghost arr-btn--icon"
+                    onClick={handleCopy}
+                    aria-label={copied ? "Copied" : "Copy API key"}
+                  >
+                    {copied ? (
+                      <Check className="artist-icon-xs" />
+                    ) : (
+                      <Copy className="artist-icon-xs" />
+                    )}
+                  </button>
+                </Tooltip>
+                <Tooltip content="Rotate API key">
+                  <button
+                    type="button"
+                    className="arr-btn arr-btn--ghost arr-btn--icon"
+                    onClick={handleRotate}
+                    disabled={rotating}
+                    aria-label="Rotate API key"
+                  >
+                    {rotating ? (
+                      <DotLoader size="xs" label={null} />
+                    ) : (
+                      <RotateCcw className="artist-icon-xs" aria-hidden />
+                    )}
+                  </button>
+                </Tooltip>
               </div>
             </div>
           ) : (

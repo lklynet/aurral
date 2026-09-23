@@ -94,6 +94,7 @@ import {
   reserveUniqueFlowName,
   slugifyFilePart,
 } from "./flows/flowPageUtils";
+import Tooltip from "../components/Tooltip";
 
 const SYNC_INTERVAL_OPTIONS = [
   { value: 0, label: "None" },
@@ -2060,28 +2061,29 @@ function FlowPage({ mode = "all" }) {
           className={`flow-page__library${!isMobileLayout && libraryCollapsed ? " flow-page__library--collapsed" : ""}`}
         >
           <div className="flow-page__library-head">
-            <button
-              type="button"
-              className="flow-page__library-collapse"
-              onClick={() => {
-                setLibraryCollapsed((prev) => {
-                  const next = !prev;
-                  try {
-                    globalThis.localStorage?.setItem(
-                      LIBRARY_SIDEBAR_COLLAPSED_KEY,
-                      next ? "1" : "0",
-                    );
-                  } catch {}
-                  return next;
-                });
-              }}
-              aria-label={
-                libraryCollapsed ? "Expand playlist sidebar" : "Collapse playlist sidebar"
-              }
-              title={libraryCollapsed ? "Expand playlist sidebar" : "Collapse playlist sidebar"}
-            >
-              <LibrarySidebarToggleIcon collapsed={libraryCollapsed} />
-            </button>
+            <Tooltip content={libraryCollapsed ? "Expand playlist sidebar" : "Collapse playlist sidebar"}>
+              <button
+                type="button"
+                className="flow-page__library-collapse"
+                onClick={() => {
+                  setLibraryCollapsed((prev) => {
+                    const next = !prev;
+                    try {
+                      globalThis.localStorage?.setItem(
+                        LIBRARY_SIDEBAR_COLLAPSED_KEY,
+                        next ? "1" : "0",
+                      );
+                    } catch {}
+                    return next;
+                  });
+                }}
+                aria-label={
+                  libraryCollapsed ? "Expand playlist sidebar" : "Collapse playlist sidebar"
+                }
+              >
+                <LibrarySidebarToggleIcon collapsed={libraryCollapsed} />
+              </button>
+            </Tooltip>
             <h1 className="flow-page__library-title">{mode === "flows" ? "Flows" : "Playlists"}</h1>
             <FlowLibraryCreateMenu
               onImport={() => setImportModalOpen(true)}

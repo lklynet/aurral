@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import TooltipButton from "./TooltipButton";
 
 export function DiscoverRail({
   title,
@@ -61,7 +62,7 @@ export function DiscoverRail({
             <p className="artist-discover-rail__subtitle">{subtitle}</p>
           ) : null}
           {onViewAll ? (
-            <button
+            <TooltipButton
               type="button"
               onClick={onViewAll}
               className="btn btn-ghost btn-icon-square"
@@ -69,13 +70,13 @@ export function DiscoverRail({
               title={`Open ${title}`}
             >
               <ChevronRight className="artist-icon-lg" />
-            </button>
+            </TooltipButton>
           ) : null}
           {afterTitle}
         </div>
         <div className="artist-discover-rail__actions">
           {headerActions}
-          <button
+          <TooltipButton
             type="button"
             onClick={() => scrollByAmount(-1)}
             className="btn btn-ghost btn-icon-square"
@@ -84,8 +85,8 @@ export function DiscoverRail({
             disabled={!canScrollLeft}
           >
             <ChevronLeft className="artist-icon-lg" />
-          </button>
-          <button
+          </TooltipButton>
+          <TooltipButton
             type="button"
             onClick={() => scrollByAmount(1)}
             className="btn btn-ghost btn-icon-square"
@@ -94,7 +95,7 @@ export function DiscoverRail({
             disabled={!canScrollRight}
           >
             <ChevronRight className="artist-icon-lg" />
-          </button>
+          </TooltipButton>
         </div>
       </div>
       <div ref={scrollRef} className="artist-discover-rail__content">

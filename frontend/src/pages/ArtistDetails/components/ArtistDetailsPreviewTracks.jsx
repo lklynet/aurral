@@ -4,6 +4,7 @@ import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
 
 import { Pause, Play } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
+import TooltipButton from "../../../components/TooltipButton";
 export function ArtistDetailsPreviewTracks({
   mbid,
   artistName,
@@ -93,7 +94,7 @@ export function ArtistDetailsPreviewTracks({
               return (
                 <div key={trackId} className="artist-track-row artist-track-row--preview">
                   <span className="artist-track-number">{index + 1}</span>
-                  <button
+                  <TooltipButton
                     type="button"
                     onClick={() => handlePreviewPlay(track)}
                     disabled={!track.preview_url}
@@ -106,7 +107,7 @@ export function ArtistDetailsPreviewTracks({
                     ) : (
                       <Play className="artist-icon-sm" />
                     )}
-                  </button>
+                  </TooltipButton>
                   <div className="artist-track-cell">
                     <p className="artist-track-title">{track.title}</p>
                     <p className="artist-track-subtitle">{track.album || "Preview available"}</p>

@@ -4,6 +4,7 @@ import SearchLibraryCheck from "./SearchLibraryCheck";
 import AddActionButton from "./AddActionButton";
 import { getAlbumAddButtonLabel, isAlbumCompleteInLibrary } from "../utils/albumAddAction";
 import { getReleaseNavigationTarget } from "../utils/searchNavigation";
+import Tooltip from "./Tooltip";
 
 function isAlbumActionDisabled(album, isPending, canAddAlbum) {
   if (!canAddAlbum) return true;
@@ -50,10 +51,12 @@ function AlbumAction({ album, isPending, canAddAlbum, onAlbumAction }) {
 
   if (isComplete) {
     return (
-      <span className="artist-release-card__status" title="In library">
-        <SearchLibraryCheck size="overlay" />
-        <span className="sr-only">In library</span>
-      </span>
+      <Tooltip content="In library">
+        <span className="artist-release-card__status" >
+          <SearchLibraryCheck size="overlay" />
+          <span className="sr-only">In library</span>
+        </span>
+      </Tooltip>
     );
   }
 
@@ -201,15 +204,17 @@ function SearchAlbumResults({
             />
           </div>
         </div>
-        <h2 className="artist-release-card__title artist-truncate" title={album.title}>
-          <button
-            type="button"
-            className="search-album-results__title-link"
-            onClick={() => openAlbum(album)}
-          >
-            {album.title}
-          </button>
-        </h2>
+        <Tooltip content={album.title}>
+          <h2 className="artist-release-card__title artist-truncate" >
+            <button
+              type="button"
+              className="search-album-results__title-link"
+              onClick={() => openAlbum(album)}
+            >
+              {album.title}
+            </button>
+          </h2>
+        </Tooltip>
         {album.artistName ? (
           <button
             type="button"

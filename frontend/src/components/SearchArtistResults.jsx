@@ -3,6 +3,7 @@ import SearchLibraryCheck from "./SearchLibraryCheck";
 import { ArtistContextMenu } from "./ArtistContextMenu";
 import { getArtistFeedbackFlags } from "../utils/discoveryFeedback";
 import { getArtistRecordId } from "../utils/artistTaste";
+import Tooltip from "./Tooltip";
 
 function TagRecommendedArtistCover({ artist, artistId, artistImages, isInLibrary, className = "" }) {
   const coverSrc = artistImages[artistId] || artist.image || artist.imageUrl || "";
@@ -174,18 +175,24 @@ function SearchArtistResults({
             >
               {cover}
               <div className="artist-min-0">
-                <h2 className="artist-release-card__title artist-truncate" title={artist.name}>
-                  {artist.name}
-                </h2>
+                <Tooltip content={artist.name}>
+                  <h2 className="artist-release-card__title artist-truncate" >
+                    {artist.name}
+                  </h2>
+                </Tooltip>
                 {artistMetaText ? (
-                  <p className="artist-release-card__meta artist-truncate" title={artistMetaText}>
-                    {artistMetaText}
-                  </p>
+                  <Tooltip content={artistMetaText}>
+                    <p className="artist-release-card__meta artist-truncate" >
+                      {artistMetaText}
+                    </p>
+                  </Tooltip>
                 ) : null}
                 {disambiguationLine ? (
-                  <p className="artist-release-card__meta artist-truncate" title={disambiguationLine}>
-                    {disambiguationLine}
-                  </p>
+                  <Tooltip content={disambiguationLine}>
+                    <p className="artist-release-card__meta artist-truncate" >
+                      {disambiguationLine}
+                    </p>
+                  </Tooltip>
                 ) : null}
               </div>
               {contextMenu}
@@ -213,23 +220,28 @@ function SearchArtistResults({
             <div className="artist-discover-card__content">
               <div className="artist-discover-card__text">
                 <div className="artist-card-title-row--discover">
-                  <h3
-                    className="artist-card-title--discover"
-                    title={artist.name}
-                  >
-                    {artist.name}
-                  </h3>
+                  <Tooltip content={artist.name}>
+                    <h3
+                      className="artist-card-title--discover"
+                    >
+                      {artist.name}
+                    </h3>
+                  </Tooltip>
                   {libraryLookup[artistId] && <SearchLibraryCheck />}
                 </div>
                 {artistMetaText ? (
-                  <p className="artist-card-meta--discover" title={artistMetaText}>
-                    {artistMetaText}
-                  </p>
+                  <Tooltip content={artistMetaText}>
+                    <p className="artist-card-meta--discover" >
+                      {artistMetaText}
+                    </p>
+                  </Tooltip>
                 ) : null}
                 {variant !== "round" && disambiguationLine ? (
-                  <p className="artist-card-meta--discover" title={disambiguationLine}>
-                    {disambiguationLine}
-                  </p>
+                  <Tooltip content={disambiguationLine}>
+                    <p className="artist-card-meta--discover" >
+                      {disambiguationLine}
+                    </p>
+                  </Tooltip>
                 ) : null}
               </div>
 

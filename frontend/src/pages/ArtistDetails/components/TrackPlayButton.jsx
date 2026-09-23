@@ -1,6 +1,7 @@
 import { Pause, Play } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import { getTrackPlayAccessibilityLabel, isLibraryPlaybackTrack } from "../utils";
+import TooltipButton from "../../../components/TooltipButton";
 
 export function TrackPlayButton({ track, isPlaying, isLoading, onClick, size = "default" }) {
   const fromLibrary = isLibraryPlaybackTrack(track);
@@ -8,7 +9,7 @@ export function TrackPlayButton({ track, isPlaying, isLoading, onClick, size = "
   const sizeClass = size === "large" ? "btn-track-play-lg" : "btn-track-play";
 
   return (
-    <button
+    <TooltipButton
       type="button"
       className={`btn btn-surface ${sizeClass}${fromLibrary ? " btn-track-play--library" : ""}`}
       onClick={onClick}
@@ -22,6 +23,6 @@ export function TrackPlayButton({ track, isPlaying, isLoading, onClick, size = "
       ) : (
         <Play className="artist-icon-xs" />
       )}
-    </button>
+    </TooltipButton>
   );
 }

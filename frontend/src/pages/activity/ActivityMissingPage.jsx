@@ -33,6 +33,7 @@ import {
   isMissingAurralJob,
   sortMissingJobs,
 } from "./activityMissingUtils.js";
+import Tooltip from "../../components/Tooltip";
 
 const WANTED_PAGE_SIZE = 25;
 
@@ -90,23 +91,30 @@ function MissingJobRow({ job, playlist, actionState, onAction, onInfo }) {
 
   return (
     <article className="activity-row">
-      <span
-        className={`activity-row__status activity-row__status--${isMissing ? "failed" : "pending"}`}
-        title={statusLabel}
-        aria-label={statusLabel}
-      >
-        <StatusIcon aria-hidden="true" />
-      </span>
+      <Tooltip content={statusLabel}>
+        <span
+          className={`activity-row__status activity-row__status--${isMissing ? "failed" : "pending"}`}
+          aria-label={statusLabel}
+        >
+          <StatusIcon aria-hidden="true" />
+        </span>
+      </Tooltip>
       <div className="activity-row__details">
-        <h2 className="activity-row__title" title={job.trackName || "Unknown track"}>
-          {job.trackName || "Unknown track"}
-        </h2>
-        <p className="activity-row__meta" title={meta}>
-          {meta}
-        </p>
-        <p className="activity-row__hint" title={job.error || hint}>
-          {hint}
-        </p>
+        <Tooltip content={job.trackName || "Unknown track"}>
+          <h2 className="activity-row__title" >
+            {job.trackName || "Unknown track"}
+          </h2>
+        </Tooltip>
+        <Tooltip content={meta}>
+          <p className="activity-row__meta" >
+            {meta}
+          </p>
+        </Tooltip>
+        <Tooltip content={job.error || hint}>
+          <p className="activity-row__hint" >
+            {hint}
+          </p>
+        </Tooltip>
       </div>
       <span className={`activity-row__status-label activity-row__status-label--${isMissing ? "failed" : "pending"}`}>
         {statusLabel}

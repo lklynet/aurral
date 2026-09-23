@@ -53,7 +53,7 @@ Key modules:
 | `backend/services/trackMatching/semanticPolicy.js` | Variant extraction, contradiction detection, noise rejection |
 | `backend/services/trackMatching/beetsClient.js` | Node-to-Python JSON bridge with timeouts and structured errors |
 | `backend/services/trackMatching/decisionEngine.js` | Pre-download decisions (`accept`, `verify`, `reject`, `review`) |
-| `backend/matcher/aurral_matcher.py` | Python bridge to beets (pinned `beets==2.14.0`) |
+| `backend/matcher/aurral_matcher.py` | Python bridge to beets (pinned `beets==2.14.1`) |
 
 beets is pinned in `backend/matcher/requirements.txt` and installed into a
 build-time venv at `/opt/aurral-matcher` by the Dockerfile. The Node bridge

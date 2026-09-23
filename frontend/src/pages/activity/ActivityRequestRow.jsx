@@ -12,6 +12,7 @@ import {
 import TooltipButton from "../../components/TooltipButton";
 import { DotLoader } from "../../components/DotLoader";
 import { formatReviewReasonSummary, formatTimelineTime } from "./activityListUtils";
+import Tooltip from "../../components/Tooltip";
 
 function getStatusMeta(request) {
   if (request.status === "completed" || request.status === "available") {
@@ -118,45 +119,53 @@ export default function ActivityRequestRow({
 
   return (
     <article className="activity-row">
-      <span
-        className={`activity-row__status activity-row__status--${status.tone}`}
-        title={status.label}
-        aria-label={status.label}
-      >
-        {status.spinning ? (
-          <DotLoader size="sm" label={null} />
-        ) : (
-          <StatusIcon aria-hidden="true" />
-        )}
-      </span>
+      <Tooltip content={status.label}>
+        <span
+          className={`activity-row__status activity-row__status--${status.tone}`}
+          aria-label={status.label}
+        >
+          {status.spinning ? (
+            <DotLoader size="sm" label={null} />
+          ) : (
+            <StatusIcon aria-hidden="true" />
+          )}
+        </span>
+      </Tooltip>
       <div className="activity-row__details">
         <h2 className="activity-row__title">
           {canNavigate ? (
-            <button
-              type="button"
-              className="activity-row__title-button"
-              title={displayTitle}
-              aria-label={`Open ${rowLabel}`}
-              onClick={navigate}
-            >
-              {displayTitle}
-            </button>
+            <Tooltip content={displayTitle}>
+              <button
+                type="button"
+                className="activity-row__title-button"
+                aria-label={`Open ${rowLabel}`}
+                onClick={navigate}
+              >
+                {displayTitle}
+              </button>
+            </Tooltip>
           ) : (
             displayTitle
           )}
         </h2>
-        <p className="activity-row__meta" title={displayMeta}>
-          {displayMeta}
-        </p>
-        {reviewReasonSummary ? (
-          <p className="activity-row__hint" title={request.subtitle || reviewReasonSummary}>
-            {reviewReasonSummary}
+        <Tooltip content={displayMeta}>
+          <p className="activity-row__meta" >
+            {displayMeta}
           </p>
+        </Tooltip>
+        {reviewReasonSummary ? (
+          <Tooltip content={request.subtitle || reviewReasonSummary}>
+            <p className="activity-row__hint" >
+              {reviewReasonSummary}
+            </p>
+          </Tooltip>
         ) : null}
         {request.sourceFilename ? (
-          <p className="activity-row__hint" title={request.sourceFilename}>
-            {request.sourceFilename}
-          </p>
+          <Tooltip content={request.sourceFilename}>
+            <p className="activity-row__hint" >
+              {request.sourceFilename}
+            </p>
+          </Tooltip>
         ) : null}
         {jobError ? <span className="activity-row__error" role="alert">{jobError}</span> : null}
       </div>

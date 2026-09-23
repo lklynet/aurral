@@ -4,6 +4,7 @@ import AddActionButton from "../../../components/AddActionButton";
 import { DotLoader } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import TooltipButton from "../../../components/TooltipButton";
+import Tooltip from "../../../components/Tooltip";
 
 function normalizeTrackForSharedIdentity(track) {
   if (!track || typeof track !== "object" || Array.isArray(track)) {
@@ -132,27 +133,27 @@ export function TrackPlaylistPickerContent({
           {availablePlaylists.map((playlist) => {
             const alreadyAdded = playlistContainsTrack(playlist, track);
             return (
-              <button
-                key={playlist.id}
-                type="button"
-                className="artist-menu-item"
-                onClick={() =>
-                  onSelect?.({
-                    mode: "existing",
-                    playlistId: playlist.id,
-                  })
-                }
-                disabled={saving || alreadyAdded}
-                title={alreadyAdded ? `Already in ${playlist.name}` : undefined}
-                aria-label={
-                  alreadyAdded ? `${playlist.name}, already added` : `Add to ${playlist.name}`
-                }
-              >
-                <span className="artist-track-title">{playlist.name}</span>
-                {alreadyAdded ? (
-                  <SearchLibraryCheck size="sm" className="artist-playlist-menu__check" />
-                ) : null}
-              </button>
+              <Tooltip key={playlist.id} content={alreadyAdded ? `Already in ${playlist.name}` : undefined}>
+                <button
+                  type="button"
+                  className="artist-menu-item"
+                  onClick={() =>
+                    onSelect?.({
+                      mode: "existing",
+                      playlistId: playlist.id,
+                    })
+                  }
+                  disabled={saving || alreadyAdded}
+                  aria-label={
+                    alreadyAdded ? `${playlist.name}, already added` : `Add to ${playlist.name}`
+                  }
+                >
+                  <span className="artist-track-title">{playlist.name}</span>
+                  {alreadyAdded ? (
+                    <SearchLibraryCheck size="sm" className="artist-playlist-menu__check" />
+                  ) : null}
+                </button>
+              </Tooltip>
             );
           })}
         </div>
