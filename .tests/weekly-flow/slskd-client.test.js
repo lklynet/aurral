@@ -245,6 +245,102 @@ test("settleSearch cancels in-progress searches when requested", async () => {
   }
 });
 
+test("waitForSearch treats a polling failure during cancellation as a cancelled search", async () => {
+  const originalGetSearch = slskdClient.getSearch.bind(slskdClient);
+  const originalDeleteSearch = slskdClient.deleteSearch.bind(slskdClient);
+  let cancellationRequested = false;
+  let rejectSearchRequest;
+  let deletedId = null;
+  let notifySearchRequestStarted;
+  const searchRequestStarted = new Promise((resolve) => {
+    notifySearchRequestStarted = resolve;
+  });
+
+  try {
+    slskdClient.getSearch = async () => {
+      notifySearchRequestStarted();
+      return new Promise((resolve, reject) => {
+        rejectSearchRequest = reject;
+      });
+    };
+    slskdClient.deleteSearch = async (searchId) => {
+      deletedId = searchId;
+      return true;
+    };
+
+    const waiting = slskdClient.waitForSearch("search-cancel-in-flight", undefined, {
+      shouldCancel: () => cancellationRequested,
+    });
+    await searchRequestStarted;
+    cancellationRequested = true;
+    rejectSearchRequest(new Error("slskd search status failed: HTTP 404"));
+
+    assert.equal(await waiting, null);
+    assert.equal(deletedId, "search-cancel-in-flight");
+  } finally {
+    slskdClient.getSearch = originalGetSearch;
+    slskdClient.deleteSearch = originalDeleteSearch;
+  }
+});
+
+test("waitForSearch cancels before polling when cancellation is already requested", async () => {
+  const originalGetSearch = slskdClient.getSearch.bind(slskdClient);
+  const originalDeleteSearch = slskdClient.deleteSearch.bind(slskdClient);
+  let getSearchCalls = 0;
+  let deletedId = null;
+
+  try {
+    slskdClient.getSearch = async () => {
+      getSearchCalls += 1;
+      return {};
+    };
+    slskdClient.deleteSearch = async (searchId) => {
+      deletedId = searchId;
+      return true;
+    };
+
+    assert.equal(
+      await slskdClient.waitForSearch("search-already-cancelled", undefined, {
+        shouldCancel: () => true,
+      }),
+      null,
+    );
+    assert.equal(getSearchCalls, 0);
+    assert.equal(deletedId, "search-already-cancelled");
+  } finally {
+    slskdClient.getSearch = originalGetSearch;
+    slskdClient.deleteSearch = originalDeleteSearch;
+  }
+});
+
+test("waitForSearch preserves polling errors when cancellation was not requested", async () => {
+  const originalGetSearch = slskdClient.getSearch.bind(slskdClient);
+  const originalDeleteSearch = slskdClient.deleteSearch.bind(slskdClient);
+  const pollingError = new Error("slskd unavailable");
+  let deleted = false;
+
+  try {
+    slskdClient.getSearch = async () => {
+      throw pollingError;
+    };
+    slskdClient.deleteSearch = async () => {
+      deleted = true;
+      return true;
+    };
+
+    await assert.rejects(
+      slskdClient.waitForSearch("search-failed", undefined, {
+        shouldCancel: () => false,
+      }),
+      (error) => error === pollingError,
+    );
+    assert.equal(deleted, false);
+  } finally {
+    slskdClient.getSearch = originalGetSearch;
+    slskdClient.deleteSearch = originalDeleteSearch;
+  }
+});
+
 test("createSearch sends slskd search timeout in milliseconds", async () => {
   const originalSettings = dbOps.getSettings();
   let requestBody = null;

@@ -452,12 +452,30 @@ export class SlskdClient {
     let graceUntil = 0;
     let totalFiles = 0;
     let hasSeenFiles = false;
+    const cancelSearch = async () => {
+      await this.deleteSearch(searchId).catch(() => {});
+      return null;
+    };
+
     while (true) {
-      const data = await this.getSearch(searchId);
       if (shouldCancel?.()) {
-        await this.deleteSearch(searchId).catch(() => {});
-        return null;
+        return cancelSearch();
       }
+
+      let data;
+      try {
+        data = await this.getSearch(searchId);
+      } catch (error) {
+        if (shouldCancel?.()) {
+          return cancelSearch();
+        }
+        throw error;
+      }
+
+      if (shouldCancel?.()) {
+        return cancelSearch();
+      }
+
       const flattenedCount = this.flattenSearchResults(data).length;
       const fileCount = Number(data?.fileCount || data?.FileCount || 0);
       totalFiles = Math.max(totalFiles, fileCount, flattenedCount);
