@@ -1,5 +1,6 @@
 import { cloneElement, isValidElement, useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { getTooltipDescribedBy } from "./tooltip-accessibility.js";
 import { createTooltipInteractionState } from "./tooltip-interaction.js";
 
 function chainHandlers(current, next) {
@@ -109,17 +110,23 @@ export default function Tooltip({ content, children }) {
 
   if (!isValidElement(children) || content == null || content === "") return children;
 
+  const needsLabel = needsTooltipLabel(children);
+  const tooltipProvidesLabel =
+    needsLabel || children.props["aria-label"] === String(content);
   const triggerProps = {
-    "aria-describedby": isTooltipVisible
-      ? [children.props["aria-describedby"], tooltipId].filter(Boolean).join(" ")
-      : children.props["aria-describedby"],
+    "aria-describedby": getTooltipDescribedBy({
+      existingDescribedBy: children.props["aria-describedby"],
+      tooltipId,
+      isVisible: isTooltipVisible,
+      tooltipProvidesLabel,
+    }),
     onBlur: chainHandlers(children.props.onBlur, () => hideTooltip("focus")),
     onFocus: chainHandlers(children.props.onFocus, (event) => showTooltip(event, "focus")),
     onPointerEnter: chainHandlers(children.props.onPointerEnter, (event) => showTooltip(event, "pointer")),
     onPointerLeave: chainHandlers(children.props.onPointerLeave, () => hideTooltip("pointer")),
   };
 
-  if (needsTooltipLabel(children) && content) triggerProps["aria-label"] = String(content);
+  if (needsLabel && content) triggerProps["aria-label"] = String(content);
 
   return (
     <>
