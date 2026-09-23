@@ -24,6 +24,7 @@ import {
   SettingsModalSection,
   SettingsModalToggle,
 } from "./SettingsModalLayout";
+import Tooltip from "../../../components/Tooltip";
 
 export const QUALITY_TIER_LABELS = {
   "flac-hires": "FLAC hi-res",
@@ -59,16 +60,17 @@ function SortableQuality({ id, enabled, cutoff, aboveCutoff, onToggle, onCutoff 
         <GripVertical className="artist-icon-sm" aria-hidden />
       </button>
       <span className="quality-profile-row__name">{QUALITY_TIER_LABELS[id] || id}</span>
-      <button
-        type="button"
-        className={`quality-profile-row__state${enabled ? " is-active" : ""}`}
-        aria-pressed={enabled}
-        disabled={cutoff}
-        title={cutoff ? "The cutoff quality must be allowed" : undefined}
-        onClick={() => onToggle(id)}
-      >
-        {enabled ? "Allowed" : "Not allowed"}
-      </button>
+      <Tooltip content={cutoff ? "The cutoff quality must be allowed" : undefined}>
+        <button
+          type="button"
+          className={`quality-profile-row__state${enabled ? " is-active" : ""}`}
+          aria-pressed={enabled}
+          disabled={cutoff}
+          onClick={() => onToggle(id)}
+        >
+          {enabled ? "Allowed" : "Not allowed"}
+        </button>
+      </Tooltip>
       <button
         type="button"
         className={`quality-profile-row__cutoff${cutoff ? " is-active" : ""}`}

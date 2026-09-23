@@ -40,6 +40,7 @@ import {
 import { useDiscoverData } from "./useDiscoverData";
 import { useLibraryNews } from "../hooks/useLibraryNews";
 import { formatDate } from "../utils/dateTime.js";
+import TooltipButton from "../components/TooltipButton";
 const getArtistId = (artist) => getArtistRecordId(artist);
 
 function DiscoverPage() {
@@ -1042,7 +1043,7 @@ function DiscoverPage() {
               )}
             </div>
 
-            <button
+            <TooltipButton
               type="button"
               onClick={openDiscoverModal}
               className="btn btn-icon-square btn-surface discover-page__customize-btn"
@@ -1050,7 +1051,7 @@ function DiscoverPage() {
               title="Customize Discover"
             >
               <LayoutTemplate className="artist-discover-hero__customize-icon" />
-            </button>
+            </TooltipButton>
           </div>
 
           <div className="artist-discover-hero__tags-section">

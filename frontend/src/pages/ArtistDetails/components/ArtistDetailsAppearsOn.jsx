@@ -8,6 +8,7 @@ import { navigateToReleaseGroup } from "../../../utils/searchNavigation";
 import { getReleaseGroupCoverUrl, getReleaseMetric, getReleaseYear } from "../utils";
 import { getAlbumAddButtonLabel } from "../../../utils/albumAddAction";
 import { useResponsiveReleaseLimit } from "../hooks/useResponsiveReleaseLimit";
+import Tooltip from "../../../components/Tooltip";
 
 const sortLatest = (items) =>
   [...items].sort((a, b) =>
@@ -98,10 +99,12 @@ export function ArtistDetailsAppearsOn({
                 )}
                 <div className="artist-release-card__action">
                   {status?.status === "available" || status?.status === "added" ? (
-                    <span className="artist-release-card__status" title="Complete">
-                      <SearchLibraryCheck size="overlay" />
-                      <span className="sr-only">Complete</span>
-                    </span>
+                    <Tooltip content="Complete">
+                      <span className="artist-release-card__status" >
+                        <SearchLibraryCheck size="overlay" />
+                        <span className="sr-only">Complete</span>
+                      </span>
+                    </Tooltip>
                   ) : canAddAlbum ? (
                     <div onClick={(event) => event.stopPropagation()}>
                       <AddActionButton

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Check, MoreVertical, Plus, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { useModalDialog } from "../hooks/useModalDialog.js";
 import { DotLoader } from "./DotLoader";
+import TooltipButton from "./TooltipButton";
 
 export function ModalShell({
   open,
@@ -44,7 +45,7 @@ export function ModalShell({
               </p>
             ) : null}
           </div>
-          <button
+          <TooltipButton
             type="button"
             onClick={disableClose ? undefined : onClose}
             className="btn btn-ghost btn-sm btn-icon"
@@ -53,7 +54,7 @@ export function ModalShell({
             disabled={disableClose}
           >
             <X className="artist-icon-sm" />
-          </button>
+          </TooltipButton>
         </div>
         <div className="playlist-modal__body">{children}</div>
         {footer ? <div className="playlist-modal__footer">{footer}</div> : null}
@@ -326,7 +327,7 @@ export function RenamePlaylistModal({
               <span className="playlist-modal__cover-picker-overlay">Change image</span>
             </button>
             <div className="playlist-modal__cover-menu">
-              <button
+              <TooltipButton
                 type="button"
                 className="btn btn-secondary btn-icon btn-sm playlist-modal__cover-menu-trigger"
                 disabled={busy}
@@ -340,7 +341,7 @@ export function RenamePlaylistModal({
                 }}
               >
                 <MoreVertical className="artist-icon-sm" />
-              </button>
+              </TooltipButton>
               {coverMenuOpen ? (
                 <>
                   <button

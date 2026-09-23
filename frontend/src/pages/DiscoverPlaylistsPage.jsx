@@ -14,6 +14,7 @@ import { useDiscoverData } from "./useDiscoverData";
 import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { DiscoverPlaylistContextMenu } from "../components/DiscoverPlaylistContextMenu";
 import DiscoveryStatusPill from "../components/DiscoveryStatusPill";
+import Tooltip from "../components/Tooltip";
 const DISCOVER_FLOW_PRESET_ORDER = [
   "discover-weekly",
   "trending-mix",
@@ -272,15 +273,17 @@ export default function DiscoverPlaylistsPage() {
                 )}
               </button>
 
-              <h2 className="discover-playlists-page__card-title" title={playlist.name}>
-                <button
-                  type="button"
-                  className="discover-playlists-page__title-link"
-                  onClick={() => navigate(`/discover/playlists/${encodeURIComponent(playlist.presetId)}`)}
-                >
-                  {playlist.name}
-                </button>
-              </h2>
+              <Tooltip content={playlist.name}>
+                <h2 className="discover-playlists-page__card-title" >
+                  <button
+                    type="button"
+                    className="discover-playlists-page__title-link"
+                    onClick={() => navigate(`/discover/playlists/${encodeURIComponent(playlist.presetId)}`)}
+                  >
+                    {playlist.name}
+                  </button>
+                </h2>
+              </Tooltip>
 
               <div className="artist-release-card__meta-row">
                 <div className="artist-release-card__meta-col">

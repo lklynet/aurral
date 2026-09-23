@@ -11,6 +11,7 @@ import { CheckCircle2, Crosshair, ListMusic, Sparkles } from "lucide-react";
 import { DiscoverPlaylistContextMenu } from "../components/DiscoverPlaylistContextMenu";
 import { DiscoverRail } from "../components/DiscoverRail";
 import DiscoveryStatusPill from "../components/DiscoveryStatusPill";
+import Tooltip from "../components/Tooltip";
 const RECIPE_LABELS = {
   discover: "Discovery",
   mix: "Library",
@@ -202,14 +203,15 @@ export function DiscoverPlaylistSection({
                 <div className="artist-discover-card__content">
                   <div className="artist-discover-card__text">
                     <div className="artist-card-title-row--discover">
-                      <button
-                        type="button"
-                        className="artist-card-title--discover"
-                        title={playlist.name}
-                        onClick={() => navigate(`/discover/playlists/${encodeURIComponent(playlist.presetId)}`)}
-                      >
-                        {playlist.name}
-                      </button>
+                      <Tooltip content={playlist.name}>
+                        <button
+                          type="button"
+                          className="artist-card-title--discover"
+                          onClick={() => navigate(`/discover/playlists/${encodeURIComponent(playlist.presetId)}`)}
+                        >
+                          {playlist.name}
+                        </button>
+                      </Tooltip>
                       {playlist.adoptedFlowId ? (
                         <CheckCircle2
                           className="artist-library-check--discover"
@@ -224,9 +226,11 @@ export function DiscoverPlaylistSection({
                       ) : null}
                     </div>
                     {sourceLine ? (
-                      <p className="artist-card-meta--discover" title={sourceLine}>
-                        {sourceLine}
-                      </p>
+                      <Tooltip content={sourceLine}>
+                        <p className="artist-card-meta--discover" >
+                          {sourceLine}
+                        </p>
+                      </Tooltip>
                     ) : null}
                   </div>
                   <div>

@@ -848,7 +848,7 @@
   overflow: auto;
   padding: 0.375rem;
   border-radius: var(--aurral-radius-sm);
-  background: var(--aurral-surface-muted);
+  background: var(--arr-surface-muted);
 }
 
 .arr-health__muted {

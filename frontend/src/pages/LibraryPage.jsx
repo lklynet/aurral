@@ -79,6 +79,7 @@ import {
 } from "./ArtistDetails/utils";
 import { useResponsiveReleaseLimit } from "./ArtistDetails/hooks/useResponsiveReleaseLimit";
 import { queryClient, queryKeys } from "../queryClient.js";
+import Tooltip from "../components/Tooltip";
 
 const LIBRARY_VIEW_IDS = new Set(LIBRARY_VIEWS.map((view) => view.id));
 
@@ -1820,15 +1821,16 @@ function LibraryPage() {
                 <Cover label={albumName} compact />
               </span>
             )}
-            <button
-              type="button"
-              className="native-library-track__title"
-              onClick={() => playTrack(track, tracks)}
-              title={track.title || "Unknown Track"}
-            >
-              <span>{track.title || "Unknown Track"}</span>
-              <small>{artistName}</small>
-            </button>
+            <Tooltip content={track.title || "Unknown Track"}>
+              <button
+                type="button"
+                className="native-library-track__title"
+                onClick={() => playTrack(track, tracks)}
+              >
+                <span>{track.title || "Unknown Track"}</span>
+                <small>{artistName}</small>
+              </button>
+            </Tooltip>
             {artist ? (
               <button
                 type="button"
@@ -2007,14 +2009,15 @@ function LibraryPage() {
         </div>
         <div className="native-library-card__body">
           <div className="native-library-card__title-row">
-            <button
-              type="button"
-              className="native-library-card__title"
-              onClick={() => handleArtistOpen(artist)}
-              title={artist.name}
-            >
-              {artist.name || "Unknown Artist"}
-            </button>
+            <Tooltip content={artist.name}>
+              <button
+                type="button"
+                className="native-library-card__title"
+                onClick={() => handleArtistOpen(artist)}
+              >
+                {artist.name || "Unknown Artist"}
+              </button>
+            </Tooltip>
             <FavoriteButton
               active={isFavorite}
               pending={Boolean(pendingFavorite)}
@@ -2127,14 +2130,15 @@ function LibraryPage() {
         </div>
         <div className="native-library-card__body">
           <div className="native-library-card__title-row">
-            <button
-              type="button"
-              className="native-library-card__title"
-              onClick={() => handleAlbumOpen(album)}
-              title={album.title}
-            >
-              {album.title || "Unknown Album"}
-            </button>
+            <Tooltip content={album.title}>
+              <button
+                type="button"
+                className="native-library-card__title"
+                onClick={() => handleAlbumOpen(album)}
+              >
+                {album.title || "Unknown Album"}
+              </button>
+            </Tooltip>
             <FavoriteButton
               active={isFavorite}
               pending={Boolean(pendingFavorite)}
@@ -2168,7 +2172,7 @@ function LibraryPage() {
         {count != null && <span>{count}</span>}
       </div>
       {path && (
-        <button type="button" onClick={() => navigate(path)}>
+        <button type="button" onClick={() => navigate(path)} className="btn">
           {actionLabel}
         </button>
       )}
@@ -2776,7 +2780,7 @@ function LibraryPage() {
                         setQuery("");
                       }}
                       label="Clear search"
-                    >
+                     className="btn">
                       <X aria-hidden="true" />
                     </TooltipButton>
                   )}

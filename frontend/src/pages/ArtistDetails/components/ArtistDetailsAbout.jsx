@@ -7,6 +7,7 @@ import musicBrainzLogo from "../../../../images/logos/musicbrainz.svg?raw";
 import listenBrainzLogo from "../../../../images/logos/listenbrainz.svg?raw";
 
 import { UUID_REGEX } from "../../../../../lib/uuid.js";
+import Tooltip from "../../../components/Tooltip";
 
 const toCurrentColorSvg = (svg) =>
   svg
@@ -200,14 +201,15 @@ export function ArtistDetailsAbout({
                   {visibleTags.map((tag, index) => (
                     <Fragment key={tag.key}>
                       {index > 0 ? <span aria-hidden="true"> · </span> : null}
-                      <button
-                        type="button"
-                        className="artist-about-meta__tag"
-                        onClick={() => onNavigate?.(tagSearchPath(tag.name))}
-                        title={`View artists with tag: ${tag.name}`}
-                      >
-                        {tag.name}
-                      </button>
+                      <Tooltip content={`View artists with tag: ${tag.name}`}>
+                        <button
+                          type="button"
+                          className="artist-about-meta__tag"
+                          onClick={() => onNavigate?.(tagSearchPath(tag.name))}
+                        >
+                          {tag.name}
+                        </button>
+                      </Tooltip>
                     </Fragment>
                   ))}
                 </span>
@@ -227,15 +229,15 @@ export function ArtistDetailsAbout({
               <h3 className="artist-about-side-title">Tags</h3>
               <div className="artist-tag-list">
                 {tags.slice(0, 14).map((tag) => (
-                  <button
-                    key={tag.key}
-                    type="button"
-                    onClick={() => onNavigate?.(tagSearchPath(tag.name))}
-                    className="artist-tag--discover"
-                    title={`View artists with tag: ${tag.name}`}
-                  >
-                    #{tag.name}
-                  </button>
+                  <Tooltip key={tag.key} content={`View artists with tag: ${tag.name}`}>
+                    <button
+                      type="button"
+                      onClick={() => onNavigate?.(tagSearchPath(tag.name))}
+                      className="artist-tag--discover"
+                    >
+                      #{tag.name}
+                    </button>
+                  </Tooltip>
                 ))}
               </div>
             </div>

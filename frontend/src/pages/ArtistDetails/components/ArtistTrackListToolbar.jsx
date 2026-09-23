@@ -1,4 +1,5 @@
 import { Pause, Play, Shuffle } from "lucide-react";
+import TooltipButton from "../../../components/TooltipButton";
 
 export function ArtistTrackListToolbar({
   disabled = false,
@@ -9,7 +10,7 @@ export function ArtistTrackListToolbar({
 }) {
   return (
     <div className="artist-track-list__toolbar">
-      <button
+      <TooltipButton label={isPlaying ? "Pause playback" : "Play all tracks"}
         type="button"
         onClick={onPlayAll}
         className="btn btn-accent btn-round-lg"
@@ -17,8 +18,8 @@ export function ArtistTrackListToolbar({
         aria-label={isPlaying ? "Pause playback" : "Play all tracks"}
       >
         {isPlaying ? <Pause className="artist-icon-md" /> : <Play className="artist-icon-md" />}
-      </button>
-      <button
+      </TooltipButton>
+      <TooltipButton label="Shuffle and play"
         type="button"
         onClick={onShufflePlay}
         className={`btn btn-secondary btn-round-lg artist-track-list__toolbar-shuffle${isShuffleEnabled ? " is-active" : ""}`}
@@ -26,7 +27,7 @@ export function ArtistTrackListToolbar({
         aria-label="Shuffle and play"
       >
         <Shuffle className="artist-icon-md" />
-      </button>
+      </TooltipButton>
     </div>
   );
 }

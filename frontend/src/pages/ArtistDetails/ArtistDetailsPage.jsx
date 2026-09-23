@@ -50,6 +50,7 @@ import { DeleteArtistModal } from "./components/DeleteArtistModal";
 import { DeleteAlbumModal } from "./components/DeleteAlbumModal";
 import { AddArtistCustomizeModal } from "./components/AddArtistCustomizeModal";
 import { queryClient, queryKeys } from "../../queryClient.js";
+import TooltipButton from "../../components/TooltipButton";
 const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function ArtistDetailsPage() {
@@ -757,7 +758,7 @@ function EditArtistIdsModal({
           <h3 id={titleId} className="artist-modal__title">
             Edit Artist IDs
           </h3>
-          <button
+          <TooltipButton
             type="button"
             className="btn btn-surface btn-icon-square"
             onClick={onClose}
@@ -765,7 +766,7 @@ function EditArtistIdsModal({
             title="Close"
           >
             <X className="artist-icon-md" />
-          </button>
+          </TooltipButton>
         </div>
         <p className="artist-modal__subcopy">
           {artistName ? `${artistName}: ` : ""}

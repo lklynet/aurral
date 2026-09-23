@@ -16,6 +16,8 @@ import { DotLoader } from "../../../components/DotLoader";
 import AddActionButton from "../../../components/AddActionButton";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import { getDiscoveryFeedbackLabel } from "../../../utils/discoveryFeedback";
+import TooltipButton from "../../../components/TooltipButton";
+import Tooltip from "../../../components/Tooltip";
 
 const MONITOR_OPTIONS = [
   { value: "none", label: "None (Artist Only)" },
@@ -166,7 +168,7 @@ export function ArtistDetailsActionBar({
     <div className="artist-action-bar">
       <div className="artist-action-bar__inner">
         <div className="artist-action-bar__group">
-          <button
+          <TooltipButton
             type="button"
             onClick={handlePreviewPlayAll}
             disabled={buildingQueue}
@@ -181,30 +183,31 @@ export function ArtistDetailsActionBar({
             ) : (
               <Play className="artist-icon-md" />
             )}
-          </button>
+          </TooltipButton>
           {renderLibraryAction()}
         </div>
 
         <div className="artist-row-actions">
           {existsInLibrary && canRefreshArtist && (
-            <button
-              type="button"
-              onClick={library.handleRefreshArtist}
-              disabled={library.refreshingArtist}
-              className="btn btn-secondary btn--bold btn-min-h"
-              aria-label="Refresh artist"
-              title="Refresh artist"
-            >
-              {library.refreshingArtist ? (
-                <DotLoader size="sm" label={null} />
-              ) : (
-                <RefreshCw className="artist-icon-sm" />
-              )}
-              <span className="artist-hidden-mobile">Refresh</span>
-            </button>
+            <Tooltip content="Refresh artist">
+              <button
+                type="button"
+                onClick={library.handleRefreshArtist}
+                disabled={library.refreshingArtist}
+                className="btn btn-secondary btn--bold btn-min-h"
+                aria-label="Refresh artist"
+              >
+                {library.refreshingArtist ? (
+                  <DotLoader size="sm" label={null} />
+                ) : (
+                  <RefreshCw className="artist-icon-sm" />
+                )}
+                <span className="artist-hidden-mobile">Refresh</span>
+              </button>
+            </Tooltip>
           )}
           <div className="artist-relative">
-            <button
+            <TooltipButton
               type="button"
               onClick={() => setShowMoreMenu((value) => !value)}
               className="btn btn-surface btn-icon-square"
@@ -212,7 +215,7 @@ export function ArtistDetailsActionBar({
               title="More artist actions"
             >
               <MoreHorizontal className="artist-icon-md" />
-            </button>
+            </TooltipButton>
             {showMoreMenu && (
               <>
                 <button

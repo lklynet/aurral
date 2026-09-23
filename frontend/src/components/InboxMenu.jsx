@@ -21,6 +21,7 @@ import { useToast } from "../contexts/ToastContext";
 import TooltipButton from "./TooltipButton";
 import { DotLoader } from "./DotLoader";
 import { queryClient, queryKeys } from "../queryClient.js";
+import Tooltip from "./Tooltip";
 
 const ITEM_ICONS = {
   release: Music2,
@@ -122,16 +123,17 @@ function InboxItem({ item, onRemove, onOpen, pendingAction }) {
         </button>
       )}
       <span className="app-inbox-menu__item-actions">
-        <button
-          type="button"
-          className="app-inbox-menu__item-action"
-          aria-label={`Remove ${item.title} from Inbox`}
-          title="Remove from Inbox"
-          disabled={isPending}
-          onClick={() => onRemove(item)}
-        >
-          <Check aria-hidden="true" />
-        </button>
+        <Tooltip content="Remove from Inbox">
+          <button
+            type="button"
+            className="app-inbox-menu__item-action"
+            aria-label={`Remove ${item.title} from Inbox`}
+            disabled={isPending}
+            onClick={() => onRemove(item)}
+          >
+            <Check aria-hidden="true" />
+          </button>
+        </Tooltip>
       </span>
     </li>
   );

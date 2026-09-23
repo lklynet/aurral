@@ -17,6 +17,7 @@ import {
   getFlowDisplayTrackCount,
   getSharedPlaylistTrackCount,
 } from "./flowStats";
+import Tooltip from "../../components/Tooltip";
 
 export function LibrarySidebarToggleIcon({ collapsed = false }) {
   return (
@@ -254,49 +255,56 @@ export function PlaylistLibraryItem({
     <div
       className={`flow-page__library-item${isActive ? " is-active" : ""}${expanded ? " is-expanded" : ""}`}
     >
-      <button
-        type="button"
-        className="flow-page__library-item-main"
-        aria-current={isActive ? "true" : undefined}
-        aria-expanded={expanded ? "true" : undefined}
-        aria-label={collapsed ? entry.name : undefined}
-        title={collapsed ? entry.name : undefined}
-        onClick={() => onSelect?.(entry)}
-      >
-        <PlaylistArtworkThumb
-          artworkUrl={artworkUrl}
-          name={entry.name}
-          className="flow-page__library-item-artwork"
-        />
-        <div
-          className="flow-page__library-item-body"
-          title={collapsed && activityHint ? activityHint : undefined}
+      <Tooltip content={collapsed ? entry.name : undefined}>
+        <button
+          type="button"
+          className="flow-page__library-item-main"
+          aria-current={isActive ? "true" : undefined}
+          aria-expanded={expanded ? "true" : undefined}
+          aria-label={collapsed ? entry.name : undefined}
+          onClick={() => onSelect?.(entry)}
         >
-          <div className="flow-page__library-item-top">
-            <span className="flow-page__library-item-type-row">
-              <span className="flow-page__library-item-type">{typeLabel}</span>
-              {showSyncedBadge ? (
-                <span className="flow-page__badge flow-page__badge--sync">Synced</span>
-              ) : null}
-            </span>
-            {activityHint ? (
-              <span
-                className="flow-page__library-item-activity"
-                title={activityHint}
-                aria-label={activityHint}
-              >
-                <DotLoader size="xs" label={null} />
-              </span>
-            ) : null}
-          </div>
-          <span className="flow-page__library-item-title" title={entry.name}>
-            {entry.name}
-          </span>
-          <span className="flow-page__library-item-meta" title={trackLabel}>
-            {trackLabel}
-          </span>
-        </div>
-      </button>
+          <PlaylistArtworkThumb
+            artworkUrl={artworkUrl}
+            name={entry.name}
+            className="flow-page__library-item-artwork"
+          />
+          <Tooltip content={collapsed && activityHint ? activityHint : undefined}>
+            <div
+              className="flow-page__library-item-body"
+            >
+              <div className="flow-page__library-item-top">
+                <span className="flow-page__library-item-type-row">
+                  <span className="flow-page__library-item-type">{typeLabel}</span>
+                  {showSyncedBadge ? (
+                    <span className="flow-page__badge flow-page__badge--sync">Synced</span>
+                  ) : null}
+                </span>
+                {activityHint ? (
+                  <Tooltip content={activityHint}>
+                    <span
+                      className="flow-page__library-item-activity"
+                      aria-label={activityHint}
+                    >
+                      <DotLoader size="xs" label={null} />
+                    </span>
+                  </Tooltip>
+                ) : null}
+              </div>
+              <Tooltip content={entry.name}>
+                <span className="flow-page__library-item-title" >
+                  {entry.name}
+                </span>
+              </Tooltip>
+              <Tooltip content={trackLabel}>
+                <span className="flow-page__library-item-meta" >
+                  {trackLabel}
+                </span>
+              </Tooltip>
+            </div>
+          </Tooltip>
+        </button>
+      </Tooltip>
       {trailing ? <div className="flow-page__library-item-trailing">{trailing}</div> : null}
     </div>
   );
@@ -315,24 +323,27 @@ function FlowDetailMeta({ meta }) {
     parts.push(
       <span key="run" className="flow-page__detail-meta-run">
         {meta.lastRunShort ? (
-          <span className="flow-page__detail-meta-chip" title={meta.lastRunTitle || undefined}>
-            <Clock className="artist-icon-xs" aria-hidden="true" />
-            {meta.lastRunShort}
-          </span>
+          <Tooltip content={meta.lastRunTitle || undefined}>
+            <span className="flow-page__detail-meta-chip" >
+              <Clock className="artist-icon-xs" aria-hidden="true" />
+              {meta.lastRunShort}
+            </span>
+          </Tooltip>
         ) : null}
         {meta.nextRunShort ? (
-          <span
-            className="flow-page__detail-meta-chip flow-page__detail-meta-chip--next"
-            title={meta.nextRunTitle || undefined}
-          >
-            {meta.lastRunShort ? (
-              <ArrowRight
-                className="artist-icon-xs flow-page__detail-meta-arrow"
-                aria-hidden="true"
-              />
-            ) : null}
-            {meta.nextRunShort}
-          </span>
+          <Tooltip content={meta.nextRunTitle || undefined}>
+            <span
+              className="flow-page__detail-meta-chip flow-page__detail-meta-chip--next"
+            >
+              {meta.lastRunShort ? (
+                <ArrowRight
+                  className="artist-icon-xs flow-page__detail-meta-arrow"
+                  aria-hidden="true"
+                />
+              ) : null}
+              {meta.nextRunShort}
+            </span>
+          </Tooltip>
         ) : null}
       </span>,
     );
@@ -384,14 +395,15 @@ export function PlaylistDetailHero({
             <div className="flow-page__detail-hero-top">
               <span className="flow-page__detail-eyebrow">{typeLabel}</span>
             </div>
-            <button
-              type="button"
-              className="flow-page__detail-title flow-page__detail-title--hero flow-page__detail-title-button"
-              title={entry.name}
-              onClick={onRenameTitle}
-            >
-              {entry.name}
-            </button>
+            <Tooltip content={entry.name}>
+              <button
+                type="button"
+                className="flow-page__detail-title flow-page__detail-title--hero flow-page__detail-title-button"
+                onClick={onRenameTitle}
+              >
+                {entry.name}
+              </button>
+            </Tooltip>
             {flowMeta ? (
               <FlowDetailMeta meta={flowMeta} />
             ) : metaLine ? (

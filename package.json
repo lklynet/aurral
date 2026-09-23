@@ -15,6 +15,7 @@
     "build": "npm run build --workspace frontend",
     "start": "node --env-file=backend/.env backend/server.js",
     "lint": "npm run lint:backend && npm run lint --workspace frontend",
+    "lint:ui": "npm run lint:ui --workspace frontend",
     "lint:backend": "eslint backend lib --no-config-lookup --rule 'no-unused-vars:[error,{\"argsIgnorePattern\":\"^_\",\"caughtErrors\":\"none\",\"varsIgnorePattern\":\"^_\"}]'",
     "test": "node --test --import ./.tests/setup-env.js --test-concurrency=4 $(find .tests -name '*.test.js' -not -name '*.int.test.js' -print)",
     "test:integration": "node --test --import ./.tests/setup-env.js --test-concurrency=1 $(find .tests -name '*.int.test.js' -print)",

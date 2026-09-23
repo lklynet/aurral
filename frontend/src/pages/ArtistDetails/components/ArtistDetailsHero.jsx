@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getArtistHeroImage } from "../utils";
 import { withImageCacheBust } from "../../../utils/normalizeMediaUrl";
+import Tooltip from "../../../components/Tooltip";
 
 const normalizeTagName = (value) => String(value || "").trim();
 
@@ -76,17 +77,17 @@ export function ArtistDetailsHero({
           {visibleTags.length > 0 && (
             <div className="artist-tag-list">
               {visibleTags.map((tag) => (
-                <button
-                  key={tag.key}
-                  type="button"
-                  onClick={() =>
-                    onNavigate?.(`/search?q=${encodeURIComponent(`#${tag.name}`)}&type=tag`)
-                  }
-                  className="artist-tag"
-                  title={`View artists with tag: ${tag.name}`}
-                >
-                  #{tag.name}
-                </button>
+                <Tooltip key={tag.key} content={`View artists with tag: ${tag.name}`}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onNavigate?.(`/search?q=${encodeURIComponent(`#${tag.name}`)}&type=tag`)
+                    }
+                    className="artist-tag"
+                  >
+                    #{tag.name}
+                  </button>
+                </Tooltip>
               ))}
             </div>
           )}

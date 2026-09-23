@@ -3,6 +3,7 @@ import { browseFilesystem } from "../utils/api/endpoints/auth.js";
 import DownloadFolderPickerModal from "./DownloadFolderPickerModal";
 
 import { Folder } from "lucide-react";
+import Tooltip from "./Tooltip";
 export default function DownloadFolderField({
   value = "",
   onChange,
@@ -77,16 +78,17 @@ export default function DownloadFolderField({
               }
             }}
           />
-          <button
-            type="button"
-            className="download-folder-field__folder-btn"
-            onClick={() => setShowPicker(true)}
-            disabled={disabled}
-            aria-label="Browse folders"
-            title="Browse folders"
-          >
-            <Folder className="artist-icon-xs" />
-          </button>
+          <Tooltip content="Browse folders">
+            <button
+              type="button"
+              className="download-folder-field__folder-btn"
+              onClick={() => setShowPicker(true)}
+              disabled={disabled}
+              aria-label="Browse folders"
+            >
+              <Folder className="artist-icon-xs" />
+            </button>
+          </Tooltip>
         </div>
         {helperText ? <p className="download-folder-field__helper">{helperText}</p> : null}
       </div>

@@ -100,7 +100,10 @@ export default defineConfig({
         {
           label: "Development",
           collapsed: true,
-          items: [{ slug: "development/track-matching" }],
+          items: [
+            { slug: "development/track-matching" },
+            { slug: "development/ui-design-system" },
+          ],
         },
         { label: "Sponsorship", slug: "sponsorship" },
       ],

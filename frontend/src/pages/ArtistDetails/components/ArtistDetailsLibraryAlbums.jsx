@@ -12,6 +12,8 @@ import {
 import { DotLoader } from "../../../components/DotLoader";
 import { navigateToLibraryAlbum } from "../../../utils/searchNavigation";
 import { isVisibleLibraryAlbum } from "../utils";
+import TooltipButton from "../../../components/TooltipButton";
+import Tooltip from "../../../components/Tooltip";
 
 export function ArtistDetailsLibraryAlbums({
   artist,
@@ -232,31 +234,32 @@ export function ArtistDetailsLibraryAlbums({
       <div className="artist-heading-row">
         <h2 className="artist-section-title">Your Library</h2>
         <div className="artist-row-actions">
-          <div
-            className="artist-segmented"
-            role="group"
-            aria-label="Library download completion filter"
-            title={filterTitle}
-          >
-            {filterOptions.map((option) => {
-              const isActive = completionFilter === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setCompletionFilter(option.value)}
-                  className={`btn btn-xs${isActive ? " btn-neutral-active" : " btn-ghost"}`}
-                  aria-pressed={isActive}
-                  aria-label={option.label}
-                  title={option.title}
-                >
-                  {option.renderIcon()}
-                </button>
-              );
-            })}
-          </div>
+          <Tooltip content={filterTitle}>
+            <div
+              className="artist-segmented"
+              role="group"
+              aria-label="Library download completion filter"
+            >
+              {filterOptions.map((option) => {
+                const isActive = completionFilter === option.value;
+                return (
+                  <Tooltip key={option.value} content={option.title}>
+                    <button
+                      type="button"
+                      onClick={() => setCompletionFilter(option.value)}
+                      className={`btn btn-xs${isActive ? " btn-neutral-active" : " btn-ghost"}`}
+                      aria-pressed={isActive}
+                      aria-label={option.label}
+                    >
+                      {option.renderIcon()}
+                    </button>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          </Tooltip>
           {canReSearchAlbum && (
-            <button
+            <TooltipButton
               type="button"
               onClick={handleReSearchMissingDownloads}
               className="btn btn-surface btn-icon-square"
@@ -275,9 +278,9 @@ export function ArtistDetailsLibraryAlbums({
               ) : (
                 <RefreshCw className="artist-icon-sm" />
               )}
-            </button>
+            </TooltipButton>
           )}
-          <button
+          <TooltipButton
             type="button"
             onClick={() => scrollByAmount(-1)}
             className="btn btn-ghost btn-icon-square"
@@ -286,8 +289,8 @@ export function ArtistDetailsLibraryAlbums({
             disabled={!canScrollLeft}
           >
             <ChevronLeft className="artist-icon-lg" />
-          </button>
-          <button
+          </TooltipButton>
+          <TooltipButton
             type="button"
             onClick={() => scrollByAmount(1)}
             className="btn btn-ghost btn-icon-square"
@@ -296,7 +299,7 @@ export function ArtistDetailsLibraryAlbums({
             disabled={!canScrollRight}
           >
             <ChevronRight className="artist-icon-lg" />
-          </button>
+          </TooltipButton>
         </div>
       </div>
 
@@ -351,21 +354,23 @@ export function ArtistDetailsLibraryAlbums({
                   {requestingAlbum === rgId || reSearchingAlbum === libraryAlbum.id ? (
                     <DotLoader size="xs" label={null} />
                   ) : hasDownloadedStatus ? (
-                    <span
-                      className="artist-status-dot artist-status-dot--complete"
-                      title="Downloaded"
-                    />
+                    <Tooltip content="Downloaded">
+                      <span
+                        className="artist-status-dot artist-status-dot--complete"
+                      />
+                    </Tooltip>
                   ) : showIncompleteStatus ? (
-                    <span
-                      className="artist-status-dot artist-status-dot--incomplete"
-                      title="Incomplete"
-                    />
+                    <Tooltip content="Incomplete">
+                      <span
+                        className="artist-status-dot artist-status-dot--incomplete"
+                      />
+                    </Tooltip>
                   ) : null}
                 </div>
 
                 <div className="artist-library-card__menu">
                   <div className="artist-relative">
-                    <button
+                    <TooltipButton
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -391,7 +396,7 @@ export function ArtistDetailsLibraryAlbums({
                       aria-label={`Album options for ${libraryAlbum.albumName}`}
                     >
                       <MoreVertical className="artist-icon-sm" />
-                    </button>
+                    </TooltipButton>
                     {albumDropdownOpen === rgId && (
                       <>
                         <div

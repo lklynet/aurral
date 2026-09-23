@@ -28,6 +28,7 @@ import {
   getTrackSearchAction,
   shouldShowAddToLibrary,
 } from "../trackAvailability.js";
+import Tooltip from "../../../components/Tooltip";
 
 function getTrackStatusMeta(status) {
   switch (String(status || "").toLowerCase()) {
@@ -361,12 +362,13 @@ function TrackStatusDot({ status }) {
     );
   }
   return (
-    <span
-      className={`flow-page__track-status-dot ${meta.className}`}
-      title={meta.label}
-      aria-label={meta.label}
-      role="img"
-    />
+    <Tooltip content={meta.label}>
+      <span
+        className={`flow-page__track-status-dot ${meta.className}`}
+        aria-label={meta.label}
+        role="img"
+      />
+    </Tooltip>
   );
 }
 
@@ -587,7 +589,7 @@ export function FlowTracksPanel({
         <div className="flow-page__tracks-toolbar">
           {showPlaybackControls ? (
             <div className="flow-page__tracks-toolbar-start">
-              <button
+              <TooltipButton
                 type="button"
                 onClick={handlePrimaryPlay}
                 className="btn btn-accent btn-round-lg"
@@ -602,8 +604,8 @@ export function FlowTracksPanel({
                 ) : (
                   <Play className="artist-icon-md" />
                 )}
-              </button>
-              <button
+              </TooltipButton>
+              <TooltipButton
                 type="button"
                 onClick={handleShufflePlay}
                 className={`btn btn-secondary btn-round-lg flow-page__tracks-toolbar-shuffle${isShuffleEnabled ? " is-active" : ""}`}
@@ -612,7 +614,7 @@ export function FlowTracksPanel({
                 title="Shuffle and play"
               >
                 <Shuffle className="artist-icon-md" />
-              </button>
+              </TooltipButton>
             </div>
           ) : null}
           <div className="flow-page__tracks-toolbar-actions">
@@ -624,7 +626,7 @@ export function FlowTracksPanel({
                   </span>
                 ) : null}
                 {onBulkDelete ? (
-                  <button
+                  <TooltipButton
                     type="button"
                     onClick={() => onBulkDelete(selectedTracks)}
                     className="btn btn-ghost-danger btn-icon btn-sm"
@@ -633,7 +635,7 @@ export function FlowTracksPanel({
                     title="Remove selected"
                   >
                     <Trash2 className="artist-icon-sm" />
-                  </button>
+                  </TooltipButton>
                 ) : null}
                 {onBulkReSearch ? (
                   <button
@@ -698,7 +700,7 @@ export function FlowTracksPanel({
             ) : (
               <>
                 {allowBulkEdit ? (
-                  <button
+                  <TooltipButton
                     type="button"
                     onClick={() => setEditMode(true)}
                     className="btn btn-secondary btn-icon btn-sm"
@@ -706,7 +708,7 @@ export function FlowTracksPanel({
                     title="Edit tracks"
                   >
                     <Pencil className="artist-icon-sm" />
-                  </button>
+                  </TooltipButton>
                 ) : null}
               </>
             )}
@@ -870,7 +872,7 @@ export function FlowTracksPanel({
                           <span className="flow-page__tracks-table-index-number">
                             {trackDisplayNumber}
                           </span>
-                          <button
+                          <TooltipButton
                             type="button"
                             onClick={() => handlePlayTrack(track)}
                             className="flow-page__tracks-table-index-play btn btn-secondary btn-icon btn-xs"
@@ -891,7 +893,7 @@ export function FlowTracksPanel({
                             ) : (
                               <Play className="artist-icon-xs" />
                             )}
-                          </button>
+                          </TooltipButton>
                         </div>
                       ) : (
                         trackDisplayNumber
@@ -906,62 +908,67 @@ export function FlowTracksPanel({
                         />
                       </td>
                     ) : null}
-                    <td
-                      className="flow-page__tracks-table-song"
-                      title={showTrackAvailability ? undefined : track.trackName}
-                    >
-                      <span className={showTrackAvailability ? "flow-page__track-title-availability" : undefined}>
-                        {showTrackAvailability ? (
-                          <TooltipButton
-                            className="flow-page__track-availability-indicator"
-                            label={availability.label}
-                          >
-                            <span
-                              className={`flow-page__track-status-dot flow-page__track-status-dot--${availability.status}`}
-                              aria-hidden="true"
-                            />
-                          </TooltipButton>
-                        ) : null}
-                        <span className="flow-page__tracks-table-cell-text" title={track.trackName}>{track.trackName}</span>
-                      </span>
-                    </td>
-                    <td
-                      className="flow-page__tracks-table-artist"
-                      title={track.artistName}
-                    >
-                      {track.artistMbid ? (
-                        <button
-                          type="button"
-                          onClick={() => onNavigateArtist(track)}
-                          className="flow-page__tracks-artist-link"
-                        >
-                          {track.artistName}
-                        </button>
-                      ) : (
-                        <span className="flow-page__tracks-table-cell-text">
-                          {track.artistName}
-                        </span>
-                      )}
-                    </td>
-                    {hideAlbumColumn ? null : (
+                    <Tooltip content={showTrackAvailability ? undefined : track.trackName}>
                       <td
-                        className="flow-page__tracks-table-album"
-                        title={track.albumName || "Unknown Album"}
+                        className="flow-page__tracks-table-song"
                       >
-                        {track.albumMbid && typeof onNavigateAlbum === "function" ? (
+                        <span className={showTrackAvailability ? "flow-page__track-title-availability" : undefined}>
+                          {showTrackAvailability ? (
+                            <TooltipButton
+                              className="flow-page__track-availability-indicator"
+                              label={availability.label}
+                            >
+                              <span
+                                className={`flow-page__track-status-dot flow-page__track-status-dot--${availability.status}`}
+                                aria-hidden="true"
+                              />
+                            </TooltipButton>
+                          ) : null}
+                          <Tooltip content={track.trackName}>
+                            <span className="flow-page__tracks-table-cell-text" >{track.trackName}</span>
+                          </Tooltip>
+                        </span>
+                      </td>
+                    </Tooltip>
+                    <Tooltip content={track.artistName}>
+                      <td
+                        className="flow-page__tracks-table-artist"
+                      >
+                        {track.artistMbid ? (
                           <button
                             type="button"
-                            onClick={() => onNavigateAlbum(track)}
-                            className="flow-page__tracks-album-link"
+                            onClick={() => onNavigateArtist(track)}
+                            className="flow-page__tracks-artist-link"
                           >
-                            {track.albumName || "Unknown Album"}
+                            {track.artistName}
                           </button>
                         ) : (
                           <span className="flow-page__tracks-table-cell-text">
-                            {track.albumName || "Unknown Album"}
+                            {track.artistName}
                           </span>
                         )}
                       </td>
+                    </Tooltip>
+                    {hideAlbumColumn ? null : (
+                      <Tooltip content={track.albumName || "Unknown Album"}>
+                        <td
+                          className="flow-page__tracks-table-album"
+                        >
+                          {track.albumMbid && typeof onNavigateAlbum === "function" ? (
+                            <button
+                              type="button"
+                              onClick={() => onNavigateAlbum(track)}
+                              className="flow-page__tracks-album-link"
+                            >
+                              {track.albumName || "Unknown Album"}
+                            </button>
+                          ) : (
+                            <span className="flow-page__tracks-table-cell-text">
+                              {track.albumName || "Unknown Album"}
+                            </span>
+                          )}
+                        </td>
+                      </Tooltip>
                     )}
                     {showDuration ? (
                       <td className="flow-page__tracks-table-duration">
@@ -1028,7 +1035,7 @@ export function FlowTracksPanel({
                             ) : (
                               <>
                                 {canReSearch ? (
-                                  <button
+                                  <TooltipButton
                                     type="button"
                                     onClick={() => onReSearchTrack(track)}
                                     className="btn btn-secondary btn-icon btn-xs"
@@ -1041,10 +1048,10 @@ export function FlowTracksPanel({
                                     ) : (
                                       <Search className="artist-icon-xs" />
                                     )}
-                                  </button>
+                                  </TooltipButton>
                                 ) : null}
                                 {canDelete ? (
-                                  <button
+                                  <TooltipButton
                                     type="button"
                                     onClick={() => onDeleteTrack?.(track)}
                                     className="btn btn-ghost-danger btn-icon btn-xs"
@@ -1057,7 +1064,7 @@ export function FlowTracksPanel({
                                     ) : (
                                       <Trash2 className="artist-icon-xs" />
                                     )}
-                                  </button>
+                                  </TooltipButton>
                                 ) : null}
                               </>
                             )

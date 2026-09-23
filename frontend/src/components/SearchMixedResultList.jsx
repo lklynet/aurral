@@ -4,6 +4,7 @@ import { getSearchResultKey, navigateFromSearchResult } from "../utils/searchNav
 import { getDiscoverArtworkUrl } from "../utils/api/endpoints/discovery.js";
 import { getFlowArtworkUrl } from "../utils/api/endpoints/playlists.js";
 import { getArtistRecordId } from "../utils/artistTaste";
+import Tooltip from "./Tooltip";
 
 const handleMainKeyDown = (event, onClick) => {
   if (event.key !== "Enter" && event.key !== " ") return;
@@ -149,13 +150,17 @@ function SearchMixedResultList({
                   albumCovers={albumCovers}
                 />
                 <span className="search-mixed-results__copy">
-                  <span className="search-mixed-results__title" title={primaryLabel}>
-                    {primaryLabel}
-                  </span>
-                  {secondaryLabel ? (
-                    <span className="search-mixed-results__subtitle" title={secondaryLabel}>
-                      {secondaryLabel}
+                  <Tooltip content={primaryLabel}>
+                    <span className="search-mixed-results__title" >
+                      {primaryLabel}
                     </span>
+                  </Tooltip>
+                  {secondaryLabel ? (
+                    <Tooltip content={secondaryLabel}>
+                      <span className="search-mixed-results__subtitle" >
+                        {secondaryLabel}
+                      </span>
+                    </Tooltip>
                   ) : null}
                 </span>
               </div>

@@ -54,7 +54,7 @@ export default function ActivityToolbar({
               autoFocus
             />
             {filterValue ? (
-              <TooltipButton label="Clear filter" onClick={() => onFilterChange("")}>
+              <TooltipButton label="Clear filter" onClick={() => onFilterChange("")} className="btn">
                 <X aria-hidden="true" />
               </TooltipButton>
             ) : null}

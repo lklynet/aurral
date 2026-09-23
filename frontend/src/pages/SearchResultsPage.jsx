@@ -65,6 +65,8 @@ import {
   SlidersHorizontal,
   X,
 } from "lucide-react";
+import TooltipButton from "../components/TooltipButton";
+import Tooltip from "../components/Tooltip";
 
 const RECOMMENDED_SORT_OPTIONS = [
   { value: "name", label: "Name" },
@@ -1317,7 +1319,7 @@ function SearchResultsPage() {
               >
                 Open Settings
               </button>
-              <button
+              <TooltipButton
                 type="button"
                 className="btn btn-surface btn-icon-square"
                 aria-label="Dismiss Last.fm reminder"
@@ -1330,7 +1332,7 @@ function SearchResultsPage() {
                 }}
               >
                 <X className="artist-icon-sm" />
-              </button>
+              </TooltipButton>
             </div>
           </div>
         )}
@@ -1405,22 +1407,23 @@ function SearchResultsPage() {
 
             <div className="library-page__view-controls">
               {recommendedViewMode === "grid" && (
-                <input
-                  type="range"
-                  min="2"
-                  max="10"
-                  value={recommendedGridColumns}
-                  onChange={(event) => {
-                    const value = parseInt(event.target.value, 10);
-                    setRecommendedGridColumns(value);
-                    localStorage.setItem("libraryGridColumns", String(value));
-                  }}
-                  className="library-page__grid-slider"
-                  aria-label="Grid columns"
-                  title={`${recommendedGridColumns} columns`}
-                />
+                <Tooltip content={`${recommendedGridColumns} columns`}>
+                  <input
+                    type="range"
+                    min="2"
+                    max="10"
+                    value={recommendedGridColumns}
+                    onChange={(event) => {
+                      const value = parseInt(event.target.value, 10);
+                      setRecommendedGridColumns(value);
+                      localStorage.setItem("libraryGridColumns", String(value));
+                    }}
+                    className="library-page__grid-slider"
+                    aria-label="Grid columns"
+                  />
+                </Tooltip>
               )}
-              <button
+              <TooltipButton
                 type="button"
                 onClick={() => {
                   const next = recommendedViewMode === "grid" ? "list" : "grid";
@@ -1438,7 +1441,7 @@ function SearchResultsPage() {
                 ) : (
                   <LayoutGrid className="artist-icon-sm" />
                 )}
-              </button>
+              </TooltipButton>
             </div>
           </div>
         )}
@@ -1480,7 +1483,7 @@ function SearchResultsPage() {
               </div>
 
               <div className="artist-options" ref={albumOptionsMenuRef}>
-                <button
+                <TooltipButton
                   type="button"
                   onClick={() => setAlbumOptionsOpen((current) => !current)}
                   className="btn btn-surface btn-icon-square"
@@ -1489,7 +1492,7 @@ function SearchResultsPage() {
                   aria-expanded={albumOptionsOpen}
                 >
                   <SlidersHorizontal className="artist-icon-sm" />
-                </button>
+                </TooltipButton>
                 {albumOptionsOpen && (
                   <div className="artist-options-menu">
                     {ALBUM_SORT_OPTIONS.map((option) => (
@@ -1507,7 +1510,7 @@ function SearchResultsPage() {
                     ))}
                     <div className="artist-menu-section" />
                     <div className="artist-options-view-grid">
-                      <button
+                      <TooltipButton
                         type="button"
                         onClick={() => {
                           setAlbumViewMode("grid");
@@ -1519,8 +1522,8 @@ function SearchResultsPage() {
                         aria-pressed={albumViewMode === "grid"}
                       >
                         <Grid3X3 className="artist-icon-sm" />
-                      </button>
-                      <button
+                      </TooltipButton>
+                      <TooltipButton
                         type="button"
                         onClick={() => {
                           setAlbumViewMode("list");
@@ -1532,7 +1535,7 @@ function SearchResultsPage() {
                         aria-pressed={albumViewMode === "list"}
                       >
                         <List className="artist-icon-sm" />
-                      </button>
+                      </TooltipButton>
                     </div>
                   </div>
                 )}

@@ -5,6 +5,7 @@ import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { searchUnified } from "../utils/api/endpoints/search.js";
 import { buildBlocklistArtistSuggestions } from "../utils/blocklistSearch.js";
+import TooltipButton from "../components/TooltipButton";
 
 const normalizeArtist = (artist) => ({
   id: artist?.id || artist?.mbid || artist?.foreignArtistId || null,
@@ -156,7 +157,7 @@ export default function BlocklistPage() {
               return (
                 <div className="blocklist-page__item" key={key}>
                   <span>{entry.artistName || entry.artistId}</span>
-                  <button
+                  <TooltipButton
                     type="button"
                     onClick={() => unblockArtist(entry)}
                     disabled={pendingKey === key}
@@ -169,7 +170,7 @@ export default function BlocklistPage() {
                     ) : (
                       <X className="artist-icon-xs" />
                     )}
-                  </button>
+                  </TooltipButton>
                 </div>
               );
             })}

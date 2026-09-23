@@ -16,6 +16,13 @@
   --aurral-surface-mid: var(--aurral-surface-raised);
   --aurral-overlay: var(--aurral-surface-popover);
   --aurral-overlay-hover: var(--aurral-surface-hover);
+  --aurral-overlay-base: #000;
+  --aurral-overlay-foreground: #fff;
+  --aurral-overlay-foreground-soft: #f5f5f5;
+  --aurral-show-overlay-base: #0c0f18;
+  --aurral-show-overlay-artist: #b8bbc7;
+  --aurral-show-overlay-details: #d7dae4;
+  --aurral-show-badge-base: #14141a;
   --aurral-gray: var(--aurral-text-subtle);
   --aurral-gray-light: var(--aurral-text-muted);
   --aurral-white: var(--aurral-text);
@@ -26,6 +33,7 @@
   --aurral-radius-round: 9999px;
   --aurral-control-on: light-dark(#2563eb, #3b82f6);
   --aurral-control-on-contrast: light-dark(#ffffff, #07111f);
+  --aurral-rating: #ffd700;
   --aurral-info: light-dark(#2563eb, #60a5fa);
   --aurral-info-text: light-dark(#1d4ed8, #93c5fd);
   --aurral-info-soft: color-mix(in srgb, var(--aurral-info) 16%, transparent);
@@ -39,6 +47,16 @@
   --aurral-border-strong: color-mix(in srgb, var(--aurral-text) 14%, transparent);
   --aurral-shadow-popover: 0 12px 32px rgb(0 0 0 / 0.28);
   --aurral-shadow-modal: 0 24px 64px rgb(0 0 0 / 0.38);
+  --aurral-shadow-action-icon: 0 1px 1px rgb(0 0 0 / 55%);
+  --aurral-shadow-toast-close: 0 2px 8px rgb(0 0 0 / 0.24);
+  --aurral-shadow-toggle-thumb: 0 1px 2px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --aurral-shadow-toggle-thumb-checked: 0 1px 3px rgba(0, 0, 0, 0.42);
+  --aurral-shadow-toggle-focus-inset: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  --aurral-shadow-flow-popover: 0 10px 24px rgb(0 0 0 / 0.2);
+  --aurral-shadow-flow-modal: 0 16px 36px rgb(0 0 0 / 0.24);
+  --aurral-stage-blueprint-top: #3a7ad1;
+  --aurral-stage-blueprint-mid: #2050ae;
+  --aurral-stage-blueprint-bottom: #101f6e;
   --aurral-surface-grain: none;
   --aurral-sidebar-grain: none;
   --aurral-space-outer: 0.25rem;
@@ -524,7 +542,7 @@ textarea {
 .btn-add-action__icon svg {
   width: 1rem;
   height: 1rem;
-  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 55%));
+  filter: drop-shadow(var(--aurral-shadow-action-icon));
 }
 
 .aurral-tooltip {
@@ -1258,20 +1276,20 @@ textarea {
 }
 
 .sidebar-stage-backdrop__art--blueprint {
-  --stage-bp-top: #3a7ad1;
-  --stage-bp-mid: #2050ae;
-  --stage-bp-bottom: #101f6e;
+  --stage-bp-top: var(--aurral-stage-blueprint-top);
+  --stage-bp-mid: var(--aurral-stage-blueprint-mid);
+  --stage-bp-bottom: var(--aurral-stage-blueprint-bottom);
 }
 
 :root[data-theme="light"] .sidebar-shell--nightly .sidebar-title,
 :root[data-theme="light"] .sidebar-shell--preview .sidebar-title {
-  color: #f5f5f5;
+  color: var(--aurral-overlay-foreground-soft);
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) .sidebar-shell--nightly .sidebar-title,
   :root:not([data-theme]) .sidebar-shell--preview .sidebar-title {
-    color: #f5f5f5;
+    color: var(--aurral-overlay-foreground-soft);
   }
 }
 
@@ -2300,7 +2318,7 @@ textarea {
   border: 1px solid var(--aurral-border-strong);
   border-radius: var(--aurral-radius-round);
   background: color-mix(in srgb, var(--aurral-surface-popover) 92%, transparent);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 0.24);
+  box-shadow: var(--aurral-shadow-toast-close);
   color: var(--aurral-text-muted);
   transition:
     background-color 0.18s ease,
@@ -2854,10 +2872,10 @@ textarea {
 .artist-hero__wash {
   background: linear-gradient(
     to top,
-    rgb(0 0 0 / 0.72) 0%,
-    rgb(0 0 0 / 0.5) 35%,
-    rgb(0 0 0 / 0.22) 70%,
-    rgb(0 0 0 / 0.08) 100%
+    color-mix(in srgb, var(--aurral-overlay-base) 72%, transparent) 0%,
+    color-mix(in srgb, var(--aurral-overlay-base) 50%, transparent) 35%,
+    color-mix(in srgb, var(--aurral-overlay-base) 22%, transparent) 70%,
+    color-mix(in srgb, var(--aurral-overlay-base) 8%, transparent) 100%
   );
 }
 
@@ -2881,7 +2899,7 @@ textarea {
 }
 
 .artist-hero__content--overlay .artist-hero__title {
-  color: #fff;
+  color: var(--aurral-overlay-foreground);
 }
 
 .artist-meta-line {
@@ -2936,9 +2954,9 @@ textarea {
 }
 
 .artist-hero__content--overlay .artist-tag {
-  border-color: rgb(255 255 255 / 0.18);
-  background: rgb(0 0 0 / 0.58);
-  color: #fff;
+  border-color: color-mix(in srgb, var(--aurral-overlay-foreground) 18%, transparent);
+  background: color-mix(in srgb, var(--aurral-overlay-base) 58%, transparent);
+  color: var(--aurral-overlay-foreground);
 }
 
 .artist-tag:hover,
@@ -2949,9 +2967,9 @@ textarea {
 }
 
 .artist-hero__content--overlay .artist-tag:hover {
-  border-color: rgb(255 255 255 / 0.3);
-  background: rgb(0 0 0 / 0.72);
-  color: #fff;
+  border-color: color-mix(in srgb, var(--aurral-overlay-foreground) 30%, transparent);
+  background: color-mix(in srgb, var(--aurral-overlay-base) 72%, transparent);
+  color: var(--aurral-overlay-foreground);
 }
 
 .artist-action-bar {
@@ -3845,7 +3863,7 @@ textarea {
 }
 
 .artist-about-card__wash {
-  background: rgba(0, 0, 0, 0.38);
+  background: color-mix(in srgb, var(--aurral-overlay-base) 38%, transparent);
 }
 
 .artist-rating-badge {
@@ -3859,8 +3877,8 @@ textarea {
   align-items: center;
   justify-content: center;
   border-radius: var(--aurral-radius-round);
-  background: gold;
-  color: #000;
+  background: var(--aurral-rating);
+  color: var(--aurral-overlay-base);
   text-align: center;
 }
 
@@ -3886,7 +3904,7 @@ textarea {
 }
 
 .artist-about-card__body--overlay :is(.artist-about-meta, .artist-about-bio, .artist-modal__subcopy) {
-  color: #fff;
+  color: var(--aurral-overlay-foreground);
 }
 
 .artist-about-meta {
@@ -4043,8 +4061,8 @@ textarea {
   z-index: 1;
   padding: 0.125rem 0.375rem;
   border-radius: var(--aurral-radius-sm);
-  background: rgba(0, 0, 0, 0.7);
-  color: #fff;
+  background: color-mix(in srgb, var(--aurral-overlay-base) 70%, transparent);
+  color: var(--aurral-overlay-foreground);
   font-size: 0.625rem;
   font-weight: 700;
   transform: translate(-10%, 12%);
@@ -4551,7 +4569,7 @@ textarea {
   box-sizing: border-box;
   border: 0;
   border-bottom: 1px solid var(--aurral-border);
-  background: rgba(0, 0, 0, 0.2);
+  background: color-mix(in srgb, var(--aurral-overlay-base) 20%, transparent);
   color: var(--aurral-text);
   padding: 0.85rem 1.25rem;
   font-size: 0.95rem;
@@ -4559,7 +4577,7 @@ textarea {
 
 .file-browser-modal__path:focus {
   outline: none;
-  background: rgba(0, 0, 0, 0.28);
+  background: color-mix(in srgb, var(--aurral-overlay-base) 28%, transparent);
 }
 
 .file-browser-modal__path::placeholder {
@@ -5448,9 +5466,9 @@ textarea {
   inset: 0;
   background: linear-gradient(
     90deg,
-    rgba(12, 15, 24, 0.84) 0%,
-    rgba(12, 15, 24, 0.66) 42%,
-    rgba(12, 15, 24, 0.18) 100%
+    color-mix(in srgb, var(--aurral-show-overlay-base) 84%, transparent) 0%,
+    color-mix(in srgb, var(--aurral-show-overlay-base) 66%, transparent) 42%,
+    color-mix(in srgb, var(--aurral-show-overlay-base) 18%, transparent) 100%
   );
 }
 
@@ -5469,7 +5487,7 @@ textarea {
 }
 
 .artist-show-card__artist--discover {
-  color: #b8bbc7;
+  color: var(--aurral-show-overlay-artist);
   font-size: 0.75rem;
   font-weight: 500;
   overflow: hidden;
@@ -5479,7 +5497,7 @@ textarea {
 
 .artist-show-card__title--discover {
   margin-top: 0.25rem;
-  color: #fff;
+  color: var(--aurral-overlay-foreground);
   font-size: 1.65rem;
   font-weight: 700;
   line-height: 0.98;
@@ -5496,7 +5514,7 @@ textarea {
   min-width: 0;
   flex-direction: column;
   gap: 0.375rem;
-  color: #d7dae4;
+  color: var(--aurral-show-overlay-details);
   font-size: 0.75rem;
 }
 
@@ -5544,8 +5562,8 @@ textarea {
 .artist-show-card__distance-badge--discover {
   padding: 0.25rem 0.625rem;
   border-radius: var(--aurral-radius-sm);
-  background: rgba(20, 20, 26, 0.82);
-  color: #fff;
+  background: color-mix(in srgb, var(--aurral-show-badge-base) 82%, transparent);
+  color: var(--aurral-overlay-foreground);
   font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.05em;
@@ -6668,9 +6686,9 @@ textarea {
   inset: 0;
   background: linear-gradient(
     105deg,
-    rgba(0, 0, 0, 0.72) 0%,
-    rgba(0, 0, 0, 0.42) 42%,
-    rgba(0, 0, 0, 0.18) 100%
+    color-mix(in srgb, var(--aurral-overlay-base) 72%, transparent) 0%,
+    color-mix(in srgb, var(--aurral-overlay-base) 42%, transparent) 42%,
+    color-mix(in srgb, var(--aurral-overlay-base) 18%, transparent) 100%
   );
 }
 
@@ -6787,16 +6805,16 @@ textarea {
     .search-top-artist__name,
     .search-top-artist__meta-row
   ) {
-  color: #fff;
+  color: var(--aurral-overlay-foreground);
 }
 
 .search-top-artist__main--overlay .search-top-artist__eyebrow {
-  color: rgb(255 255 255 / 0.72);
+  color: color-mix(in srgb, var(--aurral-overlay-foreground) 72%, transparent);
 }
 
 .search-top-artist__main--overlay .search-top-artist__cta {
-  background: rgb(255 255 255 / 0.12);
-  color: #fff;
+  background: color-mix(in srgb, var(--aurral-overlay-foreground) 12%, transparent);
+  color: var(--aurral-overlay-foreground);
 }
 
 .search-top-artist__cta-icon {
@@ -12755,13 +12773,13 @@ button.native-library-genre-row:focus-visible {
 .flow-page .artist-dropdown,
 .flow-page .flow-page__library-create-menu,
 .flow-page .flow-page__token-suggestions {
-  box-shadow: 0 10px 24px rgb(0 0 0 / 0.2);
+  box-shadow: var(--aurral-shadow-flow-popover);
   backdrop-filter: none;
 }
 
 .flow-page .artist-modal,
 .flow-page .playlist-modal {
-  box-shadow: 0 16px 36px rgb(0 0 0 / 0.24);
+  box-shadow: var(--aurral-shadow-flow-modal);
   backdrop-filter: none;
 }
 
@@ -13841,8 +13859,8 @@ button.native-library-genre-row:focus-visible {
   align-items: center;
   justify-content: center;
   border-radius: var(--aurral-radius-round);
-  background: rgba(17, 17, 22, 0.76);
-  color: #fff;
+  background: color-mix(in srgb, var(--aurral-overlay-base) 76%, transparent);
+  color: var(--aurral-overlay-foreground);
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, -50%) scale(0.94);
@@ -14075,8 +14093,8 @@ button.native-library-genre-row:focus-visible {
   align-items: center;
   justify-content: center;
   padding: 0.75rem;
-  background: rgb(0 0 0 / 0.52);
-  color: #fff;
+  background: color-mix(in srgb, var(--aurral-overlay-base) 52%, transparent);
+  color: var(--aurral-overlay-foreground);
   font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -14734,8 +14752,8 @@ button.native-library-genre-row:focus-visible {
 }
 
 .artist-details-page .artist-hero .artist-tag {
-  border-color: rgb(255 255 255 / 0.24);
-  background: rgb(0 0 0 / 0.48);
+  border-color: color-mix(in srgb, var(--aurral-overlay-foreground) 24%, transparent);
+  background: color-mix(in srgb, var(--aurral-overlay-base) 48%, transparent);
   backdrop-filter: none;
 }
 
@@ -15143,8 +15161,8 @@ button.native-library-genre-row:focus-visible {
 .artist-show-card__image--discover-overlay {
   background: linear-gradient(
     180deg,
-    rgb(0 0 0 / 0.04) 20%,
-    rgb(0 0 0 / 0.78) 100%
+    color-mix(in srgb, var(--aurral-overlay-base) 4%, transparent) 20%,
+    color-mix(in srgb, var(--aurral-overlay-base) 78%, transparent) 100%
   );
 }
 
@@ -15162,7 +15180,7 @@ button.native-library-genre-row:focus-visible {
 
 .artist-show-card__image-wrap--discover .artist-show-card__artist--discover,
 .artist-show-card__image-wrap--discover .artist-show-card__details--discover {
-  color: rgb(255 255 255 / 0.82);
+  color: color-mix(in srgb, var(--aurral-overlay-foreground) 82%, transparent);
 }
 
 .artist-show-card__title--discover {
@@ -15183,10 +15201,10 @@ button.native-library-genre-row:focus-visible {
 }
 
 .artist-show-card__distance-badge--discover {
-  border: 1px solid rgb(255 255 255 / 0.2);
+  border: 1px solid color-mix(in srgb, var(--aurral-overlay-foreground) 20%, transparent);
   border-radius: var(--aurral-radius-sm);
-  background: rgb(0 0 0 / 0.6);
-  color: #fff;
+  background: color-mix(in srgb, var(--aurral-overlay-base) 60%, transparent);
+  color: var(--aurral-overlay-foreground);
   letter-spacing: 0;
   text-transform: none;
 }

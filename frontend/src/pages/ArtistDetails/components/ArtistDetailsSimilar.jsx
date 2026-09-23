@@ -8,6 +8,7 @@ import { DotLoader } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import ArtistImage from "../../../components/ArtistImage";
 import { ArtistContextMenu } from "../../../components/ArtistContextMenu";
+import TooltipButton from "../../../components/TooltipButton";
 export function ArtistDetailsSimilar({
   loadingSimilar,
   similarArtists,
@@ -93,7 +94,7 @@ export function ArtistDetailsSimilar({
           {loadingSimilar && <DotLoader size="sm" label={null} />}
         </h2>
         <div className="artist-scroll-controls">
-          <button
+          <TooltipButton
             type="button"
             onClick={() => scrollByAmount(-1)}
             className="btn btn-ghost btn-icon-square"
@@ -102,8 +103,8 @@ export function ArtistDetailsSimilar({
             disabled={!canScrollLeft}
           >
             <ChevronLeft className="artist-icon-lg" />
-          </button>
-          <button
+          </TooltipButton>
+          <TooltipButton
             type="button"
             onClick={() => scrollByAmount(1)}
             className="btn btn-ghost btn-icon-square"
@@ -112,7 +113,7 @@ export function ArtistDetailsSimilar({
             disabled={!canScrollRight}
           >
             <ChevronRight className="artist-icon-lg" />
-          </button>
+          </TooltipButton>
         </div>
       </div>
       {loadingSimilar ? (
