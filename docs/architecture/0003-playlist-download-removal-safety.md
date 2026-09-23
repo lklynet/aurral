@@ -23,6 +23,8 @@ Treat playlist removal as a durable cancellation boundary.
 - The delete path cancels matching Honker jobs and known provider work before it clears tracker rows.
 - A pipeline checks the durable state before each phase and before it queues another phase.
 - A finalizer and playlist deletion share the `playlist-mutation:<playlistId>` lock. A finalizer that gets the lock first completes before deletion removes the file. A finalizer that waits sees the cancellation state and does not import the file.
+- Clearing all jobs cancels each tracked job and clears rows under the affected playlist locks, so an in-flight import finishes before its job row can be deleted.
+- Library-track removal waits for provider cleanup before deleting matching jobs or files. If cleanup fails, the library track and job stay in place for a later retry.
 
 When a playlist is created again with the same ID, Aurral advances the generation. Payloads from the removed playlist remain invalid even if their Honker rows survive a restart.
 
@@ -40,3 +42,5 @@ The NZBGet adapter does not expose a verified queue-cancel operation. Aurral the
 ## User-visible behavior
 
 Playlist and flow deletion are queued operations. The UI reports that removal is queued until the background operation completes. Activity can still show work while a provider finishes a request, but that work cannot create a new Aurral playlist file after the cancellation boundary.
+
+Clearing all jobs waits for in-flight playlist imports. If provider cancellation fails, Aurral keeps the jobs and reports that the clear failed. Removing a library track also stops if provider cleanup fails, leaving the track and its job available for retry.
