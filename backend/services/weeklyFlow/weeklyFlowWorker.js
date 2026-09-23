@@ -30,7 +30,6 @@ import {
   isAnyDownloadSourceConfigured,
 } from "../downloadSourceService.js";
 import {
-  getPlaylistDownloadGeneration,
   isPipelinePayloadActive,
 } from "./weeklyFlowDownloadCancellation.js";
 
@@ -791,7 +790,7 @@ export class WeeklyFlowWorker {
       !isPipelinePayloadActive({
         jobId: job.id,
         playlistId: job.playlistId || job.playlistType,
-        playlistGeneration: getPlaylistDownloadGeneration(job.playlistId || job.playlistType),
+        playlistGeneration: job.playlistGeneration,
       })
     ) {
       return;
@@ -848,7 +847,7 @@ export class WeeklyFlowWorker {
         !isPipelinePayloadActive({
           jobId: job.id,
           playlistId: job.playlistId || job.playlistType,
-          playlistGeneration: getPlaylistDownloadGeneration(job.playlistId || job.playlistType),
+          playlistGeneration: job.playlistGeneration,
         })
       ) {
         return;

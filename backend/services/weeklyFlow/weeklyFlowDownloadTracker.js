@@ -91,6 +91,7 @@ function rowToJob(row) {
     albumTrackTitles: parseStringListJson(row.album_track_titles),
     artistAliases: parseStringListJson(row.artist_aliases),
     playlistId: row.playlist_id || row.playlist_type,
+    playlistGeneration: Number(row.playlist_generation ?? 0),
     playlistType: row.playlist_type || row.playlist_id,
     managedBy: row.managed_by === "lidarr" ? "lidarr" : "aurral",
     requestGroupId: row.request_group_id || null,
@@ -143,6 +144,7 @@ const insertStmt = db.prepare(`
     album_track_titles,
     artist_aliases,
     playlist_id,
+    playlist_generation,
     playlist_type,
     managed_by,
     request_group_id,
@@ -163,7 +165,7 @@ const insertStmt = db.prepare(`
     quality_upgrade_checked_at,
     upgrade_for_job_id
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const updateStmt = db.prepare(`
@@ -202,9 +204,6 @@ const deleteAllStmt = db.prepare(`DELETE FROM ${JOBS_TABLE}`);
 const selectAllStmt = db.prepare(`SELECT * FROM ${JOBS_TABLE} ORDER BY created_at ASC, id ASC`);
 const updatePlaylistTypeStmt = db.prepare(
   `UPDATE ${JOBS_TABLE} SET playlist_type = ?, playlist_id = ? WHERE playlist_type = ?`,
-);
-const updatePlaylistIdStmt = db.prepare(
-  `UPDATE ${JOBS_TABLE} SET playlist_id = ? WHERE id = ?`,
 );
 const clearSlskdMetaStmt = db.prepare(`
   UPDATE ${JOBS_TABLE}
@@ -266,7 +265,7 @@ function buildPipelinePayload(job) {
     phase: "search",
     jobId: job.id,
     playlistId,
-    playlistGeneration: getPlaylistDownloadGeneration(playlistId),
+    playlistGeneration: job.playlistGeneration,
     track: {
       artistName: job.artistName,
       trackName: job.trackName,
@@ -581,6 +580,7 @@ export class WeeklyFlowDownloadTracker {
       stringifyStringListJson(job.albumTrackTitles),
       stringifyStringListJson(job.artistAliases),
       job.playlistId || job.playlistType,
+      job.playlistGeneration ?? 0,
       job.playlistType || job.playlistId,
       job.managedBy === "lidarr" ? "lidarr" : "aurral",
       job.requestGroupId ?? null,
@@ -637,13 +637,14 @@ export class WeeklyFlowDownloadTracker {
     this._touchRevision();
   }
 
-  addJob(track, playlistType) {
+  addJob(track, playlistType, options = {}) {
     const id = randomUUID();
     const artistName = String(track?.artistName || "").trim();
     const trackName = String(track?.trackName || "").trim();
     if (!artistName || !trackName) {
       return null;
     }
+    const playlistId = options?.playlistId || playlistType;
     const job = {
       id,
       artistName,
@@ -662,7 +663,10 @@ export class WeeklyFlowDownloadTracker {
       albumTrackCount: normalizePositiveInteger(track?.albumTrackCount),
       albumTrackTitles: normalizeStringList(track?.albumTrackTitles),
       artistAliases: normalizeStringList(track?.artistAliases),
-      playlistId: playlistType,
+      playlistId,
+      playlistGeneration: Number.isInteger(options?.playlistGeneration)
+        ? options.playlistGeneration
+        : getPlaylistDownloadGeneration(playlistId),
       playlistType,
       managedBy: track?.managedBy === "lidarr" ? "lidarr" : "aurral",
       requestGroupId: track?.requestGroupId
@@ -713,11 +717,13 @@ export class WeeklyFlowDownloadTracker {
   addUpgradeJob(sourceJob) {
     if (!sourceJob?.id || sourceJob.status !== "done" || !sourceJob.finalPath) return null;
     if (this.findActiveUpgradeJob(sourceJob)) return null;
-    const id = this.addJob(sourceJob, "quality-upgrade");
+    const playlistId = sourceJob.playlistId || sourceJob.playlistType;
+    const id = this.addJob(sourceJob, "quality-upgrade", {
+      playlistId,
+      playlistGeneration: sourceJob.playlistGeneration,
+    });
     const job = this.jobs.get(id);
-    job.playlistId = sourceJob.playlistId || sourceJob.playlistType;
     job.upgradeForJobId = sourceJob.id;
-    updatePlaylistIdStmt.run(job.playlistId, id);
     this.pendingSet.delete(id);
     this.pendingRetrySet.delete(id);
     this._removeFromPendingQueues(id);
@@ -915,9 +921,7 @@ export class WeeklyFlowDownloadTracker {
       isPipelinePayloadActive({
         jobId: job.id,
         playlistId: job.playlistId || job.playlistType,
-        playlistGeneration: getPlaylistDownloadGeneration(
-          job.playlistId || job.playlistType,
-        ),
+        playlistGeneration: job.playlistGeneration,
       }) &&
       accepts(job);
     this.pendingFreshQueue = this._compactPendingQueue(this.pendingFreshQueue);

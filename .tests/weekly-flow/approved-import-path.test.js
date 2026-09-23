@@ -15,6 +15,7 @@ const [
   { db },
   { dbOps },
   { downloadTracker },
+  cancellationModule,
   { flowPlaylistConfig },
   { playlistManager },
   { weeklyFlowWorker },
@@ -26,6 +27,7 @@ const [
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+  "backend/services/weeklyFlow/weeklyFlowDownloadCancellation.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
   "backend/services/weeklyFlow/weeklyFlowWorker.js",
@@ -33,6 +35,12 @@ const [
   "backend/routes/weeklyFlow/handlers/jobs.js",
   "backend/services/libraryMediaStore.js",
 );
+
+const {
+  activatePlaylistDownloadGeneration,
+  cancelPlaylistDownloadGeneration,
+  getPlaylistDownloadGeneration,
+} = cancellationModule;
 
 const app = express();
 app.use(express.json());
@@ -175,6 +183,46 @@ test("approving a reviewed download commits it inside the managed playlist libra
   assert.equal(downloadTracker.getJob(jobId)?.finalPath, expectedPath);
   assert.equal(await fs.readFile(expectedPath, "utf8"), "reviewed audio");
   await assert.rejects(fs.access(path.join(playlistManager.libraryRoot, "Reviewed.m3u")));
+});
+
+test("approval cannot commit an orphaned job into a recreated playlist", async () => {
+  const playlistId = "reviewed-stale-generation";
+  flowPlaylistConfig.createSharedPlaylist({
+    id: playlistId,
+    name: "Reviewed stale generation",
+    tracks: [],
+  });
+  activatePlaylistDownloadGeneration(playlistId);
+  cancelPlaylistDownloadGeneration(playlistId);
+  const cancelledGeneration = getPlaylistDownloadGeneration(playlistId);
+
+  const sourcePath = path.join(isolatedState.baseDir, "review", "Stale Track.flac");
+  await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+  await fs.writeFile(sourcePath, "reviewed audio");
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Stale Track", albumName: "Album" },
+    playlistId,
+  );
+  downloadTracker.setBlocked(jobId, "blocked-duration-mismatch", sourcePath);
+
+  assert.equal(
+    activatePlaylistDownloadGeneration(playlistId),
+    cancelledGeneration + 1,
+  );
+
+  const response = await fetch(`${baseUrl}/jobs/${jobId}/approve`, { method: "POST" });
+  const payload = await response.json();
+  const expectedPath = path.join(
+    process.env.DOWNLOAD_FOLDER,
+    "Artist",
+    "Album",
+    "Stale Track.flac",
+  );
+
+  assert.equal(response.status, 409, JSON.stringify(payload));
+  assert.equal(downloadTracker.getJob(jobId)?.status, "blocked");
+  assert.equal(await fs.readFile(sourcePath, "utf8"), "reviewed audio");
+  await assert.rejects(fs.access(expectedPath));
 });
 
 test("approving a reviewed upgrade replaces the source playlist file", async (t) => {

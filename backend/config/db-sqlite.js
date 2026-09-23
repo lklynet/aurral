@@ -137,6 +137,7 @@ db.exec(`
     album_track_titles TEXT,
     artist_aliases TEXT,
     playlist_id TEXT NOT NULL,
+    playlist_generation INTEGER NOT NULL DEFAULT 0,
     playlist_type TEXT,
     status TEXT NOT NULL,
     staging_path TEXT,
@@ -549,6 +550,11 @@ const tableColumns = db
   .all()
   .map((column) => column.name);
 
+if (!tableColumns.includes("playlist_generation")) {
+  tryAddColumn(
+    "ALTER TABLE playlist_download_jobs ADD COLUMN playlist_generation INTEGER NOT NULL DEFAULT 0",
+  );
+}
 if (!tableColumns.includes("album_name")) {
   tryAddColumn("ALTER TABLE playlist_download_jobs ADD COLUMN album_name TEXT");
 }

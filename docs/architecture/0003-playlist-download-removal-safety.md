@@ -16,7 +16,9 @@ Treat playlist removal as a durable cancellation boundary.
 - SQLite stores cancellation tombstones for individual jobs.
 - For providers whose work can outlive a pipeline payload, SQLite records the operation ID as soon as work is created; the durable provider-work path currently covers slskd searches.
 - Playlist-scoped cleanup includes quality-upgrade jobs whose owning playlist ID is stored separately from their queue type.
-- Each new download payload carries the playlist generation.
+- Each download job stores the playlist generation that was active when Aurral created it.
+- The worker, pipeline payload, and commit handler use the stored generation.
+  They never substitute the playlist's current generation.
 - The delete path marks the playlist cancelled before it waits for the playlist mutation lock.
 - The delete path cancels matching Honker jobs and known provider work before it clears tracker rows.
 - A pipeline checks the durable state before each phase and before it queues another phase.

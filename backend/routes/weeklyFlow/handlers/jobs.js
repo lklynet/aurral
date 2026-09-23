@@ -28,7 +28,6 @@ import {
 } from "../../../services/playlistDownloadUtils.js";
 import { finalizePipelineJobSuccess } from "../../../services/pipelineHelpers.js";
 import {
-  getPlaylistDownloadGeneration,
   withPipelineCommitLock,
 } from "../../../services/weeklyFlow/weeklyFlowDownloadCancellation.js";
 import path from "path";
@@ -317,7 +316,7 @@ export function registerJobs(router) {
         {
           jobId: job.id,
           playlistId,
-          playlistGeneration: getPlaylistDownloadGeneration(playlistId),
+          playlistGeneration: job.playlistGeneration,
         },
         async () => {
           const committedPath = await commitImportToPlaylistLibrary(sourcePath, finalPath);

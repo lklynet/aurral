@@ -93,6 +93,67 @@ test("playlist deletion invalidates queued payloads across recreation", () => {
   assert.equal(getPlaylistDownloadGeneration(playlistId), recreatedGeneration);
 });
 
+test("orphaned playlist jobs stay inactive after recreation and tracker reload", () => {
+  const playlistId = "orphaned-playlist-job";
+  activatePlaylistDownloadGeneration(playlistId);
+  cancelPlaylistDownloadGeneration(playlistId);
+
+  const orphanedJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Orphaned Song" },
+    playlistId,
+  );
+  const orphanedGeneration = getPlaylistDownloadGeneration(playlistId);
+  const activeGeneration = activatePlaylistDownloadGeneration(playlistId);
+  const activeJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Current Song" },
+    playlistId,
+  );
+
+  dbOps.updateSettings({
+    ...dbOps.getSettings(),
+    integrations: {
+      slskd: { enabled: true, url: "http://127.0.0.1:1", apiKey: "test-key" },
+    },
+  });
+
+  assert.equal(activeGeneration, orphanedGeneration + 1);
+  assert.equal(downloadTracker.enqueueDownloadPipeline(orphanedJobId), false);
+  assert.equal(downloadTracker.getNextPending()?.id, activeJobId);
+  assert.equal(downloadTracker.getJob(activeJobId)?.playlistGeneration, activeGeneration);
+  assert.equal(downloadTracker.getJob(orphanedJobId)?.playlistGeneration, orphanedGeneration);
+
+  const reloadedTracker = new trackerModule.WeeklyFlowDownloadTracker();
+  assert.equal(reloadedTracker.getJob(orphanedJobId)?.playlistGeneration, orphanedGeneration);
+  assert.equal(reloadedTracker.getNextPending()?.id, activeJobId);
+});
+
+test("quality-upgrade jobs retain their source playlist generation", () => {
+  const playlistId = "upgrade-playlist-generation";
+  activatePlaylistDownloadGeneration(playlistId);
+  cancelPlaylistDownloadGeneration(playlistId);
+  activatePlaylistDownloadGeneration(playlistId);
+  const sourceJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Owned Song" },
+    playlistId,
+  );
+  downloadTracker.setDone(sourceJobId, "/library/Owned Song.mp3", "Album");
+  const playlistGeneration = getPlaylistDownloadGeneration(playlistId);
+
+  const upgradeJobId = downloadTracker.addUpgradeJob(downloadTracker.getJob(sourceJobId));
+
+  assert.ok(upgradeJobId);
+  assert.equal(downloadTracker.getJob(sourceJobId)?.playlistGeneration, playlistGeneration);
+  assert.equal(
+    downloadTracker.getJob(upgradeJobId)?.playlistGeneration,
+    playlistGeneration,
+  );
+  assert.equal(
+    db.prepare("SELECT playlist_generation FROM playlist_download_jobs WHERE id = ?")
+      .get(upgradeJobId)?.playlist_generation,
+    playlistGeneration,
+  );
+});
+
 test("job cancellation remains effective after the tracker row is removed", () => {
   const payload = {
     jobId: "job-removed",
