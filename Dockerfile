@@ -52,7 +52,7 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
 RUN python3 -m venv /opt/aurral-matcher && \
     /opt/aurral-matcher/bin/pip install --no-compile -r /tmp/aurral-matcher-requirements.txt && \
-    /opt/aurral-matcher/bin/python -c "import beets; assert beets.__version__ == '2.14.0'"
+    /opt/aurral-matcher/bin/python -c "import beets; assert beets.__version__ == '2.14.1'"
 
 FROM node-base AS runtime
 

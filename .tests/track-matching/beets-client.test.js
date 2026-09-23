@@ -34,7 +34,7 @@ test("runtime self-test rejects an unpinned beets version", { skip: hasSystemPyt
   assert.equal(status.protocolVersion, null);
   assert.equal(status.error.code, "version_mismatch");
   assert.equal(status.error.found, "stub-1.0.0");
-  assert.equal(status.error.required, "2.14.0");
+  assert.equal(status.error.required, "2.14.1");
 });
 
 test("beets client surfaces structured errors from the matcher", { skip: hasSystemPython ? false : "python3 unavailable" }, async () => {
