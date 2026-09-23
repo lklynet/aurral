@@ -113,6 +113,13 @@ async function cancelSlskdWork(payloads, jobs, providerWork = []) {
     const searchId = normalizeId(work.work_id);
     if (searchId) searchIds.add(searchId);
   }
+  if ((searchIds.size > 0 || transfers.size > 0) && !client?.isConfigured?.()) {
+    logger.warn("slskd", "Skipping slskd cancellation because slskd is not configured", {
+      searches: searchIds.size,
+      transfers: transfers.size,
+    });
+    return { searches: 0, transfers: 0, skipped: true };
+  }
   for (const searchId of searchIds) {
     const deleted = await attemptProviderCleanup(
       failures,
@@ -159,6 +166,12 @@ async function cancelDeemixWork(payloads, jobs) {
       queueIds.add(normalizeId(job.downloadClientId));
     }
   }
+  if (queueIds.size > 0 && !client?.isConfigured?.()) {
+    logger.warn("deemix", "Skipping deemix cancellation because deemix is not configured", {
+      queueItems: queueIds.size,
+    });
+    return { queueItems: 0, skipped: true };
+  }
   for (const queueId of queueIds) {
     if (!queueId) continue;
     await attemptProviderCleanup(
@@ -190,6 +203,12 @@ async function cancelSabnzbdWork(payloads, jobs) {
       const id = normalizeId(payload.nzbId);
       if (id) ids.add(id);
     }
+  }
+  if (ids.size > 0 && !client?.isConfigured?.()) {
+    logger.warn("sabnzbd", "Skipping SABnzbd cancellation because SABnzbd is not configured", {
+      items: ids.size,
+    });
+    return { historyItems: 0, skipped: true };
   }
   for (const id of ids) {
     for (const [message, cleanup] of [

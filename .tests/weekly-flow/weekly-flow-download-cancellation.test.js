@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 import {
   setupIsolatedBackend,
@@ -20,6 +22,7 @@ const [
   honkerModule,
   cancellationServiceModule,
   dbHelpersModule,
+  downloadFolderConfigModule,
 ] = await setupIsolatedBackend(
   "weekly-flow-download-cancellation",
   "backend/config/db-sqlite.js",
@@ -32,12 +35,14 @@ const [
   "backend/services/honkerDb.js",
   "backend/services/weeklyFlow/weeklyFlowDownloadCancellationService.js",
   "backend/db/helpers/index.js",
+  "backend/services/downloadFolderConfig.js",
 );
 
 const {
   activatePlaylistDownloadGeneration,
   cancelDownloadJob,
   cancelPlaylistDownloadGeneration,
+  clearDownloadProviderWork,
   getPlaylistDownloadGeneration,
   isPipelinePayloadActive,
   listDownloadProviderWork,
@@ -51,6 +56,7 @@ const { weeklyFlowWorker } = workerModule;
 const { enqueuePipelineJob, listHonkerJobs } = honkerModule;
 const { markPlaylistDownloadWorkCancelled } = cancellationServiceModule;
 const { dbOps } = dbHelpersModule;
+const { resolveYtdlpStagingRoot } = downloadFolderConfigModule;
 
 test.beforeEach(async () => {
   await resetDatabase(db);
@@ -409,5 +415,82 @@ test("failed provider cancellation keeps durable slskd work for a later retry", 
   } finally {
     dbOps.updateSettings(originalSettings);
     await mock.close();
+  }
+});
+
+test("playlist cancellation skips unconfigured remote providers but removes yt-dlp staging", async () => {
+  const playlistId = "unconfigured-provider-playlist";
+  const originalSettings = dbOps.getSettings();
+
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {},
+  });
+  flowPlaylistConfig.createSharedPlaylist({
+    id: playlistId,
+    name: "Unconfigured Provider Playlist",
+    tracks: [],
+  });
+  const slskdJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Slskd Song" },
+    playlistId,
+  );
+  const deemixJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Deemix Song" },
+    playlistId,
+  );
+  downloadTracker.updateDownloadMetadata(deemixJobId, {
+    downloadSource: "deemix",
+    downloadClientId: "unconfigured-deemix-queue",
+  });
+  const sabnzbdJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "SABnzbd Song" },
+    playlistId,
+  );
+  downloadTracker.updateDownloadMetadata(sabnzbdJobId, {
+    downloadClient: "sabnzbd",
+    downloadClientId: "unconfigured-sabnzbd-item",
+  });
+  const ytdlpJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "yt-dlp Song" },
+    playlistId,
+  );
+  downloadTracker.updateDownloadMetadata(ytdlpJobId, { downloadClient: "ytdlp" });
+  const stagingPath = path.join(resolveYtdlpStagingRoot(""), "ytdlp", ytdlpJobId);
+  await fs.mkdir(stagingPath, { recursive: true });
+  await fs.writeFile(path.join(stagingPath, "partial.m4a"), "partial download");
+  registerDownloadProviderWork({
+    jobId: slskdJobId,
+    playlistId,
+    provider: "slskd-search",
+    workId: "unconfigured-search",
+  });
+
+  try {
+    const result = await cancellationServiceModule.cancelPlaylistDownloadWork(
+      playlistId,
+      downloadTracker.getByPlaylistId(playlistId),
+    );
+
+    assert.equal(result.provider.slskd.skipped, true);
+    assert.equal(result.provider.deemix.skipped, true);
+    assert.equal(result.provider.sabnzbd.skipped, true);
+    assert.equal(result.provider.ytdlp.stagingJobs, 1);
+    await assert.rejects(fs.access(stagingPath));
+    assert.equal(
+      listDownloadProviderWork({ playlistId, provider: "slskd-search" }).length,
+      1,
+    );
+    assert.equal(
+      isPipelinePayloadActive({ jobId: slskdJobId, playlistId, playlistGeneration: 0 }),
+      false,
+    );
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    clearDownloadProviderWork({ provider: "slskd-search", workId: "unconfigured-search" });
+    for (const jobId of [slskdJobId, deemixJobId, sabnzbdJobId, ytdlpJobId]) {
+      downloadTracker.removeJob(jobId);
+    }
+    await fs.rm(stagingPath, { recursive: true, force: true });
   }
 });
