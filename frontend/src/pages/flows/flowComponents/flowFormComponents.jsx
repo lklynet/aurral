@@ -85,7 +85,7 @@ export function FlowScheduleFields({
                     className={`flow-page__weekday${checked ? " is-active" : ""}`}
                     aria-label={day.full}
                     aria-pressed={checked}
-                    disabled={checked && scheduleDays.length === 1}
+                    aria-disabled={checked && scheduleDays.length === 1}
                     onClick={() =>
                       updateDraft((prev) => {
                         const current = Array.isArray(prev?.scheduleDays) ? prev.scheduleDays : [];
@@ -193,6 +193,7 @@ export function FlowFormFields({
   };
   const normalizedMix = normalizeMixPercent(draft?.mix);
   const totalSize = Math.max(0, Math.round(Number(draft?.size) || 0));
+  const isDeepDiveDisabled = Object.keys(disabledSources || {}).length > 0;
   const { focusEnabled, focusValidationError } = getFocusDraftValidation(
     draft,
     normalizeMixPercent,
@@ -244,21 +245,22 @@ export function FlowFormFields({
             disabledSources={disabledSources}
             trailingControl={
               <Tooltip content={
-                  Object.keys(disabledSources || {}).length > 0
+                  isDeepDiveDisabled
                     ? "Last.fm API key required. Deep Dive skips the most obvious tracks and pulls tracks ranked 10-25."
                     : "Deep Dive skips the most obvious tracks and pulls tracks ranked 10-25."
                 }>
                 <button
                   type="button"
-                  onClick={() =>
+                  onClick={() => {
+                    if (isDeepDiveDisabled) return;
                     updateDraft((prev) => ({
                       ...prev,
                       deepDive: !(prev?.deepDive === true),
-                    }))
-                  }
-                  className={`flow-page__mix-toggle flow-page__mix-toggle--feature${draft.deepDive === true ? " is-active" : ""}${Object.keys(disabledSources || {}).length > 0 ? " is-disabled" : ""}`}
+                    }));
+                  }}
+                  className={`flow-page__mix-toggle flow-page__mix-toggle--feature${draft.deepDive === true ? " is-active" : ""}${isDeepDiveDisabled ? " is-disabled" : ""}`}
                   aria-pressed={draft.deepDive === true}
-                  disabled={Object.keys(disabledSources || {}).length > 0}
+                  aria-disabled={isDeepDiveDisabled}
                   aria-label={`Deep Dive ${draft.deepDive === true ? "on" : "off"}. Deep Dive pulls tracks ranked 10 through 25 instead of the top 10.`}
                 >
                   <span>Deep Dive</span>

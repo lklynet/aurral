@@ -11507,7 +11507,7 @@ button.native-library-genre-row:focus-visible {
     opacity 0.18s ease;
 }
 
-.flow-page__weekday:hover {
+.flow-page__weekday:hover:not([aria-disabled="true"]) {
   background: var(--aurral-surface-hover);
   color: var(--aurral-text);
 }
@@ -11523,7 +11523,7 @@ button.native-library-genre-row:focus-visible {
   outline-offset: 1px;
 }
 
-.flow-page__weekday:disabled {
+.flow-page__weekday[aria-disabled="true"] {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -11582,12 +11582,12 @@ button.native-library-genre-row:focus-visible {
     transform 0.15s ease;
 }
 
-.flow-page__mix-toggle:hover:not(:disabled) {
+.flow-page__mix-toggle:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--aurral-surface-hover);
   color: var(--aurral-text);
 }
 
-.flow-page__mix-toggle:active:not(:disabled) {
+.flow-page__mix-toggle:active:not(:disabled):not([aria-disabled="true"]) {
   transform: scale(0.97);
 }
 
