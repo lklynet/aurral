@@ -65,8 +65,10 @@ function SortableQuality({ id, enabled, cutoff, aboveCutoff, onToggle, onCutoff 
           type="button"
           className={`quality-profile-row__state${enabled ? " is-active" : ""}`}
           aria-pressed={enabled}
-          disabled={cutoff}
-          onClick={() => onToggle(id)}
+          aria-disabled={cutoff}
+          onClick={() => {
+            if (!cutoff) onToggle(id);
+          }}
         >
           {enabled ? "Allowed" : "Not allowed"}
         </button>

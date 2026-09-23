@@ -175,7 +175,15 @@ function hasVisibleText(node) {
   }
   if (node.type === "LogicalExpression") return hasVisibleText(node.right);
   if (node.type === "ArrayExpression") return node.elements.some(hasVisibleText);
-  if (node.type === "CallExpression" || node.type === "Identifier") return true;
+  if (
+    node.type === "CallExpression" ||
+    node.type === "Identifier" ||
+    node.type === "MemberExpression" ||
+    node.type === "ChainExpression" ||
+    node.type === "TaggedTemplateExpression"
+  ) {
+    return true;
+  }
   return false;
 }
 

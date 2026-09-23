@@ -120,3 +120,27 @@ test("shared control rules accept Aurral button patterns and named exceptions", 
     ],
   });
 });
+
+test("shared control rules treat dynamic text expressions as visible button content", () => {
+  tester.run("aurral/shared-controls-visible-expressions", sharedControlRules, {
+    valid: [
+      {
+        code: 'const view = <button className="btn btn-secondary">{artist.name}</button>;',
+        options: controlOptions,
+      },
+      {
+        code: 'const view = <button className="btn btn-secondary">{artist?.name}</button>;',
+        options: controlOptions,
+      },
+      {
+        code: 'function Button({ props }) { return <button className="btn btn-secondary">{props.children}</button>; }',
+        options: controlOptions,
+      },
+      {
+        code: 'const view = <button className="btn btn-secondary">{label`Open ${artist.name}`}</button>;',
+        options: controlOptions,
+      },
+    ],
+    invalid: [],
+  });
+});

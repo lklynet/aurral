@@ -10334,7 +10334,7 @@ button.native-library-genre-row:focus-visible {
   color: var(--aurral-text-muted);
 }
 
-.quality-profile-row__state:disabled {
+.quality-profile-row__state[aria-disabled="true"] {
   cursor: default;
 }
 
@@ -10366,7 +10366,7 @@ button.native-library-genre-row:focus-visible {
   cursor: pointer;
 }
 
-.quality-profile-row__state:hover,
+.quality-profile-row__state:hover:not([aria-disabled="true"]),
 .quality-profile-row__cutoff:hover:not(:disabled) {
   background: var(--aurral-surface-hover);
   color: var(--aurral-text);

@@ -924,7 +924,7 @@ export function FlowTracksPanel({
                               />
                             </TooltipButton>
                           ) : null}
-                          <Tooltip content={track.trackName}>
+                          <Tooltip content={showTrackAvailability ? track.trackName : undefined}>
                             <span className="flow-page__tracks-table-cell-text" >{track.trackName}</span>
                           </Tooltip>
                         </span>
