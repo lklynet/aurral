@@ -361,28 +361,19 @@ export async function cancelDownloadWorkForJobs(jobs = [], { lock = true } = {})
 }
 
 export async function clearAllDownloadJobs(downloadTracker) {
-  let jobs = downloadTracker.getAll();
-  while (true) {
-    const processedJobIds = new Set(
-      jobs.map((job) => normalizeId(job?.id)).filter(Boolean),
-    );
-    await cancelDownloadWorkForJobs(jobs);
-    const result = await withPlaylistCancellationLocks(
-      jobs.map((job) => normalizeId(job?.playlistId || job?.playlistType)),
-      () => {
-        const unprocessedJobs = downloadTracker
-          .getAll()
-          .filter((job) => !processedJobIds.has(normalizeId(job?.id)));
-        if (unprocessedJobs.length > 0) return { unprocessedJobs };
-        return { cleared: downloadTracker.clearAll() };
-      },
-    );
-    if (result.unprocessedJobs) {
-      jobs = result.unprocessedJobs;
-      continue;
-    }
-    return result.cleared;
-  }
+  const jobs = downloadTracker.getAll();
+  if (jobs.length === 0) return 0;
+  await cancelDownloadWorkForJobs(jobs);
+  return withPlaylistCancellationLocks(
+    jobs.map((job) => normalizeId(job?.playlistId || job?.playlistType)),
+    () => {
+      let cleared = 0;
+      for (const job of jobs) {
+        if (downloadTracker.removeJob(job.id)) cleared += 1;
+      }
+      return cleared;
+    },
+  );
 }
 
 export async function cancelPlaylistDownloadWork(playlistId, jobs = []) {

@@ -266,6 +266,7 @@ test("clearing all jobs waits for an in-flight playlist import to finish", async
   await commitEntered;
 
   const clearPromise = fetch(`${baseUrl}/jobs/all`, { method: "DELETE" });
+  let concurrentJobId;
   try {
     const state = await Promise.race([
       (async () => {
@@ -282,6 +283,10 @@ test("clearing all jobs waits for an in-flight playlist import to finish", async
 
     assert.equal(state, "cancelled");
     assert.ok(downloadTracker.getJob(jobId));
+    concurrentJobId = downloadTracker.addJob(
+      { artistName: "Another Artist", trackName: "Another Track" },
+      "created-during-clear",
+    );
   } finally {
     releaseCommit();
     await Promise.allSettled([commitPromise, clearPromise]);
@@ -294,6 +299,8 @@ test("clearing all jobs waits for an in-flight playlist import to finish", async
   assert.equal(clearResponse.status, 200, JSON.stringify(clearPayload));
   assert.equal(await fs.readFile(finalPath, "utf8"), "downloaded audio");
   assert.equal(downloadTracker.getJob(jobId), null);
+  assert.ok(downloadTracker.getJob(concurrentJobId));
+  downloadTracker.removeJob(concurrentJobId);
 });
 
 test("approving a reviewed upgrade replaces the source playlist file", async (t) => {
