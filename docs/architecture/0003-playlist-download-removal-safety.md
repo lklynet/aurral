@@ -35,12 +35,14 @@ Aurral cancels provider work when the adapter exposes a verified operation:
 - slskd searches recorded durably or found in the pipeline payload are deleted; transfer IDs found in the pipeline payload are also deleted.
 - deemix queue items are removed.
 - SABnzbd queue and history items are removed when a job has a known ID.
-- yt-dlp staging is removed, and an active yt-dlp process checks the durable job cancellation state.
+- yt-dlp staging is removed locally, and an active yt-dlp process checks the durable job cancellation state.
 
 The NZBGet adapter does not expose a verified queue-cancel operation. Aurral therefore stops the Aurral pipeline and refuses to import a result after removal, but it does not claim that NZBGet stopped the remote download.
+
+If slskd, deemix, or SABnzbd is no longer configured, Aurral logs and skips remote cleanup. Durable cancellation still prevents Aurral from processing or importing the result, but the provider-side work may continue. yt-dlp staging cleanup does not require yt-dlp to be configured because it removes local files.
 
 ## User-visible behavior
 
 Playlist and flow deletion are queued operations. The UI reports that removal is queued until the background operation completes. Activity can still show work while a provider finishes a request, but that work cannot create a new Aurral playlist file after the cancellation boundary.
 
-Clearing all jobs waits for in-flight playlist imports. Jobs created after the clear starts stay queued. If provider cancellation fails, Aurral keeps the jobs and reports that the clear failed. Removing a library track also stops if provider cleanup fails, leaving the track and its job available for retry.
+Clearing all jobs waits for in-flight playlist imports. Jobs created after the clear starts stay queued. If provider cleanup fails, Aurral keeps the affected jobs in a failed state with a cancellation-pending reason and reports the error. Durable cancellation prevents those jobs from running or importing results. After restoring the provider connection, retry clearing all jobs to try remote cleanup again. Removing a library track stops if a configured provider rejects cleanup, leaving the track and its job available for retry. If a remote provider is no longer configured, Aurral logs and skips remote cleanup, then completes local removal while retaining cancellation state.

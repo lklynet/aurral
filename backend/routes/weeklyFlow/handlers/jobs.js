@@ -377,7 +377,7 @@ export function registerJobs(router) {
         reason: error?.message || String(error),
       });
       return res.status(500).json({
-        error: "Failed to cancel active downloads. Download jobs were kept.",
+        error: "Some provider work could not be cancelled. Affected jobs were stopped in Aurral and marked failed. Retry clearing jobs after fixing the provider connection.",
       });
     }
   });

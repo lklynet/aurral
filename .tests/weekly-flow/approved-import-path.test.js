@@ -7,6 +7,7 @@ import express from "express";
 import {
   setupIsolatedBackend,
   cleanupIsolatedState,
+  createMockHttpServer,
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
@@ -44,6 +45,9 @@ const {
   getPlaylistDownloadGeneration,
   isPipelinePayloadActive,
   withPipelineCommitLock,
+  clearDownloadProviderWork,
+  listDownloadProviderWork,
+  registerDownloadProviderWork,
 } = cancellationModule;
 
 const app = express();
@@ -301,6 +305,62 @@ test("clearing all jobs waits for an in-flight playlist import to finish", async
   assert.equal(downloadTracker.getJob(jobId), null);
   assert.ok(downloadTracker.getJob(concurrentJobId));
   downloadTracker.removeJob(concurrentJobId);
+});
+
+test("failed clear-all leaves jobs stopped and visible so provider cleanup can be retried", async () => {
+  const playlistId = "clear-all-provider-failure";
+  const originalSettings = dbOps.getSettings();
+  let providerStatus = 503;
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    response.writeHead(providerStatus);
+    response.end();
+  });
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Provider failure song" },
+    playlistId,
+  );
+  registerDownloadProviderWork({
+    jobId,
+    playlistId,
+    provider: "slskd-search",
+    workId: "clear-all-retry-search",
+  });
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      slskd: { enabled: true, url: mock.url, apiKey: "test-key" },
+    },
+  });
+
+  try {
+    const failedResponse = await fetch(`${baseUrl}/jobs/all`, { method: "DELETE" });
+    const failedPayload = await failedResponse.json();
+    const stoppedJob = downloadTracker.getJob(jobId);
+
+    assert.equal(failedResponse.status, 500);
+    assert.match(failedPayload.error, /stopped in Aurral and marked failed/i);
+    assert.equal(stoppedJob.status, "failed");
+    assert.match(stoppedJob.error, /provider cancellation pending/i);
+    assert.equal(
+      isPipelinePayloadActive({ jobId, playlistId, playlistGeneration: 0 }),
+      false,
+    );
+    assert.equal(listDownloadProviderWork({ jobIds: [jobId] }).length, 1);
+
+    providerStatus = 204;
+    const retryResponse = await fetch(`${baseUrl}/jobs/all`, { method: "DELETE" });
+    const retryPayload = await retryResponse.json();
+    assert.equal(retryResponse.status, 200, JSON.stringify(retryPayload));
+    assert.equal(retryPayload.cleared, 1);
+    assert.equal(downloadTracker.getJob(jobId), null);
+    assert.equal(listDownloadProviderWork({ jobIds: [jobId] }).length, 0);
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    clearDownloadProviderWork({ provider: "slskd-search", workId: "clear-all-retry-search" });
+    downloadTracker.removeJob(jobId);
+    await mock.close();
+  }
 });
 
 test("approving a reviewed upgrade replaces the source playlist file", async (t) => {

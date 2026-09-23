@@ -382,17 +382,27 @@ export async function cancelDownloadWorkForJobs(jobs = [], { lock = true } = {})
 export async function clearAllDownloadJobs(downloadTracker) {
   const jobs = downloadTracker.getAll();
   if (jobs.length === 0) return 0;
-  await cancelDownloadWorkForJobs(jobs);
-  return withPlaylistCancellationLocks(
-    jobs.map((job) => normalizeId(job?.playlistId || job?.playlistType)),
-    () => {
-      let cleared = 0;
+  const playlistIds = jobs.map((job) => normalizeId(job?.playlistId || job?.playlistType));
+  try {
+    await cancelDownloadWorkForJobs(jobs);
+  } catch (error) {
+    await withPlaylistCancellationLocks(playlistIds, () => {
       for (const job of jobs) {
-        if (downloadTracker.removeJob(job.id)) cleared += 1;
+        downloadTracker.setFailed(
+          job.id,
+          `Provider cancellation pending: ${error?.message || String(error)}`,
+        );
       }
-      return cleared;
-    },
-  );
+    });
+    throw error;
+  }
+  return withPlaylistCancellationLocks(playlistIds, () => {
+    let cleared = 0;
+    for (const job of jobs) {
+      if (downloadTracker.removeJob(job.id)) cleared += 1;
+    }
+    return cleared;
+  });
 }
 
 export async function cancelPlaylistDownloadWork(playlistId, jobs = []) {
