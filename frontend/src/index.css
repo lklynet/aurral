@@ -6884,7 +6884,7 @@ textarea {
   .sidebar-link:active,
   .sidebar-subnav-link:active,
   .artist-segmented-button:active:not(:disabled),
-  .flow-page__mix-toggle:active:not(:disabled),
+  .flow-page__mix-toggle:active:not(:disabled):not([aria-disabled="true"]),
   .flow-page__library-create-btn:active:not(:disabled),
   .pill-toggle:active::before {
     transform: none;
@@ -6899,7 +6899,7 @@ textarea {
   .app-mobile-nav__item:active,
   .sidebar-link:active,
   .sidebar-subnav-link:active,
-  .flow-page__mix-toggle:active:not(:disabled) {
+  .flow-page__mix-toggle:active:not(:disabled):not([aria-disabled="true"]) {
     opacity: 0.82;
   }
 }
