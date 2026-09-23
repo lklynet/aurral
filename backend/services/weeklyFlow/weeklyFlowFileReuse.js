@@ -223,8 +223,7 @@ async function findLocalExistingSource(track, options = {}) {
     } catch (error) {
       if (error?.code !== "ENOENT") {
         console.warn(
-          `[WeeklyFlowReuse] Failed to check local existing source at ${destinationDir}:`,
-          error.message,
+          `[WeeklyFlowReuse] Failed to check local existing source at ${destinationDir}: ${error.message}`,
         );
       }
     }

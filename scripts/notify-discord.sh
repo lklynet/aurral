@@ -212,20 +212,20 @@ case "${channel}" in
   releases)
     release_version="${RELEASE_VERSION:?RELEASE_VERSION is required}"
     release_tag="${RELEASE_TAG:?RELEASE_TAG is required}"
-    head_sha="${HEAD_SHA:-${GITHUB_SHA:-}}"
     title="Aurral ${release_version} is out!"
     url="https://github.com/${repository}/releases/tag/${release_tag}"
     description="$(cat <<EOF
+**Install with Docker**
+
 \`docker pull ghcr.io/${repository}:${release_version}\`
 \`docker pull ghcr.io/${repository}:latest\`
 EOF
 )"
-    if [ -n "${head_sha}" ]; then
-      base_tag="$(previous_stable_tag "${release_tag}")"
-      pull_list="$(collect_merged_pull_lines "${head_sha}" "${base_tag}")"
-      issue_list="$(collect_closing_issue_lines_for_pulls "${pull_list}")"
-      add_bullet_fields "${pull_list}" "None recorded for this release." "Included"
-      add_bullet_fields "${issue_list}" "None" "Linked issues"
+    release_notes_file="release-notes/${release_version}.md"
+    if [ -s "${release_notes_file}" ]; then
+      description+=$'\n\n'"$(cat "${release_notes_file}")"
+    else
+      description+=$'\n\n'"[Read the release notes on GitHub](https://github.com/${repository}/releases/tag/${release_tag})."
     fi
     ;;
   nightly)
