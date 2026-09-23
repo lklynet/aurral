@@ -52,6 +52,18 @@ test("shared control rules accept Aurral button patterns and named exceptions", 
         options: controlOptions,
       },
       {
+        code: '<button type="button" className="btn btn-primary">{label || null}</button>;',
+        options: controlOptions,
+      },
+      {
+        code: '<button type="button" className="btn btn-primary">{label ?? null}</button>;',
+        options: controlOptions,
+      },
+      {
+        code: '<button type="button" className="btn btn-primary">{ready && label}</button>;',
+        options: controlOptions,
+      },
+      {
         code: 'const classes = ["btn", "btn-add-action", className].filter(Boolean).join(" "); <TooltipButton label="Add item" className={classes}><PlusIcon /></TooltipButton>;',
         options: controlOptions,
       },

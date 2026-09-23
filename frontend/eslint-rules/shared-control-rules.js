@@ -173,7 +173,10 @@ function hasVisibleText(node) {
   if (node.type === "ConditionalExpression") {
     return hasVisibleText(node.consequent) || hasVisibleText(node.alternate);
   }
-  if (node.type === "LogicalExpression") return hasVisibleText(node.right);
+  if (node.type === "LogicalExpression") {
+    if (node.operator === "&&") return hasVisibleText(node.right);
+    return hasVisibleText(node.left) || hasVisibleText(node.right);
+  }
   if (node.type === "ArrayExpression") return node.elements.some(hasVisibleText);
   if (
     node.type === "CallExpression" ||
