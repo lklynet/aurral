@@ -1,0 +1,38 @@
+name: Container image scan
+
+on:
+  schedule:
+    - cron: "23 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Scan latest stable image for OS vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: "ghcr.io/${{ github.repository }}:latest"
+          format: sarif
+          output: trivy-image-os.sarif
+          vuln-type: os
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+
+      - name: Upload image scan results
+        if: always() && hashFiles('trivy-image-os.sarif') != ''
+        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4
+        with:
+          sarif_file: trivy-image-os.sarif
+          category: trivy-image-os

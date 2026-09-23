@@ -1,0 +1,29 @@
+enable_free_tier: true
+
+reviews:
+  profile: chill
+  high_level_summary: true
+  high_level_summary_instructions: >-
+    Summarize the purpose and user-visible behavior in at most three concise bullets.
+    Avoid restating the diff or adding generic recommendations.
+  high_level_summary_in_walkthrough: true
+  collapse_walkthrough: true
+  changed_files_summary: false
+  sequence_diagrams: false
+  estimate_code_review_effort: false
+  related_issues: false
+  related_prs: false
+  suggested_labels: false
+  suggested_reviewers: false
+  in_progress_fortune: false
+  poem: false
+  enable_prompt_for_ai_agents: false
+  path_instructions:
+    - path: "**/*"
+      instructions: >-
+        Report only actionable issues introduced by the change. Prioritize
+        security and privacy, incorrect behavior, data loss or corruption, and
+        integration failures. Skip style-only, speculative, duplicate, and
+        already-automated lint findings. Keep each comment concise and state
+        the concrete trigger and user impact. Aurral must not silently change a
+        user's library, downloads, or external service state.
