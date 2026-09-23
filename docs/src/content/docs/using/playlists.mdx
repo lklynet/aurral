@@ -40,6 +40,8 @@ When you delete a playlist, Aurral removes completed files it downloaded for tha
 
 If a provider finishes a request after removal, Aurral does not import that result into the removed playlist. A provider may still show its own remote work until that provider reports the cancellation or completion.
 
+If a download provider is no longer configured while it has tracked work, playlist removal fails and keeps the playlist and jobs. Reconfigure the provider, then retry the removal.
+
 Aurral leaves completed Usenet and deemix source files in place when it cannot prove that it owns them. If the provider finishes after removal, check its completed-download folder for files that you want to remove.
 
 When you create a playlist again with the same ID, old download work remains tied to the removed generation and cannot attach to the new playlist.

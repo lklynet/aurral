@@ -36,6 +36,8 @@ const { downloadTracker } = trackerModule;
 const { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } = playlistConfigModule;
 const {
   activatePlaylistDownloadGeneration,
+  cancelDownloadJob,
+  isDownloadJobCancelled,
   listDownloadProviderWork,
   registerDownloadProviderWork,
 } = cancellationModule;
@@ -317,6 +319,11 @@ test("failed Subsonic edit keeps the old playlist and allows later jobs", async 
     { artistName: "Retry Artist", trackName: "Retry Song" },
     playlistId,
   );
+  const downloadingJobId = downloadTracker.addJob(
+    { artistName: "Retry Artist", trackName: "Interrupted Song" },
+    playlistId,
+  );
+  downloadTracker.setDownloading(downloadingJobId);
   const originalSettings = dbOps.getSettings();
   let failCleanup = true;
   const mock = await createMockHttpServer((request, response) => {
@@ -334,7 +341,7 @@ test("failed Subsonic edit keeps the old playlist and allows later jobs", async 
       },
     });
     registerDownloadProviderWork({
-      jobId,
+      jobId: downloadingJobId,
       playlistId,
       provider: "slskd-search",
       workId: "subsonic-edit-retry-search",
@@ -350,12 +357,14 @@ test("failed Subsonic edit keeps the old playlist and allows later jobs", async 
     assert.equal(flowPlaylistConfig.getSharedPlaylist(playlistId)?.name, "Before Failed Edit");
     assert.ok(downloadTracker.getJob(jobId));
     assert.equal(listDownloadProviderWork({ playlistId, provider: "slskd-search" }).length, 1);
+    assert.equal(downloadTracker.getNextPending()?.id, jobId);
+    assert.equal(downloadTracker.getJob(downloadingJobId)?.status, "failed");
 
     const laterJobId = downloadTracker.addJob(
       { artistName: "Later Artist", trackName: "Later Song" },
       playlistId,
     );
-    assert.equal(downloadTracker.getNextPending()?.id, laterJobId);
+    assert.equal(downloadTracker.getNextPendingMatching((job) => job.id === laterJobId)?.id, laterJobId);
 
     failCleanup = false;
     const retried = await subsonic.updateSubsonicPlaylist(user, {
@@ -430,5 +439,21 @@ test("a rejected Subsonic edit does not leave later jobs cancelled", async (t) =
     { artistName: "Later Artist", trackName: "Later Song" },
     playlistId,
   );
-  assert.equal(downloadTracker.getNextPending()?.id, laterJobId);
+  assert.equal(downloadTracker.getNextPendingMatching((job) => job.id === laterJobId)?.id, laterJobId);
+});
+
+test("a failed Subsonic edit does not revive a previously cancelled job", async (t) => {
+  const playlistId = "subsonic-edit-existing-cancellation";
+  flowPlaylistConfig.createSharedPlaylist({
+    id: playlistId,
+    name: "Existing Cancellation",
+    ownerUserId: user.id,
+    tracks: [],
+  });
+  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Old Song" }, playlistId);
+  cancelDownloadJob(jobId);
+  t.mock.method(flowPlaylistConfig, "updateSharedPlaylist", () => null);
+
+  assert.equal(await subsonic.updateSubsonicPlaylist(user, { playlistId, name: "Rejected" }), null);
+  assert.equal(isDownloadJobCancelled(jobId), true);
 });

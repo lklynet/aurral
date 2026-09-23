@@ -33,6 +33,9 @@ const cancelJobStmt = db.prepare(
   `INSERT OR IGNORE INTO weekly_flow_download_job_cancellations (job_id, cancelled_at)
    VALUES (?, ?)`,
 );
+const restoreJobStmt = db.prepare(
+  `DELETE FROM weekly_flow_download_job_cancellations WHERE job_id = ?`,
+);
 
 const providerWorkInsertStmt = db.prepare(
   `INSERT OR IGNORE INTO weekly_flow_download_provider_work
@@ -116,6 +119,17 @@ export function cancelDownloadJobs(jobIds = []) {
     return changes;
   });
   return cancel();
+}
+
+export function restorePlaylistDownloadWork(playlistId, jobIds = []) {
+  const safePlaylistId = normalizeId(playlistId);
+  if (!safePlaylistId) return false;
+  const safeJobIds = [...new Set(jobIds.map(normalizeId).filter(Boolean))];
+  db.transaction(() => {
+    touchActivePlaylistStmt.run(Date.now(), safePlaylistId);
+    for (const jobId of safeJobIds) restoreJobStmt.run(jobId);
+  })();
+  return true;
 }
 
 export function registerDownloadProviderWork({

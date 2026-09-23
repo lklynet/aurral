@@ -471,7 +471,7 @@ test("SABnzbd cancellation accepts already absent queue and history items", asyn
   );
 });
 
-test("playlist cancellation skips unconfigured remote providers but removes yt-dlp staging", async () => {
+test("playlist cancellation keeps provider work retryable when providers are unconfigured", async () => {
   const playlistId = "unconfigured-provider-playlist";
   const originalSettings = dbOps.getSettings();
 
@@ -520,16 +520,18 @@ test("playlist cancellation skips unconfigured remote providers but removes yt-d
   });
 
   try {
-    const result = await cancellationServiceModule.cancelPlaylistDownloadWork(
-      playlistId,
-      downloadTracker.getByPlaylistId(playlistId),
+    await assert.rejects(
+      cancellationServiceModule.cancelPlaylistDownloadWork(
+        playlistId,
+        downloadTracker.getByPlaylistId(playlistId),
+      ),
+      /Could not cancel download provider work/,
     );
 
-    assert.equal(result.provider.slskd.skipped, true);
-    assert.equal(result.provider.deemix.skipped, true);
-    assert.equal(result.provider.sabnzbd.skipped, true);
-    assert.equal(result.provider.ytdlp.stagingJobs, 1);
     await assert.rejects(fs.access(stagingPath));
+    for (const jobId of [slskdJobId, deemixJobId, sabnzbdJobId]) {
+      assert.ok(downloadTracker.getJob(jobId));
+    }
     assert.equal(
       listDownloadProviderWork({ playlistId, provider: "slskd-search" }).length,
       1,

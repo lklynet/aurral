@@ -33,7 +33,13 @@ import { selectCanonicalFile } from "./canonicalFileSelector.js";
 import { logger } from "./logger.js";
 import { withHonkerLock } from "./honkerDb.js";
 import { removePlaylistFileIfUnshared } from "./weeklyFlow/weeklyFlowFileReuse.js";
-import { activatePlaylistDownloadGeneration } from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
+import {
+  activatePlaylistDownloadGeneration,
+  getPlaylistDownloadGeneration,
+  isDownloadJobCancelled,
+  isPipelinePayloadActive,
+  restorePlaylistDownloadWork,
+} from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
 import { processWeeklyFlowOperation } from "./weeklyFlow/weeklyFlowOperations.js";
 import {
   cancelDownloadWorkForJobs,
@@ -711,6 +717,21 @@ const replaceSubsonicPlaylistTracks = async (user, playlist, tracks, updates = {
   }
   const legacyJobs = downloadTracker.getByPlaylistId(playlist.id);
   const legacyJobIds = legacyJobs.map((job) => job.id);
+  const generation = getPlaylistDownloadGeneration(playlist.id);
+  const wasActive = isPipelinePayloadActive({
+    playlistId: playlist.id,
+    playlistGeneration: generation,
+  });
+  const activeLegacyJobs = legacyJobs.filter((job) => !isDownloadJobCancelled(job.id));
+  const restoreLegacyJobs = () => {
+    if (!wasActive || legacyJobs.length === 0) return;
+    restorePlaylistDownloadWork(playlist.id, activeLegacyJobs.map((job) => job.id));
+    for (const job of activeLegacyJobs) {
+      if (downloadTracker.getJob(job.id)?.status === "downloading") {
+        downloadTracker.setFailed(job.id, "Playlist edit failed during download cancellation");
+      }
+    }
+  };
   let updated;
   try {
     await cancelLegacyPlaylistJobs(playlist.id, legacyJobs);
@@ -758,12 +779,12 @@ const replaceSubsonicPlaylistTracks = async (user, playlist, tracks, updates = {
     });
   } catch (error) {
     for (const jobId of createdJobIds) downloadTracker.removeJob(jobId);
-    if (legacyJobs.length > 0) activatePlaylistDownloadGeneration(playlist.id);
+    restoreLegacyJobs();
     throw error;
   }
   if (!updated) {
     for (const jobId of createdJobIds) downloadTracker.removeJob(jobId);
-    if (legacyJobs.length > 0) activatePlaylistDownloadGeneration(playlist.id);
+    restoreLegacyJobs();
     return null;
   }
   refreshSubsonicPlaylist(playlist.id);

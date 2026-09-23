@@ -38,16 +38,18 @@ Aurral cancels provider work when the adapter exposes a verified operation:
 - SABnzbd queue and history deletion checks the response status. If SABnzbd reports that it removed nothing, Aurral confirms that the item is absent before treating cleanup as complete.
 - yt-dlp waits for an active process to exit, killing it if necessary, before removing its staging directory.
 
+If slskd, deemix, or SABnzbd has tracked work but is no longer configured, cancellation fails and retains the playlist and jobs for a later retry. A disabled integration cannot confirm that its remote work stopped.
+
 Aurral does not delete a source file merely because a Usenet or deemix provider reports its path. A path mapping can point into a shared library. The provider response does not prove that Aurral owns the file. Cancellation prevents import, while provider-specific cleanup handles work that Aurral can identify.
 
-Subsonic playlist edits use the same mutation lock as other playlist operations. They cancel legacy downloads before replacing tracks and keep a job if its completed file cannot be removed safely. A failed provider cancellation leaves the old playlist available for retry.
+Subsonic playlist edits use the same mutation lock as other playlist operations. They cancel legacy downloads before replacing tracks and keep a job if its completed file cannot be removed safely. If provider cancellation fails, the old playlist stays in place. Its pending jobs resume, while interrupted downloads become failed jobs that the user can retry.
 
 The NZBGet adapter does not expose a verified queue-cancel operation. Aurral therefore stops the Aurral pipeline and refuses to import a result after removal, but it does not claim that NZBGet stopped the remote download.
 
-If slskd, deemix, or SABnzbd is no longer configured, Aurral logs and skips remote cleanup. Durable cancellation still prevents Aurral from processing or importing the result, but the provider-side work may continue. yt-dlp staging cleanup does not require yt-dlp to be configured because it removes local files.
+yt-dlp staging cleanup does not require yt-dlp to be configured because it removes local files.
 
 ## User-visible behavior
 
 Playlist and flow deletion are queued operations. The UI reports that removal is queued until the background operation completes. Activity can still show work while a provider finishes a request, but that work cannot create a new Aurral playlist file after the cancellation boundary.
 
-Clearing all jobs waits for in-flight playlist imports. Jobs created after the clear starts stay queued. If provider cleanup fails, Aurral keeps the affected jobs in a failed state with a cancellation-pending reason and reports the error. Durable cancellation prevents those jobs from running or importing results. After restoring the provider connection, retry clearing all jobs to try remote cleanup again. Removing a library track stops if a configured provider rejects cleanup, leaving the track and its job available for retry. If a remote provider is no longer configured, Aurral logs and skips remote cleanup, then completes local removal while retaining cancellation state.
+Clearing all jobs waits for in-flight playlist imports. Jobs created after the clear starts stay queued. If provider cleanup fails, Aurral keeps the affected jobs in a failed state with a cancellation-pending reason and reports the error. Durable cancellation prevents those jobs from running or importing results. After restoring the provider connection, retry clearing all jobs to try remote cleanup again. Removing a library track stops if provider cleanup fails, leaving the track and its job available for retry.

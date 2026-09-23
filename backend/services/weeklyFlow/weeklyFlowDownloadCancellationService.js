@@ -114,11 +114,11 @@ async function cancelSlskdWork(payloads, jobs, providerWork = []) {
     if (searchId) searchIds.add(searchId);
   }
   if ((searchIds.size > 0 || transfers.size > 0) && !client?.isConfigured?.()) {
-    logger.warn("slskd", "Skipping slskd cancellation because slskd is not configured", {
+    logger.warn("slskd", "Cannot cancel tracked slskd work while slskd is not configured", {
       searches: searchIds.size,
       transfers: transfers.size,
     });
-    return { searches: 0, transfers: 0, skipped: true };
+    throw new Error("slskd is not configured; tracked work cannot be cancelled");
   }
   for (const searchId of searchIds) {
     const deleted = await attemptProviderCleanup(
@@ -167,10 +167,10 @@ async function cancelDeemixWork(payloads, jobs) {
     }
   }
   if (queueIds.size > 0 && !client?.isConfigured?.()) {
-    logger.warn("deemix", "Skipping deemix cancellation because deemix is not configured", {
+    logger.warn("deemix", "Cannot cancel tracked deemix work while deemix is not configured", {
       queueItems: queueIds.size,
     });
-    return { queueItems: 0, skipped: true };
+    throw new Error("deemix is not configured; tracked work cannot be cancelled");
   }
   for (const queueId of queueIds) {
     if (!queueId) continue;
@@ -205,10 +205,10 @@ async function cancelSabnzbdWork(payloads, jobs) {
     }
   }
   if (ids.size > 0 && !client?.isConfigured?.()) {
-    logger.warn("sabnzbd", "Skipping SABnzbd cancellation because SABnzbd is not configured", {
+    logger.warn("sabnzbd", "Cannot cancel tracked SABnzbd work while SABnzbd is not configured", {
       items: ids.size,
     });
-    return { historyItems: 0, skipped: true };
+    throw new Error("SABnzbd is not configured; tracked work cannot be cancelled");
   }
   for (const id of ids) {
     for (const [message, cleanup, lookup] of [
