@@ -91,13 +91,6 @@ export function ArtistDetailsLibraryAlbums({
   const incompleteAlbumCount = sortedAlbums.filter(
     (album) => !getAlbumState(album).isComplete,
   ).length;
-  const filterTitle =
-    completionFilter === "all"
-      ? "Showing all library albums"
-      : completionFilter === "incomplete"
-        ? "Showing incomplete downloads"
-        : "Showing completed downloads";
-
   const filterOptions = [
     {
       value: "all",
@@ -234,30 +227,28 @@ export function ArtistDetailsLibraryAlbums({
       <div className="artist-heading-row">
         <h2 className="artist-section-title">Your Library</h2>
         <div className="artist-row-actions">
-          <Tooltip content={filterTitle}>
-            <div
-              className="artist-segmented"
-              role="group"
-              aria-label="Library download completion filter"
-            >
-              {filterOptions.map((option) => {
-                const isActive = completionFilter === option.value;
-                return (
-                  <Tooltip key={option.value} content={option.title}>
-                    <button
-                      type="button"
-                      onClick={() => setCompletionFilter(option.value)}
-                      className={`btn btn-xs${isActive ? " btn-neutral-active" : " btn-ghost"}`}
-                      aria-pressed={isActive}
-                      aria-label={option.label}
-                    >
-                      {option.renderIcon()}
-                    </button>
-                  </Tooltip>
-                );
-              })}
-            </div>
-          </Tooltip>
+          <div
+            className="artist-segmented"
+            role="group"
+            aria-label="Library download completion filter"
+          >
+            {filterOptions.map((option) => {
+              const isActive = completionFilter === option.value;
+              return (
+                <Tooltip key={option.value} content={option.title}>
+                  <button
+                    type="button"
+                    onClick={() => setCompletionFilter(option.value)}
+                    className={`btn btn-xs${isActive ? " btn-neutral-active" : " btn-ghost"}`}
+                    aria-pressed={isActive}
+                    aria-label={option.label}
+                  >
+                    {option.renderIcon()}
+                  </button>
+                </Tooltip>
+              );
+            })}
+          </div>
           {canReSearchAlbum && (
             <TooltipButton
               type="button"
