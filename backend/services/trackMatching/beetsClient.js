@@ -212,7 +212,7 @@ export function resetMatcherAvailability() {
 // Startup self-test. beets is a production-critical part of the Aurral
 // image, so a broken installation must be obvious at startup and through
 // the health endpoint instead of being rediscovered per download.
-const PINNED_BEETS_VERSION = "2.14.0";
+const PINNED_BEETS_VERSION = "2.14.1";
 const SUPPORTED_PROTOCOL_VERSION = 1;
 
 let runtimeStatus = {

@@ -25,7 +25,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 26.8.1
+          node-version: 26.9.0
           cache: npm
           cache-dependency-path: package-lock.json
 
@@ -168,7 +168,7 @@ jobs:
             'printf "{\"protocol\":1,\"operation\":\"health\"}" | /opt/aurral-matcher/bin/python backend/matcher/aurral_matcher.py')"
           echo "$matcher_health"
           echo "$matcher_health" | grep -q '"ok":true' || { echo "packaged matcher did not answer health"; exit 1; }
-          echo "$matcher_health" | grep -q '"beetsVersion":"2.14.0"' || { echo "packaged beets is not the pinned version"; exit 1; }
+          echo "$matcher_health" | grep -q '"beetsVersion":"2.14.1"' || { echo "packaged beets is not the pinned version"; exit 1; }
 
           # The running app must have completed the matcher startup self-test.
           docker exec "$CONTAINER" node -e \

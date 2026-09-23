@@ -1,4 +1,4 @@
-FROM node:26.8.1-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e AS node-base
+FROM node:26.9.0-bookworm-slim@sha256:582460f614631b59b824ac6020533b9bf339c7fdf3a6d7db31abb6b4065f0212 AS node-base
 
 FROM node-base AS builder
 
@@ -52,7 +52,7 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
 RUN python3 -m venv /opt/aurral-matcher && \
     /opt/aurral-matcher/bin/pip install --no-compile -r /tmp/aurral-matcher-requirements.txt && \
-    /opt/aurral-matcher/bin/python -c "import beets; assert beets.__version__ == '2.14.0'"
+    /opt/aurral-matcher/bin/python -c "import beets; assert beets.__version__ == '2.14.1'"
 
 FROM node-base AS runtime
 
