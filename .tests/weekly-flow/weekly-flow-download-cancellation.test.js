@@ -395,9 +395,12 @@ test("failed provider cancellation keeps durable slskd work for a later retry", 
   });
 
   try {
-    await cancellationServiceModule.cancelPlaylistDownloadWork(
-      playlistId,
-      downloadTracker.getByPlaylistId(playlistId),
+    await assert.rejects(
+      cancellationServiceModule.cancelPlaylistDownloadWork(
+        playlistId,
+        downloadTracker.getByPlaylistId(playlistId),
+      ),
+      /Could not cancel download provider work/,
     );
     assert.equal(
       listDownloadProviderWork({ playlistId, provider: "slskd-search" }).length,

@@ -66,10 +66,30 @@ function getJobById(jobs, jobId) {
   return jobs.find((job) => normalizeId(job?.id) === safeJobId) || null;
 }
 
+async function attemptProviderCleanup(failures, provider, message, details, cleanup) {
+  try {
+    return await cleanup();
+  } catch (error) {
+    logger.warn(provider, message, {
+      ...details,
+      reason: error?.message || String(error),
+    });
+    failures.push(error);
+    return null;
+  }
+}
+
+function throwProviderCleanupFailures(provider, failures) {
+  if (failures.length > 0) {
+    throw new AggregateError(failures, `Could not cancel ${provider} work`);
+  }
+}
+
 async function cancelSlskdWork(payloads, jobs, providerWork = []) {
   const client = getDownloadClient("slskd");
   const searchIds = new Set();
   const transfers = new Map();
+  const failures = [];
   for (const payload of payloads) {
     const job = getJobById(jobs, payload?.jobId);
     for (const searchId of readSearchIds(payload, job)) searchIds.add(searchId);
@@ -94,29 +114,41 @@ async function cancelSlskdWork(payloads, jobs, providerWork = []) {
     if (searchId) searchIds.add(searchId);
   }
   for (const searchId of searchIds) {
-    const deleted = await client.deleteSearch(searchId).catch((error) => {
-      logger.warn("slskd", "Could not cancel a removed playlist search", {
-        searchId,
-        reason: error?.message || String(error),
-      });
-      return false;
-    });
+    const deleted = await attemptProviderCleanup(
+      failures,
+      "slskd",
+      "Could not cancel a removed playlist search",
+      { searchId },
+      async () => {
+        const result = await client.deleteSearch(searchId);
+        if (!result) throw new Error("slskd did not confirm search cancellation");
+        return result;
+      },
+    );
     if (deleted) clearDownloadProviderWork({ provider: "slskd-search", workId: searchId });
   }
   for (const transfer of transfers.values()) {
-    await client.deleteTransfer(transfer.username, transfer.id, { remove: true }).catch((error) => {
-      logger.warn("slskd", "Could not cancel a removed playlist transfer", {
-        transferId: transfer.id,
-        reason: error?.message || String(error),
-      });
-    });
+    await attemptProviderCleanup(
+      failures,
+      "slskd",
+      "Could not cancel a removed playlist transfer",
+      { transferId: transfer.id },
+      async () => {
+        const result = await client.deleteTransfer(transfer.username, transfer.id, {
+          remove: true,
+        });
+        if (!result) throw new Error("slskd did not confirm transfer cancellation");
+      },
+    );
   }
+  throwProviderCleanupFailures("slskd", failures);
   return { searches: searchIds.size, transfers: transfers.size };
 }
 
 async function cancelDeemixWork(payloads, jobs) {
   const client = getDownloadClient("deemix");
   const queueIds = new Set();
+  const failures = [];
   for (const payload of payloads) {
     if (payload?.source === "deemix" && payload?.queueUuid) {
       queueIds.add(normalizeId(payload.queueUuid));
@@ -129,13 +161,18 @@ async function cancelDeemixWork(payloads, jobs) {
   }
   for (const queueId of queueIds) {
     if (!queueId) continue;
-    await client.removeFromQueue(queueId).catch((error) => {
-      logger.warn("deemix", "Could not cancel a removed playlist queue item", {
-        queueId,
-        reason: error?.message || String(error),
-      });
-    });
+    await attemptProviderCleanup(
+      failures,
+      "deemix",
+      "Could not cancel a removed playlist queue item",
+      { queueId },
+      async () => {
+        const removed = await client.removeFromQueue(queueId);
+        if (!removed) throw new Error("deemix did not confirm queue removal");
+      },
+    );
   }
+  throwProviderCleanupFailures("deemix", failures);
   return { queueItems: queueIds.size };
 }
 
@@ -147,6 +184,7 @@ async function cancelSabnzbdWork(payloads, jobs) {
       .map((job) => normalizeId(job.downloadClientId))
       .filter(Boolean),
   );
+  const failures = [];
   for (const payload of payloads) {
     if (payload?.source === "usenet" && payload?.downloadClient === "sabnzbd") {
       const id = normalizeId(payload.nzbId);
@@ -154,19 +192,23 @@ async function cancelSabnzbdWork(payloads, jobs) {
     }
   }
   for (const id of ids) {
-    await client.deleteQueueItem(id).catch((error) => {
-      logger.warn("sabnzbd", "Could not cancel a removed playlist queue item", {
-        id,
-        reason: error?.message || String(error),
-      });
-    });
-    await client.deleteHistoryItem(id).catch((error) => {
-      logger.warn("sabnzbd", "Could not remove a deleted playlist history item", {
-        id,
-        reason: error?.message || String(error),
-      });
-    });
+    for (const [message, cleanup] of [
+      ["Could not cancel a removed playlist queue item", () => client.deleteQueueItem(id)],
+      ["Could not remove a deleted playlist history item", () => client.deleteHistoryItem(id)],
+    ]) {
+      await attemptProviderCleanup(
+        failures,
+        "sabnzbd",
+        message,
+        { id },
+        async () => {
+          const removed = await cleanup();
+          if (!removed) throw new Error("SABnzbd did not confirm item removal");
+        },
+      );
+    }
   }
+  throwProviderCleanupFailures("sabnzbd", failures);
   return { historyItems: ids.size };
 }
 
@@ -178,30 +220,40 @@ async function cancelYtdlpWork(payloads, jobs) {
       .map((job) => normalizeId(job.id))
       .filter(Boolean),
   );
+  const failures = [];
   for (const payload of payloads) {
     if (payload?.source === "ytdlp") {
       const jobId = normalizeId(payload.jobId);
       if (jobId) ids.add(jobId);
     }
   }
-  for (const id of ids) {
-    await client.cleanupStaging(id).catch((error) => {
-      logger.warn("ytdlp", "Could not clean removed playlist staging", {
-        jobId: id,
-        reason: error?.message || String(error),
-      });
-    });
+  for (const jobId of ids) {
+    await attemptProviderCleanup(
+      failures,
+      "ytdlp",
+      "Could not clean removed playlist staging",
+      { jobId },
+      () => client.cleanupStaging(jobId),
+    );
   }
+  throwProviderCleanupFailures("ytdlp", failures);
   return { stagingJobs: ids.size };
 }
 
 async function cancelProviderWork(payloads, jobs, providerWork = []) {
-  const [slskd, deemix, sabnzbd, ytdlp] = await Promise.all([
+  const results = await Promise.allSettled([
     cancelSlskdWork(payloads, jobs, providerWork),
     cancelDeemixWork(payloads, jobs),
     cancelSabnzbdWork(payloads, jobs),
     cancelYtdlpWork(payloads, jobs),
   ]);
+  const failures = results
+    .filter((result) => result.status === "rejected")
+    .map((result) => result.reason);
+  if (failures.length > 0) {
+    throw new AggregateError(failures, "Could not cancel download provider work");
+  }
+  const [slskd, deemix, sabnzbd, ytdlp] = results.map((result) => result.value);
   return { slskd, deemix, sabnzbd, ytdlp };
 }
 

@@ -16,6 +16,13 @@ import {
   upsertLibraryMediaFile,
   upsertLibraryTrack,
 } from "../../backend/services/libraryMediaStore.js";
+import { dbOps } from "../../backend/db/helpers/index.js";
+import {
+  clearDownloadProviderWork,
+  listDownloadProviderWork,
+  registerDownloadProviderWork,
+} from "../../backend/services/weeklyFlow/weeklyFlowDownloadCancellation.js";
+import { createMockHttpServer } from "../helpers/backendTestHarness.js";
 
 test("deletes Aurral-owned track files without Lidarr", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-delete-"));
@@ -190,6 +197,95 @@ test("records successful Aurral deletions when another file fails", async (t) =>
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
     if (libraryJobId) downloadTracker.removeJob(libraryJobId);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("keeps a library job and track when provider cancellation fails, then retries", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-delete-cancel-"));
+  const filePath = path.join(root, "Artist", "Album", "Track.flac");
+  const identity = `track-delete-cancel-${process.pid}-${Date.now()}`;
+  const searchId = `search-${identity}`;
+  const originalSettings = dbOps.getSettings();
+  let providerStatus = 503;
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    response.writeHead(providerStatus);
+    response.end();
+  });
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, "fixture");
+
+  const artist = upsertLibraryArtist({
+    identityKey: `${identity}:artist`,
+    name: "Artist",
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: `${identity}:album`,
+    artistId: artist.id,
+    title: "Album",
+  });
+  const track = upsertLibraryTrack({
+    identityKey: `${identity}:track`,
+    title: "Track",
+    artistName: "Artist",
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "aurral",
+    path: filePath,
+    available: true,
+  });
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Track", downloadSource: "slskd" },
+    "library",
+  );
+  registerDownloadProviderWork({
+    jobId,
+    playlistId: "library",
+    provider: "slskd-search",
+    workId: searchId,
+  });
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...(originalSettings.integrations || {}),
+      slskd: { enabled: true, url: mock.url, apiKey: "test-key" },
+    },
+  });
+  t.mock.method(lidarrClient, "isConfigured", () => false);
+
+  try {
+    const failedDeletion = await libraryManager.deleteTrack(track.id);
+
+    assert.equal(failedDeletion.success, false);
+    assert.notEqual(downloadTracker.getJob(jobId), null);
+    assert.equal(listDownloadProviderWork({ jobIds: [jobId] }).length, 1);
+    await access(filePath);
+
+    providerStatus = 204;
+    assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
+    assert.equal(downloadTracker.getJob(jobId), null);
+    assert.equal(listDownloadProviderWork({ jobIds: [jobId] }).length, 0);
+    await assert.rejects(() => access(filePath));
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    clearDownloadProviderWork({ provider: "slskd-search", workId: searchId });
+    downloadTracker.removeJob(jobId);
+    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run(
+      "aurral",
+      filePath,
+    );
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?").run(
+      album.id,
+      track.id,
+    );
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    await mock.close();
     await rm(root, { recursive: true, force: true });
   }
 });

@@ -269,7 +269,7 @@ function isLidarrNotFoundError(error) {
     /\b404\b|not found in lidarr/i.test(String(error?.message || ""));
 }
 
-function removeLibraryDownloadJobs(track) {
+async function removeLibraryDownloadJobs(track) {
   const normalize = (value) => String(value || "").trim().toLocaleLowerCase();
   const trackMbid = normalize(track?.mbid);
   const artistName = normalize(track?.artistName);
@@ -288,27 +288,12 @@ function removeLibraryDownloadJobs(track) {
       removedJobIds.add(job.id);
     }
   }
-  void cancelDownloadWorkForJobs(
-    jobs.filter((job) => removedJobIds.has(job.id)),
-  ).catch((error) => {
-    logger.warn("library", "Could not cancel removed library downloads", {
-      reason: error?.message || String(error),
-    });
-  });
-  for (const job of jobs) {
-    if (removedJobIds.has(job.id)) downloadTracker.removeJob(job.id);
-  }
-  for (const job of jobs) {
-    if (job.upgradeForJobId && removedJobIds.has(job.upgradeForJobId)) {
-      void cancelDownloadWorkForJobs([job]).catch((error) => {
-        logger.warn("library", "Could not cancel removed library upgrade", {
-          jobId: job.id,
-          reason: error?.message || String(error),
-        });
-      });
-      downloadTracker.removeJob(job.id);
-    }
-  }
+  const jobsToRemove = jobs.filter(
+    (job) => removedJobIds.has(job.id) || removedJobIds.has(job.upgradeForJobId),
+  );
+  if (jobsToRemove.length === 0) return;
+  await cancelDownloadWorkForJobs(jobsToRemove);
+  for (const job of jobsToRemove) downloadTracker.removeJob(job.id);
 }
 
 function buildTrackFileIndex(trackFiles) {
@@ -2404,7 +2389,7 @@ export class LibraryManager {
       const lidarrFiles = track.files.filter((file) => file.source === "lidarr" && file.available);
       if (aurralFiles.length > 0 && lidarrFiles.length === 0) {
         const paths = [...new Set(aurralFiles.map((file) => file.path))];
-        removeLibraryDownloadJobs(track);
+        await removeLibraryDownloadJobs(track);
         try {
           const deletionResults = await Promise.allSettled(paths.map(async (filePath) => {
             try {
