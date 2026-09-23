@@ -308,6 +308,31 @@ export async function cancelDownloadWorkForJobs(jobs = [], { lock = true } = {})
   };
 }
 
+export async function clearAllDownloadJobs(downloadTracker) {
+  let jobs = downloadTracker.getAll();
+  while (true) {
+    const processedJobIds = new Set(
+      jobs.map((job) => normalizeId(job?.id)).filter(Boolean),
+    );
+    await cancelDownloadWorkForJobs(jobs);
+    const result = await withPlaylistCancellationLocks(
+      jobs.map((job) => normalizeId(job?.playlistId || job?.playlistType)),
+      () => {
+        const unprocessedJobs = downloadTracker
+          .getAll()
+          .filter((job) => !processedJobIds.has(normalizeId(job?.id)));
+        if (unprocessedJobs.length > 0) return { unprocessedJobs };
+        return { cleared: downloadTracker.clearAll() };
+      },
+    );
+    if (result.unprocessedJobs) {
+      jobs = result.unprocessedJobs;
+      continue;
+    }
+    return result.cleared;
+  }
+}
+
 export async function cancelPlaylistDownloadWork(playlistId, jobs = []) {
   const cancellation = markPlaylistDownloadWorkCancelled(playlistId, jobs);
   const safePlaylistId = normalizeId(playlistId);

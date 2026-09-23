@@ -22,6 +22,7 @@ const [
   { queueQualityUpgrade },
   { registerJobs },
   libraryStore,
+  playlistDownloadUtils,
 ] = await setupIsolatedBackend(
   "approved-import-path",
   "backend/config/db-sqlite.js",
@@ -34,12 +35,15 @@ const [
   "backend/services/qualityProfileService.js",
   "backend/routes/weeklyFlow/handlers/jobs.js",
   "backend/services/libraryMediaStore.js",
+  "backend/services/playlistDownloadUtils.js",
 );
 
 const {
   activatePlaylistDownloadGeneration,
   cancelPlaylistDownloadGeneration,
   getPlaylistDownloadGeneration,
+  isPipelinePayloadActive,
+  withPipelineCommitLock,
 } = cancellationModule;
 
 const app = express();
@@ -223,6 +227,73 @@ test("approval cannot commit an orphaned job into a recreated playlist", async (
   assert.equal(downloadTracker.getJob(jobId)?.status, "blocked");
   assert.equal(await fs.readFile(sourcePath, "utf8"), "reviewed audio");
   await assert.rejects(fs.access(expectedPath));
+});
+
+test("clearing all jobs waits for an in-flight playlist import to finish", async () => {
+  const playlistId = "clear-all-import-race";
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Track", albumName: "Album" },
+    playlistId,
+  );
+  const payload = {
+    jobId,
+    playlistId,
+    playlistGeneration: downloadTracker.getJob(jobId).playlistGeneration,
+  };
+  const sourcePath = path.join(isolatedState.baseDir, "clear-all-race", "Track.flac");
+  const finalPath = path.join(process.env.DOWNLOAD_FOLDER, "clear-all-race", "Track.flac");
+  await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+  await fs.writeFile(sourcePath, "downloaded audio");
+
+  let enterCommit;
+  let releaseCommit;
+  const commitEntered = new Promise((resolve) => {
+    enterCommit = resolve;
+  });
+  const commitGate = new Promise((resolve) => {
+    releaseCommit = resolve;
+  });
+  const commitPromise = withPipelineCommitLock(payload, async () => {
+    enterCommit();
+    await commitGate;
+    const committedPath = await playlistDownloadUtils.commitImportToPlaylistLibrary(
+      sourcePath,
+      finalPath,
+    );
+    assert.equal(downloadTracker.setDone(jobId, committedPath, "Album"), true);
+    return committedPath;
+  });
+  await commitEntered;
+
+  const clearPromise = fetch(`${baseUrl}/jobs/all`, { method: "DELETE" });
+  try {
+    const state = await Promise.race([
+      (async () => {
+        const deadline = Date.now() + 2000;
+        while (Date.now() < deadline) {
+          if (!isPipelinePayloadActive(payload)) return "cancelled";
+          if (!downloadTracker.getJob(jobId)) return "deleted";
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        return "timeout";
+      })(),
+      clearPromise.then(() => "responded"),
+    ]);
+
+    assert.equal(state, "cancelled");
+    assert.ok(downloadTracker.getJob(jobId));
+  } finally {
+    releaseCommit();
+    await Promise.allSettled([commitPromise, clearPromise]);
+  }
+
+  const [commitResult, clearResponse] = await Promise.all([commitPromise, clearPromise]);
+  const clearPayload = await clearResponse.json();
+
+  assert.equal(commitResult.cancelled, false);
+  assert.equal(clearResponse.status, 200, JSON.stringify(clearPayload));
+  assert.equal(await fs.readFile(finalPath, "utf8"), "downloaded audio");
+  assert.equal(downloadTracker.getJob(jobId), null);
 });
 
 test("approving a reviewed upgrade replaces the source playlist file", async (t) => {

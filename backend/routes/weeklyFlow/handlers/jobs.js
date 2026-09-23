@@ -41,6 +41,8 @@ import {
   runQualityUpgradeCheck,
 } from "../../../services/qualityProfileService.js";
 import { getCanonicalTrackOwnershipBatch } from "../../../services/libraryQueryService.js";
+import { logger } from "../../../services/logger.js";
+import { clearAllDownloadJobs } from "../../../services/weeklyFlow/weeklyFlowDownloadCancellationService.js";
 import {
   isFlowOwnerProcess,
   requestFlowOwner,
@@ -366,9 +368,18 @@ export function registerJobs(router) {
     res.json({ success: true });
   });
 
-  router.delete("/jobs/all", requireAdmin, (req, res) => {
-    const count = downloadTracker.clearAll();
-    res.json({ success: true, cleared: count });
+  router.delete("/jobs/all", requireAdmin, async (req, res) => {
+    try {
+      const count = await clearAllDownloadJobs(downloadTracker);
+      return res.json({ success: true, cleared: count });
+    } catch (error) {
+      logger.error("weekly-flow", "Could not safely clear download jobs", {
+        reason: error?.message || String(error),
+      });
+      return res.status(500).json({
+        error: "Failed to cancel active downloads. Download jobs were kept.",
+      });
+    }
   });
 
   router.post("/reset", requireAdmin, async (req, res) => {
