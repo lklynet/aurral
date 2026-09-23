@@ -542,7 +542,7 @@ test("failed Subsonic playlist creation rolls back its playlist and jobs", async
   flowPlaylistConfig.updateSharedPlaylist = () => null;
   try {
     assert.equal(
-      createSubsonicPlaylist(user, { name: "Failed Subsonic Playlist", songIds: [canonicalSong.id] }),
+      await createSubsonicPlaylist(user, { name: "Failed Subsonic Playlist", songIds: [canonicalSong.id] }),
       null,
     );
     assert.equal(

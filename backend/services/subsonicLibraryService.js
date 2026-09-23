@@ -31,6 +31,10 @@ import { hasPermission } from "../middleware/auth.js";
 import { recordTrackJobQueued } from "./aurralHistoryService.js";
 import { selectCanonicalFile } from "./canonicalFileSelector.js";
 import { logger } from "./logger.js";
+import { withHonkerLock } from "./honkerDb.js";
+import { removePlaylistFileIfUnshared } from "./weeklyFlow/weeklyFlowFileReuse.js";
+import { activatePlaylistDownloadGeneration } from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
+import { processWeeklyFlowOperation } from "./weeklyFlow/weeklyFlowOperations.js";
 import {
   cancelDownloadWorkForJobs,
   markPlaylistDownloadWorkCancelled,
@@ -655,18 +659,10 @@ const toCanonicalPlaylistTrack = (track, canonicalJobId) => ({
   canonicalJobId: String(canonicalJobId || "").trim() || null,
 });
 
-const removeLegacyPlaylistJobs = (playlistId) => {
-  const jobs = downloadTracker.getByPlaylistId(playlistId);
+const cancelLegacyPlaylistJobs = async (playlistId, jobs) => {
+  if (jobs.length === 0) return;
   markPlaylistDownloadWorkCancelled(playlistId, jobs);
-  void cancelDownloadWorkForJobs(jobs).catch((error) => {
-    logger.warn("subsonic", "Could not cancel removed playlist downloads", {
-      playlistId,
-      reason: error?.message || String(error),
-    });
-  });
-  for (const job of jobs) {
-    downloadTracker.removeJob(job.id);
-  }
+  await cancelDownloadWorkForJobs(jobs);
 };
 
 const refreshSubsonicPlaylist = (playlistId) => {
@@ -705,7 +701,7 @@ const canonicalizePlaylistTracks = (tracks, createdJobIds = null) => {
   return normalized;
 };
 
-const replaceSubsonicPlaylistTracks = (user, playlist, tracks, updates = {}) => {
+const replaceSubsonicPlaylistTracks = async (user, playlist, tracks, updates = {}) => {
   if (!playlist || !flowPlaylistConfig.canUserAccessSharedPlaylist(user, playlist)) return null;
   const createdJobIds = [];
   const canonicalTracks = canonicalizePlaylistTracks(tracks, createdJobIds);
@@ -713,20 +709,68 @@ const replaceSubsonicPlaylistTracks = (user, playlist, tracks, updates = {}) => 
     for (const jobId of createdJobIds) downloadTracker.removeJob(jobId);
     return null;
   }
-  const updated = flowPlaylistConfig.updateSharedPlaylist(playlist.id, {
-    ...updates,
-    tracks: canonicalTracks,
-  });
+  const legacyJobs = downloadTracker.getByPlaylistId(playlist.id);
+  const legacyJobIds = legacyJobs.map((job) => job.id);
+  let updated;
+  try {
+    await cancelLegacyPlaylistJobs(playlist.id, legacyJobs);
+    updated = await withHonkerLock(`playlist-mutation:${playlist.id}`, async () => {
+      const replacement = flowPlaylistConfig.updateSharedPlaylist(playlist.id, {
+        ...updates,
+        tracks: canonicalTracks,
+      });
+      if (!replacement) return null;
+      for (const job of legacyJobs) {
+        const current = downloadTracker.getJob(job.id);
+        if (!current) continue;
+        if (current.status === "done" && current.finalPath && current.managedBy === "aurral" && !current.externalPath) {
+          try {
+            const removal = await removePlaylistFileIfUnshared(current.finalPath, playlist.id, {
+              weeklyFlowRoot: playlistManager.weeklyFlowRoot,
+              excludeJobIds: legacyJobIds,
+              deleteIfUnshared: true,
+            });
+            if (removal.action !== "deleted" && removal.action !== "relocated") {
+              logger.warn("subsonic", "Retaining legacy playlist job with an unremoved file", {
+                playlistId: playlist.id,
+                jobId: current.id,
+                action: removal.action,
+              });
+              continue;
+            }
+          } catch (error) {
+            logger.warn("subsonic", "Retaining legacy playlist job after file cleanup failed", {
+              playlistId: playlist.id,
+              jobId: current.id,
+              reason: error?.message || String(error),
+            });
+            continue;
+          }
+        }
+        downloadTracker.removeJob(current.id);
+      }
+      activatePlaylistDownloadGeneration(playlist.id);
+      return replacement;
+    }, {
+      ttlSeconds: 180,
+      waitTimeoutMs: 15 * 60 * 1000,
+      retryDelayMs: 250,
+    });
+  } catch (error) {
+    for (const jobId of createdJobIds) downloadTracker.removeJob(jobId);
+    if (legacyJobs.length > 0) activatePlaylistDownloadGeneration(playlist.id);
+    throw error;
+  }
   if (!updated) {
     for (const jobId of createdJobIds) downloadTracker.removeJob(jobId);
+    if (legacyJobs.length > 0) activatePlaylistDownloadGeneration(playlist.id);
     return null;
   }
-  removeLegacyPlaylistJobs(playlist.id);
   refreshSubsonicPlaylist(playlist.id);
   return updated;
 };
 
-export function createSubsonicPlaylist(user, { name, songIds = [] } = {}) {
+export async function createSubsonicPlaylist(user, { name, songIds = [] } = {}) {
   if (!hasPermission(user, "accessFlow")) return null;
   const safeName = String(name || "").trim();
   if (!safeName) return null;
@@ -738,56 +782,55 @@ export function createSubsonicPlaylist(user, { name, songIds = [] } = {}) {
     ownerUserId: user.id,
     tracks: [],
   });
-  const updated = replaceSubsonicPlaylistTracks(
-    user,
-    playlist,
-    resolved.map((entry) => entry.track),
-  );
-  if (!updated) flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
-  return updated;
+  try {
+    const updated = await replaceSubsonicPlaylistTracks(
+      user,
+      playlist,
+      resolved.map((entry) => entry.track),
+    );
+    if (!updated) flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+    return updated;
+  } catch (error) {
+    flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+    throw error;
+  }
 }
 
-export function updateSubsonicPlaylist(
+export async function updateSubsonicPlaylist(
   user,
   { playlistId, name, comment, songIdsToAdd = [], songIndexesToRemove = [] } = {},
 ) {
-  const playlist = flowPlaylistConfig.getSharedPlaylistForUser(
-    user,
-    normalizeSharedPlaylistId(playlistId),
-  );
-  if (!playlist || !hasPermission(user, "accessFlow")) return null;
-  const resolvedAdds = songIdsToAdd.map((id) => resolveSubsonicTrack(user, id));
-  if (resolvedAdds.some((entry) => !entry)) return null;
-  const removals = new Set(songIndexesToRemove);
-  const currentTracks = playlist.tracks.filter((_track, index) => !removals.has(index));
-  const nextTracks = [
-    ...currentTracks,
-    ...resolvedAdds.map((entry) => entry.track),
-  ];
-  const updates = {};
-  if (name !== undefined) updates.name = String(name || "").trim();
-  if (comment !== undefined) updates.description = String(comment || "").trim() || null;
-  return replaceSubsonicPlaylistTracks(user, playlist, nextTracks, updates);
+  return withHonkerLock("weekly-flow-operation", async () => {
+    const playlist = flowPlaylistConfig.getSharedPlaylistForUser(
+      user,
+      normalizeSharedPlaylistId(playlistId),
+    );
+    if (!playlist || !hasPermission(user, "accessFlow")) return null;
+    const resolvedAdds = songIdsToAdd.map((id) => resolveSubsonicTrack(user, id));
+    if (resolvedAdds.some((entry) => !entry)) return null;
+    const removals = new Set(songIndexesToRemove);
+    const currentTracks = playlist.tracks.filter((_track, index) => !removals.has(index));
+    const nextTracks = [
+      ...currentTracks,
+      ...resolvedAdds.map((entry) => entry.track),
+    ];
+    const updates = {};
+    if (name !== undefined) updates.name = String(name || "").trim();
+    if (comment !== undefined) updates.description = String(comment || "").trim() || null;
+    return replaceSubsonicPlaylistTracks(user, playlist, nextTracks, updates);
+  });
 }
 
-export function deleteSubsonicPlaylist(user, playlistId) {
+export async function deleteSubsonicPlaylist(user, playlistId) {
   const playlist = flowPlaylistConfig.getSharedPlaylistForUser(
     user,
     normalizeSharedPlaylistId(playlistId),
   );
   if (!playlist || !hasPermission(user, "accessFlow")) return false;
-  removeLegacyPlaylistJobs(playlist.id);
-  const deleted = flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
-  if (deleted) {
-    playlistManager.updateConfig(false);
-    playlistManager.deletePlaybackPlaylist(playlist).catch((error) => {
-      logger.error("subsonic", "Could not remove playlist from playback services", {
-        playlistId: playlist.id,
-        reason: error?.message || String(error),
-      });
-    });
-  }
-  return deleted;
+  return processWeeklyFlowOperation({
+    kind: "shared-playlist-delete",
+    playlistId: playlist.id,
+  });
 }
 
 const starTarget = (value) => {

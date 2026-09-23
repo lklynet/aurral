@@ -23,6 +23,7 @@ const [
   cancellationServiceModule,
   dbHelpersModule,
   downloadFolderConfigModule,
+  sabnzbdModule,
 ] = await setupIsolatedBackend(
   "weekly-flow-download-cancellation",
   "backend/config/db-sqlite.js",
@@ -36,6 +37,7 @@ const [
   "backend/services/weeklyFlow/weeklyFlowDownloadCancellationService.js",
   "backend/db/helpers/index.js",
   "backend/services/downloadFolderConfig.js",
+  "backend/services/sabnzbdClient.js",
 );
 
 const {
@@ -57,6 +59,7 @@ const { enqueuePipelineJob, listHonkerJobs } = honkerModule;
 const { markPlaylistDownloadWorkCancelled } = cancellationServiceModule;
 const { dbOps } = dbHelpersModule;
 const { resolveYtdlpStagingRoot } = downloadFolderConfigModule;
+const { sabnzbdClient } = sabnzbdModule;
 
 test.beforeEach(async () => {
   await resetDatabase(db);
@@ -416,6 +419,56 @@ test("failed provider cancellation keeps durable slskd work for a later retry", 
     dbOps.updateSettings(originalSettings);
     await mock.close();
   }
+});
+
+test("SABnzbd cancellation retains a job when a refused queue deletion leaves it queued", async (t) => {
+  const playlistId = "sabnzbd-refused-delete";
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Queued Song" },
+    playlistId,
+  );
+  downloadTracker.updateDownloadMetadata(jobId, {
+    downloadClient: "sabnzbd",
+    downloadClientId: "SABnzbd_nzo_refused",
+  });
+  t.mock.method(sabnzbdClient, "isConfigured", () => true);
+  t.mock.method(sabnzbdClient, "deleteQueueItem", async () => false);
+  t.mock.method(sabnzbdClient, "deleteHistoryItem", async () => false);
+  t.mock.method(sabnzbdClient, "getQueueItem", async () => ({ nzo_id: "SABnzbd_nzo_refused" }));
+  t.mock.method(sabnzbdClient, "getHistoryItem", async () => null);
+
+  await assert.rejects(
+    cancellationServiceModule.cancelPlaylistDownloadWork(
+      playlistId,
+      downloadTracker.getByPlaylistId(playlistId),
+    ),
+    /Could not cancel download provider work/,
+  );
+  assert.equal(downloadTracker.getJob(jobId)?.downloadClientId, "SABnzbd_nzo_refused");
+});
+
+test("SABnzbd cancellation accepts already absent queue and history items", async (t) => {
+  const playlistId = "sabnzbd-already-absent";
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Completed Song" },
+    playlistId,
+  );
+  downloadTracker.updateDownloadMetadata(jobId, {
+    downloadClient: "sabnzbd",
+    downloadClientId: "SABnzbd_nzo_absent",
+  });
+  t.mock.method(sabnzbdClient, "isConfigured", () => true);
+  t.mock.method(sabnzbdClient, "deleteQueueItem", async () => false);
+  t.mock.method(sabnzbdClient, "deleteHistoryItem", async () => false);
+  t.mock.method(sabnzbdClient, "getQueueItem", async () => null);
+  t.mock.method(sabnzbdClient, "getHistoryItem", async () => null);
+
+  await assert.doesNotReject(
+    cancellationServiceModule.cancelPlaylistDownloadWork(
+      playlistId,
+      downloadTracker.getByPlaylistId(playlistId),
+    ),
+  );
 });
 
 test("playlist cancellation skips unconfigured remote providers but removes yt-dlp staging", async () => {

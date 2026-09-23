@@ -405,7 +405,6 @@ async function handleUsenetFinalize(payload, helpers) {
     resolvedTrack,
   );
   if (!isPipelinePayloadActive(payload)) {
-    if (found.filePath) await fs.rm(found.filePath, { force: true }).catch(() => {});
     if (job.downloadClient === "sabnzbd") removeSabnzbdItem(payload.nzbId, job.id);
     return null;
   }
@@ -459,7 +458,6 @@ async function handleUsenetFinalize(payload, helpers) {
     });
   });
   if (committed.cancelled) {
-    await fs.rm(found.filePath, { force: true }).catch(() => {});
     return null;
   }
   return committed.result;

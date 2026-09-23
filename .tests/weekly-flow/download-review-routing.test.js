@@ -26,6 +26,7 @@ const [
   pipelineHelpersModule,
   playlistManagerModule,
   weeklyFlowWorkerModule,
+  cancellationModule,
 ] = await setupIsolatedBackend(
   "download-review-routing",
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
@@ -37,6 +38,7 @@ const [
   "backend/services/pipelineHelpers.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
   "backend/services/weeklyFlow/weeklyFlowWorker.js",
+  "backend/services/weeklyFlow/weeklyFlowDownloadCancellation.js",
 );
 
 const { blockPipelineJobForReview, finalizePipelineJobSuccess } = pipelineHelpersModule;
@@ -48,6 +50,7 @@ const matcherAvailable = await isBeetsMatcherAvailable();
 const btest = (name, fn) => test(name, { skip: matcherAvailable ? false : "beets not installed for any available Python interpreter" }, fn);
 const { playlistManager } = playlistManagerModule;
 const { weeklyFlowWorker } = weeklyFlowWorkerModule;
+const { cancelDownloadJob } = cancellationModule;
 
 test("yt-dlp keeps ordinary not-live results and excludes live statuses", () => {
   assert.equal(isYtdlpLiveResult({ liveStatus: "not_live" }), false);
@@ -93,6 +96,41 @@ test("Usenet file collection only scans the current history directory", async ()
     assert.deepEqual(await collectDownloadedAudioFiles({}), []);
   } finally {
     await rm(sharedRoot, { recursive: true, force: true });
+  }
+});
+
+test("cancelling deemix finalization leaves a provider-reported library file untouched", async () => {
+  const filePath = path.join(process.env.DOWNLOAD_FOLDER, "existing-library-song.mp3");
+  await writeOneSecondMp3(filePath);
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist Name", trackName: "Correct Track", albumName: "Album Name" },
+    "deemix-source-safety",
+  );
+  downloadTracker.setDownloading(jobId);
+  const server = await createMockHttpServer((req, res) => {
+    req.resume();
+    cancelDownloadJob(jobId);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ result: true }));
+  });
+
+  try {
+    dbOps.updateSettings({
+      integrations: { deemix: { enabled: true, url: server.url, bitrate: 1 } },
+    });
+    const result = await processDeemixPipelinePayload({
+      phase: "finalize",
+      source: "deemix",
+      jobId,
+      queueUuid: "track_1_1",
+      downloadedPath: filePath,
+      candidate: { raw: { title: "Correct Track", artist: "Artist Name" } },
+    });
+
+    assert.equal(result, null);
+    await access(filePath);
+  } finally {
+    await server.close();
   }
 });
 

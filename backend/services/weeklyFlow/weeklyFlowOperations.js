@@ -782,6 +782,18 @@ async function deleteSharedPlaylist({ playlistId } = {}) {
     weeklyFlowWorker.setRetryCyclePaused(safePlaylistId, false);
     playlistManager.updateConfig(false);
     await playlistManager.deletePlaybackPlaylist(exists);
+    const playlistJobs = downloadTracker.getByPlaylistId(safePlaylistId);
+    const removedJobIds = playlistJobs.map((job) => job.id);
+    for (const job of playlistJobs) {
+      if (job.status !== "done" || job.managedBy !== "aurral" || job.externalPath || !job.finalPath || job.upgradeForJobId) {
+        continue;
+      }
+      await removePlaylistFileIfUnshared(job.finalPath, safePlaylistId, {
+        weeklyFlowRoot: weeklyFlowWorker.weeklyFlowRoot,
+        excludeJobIds: removedJobIds,
+        deleteIfUnshared: true,
+      });
+    }
     await playlistManager.weeklyReset([safePlaylistId], { protectPlayback: false });
     downloadTracker.clearByPlaylistId(safePlaylistId);
     await playlistManager.cleanupEntityPlexPlaylists(safePlaylistId);

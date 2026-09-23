@@ -336,6 +336,14 @@ test("SABnzbd client removes queued and historical jobs", async () => {
   ]);
 });
 
+test("SABnzbd client does not claim a failed queue or history deletion succeeded", async () => {
+  const client = new SabnzbdClient();
+  client.api = async () => ({ status: false });
+
+  assert.equal(await client.deleteQueueItem("SABnzbd_nzo_queue"), false);
+  assert.equal(await client.deleteHistoryItem("SABnzbd_nzo_history"), false);
+});
+
 test("download source selection orders enabled sources by priority", () => {
   dbOps.updateSettings({
     integrations: {

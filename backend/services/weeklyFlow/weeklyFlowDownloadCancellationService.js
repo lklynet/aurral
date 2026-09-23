@@ -211,9 +211,9 @@ async function cancelSabnzbdWork(payloads, jobs) {
     return { historyItems: 0, skipped: true };
   }
   for (const id of ids) {
-    for (const [message, cleanup] of [
-      ["Could not cancel a removed playlist queue item", () => client.deleteQueueItem(id)],
-      ["Could not remove a deleted playlist history item", () => client.deleteHistoryItem(id)],
+    for (const [message, cleanup, lookup] of [
+      ["Could not cancel a removed playlist queue item", () => client.deleteQueueItem(id), () => client.getQueueItem(id)],
+      ["Could not remove a deleted playlist history item", () => client.deleteHistoryItem(id), () => client.getHistoryItem(id)],
     ]) {
       await attemptProviderCleanup(
         failures,
@@ -222,7 +222,9 @@ async function cancelSabnzbdWork(payloads, jobs) {
         { id },
         async () => {
           const removed = await cleanup();
-          if (!removed) throw new Error("SABnzbd did not confirm item removal");
+          if (!removed && await lookup()) {
+            throw new Error("SABnzbd did not confirm item removal");
+          }
         },
       );
     }

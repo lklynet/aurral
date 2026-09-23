@@ -199,15 +199,15 @@ export class SabnzbdClient {
   async deleteHistoryItem(nzoId) {
     const id = String(nzoId || "").trim();
     if (!id) return false;
-    await this.api("history", { name: "delete", value: id, del_files: 1 });
-    return true;
+    const result = await this.api("history", { name: "delete", value: id, del_files: 1 });
+    return result?.status === true;
   }
 
   async deleteQueueItem(nzoId) {
     const id = String(nzoId || "").trim();
     if (!id) return false;
-    await this.api("queue", { name: "delete", value: id, del_files: 1 });
-    return true;
+    const result = await this.api("queue", { name: "delete", value: id, del_files: 1 });
+    return result?.status === true;
   }
 
   async getDownloadDirectories() {

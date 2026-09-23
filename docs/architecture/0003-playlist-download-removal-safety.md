@@ -23,6 +23,7 @@ Treat playlist removal as a durable cancellation boundary.
 - The delete path cancels matching Honker jobs and known provider work before it clears tracker rows.
 - A pipeline checks the durable state before each phase and before it queues another phase.
 - A finalizer and playlist deletion share the `playlist-mutation:<playlistId>` lock. A finalizer that gets the lock first completes before deletion removes the file. A finalizer that waits sees the cancellation state and does not import the file.
+- Before clearing shared-playlist jobs, deletion removes Aurral-managed completed files that no other job or playback playlist uses. Files owned elsewhere stay in place.
 - Clearing all jobs snapshots the current rows, cancels those jobs, and removes them under the affected playlist locks. Jobs created after the snapshot stay queued.
 - Library-track removal waits for provider cleanup before deleting matching jobs or files. If cleanup fails, the library track and job stay in place for a later retry.
 
@@ -34,8 +35,12 @@ Aurral cancels provider work when the adapter exposes a verified operation:
 
 - slskd searches recorded durably or found in the pipeline payload are deleted; transfer IDs found in the pipeline payload are also deleted.
 - deemix queue items are removed.
-- SABnzbd queue and history items are removed when a job has a known ID.
-- yt-dlp staging is removed locally, and an active yt-dlp process checks the durable job cancellation state.
+- SABnzbd queue and history deletion checks the response status. If SABnzbd reports that it removed nothing, Aurral confirms that the item is absent before treating cleanup as complete.
+- yt-dlp waits for an active process to exit, killing it if necessary, before removing its staging directory.
+
+Aurral does not delete a source file merely because a Usenet or deemix provider reports its path. A path mapping can point into a shared library. The provider response does not prove that Aurral owns the file. Cancellation prevents import, while provider-specific cleanup handles work that Aurral can identify.
+
+Subsonic playlist edits use the same mutation lock as other playlist operations. They cancel legacy downloads before replacing tracks and keep a job if its completed file cannot be removed safely. A failed provider cancellation leaves the old playlist available for retry.
 
 The NZBGet adapter does not expose a verified queue-cancel operation. Aurral therefore stops the Aurral pipeline and refuses to import a result after removal, but it does not claim that NZBGet stopped the remote download.
 

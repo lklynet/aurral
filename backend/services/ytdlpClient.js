@@ -9,6 +9,7 @@ const DEFAULT_BINARY = "yt-dlp";
 const SEARCH_LIMIT = 5;
 const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const AUDIO_FORMAT = "m4a";
+const activeDownloads = new Map();
 
 export const ytdlpSettings = Object.freeze({
   key: "ytdlp",
@@ -85,19 +86,32 @@ function isConfiguredFor(config = null) {
 
 function runYtdlp(args, { timeoutMs = 120000, cwd, shouldCancel } = {}) {
   return new Promise((resolve, reject) => {
+    const isolatedProcessGroup = process.platform !== "win32";
     const child = spawn(getBinaryPath(), buildYtdlpInvocationArgs(args), {
       cwd,
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
+      detached: isolatedProcessGroup,
     });
+    const signalProcess = (signal) => {
+      if (isolatedProcessGroup && child.pid) {
+        try {
+          process.kill(-child.pid, signal);
+          return;
+        } catch {}
+      }
+      child.kill(signal);
+    };
     let stdout = "";
     let stderr = "";
     let settled = false;
+    let terminationError = null;
+    let forcedKillTimer = null;
     const timer = setTimeout(() => {
-      child.kill("SIGKILL");
       const error = new Error(`yt-dlp timed out after ${timeoutMs}ms`);
       error.code = "DOWNLOAD_TIMEOUT";
-      settleReject(error);
+      terminationError = error;
+      signalProcess("SIGKILL");
     }, timeoutMs);
     const cancellationTimer = typeof shouldCancel === "function"
       ? setInterval(() => {
@@ -105,16 +119,19 @@ function runYtdlp(args, { timeoutMs = 120000, cwd, shouldCancel } = {}) {
           try {
             cancelled = shouldCancel() === true;
           } catch {}
-          if (!cancelled) return;
-          child.kill("SIGTERM");
+          if (!cancelled || terminationError) return;
           const error = new Error("yt-dlp download cancelled");
           error.code = "DOWNLOAD_CANCELLED";
-          settleReject(error);
+          terminationError = error;
+          clearTimeout(timer);
+          signalProcess("SIGTERM");
+          forcedKillTimer = setTimeout(() => signalProcess("SIGKILL"), 1000);
         }, 250)
       : null;
     if (typeof cancellationTimer?.unref === "function") cancellationTimer.unref();
     function clearTimers() {
       clearTimeout(timer);
+      if (forcedKillTimer) clearTimeout(forcedKillTimer);
       if (cancellationTimer) clearInterval(cancellationTimer);
     }
     function settleReject(error) {
@@ -136,6 +153,11 @@ function runYtdlp(args, { timeoutMs = 120000, cwd, shouldCancel } = {}) {
       if (settled) return;
       settled = true;
       clearTimers();
+      if (terminationError) {
+        signalProcess("SIGKILL");
+        reject(terminationError);
+        return;
+      }
       if (code !== 0) {
         const detail = String(stderr || stdout || "").trim().slice(-500);
         reject(new Error(detail || `yt-dlp exited with code ${code}`));
@@ -265,6 +287,7 @@ async function downloadAudioFor(config = null, videoUrl, { jobId, shouldCancel }
 }
 
 async function cleanupStagingFor(config = null, jobId) {
+  await activeDownloads.get(String(jobId || ""))?.catch(() => {});
   await fsPromises.rm(resolveStagingDir(config, jobId), { recursive: true, force: true }).catch(() => {});
 }
 
@@ -303,7 +326,16 @@ export class YtdlpClient {
   }
 
   downloadAudio(videoUrl, options) {
-    return downloadAudioFor(this._config, videoUrl, options);
+    const download = downloadAudioFor(this._config, videoUrl, options);
+    const jobId = String(options?.jobId || "");
+    if (jobId) {
+      activeDownloads.set(jobId, download);
+      const forget = () => {
+        if (activeDownloads.get(jobId) === download) activeDownloads.delete(jobId);
+      };
+      void download.then(forget, forget);
+    }
+    return download;
   }
 
   cleanupStaging(jobId) {

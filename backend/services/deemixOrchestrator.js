@@ -328,7 +328,6 @@ async function handleDeemixFinalize(payload, helpers) {
     },
   });
   if (!isPipelinePayloadActive(payload)) {
-    await fs.rm(filePath, { force: true }).catch(() => {});
     return null;
   }
   if (!validation.valid) {
@@ -377,7 +376,6 @@ async function handleDeemixFinalize(payload, helpers) {
     });
   });
   if (committed.cancelled) {
-    await fs.rm(filePath, { force: true }).catch(() => {});
     return null;
   }
   return committed.result;
