@@ -150,6 +150,69 @@ function collectClassTokens(attribute, scope) {
   return tokens;
 }
 
+function collectGuaranteedClassTokens(attribute, scope) {
+  const value = attribute?.value?.type === "JSXExpressionContainer"
+    ? attribute.value.expression
+    : attribute?.value;
+
+  const tokenize = (value) => new Set(value.split(/\s+/).filter(Boolean));
+  const intersect = (left, right) => new Set([...left].filter((token) => right.has(token)));
+
+  const collect = (node, seen = new Set()) => {
+    if (!node) return new Set();
+    if (node.type === "Literal" && typeof node.value === "string") return tokenize(node.value);
+
+    if (node.type === "Identifier") {
+      if (seen.has(node.name)) return new Set();
+      const initializer = resolveConstantInitializer(node, scope);
+      if (!initializer) return new Set();
+      const nextSeen = new Set(seen);
+      nextSeen.add(node.name);
+      return collect(initializer, nextSeen);
+    }
+
+    if (node.type === "TemplateLiteral") {
+      const tokens = new Set(node.quasis.flatMap((quasi) => [...tokenize(quasi.value.raw)]));
+      for (const expression of node.expressions) {
+        for (const token of collect(expression, new Set(seen))) tokens.add(token);
+      }
+      return tokens;
+    }
+
+    if (node.type === "ConditionalExpression" || node.type === "LogicalExpression") {
+      return intersect(
+        collect(node.type === "ConditionalExpression" ? node.consequent : node.left, new Set(seen)),
+        collect(node.type === "ConditionalExpression" ? node.alternate : node.right, new Set(seen)),
+      );
+    }
+
+    if (node.type === "ArrayExpression") {
+      return node.elements.reduce((tokens, entry) => {
+        for (const token of collect(entry, new Set(seen))) tokens.add(token);
+        return tokens;
+      }, new Set());
+    }
+
+    if (node.type === "CallExpression") {
+      if (
+        node.callee.type === "MemberExpression" &&
+        !node.callee.computed &&
+        ["filter", "join"].includes(node.callee.property.name)
+      ) {
+        return collect(node.callee.object, seen);
+      }
+      return node.arguments.reduce((tokens, argument) => {
+        for (const token of collect(argument, new Set(seen))) tokens.add(token);
+        return tokens;
+      }, new Set());
+    }
+
+    return new Set();
+  };
+
+  return collect(value);
+}
+
 function hasVisibleText(node) {
   if (!node) return false;
   if (node.type === "JSXText") return node.value.trim().length > 0;
@@ -178,6 +241,10 @@ function hasVisibleText(node) {
   }
   if (node.type === "LogicalExpression") {
     if (node.operator === "&&") return hasVisibleText(node.right);
+    if ((node.operator === "||" || node.operator === "??") && !hasVisibleText(node.right) &&
+      (node.right.type === "JSXElement" || node.right.type === "JSXFragment")) {
+      return false;
+    }
     return hasVisibleText(node.left) || hasVisibleText(node.right);
   }
   if (node.type === "ArrayExpression") return node.elements.some(hasVisibleText);
@@ -317,6 +384,7 @@ export const sharedControlRules = {
         const scope = context.sourceCode.getScope(element);
         const classNameAttribute = readAttribute(element, "className");
         const classTokens = collectClassTokens(classNameAttribute, scope);
+        const guaranteedClassTokens = collectGuaranteedClassTokens(classNameAttribute, scope);
         const role = readAttributeStrings(element, ["role"], scope)[0] ?? null;
         const file = getRelativeFile(
           context.filename ?? context.getFilename?.() ?? "<input>",
@@ -343,7 +411,7 @@ export const sharedControlRules = {
             return;
           }
 
-          if (unstyled || (usesSharedVariant && !classTokens.has("btn"))) {
+          if (unstyled || (usesSharedVariant && !guaranteedClassTokens.has("btn"))) {
             context.report({ node: element.openingElement, messageId: "standardAction" });
           }
           return;
@@ -355,7 +423,7 @@ export const sharedControlRules = {
         }
 
         if (
-          !classTokens.has("btn") &&
+          !guaranteedClassTokens.has("btn") &&
           (isUnstyled(classNameAttribute) || hasSharedButtonVariant(classTokens))
         ) {
           context.report({ node: element.openingElement, messageId: "sharedButtonBase" });

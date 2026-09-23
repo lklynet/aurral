@@ -72,6 +72,10 @@ test("shared control rules accept Aurral button patterns and named exceptions", 
         options: controlOptions,
       },
       {
+        code: 'const classes = cn("btn", active && "btn-primary"); <button className={classes}>Save</button>;',
+        options: controlOptions,
+      },
+      {
         code: '<AddActionButton label="Add to Lidarr" />;',
         options: controlOptions,
       },
@@ -125,6 +129,21 @@ test("shared control rules accept Aurral button patterns and named exceptions", 
         code: '<button type="button" className={cn("btn-primary")}>Save</button>;',
         options: controlOptions,
         errors: [{ messageId: "standardAction" }],
+      },
+      {
+        code: 'const classes = ["btn-primary", enabled && "btn"].filter(Boolean).join(" "); <button className={classes}>Save</button>;',
+        options: controlOptions,
+        errors: [{ messageId: "standardAction" }],
+      },
+      {
+        code: '<button className={enabled ? "btn btn-primary" : "btn-ghost"}>Save</button>;',
+        options: controlOptions,
+        errors: [{ messageId: "standardAction" }],
+      },
+      {
+        code: '<button>{label || <Search aria-hidden="true" />}</button>;',
+        options: controlOptions,
+        errors: [{ messageId: "iconAction" }],
       },
       {
         filename: "src/OtherRow.jsx",

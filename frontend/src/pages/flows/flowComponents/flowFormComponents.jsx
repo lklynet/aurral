@@ -86,7 +86,8 @@ export function FlowScheduleFields({
                     aria-label={day.full}
                     aria-pressed={checked}
                     aria-disabled={checked && scheduleDays.length === 1}
-                    onClick={() =>
+                    onClick={() => {
+                      if (checked && scheduleDays.length === 1) return;
                       updateDraft((prev) => {
                         const current = Array.isArray(prev?.scheduleDays) ? prev.scheduleDays : [];
                         const normalized = [
@@ -108,8 +109,8 @@ export function FlowScheduleFields({
                           ...prev,
                           scheduleDays: next.sort((a, b) => a - b),
                         };
-                      })
-                    }
+                      });
+                    }}
                   >
                     <span>{day.short}</span>
                   </button>

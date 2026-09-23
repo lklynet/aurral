@@ -347,6 +347,8 @@ export function ArtistDetailsLibraryAlbums({
                   ) : hasDownloadedStatus ? (
                     <Tooltip content="Downloaded">
                       <span
+                        role="img"
+                        aria-label="Downloaded"
                         className="artist-status-dot artist-status-dot--complete"
                       />
                     </Tooltip>
