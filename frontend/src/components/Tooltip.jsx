@@ -1,6 +1,6 @@
 import { cloneElement, isValidElement, useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { getTooltipDescribedBy } from "./tooltip-accessibility.js";
+import { getTooltipDescribedBy, hasAccessibleTextContent } from "./tooltip-accessibility.js";
 import { createTooltipInteractionState } from "./tooltip-interaction.js";
 
 function chainHandlers(current, next) {
@@ -8,16 +8,6 @@ function chainHandlers(current, next) {
     current?.(event);
     next(event);
   };
-}
-
-function hasTextContent(children) {
-  if (typeof children === "string" || typeof children === "number") {
-    return String(children).trim().length > 0;
-  }
-
-  if (Array.isArray(children)) return children.some(hasTextContent);
-  if (!isValidElement(children) || children.props["aria-hidden"] === true) return false;
-  return hasTextContent(children.props.children);
 }
 
 function needsTooltipLabel(element) {
@@ -33,7 +23,7 @@ function needsTooltipLabel(element) {
     props["aria-label"] ||
     props["aria-labelledby"] ||
     props.alt ||
-    hasTextContent(props.children)
+    hasAccessibleTextContent(props.children)
   );
 }
 

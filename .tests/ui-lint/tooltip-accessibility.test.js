@@ -1,7 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createElement } from "react";
 
-import { getTooltipDescribedBy } from "../../frontend/src/components/tooltip-accessibility.js";
+import {
+  getTooltipDescribedBy,
+  hasAccessibleTextContent,
+} from "../../frontend/src/components/tooltip-accessibility.js";
+
+test("ignores text inside boolean or string aria-hidden elements", () => {
+  assert.equal(
+    hasAccessibleTextContent(createElement("span", { "aria-hidden": true }, "Play")),
+    false,
+  );
+  assert.equal(
+    hasAccessibleTextContent(createElement("span", { "aria-hidden": "true" }, "Play")),
+    false,
+  );
+  assert.equal(hasAccessibleTextContent(createElement("span", null, "Play")), true);
+});
 
 test("does not repeat the tooltip as a description when it provides the accessible name", () => {
   assert.equal(
