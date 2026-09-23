@@ -113,6 +113,7 @@ function collectClassTokens(attribute, scope) {
 
     if (node.type === "TemplateLiteral") {
       for (const quasi of node.quasis) add(quasi.value.raw);
+      for (const expression of node.expressions) visit(expression, seen);
       return;
     }
 
@@ -133,13 +134,15 @@ function collectClassTokens(attribute, scope) {
       return;
     }
 
-    if (
-      node.type === "CallExpression" &&
-      node.callee.type === "MemberExpression" &&
-      !node.callee.computed &&
-      ["filter", "join"].includes(node.callee.property.name)
-    ) {
-      visit(node.callee.object, seen);
+    if (node.type === "CallExpression") {
+      if (
+        node.callee.type === "MemberExpression" &&
+        !node.callee.computed &&
+        ["filter", "join"].includes(node.callee.property.name)
+      ) {
+        visit(node.callee.object, seen);
+      }
+      for (const argument of node.arguments) visit(argument, seen);
     }
   };
 

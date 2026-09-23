@@ -64,6 +64,10 @@ test("shared control rules accept Aurral button patterns and named exceptions", 
         options: controlOptions,
       },
       {
+        code: '<button type="button" className={`btn-primary ${"btn"}`}>Save</button>;',
+        options: controlOptions,
+      },
+      {
         code: 'const classes = ["btn", "btn-add-action", className].filter(Boolean).join(" "); <TooltipButton label="Add item" className={classes}><PlusIcon /></TooltipButton>;',
         options: controlOptions,
       },
@@ -116,6 +120,11 @@ test("shared control rules accept Aurral button patterns and named exceptions", 
         code: '<button className="btn btn-icon" aria-label="Add to Lidarr"><PlusIcon /></button>;',
         options: controlOptions,
         errors: [{ messageId: "addAction" }],
+      },
+      {
+        code: '<button type="button" className={cn("btn-primary")}>Save</button>;',
+        options: controlOptions,
+        errors: [{ messageId: "standardAction" }],
       },
       {
         filename: "src/OtherRow.jsx",
