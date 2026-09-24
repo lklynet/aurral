@@ -5,6 +5,7 @@ import {
   withHonkerLock,
 } from "../honkerDb.js";
 import { logger } from "../logger.js";
+import { downloadTracker } from "./weeklyFlowDownloadTracker.js";
 import {
   cancelDownloadJobs,
   cancelPlaylistDownloadGeneration,
@@ -345,6 +346,13 @@ async function withPlaylistCancellationLocks(playlistIds, operation) {
   return runAtIndex(0);
 }
 
+function refreshJobs(jobs) {
+  return jobs.map((job) => {
+    const current = downloadTracker.getJob(job.id);
+    return current ? { ...job, ...current } : job;
+  });
+}
+
 export function markDownloadWorkCancelledForJobs(jobs = []) {
   const normalizedJobs = Array.isArray(jobs) ? jobs.filter((job) => job?.id) : [];
   cancelDownloadJobs(normalizedJobs.map((job) => job.id));
@@ -387,11 +395,12 @@ export async function cancelDownloadWorkForJobs(jobs = [], { lock = true } = {})
     .map((job) => normalizeId(job?.playlistId || job?.playlistType))
     .filter(Boolean);
   const cancel = () => {
+    const currentJobs = refreshJobs(normalizedJobs);
     const providerWork = listDownloadProviderWork({
-      jobIds: normalizedJobs.map((job) => job.id),
+      jobIds: currentJobs.map((job) => job.id),
       provider: "slskd-search",
     });
-    return cancelProviderWork(pipeline.payloads, normalizedJobs, providerWork);
+    return cancelProviderWork(pipeline.payloads, currentJobs, providerWork);
   };
   const providers = lock
     ? await withPlaylistCancellationLocks(playlistIds, cancel)
@@ -435,11 +444,12 @@ export async function cancelPlaylistDownloadWork(playlistId, jobs = [], { lock =
   const { generation, jobs: normalizedJobs } = cancellation;
   const activePipeline = cancelPipelineRows(safePlaylistId, normalizedJobs);
   const cancel = () => {
+    const currentJobs = refreshJobs(normalizedJobs);
     const providerWork = listDownloadProviderWork({
       playlistId: safePlaylistId,
       provider: "slskd-search",
     });
-    return cancelProviderWork(activePipeline.payloads, normalizedJobs, providerWork);
+    return cancelProviderWork(activePipeline.payloads, currentJobs, providerWork);
   };
   const providers = lock
     ? await withPlaylistCancellationLocks([safePlaylistId], cancel)

@@ -287,13 +287,27 @@ async function handleUsenetDownload(payload, helpers) {
 
   const client = getUsenetClient();
   const clientKey = getUsenetClientKey();
-  let appended;
+  let submission;
   try {
-    appended = await client.appendUrl({
-      name: release.title,
-      url: release.downloadUrl,
-      dupeKey: `aurral-${job.id}`,
-      dupeScore: Number(candidate.score || 0),
+    submission = await withPipelineCommitLock(payload, async () => {
+      const appended = await client.appendUrl({
+        name: release.title,
+        url: release.downloadUrl,
+        dupeKey: `aurral-${job.id}`,
+        dupeScore: Number(candidate.score || 0),
+      });
+      downloadTracker.updateDownloadMetadata(job.id, {
+        downloadSource: "usenet",
+        downloadClient: clientKey,
+        downloadClientId: appended.nzbId,
+        releaseGuid: release.guid,
+        releaseTitle: release.title,
+        indexerId: release.indexerId,
+        indexerName: release.indexer,
+        remoteUsername: release.indexer,
+        remoteFilename: release.title,
+      });
+      return appended;
     });
   } catch (error) {
     const message = error?.message || String(error);
@@ -306,21 +320,8 @@ async function handleUsenetDownload(payload, helpers) {
     if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, { nzbId: null, history: null });
     return helpers.failOrTryNextSource(payload, job, message);
   }
-  if (!isPipelinePayloadActive(payload)) {
-    if (clientKey === "sabnzbd") removeSabnzbdItem(appended.nzbId, job.id);
-    return null;
-  }
-  downloadTracker.updateDownloadMetadata(job.id, {
-    downloadSource: "usenet",
-    downloadClient: clientKey,
-    downloadClientId: appended.nzbId,
-    releaseGuid: release.guid,
-    releaseTitle: release.title,
-    indexerId: release.indexerId,
-    indexerName: release.indexer,
-    remoteUsername: release.indexer,
-    remoteFilename: release.title,
-  });
+  if (submission.cancelled || !isPipelinePayloadActive(payload)) return null;
+  const appended = submission.result;
   return {
     ...payload,
     phase: "poll",

@@ -32,6 +32,7 @@ import {
   setLibraryManagement,
 } from "./libraryManagementStore.js";
 import { cancelDownloadWorkForJobs } from "./weeklyFlow/weeklyFlowDownloadCancellationService.js";
+import { removePlaylistFileIfUnshared } from "./weeklyFlow/weeklyFlowFileReuse.js";
 const normalizeTypeName = (value) =>
   String(value || "")
     .toLowerCase()
@@ -2413,13 +2414,26 @@ export class LibraryManager {
         ])];
         try {
           const deletionResults = await Promise.allSettled(paths.map(async (filePath) => {
-            try {
-              await fsp.unlink(filePath);
-              return filePath;
-            } catch (error) {
-              if (error?.code === "ENOENT") return filePath;
-              throw error;
+            const removal = await removePlaylistFileIfUnshared(filePath, "library", {
+              deleteIfUnshared: true,
+              protectPlayback: false,
+            });
+            if (removal.action === "skipped") {
+              const resolvedPath = path.resolve(filePath);
+              const referencedByAnotherJob = downloadTracker.getAll().some((job) =>
+                job.status === "done" &&
+                typeof job.finalPath === "string" &&
+                path.resolve(job.finalPath) === resolvedPath,
+              );
+              if (!referencedByAnotherJob) {
+                try {
+                  await fsp.unlink(filePath);
+                } catch (error) {
+                  if (error?.code !== "ENOENT") throw error;
+                }
+              }
             }
+            return filePath;
           }));
           const reconciledPaths = deletionResults
             .filter((result) => result.status === "fulfilled")

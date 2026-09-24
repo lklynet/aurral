@@ -968,20 +968,35 @@ async function handleDownload(payload) {
     remoteUsername: candidate.raw.user,
     remoteFilename: candidate.raw.file,
   });
-  let result;
+  let submission;
   try {
-    result = await slskdClient.enqueueBatch({
-      username: candidate.raw.user,
-      files: [
-        {
-          filename: candidate.raw.file,
-          size: Number(candidate.raw.size || 0),
+    submission = await withPipelineCommitLock(payload, async () => {
+      const result = await slskdClient.enqueueBatch({
+        username: candidate.raw.user,
+        files: [
+          {
+            filename: candidate.raw.file,
+            size: Number(candidate.raw.size || 0),
+          },
+        ],
+        options: {
+          externalId: job.id,
+          searchId,
         },
-      ],
-      options: {
-        externalId: job.id,
-        searchId,
-      },
+      });
+      const transfer = result?.legacyTransfer || result?.transfers?.[0] || result;
+      const transferId = readTransferId(transfer);
+      const transferUsername = String(result?.username || transfer?.username || candidate.raw.user).trim();
+      if (transferId) {
+        downloadTracker.updateDownloadMetadata(job.id, {
+          downloadClient: "slskd",
+          downloadClientId: transferId,
+          remoteUsername: transferUsername,
+        });
+      }
+      updateSlskdMetaStmt.run(null, result.batchId || null, null, null, job.id);
+      job.slskdBatchId = result.batchId || null;
+      return result;
     });
   } catch (error) {
     const message = error?.message || String(error);
@@ -1004,26 +1019,8 @@ async function handleDownload(payload) {
     }
     return failOrTryNextSource(payload, job, message);
   }
-  if (result.transferId) {
-    downloadTracker.updateDownloadMetadata(job.id, {
-      downloadClient: "slskd",
-      downloadClientId: result.transferId,
-    });
-  }
-  if (!isPipelinePayloadActive(payload)) {
-    const transferId = readTransferId(result?.legacyTransfer || result?.transfers?.[0] || result);
-    const transferUsername = String(result?.username || candidate.raw.user || "").trim();
-    if (transferId && transferUsername) {
-      await slskdClient.deleteTransfer(transferUsername, transferId, { remove: true }).catch(() => {});
-    }
-    for (const searchId of getPayloadSearchIds(payload)) {
-      const deleted = await slskdClient.deleteSearch(searchId).catch(() => false);
-      if (deleted) clearDownloadProviderWork({ provider: "slskd-search", workId: searchId });
-    }
-    return null;
-  }
-  updateSlskdMetaStmt.run(null, result.batchId || null, null, null, job.id);
-  job.slskdBatchId = result.batchId || null;
+  if (submission.cancelled || !isPipelinePayloadActive(payload)) return null;
+  const result = submission.result;
   const eventOffset =
     payload.eventOffset != null ? payload.eventOffset : await readCurrentEventOffset();
   return {

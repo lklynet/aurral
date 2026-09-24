@@ -193,9 +193,21 @@ async function handleDeemixDownload(payload, helpers) {
     });
 
   const client = getDeemixClient();
-  let queueUuid;
+  let submission;
   try {
-    queueUuid = await client.addToQueue(url, candidate.raw.id);
+    submission = await withPipelineCommitLock(payload, async () => {
+      const queueUuid = await client.addToQueue(url, candidate.raw.id);
+      downloadTracker.updateDownloadMetadata(job.id, {
+        downloadSource: "deemix",
+        downloadClient: "deemix",
+        downloadClientId: queueUuid,
+        releaseGuid: candidate.raw.id,
+        releaseTitle: candidate.raw.title,
+        remoteUsername: candidate.raw.artist,
+        remoteFilename: candidate.raw.file,
+      });
+      return queueUuid;
+    });
   } catch (error) {
     const message = safeLogDiagnostic(error);
     logger.warn("deemix", "deemix queue submission failed", {
@@ -208,20 +220,8 @@ async function handleDeemixDownload(payload, helpers) {
     return helpers.failOrTryNextSource(payload, job, message);
   }
 
-  if (!isPipelinePayloadActive(payload)) {
-    await client.removeFromQueue(queueUuid).catch(() => {});
-    return null;
-  }
-
-  downloadTracker.updateDownloadMetadata(job.id, {
-    downloadSource: "deemix",
-    downloadClient: "deemix",
-    downloadClientId: queueUuid,
-    releaseGuid: candidate.raw.id,
-    releaseTitle: candidate.raw.title,
-    remoteUsername: candidate.raw.artist,
-    remoteFilename: candidate.raw.file,
-  });
+  if (submission.cancelled || !isPipelinePayloadActive(payload)) return null;
+  const queueUuid = submission.result;
 
   return {
     ...payload,

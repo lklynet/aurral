@@ -28,6 +28,8 @@ Treat playlist removal as a durable cancellation boundary.
 - Clearing all jobs snapshots the current rows, cancels those jobs, and removes them under the affected playlist locks. Jobs created after the snapshot stay queued.
 - Library-track removal waits for provider cleanup before deleting matching jobs or files. If cleanup fails, the library track and job stay in place for a later retry.
 - Library-track deletion reads each matching job's current `finalPath` after provider cancellation finishes. It includes that path in file cleanup before removing the track, so a finalizer that already held the lock cannot leave an untracked file behind.
+- Library-track deletion checks playlist file references before unlinking a path. It moves a shared managed file to a surviving playlist. It leaves other referenced files in place when it cannot move them safely.
+- slskd, deemix, and SABnzbd submissions use the playlist mutation lock. Each handler records the provider ID before releasing the lock, and cancellation reads the current job metadata after it acquires the lock. A failed provider cleanup therefore leaves the ID available for retry.
 - A failed shared-playlist edit restores only job-cancellation tombstones created by that edit. Existing tombstones stay in force, and the old playlist remains unchanged.
 
 When a playlist is created again with the same ID, Aurral advances the generation. Payloads from the removed playlist remain invalid even if their Honker rows survive a restart.

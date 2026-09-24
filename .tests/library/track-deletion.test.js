@@ -108,6 +108,66 @@ test("deletes Aurral-owned track files without Lidarr", async (t) => {
   }
 });
 
+test("deleting a library track preserves a file still referenced by a playlist job", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-delete-shared-file-"));
+  const filePath = path.join(root, "Artist", "Album", "01 Track.flac");
+  const identity = `track-delete-shared-file-${process.pid}-${Date.now()}`;
+  const mbid = `${identity}-mbid`;
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, "shared audio");
+
+  const artist = upsertLibraryArtist({ identityKey: `${identity}:artist`, name: "Artist" });
+  const album = upsertLibraryAlbum({
+    identityKey: `${identity}:album`,
+    artistId: artist.id,
+    title: "Album",
+  });
+  const track = upsertLibraryTrack({
+    identityKey: `${identity}:track`,
+    mbid,
+    title: "Track",
+    artistName: "Artist",
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "aurral",
+    path: filePath,
+    available: true,
+  });
+  const libraryJobId = downloadTracker.addJob({
+    artistName: "Artist",
+    trackName: "Track",
+    trackMbid: mbid,
+  }, "library");
+  const playlistJobId = downloadTracker.addJob({
+    artistName: "Artist",
+    trackName: "Track",
+    trackMbid: mbid,
+  }, "shared-file-survivor");
+  downloadTracker.setDone(libraryJobId, filePath, "Album");
+  downloadTracker.setDone(playlistJobId, filePath, "Album");
+
+  t.mock.method(lidarrClient, "isConfigured", () => false);
+
+  try {
+    assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
+    assert.equal(await fsp.readFile(filePath, "utf8"), "shared audio");
+    assert.equal(downloadTracker.getJob(libraryJobId), null);
+    assert.equal(downloadTracker.getJob(playlistJobId)?.finalPath, filePath);
+  } finally {
+    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run("aurral", filePath);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?").run(album.id, track.id);
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    downloadTracker.removeJob(libraryJobId);
+    downloadTracker.removeJob(playlistJobId);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("deletes a library file committed while track removal waits for its lock", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-delete-commit-race-"));
   const originalPath = path.join(root, "Artist", "Album", "Original.flac");
