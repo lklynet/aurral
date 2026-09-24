@@ -212,21 +212,20 @@ export function initializeLibrarySearchIndex(db) {
       .get("librarySearchIndexVersion")?.value;
     return { hasIndex, hasTriggers, version };
   };
+  if (!fts5Enabled) return false;
   const current = hasCurrentSearchIndex();
-  if (fts5Enabled && current.hasIndex && current.hasTriggers && current.version === SEARCH_INDEX_VERSION) return true;
+  if (current.hasIndex && current.hasTriggers && current.version === SEARCH_INDEX_VERSION) return true;
 
   return db.transaction(() => {
     const { hasIndex, hasTriggers, version } = hasCurrentSearchIndex();
-    if (fts5Enabled && hasIndex && hasTriggers && version === SEARCH_INDEX_VERSION) return true;
-    if (fts5Enabled) {
-      db.exec(`
-        DROP TRIGGER IF EXISTS library_search_documents_ai;
-        DROP TRIGGER IF EXISTS library_search_documents_au;
-        DROP TRIGGER IF EXISTS library_search_documents_ad;
-        DROP TABLE IF EXISTS library_search_fts;
-        DROP TABLE IF EXISTS library_search_documents;
-      `);
-    }
+    if (hasIndex && hasTriggers && version === SEARCH_INDEX_VERSION) return true;
+    db.exec(`
+      DROP TRIGGER IF EXISTS library_search_documents_ai;
+      DROP TRIGGER IF EXISTS library_search_documents_au;
+      DROP TRIGGER IF EXISTS library_search_documents_ad;
+      DROP TABLE IF EXISTS library_search_fts;
+      DROP TABLE IF EXISTS library_search_documents;
+    `);
     if (!createSearchSchema(db)) return false;
     populateLibrarySearchDocuments(db);
     db.prepare("INSERT INTO library_search_fts(library_search_fts) VALUES ('rebuild')").run();
