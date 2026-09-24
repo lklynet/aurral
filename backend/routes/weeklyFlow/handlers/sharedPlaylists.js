@@ -14,12 +14,11 @@ import { normalizeImportSource } from "../../../services/weeklyFlow/weeklyFlowPl
 import {
   markDownloadWorkCancelledForJobs,
   markPlaylistDownloadWorkCancelled,
+  restoreMarkedPlaylistDownloadWork,
 } from "../../../services/weeklyFlow/weeklyFlowDownloadCancellationService.js";
 import {
-  getPlaylistDownloadGeneration,
   isDownloadJobCancelled,
-  isPipelinePayloadActive,
-  restorePlaylistDownloadWork,
+  restoreDownloadJobCancellations,
 } from "../../../services/weeklyFlow/weeklyFlowDownloadCancellation.js";
 
 async function createOrImportSharedPlaylist(req, res, { requireTracks, label }) {
@@ -283,15 +282,25 @@ export function registerSharedPlaylists(router) {
         if (!job || (job.playlistType !== playlistId && !playlistReferencesJob)) {
           return res.status(404).json({ error: "Track not found" });
         }
-        if (!playlistReferencesJob) {
+        const shouldCancelJob = !playlistReferencesJob;
+        const wasJobCancelled = isDownloadJobCancelled(job.id);
+        if (shouldCancelJob) {
           markDownloadWorkCancelledForJobs([job]);
         }
-        const result = await weeklyFlowOperationQueue.enqueuePayload({
-          kind: "shared-playlist-delete-track",
-          label: `shared-playlist:${playlistId}:track:${jobId}:delete`,
-          playlistId,
-          jobId,
-        });
+        let result;
+        try {
+          result = await weeklyFlowOperationQueue.enqueuePayload({
+            kind: "shared-playlist-delete-track",
+            label: `shared-playlist:${playlistId}:track:${jobId}:delete`,
+            playlistId,
+            jobId,
+          });
+        } catch (error) {
+          if (shouldCancelJob && !wasJobCancelled) {
+            restoreDownloadJobCancellations([job.id]);
+          }
+          throw error;
+        }
 
         return res.json({
           success: true,
@@ -357,13 +366,10 @@ export function registerSharedPlaylists(router) {
       if (!exists) {
         return res.status(404).json({ error: "Shared playlist not found" });
       }
-      const jobs = downloadTracker.getByPlaylistId(playlistId);
-      const generation = getPlaylistDownloadGeneration(playlistId);
-      const wasActive = isPipelinePayloadActive({ playlistId, playlistGeneration: generation });
-      const jobsToRestore = jobs
-        .filter((job) => !isDownloadJobCancelled(job.id))
-        .map((job) => job.id);
-      markPlaylistDownloadWorkCancelled(playlistId, jobs);
+      const cancellation = markPlaylistDownloadWorkCancelled(
+        playlistId,
+        downloadTracker.getByPlaylistId(playlistId),
+      );
 
       let deleted;
       try {
@@ -373,7 +379,7 @@ export function registerSharedPlaylists(router) {
           playlistId,
         });
       } catch (error) {
-        if (wasActive) restorePlaylistDownloadWork(playlistId, jobsToRestore);
+        restoreMarkedPlaylistDownloadWork(playlistId, cancellation);
         throw error;
       }
       return res.json({

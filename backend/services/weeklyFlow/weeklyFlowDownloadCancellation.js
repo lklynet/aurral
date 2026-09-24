@@ -137,6 +137,17 @@ export function restorePlaylistDownloadWork(playlistId, jobIds = []) {
   return true;
 }
 
+export function restoreDownloadJobCancellations(jobIds = []) {
+  const safeJobIds = [...new Set((Array.isArray(jobIds) ? jobIds : []).map(normalizeId).filter(Boolean))];
+  if (safeJobIds.length === 0) return 0;
+  const restore = db.transaction(() => {
+    let restored = 0;
+    for (const jobId of safeJobIds) restored += restoreJobStmt.run(jobId).changes;
+    return restored;
+  });
+  return restore();
+}
+
 export function registerDownloadProviderWork({
   jobId,
   playlistId,

@@ -21,11 +21,16 @@ import {
   DEFAULT_LIMIT,
   validateFlowPayload,
   markFlowMutationToken,
+  restoreFlowMutationToken,
   getAccessibleFlow,
   queueFlowSideEffect,
   enqueueResearchTrack,
 } from "./utils.js";
-import { markPlaylistDownloadWorkCancelled } from "../../../services/weeklyFlow/weeklyFlowDownloadCancellationService.js";
+import {
+  markPlaylistDownloadWorkCancelled,
+  restoreMarkedPlaylistDownloadWork,
+} from "../../../services/weeklyFlow/weeklyFlowDownloadCancellationService.js";
+import { logger } from "../../../services/logger.js";
 
 export function registerFlows(router) {
   router.post("/start/:flowId", async (req, res) => {
@@ -199,15 +204,23 @@ export function registerFlows(router) {
       if (!getAccessibleFlow(req.user, flowId)) {
         return res.status(404).json({ error: "Flow not found" });
       }
-      markPlaylistDownloadWorkCancelled(flowId, downloadTracker.getByPlaylistId(flowId));
-      const { token, tokenScope } = markFlowMutationToken(flowId);
-      const deleted = await weeklyFlowOperationQueue.enqueuePayload({
-        kind: "delete-flow",
-        label: `delete:${flowId}`,
-        flowId,
-        tokenScope,
-        token,
-      });
+      const jobs = downloadTracker.getByPlaylistId(flowId);
+      const cancellation = markPlaylistDownloadWorkCancelled(flowId, jobs);
+      const mutation = markFlowMutationToken(flowId);
+      let deleted;
+      try {
+        deleted = await weeklyFlowOperationQueue.enqueuePayload({
+          kind: "delete-flow",
+          label: `delete:${flowId}`,
+          flowId,
+          tokenScope: mutation.tokenScope,
+          token: mutation.token,
+        });
+      } catch (error) {
+        restoreMarkedPlaylistDownloadWork(flowId, cancellation);
+        restoreFlowMutationToken(mutation);
+        throw error;
+      }
       return res.json({
         success: true,
         flowId,
@@ -259,16 +272,46 @@ export function registerFlows(router) {
 
         queueFlowSideEffect("enable-flow-refresh", "enable", flowId);
       } else {
+        const wasEnabled = flow.enabled === true;
+        const jobs = downloadTracker.getByPlaylistId(flowId);
+        const cancellation = markPlaylistDownloadWorkCancelled(flowId, jobs);
         flowPlaylistConfig.setEnabled(flowId, false);
-        markPlaylistDownloadWorkCancelled(flowId, downloadTracker.getByPlaylistId(flowId));
-        await playlistManager.ensureSmartPlaylists();
+
+        let mutation = null;
+        let queued;
+        try {
+          await playlistManager.ensureSmartPlaylists();
+          mutation = markFlowMutationToken(flowId);
+          queued = await weeklyFlowOperationQueue.enqueuePayload({
+            kind: "disable-flow-cleanup",
+            label: `disable:${flowId}`,
+            flowId,
+            tokenScope: mutation.tokenScope,
+            token: mutation.token,
+          });
+        } catch (error) {
+          flowPlaylistConfig.setEnabled(flowId, wasEnabled);
+          if (wasEnabled) flowPlaylistConfig.scheduleNextRun(flowId);
+          restoreMarkedPlaylistDownloadWork(flowId, cancellation);
+          if (mutation) restoreFlowMutationToken(mutation);
+          try {
+            await playlistManager.ensureSmartPlaylists();
+          } catch (restoreError) {
+            logger.error("weeklyFlow", "Failed to restore playlists after a rejected flow disable", {
+              flowId,
+              message: restoreError.message,
+            });
+          }
+          throw error;
+        }
 
         res.json({
           success: true,
           flowId,
           enabled: false,
+          queued: true,
+          operationId: queued.operationId,
         });
-        queueFlowSideEffect("disable-flow-cleanup", "disable", flowId);
       }
     } catch (error) {
       res.status(500).json({

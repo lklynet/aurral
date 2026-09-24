@@ -7,7 +7,9 @@ import {
 import { weeklyFlowOperationQueue } from "../../../services/weeklyFlow/weeklyFlowOperationQueue.js";
 import {
   createWeeklyFlowOperationToken,
+  getLatestWeeklyFlowOperationToken,
   markLatestWeeklyFlowOperationToken,
+  restoreWeeklyFlowOperationToken,
 } from "../../../services/weeklyFlow/weeklyFlowOperations.js";
 import {
   restartWorkerIfPending,
@@ -128,11 +130,19 @@ export const validateFlowPayload = ({
 };
 
 export const markFlowMutationToken = (flowId) => {
-  const token = createWeeklyFlowOperationToken();
   const tokenScope = `flow:${flowId}:mutation`;
+  const previousToken = getLatestWeeklyFlowOperationToken(tokenScope);
+  const token = createWeeklyFlowOperationToken();
   markLatestWeeklyFlowOperationToken(tokenScope, token);
-  return { token, tokenScope };
+  return { token, tokenScope, previousToken };
 };
+
+export const restoreFlowMutationToken = (mutation) =>
+  restoreWeeklyFlowOperationToken({
+    scope: mutation?.tokenScope,
+    token: mutation?.token,
+    previousToken: mutation?.previousToken,
+  });
 
 export const pauseSharedPlaylistRetryCycle = async (playlistId) => {
   await weeklyFlowWorker.setRetryCyclePaused(playlistId, true);
@@ -177,7 +187,8 @@ export const filterJobsForUser = (user, jobs) =>
   );
 
 export const queueFlowSideEffect = (kind, labelPrefix, flowId) => {
-  const { token, tokenScope } = markFlowMutationToken(flowId);
+  const mutation = markFlowMutationToken(flowId);
+  const { token, tokenScope } = mutation;
   weeklyFlowOperationQueue
     .enqueuePayload({
       kind,
@@ -187,6 +198,7 @@ export const queueFlowSideEffect = (kind, labelPrefix, flowId) => {
       token,
     })
     .catch((error) => {
+      restoreFlowMutationToken(mutation);
       logger.error("weeklyFlow", `Failed to ${labelPrefix} flow ${flowId}:`, { message: error.message });
     });
 };

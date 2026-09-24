@@ -9,7 +9,12 @@ import {
   cancelDownloadJobs,
   cancelPlaylistDownloadGeneration,
   clearDownloadProviderWork,
+  getPlaylistDownloadGeneration,
+  isDownloadJobCancelled,
+  isPipelinePayloadActive,
   listDownloadProviderWork,
+  restoreDownloadJobCancellations,
+  restorePlaylistDownloadWork,
 } from "./weeklyFlowDownloadCancellation.js";
 
 const PIPELINE_QUEUE = "slskd-pipeline";
@@ -349,12 +354,27 @@ export function markDownloadWorkCancelledForJobs(jobs = []) {
 export function markPlaylistDownloadWorkCancelled(playlistId, jobs = []) {
   const safePlaylistId = normalizeId(playlistId);
   if (!safePlaylistId) {
-    return { generation: 0, jobs: [] };
+    return { generation: 0, jobs: [], wasActive: false, jobsToRestore: [] };
   }
   const normalizedJobs = Array.isArray(jobs) ? jobs.filter((job) => job?.id) : [];
+  const generationBeforeCancellation = getPlaylistDownloadGeneration(safePlaylistId);
+  const wasActive = isPipelinePayloadActive({
+    playlistId: safePlaylistId,
+    playlistGeneration: generationBeforeCancellation,
+  });
+  const jobsToRestore = normalizedJobs
+    .filter((job) => !isDownloadJobCancelled(job.id))
+    .map((job) => job.id);
   const generation = cancelPlaylistDownloadGeneration(safePlaylistId);
   cancelDownloadJobs(normalizedJobs.map((job) => job.id));
-  return { generation, jobs: normalizedJobs };
+  return { generation, jobs: normalizedJobs, wasActive, jobsToRestore };
+}
+
+export function restoreMarkedPlaylistDownloadWork(playlistId, cancellation) {
+  if (cancellation?.wasActive) {
+    return restorePlaylistDownloadWork(playlistId, cancellation.jobsToRestore);
+  }
+  return restoreDownloadJobCancellations(cancellation?.jobsToRestore) > 0;
 }
 
 export async function cancelDownloadWorkForJobs(jobs = [], { lock = true } = {}) {

@@ -42,7 +42,7 @@ If slskd, deemix, or SABnzbd has tracked work but is no longer configured, cance
 
 Aurral does not delete a source file merely because a Usenet or deemix provider reports its path. A path mapping can point into a shared library. The provider response does not prove that Aurral owns the file. Cancellation prevents import, while provider-specific cleanup handles work that Aurral can identify.
 
-Subsonic playlist edits use the same mutation lock as other playlist operations. They cancel only legacy jobs removed by the replacement and preserve jobs and files for tracks that remain. If provider cancellation fails, the old playlist stays in place. Its pending jobs resume, while interrupted downloads become failed jobs that the user can retry. If a delete operation cannot be queued, Aurral restores the playlist's active generation and the job cancellation markers.
+Subsonic playlist edits use the same mutation lock as other playlist operations. They cancel only legacy jobs removed by the replacement and preserve jobs and files for tracks that remain. If provider cancellation fails, the old playlist stays in place. Its pending jobs resume, while interrupted downloads become failed jobs that the user can retry. If flow or playlist cleanup cannot be queued, Aurral restores only the cancellation markers created by that request; a failed flow disable also restores its previous enabled state. Track removal similarly clears only its newly created job marker when queueing fails.
 
 The NZBGet adapter does not expose a verified queue-cancel operation. Aurral therefore stops the Aurral pipeline and refuses to import a result after removal, but it does not claim that NZBGet stopped the remote download.
 

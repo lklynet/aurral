@@ -62,14 +62,30 @@ export function markLatestWeeklyFlowOperationToken(scope, token) {
   dbOps.setJSONSetting(operationTokenKey(safeScope), safeToken);
 }
 
+export function getLatestWeeklyFlowOperationToken(scope) {
+  const safeScope = String(scope || "").trim();
+  if (!safeScope) return null;
+  const current = dbOps.getJSONSetting(operationTokenKey(safeScope));
+  if (current != null) return current;
+  const legacy = dbOps.getJSONSetting(OPERATION_TOKENS_KEY) || {};
+  return legacy[safeScope] ?? null;
+}
+
+export function restoreWeeklyFlowOperationToken({ scope, token, previousToken } = {}) {
+  const safeScope = String(scope || "").trim();
+  const safeToken = String(token || "").trim();
+  if (!safeScope || !safeToken || getLatestWeeklyFlowOperationToken(safeScope) !== safeToken) {
+    return false;
+  }
+  dbOps.setJSONSetting(operationTokenKey(safeScope), previousToken ?? null);
+  return true;
+}
+
 function isLatestWeeklyFlowOperationToken(scope, token) {
   const safeScope = String(scope || "").trim();
   const safeToken = String(token || "").trim();
   if (!safeScope || !safeToken) return true;
-  const current = dbOps.getJSONSetting(operationTokenKey(safeScope));
-  if (current != null) return current === safeToken;
-  const legacy = dbOps.getJSONSetting(OPERATION_TOKENS_KEY) || {};
-  return legacy[safeScope] === safeToken;
+  return getLatestWeeklyFlowOperationToken(safeScope) === safeToken;
 }
 
 function normalizeTrackList(value) {
