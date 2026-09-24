@@ -37,13 +37,13 @@ const dbHelpers = {
   stringifyJSON: (obj) => obj === undefined ? null : JSON.stringify(obj),
 };
 
-test("v2 migration creates playlist_download_jobs table and stores schema version", async () => {
+test("startup migration from v1 creates playlist_download_jobs table and stores schema version", async () => {
   const { dbPath } = createPreMigrationDb();
-  const { applyV2Migration } = await import("../../backend/config/schema-migration-v2.js");
+  const { initializeSchemaOnStartup } = await import("../../backend/config/schema-migration-v2.js");
   const db = new Database(dbPath);
 
-  const result = applyV2Migration(db, dbHelpers);
-  assert.equal(result.schemaVersion, 2);
+  const result = initializeSchemaOnStartup(db, dbHelpers);
+  assert.equal(result.schemaVersion, 4);
 
   const tables = db.prepare(
     "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('weekly_flow_jobs', 'playlist_download_jobs')",
@@ -58,31 +58,31 @@ test("v2 migration creates playlist_download_jobs table and stores schema versio
   );
 
   const version = db.prepare("SELECT value FROM settings WHERE key = 'schemaVersion'").get()?.value;
-  assert.equal(version, "2");
+  assert.equal(version, "4");
 
   db.close();
 });
 
-test("v2 migration is idempotent", async () => {
+test("startup migration from v1 is idempotent", async () => {
   const { dbPath } = createPreMigrationDb();
-  const { applyV2Migration } = await import("../../backend/config/schema-migration-v2.js");
+  const { initializeSchemaOnStartup } = await import("../../backend/config/schema-migration-v2.js");
   const db = new Database(dbPath);
 
-  applyV2Migration(db, dbHelpers);
-  const secondResult = applyV2Migration(db, dbHelpers);
+  initializeSchemaOnStartup(db, dbHelpers);
+  const secondResult = initializeSchemaOnStartup(db, dbHelpers);
 
   assert.equal(secondResult.migrated, false);
-  assert.equal(secondResult.schemaVersion, 2);
+  assert.equal(secondResult.schemaVersion, 4);
 
   db.close();
 });
 
-test("v2 migration renames settings keys", async () => {
+test("startup migration from v1 renames settings keys", async () => {
   const { dbPath } = createPreMigrationDb();
-  const { applyV2Migration } = await import("../../backend/config/schema-migration-v2.js");
+  const { initializeSchemaOnStartup } = await import("../../backend/config/schema-migration-v2.js");
   const db = new Database(dbPath);
 
-  applyV2Migration(db, dbHelpers);
+  initializeSchemaOnStartup(db, dbHelpers);
 
   const flows = db.prepare("SELECT value FROM settings WHERE key = 'flows'").get()?.value;
   assert.equal(flows, "[]");
@@ -94,12 +94,12 @@ test("v2 migration renames settings keys", async () => {
   db.close();
 });
 
-test("v2 migration splits weeklyFlowWorker settings into playlistWorker and weeklyFlowWorker", async () => {
+test("startup migration from v1 splits weeklyFlowWorker settings into playlistWorker and weeklyFlowWorker", async () => {
   const { dbPath } = createPreMigrationDb();
-  const { applyV2Migration } = await import("../../backend/config/schema-migration-v2.js");
+  const { initializeSchemaOnStartup } = await import("../../backend/config/schema-migration-v2.js");
   const db = new Database(dbPath);
 
-  applyV2Migration(db, dbHelpers);
+  initializeSchemaOnStartup(db, dbHelpers);
 
   const playlistWorker = JSON.parse(
     db.prepare("SELECT value FROM settings WHERE key = 'playlistWorker'").get()?.value || "{}",
@@ -118,12 +118,12 @@ test("v2 migration splits weeklyFlowWorker settings into playlistWorker and week
   db.close();
 });
 
-test("v2 migration copies existing jobs from weekly_flow_jobs to playlist_download_jobs", async () => {
+test("startup migration from v1 copies existing jobs from weekly_flow_jobs to playlist_download_jobs", async () => {
   const { dbPath } = createPreMigrationDb();
-  const { applyV2Migration } = await import("../../backend/config/schema-migration-v2.js");
+  const { initializeSchemaOnStartup } = await import("../../backend/config/schema-migration-v2.js");
   const db = new Database(dbPath);
 
-  applyV2Migration(db, dbHelpers);
+  initializeSchemaOnStartup(db, dbHelpers);
 
   const copiedJob = db.prepare("SELECT * FROM playlist_download_jobs WHERE id = 'job-1'").get();
   assert.equal(copiedJob.artist_name, "Artist");
@@ -132,12 +132,12 @@ test("v2 migration copies existing jobs from weekly_flow_jobs to playlist_downlo
   db.close();
 });
 
-test("v2 migration drops weekly_flow_jobs after copying data", async () => {
+test("startup migration from v1 drops weekly_flow_jobs after copying data", async () => {
   const { dbPath } = createPreMigrationDb();
-  const { applyV2Migration } = await import("../../backend/config/schema-migration-v2.js");
+  const { initializeSchemaOnStartup } = await import("../../backend/config/schema-migration-v2.js");
   const db = new Database(dbPath);
 
-  applyV2Migration(db, dbHelpers);
+  initializeSchemaOnStartup(db, dbHelpers);
 
   const legacyTable = db
     .prepare(
@@ -152,7 +152,7 @@ test("v2 migration drops weekly_flow_jobs after copying data", async () => {
   db.close();
 });
 
-test("v2 migration survives legacy playlist_download_jobs sync triggers", async () => {
+test("startup migration from v1 survives legacy playlist_download_jobs sync triggers", async () => {
   const { dbPath } = createPreMigrationDb();
   const db = new Database(dbPath);
   db.exec(`
@@ -198,9 +198,9 @@ test("v2 migration survives legacy playlist_download_jobs sync triggers", async 
   `);
   db.close();
 
-  const { applyV2Migration } = await import("../../backend/config/schema-migration-v2.js");
+  const { initializeSchemaOnStartup } = await import("../../backend/config/schema-migration-v2.js");
   const reopened = new Database(dbPath);
-  assert.doesNotThrow(() => applyV2Migration(reopened, dbHelpers));
+  assert.doesNotThrow(() => initializeSchemaOnStartup(reopened, dbHelpers));
   assert.equal(
     reopened
       .prepare(

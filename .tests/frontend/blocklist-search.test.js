@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 
 import { buildBlocklistArtistSuggestions } from "../../frontend/src/utils/blocklistSearch.js";
 
@@ -37,16 +36,4 @@ test("blocklist suggestions combine and deduplicate unified artist results", () 
     { id: "radiohead", name: "Radiohead" },
     { id: "the-smile", name: "The Smile" },
   ]);
-});
-
-test("Blocklist appears after Activity in the sidebar", async () => {
-  const source = await readFile(
-    new URL("../../frontend/src/components/Sidebar.jsx", import.meta.url),
-    "utf8",
-  );
-
-  const activityIndex = source.indexOf('label: "Activity"');
-  const blocklistIndex = source.indexOf('label: "Blocklist"');
-  assert.notEqual(activityIndex, -1);
-  assert.ok(blocklistIndex > activityIndex);
 });

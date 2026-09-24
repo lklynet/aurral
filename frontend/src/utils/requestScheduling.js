@@ -5,12 +5,6 @@ const ACTIVITY_HISTORY_RECONCILE_MS = 5 * 60_000;
 const BOOTSTRAP_DISCONNECTED_POLL_MS = 30_000;
 const BOOTSTRAP_CONNECTED_POLL_MS = 2 * 60_000;
 
-export const shouldPollSocketFallback = ({
-  isConnected,
-  hasTrackedItems = true,
-  documentHidden = false,
-} = {}) => !isConnected && hasTrackedItems && !documentHidden;
-
 export const getActivityPollIntervalMs = ({ isConnected, isListLikeView } = {}) => {
   if (isConnected) {
     return isListLikeView

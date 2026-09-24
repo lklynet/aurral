@@ -187,10 +187,14 @@ export async function shutdownHonkerInfrastructure({ timeoutMs = 30000 } = {}) {
   const stopPromises = Promise.allSettled([schedulerStop, ...workerStops]);
   const remainingMs = Math.max(0, deadline - Date.now());
   if (remainingMs > 0) {
+    let timer;
     await Promise.race([
       stopPromises,
-      new Promise((resolve) => setTimeout(resolve, remainingMs)),
+      new Promise((resolve) => {
+        timer = setTimeout(resolve, remainingMs);
+      }),
     ]);
+    clearTimeout(timer);
   }
 
   while (Date.now() < deadline) {

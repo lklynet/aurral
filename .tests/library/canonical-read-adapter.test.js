@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 
 import {
   buildCanonicalLibraryReadModel,
-  findCanonicalAlbumsForArtist,
   findCanonicalArtist,
   findCanonicalTracksForAlbum,
 } from "../../backend/services/canonicalLibraryReadAdapter.js";
@@ -63,8 +62,7 @@ test("canonical read model maps the existing root to Library-shaped records", ()
   const result = buildCanonicalLibraryReadModel(library);
 
   assert.equal(findCanonicalArtist(result.artists, "artist-1")?.artistName, "Root Artist");
-  assert.deepEqual(findCanonicalAlbumsForArtist(result.albums, "artist-1").map((album) => album.id), [2]);
-  assert.deepEqual(findCanonicalAlbumsForArtist(result.albums, 2), []);
+  assert.equal(result.albums[0].artistMbid, "artist-1");
   assert.deepEqual(findCanonicalTracksForAlbum(result.tracks, 2).map((track) => track.trackName), [
     "Root Track",
   ]);

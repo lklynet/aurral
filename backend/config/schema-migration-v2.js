@@ -1,8 +1,5 @@
 const SCHEMA_VERSION_KEY = "schemaVersion";
-const V2_SCHEMA_VERSION = 2;
-const V3_SCHEMA_VERSION = 3;
-const V4_SCHEMA_VERSION = 4;
-export const TARGET_SCHEMA_VERSION = V4_SCHEMA_VERSION;
+export const TARGET_SCHEMA_VERSION = 4;
 
 export function getSchemaVersion(db) {
   const row = db
@@ -12,7 +9,25 @@ export function getSchemaVersion(db) {
 }
 
 export function initializeSchemaOnStartup(db, dbHelpers) {
-  return applyV4Migration(db, dbHelpers);
+  const currentVersion = getSchemaVersion(db);
+  if (currentVersion >= TARGET_SCHEMA_VERSION) {
+    return { migrated: false, schemaVersion: currentVersion };
+  }
+  const upsertSettingStmt = db.prepare(
+    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+  );
+  return db.transaction(() => {
+    const lockedVersion = getSchemaVersion(db);
+    if (lockedVersion >= TARGET_SCHEMA_VERSION) {
+      return { migrated: false, schemaVersion: lockedVersion };
+    }
+    finalizeV2SettingsKeys(db, dbHelpers);
+    migrateJobsTable(db);
+    ensureSlskdTransferHistoryTable(db);
+    applyOwnershipMigration(db);
+    upsertSettingStmt.run(SCHEMA_VERSION_KEY, String(TARGET_SCHEMA_VERSION));
+    return { migrated: true, schemaVersion: TARGET_SCHEMA_VERSION };
+  }).immediate();
 }
 
 function tableExists(db, name) {
@@ -548,41 +563,4 @@ function migrateJobsTable(db) {
   );
 
   dropLegacyWeeklyFlowJobs(db);
-}
-
-function applySchemaMigration(db, dbHelpers, targetVersion) {
-  const currentVersion = getSchemaVersion(db);
-  if (currentVersion >= targetVersion) {
-    return { migrated: false, schemaVersion: currentVersion };
-  }
-  const upsertSettingStmt = db.prepare(
-    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-  );
-  const run = db.transaction(() => {
-    const currentVersion = getSchemaVersion(db);
-    if (currentVersion >= targetVersion) {
-      return { migrated: false, schemaVersion: currentVersion };
-    }
-    finalizeV2SettingsKeys(db, dbHelpers);
-    migrateJobsTable(db);
-    ensureSlskdTransferHistoryTable(db);
-    if (targetVersion >= V4_SCHEMA_VERSION) {
-      applyOwnershipMigration(db);
-    }
-    upsertSettingStmt.run(SCHEMA_VERSION_KEY, String(targetVersion));
-    return { migrated: true, schemaVersion: targetVersion };
-  });
-  return run.immediate();
-}
-
-export function applyV2Migration(db, dbHelpers) {
-  return applySchemaMigration(db, dbHelpers, V2_SCHEMA_VERSION);
-}
-
-export function applyV3Migration(db, dbHelpers) {
-  return applySchemaMigration(db, dbHelpers, V3_SCHEMA_VERSION);
-}
-
-export function applyV4Migration(db, dbHelpers) {
-  return applySchemaMigration(db, dbHelpers, V4_SCHEMA_VERSION);
 }

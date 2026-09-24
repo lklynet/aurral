@@ -482,41 +482,6 @@ export function removeLibraryTrackIfNoAvailableMedia(trackId) {
   return removed;
 }
 
-export function removeLibraryAlbumTracksWithoutMedia(albumId, source, { syncSearch = true } = {}) {
-  const mediaSource = normalizeText(source);
-  const changed = db.transaction(() => {
-    const trackIds = db.prepare(
-      "SELECT track_id FROM library_album_tracks WHERE album_id = ?",
-    ).all(Number(albumId)).map((row) => row.track_id);
-    const result = db.prepare(
-      `DELETE FROM library_album_tracks
-       WHERE album_id = ?
-         AND NOT EXISTS (
-           SELECT 1
-           FROM library_media_files AS media
-           WHERE media.track_id = library_album_tracks.track_id
-             AND media.album_id = library_album_tracks.album_id
-             AND media.source = ?
-             AND media.available = 1
-         )
-         AND NOT EXISTS (
-           SELECT 1
-           FROM library_media_files AS media
-           WHERE media.track_id = library_album_tracks.track_id
-             AND media.album_id = library_album_tracks.album_id
-             AND media.source != ?
-             AND media.available = 1
-         )`,
-    ).run(Number(albumId), mediaSource, mediaSource);
-    if (result.changes > 0) touchLibraryAlbum(albumId);
-    if (syncSearch) {
-      for (const trackId of trackIds) syncLibrarySearchTrack(trackId);
-    }
-    return result.changes > 0;
-  })();
-  if (changed) invalidateLibraryCache();
-}
-
 export function upsertLibraryMediaFile({
   trackId,
   albumId = null,
@@ -626,16 +591,6 @@ export async function withLibraryScan(source, rootPath, run) {
       }
     }
   });
-}
-
-export function getLibrarySnapshot() {
-  return {
-    artists: db.prepare("SELECT * FROM library_artists ORDER BY name").all(),
-    albums: db.prepare("SELECT * FROM library_albums ORDER BY title").all(),
-    tracks: db.prepare("SELECT * FROM library_tracks ORDER BY title").all(),
-    albumTracks: db.prepare("SELECT * FROM library_album_tracks").all(),
-    files: db.prepare("SELECT * FROM library_media_files ORDER BY path").all(),
-  };
 }
 
 export function getLibraryMediaFile({ source, path }) {

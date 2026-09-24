@@ -71,8 +71,6 @@ const getDiscoverRecentReleasesStorageKey = (userId) =>
     ? `${DISCOVER_RECENT_RELEASES_KEY}:${userId}`
     : DISCOVER_RECENT_RELEASES_KEY;
 
-export const DISCOVER_CACHE_FRESH_TTL_MS = 5 * 60 * 1000;
-
 const markStoredAt = (key) => {
   try {
     localStorage.setItem(`${key}:at`, String(Date.now()));
@@ -114,18 +112,6 @@ const readStoredArrayAt = (primaryKey, fallbackKey) => {
   const sourceKey = getStoredArraySourceKey(primaryKey, fallbackKey);
   return sourceKey ? readStoredAt(sourceKey) : 0;
 };
-
-const isStoredFresh = (key) => {
-  const at = readStoredAt(key);
-  const age = Date.now() - at;
-  return at > 0 && age >= 0 && age < DISCOVER_CACHE_FRESH_TTL_MS;
-};
-
-export const isStoredRecentlyAddedFresh = (userId) =>
-  isStoredFresh(getDiscoverRecentlyAddedStorageKey(userId));
-
-export const isStoredRecentReleasesFresh = (userId) =>
-  isStoredFresh(getDiscoverRecentReleasesStorageKey(userId));
 
 export const getStoredRecentlyAddedAt = (userId) =>
   readStoredArrayAt(getDiscoverRecentlyAddedStorageKey(userId), DISCOVER_RECENTLY_ADDED_KEY);

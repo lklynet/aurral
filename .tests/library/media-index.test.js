@@ -14,9 +14,8 @@ import {
 } from "../../backend/services/libraryQueryService.js";
 import {
   buildFallbackIdentityKey,
-  getLibrarySnapshot,
   linkLibraryAlbumTrack,
-  removeLibraryAlbumTracksWithoutMedia,
+  removeLibraryTrackIfNoAvailableMedia,
   upsertLibraryAlbum,
   upsertLibraryArtist,
   upsertLibraryMediaFile,
@@ -30,6 +29,13 @@ import {
 } from "../../backend/services/libraryFileScanner.js";
 import { indexLidarrLibrary } from "../../backend/services/libraryLidarrIndexer.js";
 import { scanConfiguredLibrary } from "../../backend/services/libraryIndexService.js";
+
+const getLibrarySnapshot = () => ({
+  artists: db.prepare("SELECT * FROM library_artists ORDER BY name").all(),
+  albums: db.prepare("SELECT * FROM library_albums ORDER BY title").all(),
+  tracks: db.prepare("SELECT * FROM library_tracks ORDER BY title").all(),
+  files: db.prepare("SELECT * FROM library_media_files ORDER BY path").all(),
+});
 
 test("scan change tracking ignores unrelated database writes", async () => {
   const settingKey = `unrelated-scan-write-${process.pid}`;
@@ -1780,8 +1786,15 @@ test("album/track relation changes move the canonical library timestamp", async 
     assert.ok(albumUpdatedAt() > 1, "linking a track must refresh the album timestamp");
     assert.ok(getCanonicalLibraryLastModified() >= albumUpdatedAt());
 
+    upsertLibraryMediaFile({
+      trackId: tracks[1].id,
+      albumId: album.id,
+      source: "aurral",
+      path: `/tmp/relation-timestamp-dropped-${process.pid}.flac`,
+      available: false,
+    });
     parkTimestamp();
-    removeLibraryAlbumTracksWithoutMedia(album.id, "aurral", { syncSearch: false });
+    assert.equal(removeLibraryTrackIfNoAvailableMedia(tracks[1].id), true);
     assert.equal(relationCount(), 1);
     assert.ok(albumUpdatedAt() > 1, "dropping a track must refresh the album timestamp");
     assert.ok(getCanonicalLibraryLastModified() >= albumUpdatedAt());

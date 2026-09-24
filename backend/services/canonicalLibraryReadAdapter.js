@@ -232,18 +232,6 @@ export function findCanonicalArtist(artists, reference) {
   return artists.find((artist) => recordMatches(artist, reference)) || null;
 }
 
-export function findCanonicalAlbumsForArtist(albums, reference) {
-  const normalizedReference = String(reference ?? "").trim();
-  if (!normalizedReference) return [];
-
-  return albums.filter(
-    (album) =>
-      [album.artistId, album.providerArtistId, album.artistMbid].some(
-        (candidate) => String(candidate ?? "").trim() === normalizedReference,
-      ),
-  );
-}
-
 export function findCanonicalTracksForAlbum(tracks, reference) {
   return tracks.filter((track) => String(track.albumId) === String(reference));
 }

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
   setupIsolatedBackend,
   cleanupIsolatedState,
@@ -401,4 +402,20 @@ test("weekly flow operation queue status reflects worker state and depth", () =>
     running: false,
     currentLabel: null,
   });
+});
+
+test("an idle shutdown lets the process exit without waiting out its timeout", () => {
+  const runtimeUrl = new URL("../../backend/services/honkerWorkerRuntime.js", import.meta.url).href;
+  const probe = [
+    `const { shutdownHonkerInfrastructure } = await import(${JSON.stringify(runtimeUrl)});`,
+    "await shutdownHonkerInfrastructure({ timeoutMs: 30000 });",
+  ].join("\n");
+  const startedAt = Date.now();
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", probe], {
+    env: { ...process.env, AURRAL_DATA_DIR: isolatedState.dataDir, AURRAL_DB_PATH: isolatedState.dbPath },
+    encoding: "utf8",
+    timeout: 20000,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(Date.now() - startedAt < 10000);
 });
