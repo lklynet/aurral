@@ -15,16 +15,20 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("startup restores a missing search index trigger", async () => {
+test("startup restores a missing search index trigger and rebuilds documents", async () => {
   const { initializeLibrarySearchIndex } = await importFromRepo(
     "backend/config/library-search-index.js",
   );
   db.exec("DROP TRIGGER library_search_documents_ai");
+  db.prepare(
+    "INSERT INTO library_search_documents (entity_kind, entity_id, title) VALUES ('artist', 998, 'Unindexed Artist')",
+  ).run();
 
   assert.equal(initializeLibrarySearchIndex(db), true);
   assert.ok(db.prepare(
     "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = 'library_search_documents_ai'",
   ).get());
+  assert.equal(db.prepare("SELECT 1 FROM library_search_documents WHERE entity_id = 998").get(), undefined);
 });
 
 test("startup rebuilds search documents when their version is outdated", async () => {

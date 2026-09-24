@@ -218,7 +218,7 @@ export function initializeLibrarySearchIndex(db) {
   return db.transaction(() => {
     const { hasIndex, hasTriggers, version } = hasCurrentSearchIndex();
     if (fts5Enabled && hasIndex && hasTriggers && version === SEARCH_INDEX_VERSION) return true;
-    if (version && version !== SEARCH_INDEX_VERSION) {
+    if (fts5Enabled) {
       db.exec(`
         DROP TRIGGER IF EXISTS library_search_documents_ai;
         DROP TRIGGER IF EXISTS library_search_documents_au;
@@ -228,8 +228,6 @@ export function initializeLibrarySearchIndex(db) {
       `);
     }
     if (!createSearchSchema(db)) return false;
-    if (version === SEARCH_INDEX_VERSION && hasIndex) return true;
-    db.prepare("DELETE FROM library_search_documents").run();
     populateLibrarySearchDocuments(db);
     db.prepare("INSERT INTO library_search_fts(library_search_fts) VALUES ('rebuild')").run();
     db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")

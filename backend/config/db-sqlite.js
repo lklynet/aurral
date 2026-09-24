@@ -28,7 +28,7 @@ for (let attempt = 0; attempt < 5; attempt++) {
     }
     break;
   } catch (error) {
-    if (error?.code !== "SQLITE_BUSY" || attempt === 4) throw error;
+    if (!String(error?.code || "").startsWith("SQLITE_BUSY") || attempt === 4) throw error;
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
   }
 }
