@@ -46,6 +46,7 @@ const {
   cancelPlaylistDownloadGeneration,
   clearDownloadProviderWork,
   getPlaylistDownloadGeneration,
+  isDownloadJobCancelled,
   isPipelinePayloadActive,
   listDownloadProviderWork,
   registerDownloadProviderWork,
@@ -413,6 +414,62 @@ test("failed provider cancellation keeps durable slskd work for a later retry", 
     );
     assert.equal(
       listDownloadProviderWork({ playlistId, provider: "slskd-search" }).length,
+      1,
+    );
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    await mock.close();
+  }
+});
+
+test("failed shared-playlist replacement restores newly cancelled jobs", async () => {
+  const playlistId = "shared-playlist-edit-provider-retry";
+  const track = { artistName: "Retry Artist", trackName: "Retry Song" };
+  const originalSettings = dbOps.getSettings();
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    response.writeHead(503);
+    response.end();
+  });
+
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...(originalSettings.integrations || {}),
+      slskd: { enabled: true, url: mock.url, apiKey: "test-key" },
+    },
+  });
+  flowPlaylistConfig.createSharedPlaylist({
+    id: playlistId,
+    name: "Provider Failure Edit",
+    tracks: [track],
+    importSource: { provider: "spotify-playlist", keepRemovedTracks: true },
+  });
+  const jobId = downloadTracker.addJob(track, playlistId);
+  registerDownloadProviderWork({
+    jobId,
+    playlistId,
+    provider: "slskd-search",
+    workId: "shared-playlist-edit-search",
+  });
+
+  try {
+    await assert.rejects(
+      operationsModule.updateSharedPlaylist({
+        playlistId,
+        tracks: [],
+        hasTracksUpdate: true,
+        mergeImportSource: true,
+      }),
+      /Could not cancel download provider work/,
+    );
+
+    assert.equal(flowPlaylistConfig.getSharedPlaylist(playlistId)?.tracks.length, 1);
+    assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
+    assert.equal(isDownloadJobCancelled(jobId), false);
+    assert.equal(downloadTracker.getNextPending()?.id, jobId);
+    assert.equal(
+      listDownloadProviderWork({ jobIds: [jobId], provider: "slskd-search" }).length,
       1,
     );
   } finally {

@@ -37,7 +37,10 @@ const { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } = playlistConfig
 const {
   activatePlaylistDownloadGeneration,
   cancelDownloadJob,
+  cancelPlaylistDownloadGeneration,
+  getPlaylistDownloadGeneration,
   isDownloadJobCancelled,
+  isPipelinePayloadActive,
   listDownloadProviderWork,
   registerDownloadProviderWork,
 } = cancellationModule;
@@ -481,4 +484,34 @@ test("a failed Subsonic edit does not revive a previously cancelled job", async 
 
   assert.equal(await subsonic.updateSubsonicPlaylist(user, { playlistId, name: "Rejected" }), null);
   assert.equal(isDownloadJobCancelled(jobId), true);
+});
+
+test("a successful Subsonic edit does not reactivate a playlist awaiting deletion", async () => {
+  const playlistId = "subsonic-edit-queued-delete";
+  flowPlaylistConfig.createSharedPlaylist({
+    id: playlistId,
+    name: "Queued for Deletion",
+    ownerUserId: user.id,
+    tracks: [],
+  });
+  cancelPlaylistDownloadGeneration(playlistId);
+  const cancelledGeneration = getPlaylistDownloadGeneration(playlistId);
+
+  const updated = await subsonic.updateSubsonicPlaylist(user, {
+    playlistId,
+    name: "Edited Before Deletion",
+  });
+  const laterJobId = downloadTracker.addJob(
+    { artistName: "Later Artist", trackName: "Later Song" },
+    playlistId,
+  );
+  const laterJob = downloadTracker.getJob(laterJobId);
+
+  assert.equal(updated?.name, "Edited Before Deletion");
+  assert.equal(getPlaylistDownloadGeneration(playlistId), cancelledGeneration);
+  assert.equal(isPipelinePayloadActive({
+    jobId: laterJobId,
+    playlistId,
+    playlistGeneration: laterJob.playlistGeneration,
+  }), false);
 });

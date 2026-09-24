@@ -28,6 +28,7 @@ Treat playlist removal as a durable cancellation boundary.
 - Clearing all jobs snapshots the current rows, cancels those jobs, and removes them under the affected playlist locks. Jobs created after the snapshot stay queued.
 - Library-track removal waits for provider cleanup before deleting matching jobs or files. If cleanup fails, the library track and job stay in place for a later retry.
 - Library-track deletion reads each matching job's current `finalPath` after provider cancellation finishes. It includes that path in file cleanup before removing the track, so a finalizer that already held the lock cannot leave an untracked file behind.
+- A failed shared-playlist edit restores only job-cancellation tombstones created by that edit. Existing tombstones stay in force, and the old playlist remains unchanged.
 
 When a playlist is created again with the same ID, Aurral advances the generation. Payloads from the removed playlist remain invalid even if their Honker rows survive a restart.
 
@@ -44,7 +45,7 @@ If slskd, deemix, or SABnzbd has tracked work but is no longer configured, cance
 
 Aurral does not delete a source file merely because a Usenet or deemix provider reports its path. A path mapping can point into a shared library. The provider response does not prove that Aurral owns the file. Cancellation prevents import, while provider-specific cleanup handles work that Aurral can identify.
 
-Subsonic playlist edits use the same mutation lock as other playlist operations. They cancel only legacy jobs removed by the replacement and preserve jobs and files for tracks that remain. If provider cancellation fails, the old playlist stays in place. Its pending jobs resume, while interrupted downloads become failed jobs that the user can retry. If flow or playlist cleanup cannot be queued, Aurral restores only the cancellation markers created by that request; a failed flow disable also restores its previous enabled state. Track removal similarly clears only its newly created job marker when queueing fails.
+Subsonic playlist edits use the same mutation lock as other playlist operations. They cancel only legacy jobs removed by the replacement and preserve jobs and files for tracks that remain. If provider cancellation fails, the old playlist stays in place. The edit restores only job tombstones it created, so an earlier playlist cancellation remains in force. Pending jobs resume when the playlist was active before the edit. Interrupted downloads become failed jobs that the user can retry. If flow or playlist cleanup cannot be queued, Aurral restores only the cancellation markers created by that request; a failed flow disable also restores its previous enabled state. Track removal similarly clears only its newly created job marker when queueing fails.
 
 The NZBGet adapter does not expose a verified queue-cancel operation. Aurral therefore stops the Aurral pipeline and refuses to import a result after removal, but it does not claim that NZBGet stopped the remote download.
 

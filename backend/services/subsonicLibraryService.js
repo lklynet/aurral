@@ -34,16 +34,11 @@ import { logger } from "./logger.js";
 import { withHonkerLock } from "./honkerDb.js";
 import { removePlaylistFileIfUnshared } from "./weeklyFlow/weeklyFlowFileReuse.js";
 import {
-  getPlaylistDownloadGeneration,
   isDownloadJobCancelled,
-  isPipelinePayloadActive,
-  restorePlaylistDownloadWork,
+  restoreDownloadJobCancellations,
 } from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
 import { processWeeklyFlowOperation } from "./weeklyFlow/weeklyFlowOperations.js";
-import {
-  cancelDownloadWorkForJobs,
-  markPlaylistDownloadWorkCancelled,
-} from "./weeklyFlow/weeklyFlowDownloadCancellationService.js";
+import { cancelDownloadWorkForJobs } from "./weeklyFlow/weeklyFlowDownloadCancellationService.js";
 
 const idFor = (kind, key) =>
   `${kind}:${encodeURIComponent(String(key)).replaceAll("%3A", ":")}`;
@@ -664,9 +659,8 @@ const toCanonicalPlaylistTrack = (track, canonicalJobId) => ({
   canonicalJobId: String(canonicalJobId || "").trim() || null,
 });
 
-const cancelLegacyPlaylistJobs = async (playlistId, jobs) => {
+const cancelLegacyPlaylistJobs = async (jobs) => {
   if (jobs.length === 0) return;
-  markPlaylistDownloadWorkCancelled(playlistId, jobs);
   await cancelDownloadWorkForJobs(jobs);
 };
 
@@ -720,15 +714,9 @@ const replaceSubsonicPlaylistTracks = async (user, playlist, tracks, updates = {
   );
   const jobsToRemove = legacyJobs.filter((job) => !retainedJobIds.has(job.id));
   const legacyJobIds = jobsToRemove.map((job) => job.id);
-  const generation = getPlaylistDownloadGeneration(playlist.id);
-  const wasActive = isPipelinePayloadActive({
-    playlistId: playlist.id,
-    playlistGeneration: generation,
-  });
   const activeJobsToRemove = jobsToRemove.filter((job) => !isDownloadJobCancelled(job.id));
   const restoreLegacyJobs = () => {
-    if (!wasActive || jobsToRemove.length === 0) return;
-    restorePlaylistDownloadWork(playlist.id, activeJobsToRemove.map((job) => job.id));
+    restoreDownloadJobCancellations(activeJobsToRemove.map((job) => job.id));
     for (const job of activeJobsToRemove) {
       if (downloadTracker.getJob(job.id)?.status === "downloading") {
         downloadTracker.setFailed(job.id, "Playlist edit failed during download cancellation");
@@ -737,7 +725,7 @@ const replaceSubsonicPlaylistTracks = async (user, playlist, tracks, updates = {
   };
   let updated;
   try {
-    await cancelLegacyPlaylistJobs(playlist.id, jobsToRemove);
+    await cancelLegacyPlaylistJobs(jobsToRemove);
     updated = await withHonkerLock(`playlist-mutation:${playlist.id}`, async () => {
       const replacement = flowPlaylistConfig.updateSharedPlaylist(playlist.id, {
         ...updates,
@@ -773,7 +761,6 @@ const replaceSubsonicPlaylistTracks = async (user, playlist, tracks, updates = {
         }
         downloadTracker.removeJob(current.id);
       }
-      restorePlaylistDownloadWork(playlist.id);
       return replacement;
     }, {
       ttlSeconds: 180,

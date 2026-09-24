@@ -41,6 +41,8 @@ import { schedulePlaylistMbidEnrichment } from "../playlistMbidEnrichmentService
 import { filterBlockedArtistsForUser } from "../discovery/feedback.js";
 import {
   activatePlaylistDownloadGeneration,
+  isDownloadJobCancelled,
+  restoreDownloadJobCancellations,
 } from "./weeklyFlowDownloadCancellation.js";
 import {
   cancelDownloadWorkForJobs,
@@ -625,10 +627,18 @@ export async function updateSharedPlaylist({
       const removedUpgradeJobs = downloadTracker
         .getByPlaylistId(safePlaylistId)
         .filter((job) => job.upgradeForJobId && removedJobIds.has(job.upgradeForJobId));
-      await cancelDownloadWorkForJobs(
-        [...removedJobs, ...removedUpgradeJobs],
-        { lock: false },
-      );
+      const jobsToCancel = [...removedJobs, ...removedUpgradeJobs];
+      const jobIdsToRestore = [...new Set(
+        jobsToCancel
+          .filter((job) => !isDownloadJobCancelled(job.id))
+          .map((job) => job.id),
+      )];
+      try {
+        await cancelDownloadWorkForJobs(jobsToCancel, { lock: false });
+      } catch (error) {
+        restoreDownloadJobCancellations(jobIdsToRestore);
+        throw error;
+      }
       for (const job of existingJobs) {
         if (matchedJobIds.has(job.id)) continue;
         if (job.status === "done" && typeof job.finalPath === "string") {
