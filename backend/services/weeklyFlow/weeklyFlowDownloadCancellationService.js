@@ -163,7 +163,8 @@ async function cancelDeemixWork(payloads, jobs) {
   }
   for (const job of jobs) {
     if (job?.downloadSource === "deemix" || job?.downloadClient === "deemix") {
-      queueIds.add(normalizeId(job.downloadClientId));
+      const queueId = normalizeId(job.downloadClientId);
+      if (queueId) queueIds.add(queueId);
     }
   }
   if (queueIds.size > 0 && !client?.isConfigured?.()) {

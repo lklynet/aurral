@@ -549,3 +549,15 @@ test("playlist cancellation keeps provider work retryable when providers are unc
     await fs.rm(stagingPath, { recursive: true, force: true });
   }
 });
+
+test("Deemix cleanup ignores jobs without a queue identifier", async () => {
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "No Queue ID" },
+    "deemix-empty-queue-id",
+  );
+  downloadTracker.updateDownloadMetadata(jobId, { downloadSource: "deemix" });
+
+  await assert.doesNotReject(
+    cancellationServiceModule.cancelDownloadWorkForJobs([downloadTracker.getJob(jobId)]),
+  );
+});

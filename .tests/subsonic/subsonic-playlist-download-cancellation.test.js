@@ -220,6 +220,31 @@ test("Subsonic edits remove a file shared only by jobs from the edited playlist"
   await assert.rejects(fs.access(finalPath), { code: "ENOENT" });
 });
 
+test("renaming a Subsonic playlist keeps its canonical song and file", async () => {
+  const playlistId = "subsonic-edit-retained-canonical-song";
+  const finalPath = path.join(playlistManager.weeklyFlowRoot, "Retained Artist", "Retained Song.flac");
+  const jobId = downloadTracker.addJob(
+    { artistName: "Retained Artist", trackName: "Retained Song" },
+    playlistId,
+  );
+  downloadTracker.setDone(jobId, finalPath, "Retained Album");
+  flowPlaylistConfig.createSharedPlaylist({
+    id: playlistId,
+    name: "Before Rename",
+    ownerUserId: user.id,
+    tracks: [{ artistName: "Retained Artist", trackName: "Retained Song", canonicalJobId: jobId }],
+  });
+  activatePlaylistDownloadGeneration(playlistId);
+  await fs.mkdir(path.dirname(finalPath), { recursive: true });
+  await fs.writeFile(finalPath, "retained audio");
+
+  const renamed = await subsonic.updateSubsonicPlaylist(user, { playlistId, name: "After Rename" });
+
+  assert.equal(renamed?.tracks[0]?.canonicalJobId, jobId);
+  assert.equal(downloadTracker.getJob(jobId)?.status, "done");
+  await fs.access(finalPath);
+});
+
 test("Subsonic deletion preserves a file used by another playlist", async () => {
   const removedPlaylistId = "subsonic-shared-file-removed";
   const survivingPlaylistId = "subsonic-shared-file-survivor";

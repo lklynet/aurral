@@ -126,7 +126,12 @@ export function restorePlaylistDownloadWork(playlistId, jobIds = []) {
   if (!safePlaylistId) return false;
   const safeJobIds = [...new Set(jobIds.map(normalizeId).filter(Boolean))];
   db.transaction(() => {
-    touchActivePlaylistStmt.run(Date.now(), safePlaylistId);
+    const now = Date.now();
+    if (!readPlaylistCancellation(safePlaylistId)) {
+      insertActivePlaylistStmt.run(safePlaylistId, now);
+    } else {
+      touchActivePlaylistStmt.run(now, safePlaylistId);
+    }
     for (const jobId of safeJobIds) restoreJobStmt.run(jobId);
   })();
   return true;

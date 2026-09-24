@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../helpers/backendTestHarness.js";
 
-const [state, { db }, { dbOps }, { flowPlaylistConfig }, { registerSharedPlaylists }, { getWeeklyFlowStatusSnapshot }, { weeklyFlowOperationQueue }] = await setupIsolatedBackend(
+const [state, { db }, { dbOps }, { flowPlaylistConfig }, { registerSharedPlaylists }, { getWeeklyFlowStatusSnapshot }, { weeklyFlowOperationQueue }, { downloadTracker }, cancellationModule] = await setupIsolatedBackend(
   "track-availability",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
@@ -10,11 +10,15 @@ const [state, { db }, { dbOps }, { flowPlaylistConfig }, { registerSharedPlaylis
   "backend/routes/weeklyFlow/handlers/sharedPlaylists.js",
   "backend/services/weeklyFlow/weeklyFlowStatusSnapshot.js",
   "backend/services/weeklyFlow/weeklyFlowOperationQueue.js",
+  "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+  "backend/services/weeklyFlow/weeklyFlowDownloadCancellation.js",
 );
+const { activatePlaylistDownloadGeneration, isDownloadJobCancelled, isPipelinePayloadActive } = cancellationModule;
 
 const handlers = new Map();
 registerSharedPlaylists({
-  get() {}, post() {}, delete() {},
+  get() {}, post() {},
+  delete(path, handler) { handlers.set(path, handler); },
   put(path, handler) { handlers.set(path, handler); },
 });
 const updateAvailability = (id, enabled, user = { id: 1, role: "user" }) => {
@@ -43,6 +47,7 @@ test.beforeEach(() => {
     flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
   }
   resetDatabase(db);
+  downloadTracker.clearAll();
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true, flows: [], sharedPlaylists: [] });
 });
 test.after(async () => {
@@ -113,6 +118,35 @@ test("history preference validates input and respects playlist ownership", () =>
   assert.equal(updateRecordHistory("missing", false).statusCode, 404);
   assert.equal(flowPlaylistConfig.getSharedPlaylist(playlist.id).recordHistory, true);
   assert.equal(updateRecordHistory(playlist.id, false, { id: 2, role: "admin" }).statusCode, 200);
+});
+
+test("a failed playlist-delete enqueue restores the active download generation", async (t) => {
+  const user = { id: 1, role: "user" };
+  const playlist = flowPlaylistConfig.createSharedPlaylist({
+    name: "Delete Retry",
+    ownerUserId: user.id,
+    tracks: [],
+  });
+  const generation = activatePlaylistDownloadGeneration(playlist.id);
+  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, playlist.id);
+  t.mock.method(weeklyFlowOperationQueue, "enqueuePayload", async () => {
+    throw new Error("queue unavailable");
+  });
+  const response = {
+    statusCode: 200,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; return this; },
+  };
+
+  await handlers.get("/shared-playlists/:playlistId")({
+    params: { playlistId: playlist.id },
+    user,
+  }, response);
+
+  assert.equal(response.statusCode, 500);
+  assert.equal(isDownloadJobCancelled(jobId), false);
+  assert.equal(isPipelinePayloadActive({ jobId, playlistId: playlist.id, playlistGeneration: generation }), true);
 });
 
 test("existing playlists without the preference start disabled after loading", async () => {

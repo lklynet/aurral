@@ -15,6 +15,12 @@ import {
   markDownloadWorkCancelledForJobs,
   markPlaylistDownloadWorkCancelled,
 } from "../../../services/weeklyFlow/weeklyFlowDownloadCancellationService.js";
+import {
+  getPlaylistDownloadGeneration,
+  isDownloadJobCancelled,
+  isPipelinePayloadActive,
+  restorePlaylistDownloadWork,
+} from "../../../services/weeklyFlow/weeklyFlowDownloadCancellation.js";
 
 async function createOrImportSharedPlaylist(req, res, { requireTracks, label }) {
   const {
@@ -351,13 +357,25 @@ export function registerSharedPlaylists(router) {
       if (!exists) {
         return res.status(404).json({ error: "Shared playlist not found" });
       }
-      markPlaylistDownloadWorkCancelled(playlistId, downloadTracker.getByPlaylistId(playlistId));
+      const jobs = downloadTracker.getByPlaylistId(playlistId);
+      const generation = getPlaylistDownloadGeneration(playlistId);
+      const wasActive = isPipelinePayloadActive({ playlistId, playlistGeneration: generation });
+      const jobsToRestore = jobs
+        .filter((job) => !isDownloadJobCancelled(job.id))
+        .map((job) => job.id);
+      markPlaylistDownloadWorkCancelled(playlistId, jobs);
 
-      const deleted = await weeklyFlowOperationQueue.enqueuePayload({
-        kind: "shared-playlist-delete",
-        label: `shared-playlist:${playlistId}:delete`,
-        playlistId,
-      });
+      let deleted;
+      try {
+        deleted = await weeklyFlowOperationQueue.enqueuePayload({
+          kind: "shared-playlist-delete",
+          label: `shared-playlist:${playlistId}:delete`,
+          playlistId,
+        });
+      } catch (error) {
+        if (wasActive) restorePlaylistDownloadWork(playlistId, jobsToRestore);
+        throw error;
+      }
       return res.json({
         success: true,
         playlistId,
