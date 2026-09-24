@@ -792,6 +792,31 @@ test("playlist favorites resolve to the owned canonical track", async () => {
   }
 });
 
+test("canonical song responses agree on the earliest star date", async () => {
+  const user = userOps.getUserByUsername("alice");
+  const playlistSongKey = `${canonicalFavoritePlaylist.id}:${canonicalFavoriteJobId}`;
+  const song = responseJson(await request("search3", { query: "Canonical Song" })).searchResult3.song[0];
+  const songKey = decodeURIComponent(song.id.slice("song:".length));
+  const insertStar = db.prepare(
+    "INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (?, ?, ?, ?)",
+  );
+  try {
+    insertStar.run(user.id, "song", songKey, 1000);
+    insertStar.run(user.id, "shared-song", playlistSongKey, 2000);
+    const starred = responseJson(await request("getStarred")).starred.song[0];
+    const direct = responseJson(await request("getSong", { id: song.id })).song;
+    assert.equal(starred.starred, new Date(1000).toISOString());
+    assert.equal(direct.starred, starred.starred);
+  } finally {
+    db.prepare(
+      "DELETE FROM subsonic_stars WHERE user_id = ? AND entity_kind = ? AND entity_key = ?",
+    ).run(user.id, "song", songKey);
+    db.prepare(
+      "DELETE FROM subsonic_stars WHERE user_id = ? AND entity_kind = ? AND entity_key = ?",
+    ).run(user.id, "shared-song", playlistSongKey);
+  }
+});
+
 test("streams canonical files with full and range responses", async () => {
   const artist = responseJson(await request("getArtists")).artists.index[0].artist[0];
   const album = responseJson(await request("getArtist", { id: artist.id })).artist.album[0];

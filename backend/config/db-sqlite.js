@@ -425,6 +425,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_honker_task_runs_job ON honker_task_runs(job_id, queue);
 `);
 
+// The previous getIndexes timestamp was the request time. Seed existing users past that value
+// so a client carrying a pre-upgrade ifModifiedSince receives the new index once.
+db.prepare(`
+  INSERT OR IGNORE INTO subsonic_star_changes (user_id, changed_at)
+  SELECT users.id,
+         MAX(?, COALESCE((
+           SELECT MAX(created_at) FROM subsonic_stars WHERE user_id = users.id
+         ), 0))
+  FROM users
+`).run(Date.now() + 1);
+
 tryAddColumn("ALTER TABLE library_media_files ADD COLUMN album_id INTEGER");
 tryAddColumn("ALTER TABLE images_cache ADD COLUMN images_json TEXT");
 

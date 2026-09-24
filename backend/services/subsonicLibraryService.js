@@ -951,10 +951,16 @@ export function unstarMany(user, values) {
 
 const starredRows = (user) => (user?.id ? getStarsStmt.all(user.id) : []);
 
-const starredAtFromRows = (rows) => new Map(rows.map((row) => [
-  `${row.entity_kind}:${row.entity_key}`,
-  new Date(Number(row.created_at) || Date.now()).toISOString(),
-]));
+const starredAtFromRows = (rows) => {
+  const starredAt = new Map();
+  for (const row of rows) {
+    const key = `${row.entity_kind}:${row.entity_key}`;
+    if (!starredAt.has(key)) {
+      starredAt.set(key, new Date(Number(row.created_at) || Date.now()).toISOString());
+    }
+  }
+  return starredAt;
+};
 
 // Star timestamps keyed by protocol id, with playlist-song stars resolved to their canonical track.
 const starredAtFor = (user) => starredAtFromRows(canonicalStarRows(user, starredRows(user)));
