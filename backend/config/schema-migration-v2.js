@@ -552,29 +552,27 @@ function migrateJobsTable(db) {
 
 function applySchemaMigration(db, dbHelpers, targetVersion) {
   const currentVersion = getSchemaVersion(db);
-  const migrated = currentVersion < targetVersion;
-  if (!migrated) {
+  if (currentVersion >= targetVersion) {
     return { migrated: false, schemaVersion: currentVersion };
   }
   const upsertSettingStmt = db.prepare(
     "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
   );
   const run = db.transaction(() => {
+    const currentVersion = getSchemaVersion(db);
+    if (currentVersion >= targetVersion) {
+      return { migrated: false, schemaVersion: currentVersion };
+    }
     finalizeV2SettingsKeys(db, dbHelpers);
     migrateJobsTable(db);
     ensureSlskdTransferHistoryTable(db);
     if (targetVersion >= V4_SCHEMA_VERSION) {
       applyOwnershipMigration(db);
     }
-    if (migrated) {
-      upsertSettingStmt.run(SCHEMA_VERSION_KEY, String(targetVersion));
-    }
+    upsertSettingStmt.run(SCHEMA_VERSION_KEY, String(targetVersion));
+    return { migrated: true, schemaVersion: targetVersion };
   });
-  run();
-  return {
-    migrated: true,
-    schemaVersion: targetVersion,
-  };
+  return run.immediate();
 }
 
 export function applyV2Migration(db, dbHelpers) {

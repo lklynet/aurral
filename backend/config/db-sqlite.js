@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { initializeSchemaOnStartup } from "./schema-migration-v2.js";
 import { initializeLibrarySearchIndex } from "./library-search-index.js";
+import { ensureUniqueLidarrArtistIdIndex } from "./lidarr-artist-index.js";
 import { syncDownloadFolderPath } from "../services/downloadFolderConfig.js";
 import { ensureDataDir } from "./data-dir.js";
 
@@ -19,8 +20,18 @@ if (!fs.existsSync(path.dirname(DB_PATH))) {
 const db = new Database(DB_PATH);
 
 db.pragma("foreign_keys = ON");
-db.pragma("journal_mode = WAL");
 db.pragma("busy_timeout = 5000");
+for (let attempt = 0; attempt < 5; attempt++) {
+  try {
+    if (db.pragma("journal_mode", { simple: true }) !== "wal") {
+      db.pragma("journal_mode = WAL");
+    }
+    break;
+  } catch (error) {
+    if (error?.code !== "SQLITE_BUSY" || attempt === 4) throw error;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+  }
+}
 db.pragma("synchronous = NORMAL");
 db.pragma("cache_size = -24000");
 db.pragma("mmap_size = 25165824");
@@ -544,42 +555,7 @@ db.exec(`
     ON library_media_files (track_id, album_id, source, available, created_at DESC);
 `);
 
-const duplicateLidarrArtistIds = db
-  .prepare(
-    `SELECT lidarr_foreign_artist_id
-     FROM lidarr_artist_id_map
-     GROUP BY lidarr_foreign_artist_id
-     HAVING COUNT(*) > 1`,
-  )
-  .all();
-
-if (duplicateLidarrArtistIds.length > 0) {
-  const deleteDuplicateLidarrArtistId = db.prepare(
-    `DELETE FROM lidarr_artist_id_map
-     WHERE lidarr_foreign_artist_id = ?
-       AND musicbrainz_id NOT IN (
-         SELECT musicbrainz_id
-         FROM lidarr_artist_id_map
-         WHERE lidarr_foreign_artist_id = ?
-         ORDER BY updated_at DESC, musicbrainz_id ASC
-         LIMIT 1
-       )`,
-  );
-  db.transaction((duplicates) => {
-    for (const duplicate of duplicates) {
-      deleteDuplicateLidarrArtistId.run(
-        duplicate.lidarr_foreign_artist_id,
-        duplicate.lidarr_foreign_artist_id,
-      );
-    }
-  })(duplicateLidarrArtistIds);
-}
-
-db.exec(`
-  DROP INDEX IF EXISTS idx_lidarr_artist_id_map_foreign_id;
-  CREATE UNIQUE INDEX idx_lidarr_artist_id_map_foreign_id
-    ON lidarr_artist_id_map (lidarr_foreign_artist_id);
-`);
+ensureUniqueLidarrArtistIdIndex(db);
 
 const tableColumns = db
   .prepare("PRAGMA table_info(playlist_download_jobs)")

@@ -249,3 +249,27 @@ test("startup applies the consolidated migration once", async () => {
 
   db.close();
 });
+
+test("current schema needs no write lock while another connection writes", async () => {
+  const { dbPath } = createPreMigrationDb();
+  const { initializeSchemaOnStartup, TARGET_SCHEMA_VERSION } = await import(
+    "../../backend/config/schema-migration-v2.js"
+  );
+  const writer = new Database(dbPath);
+  writer.pragma("journal_mode = WAL");
+  writer.prepare("INSERT INTO settings (key, value) VALUES ('schemaVersion', ?)")
+    .run(String(TARGET_SCHEMA_VERSION));
+  const reader = new Database(dbPath);
+  reader.pragma("busy_timeout = 20");
+  writer.exec("BEGIN IMMEDIATE");
+  try {
+    assert.deepEqual(initializeSchemaOnStartup(reader, dbHelpers), {
+      migrated: false,
+      schemaVersion: TARGET_SCHEMA_VERSION,
+    });
+  } finally {
+    writer.exec("ROLLBACK");
+    reader.close();
+    writer.close();
+  }
+});

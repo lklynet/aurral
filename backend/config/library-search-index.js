@@ -193,31 +193,48 @@ export const populateLibrarySearchDocuments = (db) => {
 };
 
 export function initializeLibrarySearchIndex(db) {
-  const hadSearchIndex = Boolean(
-    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
-      .get("library_search_fts"),
-  );
-  const version = db
-    .prepare("SELECT value FROM settings WHERE key = ?")
-    .get("librarySearchIndexVersion")?.value;
-  if (version && version !== SEARCH_INDEX_VERSION) {
-    db.exec(`
-      DROP TRIGGER IF EXISTS library_search_documents_ai;
-      DROP TRIGGER IF EXISTS library_search_documents_au;
-      DROP TRIGGER IF EXISTS library_search_documents_ad;
-      DROP TABLE IF EXISTS library_search_fts;
-    `);
-  }
-  if (!createSearchSchema(db)) return false;
-  if (version === SEARCH_INDEX_VERSION && hadSearchIndex) return true;
+  const fts5Enabled = db.prepare("SELECT sqlite_compileoption_used(?) AS enabled")
+    .get("ENABLE_FTS5")?.enabled;
+  const hasCurrentSearchIndex = () => {
+    const hasIndex = Boolean(
+      db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+        .get("library_search_fts"),
+    );
+    const hasTriggers = db.prepare(`
+      SELECT COUNT(*) AS count FROM sqlite_master
+      WHERE type = 'trigger' AND name IN (
+        'library_search_documents_ai',
+        'library_search_documents_au',
+        'library_search_documents_ad'
+      )
+    `).get().count === 3;
+    const version = db.prepare("SELECT value FROM settings WHERE key = ?")
+      .get("librarySearchIndexVersion")?.value;
+    return { hasIndex, hasTriggers, version };
+  };
+  const current = hasCurrentSearchIndex();
+  if (fts5Enabled && current.hasIndex && current.hasTriggers && current.version === SEARCH_INDEX_VERSION) return true;
 
-  db.transaction(() => {
+  return db.transaction(() => {
+    const { hasIndex, hasTriggers, version } = hasCurrentSearchIndex();
+    if (fts5Enabled && hasIndex && hasTriggers && version === SEARCH_INDEX_VERSION) return true;
+    if (version && version !== SEARCH_INDEX_VERSION) {
+      db.exec(`
+        DROP TRIGGER IF EXISTS library_search_documents_ai;
+        DROP TRIGGER IF EXISTS library_search_documents_au;
+        DROP TRIGGER IF EXISTS library_search_documents_ad;
+        DROP TABLE IF EXISTS library_search_fts;
+        DROP TABLE IF EXISTS library_search_documents;
+      `);
+    }
+    if (!createSearchSchema(db)) return false;
+    if (version === SEARCH_INDEX_VERSION && hasIndex) return true;
     db.prepare("DELETE FROM library_search_documents").run();
     populateLibrarySearchDocuments(db);
     db.prepare("INSERT INTO library_search_fts(library_search_fts) VALUES ('rebuild')").run();
     db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
       .run("librarySearchIndexVersion", SEARCH_INDEX_VERSION);
     rebuildStoredLibraryGenreStats(db);
-  })();
-  return true;
+    return true;
+  }).immediate();
 }
