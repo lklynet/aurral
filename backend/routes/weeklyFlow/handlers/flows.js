@@ -22,6 +22,7 @@ import {
   DEFAULT_LIMIT,
   validateFlowPayload,
   markFlowMutationToken,
+  isFlowMutationTokenCurrent,
   restoreFlowMutationToken,
   getAccessibleFlow,
   queueFlowSideEffect,
@@ -279,12 +280,11 @@ export function registerFlows(router) {
         const jobs = downloadTracker.getByPlaylistId(flowId);
         const cancellation = markPlaylistDownloadWorkCancelled(flowId, jobs);
         flowPlaylistConfig.setEnabled(flowId, false);
+        const mutation = markFlowMutationToken(flowId);
 
-        let mutation = null;
         let queued;
         try {
           await playlistManager.ensureSmartPlaylists();
-          mutation = markFlowMutationToken(flowId);
           queued = await weeklyFlowOperationQueue.enqueuePayload({
             kind: "disable-flow-cleanup",
             label: `disable:${flowId}`,
@@ -293,10 +293,11 @@ export function registerFlows(router) {
             token: mutation.token,
           });
         } catch (error) {
+          if (!isFlowMutationTokenCurrent(mutation)) throw error;
           flowPlaylistConfig.setEnabled(flowId, wasEnabled);
           if (wasEnabled) flowPlaylistConfig.scheduleNextRun(flowId);
           restoreMarkedPlaylistDownloadWork(flowId, cancellation);
-          if (mutation) restoreFlowMutationToken(mutation);
+          restoreFlowMutationToken(mutation);
           try {
             await playlistManager.ensureSmartPlaylists();
           } catch (restoreError) {

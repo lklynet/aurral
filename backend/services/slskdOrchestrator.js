@@ -775,6 +775,7 @@ async function runSearchQuery(
     await deleteTrackedSearch();
   } else {
     await slskdClient.settleSearch(created.id);
+    clearDownloadProviderWork({ provider: "slskd-search", workId: created.id });
   }
   return results;
 }

@@ -143,6 +143,47 @@ test("a failed flow-disable enqueue restores enabled state and active downloads"
   assert.equal(ensureCalls, 2);
 });
 
+test("a failed flow disable does not undo a later disable", async (t) => {
+  const user = { id: 1, role: "user" };
+  const flow = createFlow({ name: "Overlapping flow disables", enabled: true });
+  const generation = activatePlaylistDownloadGeneration(flow.id);
+  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, flow.id);
+  let signalFirstEnsure;
+  let failFirstEnsure;
+  const firstEnsureStarted = new Promise((resolve) => { signalFirstEnsure = resolve; });
+  const firstEnsure = new Promise((resolve, reject) => { failFirstEnsure = reject; });
+  let ensureCalls = 0;
+  t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {
+    ensureCalls += 1;
+    if (ensureCalls === 1) {
+      signalFirstEnsure();
+      return firstEnsure;
+    }
+  });
+  t.mock.method(weeklyFlowOperationQueue, "enqueuePayload", async () => ({
+    operationId: "later-disable-operation",
+  }));
+  const disable = (response) => flowHandlers.get("/flows/:flowId/enabled")({
+    params: { flowId: flow.id },
+    body: { enabled: false },
+    user,
+  }, response);
+  const firstResponse = createResponse();
+  const secondResponse = createResponse();
+
+  const first = disable(firstResponse);
+  await firstEnsureStarted;
+  await disable(secondResponse);
+  failFirstEnsure(new Error("smart playlists unavailable"));
+  await first;
+
+  assert.equal(firstResponse.statusCode, 500);
+  assert.equal(secondResponse.statusCode, 200);
+  assert.equal(flowPlaylistConfig.getFlow(flow.id).enabled, false);
+  assert.equal(isDownloadJobCancelled(jobId), true);
+  assert.equal(isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }), false);
+});
+
 test("a successful flow disable reports the accepted cleanup operation", async (t) => {
   const user = { id: 1, role: "user" };
   const flow = createFlow({ name: "Queued flow disable", enabled: true });

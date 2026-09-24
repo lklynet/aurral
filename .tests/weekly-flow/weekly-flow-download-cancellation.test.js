@@ -7,6 +7,7 @@ import {
   setupIsolatedBackend,
   cleanupIsolatedState,
   createMockHttpServer,
+  importFromRepo,
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
@@ -371,6 +372,39 @@ test("playlist deletion cancels durably recorded slskd searches", async (t) => {
   } finally {
     dbOps.updateSettings(originalSettings);
     await mock.close();
+  }
+});
+
+test("settled slskd searches no longer block playlist cancellation", async (t) => {
+  const playlistId = "settled-search-playlist";
+  const originalSettings = dbOps.getSettings();
+  const { slskdClient } = await importFromRepo("backend/services/slskdClient.js");
+  const { processPipelinePayload } = await importFromRepo("backend/services/slskdOrchestrator.js");
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...(originalSettings.integrations || {}),
+      slskd: { enabled: true, url: "http://slskd.invalid", apiKey: "test-key" },
+    },
+  });
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Song" },
+    playlistId,
+  );
+  let searchCount = 0;
+  t.mock.method(slskdClient, "createSearch", async () => ({ id: `settled-search-${++searchCount}` }));
+  t.mock.method(slskdClient, "waitForSearch", async () => ({}));
+  t.mock.method(slskdClient, "flattenSearchResults", () => []);
+  t.mock.method(slskdClient, "settleSearch", async () => ({}));
+  t.mock.method(slskdClient, "cleanupAfterRun", async () => ({ cleanedSearchIds: [] }));
+
+  try {
+    await processPipelinePayload({ phase: "search", source: "slskd", jobId, playlistId });
+
+    assert.ok(searchCount > 0);
+    assert.deepEqual(listDownloadProviderWork({ playlistId, provider: "slskd-search" }), []);
+  } finally {
+    dbOps.updateSettings(originalSettings);
   }
 });
 

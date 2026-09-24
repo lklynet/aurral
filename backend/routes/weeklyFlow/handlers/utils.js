@@ -137,6 +137,10 @@ export const markFlowMutationToken = (flowId) => {
   return { token, tokenScope, previousToken };
 };
 
+export const isFlowMutationTokenCurrent = (mutation) =>
+  Boolean(mutation?.token) &&
+  getLatestWeeklyFlowOperationToken(mutation.tokenScope) === mutation.token;
+
 export const restoreFlowMutationToken = (mutation) =>
   restoreWeeklyFlowOperationToken({
     scope: mutation?.tokenScope,
