@@ -196,26 +196,26 @@ async function cancelDeemixWork(payloads, jobs) {
   return { queueItems: queueIds.size };
 }
 
-async function cancelSabnzbdWork(payloads, jobs) {
-  const client = getDownloadClient("sabnzbd");
+async function cancelUsenetWork(clientKey, label, payloads, jobs) {
+  const client = getDownloadClient(clientKey);
   const ids = new Set(
     jobs
-      .filter((job) => job?.downloadClient === "sabnzbd")
+      .filter((job) => job?.downloadClient === clientKey)
       .map((job) => normalizeId(job.downloadClientId))
       .filter(Boolean),
   );
   const failures = [];
   for (const payload of payloads) {
-    if (payload?.source === "usenet" && payload?.downloadClient === "sabnzbd") {
+    if (payload?.source === "usenet" && payload?.downloadClient === clientKey) {
       const id = normalizeId(payload.nzbId);
       if (id) ids.add(id);
     }
   }
   if (ids.size > 0 && !client?.isConfigured?.()) {
-    logger.warn("sabnzbd", "Cannot cancel tracked SABnzbd work while SABnzbd is not configured", {
+    logger.warn(clientKey, `Cannot cancel tracked ${label} work while ${label} is not configured`, {
       items: ids.size,
     });
-    throw new Error("SABnzbd is not configured; tracked work cannot be cancelled");
+    throw new Error(`${label} is not configured; tracked work cannot be cancelled`);
   }
   for (const id of ids) {
     for (const [message, cleanup, lookup] of [
@@ -224,19 +224,19 @@ async function cancelSabnzbdWork(payloads, jobs) {
     ]) {
       await attemptProviderCleanup(
         failures,
-        "sabnzbd",
+        clientKey,
         message,
         { id },
         async () => {
           const removed = await cleanup();
           if (!removed && await lookup()) {
-            throw new Error("SABnzbd did not confirm item removal");
+            throw new Error(`${label} did not confirm item removal`);
           }
         },
       );
     }
   }
-  throwProviderCleanupFailures("sabnzbd", failures);
+  throwProviderCleanupFailures(clientKey, failures);
   return { historyItems: ids.size };
 }
 
@@ -272,7 +272,8 @@ async function cancelProviderWork(payloads, jobs, providerWork = []) {
   const results = await Promise.allSettled([
     cancelSlskdWork(payloads, jobs, providerWork),
     cancelDeemixWork(payloads, jobs),
-    cancelSabnzbdWork(payloads, jobs),
+    cancelUsenetWork("sabnzbd", "SABnzbd", payloads, jobs),
+    cancelUsenetWork("nzbget", "NZBGet", payloads, jobs),
     cancelYtdlpWork(payloads, jobs),
   ]);
   const failures = results
@@ -281,8 +282,8 @@ async function cancelProviderWork(payloads, jobs, providerWork = []) {
   if (failures.length > 0) {
     throw new AggregateError(failures, "Could not cancel download provider work");
   }
-  const [slskd, deemix, sabnzbd, ytdlp] = results.map((result) => result.value);
-  return { slskd, deemix, sabnzbd, ytdlp };
+  const [slskd, deemix, sabnzbd, nzbget, ytdlp] = results.map((result) => result.value);
+  return { slskd, deemix, sabnzbd, nzbget, ytdlp };
 }
 
 function cancelPipelineRows(playlistId, jobs) {

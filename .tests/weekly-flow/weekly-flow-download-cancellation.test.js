@@ -24,6 +24,7 @@ const [
   dbHelpersModule,
   downloadFolderConfigModule,
   sabnzbdModule,
+  nzbgetModule,
 ] = await setupIsolatedBackend(
   "weekly-flow-download-cancellation",
   "backend/config/db-sqlite.js",
@@ -38,6 +39,7 @@ const [
   "backend/db/helpers/index.js",
   "backend/services/downloadFolderConfig.js",
   "backend/services/sabnzbdClient.js",
+  "backend/services/nzbgetClient.js",
 );
 
 const {
@@ -61,6 +63,7 @@ const { markPlaylistDownloadWorkCancelled } = cancellationServiceModule;
 const { dbOps } = dbHelpersModule;
 const { resolveYtdlpStagingRoot } = downloadFolderConfigModule;
 const { sabnzbdClient } = sabnzbdModule;
+const { nzbgetClient } = nzbgetModule;
 
 test.beforeEach(async () => {
   await resetDatabase(db);
@@ -478,6 +481,59 @@ test("failed shared-playlist replacement restores newly cancelled jobs", async (
   }
 });
 
+test("failed shared-playlist deletion keeps the playlist downloading", async () => {
+  const playlistId = "shared-playlist-delete-provider-retry";
+  const originalSettings = dbOps.getSettings();
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    response.writeHead(503);
+    response.end();
+  });
+
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...(originalSettings.integrations || {}),
+      slskd: { enabled: true, url: mock.url, apiKey: "test-key" },
+    },
+  });
+  flowPlaylistConfig.createSharedPlaylist({
+    id: playlistId,
+    name: "Provider Failure Delete",
+    tracks: [],
+  });
+  const generation = activatePlaylistDownloadGeneration(playlistId);
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Song" },
+    playlistId,
+  );
+  registerDownloadProviderWork({
+    jobId,
+    playlistId,
+    provider: "slskd-search",
+    workId: "shared-playlist-delete-search",
+  });
+  markPlaylistDownloadWorkCancelled(playlistId, downloadTracker.getByPlaylistId(playlistId));
+
+  try {
+    await assert.rejects(
+      processWeeklyFlowOperation({ kind: "shared-playlist-delete", playlistId }),
+      /Could not cancel download provider work/,
+    );
+
+    assert.ok(flowPlaylistConfig.getSharedPlaylist(playlistId));
+    assert.equal(isDownloadJobCancelled(jobId), false);
+    assert.equal(
+      isPipelinePayloadActive({ jobId, playlistId, playlistGeneration: generation }),
+      true,
+    );
+    assert.equal(downloadTracker.getNextPending()?.id, jobId);
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    await mock.close();
+  }
+});
+
 test("SABnzbd cancellation retains a job when a refused queue deletion leaves it queued", async (t) => {
   const playlistId = "sabnzbd-refused-delete";
   const jobId = downloadTracker.addJob(
@@ -526,6 +582,34 @@ test("SABnzbd cancellation accepts already absent queue and history items", asyn
       downloadTracker.getByPlaylistId(playlistId),
     ),
   );
+});
+
+test("NZBGet cancellation deletes the tracked queue and history items", async (t) => {
+  const playlistId = "nzbget-cancelled-playlist";
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Queued Song" },
+    playlistId,
+  );
+  downloadTracker.updateDownloadMetadata(jobId, {
+    downloadClient: "nzbget",
+    downloadClientId: 42,
+  });
+  const calls = [];
+  t.mock.method(nzbgetClient, "isConfigured", () => true);
+  t.mock.method(nzbgetClient, "rpc", async (method, params) => {
+    calls.push([method, params]);
+    return true;
+  });
+
+  await cancellationServiceModule.cancelPlaylistDownloadWork(
+    playlistId,
+    downloadTracker.getByPlaylistId(playlistId),
+  );
+
+  assert.deepEqual(calls, [
+    ["editqueue", ["GroupFinalDelete", "", [42]]],
+    ["editqueue", ["HistoryFinalDelete", "", [42]]],
+  ]);
 });
 
 test("playlist cancellation keeps provider work retryable when providers are unconfigured", async () => {

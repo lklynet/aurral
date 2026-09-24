@@ -29,8 +29,9 @@ Treat playlist removal as a durable cancellation boundary.
 - Library-track removal waits for provider cleanup before deleting matching jobs or files. If cleanup fails, the library track and job stay in place for a later retry.
 - Library-track deletion reads each matching job's current `finalPath` after provider cancellation finishes. It includes that path in file cleanup before removing the track, so a finalizer that already held the lock cannot leave an untracked file behind.
 - Library-track deletion checks playlist file references before unlinking a path. It moves a shared managed file to a surviving playlist. It leaves other referenced files in place when it cannot move them safely.
-- slskd, deemix, and SABnzbd submissions use the playlist mutation lock. Each handler records the provider ID before releasing the lock, and cancellation reads the current job metadata after it acquires the lock. A failed provider cleanup therefore leaves the ID available for retry.
+- slskd, deemix, and Usenet submissions use the playlist mutation lock. Each handler records the provider ID before releasing the lock, and cancellation reads the current job metadata after it acquires the lock. A failed provider cleanup therefore leaves the ID available for retry.
 - A failed shared-playlist edit restores only job-cancellation tombstones created by that edit. Existing tombstones stay in force, and the old playlist remains unchanged.
+- A failed shared-playlist deletion reactivates the playlist and its jobs, so tracks added before a retry still download.
 
 When a playlist is created again with the same ID, Aurral advances the generation. Payloads from the removed playlist remain invalid even if their Honker rows survive a restart.
 
@@ -40,16 +41,14 @@ Aurral cancels provider work when the adapter exposes a verified operation:
 
 - slskd searches recorded durably or found in the pipeline payload are deleted; transfer IDs found in the pipeline payload are also deleted.
 - deemix queue items are removed.
-- SABnzbd queue and history deletion checks the response status. If SABnzbd reports that it removed nothing, Aurral confirms that the item is absent before treating cleanup as complete.
+- SABnzbd and NZBGet queue and history deletion checks the response status. If the client reports that it removed nothing, Aurral confirms that the item is absent before treating cleanup as complete.
 - yt-dlp waits for an active process to exit, killing it if necessary, before removing its staging directory.
 
-If slskd, deemix, or SABnzbd has tracked work but is no longer configured, cancellation fails and retains the playlist and jobs for a later retry. A disabled integration cannot confirm that its remote work stopped.
+If slskd, deemix, SABnzbd, or NZBGet has tracked work but is no longer configured, cancellation fails and retains the playlist and jobs for a later retry. A disabled integration cannot confirm that its remote work stopped.
 
 Aurral does not delete a source file merely because a Usenet or deemix provider reports its path. A path mapping can point into a shared library. The provider response does not prove that Aurral owns the file. Cancellation prevents import, while provider-specific cleanup handles work that Aurral can identify.
 
 Subsonic playlist edits use the same mutation lock as other playlist operations. They cancel only legacy jobs removed by the replacement and preserve jobs and files for tracks that remain. If provider cancellation fails, the old playlist stays in place. The edit restores only job tombstones it created, so an earlier playlist cancellation remains in force. Pending jobs resume when the playlist was active before the edit. Interrupted downloads become failed jobs that the user can retry. If flow or playlist cleanup cannot be queued, Aurral restores only the cancellation markers created by that request; a failed flow disable also restores its previous enabled state. Track removal similarly clears only its newly created job marker when queueing fails.
-
-The NZBGet adapter does not expose a verified queue-cancel operation. Aurral therefore stops the Aurral pipeline and refuses to import a result after removal, but it does not claim that NZBGet stopped the remote download.
 
 yt-dlp staging cleanup does not require yt-dlp to be configured because it removes local files.
 

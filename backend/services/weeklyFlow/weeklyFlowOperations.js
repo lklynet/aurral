@@ -43,6 +43,7 @@ import {
   activatePlaylistDownloadGeneration,
   isDownloadJobCancelled,
   restoreDownloadJobCancellations,
+  restorePlaylistDownloadWork,
 } from "./weeklyFlowDownloadCancellation.js";
 import {
   cancelDownloadWorkForJobs,
@@ -821,10 +822,16 @@ async function deleteSharedPlaylist({ playlistId } = {}) {
   const safePlaylistId = String(playlistId || "").trim();
   const exists = flowPlaylistConfig.getSharedPlaylist(safePlaylistId);
   if (!exists) return false;
-  await cancelPlaylistDownloadWork(
-    safePlaylistId,
-    downloadTracker.getByPlaylistId(safePlaylistId),
-  );
+  const jobsToCancel = downloadTracker.getByPlaylistId(safePlaylistId);
+  try {
+    await cancelPlaylistDownloadWork(safePlaylistId, jobsToCancel);
+  } catch (error) {
+    restorePlaylistDownloadWork(
+      safePlaylistId,
+      jobsToCancel.map((job) => job.id),
+    );
+    throw error;
+  }
   let deleted = false;
   await withPlaylistMutation(safePlaylistId, async () => {
     weeklyFlowWorker.setRetryCyclePaused(safePlaylistId, false);

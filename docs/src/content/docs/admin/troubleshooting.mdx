@@ -34,7 +34,7 @@ description: Common setup and runtime issues.
 
 Playlist and flow deletion run in the background. The page reports **removal queued** until the operation worker finishes.
 
-If a download client still shows work after Aurral removes the playlist, check that client's queue. Aurral blocks the removed job from creating a playlist file. NZBGet has no verified queue-cancel operation in the current adapter, so NZBGet may finish or remove the remote request on its own.
+If a download client still shows work after Aurral removes the playlist, check that client's queue. Aurral blocks the removed job from creating a playlist file. If Aurral cannot remove the item from the client, the removal fails and Aurral retries it.
 
 ## Files do not appear in Navidrome
 

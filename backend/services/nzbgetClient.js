@@ -269,6 +269,20 @@ export class NzbgetClient {
     return items.find((item) => normalizeInteger(item?.NZBID ?? item?.ID, null) === id) || null;
   }
 
+  async deleteQueueItem(nzbId) {
+    return this.editItem("GroupFinalDelete", nzbId);
+  }
+
+  async deleteHistoryItem(nzbId) {
+    return this.editItem("HistoryFinalDelete", nzbId);
+  }
+
+  async editItem(command, nzbId) {
+    const id = normalizeInteger(nzbId, 0);
+    if (id <= 0) return false;
+    return (await this.rpc("editqueue", [command, "", [id]])) === true;
+  }
+
   async getDownloadDirectories() {
     const settings = this._getSettings();
     const config = await this.config().catch(() => []);
