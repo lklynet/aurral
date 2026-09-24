@@ -428,19 +428,22 @@ export async function clearAllDownloadJobs(downloadTracker) {
   });
 }
 
-export async function cancelPlaylistDownloadWork(playlistId, jobs = []) {
+export async function cancelPlaylistDownloadWork(playlistId, jobs = [], { lock = true } = {}) {
   const cancellation = markPlaylistDownloadWorkCancelled(playlistId, jobs);
   const safePlaylistId = normalizeId(playlistId);
   if (!safePlaylistId) return { cancelled: 0, generation: 0 };
   const { generation, jobs: normalizedJobs } = cancellation;
   const activePipeline = cancelPipelineRows(safePlaylistId, normalizedJobs);
-  const providers = await withPlaylistCancellationLocks([safePlaylistId], () => {
+  const cancel = () => {
     const providerWork = listDownloadProviderWork({
       playlistId: safePlaylistId,
       provider: "slskd-search",
     });
     return cancelProviderWork(activePipeline.payloads, normalizedJobs, providerWork);
-  });
+  };
+  const providers = lock
+    ? await withPlaylistCancellationLocks([safePlaylistId], cancel)
+    : await cancel();
   return {
     generation,
     cancelled: activePipeline.cancelled,

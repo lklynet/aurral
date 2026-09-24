@@ -291,9 +291,17 @@ async function removeLibraryDownloadJobs(track) {
   const jobsToRemove = jobs.filter(
     (job) => removedJobIds.has(job.id) || removedJobIds.has(job.upgradeForJobId),
   );
-  if (jobsToRemove.length === 0) return;
+  if (jobsToRemove.length === 0) return [];
   await cancelDownloadWorkForJobs(jobsToRemove);
-  for (const job of jobsToRemove) downloadTracker.removeJob(job.id);
+  const committedPaths = new Set();
+  for (const job of jobsToRemove) {
+    const completedJob = downloadTracker.getJob(job.id);
+    if (completedJob?.managedBy !== "lidarr" && completedJob?.finalPath) {
+      committedPaths.add(completedJob.finalPath);
+    }
+    downloadTracker.removeJob(job.id);
+  }
+  return [...committedPaths];
 }
 
 function buildTrackFileIndex(trackFiles) {
@@ -2388,9 +2396,9 @@ export class LibraryManager {
       const aurralFiles = track.files.filter((file) => file.source === "aurral" && file.path);
       const lidarrFiles = track.files.filter((file) => file.source === "lidarr" && file.available);
       if (aurralFiles.length > 0 && lidarrFiles.length === 0) {
-        const paths = [...new Set(aurralFiles.map((file) => file.path))];
+        let committedPaths;
         try {
-          await removeLibraryDownloadJobs(track);
+          committedPaths = await removeLibraryDownloadJobs(track);
         } catch (error) {
           logger.error("library", `[LibraryManager] Failed to cancel track downloads: ${error.message}`);
           return {
@@ -2399,6 +2407,10 @@ export class LibraryManager {
             error: error.message,
           };
         }
+        const paths = [...new Set([
+          ...aurralFiles.map((file) => file.path),
+          ...committedPaths,
+        ])];
         try {
           const deletionResults = await Promise.allSettled(paths.map(async (filePath) => {
             try {

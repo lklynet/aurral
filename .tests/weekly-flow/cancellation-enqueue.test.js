@@ -16,6 +16,7 @@ const [
   { weeklyFlowOperationQueue },
   { downloadTracker },
   { playlistManager },
+  mutationGuards,
   cancellation,
 ] = await setupIsolatedBackend(
   "cancellation-enqueue",
@@ -27,6 +28,7 @@ const [
   "backend/services/weeklyFlow/weeklyFlowOperationQueue.js",
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
+  "backend/services/weeklyFlow/weeklyFlowMutationGuards.js",
   "backend/services/weeklyFlow/weeklyFlowDownloadCancellation.js",
 );
 const {
@@ -38,10 +40,14 @@ const {
 } = cancellation;
 
 const flowHandlers = new Map();
+const flowUpdateHandlers = new Map();
 registerFlows({
   get() {},
   post() {},
-  put(path, ...handlers) { flowHandlers.set(path, handlers.at(-1)); },
+  put(path, ...handlers) {
+    flowHandlers.set(path, handlers.at(-1));
+    flowUpdateHandlers.set(path, handlers.at(-1));
+  },
   delete(path, ...handlers) { flowHandlers.set(path, handlers.at(-1)); },
 });
 
@@ -163,6 +169,44 @@ test("a successful flow disable reports the accepted cleanup operation", async (
   assert.equal(flowPlaylistConfig.getFlow(flow.id).enabled, false);
   assert.equal(isDownloadJobCancelled(jobId), true);
   assert.equal(isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }), false);
+});
+
+test("flow settings updates wait for in-progress playlist mutations", async (t) => {
+  const user = { id: 1, role: "user" };
+  dbOps.updateSettings({
+    ...dbOps.getSettings(),
+    integrations: { lastfm: { apiKey: "test" } },
+  });
+  const flow = createFlow({ name: "Serialized flow settings" });
+  flowPlaylistConfig.updateFlow(flow.id, { scheduleDays: [1] });
+  let signalMutationEntered;
+  let releaseMutation;
+  const mutationEntered = new Promise((resolve) => { signalMutationEntered = resolve; });
+  const mutationGate = new Promise((resolve) => { releaseMutation = resolve; });
+  const mutation = mutationGuards.withPlaylistMutation(flow.id, async () => {
+    signalMutationEntered();
+    await mutationGate;
+  }, { clearPending: false });
+  let update;
+  const response = createResponse();
+
+  try {
+    await mutationEntered;
+    t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
+    update = flowUpdateHandlers.get("/flows/:flowId")({
+      params: { flowId: flow.id },
+      body: { name: "Updated while serialized" },
+      user,
+    }, response);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(response.body, null);
+  } finally {
+    releaseMutation();
+    await Promise.allSettled([mutation, update].filter(Boolean));
+  }
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(flowPlaylistConfig.getFlow(flow.id).name, "Updated while serialized");
 });
 
 test("a failed shared-track delete enqueue clears only its new job-cancellation marker", async (t) => {

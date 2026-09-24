@@ -77,7 +77,7 @@ export async function beginPlaylistMutation(playlistTypes, { clearPending = true
 
 export async function withPlaylistMutation(playlistTypes, operation, options = {}) {
   const types = normalizePlaylistTypes(playlistTypes);
-  return withPlaylistLocks(types, async () => {
+  return withPlaylistMutationLock(types, async () => {
     if (typeof options.beforeMutation === "function") {
       const preflight = await options.beforeMutation();
       if (preflight !== undefined) return preflight;
@@ -89,6 +89,11 @@ export async function withPlaylistMutation(playlistTypes, operation, options = {
       await releaseMutation();
     }
   });
+}
+
+export async function withPlaylistMutationLock(playlistTypes, operation) {
+  const types = normalizePlaylistTypes(playlistTypes);
+  return withPlaylistLocks(types, operation);
 }
 
 export async function restartWorkerIfPending() {

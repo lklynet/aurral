@@ -17,6 +17,7 @@ import {
 import {
   getUnavailableFlowSourceError,
 } from "../../../services/weeklyFlow/weeklyFlowValidation.js";
+import { withPlaylistMutationLock } from "../../../services/weeklyFlow/weeklyFlowMutationGuards.js";
 import {
   DEFAULT_LIMIT,
   validateFlowPayload,
@@ -178,7 +179,9 @@ export function registerFlows(router) {
       if (Object.prototype.hasOwnProperty.call(req.body || {}, "yearTo")) {
         updates.yearTo = req.body.yearTo;
       }
-      const updated = flowPlaylistConfig.updateFlow(flowId, updates);
+      const updated = await withPlaylistMutationLock(flowId, () =>
+        flowPlaylistConfig.updateFlow(flowId, updates),
+      );
       if (!updated) {
         return res.status(404).json({ error: "Flow not found" });
       }

@@ -23,9 +23,11 @@ Treat playlist removal as a durable cancellation boundary.
 - The delete path cancels matching Honker jobs and known provider work before it clears tracker rows.
 - A pipeline checks the durable state before each phase and before it queues another phase.
 - A finalizer and playlist deletion share the `playlist-mutation:<playlistId>` lock. A finalizer that gets the lock first completes before deletion removes the file. A finalizer that waits sees the cancellation state and does not import the file.
+- A flow refresh validates its operation token, flow state, and planned settings under the playlist mutation lock before it cancels old jobs. Flow settings updates take the same lock. A stale plan therefore leaves the current jobs active, and a settings update cannot race provider cleanup.
 - Before clearing shared-playlist jobs, deletion removes Aurral-managed completed files that no other job or playback playlist uses. Files owned elsewhere stay in place.
 - Clearing all jobs snapshots the current rows, cancels those jobs, and removes them under the affected playlist locks. Jobs created after the snapshot stay queued.
 - Library-track removal waits for provider cleanup before deleting matching jobs or files. If cleanup fails, the library track and job stay in place for a later retry.
+- Library-track deletion reads each matching job's current `finalPath` after provider cancellation finishes. It includes that path in file cleanup before removing the track, so a finalizer that already held the lock cannot leave an untracked file behind.
 
 When a playlist is created again with the same ID, Aurral advances the generation. Payloads from the removed playlist remain invalid even if their Honker rows survive a restart.
 

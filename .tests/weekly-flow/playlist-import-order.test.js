@@ -148,6 +148,37 @@ test("mutation release unblocks every playlist and prunes after an unblock error
   assert.deepEqual(calls, ["unblock:first", "unblock:second", "prune"]);
 });
 
+test("flow settings locks serialize with playlist mutations", async () => {
+  const { withPlaylistMutation, withPlaylistMutationLock } = await importFromRepo(
+    "backend/services/weeklyFlow/weeklyFlowMutationGuards.js",
+  );
+  let signalMutationEntered;
+  let releaseMutation;
+  const mutationEntered = new Promise((resolve) => { signalMutationEntered = resolve; });
+  const mutationGate = new Promise((resolve) => { releaseMutation = resolve; });
+  let updateEntered = false;
+  let update;
+  const mutation = withPlaylistMutation("flow-settings-lock", async () => {
+    signalMutationEntered();
+    await mutationGate;
+  }, { clearPending: false });
+
+  try {
+    await mutationEntered;
+    update = withPlaylistMutationLock("flow-settings-lock", async () => {
+      updateEntered = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(updateEntered, false);
+    releaseMutation();
+    await Promise.all([mutation, update]);
+    assert.equal(updateEntered, true);
+  } finally {
+    releaseMutation();
+    await Promise.allSettled([mutation, update].filter(Boolean));
+  }
+});
+
 async function writeReusableTrack(track, playlistType = "source-playlist") {
   const sourcePath = path.join(
     weeklyFlowRoot,
@@ -506,6 +537,59 @@ test("a failed flow plan leaves the current playlist and jobs untouched", async 
   } finally {
     playlistSource.buildFlowRunPlan = originalBuildPlan;
     playlistManager.weeklyReset = originalReset;
+    weeklyFlowWorker.stop();
+  }
+});
+
+test("a stale flow plan does not cancel jobs when settings change during planning", async () => {
+  const originalBuildPlan = playlistSource.buildFlowRunPlan;
+  let signalPlanning;
+  let resolvePlan;
+  const planningStarted = new Promise((resolve) => { signalPlanning = resolve; });
+  const deferredPlan = new Promise((resolve) => { resolvePlan = resolve; });
+  try {
+    dbOps.updateSettings({
+      ...dbOps.getSettings(),
+      integrations: {
+        lastfm: { apiKey: "test" },
+        slskd: { enabled: true, url: "http://slskd", apiKey: "test" },
+      },
+    });
+    const flow = flowPlaylistConfig.createFlow({
+      name: "Settings Change During Planning",
+      mix: { discover: 100, mix: 0, trending: 0, focus: 0 },
+      size: 1,
+      scheduleDays: [1],
+    });
+    flowPlaylistConfig.setEnabled(flow.id, true);
+    const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Track" }, flow.id);
+    const { getPlaylistDownloadGeneration, isDownloadJobCancelled } = await importFromRepo(
+      "backend/services/weeklyFlow/weeklyFlowDownloadCancellation.js",
+    );
+    const generationBeforePlanning = getPlaylistDownloadGeneration(flow.id);
+    playlistSource.buildFlowRunPlan = async () => {
+      signalPlanning();
+      return deferredPlan;
+    };
+
+    const refresh = processWeeklyFlowOperation({
+      kind: "scheduled-flow-refresh",
+      flowId: flow.id,
+    });
+    await planningStarted;
+    flowPlaylistConfig.updateFlow(flow.id, { name: "Changed During Planning" });
+    resolvePlan({
+      primaryTracks: [],
+      reserveTracks: [],
+      diagnostics: { targets: { primary: 0 }, achieved: { primary: 0, reserve: 0 } },
+    });
+
+    await assert.rejects(refresh, /Flow settings changed while planning/);
+    assert.equal(isDownloadJobCancelled(jobId), false);
+    assert.equal(getPlaylistDownloadGeneration(flow.id), generationBeforePlanning);
+    assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
+  } finally {
+    playlistSource.buildFlowRunPlan = originalBuildPlan;
     weeklyFlowWorker.stop();
   }
 });

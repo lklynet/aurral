@@ -277,9 +277,6 @@ async function runFlowSeed({
     size: effectiveSize,
   });
 
-  const existingFlowJobs = downloadTracker.getByPlaylistId(safeFlowId);
-  await cancelPlaylistDownloadWork(safeFlowId, existingFlowJobs);
-
   const result = await withPlaylistMutation(safeFlowId, async () => {
     if (!isLatestWeeklyFlowOperationToken(tokenScope, token)) {
       return { cancelled: true };
@@ -318,7 +315,7 @@ async function runFlowSeed({
     };
   }, {
     clearPending: false,
-    beforeMutation() {
+    async beforeMutation() {
       if (!isLatestWeeklyFlowOperationToken(tokenScope, token)) {
         return { cancelled: true };
       }
@@ -327,6 +324,11 @@ async function runFlowSeed({
       if (requireEnabled && current.enabled !== true) return { skipped: true };
       if (JSON.stringify(current) !== flowSnapshot) {
         throw new Error("Flow settings changed while planning; retrying");
+      }
+      const existingFlowJobs = downloadTracker.getByPlaylistId(safeFlowId);
+      await cancelPlaylistDownloadWork(safeFlowId, existingFlowJobs, { lock: false });
+      if (!isLatestWeeklyFlowOperationToken(tokenScope, token)) {
+        return { cancelled: true };
       }
       return undefined;
     },
