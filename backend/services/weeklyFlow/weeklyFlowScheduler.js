@@ -3,10 +3,18 @@ import { weeklyFlowWorker } from "./weeklyFlowWorker.js";
 import { flowPlaylistConfig } from "./weeklyFlowPlaylistConfig.js";
 import { isAnyDownloadSourceConfigured } from "../downloadSourceService.js";
 import { weeklyFlowOperationQueue } from "./weeklyFlowOperationQueue.js";
+import { userOps } from "../../db/helpers/index.js";
 import {
   createWeeklyFlowOperationToken,
   markLatestWeeklyFlowOperationToken,
 } from "./weeklyFlowOperations.js";
+
+function isFlowOwnerActive(flow) {
+  const ownerUserId = Number(flow?.ownerUserId);
+  if (!Number.isFinite(ownerUserId)) return true;
+  const owner = userOps.getUserById(ownerUserId);
+  return !owner || owner.status === "active";
+}
 
 export async function runScheduledRefresh() {
   if (!isAnyDownloadSourceConfigured()) return;
@@ -15,6 +23,7 @@ export async function runScheduledRefresh() {
   if (due.length === 0) return;
 
   for (const flow of due) {
+    if (!isFlowOwnerActive(flow)) continue;
     try {
       const token = createWeeklyFlowOperationToken();
       const tokenScope = `flow:${flow.id}:scheduled`;

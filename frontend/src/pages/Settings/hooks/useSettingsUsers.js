@@ -41,6 +41,8 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
   const [editPermissions, setEditPermissions] = useState({
     ...GRANULAR_PERMISSIONS,
   });
+  const [editStatus, setEditStatus] = useState("active");
+  const [editAllowAdoption, setEditAllowAdoption] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [changePwCurrent, setChangePwCurrent] = useState("");
   const [changePwNew, setChangePwNew] = useState("");
@@ -74,6 +76,10 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
     setEditCurrentPassword,
     editPermissions,
     setEditPermissions,
+    editStatus,
+    setEditStatus,
+    editAllowAdoption,
+    setEditAllowAdoption,
     savingEdit,
     setSavingEdit,
     changePwCurrent,

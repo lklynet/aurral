@@ -268,8 +268,8 @@ export class WeeklyFlowPlaylistManager {
     return snapshots;
   }
 
-  async cleanupUserPlexPlaylists(userId) {
-    return this.plexDestination.deleteOwnerPlaylists(userId);
+  async cleanupUserPlexPlaylists(userId, connection = null) {
+    return this.plexDestination.deleteOwnerPlaylists(userId, connection);
   }
 
   async cleanupEntityPlexPlaylists(entityId) {

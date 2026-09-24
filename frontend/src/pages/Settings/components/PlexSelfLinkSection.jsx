@@ -5,6 +5,7 @@ import {
   completeMyPlexLink,
   disconnectMyPlex,
 } from "../../../utils/api/endpoints/auth.js";
+import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.js";
 
 const EMPTY_STATUS = {
   connected: false,
@@ -51,6 +52,7 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
       const popup = window.open(authUrl, "plex-self-link", "width=600,height=700");
       const deadline = Date.now() + 3 * 60 * 1000;
       let linked = null;
+      let reauthPrompted = false;
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 2000));
         try {
@@ -58,7 +60,18 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
           if (res.pending) continue;
           linked = res;
           break;
-        } catch {}
+        } catch (pollErr) {
+          if (isReauthRequiredError(pollErr) && !reauthPrompted) {
+            reauthPrompted = true;
+            const shouldRetry = await promptReauth();
+            if (shouldRetry) continue;
+          }
+          if (popup && !popup.closed) popup.close();
+          const message =
+            pollErr.response?.data?.message || pollErr.response?.data?.error || pollErr.message;
+          showError?.(`Plex sign-in failed: ${message}`);
+          return;
+        }
       }
       if (popup && !popup.closed) popup.close();
       if (!linked) {
@@ -93,7 +106,24 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
       }));
       showSuccess?.("Disconnected your Plex account.");
     } catch (err) {
-      showError?.(err.response?.data?.message || "Failed to disconnect Plex");
+      if (isReauthRequiredError(err)) {
+        const shouldRetry = await promptReauth();
+        if (shouldRetry) {
+          try {
+            await disconnectMyPlex();
+            setStatus((prev) => ({
+              ...EMPTY_STATUS,
+              globalAccount: prev.globalAccount,
+              isGlobalAccountOwner: prev.isGlobalAccountOwner,
+            }));
+            showSuccess?.("Disconnected your Plex account.");
+          } catch (retryErr) {
+            showError?.(retryErr.response?.data?.message || "Failed to disconnect Plex");
+          }
+        }
+      } else {
+        showError?.(err.response?.data?.message || "Failed to disconnect Plex");
+      }
     } finally {
       setDisconnecting(false);
     }

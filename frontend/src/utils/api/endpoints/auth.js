@@ -40,6 +40,16 @@ export const loginApi = async (username, password) => {
 
 export const exchangeOidcCode = (code) => postData("/auth/oidc/exchange", { code });
 
+export const exchangeGoogleCode = (code) => postData("/auth/google/exchange", { code });
+
+export const startGoogleLink = () => postData("/auth/google/link/start");
+
+export const reauthApi = (currentPassword) => postData("/auth/reauth", { currentPassword });
+
+export const startPlexLoginPin = (forwardUrl) => postData("/auth/plex/login/pin", { forwardUrl });
+
+export const completePlexLogin = () => postData("/auth/plex/login/complete");
+
 export const logoutApi = async () => {
   const result = await postData("/auth/logout");
   invalidateBootstrapCache();
@@ -137,6 +147,12 @@ export const linkManagedPlexUser = (userId, plexUserId, { plexUsername, plexUuid
     pin,
   });
 
-export const adminUnlinkPlex = async (userId) => {
-  await deleteData(`/users/${userId}/plex-link`);
+export const adminUnlinkPlex = async (userId, { force = false } = {}) => {
+  await deleteData(`/users/${userId}/plex-link`, force ? { params: { force: true } } : undefined);
+};
+
+export const getMyIdentities = () => getData("/users/me/identities");
+
+export const unlinkMyIdentity = async (identityId) => {
+  await deleteData(`/users/me/identities/${identityId}`);
 };

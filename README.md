@@ -98,4 +98,10 @@ Aurral builds on open metadata, listening data, and infrastructure from the proj
 
 ## Sponsors
 
+<p align="center">
+  <a href="https://macroscope.com/open-source">
+    <img src="docs/src/assets/macroscope-open-source-sponsor.png" width="700" alt="Sponsored by Macroscope" />
+  </a>
+</p>
+
 ![sponsors badge](https://readme-contribs.as93.net/sponsors/lklynet)

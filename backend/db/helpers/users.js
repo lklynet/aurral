@@ -13,18 +13,18 @@ const getUserByUsernameStmt = db.prepare(
   "SELECT * FROM users WHERE username = ?"
 );
 const getAllUsersStmt = db.prepare(
-  "SELECT id, username, role, permissions, lastfm_username, listen_history_provider, listen_history_username, listen_history_url, lidarr_root_folder_path, lidarr_quality_profile_id, default_library_owner FROM users ORDER BY username"
+  "SELECT id, username, role, permissions, lastfm_username, listen_history_provider, listen_history_username, listen_history_url, lidarr_root_folder_path, lidarr_quality_profile_id, status, is_protected, role_source, has_local_password, needs_identity_migration, allow_identity_adoption, default_library_owner FROM users ORDER BY username"
 );
 const getUserByIdStmt = db.prepare("SELECT * FROM users WHERE id = ?");
 const getUserAuthByIdStmt = db.prepare(
-  "SELECT id, username, role, permissions, default_library_owner FROM users WHERE id = ?"
+  "SELECT id, username, role, permissions, status, is_protected, role_source, default_library_owner FROM users WHERE id = ?"
 );
 const countUsersStmt = db.prepare("SELECT COUNT(*) AS count FROM users");
 const insertUserStmt = db.prepare(
-  "INSERT INTO users (username, password_hash, subsonic_password, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  "INSERT INTO users (username, password_hash, subsonic_password, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id, has_local_password, is_protected) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
 );
 const updateUserStmt = db.prepare(
-  "UPDATE users SET username = ?, password_hash = ?, subsonic_password = ?, role = ?, permissions = ?, lastfm_username = ?, listen_history_provider = ?, listen_history_username = ?, listen_history_url = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, default_library_owner = ? WHERE id = ?"
+  "UPDATE users SET username = ?, password_hash = ?, subsonic_password = ?, role = ?, permissions = ?, lastfm_username = ?, listen_history_provider = ?, listen_history_username = ?, listen_history_url = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, status = ?, role_source = ?, has_local_password = ?, needs_identity_migration = ?, allow_identity_adoption = ?, default_library_owner = ? WHERE id = ?"
 );
 const getSubsonicPasswordByIdStmt = db.prepare(
   "SELECT subsonic_password FROM users WHERE id = ?",
@@ -32,6 +32,7 @@ const getSubsonicPasswordByIdStmt = db.prepare(
 const updateSubsonicPasswordStmt = db.prepare(
   "UPDATE users SET subsonic_password = ? WHERE id = ?",
 );
+const setProtectedStmt = db.prepare("UPDATE users SET is_protected = ? WHERE id = ?");
 const deleteUserStmt = db.prepare("DELETE FROM users WHERE id = ?");
 const getAllListeningHistoryUsersStmt = db.prepare(
   "SELECT id, username, lastfm_username, listen_history_provider, listen_history_username, listen_history_url FROM users WHERE (listen_history_username IS NOT NULL AND TRIM(listen_history_username) != '') OR (listen_history_url IS NOT NULL AND TRIM(listen_history_url) != '')"
@@ -87,6 +88,12 @@ export const userOps = {
         row.lidarr_quality_profile_id != null
           ? Number(row.lidarr_quality_profile_id)
           : null,
+      status: row.status || "active",
+      isProtected: !!row.is_protected,
+      roleSource: row.role_source || "local",
+      hasLocalPassword: !!row.has_local_password,
+      needsIdentityMigration: !!row.needs_identity_migration,
+      allowIdentityAdoption: !!row.allow_identity_adoption,
       defaultLibraryOwner: normalizeDefaultLibraryOwner(row.default_library_owner),
       ...history,
     };
@@ -108,6 +115,12 @@ export const userOps = {
         row.lidarr_quality_profile_id != null
           ? Number(row.lidarr_quality_profile_id)
           : null,
+      status: row.status || "active",
+      isProtected: !!row.is_protected,
+      roleSource: row.role_source || "local",
+      hasLocalPassword: !!row.has_local_password,
+      needsIdentityMigration: !!row.needs_identity_migration,
+      allowIdentityAdoption: !!row.allow_identity_adoption,
       defaultLibraryOwner: normalizeDefaultLibraryOwner(row.default_library_owner),
       ...history,
     };
@@ -122,6 +135,9 @@ export const userOps = {
       permissions: dbHelpers.parseJSON(row.permissions) || {
         ...DEFAULT_PERMISSIONS,
       },
+      status: row.status || "active",
+      isProtected: !!row.is_protected,
+      roleSource: row.role_source || "local",
       defaultLibraryOwner: normalizeDefaultLibraryOwner(row.default_library_owner),
     };
   },
@@ -157,6 +173,12 @@ export const userOps = {
         r.lidarr_quality_profile_id != null
           ? Number(r.lidarr_quality_profile_id)
           : null,
+      status: r.status || "active",
+      isProtected: !!r.is_protected,
+      roleSource: r.role_source || "local",
+      hasLocalPassword: !!r.has_local_password,
+      needsIdentityMigration: !!r.needs_identity_migration,
+      allowIdentityAdoption: !!r.allow_identity_adoption,
       defaultLibraryOwner: normalizeDefaultLibraryOwner(r.default_library_owner),
     }));
   },
@@ -165,6 +187,8 @@ export const userOps = {
     passwordHash,
     role = "user",
     permissions = null,
+    hasLocalPassword = true,
+    isProtected = false,
     subsonicPassword = null,
   ) {
     const un = String(username).trim();
@@ -181,6 +205,8 @@ export const userOps = {
         dbHelpers.stringifyJSON(perms),
         null,
         null,
+        hasLocalPassword ? 1 : 0,
+        isProtected ? 1 : 0,
       );
       return {
         id: result.lastInsertRowid,
@@ -193,6 +219,12 @@ export const userOps = {
         lastfmUsername: null,
         lidarrRootFolderPath: null,
         lidarrQualityProfileId: null,
+        status: "active",
+        isProtected: !!isProtected,
+        roleSource: "local",
+        hasLocalPassword: !!hasLocalPassword,
+        needsIdentityMigration: false,
+        allowIdentityAdoption: false,
         defaultLibraryOwner: null,
       };
     } catch (e) {
@@ -269,6 +301,18 @@ export const userOps = {
         : parsedLidarrQualityProfileId === null
           ? null
           : existing.lidarrQualityProfileId;
+    const status = data.status !== undefined ? data.status : existing.status;
+    const roleSource = data.roleSource !== undefined ? data.roleSource : existing.roleSource;
+    const hasLocalPassword =
+      data.hasLocalPassword !== undefined ? !!data.hasLocalPassword : existing.hasLocalPassword;
+    const needsIdentityMigration =
+      data.needsIdentityMigration !== undefined
+        ? !!data.needsIdentityMigration
+        : existing.needsIdentityMigration;
+    const allowIdentityAdoption =
+      data.allowIdentityAdoption !== undefined
+        ? !!data.allowIdentityAdoption
+        : existing.allowIdentityAdoption;
     const defaultLibraryOwner =
       data.defaultLibraryOwner !== undefined
         ? normalizeDefaultLibraryOwner(data.defaultLibraryOwner)
@@ -286,6 +330,11 @@ export const userOps = {
         resolvedUrl,
         lidarrRootFolderPath,
         lidarrQualityProfileId,
+        status,
+        roleSource,
+        hasLocalPassword ? 1 : 0,
+        needsIdentityMigration ? 1 : 0,
+        allowIdentityAdoption ? 1 : 0,
         defaultLibraryOwner,
         parseInt(id, 10)
       );
@@ -300,10 +349,24 @@ export const userOps = {
         lastfmUsername,
         lidarrRootFolderPath,
         lidarrQualityProfileId,
+        status,
+        isProtected: existing.isProtected,
+        roleSource,
+        hasLocalPassword,
+        needsIdentityMigration,
+        allowIdentityAdoption,
         defaultLibraryOwner,
       };
     } catch (e) {
       return null;
+    }
+  },
+  setProtected(id, isProtected) {
+    try {
+      setProtectedStmt.run(isProtected ? 1 : 0, parseInt(id, 10));
+      return true;
+    } catch (e) {
+      return false;
     }
   },
   deleteUser(id) {

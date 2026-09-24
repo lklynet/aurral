@@ -263,13 +263,16 @@ function buildPermissions(role, permissions) {
   };
 }
 
-function toResolvedUser(user) {
+export function toResolvedUser(user) {
   if (!user) return null;
   return {
     id: user.id,
     username: user.username,
     role: user.role,
     permissions: buildPermissions(user.role, user.permissions),
+    status: user.status || "active",
+    isProtected: !!user.isProtected,
+    roleSource: user.roleSource || "local",
   };
 }
 
@@ -449,20 +452,27 @@ export function reconcileLocalNetworkBypassSetting() {
   };
 }
 
+export function createSystemProvisionedUser(username, role) {
+  const passwordHash = hashPassword(crypto.randomBytes(32).toString("hex"));
+  const created = userOps.createUser(username, passwordHash, role, null, false);
+  return created
+    ? toResolvedUser(userOps.getUserByUsername(created.username) || created)
+    : toResolvedUser(userOps.getUserByUsername(username));
+}
+
 export function ensureExternalUser(username, role) {
   const existing = userOps.getUserByUsername(username);
   if (existing) {
+    if (existing.isProtected) {
+      return toResolvedUser(existing);
+    }
     if (existing.role !== role) {
-      const updated = userOps.updateUser(existing.id, { role });
+      const updated = userOps.updateUser(existing.id, { role, roleSource: "local" });
       return toResolvedUser(updated || existing);
     }
     return toResolvedUser(existing);
   }
-  const passwordHash = hashPassword(crypto.randomBytes(32).toString("hex"));
-  const created = userOps.createUser(username, passwordHash, role, null);
-  return created
-    ? toResolvedUser(userOps.getUserByUsername(created.username) || created)
-    : toResolvedUser(userOps.getUserByUsername(username));
+  return createSystemProvisionedUser(username, role);
 }
 
 function isProxyAdmin(req, username) {
@@ -500,7 +510,8 @@ export function resolveProxyUser(req) {
   if (!username) return null;
 
   const role = resolveProxyRole(req, username);
-  return ensureExternalUser(username, role);
+  const user = ensureExternalUser(username, role);
+  return user?.status === "active" ? user : null;
 }
 
 export function issueProxySession(req) {
@@ -519,7 +530,7 @@ function migrateLegacyAdmin() {
   const authPassword = settings.integrations?.general?.authPassword;
   if (!onboardingComplete || !authPassword) return;
   const hash = hashPassword(authPassword);
-  userOps.createUser(authUser, hash, "admin", null, authPassword);
+  userOps.createUser(authUser, hash, "admin", null, true, true, authPassword);
 }
 
 export function resolveUser(username, password) {
@@ -531,7 +542,7 @@ export function resolveUser(username, password) {
     .trim()
     .toLowerCase();
   const u = userOps.getUserByUsername(un);
-  if (!u || !password) return null;
+  if (!u || u.status !== "active" || !password) return null;
   if (!verifyPassword(password, u.passwordHash)) return null;
   if (needsRehash(u.passwordHash)) {
     userOps.updateUser(u.id, {
@@ -601,7 +612,8 @@ function legacyAuth(username, password) {
 export function resolveLocalNetworkBypassUser(req) {
   const status = getLocalNetworkBypassStatus(req);
   if (!status.active) return null;
-  return toResolvedUser(getSoleAdminUser());
+  const user = getSoleAdminUser();
+  return user?.status === "active" ? toResolvedUser(user) : null;
 }
 
 export function resolveRequestUser(req) {
@@ -620,7 +632,7 @@ export function resolveRequestUser(req) {
       const username = colon >= 0 ? decoded.slice(0, colon) : decoded;
       const password = colon >= 0 ? decoded.slice(colon + 1) : "";
       let user = resolveUser(username, password);
-      if (!user) user = legacyAuth(username, password);
+      if (!user && userOps.countUsers() === 0) user = legacyAuth(username, password);
       if (user) return user;
     } catch (e) {
       return null;
@@ -698,8 +710,12 @@ export const authMiddleware = (req, res, next) => {
     if (
       req.path === "/api/auth/login" ||
       req.path === "/api/auth/oidc/login" ||
-      req.path === "/api/auth/oidc/exchange"
-      || (req.method === "GET" && req.path === "/api/scrobbling/lastfm/link/callback")
+      req.path === "/api/auth/oidc/exchange" ||
+      req.path === "/api/auth/google/login" ||
+      req.path === "/api/auth/google/exchange" ||
+      req.path === "/api/auth/plex/login/pin" ||
+      req.path === "/api/auth/plex/login/complete" ||
+      (req.method === "GET" && req.path === "/api/scrobbling/lastfm/link/callback")
     ) {
       return next();
     }

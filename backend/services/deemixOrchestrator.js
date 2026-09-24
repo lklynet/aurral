@@ -20,6 +20,7 @@ import {
   sanitizePathPart,
   writeAudioMetadata,
 } from "./playlistDownloadUtils.js";
+import { deferForInactiveOwner } from "./weeklyFlow/weeklyFlowOwnerStatus.js";
 import { getQualityProfile } from "./qualityProfileService.js";
 import { isQualityUpgrade } from "./qualityProfileModel.js";
 import {
@@ -348,6 +349,8 @@ async function handleDeemixFinalize(payload, helpers) {
     return helpers.failOrTryNextSource(payload, job, reason);
   }
 
+  const inactiveOwner = deferForInactiveOwner(payload, job);
+  if (inactiveOwner) return inactiveOwner;
   const playlistRoot = resolvePlaylistRoot();
   const destination = String(payload.destination || "").trim();
   const ext = path.extname(filePath).toLowerCase();

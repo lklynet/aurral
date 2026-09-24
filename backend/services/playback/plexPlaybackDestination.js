@@ -487,9 +487,14 @@ export class PlexPlaybackDestination {
     }
   }
 
-  async deleteOwnerPlaylists(ownerUserId) {
+  async deleteOwnerPlaylists(ownerUserId, connection = null) {
     const targetKey = this._targetKey(ownerUserId);
     const clientCache = new Map();
+    if (connection && this.client) {
+      const client = new PlexClient(this.client.url, connection.token, connection.clientId);
+      client._machineIdentifier = this.client._machineIdentifier || null;
+      clientCache.set(String(ownerUserId), client);
+    }
     for (const pointer of plexPlaylistPointerStore.getPointersForTarget(targetKey)) {
       await this._deletePointer(pointer.entityId, ownerUserId, pointer, clientCache);
     }

@@ -1,7 +1,7 @@
 import { loginApi } from "../../../utils/api/endpoints/auth.js";
 import { setStoredAuth } from "../../../utils/api/core.js";
 import PillToggle from "../../../components/PillToggle";
-import { SettingsInput } from "./SettingsField";
+import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 
 import { createPortal } from "react-dom";
@@ -10,6 +10,8 @@ import { GRANULAR_PERMISSIONS, granularPerms } from "../constants";
 import { useModalDialog } from "../../../hooks/useModalDialog.js";
 import { AdminPlexLinkField } from "./AdminPlexLinkField";
 import { PlexSelfLinkSection } from "./PlexSelfLinkSection";
+import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.js";
+import { useAuth } from "../../../contexts/AuthContext";
 import { DotLoader } from "../../../components/DotLoader";
 function getLocalBypassStatus(status) {
   if (!status) {
@@ -78,6 +80,13 @@ function getLocalBypassStatus(status) {
   }
 }
 
+function formatListenHistory(user) {
+  if (!user.listenHistoryUsername && !user.listenHistoryUrl) return "—";
+  if (user.listenHistoryProvider === "koito") return `Koito: ${user.listenHistoryUrl}`;
+  const provider = user.listenHistoryProvider === "listenbrainz" ? "ListenBrainz" : "Last.fm";
+  return `${provider}: ${user.listenHistoryUsername}`;
+}
+
 function formatPlexLink(user) {
   const plexLink = user.plexLink;
   if (plexLink?.connected) {
@@ -142,6 +151,10 @@ export function SettingsUsersTab({
   setEditCurrentPassword,
   editPermissions,
   setEditPermissions,
+  editStatus,
+  setEditStatus,
+  editAllowAdoption,
+  setEditAllowAdoption,
   savingEdit,
   setSavingEdit,
   changePwCurrent,
@@ -169,6 +182,8 @@ export function SettingsUsersTab({
   showSuccess,
   showError,
 }) {
+  const { bootstrap } = useAuth();
+  const ssoEnabled = !!bootstrap?.oidcEnabled;
   const isSelfEdit = editUser && editUser.id === authUser?.id;
   const localBypassStatus = getLocalBypassStatus(health?.localNetworkBypass);
   const localBypassEnabled = settings?.security?.localNetworkBypass?.enabled === true;
@@ -208,7 +223,7 @@ export function SettingsUsersTab({
                 return;
               }
               setChangingPassword(true);
-              try {
+              const applyPasswordChange = async () => {
                 await changeMyPassword(changePwCurrent, changePwNew);
                 const result = await loginApi(authUser?.username, changePwNew);
                 if (result?.token) {
@@ -218,8 +233,23 @@ export function SettingsUsersTab({
                 setChangePwCurrent("");
                 setChangePwNew("");
                 setChangePwConfirm("");
+              };
+              try {
+                await applyPasswordChange();
               } catch (err) {
-                showError(err.response?.data?.error || err.message || "Failed to change password");
+                if (isReauthRequiredError(err) && (await promptReauth())) {
+                  try {
+                    await applyPasswordChange();
+                  } catch (retryErr) {
+                    showError(
+                      retryErr.response?.data?.error ||
+                        retryErr.message ||
+                        "Failed to change password",
+                    );
+                  }
+                } else if (!isReauthRequiredError(err)) {
+                  showError(err.response?.data?.error || err.message || "Failed to change password");
+                }
               } finally {
                 setChangingPassword(false);
               }
@@ -309,6 +339,39 @@ export function SettingsUsersTab({
             </SettingsArrFormGroup>
           </SettingsArrFieldSet>
 
+          <SettingsArrFieldSet legend="Sign-in Mode">
+            <SettingsArrFormGroup
+              label="SSO-only"
+              help="Hide the local username/password form on the sign-in page by default when at least one SSO option is configured. A 'Sign in with a local account instead' link stays available, so local accounts — including the recovery admin — are never locked out."
+            >
+              <div className="settings-toggle-row">
+                <span>{settings?.security?.ssoOnly === true ? "Enabled" : "Disabled"}</span>
+                <PillToggle
+                  className="settings-toggle"
+                  checked={settings?.security?.ssoOnly === true}
+                  onChange={async (event) => {
+                    const previousSettings = settings;
+                    const nextSettings = {
+                      ...settings,
+                      security: {
+                        ...(settings.security || {}),
+                        ssoOnly: event.target.checked,
+                      },
+                    };
+                    updateSettings(nextSettings);
+                    try {
+                      await handleSaveSettings(null, nextSettings);
+                    } catch (err) {
+                      updateSettings(previousSettings);
+                      showError(err.response?.data?.message || "Failed to save sign-in mode");
+                    }
+                  }}
+                  aria-label="SSO-only sign-in mode"
+                />
+              </div>
+            </SettingsArrFormGroup>
+          </SettingsArrFieldSet>
+
           <SettingsArrFieldSet
             legend="Users"
             actions={
@@ -324,6 +387,8 @@ export function SettingsUsersTab({
                   <tr>
                     <th scope="col">Username</th>
                     <th scope="col">Role</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Listening history</th>
                     <th scope="col">Plex</th>
                     <th scope="col" className="arr-table__actions-head">
                       <span className="sr-only">Actions</span>
@@ -333,18 +398,36 @@ export function SettingsUsersTab({
                 <tbody>
                   {loadingUsers ? (
                     <tr className="arr-table__empty-row">
-                      <td colSpan={4}>
+                      <td colSpan={6}>
                         <DotLoader size="sm" label={null} /> Loading users…
                       </td>
                     </tr>
                   ) : usersList.length === 0 ? (
                     <tr className="arr-table__empty-row">
-                      <td colSpan={4}>No users configured.</td>
+                      <td colSpan={6}>No users configured.</td>
                     </tr>
                   ) : (
                     usersList.map((user) => (
                       <tr key={user.id}>
-                        <td>{user.username}</td>
+                        <td>
+                          <span className="arr-table__name-cell">
+                            <span>{user.username}</span>
+                            {ssoEnabled && user.needsIdentityMigration && !user.isProtected ? (
+                              <span
+                                className={`arr-badge${
+                                  user.allowIdentityAdoption ? " arr-badge--warning" : ""
+                                }`}
+                                aria-label={
+                                  user.allowIdentityAdoption
+                                    ? "Approved for adoption. The next matching SSO sign-in will claim this account."
+                                    : "This account predates SSO identity linking and has no linked identity. If it belongs to an SSO user, approve it for adoption from Manage."
+                                }
+                              >
+                                {user.allowIdentityAdoption ? "awaiting SSO claim" : "no SSO identity"}
+                              </span>
+                            ) : null}
+                          </span>
+                        </td>
                         <td>
                           <span
                             className={`arr-badge${
@@ -353,6 +436,16 @@ export function SettingsUsersTab({
                           >
                             {user.role}
                           </span>
+                        </td>
+                        <td>
+                          {user.status && user.status !== "active" ? (
+                            <span className="arr-badge arr-badge--warning">{user.status}</span>
+                          ) : (
+                            <span className="arr-table__path">active</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className="arr-table__path">{formatListenHistory(user)}</span>
                         </td>
                         <td>
                           <span className="arr-table__path">{formatPlexLink(user)}</span>
@@ -367,6 +460,8 @@ export function SettingsUsersTab({
                                 setEditUser(user);
                                 setEditPassword("");
                                 setEditCurrentPassword("");
+                                setEditStatus(user.status || "active");
+                                setEditAllowAdoption(!!user.allowIdentityAdoption);
                                 setEditPermissions(
                                   user.permissions
                                     ? {
@@ -647,19 +742,32 @@ export function SettingsUsersTab({
                             return;
                           }
                           setSavingEdit(true);
-                          try {
-                            await updateUser(editUser.id, {
+                          const applyEdit = () =>
+                            updateUser(editUser.id, {
                               ...(editPassword ? { password: editPassword } : {}),
                               permissions: editPermissions,
+                              status: editStatus,
+                              ...(ssoEnabled && editUser.needsIdentityMigration && !editUser.isProtected
+                                ? { allowIdentityAdoption: editAllowAdoption }
+                                : {}),
                             });
+                          try {
+                            try {
+                              await applyEdit();
+                            } catch (err) {
+                              if (!isReauthRequiredError(err) || !(await promptReauth())) throw err;
+                              await applyEdit();
+                            }
                             showSuccess("User updated");
                             setEditUser(null);
                             await refreshUsers();
                             await refreshSettingsData();
                           } catch (err) {
-                            showError(
-                              err.response?.data?.error || err.message || "Failed to update",
-                            );
+                            if (!isReauthRequiredError(err)) {
+                              showError(
+                                err.response?.data?.error || err.message || "Failed to update",
+                              );
+                            }
                           } finally {
                             setSavingEdit(false);
                           }
@@ -712,12 +820,65 @@ export function SettingsUsersTab({
                                   onChange={(event) => setEditPassword(event.target.value)}
                                 />
                               </SettingsArrFormGroup>
+                              <SettingsArrFormGroup
+                                label="Role"
+                                help={
+                                  editUser.roleSource === "oidc"
+                                    ? "Managed by OIDC; local changes will be overwritten"
+                                    : undefined
+                                }
+                              >
+                                <span
+                                  className={`arr-badge${
+                                    editUser.role === "admin" ? " arr-badge--admin" : ""
+                                  }`}
+                                >
+                                  {editUser.role}
+                                </span>
+                              </SettingsArrFormGroup>
                               <SettingsArrFormGroup label="Permissions" size="large">
                                 <PermissionChecklist
                                   permissions={editPermissions}
                                   onChange={setEditPermissions}
                                 />
                               </SettingsArrFormGroup>
+                              <SettingsArrFormGroup
+                                label="Status"
+                                labelFor="edit-user-status"
+                                help={
+                                  editStatus !== "active"
+                                    ? "This user cannot sign in and their scheduled flows won't run while suspended or disabled."
+                                    : undefined
+                                }
+                              >
+                                <SettingsSelect
+                                  id="edit-user-status"
+                                  value={editStatus}
+                                  onChange={(event) => setEditStatus(event.target.value)}
+                                >
+                                  <option value="active">Active</option>
+                                  <option value="suspended">Suspended</option>
+                                  <option value="disabled">Disabled</option>
+                                </SettingsSelect>
+                              </SettingsArrFormGroup>
+                              {ssoEnabled && editUser.needsIdentityMigration && !editUser.isProtected ? (
+                                <SettingsArrFormGroup
+                                  label="Claim by SSO sign-in"
+                                  help="This account predates SSO identity linking, so it has no linked sign-in identity. If it belonged to an SSO user, turn this on and have them sign in with SSO once - that sign-in takes over this account and keeps its flows, history, and settings. Leave it off and their SSO sign-in creates a separate new account instead. Only enable this if you know who owns this account."
+                                >
+                                  <div className="settings-toggle-row">
+                                    <span>{editAllowAdoption ? "Allowed" : "Not allowed"}</span>
+                                    <PillToggle
+                                      className="settings-toggle"
+                                      checked={editAllowAdoption}
+                                      onChange={(event) =>
+                                        setEditAllowAdoption(event.target.checked)
+                                      }
+                                      aria-label="Allow the next matching SSO sign-in to claim this account"
+                                    />
+                                  </div>
+                                </SettingsArrFormGroup>
+                              ) : null}
                               <SettingsArrFormGroup
                                 label="Plex account"
                                 help="Link this user to a Plex Home managed user so their flow and playlists are created under that Plex account."

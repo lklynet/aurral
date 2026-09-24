@@ -18,6 +18,7 @@ if (!fs.existsSync(path.dirname(DB_PATH))) {
 
 const db = new Database(DB_PATH);
 
+db.pragma("foreign_keys = ON");
 db.pragma("journal_mode = WAL");
 db.pragma("busy_timeout = 5000");
 db.pragma("synchronous = NORMAL");
@@ -76,6 +77,18 @@ db.exec(`
     expires_at INTEGER NOT NULL,
     ip_address TEXT,
     user_agent TEXT,
+    reauthenticated_at INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS user_identities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    provider_type TEXT NOT NULL,
+    provider_key TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    display_name TEXT,
+    linked_at INTEGER NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
@@ -98,6 +111,14 @@ db.exec(`
     entity_key TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     PRIMARY KEY (user_id, entity_kind, entity_key),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  -- Unstarring deletes rows, so MAX(subsonic_stars.created_at) can move backwards. This stamp
+  -- only ever advances, which is what getIndexes needs to answer ifModifiedSince honestly.
+  CREATE TABLE IF NOT EXISTS subsonic_star_changes (
+    user_id INTEGER PRIMARY KEY,
+    changed_at INTEGER NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
@@ -329,6 +350,8 @@ db.exec(`
     ON library_album_tracks (track_id);
   CREATE INDEX IF NOT EXISTS idx_library_tracks_title
     ON library_tracks (title COLLATE NOCASE);
+  CREATE INDEX IF NOT EXISTS idx_library_tracks_mbid
+    ON library_tracks (mbid);
   CREATE INDEX IF NOT EXISTS idx_library_media_files_track_id
     ON library_media_files (track_id);
   CREATE INDEX IF NOT EXISTS idx_library_media_files_track_source_available
@@ -418,6 +441,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
   CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_user_identities_provider_subject ON user_identities(provider_type, provider_key, subject);
+  CREATE INDEX IF NOT EXISTS idx_user_identities_user_id ON user_identities(user_id);
   CREATE INDEX IF NOT EXISTS idx_subsonic_stars_user_created
     ON subsonic_stars (user_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_aurral_history_created_at ON aurral_history(created_at DESC);
@@ -431,6 +456,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_honker_task_runs_queue_started ON honker_task_runs(queue, started_at DESC);
   CREATE INDEX IF NOT EXISTS idx_honker_task_runs_job ON honker_task_runs(job_id, queue);
 `);
+
+// The previous getIndexes timestamp was the request time. Seed existing users past that value
+// so a client carrying a pre-upgrade ifModifiedSince receives the new index once.
+db.prepare(`
+  INSERT OR IGNORE INTO subsonic_star_changes (user_id, changed_at)
+  SELECT users.id,
+         MAX(?, COALESCE((
+           SELECT MAX(created_at) FROM subsonic_stars WHERE user_id = users.id
+         ), 0))
+  FROM users
+`).run(Date.now() + 1);
 
 tryAddColumn("ALTER TABLE library_media_files ADD COLUMN album_id INTEGER");
 tryAddColumn("ALTER TABLE images_cache ADD COLUMN images_json TEXT");
@@ -597,6 +633,14 @@ for (const [name, type] of [
   }
 }
 
+const sessionColumns = db
+  .prepare("PRAGMA table_info(sessions)")
+  .all()
+  .map((column) => column.name);
+if (!sessionColumns.includes("reauthenticated_at")) {
+  tryAddColumn("ALTER TABLE sessions ADD COLUMN reauthenticated_at INTEGER");
+}
+
 const userColumns = db
   .prepare("PRAGMA table_info(users)")
   .all()
@@ -623,6 +667,59 @@ if (!userColumns.includes("discover_layout")) {
 if (!userColumns.includes("listen_history_url")) {
   tryAddColumn("ALTER TABLE users ADD COLUMN listen_history_url TEXT");
 }
+if (!userColumns.includes("status")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
+}
+if (!userColumns.includes("is_protected")) {
+  db.transaction(() => {
+    tryAddColumn("ALTER TABLE users ADD COLUMN is_protected INTEGER NOT NULL DEFAULT 0");
+    const integrationsRow = db.prepare("SELECT value FROM settings WHERE key = 'integrations'").get();
+    let integrations = null;
+    try {
+      integrations = JSON.parse(integrationsRow?.value || "null");
+    } catch {
+      integrations = null;
+    }
+    const legacyUsername = String(integrations?.general?.authUser || "admin").trim();
+    if (legacyUsername && integrations?.general?.authPassword) {
+      db.prepare(
+        "UPDATE users SET is_protected = 1 WHERE LOWER(username) = LOWER(?) AND role = 'admin'",
+      ).run(legacyUsername);
+    }
+  })();
+}
+if (!userColumns.includes("role_source")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN role_source TEXT NOT NULL DEFAULT 'local'");
+}
+if (!userColumns.includes("has_local_password")) {
+  db.transaction(() => {
+    tryAddColumn("ALTER TABLE users ADD COLUMN has_local_password INTEGER NOT NULL DEFAULT 0");
+    // Old rows cannot reliably distinguish local passwords from random hashes
+    // generated for external users. Expire sessions so the next successful
+    // local login can prove and record that a usable password exists.
+    db.exec("DELETE FROM sessions");
+  })();
+}
+if (!userColumns.includes("needs_identity_migration")) {
+  db.transaction(() => {
+    tryAddColumn(
+      "ALTER TABLE users ADD COLUMN needs_identity_migration INTEGER NOT NULL DEFAULT 0",
+    );
+    db.exec(`
+      UPDATE users SET needs_identity_migration = 1
+      WHERE id NOT IN (SELECT DISTINCT user_id FROM user_identities)
+    `);
+  })();
+}
+if (!userColumns.includes("allow_identity_adoption")) {
+  tryAddColumn("ALTER TABLE users ADD COLUMN allow_identity_adoption INTEGER NOT NULL DEFAULT 0");
+}
+
+db.exec(`
+  UPDATE users SET needs_identity_migration = 0, allow_identity_adoption = 0
+  WHERE needs_identity_migration = 1
+    AND id IN (SELECT DISTINCT user_id FROM user_identities)
+`);
 if (!userColumns.includes("default_library_owner")) {
   tryAddColumn("ALTER TABLE users ADD COLUMN default_library_owner TEXT");
 }

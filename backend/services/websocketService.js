@@ -220,6 +220,23 @@ class WebSocketService {
     }
   }
 
+  disconnectUser(userId) {
+    const targetUserId = Number(userId);
+    if (!Number.isFinite(targetUserId)) return 0;
+    let disconnected = 0;
+    for (const client of [...this.clients]) {
+      if (Number(client.user?.id) !== targetUserId) continue;
+      this.clients.delete(client);
+      client.subscriptions.clear();
+      client.user = null;
+      try {
+        client.ws.close(4403, "Account inactive");
+      } catch {}
+      disconnected++;
+    }
+    return disconnected;
+  }
+
   emitDiscoveryUpdate(data) {
     this.broadcast('discovery', {
       type: 'discovery_update',

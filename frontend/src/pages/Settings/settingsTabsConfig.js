@@ -154,7 +154,7 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   playback: {
-    sections: ["Playback servers", "Scrobbling", "Cover art", "Connection", "Account", "Aurral library path", "Main library (optional)", "Sync"],
+    sections: ["Playback servers", "Scrobbling", "Navidrome playlist paths", "Cover art", "Connection", "Account", "Login", "Aurral library path", "Main library (optional)", "Sync"],
     services: {
       Navidrome: "Subsonic music server",
       Plex: "Plexamp music server",
@@ -174,19 +174,21 @@ const SETTINGS_SEARCH_METADATA = {
       "Include tracks from an existing library": "Plex main library",
       "Local path for this library (optional)": "Plex path mapping",
       Sync: "Navidrome scan playlists Plex refresh",
+      "Allow signing in to Aurral with Plex": "authentication sign in login identity secondary",
       "Last.fm": "scrobbling OAuth account",
       ListenBrainz: "scrobbling user token",
       Koito: "scrobbling API key URL",
     },
   },
   connect: {
-    sections: ["Connections", "Webhooks", "Notification events", "Inbox"],
+    sections: ["Connections", "Webhooks", "Notification events", "Inbox", "Connection"],
     services: {
       Gotify: "push notifications mobile alerts",
       "Last.fm": "recommendations API key secret scrobbling",
       Ticketmaster: "local shows events",
       Inbox: "library updates releases shows news discoveries",
       Webhooks: "notifications HTTP callbacks",
+      Google: "sign in authentication OAuth login secondary",
     },
     fields: {
       "Server URL": "Gotify address host connection",
@@ -211,6 +213,10 @@ const SETTINGS_SEARCH_METADATA = {
       "Library artist news": "inbox RSS",
       "Recommended artist news": "inbox RSS",
       Discoveries: "inbox recommendations",
+      Enabled: "Google sign in on off",
+      "Client ID": "Google OAuth credentials",
+      "Client secret": "Google OAuth credentials",
+      "Redirect URI": "Google OAuth callback URL",
     },
   },
   "rss-news": {
@@ -255,7 +261,7 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   users: {
-    sections: ["Change password", "Local network auto-login", "Users"],
+    sections: ["Change password", "Local network auto-login", "Sign-in mode", "Users"],
     services: {
       Authentication: "login password security",
       Permissions: "roles access control",
@@ -270,6 +276,9 @@ const SETTINGS_SEARCH_METADATA = {
       Password: "create edit user account",
       Permissions: "roles manage users access",
       "Plex account": "link user playback identity",
+      "SSO-only": "sign in mode hide local login form SSO",
+      Status: "active suspended disabled user account",
+      "Claim by SSO sign-in": "legacy account adoption migration link identity upgrade",
     },
   },
 };

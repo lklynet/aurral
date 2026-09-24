@@ -54,6 +54,7 @@ import {
   registerDownloadProviderWork,
   withPipelineCommitLock,
 } from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
+import { deferForInactiveOwner } from "./weeklyFlow/weeklyFlowOwnerStatus.js";
 
 import { getQualityProfile } from "./qualityProfileService.js";
 import {
@@ -1230,6 +1231,8 @@ async function handleFinalize(payload) {
       : null;    if (nextPayload) return nextPayload;
     return failOrTryNextSource(payload, job, validation.reason || "Download validation failed");
   }
+  const inactiveOwner = deferForInactiveOwner(payload, job);
+  if (inactiveOwner) return inactiveOwner;
   const committed = await withPipelineCommitLock(payload, async () => {
     await writeAudioMetadata(sourcePath, resolvedTrack);
     import("./aurralHistoryService.js")
@@ -1275,6 +1278,9 @@ export async function processPipelinePayload(payload) {
     throw new Error("Invalid pipeline payload");
   }
   if (!isPipelinePayloadActive(payload)) return null;
+  const currentJob = downloadTracker.getJob(payload.jobId);
+  const inactiveOwner = deferForInactiveOwner(payload, currentJob);
+  if (inactiveOwner) return inactiveOwner;
   if (!isAnyDownloadSourceConfigured()) {
     const job = downloadTracker.getJob(payload.jobId);
     if (job) {

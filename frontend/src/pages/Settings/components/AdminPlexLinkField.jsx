@@ -7,6 +7,7 @@ import {
   linkManagedPlexUser,
   adminUnlinkPlex,
 } from "../../../utils/api/endpoints/auth.js";
+import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.js";
 
 export function AdminPlexLinkField({ user, onChanged, showSuccess, showError }) {
   const [homeUsers, setHomeUsers] = useState(null);
@@ -71,7 +72,31 @@ export function AdminPlexLinkField({ user, onChanged, showSuccess, showError }) 
       showSuccess?.(`Unlinked ${user.username}'s Plex account.`);
       await onChanged?.();
     } catch (err) {
-      showError?.(err.response?.data?.message || "Failed to unlink Plex");
+      if (
+        err.response?.status === 409 &&
+        err.response?.data?.error === "last_auth_method" &&
+        err.response?.data?.requiresForce
+      ) {
+        const confirmed = window.confirm(
+          `Warning: removing Plex will leave “${user.username}” with no usable sign-in method. ` +
+            "They will be unable to sign in until an administrator sets a local password or links another identity.\n\n" +
+            `Force unlink Plex for ${user.username}?`,
+        );
+        if (!confirmed) return;
+        const forceUnlink = () => adminUnlinkPlex(user.id, { force: true });
+        try {
+          await forceUnlink();
+        } catch (forceError) {
+          if (!isReauthRequiredError(forceError) || !(await promptReauth())) throw forceError;
+          await forceUnlink();
+        }
+        showSuccess?.(
+          `Forcibly unlinked ${user.username}'s final sign-in method. The account can no longer sign in.`,
+        );
+        await onChanged?.();
+      } else {
+        showError?.(err.response?.data?.message || "Failed to unlink Plex");
+      }
     } finally {
       setUnlinking(false);
     }

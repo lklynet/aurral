@@ -472,6 +472,7 @@ export async function enqueueInboxRefreshForUser(
 export async function enqueueInboxRefreshForAllUsers(options = {}) {
   const jobs = [];
   for (const user of userOps.getAllUsers()) {
+    if (user.status !== "active") continue;
     jobs.push(await enqueueInboxRefreshForUser(user.id, options));
   }
   return jobs;

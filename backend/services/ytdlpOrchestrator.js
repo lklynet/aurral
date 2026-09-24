@@ -20,6 +20,7 @@ import {
   sanitizePathPart,
   writeAudioMetadata,
 } from "./playlistDownloadUtils.js";
+import { deferForInactiveOwner } from "./weeklyFlow/weeklyFlowOwnerStatus.js";
 import {
   getPayloadCandidate,
   hasNextCandidate,
@@ -248,6 +249,8 @@ async function handleYtdlpFinalize(payload, helpers) {
     return helpers.failOrTryNextSource(payload, job, reason);
   }
 
+  const inactiveOwner = deferForInactiveOwner(payload, job);
+  if (inactiveOwner) return inactiveOwner;
   const playlistRoot = resolvePlaylistRoot();
   const destination = String(payload.destination || "").trim();
   const ext = path.extname(filePath).toLowerCase();

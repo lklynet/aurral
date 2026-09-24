@@ -13,7 +13,7 @@ import {
 const [
   isolatedState,
   { db },
-  { dbOps },
+  { dbOps, userOps },
   trackerModule,
   playlistConfigModule,
   operationsModule,
@@ -592,6 +592,115 @@ test("a stale flow plan does not cancel jobs when settings change during plannin
     playlistSource.buildFlowRunPlan = originalBuildPlan;
     weeklyFlowWorker.stop();
   }
+});
+
+
+test("a queued flow stops before mutation when its owner becomes suspended", async () => {
+  const originalBuildPlan = playlistSource.buildFlowRunPlan;
+  const originalReset = playlistManager.weeklyReset;
+  let resets = 0;
+  try {
+    dbOps.updateSettings({
+      ...dbOps.getSettings(),
+      integrations: {
+        lastfm: { apiKey: "test" },
+        slskd: { enabled: true, url: "http://slskd", apiKey: "test" },
+      },
+    });
+    const owner = userOps.createUser("queued-flow-owner", "unused", "user");
+    const flow = flowPlaylistConfig.createFlow({
+      name: "Queued Before Suspension",
+      mix: { discover: 100, mix: 0, trending: 0, focus: 0 },
+      size: 1,
+      scheduleDays: [1],
+      ownerUserId: owner.id,
+    });
+    flowPlaylistConfig.setEnabled(flow.id, true);
+    playlistSource.buildFlowRunPlan = async () => {
+      userOps.updateUser(owner.id, { status: "suspended" });
+      return {
+        primaryTracks: [],
+        reserveTracks: [],
+        diagnostics: { targets: { primary: 0 }, achieved: { primary: 0, reserve: 0 } },
+      };
+    };
+    playlistManager.weeklyReset = async () => { resets += 1; };
+
+    const result = await processWeeklyFlowOperation({
+      kind: "scheduled-flow-refresh",
+      flowId: flow.id,
+    });
+
+    assert.deepEqual(result, { skipped: true, inactiveOwner: true });
+    assert.equal(resets, 0);
+  } finally {
+    playlistSource.buildFlowRunPlan = originalBuildPlan;
+    playlistManager.weeklyReset = originalReset;
+    weeklyFlowWorker.stop();
+  }
+});
+
+test("a queued discovery adoption cannot seed downloads for a suspended owner", async () => {
+  const originalSeed = weeklyFlowWorker.seedFlowRunWithTracks;
+  let seedCalls = 0;
+  try {
+    const owner = userOps.createUser("suspended-adoption-owner", "unused", "user");
+    const flow = flowPlaylistConfig.createFlow({
+      name: "Adopted Before Suspension",
+      mix: { discover: 100, mix: 0, trending: 0, focus: 0 },
+      size: 1,
+      scheduleDays: [1],
+      ownerUserId: owner.id,
+    });
+    weeklyFlowWorker.seedFlowRunWithTracks = async () => {
+      seedCalls += 1;
+      return { tracksQueued: 1 };
+    };
+    userOps.updateUser(owner.id, { status: "suspended" });
+
+    const result = await processWeeklyFlowOperation({
+      kind: "adopt-flow-seed",
+      flowId: flow.id,
+      tracks: [{ artistName: "Artist", trackName: "Track" }],
+    });
+
+    assert.deepEqual(result, { skipped: true, inactiveOwner: true });
+    assert.equal(seedCalls, 0);
+  } finally {
+    weeklyFlowWorker.seedFlowRunWithTracks = originalSeed;
+    weeklyFlowWorker.stop();
+  }
+});
+
+test("download pipeline work is deferred while its playlist owner is suspended", async () => {
+  const owner = userOps.createUser("suspended-pipeline-owner", "unused", "user");
+  const flow = flowPlaylistConfig.createFlow({
+    name: "Suspended Pipeline",
+    mix: { discover: 100, mix: 0, trending: 0, focus: 0 },
+    size: 1,
+    scheduleDays: [1],
+    ownerUserId: owner.id,
+  });
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Track" },
+    flow.id,
+  );
+  userOps.updateUser(owner.id, { status: "suspended" });
+  const { processPipelinePayload } = await importFromRepo(
+    "backend/services/slskdOrchestrator.js",
+  );
+
+  const payload = { phase: "search", source: "slskd", jobId };
+  assert.deepEqual(await processPipelinePayload(payload), {
+    ...payload,
+    delaySeconds: 30,
+  });
+
+  userOps.updateUser(owner.id, { status: "active" });
+  const { isPlaylistOwnerActive } = await importFromRepo(
+    "backend/services/weeklyFlow/weeklyFlowOwnerStatus.js",
+  );
+  assert.equal(isPlaylistOwnerActive(flow.id), true);
 });
 
 test("flow operation tokens are stored separately for each playlist", () => {

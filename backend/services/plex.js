@@ -90,13 +90,15 @@ export class PlexClient {
     return data.authToken || null;
   }
 
-  static async validateToken(token, clientId) {
+  static async validateToken(token, clientId, { throwOnTransient = false } = {}) {
     try {
       const { data } = await axios.get(`${PLEX_TV}/api/v2/user`, {
         headers: PlexClient.plexHeaders(clientId, { token }),
       });
       return data || null;
-    } catch {
+    } catch (error) {
+      const status = Number(error?.response?.status) || null;
+      if (throwOnTransient && (!status || status === 429 || status >= 500)) throw error;
       return null;
     }
   }
