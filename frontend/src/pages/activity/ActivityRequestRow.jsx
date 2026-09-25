@@ -21,6 +21,9 @@ function getStatusMeta(request) {
   if (request.status === "failed") {
     return { icon: AlertCircle, label: request.statusLabel || "Failed", tone: "failed" };
   }
+  if (request.status === "cancelled") {
+    return { icon: XCircle, label: request.statusLabel || "Cancelled", tone: "pending" };
+  }
   if (request.status === "blocked") {
     return { icon: Eye, label: request.statusLabel || "Needs review", tone: "review" };
   }

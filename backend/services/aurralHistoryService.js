@@ -603,6 +603,11 @@ export const syncTrackDownloadHistory = async (historyEntries = null) => {
       recordTrackJobBlocked(job, job.error || "Blocked for review");
       continue;
     }
+    if (job.status === "cancelled") {
+      recordTrackJobCancelled(job);
+      continue;
+    }
+    if (job.status === "cancel_requested") continue;
     if (isBlocked && (job.status === "pending" || job.status === "downloading")) {
       recordTrackJobFailed(job, "Denied by user — will retry");
       continue;
@@ -951,6 +956,13 @@ export const recordTrackJobFailed = (job, message = "Download failed") =>
     statusLabel: "Failed",
     title: `Failed to download ${job?.trackName || "track"}`,
     subtitle: String(message || "").trim() || `${job?.artistName || "Artist"}`,
+  });
+
+export const recordTrackJobCancelled = (job) =>
+  recordTrackJob(job, {
+    status: "cancelled",
+    statusLabel: "Cancelled",
+    title: `Cancelled ${job?.trackName || "track"}`,
   });
 
 export const recordTrackJobBlocked = (job, message = "Blocked for review") =>

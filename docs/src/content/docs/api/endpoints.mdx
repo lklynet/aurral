@@ -80,6 +80,8 @@ instance API key for WebSocket connections.
 | `POST` | `/api/library/albums/request` | Request an album from search data |
 | `PUT` | `/api/library/albums/:id` | Update an album |
 | `DELETE` | `/api/library/albums/:id` | Delete an album |
+| `GET` | `/api/library/albums/aurral/:canonicalId/status` | Get the download status of an Aurral-managed album |
+| `POST` | `/api/library/albums/aurral/:canonicalId/cancel` | Cancel queued and active downloads for an Aurral-managed album |
 | `GET` | `/api/library/tracks` | List album tracks |
 | `DELETE` | `/api/library/tracks/:id` | Delete a library track file and prune canonical records when no media remains |
 | `POST` | `/api/library/refresh` | Queue a canonical library scan |
@@ -98,7 +100,7 @@ instance API key for WebSocket connections.
 | `GET` | `/api/library/recent` | List 20 recently added artists |
 | `GET` | `/api/library/recent-releases` | List recent missing releases |
 | `GET` | `/api/library/downloads` | List download jobs |
-| `GET` | `/api/library/downloads/status` | Get statuses for the required `albumIds` query |
+| `GET` | `/api/library/downloads/status` | Get statuses for the required `albumIds` query; use `aurral:<canonicalId>` for Aurral-managed albums |
 | `GET` | `/api/library/downloads/status/all` | Get all download statuses |
 | `POST` | `/api/library/downloads/track` | Download or request a track |
 | `POST` | `/api/library/downloads/album` | Monitor an album and optionally run the configured search |
@@ -107,6 +109,20 @@ instance API key for WebSocket connections.
 The artist and album add routes accept an optional `managedBy` value of
 `aurral` or `lidarr`. If the value is absent, Aurral uses the user's saved
 library-owner preference and falls back to Lidarr when Lidarr is connected.
+
+Aurral album routes take the canonical album ID, not a Lidarr album ID. They
+return `409` with the current manager when Lidarr manages the album. An album
+status is one of `complete`, `downloading`, `queued`, `blocked`, `cancelled`,
+`failed`, `partial`, or `missing`. It includes per-track `counts` and, when
+`blocked`, `failed`, or `partial` needs action, a `recovery` object with a
+`code` (`download_source_missing`, `review_required`, or `source_failed`) and
+a `message`. Album add and request responses include the same status as
+`albumStatus`.
+
+Cancelling an album stops pending and active downloads and keeps tracks that
+already finished. Requesting the album again retries cancelled and failed
+tracks. Without a configured download source, an Aurral album request saves
+the album and reports `download_source_missing` instead of queueing downloads.
 
 `POST /api/library/downloads/track` requires an authenticated user with the
 `addAlbum` permission.

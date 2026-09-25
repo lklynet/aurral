@@ -300,6 +300,7 @@ const trackDownloadActionLabel = (status) => ({
 
 const activityDownloadStatus = (request) => {
   if (request?.status === "failed") return "failed";
+  if (request?.status === "cancelled") return "cancelled";
   if (request?.status === "completed") return "completed";
   if (request?.status === "blocked") return "blocked";
   const label = text(request?.statusLabel).toLocaleLowerCase();
