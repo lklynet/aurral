@@ -332,6 +332,9 @@ test("adding an artist reports a metadata outage during monitoring", async () =>
   assert.deepEqual(queuedMonitoringTasks(), []);
   const artist = db.prepare("SELECT id FROM library_artists WHERE mbid = ?").get(artistMbid);
   assert.equal(managementStore.getLibraryManagementEntry("artist", artist.id).monitorMode, "none");
+  const metadata = JSON.parse(db.prepare("SELECT metadata_json FROM library_artists WHERE id = ?").get(artist.id).metadata_json);
+  assert.equal(metadata.monitored, false);
+  assert.equal(metadata.monitorOption, "none");
 });
 
 test("ensureArtistMonitored reactivates an Aurral artist set to none", async () => {
@@ -581,4 +584,34 @@ test("daily reconciliation queues new releases once and keeps going past a faili
   await processSystemTask({ kind: "aurral-monitoring-reconcile" });
   assert.ok(queuedAlbumMbids().includes("a5555555-5555-4555-8555-555555555503"));
   assert.equal(lidarrCalls.length, 0);
+});
+
+test("a same-mode write does not move the future monitoring cutoff", async () => {
+  const added = await addAurralArtist("future");
+  assert.equal(added.statusCode, 201);
+  const artistId = Number(added.body.artist.id);
+  const start = JSON.parse(db.prepare("SELECT metadata_json FROM library_artists WHERE id = ?").get(artistId).metadata_json).monitorStartedAt;
+  assert.ok(Number.isSafeInteger(start));
+  const newRelease = {
+    id: "a5555555-5555-4555-8555-555555555555",
+    title: "Future Album",
+    type: "Album",
+    date: futureDate(1),
+  };
+  metadataState.extraReleases = [newRelease];
+  clearMetadataProviderCaches();
+
+  const originalNow = Date.now;
+  Date.now = () => originalNow() + 3 * 24 * 60 * 60 * 1000;
+  try {
+    managementStore.setLibraryManagement({
+      entityKind: "artist", entityId: artistId, managedBy: "aurral", monitorMode: "future",
+    });
+  } finally {
+    Date.now = originalNow;
+  }
+
+  await processSystemTask({ kind: "aurral-monitoring-reconcile" });
+  assert.ok(queuedAlbumMbids().includes(newRelease.id));
+  assert.equal(JSON.parse(db.prepare("SELECT metadata_json FROM library_artists WHERE id = ?").get(artistId).metadata_json).monitorStartedAt, start);
 });

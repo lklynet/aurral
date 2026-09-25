@@ -547,14 +547,13 @@ export class LibraryManager {
     const existing = canonicalArtistFallback(normalizedMbid);
     const resolvedMode = resolveAurralMonitorMode(options.monitorOption);
     if (resolvedMode.error) return resolvedMode;
-    const monitorMode = resolvedMode.mode;
     if (existing) {
       if (!existing.managedBy) {
         setLibraryManagement({
           entityKind: "artist",
           entityId: existing.id,
           managedBy: "aurral",
-          monitorMode,
+          monitorMode: "none",
         });
       }
       return canonicalArtistFallback(existing.id) || existing;
@@ -595,17 +594,17 @@ export class LibraryManager {
         foreignArtistId: normalizedMbid,
         librarySource: "aurral",
         added: new Date().toISOString(),
-        monitored: monitorMode !== "none",
-        monitor: monitorMode,
-        monitorOption: monitorMode,
-        addOptions: { monitor: monitorMode },
+        monitored: false,
+        monitor: "none",
+        monitorOption: "none",
+        addOptions: { monitor: "none" },
       },
     });
     setLibraryManagement({
       entityKind: "artist",
       entityId: artist.id,
       managedBy: "aurral",
-      monitorMode,
+      monitorMode: "none",
     });
     return canonicalArtistFallback(artist.id) || artist;
   }
@@ -920,7 +919,6 @@ export class LibraryManager {
   async addArtistWithResolvedOptions(mbid, artistName, options = {}) {
     const albumOnly = options.albumOnly === true;
     const requestedMonitorOption = options.monitorOption || "none";
-    const previousArtist = options.managedBy === "aurral" ? canonicalArtistFallback(mbid) : null;
     const artist = await this.addArtist(mbid, artistName, {
       managedBy: options.managedBy,
       user: options.user,
@@ -937,17 +935,7 @@ export class LibraryManager {
       return artist;
     }
     if (options.managedBy === "aurral" && !albumOnly && requestedMonitorOption !== "none") {
-      const monitoredArtist = await this.setAurralArtistMonitoring(mbid, requestedMonitorOption);
-      if (monitoredArtist.error) {
-        setLibraryManagement({
-          entityKind: "artist",
-          entityId: Number(artist.id),
-          managedBy: "aurral",
-          monitorMode: previousArtist?.monitorMode || "none",
-        });
-        return monitoredArtist;
-      }
-      return monitoredArtist;
+      return this.setAurralArtistMonitoring(mbid, requestedMonitorOption);
     }
     if (options.managedBy !== "aurral" && !albumOnly && requestedMonitorOption !== "none") {
       const albums = await this.getAlbums(artist.id, null, {
@@ -1759,14 +1747,38 @@ export class LibraryManager {
       }
       const plan = await this.planAurralArtistMonitoring(currentArtist, mode);
       if (plan.error) return plan;
-      if (currentArtist.managedBy !== "aurral" || currentArtist.monitorMode !== mode) {
-        setLibraryManagement({
-          entityKind: "artist",
-          entityId: Number(currentArtist.id),
-          managedBy: "aurral",
-          monitorMode: mode,
+      db.transaction(() => {
+        const storedArtist = db.prepare(
+          "SELECT identity_key, metadata_json FROM library_artists WHERE id = ?",
+        ).get(Number(currentArtist.id));
+        const metadata = JSON.parse(storedArtist.metadata_json || "{}");
+        const monitorStartedAt = mode === "future"
+          ? currentArtist.monitorMode === "future"
+            ? metadata.monitorStartedAt || getLibraryManagementEntry("artist", Number(currentArtist.id))?.updatedAt || Date.now()
+            : Date.now()
+          : null;
+        if (currentArtist.managedBy !== "aurral" || currentArtist.monitorMode !== mode) {
+          setLibraryManagement({
+            entityKind: "artist",
+            entityId: Number(currentArtist.id),
+            managedBy: "aurral",
+            monitorMode: mode,
+          });
+        }
+        upsertLibraryArtist({
+          identityKey: storedArtist.identity_key,
+          mbid: currentArtist.mbid,
+          name: currentArtist.name,
+          metadata: {
+            ...metadata,
+            monitored: mode !== "none",
+            monitor: mode,
+            monitorOption: mode,
+            monitorStartedAt,
+            addOptions: { ...metadata.addOptions, monitor: mode },
+          },
         });
-      }
+      }).immediate();
       const queued = this._enqueueAurralReleaseAcquisition(currentArtist, plan);
       const { releases: _releases, ...summary } = plan;
       return {
@@ -1837,11 +1849,17 @@ export class LibraryManager {
     );
     let queuedAlbums = 0;
     let failedArtists = 0;
+    const monitorStartStmt = db.prepare(
+      `SELECT CASE WHEN json_valid(metadata_json)
+        THEN json_extract(metadata_json, '$.monitorStartedAt')
+        ELSE NULL END AS monitorStartedAt
+       FROM library_artists WHERE id = ?`,
+    );
     for (const [artistId, entry] of monitoredArtists) {
       const artist = canonicalArtistFallback(artistId);
       if (!artist?.mbid) continue;
       const plan = await this.planAurralArtistMonitoring(artist, entry.monitorMode, {
-        monitorStartedAt: entry.updatedAt,
+        monitorStartedAt: monitorStartStmt.get(artistId)?.monitorStartedAt || entry.updatedAt,
       });
       if (plan.error) {
         failedArtists += 1;
