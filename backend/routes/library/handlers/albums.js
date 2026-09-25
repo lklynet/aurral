@@ -141,6 +141,7 @@ export function registerAlbums(router) {
           albumName: album.albumName || albumName,
           artistName: album.artistName,
           artistMbid: album.mbid || album.foreignAlbumId,
+          managedBy,
           searching: managedBy === "lidarr" && searchOnAdd,
           user: req.user,
         });
@@ -197,6 +198,7 @@ export function registerAlbums(router) {
           albumName: result?.album?.albumName || result?.albumName || albumName,
           artistName: result?.artist?.artistName || result?.artistName || artistName,
           artistMbid: result?.artist?.mbid || result?.mbid || artistMbid,
+          managedBy: result?.managedBy || null,
           user: req.user,
         };
         recordAlbumRequested({

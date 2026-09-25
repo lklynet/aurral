@@ -437,3 +437,37 @@ test("cancelled album track downloads show as cancelled, never as failed", async
   assert.equal(entry?.inQueue, false);
   assert.equal(downloadTracker.getJob(jobId)?.status, "cancelled");
 });
+
+test("Aurral album requests are not checked against Lidarr by canonical album ID", async (t) => {
+  const lidarrAlbumLookups = [];
+  const lidarrStub = {
+    isConfigured: () => true,
+    getQueue: async () => [],
+    getHistory: async () => ({ records: [] }),
+    request: async () => [],
+    getAlbum: async (id) => {
+      lidarrAlbumLookups.push(String(id));
+      return null;
+    },
+  };
+  historyModule.recordAlbumRequested({
+    albumId: "4242",
+    albumName: "Aurral Owned Album",
+    artistName: "Artist",
+    managedBy: "aurral",
+    searching: true,
+  });
+  historyModule.recordAlbumRequested({
+    albumId: "4343",
+    albumName: "Lidarr Album",
+    artistName: "Artist",
+    searching: true,
+  });
+
+  const entries = await getAurralHistoryRequests(lidarrStub);
+
+  assert.deepEqual(lidarrAlbumLookups, ["4343"]);
+  const aurralEntry = entries.find((item) => item.albumName === "Aurral Owned Album");
+  assert.notEqual(aurralEntry?.status, "failed");
+  assert.doesNotMatch(aurralEntry?.title || "", /Lidarr/);
+});

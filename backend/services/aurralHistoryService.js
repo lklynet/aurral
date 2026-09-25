@@ -255,9 +255,11 @@ export const recordAlbumRequested = ({
   albumName,
   artistName,
   artistMbid,
-  searching = false,
+  managedBy = null,
+  searching: requestedSearching = false,
   user = null,
 } = {}) => {
+  const searching = requestedSearching && managedBy !== "aurral";
   const name = String(albumName || "").trim() || "Album";
   const artist = String(artistName || "").trim();
   const ref = String(albumId || artistMbid || name).trim();
@@ -278,6 +280,7 @@ export const recordAlbumRequested = ({
       albumName: name,
       artistName: artist,
       artistMbid,
+      ...(managedBy ? { managedBy } : {}),
       ...requester,
     },
   });
@@ -679,6 +682,7 @@ export const syncAlbumSearchHistory = async (lidarrClient, historyEntries = null
   const openEntries = (historyEntries || loadRecentHistory()).filter(
     (entry) =>
       entry.kind === "album_requested" &&
+      entry.metadata?.managedBy !== "aurral" &&
       (entry.status === "processing" || entry.status === "failed"),
   );
   if (!openEntries.length) return;
