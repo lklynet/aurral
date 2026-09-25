@@ -5,6 +5,8 @@ import {
 import { dbOps } from "../../../db/helpers/index.js";
 import { UUID_REGEX } from "../../../../lib/uuid.js";
 import { cacheMiddleware } from "../../../middleware/cache.js";
+import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.js";
+import { getLinkedDeezerArtistId } from "../../../services/providers/brainzmashMappers.js";
 
 export function registerPreview(router) {
   router.get("/:mbid/preview", cacheMiddleware(60), async (req, res) => {
@@ -19,7 +21,13 @@ export function registerPreview(router) {
 
     const artistNameParam = (req.query.artistName || "").trim();
     const override = dbOps.getArtistOverride(mbid);
-    const deezerArtistId = override?.deezerArtistId || null;
+    let deezerArtistId = override?.deezerArtistId || null;
+    if (!deezerArtistId) {
+      const metadataArtist = await getArtistByMbid(override?.musicbrainzId || mbid).catch(
+        () => null,
+      );
+      deezerArtistId = getLinkedDeezerArtistId(metadataArtist?.links);
+    }
 
     if (deezerArtistId) {
       const tracks = await deezerGetArtistTopTracksById(deezerArtistId);

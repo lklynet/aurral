@@ -1,6 +1,7 @@
 import { dbOps } from "../db/helpers/index.js";
 import { buildStableImageProxyUrl } from "./imageProxyService.js";
 import { getArtistByMbid, listArtistAlbums, searchArtists } from "./providers/brainzmashProvider.js";
+import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.js";
 import {
   fetchDeezerArtistImageUrl,
   fetchReleaseGroupCoverUrl,
@@ -328,7 +329,8 @@ export const getArtistImage = async (
       const resolvedArtistName = metadataArtist?.name || artistName || null;
       const deezerImage = await fetchDeezerArtistImageUrl({
         artistName: resolvedArtistName || "",
-        deezerArtistId: override?.deezerArtistId || null,
+        deezerArtistId:
+          override?.deezerArtistId || getLinkedDeezerArtistId(metadataArtist?.links),
       });
       if (deezerImage) {
         negativeImageCache.delete(mbid);

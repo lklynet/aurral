@@ -35,19 +35,19 @@ export async function getLastfmTags(mbid, artistName = "") {
 }
 
 export async function getArtistTagPayload(mbid, artistName = "", metadataArtist = null) {
-  const lastfmTags = await getLastfmTags(mbid, artistName);
-  if (lastfmTags.length > 0) {
-    return {
-      tags: lastfmTags,
-      genres: lastfmTags.map((tag) => tag.name),
-    };
-  }
-  const fallbackGenres = Array.isArray(metadataArtist?.genres)
+  const metadataGenres = Array.isArray(metadataArtist?.genres)
     ? metadataArtist.genres.filter(Boolean)
     : [];
+  if (metadataGenres.length > 0) {
+    return {
+      tags: metadataGenres.map((genre) => ({ name: genre, count: 0 })),
+      genres: metadataGenres,
+    };
+  }
+  const lastfmTags = await getLastfmTags(mbid, artistName);
   return {
-    tags: fallbackGenres.map((genre) => ({ name: genre, count: 0 })),
-    genres: fallbackGenres,
+    tags: lastfmTags,
+    genres: lastfmTags.map((tag) => tag.name),
   };
 }
 

@@ -37,6 +37,31 @@ export function toNormalizedArtistLink(link) {
   };
 }
 
+const LINKED_ARTIST_PROVIDERS = {
+  "deezer.com": "deezer",
+  "discogs.com": "discogs",
+};
+
+export function getLinkedArtistProviderIds(links = []) {
+  const providerIds = [];
+  for (const link of normalizeArray(links)) {
+    try {
+      const url = new URL(normalizeString(link?.target || link?.url?.resource));
+      const provider = LINKED_ARTIST_PROVIDERS[url.hostname.toLowerCase().replace(/^www\./, "")];
+      const segments = url.pathname.split("/").filter(Boolean);
+      const artistIndex = segments.findIndex((segment) => segment.toLowerCase() === "artist");
+      const id = String(segments[artistIndex + 1] || "").match(/^\d+/)?.[0];
+      if (provider && artistIndex >= 0 && id) providerIds.push(`${id}@${provider}`);
+    } catch {}
+  }
+  return [...new Set(providerIds)];
+}
+
+export function getLinkedDeezerArtistId(links = []) {
+  const providerId = getLinkedArtistProviderIds(links).find((id) => id.endsWith("@deezer"));
+  return providerId ? providerId.split("@")[0] : null;
+}
+
 export function toNormalizedArtist(raw) {
   const images = normalizeArray(raw?.images).map(toNormalizedArtistImage).filter(Boolean);
   const links = normalizeArray(raw?.links).map(toNormalizedArtistLink).filter(Boolean);

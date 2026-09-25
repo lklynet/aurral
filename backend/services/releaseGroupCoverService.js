@@ -9,6 +9,7 @@ import {
   resolveDeezerAlbumForPreview,
 } from "./apiClients/deezer.js";
 import { getAlbumByMbid, resolveAlbumByArtistAndTitle } from "./providers/brainzmashProvider.js";
+import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.js";
 
 export const LEGACY_COVER_HOST_PATTERN =
   /https?:\/\/(?:archive\.org|[\w-]+\.ca\.archive\.org)\//i;
@@ -93,12 +94,16 @@ const buildReleaseGroupCoverResult = async (cacheKey, album, { persist = true } 
 
 const fetchDeezerAlbumCover = async (
   cacheKey,
-  { artistName = "", albumTitle = "" } = {},
+  { artistName = "", deezerArtistId = null, albumTitle = "" } = {},
   { persist = true } = {},
 ) => {
   if (!albumTitle) return null;
   try {
-    const album = await resolveDeezerAlbumForPreview({ artistName, albumTitle });
+    const album = await resolveDeezerAlbumForPreview({
+      artistName,
+      deezerArtistId,
+      albumTitle,
+    });
     if (!album?._coverUrl) return null;
     return acceptCoverUrl(cacheKey, album._coverUrl, { persist });
   } catch {
@@ -139,8 +144,10 @@ const fetchReleaseGroupCoverUncached = async (
   const normalizedArtistName = typeof artistName === "string" ? artistName.trim() : "";
   const normalizedAlbumTitle = typeof albumTitle === "string" ? albumTitle.trim() : "";
   let sawTransientError = false;
+  let deezerArtistId = null;
   try {
     const album = await getAlbumByMbid(releaseGroupMbid);
+    deezerArtistId = getLinkedDeezerArtistId(album?.artists?.[0]?.links);
     const result = await buildReleaseGroupCoverResult(cacheKey, album);
     if (result.imageUrl) {
       return result;
@@ -169,6 +176,7 @@ const fetchReleaseGroupCoverUncached = async (
   }
   const deezerCover = await fetchDeezerAlbumCover(cacheKey, {
     artistName: normalizedArtistName,
+    deezerArtistId,
     albumTitle: normalizedAlbumTitle,
   }, { persist: false });
   if (deezerCover?.imageUrl) return deezerCover;

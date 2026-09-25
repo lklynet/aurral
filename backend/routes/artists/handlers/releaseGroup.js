@@ -11,20 +11,11 @@ import {
   getAlbumByMbid,
   getAlbumTracksByAlbumMbid,
 } from "../../../services/providers/brainzmashProvider.js";
-import { toLegacyReleaseGroupSummary } from "../../../services/providers/brainzmashMappers.js";
+import {
+  getLinkedDeezerArtistId,
+  toLegacyReleaseGroupSummary,
+} from "../../../services/providers/brainzmashMappers.js";
 import { logger } from "../../../services/logger.js";
-
-function extractDeezerArtistIdFromLinks(links = []) {
-  if (!Array.isArray(links)) return null;
-  for (const link of links) {
-    const type = String(link?.type || "").toLowerCase();
-    const target = String(link?.target || link?.url?.resource || "").trim();
-    if (type !== "deezer" && !/deezer\.com\/artist\//i.test(target)) continue;
-    const match = target.match(/deezer\.com\/artist\/(\d+)/i);
-    if (match?.[1]) return match[1];
-  }
-  return null;
-}
 
 export function registerReleaseGroup(router) {
   router.post("/release-groups/ratings", async (req, res) => {
@@ -230,7 +221,7 @@ export function registerReleaseGroup(router) {
               resolvedArtistMbid,
             ).catch(() => null);
             deezerArtistId =
-              extractDeezerArtistIdFromLinks(metadataArtist?.links) || "";
+              getLinkedDeezerArtistId(metadataArtist?.links) || "";
           }
         }
         const enrichedTracks = await enrichTracksWithDeezerPreviews(tracks, {

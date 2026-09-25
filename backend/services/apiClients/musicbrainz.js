@@ -8,16 +8,17 @@ import {
   APP_VERSION,
 } from "../../config/constants.js";
 import {
+  getArtistByMbid as getMetadataArtistByMbid,
   getArtistNameByMbid as getMetadataArtistNameByMbid,
   legacyMusicbrainzRequest,
   listArtistAlbums as listMetadataArtistAlbums,
   resolveArtistByName as resolveMetadataArtistByName,
 } from "../providers/brainzmashProvider.js";
+import { getLinkedArtistProviderIds } from "../providers/brainzmashMappers.js";
 import { getMusicBrainzContact } from "./config.js";
 import { runSharedInflight } from "../sharedInflight.js";
 
 const musicbrainzArtistNameCache = createCache(3600);
-const musicbrainzArtistIdentityCache = createCache(3600);
 const musicbrainzReleaseGroupsCache = createCache(300);
 const musicbrainzInflightRequests = new Map();
 const PRIMARY_RELEASE_TYPES = ["Album", "EP", "Single"];
@@ -298,66 +299,18 @@ export async function musicbrainzGetArtistNameByMbid(mbid, { signal } = {}) {
   }
 }
 
-function getMusicbrainzProviderId(resource) {
-  try {
-    const parsed = new URL(resource);
-    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
-    const segments = parsed.pathname.split("/").filter(Boolean);
-    const artistIndex = segments.findIndex((segment) => segment.toLowerCase() === "artist");
-    const artistId = artistIndex >= 0 ? segments[artistIndex + 1] : "";
-    const numericId = String(artistId || "").match(/^\d+/)?.[0];
-    if (!numericId) return null;
-    if (host === "deezer.com") return `${numericId}@deezer`;
-    if (host === "discogs.com") return `${numericId}@discogs`;
-  } catch {}
-  return null;
-}
-
 export async function musicbrainzGetArtistIdentityByMbid(mbid, { signal } = {}) {
   const normalizedMbid = String(mbid || "").trim();
   if (!normalizedMbid) return null;
-  const cached = musicbrainzArtistIdentityCache.get(normalizedMbid);
-  if (cached !== undefined) return cached;
-
   try {
-    const contact =
-      (getMusicBrainzContact() || "").trim() || "https://github.com/aurral";
-    const userAgent = `${APP_NAME}/${APP_VERSION} ( ${contact} )`;
-    const identity = await mbLimiter.schedule(async () => {
-      signal?.throwIfAborted?.();
-      const response = await axios.get(
-        `${MUSICBRAINZ_API}/artist/${encodeURIComponent(normalizedMbid)}`,
-        {
-          params: { fmt: "json", inc: "url-rels+aliases" },
-          headers: { "User-Agent": userAgent },
-          timeout: 8000,
-          signal,
-        },
-      );
-      const providerIds = [
-        ...(Array.isArray(response.data?.relations) ? response.data.relations : []),
-      ]
-        .map((relation) => getMusicbrainzProviderId(relation?.url?.resource))
-        .filter(Boolean);
-      const name = String(response.data?.name || "").trim() || null;
-      const aliases = Array.isArray(response.data?.aliases)
-        ? response.data.aliases
-            .map((alias) => String(alias?.name || "").trim())
-            .filter(Boolean)
-        : [];
-      return {
-        mbid: normalizedMbid,
-        name,
-        aliases: [...new Set(aliases)],
-        providerIds: [...new Set(providerIds)],
-      };
-    });
-    musicbrainzArtistIdentityCache.set(normalizedMbid, identity);
-    return identity;
-  } catch (error) {
-    if (error?.response?.status === 404) {
-      musicbrainzArtistIdentityCache.set(normalizedMbid, null);
-    }
+    const artist = await getMetadataArtistByMbid(normalizedMbid, { signal });
+    return {
+      mbid: normalizedMbid,
+      name: artist.name || null,
+      aliases: [...new Set(artist.aliases)],
+      providerIds: getLinkedArtistProviderIds(artist.links),
+    };
+  } catch {
     return null;
   }
 }
@@ -412,6 +365,5 @@ export {
   PRIMARY_RELEASE_TYPES,
   SECONDARY_RELEASE_TYPES,
   musicbrainzArtistNameCache,
-  musicbrainzArtistIdentityCache,
   musicbrainzReleaseGroupsCache,
 };
