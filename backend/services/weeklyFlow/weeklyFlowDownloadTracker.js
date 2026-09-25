@@ -1133,7 +1133,7 @@ export class WeeklyFlowDownloadTracker {
 
   setDone(id, finalPath, albumName = null, externalPath = null) {
     const job = this.jobs.get(id);
-    if (!job) return false;
+    if (!job || this._isCancelledAlbumJob(job)) return false;
     const previousStatus = job.status;
     this.clearSlskdPipelineState(id, { clearDownloadMetadata: false });
     this.pendingSet.delete(id);

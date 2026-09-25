@@ -1509,7 +1509,10 @@ export class LibraryManager {
           });
           continue;
         }
-        if (!sourceConfigured) continue;
+        if (!sourceConfigured) {
+          downloadTracker.setFailed(completedJob.id, "Completed file is missing");
+          continue;
+        }
         if (downloadTracker.setPending(completedJob.id, "Completed file is missing", {
           asRetryCycle: true,
         })) {

@@ -183,6 +183,7 @@ test("a cancelled album job ignores late pipeline transitions until it is retrie
   downloadTracker.setFailed(id, "slskd transfer aborted");
   downloadTracker.setPending(id, "retry");
   downloadTracker.setBlocked(id, "needs review");
+  assert.equal(downloadTracker.setDone(id, path.join(isolatedState.dataDir, "late.flac")), false);
   assert.equal(downloadTracker.getJob(id).status, "cancel_requested");
   assert.equal(downloadTracker.getJob(id).error, null);
 
@@ -408,4 +409,17 @@ test("re-requesting an Aurral album waits for a download source and retries canc
     weeklyFlowWorker.start = originalWorkerStart;
     setDownloadSourceConfigured(false);
   }
+});
+
+test("re-requesting a missing completed file reports a missing download source", async () => {
+  const { album, albumMbid, artistMbid, jobFor } = createCanonicalAlbum({ trackCount: 1 });
+  const jobId = jobFor(0);
+  downloadTracker.setDone(jobId, path.join(isolatedState.dataDir, "deleted.flac"));
+  setDownloadSourceConfigured(false);
+
+  const result = await libraryManager.addAlbum(artistMbid, albumMbid, album.title, { managedBy: "aurral" });
+  assert.equal(result.status, "blocked");
+  assert.equal(result.albumStatus.status, "blocked");
+  assert.equal(result.albumStatus.recovery?.code, "download_source_missing");
+  assert.equal(downloadTracker.getJob(jobId).status, "failed");
 });
