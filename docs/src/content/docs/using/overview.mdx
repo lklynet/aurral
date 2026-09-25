@@ -29,6 +29,15 @@ Use Search to find artists, albums, and tags. You can preview tracks, check libr
 
 Library shows the canonical music index built from readable Aurral and Lidarr files. It includes search, sort controls, artwork, favorites, playable tracks, missing-file states, and artist and album pages. Artist and album actions use the selected library manager. Aurral-owned files stay under the Aurral root, and Lidarr-owned files stay under the Lidarr root.
 
+Artists managed by Aurral can be monitored without Lidarr. Aurral only picks up official albums and EPs. It skips singles, live albums, compilations, and other releases with a secondary type. The monitor options work like this:
+
+- **All albums** and **Missing albums** download every album that is not complete yet.
+- **Latest album** and **First album** download the newest or oldest album.
+- **Future albums** downloads only albums released after you start monitoring.
+- **None** stops new downloads and keeps what you already have.
+
+Aurral checks monitored artists for new releases once a day. Albums that Lidarr manages are left to Lidarr. You can stop monitoring a single album; Aurral cancels its unfinished downloads, keeps the tracks it already downloaded, and leaves that album alone when the artist's monitoring changes. The **Existing albums** option applies only to Lidarr.
+
 ### Playlists and Flows
 
 ![Aurral playlists](../../../assets/screenshots/playlists.webp)

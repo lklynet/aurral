@@ -80,6 +80,7 @@ instance API key for WebSocket connections.
 | `POST` | `/api/library/albums/request` | Request an album from search data |
 | `PUT` | `/api/library/albums/:id` | Update an album |
 | `DELETE` | `/api/library/albums/:id` | Delete an album |
+| `PUT` | `/api/library/albums/aurral/:canonicalId` | Monitor or stop monitoring an Aurral-managed album with `{ "monitored": true \| false }` |
 | `GET` | `/api/library/albums/aurral/:canonicalId/status` | Get the download status of an Aurral-managed album |
 | `POST` | `/api/library/albums/aurral/:canonicalId/cancel` | Cancel queued and active downloads for an Aurral-managed album |
 | `GET` | `/api/library/tracks` | List album tracks |
@@ -118,6 +119,14 @@ status is one of `complete`, `downloading`, `queued`, `blocked`, `cancelled`,
 `code` (`download_source_missing`, `review_required`, or `source_failed`) and
 a `message`. Album add and request responses include the same status as
 `albumStatus`.
+
+`PUT /api/library/artists/:mbid` sets monitoring for an Aurral-managed artist
+with `monitorOption` set to `none`, `all`, `missing`, `latest`, `first`, or
+`future`. `existing` returns `400` with `unsupported_monitor_mode`. The
+response includes `monitoring.releaseGroupIds` for the albums being queued and
+`monitoring.skipped` with a reason for each skipped album. If artist metadata is
+unavailable, the route returns `503` with `metadata_unavailable` and keeps the
+previous mode.
 
 Cancelling an album stops pending and active downloads and keeps tracks that
 already finished. Requesting the album again retries cancelled and failed
