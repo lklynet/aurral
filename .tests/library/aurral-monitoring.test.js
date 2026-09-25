@@ -51,7 +51,7 @@ const releases = {
 };
 const eligibleIds = [releases.firstAlbum.id, releases.secondAlbum.id, releases.latestEp.id];
 
-const metadataState = { artistFails: false, extraReleases: [], otherReleases: [], albumGate: null };
+const metadataState = { artistFails: false, extraReleases: [], otherReleases: [], albumGate: null, artistGate: null };
 const lidarrCalls = [];
 
 function artistPayload(mbid = artistMbid) {
@@ -105,6 +105,10 @@ const metadataServer = await createMockHttpServer(async (request, response) => {
       response.writeHead(503);
       response.end(JSON.stringify({ error: "unavailable" }));
       return;
+    }
+    if (metadataState.artistGate) {
+      metadataState.artistGate.started();
+      await metadataState.artistGate.release;
     }
     response.end(JSON.stringify(artistPayload()));
     return;
@@ -217,6 +221,7 @@ test.beforeEach(() => {
   metadataState.extraReleases = [];
   metadataState.otherReleases = [];
   metadataState.albumGate = null;
+  metadataState.artistGate = null;
   clearMetadataProviderCaches();
   clearMonitoringTasks();
   downloadTracker.clearAll();
@@ -339,6 +344,43 @@ test("ensureArtistMonitored reactivates an Aurral artist set to none", async () 
   const reactivated = await libraryManager.updateArtist(artistMbid, { monitored: true });
   assert.equal(reactivated.monitorOption, "all");
   assert.equal(managementStore.getLibraryManagementEntry("artist", Number(updated.id)).monitorMode, "all");
+});
+
+test("the artist add service activates monitoring for an existing Aurral artist", async () => {
+  await addAurralArtist("none");
+  const artist = await libraryManager.addArtistWithResolvedOptions(artistMbid, "Monitor Artist", {
+    managedBy: "aurral", monitorOption: "all",
+  });
+  assert.equal(artist.monitorOption, "all");
+  assert.equal(managementStore.getLibraryManagementEntry("artist", Number(artist.id)).monitorMode, "all");
+  await runQueuedMonitoringTasks();
+  assert.deepEqual(queuedAlbumMbids(), [...eligibleIds].sort());
+});
+
+test("a later disable wins over an earlier artist monitoring request", async () => {
+  await addAurralArtist("none");
+  clearMetadataProviderCaches();
+  const started = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  metadataState.artistGate = { started: started.resolve, release: release.promise };
+
+  const enable = callRoute("PUT /artists/:mbid", {
+    params: { mbid: artistMbid }, body: { monitorOption: "all" },
+  });
+  await started.promise;
+  const disable = callRoute("PUT /artists/:mbid", {
+    params: { mbid: artistMbid }, body: { monitorOption: "none" },
+  });
+  release.resolve();
+  try {
+    await Promise.all([enable, disable]);
+  } finally {
+    metadataState.artistGate = null;
+  }
+  const artist = db.prepare("SELECT id FROM library_artists WHERE mbid = ?").get(artistMbid);
+  assert.equal(managementStore.getLibraryManagementEntry("artist", artist.id).monitorMode, "none");
+  await runQueuedMonitoringTasks();
+  assert.deepEqual(queuedAlbumMbids(), []);
 });
 
 test("artist monitoring skips albums managed by Lidarr", async () => {

@@ -93,15 +93,16 @@ let _artistsCachedAt = 0;
 let _artistsInflight = null;
 const _tracksCache = new Map();
 const _albumMonitoringUpdates = new Map();
+const _artistMonitoringUpdates = new Map();
 
-async function serializeAlbumMonitoringUpdate(albumId, update) {
-  const previous = _albumMonitoringUpdates.get(albumId) || Promise.resolve();
+async function serializeMonitoringUpdate(updates, id, update) {
+  const previous = updates.get(id) || Promise.resolve();
   const current = previous.catch(() => {}).then(update);
-  _albumMonitoringUpdates.set(albumId, current);
+  updates.set(id, current);
   try {
     return await current;
   } finally {
-    if (_albumMonitoringUpdates.get(albumId) === current) _albumMonitoringUpdates.delete(albumId);
+    if (updates.get(id) === current) updates.delete(id);
   }
 }
 export function invalidateLidarrArtistCache() {
@@ -936,17 +937,17 @@ export class LibraryManager {
       return artist;
     }
     if (options.managedBy === "aurral" && !albumOnly && requestedMonitorOption !== "none") {
-      const monitoring = await this.startAurralArtistMonitoring(artist, requestedMonitorOption);
-      if (monitoring.error) {
+      const monitoredArtist = await this.setAurralArtistMonitoring(mbid, requestedMonitorOption);
+      if (monitoredArtist.error) {
         setLibraryManagement({
           entityKind: "artist",
           entityId: Number(artist.id),
           managedBy: "aurral",
           monitorMode: previousArtist?.monitorMode || "none",
         });
-        return monitoring;
+        return monitoredArtist;
       }
-      return { ...artist, monitoring };
+      return monitoredArtist;
     }
     if (options.managedBy !== "aurral" && !albumOnly && requestedMonitorOption !== "none") {
       const albums = await this.getAlbums(artist.id, null, {
@@ -1738,14 +1739,6 @@ export class LibraryManager {
     return true;
   }
 
-  async startAurralArtistMonitoring(artist, mode) {
-    const plan = await this.planAurralArtistMonitoring(artist, mode);
-    if (plan.error) return plan;
-    const queued = this._enqueueAurralReleaseAcquisition(artist, plan);
-    const { releases: _releases, ...summary } = plan;
-    return { ...summary, queued };
-  }
-
   async setAurralArtistMonitoring(mbid, requestedMode) {
     const resolvedMode = resolveAurralMonitorMode(requestedMode);
     if (resolvedMode.error) return resolvedMode;
@@ -1754,32 +1747,35 @@ export class LibraryManager {
     if (!artist) {
       return { error: "Artist not found in the canonical library", statusCode: 404 };
     }
-    if (artist.managedBy && artist.managedBy !== "aurral") {
+    return serializeMonitoringUpdate(_artistMonitoringUpdates, Number(artist.id), async () => {
+      const currentArtist = canonicalArtistFallback(artist.id);
+      if (currentArtist?.managedBy && currentArtist.managedBy !== "aurral") {
+        return {
+          error: `Artist is managed by ${currentArtist.managedBy}`,
+          statusCode: 409,
+          code: "artist_owner_conflict",
+          managedBy: currentArtist.managedBy,
+        };
+      }
+      const plan = await this.planAurralArtistMonitoring(currentArtist, mode);
+      if (plan.error) return plan;
+      if (currentArtist.managedBy !== "aurral" || currentArtist.monitorMode !== mode) {
+        setLibraryManagement({
+          entityKind: "artist",
+          entityId: Number(currentArtist.id),
+          managedBy: "aurral",
+          monitorMode: mode,
+        });
+      }
+      const queued = this._enqueueAurralReleaseAcquisition(currentArtist, plan);
+      const { releases: _releases, ...summary } = plan;
       return {
-        error: `Artist is managed by ${artist.managedBy}`,
-        statusCode: 409,
-        code: "artist_owner_conflict",
-        managedBy: artist.managedBy,
+        ...(canonicalArtistFallback(currentArtist.id) || currentArtist),
+        monitored: mode !== "none",
+        monitorOption: mode,
+        monitoring: { ...summary, queued },
       };
-    }
-    const plan = await this.planAurralArtistMonitoring(artist, mode);
-    if (plan.error) return plan;
-    if (artist.managedBy !== "aurral" || artist.monitorMode !== mode) {
-      setLibraryManagement({
-        entityKind: "artist",
-        entityId: Number(artist.id),
-        managedBy: "aurral",
-        monitorMode: mode,
-      });
-    }
-    const queued = this._enqueueAurralReleaseAcquisition(artist, plan);
-    const { releases: _releases, ...summary } = plan;
-    return {
-      ...(canonicalArtistFallback(artist.id) || artist),
-      monitored: mode !== "none",
-      monitorOption: mode,
-      monitoring: { ...summary, queued },
-    };
+    });
   }
 
   _canAcquireMonitoredAlbum(artistMbid, albumMbid, expectedMode = null) {
@@ -1904,7 +1900,7 @@ export class LibraryManager {
     if (typeof monitored !== "boolean") {
       return { error: "monitored must be true or false", statusCode: 400, code: "invalid_monitored" };
     }
-    return serializeAlbumMonitoringUpdate(Number(canonicalId), async () => {
+    return serializeMonitoringUpdate(_albumMonitoringUpdates, Number(canonicalId), async () => {
       const resolved = this._resolveAurralAlbum(canonicalId);
       if (resolved.error) return resolved;
       const { album, mappedAlbum } = resolved;
