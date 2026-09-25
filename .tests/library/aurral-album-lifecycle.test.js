@@ -16,6 +16,8 @@ const [
   { resolveYtdlpStagingRoot },
   { lidarrClient },
   { dbOps },
+  { libraryManager },
+  { weeklyFlowWorker },
 ] = await setupIsolatedBackend(
   "aurral-album-lifecycle",
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
@@ -27,6 +29,8 @@ const [
   "backend/services/downloadFolderConfig.js",
   "backend/services/lidarrClient.js",
   "backend/db/helpers/index.js",
+  "backend/services/libraryManager.js",
+  "backend/services/weeklyFlow/weeklyFlowWorker.js",
 );
 
 const { downloadTracker, WeeklyFlowDownloadTracker } = trackerModule;
@@ -108,7 +112,7 @@ function createCanonicalAlbum({ managedBy = "aurral", trackCount = 3, availableT
       },
       "library",
     );
-  return { album, albumMbid, tracks, jobFor };
+  return { album, albumMbid, artistMbid, tracks, jobFor };
 }
 
 function addAlbumJob(trackName, requestGroupId = "group-1") {
@@ -358,6 +362,50 @@ test("album status aggregates canonical availability and per-track jobs", async 
   } finally {
     lidarrClient.isConfigured = originalIsConfigured;
     lidarrClient.request = originalRequest;
+    setDownloadSourceConfigured(false);
+  }
+});
+
+test("re-requesting an Aurral album waits for a download source and retries cancelled tracks in place", async () => {
+  const originalWorkerStart = weeklyFlowWorker.start;
+  weeklyFlowWorker.start = async () => {};
+  const { album, albumMbid, artistMbid } = createCanonicalAlbum();
+  const albumJobs = () => downloadTracker.getAll().filter((job) => job.albumMbid === albumMbid);
+  const request = () =>
+    libraryManager.addAlbum(artistMbid, albumMbid, album.title, { managedBy: "aurral" });
+
+  try {
+    setDownloadSourceConfigured(false);
+    const blocked = await request();
+    assert.equal(blocked.status, "blocked");
+    assert.equal(blocked.albumStatus.status, "blocked");
+    assert.equal(blocked.albumStatus.recovery.code, "download_source_missing");
+    assert.deepEqual(blocked.jobIds, []);
+    assert.equal(albumJobs().length, 0);
+
+    setDownloadSourceConfigured(true);
+    const queued = await request();
+    assert.equal(queued.albumStatus.status, "queued");
+    assert.equal(queued.jobIds.length, 3);
+
+    downloadTracker.setDownloading(queued.jobIds[0]);
+    downloadTracker.setFailed(queued.jobIds[1], "No matching source result");
+    await libraryManager.cancelAurralAlbum(album.id);
+    assert.equal(downloadTracker.getJob(queued.jobIds[0]).status, "cancelled");
+    assert.equal(downloadTracker.getJob(queued.jobIds[1]).status, "failed");
+
+    const retried = await request();
+    assert.deepEqual([...retried.jobIds].sort(), [...queued.jobIds].sort());
+    assert.equal(albumJobs().length, 3);
+    for (const jobId of queued.jobIds) {
+      assert.equal(downloadTracker.getJob(jobId).status, "pending");
+    }
+    assert.equal(retried.albumStatus.status, "queued");
+
+    downloadTracker.setFailed(queued.jobIds[0], "Source failed after retry");
+    assert.equal(downloadTracker.getJob(queued.jobIds[0]).status, "failed");
+  } finally {
+    weeklyFlowWorker.start = originalWorkerStart;
     setDownloadSourceConfigured(false);
   }
 });

@@ -32,6 +32,7 @@ import {
   setLibraryManagement,
 } from "./libraryManagementStore.js";
 import { cancelDownloadWorkForJobs } from "./weeklyFlow/weeklyFlowDownloadCancellationService.js";
+import { restoreDownloadJobCancellations } from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
 import { removePlaylistFileIfUnshared } from "./weeklyFlow/weeklyFlowFileReuse.js";
 import {
   cancelAurralAlbumJobs,
@@ -1479,6 +1480,7 @@ export class LibraryManager {
       randomUUID();
     const albumTrackTitles = albumTracks.map((track) => track.title).filter(Boolean);
     const missingTracks = albumTracks.filter((track) => track.available !== true);
+    const sourceConfigured = isAnyDownloadSourceConfigured();
     const jobIds = [];
     const trackedJobIds = [];
     let blockedTracks = 0;
@@ -1487,7 +1489,7 @@ export class LibraryManager {
       const relation = (track.albums || []).find((entry) => entry.albumId === album.id);
       const matchingJobs = findAurralAlbumJobs(albumMbid).filter((job) => jobMatchesTrack(job, track));
       const activeJob = matchingJobs.find((job) =>
-        job.status === "pending" || job.status === "downloading",
+        job.status === "pending" || job.status === "downloading" || job.status === "cancel_requested",
       );
       if (activeJob) {
         trackedJobIds.push(activeJob.id);
@@ -1507,6 +1509,7 @@ export class LibraryManager {
           });
           continue;
         }
+        if (!sourceConfigured) continue;
         if (downloadTracker.setPending(completedJob.id, "Completed file is missing", {
           asRetryCycle: true,
         })) {
@@ -1516,8 +1519,11 @@ export class LibraryManager {
         continue;
       }
 
-      const retryJob = matchingJobs.find((job) => job.status === "failed");
+      if (!sourceConfigured) continue;
+
+      const retryJob = matchingJobs.find((job) => job.status === "failed" || job.status === "cancelled");
       if (retryJob) {
+        restoreDownloadJobCancellations([retryJob.id]);
         if (downloadTracker.setPending(retryJob.id, "Retrying missing Aurral album track", {
           asRetryCycle: true,
         })) {
@@ -1594,7 +1600,7 @@ export class LibraryManager {
         ? "available"
         : uniqueTrackedJobIds.length > 0
           ? "queued"
-          : blockedTracks > 0
+          : blockedTracks > 0 || (!sourceConfigured && missingTracks.length > 0)
             ? "blocked"
             : "inLibrary",
     };

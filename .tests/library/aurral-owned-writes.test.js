@@ -87,6 +87,7 @@ test("Aurral writes canonical album state, queues missing tracks, and reports co
     ...originalSettings,
     integrations: {
       ...originalSettings.integrations,
+      slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
       metadata: {
         ...originalSettings.integrations?.metadata,
         baseUrl: server.url,
