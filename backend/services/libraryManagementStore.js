@@ -17,7 +17,7 @@ const clearStmt = db.prepare(
 );
 
 const selectAllStmt = db.prepare(
-  "SELECT entity_kind, entity_id, managed_by, monitor_mode FROM library_management",
+  "SELECT entity_kind, entity_id, managed_by, monitor_mode, updated_at FROM library_management",
 );
 
 let cache = null;
@@ -32,6 +32,7 @@ function getCache() {
         map.set(row.entity_id, {
           managedBy: row.managed_by,
           monitorMode: row.monitor_mode || null,
+          updatedAt: row.updated_at || null,
         });
       }
     }

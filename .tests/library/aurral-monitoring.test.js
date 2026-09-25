@@ -38,6 +38,7 @@ const [
 );
 
 const artistMbid = "a1111111-1111-4111-8111-111111111111";
+const otherArtistMbid = "a4444444-4444-4444-8444-444444444444";
 const releases = {
   firstAlbum: { id: "a2222222-2222-4222-8222-222222222201", title: "First Album", type: "Album", date: "2019-01-01" },
   secondAlbum: { id: "a2222222-2222-4222-8222-222222222202", title: "Second Album", type: "Album", date: "2021-06-01" },
@@ -48,15 +49,18 @@ const releases = {
 };
 const eligibleIds = [releases.firstAlbum.id, releases.secondAlbum.id, releases.latestEp.id];
 
-const metadataState = { artistFails: false, extraReleases: [] };
+const metadataState = { artistFails: false, extraReleases: [], otherReleases: [] };
 const lidarrCalls = [];
 
-function artistPayload() {
+function artistPayload(mbid = artistMbid) {
+  const artistReleases = mbid === artistMbid
+    ? [...Object.values(releases), ...metadataState.extraReleases]
+    : metadataState.otherReleases;
   return {
-    id: artistMbid,
-    artistname: "Monitor Artist",
-    sortname: "Monitor Artist",
-    Albums: [...Object.values(releases), ...metadataState.extraReleases].map((release) => ({
+    id: mbid,
+    artistname: mbid === artistMbid ? "Monitor Artist" : "Other Artist",
+    sortname: mbid === artistMbid ? "Monitor Artist" : "Other Artist",
+    Albums: artistReleases.map((release) => ({
       Id: release.id,
       Title: release.title,
       Type: release.type,
@@ -68,12 +72,13 @@ function artistPayload() {
 }
 
 function albumPayload(release) {
+  const owner = release.artistMbid || artistMbid;
   return {
     id: release.id,
     title: release.title,
     type: release.type,
-    artistid: artistMbid,
-    artists: [{ id: artistMbid, artistname: "Monitor Artist" }],
+    artistid: owner,
+    artists: [{ id: owner, artistname: owner === artistMbid ? "Monitor Artist" : "Other Artist" }],
     releasedate: release.date,
     releases: [{
       id: `${release.id}-release`,
@@ -102,7 +107,11 @@ const metadataServer = await createMockHttpServer((request, response) => {
     response.end(JSON.stringify(artistPayload()));
     return;
   }
-  const release = [...Object.values(releases), ...metadataState.extraReleases]
+  if (pathname === `/artist/${otherArtistMbid}`) {
+    response.end(JSON.stringify(artistPayload(otherArtistMbid)));
+    return;
+  }
+  const release = [...Object.values(releases), ...metadataState.extraReleases, ...metadataState.otherReleases]
     .find((entry) => pathname === `/album/${entry.id}`);
   if (release) {
     response.end(JSON.stringify(albumPayload(release)));
@@ -200,6 +209,7 @@ test.before(() => {
 test.beforeEach(() => {
   metadataState.artistFails = false;
   metadataState.extraReleases = [];
+  metadataState.otherReleases = [];
   clearMetadataProviderCaches();
   clearMonitoringTasks();
   downloadTracker.clearAll();
@@ -379,5 +389,64 @@ test("an album override survives artist monitoring changes and unmonitoring keep
     body: { monitored: "yes" },
   });
   assert.equal(invalid.statusCode, 400);
+  assert.equal(lidarrCalls.length, 0);
+});
+
+function futureDate(days) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+test("daily reconciliation queues new releases once and keeps going past a failing artist", async () => {
+  await addAurralArtist("all");
+  await runQueuedMonitoringTasks();
+  const initialJobs = downloadTracker.getAll().length;
+  await callRoute("POST /artists", {
+    body: {
+      foreignArtistId: otherArtistMbid,
+      artistName: "Other Artist",
+      monitorOption: "future",
+      managedBy: "aurral",
+    },
+  });
+  assert.deepEqual(queuedMonitoringTasks(), []);
+
+  const newRelease = {
+    id: "a2222222-2222-4222-8222-222222222207",
+    title: "New Album",
+    type: "Album",
+    date: futureDate(0),
+  };
+  const newSingle = { ...releases.single, id: "a2222222-2222-4222-8222-222222222208", title: "New Single" };
+  const upcoming = {
+    id: "a5555555-5555-4555-8555-555555555501",
+    title: "Upcoming Album",
+    type: "Album",
+    date: futureDate(30),
+    artistMbid: otherArtistMbid,
+  };
+  const olderRelease = { ...upcoming, id: "a5555555-5555-4555-8555-555555555502", title: "Older Album", date: "2020-01-01" };
+  metadataState.extraReleases = [newRelease, newSingle];
+  metadataState.otherReleases = [upcoming, olderRelease];
+  clearMetadataProviderCaches();
+
+  await processSystemTask({ kind: "aurral-monitoring-reconcile" });
+  assert.deepEqual(
+    queuedAlbumMbids(),
+    [...eligibleIds, newRelease.id, upcoming.id].sort(),
+  );
+  const afterFirstRun = downloadTracker.getAll().length;
+  assert.equal(afterFirstRun, initialJobs + 4);
+
+  await processSystemTask({ kind: "aurral-monitoring-reconcile" });
+  assert.equal(downloadTracker.getAll().length, afterFirstRun);
+
+  metadataState.artistFails = true;
+  metadataState.otherReleases = [
+    ...metadataState.otherReleases,
+    { ...upcoming, id: "a5555555-5555-4555-8555-555555555503", title: "Another Upcoming", date: futureDate(60) },
+  ];
+  clearMetadataProviderCaches();
+  await processSystemTask({ kind: "aurral-monitoring-reconcile" });
+  assert.ok(queuedAlbumMbids().includes("a5555555-5555-4555-8555-555555555503"));
   assert.equal(lidarrCalls.length, 0);
 });

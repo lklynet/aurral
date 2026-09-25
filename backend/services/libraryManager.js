@@ -29,6 +29,7 @@ import {
 } from "./libraryMediaStore.js";
 import {
   getLibraryManagementEntry,
+  getManagedByMap,
   setLibraryManagement,
 } from "./libraryManagementStore.js";
 import { cancelDownloadWorkForJobs } from "./weeklyFlow/weeklyFlowDownloadCancellationService.js";
@@ -1756,6 +1757,35 @@ export class LibraryManager {
       }
     }
     return results;
+  }
+
+  async reconcileAurralMonitoring() {
+    const monitoredArtists = [...getManagedByMap("artist").entries()].filter(
+      ([, entry]) => entry.managedBy === "aurral" && entry.monitorMode && entry.monitorMode !== "none",
+    );
+    let queuedAlbums = 0;
+    let failedArtists = 0;
+    for (const [artistId, entry] of monitoredArtists) {
+      const artist = canonicalArtistFallback(artistId);
+      if (!artist?.mbid) continue;
+      const plan = await this.planAurralArtistMonitoring(artist, entry.monitorMode, {
+        monitorStartedAt: entry.updatedAt,
+      });
+      if (plan.error) {
+        failedArtists += 1;
+        continue;
+      }
+      const newReleases = plan.releases.filter((release) => !release.existing);
+      if (newReleases.length === 0) continue;
+      await this.acquireAurralReleases({ artistMbid: artist.mbid, releaseGroups: newReleases });
+      queuedAlbums += newReleases.length;
+    }
+    logger.info("library", "Aurral monitoring reconciliation finished", {
+      artists: monitoredArtists.length,
+      queuedAlbums,
+      failedArtists,
+    });
+    return { artists: monitoredArtists.length, queuedAlbums, failedArtists };
   }
 
   _resolveAurralAlbum(canonicalId) {

@@ -43,16 +43,13 @@ test("manager state uses canonical ids and round-trips through the store", () =>
   });
   assert.equal(store.getManagedBy("album", 7), "aurral");
   assert.equal(store.getManagedBy("album", "7"), "aurral");
-  assert.deepEqual(store.getLibraryManagementEntry("album", 7), {
-    managedBy: "aurral",
-    monitorMode: "all",
-  });
+  const { updatedAt, ...entry } = store.getLibraryManagementEntry("album", 7);
+  assert.deepEqual(entry, { managedBy: "aurral", monitorMode: "all" });
+  assert.ok(Number.isSafeInteger(updatedAt) && updatedAt > 0);
 
   store.setLibraryManagement({ entityKind: "album", entityId: 7, managedBy: "lidarr" });
-  assert.deepEqual(store.getLibraryManagementEntry("album", 7), {
-    managedBy: "lidarr",
-    monitorMode: null,
-  });
+  const { updatedAt: _updatedAt, ...changedEntry } = store.getLibraryManagementEntry("album", 7);
+  assert.deepEqual(changedEntry, { managedBy: "lidarr", monitorMode: null });
 
   assert.equal(store.clearLibraryManagement("album", 7), true);
   assert.equal(store.getManagedBy("album", 7), null);

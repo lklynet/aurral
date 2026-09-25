@@ -23,6 +23,11 @@ export async function processSystemTask(payload = {}, job = null) {
       await libraryManager.acquireAurralReleases(payload);
       return;
     }
+    case "aurral-monitoring-reconcile": {
+      const { libraryManager } = await import("./libraryManager.js");
+      await libraryManager.reconcileAurralMonitoring();
+      return;
+    }
     case "session-cleanup":
       cleanExpiredSessions();
       return;
