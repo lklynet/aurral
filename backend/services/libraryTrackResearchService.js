@@ -24,15 +24,13 @@ export function resolveAurralOwnedTrackJob({ trackId, albumId } = {}) {
     albumId: safeAlbumId,
   });
   const track = library.tracks.find((entry) => Number(entry.id) === safeTrackId);
-  const ownedPaths = new Set(
-    (track?.files || [])
-      .filter((file) => file.source === "aurral" && file.available && file.path)
-      .map((file) => path.resolve(file.path))
-      .filter(isAurralOwnedPath),
-  );
-  if (!ownedPaths.size) return null;
+  const ownedFiles = (track?.files || [])
+    .filter((file) => file.source === "aurral" && file.available && file.path)
+    .map((file) => ({ ...file, resolvedPath: path.resolve(file.path) }))
+    .filter((file) => isAurralOwnedPath(file.resolvedPath));
+  if (ownedFiles.length === 0) return null;
 
-  return downloadTracker
+  const sourceJob = downloadTracker
     .getAll()
     .filter(
       (job) =>
@@ -40,12 +38,49 @@ export function resolveAurralOwnedTrackJob({ trackId, albumId } = {}) {
         job.managedBy === "aurral" &&
         !job.upgradeForJobId &&
         job.finalPath &&
-        ownedPaths.has(path.resolve(job.finalPath)) &&
+        ownedFiles.some((file) => file.resolvedPath === path.resolve(job.finalPath)) &&
         isAurralOwnedPath(job.finalPath),
     )
     .sort(
       (left, right) =>
         Number(right.completedAt || right.createdAt || 0) -
         Number(left.completedAt || left.createdAt || 0),
-    )[0] || null;
+    )[0];
+  if (sourceJob) return sourceJob;
+
+  const sourceFile = [...ownedFiles].sort(
+    (left, right) =>
+      Number(right.mtimeMs || right.createdAt || 0) -
+      Number(left.mtimeMs || left.createdAt || 0),
+  )[0];
+  const album = library.albums.find(
+    (entry) => String(entry.id) === String(sourceFile.albumId),
+  );
+  const artist = library.artists.find(
+    (entry) => String(entry.id) === String(album?.artistId),
+  );
+  const albumTrack = track?.albums?.find(
+    (entry) => String(entry.albumId) === String(sourceFile.albumId),
+  );
+  const releaseYear = String(album?.releaseDate || "").match(/^\d{4}/)?.[0] || null;
+
+  return downloadTracker.ensureLibraryTrackJob(
+    {
+      artistName: artist?.name || album?.albumArtist || track?.artistName || "Unknown Artist",
+      trackName: track?.title,
+      albumName: album?.title || null,
+      artistMbid: artist?.mbid || null,
+      albumMbid: album?.mbid || album?.releaseGroupMbid || null,
+      trackMbid: track?.mbid || null,
+      releaseYear,
+      durationMs: sourceFile.durationMs ?? track?.metadata?.durationMs ?? null,
+      trackNumber: albumTrack?.trackNumber || 0,
+      albumTrackCount: album?.trackIds?.length || null,
+      artistAliases: Array.isArray(artist?.metadata?.aliases)
+        ? artist.metadata.aliases
+        : [],
+      managedBy: "aurral",
+    },
+    sourceFile.resolvedPath,
+  );
 }

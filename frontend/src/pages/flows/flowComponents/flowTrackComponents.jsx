@@ -498,6 +498,19 @@ export function FlowTracksPanel({
     () => sortFlowTracks(tracks, sortKey, sortDirection),
     [tracks, sortKey, sortDirection],
   );
+  const activeManualReplacementTrackIds = useMemo(
+    () => new Set(
+      tracks
+        .filter(
+          (track) =>
+            track?.manualReplacementSearch === true &&
+            ["pending", "downloading"].includes(track.status) &&
+            track.upgradeForJobId,
+        )
+        .map((track) => String(track.upgradeForJobId)),
+    ),
+    [tracks],
+  );
 
   const selectedCount = selectedIds.size;
   const allSelected = tracks.length > 0 && selectedCount === sortedTracks.length;
@@ -855,7 +868,8 @@ export function FlowTracksPanel({
                 const canManualReSearch =
                   typeof onReSearchTrack === "function" &&
                   track.status === "done" &&
-                  track.qualityOwned === true;
+                  track.qualityOwned === true &&
+                  !activeManualReplacementTrackIds.has(String(track.id));
                 const isReSearching = reSearchingTrackIds[track.id] === true;
                 const availability = showTrackAvailability ? getTrackAvailability(track) : null;
                 const isDeleting = deletingTrackId === track.id;

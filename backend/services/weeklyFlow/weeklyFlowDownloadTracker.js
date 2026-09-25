@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import path from "node:path";
 import { db } from "../../config/db-sqlite.js";
 import { enqueuePipelineJob } from "../honkerDb.js";
 import { isAnyDownloadSourceConfigured } from "../downloadSourceService.js";
@@ -703,6 +704,29 @@ export class WeeklyFlowDownloadTracker {
     return id;
   }
 
+  ensureLibraryTrackJob(track, finalPath) {
+    const sourcePath = String(finalPath || "").trim();
+    if (!sourcePath) return null;
+    const resolvedPath = path.resolve(sourcePath);
+    const existing = [...this.jobs.values()].find(
+      (job) =>
+        job.status === "done" &&
+        job.managedBy === "aurral" &&
+        !job.upgradeForJobId &&
+        job.finalPath &&
+        path.resolve(job.finalPath) === resolvedPath,
+    );
+    if (existing) return existing;
+
+    const id = this.addJob(
+      { ...track, managedBy: "aurral", reason: track?.reason || "Aurral library track" },
+      "library",
+      { playlistId: "library" },
+    );
+    if (!id || !this.setDone(id, resolvedPath, track?.albumName)) return null;
+    return this.jobs.get(id) || null;
+  }
+
   addJobs(tracks, playlistType) {
     const ids = [];
     for (const track of tracks) {
@@ -1335,7 +1359,11 @@ export class WeeklyFlowDownloadTracker {
   }
 
   clearCompleted() {
-    return this._deleteJobsWhere((job) => job.status === "done" || job.status === "failed");
+    return this._deleteJobsWhere(
+      (job) =>
+        (job.status === "done" || job.status === "failed") &&
+        !(job.status === "done" && this.findActiveUpgradeJob(job)),
+    );
   }
 
   clearByPlaylistType(playlistType) {

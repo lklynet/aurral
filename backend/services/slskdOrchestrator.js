@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import { db } from "../config/db-sqlite.js";
 import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger } from "./logger.js";
-import { enqueuePipelineJob } from "./honkerDb.js";
+import { enqueuePipelineJob, listHonkerJobs } from "./honkerDb.js";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 import {
   buildFlowSearchTiers,
@@ -301,9 +301,16 @@ export function enqueueJobPipeline(jobId) {
 
 export function enqueuePendingJobsWithoutBatch() {
   if (!isAnyDownloadSourceConfigured()) return 0;
+  const activePipelineJobIds = new Set(
+    listHonkerJobs("slskd-pipeline")
+      .map((entry) => String(entry.payload?.jobId || "").trim())
+      .filter(Boolean),
+  );
   let count = 0;
   for (const job of downloadTracker.getByStatus("pending")) {
-    if (!job.slskdBatchId && !job.slskdSearchId) continue;
+    const hasProviderSearch = job.slskdBatchId || job.slskdSearchId;
+    if (!hasProviderSearch && job.manualReplacementSearch !== true) continue;
+    if (activePipelineJobIds.has(job.id)) continue;
     downloadTracker.clearSlskdPipelineState(job.id);
     if (enqueueJobPipeline(job.id)) count += 1;
   }

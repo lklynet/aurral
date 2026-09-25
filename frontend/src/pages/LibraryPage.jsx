@@ -123,8 +123,8 @@ const firstAvailableFile = (track, albumId = null) =>
 const hasAurralTrackFile = (track) =>
   (track?.files || []).some((file) => file.source === "aurral");
 
-const hasAvailableAurralTrackFile = (track) =>
-  (track?.files || []).some((file) => file.source === "aurral" && file.available);
+const firstAvailableAurralFile = (track) =>
+  (track?.files || []).find((file) => file.source === "aurral" && file.available) || null;
 
 const EMPTY_LIBRARY = { artists: [], albums: [], tracks: [], genres: [] };
 
@@ -1730,6 +1730,13 @@ function LibraryPage() {
           const album = getAlbumForTrack(track);
           const artist = getArtistForAlbum(album);
           const file = firstAvailableFile(track);
+          const researchFile = firstAvailableAurralFile(track);
+          const researchAlbumRelation = track?.albums?.find(
+            (entry) => String(entry.albumId) === String(researchFile?.albumId),
+          );
+          const researchAlbum = researchAlbumRelation
+            ? albumsById.get(String(researchAlbumRelation.albumId))
+            : null;
           const downloadKey = trackDownloadIdentity(track);
           const downloadState = trackDownloadStates[downloadKey];
           const downloadPending = TRACK_DOWNLOAD_ACTIVE_STATUSES.has(downloadState?.status);
@@ -1777,15 +1784,15 @@ function LibraryPage() {
                   },
                 ]
               : []),
-            ...(album?.id && file && hasAvailableAurralTrackFile(track) && canAddTracks
+            ...(researchAlbum?.id && researchFile && canAddTracks
               ? [
                   {
                     id: "research",
                     label: "Re-search",
                     icon: RefreshCw,
                     separatorBefore: true,
-                    disabled: isPreviewLibrary || trackResearchStates[`${track.id}:${album?.id}`] === true,
-                    onSelect: () => handleReSearchLibraryTrack(track, album),
+                    disabled: isPreviewLibrary || trackResearchStates[`${track.id}:${researchAlbum.id}`] === true,
+                    onSelect: () => handleReSearchLibraryTrack(track, researchAlbum),
                   },
                 ]
               : []),
