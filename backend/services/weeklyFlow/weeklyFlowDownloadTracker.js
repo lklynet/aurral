@@ -264,7 +264,9 @@ function buildPipelinePayload(job) {
   const playlistId = job.playlistId || job.playlistType;
   const artistDir = sanitizePathPart(job.artistName, "Unknown Artist");
   const albumDir = sanitizePathPart(job.albumName, "Unknown Album");
-  const ephemeral = Boolean(flowPlaylistConfig.getFlow(String(job.playlistType || "").trim()));
+  const ephemeral = Boolean(
+    flowPlaylistConfig.getFlow(String(job.playlistId || job.playlistType || "").trim()),
+  );
   return {
     phase: "search",
     jobId: job.id,
