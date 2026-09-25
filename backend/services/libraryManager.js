@@ -33,6 +33,7 @@ import {
 } from "./libraryManagementStore.js";
 import { cancelDownloadWorkForJobs } from "./weeklyFlow/weeklyFlowDownloadCancellationService.js";
 import { removePlaylistFileIfUnshared } from "./weeklyFlow/weeklyFlowFileReuse.js";
+import { cancelAurralAlbumJobs } from "./aurralAlbumJobs.js";
 const normalizeTypeName = (value) =>
   String(value || "")
     .toLowerCase()
@@ -1600,6 +1601,41 @@ export class LibraryManager {
           : blockedTracks > 0
             ? "blocked"
             : "inLibrary",
+    };
+  }
+
+  _resolveAurralAlbum(canonicalId) {
+    const reference = String(canonicalId ?? "").trim();
+    const id = Number(reference);
+    if (!/^\d+$/.test(reference) || !Number.isSafeInteger(id) || id <= 0) {
+      return {
+        error: "canonicalId must be a positive integer",
+        statusCode: 400,
+        code: "invalid_canonical_id",
+      };
+    }
+    const library = canonicalLibraryForAlbum(id);
+    const album = library.albums.find((entry) => entry.id === id);
+    if (!album) {
+      return { error: "Album was not found in the canonical library", statusCode: 404 };
+    }
+    const artist = library.artists.find((entry) => entry.id === album.artistId);
+    const mappedAlbum = mapCanonicalAlbum(album, artist, library.tracks);
+    if (mappedAlbum.managedBy !== "aurral") {
+      return buildAlbumConflict(mappedAlbum);
+    }
+    return { album, artist, library, mappedAlbum };
+  }
+
+  async cancelAurralAlbum(canonicalId) {
+    const resolved = this._resolveAurralAlbum(canonicalId);
+    if (resolved.error) return resolved;
+    const { album, mappedAlbum } = resolved;
+    const result = await cancelAurralAlbumJobs(album.mbid || album.releaseGroupMbid);
+    return {
+      canonicalId: mappedAlbum.canonicalId,
+      managedBy: "aurral",
+      ...result,
     };
   }
 

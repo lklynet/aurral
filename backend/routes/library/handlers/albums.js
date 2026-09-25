@@ -231,6 +231,27 @@ export function registerAlbums(router) {
     },
   );
 
+  router.post(
+    "/albums/aurral/:canonicalId/cancel",
+    requireAuth,
+    requirePermission("addAlbum"),
+    async (req, res) => {
+      try {
+        const result = await libraryManager.cancelAurralAlbum(req.params.canonicalId);
+        if (result?.error) {
+          const { error, statusCode, ...details } = result;
+          return res.status(statusCode || 500).json({ ...details, error });
+        }
+        return res.json(result);
+      } catch (error) {
+        return res.status(500).json({
+          error: "Failed to cancel album",
+          message: error.message,
+        });
+      }
+    },
+  );
+
   router.get("/albums/:id", cacheMiddleware(120), async (req, res) => {
     try {
       const { id } = req.params;
