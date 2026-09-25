@@ -664,7 +664,15 @@ export function registerDownloads(router) {
         return res.status(400).json({ error: "albumIds query parameter is required" });
       }
       const albumIdArray = Array.isArray(albumIds) ? albumIds : albumIds.split(",");
-      const statuses = await getDownloadStatusesForAlbumIds(albumIdArray);
+      const aurralPrefix = "aurral:";
+      const aurralIds = albumIdArray.filter((id) => String(id).startsWith(aurralPrefix));
+      const statuses = await getDownloadStatusesForAlbumIds(
+        albumIdArray.filter((id) => !String(id).startsWith(aurralPrefix)),
+      );
+      for (const key of aurralIds) {
+        const status = libraryManager.getAurralAlbumStatus(key.slice(aurralPrefix.length));
+        if (!status?.error) statuses[key] = status;
+      }
       res.json(statuses);
     } catch (error) {
       res.status(500).json({

@@ -114,6 +114,9 @@ test("Aurral writes canonical album state, queues missing tracks, and reports co
     });
     assert.equal(request.managedBy, "aurral");
     assert.equal(request.status, "queued");
+    assert.equal(request.albumStatus.status, "queued");
+    assert.equal(request.albumStatus.counts.pending, 2);
+    assert.equal(request.albumStatus.requestGroupId, downloadTracker.getJob(request.jobIds[0]).requestGroupId);
     assert.equal(request.jobIds.length, 2);
     assert.equal(new Set(request.jobIds.map((id) => downloadTracker.getJob(id).requestGroupId)).size, 1);
     assert.equal(downloadTracker.getAll().every((job) => job.managedBy === "aurral"), true);

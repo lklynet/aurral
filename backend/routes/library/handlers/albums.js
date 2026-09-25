@@ -2,7 +2,7 @@ import { libraryManager } from "../../../services/libraryManager.js";
 import { playlistManager } from "../../../services/weeklyFlow/weeklyFlowPlaylistManager.js";
 import { dbOps } from "../../../db/helpers/index.js";
 import { hasPermission } from "../../../middleware/auth.js";
-import { cacheMiddleware } from "../../../middleware/cache.js";
+import { cacheMiddleware, noCache } from "../../../middleware/cache.js";
 import {
   requireAuth,
   requirePermission,
@@ -230,6 +230,22 @@ export function registerAlbums(router) {
       }
     },
   );
+
+  router.get("/albums/aurral/:canonicalId/status", noCache, (req, res) => {
+    try {
+      const result = libraryManager.getAurralAlbumStatus(req.params.canonicalId);
+      if (result?.error) {
+        const { error, statusCode, ...details } = result;
+        return res.status(statusCode || 500).json({ ...details, error });
+      }
+      return res.json(result);
+    } catch (error) {
+      return res.status(500).json({
+        error: "Failed to fetch album status",
+        message: error.message,
+      });
+    }
+  });
 
   router.post(
     "/albums/aurral/:canonicalId/cancel",

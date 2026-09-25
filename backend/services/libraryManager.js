@@ -33,7 +33,16 @@ import {
 } from "./libraryManagementStore.js";
 import { cancelDownloadWorkForJobs } from "./weeklyFlow/weeklyFlowDownloadCancellationService.js";
 import { removePlaylistFileIfUnshared } from "./weeklyFlow/weeklyFlowFileReuse.js";
-import { cancelAurralAlbumJobs } from "./aurralAlbumJobs.js";
+import {
+  cancelAurralAlbumJobs,
+  findAurralAlbumJobs,
+  jobMatchesTrack,
+  summarizeAurralAlbum,
+} from "./aurralAlbumJobs.js";
+import {
+  getDownloadSourceNotConfiguredMessage,
+  isAnyDownloadSourceConfigured,
+} from "./downloadSourceService.js";
 const normalizeTypeName = (value) =>
   String(value || "")
     .toLowerCase()
@@ -1463,12 +1472,7 @@ export class LibraryManager {
     const mappedAlbum = mapCanonicalAlbum(album, artist, library.tracks);
     const albumMbid = album.mbid || album.releaseGroupMbid || null;
     const albumTracks = library.tracks.filter((track) => album.trackIds.includes(track.id));
-    const allAlbumJobs = downloadTracker.getAll().filter(
-      (job) =>
-        job.playlistType === "library" &&
-        job.managedBy === "aurral" &&
-        String(job.albumMbid || "").trim().toLowerCase() === String(albumMbid || "").trim().toLowerCase(),
-    );
+    const allAlbumJobs = findAurralAlbumJobs(albumMbid);
     const requestGroupId =
       options.requestGroupId ||
       allAlbumJobs.find((job) => job.requestGroupId)?.requestGroupId ||
@@ -1481,16 +1485,7 @@ export class LibraryManager {
 
     for (const track of missingTracks) {
       const relation = (track.albums || []).find((entry) => entry.albumId === album.id);
-      const matchingJobs = downloadTracker.getAll().filter((job) => {
-        if (job.playlistType !== "library" || job.managedBy !== "aurral") return false;
-        const sameAlbum = String(job.albumMbid || "").trim().toLowerCase() ===
-          String(albumMbid || "").trim().toLowerCase();
-        if (!sameAlbum) return false;
-        if (job.trackMbid && track.mbid) {
-          return String(job.trackMbid).trim().toLowerCase() === String(track.mbid).trim().toLowerCase();
-        }
-        return String(job.trackName || "").trim().toLowerCase() === String(track.title || "").trim().toLowerCase();
-      });
+      const matchingJobs = findAurralAlbumJobs(albumMbid).filter((job) => jobMatchesTrack(job, track));
       const activeJob = matchingJobs.find((job) =>
         job.status === "pending" || job.status === "downloading",
       );
@@ -1594,6 +1589,7 @@ export class LibraryManager {
       missingTrackCount: missingTracks.length,
       queuedTrackCount: jobIds.length,
       blockedTrackCount: blockedTracks,
+      albumStatus: this._summarizeAurralAlbum(album, library.tracks),
       status: available
         ? "available"
         : uniqueTrackedJobIds.length > 0
@@ -1625,6 +1621,29 @@ export class LibraryManager {
       return buildAlbumConflict(mappedAlbum);
     }
     return { album, artist, library, mappedAlbum };
+  }
+
+  _summarizeAurralAlbum(album, tracks) {
+    const sourceConfigured = isAnyDownloadSourceConfigured();
+    return {
+      managedBy: "aurral",
+      ...summarizeAurralAlbum({
+        tracks: tracks.filter((track) => album.trackIds.includes(track.id)),
+        jobs: findAurralAlbumJobs(album.mbid || album.releaseGroupMbid),
+        sourceConfigured,
+        sourceMessage: sourceConfigured ? null : getDownloadSourceNotConfiguredMessage(),
+      }),
+    };
+  }
+
+  getAurralAlbumStatus(canonicalId) {
+    const resolved = this._resolveAurralAlbum(canonicalId);
+    if (resolved.error) return resolved;
+    const { album, library, mappedAlbum } = resolved;
+    return {
+      canonicalId: mappedAlbum.canonicalId,
+      ...this._summarizeAurralAlbum(album, library.tracks),
+    };
   }
 
   async cancelAurralAlbum(canonicalId) {
@@ -2089,6 +2108,7 @@ export class LibraryManager {
         managedBy: "aurral",
         jobIds: album.jobIds || [],
         requestGroupId: album.requestGroupId || null,
+        albumStatus: album.albumStatus || null,
       };
     }
 

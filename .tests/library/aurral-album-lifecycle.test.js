@@ -12,8 +12,10 @@ const [
   libraryStore,
   managementStore,
   { registerAlbums },
+  { registerDownloads },
   { resolveYtdlpStagingRoot },
   { lidarrClient },
+  { dbOps },
 ] = await setupIsolatedBackend(
   "aurral-album-lifecycle",
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
@@ -21,8 +23,10 @@ const [
   "backend/services/libraryMediaStore.js",
   "backend/services/libraryManagementStore.js",
   "backend/routes/library/handlers/albums.js",
+  "backend/routes/library/handlers/downloads.js",
   "backend/services/downloadFolderConfig.js",
   "backend/services/lidarrClient.js",
+  "backend/db/helpers/index.js",
 );
 
 const { downloadTracker, WeeklyFlowDownloadTracker } = trackerModule;
@@ -31,12 +35,14 @@ const routes = new Map();
 const route = (method) => (routePath, ...handlers) => {
   routes.set(`${method} ${routePath}`, handlers.at(-1));
 };
-registerAlbums({ get: route("GET"), post: route("POST"), put: route("PUT"), delete: route("DELETE") });
+const router = { get: route("GET"), post: route("POST"), put: route("PUT"), delete: route("DELETE") };
+registerAlbums(router);
+registerDownloads(router);
 
-async function callRoute(key, params = {}, body = {}) {
+async function callRoute(key, params = {}, body = {}, query = {}) {
   const response = { statusCode: 200, body: null };
   await routes.get(key)(
-    { params, body, query: {}, user: { role: "admin", permissions: {} } },
+    { params, body, query, user: { role: "admin", permissions: {} } },
     {
       status(code) {
         response.statusCode = code;
@@ -270,4 +276,88 @@ test("album cancellation waits on provider cleanup without reviving the job", as
   downloadTracker.setFailed(jobId, "late provider error");
   assert.equal(downloadTracker.getJob(jobId).status, "cancel_requested");
   assert.equal(new WeeklyFlowDownloadTracker().getJob(jobId).status, "cancelled");
+});
+
+function setDownloadSourceConfigured(configured) {
+  const settings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...settings,
+    integrations: {
+      ...settings.integrations,
+      slskd: configured
+        ? { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" }
+        : { enabled: false },
+    },
+  });
+}
+
+test("album status aggregates canonical availability and per-track jobs", async () => {
+  const originalIsConfigured = lidarrClient.isConfigured;
+  const originalRequest = lidarrClient.request;
+  const lidarrCalls = [];
+  lidarrClient.isConfigured = () => false;
+  lidarrClient.request = async (...args) => {
+    lidarrCalls.push(args);
+    throw new Error("Lidarr must not be called");
+  };
+  setDownloadSourceConfigured(true);
+
+  const scenarios = [
+    { name: "complete", availableTracks: 3, jobs: [], status: "complete" },
+    { name: "queued", jobs: ["pending", "pending", "pending"], status: "queued" },
+    { name: "downloading", jobs: ["downloading", "pending", "pending"], status: "downloading" },
+    { name: "cancelling", jobs: ["cancel_requested", "cancelled", "cancelled"], status: "downloading" },
+    { name: "cancelled", availableTracks: 1, jobs: [null, "cancelled", "cancelled"], status: "cancelled" },
+    { name: "blocked", jobs: ["blocked", "failed", "failed"], status: "blocked", recovery: "review_required" },
+    { name: "failed", jobs: ["failed", "failed", "failed"], status: "failed", recovery: "source_failed" },
+    { name: "partial", availableTracks: 2, jobs: [null, null, "failed"], status: "partial", recovery: "source_failed" },
+    { name: "missing", jobs: [], status: "missing" },
+    { name: "no source", jobs: [], status: "blocked", recovery: "download_source_missing", sourceConfigured: false },
+  ];
+
+  try {
+    for (const scenario of scenarios) {
+      setDownloadSourceConfigured(scenario.sourceConfigured !== false);
+      const { album, jobFor } = createCanonicalAlbum({ availableTracks: scenario.availableTracks || 0 });
+      scenario.jobs.forEach((jobStatus, index) => {
+        if (!jobStatus) return;
+        const jobId = jobFor(index);
+        if (jobStatus === "downloading" || jobStatus === "cancel_requested") {
+          downloadTracker.setDownloading(jobId);
+        }
+        if (jobStatus === "cancel_requested") downloadTracker.setCancelRequested(jobId);
+        if (jobStatus === "cancelled") downloadTracker.setCancelled(jobId);
+        if (jobStatus === "failed") downloadTracker.setFailed(jobId, "No matching source result");
+        if (jobStatus === "blocked") downloadTracker.setBlocked(jobId, "Low confidence match");
+      });
+
+      const response = await callRoute(
+        "GET /albums/aurral/:canonicalId/status",
+        { canonicalId: String(album.id) },
+      );
+      assert.equal(response.statusCode, 200, scenario.name);
+      assert.equal(response.body.status, scenario.status, scenario.name);
+      assert.equal(response.body.managedBy, "aurral", scenario.name);
+      assert.equal(response.body.counts.total, 3, scenario.name);
+      assert.equal(response.body.recovery?.code ?? null, scenario.recovery ?? null, scenario.name);
+      if (scenario.recovery) assert.ok(response.body.recovery.message, scenario.name);
+    }
+
+    setDownloadSourceConfigured(true);
+    const { album } = createCanonicalAlbum();
+    const batch = await callRoute(
+      "GET /downloads/status",
+      {},
+      {},
+      { albumIds: `aurral:${album.id},aurral:not-a-number` },
+    );
+    assert.equal(batch.statusCode, 200);
+    assert.equal(batch.body[`aurral:${album.id}`].status, "missing");
+    assert.equal(batch.body["aurral:not-a-number"], undefined);
+    assert.equal(lidarrCalls.length, 0);
+  } finally {
+    lidarrClient.isConfigured = originalIsConfigured;
+    lidarrClient.request = originalRequest;
+    setDownloadSourceConfigured(false);
+  }
 });
