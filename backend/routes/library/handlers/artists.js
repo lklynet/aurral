@@ -191,9 +191,10 @@ export function registerArtists(router) {
 
         const artist = await libraryManager.updateArtist(mbid, req.body);
         if (artist?.error) {
-          return res.status(503).json({
+          return res.status(artist.statusCode || 503).json({
             error: artist.error,
             message: artist.error,
+            code: artist.code || null,
           });
         }
         const { lidarrClient } = await import("../../../services/lidarrClient.js");
