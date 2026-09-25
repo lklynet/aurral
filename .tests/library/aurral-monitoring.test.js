@@ -49,7 +49,7 @@ const releases = {
 };
 const eligibleIds = [releases.firstAlbum.id, releases.secondAlbum.id, releases.latestEp.id];
 
-const metadataState = { artistFails: false, extraReleases: [], otherReleases: [] };
+const metadataState = { artistFails: false, extraReleases: [], otherReleases: [], albumGate: null };
 const lidarrCalls = [];
 
 function artistPayload(mbid = artistMbid) {
@@ -95,7 +95,7 @@ function albumPayload(release) {
   };
 }
 
-const metadataServer = await createMockHttpServer((request, response) => {
+const metadataServer = await createMockHttpServer(async (request, response) => {
   const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
   response.setHeader("content-type", "application/json");
   if (pathname === `/artist/${artistMbid}`) {
@@ -114,6 +114,10 @@ const metadataServer = await createMockHttpServer((request, response) => {
   const release = [...Object.values(releases), ...metadataState.extraReleases, ...metadataState.otherReleases]
     .find((entry) => pathname === `/album/${entry.id}`);
   if (release) {
+    if (metadataState.albumGate) {
+      metadataState.albumGate.started();
+      await metadataState.albumGate.release;
+    }
     response.end(JSON.stringify(albumPayload(release)));
     return;
   }
@@ -210,6 +214,7 @@ test.beforeEach(() => {
   metadataState.artistFails = false;
   metadataState.extraReleases = [];
   metadataState.otherReleases = [];
+  metadataState.albumGate = null;
   clearMetadataProviderCaches();
   clearMonitoringTasks();
   downloadTracker.clearAll();
@@ -311,6 +316,17 @@ test("a metadata outage reports an error and keeps the previous monitor mode", a
   assert.deepEqual(queuedMonitoringTasks(), []);
 });
 
+test("adding an artist reports a metadata outage during monitoring", async () => {
+  metadataState.artistFails = true;
+  clearMetadataProviderCaches();
+  const response = await addAurralArtist("all");
+  assert.equal(response.statusCode, 503);
+  assert.equal(response.body.code, "metadata_unavailable");
+  assert.deepEqual(queuedMonitoringTasks(), []);
+  const artist = db.prepare("SELECT id FROM library_artists WHERE mbid = ?").get(artistMbid);
+  assert.equal(managementStore.getLibraryManagementEntry("artist", artist.id).monitorMode, "none");
+});
+
 test("artist monitoring skips albums managed by Lidarr", async () => {
   const added = await addAurralArtist("none");
   const lidarrAlbum = libraryStore.upsertLibraryAlbum({
@@ -342,6 +358,65 @@ test("artist monitoring skips albums managed by Lidarr", async () => {
   assert.equal(lidarrCalls.length, 0);
 });
 
+test("queued artist acquisition stops after monitoring is disabled", async () => {
+  await addAurralArtist("none");
+  await callRoute("PUT /artists/:mbid", {
+    params: { mbid: artistMbid }, body: { monitorOption: "all" },
+  });
+  assert.ok(queuedMonitoringTasks().length > 0);
+  await callRoute("PUT /artists/:mbid", {
+    params: { mbid: artistMbid }, body: { monitorOption: "none" },
+  });
+  await runQueuedMonitoringTasks();
+  assert.deepEqual(queuedAlbumMbids(), []);
+});
+
+test("an artist disabled during metadata lookup does not acquire albums", async () => {
+  await addAurralArtist("none");
+  const started = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  metadataState.albumGate = { started: started.resolve, release: release.promise };
+
+  const monitoring = await callRoute("PUT /artists/:mbid", {
+    params: { mbid: artistMbid }, body: { monitorOption: "all" },
+  });
+  assert.equal(monitoring.statusCode, 200);
+  const task = queuedMonitoringTasks()[0];
+  clearMonitoringTasks();
+  const acquisition = processSystemTask(task);
+  await started.promise;
+  try {
+    const disabled = await callRoute("PUT /artists/:mbid", {
+      params: { mbid: artistMbid }, body: { monitorOption: "none" },
+    });
+    assert.equal(disabled.statusCode, 200);
+  } finally {
+    release.resolve();
+    await acquisition;
+    metadataState.albumGate = null;
+  }
+  assert.deepEqual(queuedAlbumMbids(), []);
+});
+
+test("concurrent album disable and enable leaves the last choice active", async () => {
+  await addAurralArtist("all");
+  await runQueuedMonitoringTasks();
+  const album = db.prepare("SELECT id FROM library_albums WHERE mbid = ?").get(releases.firstAlbum.id);
+  const [disabled, enabled] = await Promise.all([
+    callRoute("PUT /albums/aurral/:canonicalId", {
+      params: { canonicalId: String(album.id) }, body: { monitored: false },
+    }),
+    callRoute("PUT /albums/aurral/:canonicalId", {
+      params: { canonicalId: String(album.id) }, body: { monitored: true },
+    }),
+  ]);
+  assert.equal(disabled.statusCode, 200);
+  assert.equal(enabled.statusCode, 200);
+  assert.equal(enabled.body.monitored, true);
+  assert.equal(managementStore.getLibraryManagementEntry("album", album.id).monitorMode, "monitored");
+  assert.ok(downloadTracker.getAll().filter((job) => job.albumMbid === releases.firstAlbum.id).every((job) => job.status === "pending"));
+});
+
 test("an album override survives artist monitoring changes and unmonitoring keeps finished tracks", async () => {
   await addAurralArtist("none");
   await callRoute("PUT /artists/:mbid", { params: { mbid: artistMbid }, body: { monitorOption: "latest" } });
@@ -357,6 +432,7 @@ test("an album override survives artist monitoring changes and unmonitoring keep
   });
   assert.equal(unmonitored.statusCode, 200);
   assert.equal(unmonitored.body.monitored, false);
+  assert.equal(JSON.parse(db.prepare("SELECT metadata_json FROM library_albums WHERE id = ?").get(album.id).metadata_json).monitored, false);
   assert.equal(downloadTracker.getJob(activeJob.id).status, "cancelled");
   assert.equal(downloadTracker.getJob(finishedJob.id).status, "done");
 

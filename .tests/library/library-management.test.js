@@ -75,6 +75,11 @@ test("manager state written by another process is visible without a restart", as
     ).run(now + 1);
     assert.equal(store.getLibraryManagementEntry("album", 12).monitorMode, "unmonitored");
 
+    otherProcess.prepare(
+      "UPDATE library_management SET monitor_mode = 'monitored' WHERE entity_id = 12",
+    ).run();
+    assert.equal(store.getLibraryManagementEntry("album", 12).monitorMode, "monitored");
+
     otherProcess.prepare("DELETE FROM library_management WHERE entity_id = 11").run();
     assert.equal(store.getManagedBy("album", 11), null);
   } finally {

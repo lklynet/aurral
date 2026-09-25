@@ -21,26 +21,14 @@ const selectAllStmt = db.prepare(
 );
 
 const dataVersionStmt = db.prepare("PRAGMA data_version");
-const signatureStmt = db.prepare(
-  "SELECT COUNT(*) AS count, MAX(updated_at) AS updatedAt FROM library_management",
-);
-
 let cache = null;
 let cacheDataVersion = null;
-let cacheSignature = null;
 let changeListeners = [];
-
-function readSignature() {
-  const row = signatureStmt.get();
-  return `${row?.count || 0}:${row?.updatedAt || 0}`;
-}
 
 function refreshExternalChanges() {
   const dataVersion = dataVersionStmt.get()?.data_version;
   if (dataVersion === cacheDataVersion) return;
   cacheDataVersion = dataVersion;
-  const signature = readSignature();
-  if (signature === cacheSignature) return;
   cache = null;
   notifyChanged();
 }
@@ -49,7 +37,6 @@ function getCache() {
   if (cache) refreshExternalChanges();
   if (!cache) {
     cacheDataVersion = dataVersionStmt.get()?.data_version;
-    cacheSignature = readSignature();
     cache = { artist: new Map(), album: new Map() };
     for (const row of selectAllStmt.all()) {
       const map = cache[row.entity_kind];
