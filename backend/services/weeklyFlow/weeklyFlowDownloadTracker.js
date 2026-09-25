@@ -19,6 +19,7 @@ import {
   cancelDownloadJob,
   cancelDownloadJobs,
   getPlaylistDownloadGeneration,
+  isDownloadJobCancelled,
   isPipelinePayloadActive,
 } from "./weeklyFlowDownloadCancellation.js";
 
@@ -448,6 +449,8 @@ export class WeeklyFlowDownloadTracker {
       blocked: 0,
       done: 0,
       failed: 0,
+      cancel_requested: 0,
+      cancelled: 0,
     };
   }
 
@@ -459,6 +462,8 @@ export class WeeklyFlowDownloadTracker {
       blocked: Number(stats?.blocked || 0),
       done: Number(stats?.done || 0),
       failed: Number(stats?.failed || 0),
+      cancel_requested: Number(stats?.cancel_requested || 0),
+      cancelled: Number(stats?.cancelled || 0),
     };
   }
 
@@ -523,11 +528,16 @@ export class WeeklyFlowDownloadTracker {
     const rows = selectAllStmt.all();
     for (const row of rows) {
       const job = rowToJob(row);
-      if (job.status === "downloading" && (
+      if ((job.status === "downloading" || job.status === "cancel_requested") && (
         process.env.AURRAL_BACKGROUND_WORKER_GROUP === "flow" ||
         process.env.NODE_ENV === "test" || process.env.AURRAL_TEST_SERVER === "1"
       )) {
-        job.status = "pending";
+        if (this._isInterruptedCancellation(job)) {
+          job.status = "cancelled";
+          job.completedAt = Date.now();
+        } else {
+          job.status = "pending";
+        }
         job.startedAt = null;
         job.stagingPath = null;
         updateStmt.run(
@@ -1022,7 +1032,7 @@ export class WeeklyFlowDownloadTracker {
 
   setDownloading(id, stagingPath = null) {
     const job = this.jobs.get(id);
-    if (!job) return false;
+    if (!job || this._isCancelledAlbumJob(job)) return false;
     const previousStatus = job.status;
     this.pendingSet.delete(id);
     this.pendingRetrySet.delete(id);
@@ -1039,7 +1049,7 @@ export class WeeklyFlowDownloadTracker {
 
   setPending(id, error = null, options = {}) {
     const job = this.jobs.get(id);
-    if (!job) return false;
+    if (!job || this._isCancelledAlbumJob(job)) return false;
     const previousStatus = job.status;
     const asRetryCycle = options?.asRetryCycle === true;
     this.clearSlskdPipelineState(id);
@@ -1066,7 +1076,7 @@ export class WeeklyFlowDownloadTracker {
 
   deferPendingToBack(id, error = null, options = {}) {
     const job = this.jobs.get(id);
-    if (!job || job.status !== "pending") return false;
+    if (!job || job.status !== "pending" || this._isCancelledAlbumJob(job)) return false;
     const keepRetryTier = options?.keepRetryTier === true;
     const currentlyRetryTier = this.pendingRetrySet.has(id);
     const moveToRetryTier = keepRetryTier ? currentlyRetryTier : false;
@@ -1081,6 +1091,43 @@ export class WeeklyFlowDownloadTracker {
       this.pendingRetrySet.delete(id);
       this.pendingFreshQueue.push(id);
     }
+    return true;
+  }
+
+  _isCancelledAlbumJob(job) {
+    return Boolean(job?.requestGroupId) && isDownloadJobCancelled(job.id);
+  }
+
+  _isInterruptedCancellation(job) {
+    return job.status === "cancel_requested" || this._isCancelledAlbumJob(job);
+  }
+
+  setCancelRequested(id) {
+    const job = this.jobs.get(id);
+    if (!job || job.status !== "downloading") return false;
+    job.status = "cancel_requested";
+    this._update(job);
+    this._applyStatusDelta(job.playlistType, "downloading", job.status);
+    return true;
+  }
+
+  setCancelled(id) {
+    const job = this.jobs.get(id);
+    if (!job || !["pending", "downloading", "cancel_requested"].includes(job.status)) {
+      return false;
+    }
+    const previousStatus = job.status;
+    this.clearSlskdPipelineState(id, { clearDownloadMetadata: false });
+    this.pendingSet.delete(id);
+    this.pendingRetrySet.delete(id);
+    this._removeFromPendingQueues(id);
+    job.status = "cancelled";
+    job.retryCycle = false;
+    job.startedAt = null;
+    job.stagingPath = null;
+    job.completedAt = Date.now();
+    this._update(job);
+    this._applyStatusDelta(job.playlistType, previousStatus, job.status);
     return true;
   }
 
@@ -1110,7 +1157,7 @@ export class WeeklyFlowDownloadTracker {
 
   setFailed(id, error) {
     const job = this.jobs.get(id);
-    if (!job) return false;
+    if (!job || this._isCancelledAlbumJob(job)) return false;
     const previousStatus = job.status;
     this.clearSlskdPipelineState(id, { clearDownloadMetadata: false });
     this.pendingSet.delete(id);
@@ -1127,7 +1174,7 @@ export class WeeklyFlowDownloadTracker {
 
   setBlocked(id, error, stagingPath = null) {
     const job = this.jobs.get(id);
-    if (!job) return false;
+    if (!job || this._isCancelledAlbumJob(job)) return false;
     const previousStatus = job.status;
     this.clearSlskdPipelineState(id, { clearDownloadMetadata: false });
     this.pendingSet.delete(id);
@@ -1220,6 +1267,10 @@ export class WeeklyFlowDownloadTracker {
   resetDownloadingToPending() {
     let count = 0;
     for (const job of this.jobs.values()) {
+      if (job.status === "cancel_requested" || (job.status === "downloading" && this._isCancelledAlbumJob(job))) {
+        this.setCancelled(job.id);
+        continue;
+      }
       if (job.status === "downloading") {
         const previousStatus = job.status;
         this.clearSlskdPipelineState(job.id);
