@@ -21,6 +21,7 @@ const [
   { listHonkerJobs, getHonkerQueueByName },
   { processSystemTask },
   { clearMetadataProviderCaches },
+  { libraryManager },
 ] = await setupIsolatedBackend(
   "aurral-monitoring",
   "backend/config/db-sqlite.js",
@@ -35,6 +36,7 @@ const [
   "backend/services/honkerDb.js",
   "backend/services/systemTaskWorker.js",
   "backend/services/providers/brainzmashProvider.js",
+  "backend/services/libraryManager.js",
 );
 
 const artistMbid = "a1111111-1111-4111-8111-111111111111";
@@ -325,6 +327,18 @@ test("adding an artist reports a metadata outage during monitoring", async () =>
   assert.deepEqual(queuedMonitoringTasks(), []);
   const artist = db.prepare("SELECT id FROM library_artists WHERE mbid = ?").get(artistMbid);
   assert.equal(managementStore.getLibraryManagementEntry("artist", artist.id).monitorMode, "none");
+});
+
+test("ensureArtistMonitored reactivates an Aurral artist set to none", async () => {
+  const added = await addAurralArtist("none");
+  const updated = await libraryManager.ensureArtistMonitored(added.body.artist);
+  assert.equal(updated.monitorOption, "all");
+  assert.equal(managementStore.getLibraryManagementEntry("artist", Number(updated.id)).monitorMode, "all");
+
+  await libraryManager.updateArtist(artistMbid, { monitored: false });
+  const reactivated = await libraryManager.updateArtist(artistMbid, { monitored: true });
+  assert.equal(reactivated.monitorOption, "all");
+  assert.equal(managementStore.getLibraryManagementEntry("artist", Number(updated.id)).monitorMode, "all");
 });
 
 test("artist monitoring skips albums managed by Lidarr", async () => {

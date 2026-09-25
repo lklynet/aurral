@@ -52,6 +52,10 @@ function getCache() {
   return cache;
 }
 
+export function refreshLibraryManagementCache() {
+  getCache();
+}
+
 export function onLibraryManagementChange(listener) {
   if (typeof listener === "function") {
     changeListeners.push(listener);

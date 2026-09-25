@@ -1156,7 +1156,8 @@ export class LibraryManager {
     }
 
     const nextMonitorOption =
-      monitorOption || artist.monitorOption || artist.addOptions?.monitor || "none";
+      [monitorOption, artist.monitorOption, artist.addOptions?.monitor]
+        .find((mode) => mode && mode !== "none") || "all";
     const updated = await this.updateArtist(mbid, {
       monitored: true,
       monitorOption: nextMonitorOption,
@@ -1451,7 +1452,11 @@ export class LibraryManager {
     const canonicalArtist = canonicalArtistFallback(mbid);
     if (updates?.managedBy === "aurral" || canonicalArtist?.managedBy === "aurral") {
       const requestedMode = updates?.monitorOption ??
-        (updates?.monitored === false ? "none" : canonicalArtist?.monitorMode || "all");
+        (updates?.monitored === false
+          ? "none"
+          : canonicalArtist?.monitorMode && canonicalArtist.monitorMode !== "none"
+            ? canonicalArtist.monitorMode
+            : "all");
       return this.setAurralArtistMonitoring(mbid, requestedMode);
     }
     const lidarr = await getLidarrClient();

@@ -8,6 +8,7 @@ import {
   getManagedByMap,
   invalidateLibraryManagementCache,
   onLibraryManagementChange,
+  refreshLibraryManagementCache,
 } from "./libraryManagementStore.js";
 import { selectCanonicalFile } from "./canonicalFileSelector.js";
 
@@ -1064,6 +1065,7 @@ export function getCanonicalLibraryForAlbumReferences({
 }
 
 export function getCanonicalLibrary({ source = null, availableOnly = false, favoriteKeys = null } = {}) {
+  refreshLibraryManagementCache();
   const sourceFilter = normalizeSource(source);
   const cacheKey = `${sourceFilter || "all"}:${availableOnly === true ? "available" : "all"}`;
   const favoriteTargets = Array.isArray(favoriteKeys)

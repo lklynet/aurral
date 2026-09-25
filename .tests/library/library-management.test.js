@@ -19,7 +19,7 @@ const libraryStore = await import("../../backend/services/libraryMediaStore.js")
 const { buildCanonicalLibraryReadModel } = await import(
   "../../backend/services/canonicalLibraryReadAdapter.js"
 );
-const { getCanonicalLibraryPage } = await import(
+const { getCanonicalLibrary, getCanonicalLibraryPage } = await import(
   "../../backend/services/libraryQueryService.js"
 );
 const { computeLibraryRootOverlaps } = await import(
@@ -210,6 +210,34 @@ test("canonical page cache reflects ownership changes without manual invalidatio
   store.clearLibraryManagement("artist", artist.id);
   const cleared = getCanonicalLibraryPage({ kind: "artists", pageSize: 100 });
   assert.equal(cleared.items.find((entry) => String(entry.id) === String(artist.id))?.managedBy, null);
+});
+
+test("canonical library cache reflects ownership changed by another connection", async () => {
+  const { default: Database } = await import("better-sqlite3");
+  const artist = libraryStore.upsertLibraryArtist({
+    identityKey: "mbid:external-cache-artist",
+    mbid: "external-cache-artist",
+    name: "External Cache Artist",
+  });
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: "rg:external-cache-album", artistId: artist.id, title: "External Cache Album",
+  });
+  const track = libraryStore.upsertLibraryTrack({
+    identityKey: "rec:external-cache-track", title: "External Cache Track",
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  store.setLibraryManagement({ entityKind: "artist", entityId: artist.id, managedBy: "aurral", monitorMode: "all" });
+  assert.equal(getCanonicalLibrary().artists.find((entry) => entry.id === artist.id).monitorMode, "all");
+
+  const otherConnection = new Database(db.name);
+  try {
+    otherConnection.prepare(
+      "UPDATE library_management SET monitor_mode = 'none' WHERE entity_kind = 'artist' AND entity_id = ?",
+    ).run(artist.id);
+    assert.equal(getCanonicalLibrary().artists.find((entry) => entry.id === artist.id).monitorMode, "none");
+  } finally {
+    otherConnection.close();
+  }
 });
 
 test("root overlap warnings cover equal and nested roots without rejecting", () => {
