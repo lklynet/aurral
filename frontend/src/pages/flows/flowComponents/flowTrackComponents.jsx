@@ -504,7 +504,7 @@ export function FlowTracksPanel({
         .filter(
           (track) =>
             track?.manualReplacementSearch === true &&
-            ["pending", "downloading"].includes(track.status) &&
+            ["pending", "downloading", "blocked"].includes(track.status) &&
             track.upgradeForJobId,
         )
         .map((track) => String(track.upgradeForJobId)),

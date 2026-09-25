@@ -742,7 +742,7 @@ export class WeeklyFlowDownloadTracker {
     return [...this.jobs.values()].find((job) => {
       if (
         !job.upgradeForJobId ||
-        (job.status !== "pending" && job.status !== "downloading")
+        !["pending", "downloading", "blocked"].includes(job.status)
       ) {
         return false;
       }
