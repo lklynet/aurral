@@ -55,6 +55,34 @@ test("manager state uses canonical ids and round-trips through the store", () =>
   assert.equal(store.getManagedBy("album", 7), null);
 });
 
+test("manager state written by another process is visible without a restart", async () => {
+  const { default: Database } = await import("better-sqlite3");
+  store.setLibraryManagement({ entityKind: "album", entityId: 11, managedBy: "lidarr" });
+  assert.equal(store.getManagedBy("album", 11), "lidarr");
+  assert.equal(store.getManagedBy("album", 12), null);
+
+  const otherProcess = new Database(db.name);
+  try {
+    const now = Date.now() + 1;
+    otherProcess.prepare(
+      `INSERT INTO library_management (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at)
+       VALUES ('album', 12, 'aurral', 'monitored', ?, ?)`,
+    ).run(now, now);
+    assert.equal(store.getManagedBy("album", 12), "aurral");
+
+    otherProcess.prepare(
+      "UPDATE library_management SET monitor_mode = 'unmonitored', updated_at = ? WHERE entity_id = 12",
+    ).run(now + 1);
+    assert.equal(store.getLibraryManagementEntry("album", 12).monitorMode, "unmonitored");
+
+    otherProcess.prepare("DELETE FROM library_management WHERE entity_id = 11").run();
+    assert.equal(store.getManagedBy("album", 11), null);
+  } finally {
+    otherProcess.close();
+    store.clearLibraryManagement("album", 12);
+  }
+});
+
 test("manager state rejects invalid owners, kinds, and ids", () => {
   assert.throws(
     () => store.setLibraryManagement({ entityKind: "track", entityId: 1, managedBy: "aurral" }),
