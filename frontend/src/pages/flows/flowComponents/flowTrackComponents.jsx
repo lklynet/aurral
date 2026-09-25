@@ -200,6 +200,7 @@ function FlowTrackKebabMenu({
   onNavigateAlbum,
   onNavigateArtist,
   canReSearch,
+  canManualReSearch,
   searchAction,
   isReSearching,
   canDelete,
@@ -269,6 +270,16 @@ function FlowTrackKebabMenu({
           onSelect: () => onReSearch?.(track),
         }
       : null,
+    canManualReSearch
+      ? {
+          id: "manual-re-search",
+          label: "Re-search",
+          icon: Search,
+          separatorBefore: true,
+          disabled: isReSearching,
+          onSelect: () => onReSearch?.(track, true),
+        }
+      : null,
     canDelete
       ? {
           id: "remove",
@@ -284,7 +295,9 @@ function FlowTrackKebabMenu({
     ? "add-library"
     : canReSearch
       ? "re-search"
-      : "remove";
+      : canManualReSearch
+        ? "manual-re-search"
+        : "remove";
   return (
     <LibraryItemMenu
       label={trackLabel}
@@ -839,6 +852,10 @@ export function FlowTracksPanel({
                   typeof onReSearchTrack === "function" &&
                   !!track.id &&
                   searchAction !== null;
+                const canManualReSearch =
+                  typeof onReSearchTrack === "function" &&
+                  track.status === "done" &&
+                  track.qualityOwned === true;
                 const isReSearching = reSearchingTrackIds[track.id] === true;
                 const availability = showTrackAvailability ? getTrackAvailability(track) : null;
                 const isDeleting = deletingTrackId === track.id;
@@ -1022,6 +1039,7 @@ export function FlowTracksPanel({
                                 onNavigateAlbum={onNavigateAlbum}
                                 onNavigateArtist={onNavigateArtist}
                                 canReSearch={canReSearch}
+                                canManualReSearch={canManualReSearch}
                                 searchAction={searchAction}
                                 isReSearching={isReSearching}
                                 canDelete={canDelete}

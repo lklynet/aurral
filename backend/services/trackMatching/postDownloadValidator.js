@@ -51,6 +51,7 @@ function normalizeValidationRequest(request, context) {
   return {
     ...buildTrackRequest(source),
     upgradeForJobId: source.upgradeForJobId || null,
+    manualReplacementSearch: source.manualReplacementSearch === true,
   };
 }
 
@@ -166,6 +167,7 @@ export async function validateDownloadedTrackFile({
 
   const quality = validateParsedQuality(parsed, filePath, {
     upgradeForJobId: trackRequest.upgradeForJobId || null,
+    manualReplacementSearch: trackRequest.manualReplacementSearch,
   });
   if (!quality.valid) {
     return {

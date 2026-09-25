@@ -222,6 +222,11 @@ export const enqueueResearchTrack = async (req, res, playlistId, jobId, labelPre
       error: "Track is already being processed",
     });
   }
+  if (downloadTracker.findActiveUpgradeJob(job)) {
+    return res.status(409).json({
+      error: "A search for this track is already running",
+    });
+  }
 
   const result = await weeklyFlowOperationQueue.enqueuePayload({
     kind: "shared-playlist-research-track",

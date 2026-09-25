@@ -216,7 +216,8 @@ function ensurePlaylistDownloadJobsTable(db) {
       quality_bit_depth INTEGER,
       quality_checked_at INTEGER,
       quality_upgrade_checked_at INTEGER,
-      upgrade_for_job_id TEXT
+      upgrade_for_job_id TEXT,
+      manual_replacement_search INTEGER NOT NULL DEFAULT 0
     );
   `);
 }
@@ -516,6 +517,7 @@ function migrateJobsTable(db) {
     ["quality_checked_at", "INTEGER"],
     ["quality_upgrade_checked_at", "INTEGER"],
     ["upgrade_for_job_id", "TEXT"],
+    ["manual_replacement_search", "INTEGER NOT NULL DEFAULT 0"],
   ]) {
     tryAddColumn(
       db,

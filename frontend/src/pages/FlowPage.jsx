@@ -1107,10 +1107,18 @@ function FlowPage({ mode = "all" }) {
     }
   };
 
-  const handleReSearchTrack = async (flowId, track, isSharedPlaylist = false) => {
+  const handleReSearchTrack = async (
+    flowId,
+    track,
+    isSharedPlaylist = false,
+    showTrackAvailability = false,
+    forceReplacementSearch = false,
+  ) => {
     const jobId = track?.id;
     if (!flowId || !jobId || reSearchingTrackIds[jobId]) return;
-    const searchAction = getTrackSearchAction(track, isSharedPlaylist);
+    const searchAction = forceReplacementSearch
+      ? "replacement"
+      : getTrackSearchAction(track, showTrackAvailability);
     if (!searchAction) return;
     setReSearchingTrackIds((prev) => ({
       ...prev,
@@ -1894,9 +1902,23 @@ function FlowPage({ mode = "all" }) {
             deletingTrackId={selectedIsFlow ? undefined : deletingTrackId}
             onReSearchTrack={
               selectedIsFlow
-                ? (track) => handleReSearchTrack(selectedFlow.id, track)
-                : showTrackAvailability
-                  ? (track) => handleReSearchTrack(selectedPlaylist.id, track, true)
+                ? (track, forceReplacement) =>
+                    handleReSearchTrack(
+                      selectedFlow.id,
+                      track,
+                      false,
+                      false,
+                      forceReplacement,
+                    )
+                : selectedPlaylist
+                  ? (track, forceReplacement) =>
+                      handleReSearchTrack(
+                        selectedPlaylist.id,
+                        track,
+                        true,
+                        showTrackAvailability,
+                        forceReplacement,
+                      )
                   : undefined
             }
             onDeleteTrack={

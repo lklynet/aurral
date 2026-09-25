@@ -209,8 +209,11 @@ Imported playlists behave differently from flows when downloads fail:
 - Aurral queues each imported track as a separate worker job.
 - The active download pipeline can try multiple candidates and configured sources.
 - If all options fail, the track stays in the failed state after a restart.
-- Choose **Re-search missing** from the playlist menu to explicitly queue failed tracks again.
-- Only flows can generate replacement tracks.
+- To retry a failed track, right-click it and select **Re-search**.
+- To replace an available Aurral-downloaded recording, right-click it and
+  select **Re-search**. Aurral keeps the current file until a replacement
+  passes validation.
+- Only flows can automatically replace a failed download with a different track.
 
 ## Existing file reuse
 

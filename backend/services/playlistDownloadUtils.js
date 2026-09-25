@@ -84,6 +84,7 @@ export function buildResolvedPlaylistTrack(job, payloadTrack = {}) {
       Array.isArray(job.artistAliases) && job.artistAliases.length
         ? job.artistAliases
         : normalizeStringList(track.artistAliases),
+    manualReplacementSearch: job.manualReplacementSearch === true,
   };
 }
 

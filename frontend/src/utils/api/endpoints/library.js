@@ -330,6 +330,11 @@ export const downloadAlbum = (artistId, albumId, options = {}) =>
 export const downloadTrackToLibrary = (track) =>
   postData("/library/downloads/track", track);
 
+export const reSearchLibraryTrack = (trackId, { albumId } = {}) =>
+  postData(`/library/downloads/tracks/${encodeURIComponent(trackId)}/research`, {
+    albumId,
+  });
+
 export const triggerAlbumSearch = (albumId) =>
   postData("/library/downloads/album/search", {
     albumId,

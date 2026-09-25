@@ -50,6 +50,7 @@ import {
   getLibraryRefreshStatus,
   getRequests,
   downloadTrackToLibrary,
+  reSearchLibraryTrack,
   requestLibraryRefresh,
   updateLibraryArtist,
   updateLibraryFavorites,
@@ -121,6 +122,9 @@ const firstAvailableFile = (track, albumId = null) =>
 
 const hasAurralTrackFile = (track) =>
   (track?.files || []).some((file) => file.source === "aurral");
+
+const hasAvailableAurralTrackFile = (track) =>
+  (track?.files || []).some((file) => file.source === "aurral" && file.available);
 
 const EMPTY_LIBRARY = { artists: [], albums: [], tracks: [], genres: [] };
 
@@ -437,6 +441,7 @@ function LibraryPage() {
   const refreshAttemptRef = useRef(0);
   const [playlistSavingKey, setPlaylistSavingKey] = useState("");
   const [trackDownloadStates, setTrackDownloadStates] = useState({});
+  const [trackResearchStates, setTrackResearchStates] = useState({});
   const [libraryRemoval, setLibraryRemoval] = useState(null);
   const [libraryInfo, setLibraryInfo] = useState(null);
   const [deleteFiles, setDeleteFiles] = useState(false);
@@ -911,6 +916,7 @@ function LibraryPage() {
   const canDeleteArtist = hasPermission("deleteArtist");
   const canDeleteAlbum = hasPermission("deleteAlbum");
   const canDeleteTrack = hasPermission("deleteTrack") || canDeleteAlbum;
+  const canAddTracks = hasPermission("addAlbum");
   const canChangeMonitoring = hasPermission("changeMonitoring");
 
   const openLibraryRemoval = useCallback((kind, entity) => {
@@ -1131,6 +1137,31 @@ function LibraryPage() {
       }
     },
     [getAlbumForTrack, getArtistForAlbum, isPreviewLibrary, showError, showSuccess],
+  );
+
+  const handleReSearchLibraryTrack = useCallback(
+    async (track, album) => {
+      if (!track?.id || !album?.id || isPreviewLibrary || !canAddTracks) return;
+      const key = `${track.id}:${album.id}`;
+      setTrackResearchStates((current) => ({ ...current, [key]: true }));
+      try {
+        await reSearchLibraryTrack(track.id, { albumId: album.id });
+        showSuccess(`Queued a replacement search for ${track.title || "track"}`);
+      } catch (requestError) {
+        showError(
+          requestError.response?.data?.message ||
+            requestError.response?.data?.error ||
+            requestError.message ||
+            "Failed to queue a replacement search",
+        );
+      } finally {
+        setTrackResearchStates((current) => {
+          const { [key]: _, ...rest } = current;
+          return rest;
+        });
+      }
+    },
+    [canAddTracks, isPreviewLibrary, showError, showSuccess],
   );
 
   const albumAvailability = useCallback(
@@ -1743,6 +1774,18 @@ function LibraryPage() {
                     separatorBefore: true,
                     onSelect: () => downloadMissingTrack(track),
                     disabled: isPreviewLibrary || downloadPending,
+                  },
+                ]
+              : []),
+            ...(album?.id && file && hasAvailableAurralTrackFile(track) && canAddTracks
+              ? [
+                  {
+                    id: "research",
+                    label: "Re-search",
+                    icon: RefreshCw,
+                    separatorBefore: true,
+                    disabled: isPreviewLibrary || trackResearchStates[`${track.id}:${album?.id}`] === true,
+                    onSelect: () => handleReSearchLibraryTrack(track, album),
                   },
                 ]
               : []),

@@ -197,7 +197,8 @@ db.exec(`
     quality_bit_depth INTEGER,
     quality_checked_at INTEGER,
     quality_upgrade_checked_at INTEGER,
-    upgrade_for_job_id TEXT
+    upgrade_for_job_id TEXT,
+    manual_replacement_search INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS weekly_flow_download_cancellations (
@@ -603,6 +604,7 @@ for (const [name, type] of [
   ["quality_checked_at", "INTEGER"],
   ["quality_upgrade_checked_at", "INTEGER"],
   ["upgrade_for_job_id", "TEXT"],
+  ["manual_replacement_search", "INTEGER NOT NULL DEFAULT 0"],
 ]) {
   if (!tableColumns.includes(name)) {
     tryAddColumn(`ALTER TABLE playlist_download_jobs ADD COLUMN ${name} ${type}`);

@@ -123,6 +123,7 @@ function rowToJob(row) {
     qualityCheckedAt: row.quality_checked_at ?? null,
     qualityUpgradeCheckedAt: row.quality_upgrade_checked_at ?? null,
     upgradeForJobId: row.upgrade_for_job_id || null,
+    manualReplacementSearch: row.manual_replacement_search === 1,
     retryCycle: false,
   };
 }
@@ -163,9 +164,10 @@ const insertStmt = db.prepare(`
     quality_bit_depth,
     quality_checked_at,
     quality_upgrade_checked_at,
-    upgrade_for_job_id
+    upgrade_for_job_id,
+    manual_replacement_search
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const updateStmt = db.prepare(`
@@ -195,7 +197,8 @@ const updateStmt = db.prepare(`
       quality_bit_depth = ?,
       quality_checked_at = ?,
       quality_upgrade_checked_at = ?,
-      upgrade_for_job_id = ?
+      upgrade_for_job_id = ?,
+      manual_replacement_search = ?
   WHERE id = ?
 `);
 
@@ -282,9 +285,13 @@ function buildPipelinePayload(job) {
     },
     attempt: 0,
     destination: buildAurralTrackDestination(playlistId, artistDir, albumDir, { ephemeral }),
-    upgrade: Boolean(job.upgradeForJobId),
+    upgrade: Boolean(job.upgradeForJobId) && !job.manualReplacementSearch,
     upgradeForJobId: job.upgradeForJobId || null,
-    allowedSources: job.upgradeForJobId ? ["slskd", "usenet", "deemix"] : null,
+    manualReplacementSearch: job.manualReplacementSearch === true,
+    allowedSources:
+      job.upgradeForJobId && !job.manualReplacementSearch
+        ? ["slskd", "usenet", "deemix"]
+        : null,
   };
 }
 
@@ -547,6 +554,7 @@ export class WeeklyFlowDownloadTracker {
           job.qualityCheckedAt ?? null,
           job.qualityUpgradeCheckedAt ?? null,
           job.upgradeForJobId ?? null,
+          job.manualReplacementSearch ? 1 : 0,
           job.id,
         );
       }
@@ -555,7 +563,9 @@ export class WeeklyFlowDownloadTracker {
     if (process.env.AURRAL_BACKGROUND_WORKER_GROUP === "flow" ||
         process.env.NODE_ENV === "test" || process.env.AURRAL_TEST_SERVER === "1") {
       for (const job of this.jobs.values()) {
-        if (job.status === "pending" && job.upgradeForJobId) this.removeJob(job.id);
+        if (job.status === "pending" && job.upgradeForJobId && !job.manualReplacementSearch) {
+          this.removeJob(job.id);
+        }
       }
     }
     this._rebuildStatsByPlaylistType();
@@ -600,6 +610,7 @@ export class WeeklyFlowDownloadTracker {
       job.qualityCheckedAt ?? null,
       job.qualityUpgradeCheckedAt ?? null,
       job.upgradeForJobId ?? null,
+      job.manualReplacementSearch ? 1 : 0,
     );
     this._touchRevision();
   }
@@ -632,6 +643,7 @@ export class WeeklyFlowDownloadTracker {
       job.qualityCheckedAt ?? null,
       job.qualityUpgradeCheckedAt ?? null,
       job.upgradeForJobId ?? null,
+      job.manualReplacementSearch ? 1 : 0,
       job.id,
     );
     this._touchRevision();
@@ -724,6 +736,24 @@ export class WeeklyFlowDownloadTracker {
     });
     const job = this.jobs.get(id);
     job.upgradeForJobId = sourceJob.id;
+    this.pendingSet.delete(id);
+    this.pendingRetrySet.delete(id);
+    this._removeFromPendingQueues(id);
+    this._update(job);
+    return id;
+  }
+
+  addReplacementSearchJob(sourceJob) {
+    if (!sourceJob?.id || sourceJob.status !== "done" || !sourceJob.finalPath) return null;
+    if (this.findActiveUpgradeJob(sourceJob)) return null;
+    const playlistId = sourceJob.playlistId || sourceJob.playlistType;
+    const id = this.addJob(sourceJob, "quality-upgrade", {
+      playlistId,
+      playlistGeneration: getPlaylistDownloadGeneration(playlistId),
+    });
+    const job = this.jobs.get(id);
+    job.upgradeForJobId = sourceJob.id;
+    job.manualReplacementSearch = true;
     this.pendingSet.delete(id);
     this.pendingRetrySet.delete(id);
     this._removeFromPendingQueues(id);

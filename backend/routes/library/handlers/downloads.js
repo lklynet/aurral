@@ -9,6 +9,13 @@ import {
 } from "../../../services/albumSearchState.js";
 import { logger } from "../../../services/logger.js";
 import { getCanonicalTrackOwnership } from "../../../services/libraryQueryService.js";
+import { resolveAurralOwnedTrackJob } from "../../../services/libraryTrackResearchService.js";
+import { weeklyFlowOperationQueue } from "../../../services/weeklyFlow/weeklyFlowOperationQueue.js";
+import { downloadTracker } from "../../../services/weeklyFlow/weeklyFlowDownloadTracker.js";
+import {
+  getDownloadSourceNotConfiguredMessage,
+  isAnyDownloadSourceConfigured,
+} from "../../../services/downloadSourceService.js";
 
 const STALE_GRABBED_MS = 15 * 60 * 1000;
 const ACTIVE_STATUS_CACHE_MS = 10 * 1000;
@@ -345,6 +352,49 @@ export const getAllDownloadStatuses = async () =>
   (await getLidarrStatusSnapshot()).statuses;
 
 export function registerDownloads(router) {
+  router.post(
+    "/downloads/tracks/:trackId/research",
+    requireAuth,
+    requirePermission("addAlbum"),
+    async (req, res) => {
+      const trackId = Number(req.params.trackId);
+      const albumId = req.body?.albumId;
+      const sourceJob = resolveAurralOwnedTrackJob({ trackId, albumId });
+      if (!sourceJob) {
+        return res.status(404).json({
+          error: "Track is not an available Aurral-managed library track",
+        });
+      }
+      if (!isAnyDownloadSourceConfigured()) {
+        const message = getDownloadSourceNotConfiguredMessage();
+        return res.status(400).json({ error: message, message });
+      }
+      if (downloadTracker.findActiveUpgradeJob(sourceJob)) {
+        return res.status(409).json({ error: "A search for this track is already running" });
+      }
+
+      try {
+        const result = await weeklyFlowOperationQueue.enqueuePayload({
+          kind: "library-track-research",
+          label: `library-track-research:${trackId}:${albumId || "all"}`,
+          trackId,
+          albumId,
+        });
+        return res.status(202).json({
+          success: true,
+          queued: true,
+          operationId: result.operationId,
+        });
+      } catch (error) {
+        logger.error("library", "Failed to queue track replacement search", error.message);
+        return res.status(500).json({
+          error: "Failed to queue track replacement search",
+          message: error.message,
+        });
+      }
+    },
+  );
+
   router.post("/downloads/track", requireAuth, requirePermission("addAlbum"), async (req, res) => {
     const body = req.body || {};
     const track = {

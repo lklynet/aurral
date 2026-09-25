@@ -24,6 +24,8 @@ import {
   sortJobsForTrackReuse,
 } from "./weeklyFlowFileReuse.js";
 import { downloadTracker } from "./weeklyFlowDownloadTracker.js";
+import { resolveAurralOwnedTrackJob } from "../libraryTrackResearchService.js";
+import { isAurralOwnedPath } from "../qualityProfileService.js";
 import { playlistManager } from "./weeklyFlowPlaylistManager.js";
 import {
   getDownloadSourceNotConfiguredMessage,
@@ -767,6 +769,33 @@ async function researchPlaylistTrack({ playlistId, jobId } = {}) {
     return { alreadyProcessing: true };
   }
   const previousFinalPath = job.finalPath;
+  if (
+    job.status === "done" &&
+    job.managedBy === "aurral" &&
+    isAurralOwnedPath(job.finalPath)
+  ) {
+    const replacementJobId = downloadTracker.addReplacementSearchJob(job);
+    if (!replacementJobId) {
+      return { alreadyProcessing: true };
+    }
+    if (!downloadTracker.enqueueDownloadPipeline(replacementJobId)) {
+      const replacementJob = downloadTracker.getJob(replacementJobId);
+      const { finalizeQualityUpgradeFailure } = await import("../qualityProfileService.js");
+      await finalizeQualityUpgradeFailure(
+        replacementJob,
+        "Could not queue a replacement search",
+      );
+      return { success: false, queueFailed: true };
+    }
+    const replacementJob = downloadTracker.getJob(replacementJobId);
+    recordTrackJobQueued(replacementJob);
+    return {
+      success: true,
+      replacementSearch: true,
+      jobId: replacementJobId,
+      playlistId: safePlaylistId,
+    };
+  }
   let reused = false;
   await withPlaylistMutation(
     safePlaylistId,
@@ -815,6 +844,35 @@ async function researchPlaylistTrack({ playlistId, jobId } = {}) {
     reused,
     jobId: safeJobId,
     playlistId: safePlaylistId,
+  };
+}
+
+async function researchLibraryTrack({ trackId, albumId } = {}) {
+  const sourceJob = resolveAurralOwnedTrackJob({ trackId, albumId });
+  if (!sourceJob) return { missingAurralOwnedTrack: true };
+  if (downloadTracker.findActiveUpgradeJob(sourceJob)) {
+    return { alreadyProcessing: true };
+  }
+
+  const replacementJobId = downloadTracker.addReplacementSearchJob(sourceJob);
+  if (!replacementJobId) return { alreadyProcessing: true };
+  if (!downloadTracker.enqueueDownloadPipeline(replacementJobId)) {
+    const replacementJob = downloadTracker.getJob(replacementJobId);
+    const { finalizeQualityUpgradeFailure } = await import("../qualityProfileService.js");
+    await finalizeQualityUpgradeFailure(
+      replacementJob,
+      "Could not queue a replacement search",
+    );
+    return { success: false, queueFailed: true };
+  }
+
+  const replacementJob = downloadTracker.getJob(replacementJobId);
+  recordTrackJobQueued(replacementJob);
+  return {
+    success: true,
+    replacementSearch: true,
+    jobId: replacementJobId,
+    trackId: Number(trackId),
   };
 }
 
@@ -896,6 +954,8 @@ export async function processWeeklyFlowOperation(payload = {}) {
           return deleteSharedPlaylistTrack(payload);
         case "shared-playlist-research-track":
           return researchPlaylistTrack(payload);
+        case "library-track-research":
+          return researchLibraryTrack(payload);
         case "shared-playlist-delete":
           return deleteSharedPlaylist(payload);
         default:

@@ -57,8 +57,8 @@ function hasEnoughCandidates(aggregated, resolvedTrack) {
 
 // The configured bitrate fixes the tier, so an upgrade that deemix cannot
 // improve on is refused before the download rather than after validation.
-function readUnusableUpgradeTier(upgradeForJobId) {
-  if (!upgradeForJobId) return null;
+function readUnusableUpgradeTier(upgradeForJobId, manualReplacementSearch = false) {
+  if (!upgradeForJobId || manualReplacementSearch) return null;
   const tier = getDeemixClient().getQualityTierId();
   const currentTier = downloadTracker.getJob(upgradeForJobId)?.qualityTier || null;
   if (isQualityUpgrade({ tier }, currentTier, getQualityProfile())) return null;
@@ -89,7 +89,10 @@ async function handleDeemixSearch(payload, helpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
-  const unusableUpgrade = readUnusableUpgradeTier(payload.upgradeForJobId);
+  const unusableUpgrade = readUnusableUpgradeTier(
+    payload.upgradeForJobId,
+    payload.manualReplacementSearch === true,
+  );
   if (unusableUpgrade) {
     return helpers.failOrTryNextSource(payload, job, unusableUpgrade);
   }
@@ -368,7 +371,7 @@ async function handleDeemixFinalize(payload, helpers) {
         });
       });
     const committedFinalPath = await commitImportToPlaylistLibrary(filePath, finalPath, {
-      reuseExisting: true,
+      reuseExisting: !payload.manualReplacementSearch,
     });
     return finalizePipelineJobSuccess({
       downloadTracker,
