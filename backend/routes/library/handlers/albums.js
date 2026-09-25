@@ -249,6 +249,30 @@ export function registerAlbums(router) {
     }
   });
 
+  router.put(
+    "/albums/aurral/:canonicalId",
+    requireAuth,
+    requirePermission("changeMonitoring"),
+    async (req, res) => {
+      try {
+        const result = await libraryManager.setAurralAlbumMonitoring(
+          req.params.canonicalId,
+          { monitored: req.body?.monitored },
+        );
+        if (result?.error) {
+          const { error, statusCode, ...details } = result;
+          return res.status(statusCode || 500).json({ ...details, error });
+        }
+        return res.json(result);
+      } catch (error) {
+        return res.status(500).json({
+          error: "Failed to update album monitoring",
+          message: error.message,
+        });
+      }
+    },
+  );
+
   router.post(
     "/albums/aurral/:canonicalId/cancel",
     requireAuth,

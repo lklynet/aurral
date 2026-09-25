@@ -1794,6 +1794,33 @@ export class LibraryManager {
     };
   }
 
+  async setAurralAlbumMonitoring(canonicalId, { monitored } = {}) {
+    if (typeof monitored !== "boolean") {
+      return { error: "monitored must be true or false", statusCode: 400, code: "invalid_monitored" };
+    }
+    const resolved = this._resolveAurralAlbum(canonicalId);
+    if (resolved.error) return resolved;
+    const { album, mappedAlbum } = resolved;
+    setLibraryManagement({
+      entityKind: "album",
+      entityId: album.id,
+      managedBy: "aurral",
+      monitorMode: monitored ? "monitored" : "unmonitored",
+    });
+    if (monitored) {
+      const result = await this._finishAurralAlbum(album.id);
+      if (result?.error) return result;
+      return { ...result, monitored: true };
+    }
+    const cancellation = await cancelAurralAlbumJobs(album.mbid || album.releaseGroupMbid);
+    return {
+      ...mappedAlbum,
+      monitored: false,
+      ...cancellation,
+      albumStatus: this.getAurralAlbumStatus(album.id),
+    };
+  }
+
   getAurralAlbumStatus(canonicalId) {
     const resolved = this._resolveAurralAlbum(canonicalId);
     if (resolved.error) return resolved;

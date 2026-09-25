@@ -331,3 +331,53 @@ test("artist monitoring skips albums managed by Lidarr", async () => {
   assert.deepEqual(queuedAlbumMbids(), [releases.firstAlbum.id, releases.latestEp.id].sort());
   assert.equal(lidarrCalls.length, 0);
 });
+
+test("an album override survives artist monitoring changes and unmonitoring keeps finished tracks", async () => {
+  await addAurralArtist("none");
+  await callRoute("PUT /artists/:mbid", { params: { mbid: artistMbid }, body: { monitorOption: "latest" } });
+  await runQueuedMonitoringTasks();
+  const albumJobs = () => downloadTracker.getAll().filter((job) => job.albumMbid === releases.latestEp.id);
+  const [finishedJob, activeJob] = albumJobs();
+  downloadTracker.setDone(finishedJob.id, "/aurral/Monitor Artist/Latest EP/01.flac", "Latest EP");
+  const album = db.prepare("SELECT id FROM library_albums WHERE mbid = ?").get(releases.latestEp.id);
+
+  const unmonitored = await callRoute("PUT /albums/aurral/:canonicalId", {
+    params: { canonicalId: String(album.id) },
+    body: { monitored: false },
+  });
+  assert.equal(unmonitored.statusCode, 200);
+  assert.equal(unmonitored.body.monitored, false);
+  assert.equal(downloadTracker.getJob(activeJob.id).status, "cancelled");
+  assert.equal(downloadTracker.getJob(finishedJob.id).status, "done");
+
+  const monitoredArtist = await callRoute("PUT /artists/:mbid", {
+    params: { mbid: artistMbid },
+    body: { monitorOption: "all" },
+  });
+  assert.deepEqual(monitoredArtist.body.monitoring.skipped, [
+    { releaseGroupId: releases.latestEp.id, reason: "unmonitored" },
+  ]);
+  await runQueuedMonitoringTasks();
+  assert.equal(downloadTracker.getJob(activeJob.id).status, "cancelled");
+  assert.equal(albumJobs().length, 2);
+  assert.equal(
+    managementStore.getLibraryManagementEntry("album", album.id).monitorMode,
+    "unmonitored",
+  );
+
+  const remonitored = await callRoute("PUT /albums/aurral/:canonicalId", {
+    params: { canonicalId: String(album.id) },
+    body: { monitored: true },
+  });
+  assert.equal(remonitored.statusCode, 200);
+  assert.equal(remonitored.body.monitored, true);
+  assert.equal(downloadTracker.getJob(activeJob.id).status, "pending");
+  assert.equal(albumJobs().length, 2);
+
+  const invalid = await callRoute("PUT /albums/aurral/:canonicalId", {
+    params: { canonicalId: String(album.id) },
+    body: { monitored: "yes" },
+  });
+  assert.equal(invalid.statusCode, 400);
+  assert.equal(lidarrCalls.length, 0);
+});
