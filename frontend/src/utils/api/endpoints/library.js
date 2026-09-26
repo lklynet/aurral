@@ -65,7 +65,8 @@ export const clearCanonicalLibraryPageCache = () => {
   });
 };
 
-export const requestLibraryRefresh = () => postData("/library/refresh", {});
+export const requestLibraryRefresh = (mode = "quick") =>
+  postData("/library/refresh", { mode });
 
 export const getActiveLibraryRefresh = () => getData("/library/refresh");
 

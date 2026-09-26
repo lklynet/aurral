@@ -7999,6 +7999,24 @@ textarea {
   height: 1rem;
 }
 
+.native-library-header-actions .native-library-item-menu__trigger,
+.native-library-toolbar .native-library-item-menu__trigger {
+  border-color: transparent;
+  background: transparent;
+  opacity: 1;
+}
+
+.native-library-header-actions .native-library-item-menu__trigger:hover,
+.native-library-header-actions .native-library-item-menu__trigger:focus-visible,
+.native-library-header-actions .native-library-item-menu__trigger.is-open,
+.native-library-toolbar .native-library-item-menu__trigger:hover,
+.native-library-toolbar .native-library-item-menu__trigger:focus-visible,
+.native-library-toolbar .native-library-item-menu__trigger.is-open {
+  border-color: var(--aurral-border);
+  background: var(--aurral-surface-selected);
+  color: var(--aurral-text);
+}
+
 .native-library-item-menu__panel {
   position: fixed;
   z-index: 80;
