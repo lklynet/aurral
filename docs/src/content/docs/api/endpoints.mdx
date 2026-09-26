@@ -85,7 +85,7 @@ instance API key for WebSocket connections.
 | `POST` | `/api/library/albums/aurral/:canonicalId/cancel` | Cancel queued and active downloads for an Aurral-managed album |
 | `GET` | `/api/library/tracks` | List album tracks |
 | `DELETE` | `/api/library/tracks/:id` | Delete a library track file and prune canonical records when no media remains |
-| `POST` | `/api/library/refresh` | Queue a canonical library scan |
+| `POST` | `/api/library/refresh` | Queue a canonical library scan; `mode` is `quick` (default) or `full` to re-read every file |
 | `GET` | `/api/library/refresh/:jobId` | Read canonical library scan status |
 | `GET` | `/api/library/canonical` | Read a bounded canonical page; provide a supported `kind` and `pageSize` (1-100) |
 | `GET` | `/api/library/favorites` | Read the current user's library favorites |
