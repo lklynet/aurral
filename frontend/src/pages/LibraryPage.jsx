@@ -13,6 +13,7 @@ import {
   Info,
   List,
   ListFilter,
+  MoreVertical,
   Pause,
   Play,
   Radio,
@@ -550,7 +551,12 @@ function LibraryPage() {
     <LibraryItemMenu
       label="Library refresh"
       triggerLabel={refreshing ? "Refreshing library…" : "Refresh library"}
-      triggerIcon={refreshing ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
+      triggerIcon={
+        <>
+          {refreshing ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
+          <MoreVertical aria-hidden="true" />
+        </>
+      }
       items={[
         {
           id: "quick",
