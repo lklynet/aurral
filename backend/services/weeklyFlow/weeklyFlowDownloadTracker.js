@@ -300,7 +300,8 @@ function buildPipelinePayload(job) {
 }
 
 export class WeeklyFlowDownloadTracker {
-  constructor() {
+  constructor({ enqueuePipeline = enqueuePipelineJob } = {}) {
+    this.enqueuePipeline = enqueuePipeline;
     this.jobs = new Map();
     this.statsByPlaylistType = new Map();
     this.globalStats = this._emptyStats();
@@ -448,7 +449,6 @@ export class WeeklyFlowDownloadTracker {
     if (!candidate?.raw || !["slskd", "usenet", "deemix", "ytdlp"].includes(normalizedSource)) {
       return false;
     }
-    if (!this.setPending(jobId, "Manual download queued", { asRetryCycle: false })) return false;
     const payload = {
       ...buildPipelinePayload(job),
       phase: "download",
@@ -459,9 +459,19 @@ export class WeeklyFlowDownloadTracker {
       manualSelection: true,
       manualDownloadClient: downloadClient || null,
     };
-    enqueuePipelineJob(payload);
+    if (!this.setPending(jobId, "Manual download queued", { asRetryCycle: false })) return false;
+    // Reserve the job before publishing it so automatic dispatch cannot claim it
+    // during the queue handoff.
     this.markSlskdDispatched(jobId);
-    return true;
+    try {
+      this.enqueuePipeline(payload);
+      return true;
+    } catch {
+      // Preserve the manual workflow on failure: the result session remains
+      // available and the job cannot fall through to automatic selection.
+      this.setFailed(jobId, "Manual download could not be queued");
+      return false;
+    }
   }
 
   _emptyStats() {

@@ -106,6 +106,24 @@ test("manual selection queues only the exact selected candidate", async () => {
   assert.deepEqual(queued.payload.candidates, [candidate]);
 });
 
+test("failed manual queue handoff keeps the job failed and available to retry", () => {
+  const tracker = new WeeklyFlowDownloadTracker({
+    enqueuePipeline: () => { throw new Error("queue unavailable"); },
+  });
+  const jobId = tracker.addJob({ artistName: "An Artist", trackName: "A Song" }, "manual-test");
+  tracker.setFailed(jobId, "Automatic search found nothing");
+
+  const queued = tracker.enqueueManualSelection(jobId, {
+    source: "deemix",
+    candidate: { raw: { id: "chosen" } },
+  });
+
+  assert.equal(queued, false);
+  assert.equal(tracker.getJob(jobId).status, "failed");
+  assert.equal(tracker.getJob(jobId).error, "Manual download could not be queued");
+  assert.equal(tracker.isSlskdDispatched(jobId), false);
+});
+
 test("manual pipeline failures cannot fall back to another source", () => {
   const next = orchestrator.buildNextSourcePayload({
     manualSelection: true,
