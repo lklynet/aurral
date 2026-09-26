@@ -448,12 +448,14 @@ export async function selectVerifiedDownloadedFile({
           scoreTextMatch(taggedTitle, trackRequest.trackName),
           scoreTextMatch(filename, trackRequest.trackName),
         );
-        const trackNumberScore = expectedTrackNumber > 0 && actualTrackNumber === expectedTrackNumber
-          ? 200
-          : 0;
-        return { entry, index, score: trackNumberScore + titleScore };
+        const trackNumberMatches =
+          expectedTrackNumber > 0 && actualTrackNumber === expectedTrackNumber;
+        return { entry, index, titleScore, trackNumberMatches };
       })
-      .sort((left, right) => right.score - left.score || left.index - right.index)[0]?.entry;
+      .sort((left, right) =>
+        right.titleScore - left.titleScore ||
+        Number(right.trackNumberMatches) - Number(left.trackNumberMatches) ||
+        left.index - right.index)[0]?.entry;
     if (selected) {
       const validation = await validateDownloadedTrackFile({
         request: trackRequest,

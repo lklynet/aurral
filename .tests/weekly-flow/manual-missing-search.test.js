@@ -224,3 +224,29 @@ test("manual Usenet releases choose the requested file without rejecting the sel
   assert.equal(selected.filePath, "02 Expected Song.mp3");
   assert.equal(selected.validation.valid, true);
 });
+
+test("manual Usenet file selection prefers title evidence over a coincidental track number", async () => {
+  const parsedByPath = new Map([
+    ["02 Unrelated Song.mp3", {
+      common: { title: "Unrelated Song", track: { no: 2 } },
+      format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 180 },
+    }],
+    ["Expected Song.mp3", {
+      common: { title: "Expected Song", track: { no: 7 } },
+      format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 200 },
+    }],
+  ]);
+  const selected = await postDownloadValidator.selectVerifiedDownloadedFile({
+    request: { artistName: "Expected Artist", trackName: "Expected Song", trackNumber: 2 },
+    filePaths: [...parsedByPath.keys()],
+    candidate: { raw: { release: { title: "Selected Album" } } },
+    source: "usenet",
+    options: {
+      manualSelection: true,
+      parseFile: async (filePath) => parsedByPath.get(filePath),
+    },
+  });
+
+  assert.equal(selected.filePath, "Expected Song.mp3");
+  assert.equal(selected.validation.valid, true);
+});
