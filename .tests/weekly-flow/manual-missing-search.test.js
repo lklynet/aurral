@@ -7,7 +7,7 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps }, trackerModule, searchService, orchestrator, qualityService, orchestratorWorker] = await setupIsolatedBackend(
+const [isolatedState, { db }, { dbOps }, trackerModule, searchService, orchestrator, qualityService, orchestratorWorker, postDownloadValidator] = await setupIsolatedBackend(
   "manual-missing-search",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
@@ -16,6 +16,7 @@ const [isolatedState, { db }, { dbOps }, trackerModule, searchService, orchestra
   "backend/services/slskdOrchestrator.js",
   "backend/services/qualityProfileService.js",
   "backend/services/slskdOrchestratorWorker.js",
+  "backend/services/trackMatching/postDownloadValidator.js",
 );
 
 const { WeeklyFlowDownloadTracker } = trackerModule;
@@ -144,4 +145,54 @@ test("manual selection overrides the automatic quality floor but still requires 
     qualityService.validateParsedQuality({ format: {} }, "track.bin", { manualSelection: true }).valid,
     false,
   );
+});
+
+test("manual selection trusts the chosen track identity after technical audio checks", async () => {
+  const parsed = {
+    common: { title: "Completely Different Title", artist: "Different Artist" },
+    format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 180 },
+  };
+  const validation = await postDownloadValidator.validateDownloadedTrackFile({
+    request: { artistName: "Expected Artist", trackName: "Expected Song", durationMs: 240000 },
+    candidate: { raw: { id: "manually-selected" } },
+    filePath: "selected.mp3",
+    source: "deemix",
+    options: { manualSelection: true, parseFile: async () => parsed },
+  });
+  assert.equal(validation.valid, true);
+  assert.equal(validation.decision, postDownloadValidator.POST_DOWNLOAD_DECISIONS.VERIFIED);
+  assert.equal(validation.manualSelection, true);
+
+  const unreadable = await postDownloadValidator.validateDownloadedTrackFile({
+    request: { artistName: "Expected Artist", trackName: "Expected Song" },
+    filePath: "broken.mp3",
+    source: "deemix",
+    options: { manualSelection: true, parseFile: async () => { throw new Error("broken"); } },
+  });
+  assert.equal(unreadable.valid, false);
+});
+
+test("manual Usenet releases choose the requested file without rejecting the selected release", async () => {
+  const parsedByPath = new Map([
+    ["01 Other Song.mp3", {
+      common: { title: "Other Song", track: { no: 1 } },
+      format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 180 },
+    }],
+    ["02 Expected Song.mp3", {
+      common: { title: "Expected Song", track: { no: 2 } },
+      format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 200 },
+    }],
+  ]);
+  const selected = await postDownloadValidator.selectVerifiedDownloadedFile({
+    request: { artistName: "Expected Artist", trackName: "Expected Song", trackNumber: 2 },
+    filePaths: [...parsedByPath.keys()],
+    candidate: { raw: { release: { title: "Selected Album" } } },
+    source: "usenet",
+    options: {
+      manualSelection: true,
+      parseFile: async (filePath) => parsedByPath.get(filePath),
+    },
+  });
+  assert.equal(selected.filePath, "02 Expected Song.mp3");
+  assert.equal(selected.validation.valid, true);
 });
