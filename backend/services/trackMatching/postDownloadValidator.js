@@ -26,7 +26,7 @@ import { runMatcherOperation } from "./beetsClient.js";
 import {
   toProtocolRequest,
 } from "./decisionEngine.js";
-import { getNormalizedText } from "../providers/brainzmashRanking.js";
+import { getNormalizedText, scoreTextMatch } from "../providers/brainzmashRanking.js";
 import {
   DEFAULT_MATCH_THRESHOLDS,
   MATCHER_UNAVAILABLE_MESSAGE,
@@ -168,6 +168,7 @@ export async function validateDownloadedTrackFile({
   const quality = validateParsedQuality(parsed, filePath, {
     upgradeForJobId: trackRequest.upgradeForJobId || null,
     manualReplacementSearch: trackRequest.manualReplacementSearch,
+    manualSelection: options.manualSelection === true,
   });
   if (!quality.valid) {
     return {
@@ -180,6 +181,26 @@ export async function validateDownloadedTrackFile({
       actual: { tags: actual, durationMs: actualDurationMs },
       actualDurationMs,
       parsedTags: actual,
+    };
+  }
+
+  // A manual search is an explicit identity decision by the user. Keep the
+  // technical audio checks above, but do not let automatic title, artist,
+  // album, duration, variant, or matcher policy overrule that choice.
+  if (options.manualSelection === true) {
+    return {
+      decision: POST_DOWNLOAD_DECISIONS.VERIFIED,
+      valid: true,
+      blocked: false,
+      reason: null,
+      filePath,
+      source,
+      actualDurationMs,
+      quality: quality.quality,
+      strict: false,
+      actual: { tags: actual, durationMs: actualDurationMs },
+      parsedTags: actual,
+      manualSelection: true,
     };
   }
 
@@ -412,6 +433,36 @@ export async function selectVerifiedDownloadedFile({
           }
         }
       }
+    }
+  }
+
+
+  if (options.manualSelection === true && parsedFiles.length > 1) {
+    const expectedTrackNumber = Number(trackRequest.trackNumber || 0);
+    const selected = parsedFiles
+      .map((entry, index) => {
+        const taggedTitle = readTagText(entry.parsed?.common?.title);
+        const filename = getFileBaseName(entry.filePath);
+        const actualTrackNumber = Number(entry.parsed?.common?.track?.no || 0);
+        const titleScore = Math.max(
+          scoreTextMatch(taggedTitle, trackRequest.trackName),
+          scoreTextMatch(filename, trackRequest.trackName),
+        );
+        const trackNumberScore = expectedTrackNumber > 0 && actualTrackNumber === expectedTrackNumber
+          ? 200
+          : 0;
+        return { entry, index, score: trackNumberScore + titleScore };
+      })
+      .sort((left, right) => right.score - left.score || left.index - right.index)[0]?.entry;
+    if (selected) {
+      const validation = await validateDownloadedTrackFile({
+        request: trackRequest,
+        candidate,
+        filePath: selected.filePath,
+        source,
+        options,
+      });
+      if (validation.valid) return { filePath: selected.filePath, validation };
     }
   }
 

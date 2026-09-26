@@ -50,12 +50,12 @@ export function decorateJobQuality(job, profile = getQualityProfile()) {
 export function validateParsedQuality(
   parsed,
   filePath,
-  { upgradeForJobId = null, manualReplacementSearch = false } = {},
+  { upgradeForJobId = null, manualReplacementSearch = false, manualSelection = false } = {},
 ) {
   const profile = getQualityProfile();
   const quality = classifyAudioQuality(parsed, filePath);
   const enabled = profile.enabled.includes(quality.tier);
-  if (!quality.tier || !enabled) {
+  if (!quality.tier || (!enabled && !manualSelection)) {
     return {
       valid: false,
       quality,
