@@ -320,7 +320,6 @@ const sameTrackText = (left, right) => {
 };
 
 const TOP_ARTIST_TRACK_LIMIT = 10;
-const LIBRARY_REFRESH_TIMEOUT_MS = 120000;
 
 const wait = (durationMs) => new Promise((resolve) => setTimeout(resolve, durationMs));
 
@@ -481,8 +480,7 @@ function LibraryPage() {
   }, []);
 
   const pollLibraryRefresh = useCallback(async (jobId, attempt, announceSuccess = false) => {
-    const deadline = Date.now() + LIBRARY_REFRESH_TIMEOUT_MS;
-    while (Date.now() < deadline) {
+    while (true) {
       const status = await getLibraryRefreshStatus(jobId);
       if (refreshAttemptRef.current !== attempt) return;
       if (status.status === "completed") {
@@ -495,7 +493,6 @@ function LibraryPage() {
       }
       await wait(750);
     }
-    throw new Error("Library refresh timed out");
   }, [completeLibraryRefresh, showSuccess]);
 
   useEffect(() => {
