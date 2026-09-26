@@ -170,6 +170,62 @@ test("defaults listening history on and persists a flow opt-out", () => {
   assert.equal(flowPlaylistConfig.getFlow(flow.id)?.recordHistory, false);
 });
 
+test("keeps flow tracks out of the library until a flow opts in", async () => {
+  dbOps.updateSettings({ integrations: { lastfm: { apiKey: "test" } } });
+  const flow = flowPlaylistConfig.createFlow({
+    name: "Library Opt In",
+    size: 20,
+    mix: { discover: 100 },
+    scheduleDays: [1],
+  });
+  assert.equal(flow.showInLibrary, false);
+
+  let updateHandler;
+  registerFlows({
+    post() {},
+    put(path, ...handlers) {
+      if (path === "/flows/:flowId") updateHandler = handlers.at(-1);
+    },
+    delete() {},
+    get() {},
+  });
+  const send = async (body) => {
+    const response = {
+      statusCode: 200,
+      body: null,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(value) {
+        this.body = value;
+        return this;
+      },
+    };
+    await updateHandler(
+      { params: { flowId: flow.id }, body, user: { id: 1, role: "admin" } },
+      response,
+    );
+    return response;
+  };
+
+  const rejected = await send({ showInLibrary: "true" });
+  assert.equal(rejected.statusCode, 400);
+  assert.equal(flowPlaylistConfig.getFlow(flow.id).showInLibrary, false);
+
+  const enabled = await send({ showInLibrary: true });
+  assert.equal(enabled.statusCode, 200);
+  assert.equal(enabled.body.flow.showInLibrary, true);
+  assert.equal(flowPlaylistConfig.getFlow(flow.id).showInLibrary, true);
+
+  const renamed = await send({ name: "Library Opt In Renamed" });
+  assert.equal(renamed.statusCode, 200);
+  assert.equal(flowPlaylistConfig.getFlow(flow.id).showInLibrary, true);
+
+  await send({ showInLibrary: false });
+  assert.equal(flowPlaylistConfig.getFlow(flow.id).showInLibrary, false);
+});
+
 test("rejects non-boolean listening history payloads", () => {
   dbOps.updateSettings({ integrations: { lastfm: { apiKey: "test" } } });
   const payload = {
