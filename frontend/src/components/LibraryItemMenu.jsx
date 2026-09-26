@@ -91,6 +91,8 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     additionalItemsAfter = "",
     renderAdditionalItems,
     onMenuOpen,
+    triggerIcon = <MoreVertical aria-hidden="true" />,
+    triggerLabel = `${label} options`,
   },
   ref,
 ) {
@@ -291,8 +293,8 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
       <TooltipButton
         ref={triggerRef}
         className={`native-library-item-menu__trigger${open ? " is-open" : ""}`}
-        label={`${label} options`}
-        aria-label={`${label} options`}
+        label={triggerLabel}
+        aria-label={triggerLabel}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={(event) => {
@@ -301,7 +303,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
           else openFromTrigger();
         }}
       >
-        <MoreVertical aria-hidden="true" />
+        {triggerIcon}
       </TooltipButton>
       {open && position
         ? createPortal(

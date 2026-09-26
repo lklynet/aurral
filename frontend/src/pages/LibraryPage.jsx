@@ -547,36 +547,27 @@ function LibraryPage() {
   }, [pollLibraryRefresh, refreshing, showError]);
 
   const refreshControls = (
-    <>
-      <TooltipButton
-        className="native-library-icon-button"
-        onClick={() => refreshLibrary("quick")}
-        disabled={refreshing}
-        label={refreshing ? "Refreshing library…" : "Refresh"}
-        aria-label="Refresh library"
-      >
-        {refreshing ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
-      </TooltipButton>
-      <LibraryItemMenu
-        label="Library refresh"
-        items={[
-          {
-            id: "quick",
-            label: "Quick scan",
-            icon: RefreshCw,
-            disabled: refreshing,
-            onSelect: () => void refreshLibrary("quick"),
-          },
-          {
-            id: "full",
-            label: "Full scan (re-read every file)",
-            icon: ScanSearch,
-            disabled: refreshing,
-            onSelect: () => void refreshLibrary("full"),
-          },
-        ]}
-      />
-    </>
+    <LibraryItemMenu
+      label="Library refresh"
+      triggerLabel={refreshing ? "Refreshing library…" : "Refresh library"}
+      triggerIcon={refreshing ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
+      items={[
+        {
+          id: "quick",
+          label: "Quick scan",
+          icon: RefreshCw,
+          disabled: refreshing,
+          onSelect: () => void refreshLibrary("quick"),
+        },
+        {
+          id: "full",
+          label: "Full scan (re-read every file)",
+          icon: ScanSearch,
+          disabled: refreshing,
+          onSelect: () => void refreshLibrary("full"),
+        },
+      ]}
+    />
   );
 
   const section = LIBRARY_VIEW_IDS.has(routeSection) ? routeSection : DEFAULT_LIBRARY_VIEW;

@@ -8017,6 +8017,12 @@ textarea {
   color: var(--aurral-text);
 }
 
+.native-library-header-actions .native-library-item-menu__trigger svg,
+.native-library-toolbar .native-library-item-menu__trigger svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
 .native-library-item-menu__panel {
   position: fixed;
   z-index: 80;
