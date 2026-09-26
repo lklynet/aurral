@@ -51,7 +51,7 @@ test("manual search exposes opaque result ids and binds the selection to its use
   assert.notEqual(response.results[0].id, raw.id);
   assert.equal(JSON.stringify(response).includes(raw.url), false);
   assert.throws(
-    () => searchService.takeManualMissingSelection({
+    () => searchService.getManualMissingSelection({
       sessionId: response.sessionId,
       resultId: response.results[0].id,
       jobId: "job-1",
@@ -60,7 +60,7 @@ test("manual search exposes opaque result ids and binds the selection to its use
     /expired/i,
   );
 
-  const selection = searchService.takeManualMissingSelection({
+  const selection = searchService.getManualMissingSelection({
     sessionId: response.sessionId,
     resultId: response.results[0].id,
     jobId: "job-1",
@@ -68,8 +68,18 @@ test("manual search exposes opaque result ids and binds the selection to its use
   });
   assert.equal(selection.source, "deemix");
   assert.deepEqual(selection.candidate, { raw });
+  assert.deepEqual(
+    searchService.getManualMissingSelection({
+      sessionId: response.sessionId,
+      resultId: response.results[0].id,
+      jobId: "job-1",
+      actorId: "user-1",
+    }),
+    selection,
+  );
+  assert.equal(searchService.consumeManualMissingSelection(response.sessionId), true);
   assert.throws(
-    () => searchService.takeManualMissingSelection({
+    () => searchService.getManualMissingSelection({
       sessionId: response.sessionId,
       resultId: response.results[0].id,
       jobId: "job-1",

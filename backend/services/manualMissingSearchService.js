@@ -179,7 +179,7 @@ export function storeManualMissingSearch({ jobId, actorId, sourceOption, query, 
   return { sessionId, source: sourceOption, query, results, expiresInMs: SESSION_TTL_MS };
 }
 
-export function takeManualMissingSelection({ sessionId, resultId, jobId, actorId }) {
+export function getManualMissingSelection({ sessionId, resultId, jobId, actorId }) {
   pruneSessions();
   const session = sessions.get(text(sessionId));
   if (!session || session.jobId !== text(jobId) || session.actorId !== text(actorId)) {
@@ -187,13 +187,16 @@ export function takeManualMissingSelection({ sessionId, resultId, jobId, actorId
   }
   const candidate = session.results.get(text(resultId));
   if (!candidate) throw new Error("That search result is no longer available");
-  sessions.delete(text(sessionId));
   return {
     source: session.source,
     sourceId: session.sourceId,
     downloadClient: session.downloadClient,
     candidate,
   };
+}
+
+export function consumeManualMissingSelection(sessionId) {
+  return sessions.delete(text(sessionId));
 }
 
 export function clearManualMissingSearchSessions() {

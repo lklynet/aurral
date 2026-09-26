@@ -49,8 +49,9 @@ import {
 } from "../../../services/weeklyFlow/weeklyFlowOwnerClient.js";
 import {
   createManualMissingSearch,
+  consumeManualMissingSelection,
+  getManualMissingSelection,
   getManualDownloadSources,
-  takeManualMissingSelection,
 } from "../../../services/manualMissingSearchService.js";
 
 const getAccessiblePlaylistIds = (user) => [
@@ -174,7 +175,7 @@ export function registerJobs(router) {
     const job = getAccessibleMissingJob(req.user, req.params.jobId);
     if (!job) return res.status(404).json({ error: "Missing track not found" });
     try {
-      const selection = takeManualMissingSelection({
+      const selection = getManualMissingSelection({
         sessionId: req.body?.sessionId,
         resultId: req.body?.resultId,
         jobId: job.id,
@@ -190,6 +191,7 @@ export function registerJobs(router) {
           error: "Track is no longer available for manual search",
         });
       }
+      consumeManualMissingSelection(req.body?.sessionId);
       invalidateRequestsCache();
       return res.json({ success: true, jobId: job.id });
     } catch (error) {
