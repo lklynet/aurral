@@ -441,6 +441,29 @@ export class WeeklyFlowDownloadTracker {
     return this.enqueueDownloadPipeline(jobId);
   }
 
+  enqueueManualSelection(jobId, { source, candidate, downloadClient = null } = {}) {
+    const job = this.jobs.get(jobId);
+    const normalizedSource = String(source || "").trim();
+    if (!job || job.status !== "failed" || job.upgradeForJobId) return false;
+    if (!candidate?.raw || !["slskd", "usenet", "deemix", "ytdlp"].includes(normalizedSource)) {
+      return false;
+    }
+    if (!this.setPending(jobId, "Manual download queued", { asRetryCycle: false })) return false;
+    const payload = {
+      ...buildPipelinePayload(job),
+      phase: "download",
+      source: normalizedSource,
+      allowedSources: [normalizedSource],
+      candidates: [candidate],
+      candidateIndex: 0,
+      manualSelection: true,
+      manualDownloadClient: downloadClient || null,
+    };
+    enqueuePipelineJob(payload);
+    this.markSlskdDispatched(jobId);
+    return true;
+  }
+
   _emptyStats() {
     return {
       total: 0,

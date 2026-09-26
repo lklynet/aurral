@@ -9433,6 +9433,107 @@ button.native-library-genre-row:focus-visible {
   line-height: 1.4;
 }
 
+.manual-search-modal {
+  max-width: 48rem;
+}
+
+.manual-search-modal .playlist-modal__body {
+  display: grid;
+  gap: 1rem;
+  max-height: min(38rem, calc(100vh - 12rem));
+  overflow: auto;
+}
+
+.manual-search-modal__controls {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.manual-search-modal__source-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.6rem;
+}
+
+.manual-search-modal__loading,
+.manual-search-modal__empty {
+  margin: 0;
+  padding: 1.25rem 0;
+  color: var(--aurral-text-muted);
+  text-align: center;
+}
+
+.manual-search-results {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.manual-search-results legend {
+  margin-bottom: 0.5rem;
+  color: var(--aurral-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.manual-search-results__list {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.manual-search-result {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.7rem;
+  padding: 0.75rem;
+  border: 1px solid var(--aurral-border);
+  border-radius: calc(var(--aurral-radius) * 0.75);
+  background: var(--aurral-surface);
+  cursor: pointer;
+}
+
+.manual-search-result:hover,
+.manual-search-result.is-selected {
+  border-color: var(--aurral-accent);
+  background: var(--aurral-surface-selected);
+}
+
+.manual-search-result input {
+  margin-top: 0.2rem;
+  accent-color: var(--aurral-accent);
+}
+
+.manual-search-result__content {
+  display: grid;
+  min-width: 0;
+  gap: 0.18rem;
+}
+
+.manual-search-result__content strong,
+.manual-search-result__content span,
+.manual-search-result__content small {
+  overflow-wrap: anywhere;
+}
+
+.manual-search-result__content strong {
+  color: var(--aurral-text);
+  font-size: 0.875rem;
+}
+
+.manual-search-result__content span,
+.manual-search-result__content small {
+  color: var(--aurral-text-muted);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 560px) {
+  .manual-search-modal__source-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .activity-info-modal__row dt {
   color: var(--aurral-text-muted);
 }

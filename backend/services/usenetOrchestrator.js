@@ -44,14 +44,17 @@ const MAX_DOWNLOAD_CANDIDATES = 5;
 const POLL_DELAY_SECONDS = 5;
 const MAX_POLL_ATTEMPTS = 720;
 
-function getUsenetClient() {
+function getUsenetClient(preferredKey = null) {
+  if (["sabnzbd", "nzbget"].includes(preferredKey)) {
+    return getDownloadClient(preferredKey);
+  }
   const sabnzbd = getDownloadClient("sabnzbd");
   if (sabnzbd.isConfigured()) return sabnzbd;
   return getDownloadClient("nzbget");
 }
 
-function getUsenetClientKey() {
-  return getUsenetClient().key;
+function getUsenetClientKey(preferredKey = null) {
+  return getUsenetClient(preferredKey).key;
 }
 
 function getSabnzbdClient() {
@@ -140,8 +143,8 @@ function uniqueResolvedPaths(values, source) {
   return out;
 }
 
-export async function collectDownloadedAudioFiles(historyItem) {
-  const clientKey = getUsenetClientKey();
+export async function collectDownloadedAudioFiles(historyItem, preferredClient = null) {
+  const clientKey = getUsenetClientKey(preferredClient);
   const roots = uniqueResolvedPaths([
     historyItem?.FinalDir,
     historyItem?.DestDir,
@@ -164,7 +167,7 @@ export async function collectDownloadedAudioFiles(historyItem) {
   return uniqueResolvedPaths(files, clientKey);
 }
 
-async function validateDownloadedRelease(audioFilePaths, candidate, resolvedTrack) {
+async function validateDownloadedRelease(audioFilePaths, candidate, resolvedTrack, options = {}) {
   // Post-download identity is decided by the shared engine: downloaded files
   // are assigned to the expected tracklist with beets when one is available
   // and validated individually against the requested track.
@@ -173,6 +176,7 @@ async function validateDownloadedRelease(audioFilePaths, candidate, resolvedTrac
     filePaths: audioFilePaths,
     candidate,
     source: "usenet",
+    options,
   });
 }
 
@@ -286,8 +290,8 @@ async function handleUsenetDownload(payload, helpers) {
     .then(({ recordTrackJobDownloading }) => recordTrackJobDownloading(job))
     .catch((err) => { console.warn(err); });
 
-  const client = getUsenetClient();
-  const clientKey = getUsenetClientKey();
+  const client = getUsenetClient(payload.manualDownloadClient);
+  const clientKey = getUsenetClientKey(payload.manualDownloadClient);
   let submission;
   try {
     submission = await withPipelineCommitLock(payload, async () => {
@@ -341,13 +345,13 @@ async function handleUsenetPoll(payload, helpers) {
   if (job.status === "failed" || job.status === "done") return null;
   const pollAttempts = Number(payload.pollAttempts || 0) + 1;
   if (pollAttempts > MAX_POLL_ATTEMPTS) {
-    if (getUsenetClientKey() === "sabnzbd") {
+    if (getUsenetClientKey(payload.downloadClient || payload.manualDownloadClient) === "sabnzbd") {
       removeSabnzbdItem(payload.nzbId, job.id);
     }
     if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, { nzbId: null, history: null });
     return helpers.failOrTryNextSource(payload, job, "Usenet polling timed out");
   }
-  const client = getUsenetClient();
+  const client = getUsenetClient(payload.downloadClient || payload.manualDownloadClient);
   const historyItem = await client.getHistoryItem(payload.nzbId);
   if (historyItem) {
     const state = classifyHistoryStatus(historyItem);
@@ -361,7 +365,7 @@ async function handleUsenetPoll(payload, helpers) {
       };
     }
     if (state === "failed") {
-      if (getUsenetClientKey() === "sabnzbd") {
+      if (getUsenetClientKey(payload.downloadClient || payload.manualDownloadClient) === "sabnzbd") {
         removeSabnzbdItem(payload.nzbId, job.id);
       }
       if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, { nzbId: null, history: null });
@@ -395,16 +399,17 @@ async function handleUsenetFinalize(payload, helpers) {
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
   const candidate = getPayloadCandidate(payload);
-  const client = getUsenetClient();
+  const client = getUsenetClient(payload.downloadClient || payload.manualDownloadClient);
   const historyItem = payload.history || (await client.getHistoryItem(payload.nzbId));
   const resolvedTrack = {
     ...buildResolvedTrack(job, payload.track),
     upgradeForJobId: payload.upgradeForJobId || null,
   };
   const found = await validateDownloadedRelease(
-    await collectDownloadedAudioFiles(historyItem),
+    await collectDownloadedAudioFiles(historyItem, payload.downloadClient || payload.manualDownloadClient),
     candidate,
     resolvedTrack,
+    { manualSelection: payload.manualSelection === true },
   );
   if (!isPipelinePayloadActive(payload)) {
     if (job.downloadClient === "sabnzbd") removeSabnzbdItem(payload.nzbId, job.id);
@@ -426,7 +431,7 @@ async function handleUsenetFinalize(payload, helpers) {
       (found.validation?.error
         ? MATCHER_UNAVAILABLE_MESSAGE
         : "Usenet download completed, but no matching audio file was found");
-    if (getUsenetClientKey() === "sabnzbd") {
+    if (getUsenetClientKey(payload.downloadClient || payload.manualDownloadClient) === "sabnzbd") {
       removeSabnzbdItem(payload.nzbId, job.id);
     }
     if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, { nzbId: null, history: null });
@@ -450,7 +455,7 @@ async function handleUsenetFinalize(payload, helpers) {
       found.filePath,
       finalPath,
     );
-    if (getUsenetClientKey() === "sabnzbd") {
+    if (getUsenetClientKey(payload.downloadClient || payload.manualDownloadClient) === "sabnzbd") {
       removeSabnzbdItem(payload.nzbId, job.id);
     }
     return finalizePipelineJobSuccess({

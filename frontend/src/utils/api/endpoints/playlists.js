@@ -64,6 +64,22 @@ export const getFlowJobs = (flowId, limit = null, options = {}) => {
 export const getAllFlowJobs = (options = {}) =>
   getData("/playlists/jobs", options);
 
+export const getManualMissingSearchSources = (jobId) =>
+  getData(`/playlists/jobs/${encodeURIComponent(jobId)}/manual-search/sources`);
+
+export const searchMissingTrackManually = (jobId, sourceId) =>
+  postData(
+    `/playlists/jobs/${encodeURIComponent(jobId)}/manual-search`,
+    { sourceId },
+    { timeout: 150_000 },
+  );
+
+export const downloadManualMissingSearchResult = (jobId, sessionId, resultId) =>
+  postData(
+    `/playlists/jobs/${encodeURIComponent(jobId)}/manual-search/select`,
+    { sessionId, resultId },
+  );
+
 export const reSearchAllMissingTracks = () =>
   postData("/playlists/research-missing");
 

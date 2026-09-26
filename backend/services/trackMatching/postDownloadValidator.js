@@ -168,6 +168,7 @@ export async function validateDownloadedTrackFile({
   const quality = validateParsedQuality(parsed, filePath, {
     upgradeForJobId: trackRequest.upgradeForJobId || null,
     manualReplacementSearch: trackRequest.manualReplacementSearch,
+    manualSelection: options.manualSelection === true,
   });
   if (!quality.valid) {
     return {
