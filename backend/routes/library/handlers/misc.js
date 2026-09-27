@@ -386,7 +386,7 @@ export function registerMisc(router) {
         };
       });
 
-      res.set("Cache-Control", "public, max-age=300");
+      res.set("Cache-Control", "private, no-store");
       res.json(withCachedCovers);
     } catch (error) {
       res.status(500).json({

@@ -27,6 +27,7 @@ const { beginLibraryScan, finishLibraryScan } = await import(
 const { processSystemTask } = await import("../../backend/services/systemTaskWorker.js");
 const {
   getLibraryScanQueue,
+  getSystemTaskQueue,
   SCHEDULED_SYSTEM_TASKS,
 } = await import("../../backend/services/honkerDb.js");
 const { createLibraryFileWatcher, resolveLibraryWatchRoots } = await import(
@@ -38,6 +39,16 @@ test("library scans are not scheduled as a recurring background task", () => {
   assert.equal(
     SCHEDULED_SYSTEM_TASKS.some((task) => task.name === "library-index-refresh"),
     false,
+  );
+  assert.deepEqual(
+    SCHEDULED_SYSTEM_TASKS.find((task) => task.name === "lidarr-release-refresh"),
+    {
+      name: "lidarr-release-refresh",
+      queue: "system-task",
+      schedule: "@every 1h",
+      payload: { kind: "lidarr-release-refresh" },
+      priority: -5,
+    },
   );
 });
 
@@ -68,6 +79,10 @@ test("library refresh queues a quick or full scan and exposes its queue status",
   const existingJobId = Number(dbOps.getJSONSetting("pendingLibraryScanJob")?.jobId);
   if (Number.isSafeInteger(existingJobId)) getLibraryScanQueue().cancel(existingJobId);
   clearScheduledLibraryScan();
+  const metadataJobId = getSystemTaskQueue().enqueue(
+    { kind: "lidarr-release-refresh" },
+    { runAt: Math.floor(Date.now() / 1000) + 3600 },
+  );
 
   const routes = new Map();
   registerCanonical({
@@ -140,6 +155,7 @@ test("library refresh queues a quick or full scan and exposes its queue status",
     body.jobId = jobId;
   } finally {
     if (refreshJobId || body?.jobId) getLibraryScanQueue().cancel(refreshJobId || body.jobId);
+    getSystemTaskQueue().cancel(metadataJobId);
     clearScheduledLibraryScan();
     await new Promise((resolve) => setImmediate(resolve));
     await stopLibraryScanWorker();

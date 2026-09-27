@@ -70,6 +70,24 @@ const invalidateLibraryCache = () => {
   invalidateCanonicalLibraryCache();
 };
 
+export async function withLibraryChangeBatch(run) {
+  const parentBatch = libraryScanContext.getStore();
+  const batch = { changed: false };
+  return libraryScanContext.run(batch, async () => {
+    libraryScanDepth += 1;
+    try {
+      return await run();
+    } finally {
+      if (batch.changed && parentBatch) parentBatch.changed = true;
+      libraryScanDepth -= 1;
+      if (libraryScanDepth === 0 && libraryCacheInvalidationPending) {
+        libraryCacheInvalidationPending = false;
+        invalidateCanonicalLibraryCache();
+      }
+    }
+  });
+}
+
 export function buildIdentityKey(prefix, value) {
   const normalized = normalizeText(value);
   if (!normalized) return null;

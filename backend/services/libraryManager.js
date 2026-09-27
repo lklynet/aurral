@@ -52,6 +52,7 @@ import {
   selectAurralReleases,
 } from "./aurralMonitoring.js";
 import { enqueueSystemTaskJob } from "./honkerDb.js";
+import { scheduleLidarrReleaseMetadataRefresh } from "./lidarrReleaseMetadataSync.js";
 const normalizeTypeName = (value) =>
   String(value || "")
     .toLowerCase()
@@ -159,6 +160,7 @@ function throwLibraryError(result) {
 
 function scheduleCanonicalLibraryReconciliation() {
   invalidateCanonicalLibraryCache();
+  scheduleLidarrReleaseMetadataRefresh({ delaySeconds: 15 });
   return scheduleLibraryScan({ includeLidarr: true });
 }
 

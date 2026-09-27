@@ -136,6 +136,10 @@ export const SYSTEM_TASK_LABELS = {
     label: "Lidarr Retry",
     description: "Retries Lidarr library access after a temporary connection problem.",
   },
+  "lidarr-release-refresh": {
+    label: "Lidarr Release Refresh",
+    description: "Refreshes recent and upcoming releases for artists in the Lidarr library.",
+  },
 };
 
 export const HONKER_QUEUE_NAMES = QUEUE_DEFINITIONS.map((definition) => definition.queue);

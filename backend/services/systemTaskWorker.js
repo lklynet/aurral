@@ -70,6 +70,19 @@ export async function processSystemTask(payload = {}, job = null) {
     case "library-index-refresh": {
       return;
     }
+    case "lidarr-release-refresh": {
+      const { refreshLidarrReleaseMetadata } = await import(
+        "./lidarrReleaseMetadataSync.js"
+      );
+      const result = await refreshLidarrReleaseMetadata();
+      if (!result.skipped) {
+        const { websocketService } = await import("./websocketService.js");
+        websocketService.broadcast("library", {
+          type: "lidarr_release_metadata_refreshed",
+        });
+      }
+      return result;
+    }
     case "library-index-bootstrap": {
       const { hasCompletedLibraryScan, scheduleLibraryScan } = await import(
         "./libraryScanWorker.js"

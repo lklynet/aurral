@@ -151,7 +151,10 @@ export async function forwardWorkerBroadcast(message) {
       console.warn("[AppRuntime] Could not refresh discovery state:", error?.message || error);
     }
   }
-  if (message.channel === "library" && message.data?.type === "library_scan_completed") {
+  if (
+    message.channel === "library" &&
+    ["library_scan_completed", "lidarr_release_metadata_refreshed"].includes(message.data?.type)
+  ) {
     const { invalidateCanonicalLibraryCache } = await import("./libraryQueryService.js");
     invalidateCanonicalLibraryCache({ persistedGenres: false });
     const { clearSearchContextCache } = await import("./unifiedSearchService.js");

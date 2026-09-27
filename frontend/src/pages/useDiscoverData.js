@@ -352,6 +352,13 @@ export function useDiscoverData() {
     },
   );
 
+  useWebSocketChannel("library", (msg) => {
+    if (msg.type !== "lidarr_release_metadata_refreshed") return;
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.recentReleases(authUser?.id),
+    });
+  });
+
   useEffect(() => {
     if (!data?.isUpdating && !data?.isEnriching && !data?.playlistsUpdating) {
       return;

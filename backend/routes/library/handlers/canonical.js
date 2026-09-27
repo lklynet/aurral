@@ -20,6 +20,7 @@ import {
   getScheduledLibraryScanJobId,
   scheduleLibraryScan,
 } from "../../../services/libraryScanWorker.js";
+import { scheduleLidarrReleaseMetadataRefresh } from "../../../services/lidarrReleaseMetadataSync.js";
 
 const isFilesystemPathKey = (key) => key.toLowerCase().endsWith("path");
 
@@ -103,6 +104,7 @@ export function registerCanonical(router) {
       return res.status(400).json({ error: "Invalid library refresh mode" });
     }
     const jobId = scheduleLibraryScan({ force: mode === "full" });
+    scheduleLidarrReleaseMetadataRefresh();
     res.status(202).json({
       queued: true,
       jobId,
