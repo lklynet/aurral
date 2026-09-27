@@ -17,13 +17,15 @@ export function useLibraryDestination() {
     queryFn: ({ signal }) => fetchHealth({ signal }),
     staleTime: 30_000,
   });
-  const lidarrConfigured = healthQuery.data?.lidarrConfigured ?? bootstrap?.lidarrConfigured;
+  const lidarrConfigured =
+    healthQuery.data?.lidarrConfigured ?? bootstrap?.lidarrConfigured ?? false;
   const libraryOwner = ownerQuery.data?.storedDefaultLibraryOwner ?? null;
-  const ready = lidarrConfigured !== undefined && !ownerQuery.isPending;
+  const ready = !ownerQuery.isPending &&
+    (!healthQuery.isPending || bootstrap?.lidarrConfigured !== undefined);
 
   return useMemo(
     () => ({
-      ...resolveLibraryDestination({ libraryOwner, lidarrConfigured: lidarrConfigured === true }),
+      ...resolveLibraryDestination({ libraryOwner, lidarrConfigured }),
       ready,
     }),
     [libraryOwner, lidarrConfigured, ready],
