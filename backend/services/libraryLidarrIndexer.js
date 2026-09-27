@@ -250,6 +250,7 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
             librarySource: "lidarr",
             lidarrCatalogPresent: true,
           },
+          metadataOwner: "lidarr",
           syncSearch,
         }));
       }
@@ -296,6 +297,7 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
             librarySource: "lidarr",
             lidarrCatalogPresent: true,
           },
+          metadataOwner: "lidarr",
           syncSearch,
         });
         for (const track of tracksByAlbumId.get(String(album.id)) || []) {

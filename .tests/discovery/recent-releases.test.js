@@ -18,6 +18,11 @@ import {
   upsertLibraryMediaFile,
   upsertLibraryTrack,
 } from "../../backend/services/libraryMediaStore.js";
+import {
+  clearLibraryManagement,
+  getLibraryManagementEntry,
+  setLibraryManagement,
+} from "../../backend/services/libraryManagementStore.js";
 
 const artist = {
   id: 1,
@@ -306,6 +311,115 @@ test("Lidarr release metadata refresh reconciles additions and removals", async 
       ).run(insertedArtist.id);
       db.prepare("DELETE FROM library_artists WHERE id = ?").run(insertedArtist.id);
     }
+  }
+});
+
+test("Lidarr release metadata refresh preserves overlapping Aurral ownership metadata", async () => {
+  const artistMbid = "92929292-9292-4929-8929-929292929292";
+  const albumMbid = "93939393-9393-4939-8939-939393939393";
+  const artist = upsertLibraryArtist({
+    identityKey: `mbid:${artistMbid}`,
+    mbid: artistMbid,
+    name: "Aurral Owned Artist",
+    metadata: {
+      id: artistMbid,
+      librarySource: "aurral",
+      monitored: true,
+      monitor: "all",
+      aurralOnly: "artist-value",
+    },
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: `release-group:${albumMbid}`,
+    mbid: albumMbid,
+    releaseGroupMbid: albumMbid,
+    artistId: artist.id,
+    title: "Aurral Owned Album",
+    releaseDate: "2026-10-03",
+    metadata: {
+      id: albumMbid,
+      librarySource: "aurral",
+      monitored: true,
+      monitor: "monitored",
+      aurralOnly: "album-value",
+    },
+  });
+  setLibraryManagement({
+    entityKind: "artist",
+    entityId: artist.id,
+    managedBy: "aurral",
+    monitorMode: "all",
+  });
+  setLibraryManagement({
+    entityKind: "album",
+    entityId: album.id,
+    managedBy: "aurral",
+    monitorMode: "monitored",
+  });
+  const client = {
+    isConfigured: () => true,
+    isEnabled: () => true,
+    async request() {
+      return [{
+        id: 924,
+        artistName: "Aurral Owned Artist",
+        foreignArtistId: artistMbid,
+        monitored: false,
+        monitor: "none",
+      }];
+    },
+    async getAllAlbums() {
+      return [{
+        id: 925,
+        artistId: 924,
+        title: "Aurral Owned Album",
+        foreignAlbumId: albumMbid,
+        releaseDate: "2026-10-03",
+        monitored: false,
+      }];
+    },
+  };
+
+  try {
+    assert.deepEqual(await refreshLidarrReleaseMetadata({ client }), {
+      skipped: false,
+      artistsSeen: 1,
+      albumsSeen: 1,
+      albumsSkipped: 0,
+      artistsStale: 0,
+      albumsStale: 0,
+    });
+    const artistMetadata = JSON.parse(db.prepare(
+      "SELECT metadata_json FROM library_artists WHERE id = ?",
+    ).get(artist.id).metadata_json);
+    const albumMetadata = JSON.parse(db.prepare(
+      "SELECT metadata_json FROM library_albums WHERE id = ?",
+    ).get(album.id).metadata_json);
+    assert.deepEqual(artistMetadata, {
+      id: artistMbid,
+      librarySource: "aurral",
+      monitored: true,
+      monitor: "all",
+      aurralOnly: "artist-value",
+    });
+    assert.deepEqual(albumMetadata, {
+      id: albumMbid,
+      librarySource: "aurral",
+      monitored: true,
+      monitor: "monitored",
+      aurralOnly: "album-value",
+    });
+    assert.equal(getLibraryManagementEntry("artist", artist.id)?.managedBy, "aurral");
+    assert.equal(getLibraryManagementEntry("album", album.id)?.managedBy, "aurral");
+  } finally {
+    clearLibraryManagement("album", album.id);
+    clearLibraryManagement("artist", artist.id);
+    db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'album' AND entity_id = ?")
+      .run(album.id);
+    db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?")
+      .run(artist.id);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   }
 });
 

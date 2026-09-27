@@ -172,6 +172,7 @@ export async function refreshLidarrReleaseMetadata({
           librarySource: "lidarr",
           lidarrCatalogPresent: true,
         },
+        metadataOwner: "lidarr",
       });
       seenArtistIdentityKeys.add(record.identity_key);
       artistRecords.set(String(artist.id), record);
@@ -216,6 +217,7 @@ export async function refreshLidarrReleaseMetadata({
           librarySource: "lidarr",
           lidarrCatalogPresent: true,
         },
+        metadataOwner: "lidarr",
       });
       seenAlbumIdentityKeys.add(record.identity_key);
       ensureLidarrManagement(

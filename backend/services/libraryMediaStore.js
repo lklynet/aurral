@@ -7,6 +7,7 @@ import {
   syncLibrarySearchArtist,
   syncLibrarySearchTrack,
 } from "./librarySearchIndex.js";
+import { getLibraryManagementEntry } from "./libraryManagementStore.js";
 
 const now = () => Date.now();
 
@@ -33,6 +34,7 @@ const LIDARR_METADATA_KEYS = [
   "qualityProfile",
   "rootFolderPath",
   "statistics",
+  "lidarrCatalogPresent",
 ];
 
 const getLibraryMediaFileStmt = db.prepare(
@@ -56,33 +58,39 @@ const upsertLibraryMediaFileStmt = db.prepare(
      updated_at = excluded.updated_at`,
 );
 
-let libraryScanDepth = 0;
-let libraryCacheInvalidationPending = false;
 const libraryScanContext = new AsyncLocalStorage();
 
 const invalidateLibraryCache = () => {
   const scan = libraryScanContext.getStore();
   if (scan) {
     scan.changed = true;
-    libraryCacheInvalidationPending = true;
     return;
   }
   invalidateCanonicalLibraryCache();
+};
+
+const preserveMetadataForDifferentOwner = (
+  entityKind,
+  existing,
+  metadataText,
+  metadataOwner,
+) => {
+  const owner = normalizeText(metadataOwner).toLowerCase();
+  if (!existing || !owner) return metadataText;
+  const managedBy = getLibraryManagementEntry(entityKind, existing.id)?.managedBy;
+  return managedBy && managedBy !== owner ? existing.metadata_json : metadataText;
 };
 
 export async function withLibraryChangeBatch(run) {
   const parentBatch = libraryScanContext.getStore();
   const batch = { changed: false };
   return libraryScanContext.run(batch, async () => {
-    libraryScanDepth += 1;
     try {
       return await run();
     } finally {
-      if (batch.changed && parentBatch) parentBatch.changed = true;
-      libraryScanDepth -= 1;
-      if (libraryScanDepth === 0 && libraryCacheInvalidationPending) {
-        libraryCacheInvalidationPending = false;
-        invalidateCanonicalLibraryCache();
+      if (batch.changed) {
+        if (parentBatch) parentBatch.changed = true;
+        else invalidateCanonicalLibraryCache();
       }
     }
   });
@@ -138,6 +146,7 @@ export function upsertLibraryArtist({
   name,
   sortName = null,
   metadata = null,
+  metadataOwner = null,
   syncSearch = true,
 }) {
   const timestamp = now();
@@ -145,7 +154,7 @@ export function upsertLibraryArtist({
   const artistName = normalizeText(name);
   const artistMbid = mbid || null;
   const artistSortName = sortName || null;
-  const metadataText = stringify(metadata);
+  const incomingMetadataText = stringify(metadata);
   if (!key || !artistName) throw new Error("Library artist identityKey and name are required");
   let libraryChanged = false;
   const artist = db.transaction(() => {
@@ -219,6 +228,12 @@ export function upsertLibraryArtist({
       }
     }
     const existing = db.prepare("SELECT * FROM library_artists WHERE identity_key = ?").get(key);
+    const metadataText = preserveMetadataForDifferentOwner(
+      "artist",
+      existing,
+      incomingMetadataText,
+      metadataOwner,
+    );
     if (
       existing &&
       (artistMbid == null || artistMbid === existing.mbid) &&
@@ -299,6 +314,7 @@ export function upsertLibraryAlbum({
   albumArtist = null,
   releaseDate = null,
   metadata = null,
+  metadataOwner = null,
   syncSearch = true,
 }) {
   const timestamp = now();
@@ -308,13 +324,19 @@ export function upsertLibraryAlbum({
   const albumReleaseGroupMbid = releaseGroupMbid || null;
   const albumArtistName = albumArtist || null;
   const albumReleaseDate = releaseDate || null;
-  const metadataText = stringify(metadata);
+  const incomingMetadataText = stringify(metadata);
   if (!key || !Number.isSafeInteger(Number(artistId)) || !albumTitle) {
     throw new Error("Library album identityKey, artistId, and title are required");
   }
   let libraryChanged = false;
   const album = db.transaction(() => {
     const existing = db.prepare("SELECT * FROM library_albums WHERE identity_key = ?").get(key);
+    const metadataText = preserveMetadataForDifferentOwner(
+      "album",
+      existing,
+      incomingMetadataText,
+      metadataOwner,
+    );
     if (
       existing &&
       (albumMbid == null || albumMbid === existing.mbid) &&
@@ -590,7 +612,6 @@ export async function withLibraryScan(source, rootPath, run) {
   const parentScan = libraryScanContext.getStore();
   const scan = { changed: false };
   return libraryScanContext.run(scan, async () => {
-    libraryScanDepth += 1;
     let scanId;
     try {
       scanId = beginLibraryScan({ source, rootPath });
@@ -601,11 +622,9 @@ export async function withLibraryScan(source, rootPath, run) {
       if (scanId) finishLibraryScan(scanId, { status: "failed", error: error.message });
       throw error;
     } finally {
-      if (scan.changed && parentScan) parentScan.changed = true;
-      libraryScanDepth -= 1;
-      if (libraryScanDepth === 0 && libraryCacheInvalidationPending) {
-        libraryCacheInvalidationPending = false;
-        invalidateCanonicalLibraryCache();
+      if (scan.changed) {
+        if (parentScan) parentScan.changed = true;
+        else invalidateCanonicalLibraryCache();
       }
     }
   });

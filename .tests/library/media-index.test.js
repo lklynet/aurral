@@ -20,6 +20,7 @@ import {
   upsertLibraryArtist,
   upsertLibraryMediaFile,
   upsertLibraryTrack,
+  withLibraryChangeBatch,
   withLibraryScan,
 } from "../../backend/services/libraryMediaStore.js";
 import {
@@ -80,6 +81,80 @@ test("overlapping scans keep change tracking isolated", async () => {
     releaseFirst?.();
     db.prepare("DELETE FROM library_artists WHERE identity_key = ?").run(identityKey);
     db.prepare("DELETE FROM library_scan_runs WHERE source LIKE 'test-overlap-%'").run();
+  }
+});
+
+test("a completed batch invalidates the cache while an unrelated scan remains active", async () => {
+  const key = `overlapping-batch-cache-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({
+    identityKey: `${key}:artist`,
+    name: "Overlapping Batch Artist",
+    syncSearch: false,
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: `${key}:album`,
+    artistId: artist.id,
+    title: "Overlapping Batch Album",
+    syncSearch: false,
+  });
+  const firstTrack = upsertLibraryTrack({
+    identityKey: `${key}:track:first`,
+    title: "First Before",
+    artistName: artist.name,
+    syncSearch: false,
+  });
+  const secondTrack = upsertLibraryTrack({
+    identityKey: `${key}:track:second`,
+    title: "Second Before",
+    artistName: artist.name,
+    syncSearch: false,
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: firstTrack.id, syncSearch: false });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: secondTrack.id, syncSearch: false });
+  assert.equal(
+    getCanonicalLibrary().tracks.find((track) => track.identityKey === secondTrack.identity_key)?.title,
+    "Second Before",
+  );
+
+  const started = Promise.withResolvers();
+  const hold = Promise.withResolvers();
+  let activeScan;
+  try {
+    activeScan = withLibraryScan("test-overlap-cache", null, async () => {
+      upsertLibraryTrack({
+        identityKey: firstTrack.identity_key,
+        title: "First After",
+        artistName: artist.name,
+        syncSearch: false,
+      });
+      started.resolve();
+      await hold.promise;
+      return { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
+    });
+    await started.promise;
+
+    await withLibraryChangeBatch(async () => {
+      upsertLibraryTrack({
+        identityKey: secondTrack.identity_key,
+        title: "Second After",
+        artistName: artist.name,
+        syncSearch: false,
+      });
+    });
+
+    assert.equal(
+      getCanonicalLibrary().tracks.find((track) => track.identityKey === secondTrack.identity_key)?.title,
+      "Second After",
+    );
+  } finally {
+    hold.resolve();
+    await activeScan?.catch(() => {});
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
+    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(firstTrack.id, secondTrack.id);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    db.prepare("DELETE FROM library_scan_runs WHERE source = 'test-overlap-cache'").run();
+    invalidateCanonicalLibraryCache();
   }
 });
 
