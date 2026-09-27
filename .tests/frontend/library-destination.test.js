@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   getAddToManagerLabel,
+  getLibraryOwnerConflict,
   resolveLibraryDestination,
 } from "../../frontend/src/utils/libraryDestination.js";
 
@@ -41,4 +42,35 @@ test("resolveLibraryDestination falls back when the saved manager is unavailable
 test("add labels name each manager", () => {
   assert.equal(getAddToManagerLabel("aurral"), "Add to Aurral");
   assert.equal(getAddToManagerLabel("lidarr"), "Add to Lidarr");
+});
+
+const conflictError = (data, status = 409) => ({ response: { status, data } });
+
+test("getLibraryOwnerConflict maps album and artist owner conflicts to the current manager", () => {
+  assert.deepEqual(
+    getLibraryOwnerConflict(conflictError({
+      code: "album_owner_conflict",
+      managedBy: "lidarr",
+      availability: { available: false, trackCount: 12, availableTrackCount: 8 },
+    })),
+    { managedBy: "lidarr", label: "Managed by Lidarr", message: "Managed by Lidarr · 8 of 12 tracks" },
+  );
+  assert.deepEqual(
+    getLibraryOwnerConflict(conflictError({ code: "artist_owner_conflict", managedBy: "aurral" })),
+    { managedBy: "aurral", label: "Managed by Aurral", message: "Managed by Aurral" },
+  );
+  assert.equal(
+    getLibraryOwnerConflict(conflictError({
+      code: "album_owner_conflict",
+      conflict: { managedBy: "aurral", availability: { available: true } },
+    }))?.message,
+    "Managed by Aurral · Available",
+  );
+});
+
+test("getLibraryOwnerConflict leaves other failures as errors", () => {
+  assert.equal(getLibraryOwnerConflict(conflictError({ code: "album_owner_conflict", managedBy: "lidarr" }, 500)), null);
+  assert.equal(getLibraryOwnerConflict(conflictError({ code: "invalid_library_manager" })), null);
+  assert.equal(getLibraryOwnerConflict(conflictError({ code: "album_owner_conflict", managedBy: null })), null);
+  assert.equal(getLibraryOwnerConflict(new Error("Network Error")), null);
 });

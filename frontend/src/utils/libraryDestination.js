@@ -27,3 +27,28 @@ export const resolveLibraryDestination = ({ libraryOwner = null, lidarrConfigure
     alternative: available.find((manager) => manager !== primary) ?? null,
   };
 };
+
+const describeAvailability = (availability) => {
+  if (!availability) return null;
+  if (availability.available) return "Available";
+  const trackCount = Number(availability.trackCount || 0);
+  if (trackCount <= 0) return null;
+  return `${Number(availability.availableTrackCount || 0)} of ${trackCount} tracks`;
+};
+
+export const getLibraryOwnerConflict = (error) => {
+  const response = error?.response;
+  const data = response?.data || {};
+  if (response?.status !== 409 || !String(data.code || "").endsWith("_owner_conflict")) {
+    return null;
+  }
+  const managedBy = normalizeLibraryManager(data.managedBy ?? data.conflict?.managedBy);
+  if (!managedBy) return null;
+  const label = getManagedByLabel(managedBy);
+  const availability = describeAvailability(data.availability ?? data.conflict?.availability);
+  return {
+    managedBy,
+    label,
+    message: availability ? `${label} · ${availability}` : label,
+  };
+};
