@@ -84,6 +84,7 @@ export const validateFlowPayload = ({
   relatedArtists,
   scheduleDays,
   recordHistory,
+  showInLibrary,
   yearFrom,
   yearTo,
 } = {}) => {
@@ -111,6 +112,9 @@ export const validateFlowPayload = ({
   }
   if (recordHistory !== undefined && typeof recordHistory !== "boolean") {
     return "recordHistory must be a boolean";
+  }
+  if (showInLibrary !== undefined && typeof showInLibrary !== "boolean") {
+    return "showInLibrary must be a boolean";
   }
   const hasYearFrom = yearFrom != null && String(yearFrom).trim() !== "";
   const hasYearTo = yearTo != null && String(yearTo).trim() !== "";

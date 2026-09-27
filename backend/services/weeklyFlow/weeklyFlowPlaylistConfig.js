@@ -262,6 +262,7 @@ const normalizeFlow = (flow) => {
     ownerUserId: normalizeOwnerUserId(flow?.ownerUserId),
     enabled: flow?.enabled === true,
     recordHistory: flow?.recordHistory !== false,
+    showInLibrary: flow?.showInLibrary === true,
     scheduleDays: normalizeScheduleDays(flow?.scheduleDays),
     scheduleTime: normalizeScheduleTime(flow?.scheduleTime),
     deepDive: flow?.deepDive === true,
@@ -806,6 +807,10 @@ export const flowPlaylistConfig = {
         typeof updates?.recordHistory === "boolean"
           ? updates.recordHistory
           : current.recordHistory,
+      showInLibrary:
+        typeof updates?.showInLibrary === "boolean"
+          ? updates.showInLibrary
+          : current.showInLibrary,
       yearFrom,
       yearTo,
       enabled: current.enabled,

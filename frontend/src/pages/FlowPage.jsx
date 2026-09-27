@@ -228,6 +228,7 @@ function FlowPage({ mode = "all" }) {
   const [updatingSyncIntervalPlaylistId, setUpdatingSyncIntervalPlaylistId] = useState(null);
   const [updatingAvailabilityPlaylistId, setUpdatingAvailabilityPlaylistId] = useState(null);
   const [updatingRecordHistoryId, setUpdatingRecordHistoryId] = useState(null);
+  const [updatingShowInLibraryId, setUpdatingShowInLibraryId] = useState(null);
   const [savingToPlaylistId, setSavingToPlaylistId] = useState(null);
   const [deletingTrackId, setDeletingTrackId] = useState(null);
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
@@ -1100,12 +1101,26 @@ function FlowPage({ mode = "all" }) {
           ),
         }) : current);
       }
-      showSuccess(enabled ? "Listening history enabled" : "Listening history disabled");
+      showSuccess(enabled ? "Scrobbling enabled" : "Scrobbling disabled");
       await fetchStatus();
     } catch (err) {
-      showError(getApiErrorMessage(err, "Failed to update listening history setting"));
+      showError(getApiErrorMessage(err, "Failed to update scrobbling setting"));
     } finally {
       setUpdatingRecordHistoryId(null);
+    }
+  };
+
+  const handleUpdateShowInLibrary = async (flow, enabled) => {
+    if (!flow?.id || updatingShowInLibraryId === flow.id) return;
+    setUpdatingShowInLibraryId(flow.id);
+    try {
+      await updateFlow(flow.id, { showInLibrary: enabled });
+      showSuccess(enabled ? "Shown in library" : "Hidden from library");
+      await fetchStatus();
+    } catch (err) {
+      showError(getApiErrorMessage(err, "Failed to update library setting"));
+    } finally {
+      setUpdatingShowInLibraryId(null);
     }
   };
 
@@ -1657,12 +1672,25 @@ function FlowPage({ mode = "all" }) {
             onClick={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <span className="flow-page__menu-sync-label">Record listening history</span>
+            <span className="flow-page__menu-sync-label">Scrobble tracks</span>
             <PillToggle
               checked={selectedFlow.recordHistory !== false}
               onChange={(event) => handleUpdateRecordHistory(selectedFlow, event.target.checked)}
               disabled={updatingRecordHistoryId === selectedFlow.id}
-              aria-label={`Record listening history ${selectedFlow.recordHistory !== false ? "on" : "off"}`}
+              aria-label={`Scrobble tracks ${selectedFlow.recordHistory !== false ? "on" : "off"}`}
+            />
+          </div>
+          <div
+            className="flow-page__menu-sync-toggle-row"
+            onClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <span className="flow-page__menu-sync-label">Show in library</span>
+            <PillToggle
+              checked={selectedFlow.showInLibrary === true}
+              onChange={(event) => handleUpdateShowInLibrary(selectedFlow, event.target.checked)}
+              disabled={updatingShowInLibraryId === selectedFlow.id}
+              aria-label={`Show in library ${selectedFlow.showInLibrary === true ? "on" : "off"}`}
             />
           </div>
           <div className="flow-page__menu-divider" />
@@ -1825,12 +1853,12 @@ function FlowPage({ mode = "all" }) {
             onClick={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <span className="flow-page__menu-sync-label">Record listening history</span>
+            <span className="flow-page__menu-sync-label">Scrobble tracks</span>
             <PillToggle
               checked={selectedPlaylist.recordHistory !== false}
               onChange={(event) => handleUpdateRecordHistory(selectedPlaylist, event.target.checked)}
               disabled={updatingRecordHistoryId === selectedPlaylist.id}
-              aria-label={`Record listening history ${selectedPlaylist.recordHistory !== false ? "on" : "off"}`}
+              aria-label={`Scrobble tracks ${selectedPlaylist.recordHistory !== false ? "on" : "off"}`}
             />
           </div>
           <div
