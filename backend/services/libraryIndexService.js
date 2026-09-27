@@ -61,12 +61,13 @@ function getLibraryFlowPaths() {
   return [...new Set(rows.map((row) => path.resolve(String(row.final_path))))];
 }
 
-async function syncLibraryFlowFiles(musicRoot, jobMetadataByPath) {
+async function syncLibraryFlowFiles(musicRoot, jobMetadataByPath, force) {
   const flowPaths = getLibraryFlowPaths();
   const scan = await scanMusicRoot({
     rootPath: musicRoot,
     source: "flow",
     filePaths: flowPaths,
+    force,
     metadataEnricher: (_metadata, filePath) => jobMetadataByPath.get(path.resolve(filePath)),
     syncSearch: false,
   });
@@ -164,7 +165,7 @@ export async function scanConfiguredLibrary({
           syncSearch: false,
         });
     if (!targeted) {
-      flow = await syncLibraryFlowFiles(musicRoot, jobMetadataByPath);
+      flow = await syncLibraryFlowFiles(musicRoot, jobMetadataByPath, force);
     }
     if (!targeted || localPaths.length > 0) {
       await canonicalizeAurralArtistNames(jobMetadataByPath, targeted ? localPaths : null);
