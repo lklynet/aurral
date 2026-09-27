@@ -16,7 +16,41 @@ export function LibraryItemSubmenu({
 }) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState("");
+  const [panelTop, setPanelTop] = useState(0);
+  const panelRef = useRef(null);
+  const correctionFrameRef = useRef(null);
   const open = typeof onToggle === "function" ? isOpen : internalOpen;
+
+  const keepPanelInViewport = useCallback(() => {
+    if (correctionFrameRef.current != null) {
+      window.cancelAnimationFrame(correctionFrameRef.current);
+    }
+    correctionFrameRef.current = window.requestAnimationFrame(() => {
+      correctionFrameRef.current = null;
+      const panel = panelRef.current;
+      if (!panel || window.matchMedia("(max-width: 767px)").matches) return;
+      const edge = 8;
+      const rect = panel.getBoundingClientRect();
+      let adjustment = 0;
+      if (rect.top < edge) adjustment = edge - rect.top;
+      if (rect.bottom + adjustment > window.innerHeight - edge) {
+        adjustment -= rect.bottom + adjustment - (window.innerHeight - edge);
+      }
+      if (adjustment) setPanelTop((current) => current + adjustment);
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    setPanelTop(0);
+    keepPanelInViewport();
+  }, [keepPanelInViewport, open]);
+
+  useEffect(() => () => {
+    if (correctionFrameRef.current != null) {
+      window.cancelAnimationFrame(correctionFrameRef.current);
+    }
+  }, []);
 
   const handleAction = async (event, item) => {
     event.stopPropagation();
@@ -32,7 +66,11 @@ export function LibraryItemSubmenu({
   };
 
   return (
-    <div className={`artist-menu-submenu${open ? " is-open" : ""}`}>
+    <div
+      className={`artist-menu-submenu${open ? " is-open" : ""}`}
+      onPointerEnter={keepPanelInViewport}
+      onFocusCapture={keepPanelInViewport}
+    >
       <button
         type="button"
         className="artist-menu-item artist-menu-submenu__trigger"
@@ -53,7 +91,7 @@ export function LibraryItemSubmenu({
           aria-hidden="true"
         />
       </button>
-      <div className="artist-menu-submenu__panel">
+      <div className="artist-menu-submenu__panel" ref={panelRef} style={{ top: panelTop }}>
         {items.map((item) => {
           const ItemIcon = item.icon;
           const isPending = pendingAction === item.id;
@@ -258,6 +296,20 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
         const Icon = item.icon;
         const isPending = pendingAction === item.id;
         const isToggle = typeof item.selected === "boolean";
+        if (Array.isArray(item.submenuItems)) {
+          return (
+            <div key={item.id}>
+              {item.separatorBefore ? <div className="native-library-item-menu__separator" /> : null}
+              <LibraryItemSubmenu
+                label={item.label}
+                icon={Icon}
+                items={item.submenuItems}
+                onClose={closeMenu}
+              />
+              {item.id === additionalItemsAfter && renderAdditionalItems?.({ closeMenu })}
+            </div>
+          );
+        }
         return (
           <div key={item.id}>
             {item.separatorBefore ? <div className="native-library-item-menu__separator" /> : null}

@@ -7,6 +7,26 @@ import {
   failPipelineJob,
 } from "./slskdOrchestrator.js";
 import { isAnyDownloadSourceConfigured } from "./downloadSourceService.js";
+import { logger, safeLogDiagnostic } from "./logger.js";
+
+export async function processOrchestratorJob(payload, dependencies = {}) {
+  const processPayload = dependencies.processPipelinePayload || processPipelinePayload;
+  const continuePayload = dependencies.continuePipeline || continuePipeline;
+  const failPayload = dependencies.failPipelineJob || failPipelineJob;
+  try {
+    const nextPayload = await processPayload(payload);
+    await continuePayload(nextPayload);
+  } catch (error) {
+    if (payload?.manualSelection !== true) throw error;
+    const message = safeLogDiagnostic(error) || "Manual download failed";
+    logger.error("manual-search", "Selected manual download failed", {
+      jobId: payload?.jobId || null,
+      source: payload?.source || null,
+      reason: message,
+    });
+    await failPayload(payload, message);
+  }
+}
 
 const {
   start: startSlskdOrchestratorWorker,
@@ -24,10 +44,7 @@ const {
     enqueuePendingJobsWithoutBatch();
     return true;
   },
-  processJob: async (payload) => {
-    const nextPayload = await processPipelinePayload(payload);
-    await continuePipeline(nextPayload);
-  },
+  processJob: processOrchestratorJob,
   onFinalFailure(job, error) {
     const message = error?.message || String(error);
     console.error("[slskdOrchestratorWorker] pipeline job failed:", {

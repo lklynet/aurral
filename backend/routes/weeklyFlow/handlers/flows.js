@@ -151,6 +151,7 @@ export function registerFlows(router) {
         size,
         deepDive,
         recordHistory,
+        showInLibrary,
         tags,
         relatedArtists,
         scheduleDays,
@@ -169,6 +170,7 @@ export function registerFlows(router) {
         size,
         deepDive,
         recordHistory,
+        showInLibrary,
         tags,
         relatedArtists,
         scheduleDays,
@@ -185,6 +187,9 @@ export function registerFlows(router) {
       );
       if (!updated) {
         return res.status(404).json({ error: "Flow not found" });
+      }
+      if (typeof showInLibrary === "boolean") {
+        playlistManager.scheduleScanLibrary();
       }
       await playlistManager.ensureSmartPlaylists();
       res.json({ success: true, flow: updated });

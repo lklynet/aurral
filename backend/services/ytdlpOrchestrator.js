@@ -222,6 +222,7 @@ async function handleYtdlpFinalize(payload, helpers) {
     source: "ytdlp",
     options: {
       strict: candidate?.evaluation?.decision !== "accept",
+      manualSelection: payload.manualSelection === true,
     },
   });
   if (!isPipelinePayloadActive(payload)) {
