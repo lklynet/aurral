@@ -256,6 +256,20 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
         const Icon = item.icon;
         const isPending = pendingAction === item.id;
         const isToggle = typeof item.selected === "boolean";
+        if (Array.isArray(item.submenuItems)) {
+          return (
+            <div key={item.id}>
+              {item.separatorBefore ? <div className="native-library-item-menu__separator" /> : null}
+              <LibraryItemSubmenu
+                label={item.label}
+                icon={Icon}
+                items={item.submenuItems}
+                onClose={closeMenu}
+              />
+              {item.id === additionalItemsAfter && renderAdditionalItems?.({ closeMenu })}
+            </div>
+          );
+        }
         return (
           <div key={item.id}>
             {item.separatorBefore ? <div className="native-library-item-menu__separator" /> : null}

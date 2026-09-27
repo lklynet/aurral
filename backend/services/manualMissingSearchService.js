@@ -138,7 +138,13 @@ export function getManualDownloadSources() {
   return sources;
 }
 
-export async function createManualMissingSearch({ job, sourceId, actorId }) {
+export async function createManualMissingSearch({
+  job,
+  sourceId,
+  actorId,
+  mode = "missing",
+  playlistId = null,
+}) {
   pruneSessions();
   const sourceOption = getManualDownloadSources().find((entry) => entry.id === text(sourceId));
   if (!sourceOption) throw new Error("That download client is not currently available");
@@ -148,13 +154,23 @@ export async function createManualMissingSearch({ job, sourceId, actorId }) {
   return storeManualMissingSearch({
     jobId: job.id,
     actorId,
+    mode,
+    playlistId,
     sourceOption,
     query,
     rawResults,
   });
 }
 
-export function storeManualMissingSearch({ jobId, actorId, sourceOption, query, rawResults }) {
+export function storeManualMissingSearch({
+  jobId,
+  actorId,
+  mode = "missing",
+  playlistId = null,
+  sourceOption,
+  query,
+  rawResults,
+}) {
   pruneSessions();
   while (sessions.size >= MAX_SESSIONS) {
     sessions.delete(sessions.keys().next().value);
@@ -170,6 +186,8 @@ export function storeManualMissingSearch({ jobId, actorId, sourceOption, query, 
   sessions.set(sessionId, {
     actorId: text(actorId),
     jobId: text(jobId),
+    mode: mode === "replacement" ? "replacement" : "missing",
+    playlistId: text(playlistId),
     source,
     sourceId: sourceOption?.id,
     downloadClient: sourceOption?.downloadClient || null,
@@ -191,6 +209,8 @@ export function getManualMissingSelection({ sessionId, resultId, jobId, actorId 
     source: session.source,
     sourceId: session.sourceId,
     downloadClient: session.downloadClient,
+    mode: session.mode,
+    playlistId: session.playlistId || null,
     candidate,
   };
 }

@@ -67,6 +67,8 @@ test("manual search exposes opaque result ids and binds the selection to its use
     actorId: "user-1",
   });
   assert.equal(selection.source, "deemix");
+  assert.equal(selection.mode, "missing");
+  assert.equal(selection.playlistId, null);
   assert.deepEqual(selection.candidate, { raw });
   assert.deepEqual(
     searchService.getManualMissingSelection({
@@ -122,6 +124,56 @@ test("failed manual queue handoff keeps the job failed and available to retry", 
   assert.equal(tracker.getJob(jobId).status, "failed");
   assert.equal(tracker.getJob(jobId).error, "Manual download could not be queued");
   assert.equal(tracker.isSlskdDispatched(jobId), false);
+});
+
+test("manual replacement queues the exact candidate without changing the current track first", async () => {
+  const tracker = new WeeklyFlowDownloadTracker();
+  const sourceJobId = tracker.addJob({
+    artistName: "An Artist",
+    trackName: "Current Song",
+    managedBy: "aurral",
+  }, "replacement-test");
+  tracker.setDone(sourceJobId, "C:/aurral/current-song.flac", "Current Album");
+  const candidate = { raw: { id: "chosen-replacement" } };
+
+  assert.equal(tracker.enqueueManualReplacementSelection(sourceJobId, {
+    source: "deemix",
+    candidate,
+  }), true);
+  assert.equal(tracker.getJob(sourceJobId).status, "done");
+  assert.equal(tracker.getJob(sourceJobId).finalPath, "C:/aurral/current-song.flac");
+
+  const replacement = tracker.findActiveUpgradeJob(tracker.getJob(sourceJobId));
+  assert.ok(replacement);
+  assert.equal(replacement.manualReplacementSearch, true);
+  const { listHonkerJobs } = await import("../../backend/services/honkerDb.js");
+  const queued = listHonkerJobs("slskd-pipeline")
+    .find((entry) => entry.payload?.jobId === replacement.id);
+  assert.ok(queued);
+  assert.equal(queued.payload.manualSelection, true);
+  assert.deepEqual(queued.payload.allowedSources, ["deemix"]);
+  assert.deepEqual(queued.payload.candidates, [candidate]);
+});
+
+test("failed manual replacement handoff leaves the current track intact", () => {
+  const tracker = new WeeklyFlowDownloadTracker({
+    enqueuePipeline: () => { throw new Error("queue unavailable"); },
+  });
+  const sourceJobId = tracker.addJob({
+    artistName: "An Artist",
+    trackName: "Current Song",
+    managedBy: "aurral",
+  }, "replacement-test");
+  tracker.setDone(sourceJobId, "C:/aurral/current-song.flac", "Current Album");
+
+  assert.equal(tracker.enqueueManualReplacementSelection(sourceJobId, {
+    source: "deemix",
+    candidate: { raw: { id: "chosen-replacement" } },
+  }), false);
+  const sourceJob = tracker.getJob(sourceJobId);
+  assert.equal(sourceJob.status, "done");
+  assert.equal(sourceJob.finalPath, "C:/aurral/current-song.flac");
+  assert.equal(tracker.findActiveUpgradeJob(sourceJob), null);
 });
 
 test("manual pipeline failures cannot fall back to another source", () => {

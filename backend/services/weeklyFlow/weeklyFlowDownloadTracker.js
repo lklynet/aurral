@@ -474,6 +474,39 @@ export class WeeklyFlowDownloadTracker {
     }
   }
 
+  enqueueManualReplacementSelection(
+    jobId,
+    { source, candidate, downloadClient = null } = {},
+  ) {
+    const sourceJob = this.jobs.get(jobId);
+    const normalizedSource = String(source || "").trim();
+    if (!sourceJob || sourceJob.status !== "done" || !sourceJob.finalPath) return false;
+    if (!candidate?.raw || !["slskd", "usenet", "deemix", "ytdlp"].includes(normalizedSource)) {
+      return false;
+    }
+    const replacementJobId = this.addReplacementSearchJob(sourceJob);
+    if (!replacementJobId) return false;
+    const replacementJob = this.jobs.get(replacementJobId);
+    const payload = {
+      ...buildPipelinePayload(replacementJob),
+      phase: "download",
+      source: normalizedSource,
+      allowedSources: [normalizedSource],
+      candidates: [candidate],
+      candidateIndex: 0,
+      manualSelection: true,
+      manualDownloadClient: downloadClient || null,
+    };
+    this.markSlskdDispatched(replacementJobId);
+    try {
+      this.enqueuePipeline(payload);
+      return true;
+    } catch {
+      this.removeJob(replacementJobId);
+      return false;
+    }
+  }
+
   _emptyStats() {
     return {
       total: 0,

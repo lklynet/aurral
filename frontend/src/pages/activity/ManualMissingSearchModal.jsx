@@ -11,7 +11,13 @@ import {
 const errorMessage = (error, fallback) =>
   error?.response?.data?.message || error?.response?.data?.error || error?.message || fallback;
 
-export default function ManualMissingSearchModal({ job, onClose, onQueued }) {
+export default function ManualMissingSearchModal({
+  job,
+  mode = "missing",
+  playlistId = null,
+  onClose,
+  onQueued,
+}) {
   const [sources, setSources] = useState([]);
   const [sourceId, setSourceId] = useState("");
   const [loadingSources, setLoadingSources] = useState(false);
@@ -30,7 +36,7 @@ export default function ManualMissingSearchModal({ job, onClose, onQueued }) {
     setSelectedId("");
     setError("");
     setLoadingSources(true);
-    getManualMissingSearchSources(job.id)
+    getManualMissingSearchSources(job.id, { mode, playlistId })
       .then((data) => {
         if (!active) return;
         const available = Array.isArray(data?.sources) ? data.sources : [];
@@ -44,7 +50,7 @@ export default function ManualMissingSearchModal({ job, onClose, onQueued }) {
         if (active) setLoadingSources(false);
       });
     return () => { active = false; };
-  }, [job?.id]);
+  }, [job?.id, mode, playlistId]);
 
   const selectedResult = useMemo(
     () => search?.results?.find((result) => result.id === selectedId) || null,
@@ -58,7 +64,7 @@ export default function ManualMissingSearchModal({ job, onClose, onQueued }) {
     setSelectedId("");
     setError("");
     try {
-      const result = await searchMissingTrackManually(job.id, sourceId);
+      const result = await searchMissingTrackManually(job.id, sourceId, { mode, playlistId });
       setSearch(result);
     } catch (requestError) {
       setError(errorMessage(requestError, "The selected download client could not be searched"));
@@ -89,16 +95,16 @@ export default function ManualMissingSearchModal({ job, onClose, onQueued }) {
     <ModalShell
       open={Boolean(job)}
       className="manual-search-modal"
-      title="Manual search"
+      title={mode === "replacement" ? "Manual replacement" : "Manual search"}
       description={`${job?.artistName || "Unknown artist"} · ${job?.trackName || "Unknown track"}`}
       onClose={onClose}
       disableClose={submitting}
       footer={
         <>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onClose} disabled={submitting}>
+          <button type="button" className="btn btn-secondary btn-sm manual-search-modal__action" onClick={onClose} disabled={submitting}>
             Cancel
           </button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={queueSelection} disabled={!selectedResult || busy}>
+          <button type="button" className="btn btn-primary btn-sm manual-search-modal__action" onClick={queueSelection} disabled={!selectedResult || busy}>
             {submitting ? <DotLoader size="sm" label={null} /> : <Download className="artist-icon-sm" aria-hidden="true" />}
             Download selected
           </button>
@@ -122,7 +128,7 @@ export default function ManualMissingSearchModal({ job, onClose, onQueued }) {
           >
             {sources.map((source) => <option key={source.id} value={source.id}>{source.label}</option>)}
           </select>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={runSearch} disabled={!sourceId || busy}>
+          <button type="button" className="btn btn-secondary btn-sm manual-search-modal__action" onClick={runSearch} disabled={!sourceId || busy}>
             {searching ? <DotLoader size="sm" label={null} /> : <Search className="artist-icon-sm" aria-hidden="true" />}
             Search
           </button>

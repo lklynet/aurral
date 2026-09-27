@@ -7,6 +7,7 @@ import {
   Pause,
   Shuffle,
   Search,
+  RefreshCw,
   ArrowUp,
   ArrowDown,
   Plus,
@@ -206,6 +207,7 @@ function FlowTrackKebabMenu({
   canDelete,
   isDeleting,
   onReSearch,
+  onManualReSearch,
   onDelete,
   playlistMenuProps = null,
 }) {
@@ -272,12 +274,26 @@ function FlowTrackKebabMenu({
       : null,
     canManualReSearch
       ? {
-          id: "manual-re-search",
+          id: "replacement-search",
           label: "Re-search",
           icon: Search,
           separatorBefore: true,
-          disabled: isReSearching,
-          onSelect: () => onReSearch?.(track, true),
+          submenuItems: [
+            {
+              id: "automatic",
+              label: "Automatic",
+              icon: RefreshCw,
+              disabled: isReSearching,
+              onSelect: () => onReSearch?.(track, true),
+            },
+            {
+              id: "manual",
+              label: "Manual",
+              icon: Search,
+              disabled: isReSearching,
+              onSelect: () => onManualReSearch?.(track),
+            },
+          ],
         }
       : null,
     canDelete
@@ -296,7 +312,7 @@ function FlowTrackKebabMenu({
     : canReSearch
       ? "re-search"
       : canManualReSearch
-        ? "manual-re-search"
+        ? "replacement-search"
         : "remove";
   return (
     <LibraryItemMenu
@@ -447,6 +463,7 @@ export function FlowTracksPanel({
   onNavigateArtist,
   onNavigateAlbum,
   onReSearchTrack,
+  onManualReSearchTrack,
   playbackSource = null,
   showPlaybackControls = true,
   trackTitleLabel = "Song",
@@ -1059,6 +1076,7 @@ export function FlowTracksPanel({
                                 canDelete={canDelete}
                                 isDeleting={isDeleting}
                                 onReSearch={onReSearchTrack}
+                                onManualReSearch={onManualReSearchTrack}
                                 onDelete={onDeleteTrack}
                                 playlistMenuProps={
                                   playlistMenuHandlers?.playlistMenuProps

@@ -37,6 +37,7 @@ import {
   decorateJobQuality,
   classifyQualityJob,
   getQualityProfile,
+  isAurralOwnedPath,
   queueQualityUpgrade,
   runQualityUpgradeCheck,
 } from "../../../services/qualityProfileService.js";
@@ -63,9 +64,36 @@ const getAccessiblePlaylistIds = (user) => [
 
 const getActorId = (user) => String(user?.id || user?.username || "").trim();
 
-function getAccessibleMissingJob(user, jobId) {
+function getManualSearchMode(value) {
+  return String(value || "").trim() === "replacement" ? "replacement" : "missing";
+}
+
+function canAccessJobThroughPlaylist(user, job, playlistId) {
+  const safePlaylistId = String(playlistId || "").trim();
+  if (!safePlaylistId) return filterJobsForUser(user, [job]).length > 0;
+  if (!canAccessPlaylistType(user, safePlaylistId)) return false;
+  if (job.playlistType === safePlaylistId || job.playlistId === safePlaylistId) return true;
+  const sharedPlaylist = flowPlaylistConfig.getSharedPlaylist(safePlaylistId);
+  return sharedPlaylist?.tracks?.some(
+    (track) => String(track?.canonicalJobId || "") === String(job.id || ""),
+  ) === true;
+}
+
+function getAccessibleManualSearchJob(user, jobId, { mode = "missing", playlistId = null } = {}) {
   const job = downloadTracker.getJob(jobId);
-  if (!job || filterJobsForUser(user, [job]).length === 0) return null;
+  if (!job || !canAccessJobThroughPlaylist(user, job, playlistId)) return null;
+  if (mode === "replacement") {
+    if (
+      job.status !== "done" ||
+      job.upgradeForJobId ||
+      job.managedBy !== "aurral" ||
+      !isAurralOwnedPath(job.finalPath) ||
+      downloadTracker.findActiveUpgradeJob(job)
+    ) {
+      return null;
+    }
+    return job;
+  }
   if (job.status !== "failed" || job.upgradeForJobId) return null;
   return job;
 }
@@ -143,23 +171,29 @@ export function registerJobs(router) {
   });
 
   router.get("/jobs/:jobId/manual-search/sources", noCache, (req, res) => {
-    const job = getAccessibleMissingJob(req.user, req.params.jobId);
-    if (!job) return res.status(404).json({ error: "Missing track not found" });
+    const mode = getManualSearchMode(req.query?.mode);
+    const playlistId = req.query?.playlistId;
+    const job = getAccessibleManualSearchJob(req.user, req.params.jobId, { mode, playlistId });
+    if (!job) return res.status(404).json({ error: "Track is not available for manual search" });
     return res.json({ sources: getManualDownloadSources() });
   });
 
   router.post("/jobs/:jobId/manual-search", async (req, res) => {
-    const job = getAccessibleMissingJob(req.user, req.params.jobId);
-    if (!job) return res.status(404).json({ error: "Missing track not found" });
+    const mode = getManualSearchMode(req.body?.mode);
+    const playlistId = req.body?.playlistId;
+    const job = getAccessibleManualSearchJob(req.user, req.params.jobId, { mode, playlistId });
+    if (!job) return res.status(404).json({ error: "Track is not available for manual search" });
     try {
       const result = await createManualMissingSearch({
         job,
         sourceId: req.body?.sourceId,
         actorId: getActorId(req.user),
+        mode,
+        playlistId,
       });
       return res.json(result);
     } catch (error) {
-      logger.warn("manual-search", "Manual missing-track search failed", {
+      logger.warn("manual-search", "Manual track search failed", {
         jobId: job.id,
         sourceId: String(req.body?.sourceId || ""),
         reason: safeLogDiagnostic(error),
@@ -172,20 +206,31 @@ export function registerJobs(router) {
   });
 
   router.post("/jobs/:jobId/manual-search/select", async (req, res) => {
-    const job = getAccessibleMissingJob(req.user, req.params.jobId);
-    if (!job) return res.status(404).json({ error: "Missing track not found" });
     try {
       const selection = getManualMissingSelection({
         sessionId: req.body?.sessionId,
         resultId: req.body?.resultId,
-        jobId: job.id,
+        jobId: req.params.jobId,
         actorId: getActorId(req.user),
       });
+      const job = getAccessibleManualSearchJob(req.user, req.params.jobId, {
+        mode: selection.mode,
+        playlistId: selection.playlistId,
+      });
+      if (!job) {
+        return res.status(409).json({ error: "Track is no longer available for manual search" });
+      }
+      const replacement = selection.mode === "replacement";
       const queued = isFlowOwnerProcess()
-        ? downloadTracker.enqueueManualSelection(job.id, selection)
-        : await requestFlowOwner("enqueueManualMissingSelection", [job.id, selection], {
-          timeoutMs: 30_000,
-        });
+        ? replacement
+          ? downloadTracker.enqueueManualReplacementSelection(job.id, selection)
+          : downloadTracker.enqueueManualSelection(job.id, selection)
+        : await requestFlowOwner(
+          replacement ? "enqueueManualReplacementSelection" : "enqueueManualMissingSelection",
+          [job.id, selection], {
+            timeoutMs: 30_000,
+          },
+        );
       if (!queued) {
         return res.status(409).json({
           error: "Track is no longer available for manual search",

@@ -64,13 +64,19 @@ export const getFlowJobs = (flowId, limit = null, options = {}) => {
 export const getAllFlowJobs = (options = {}) =>
   getData("/playlists/jobs", options);
 
-export const getManualMissingSearchSources = (jobId) =>
-  getData(`/playlists/jobs/${encodeURIComponent(jobId)}/manual-search/sources`);
+export const getManualMissingSearchSources = (jobId, { mode = "missing", playlistId = null } = {}) =>
+  getData(`/playlists/jobs/${encodeURIComponent(jobId)}/manual-search/sources`, {
+    params: { mode, ...(playlistId ? { playlistId } : {}) },
+  });
 
-export const searchMissingTrackManually = (jobId, sourceId) =>
+export const searchMissingTrackManually = (
+  jobId,
+  sourceId,
+  { mode = "missing", playlistId = null } = {},
+) =>
   postData(
     `/playlists/jobs/${encodeURIComponent(jobId)}/manual-search`,
-    { sourceId },
+    { sourceId, mode, ...(playlistId ? { playlistId } : {}) },
     { timeout: 150_000 },
   );
 
