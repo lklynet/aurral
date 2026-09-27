@@ -112,6 +112,8 @@ function Onboarding() {
 
   const handleLidarrMode = (nextSkip) => {
     setError("");
+    lidarrTestVersionRef.current += 1;
+    setTestingLidarr(false);
     lidarrModeChangedRef.current = true;
     setSkipLidarr(nextSkip);
   };
