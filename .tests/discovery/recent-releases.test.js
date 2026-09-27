@@ -560,6 +560,121 @@ test("Lidarr release metadata refresh preserves overlapping Aurral ownership met
   }
 });
 
+test("Lidarr release metadata refresh does not promote Aurral records with colliding provider IDs", async () => {
+  const aurralArtistMbid = "94949494-9494-4949-8949-949494949494";
+  const aurralAlbumMbid = "95959595-9595-4959-8959-959595959595";
+  const lidarrArtistMbid = "96969696-9696-4969-8969-969696969696";
+  const lidarrAlbumMbid = "97979797-9797-4979-8979-979797979797";
+  const lidarrArtistId = 926;
+  const lidarrAlbumId = 927;
+  const aurralArtist = upsertLibraryArtist({
+    identityKey: `mbid:${aurralArtistMbid}`,
+    mbid: aurralArtistMbid,
+    name: "Aurral Numeric Collision Artist",
+    metadata: {
+      id: lidarrArtistId,
+      librarySource: "aurral",
+      aurralOnly: "artist-value",
+    },
+  });
+  const aurralAlbum = upsertLibraryAlbum({
+    identityKey: `release-group:${aurralAlbumMbid}`,
+    mbid: aurralAlbumMbid,
+    releaseGroupMbid: aurralAlbumMbid,
+    artistId: aurralArtist.id,
+    title: "Aurral Numeric Collision Album",
+    metadata: {
+      id: lidarrAlbumId,
+      librarySource: "aurral",
+      aurralOnly: "album-value",
+    },
+  });
+  setLibraryManagement({
+    entityKind: "artist",
+    entityId: aurralArtist.id,
+    managedBy: "aurral",
+    monitorMode: "all",
+  });
+  setLibraryManagement({
+    entityKind: "album",
+    entityId: aurralAlbum.id,
+    managedBy: "aurral",
+    monitorMode: "monitored",
+  });
+  const client = {
+    isConfigured: () => true,
+    isEnabled: () => true,
+    async request(endpoint) {
+      return endpoint === "/artist"
+        ? [{
+            id: lidarrArtistId,
+            artistName: "Lidarr Numeric Collision Artist",
+            foreignArtistId: lidarrArtistMbid,
+            monitored: true,
+          }]
+        : [{
+            id: lidarrAlbumId,
+            artistId: lidarrArtistId,
+            title: "Lidarr Numeric Collision Album",
+            foreignAlbumId: lidarrAlbumMbid,
+            monitored: true,
+          }];
+    },
+  };
+  let lidarrArtist;
+  let lidarrAlbum;
+
+  try {
+    assert.deepEqual(await refreshLidarrReleaseMetadata({ client }), {
+      skipped: false,
+      artistsSeen: 1,
+      albumsSeen: 1,
+      albumsSkipped: 0,
+      artistsStale: 0,
+      albumsStale: 0,
+    });
+    const preservedArtist = db.prepare(
+      "SELECT identity_key, metadata_json FROM library_artists WHERE id = ?",
+    ).get(aurralArtist.id);
+    const preservedAlbum = db.prepare(
+      "SELECT identity_key, metadata_json FROM library_albums WHERE id = ?",
+    ).get(aurralAlbum.id);
+    lidarrArtist = db.prepare(
+      "SELECT * FROM library_artists WHERE identity_key = ?",
+    ).get(`mbid:${lidarrArtistMbid}`);
+    lidarrAlbum = db.prepare(
+      "SELECT * FROM library_albums WHERE identity_key = ?",
+    ).get(`release-group:${lidarrAlbumMbid}`);
+
+    assert.equal(preservedArtist.identity_key, `mbid:${aurralArtistMbid}`);
+    assert.equal(preservedAlbum.identity_key, `release-group:${aurralAlbumMbid}`);
+    assert.equal(JSON.parse(preservedArtist.metadata_json).librarySource, "aurral");
+    assert.equal(JSON.parse(preservedAlbum.metadata_json).librarySource, "aurral");
+    assert.notEqual(lidarrArtist?.id, aurralArtist.id);
+    assert.notEqual(lidarrAlbum?.id, aurralAlbum.id);
+    assert.equal(lidarrAlbum?.artist_id, lidarrArtist?.id);
+    assert.equal(getLibraryManagementEntry("artist", aurralArtist.id)?.managedBy, "aurral");
+    assert.equal(getLibraryManagementEntry("album", aurralAlbum.id)?.managedBy, "aurral");
+    assert.equal(getLibraryManagementEntry("artist", lidarrArtist.id)?.managedBy, "lidarr");
+    assert.equal(getLibraryManagementEntry("album", lidarrAlbum.id)?.managedBy, "lidarr");
+  } finally {
+    const albums = [aurralAlbum.id, lidarrAlbum?.id].filter(Boolean);
+    const artists = [aurralArtist.id, lidarrArtist?.id].filter(Boolean);
+    for (const id of albums) {
+      clearLibraryManagement("album", id);
+      db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'album' AND entity_id = ?")
+        .run(id);
+      db.prepare("DELETE FROM library_albums WHERE id = ?").run(id);
+    }
+    for (const id of artists) {
+      clearLibraryManagement("artist", id);
+      db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?")
+        .run(id);
+      db.prepare("DELETE FROM library_artists WHERE id = ?").run(id);
+    }
+  }
+});
+
 test("canonical recent releases exclude owned albums without loading old albums", async () => {
   const key = `recent-canonical-${process.pid}-${Date.now()}`;
   const canonicalArtist = upsertLibraryArtist({

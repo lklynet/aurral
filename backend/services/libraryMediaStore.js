@@ -221,6 +221,7 @@ export function upsertLibraryArtist({
         const candidates = db.prepare(
           `SELECT * FROM library_artists
            WHERE json_valid(metadata_json)
+             AND json_extract(metadata_json, '$.librarySource') = 'lidarr'
              AND CAST(json_extract(metadata_json, '$.id') AS TEXT) = ?
            ORDER BY id
            LIMIT 2`,
@@ -391,6 +392,7 @@ export function upsertLibraryAlbum({
         const candidates = db.prepare(
           `SELECT * FROM library_albums
            WHERE json_valid(metadata_json)
+             AND json_extract(metadata_json, '$.librarySource') = 'lidarr'
              AND CAST(json_extract(metadata_json, '$.id') AS TEXT) = ?
            ORDER BY id
            LIMIT 2`,
