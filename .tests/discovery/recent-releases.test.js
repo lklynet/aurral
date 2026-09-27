@@ -219,6 +219,25 @@ test("Lidarr release metadata refresh reconciles additions and removals", async 
       JSON.parse(albumAfterMalformedResponse.metadata_json).lidarrCatalogPresent,
       true,
     );
+    lidarrArtists = [null];
+    lidarrAlbums = [];
+    await assert.rejects(
+      () => refreshLidarrReleaseMetadata({ client }),
+      /malformed artist catalogue entry/,
+    );
+    assert.equal(
+      JSON.parse(db.prepare(
+        "SELECT metadata_json FROM library_albums WHERE release_group_mbid = ?",
+      ).get(albumMbid).metadata_json).lidarrCatalogPresent,
+      true,
+    );
+    lidarrArtists = [{
+      id: 914,
+      artistName: "New Lidarr Artist",
+      foreignArtistId: artistMbid,
+      monitored: true,
+      monitor: "future",
+    }];
     lidarrAlbums = [{
       id: 915,
       artistId: 914,
@@ -331,6 +350,104 @@ test("Lidarr release metadata refresh reconciles additions and removals", async 
   }
 });
 
+test("Lidarr release metadata refresh promotes fallback identities and clears dates", async () => {
+  const artistMbid = "72727272-7272-4727-8727-727272727272";
+  const albumMbid = "82828282-8282-4828-8828-828282828282";
+  let lidarrArtists = [{
+    id: 926,
+    artistName: "Promoted Lidarr Artist",
+    monitored: true,
+  }];
+  let lidarrAlbums = [{
+    id: 927,
+    artistId: 926,
+    title: "Promoted Lidarr Album",
+    releaseDate: "2026-10-04",
+    monitored: true,
+  }];
+  const client = {
+    isConfigured: () => true,
+    isEnabled: () => true,
+    async request(endpoint) {
+      return endpoint === "/artist" ? lidarrArtists : lidarrAlbums;
+    },
+  };
+  let artistId;
+  let albumId;
+
+  try {
+    await refreshLidarrReleaseMetadata({ client });
+    const fallback = db.prepare(
+      `SELECT id, identity_key, release_date
+       FROM library_albums
+       WHERE json_valid(metadata_json)
+         AND json_extract(metadata_json, '$.id') = ?`,
+    ).get(927);
+    const fallbackArtist = db.prepare(
+      `SELECT id, identity_key
+       FROM library_artists
+       WHERE json_valid(metadata_json)
+         AND json_extract(metadata_json, '$.id') = ?`,
+    ).get(926);
+    artistId = fallbackArtist?.id;
+    albumId = fallback?.id;
+    assert.ok(artistId);
+    assert.match(fallbackArtist.identity_key, /^name:lidarr artist:/);
+    assert.ok(albumId);
+    assert.match(fallback.identity_key, /^name:lidarr album:/);
+    assert.equal(fallback.release_date, "2026-10-04");
+
+    lidarrArtists = [{
+      id: 926,
+      artistName: "Promoted Lidarr Artist Renamed",
+      foreignArtistId: artistMbid,
+      monitored: true,
+    }];
+    lidarrAlbums = [{
+      id: 927,
+      artistId: 926,
+      title: "Promoted Lidarr Album Renamed",
+      foreignAlbumId: albumMbid,
+      releaseDate: null,
+      monitored: true,
+    }];
+    await refreshLidarrReleaseMetadata({ client });
+
+    const promotedArtists = db.prepare(
+      "SELECT id, identity_key, mbid FROM library_artists WHERE id = ? OR mbid = ?",
+    ).all(artistId, artistMbid);
+    assert.equal(promotedArtists.length, 1);
+    assert.equal(promotedArtists[0].id, artistId);
+    assert.equal(promotedArtists[0].identity_key, `mbid:${artistMbid}`);
+    assert.equal(promotedArtists[0].mbid, artistMbid);
+    const promotedRows = db.prepare(
+      `SELECT id, identity_key, release_group_mbid, release_date
+       FROM library_albums
+       WHERE id = ? OR release_group_mbid = ?`,
+    ).all(albumId, albumMbid);
+    assert.equal(promotedRows.length, 1);
+    assert.equal(promotedRows[0].id, albumId);
+    assert.equal(promotedRows[0].identity_key, `release-group:${albumMbid}`);
+    assert.equal(promotedRows[0].release_group_mbid, albumMbid);
+    assert.equal(promotedRows[0].release_date, null);
+  } finally {
+    if (albumId) {
+      clearLibraryManagement("album", albumId);
+      db.prepare(
+        "DELETE FROM library_search_documents WHERE entity_kind = 'album' AND entity_id = ?",
+      ).run(albumId);
+      db.prepare("DELETE FROM library_albums WHERE id = ?").run(albumId);
+    }
+    if (artistId) {
+      clearLibraryManagement("artist", artistId);
+      db.prepare(
+        "DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?",
+      ).run(artistId);
+      db.prepare("DELETE FROM library_artists WHERE id = ?").run(artistId);
+    }
+  }
+});
+
 test("Lidarr release metadata refresh preserves overlapping Aurral ownership metadata", async () => {
   const artistMbid = "92929292-9292-4929-8929-929292929292";
   const albumMbid = "93939393-9393-4939-8939-939393939393";
@@ -390,7 +507,7 @@ test("Lidarr release metadata refresh preserves overlapping Aurral ownership met
             artistId: 924,
             title: "Aurral Owned Album",
             foreignAlbumId: albumMbid,
-            releaseDate: "2026-10-03",
+            releaseDate: null,
             monitored: false,
           }];
     },
@@ -411,6 +528,10 @@ test("Lidarr release metadata refresh preserves overlapping Aurral ownership met
     const albumMetadata = JSON.parse(db.prepare(
       "SELECT metadata_json FROM library_albums WHERE id = ?",
     ).get(album.id).metadata_json);
+    assert.equal(
+      db.prepare("SELECT release_date FROM library_albums WHERE id = ?").get(album.id).release_date,
+      "2026-10-03",
+    );
     assert.deepEqual(artistMetadata, {
       id: artistMbid,
       librarySource: "aurral",

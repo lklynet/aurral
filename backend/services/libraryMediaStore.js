@@ -69,16 +69,22 @@ const invalidateLibraryCache = () => {
   invalidateCanonicalLibraryCache();
 };
 
+const hasDifferentMetadataOwner = (entityKind, existing, metadataOwner) => {
+  const owner = normalizeText(metadataOwner).toLowerCase();
+  if (!existing || !owner) return false;
+  const managedBy = getLibraryManagementEntry(entityKind, existing.id)?.managedBy;
+  return Boolean(managedBy && managedBy !== owner);
+};
+
 const preserveMetadataForDifferentOwner = (
   entityKind,
   existing,
   metadataText,
   metadataOwner,
 ) => {
-  const owner = normalizeText(metadataOwner).toLowerCase();
-  if (!existing || !owner) return metadataText;
-  const managedBy = getLibraryManagementEntry(entityKind, existing.id)?.managedBy;
-  return managedBy && managedBy !== owner ? existing.metadata_json : metadataText;
+  return hasDifferentMetadataOwner(entityKind, existing, metadataOwner)
+    ? existing.metadata_json
+    : metadataText;
 };
 
 export async function withLibraryChangeBatch(run) {
@@ -142,6 +148,8 @@ export function finishLibraryScan(scanId, {
 
 export function upsertLibraryArtist({
   identityKey,
+  fallbackIdentityKey = null,
+  fallbackMetadataId = null,
   mbid = null,
   name,
   sortName = null,
@@ -151,6 +159,10 @@ export function upsertLibraryArtist({
 }) {
   const timestamp = now();
   const key = normalizeText(identityKey);
+  const explicitFallbackKey = normalizeText(fallbackIdentityKey);
+  const explicitFallbackMetadataId = fallbackMetadataId == null
+    ? ""
+    : String(fallbackMetadataId).trim();
   const artistName = normalizeText(name);
   const artistMbid = mbid || null;
   const artistSortName = sortName || null;
@@ -197,6 +209,39 @@ export function upsertLibraryArtist({
       libraryChanged = db.prepare("DELETE FROM library_artists WHERE id = ?")
         .run(fallback.id).changes > 0 || libraryChanged;
     };
+    const explicitResolved = db.prepare(
+      "SELECT * FROM library_artists WHERE identity_key = ?",
+    ).get(key);
+    if (!explicitResolved) {
+      let explicitFallback = explicitFallbackKey && explicitFallbackKey !== key
+        ? db.prepare("SELECT * FROM library_artists WHERE identity_key = ?")
+          .get(explicitFallbackKey)
+        : null;
+      if (!explicitFallback && explicitFallbackMetadataId) {
+        const candidates = db.prepare(
+          `SELECT * FROM library_artists
+           WHERE json_valid(metadata_json)
+             AND CAST(json_extract(metadata_json, '$.id') AS TEXT) = ?
+           ORDER BY id
+           LIMIT 2`,
+        ).all(explicitFallbackMetadataId);
+        if (candidates.length === 1) [explicitFallback] = candidates;
+      }
+      if (explicitFallback) {
+        db.prepare("UPDATE library_artists SET identity_key = ?, updated_at = ? WHERE id = ?")
+          .run(key, timestamp, explicitFallback.id);
+        db.prepare(
+          `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
+           SELECT user_id, entity_kind, ?, created_at
+           FROM subsonic_stars
+           WHERE entity_kind = 'artist' AND entity_key = ?`,
+        ).run(key, explicitFallback.identity_key);
+        db.prepare(
+          "DELETE FROM subsonic_stars WHERE entity_kind = 'artist' AND entity_key = ?",
+        ).run(explicitFallback.identity_key);
+        libraryChanged = true;
+      }
+    }
     if (mbid) {
       const resolved = db.prepare("SELECT id, identity_key FROM library_artists WHERE identity_key = ?").get(key);
       const fallback = fallbackKey === key
@@ -307,18 +352,25 @@ export function clearCanonicalLidarrAlbum(reference) {
 
 export function upsertLibraryAlbum({
   identityKey,
+  fallbackIdentityKey = null,
+  fallbackMetadataId = null,
   mbid = null,
   releaseGroupMbid = null,
   artistId,
   title,
   albumArtist = null,
   releaseDate = null,
+  replaceReleaseDate = false,
   metadata = null,
   metadataOwner = null,
   syncSearch = true,
 }) {
   const timestamp = now();
   const key = normalizeText(identityKey);
+  const fallbackProviderId = fallbackMetadataId == null
+    ? ""
+    : String(fallbackMetadataId).trim();
+  const fallbackKey = normalizeText(fallbackIdentityKey);
   const albumTitle = normalizeText(title);
   const albumMbid = mbid || null;
   const albumReleaseGroupMbid = releaseGroupMbid || null;
@@ -330,7 +382,39 @@ export function upsertLibraryAlbum({
   }
   let libraryChanged = false;
   const album = db.transaction(() => {
-    const existing = db.prepare("SELECT * FROM library_albums WHERE identity_key = ?").get(key);
+    let existing = db.prepare("SELECT * FROM library_albums WHERE identity_key = ?").get(key);
+    if (!existing && fallbackKey && fallbackKey !== key) {
+      let fallback = db.prepare(
+        "SELECT * FROM library_albums WHERE identity_key = ?",
+      ).get(fallbackKey);
+      if (!fallback && fallbackProviderId) {
+        const candidates = db.prepare(
+          `SELECT * FROM library_albums
+           WHERE json_valid(metadata_json)
+             AND CAST(json_extract(metadata_json, '$.id') AS TEXT) = ?
+           ORDER BY id
+           LIMIT 2`,
+        ).all(fallbackProviderId);
+        if (candidates.length === 1) [fallback] = candidates;
+      }
+      if (fallback) {
+        db.prepare("UPDATE library_albums SET identity_key = ?, updated_at = ? WHERE id = ?")
+          .run(key, timestamp, fallback.id);
+        db.prepare(
+          `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
+           SELECT user_id, entity_kind, ?, created_at
+           FROM subsonic_stars
+           WHERE entity_kind = 'album' AND entity_key = ?`,
+        ).run(key, fallback.identity_key);
+        db.prepare(
+          "DELETE FROM subsonic_stars WHERE entity_kind = 'album' AND entity_key = ?",
+        ).run(fallback.identity_key);
+        libraryChanged = true;
+        existing = { ...fallback, identity_key: key, updated_at: timestamp };
+      }
+    }
+    const preserveOwnerMetadata = hasDifferentMetadataOwner("album", existing, metadataOwner);
+    const shouldReplaceReleaseDate = replaceReleaseDate === true && !preserveOwnerMetadata;
     const metadataText = preserveMetadataForDifferentOwner(
       "album",
       existing,
@@ -344,7 +428,9 @@ export function upsertLibraryAlbum({
       Number(artistId) === existing.artist_id &&
       albumTitle === existing.title &&
       (albumArtistName == null || albumArtistName === existing.album_artist) &&
-      (albumReleaseDate == null || albumReleaseDate === existing.release_date) &&
+      (shouldReplaceReleaseDate
+        ? albumReleaseDate === existing.release_date
+        : albumReleaseDate == null || albumReleaseDate === existing.release_date) &&
       (metadataText == null || metadataText === existing.metadata_json)
     ) {
       const searchChanged = syncSearch && syncLibrarySearchAlbum(existing.id);
@@ -367,7 +453,10 @@ export function upsertLibraryAlbum({
          artist_id = excluded.artist_id,
          title = excluded.title,
          album_artist = COALESCE(excluded.album_artist, library_albums.album_artist),
-         release_date = COALESCE(excluded.release_date, library_albums.release_date),
+         release_date = CASE
+           WHEN ? = 1 THEN excluded.release_date
+           ELSE COALESCE(excluded.release_date, library_albums.release_date)
+         END,
          metadata_json = COALESCE(excluded.metadata_json, library_albums.metadata_json),
          updated_at = excluded.updated_at`,
     ).run(
@@ -381,6 +470,7 @@ export function upsertLibraryAlbum({
       metadataText,
       timestamp,
       timestamp,
+      shouldReplaceReleaseDate ? 1 : 0,
     );
     libraryChanged = true;
     const row = db.prepare("SELECT * FROM library_albums WHERE identity_key = ?").get(key);

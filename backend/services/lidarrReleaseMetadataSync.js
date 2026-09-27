@@ -14,6 +14,7 @@ import { invalidateCanonicalLibraryCache } from "./libraryQueryService.js";
 import {
   enqueueSystemTaskJob,
   findActiveHonkerJob,
+  getSystemTaskQueue,
   getSystemTaskQueueName,
 } from "./honkerDb.js";
 import { lidarrClient } from "./lidarrClient.js";
@@ -30,6 +31,23 @@ function normalizeCatalogList(value, label) {
   if (Array.isArray(value)) return value;
   if (Array.isArray(value?.records)) return value.records;
   throw new Error(`Lidarr returned a malformed ${label} catalogue`);
+}
+
+function validateCatalogEntries(entries, label, requiredFields) {
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`Lidarr returned a malformed ${label} catalogue entry at index ${index}`);
+    }
+    for (const requirement of requiredFields) {
+      const fields = Array.isArray(requirement) ? requirement : [requirement];
+      if (fields.every((field) => entry[field] == null || text(entry[field]) === "")) {
+        throw new Error(
+          `Lidarr returned a malformed ${label} catalogue entry at index ${index}: missing ${fields.join("/")}`,
+        );
+      }
+    }
+  }
 }
 
 function ensureLidarrManagement(entityKind, entityId, monitorMode = null) {
@@ -101,16 +119,28 @@ function markUnseenCatalogEntries(entityKind, seenIdentityKeys) {
 }
 
 export function scheduleLidarrReleaseMetadataRefresh({ delaySeconds = 0 } = {}) {
+  const normalizedDelay = Math.max(0, Number(delaySeconds) || 0);
+  const requestedRunAt = Math.floor(Date.now() / 1000) + normalizedDelay;
   const queueName = getSystemTaskQueueName(TASK_KIND);
   const existing = findActiveHonkerJob(
     queueName,
     (payload) => payload?.kind === TASK_KIND,
     { recoverExpired: true, payloadKind: TASK_KIND },
   );
-  if (existing?.id) return existing.id;
+  if (existing?.id) {
+    const existingRunAt = Number(existing.run_at || 0);
+    if (
+      existing.state === "processing" ||
+      existingRunAt === 0 ||
+      existingRunAt <= requestedRunAt
+    ) {
+      return existing.id;
+    }
+    if (!getSystemTaskQueue().cancel(existing.id)) return existing.id;
+  }
   return enqueueSystemTaskJob(
     { kind: TASK_KIND },
-    { delaySeconds: Math.max(0, Number(delaySeconds) || 0), priority: -5 },
+    { delaySeconds: normalizedDelay, priority: -5 },
   );
 }
 
@@ -140,6 +170,8 @@ export async function refreshLidarrReleaseMetadata({
   ]);
   const artists = normalizeCatalogList(artistResponse, "artist");
   const albums = normalizeCatalogList(albumResponse, "album");
+  validateCatalogEntries(artists, "artist", ["id", ["artistName", "name"]]);
+  validateCatalogEntries(albums, "album", ["id", "artistId", "title"]);
   const artistsByProviderId = new Map(
     artists
       .filter((artist) => artist?.id != null)
@@ -159,11 +191,18 @@ export async function refreshLidarrReleaseMetadata({
     for (const artist of artistsByProviderId.values()) {
       const providerId = text(artist.foreignArtistId);
       const artistName = text(artist.artistName || artist.name) || "Unknown Artist";
+      const fallbackIdentityKey = buildFallbackIdentityKey(
+        "lidarr-artist",
+        artist.id,
+        artistName,
+      );
       const identityKey =
         (providerId && buildIdentityKey(isUuid(providerId) ? "mbid" : "lidarr-artist", providerId)) ||
-        buildFallbackIdentityKey("lidarr-artist", artist.id, artistName);
+        fallbackIdentityKey;
       const record = upsertLibraryArtist({
         identityKey,
+        fallbackIdentityKey,
+        fallbackMetadataId: artist.id,
         mbid: isUuid(providerId) ? providerId : null,
         name: artistName,
         sortName: artist.sortName || null,
@@ -200,18 +239,26 @@ export async function refreshLidarrReleaseMetadata({
         continue;
       }
       const providerId = text(album.foreignAlbumId);
+      const fallbackIdentityKey = buildFallbackIdentityKey(
+        "lidarr-album",
+        album.id,
+        album.title,
+      );
       const identityKey =
         (providerId &&
           buildIdentityKey(isUuid(providerId) ? "release-group" : "lidarr-album", providerId)) ||
-        buildFallbackIdentityKey("lidarr-album", album.id, album.title);
+        fallbackIdentityKey;
       const record = upsertLibraryAlbum({
         identityKey,
+        fallbackIdentityKey,
+        fallbackMetadataId: album.id,
         mbid: isUuid(providerId) ? providerId : null,
         releaseGroupMbid: isUuid(providerId) ? providerId : null,
         artistId: artistRecord.id,
         title: text(album.title) || "Unknown Album",
         albumArtist: text(artist.artistName || artist.name) || "Unknown Artist",
         releaseDate: album.releaseDate || null,
+        replaceReleaseDate: true,
         metadata: {
           ...album,
           librarySource: "lidarr",

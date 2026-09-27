@@ -24,10 +24,14 @@ const { db } = await import("../../backend/config/db-sqlite.js");
 const { beginLibraryScan, finishLibraryScan } = await import(
   "../../backend/services/libraryMediaStore.js"
 );
-const { processSystemTask } = await import("../../backend/services/systemTaskWorker.js");
+const {
+  processSystemTask,
+  stopSystemTaskWorker,
+} = await import("../../backend/services/systemTaskWorker.js");
 const {
   getLibraryScanQueue,
   getSystemTaskQueue,
+  listHonkerJobs,
   SCHEDULED_SYSTEM_TASKS,
 } = await import("../../backend/services/honkerDb.js");
 const { createLibraryFileWatcher, resolveLibraryWatchRoots } = await import(
@@ -97,6 +101,7 @@ test("library refresh queues a quick or full scan and exposes its queue status",
   let body;
   let statusCode = 200;
   let refreshJobId;
+  let metadataRefreshJobId;
   const response = {
     status(code) {
       statusCode = code;
@@ -124,6 +129,13 @@ test("library refresh queues a quick or full scan and exposes its queue status",
       includeLidarr: true,
       changedPaths: null,
     });
+    const metadataJobs = listHonkerJobs("system-task").filter(
+      (job) => job.payload?.kind === "lidarr-release-refresh",
+    );
+    assert.equal(metadataJobs.length, 1);
+    metadataRefreshJobId = metadataJobs[0].id;
+    assert.notEqual(metadataRefreshJobId, metadataJobId);
+    assert.ok(Number(metadataJobs[0].run_at) <= Math.floor(Date.now() / 1000) + 1);
     getLibraryScanQueue().cancel(body.jobId);
     clearScheduledLibraryScan();
 
@@ -156,8 +168,10 @@ test("library refresh queues a quick or full scan and exposes its queue status",
   } finally {
     if (refreshJobId || body?.jobId) getLibraryScanQueue().cancel(refreshJobId || body.jobId);
     getSystemTaskQueue().cancel(metadataJobId);
+    if (metadataRefreshJobId) getSystemTaskQueue().cancel(metadataRefreshJobId);
     clearScheduledLibraryScan();
     await new Promise((resolve) => setImmediate(resolve));
+    await stopSystemTaskWorker();
     await stopLibraryScanWorker();
   }
 });
