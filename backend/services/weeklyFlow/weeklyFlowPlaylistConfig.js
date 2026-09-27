@@ -10,6 +10,7 @@ export const IMPORT_SOURCE_PROVIDERS = new Set([
   "listenbrainz-playlist",
   "listenbrainz-createdfor",
   "lastfm-station",
+  "youtube-music-playlist",
 ]);
 const DEFAULT_MIX = { discover: 34, mix: 33, trending: 33, focus: 0 };
 export const DEFAULT_SIZE = 30;
@@ -262,6 +263,7 @@ const normalizeFlow = (flow) => {
     ownerUserId: normalizeOwnerUserId(flow?.ownerUserId),
     enabled: flow?.enabled === true,
     recordHistory: flow?.recordHistory !== false,
+    showInLibrary: flow?.showInLibrary === true,
     scheduleDays: normalizeScheduleDays(flow?.scheduleDays),
     scheduleTime: normalizeScheduleTime(flow?.scheduleTime),
     deepDive: flow?.deepDive === true,
@@ -806,6 +808,10 @@ export const flowPlaylistConfig = {
         typeof updates?.recordHistory === "boolean"
           ? updates.recordHistory
           : current.recordHistory,
+      showInLibrary:
+        typeof updates?.showInLibrary === "boolean"
+          ? updates.showInLibrary
+          : current.showInLibrary,
       yearFrom,
       yearTo,
       enabled: current.enabled,

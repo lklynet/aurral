@@ -8,6 +8,7 @@ import { registerSharedPlaylists } from "./handlers/sharedPlaylists.js";
 import { registerSpotifyImport } from "./handlers/spotifyImport.js";
 import { registerListenBrainzImport } from "./handlers/listenbrainzImport.js";
 import { registerLastfmImport } from "./handlers/lastfmImport.js";
+import { registerYoutubeMusicImport } from "./handlers/youtubeMusicImport.js";
 import { registerJobs } from "./handlers/jobs.js";
 
 const router = express.Router();
@@ -24,6 +25,7 @@ registerSharedPlaylists(router);
 registerSpotifyImport(router);
 registerListenBrainzImport(router);
 registerLastfmImport(router);
+registerYoutubeMusicImport(router);
 registerJobs(router);
 
 export default router;

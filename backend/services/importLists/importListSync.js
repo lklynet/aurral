@@ -127,7 +127,9 @@ async function syncSharedPlaylistImportHere({
       provider: playlist.importSource.provider,
       playlistName: playlist.name,
       playlistId: playlist.id,
-      externalPlaylistId,
+      ...(playlist.importSource.provider === "youtube-music-playlist"
+        ? {}
+        : { externalPlaylistId }),
       sourceEntryCount,
       acceptedTrackCount: tracks.length,
       spotifyItemOnlyCount: Number(stats.itemOnly || 0),

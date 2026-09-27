@@ -329,6 +329,7 @@ async function handleDeemixFinalize(payload, helpers) {
     source: "deemix",
     options: {
       strict: candidate?.evaluation?.decision !== "accept",
+      manualSelection: payload.manualSelection === true,
     },
   });
   if (!isPipelinePayloadActive(payload)) {
