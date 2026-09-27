@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildAlbumRequestPayload,
+  buildArtistAddPayload,
   getAddToManagerLabel,
   getLibraryOwnerConflict,
   resolveLibraryDestination,
@@ -73,4 +75,36 @@ test("getLibraryOwnerConflict leaves other failures as errors", () => {
   assert.equal(getLibraryOwnerConflict(conflictError({ code: "invalid_library_manager" })), null);
   assert.equal(getLibraryOwnerConflict(conflictError({ code: "album_owner_conflict", managedBy: null })), null);
   assert.equal(getLibraryOwnerConflict(new Error("Network Error")), null);
+});
+
+test("buildArtistAddPayload sends the chosen manager and keeps Lidarr options away from Aurral", () => {
+  const lidarrOptions = { rootFolderPath: "/music", qualityProfileId: 2, tagId: 5 };
+  assert.deepEqual(
+    buildArtistAddPayload({ artistMbid: "a1", artistName: "Artist", managedBy: "aurral", lidarrOptions }),
+    { foreignArtistId: "a1", artistName: "Artist", managedBy: "aurral" },
+  );
+  assert.deepEqual(
+    buildArtistAddPayload({ artistMbid: "a1", artistName: "Artist", managedBy: "lidarr", lidarrOptions }),
+    { foreignArtistId: "a1", artistName: "Artist", managedBy: "lidarr", ...lidarrOptions },
+  );
+});
+
+test("buildAlbumRequestPayload sends the chosen manager", () => {
+  assert.deepEqual(
+    buildAlbumRequestPayload({
+      albumMbid: "rg1",
+      albumName: "Album",
+      artistMbid: "a1",
+      artistName: "Artist",
+      managedBy: "aurral",
+    }),
+    {
+      albumMbid: "rg1",
+      albumName: "Album",
+      artistMbid: "a1",
+      artistName: "Artist",
+      managedBy: "aurral",
+      triggerSearch: false,
+    },
+  );
 });

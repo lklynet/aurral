@@ -52,3 +52,33 @@ export const getLibraryOwnerConflict = (error) => {
     message: availability ? `${label} · ${availability}` : label,
   };
 };
+
+export const buildArtistAddPayload = ({
+  artistMbid,
+  artistName,
+  managedBy,
+  lidarrOptions = {},
+  ...rest
+}) => ({
+  ...rest,
+  foreignArtistId: artistMbid,
+  artistName,
+  managedBy,
+  ...(managedBy === "lidarr" ? lidarrOptions : {}),
+});
+
+export const buildAlbumRequestPayload = ({
+  albumMbid,
+  albumName,
+  artistMbid,
+  artistName,
+  managedBy,
+  triggerSearch = false,
+}) => ({
+  albumMbid,
+  albumName,
+  artistMbid,
+  artistName,
+  managedBy,
+  triggerSearch,
+});

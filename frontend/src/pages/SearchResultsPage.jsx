@@ -5,6 +5,7 @@ import {
   lookupAlbumsInLibraryBatch,
   lookupArtistsInLibraryBatch,
   requestAlbumFromSearch,
+  settleLibraryOwnerConflict,
 } from "../utils/api/endpoints/library.js";
 import {
   addSharedPlaylistTracks,
@@ -34,7 +35,12 @@ import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
 import { queryKeys } from "../queryClient.js";
 import { useSharedPlaylists } from "../hooks/useSharedPlaylists";
 import { getArtistRecordId } from "../utils/artistTaste";
-import { getAlbumAddButtonLabel, isAlbumCompleteInLibrary, shouldTriggerAlbumSearch } from "../utils/albumAddAction";
+import { getAlbumAddAction, isAlbumCompleteInLibrary, shouldTriggerAlbumSearch } from "../utils/albumAddAction";
+import {
+  buildAlbumRequestPayload,
+  buildArtistAddPayload,
+} from "../utils/libraryDestination";
+import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import {
   PAGE_SIZE,
   DEFAULT_ALBUM_SORT,
@@ -145,7 +151,8 @@ function SearchResultsPage() {
   const recommendedToolbarRef = useRef(null);
   const navigate = useDiscoverNavigation();
   const { hasPermission, bootstrap } = useAuth();
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showInfo } = useToast();
+  const libraryDestination = useLibraryDestination();
 
   const trimmedQuery = useMemo(() => query.trim(), [query]);
   const normalizedType = useMemo(() => {
@@ -838,7 +845,7 @@ function SearchResultsPage() {
   );
 
   const handleAlbumAction = useCallback(
-    async (album) => {
+    async (album, managedBy = libraryDestination.primary) => {
       if (!album?.id) return;
       const shouldTriggerSearch = shouldTriggerAlbumSearch({
         status: album.status,
@@ -847,13 +854,14 @@ function SearchResultsPage() {
       });
       setPendingAlbumIds((prev) => ({ ...prev, [album.id]: true }));
       try {
-        const result = await requestAlbumFromSearch({
+        const result = await requestAlbumFromSearch(buildAlbumRequestPayload({
           albumMbid: album.id,
           albumName: album.title,
           artistMbid: album.artistMbid,
           artistName: album.artistName,
+          managedBy,
           triggerSearch: shouldTriggerSearch,
-        });
+        }));
         const nextAlbum = result?.queued
           ? { inLibrary: true, status: "processing" }
           : {
@@ -874,6 +882,15 @@ function SearchResultsPage() {
               : `${album.title} added to library`,
         );
       } catch (err) {
+        const conflict = settleLibraryOwnerConflict(err);
+        if (conflict) {
+          setAlbumLibraryLookup((prev) => ({
+            ...prev,
+            [album.id]: { ownerConflict: conflict },
+          }));
+          showInfo(`${album.title}: ${conflict.message}`);
+          return;
+        }
         showError(
           err.response?.data?.error ||
             err.response?.data?.message ||
@@ -884,7 +901,7 @@ function SearchResultsPage() {
         setPendingAlbumIds(({ [album.id]: _, ...prev }) => prev);
       }
     },
-    [showError, showSuccess],
+    [libraryDestination.primary, showError, showInfo, showSuccess],
   );
 
   const handleSearchTrackAdd = useCallback(
@@ -948,15 +965,16 @@ function SearchResultsPage() {
   );
 
   const handleArtistAction = useCallback(
-    async (artist) => {
+    async (artist, managedBy = libraryDestination.primary) => {
       const artistId = getArtistRecordId(artist);
       if (!artist?.name || !artistId) return false;
       setPendingArtistIds((prev) => ({ ...prev, [artistId]: true }));
       try {
-        await addArtistToLibrary({
-          foreignArtistId: artistId,
+        await addArtistToLibrary(buildArtistAddPayload({
+          artistMbid: artistId,
           artistName: artist.name,
-        });
+          managedBy,
+        }));
         setLibraryLookup((prev) => ({
           ...prev,
           [artistId]: true,
@@ -975,7 +993,7 @@ function SearchResultsPage() {
         setPendingArtistIds(({ [artistId]: _, ...prev }) => prev);
       }
     },
-    [showError, showSuccess],
+    [libraryDestination.primary, showError, showSuccess],
   );
 
   const handleArtistFeedback = useCallback(
@@ -1034,11 +1052,8 @@ function SearchResultsPage() {
           <AddActionButton
             disabled={!!pendingArtistIds[artistId]}
             isLoading={!!pendingArtistIds[artistId]}
-            label="Add to Lidarr"
-            onClick={(event) => {
-              event.stopPropagation();
-              handleArtistAction(item);
-            }}
+            destination={libraryDestination}
+            onAdd={(managedBy) => handleArtistAction(item, managedBy)}
           />
         );
       }
@@ -1048,17 +1063,11 @@ function SearchResultsPage() {
         const pending = !!pendingAlbumIds[item.id];
         return (
           <AddActionButton
-            onClick={(event) => {
-              event.stopPropagation();
-              handleAlbumAction(item);
-            }}
+            {...getAlbumAddAction(item, libraryDestination)}
+            ownerConflict={item.ownerConflict}
+            onAdd={(managedBy) => handleAlbumAction(item, managedBy)}
             isLoading={pending}
             disabled={pending || ALBUM_PENDING_STATUSES.has(item.status)}
-            label={getAlbumAddButtonLabel({
-              status: item.status,
-              inLibrary: item.inLibrary,
-              monitored: item.monitored,
-            })}
           />
         );
       }
@@ -1070,6 +1079,7 @@ function SearchResultsPage() {
       canAddArtist,
       handleAlbumAction,
       handleArtistAction,
+      libraryDestination,
       handleSearchTrackAdd,
       isSearchResultInLibrary,
       loadSharedPlaylists,
@@ -1613,6 +1623,7 @@ function SearchResultsPage() {
                       canAddAlbum={canAddAlbum}
                       pendingAlbumIds={pendingAlbumIds}
                       onAlbumAction={handleAlbumAction}
+                      libraryDestination={libraryDestination}
                       navigate={navigate}
                       viewMode="grid"
                     />
@@ -1640,6 +1651,7 @@ function SearchResultsPage() {
                       canAddAlbum={canAddAlbum}
                       pendingAlbumIds={pendingAlbumIds}
                       onAlbumAction={handleAlbumAction}
+                      libraryDestination={libraryDestination}
                       navigate={navigate}
                       viewMode="grid"
                     />
@@ -1652,6 +1664,7 @@ function SearchResultsPage() {
                   canAddAlbum={canAddAlbum}
                   pendingAlbumIds={pendingAlbumIds}
                   onAlbumAction={handleAlbumAction}
+                  libraryDestination={libraryDestination}
                   navigate={navigate}
                   viewMode={albumViewMode}
                 />

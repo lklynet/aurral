@@ -1,6 +1,8 @@
 import { forwardRef } from "react";
 import { ChevronDown, Plus } from "lucide-react";
+import Tooltip from "./Tooltip";
 import TooltipButton from "./TooltipButton";
+import SearchLibraryCheck from "./SearchLibraryCheck";
 import { DotLoader } from "./DotLoader";
 import { LibraryItemMenu } from "./LibraryItemMenu";
 import { ADD_TO_MENU_LABEL, getAddToManagerLabel } from "../utils/libraryDestination";
@@ -10,6 +12,7 @@ const AddActionButton = forwardRef(function AddActionButton(
     label,
     destination = null,
     onAdd,
+    ownerConflict = null,
     icon: Icon = Plus,
     isLoading = false,
     disabled = false,
@@ -19,9 +22,24 @@ const AddActionButton = forwardRef(function AddActionButton(
   },
   ref,
 ) {
+  if (ownerConflict) {
+    return (
+      <Tooltip content={ownerConflict.message}>
+        <span
+          className="btn-add-action btn-add-action--managed"
+          role="img"
+          aria-label={ownerConflict.message}
+          tabIndex={0}
+        >
+          <SearchLibraryCheck action aria-hidden="true" aria-label={undefined} />
+        </span>
+      </Tooltip>
+    );
+  }
+
   const classes = ["btn", "btn-add-action", className].filter(Boolean).join(" ");
   const primary = destination?.primary || null;
-  const alternative = label ? null : destination?.alternative || null;
+  const alternative = destination?.alternative || null;
   const isDisabled = disabled || isLoading || (destination ? !destination.ready : false);
   const handleClick = onAdd && primary
     ? (event) => {

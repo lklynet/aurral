@@ -525,6 +525,10 @@ textarea {
   color: var(--aurral-text);
 }
 
+.btn-add-action--managed {
+  cursor: default;
+}
+
 .btn-add-action:disabled {
   opacity: 0.7;
   cursor: not-allowed;

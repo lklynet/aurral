@@ -1,3 +1,5 @@
+import { getAddToManagerLabel, normalizeLibraryManager } from "./libraryDestination.js";
+
 const ACTIVE_ALBUM_STATUSES = new Set([
   "adding",
   "searching",
@@ -39,8 +41,19 @@ export const shouldTriggerAlbumSearch = ({
   return Boolean(inLibrary && monitored);
 };
 
-export const getAlbumAddButtonLabel = (input = {}) =>
-  shouldTriggerAlbumSearch(input) ? "Search Album" : "Add to Lidarr";
+export const getAlbumAddAction = (input = {}, destination = {}) => {
+  if (!shouldTriggerAlbumSearch(input)) {
+    return { label: getAddToManagerLabel(destination.primary), destination };
+  }
+  return {
+    label: "Search Album",
+    destination: {
+      ...destination,
+      primary: normalizeLibraryManager(input.managedBy) || destination.primary,
+      alternative: null,
+    },
+  };
+};
 
 export const isAlbumCompleteInLibrary = ({
   status = "",
@@ -55,3 +68,6 @@ export const isAlbumCompleteInLibrary = ({
   Number(percentOfTracks) >= 100 ||
   Number(sizeOnDisk) > 0 ||
   Number(trackFileCount) > 0;
+
+export const getAlbumAddButtonLabel = (input = {}) =>
+  shouldTriggerAlbumSearch(input) ? "Search Album" : "Add to Lidarr";

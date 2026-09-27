@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  getAlbumAddButtonLabel,
+  getAlbumAddAction,
   isAlbumCompleteInLibrary,
   shouldTriggerAlbumSearch,
 } from "../../frontend/src/utils/albumAddAction.js";
@@ -17,10 +17,25 @@ test("shouldTriggerAlbumSearch follows monitored state", () => {
   assert.equal(shouldTriggerAlbumSearch({ status: "inLibrary", monitored: false }), false);
 });
 
-test("getAlbumAddButtonLabel matches trigger semantics", () => {
-  assert.equal(getAlbumAddButtonLabel({ status: "monitored" }), "Search Album");
-  assert.equal(getAlbumAddButtonLabel({ status: "unmonitored" }), "Add to Lidarr");
-  assert.equal(getAlbumAddButtonLabel({ inLibrary: true, monitored: false }), "Add to Lidarr");
+test("getAlbumAddAction labels adds with the destination manager", () => {
+  const destination = { primary: "lidarr", alternative: "aurral", ready: true };
+  assert.deepEqual(getAlbumAddAction({ status: "unmonitored" }, destination), {
+    label: "Add to Lidarr",
+    destination,
+  });
+  assert.equal(
+    getAlbumAddAction({ inLibrary: true, monitored: false }, { primary: "aurral", alternative: null }).label,
+    "Add to Aurral",
+  );
+});
+
+test("getAlbumAddAction searches a monitored album through its own manager without a menu", () => {
+  const action = getAlbumAddAction(
+    { status: "monitored", managedBy: "aurral" },
+    { primary: "lidarr", alternative: "aurral", ready: true },
+  );
+  assert.equal(action.label, "Search Album");
+  assert.deepEqual(action.destination, { primary: "aurral", alternative: null, ready: true });
 });
 
 test("isAlbumCompleteInLibrary only treats on-disk albums as complete", () => {
