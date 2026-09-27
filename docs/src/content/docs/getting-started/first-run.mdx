@@ -19,12 +19,13 @@ Complete [Filesystem and mounts](/getting-started/storage/) first. The short ver
 ## First-run steps
 
 1. Open Aurral and create your admin account.
-2. Open **Settings > Download clients**.
-3. Set **Downloads Folder > Path** to a writable path inside Aurral, such as `/data/downloads/aurral`.
+2. Connect Lidarr, or select **Skip for now** to use Aurral without it. When you skip, setup asks for
+   the Aurral library folder, such as `/data/downloads/aurral`. You can connect Lidarr later.
+3. Open **Settings > Download clients** and check **Downloads Folder > Path** is a writable path inside Aurral.
 4. Open **Settings > Storage health**, select **Run Checks**, and fix failed checks.
 5. If you use Lidarr, open **Settings > Lidarr**.
 6. Prefer an HTTPS Lidarr URL. In a trusted, isolated Docker Compose network, `http://lidarr:8686` is also acceptable because Aurral sends the Lidarr API key to this URL.
-7. Enter the Lidarr API key and select **Test connection**.
+7. If you skipped Lidarr during setup, enter the Lidarr API key and select **Test connection**.
 8. Select **Test library access** after the connection test passes.
 9. Connect the download clients and playback server that you use. Navidrome and Plex are optional
    destinations. Aurral can play indexed media in the built-in player when the canonical file is readable.
