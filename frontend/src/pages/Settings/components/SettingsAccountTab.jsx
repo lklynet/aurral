@@ -9,7 +9,7 @@ import { ThemeSettings } from "./ThemeSettings";
 import { Link } from "react-router-dom";
 import { RotateCcw } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
-import { describeLibraryManagerControl } from "../utils/libraryManagerSettings";
+import { describeLibraryManagerControl } from "../utils/librarySettings";
 export function SettingsAccountTab({
   listenHistoryProvider,
   setListenHistoryProvider,

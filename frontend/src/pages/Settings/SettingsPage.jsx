@@ -45,7 +45,8 @@ function SettingsPage() {
     if (
       tabs.activeTab === "discover" ||
       tabs.activeTab === "system" ||
-      tabs.activeTab === "storage-health"
+      tabs.activeTab === "storage-health" ||
+      tabs.activeTab === "lidarr"
     ) {
       data.refreshHealth();
     }

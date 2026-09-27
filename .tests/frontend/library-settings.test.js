@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { describeLibraryManagerControl } from "../../frontend/src/pages/Settings/utils/libraryManagerSettings.js";
+import {
+  describeLibraryManagerControl,
+  describeLidarrConnectionState,
+} from "../../frontend/src/pages/Settings/utils/librarySettings.js";
 
 const optionById = (control, id) => control.options.find((option) => option.id === id);
 
@@ -64,4 +67,55 @@ test("the control has no selection until the preference loads", () => {
   assert.equal(control.value, null);
   assert.equal(control.statusLabel, null);
   assert.equal(control.canUseDefault, false);
+});
+
+const connectedLidarr = { enabled: true, url: "http://lidarr:8686", apiKey: "key" };
+const reachableHealth = { lidarr: { configured: true, circuitOpen: false } };
+
+test("a connected, reachable Lidarr shows no reconnect state", () => {
+  assert.equal(
+    describeLidarrConnectionState({ lidarr: connectedLidarr, health: reachableHealth }),
+    null,
+  );
+  assert.equal(
+    describeLidarrConnectionState({ lidarr: { ...connectedLidarr, enabled: undefined }, health: reachableHealth }),
+    null,
+  );
+});
+
+test("disabled, unconfigured, and unreachable Lidarr each show a distinct reconnect state", () => {
+  const disabled = describeLidarrConnectionState({
+    lidarr: { ...connectedLidarr, enabled: false },
+    health: { lidarr: { configured: false, circuitOpen: false } },
+  });
+  const notConfigured = describeLidarrConnectionState({
+    lidarr: { enabled: true, url: "http://lidarr:8686", apiKey: "" },
+    health: { lidarr: { configured: false, circuitOpen: false } },
+  });
+  const unreachable = describeLidarrConnectionState({
+    lidarr: connectedLidarr,
+    health: { lidarr: { configured: true, circuitOpen: true } },
+  });
+
+  assert.equal(disabled.reason, "disabled");
+  assert.equal(notConfigured.reason, "not-configured");
+  assert.equal(unreachable.reason, "unreachable");
+  const titles = new Set([disabled.title, notConfigured.title, unreachable.title]);
+  assert.equal(titles.size, 3);
+  for (const state of [disabled, notConfigured, unreachable]) {
+    assert.match(state.message, /Lidarr media stays visible/);
+  }
+});
+
+test("a disabled Lidarr reports disabled even when its circuit is open", () => {
+  const state = describeLidarrConnectionState({
+    lidarr: { ...connectedLidarr, enabled: false },
+    health: { lidarr: { configured: true, circuitOpen: true } },
+  });
+
+  assert.equal(state.reason, "disabled");
+});
+
+test("the reconnect state waits for health before reporting Lidarr unreachable", () => {
+  assert.equal(describeLidarrConnectionState({ lidarr: connectedLidarr, health: null }), null);
 });
