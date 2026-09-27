@@ -283,7 +283,7 @@ db.exec(`
   );
 
   CREATE TABLE IF NOT EXISTS library_release_calendar (
-    release_group_mbid TEXT PRIMARY KEY,
+    release_group_mbid TEXT NOT NULL,
     artist_id INTEGER NOT NULL,
     title TEXT NOT NULL,
     release_date TEXT NOT NULL,
@@ -294,6 +294,7 @@ db.exec(`
     refreshed_at INTEGER NOT NULL,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
+    PRIMARY KEY (release_group_mbid, artist_id),
     FOREIGN KEY (artist_id) REFERENCES library_artists(id) ON DELETE CASCADE
   );
 
@@ -487,6 +488,49 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_honker_task_runs_queue_started ON honker_task_runs(queue, started_at DESC);
   CREATE INDEX IF NOT EXISTS idx_honker_task_runs_job ON honker_task_runs(job_id, queue);
 `);
+
+const releaseCalendarPrimaryKey = db
+  .prepare("PRAGMA table_info(library_release_calendar)")
+  .all()
+  .filter((column) => Number(column.pk) > 0)
+  .sort((left, right) => Number(left.pk) - Number(right.pk))
+  .map((column) => column.name);
+
+if (JSON.stringify(releaseCalendarPrimaryKey) !== JSON.stringify(["release_group_mbid", "artist_id"])) {
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE library_release_calendar_v2 (
+        release_group_mbid TEXT NOT NULL,
+        artist_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        release_date TEXT NOT NULL,
+        release_type TEXT,
+        secondary_types_json TEXT,
+        release_statuses_json TEXT,
+        present INTEGER NOT NULL DEFAULT 1,
+        refreshed_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (release_group_mbid, artist_id),
+        FOREIGN KEY (artist_id) REFERENCES library_artists(id) ON DELETE CASCADE
+      );
+
+      INSERT INTO library_release_calendar_v2
+        (release_group_mbid, artist_id, title, release_date, release_type,
+         secondary_types_json, release_statuses_json, present, refreshed_at, created_at, updated_at)
+      SELECT release_group_mbid, artist_id, title, release_date, release_type,
+        secondary_types_json, release_statuses_json, present, refreshed_at, created_at, updated_at
+      FROM library_release_calendar;
+
+      DROP TABLE library_release_calendar;
+      ALTER TABLE library_release_calendar_v2 RENAME TO library_release_calendar;
+      CREATE INDEX idx_library_release_calendar_artist
+        ON library_release_calendar (artist_id);
+      CREATE INDEX idx_library_release_calendar_date
+        ON library_release_calendar (present, release_date DESC);
+    `);
+  })();
+}
 
 // The previous getIndexes timestamp was the request time. Seed existing users past that value
 // so a client carrying a pre-upgrade ifModifiedSince receives the new index once.

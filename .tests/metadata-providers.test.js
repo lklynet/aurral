@@ -25,6 +25,7 @@ const {
   clearMetadataProviderCaches,
   getAlbumByMbid,
   getArtistByMbid,
+  listArtistAlbums,
   searchArtists,
 } = brainzmashProvider;
 
@@ -153,6 +154,60 @@ test("stale album metadata is served while one refresh runs in the background", 
     assert.equal(refreshed.title, "Album v2");
   } finally {
     Date.now = originalNow;
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("artist album refreshes can bypass the long-lived metadata cache", async () => {
+  const previousSettings = dbOps.getSettings();
+  let requests = 0;
+  const artistMbid = "11111111-1111-4111-8111-111111111111";
+  const releaseMbid = "22222222-2222-4222-8222-222222222222";
+  const server = await createMockHttpServer((_request, response) => {
+    requests += 1;
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({
+      Id: artistMbid,
+      Name: "Calendar Artist",
+      Albums: [{
+        Id: releaseMbid,
+        Title: requests === 1 ? "Cached Release" : "Current Release",
+        Type: "Album",
+        FirstReleaseDate: "2026-09-20",
+        ReleaseStatuses: ["Official"],
+      }],
+    }));
+  });
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    const first = await listArtistAlbums(artistMbid, { hydrateLimit: 0 });
+    const cached = await listArtistAlbums(artistMbid, { hydrateLimit: 0 });
+    const refreshed = await listArtistAlbums(artistMbid, {
+      hydrateLimit: 0,
+      forceRefresh: true,
+    });
+
+    assert.equal(first[0].title, "Cached Release");
+    assert.equal(cached[0].title, "Cached Release");
+    assert.equal(refreshed[0].title, "Current Release");
+    assert.equal(requests, 2);
+  } finally {
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
     await server.close();

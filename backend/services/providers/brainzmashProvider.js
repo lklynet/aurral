@@ -236,6 +236,7 @@ function refreshMetadata(cacheKey, path, params, { signal } = {}) {
           cachePolicy.freshTtlSeconds,
           cachePolicy.staleTtlSeconds,
         );
+        metadataNotFoundCache.delete(cacheKey);
         healthState.lastSuccessAt = healthState.lastCheckedAt;
         healthState.lastFailureReason = "";
         return response.data;
@@ -273,13 +274,13 @@ function refreshMetadata(cacheKey, path, params, { signal } = {}) {
   }, { signal });
 }
 
-async function request(path, params = {}, { signal } = {}) {
+async function request(path, params = {}, { signal, forceRefresh = false } = {}) {
   const baseUrl = getMetadataBaseUrl();
   const cacheKey = `${baseUrl}${path}:${JSON.stringify(params)}`;
-  if (metadataNotFoundCache.get(cacheKey)) {
+  if (!forceRefresh && metadataNotFoundCache.get(cacheKey)) {
     throw createMetadataNotFoundError();
   }
-  const cached = providerCache.getWithStale(cacheKey);
+  const cached = forceRefresh ? null : providerCache.getWithStale(cacheKey);
   if (cached) {
     if (cached.stale) {
       void refreshMetadata(cacheKey, path, params).catch(() => {});
@@ -518,9 +519,15 @@ export async function resolveAlbumByArtistAndTitle({
 
 export async function listArtistAlbums(
   artistMbid,
-  { releaseTypes = [], includeTrackCounts = false, hydrateLimit = 30, signal } = {},
+  {
+    releaseTypes = [],
+    includeTrackCounts = false,
+    hydrateLimit = 30,
+    signal,
+    forceRefresh = false,
+  } = {},
 ) {
-  const rawArtist = await request(`/artist/${artistMbid}`, {}, { signal });
+  const rawArtist = await request(`/artist/${artistMbid}`, {}, { signal, forceRefresh });
   const artist = toNormalizedArtist(rawArtist);
   let albums = (Array.isArray(rawArtist?.Albums) ? rawArtist.Albums : []).map((entry) =>
     toNormalizedArtistAlbum(entry),

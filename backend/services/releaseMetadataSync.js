@@ -20,11 +20,11 @@ const RECENT_RELEASE_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 
 const text = (value) => String(value || "").trim();
 
-function isRecentOrUpcoming(release, cutoffMs) {
+function getReleaseTime(release) {
   const releaseDate = text(release?.firstReleaseDate || release?.releaseDate);
-  if (!releaseDate) return false;
+  if (!releaseDate) return null;
   const releaseTime = new Date(releaseDate).getTime();
-  return Number.isFinite(releaseTime) && releaseTime >= cutoffMs;
+  return Number.isFinite(releaseTime) ? releaseTime : null;
 }
 
 function isValidCatalogueRelease(release) {
@@ -91,7 +91,10 @@ export async function refreshReleaseMetadata({
     const seenReleaseGroupMbids = new Set();
     let releases;
     try {
-      releases = await listAlbums(artist.mbid, { hydrateLimit: 0 });
+      releases = await listAlbums(artist.mbid, {
+        hydrateLimit: 0,
+        forceRefresh: true,
+      });
       if (!Array.isArray(releases)) {
         throw new Error("BrainzMash returned a malformed artist release catalogue");
       }
@@ -108,11 +111,14 @@ export async function refreshReleaseMetadata({
     }
 
     for (const release of releases) {
-      if (!isEligibleAurralRelease(release) || !isRecentOrUpcoming(release, cutoffMs)) {
+      if (!isEligibleAurralRelease(release)) continue;
+      const releaseGroupMbid = text(release.id);
+      const releaseTime = getReleaseTime(release);
+      if (releaseTime == null) {
+        seenReleaseGroupMbids.add(releaseGroupMbid);
         continue;
       }
-      const releaseGroupMbid = text(release.id);
-      if (!releaseGroupMbid) continue;
+      if (releaseTime < cutoffMs) continue;
       releasesSeen += 1;
       seenReleaseGroupMbids.add(releaseGroupMbid);
       upsertReleaseCalendarEntry({

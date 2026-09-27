@@ -4,7 +4,10 @@ import { randomUUID } from "node:crypto";
 
 import { getRecentMissingReleases } from "../../backend/services/discovery/recentReleases.js";
 import { refreshReleaseMetadata } from "../../backend/services/releaseMetadataSync.js";
-import { upsertReleaseCalendarEntry } from "../../backend/services/releaseCalendarStore.js";
+import {
+  markUnseenReleaseCalendarEntries,
+  upsertReleaseCalendarEntry,
+} from "../../backend/services/releaseCalendarStore.js";
 import { db } from "../../backend/config/db-sqlite.js";
 import {
   getCanonicalAlbumsByReleaseDate,
@@ -134,6 +137,7 @@ test("BrainzMash refresh adds new releases without a Lidarr catalogue", async ()
   const listAlbums = async (requestedMbid, options) => {
     assert.equal(requestedMbid, artistMbid);
     assert.equal(options.hydrateLimit, 0);
+    assert.equal(options.forceRefresh, true);
     return providerReleases;
   };
 
@@ -233,6 +237,94 @@ test("a malformed BrainzMash catalogue does not remove the last good calendar", 
     assert.deepEqual(stored, { present: 1 });
   } finally {
     removeCalendarArtist(canonicalArtist.id);
+  }
+});
+
+test("an undated BrainzMash release preserves its last valid calendar entry", async () => {
+  const artistMbid = randomUUID();
+  const releaseMbid = randomUUID();
+  const canonicalArtist = upsertLibraryArtist({
+    identityKey: `mbid:${artistMbid}`,
+    mbid: artistMbid,
+    name: "Undated Catalogue Artist",
+  });
+  const artists = [{ id: canonicalArtist.id, mbid: artistMbid }];
+  const release = {
+    id: releaseMbid,
+    title: "Release With A Known Date",
+    type: "Album",
+    secondaryTypes: [],
+    releaseStatuses: ["Official"],
+  };
+
+  try {
+    await refreshReleaseMetadata({
+      artists,
+      listAlbums: async () => [{ ...release, firstReleaseDate: "2026-09-20" }],
+      now: "2026-09-27T12:00:00Z",
+    });
+    const result = await refreshReleaseMetadata({
+      artists,
+      listAlbums: async () => [release],
+      now: "2026-09-28T12:00:00Z",
+    });
+
+    assert.equal(result.releasesStored, 0);
+    assert.equal(result.releasesStale, 0);
+    const stored = db.prepare(
+      "SELECT release_date, present FROM library_release_calendar WHERE release_group_mbid = ? AND artist_id = ?",
+    ).get(releaseMbid, canonicalArtist.id);
+    assert.deepEqual(stored, { release_date: "2026-09-20", present: 1 });
+  } finally {
+    removeCalendarArtist(canonicalArtist.id);
+  }
+});
+
+test("collaboration releases retain an independent calendar row for each artist", async () => {
+  const firstArtist = createCalendarArtist("First Collaboration Artist");
+  const secondArtist = createCalendarArtist("Second Collaboration Artist");
+  const releaseGroupMbid = randomUUID();
+
+  try {
+    for (const artist of [firstArtist, secondArtist]) {
+      upsertReleaseCalendarEntry({
+        releaseGroupMbid,
+        artistId: artist.id,
+        title: "Shared Collaboration Release",
+        releaseDate: "2026-09-20",
+        releaseType: "Album",
+        releaseStatuses: ["Official"],
+      });
+    }
+
+    const rows = db.prepare(
+      "SELECT artist_id, present FROM library_release_calendar WHERE release_group_mbid = ? ORDER BY artist_id",
+    ).all(releaseGroupMbid);
+    assert.deepEqual(rows, [
+      { artist_id: firstArtist.id, present: 1 },
+      { artist_id: secondArtist.id, present: 1 },
+    ]);
+
+    markUnseenReleaseCalendarEntries(firstArtist.id, new Set());
+    const afterStale = db.prepare(
+      "SELECT artist_id, present FROM library_release_calendar WHERE release_group_mbid = ? ORDER BY artist_id",
+    ).all(releaseGroupMbid);
+    assert.deepEqual(afterStale, [
+      { artist_id: firstArtist.id, present: 0 },
+      { artist_id: secondArtist.id, present: 1 },
+    ]);
+
+    const secondArtistReleases = await getRecentMissingReleases(10, {
+      artists: [{ id: secondArtist.id }],
+      now: "2026-09-27T12:00:00Z",
+    });
+    assert.deepEqual(
+      secondArtistReleases.map((album) => album.albumName),
+      ["Shared Collaboration Release"],
+    );
+  } finally {
+    removeCalendarArtist(firstArtist.id);
+    removeCalendarArtist(secondArtist.id);
   }
 });
 

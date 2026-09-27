@@ -23,8 +23,7 @@ const upsertRelease = db.prepare(`
     created_at,
     updated_at
   ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
-  ON CONFLICT(release_group_mbid) DO UPDATE SET
-    artist_id = excluded.artist_id,
+  ON CONFLICT(release_group_mbid, artist_id) DO UPDATE SET
     title = excluded.title,
     release_date = excluded.release_date,
     release_type = excluded.release_type,
@@ -44,7 +43,7 @@ const selectArtistReleases = db.prepare(`
 const markReleaseAbsent = db.prepare(`
   UPDATE library_release_calendar
   SET present = 0, refreshed_at = ?, updated_at = ?
-  WHERE release_group_mbid = ?
+  WHERE release_group_mbid = ? AND artist_id = ?
 `);
 
 export function upsertReleaseCalendarEntry({
@@ -78,7 +77,12 @@ export function markUnseenReleaseCalendarEntries(artistId, seenReleaseGroupMbids
   let stale = 0;
   for (const row of selectArtistReleases.all(Number(artistId))) {
     if (seen.has(row.release_group_mbid) || row.present === 0) continue;
-    stale += markReleaseAbsent.run(timestamp, timestamp, row.release_group_mbid).changes;
+    stale += markReleaseAbsent.run(
+      timestamp,
+      timestamp,
+      row.release_group_mbid,
+      Number(artistId),
+    ).changes;
   }
   return stale;
 }
@@ -102,8 +106,7 @@ export function getReleaseCalendarEntries({
       JOIN library_media_files AS owned_media
         ON owned_media.track_id = owned_relation.track_id
         AND (owned_media.album_id = owned_relation.album_id OR owned_media.album_id IS NULL)
-      WHERE owned_album.artist_id = calendar.artist_id
-        AND (
+      WHERE (
           owned_album.release_group_mbid = calendar.release_group_mbid
           OR owned_album.mbid = calendar.release_group_mbid
         )
@@ -128,15 +131,25 @@ export function getReleaseCalendarEntries({
   parameters.push(Math.min(1000, Math.max(1, Number.parseInt(limit, 10) || 100)));
 
   const rows = db.prepare(`
-    WITH calendar_page AS MATERIALIZED (
-      SELECT calendar.*
+    WITH eligible_calendar AS MATERIALIZED (
+      SELECT
+        calendar.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY calendar.release_group_mbid
+          ORDER BY calendar.artist_id
+        ) AS release_rank
       FROM library_release_calendar AS calendar
       WHERE ${conditions.join(" AND ")}
-      ORDER BY calendar.release_date DESC, calendar.release_group_mbid
+    ), calendar_page AS MATERIALIZED (
+      SELECT *
+      FROM eligible_calendar
+      WHERE release_rank = 1
+      ORDER BY release_date DESC, release_group_mbid
       LIMIT ?
     ), matched_albums AS MATERIALIZED (
       SELECT
         calendar.release_group_mbid,
+        calendar.artist_id,
         album.id AS album_id
       FROM calendar_page AS calendar
       LEFT JOIN library_albums AS album ON album.id = (
@@ -163,11 +176,12 @@ export function getReleaseCalendarEntries({
     JOIN library_artists AS artist ON artist.id = calendar.artist_id
     LEFT JOIN matched_albums AS matched
       ON matched.release_group_mbid = calendar.release_group_mbid
+      AND matched.artist_id = calendar.artist_id
     LEFT JOIN library_album_tracks AS relation ON relation.album_id = matched.album_id
     LEFT JOIN library_media_files AS media
       ON media.track_id = relation.track_id
       AND (media.album_id = relation.album_id OR media.album_id IS NULL)
-    GROUP BY calendar.release_group_mbid
+    GROUP BY calendar.release_group_mbid, calendar.artist_id
     ORDER BY calendar.release_date DESC, calendar.release_group_mbid
   `).all(...parameters);
 
