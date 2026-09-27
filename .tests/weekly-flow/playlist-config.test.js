@@ -14,6 +14,7 @@ const [
   playlistConfigModule,
   flowHandlerUtils,
   flowHandlersModule,
+  libraryScanWorker,
 ] =
   await setupIsolatedBackend(
     "playlist-config",
@@ -22,10 +23,12 @@ const [
     "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
     "backend/routes/weeklyFlow/handlers/utils.js",
     "backend/routes/weeklyFlow/handlers/flows.js",
+    "backend/services/libraryScanWorker.js",
   );
 const { flowPlaylistConfig, normalizeImportSource, tracksShareMembership } = playlistConfigModule;
 const { validateFlowPayload } = flowHandlerUtils;
 const { registerFlows } = flowHandlersModule;
+const { clearScheduledLibraryScan, getScheduledLibraryScanJobId } = libraryScanWorker;
 
 test.beforeEach(() => {
   resetDatabase(db);
@@ -209,21 +212,28 @@ test("keeps flow tracks out of the library until a flow opts in", async () => {
     return response;
   };
 
+  clearScheduledLibraryScan();
   const rejected = await send({ showInLibrary: "true" });
   assert.equal(rejected.statusCode, 400);
   assert.equal(flowPlaylistConfig.getFlow(flow.id).showInLibrary, false);
+  assert.equal(getScheduledLibraryScanJobId(), null);
 
   const enabled = await send({ showInLibrary: true });
   assert.equal(enabled.statusCode, 200);
   assert.equal(enabled.body.flow.showInLibrary, true);
   assert.equal(flowPlaylistConfig.getFlow(flow.id).showInLibrary, true);
+  assert.notEqual(getScheduledLibraryScanJobId(), null);
 
+  clearScheduledLibraryScan();
   const renamed = await send({ name: "Library Opt In Renamed" });
   assert.equal(renamed.statusCode, 200);
   assert.equal(flowPlaylistConfig.getFlow(flow.id).showInLibrary, true);
+  assert.equal(getScheduledLibraryScanJobId(), null);
 
   await send({ showInLibrary: false });
   assert.equal(flowPlaylistConfig.getFlow(flow.id).showInLibrary, false);
+  assert.notEqual(getScheduledLibraryScanJobId(), null);
+  clearScheduledLibraryScan();
 });
 
 test("rejects non-boolean listening history payloads", () => {

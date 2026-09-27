@@ -736,3 +736,34 @@ test("Deemix cleanup ignores jobs without a queue identifier", async () => {
     cancellationServiceModule.cancelDownloadWorkForJobs([downloadTracker.getJob(jobId)]),
   );
 });
+
+test("clearing a flow shown in the library rescans the library", async (t) => {
+  const shown = flowPlaylistConfig.createFlow({ name: "Shown Flow", size: 10 });
+  flowPlaylistConfig.updateFlow(shown.id, { showInLibrary: true });
+  const hidden = flowPlaylistConfig.createFlow({ name: "Hidden Flow", size: 10 });
+
+  t.mock.method(weeklyFlowWorker, "blockPlaylist", async () => {});
+  t.mock.method(weeklyFlowWorker, "clearIncompleteRetry", async () => {});
+  t.mock.method(weeklyFlowWorker, "waitForPlaylistIdle", async () => {});
+  t.mock.method(weeklyFlowWorker, "unblockPlaylist", async () => {});
+  t.mock.method(weeklyFlowWorker, "setRetryCyclePaused", () => {});
+  t.mock.method(playlistManager, "updateConfig", () => {});
+  t.mock.method(playlistManager, "deletePlaybackPlaylist", async () => {});
+  t.mock.method(playlistManager, "weeklyReset", async () => {});
+  t.mock.method(playlistManager, "cleanupEntityPlexPlaylists", async () => {});
+  t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
+  const scans = t.mock.method(playlistManager, "scheduleScanLibrary", () => {});
+
+  await processWeeklyFlowOperation({ kind: "disable-flow-cleanup", flowId: hidden.id });
+  await processWeeklyFlowOperation({ kind: "reset-playlists", playlistTypes: [hidden.id] });
+  await processWeeklyFlowOperation({ kind: "delete-flow", flowId: hidden.id });
+  assert.equal(scans.mock.callCount(), 0);
+
+  await processWeeklyFlowOperation({ kind: "disable-flow-cleanup", flowId: shown.id });
+  assert.equal(scans.mock.callCount(), 1);
+  await processWeeklyFlowOperation({ kind: "reset-playlists", playlistTypes: [shown.id] });
+  assert.equal(scans.mock.callCount(), 2);
+  await processWeeklyFlowOperation({ kind: "delete-flow", flowId: shown.id });
+  assert.equal(scans.mock.callCount(), 3);
+  assert.equal(flowPlaylistConfig.getFlow(shown.id), null);
+});

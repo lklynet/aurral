@@ -365,6 +365,13 @@ async function runFlowSeed({
   return result;
 }
 
+function rescanLibraryForFlows(flowIds) {
+  const shownInLibrary = flowIds.some(
+    (flowId) => flowPlaylistConfig.getFlow(flowId)?.showInLibrary === true,
+  );
+  if (shownInLibrary) playlistManager.scheduleScanLibrary();
+}
+
 async function runFlowCleanup({ flowId, tokenScope = null, token = null } = {}) {
   const safeFlowId = String(flowId || "").trim();
   if (!safeFlowId) return { missing: true };
@@ -381,6 +388,7 @@ async function runFlowCleanup({ flowId, tokenScope = null, token = null } = {}) 
     weeklyFlowWorker.clearPlaylistRunState(safeFlowId);
     downloadTracker.clearByPlaylistId(safeFlowId);
   });
+  rescanLibraryForFlows([safeFlowId]);
   await restartWorkerIfPending();
   return { success: true, flowId: safeFlowId };
 }
@@ -409,6 +417,7 @@ async function deleteFlow({ flowId, tokenScope = null, token = null } = {}) {
     didDelete = flowPlaylistConfig.deleteFlow(safeFlowId);
     await playlistManager.ensureSmartPlaylists();
   });
+  if (didDelete && flow.showInLibrary === true) playlistManager.scheduleScanLibrary();
   await restartWorkerIfPending();
   return didDelete;
 }
@@ -426,6 +435,7 @@ async function resetPlaylists({ playlistTypes = [] } = {}) {
     playlistManager.updateConfig(false);
     await playlistManager.weeklyReset(types, { protectPlayback: false });
   });
+  rescanLibraryForFlows(types);
   await restartWorkerIfPending();
   return { success: true, playlistTypes: types };
 }
