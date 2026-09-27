@@ -1180,7 +1180,9 @@ test("indexLidarrLibrary keeps fully missing albums in canonical reads", async (
     const albumMetadata = db.prepare(
       "SELECT metadata_json FROM library_albums WHERE mbid = ?",
     ).get(albumMbid);
-    assert.equal(JSON.parse(albumMetadata.metadata_json).librarySource, "lidarr");
+    const parsedAlbumMetadata = JSON.parse(albumMetadata.metadata_json);
+    assert.equal(parsedAlbumMetadata.librarySource, "lidarr");
+    assert.equal(parsedAlbumMetadata.lidarrCatalogPresent, true);
   } finally {
     db.prepare("DELETE FROM library_artists WHERE mbid = ?").run(artistMbid);
     db.prepare("DELETE FROM library_tracks WHERE mbid = ?").run(trackMbid);

@@ -245,7 +245,11 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
           mbid: isUuid(artistProviderId) ? artistProviderId : null,
           name: artistName,
           sortName: artist.sortName || null,
-          metadata: { ...artist, librarySource: "lidarr" },
+          metadata: {
+            ...artist,
+            librarySource: "lidarr",
+            lidarrCatalogPresent: true,
+          },
           syncSearch,
         }));
       }
@@ -287,7 +291,11 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
           title: text(album.title) || "Unknown Album",
           albumArtist: artistName,
           releaseDate: album.releaseDate || null,
-          metadata: { ...album, librarySource: "lidarr" },
+          metadata: {
+            ...album,
+            librarySource: "lidarr",
+            lidarrCatalogPresent: true,
+          },
           syncSearch,
         });
         for (const track of tracksByAlbumId.get(String(album.id)) || []) {

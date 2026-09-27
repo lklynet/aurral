@@ -141,7 +141,7 @@ test("recent missing releases backfill direct Lidarr artists before mapping", as
   }
 });
 
-test("Lidarr release metadata refresh adds releases for artists introduced after setup", async () => {
+test("Lidarr release metadata refresh reconciles additions and removals", async () => {
   const artistMbid = "71717171-7171-4717-8717-717171717171";
   const albumMbid = "81818181-8181-4818-8818-818181818181";
   let lidarrArtists = [];
@@ -169,6 +169,8 @@ test("Lidarr release metadata refresh adds releases for artists introduced after
       artistsSeen: 0,
       albumsSeen: 0,
       albumsSkipped: 0,
+      artistsStale: 0,
+      albumsStale: 0,
     });
 
     lidarrArtists = [{
@@ -192,6 +194,8 @@ test("Lidarr release metadata refresh adds releases for artists introduced after
       artistsSeen: 1,
       albumsSeen: 1,
       albumsSkipped: 0,
+      artistsStale: 0,
+      albumsStale: 0,
     });
 
     const releases = await getRecentMissingReleases(24, {
@@ -202,7 +206,76 @@ test("Lidarr release metadata refresh adds releases for artists introduced after
     assert.equal(release?.albumName, "New Upcoming Release");
     assert.equal(release?.managedBy, "lidarr");
 
-    await refreshLidarrReleaseMetadata({ client });
+    assert.deepEqual(await refreshLidarrReleaseMetadata({ client }), {
+      skipped: false,
+      artistsSeen: 1,
+      albumsSeen: 1,
+      albumsSkipped: 0,
+      artistsStale: 0,
+      albumsStale: 0,
+    });
+    assert.equal(
+      db.prepare("SELECT COUNT(*) AS total FROM library_albums WHERE release_group_mbid = ?")
+        .get(albumMbid).total,
+      1,
+    );
+
+    lidarrArtists = [];
+    lidarrAlbums = [];
+    assert.deepEqual(await refreshLidarrReleaseMetadata({ client }), {
+      skipped: false,
+      artistsSeen: 0,
+      albumsSeen: 0,
+      albumsSkipped: 0,
+      artistsStale: 1,
+      albumsStale: 1,
+    });
+    const releasesAfterRemoval = await getRecentMissingReleases(24, {
+      now: "2026-09-27T12:00:00Z",
+    });
+    assert.equal(
+      releasesAfterRemoval.some((album) => album.releaseGroupMbid === albumMbid),
+      false,
+    );
+    const removedAlbum = db.prepare(
+      "SELECT metadata_json FROM library_albums WHERE release_group_mbid = ?",
+    ).get(albumMbid);
+    assert.equal(JSON.parse(removedAlbum.metadata_json).lidarrCatalogPresent, false);
+
+    lidarrArtists = [{
+      id: 914,
+      artistName: "New Lidarr Artist",
+      foreignArtistId: artistMbid,
+      monitored: true,
+      monitor: "future",
+    }];
+    lidarrAlbums = [{
+      id: 915,
+      artistId: 914,
+      title: "New Upcoming Release",
+      foreignAlbumId: albumMbid,
+      releaseDate: "2026-10-02",
+      monitored: true,
+    }];
+    assert.deepEqual(await refreshLidarrReleaseMetadata({ client }), {
+      skipped: false,
+      artistsSeen: 1,
+      albumsSeen: 1,
+      albumsSkipped: 0,
+      artistsStale: 0,
+      albumsStale: 0,
+    });
+    const releasesAfterRestore = await getRecentMissingReleases(24, {
+      now: "2026-09-27T12:00:00Z",
+    });
+    assert.equal(
+      releasesAfterRestore.some((album) => album.releaseGroupMbid === albumMbid),
+      true,
+    );
+    const restoredAlbum = db.prepare(
+      "SELECT metadata_json FROM library_albums WHERE release_group_mbid = ?",
+    ).get(albumMbid);
+    assert.equal(JSON.parse(restoredAlbum.metadata_json).lidarrCatalogPresent, true);
     assert.equal(
       db.prepare("SELECT COUNT(*) AS total FROM library_albums WHERE release_group_mbid = ?")
         .get(albumMbid).total,

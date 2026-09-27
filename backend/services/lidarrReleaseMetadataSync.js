@@ -1,3 +1,4 @@
+import { db } from "../config/db-sqlite.js";
 import {
   buildFallbackIdentityKey,
   buildIdentityKey,
@@ -9,6 +10,7 @@ import {
   getLibraryManagementEntry,
   setLibraryManagement,
 } from "./libraryManagementStore.js";
+import { invalidateCanonicalLibraryCache } from "./libraryQueryService.js";
 import {
   enqueueSystemTaskJob,
   findActiveHonkerJob,
@@ -40,6 +42,64 @@ function ensureLidarrManagement(entityKind, entityId, monitorMode = null) {
   });
 }
 
+const lidarrCatalogStatements = {
+  artist: {
+    select: db.prepare(`
+      SELECT entity.id, entity.identity_key, entity.metadata_json
+      FROM library_artists AS entity
+      JOIN library_management AS management
+        ON management.entity_kind = 'artist'
+        AND management.entity_id = entity.id
+        AND management.managed_by = 'lidarr'
+    `),
+    update: db.prepare(`
+      UPDATE library_artists
+      SET metadata_json = ?, updated_at = ?
+      WHERE id = ?
+    `),
+  },
+  album: {
+    select: db.prepare(`
+      SELECT entity.id, entity.identity_key, entity.metadata_json
+      FROM library_albums AS entity
+      JOIN library_management AS management
+        ON management.entity_kind = 'album'
+        AND management.entity_id = entity.id
+        AND management.managed_by = 'lidarr'
+    `),
+    update: db.prepare(`
+      UPDATE library_albums
+      SET metadata_json = ?, updated_at = ?
+      WHERE id = ?
+    `),
+  },
+};
+
+function markUnseenCatalogEntries(entityKind, seenIdentityKeys) {
+  const statements = lidarrCatalogStatements[entityKind];
+  if (!statements) return 0;
+  const rows = statements.select.all();
+  let stale = 0;
+  for (const row of rows) {
+    if (seenIdentityKeys.has(row.identity_key)) continue;
+    let metadata = {};
+    try {
+      const parsed = JSON.parse(row.metadata_json || "{}");
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) metadata = parsed;
+    } catch {}
+    if (metadata.lidarrCatalogPresent === false) {
+      continue;
+    }
+    statements.update.run(
+      JSON.stringify({ ...metadata, lidarrCatalogPresent: false }),
+      Date.now(),
+      row.id,
+    );
+    stale += 1;
+  }
+  return stale;
+}
+
 export function scheduleLidarrReleaseMetadataRefresh({ delaySeconds = 0 } = {}) {
   const queueName = getSystemTaskQueueName(TASK_KIND);
   const existing = findActiveHonkerJob(
@@ -64,7 +124,14 @@ export async function refreshLidarrReleaseMetadata({
     !client.isConfigured() ||
     (typeof client.isEnabled === "function" && !client.isEnabled())
   ) {
-    return { skipped: true, artistsSeen: 0, albumsSeen: 0, albumsSkipped: 0 };
+    return {
+      skipped: true,
+      artistsSeen: 0,
+      albumsSeen: 0,
+      albumsSkipped: 0,
+      artistsStale: 0,
+      albumsStale: 0,
+    };
   }
 
   const [artistResponse, albumResponse] = await Promise.all([
@@ -78,6 +145,11 @@ export async function refreshLidarrReleaseMetadata({
       .filter((artist) => artist?.id != null)
       .map((artist) => [String(artist.id), artist]),
   );
+  if (artistsByProviderId.size === 0 && albums.length > 0) {
+    throw new Error("Lidarr returned albums without an artist catalogue");
+  }
+  const seenArtistIdentityKeys = new Set();
+  const seenAlbumIdentityKeys = new Set();
   let albumsSeen = 0;
   let albumsSkipped = 0;
 
@@ -95,8 +167,13 @@ export async function refreshLidarrReleaseMetadata({
         mbid: isUuid(providerId) ? providerId : null,
         name: artistName,
         sortName: artist.sortName || null,
-        metadata: { ...artist, librarySource: "lidarr" },
+        metadata: {
+          ...artist,
+          librarySource: "lidarr",
+          lidarrCatalogPresent: true,
+        },
       });
+      seenArtistIdentityKeys.add(record.identity_key);
       artistRecords.set(String(artist.id), record);
       ensureLidarrManagement(
         "artist",
@@ -134,8 +211,13 @@ export async function refreshLidarrReleaseMetadata({
         title: text(album.title) || "Unknown Album",
         albumArtist: text(artist.artistName || artist.name) || "Unknown Artist",
         releaseDate: album.releaseDate || null,
-        metadata: { ...album, librarySource: "lidarr" },
+        metadata: {
+          ...album,
+          librarySource: "lidarr",
+          lidarrCatalogPresent: true,
+        },
       });
+      seenAlbumIdentityKeys.add(record.identity_key);
       ensureLidarrManagement(
         "album",
         record.id,
@@ -148,15 +230,29 @@ export async function refreshLidarrReleaseMetadata({
     }
   });
 
+  let artistsStale = 0;
+  let albumsStale = 0;
+  if (albumsSkipped === 0) {
+    artistsStale = markUnseenCatalogEntries("artist", seenArtistIdentityKeys);
+    albumsStale = markUnseenCatalogEntries("album", seenAlbumIdentityKeys);
+    if (artistsStale > 0 || albumsStale > 0) {
+      invalidateCanonicalLibraryCache({ persistedGenres: false });
+    }
+  }
+
   logger.info("library", "Lidarr release metadata refreshed", {
     artists: artistsByProviderId.size,
     albums: albumsSeen,
     skippedAlbums: albumsSkipped,
+    staleArtists: artistsStale,
+    staleAlbums: albumsStale,
   });
   return {
     skipped: false,
     artistsSeen: artistsByProviderId.size,
     albumsSeen,
     albumsSkipped,
+    artistsStale,
+    albumsStale,
   };
 }
