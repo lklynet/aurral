@@ -27,6 +27,7 @@ const [
   loggerModule,
   listenbrainzPlaylistsModule,
   lastfmStationsModule,
+  youtubeMusicPlaylistsModule,
 ] = await setupIsolatedBackend(
   "playlist-import-order",
   "backend/config/db-sqlite.js",
@@ -44,6 +45,7 @@ const [
   "backend/services/logger.js",
   "backend/services/importLists/listenbrainzPlaylists.js",
   "backend/services/importLists/lastfmStations.js",
+  "backend/services/importLists/youtubeMusicPlaylists.js",
 );
 
 const { downloadTracker } = trackerModule;
@@ -64,6 +66,7 @@ const { playlistManager } = playlistManagerModule;
 const { spotifyClient } = spotifyClientModule;
 const { listenbrainzPlaylistClient } = listenbrainzPlaylistsModule;
 const { lastfmStationClient } = lastfmStationsModule;
+const { youtubeMusicPlaylistClient } = youtubeMusicPlaylistsModule;
 const { syncSharedPlaylistImport } = importSyncModule;
 const { enqueueImportedPlaylist } = importPlaylistModule;
 const { weeklyFlowOperationQueue } = operationQueueModule;
@@ -348,6 +351,111 @@ test("external import routes log fetch failures with the provider reason", async
     assert.equal(logged?.arguments[2]?.stage, "fetch");
     assert.equal(logged?.arguments[2]?.reason, reason);
   }
+});
+
+test("YouTube Music preview and import trust the refetched source title", async (t) => {
+  const { registerYoutubeMusicImport } = await importFromRepo(
+    "backend/routes/weeklyFlow/handlers/youtubeMusicImport.js",
+  );
+  const handlers = new Map();
+  registerYoutubeMusicImport({
+    post(route, handler) { handlers.set(route, handler); },
+  });
+  const getPlaylist = t.mock.method(youtubeMusicPlaylistClient, "getPlaylist", async () => ({
+    id: "PLabcdefghij_123",
+    name: "Refetched source title",
+    tracks: [
+      { artistName: "Artist A", trackName: "Track A", albumName: "Album A" },
+      { artistName: "Artist B", trackName: "Track B", albumName: null },
+    ],
+    stats: { sourceItems: 3, unavailable: 1, podcast: 0, incomplete: 0, duplicate: 0 },
+    excluded: [{ position: 3, reason: "unavailable" }],
+  }));
+  const enqueue = t.mock.method(weeklyFlowOperationQueue, "enqueuePayload", async () => ({
+    queued: true,
+    operationId: 71,
+  }));
+  const response = () => ({
+    statusCode: 200,
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; return this; },
+  });
+
+  const previewResponse = response();
+  await handlers.get("/import/youtube-music/preview")({
+    user: { id: 7 },
+    body: { url: "https://music.youtube.com/playlist?list=PLabcdefghij_123" },
+  }, previewResponse);
+  assert.equal(previewResponse.statusCode, 200);
+  assert.deepEqual(previewResponse.body, {
+    playlist: { id: "PLabcdefghij_123", name: "Refetched source title" },
+    trackCount: 2,
+    skipped: 1,
+    previewTracks: [
+      { artistName: "Artist A", trackName: "Track A", albumName: "Album A" },
+      { artistName: "Artist B", trackName: "Track B", albumName: null },
+    ],
+  });
+
+  const importResponse = response();
+  await handlers.get("/import/youtube-music")({
+    user: { id: 7 },
+    body: {
+      playlistId: "PLabcdefghij_123",
+      name: "My imported mix",
+      externalName: "Spoofed client title",
+      syncEnabled: true,
+      syncIntervalHours: 12,
+      keepRemovedTracks: false,
+    },
+  }, importResponse);
+  assert.equal(importResponse.statusCode, 200);
+  assert.equal(getPlaylist.mock.callCount(), 2);
+  assert.equal(enqueue.mock.callCount(), 1);
+  const queued = enqueue.mock.calls[0].arguments[0];
+  assert.equal(queued.importSource.provider, "youtube-music-playlist");
+  assert.equal(queued.importSource.externalId, "PLabcdefghij_123");
+  assert.equal(queued.importSource.externalName, "Refetched source title");
+  assert.equal(queued.sourceName, "YouTube Music");
+  assert.equal(queued.importSource.syncIntervalHours, 12);
+  assert.equal(queued.importSource.keepRemovedTracks, false);
+  assert.equal(JSON.stringify(queued).includes("Spoofed client title"), false);
+});
+
+test("YouTube Music route maps provider failures without logging submitted references", async (t) => {
+  const { registerYoutubeMusicImport } = await importFromRepo(
+    "backend/routes/weeklyFlow/handlers/youtubeMusicImport.js",
+  );
+  const handlers = new Map();
+  registerYoutubeMusicImport({
+    post(route, handler) { handlers.set(route, handler); },
+  });
+  const error = new Error("YouTube Music took too long to respond");
+  error.code = "YOUTUBE_PLAYLIST_TIMEOUT";
+  error.statusCode = 504;
+  t.mock.method(youtubeMusicPlaylistClient, "getPlaylist", async () => { throw error; });
+  const warnings = t.mock.method(logger, "warn", () => {});
+  const failures = t.mock.method(logger, "error", () => {});
+  const response = {
+    statusCode: 200,
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; return this; },
+  };
+
+  await handlers.get("/import/youtube-music/preview")({
+    user: { id: 7 },
+    body: { url: "https://music.youtube.com/playlist?list=PLsecretUnlisted_123" },
+  }, response);
+
+  assert.equal(response.statusCode, 504);
+  assert.deepEqual(response.body, {
+    error: "Failed to preview YouTube Music playlist",
+    message: "YouTube Music took too long to respond",
+    code: "YOUTUBE_PLAYLIST_TIMEOUT",
+  });
+  const logs = JSON.stringify([warnings.mock.calls, failures.mock.calls]);
+  assert.equal(logs.includes("PLsecretUnlisted_123"), false);
+  assert.equal(logs.includes("music.youtube.com/playlist"), false);
 });
 
 test.after(async () => {
@@ -938,6 +1046,48 @@ test("ListenBrainz sync uses the shared import update path", async (t) => {
     assert.equal(completed?.arguments[2]?.tracksRemoved, 1);
   } finally {
     listenbrainzPlaylistClient.getGeneratedPlaylistTracks = originalGetGeneratedPlaylistTracks;
+    weeklyFlowWorker.start = originalStart;
+    weeklyFlowWorker.stop();
+  }
+});
+
+test("YouTube Music sync uses the shared import path without logging its external ID", async (t) => {
+  const originalStart = weeklyFlowWorker.start;
+  const info = t.mock.method(logger, "info", () => {});
+  const getPlaylist = t.mock.method(youtubeMusicPlaylistClient, "getPlaylist", async () => ({
+    id: "PLsecretUnlisted_123",
+    name: "Source title",
+    tracks: [{ artistName: "New Artist", trackName: "New Song", durationMs: 180_000 }],
+    stats: { sourceItems: 1, unavailable: 0, podcast: 0, incomplete: 0, duplicate: 0 },
+    excluded: [],
+  }));
+  weeklyFlowWorker.start = async () => false;
+  try {
+    const playlist = flowPlaylistConfig.createSharedPlaylist({
+      name: "YouTube Mix",
+      ownerUserId: 7,
+      tracks: [{ artistName: "Old Artist", trackName: "Old Song" }],
+      importSource: {
+        provider: "youtube-music-playlist",
+        externalId: "PLsecretUnlisted_123",
+        externalName: "Source title",
+        syncEnabled: true,
+        syncIntervalHours: 24,
+      },
+    });
+
+    const result = await syncSharedPlaylistImport({
+      playlistId: playlist.id,
+      user: { id: 7 },
+      force: true,
+    });
+
+    assert.equal(getPlaylist.mock.callCount(), 1);
+    assert.deepEqual(getPlaylist.mock.calls[0].arguments, ["PLsecretUnlisted_123"]);
+    assert.equal(result.trackCount, 1);
+    assert.equal(flowPlaylistConfig.getSharedPlaylist(playlist.id).tracks[0].trackName, "New Song");
+    assert.equal(JSON.stringify(info.mock.calls).includes("PLsecretUnlisted_123"), false);
+  } finally {
     weeklyFlowWorker.start = originalStart;
     weeklyFlowWorker.stop();
   }

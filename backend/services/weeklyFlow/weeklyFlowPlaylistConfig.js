@@ -10,6 +10,7 @@ export const IMPORT_SOURCE_PROVIDERS = new Set([
   "listenbrainz-playlist",
   "listenbrainz-createdfor",
   "lastfm-station",
+  "youtube-music-playlist",
 ]);
 const DEFAULT_MIX = { discover: 34, mix: 33, trending: 33, focus: 0 };
 export const DEFAULT_SIZE = 30;

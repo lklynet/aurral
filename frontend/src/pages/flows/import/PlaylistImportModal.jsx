@@ -14,9 +14,11 @@ import {
   importListenBrainzPlaylist,
   importLastfmPlaylist,
   importSpotifyPlaylist,
+  importYoutubeMusicPlaylist,
   previewListenBrainzPlaylist,
   previewLastfmPlaylist,
   previewSpotifyPlaylist,
+  previewYoutubeMusicPlaylist,
   startSpotifyOAuth,
 } from "../../../utils/api/endpoints/playlists.js";
 import { getMyListeningHistory, getScrobbleStatus } from "../../../utils/api/endpoints/auth.js";
@@ -41,6 +43,119 @@ function getPlaylistMeta(playlist) {
   if (playlist?.sourceType === "lastfm-station") parts.push("Updates from Last.fm");
   else if (playlist?.sourceType) parts.push("Updates weekly");
   return parts.join(" · ");
+}
+
+function PlaylistImportConfig({
+  externalSource,
+  importing,
+  keepRemovedTracks,
+  playlistName,
+  previewLoading,
+  previewSkipped,
+  previewTrackCount,
+  previewTracks,
+  setKeepRemovedTracks,
+  setPlaylistName,
+  setSyncIntervalHours,
+  syncIntervalHours,
+}) {
+  return (
+    <div className="playlist-import__config">
+      <div className="playlist-import__config-fields">
+        <div className="playlist-modal__fields">
+          <label className="playlist-import__field-label" htmlFor="playlist-import-name">
+            Name in Aurral
+          </label>
+          <input
+            id="playlist-import-name"
+            type="text"
+            className="input"
+            value={playlistName}
+            onChange={(event) => setPlaylistName(event.target.value)}
+            disabled={importing}
+          />
+        </div>
+        <div className="playlist-modal__fields">
+          <label className="playlist-import__field-label" htmlFor="playlist-import-interval">
+            Sync
+          </label>
+          <select
+            id="playlist-import-interval"
+            className="input"
+            value={syncIntervalHours}
+            onChange={(event) => setSyncIntervalHours(Number(event.target.value))}
+            disabled={importing}
+          >
+            {SYNC_INTERVAL_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <label className="playlist-import__retention">
+        <input
+          type="checkbox"
+          checked={keepRemovedTracks}
+          onChange={(event) => setKeepRemovedTracks(event.target.checked)}
+          className="artist-checkbox"
+          disabled={importing}
+        />
+        <span className="playlist-import__retention-copy">
+          <span className="playlist-import__retention-title">Keep removed tracks in library</span>
+          <span className="playlist-import__retention-help">
+            {externalSource} removals leave the downloaded file available in Aurral.
+          </span>
+        </span>
+      </label>
+
+      <div className="playlist-import__summary" aria-live="polite">
+        {previewLoading ? (
+          <div className="playlist-import__list-status playlist-import__list-status--inline">
+            <DotLoader size="sm" label={null} />
+            <span>Counting importable tracks…</span>
+          </div>
+        ) : (
+          <>
+            <div className="playlist-import__summary-top">
+              <span className="flow-page__badge flow-page__badge--count">
+                {previewTrackCount} importable
+              </span>
+              {previewSkipped > 0 ? (
+                <span className="playlist-import__summary-note">{previewSkipped} skipped</span>
+              ) : null}
+            </div>
+            {previewTrackCount === 0 ? (
+              <p className="playlist-import__summary-copy">
+                No importable tracks were found. Check that the playlist contains available music.
+              </p>
+            ) : null}
+            {previewSkipped > 0 ? (
+              <p className="playlist-import__summary-copy">
+                {externalSource === "Spotify"
+                  ? "Spotify also lists unavailable entries, podcast episodes, and duplicates Aurral cannot download."
+                  : externalSource === "Last.fm"
+                    ? "Some Last.fm entries are missing the artist or track data Aurral needs."
+                    : externalSource === "YouTube Music"
+                      ? "Unavailable entries, podcasts, incomplete videos, and duplicates are skipped."
+                      : "Some ListenBrainz entries are missing the artist or track data Aurral needs."}
+              </p>
+            ) : null}
+            {previewTracks.length > 0 ? (
+              <p className="playlist-import__summary-sample">
+                {previewTracks
+                  .map((track) => `${track.artistName} — ${track.trackName}`)
+                  .join(" · ")}
+                {previewTrackCount > previewTracks.length
+                  ? ` · +${previewTrackCount - previewTracks.length} more`
+                  : ""}
+              </p>
+            ) : null}
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function tokensFromHandoffPayload(payload) {
@@ -141,6 +256,8 @@ export function PlaylistImportModal({
   const [lastfmProfileChecked, setLastfmProfileChecked] = useState(false);
   const [lastfmProfileLoading, setLastfmProfileLoading] = useState(false);
   const [lastfmLoading, setLastfmLoading] = useState(false);
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [youtubeError, setYoutubeError] = useState("");
   const [playlists, setPlaylists] = useState([]);
   const [playlistQuery, setPlaylistQuery] = useState("");
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
@@ -173,6 +290,8 @@ export function PlaylistImportModal({
     setLastfmUsername("");
     setLastfmUsernameInput("");
     setLastfmProfileChecked(false);
+    setYoutubeUrl("");
+    setYoutubeError("");
     setPlaylists([]);
     setPlaylistQuery("");
     setSelectedPlaylist(null);
@@ -194,6 +313,11 @@ export function PlaylistImportModal({
     setPlaylistQuery("");
     setSelectedPlaylist(null);
     setPlaylistName("");
+    setYoutubeUrl("");
+    setYoutubeError("");
+    setPreviewTracks([]);
+    setPreviewTrackCount(0);
+    setPreviewSkipped(0);
   };
 
   const handleSpotifyAuthRequired = useCallback((error, requestId) => {
@@ -347,6 +471,7 @@ export function PlaylistImportModal({
   }, [open, source, lastfmProfileChecked, lastfmUsername, loadLastfmPlaylists]);
 
   useEffect(() => {
+    if (source === "youtube") return;
     if (!selectedPlaylist?.id) {
       setPreviewTracks([]);
       setPreviewTrackCount(0);
@@ -433,6 +558,43 @@ export function PlaylistImportModal({
     setPlaylistName(playlist?.name || "");
   };
 
+  const handlePreviewYoutube = async () => {
+    const url = youtubeUrl.trim();
+    if (!url || previewLoading || importing) return;
+    const requestId = sourceRequestIdRef.current;
+    setYoutubeError("");
+    setSelectedPlaylist(null);
+    setPlaylistName("");
+    setPreviewTracks([]);
+    setPreviewTrackCount(0);
+    setPreviewSkipped(0);
+    setPreviewLoading(true);
+    try {
+      const payload = await previewYoutubeMusicPlaylist(url);
+      if (sourceRef.current !== "youtube" || requestId !== sourceRequestIdRef.current) return;
+      const playlist = payload?.playlist;
+      if (!playlist?.id || !playlist?.name) throw new Error("YouTube Music returned an invalid playlist");
+      setSelectedPlaylist({ ...playlist, trackCount: Number(payload?.trackCount || 0) });
+      setPlaylistName(playlist.name);
+      setPreviewTrackCount(Number(payload?.trackCount || 0));
+      setPreviewSkipped(Number(payload?.skipped || 0));
+      setPreviewTracks(Array.isArray(payload?.previewTracks) ? payload.previewTracks : []);
+    } catch (error) {
+      if (sourceRef.current !== "youtube" || requestId !== sourceRequestIdRef.current) return;
+      const message =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        "Failed to preview YouTube Music playlist";
+      setYoutubeError(message);
+      showError?.(message);
+    } finally {
+      if (sourceRef.current === "youtube" && requestId === sourceRequestIdRef.current) {
+        setPreviewLoading(false);
+      }
+    }
+  };
+
   const handleJsonFileChange = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -461,7 +623,14 @@ export function PlaylistImportModal({
     const finalName = reserveUniqueFlowName(reservedNames, baseName);
     const isListenBrainz = source === "listenbrainz";
     const isLastfm = source === "lastfm";
-    const providerLabel = isListenBrainz ? "ListenBrainz" : isLastfm ? "Last.fm" : "Spotify";
+    const isYoutube = source === "youtube";
+    const providerLabel = isListenBrainz
+      ? "ListenBrainz"
+      : isLastfm
+        ? "Last.fm"
+        : isYoutube
+          ? "YouTube Music"
+          : "Spotify";
     const requestId = sourceRequestIdRef.current;
     setImporting(true);
     try {
@@ -469,14 +638,16 @@ export function PlaylistImportModal({
         ? importListenBrainzPlaylist
         : isLastfm
           ? importLastfmPlaylist
-          : importSpotifyPlaylist;
+          : isYoutube
+            ? importYoutubeMusicPlaylist
+            : importSpotifyPlaylist;
       await importPlaylist({
         playlistId: selectedPlaylist.id,
         ...(isListenBrainz && selectedPlaylist.sourceType
           ? { playlistType: selectedPlaylist.sourceType }
           : {}),
         ...(isLastfm ? { username: lastfmUsername } : {}),
-        externalName: selectedPlaylist.name,
+        ...(!isYoutube ? { externalName: selectedPlaylist.name } : {}),
         name: finalName,
         syncEnabled: syncIntervalHours > 0,
         syncIntervalHours,
@@ -546,7 +717,13 @@ export function PlaylistImportModal({
   const canImportExternal = selectedPlaylist?.id && previewTrackCount > 0 && !previewLoading;
   const canImportJson = Boolean(jsonReview?.flows?.length);
   const externalSource =
-    source === "listenbrainz" ? "ListenBrainz" : source === "lastfm" ? "Last.fm" : "Spotify";
+    source === "listenbrainz"
+      ? "ListenBrainz"
+      : source === "lastfm"
+        ? "Last.fm"
+        : source === "youtube"
+          ? "YouTube Music"
+          : "Spotify";
 
   return (
     <ModalShell
@@ -559,6 +736,8 @@ export function PlaylistImportModal({
             ? "Pick a playlist to queue downloads. Weekly playlists use the latest week."
             : source === "lastfm"
               ? "Pick a Last.fm station to queue downloads and optionally sync it."
+            : source === "youtube"
+              ? "Paste a public YouTube or YouTube Music playlist URL."
             : "Import a JSON tracklist from Aurral or another tool."
       }
       onClose={onClose}
@@ -607,6 +786,7 @@ export function PlaylistImportModal({
             { id: "spotify", label: "Spotify" },
             { id: "lastfm", label: "Last.fm" },
             { id: "listenbrainz", label: "ListenBrainz" },
+            { id: "youtube", label: "YouTube Music" },
             { id: "json", label: "JSON file" },
           ].map((option) => (
             <button
@@ -623,7 +803,81 @@ export function PlaylistImportModal({
 
         {source !== "json" ? (
           <div className="playlist-import__spotify">
-            {source === "spotify" && !spotifyStatus.connected ? (
+            {source === "youtube" ? (
+              <div className="playlist-import__youtube">
+                <div className="playlist-modal__fields">
+                  <label className="playlist-import__field-label" htmlFor="playlist-import-youtube-url">
+                    Playlist URL
+                  </label>
+                  <input
+                    id="playlist-import-youtube-url"
+                    type="url"
+                    className="input"
+                    placeholder="https://music.youtube.com/playlist?list=…"
+                    value={youtubeUrl}
+                    onChange={(event) => {
+                      setYoutubeUrl(event.target.value);
+                      setYoutubeError("");
+                      setSelectedPlaylist(null);
+                      setPlaylistName("");
+                      setPreviewTracks([]);
+                      setPreviewTrackCount(0);
+                      setPreviewSkipped(0);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        handlePreviewYoutube();
+                      }
+                    }}
+                    autoComplete="url"
+                    disabled={previewLoading || importing}
+                    aria-describedby={youtubeError ? "playlist-import-youtube-error" : undefined}
+                  />
+                  {youtubeError ? (
+                    <p id="playlist-import-youtube-error" className="settings-page__error" role="alert">
+                      {youtubeError}
+                    </p>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={handlePreviewYoutube}
+                  disabled={previewLoading || importing || !youtubeUrl.trim()}
+                >
+                  {previewLoading ? <DotLoader size="sm" label={null} /> : null}
+                  {previewLoading ? "Loading preview…" : "Load playlist"}
+                </button>
+
+                {selectedPlaylist ? (
+                  <>
+                    <div className="playlist-import__selected">
+                      <div className="playlist-import__selected-copy">
+                        <span className="playlist-import__selected-name">{selectedPlaylist.name}</span>
+                        <span className="playlist-import__selected-meta">
+                          {getPlaylistMeta(selectedPlaylist)}
+                        </span>
+                      </div>
+                    </div>
+                    <PlaylistImportConfig
+                      externalSource={externalSource}
+                      importing={importing}
+                      keepRemovedTracks={keepRemovedTracks}
+                      playlistName={playlistName}
+                      previewLoading={previewLoading}
+                      previewSkipped={previewSkipped}
+                      previewTrackCount={previewTrackCount}
+                      previewTracks={previewTracks}
+                      setKeepRemovedTracks={setKeepRemovedTracks}
+                      setPlaylistName={setPlaylistName}
+                      setSyncIntervalHours={setSyncIntervalHours}
+                      syncIntervalHours={syncIntervalHours}
+                    />
+                  </>
+                ) : null}
+              </div>
+            ) : source === "spotify" && !spotifyStatus.connected ? (
               <div className="playlist-import__empty">
                 <div className="playlist-import__empty-icon" aria-hidden="true">
                   <Music2 />
@@ -804,101 +1058,20 @@ export function PlaylistImportModal({
                 )}
 
                 {selectedPlaylist ? (
-                  <div className="playlist-import__config">
-                    <div className="playlist-import__config-fields">
-                      <div className="playlist-modal__fields">
-                        <label className="playlist-import__field-label" htmlFor="playlist-import-name">
-                          Name in Aurral
-                        </label>
-                        <input
-                          id="playlist-import-name"
-                          type="text"
-                          className="input"
-                          value={playlistName}
-                          onChange={(event) => setPlaylistName(event.target.value)}
-                          disabled={importing}
-                        />
-                      </div>
-
-                      <div className="playlist-modal__fields">
-                        <label className="playlist-import__field-label" htmlFor="playlist-import-interval">
-                          Sync
-                        </label>
-                        <select
-                          id="playlist-import-interval"
-                          className="input"
-                          value={syncIntervalHours}
-                          onChange={(event) => setSyncIntervalHours(Number(event.target.value))}
-                          disabled={importing}
-                        >
-                          {SYNC_INTERVAL_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    <label className="playlist-import__retention">
-                      <input
-                        type="checkbox"
-                        checked={keepRemovedTracks}
-                        onChange={(event) => setKeepRemovedTracks(event.target.checked)}
-                        className="artist-checkbox"
-                        disabled={importing}
-                      />
-                      <span className="playlist-import__retention-copy">
-                        <span className="playlist-import__retention-title">
-                          Keep removed tracks in library
-                        </span>
-                        <span className="playlist-import__retention-help">
-                          {externalSource} removals leave the downloaded file available in Aurral.
-                        </span>
-                      </span>
-                    </label>
-
-                    <div className="playlist-import__summary">
-                      {previewLoading ? (
-                        <div className="playlist-import__list-status playlist-import__list-status--inline">
-                          <DotLoader size="sm" label={null} />
-                          <span>Counting importable tracks…</span>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="playlist-import__summary-top">
-                            <span className="flow-page__badge flow-page__badge--count">
-                              {previewTrackCount} importable
-                            </span>
-                            {previewSkipped > 0 ? (
-                              <span className="playlist-import__summary-note">
-                                {previewSkipped} skipped
-                              </span>
-                            ) : null}
-                          </div>
-                          {previewSkipped > 0 ? (
-                            <p className="playlist-import__summary-copy">
-                              {externalSource === "Spotify"
-                                ? "Spotify also lists unavailable entries, podcast episodes, and duplicates Aurral cannot download."
-                                : externalSource === "Last.fm"
-                                  ? "Some Last.fm entries are missing the artist or track data Aurral needs."
-                                  : "Some ListenBrainz entries are missing the artist or track data Aurral needs."}
-                            </p>
-                          ) : null}
-                          {previewTracks.length > 0 ? (
-                            <p className="playlist-import__summary-sample">
-                              {previewTracks
-                                .map((track) => `${track.artistName} — ${track.trackName}`)
-                                .join(" · ")}
-                              {previewTrackCount > previewTracks.length
-                                ? ` · +${previewTrackCount - previewTracks.length} more`
-                                : ""}
-                            </p>
-                          ) : null}
-                        </>
-                      )}
-                    </div>
-                  </div>
+                  <PlaylistImportConfig
+                    externalSource={externalSource}
+                    importing={importing}
+                    keepRemovedTracks={keepRemovedTracks}
+                    playlistName={playlistName}
+                    previewLoading={previewLoading}
+                    previewSkipped={previewSkipped}
+                    previewTrackCount={previewTrackCount}
+                    previewTracks={previewTracks}
+                    setKeepRemovedTracks={setKeepRemovedTracks}
+                    setPlaylistName={setPlaylistName}
+                    setSyncIntervalHours={setSyncIntervalHours}
+                    syncIntervalHours={syncIntervalHours}
+                  />
                 ) : null}
               </>
             )}

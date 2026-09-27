@@ -3,6 +3,7 @@ import { spotifyClient } from "../spotify/spotifyClient.js";
 import { parseSpotifyPlaylistItems } from "./spotifyTracks.js";
 import { listenbrainzPlaylistClient } from "./listenbrainzPlaylists.js";
 import { lastfmStationClient } from "./lastfmStations.js";
+import { youtubeMusicPlaylistClient } from "./youtubeMusicPlaylists.js";
 import { normalizeImportSource } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { weeklyFlowOperationQueue } from "../weeklyFlow/weeklyFlowOperationQueue.js";
 import { logger } from "../logger.js";
@@ -27,6 +28,10 @@ export async function fetchImportedPlaylistTracks({
   }
   if (provider === "lastfm-station") {
     return lastfmStationClient.getStationTracks(userId, externalId, externalUsername);
+  }
+  if (provider === "youtube-music-playlist") {
+    const { tracks, stats, excluded } = await youtubeMusicPlaylistClient.getPlaylist(externalId);
+    return { tracks, stats, excluded };
   }
   const error = new Error(`Unsupported playlist import provider: ${provider || "unknown"}`);
   error.statusCode = 400;

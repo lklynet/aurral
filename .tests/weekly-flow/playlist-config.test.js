@@ -446,6 +446,31 @@ test("defaults Spotify removed-track retention on and preserves an explicit opt-
   assert.equal(optedOut.keepRemovedTracks, false);
 });
 
+test("normalizes YouTube Music import sources without a schema migration", () => {
+  const source = normalizeImportSource({
+    provider: "youtube-music-playlist",
+    externalId: "PLabcdefghij_123",
+    externalName: "Public playlist",
+    syncEnabled: true,
+    syncIntervalHours: 12,
+    keepRemovedTracks: false,
+    lastSyncAt: 1234,
+    lastSyncTrackCount: 8,
+  });
+
+  assert.deepEqual(source, {
+    provider: "youtube-music-playlist",
+    externalId: "PLabcdefghij_123",
+    externalName: "Public playlist",
+    syncEnabled: true,
+    syncIntervalHours: 12,
+    keepRemovedTracks: false,
+    lastSyncAt: 1234,
+    lastSyncError: null,
+    lastSyncTrackCount: 8,
+  });
+});
+
 test("rejects unsupported playlist import providers", () => {
   assert.equal(
     normalizeImportSource({
