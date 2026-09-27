@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   describeLibraryManagerControl,
   describeLidarrConnectionState,
+  describeRootOverlapWarning,
 } from "../../frontend/src/pages/Settings/utils/librarySettings.js";
 
 const optionById = (control, id) => control.options.find((option) => option.id === id);
@@ -118,4 +119,25 @@ test("a disabled Lidarr reports disabled even when its circuit is open", () => {
 
 test("the reconnect state waits for health before reporting Lidarr unreachable", () => {
   assert.equal(describeLidarrConnectionState({ lidarr: connectedLidarr, health: null }), null);
+});
+
+test("no overlap warning is shown when the roots are separate", () => {
+  assert.equal(describeRootOverlapWarning(undefined), null);
+  assert.equal(describeRootOverlapWarning([]), null);
+});
+
+test("equal and nested roots produce one allowed-overlap warning naming each Lidarr root", () => {
+  const warning = describeRootOverlapWarning([
+    { type: "equal", lidarrRoot: "/music", message: "equal" },
+    { type: "nested-b-in-a", lidarrRoot: "/downloads/lidarr", message: "nested" },
+    { type: "nested-a-in-b", lidarrRoot: "/data", message: "contains" },
+  ]);
+
+  assert.match(warning.summary, /allowed/);
+  assert.match(warning.summary, /rename, import, or delete/);
+  assert.equal(warning.details.length, 3);
+  assert.match(warning.details[0], /\/music/);
+  assert.match(warning.details[1], /\/downloads\/lidarr/);
+  assert.match(warning.details[2], /\/data/);
+  assert.equal(new Set(warning.details.map((detail) => detail.replace(/\/\S*/, ""))).size, 3);
 });

@@ -10,6 +10,7 @@ import { DotLoader } from "../../../components/DotLoader";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { describeLidarrConnectionState } from "../utils/librarySettings";
+import { RootOverlapWarning } from "./RootOverlapWarning";
 export function LidarrSettingsSection({
   settings,
   updateSettings,
@@ -298,6 +299,7 @@ export function LidarrSettingsSection({
         <p className="arr-form-help">
           Users can override the root folder and quality profile in Profile.
         </p>
+        <RootOverlapWarning rootWarnings={settings.rootWarnings} />
         <SettingsArrFormGroup label="Default root folder" labelFor="lidarr-root-folder">
           <SettingsSelect
             id="lidarr-root-folder"
