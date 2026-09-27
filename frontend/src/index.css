@@ -13448,6 +13448,20 @@ button.native-library-genre-row:focus-visible {
   min-width: 0;
 }
 
+.profile-settings__control {
+  display: flex;
+  grid-area: control;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.profile-settings__control-status {
+  color: var(--aurral-text-muted);
+  font-size: 0.8125rem;
+}
+
 .profile-settings__field > .settings-page__hint {
   grid-area: description;
   margin: 0;

@@ -116,6 +116,12 @@ export const getMyLidarrPreferences = ({ signal } = {}) =>
 
 export const getMyDiscoverLayout = () => getData("/users/me/discover-layout");
 
+export const getMyLibraryOwner = ({ signal } = {}) =>
+  getData("/users/me/library-owner", { signal });
+
+export const updateMyLibraryOwner = (defaultLibraryOwner) =>
+  postData("/users/me/library-owner", { defaultLibraryOwner });
+
 export const updateMyListeningHistory = (userId, payload) =>
   patchData(`/users/${userId}`, payload);
 
