@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   completeOnboarding,
   getLidarrMetadataProfilesOnboarding,
@@ -11,6 +11,8 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { SettingsInput } from "./Settings/components/SettingsField";
 import { OnboardingStep, OnboardingStepHeader, OnboardingHint } from "./onboardingUtils.jsx";
 import PillToggle from "../components/PillToggle";
+import DownloadFolderField from "../components/DownloadFolderField";
+import { buildOnboardingPayload } from "../utils/onboardingPayload.js";
 import { DotLoader } from "../components/DotLoader";
 import {
   getApiErrorMessage,
@@ -33,6 +35,9 @@ function Onboarding() {
   const [lidarrMetadataProfileId, setLidarrMetadataProfileId] = useState(null);
   const [lidarrTestSuccess, setLidarrTestSuccess] = useState(false);
   const [testingLidarr, setTestingLidarr] = useState(false);
+  const [skipLidarr, setSkipLidarr] = useState(false);
+  const [downloadFolderPath, setDownloadFolderPath] = useState("");
+  const lidarrModeChangedRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const cardRef = useRef(null);
@@ -98,6 +103,19 @@ function Onboarding() {
     return () => cancelAnimationFrame(id);
   }, []);
 
+  useEffect(() => {
+    if (!lidarrModeChangedRef.current) return;
+    lidarrModeChangedRef.current = false;
+    const firstFieldId = skipLidarr ? "onboarding-download-folder" : "onboarding-lidarr-url";
+    document.getElementById(firstFieldId)?.focus();
+  }, [skipLidarr]);
+
+  const handleLidarrMode = (nextSkip) => {
+    setError("");
+    lidarrModeChangedRef.current = true;
+    setSkipLidarr(nextSkip);
+  };
+
   const handleNext = () => {
     setError("");
     if (step < STEPS.length - 1) setStep(step + 1);
@@ -139,28 +157,29 @@ function Onboarding() {
   };
 
   const handleFinish = async () => {
-    if (!lidarrTestSuccess) {
+    if (!skipLidarr && !lidarrTestSuccess) {
       await handleTestLidarr();
       return;
     }
     setSubmitting(true);
     setError("");
     try {
-      await completeOnboarding({
-        authUser: authUser.trim() || "admin",
-        authPassword: authPassword || undefined,
-        security: {
-          localNetworkBypass: { enabled: localNetworkBypass === true },
-        },
-        lidarr: {
-          url: lidarrUrl.trim().replace(/\/+$/, ""),
-          apiKey: lidarrApiKey.trim(),
-          qualityProfileId: lidarrQualityProfileId,
-          metadataProfileId: lidarrMetadataProfileId,
-          defaultMonitorOption: "none",
-          searchOnAdd: false,
-        },
-      });
+      await completeOnboarding(
+        buildOnboardingPayload({
+          authUser,
+          authPassword,
+          localNetworkBypass,
+          downloadFolderPath,
+          lidarr: skipLidarr
+            ? null
+            : {
+                url: lidarrUrl,
+                apiKey: lidarrApiKey,
+                qualityProfileId: lidarrQualityProfileId,
+                metadataProfileId: lidarrMetadataProfileId,
+              },
+        }),
+      );
       await refreshAuth();
       showSuccess("Setup complete. Sign in with your admin account.");
     } catch (e) {
@@ -173,7 +192,7 @@ function Onboarding() {
   const isPrimaryDisabled =
     (currentStep === "admin" && !adminComplete) ||
     (currentStep === "lidarr" &&
-      ((!lidarrTestSuccess && (!lidarrUrl.trim() || !lidarrApiKey.trim())) ||
+      ((!skipLidarr && !lidarrTestSuccess && (!lidarrUrl.trim() || !lidarrApiKey.trim())) ||
         testingLidarr ||
         submitting));
 
@@ -181,7 +200,7 @@ function Onboarding() {
   const primaryLabel =
     currentStep === "admin"
       ? "Next"
-      : lidarrTestSuccess
+      : skipLidarr || lidarrTestSuccess
         ? submitting
           ? "Saving…"
           : "Go to Aurral"
@@ -310,7 +329,33 @@ function Onboarding() {
                 </OnboardingStep>
               )}
 
-              {currentStep === "lidarr" && (
+              {currentStep === "lidarr" && skipLidarr && (
+                <OnboardingStep>
+                  <OnboardingStepHeader title="Use Aurral without Lidarr" />
+                  <div className="onboarding-fields">
+                    <div className="onboarding-field">
+                      <label htmlFor="onboarding-download-folder">Aurral library folder</label>
+                      <DownloadFolderField
+                        id="onboarding-download-folder"
+                        value={downloadFolderPath}
+                        onChange={setDownloadFolderPath}
+                      />
+                    </div>
+                    <OnboardingHint>
+                      Aurral adds music here. You can connect Lidarr later in Settings → Lidarr.
+                    </OnboardingHint>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => handleLidarrMode(false)}
+                    >
+                      Connect Lidarr instead
+                    </button>
+                  </div>
+                </OnboardingStep>
+              )}
+
+              {currentStep === "lidarr" && !skipLidarr && (
                 <OnboardingStep>
                   <OnboardingStepHeader
                     title="Connect Lidarr"
@@ -362,6 +407,13 @@ function Onboarding() {
                         Lidarr connection successful. You can finish setup.
                       </p>
                     ) : null}
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => handleLidarrMode(true)}
+                    >
+                      Skip for now
+                    </button>
                   </div>
                 </OnboardingStep>
               )}
