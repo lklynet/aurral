@@ -188,3 +188,19 @@ test("a missing flow file leaves the library once its flow stops including it", 
 
   assert.deepEqual(getCanonicalLibrary({ availableOnly: false }).tracks, []);
 });
+
+test("flow tracks outside a new download root leave the library", async () => {
+  const flow = createFlow("Moved Root Flow", true);
+  const filePath = await writeTrack(`aurral-weekly-flow/${flow.id}/Flow Artist - Old Root.wav`);
+  addDoneJob(flow.id, filePath, "Old Root");
+  await scan();
+  assert.deepEqual(libraryTrackTitles(), ["Old Root"]);
+
+  const newRoot = await mkdtemp(path.join(tmpdir(), "aurral-flow-library-new-root-"));
+  try {
+    await scanConfiguredLibrary({ musicRoot: newRoot, includeLidarr: false });
+    assert.deepEqual(getCanonicalLibrary({ availableOnly: false }).tracks, []);
+  } finally {
+    await rm(newRoot, { recursive: true, force: true });
+  }
+});

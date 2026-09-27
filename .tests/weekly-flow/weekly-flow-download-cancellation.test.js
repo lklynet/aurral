@@ -768,3 +768,30 @@ test("clearing a shown flow or deleting any flow rescans the library", async (t)
   await processWeeklyFlowOperation({ kind: "delete-flow", flowId: hidden.id });
   assert.equal(scans.mock.callCount(), 4);
 });
+
+test("rotating a flow shown in the library rescans the library", async (t) => {
+  dbOps.updateSettings({
+    integrations: {
+      lastfm: { apiKey: "test" },
+      slskd: { enabled: true, url: "http://127.0.0.1:1", apiKey: "test-key" },
+    },
+  });
+  const flow = flowPlaylistConfig.createFlow({ name: "Rotating Shown Flow", size: 10 });
+  flowPlaylistConfig.updateFlow(flow.id, { showInLibrary: true });
+
+  t.mock.method(weeklyFlowWorker, "blockPlaylist", async () => {});
+  t.mock.method(weeklyFlowWorker, "clearIncompleteRetry", async () => {});
+  t.mock.method(weeklyFlowWorker, "waitForPlaylistIdle", async () => {});
+  t.mock.method(weeklyFlowWorker, "unblockPlaylist", async () => {});
+  t.mock.method(weeklyFlowWorker, "prepareFlowRunPlan", async () => ({}));
+  t.mock.method(weeklyFlowWorker, "seedFlowRun", async () => ({ jobIds: [], tracksQueued: 0 }));
+  t.mock.method(playlistManager, "updateConfig", () => {});
+  t.mock.method(playlistManager, "weeklyReset", async () => {});
+  t.mock.method(playlistManager, "refreshPlaylist", async () => {});
+  const scans = t.mock.method(playlistManager, "scheduleScanLibrary", () => {});
+
+  const result = await processWeeklyFlowOperation({ kind: "manual-start-flow", flowId: flow.id });
+
+  assert.equal(result.empty, true);
+  assert.equal(scans.mock.callCount(), 1);
+});

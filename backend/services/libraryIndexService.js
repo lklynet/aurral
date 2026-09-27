@@ -62,7 +62,7 @@ function getLibraryFlowPaths() {
 }
 
 async function syncLibraryFlowFiles(musicRoot, jobMetadataByPath, force) {
-  const flowPaths = getLibraryFlowPaths();
+  const flowPaths = pathsWithin(musicRoot, getLibraryFlowPaths());
   const scan = await scanMusicRoot({
     rootPath: musicRoot,
     source: "flow",

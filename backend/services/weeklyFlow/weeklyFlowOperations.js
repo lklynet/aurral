@@ -352,6 +352,7 @@ async function runFlowSeed({
     },
   });
 
+  if (Array.isArray(result?.jobIds)) rescanLibraryForFlows([safeFlowId]);
   if (result?.tracksQueued > 0) {
     await wakeDownloadWorker();
     recordFlowTracksGenerated({
