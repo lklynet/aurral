@@ -65,6 +65,7 @@ import {
 } from "../utils/api/endpoints/playlists.js";
 import { buildAuthenticatedApiUrl } from "../utils/api/core.js";
 import { mergeAlbumMetadataTracks } from "../utils/libraryTrackHydration.js";
+import { getMonitorOptionsForManager } from "../utils/libraryDestination.js";
 import { navigateToLibraryAlbum } from "../utils/searchNavigation";
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { libraryPreviewData, libraryPreviewFavorites } from "./libraryPreviewData";
@@ -1099,15 +1100,15 @@ function LibraryPage() {
 
   const artistMonitorItems = (artist) => {
     const currentOption = artist?.monitorOption || artist?.addOptions?.monitor || "none";
-    return [
-      ["none", "None (artist only)"],
-      ["existing", "Existing albums"],
-      ["all", "All albums"],
-      ["future", "Future albums"],
-      ["missing", "Missing albums"],
-      ["latest", "Latest album"],
-      ["first", "First album"],
-    ].map(([value, label]) => ({
+    return getMonitorOptionsForManager([
+      { value: "none", label: "None (artist only)" },
+      { value: "existing", label: "Existing albums" },
+      { value: "all", label: "All albums" },
+      { value: "future", label: "Future albums" },
+      { value: "missing", label: "Missing albums" },
+      { value: "latest", label: "Latest album" },
+      { value: "first", label: "First album" },
+    ], artist?.managedBy).map(({ value, label }) => ({
       id: value,
       label,
       selected: currentOption === value,

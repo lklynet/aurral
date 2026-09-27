@@ -9,6 +9,7 @@ import {
   downloadTrackToLibrary,
   lookupAlbumsInLibraryBatch,
   requestAlbumFromSearch,
+  settleLibraryOwnerConflict,
 } from "../../utils/api/endpoints/library.js";
 import {
   getReleaseGroupCover,
@@ -21,6 +22,9 @@ import { useWebSocketChannel } from "../../hooks/useWebSocket";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { CornerUpLeft, ExternalLink, Library, Music } from "lucide-react";
 import AddActionButton from "../../components/AddActionButton";
+import { useLibraryDestination } from "../../hooks/useLibraryDestination";
+import { buildAlbumAddAction } from "../../utils/albumAddAction";
+import { buildAlbumRequestPayload, getManagerName } from "../../utils/libraryDestination";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
@@ -93,7 +97,9 @@ function ReleasePage() {
   const { mbid: artistMbid, releaseMbid } = useParams();
   const { state: locationState } = useLocation();
   const navigate = useNavigate();
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showInfo } = useToast();
+  const libraryDestination = useLibraryDestination();
+  const [ownerConflict, setOwnerConflict] = useState(null);
   const { hasPermission } = useAuth();
   const canAddAlbum = hasPermission("addAlbum");
 
@@ -242,6 +248,11 @@ function ReleasePage() {
   );
   const isComplete = libraryDisplay.isComplete;
   const triggerSearch = libraryDisplay.triggerSearch;
+  const albumAddAction = buildAlbumAddAction(
+    triggerSearch,
+    libraryInfo?.managedBy,
+    libraryDestination,
+  );
   const lastfmUrl = artistName && releaseTitle ? buildLastfmAlbumUrl(artistName, releaseTitle) : "";
 
   const releaseMeta = [
@@ -435,17 +446,18 @@ function ReleasePage() {
     [buildReleaseTrackPayload, downloadTrack, showError, showSuccess],
   );
 
-  const handleAlbumAction = useCallback(async () => {
+  const handleAlbumAction = useCallback(async (managedBy) => {
     if (!releaseMbid || requestingAlbum) return;
     setRequestingAlbum(true);
     try {
-      const result = await requestAlbum({
+      const result = await requestAlbum(buildAlbumRequestPayload({
         albumMbid: releaseMbid,
         albumName: release.title,
         artistMbid,
         artistName,
+        managedBy,
         triggerSearch,
-      });
+      }));
       const addedAlbum = result?.album;
       let entry = null;
       if (addedAlbum?.id != null) {
@@ -494,9 +506,15 @@ function ReleasePage() {
       showSuccess(
         triggerSearch
           ? `Searching for ${release.title || "album"}`
-          : `Added ${release.title || "album"} to Lidarr`,
+          : `Added ${release.title || "album"} to ${getManagerName(managedBy)}`,
       );
     } catch (err) {
+      const conflict = settleLibraryOwnerConflict(err);
+      if (conflict) {
+        setOwnerConflict(conflict);
+        showInfo(`${release.title || "Album"}: ${conflict.message}`);
+        return;
+      }
       showError(
         err.response?.data?.message ||
           err.response?.data?.error ||
@@ -515,6 +533,7 @@ function ReleasePage() {
     requestingAlbum,
     requestAlbum,
     showError,
+    showInfo,
     showSuccess,
   ]);
 
@@ -605,10 +624,11 @@ function ReleasePage() {
             ) : null}
             {canAddAlbum && !isComplete ? (
               <AddActionButton
-                onClick={handleAlbumAction}
+                {...albumAddAction}
+                ownerConflict={ownerConflict}
+                onAdd={handleAlbumAction}
                 isLoading={requestingAlbum}
                 disabled={requestingAlbum}
-                label={triggerSearch ? "Search Album" : "Add to Lidarr"}
               />
             ) : null}
             {lastfmUrl ? (

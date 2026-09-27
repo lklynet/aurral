@@ -10,8 +10,10 @@ export const normalizeLibraryManager = (value) => {
   return Object.hasOwn(MANAGER_NAMES, normalized) ? normalized : null;
 };
 
-export const getAddToManagerLabel = (manager) =>
-  `Add to ${MANAGER_NAMES[normalizeLibraryManager(manager)] || MANAGER_NAMES.aurral}`;
+export const getManagerName = (manager) =>
+  MANAGER_NAMES[normalizeLibraryManager(manager)] || MANAGER_NAMES.aurral;
+
+export const getAddToManagerLabel = (manager) => `Add to ${getManagerName(manager)}`;
 
 export const getManagedByLabel = (manager) => {
   const normalized = normalizeLibraryManager(manager);
