@@ -48,6 +48,7 @@ function makeClient(pages, options = {}) {
     createInnertube: factory,
     requestTimeoutMs: 100,
     operationTimeoutMs: 1_000,
+    playlistRequestIntervalMs: 0,
     ...options,
   });
   return { client, ids, getCreateCalls: () => createCalls };
@@ -134,6 +135,128 @@ test("client follows continuations, normalizes songs and videos, and reuses one 
 
   await client.getPlaylist("PLabcdefghij_456");
   assert.equal(getCreateCalls(), 1);
+});
+
+test("client reuses a recently loaded playlist instead of refetching every continuation", async () => {
+  let playlistRequests = 0;
+  let continuationRequests = 0;
+  const second = {
+    contents: [song({ id: "two", title: "Two", artist: "Artist" })],
+  };
+  const first = {
+    header: { title: text("Large playlist") },
+    contents: [song({ id: "one", title: "One", artist: "Artist" }), continuation("next")],
+    async getContinuation() {
+      continuationRequests += 1;
+      return second;
+    },
+  };
+  const client = new YoutubeMusicPlaylistClient({
+    playlistRequestIntervalMs: 0,
+    createInnertube: async () => ({
+      music: {
+        async getPlaylist() {
+          playlistRequests += 1;
+          return first;
+        },
+      },
+    }),
+  });
+
+  const [firstResult, concurrentResult] = await Promise.all([
+    client.getPlaylist("PLabcdefghij_123"),
+    client.getPlaylist("PLabcdefghij_123"),
+  ]);
+  const importResult = await client.getPlaylist("PLabcdefghij_123");
+
+  assert.deepEqual(concurrentResult, firstResult);
+  assert.deepEqual(importResult, firstResult);
+  assert.equal(playlistRequests, 1);
+  assert.equal(continuationRequests, 1);
+});
+
+test("client bypasses a cached playlist when a fresh provider read is required", async () => {
+  let playlistRequests = 0;
+  const client = new YoutubeMusicPlaylistClient({
+    playlistRequestIntervalMs: 0,
+    createInnertube: async () => ({
+      music: {
+        async getPlaylist() {
+          playlistRequests += 1;
+          return {
+            header: { title: text(`Playlist ${playlistRequests}`) },
+            contents: [song({ id: "one", title: "One", artist: "Artist" })],
+          };
+        },
+      },
+    }),
+  });
+
+  const first = await client.getPlaylist("PLabcdefghij_123");
+  const cached = await client.getPlaylist("PLabcdefghij_123");
+  const refreshed = await client.getPlaylist("PLabcdefghij_123", { forceRefresh: true });
+
+  assert.equal(first.name, "Playlist 1");
+  assert.equal(cached.name, "Playlist 1");
+  assert.equal(refreshed.name, "Playlist 2");
+  assert.equal(playlistRequests, 2);
+});
+
+test("client spaces provider requests shared by concurrent playlist loads", async () => {
+  const starts = [];
+  const client = new YoutubeMusicPlaylistClient({
+    playlistRequestIntervalMs: 30,
+    createInnertube: async () => ({
+      music: {
+        async getPlaylist(id) {
+          starts.push({ id, at: Date.now() });
+          return {
+            header: { title: text(id) },
+            contents: [song({ id: `song-${id}`, title: id, artist: "Artist" })],
+          };
+        },
+      },
+    }),
+  });
+
+  await Promise.all([
+    client.getPlaylist("PLabcdefghij_123"),
+    client.getPlaylist("PLabcdefghij_456"),
+  ]);
+
+  assert.equal(starts.length, 2);
+  assert.ok(starts[1].at - starts[0].at >= 20);
+});
+
+test("client opens a local cooldown when YouTube Music returns a rate limit", async () => {
+  let requests = 0;
+  const client = new YoutubeMusicPlaylistClient({
+    playlistRequestIntervalMs: 0,
+    createInnertube: async ({ fetch }) => ({
+      music: {
+        async getPlaylist() {
+          await fetch("https://music.youtube.com/youtubei/v1/browse");
+        },
+      },
+    }),
+    fetchImpl: async () => {
+      requests += 1;
+      return new Response(null, {
+        status: 429,
+        headers: { "retry-after": "60" },
+      });
+    },
+  });
+
+  await assert.rejects(client.getPlaylist("PLabcdefghij_123"), {
+    code: "YOUTUBE_PLAYLIST_RATE_LIMITED",
+    statusCode: 429,
+  });
+  await assert.rejects(client.getPlaylist("PLabcdefghij_123"), {
+    code: "YOUTUBE_PLAYLIST_RATE_LIMITED",
+    statusCode: 429,
+  });
+  assert.equal(requests, 1);
 });
 
 test("client rejects repeated continuations instead of returning a partial playlist", async () => {
