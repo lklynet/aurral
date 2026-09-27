@@ -737,7 +737,7 @@ test("Deemix cleanup ignores jobs without a queue identifier", async () => {
   );
 });
 
-test("clearing a flow shown in the library rescans the library", async (t) => {
+test("clearing a shown flow or deleting any flow rescans the library", async (t) => {
   const shown = flowPlaylistConfig.createFlow({ name: "Shown Flow", size: 10 });
   flowPlaylistConfig.updateFlow(shown.id, { showInLibrary: true });
   const hidden = flowPlaylistConfig.createFlow({ name: "Hidden Flow", size: 10 });
@@ -756,7 +756,6 @@ test("clearing a flow shown in the library rescans the library", async (t) => {
 
   await processWeeklyFlowOperation({ kind: "disable-flow-cleanup", flowId: hidden.id });
   await processWeeklyFlowOperation({ kind: "reset-playlists", playlistTypes: [hidden.id] });
-  await processWeeklyFlowOperation({ kind: "delete-flow", flowId: hidden.id });
   assert.equal(scans.mock.callCount(), 0);
 
   await processWeeklyFlowOperation({ kind: "disable-flow-cleanup", flowId: shown.id });
@@ -766,4 +765,6 @@ test("clearing a flow shown in the library rescans the library", async (t) => {
   await processWeeklyFlowOperation({ kind: "delete-flow", flowId: shown.id });
   assert.equal(scans.mock.callCount(), 3);
   assert.equal(flowPlaylistConfig.getFlow(shown.id), null);
+  await processWeeklyFlowOperation({ kind: "delete-flow", flowId: hidden.id });
+  assert.equal(scans.mock.callCount(), 4);
 });

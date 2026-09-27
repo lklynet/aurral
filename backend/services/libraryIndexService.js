@@ -4,7 +4,7 @@ import { dbOps } from "../db/helpers/index.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
 import { scanMusicRoot, scanMusicRoots } from "./libraryFileScanner.js";
 import {
-  getAvailableLibraryMediaPaths,
+  getLibraryMediaPaths,
   removeLibraryMediaFiles,
   upsertLibraryArtist,
 } from "./libraryMediaStore.js";
@@ -72,7 +72,7 @@ async function syncLibraryFlowFiles(musicRoot, jobMetadataByPath, force) {
     syncSearch: false,
   });
   const included = new Set(flowPaths);
-  const removedPaths = [...getAvailableLibraryMediaPaths("flow")].filter(
+  const removedPaths = [...getLibraryMediaPaths("flow")].filter(
     (filePath) => !included.has(filePath),
   );
   const removed = removeLibraryMediaFiles("flow", removedPaths);

@@ -174,3 +174,17 @@ test("a flow track already in the music library appears once", async () => {
     ["aurral", "flow"],
   );
 });
+
+test("a missing flow file leaves the library once its flow stops including it", async () => {
+  const flow = createFlow("Missing File Flow", true);
+  const filePath = await writeTrack(`aurral-weekly-flow/${flow.id}/Flow Artist - Gone.wav`);
+  addDoneJob(flow.id, filePath, "Gone");
+
+  await scan();
+  await rm(filePath);
+  await scan();
+  flowPlaylistConfig.updateFlow(flow.id, { showInLibrary: false });
+  await scan();
+
+  assert.deepEqual(getCanonicalLibrary({ availableOnly: false }).tracks, []);
+});

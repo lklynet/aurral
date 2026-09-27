@@ -417,7 +417,7 @@ async function deleteFlow({ flowId, tokenScope = null, token = null } = {}) {
     didDelete = flowPlaylistConfig.deleteFlow(safeFlowId);
     await playlistManager.ensureSmartPlaylists();
   });
-  if (didDelete && flow.showInLibrary === true) playlistManager.scheduleScanLibrary();
+  if (didDelete) playlistManager.scheduleScanLibrary();
   await restartWorkerIfPending();
   return didDelete;
 }

@@ -1109,7 +1109,7 @@ function FlowPage({ mode = "all" }) {
   };
 
   const handleUpdateShowInLibrary = async (flow, enabled) => {
-    if (!flow?.id || updatingShowInLibraryId) return;
+    if (!flow?.id || updatingShowInLibraryId === flow.id) return;
     setUpdatingShowInLibraryId(flow.id);
     try {
       await updateFlow(flow.id, { showInLibrary: enabled });

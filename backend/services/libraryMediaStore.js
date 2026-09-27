@@ -551,6 +551,14 @@ export function getAvailableLibraryMediaPaths(source) {
   );
 }
 
+export function getLibraryMediaPaths(source) {
+  return new Set(
+    db.prepare("SELECT path FROM library_media_files WHERE source = ?")
+      .all(normalizeText(source))
+      .map((row) => row.path),
+  );
+}
+
 export function markLibraryMediaFilesUnavailable(source, paths) {
   const mediaSource = normalizeText(source);
   const missingPaths = [...new Set(paths)].map(normalizeText).filter(Boolean);
