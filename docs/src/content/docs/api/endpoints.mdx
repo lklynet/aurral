@@ -295,6 +295,15 @@ The repeated `playlists` segment in
 | `POST` | `/api/playlists/import/listenbrainz/preview` | Preview a ListenBrainz import |
 | `POST` | `/api/playlists/import/listenbrainz` | Import a ListenBrainz playlist |
 
+### YouTube Music import
+
+These routes retrieve public playlists anonymously. Preview accepts a supported playlist URL. Import accepts the validated playlist ID returned by preview, fetches the source again, and stores the source title returned by YouTube Music.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/playlists/import/youtube-music/preview` | Preview a public YouTube or YouTube Music playlist |
+| `POST` | `/api/playlists/import/youtube-music` | Import and optionally schedule synchronization for the playlist |
+
 ### Last.fm import
 
 | Method | Path | Purpose |

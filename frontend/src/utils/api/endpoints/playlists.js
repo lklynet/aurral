@@ -224,6 +224,12 @@ export const previewLastfmPlaylist = (playlistId, username = "") =>
 export const importLastfmPlaylist = (payload) =>
   postData("/playlists/import/lastfm", payload);
 
+export const previewYoutubeMusicPlaylist = (url) =>
+  postData("/playlists/import/youtube-music/preview", { url }, { timeout: 5 * 60 * 1000 });
+
+export const importYoutubeMusicPlaylist = (payload) =>
+  postData("/playlists/import/youtube-music", payload, { timeout: 5 * 60 * 1000 });
+
 export const syncSharedPlaylistImport = (playlistId) =>
   postData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/sync`, undefined, {
     timeout: 5 * 60 * 1000,

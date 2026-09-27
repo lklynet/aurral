@@ -110,6 +110,7 @@ const FLOW_MOBILE_LAYOUT_QUERY = "(max-width: 767px)";
 function getImportedProviderLabel(provider) {
   if (String(provider || "").startsWith("listenbrainz-")) return "ListenBrainz";
   if (provider === "lastfm-station") return "Last.fm";
+  if (provider === "youtube-music-playlist") return "YouTube Music";
   return "Spotify";
 }
 
@@ -1782,6 +1783,7 @@ function FlowPage({ mode = "all" }) {
             "listenbrainz-playlist",
             "listenbrainz-createdfor",
             "lastfm-station",
+            "youtube-music-playlist",
           ].includes(selectedPlaylist?.importSource?.provider) ? (
             <>
               <button

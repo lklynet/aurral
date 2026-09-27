@@ -12491,6 +12491,7 @@ button.native-library-genre-row:focus-visible {
 }
 
 .playlist-import__spotify,
+.playlist-import__youtube,
 .playlist-import__json {
   display: grid;
   gap: 0.625rem;
@@ -12503,11 +12504,12 @@ button.native-library-genre-row:focus-visible {
   border-color: var(--aurral-border);
   border-radius: 0;
   background: transparent;
+  flex-wrap: wrap;
 }
 
 .playlist-import__segmented .artist-segmented-button {
   min-width: 0;
-  flex: 1;
+  flex: 1 1 6rem;
   border-bottom: 2px solid transparent;
   border-radius: 0;
   padding-inline: 0.5rem;
