@@ -515,12 +515,11 @@ export function FlowTracksPanel({
     () => sortFlowTracks(tracks, sortKey, sortDirection),
     [tracks, sortKey, sortDirection],
   );
-  const activeManualReplacementTrackIds = useMemo(
+  const activeReplacementTrackIds = useMemo(
     () => new Set(
       tracks
         .filter(
           (track) =>
-            track?.manualReplacementSearch === true &&
             ["pending", "downloading", "blocked"].includes(track.status) &&
             track.upgradeForJobId,
         )
@@ -886,7 +885,7 @@ export function FlowTracksPanel({
                   typeof onReSearchTrack === "function" &&
                   track.status === "done" &&
                   track.qualityOwned === true &&
-                  !activeManualReplacementTrackIds.has(String(track.id));
+                  !activeReplacementTrackIds.has(String(track.id));
                 const isReSearching = reSearchingTrackIds[track.id] === true;
                 const availability = showTrackAvailability ? getTrackAvailability(track) : null;
                 const isDeleting = deletingTrackId === track.id;

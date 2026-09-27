@@ -42,6 +42,8 @@ export const POST_DOWNLOAD_DECISIONS = {
   FAILED: "FAILED",
 };
 
+const MANUAL_RELEASE_FILE_TITLE_THRESHOLD = 70;
+
 function readTagText(value) {
   return String(value || "").trim() || null;
 }
@@ -391,7 +393,11 @@ export async function selectVerifiedDownloadedFile({
   const tracklist = Array.isArray(trackRequest.albumTrackTitles)
     ? trackRequest.albumTrackTitles
     : [];
-  if (tracklist.length >= 2 && parsedFiles.length >= 2) {
+  if (
+    options.manualSelection !== true &&
+    tracklist.length >= 2 &&
+    parsedFiles.length >= 2
+  ) {
     const targetKey = getNormalizedText(getCoreTitle(trackRequest.trackName));
     let targetIndex = tracklist.findIndex(
       (title) => getNormalizedText(getCoreTitle(title)) === targetKey,
@@ -455,17 +461,26 @@ export async function selectVerifiedDownloadedFile({
       .sort((left, right) =>
         right.titleScore - left.titleScore ||
         Number(right.trackNumberMatches) - Number(left.trackNumberMatches) ||
-        left.index - right.index)[0]?.entry;
-    if (selected) {
+        left.index - right.index)[0];
+    if (selected?.entry && selected.titleScore >= MANUAL_RELEASE_FILE_TITLE_THRESHOLD) {
       const validation = await validateDownloadedTrackFile({
         request: trackRequest,
         candidate,
-        filePath: selected.filePath,
+        filePath: selected.entry.filePath,
         source,
         options,
       });
-      if (validation.valid) return { filePath: selected.filePath, validation };
+      if (validation.valid) return { filePath: selected.entry.filePath, validation };
     }
+    return {
+      filePath: null,
+      validation: {
+        decision: POST_DOWNLOAD_DECISIONS.FAILED,
+        valid: false,
+        blocked: false,
+        reason: "selected release does not contain a file matching the requested track",
+      },
+    };
   }
 
   let best = null;

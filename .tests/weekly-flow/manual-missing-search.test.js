@@ -302,3 +302,30 @@ test("manual Usenet file selection prefers title evidence over a coincidental tr
   assert.equal(selected.filePath, "Expected Song.mp3");
   assert.equal(selected.validation.valid, true);
 });
+
+test("manual Usenet release fails when none of its files match the requested title", async () => {
+  const parsedByPath = new Map([
+    ["02 Unrelated Song.mp3", {
+      common: { title: "Unrelated Song", track: { no: 2 } },
+      format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 180 },
+    }],
+    ["07 Another Track.mp3", {
+      common: { title: "Another Track", track: { no: 7 } },
+      format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 200 },
+    }],
+  ]);
+  const selected = await postDownloadValidator.selectVerifiedDownloadedFile({
+    request: { artistName: "Expected Artist", trackName: "Expected Song", trackNumber: 2 },
+    filePaths: [...parsedByPath.keys()],
+    candidate: { raw: { release: { title: "Selected Album" } } },
+    source: "usenet",
+    options: {
+      manualSelection: true,
+      parseFile: async (filePath) => parsedByPath.get(filePath),
+    },
+  });
+
+  assert.equal(selected.filePath, null);
+  assert.equal(selected.validation.valid, false);
+  assert.match(selected.validation.reason, /does not contain a file matching/i);
+});

@@ -8033,6 +8033,22 @@ textarea {
 }
 
 @media (min-width: 768px) {
+  .native-library-item-menu__panel .artist-menu-submenu__panel::before {
+    position: absolute;
+    top: 0;
+    right: 100%;
+    bottom: 0;
+    width: 0.5rem;
+    content: "";
+  }
+
+  .native-library-item-menu__panel.is-submenu-left .artist-menu-submenu__panel::before {
+    right: auto;
+    left: 100%;
+  }
+}
+
+@media (min-width: 768px) {
   .native-library-item-menu__panel .artist-menu-submenu__panel {
     display: block;
     opacity: 0;

@@ -18,10 +18,15 @@ export function LibraryItemSubmenu({
   const [pendingAction, setPendingAction] = useState("");
   const [panelTop, setPanelTop] = useState(0);
   const panelRef = useRef(null);
+  const correctionFrameRef = useRef(null);
   const open = typeof onToggle === "function" ? isOpen : internalOpen;
 
   const keepPanelInViewport = useCallback(() => {
-    window.requestAnimationFrame(() => {
+    if (correctionFrameRef.current != null) {
+      window.cancelAnimationFrame(correctionFrameRef.current);
+    }
+    correctionFrameRef.current = window.requestAnimationFrame(() => {
+      correctionFrameRef.current = null;
       const panel = panelRef.current;
       if (!panel || window.matchMedia("(max-width: 767px)").matches) return;
       const edge = 8;
@@ -40,6 +45,12 @@ export function LibraryItemSubmenu({
     setPanelTop(0);
     keepPanelInViewport();
   }, [keepPanelInViewport, open]);
+
+  useEffect(() => () => {
+    if (correctionFrameRef.current != null) {
+      window.cancelAnimationFrame(correctionFrameRef.current);
+    }
+  }, []);
 
   const handleAction = async (event, item) => {
     event.stopPropagation();

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Search } from "lucide-react";
 import { ModalShell } from "../../components/PlaylistModals.jsx";
 import { DotLoader } from "../../components/DotLoader.jsx";
@@ -26,15 +26,23 @@ export default function ManualMissingSearchModal({
   const [search, setSearch] = useState(null);
   const [selectedId, setSelectedId] = useState("");
   const [error, setError] = useState("");
+  const searchRequestRef = useRef(0);
 
   useEffect(() => {
-    if (!job?.id) return;
-    let active = true;
-    setSources([]);
-    setSourceId("");
+    searchRequestRef.current += 1;
+    setSearching(false);
     setSearch(null);
     setSelectedId("");
     setError("");
+    if (!job?.id) {
+      setSources([]);
+      setSourceId("");
+      setLoadingSources(false);
+      return undefined;
+    }
+    let active = true;
+    setSources([]);
+    setSourceId("");
     setLoadingSources(true);
     getManualMissingSearchSources(job.id, { mode, playlistId })
       .then((data) => {
@@ -59,17 +67,21 @@ export default function ManualMissingSearchModal({
 
   const runSearch = async () => {
     if (!job?.id || !sourceId || searching) return;
+    const requestId = ++searchRequestRef.current;
+    const jobId = job.id;
     setSearching(true);
     setSearch(null);
     setSelectedId("");
     setError("");
     try {
-      const result = await searchMissingTrackManually(job.id, sourceId, { mode, playlistId });
-      setSearch(result);
+      const result = await searchMissingTrackManually(jobId, sourceId, { mode, playlistId });
+      if (searchRequestRef.current === requestId) setSearch(result);
     } catch (requestError) {
-      setError(errorMessage(requestError, "The selected download client could not be searched"));
+      if (searchRequestRef.current === requestId) {
+        setError(errorMessage(requestError, "The selected download client could not be searched"));
+      }
     } finally {
-      setSearching(false);
+      if (searchRequestRef.current === requestId) setSearching(false);
     }
   };
 
@@ -136,7 +148,7 @@ export default function ManualMissingSearchModal({
       </div>
 
       {loadingSources ? <div className="manual-search-modal__loading"><DotLoader size="lg" label="Loading clients" /></div> : null}
-      {!loadingSources && sources.length === 0 ? <p className="manual-search-modal__empty">No download clients are currently configured and enabled.</p> : null}
+      {!loadingSources && !error && sources.length === 0 ? <p className="manual-search-modal__empty">No download clients are currently configured and enabled.</p> : null}
       {error ? <p className="artist-error-text" role="alert">{error}</p> : null}
       {search && resultCount === 0 ? <p className="manual-search-modal__empty">No results were returned by this client.</p> : null}
       {resultCount > 0 ? (
