@@ -47,6 +47,7 @@ export function ArtistDetailsDownloadTargets({
   canAddAlbum,
   requestingAlbum,
   handleRequestAlbum,
+  libraryDestination,
   artistName = "",
   playbackSource = null,
   onAddTrackToPlaylist,
@@ -217,13 +218,15 @@ export function ArtistDetailsDownloadTargets({
               {canAddAlbum && missingReleasePick.releaseGroupId && (
                 <div>
                   <AddActionButton
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleRequestAlbum(missingReleasePick.releaseGroupId, missingReleasePick.title);
-                    }}
+                    destination={libraryDestination}
+                    onAdd={(managedBy) =>
+                      handleRequestAlbum(
+                        missingReleasePick.releaseGroupId,
+                        missingReleasePick.title,
+                        managedBy,
+                      )}
                     isLoading={requestingAlbum === missingReleasePick.releaseGroupId}
                     disabled={requestingAlbum === missingReleasePick.releaseGroupId}
-                    label="Add to Lidarr"
                   />
                 </div>
               )}

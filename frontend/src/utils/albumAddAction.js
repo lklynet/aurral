@@ -1,4 +1,4 @@
-import { getAddToManagerLabel, normalizeLibraryManager } from "./libraryDestination.js";
+import { getAddToManagerLabel, getItemDestination } from "./libraryDestination.js";
 
 const ACTIVE_ALBUM_STATUSES = new Set([
   "adding",
@@ -47,11 +47,7 @@ export const getAlbumAddAction = (input = {}, destination = {}) => {
   }
   return {
     label: "Search Album",
-    destination: {
-      ...destination,
-      primary: normalizeLibraryManager(input.managedBy) || destination.primary,
-      alternative: null,
-    },
+    destination: { ...getItemDestination(input.managedBy, destination), alternative: null },
   };
 };
 

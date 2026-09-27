@@ -7,6 +7,10 @@ import { DotLoader } from "./DotLoader";
 import { LibraryItemMenu } from "./LibraryItemMenu";
 import { ADD_TO_MENU_LABEL, getAddToManagerLabel } from "../utils/libraryDestination";
 
+const keepActivationKeysLocal = (event) => {
+  if (event.key === "Enter" || event.key === " ") event.stopPropagation();
+};
+
 const AddActionButton = forwardRef(function AddActionButton(
   {
     label,
@@ -57,6 +61,10 @@ const AddActionButton = forwardRef(function AddActionButton(
       className={classes}
       disabled={isDisabled}
       onClick={handleClick}
+      onKeyDown={(event) => {
+        keepActivationKeysLocal(event);
+        buttonProps.onKeyDown?.(event);
+      }}
     >
       <span className="btn-add-action__icon">
         {isLoading ? (
@@ -71,7 +79,7 @@ const AddActionButton = forwardRef(function AddActionButton(
   if (!alternative || !onAdd) return button;
 
   return (
-    <div className="btn-add-action-group">
+    <div className="btn-add-action-group" onKeyDown={keepActivationKeysLocal}>
       {button}
       <LibraryItemMenu
         label={ADD_TO_MENU_LABEL}

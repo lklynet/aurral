@@ -5,7 +5,14 @@ import {
   getRecentlyAdded,
   getRecentReleases,
   requestAlbumFromSearch,
+  settleLibraryOwnerConflict,
 } from "../utils/api/endpoints/library.js";
+import {
+  buildAlbumRequestPayload,
+  buildArtistAddPayload,
+  getItemDestination,
+} from "../utils/libraryDestination";
+import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { getDiscovery } from "../utils/api/endpoints/discovery.js";
 import { getArtistRecordId } from "../utils/artistTaste";
 import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
@@ -32,7 +39,8 @@ const getArtistId = (artist) => getArtistRecordId(artist);
 
 export function useDiscoverData() {
   const { user: authUser, hasPermission, bootstrap } = useAuth();
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showInfo } = useToast();
+  const libraryDestination = useLibraryDestination();
   const [ticketmasterConfigured, setTicketmasterConfigured] = useState(true);
   const {
     data: nearbyShowsData,
@@ -432,14 +440,15 @@ export function useDiscoverData() {
   );
 
   const handleAddArtistToLibrary = useCallback(
-    async (artist) => {
+    async (artist, managedBy = libraryDestination.primary) => {
       const artistId = getArtistId(artist);
       if (!artist?.name || !artistId) return false;
       try {
-        await addArtistToLibrary({
-          foreignArtistId: artistId,
+        await addArtistToLibrary(buildArtistAddPayload({
+          artistMbid: artistId,
           artistName: artist.name,
-        });
+          managedBy,
+        }));
         setLibraryLookup((prev) => ({
           ...prev,
           [artistId]: true,
@@ -456,29 +465,35 @@ export function useDiscoverData() {
         return false;
       }
     },
-    [showError, showSuccess],
+    [libraryDestination.primary, showError, showSuccess],
   );
 
   const handleRecentReleaseAlbumAction = useCallback(
-    async (album) => {
+    async (album, managedBy = getItemDestination(album?.managedBy, libraryDestination).primary) => {
       const albumKey = getRecentReleaseKey(album);
       const albumMbid = album?.mbid || album?.foreignAlbumId;
       const artistMbid = album?.artistMbid || album?.foreignArtistId;
       if (!albumMbid || !artistMbid || !albumKey) return;
       setPendingRecentReleaseIds((prev) => ({ ...prev, [albumKey]: true }));
       try {
-        await requestAlbumFromSearch({
+        await requestAlbumFromSearch(buildAlbumRequestPayload({
           albumMbid,
           albumName: album.albumName || album.title,
           artistMbid,
           artistName: album.artistName,
+          managedBy,
           triggerSearch: true,
-        });
+        }));
         queryClient.invalidateQueries({
           queryKey: queryKeys.recentReleases(authUser?.id),
         });
         showSuccess(`Searching for ${album.albumName || "album"}`);
       } catch (err) {
+        const conflict = settleLibraryOwnerConflict(err);
+        if (conflict) {
+          showInfo(`${album.albumName || "Album"}: ${conflict.message}`);
+          return;
+        }
         showError(
           err.response?.data?.message ||
             err.response?.data?.error ||
@@ -489,7 +504,7 @@ export function useDiscoverData() {
         setPendingRecentReleaseIds(({ [albumKey]: _, ...prev }) => prev);
       }
     },
-    [authUser?.id, getRecentReleaseKey, showError, showSuccess],
+    [authUser?.id, getRecentReleaseKey, libraryDestination, showError, showInfo, showSuccess],
   );
 
   const handleDiscoveryFeedback = useCallback(
@@ -546,6 +561,7 @@ export function useDiscoverData() {
     fetchAndApplyDiscovery,
     getLibraryArtistImage,
     getRecentReleaseKey,
+    libraryDestination,
     handleAddArtistToLibrary,
     handleRecentReleaseAlbumAction,
     handleDiscoveryFeedback,

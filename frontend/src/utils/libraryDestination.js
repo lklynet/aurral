@@ -28,6 +28,11 @@ export const resolveLibraryDestination = ({ libraryOwner = null, lidarrConfigure
   };
 };
 
+export const getItemDestination = (managedBy, destination = {}) => {
+  const manager = normalizeLibraryManager(managedBy);
+  return manager ? { ...destination, primary: manager, alternative: null } : destination;
+};
+
 const describeAvailability = (availability) => {
   if (!availability) return null;
   if (availability.available) return "Available";
@@ -82,3 +87,8 @@ export const buildAlbumRequestPayload = ({
   managedBy,
   triggerSearch,
 });
+
+export const getMonitorOptionsForManager = (options, managedBy) =>
+  normalizeLibraryManager(managedBy) === "aurral"
+    ? options.filter((option) => option.value !== "existing")
+    : options;

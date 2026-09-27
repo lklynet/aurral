@@ -6,6 +6,7 @@ import {
   buildArtistAddPayload,
   getAddToManagerLabel,
   getLibraryOwnerConflict,
+  getMonitorOptionsForManager,
   resolveLibraryDestination,
 } from "../../frontend/src/utils/libraryDestination.js";
 
@@ -107,4 +108,13 @@ test("buildAlbumRequestPayload sends the chosen manager", () => {
       triggerSearch: false,
     },
   );
+});
+
+test("getMonitorOptionsForManager never offers existing to Aurral", () => {
+  const options = [{ value: "none" }, { value: "existing" }, { value: "all" }];
+  assert.deepEqual(
+    getMonitorOptionsForManager(options, "aurral").map((option) => option.value),
+    ["none", "all"],
+  );
+  assert.deepEqual(getMonitorOptionsForManager(options, "lidarr"), options);
 });
