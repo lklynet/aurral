@@ -155,16 +155,12 @@ test("Lidarr release metadata refresh reconciles additions and removals", async 
     isConfigured: () => true,
     isEnabled: () => true,
     async request(endpoint, method, data, skipConfigUpdate, options) {
-      assert.equal(endpoint, "/artist");
+      assert.ok(["/artist", "/album"].includes(endpoint));
       assert.equal(method, "GET");
       assert.equal(data, null);
       assert.equal(skipConfigUpdate, false);
       assert.equal(options.forceRefresh, true);
-      return lidarrArtists;
-    },
-    async getAllAlbums(options) {
-      assert.equal(options.forceRefresh, true);
-      return lidarrAlbums;
+      return endpoint === "/artist" ? lidarrArtists : lidarrAlbums;
     },
   };
 
@@ -210,6 +206,27 @@ test("Lidarr release metadata refresh reconciles additions and removals", async 
     assert.equal(release?.artistName, "New Lidarr Artist");
     assert.equal(release?.albumName, "New Upcoming Release");
     assert.equal(release?.managedBy, "lidarr");
+
+    lidarrAlbums = {};
+    await assert.rejects(
+      () => refreshLidarrReleaseMetadata({ client }),
+      /malformed album catalogue/,
+    );
+    const albumAfterMalformedResponse = db.prepare(
+      "SELECT metadata_json FROM library_albums WHERE release_group_mbid = ?",
+    ).get(albumMbid);
+    assert.equal(
+      JSON.parse(albumAfterMalformedResponse.metadata_json).lidarrCatalogPresent,
+      true,
+    );
+    lidarrAlbums = [{
+      id: 915,
+      artistId: 914,
+      title: "New Upcoming Release",
+      foreignAlbumId: albumMbid,
+      releaseDate: "2026-10-02",
+      monitored: true,
+    }];
 
     assert.deepEqual(await refreshLidarrReleaseMetadata({ client }), {
       skipped: false,
@@ -359,24 +376,23 @@ test("Lidarr release metadata refresh preserves overlapping Aurral ownership met
   const client = {
     isConfigured: () => true,
     isEnabled: () => true,
-    async request() {
-      return [{
-        id: 924,
-        artistName: "Aurral Owned Artist",
-        foreignArtistId: artistMbid,
-        monitored: false,
-        monitor: "none",
-      }];
-    },
-    async getAllAlbums() {
-      return [{
-        id: 925,
-        artistId: 924,
-        title: "Aurral Owned Album",
-        foreignAlbumId: albumMbid,
-        releaseDate: "2026-10-03",
-        monitored: false,
-      }];
+    async request(endpoint) {
+      return endpoint === "/artist"
+        ? [{
+            id: 924,
+            artistName: "Aurral Owned Artist",
+            foreignArtistId: artistMbid,
+            monitored: false,
+            monitor: "none",
+          }]
+        : [{
+            id: 925,
+            artistId: 924,
+            title: "Aurral Owned Album",
+            foreignAlbumId: albumMbid,
+            releaseDate: "2026-10-03",
+            monitored: false,
+          }];
     },
   };
 

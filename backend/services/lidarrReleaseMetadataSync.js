@@ -26,10 +26,10 @@ const isUuid = (value) =>
     text(value),
   );
 
-function normalizeList(value) {
+function normalizeCatalogList(value, label) {
   if (Array.isArray(value)) return value;
   if (Array.isArray(value?.records)) return value.records;
-  return [];
+  throw new Error(`Lidarr returned a malformed ${label} catalogue`);
 }
 
 function ensureLidarrManagement(entityKind, entityId, monitorMode = null) {
@@ -136,10 +136,10 @@ export async function refreshLidarrReleaseMetadata({
 
   const [artistResponse, albumResponse] = await Promise.all([
     client.request("/artist", "GET", null, false, { forceRefresh }),
-    client.getAllAlbums({ forceRefresh }),
+    client.request("/album", "GET", null, false, { forceRefresh }),
   ]);
-  const artists = normalizeList(artistResponse);
-  const albums = normalizeList(albumResponse);
+  const artists = normalizeCatalogList(artistResponse, "artist");
+  const albums = normalizeCatalogList(albumResponse, "album");
   const artistsByProviderId = new Map(
     artists
       .filter((artist) => artist?.id != null)
