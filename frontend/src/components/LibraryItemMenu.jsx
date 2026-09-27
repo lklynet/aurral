@@ -16,7 +16,30 @@ export function LibraryItemSubmenu({
 }) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState("");
+  const [panelTop, setPanelTop] = useState(0);
+  const panelRef = useRef(null);
   const open = typeof onToggle === "function" ? isOpen : internalOpen;
+
+  const keepPanelInViewport = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (!panel || window.matchMedia("(max-width: 767px)").matches) return;
+      const edge = 8;
+      const rect = panel.getBoundingClientRect();
+      let adjustment = 0;
+      if (rect.top < edge) adjustment = edge - rect.top;
+      if (rect.bottom + adjustment > window.innerHeight - edge) {
+        adjustment -= rect.bottom + adjustment - (window.innerHeight - edge);
+      }
+      if (adjustment) setPanelTop((current) => current + adjustment);
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    setPanelTop(0);
+    keepPanelInViewport();
+  }, [keepPanelInViewport, open]);
 
   const handleAction = async (event, item) => {
     event.stopPropagation();
@@ -32,7 +55,11 @@ export function LibraryItemSubmenu({
   };
 
   return (
-    <div className={`artist-menu-submenu${open ? " is-open" : ""}`}>
+    <div
+      className={`artist-menu-submenu${open ? " is-open" : ""}`}
+      onPointerEnter={keepPanelInViewport}
+      onFocusCapture={keepPanelInViewport}
+    >
       <button
         type="button"
         className="artist-menu-item artist-menu-submenu__trigger"
@@ -53,7 +80,7 @@ export function LibraryItemSubmenu({
           aria-hidden="true"
         />
       </button>
-      <div className="artist-menu-submenu__panel">
+      <div className="artist-menu-submenu__panel" ref={panelRef} style={{ top: panelTop }}>
         {items.map((item) => {
           const ItemIcon = item.icon;
           const isPending = pendingAction === item.id;

@@ -8022,11 +8022,13 @@ textarea {
 
 .native-library-item-menu__panel .artist-menu-submenu__panel {
   right: auto;
-  left: calc(100% + 0.125rem);
+  left: calc(100% + 0.5rem);
+  max-height: calc(100vh - 1rem);
+  overflow-y: auto;
 }
 
 .native-library-item-menu__panel.is-submenu-left .artist-menu-submenu__panel {
-  right: calc(100% + 0.125rem);
+  right: calc(100% + 0.5rem);
   left: auto;
 }
 
@@ -9458,6 +9460,11 @@ button.native-library-genre-row:focus-visible {
 .manual-search-modal__action {
   min-width: 10rem;
   justify-content: center;
+}
+
+.manual-search-modal .playlist-modal__footer {
+  align-items: center;
+  padding-top: 1rem;
 }
 
 .manual-search-modal__loading,
