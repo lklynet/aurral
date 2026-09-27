@@ -94,9 +94,15 @@ export function toPublicLibraryPage(page, favoriteKeys = null) {
   };
 }
 
+const LIBRARY_REFRESH_MODES = new Set(["quick", "full"]);
+
 export function registerCanonical(router) {
-  router.post("/refresh", requireAuth, (_req, res) => {
-    const jobId = scheduleLibraryScan({ force: true });
+  router.post("/refresh", requireAuth, (req, res) => {
+    const mode = req.body?.mode ?? "quick";
+    if (!LIBRARY_REFRESH_MODES.has(mode)) {
+      return res.status(400).json({ error: "Invalid library refresh mode" });
+    }
+    const jobId = scheduleLibraryScan({ force: mode === "full" });
     res.status(202).json({
       queued: true,
       jobId,

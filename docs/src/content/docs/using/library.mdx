@@ -70,9 +70,15 @@ release date.
 On a new installation, Aurral performs one initial scan when the library has
 not been indexed yet. After that, Aurral does not run recurring full-library
 scans. When files change, the filesystem watcher queues a scan; use the
-**Refresh** button in Library when you need to check immediately. The button
-starts a scan, waits for it to finish, and reloads the page from the updated
-canonical records.
+**Refresh** button in Library when you need to check immediately. It offers two
+scans. **Quick scan** checks every root, reads new and changed files, and marks
+missing files unavailable. When a scan finishes, the page reloads from the
+updated canonical records.
+
+**Full scan** reads the tags of every file again. Use it after retagging files
+in a way that keeps their size and modification time, or when Library shows
+stale metadata that a quick scan does not fix. A full scan can take a long time
+on a large library. It keeps running if you leave the page.
 
 When Lidarr is configured, check the Lidarr path mapping if Discover says an
 album is in Lidarr but Library does not show it. Aurral must be able to read the

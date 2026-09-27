@@ -13,10 +13,12 @@ import {
   Info,
   List,
   ListFilter,
+  MoreVertical,
   Pause,
   Play,
   Radio,
   RefreshCw,
+  ScanSearch,
   Search,
   Trash2,
   UserRound,
@@ -320,7 +322,6 @@ const sameTrackText = (left, right) => {
 };
 
 const TOP_ARTIST_TRACK_LIMIT = 10;
-const LIBRARY_REFRESH_TIMEOUT_MS = 120000;
 
 const wait = (durationMs) => new Promise((resolve) => setTimeout(resolve, durationMs));
 
@@ -480,14 +481,13 @@ function LibraryPage() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
   }, []);
 
-  const pollLibraryRefresh = useCallback(async (jobId, attempt, announceSuccess = false) => {
-    const deadline = Date.now() + LIBRARY_REFRESH_TIMEOUT_MS;
-    while (Date.now() < deadline) {
+  const pollLibraryRefresh = useCallback(async (jobId, attempt, successMessage = "") => {
+    while (true) {
       const status = await getLibraryRefreshStatus(jobId);
       if (refreshAttemptRef.current !== attempt) return;
       if (status.status === "completed") {
         completeLibraryRefresh();
-        if (announceSuccess) showSuccess("Library refreshed");
+        if (successMessage) showSuccess(successMessage);
         return;
       }
       if (status.status === "failed") {
@@ -495,7 +495,6 @@ function LibraryPage() {
       }
       await wait(750);
     }
-    throw new Error("Library refresh timed out");
   }, [completeLibraryRefresh, showSuccess]);
 
   useEffect(() => {
@@ -524,17 +523,21 @@ function LibraryPage() {
     };
   }, [pollLibraryRefresh, showError]);
 
-  const refreshLibrary = useCallback(async () => {
+  const refreshLibrary = useCallback(async (mode) => {
     if (refreshing) return;
     const attempt = refreshAttemptRef.current + 1;
     refreshAttemptRef.current = attempt;
     setRefreshing(true);
     try {
       clearCanonicalLibraryPageCache();
-      const queued = await requestLibraryRefresh();
+      const queued = await requestLibraryRefresh(mode);
       const jobId = queued?.jobId;
       if (!jobId) throw new Error("Library refresh did not start");
-      await pollLibraryRefresh(jobId, attempt, true);
+      await pollLibraryRefresh(
+        jobId,
+        attempt,
+        mode === "full" ? "Full scan complete" : "Library refreshed",
+      );
     } catch (requestError) {
       if (refreshAttemptRef.current === attempt) {
         showError(requestError.response?.data?.message || requestError.message || "Library refresh failed");
@@ -543,6 +546,35 @@ function LibraryPage() {
       if (refreshAttemptRef.current === attempt) setRefreshing(false);
     }
   }, [pollLibraryRefresh, refreshing, showError]);
+
+  const refreshControls = (
+    <LibraryItemMenu
+      label="Library refresh"
+      triggerLabel={refreshing ? "Refreshing library…" : "Refresh library"}
+      triggerIcon={
+        <>
+          {refreshing ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
+          <MoreVertical aria-hidden="true" />
+        </>
+      }
+      items={[
+        {
+          id: "quick",
+          label: "Quick scan",
+          icon: RefreshCw,
+          disabled: refreshing,
+          onSelect: () => void refreshLibrary("quick"),
+        },
+        {
+          id: "full",
+          label: "Full scan (re-read every file)",
+          icon: ScanSearch,
+          disabled: refreshing,
+          onSelect: () => void refreshLibrary("full"),
+        },
+      ]}
+    />
+  );
 
   const section = LIBRARY_VIEW_IDS.has(routeSection) ? routeSection : DEFAULT_LIBRARY_VIEW;
   const isDetail = Boolean(routeAlbumId || routeArtistId);
@@ -2677,7 +2709,7 @@ function LibraryPage() {
           <button
             type="button"
             className="native-library-state__action"
-            onClick={refreshLibrary}
+            onClick={() => refreshLibrary("quick")}
             disabled={refreshing}
           >
             {refreshing ? <DotLoader size="sm" label={null} /> : null}
@@ -2799,15 +2831,7 @@ function LibraryPage() {
                 <Search aria-hidden="true" />
               </TooltipButton>
             ) : (
-              <TooltipButton
-                className="native-library-icon-button"
-                onClick={refreshLibrary}
-                disabled={refreshing}
-                label={refreshing ? "Refreshing library…" : "Refresh"}
-                aria-label="Refresh library"
-              >
-                {refreshing ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
-              </TooltipButton>
+              refreshControls
             )}
           </div>
         </div>
@@ -2889,15 +2913,7 @@ function LibraryPage() {
                   <ListFilter aria-hidden="true" />
                 </TooltipButton>
               )}
-              <TooltipButton
-                className="native-library-icon-button"
-                onClick={refreshLibrary}
-                disabled={refreshing}
-                label={refreshing ? "Refreshing library…" : "Refresh"}
-                aria-label="Refresh library"
-              >
-                {refreshing ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
-              </TooltipButton>
+              {refreshControls}
               <span className="native-library-toolbar-spacer" aria-hidden="true" />
               {(tab === "artists" || tab === "albums") && (
                 <div className="native-library-view-toggle" aria-label="Library view">
