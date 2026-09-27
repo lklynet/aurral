@@ -61,6 +61,7 @@ export const queryKeys = {
   inbox: (userId, zip, limit) => ["inbox", userId || null, zip || "", limit],
   listeningHistory: (userId) => ["auth", "listening-history", userId || null],
   lidarrPreferences: (userId) => ["auth", "lidarr-preferences", userId || null],
+  libraryOwner: (userId) => ["auth", "library-owner", userId || null],
   libraryFavorites: ["library", "favorites"],
   libraryAlbums: (artistId) => ["library", "albums", artistId || null],
   libraryAlbumsPrefix: ["library", "albums"],

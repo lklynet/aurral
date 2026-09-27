@@ -595,7 +595,9 @@ textarea {
     opacity 0.2s ease;
 }
 
-.btn-add-action-options:hover:not(:disabled) {
+.btn-add-action-options:hover:not(:disabled),
+.btn-add-action-options:focus-visible,
+.btn-add-action-options.is-open {
   background: var(--aurral-surface-hover);
   color: var(--aurral-text);
 }
