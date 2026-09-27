@@ -188,10 +188,10 @@ export function registerFlows(router) {
       if (!updated) {
         return res.status(404).json({ error: "Flow not found" });
       }
-      await playlistManager.ensureSmartPlaylists();
       if (updated.showInLibrary !== existingFlow.showInLibrary) {
         playlistManager.scheduleScanLibrary();
       }
+      await playlistManager.ensureSmartPlaylists();
       res.json({ success: true, flow: updated });
     } catch (error) {
       if (error?.code === "FLOW_NAME_CONFLICT") {
