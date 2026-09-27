@@ -12,7 +12,7 @@ import {
 } from "./libraryManagementStore.js";
 import { selectCanonicalFile } from "./canonicalFileSelector.js";
 
-const SOURCES = new Set(["aurral", "lidarr"]);
+const SOURCES = new Set(["aurral", "lidarr", "flow"]);
 const libraryCache = new Map();
 
 onLibraryManagementChange(() => {
@@ -511,15 +511,7 @@ export function getCanonicalAlbumsByReleaseDate({
   const fromDate = String(from || "").trim();
   const toDate = String(to || "").trim();
   if (!fromDate) return [];
-  const conditions = [
-    "album.release_date >= ?",
-    `COALESCE(
-      CASE WHEN json_valid(album.metadata_json)
-        THEN json_extract(album.metadata_json, '$.lidarrCatalogPresent')
-      END,
-      1
-    ) != 0`,
-  ];
+  const conditions = ["album.release_date >= ?"];
   const parameters = [fromDate];
   if (toDate) {
     conditions.push("album.release_date <= ?");

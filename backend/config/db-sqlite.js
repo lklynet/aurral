@@ -282,6 +282,21 @@ db.exec(`
     FOREIGN KEY (artist_id) REFERENCES library_artists(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS library_release_calendar (
+    release_group_mbid TEXT PRIMARY KEY,
+    artist_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    release_date TEXT NOT NULL,
+    release_type TEXT,
+    secondary_types_json TEXT,
+    release_statuses_json TEXT,
+    present INTEGER NOT NULL DEFAULT 1,
+    refreshed_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (artist_id) REFERENCES library_artists(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS library_tracks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     identity_key TEXT NOT NULL UNIQUE,
@@ -348,6 +363,10 @@ db.exec(`
     ON library_albums (title COLLATE NOCASE);
   CREATE INDEX IF NOT EXISTS idx_library_albums_release_date
     ON library_albums (release_date DESC);
+  CREATE INDEX IF NOT EXISTS idx_library_release_calendar_artist
+    ON library_release_calendar (artist_id);
+  CREATE INDEX IF NOT EXISTS idx_library_release_calendar_date
+    ON library_release_calendar (present, release_date DESC);
   CREATE INDEX IF NOT EXISTS idx_library_artists_sort_name_name
     ON library_artists (sort_name COLLATE NOCASE, name COLLATE NOCASE);
   CREATE INDEX IF NOT EXISTS idx_library_artists_mbid

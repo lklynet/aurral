@@ -4,8 +4,7 @@ import {
   addArtistToLibrary,
   getRecentlyAdded,
   getRecentReleases,
-  downloadAlbum,
-  updateLibraryAlbum,
+  requestAlbumFromSearch,
 } from "../utils/api/endpoints/library.js";
 import { getDiscovery } from "../utils/api/endpoints/discovery.js";
 import { getArtistRecordId } from "../utils/artistTaste";
@@ -155,6 +154,13 @@ export function useDiscoverData() {
     },
     [discoveryQueryKey, setError],
   );
+
+  useWebSocketChannel("library", (msg) => {
+    if (msg.type !== "release_metadata_refreshed") return;
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.recentReleases(authUser?.id),
+    });
+  });
 
   useEffect(() => {
     if (data) writeStoredDiscoveryData(data, authUser?.id);
@@ -352,13 +358,6 @@ export function useDiscoverData() {
     },
   );
 
-  useWebSocketChannel("library", (msg) => {
-    if (msg.type !== "lidarr_release_metadata_refreshed") return;
-    queryClient.invalidateQueries({
-      queryKey: queryKeys.recentReleases(authUser?.id),
-    });
-  });
-
   useEffect(() => {
     if (!data?.isUpdating && !data?.isEnriching && !data?.playlistsUpdating) {
       return;
@@ -463,16 +462,20 @@ export function useDiscoverData() {
   const handleRecentReleaseAlbumAction = useCallback(
     async (album) => {
       const albumKey = getRecentReleaseKey(album);
-      if (!album?.id || !album?.artistId || !albumKey) return;
+      const albumMbid = album?.mbid || album?.foreignAlbumId;
+      const artistMbid = album?.artistMbid || album?.foreignArtistId;
+      if (!albumMbid || !artistMbid || !albumKey) return;
       setPendingRecentReleaseIds((prev) => ({ ...prev, [albumKey]: true }));
       try {
-        await updateLibraryAlbum(album.id, {
-          ...album,
-          monitored: true,
-        });
-        await downloadAlbum(album.artistId, album.id, {
-          artistMbid: album.artistMbid || album.foreignArtistId,
+        await requestAlbumFromSearch({
+          albumMbid,
+          albumName: album.albumName || album.title,
+          artistMbid,
           artistName: album.artistName,
+          triggerSearch: true,
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.recentReleases(authUser?.id),
         });
         showSuccess(`Searching for ${album.albumName || "album"}`);
       } catch (err) {
@@ -486,7 +489,7 @@ export function useDiscoverData() {
         setPendingRecentReleaseIds(({ [albumKey]: _, ...prev }) => prev);
       }
     },
-    [getRecentReleaseKey, showError, showSuccess],
+    [authUser?.id, getRecentReleaseKey, showError, showSuccess],
   );
 
   const handleDiscoveryFeedback = useCallback(

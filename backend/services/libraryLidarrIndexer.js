@@ -236,28 +236,16 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
       for (const artist of artistById.values()) {
         const artistProviderId = text(artist.foreignArtistId);
         const artistName = text(artist.artistName || artist.name) || "Unknown Artist";
-        const fallbackArtistKey = buildFallbackIdentityKey(
-          "lidarr-artist",
-          artist.id,
-          artistName,
-        );
         const artistKey =
           (artistProviderId &&
             buildIdentityKey(isUuid(artistProviderId) ? "mbid" : "lidarr-artist", artistProviderId)) ||
-          fallbackArtistKey;
+          buildFallbackIdentityKey("lidarr-artist", artist.id, artistName);
         records.set(String(artist.id), upsertLibraryArtist({
           identityKey: artistKey,
-          fallbackIdentityKey: fallbackArtistKey,
-          fallbackMetadataId: artist.id,
           mbid: isUuid(artistProviderId) ? artistProviderId : null,
           name: artistName,
           sortName: artist.sortName || null,
-          metadata: {
-            ...artist,
-            librarySource: "lidarr",
-            lidarrCatalogPresent: true,
-          },
-          metadataOwner: "lidarr",
+          metadata: { ...artist, librarySource: "lidarr" },
           syncSearch,
         }));
       }
@@ -284,35 +272,22 @@ export async function indexLidarrLibrary({ client, syncSearch = true } = {}) {
         const artistName = text(artist.artistName || artist.name) || "Unknown Artist";
         const artistRecord = artistRecordsById.get(String(artist.id));
         const albumProviderId = text(album.foreignAlbumId);
-        const fallbackAlbumKey = buildFallbackIdentityKey(
-          "lidarr-album",
-          album.id,
-          album.title,
-        );
         const albumKey =
           (albumProviderId &&
             buildIdentityKey(
               isUuid(albumProviderId) ? "release-group" : "lidarr-album",
               albumProviderId,
             )) ||
-          fallbackAlbumKey;
+          buildFallbackIdentityKey("lidarr-album", album.id, album.title);
         const albumRecord = upsertLibraryAlbum({
           identityKey: albumKey,
-          fallbackIdentityKey: fallbackAlbumKey,
-          fallbackMetadataId: album.id,
           mbid: isUuid(albumProviderId) ? albumProviderId : null,
           releaseGroupMbid: isUuid(albumProviderId) ? albumProviderId : null,
           artistId: artistRecord.id,
           title: text(album.title) || "Unknown Album",
           albumArtist: artistName,
           releaseDate: album.releaseDate || null,
-          replaceReleaseDate: true,
-          metadata: {
-            ...album,
-            librarySource: "lidarr",
-            lidarrCatalogPresent: true,
-          },
-          metadataOwner: "lidarr",
+          metadata: { ...album, librarySource: "lidarr" },
           syncSearch,
         });
         for (const track of tracksByAlbumId.get(String(album.id)) || []) {

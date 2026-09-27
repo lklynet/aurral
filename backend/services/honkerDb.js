@@ -102,10 +102,10 @@ export const SCHEDULED_SYSTEM_TASKS = [
     payload: { kind: "import-list-sync" },
   },
   {
-    name: "lidarr-release-refresh",
+    name: "release-metadata-refresh",
     queue: "system-task",
-    schedule: "@every 1h",
-    payload: { kind: "lidarr-release-refresh" },
+    schedule: "@every 24h",
+    payload: { kind: "release-metadata-refresh" },
     priority: -5,
   },
   {
@@ -507,7 +507,7 @@ export function enqueueHonkerStartupTasks() {
   enqueueIfAbsent({ kind: "weekly-flow-startup-check" }, { delaySeconds: 5, priority: 5 });
   enqueueIfAbsent({ kind: "discovery-bootstrap" }, { delaySeconds: 15, priority: 5 });
   enqueueIfAbsent({ kind: "library-index-bootstrap" }, { delaySeconds: 8, priority: 0 });
-  enqueueIfAbsent({ kind: "lidarr-release-refresh" }, { delaySeconds: 12, priority: -5 });
+  enqueueIfAbsent({ kind: "release-metadata-refresh" }, { delaySeconds: 12, priority: -5 });
 }
 
 export function findActiveHonkerJob(

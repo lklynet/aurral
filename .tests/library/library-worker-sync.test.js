@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-test("completed child scans and Lidarr metadata refreshes invalidate the API's library cache", async () => {
+test("completed child scans invalidate the API's library cache", async () => {
   const { db } = await import("../../backend/config/db-sqlite.js");
   const {
     linkLibraryAlbumTrack,
@@ -27,18 +27,8 @@ test("completed child scans and Lidarr metadata refreshes invalidate the API's l
   });
   const artistName = () => getCanonicalLibrary().artists.find((item) => item.id === artist.id)?.name;
   assert.equal(artistName(), "Before Scan");
-  db.prepare("UPDATE library_artists SET name = ? WHERE id = ?").run("After Metadata", artist.id);
-  assert.equal(artistName(), "Before Scan");
-
-  await forwardWorkerBroadcast({
-    type: "websocket-broadcast",
-    channel: "library",
-    data: { type: "lidarr_release_metadata_refreshed" },
-  });
-  assert.equal(artistName(), "After Metadata");
-
   db.prepare("UPDATE library_artists SET name = ? WHERE id = ?").run("After Scan", artist.id);
-  assert.equal(artistName(), "After Metadata");
+  assert.equal(artistName(), "Before Scan");
 
   await forwardWorkerBroadcast({
     type: "websocket-broadcast",

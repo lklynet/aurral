@@ -301,7 +301,7 @@ export const AlbumCard = memo(
                 }}
                 isLoading={isPending}
                 disabled={isPending}
-                label="Add to Lidarr"
+                label="Add to library"
               />
             </div>
           ) : null}

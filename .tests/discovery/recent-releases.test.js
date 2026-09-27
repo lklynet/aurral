@@ -1,12 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 
 import { getRecentMissingReleases } from "../../backend/services/discovery/recentReleases.js";
-import { refreshLidarrReleaseMetadata } from "../../backend/services/lidarrReleaseMetadataSync.js";
+import { refreshReleaseMetadata } from "../../backend/services/releaseMetadataSync.js";
+import { upsertReleaseCalendarEntry } from "../../backend/services/releaseCalendarStore.js";
 import { db } from "../../backend/config/db-sqlite.js";
-import { dbOps } from "../../backend/db/helpers/index.js";
-import { lidarrClient } from "../../backend/services/lidarrClient.js";
-import { libraryManager } from "../../backend/services/libraryManager.js";
 import {
   getCanonicalAlbumsByReleaseDate,
   getCanonicalArtistProjection,
@@ -18,58 +17,45 @@ import {
   upsertLibraryMediaFile,
   upsertLibraryTrack,
 } from "../../backend/services/libraryMediaStore.js";
-import {
-  clearLibraryManagement,
-  getLibraryManagementEntry,
-  setLibraryManagement,
-} from "../../backend/services/libraryManagementStore.js";
 
-const artist = {
-  id: 1,
-  name: "Library Artist",
-  foreignArtistId: "artist-mbid",
-};
-const providerArtist = {
-  id: 2,
-  artistName: "Library Artist",
-  foreignArtistId: "1182@deezer",
-};
-const canonicalMbid = "c2f6e8d3-2e6d-4d0a-ae60-4f8c5b2d7a91";
+function createCalendarArtist(name) {
+  const mbid = randomUUID();
+  const artist = upsertLibraryArtist({
+    identityKey: `mbid:${mbid}`,
+    mbid,
+    name,
+    metadata: { id: mbid, librarySource: "aurral" },
+  });
+  return { ...artist, mbid };
+}
 
-const buildAlbum = ({ id, title, releaseDate }) => ({
-  id,
-  artistId: artist.id,
-  foreignAlbumId: `album-${id}`,
-  title,
-  releaseDate,
-  monitored: true,
-  statistics: {
-    trackCount: 10,
-    trackFileCount: 0,
-    percentOfTracks: 0,
-    sizeOnDisk: 0,
-  },
-});
+function addCalendarRelease(artistId, title, releaseDate) {
+  const releaseGroupMbid = randomUUID();
+  upsertReleaseCalendarEntry({
+    releaseGroupMbid,
+    artistId,
+    title,
+    releaseDate,
+    releaseType: "Album",
+    releaseStatuses: ["Official"],
+  });
+  return releaseGroupMbid;
+}
+
+function removeCalendarArtist(artistId) {
+  db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?")
+    .run(artistId);
+  db.prepare("DELETE FROM library_artists WHERE id = ?").run(artistId);
+}
 
 test("recent missing releases can exclude future releases for Release Radar", async () => {
-  const originalIsConfigured = lidarrClient.isConfigured;
-  lidarrClient.isConfigured = () => true;
+  const artist = createCalendarArtist("Release Radar Artist");
+  addCalendarRelease(artist.id, "Released Album", "2026-06-11");
+  addCalendarRelease(artist.id, "Future Album", "2026-08-20");
 
   try {
     const releases = await getRecentMissingReleases(10, {
-      artists: [artist],
-      albums: [
-        buildAlbum({
-          id: 1,
-          title: "Released Album",
-          releaseDate: "2026-06-11",
-        }),
-        buildAlbum({
-          id: 2,
-          title: "Future Album",
-          releaseDate: "2026-08-20",
-        }),
-      ],
+      artists: [{ canonicalId: artist.id }],
       includeFuture: false,
       now: "2026-06-15T12:00:00Z",
     });
@@ -79,29 +65,18 @@ test("recent missing releases can exclude future releases for Release Radar", as
       ["Released Album"],
     );
   } finally {
-    lidarrClient.isConfigured = originalIsConfigured;
+    removeCalendarArtist(artist.id);
   }
 });
 
 test("recent missing releases keep upcoming albums by default for the Discover rail", async () => {
-  const originalIsConfigured = lidarrClient.isConfigured;
-  lidarrClient.isConfigured = () => true;
+  const artist = createCalendarArtist("Upcoming Release Artist");
+  addCalendarRelease(artist.id, "Released Album", "2026-06-11");
+  addCalendarRelease(artist.id, "Future Album", "2026-08-20");
 
   try {
     const releases = await getRecentMissingReleases(10, {
-      artists: [artist],
-      albums: [
-        buildAlbum({
-          id: 1,
-          title: "Released Album",
-          releaseDate: "2026-06-11",
-        }),
-        buildAlbum({
-          id: 2,
-          title: "Future Album",
-          releaseDate: "2026-08-20",
-        }),
-      ],
+      artists: [{ id: artist.id }],
       now: "2026-06-15T12:00:00Z",
     });
 
@@ -110,572 +85,236 @@ test("recent missing releases keep upcoming albums by default for the Discover r
       ["Future Album", "Released Album"],
     );
   } finally {
-    lidarrClient.isConfigured = originalIsConfigured;
+    removeCalendarArtist(artist.id);
   }
 });
 
-test("recent missing releases backfill direct Lidarr artists before mapping", async (t) => {
-  const originalIsConfigured = lidarrClient.isConfigured;
-  lidarrClient.isConfigured = () => true;
-  t.mock.method(libraryManager, "backfillLidarrArtistMappings", async (artists) => {
-    assert.equal(artists[0], providerArtist);
-    dbOps.setLidarrArtistIdMap(canonicalMbid, providerArtist.foreignArtistId);
-  });
+test("recent missing releases can be scoped to canonical artists", async () => {
+  const includedArtist = createCalendarArtist("Included Calendar Artist");
+  const excludedArtist = createCalendarArtist("Excluded Calendar Artist");
+  addCalendarRelease(includedArtist.id, "Included Release", "2026-06-11");
+  addCalendarRelease(excludedArtist.id, "Excluded Release", "2026-06-12");
 
   try {
     const releases = await getRecentMissingReleases(10, {
-      artists: [providerArtist],
-      albums: [
-        {
-          ...buildAlbum({
-            id: 3,
-            title: "Backfilled Album",
-            releaseDate: "2026-06-11",
-          }),
-          artistId: providerArtist.id,
-        },
-      ],
+      artists: [{ canonicalId: includedArtist.id }],
       now: "2026-06-15T12:00:00Z",
     });
 
-    assert.equal(releases[0].artistMbid, canonicalMbid);
-    assert.equal(releases[0].foreignArtistId, providerArtist.foreignArtistId);
+    assert.deepEqual(releases.map((album) => album.albumName), ["Included Release"]);
+    assert.equal(releases[0].artistMbid, includedArtist.mbid);
   } finally {
-    lidarrClient.isConfigured = originalIsConfigured;
-    dbOps.deleteLidarrArtistIdMap(canonicalMbid);
+    removeCalendarArtist(includedArtist.id);
+    removeCalendarArtist(excludedArtist.id);
   }
 });
 
-test("Lidarr release metadata refresh reconciles additions and removals", async () => {
-  const artistMbid = "71717171-7171-4717-8717-717171717171";
-  const albumMbid = "81818181-8181-4818-8818-818181818181";
-  let lidarrArtists = [];
-  let lidarrAlbums = [];
-  const client = {
-    isConfigured: () => true,
-    isEnabled: () => true,
-    async request(endpoint, method, data, skipConfigUpdate, options) {
-      assert.ok(["/artist", "/album"].includes(endpoint));
-      assert.equal(method, "GET");
-      assert.equal(data, null);
-      assert.equal(skipConfigUpdate, false);
-      assert.equal(options.forceRefresh, true);
-      return endpoint === "/artist" ? lidarrArtists : lidarrAlbums;
-    },
-  };
-
-  try {
-    assert.deepEqual(await refreshLidarrReleaseMetadata({ client }), {
-      skipped: false,
-      artistsSeen: 0,
-      albumsSeen: 0,
-      albumsSkipped: 0,
-      artistsStale: 0,
-      albumsStale: 0,
-    });
-
-    lidarrArtists = [{
-      id: 914,
-      artistName: "New Lidarr Artist",
-      foreignArtistId: artistMbid,
-      monitored: true,
-      monitor: "future",
-    }];
-    lidarrAlbums = [{
-      id: 915,
-      artistId: 914,
-      title: "New Upcoming Release",
-      foreignAlbumId: albumMbid,
-      releaseDate: "2026-10-02",
-      monitored: true,
-    }];
-    const result = await refreshLidarrReleaseMetadata({ client });
-    assert.deepEqual(result, {
-      skipped: false,
-      artistsSeen: 1,
-      albumsSeen: 1,
-      albumsSkipped: 0,
-      artistsStale: 0,
-      albumsStale: 0,
-    });
-
-    const releases = await getRecentMissingReleases(24, {
-      now: "2026-09-27T12:00:00Z",
-    });
-    const release = releases.find((album) => album.releaseGroupMbid === albumMbid);
-    assert.equal(release?.artistName, "New Lidarr Artist");
-    assert.equal(release?.albumName, "New Upcoming Release");
-    assert.equal(release?.managedBy, "lidarr");
-
-    lidarrAlbums = {};
-    await assert.rejects(
-      () => refreshLidarrReleaseMetadata({ client }),
-      /malformed album catalogue/,
-    );
-    const albumAfterMalformedResponse = db.prepare(
-      "SELECT metadata_json FROM library_albums WHERE release_group_mbid = ?",
-    ).get(albumMbid);
-    assert.equal(
-      JSON.parse(albumAfterMalformedResponse.metadata_json).lidarrCatalogPresent,
-      true,
-    );
-    lidarrArtists = [null];
-    lidarrAlbums = [];
-    await assert.rejects(
-      () => refreshLidarrReleaseMetadata({ client }),
-      /malformed artist catalogue entry/,
-    );
-    assert.equal(
-      JSON.parse(db.prepare(
-        "SELECT metadata_json FROM library_albums WHERE release_group_mbid = ?",
-      ).get(albumMbid).metadata_json).lidarrCatalogPresent,
-      true,
-    );
-    lidarrArtists = [{
-      id: 914,
-      artistName: "New Lidarr Artist",
-      foreignArtistId: artistMbid,
-      monitored: true,
-      monitor: "future",
-    }];
-    lidarrAlbums = [{
-      id: 915,
-      artistId: 914,
-      title: "New Upcoming Release",
-      foreignAlbumId: albumMbid,
-      releaseDate: "2026-10-02",
-      monitored: true,
-    }];
-
-    assert.deepEqual(await refreshLidarrReleaseMetadata({ client }), {
-      skipped: false,
-      artistsSeen: 1,
-      albumsSeen: 1,
-      albumsSkipped: 0,
-      artistsStale: 0,
-      albumsStale: 0,
-    });
-    assert.equal(
-      db.prepare("SELECT COUNT(*) AS total FROM library_albums WHERE release_group_mbid = ?")
-        .get(albumMbid).total,
-      1,
-    );
-
-    lidarrArtists = [];
-    lidarrAlbums = [];
-    assert.deepEqual(await refreshLidarrReleaseMetadata({ client }), {
-      skipped: false,
-      artistsSeen: 0,
-      albumsSeen: 0,
-      albumsSkipped: 0,
-      artistsStale: 1,
-      albumsStale: 1,
-    });
-    const releasesAfterRemoval = await getRecentMissingReleases(24, {
-      now: "2026-09-27T12:00:00Z",
-    });
-    assert.equal(
-      releasesAfterRemoval.some((album) => album.releaseGroupMbid === albumMbid),
-      false,
-    );
-    const removedAlbum = db.prepare(
-      "SELECT metadata_json FROM library_albums WHERE release_group_mbid = ?",
-    ).get(albumMbid);
-    assert.equal(JSON.parse(removedAlbum.metadata_json).lidarrCatalogPresent, false);
-
-    lidarrArtists = [{
-      id: 914,
-      artistName: "New Lidarr Artist",
-      foreignArtistId: artistMbid,
-      monitored: true,
-      monitor: "future",
-    }];
-    lidarrAlbums = [{
-      id: 915,
-      artistId: 914,
-      title: "New Upcoming Release",
-      foreignAlbumId: albumMbid,
-      releaseDate: "2026-10-02",
-      monitored: true,
-    }];
-    assert.deepEqual(await refreshLidarrReleaseMetadata({ client }), {
-      skipped: false,
-      artistsSeen: 1,
-      albumsSeen: 1,
-      albumsSkipped: 0,
-      artistsStale: 0,
-      albumsStale: 0,
-    });
-    const releasesAfterRestore = await getRecentMissingReleases(24, {
-      now: "2026-09-27T12:00:00Z",
-    });
-    assert.equal(
-      releasesAfterRestore.some((album) => album.releaseGroupMbid === albumMbid),
-      true,
-    );
-    const restoredAlbum = db.prepare(
-      "SELECT metadata_json FROM library_albums WHERE release_group_mbid = ?",
-    ).get(albumMbid);
-    assert.equal(JSON.parse(restoredAlbum.metadata_json).lidarrCatalogPresent, true);
-    assert.equal(
-      db.prepare("SELECT COUNT(*) AS total FROM library_albums WHERE release_group_mbid = ?")
-        .get(albumMbid).total,
-      1,
-    );
-  } finally {
-    const album = db.prepare(
-      "SELECT id FROM library_albums WHERE release_group_mbid = ?",
-    ).get(albumMbid);
-    const insertedArtist = db.prepare(
-      "SELECT id FROM library_artists WHERE mbid = ?",
-    ).get(artistMbid);
-    if (album?.id) {
-      db.prepare(
-        "DELETE FROM library_search_documents WHERE entity_kind = 'album' AND entity_id = ?",
-      ).run(album.id);
-      db.prepare(
-        "DELETE FROM library_management WHERE entity_kind = 'album' AND entity_id = ?",
-      ).run(album.id);
-      db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
-    }
-    if (insertedArtist?.id) {
-      db.prepare(
-        "DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?",
-      ).run(insertedArtist.id);
-      db.prepare(
-        "DELETE FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?",
-      ).run(insertedArtist.id);
-      db.prepare("DELETE FROM library_artists WHERE id = ?").run(insertedArtist.id);
-    }
-  }
-});
-
-test("Lidarr release metadata refresh promotes fallback identities and clears dates", async () => {
-  const artistMbid = "72727272-7272-4727-8727-727272727272";
-  const albumMbid = "82828282-8282-4828-8828-828282828282";
-  let lidarrArtists = [{
-    id: 926,
-    artistName: "Promoted Lidarr Artist",
-    monitored: true,
-  }];
-  let lidarrAlbums = [{
-    id: 927,
-    artistId: 926,
-    title: "Promoted Lidarr Album",
-    releaseDate: "2026-10-04",
-    monitored: true,
-  }];
-  const client = {
-    isConfigured: () => true,
-    isEnabled: () => true,
-    async request(endpoint) {
-      return endpoint === "/artist" ? lidarrArtists : lidarrAlbums;
-    },
-  };
-  let artistId;
-  let albumId;
-
-  try {
-    await refreshLidarrReleaseMetadata({ client });
-    const fallback = db.prepare(
-      `SELECT id, identity_key, release_date
-       FROM library_albums
-       WHERE json_valid(metadata_json)
-         AND json_extract(metadata_json, '$.id') = ?`,
-    ).get(927);
-    const fallbackArtist = db.prepare(
-      `SELECT id, identity_key
-       FROM library_artists
-       WHERE json_valid(metadata_json)
-         AND json_extract(metadata_json, '$.id') = ?`,
-    ).get(926);
-    artistId = fallbackArtist?.id;
-    albumId = fallback?.id;
-    assert.ok(artistId);
-    assert.match(fallbackArtist.identity_key, /^name:lidarr artist:/);
-    assert.ok(albumId);
-    assert.match(fallback.identity_key, /^name:lidarr album:/);
-    assert.equal(fallback.release_date, "2026-10-04");
-
-    lidarrArtists = [{
-      id: 926,
-      artistName: "Promoted Lidarr Artist Renamed",
-      foreignArtistId: artistMbid,
-      monitored: true,
-    }];
-    lidarrAlbums = [{
-      id: 927,
-      artistId: 926,
-      title: "Promoted Lidarr Album Renamed",
-      foreignAlbumId: albumMbid,
-      releaseDate: null,
-      monitored: true,
-    }];
-    await refreshLidarrReleaseMetadata({ client });
-
-    const promotedArtists = db.prepare(
-      "SELECT id, identity_key, mbid FROM library_artists WHERE id = ? OR mbid = ?",
-    ).all(artistId, artistMbid);
-    assert.equal(promotedArtists.length, 1);
-    assert.equal(promotedArtists[0].id, artistId);
-    assert.equal(promotedArtists[0].identity_key, `mbid:${artistMbid}`);
-    assert.equal(promotedArtists[0].mbid, artistMbid);
-    const promotedRows = db.prepare(
-      `SELECT id, identity_key, release_group_mbid, release_date
-       FROM library_albums
-       WHERE id = ? OR release_group_mbid = ?`,
-    ).all(albumId, albumMbid);
-    assert.equal(promotedRows.length, 1);
-    assert.equal(promotedRows[0].id, albumId);
-    assert.equal(promotedRows[0].identity_key, `release-group:${albumMbid}`);
-    assert.equal(promotedRows[0].release_group_mbid, albumMbid);
-    assert.equal(promotedRows[0].release_date, null);
-  } finally {
-    if (albumId) {
-      clearLibraryManagement("album", albumId);
-      db.prepare(
-        "DELETE FROM library_search_documents WHERE entity_kind = 'album' AND entity_id = ?",
-      ).run(albumId);
-      db.prepare("DELETE FROM library_albums WHERE id = ?").run(albumId);
-    }
-    if (artistId) {
-      clearLibraryManagement("artist", artistId);
-      db.prepare(
-        "DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?",
-      ).run(artistId);
-      db.prepare("DELETE FROM library_artists WHERE id = ?").run(artistId);
-    }
-  }
-});
-
-test("Lidarr release metadata refresh preserves overlapping Aurral ownership metadata", async () => {
-  const artistMbid = "92929292-9292-4929-8929-929292929292";
-  const albumMbid = "93939393-9393-4939-8939-939393939393";
-  const artist = upsertLibraryArtist({
+test("BrainzMash refresh adds new releases without a Lidarr catalogue", async () => {
+  const artistMbid = randomUUID();
+  const firstReleaseMbid = randomUUID();
+  const newReleaseMbid = randomUUID();
+  const canonicalArtist = upsertLibraryArtist({
     identityKey: `mbid:${artistMbid}`,
     mbid: artistMbid,
-    name: "Aurral Owned Artist",
-    metadata: {
-      id: artistMbid,
-      librarySource: "aurral",
-      monitored: true,
-      monitor: "all",
-      aurralOnly: "artist-value",
-    },
+    name: "BrainzMash Refresh Artist",
+    metadata: { id: artistMbid, librarySource: "aurral" },
   });
-  const album = upsertLibraryAlbum({
-    identityKey: `release-group:${albumMbid}`,
-    mbid: albumMbid,
-    releaseGroupMbid: albumMbid,
-    artistId: artist.id,
-    title: "Aurral Owned Album",
-    releaseDate: "2026-10-03",
-    metadata: {
-      id: albumMbid,
-      librarySource: "aurral",
-      monitored: true,
-      monitor: "monitored",
-      aurralOnly: "album-value",
-    },
+  const release = (id, title, firstReleaseDate) => ({
+    id,
+    title,
+    type: "Album",
+    secondaryTypes: [],
+    releaseStatuses: ["Official"],
+    firstReleaseDate,
   });
-  setLibraryManagement({
-    entityKind: "artist",
-    entityId: artist.id,
-    managedBy: "aurral",
-    monitorMode: "all",
-  });
-  setLibraryManagement({
-    entityKind: "album",
-    entityId: album.id,
-    managedBy: "aurral",
-    monitorMode: "monitored",
-  });
-  const client = {
-    isConfigured: () => true,
-    isEnabled: () => true,
-    async request(endpoint) {
-      return endpoint === "/artist"
-        ? [{
-            id: 924,
-            artistName: "Aurral Owned Artist",
-            foreignArtistId: artistMbid,
-            monitored: false,
-            monitor: "none",
-          }]
-        : [{
-            id: 925,
-            artistId: 924,
-            title: "Aurral Owned Album",
-            foreignAlbumId: albumMbid,
-            releaseDate: null,
-            monitored: false,
-          }];
-    },
+  let providerReleases = [
+    release(firstReleaseMbid, "Initial BrainzMash Release", "2026-09-10"),
+    release(randomUUID(), "Old BrainzMash Release", "2020-01-01"),
+  ];
+  const listAlbums = async (requestedMbid, options) => {
+    assert.equal(requestedMbid, artistMbid);
+    assert.equal(options.hydrateLimit, 0);
+    return providerReleases;
   };
 
   try {
-    assert.deepEqual(await refreshLidarrReleaseMetadata({ client }), {
-      skipped: false,
-      artistsSeen: 1,
-      albumsSeen: 1,
-      albumsSkipped: 0,
-      artistsStale: 0,
-      albumsStale: 0,
-    });
-    const artistMetadata = JSON.parse(db.prepare(
-      "SELECT metadata_json FROM library_artists WHERE id = ?",
-    ).get(artist.id).metadata_json);
-    const albumMetadata = JSON.parse(db.prepare(
-      "SELECT metadata_json FROM library_albums WHERE id = ?",
-    ).get(album.id).metadata_json);
-    assert.equal(
-      db.prepare("SELECT release_date FROM library_albums WHERE id = ?").get(album.id).release_date,
-      "2026-10-03",
+    assert.deepEqual(
+      await refreshReleaseMetadata({
+        artists: [{ id: canonicalArtist.id, mbid: artistMbid, name: "BrainzMash Refresh Artist" }],
+        listAlbums,
+        now: "2026-09-27T12:00:00Z",
+      }),
+      {
+        artistsSeen: 1,
+        artistsRefreshed: 1,
+        artistsFailed: 0,
+        releasesSeen: 1,
+        releasesStored: 1,
+        releasesStale: 0,
+      },
     );
-    assert.deepEqual(artistMetadata, {
-      id: artistMbid,
-      librarySource: "aurral",
-      monitored: true,
-      monitor: "all",
-      aurralOnly: "artist-value",
+    let visible = await getRecentMissingReleases(100, { now: "2026-09-27T12:00:00Z" });
+    assert.ok(visible.some((album) => album.mbid === firstReleaseMbid));
+    assert.ok(!visible.some((album) => album.title === "Old BrainzMash Release"));
+
+    providerReleases = [
+      ...providerReleases,
+      release(newReleaseMbid, "Newly Published BrainzMash Release", "2026-10-10"),
+    ];
+    const secondRefresh = await refreshReleaseMetadata({
+      artists: [{ id: canonicalArtist.id, mbid: artistMbid, name: "BrainzMash Refresh Artist" }],
+      listAlbums,
+      now: "2026-09-27T12:00:00Z",
     });
-    assert.deepEqual(albumMetadata, {
-      id: albumMbid,
-      librarySource: "aurral",
-      monitored: true,
-      monitor: "monitored",
-      aurralOnly: "album-value",
+    assert.equal(secondRefresh.releasesSeen, 2);
+    visible = await getRecentMissingReleases(100, { now: "2026-09-27T12:00:00Z" });
+    assert.ok(visible.some((album) => album.mbid === newReleaseMbid));
+
+    providerReleases = [providerReleases.at(-1)];
+    const thirdRefresh = await refreshReleaseMetadata({
+      artists: [{ id: canonicalArtist.id, mbid: artistMbid, name: "BrainzMash Refresh Artist" }],
+      listAlbums,
+      now: "2026-09-27T12:00:00Z",
     });
-    assert.equal(getLibraryManagementEntry("artist", artist.id)?.managedBy, "aurral");
-    assert.equal(getLibraryManagementEntry("album", album.id)?.managedBy, "aurral");
+    assert.equal(thirdRefresh.releasesStale, 1);
+    visible = await getRecentMissingReleases(100, { now: "2026-09-27T12:00:00Z" });
+    assert.ok(!visible.some((album) => album.mbid === firstReleaseMbid));
+    assert.ok(visible.some((album) => album.mbid === newReleaseMbid));
   } finally {
-    clearLibraryManagement("album", album.id);
-    clearLibraryManagement("artist", artist.id);
-    db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'album' AND entity_id = ?")
-      .run(album.id);
+    const albumIds = db.prepare("SELECT id FROM library_albums WHERE artist_id = ?")
+      .all(canonicalArtist.id)
+      .map((row) => row.id);
+    for (const albumId of albumIds) {
+      db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'album' AND entity_id = ?")
+        .run(albumId);
+    }
     db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?")
-      .run(artist.id);
-    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
-    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+      .run(canonicalArtist.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(canonicalArtist.id);
   }
 });
 
-test("Lidarr release metadata refresh does not promote Aurral records with colliding provider IDs", async () => {
-  const aurralArtistMbid = "94949494-9494-4949-8949-949494949494";
-  const aurralAlbumMbid = "95959595-9595-4959-8959-959595959595";
-  const lidarrArtistMbid = "96969696-9696-4969-8969-969696969696";
-  const lidarrAlbumMbid = "97979797-9797-4979-8979-979797979797";
-  const lidarrArtistId = 926;
-  const lidarrAlbumId = 927;
-  const aurralArtist = upsertLibraryArtist({
-    identityKey: `mbid:${aurralArtistMbid}`,
-    mbid: aurralArtistMbid,
-    name: "Aurral Numeric Collision Artist",
-    metadata: {
-      id: lidarrArtistId,
-      librarySource: "aurral",
-      aurralOnly: "artist-value",
-    },
+test("a malformed BrainzMash catalogue does not remove the last good calendar", async () => {
+  const artistMbid = randomUUID();
+  const releaseMbid = randomUUID();
+  const canonicalArtist = upsertLibraryArtist({
+    identityKey: `mbid:${artistMbid}`,
+    mbid: artistMbid,
+    name: "Malformed Catalogue Artist",
   });
-  const aurralAlbum = upsertLibraryAlbum({
-    identityKey: `release-group:${aurralAlbumMbid}`,
-    mbid: aurralAlbumMbid,
-    releaseGroupMbid: aurralAlbumMbid,
-    artistId: aurralArtist.id,
-    title: "Aurral Numeric Collision Album",
-    metadata: {
-      id: lidarrAlbumId,
-      librarySource: "aurral",
-      aurralOnly: "album-value",
-    },
-  });
-  setLibraryManagement({
-    entityKind: "artist",
-    entityId: aurralArtist.id,
-    managedBy: "aurral",
-    monitorMode: "all",
-  });
-  setLibraryManagement({
-    entityKind: "album",
-    entityId: aurralAlbum.id,
-    managedBy: "aurral",
-    monitorMode: "monitored",
-  });
-  const client = {
-    isConfigured: () => true,
-    isEnabled: () => true,
-    async request(endpoint) {
-      return endpoint === "/artist"
-        ? [{
-            id: lidarrArtistId,
-            artistName: "Lidarr Numeric Collision Artist",
-            foreignArtistId: lidarrArtistMbid,
-            monitored: true,
-          }]
-        : [{
-            id: lidarrAlbumId,
-            artistId: lidarrArtistId,
-            title: "Lidarr Numeric Collision Album",
-            foreignAlbumId: lidarrAlbumMbid,
-            monitored: true,
-          }];
-    },
-  };
-  let lidarrArtist;
-  let lidarrAlbum;
+  const artists = [{ id: canonicalArtist.id, mbid: artistMbid }];
 
   try {
-    assert.deepEqual(await refreshLidarrReleaseMetadata({ client }), {
-      skipped: false,
-      artistsSeen: 1,
-      albumsSeen: 1,
-      albumsSkipped: 0,
-      artistsStale: 0,
-      albumsStale: 0,
+    await refreshReleaseMetadata({
+      artists,
+      listAlbums: async () => [{
+        id: releaseMbid,
+        title: "Last Good Release",
+        type: "Album",
+        secondaryTypes: [],
+        releaseStatuses: ["Official"],
+        firstReleaseDate: "2026-09-20",
+      }],
+      now: "2026-09-27T12:00:00Z",
     });
-    const preservedArtist = db.prepare(
-      "SELECT identity_key, metadata_json FROM library_artists WHERE id = ?",
-    ).get(aurralArtist.id);
-    const preservedAlbum = db.prepare(
-      "SELECT identity_key, metadata_json FROM library_albums WHERE id = ?",
-    ).get(aurralAlbum.id);
-    lidarrArtist = db.prepare(
-      "SELECT * FROM library_artists WHERE identity_key = ?",
-    ).get(`mbid:${lidarrArtistMbid}`);
-    lidarrAlbum = db.prepare(
-      "SELECT * FROM library_albums WHERE identity_key = ?",
-    ).get(`release-group:${lidarrAlbumMbid}`);
 
-    assert.equal(preservedArtist.identity_key, `mbid:${aurralArtistMbid}`);
-    assert.equal(preservedAlbum.identity_key, `release-group:${aurralAlbumMbid}`);
-    assert.equal(JSON.parse(preservedArtist.metadata_json).librarySource, "aurral");
-    assert.equal(JSON.parse(preservedAlbum.metadata_json).librarySource, "aurral");
-    assert.notEqual(lidarrArtist?.id, aurralArtist.id);
-    assert.notEqual(lidarrAlbum?.id, aurralAlbum.id);
-    assert.equal(lidarrAlbum?.artist_id, lidarrArtist?.id);
-    assert.equal(getLibraryManagementEntry("artist", aurralArtist.id)?.managedBy, "aurral");
-    assert.equal(getLibraryManagementEntry("album", aurralAlbum.id)?.managedBy, "aurral");
-    assert.equal(getLibraryManagementEntry("artist", lidarrArtist.id)?.managedBy, "lidarr");
-    assert.equal(getLibraryManagementEntry("album", lidarrAlbum.id)?.managedBy, "lidarr");
+    await assert.rejects(
+      refreshReleaseMetadata({
+        artists,
+        listAlbums: async () => [{ id: "", title: "", type: null }],
+        now: "2026-09-28T12:00:00Z",
+      }),
+      /failed for every library artist/,
+    );
+
+    const stored = db.prepare(
+      "SELECT present FROM library_release_calendar WHERE release_group_mbid = ?",
+    ).get(releaseMbid);
+    assert.deepEqual(stored, { present: 1 });
   } finally {
-    const albums = [aurralAlbum.id, lidarrAlbum?.id].filter(Boolean);
-    const artists = [aurralArtist.id, lidarrArtist?.id].filter(Boolean);
-    for (const id of albums) {
-      clearLibraryManagement("album", id);
-      db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'album' AND entity_id = ?")
-        .run(id);
-      db.prepare("DELETE FROM library_albums WHERE id = ?").run(id);
-    }
-    for (const id of artists) {
-      clearLibraryManagement("artist", id);
-      db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?")
-        .run(id);
-      db.prepare("DELETE FROM library_artists WHERE id = ?").run(id);
-    }
+    removeCalendarArtist(canonicalArtist.id);
   }
 });
 
-test("canonical recent releases exclude owned albums without loading old albums", async () => {
+test("BrainzMash refresh keeps its calendar separate from canonical album metadata", async () => {
+  const artistMbid = randomUUID();
+  const releaseMbid = randomUUID();
+  const canonicalArtist = upsertLibraryArtist({
+    identityKey: `mbid:${artistMbid}`,
+    mbid: artistMbid,
+    name: "Owned Metadata Artist",
+    metadata: { id: artistMbid, librarySource: "aurral" },
+  });
+  const ownedMetadata = {
+    id: releaseMbid,
+    librarySource: "aurral",
+    monitored: true,
+    aurralOnly: "keep-me",
+  };
+  const canonicalAlbum = upsertLibraryAlbum({
+    identityKey: `release-group:${releaseMbid}`,
+    releaseGroupMbid: releaseMbid,
+    artistId: canonicalArtist.id,
+    title: "Owned Metadata Album",
+    metadata: ownedMetadata,
+  });
+  const canonicalTrack = upsertLibraryTrack({
+    identityKey: `recording:${randomUUID()}`,
+    title: "Owned Metadata Track",
+    artistName: "Owned Metadata Artist",
+  });
+  linkLibraryAlbumTrack({
+    albumId: canonicalAlbum.id,
+    trackId: canonicalTrack.id,
+    trackNumber: 1,
+  });
+  const mediaPath = `/tmp/release-calendar-${randomUUID()}.flac`;
+  upsertLibraryMediaFile({
+    trackId: canonicalTrack.id,
+    albumId: canonicalAlbum.id,
+    source: "aurral",
+    path: mediaPath,
+    available: true,
+  });
+
+  try {
+    await refreshReleaseMetadata({
+      artists: [{ id: canonicalArtist.id, mbid: artistMbid, name: "Owned Metadata Artist" }],
+      listAlbums: async () => [{
+        id: releaseMbid,
+        title: "Owned Metadata Album",
+        type: "Album",
+        secondaryTypes: [],
+        releaseStatuses: ["Official"],
+        firstReleaseDate: "2026-09-20",
+      }],
+      now: "2026-09-27T12:00:00Z",
+    });
+    const stored = db.prepare(
+      "SELECT release_date, metadata_json FROM library_albums WHERE id = ?",
+    ).get(canonicalAlbum.id);
+    const calendar = db.prepare(
+      `SELECT release_date, present
+       FROM library_release_calendar
+       WHERE release_group_mbid = ?`,
+    ).get(releaseMbid);
+    assert.equal(stored.release_date, null);
+    assert.deepEqual(JSON.parse(stored.metadata_json), ownedMetadata);
+    assert.deepEqual(calendar, { release_date: "2026-09-20", present: 1 });
+    const visible = await getRecentMissingReleases(100, { now: "2026-09-27T12:00:00Z" });
+    assert.ok(!visible.some((album) => album.mbid === releaseMbid));
+  } finally {
+    db.prepare("DELETE FROM library_media_files WHERE path = ?").run(mediaPath);
+    db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'album' AND entity_id = ?")
+      .run(canonicalAlbum.id);
+    db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?")
+      .run(canonicalArtist.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(canonicalArtist.id);
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(canonicalTrack.id);
+  }
+});
+
+test("canonical release-date reads return dated albums without loading old albums", async () => {
   const key = `recent-canonical-${process.pid}-${Date.now()}`;
   const canonicalArtist = upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -745,23 +384,10 @@ test("canonical recent releases exclude owned albums without loading old albums"
       projectedArtist?.id,
     );
 
-    const releases = await getRecentMissingReleases(10, {
-      now: "2026-08-22T12:00:00Z",
-    });
-    const relevantReleases = releases.filter((album) =>
-      [canonicalArtist.id, unrelatedArtist.id].includes(Number(album.artistId)),
+    assert.deepEqual(
+      projectedAlbums.map((album) => album.title),
+      ["Unrelated Newer Release", "Missing Current", "Owned Current"],
     );
-
-    assert.deepEqual(relevantReleases.map((album) => album.title), [
-      "Unrelated Newer Release",
-      "Missing Current",
-    ]);
-
-    const scopedReleases = await getRecentMissingReleases(1, {
-      artists: [projectedArtist],
-      now: "2026-08-22T12:00:00Z",
-    });
-    assert.deepEqual(scopedReleases.map((album) => album.title), ["Missing Current"]);
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path LIKE ?").run(`/tmp/${key}/%`);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(canonicalArtist.id);
