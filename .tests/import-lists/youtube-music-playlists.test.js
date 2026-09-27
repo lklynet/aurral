@@ -191,3 +191,33 @@ test("client aborts and maps operation timeouts to a safe provider error", async
   });
   assert.equal(observedSignal.aborted, true);
 });
+
+test("client times out stalled session creation and retries with a fresh session", { timeout: 1_000 }, async () => {
+  let createCalls = 0;
+  const client = new YoutubeMusicPlaylistClient({
+    operationTimeoutMs: 20,
+    createInnertube: async () => {
+      createCalls += 1;
+      if (createCalls === 1) return new Promise(() => {});
+      return {
+        music: {
+          async getPlaylist() {
+            return {
+              header: { title: text("Recovered playlist") },
+              contents: [song({ id: "song", title: "Song", artist: "Artist" })],
+            };
+          },
+        },
+      };
+    },
+  });
+
+  await assert.rejects(client.getPlaylist("PLabcdefghij_123"), {
+    code: "YOUTUBE_PLAYLIST_TIMEOUT",
+    statusCode: 504,
+  });
+  const recovered = await client.getPlaylist("PLabcdefghij_123");
+
+  assert.equal(createCalls, 2);
+  assert.equal(recovered.name, "Recovered playlist");
+});

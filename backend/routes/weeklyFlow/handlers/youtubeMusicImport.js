@@ -51,6 +51,9 @@ export function registerYoutubeMusicImport(router) {
       const name = String(req.body?.name || "").trim();
       if (!name) return res.status(400).json({ error: "name is required" });
       const syncIntervalHours = Number(req.body?.syncIntervalHours ?? 24);
+      if (!Number.isFinite(syncIntervalHours) || syncIntervalHours < 0) {
+        return res.status(400).json({ error: "syncIntervalHours must be zero or greater" });
+      }
       const syncEnabled = req.body?.syncEnabled === false ? false : syncIntervalHours > 0;
       const keepRemovedTracks = req.body?.keepRemovedTracks !== false;
       const playlist = await youtubeMusicPlaylistClient.getPlaylist(playlistId);

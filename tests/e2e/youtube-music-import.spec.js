@@ -106,7 +106,15 @@ for (const viewport of [
     previewMode = "loading";
     await loadButton.click();
     await expect(page.getByRole("button", { name: "Loading preview…" })).toBeDisabled();
+    await page.getByRole("button", { name: "JSON file", exact: true }).click();
+    await page.getByRole("button", { name: "YouTube Music", exact: true }).click();
+    await expect(urlInput).toBeEnabled();
+    await expect(urlInput).toHaveValue("");
     releasePreview();
+
+    await urlInput.fill(testUrl);
+    previewMode = "success";
+    await loadButton.click();
     await expect(page.getByText("Public test playlist")).toBeVisible();
     await expect(page.getByText("4 importable")).toBeVisible();
     await expect(page.getByText("Artist A — Track A", { exact: false })).toBeVisible();

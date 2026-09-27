@@ -186,13 +186,28 @@ export class YoutubeMusicPlaylistClient {
 
   async getSession() {
     if (!this.sessionPromise) {
-      this.sessionPromise = this.createInnertube({ fetch: this.fetch.bind(this) })
+      const sessionPromise = this.createInnertube({ fetch: this.fetch.bind(this) })
         .catch((error) => {
-          this.sessionPromise = null;
+          if (this.sessionPromise === sessionPromise) this.sessionPromise = null;
           throw error;
         });
+      this.sessionPromise = sessionPromise;
     }
-    return this.sessionPromise;
+    const signal = this.operationContext.getStore()?.signal;
+    if (!signal) return this.sessionPromise;
+    const sessionPromise = this.sessionPromise;
+    let handleAbort;
+    const aborted = new Promise((_, reject) => {
+      handleAbort = () => {
+        if (this.sessionPromise === sessionPromise) this.sessionPromise = null;
+        reject(signal.reason);
+      };
+      signal.addEventListener("abort", handleAbort, { once: true });
+      if (signal.aborted) handleAbort();
+    });
+    return Promise.race([sessionPromise, aborted]).finally(() => {
+      signal.removeEventListener("abort", handleAbort);
+    });
   }
 
   async getPlaylist(value) {

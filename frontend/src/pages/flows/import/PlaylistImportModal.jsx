@@ -301,6 +301,7 @@ export function PlaylistImportModal({
     setPreviewTracks([]);
     setPreviewTrackCount(0);
     setPreviewSkipped(0);
+    setPreviewLoading(false);
     setJsonReview(null);
   }, []);
 
@@ -318,6 +319,7 @@ export function PlaylistImportModal({
     setPreviewTracks([]);
     setPreviewTrackCount(0);
     setPreviewSkipped(0);
+    setPreviewLoading(false);
   };
 
   const handleSpotifyAuthRequired = useCallback((error, requestId) => {

@@ -420,6 +420,20 @@ test("YouTube Music preview and import trust the refetched source title", async 
   assert.equal(queued.importSource.syncIntervalHours, 12);
   assert.equal(queued.importSource.keepRemovedTracks, false);
   assert.equal(JSON.stringify(queued).includes("Spoofed client title"), false);
+
+  const invalidIntervalResponse = response();
+  await handlers.get("/import/youtube-music")({
+    user: { id: 7 },
+    body: {
+      playlistId: "PLabcdefghij_123",
+      name: "Invalid schedule",
+      syncIntervalHours: "not-a-number",
+    },
+  }, invalidIntervalResponse);
+  assert.equal(invalidIntervalResponse.statusCode, 400);
+  assert.deepEqual(invalidIntervalResponse.body, { error: "syncIntervalHours must be zero or greater" });
+  assert.equal(getPlaylist.mock.callCount(), 2);
+  assert.equal(enqueue.mock.callCount(), 1);
 });
 
 test("YouTube Music route maps provider failures without logging submitted references", async (t) => {
