@@ -568,6 +568,28 @@ export function markLibraryMediaFilesUnavailable(source, paths) {
   return changed;
 }
 
+export function removeLibraryMediaFiles(source, paths) {
+  const mediaSource = normalizeText(source);
+  const removedPaths = [...new Set(paths)].map(normalizeText).filter(Boolean);
+  let removed = 0;
+  for (const filePath of removedPaths) {
+    const file = getLibraryMediaFileStmt.get(mediaSource, filePath);
+    if (!file) continue;
+    const otherFiles = db.prepare(
+      "SELECT COUNT(*) AS count FROM library_media_files WHERE track_id = ? AND id != ?",
+    ).get(file.track_id, file.id).count;
+    if (otherFiles === 0) {
+      db.prepare("UPDATE library_media_files SET available = 0 WHERE id = ?").run(file.id);
+      removeLibraryTrackIfNoAvailableMedia(file.track_id);
+    } else {
+      db.prepare("DELETE FROM library_media_files WHERE id = ?").run(file.id);
+    }
+    removed += 1;
+  }
+  if (removed > 0) invalidateLibraryCache();
+  return removed;
+}
+
 export async function withLibraryScan(source, rootPath, run) {
   const parentScan = libraryScanContext.getStore();
   const scan = { changed: false };
