@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 
 import ArtistImage from "../components/ArtistImage";
+import { AurralAlbumMonitoring } from "../components/AurralAlbumMonitoring";
 import { AurralAlbumStatus } from "../components/AurralAlbumStatus";
 import { DotLoader } from "../components/DotLoader";
 import { LibraryItemMenu, LibraryItemSubmenu } from "../components/LibraryItemMenu";
@@ -1454,6 +1455,25 @@ function LibraryPage() {
     () => queryClient.invalidateQueries({ queryKey: activityQueryKey }),
     [activityQueryKey],
   );
+  const updateAlbumMonitoringState = useCallback(
+    (albumId, result) => {
+      const monitored = result?.monitored === true;
+      setLibrary((current) => ({
+        ...current,
+        albums: current.albums.map((entry) =>
+          String(entry.id) === String(albumId)
+            ? { ...entry, monitored, monitorMode: monitored ? "monitored" : "unmonitored" }
+            : entry,
+        ),
+      }));
+      clearCanonicalLibraryPageCache();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
+      refreshLibraryActivity();
+    },
+    [refreshLibraryActivity, setLibrary],
+  );
+
   const reloadLibraryAlbumTracks = useCallback(async () => {
     if (!libraryAlbum) return;
     await queryClient.invalidateQueries({
@@ -2475,6 +2495,13 @@ function LibraryPage() {
                   <li key={badge.id}>{badge.label}</li>
                 ))}
               </ul>
+            )}
+            {libraryAlbum.managedBy === "aurral" && !isPreviewLibrary && canChangeMonitoring && (
+              <AurralAlbumMonitoring
+                key={`monitoring-${libraryAlbum.id}`}
+                album={libraryAlbum}
+                onChanged={(result) => updateAlbumMonitoringState(libraryAlbum.id, result)}
+              />
             )}
             {libraryAlbum.managedBy === "aurral" && !isPreviewLibrary && (
               <AurralAlbumStatus

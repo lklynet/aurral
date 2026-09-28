@@ -8874,6 +8874,25 @@ button.native-library-genre-row:focus-visible {
   gap: 0.55rem;
 }
 
+.native-library-album-monitoring {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.native-library-detail .native-library-album-monitoring__label {
+  color: var(--aurral-text);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.native-library-album-monitoring__state {
+  color: var(--aurral-text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .native-library-detail__section {
   display: grid;
   min-width: 0;
