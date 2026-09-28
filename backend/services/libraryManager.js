@@ -1147,9 +1147,11 @@ export class LibraryManager {
       return artist;
     }
 
+    const requestedModes = [monitorOption, artist.monitorOption, artist.addOptions?.monitor];
     const nextMonitorOption =
-      [monitorOption, artist.monitorOption, artist.addOptions?.monitor]
-        .find((mode) => mode && mode !== "none") || "all";
+      artist.managedBy === "aurral"
+        ? requestedModes.find((mode) => mode && mode !== "none") || "all"
+        : requestedModes.find(Boolean) || "none";
     const updated = await this.updateArtist(mbid, {
       monitored: true,
       monitorOption: nextMonitorOption,
