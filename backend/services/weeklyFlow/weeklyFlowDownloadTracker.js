@@ -300,7 +300,8 @@ function buildPipelinePayload(job) {
 }
 
 export class WeeklyFlowDownloadTracker {
-  constructor() {
+  constructor({ enqueuePipeline = enqueuePipelineJob } = {}) {
+    this.enqueuePipeline = enqueuePipeline;
     this.jobs = new Map();
     this.statsByPlaylistType = new Map();
     this.globalStats = this._emptyStats();
@@ -439,6 +440,71 @@ export class WeeklyFlowDownloadTracker {
 
   enqueueSlskdPipeline(jobId) {
     return this.enqueueDownloadPipeline(jobId);
+  }
+
+  enqueueManualSelection(jobId, { source, candidate, downloadClient = null } = {}) {
+    const job = this.jobs.get(jobId);
+    const normalizedSource = String(source || "").trim();
+    if (!job || job.status !== "failed" || job.upgradeForJobId) return false;
+    if (!candidate?.raw || !["slskd", "usenet", "deemix", "ytdlp"].includes(normalizedSource)) {
+      return false;
+    }
+    const payload = {
+      ...buildPipelinePayload(job),
+      phase: "download",
+      source: normalizedSource,
+      allowedSources: [normalizedSource],
+      candidates: [candidate],
+      candidateIndex: 0,
+      manualSelection: true,
+      manualDownloadClient: downloadClient || null,
+    };
+    if (!this.setPending(jobId, "Manual download queued", { asRetryCycle: false })) return false;
+    // Reserve the job before publishing it so automatic dispatch cannot claim it
+    // during the queue handoff.
+    this.markSlskdDispatched(jobId);
+    try {
+      this.enqueuePipeline(payload);
+      return true;
+    } catch {
+      // Preserve the manual workflow on failure: the result session remains
+      // available and the job cannot fall through to automatic selection.
+      this.setFailed(jobId, "Manual download could not be queued");
+      return false;
+    }
+  }
+
+  enqueueManualReplacementSelection(
+    jobId,
+    { source, candidate, downloadClient = null } = {},
+  ) {
+    const sourceJob = this.jobs.get(jobId);
+    const normalizedSource = String(source || "").trim();
+    if (!sourceJob || sourceJob.status !== "done" || !sourceJob.finalPath) return false;
+    if (!candidate?.raw || !["slskd", "usenet", "deemix", "ytdlp"].includes(normalizedSource)) {
+      return false;
+    }
+    const replacementJobId = this.addReplacementSearchJob(sourceJob);
+    if (!replacementJobId) return false;
+    const replacementJob = this.jobs.get(replacementJobId);
+    const payload = {
+      ...buildPipelinePayload(replacementJob),
+      phase: "download",
+      source: normalizedSource,
+      allowedSources: [normalizedSource],
+      candidates: [candidate],
+      candidateIndex: 0,
+      manualSelection: true,
+      manualDownloadClient: downloadClient || null,
+    };
+    this.markSlskdDispatched(replacementJobId);
+    try {
+      this.enqueuePipeline(payload);
+      return true;
+    } catch {
+      this.removeJob(replacementJobId);
+      return false;
+    }
   }
 
   _emptyStats() {

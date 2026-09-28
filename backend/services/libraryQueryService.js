@@ -12,7 +12,7 @@ import {
 } from "./libraryManagementStore.js";
 import { selectCanonicalFile } from "./canonicalFileSelector.js";
 
-const SOURCES = new Set(["aurral", "lidarr"]);
+const SOURCES = new Set(["aurral", "lidarr", "flow"]);
 const libraryCache = new Map();
 
 onLibraryManagementChange(() => {

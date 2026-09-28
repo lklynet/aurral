@@ -14,6 +14,7 @@ const [
   playlistConfigModule,
   flowHandlerUtils,
   flowHandlersModule,
+  libraryScanWorker,
 ] =
   await setupIsolatedBackend(
     "playlist-config",
@@ -22,10 +23,12 @@ const [
     "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
     "backend/routes/weeklyFlow/handlers/utils.js",
     "backend/routes/weeklyFlow/handlers/flows.js",
+    "backend/services/libraryScanWorker.js",
   );
 const { flowPlaylistConfig, normalizeImportSource, tracksShareMembership } = playlistConfigModule;
 const { validateFlowPayload } = flowHandlerUtils;
 const { registerFlows } = flowHandlersModule;
+const { clearScheduledLibraryScan, getScheduledLibraryScanJobId } = libraryScanWorker;
 
 test.beforeEach(() => {
   resetDatabase(db);
@@ -168,6 +171,69 @@ test("defaults listening history on and persists a flow opt-out", () => {
 
   assert.equal(updated?.recordHistory, false);
   assert.equal(flowPlaylistConfig.getFlow(flow.id)?.recordHistory, false);
+});
+
+test("keeps flow tracks out of the library until a flow opts in", async () => {
+  dbOps.updateSettings({ integrations: { lastfm: { apiKey: "test" } } });
+  const flow = flowPlaylistConfig.createFlow({
+    name: "Library Opt In",
+    size: 20,
+    mix: { discover: 100 },
+    scheduleDays: [1],
+  });
+  assert.equal(flow.showInLibrary, false);
+
+  let updateHandler;
+  registerFlows({
+    post() {},
+    put(path, ...handlers) {
+      if (path === "/flows/:flowId") updateHandler = handlers.at(-1);
+    },
+    delete() {},
+    get() {},
+  });
+  const send = async (body) => {
+    const response = {
+      statusCode: 200,
+      body: null,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(value) {
+        this.body = value;
+        return this;
+      },
+    };
+    await updateHandler(
+      { params: { flowId: flow.id }, body, user: { id: 1, role: "admin" } },
+      response,
+    );
+    return response;
+  };
+
+  clearScheduledLibraryScan();
+  const rejected = await send({ showInLibrary: "true" });
+  assert.equal(rejected.statusCode, 400);
+  assert.equal(flowPlaylistConfig.getFlow(flow.id).showInLibrary, false);
+  assert.equal(getScheduledLibraryScanJobId(), null);
+
+  const enabled = await send({ showInLibrary: true });
+  assert.equal(enabled.statusCode, 200);
+  assert.equal(enabled.body.flow.showInLibrary, true);
+  assert.equal(flowPlaylistConfig.getFlow(flow.id).showInLibrary, true);
+  assert.notEqual(getScheduledLibraryScanJobId(), null);
+
+  clearScheduledLibraryScan();
+  const renamed = await send({ name: "Library Opt In Renamed" });
+  assert.equal(renamed.statusCode, 200);
+  assert.equal(flowPlaylistConfig.getFlow(flow.id).showInLibrary, true);
+  assert.equal(getScheduledLibraryScanJobId(), null);
+
+  await send({ showInLibrary: false });
+  assert.equal(flowPlaylistConfig.getFlow(flow.id).showInLibrary, false);
+  assert.notEqual(getScheduledLibraryScanJobId(), null);
+  clearScheduledLibraryScan();
 });
 
 test("rejects non-boolean listening history payloads", () => {
@@ -378,6 +444,31 @@ test("defaults Spotify removed-track retention on and preserves an explicit opt-
 
   assert.equal(source.keepRemovedTracks, true);
   assert.equal(optedOut.keepRemovedTracks, false);
+});
+
+test("normalizes YouTube Music import sources without a schema migration", () => {
+  const source = normalizeImportSource({
+    provider: "youtube-music-playlist",
+    externalId: "PLabcdefghij_123",
+    externalName: "Public playlist",
+    syncEnabled: true,
+    syncIntervalHours: 12,
+    keepRemovedTracks: false,
+    lastSyncAt: 1234,
+    lastSyncTrackCount: 8,
+  });
+
+  assert.deepEqual(source, {
+    provider: "youtube-music-playlist",
+    externalId: "PLabcdefghij_123",
+    externalName: "Public playlist",
+    syncEnabled: true,
+    syncIntervalHours: 12,
+    keepRemovedTracks: false,
+    lastSyncAt: 1234,
+    lastSyncError: null,
+    lastSyncTrackCount: 8,
+  });
 });
 
 test("rejects unsupported playlist import providers", () => {

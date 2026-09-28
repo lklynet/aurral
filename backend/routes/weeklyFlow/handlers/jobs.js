@@ -37,16 +37,23 @@ import {
   decorateJobQuality,
   classifyQualityJob,
   getQualityProfile,
+  isAurralOwnedPath,
   queueQualityUpgrade,
   runQualityUpgradeCheck,
 } from "../../../services/qualityProfileService.js";
 import { getCanonicalTrackOwnershipBatch } from "../../../services/libraryQueryService.js";
-import { logger } from "../../../services/logger.js";
+import { logger, safeLogDiagnostic } from "../../../services/logger.js";
 import { clearAllDownloadJobs } from "../../../services/weeklyFlow/weeklyFlowDownloadCancellationService.js";
 import {
   isFlowOwnerProcess,
   requestFlowOwner,
 } from "../../../services/weeklyFlow/weeklyFlowOwnerClient.js";
+import {
+  createManualMissingSearch,
+  consumeManualMissingSelection,
+  getManualMissingSelection,
+  getManualDownloadSources,
+} from "../../../services/manualMissingSearchService.js";
 
 const getAccessiblePlaylistIds = (user) => [
   ...new Set([
@@ -54,6 +61,42 @@ const getAccessiblePlaylistIds = (user) => [
     ...flowPlaylistConfig.getSharedPlaylistsForUser(user),
   ].map((playlist) => playlist.id)),
 ];
+
+const getActorId = (user) => String(user?.id || user?.username || "").trim();
+
+function getManualSearchMode(value) {
+  return String(value || "").trim() === "replacement" ? "replacement" : "missing";
+}
+
+function canAccessJobThroughPlaylist(user, job, playlistId) {
+  const safePlaylistId = String(playlistId || "").trim();
+  if (!safePlaylistId) return filterJobsForUser(user, [job]).length > 0;
+  if (!canAccessPlaylistType(user, safePlaylistId)) return false;
+  if (job.playlistType === safePlaylistId || job.playlistId === safePlaylistId) return true;
+  const sharedPlaylist = flowPlaylistConfig.getSharedPlaylist(safePlaylistId);
+  return sharedPlaylist?.tracks?.some(
+    (track) => String(track?.canonicalJobId || "") === String(job.id || ""),
+  ) === true;
+}
+
+function getAccessibleManualSearchJob(user, jobId, { mode = "missing", playlistId = null } = {}) {
+  const job = downloadTracker.getJob(jobId);
+  if (!job || !canAccessJobThroughPlaylist(user, job, playlistId)) return null;
+  if (mode === "replacement") {
+    if (
+      job.status !== "done" ||
+      job.upgradeForJobId ||
+      job.managedBy !== "aurral" ||
+      !isAurralOwnedPath(job.finalPath) ||
+      downloadTracker.findActiveUpgradeJob(job)
+    ) {
+      return null;
+    }
+    return job;
+  }
+  if (job.status !== "failed" || job.upgradeForJobId) return null;
+  return job;
+}
 
 async function runQualityChecksLocally(playlistIds) {
   let queued = 0;
@@ -125,6 +168,83 @@ export function registerJobs(router) {
     );
     const profile = getQualityProfile();
     res.json(jobs.map((job) => decorateJobQuality(job, profile)));
+  });
+
+  router.get("/jobs/:jobId/manual-search/sources", noCache, (req, res) => {
+    const mode = getManualSearchMode(req.query?.mode);
+    const playlistId = req.query?.playlistId;
+    const job = getAccessibleManualSearchJob(req.user, req.params.jobId, { mode, playlistId });
+    if (!job) return res.status(404).json({ error: "Track is not available for manual search" });
+    return res.json({ sources: getManualDownloadSources() });
+  });
+
+  router.post("/jobs/:jobId/manual-search", async (req, res) => {
+    const mode = getManualSearchMode(req.body?.mode);
+    const playlistId = req.body?.playlistId;
+    const job = getAccessibleManualSearchJob(req.user, req.params.jobId, { mode, playlistId });
+    if (!job) return res.status(404).json({ error: "Track is not available for manual search" });
+    try {
+      const result = await createManualMissingSearch({
+        job,
+        sourceId: req.body?.sourceId,
+        actorId: getActorId(req.user),
+        mode,
+        playlistId,
+      });
+      return res.json(result);
+    } catch (error) {
+      logger.warn("manual-search", "Manual track search failed", {
+        jobId: job.id,
+        sourceId: String(req.body?.sourceId || ""),
+        reason: safeLogDiagnostic(error),
+      });
+      return res.status(502).json({
+        error: "Manual search failed",
+        message: safeLogDiagnostic(error) || "The selected download client could not be searched",
+      });
+    }
+  });
+
+  router.post("/jobs/:jobId/manual-search/select", async (req, res) => {
+    try {
+      const selection = getManualMissingSelection({
+        sessionId: req.body?.sessionId,
+        resultId: req.body?.resultId,
+        jobId: req.params.jobId,
+        actorId: getActorId(req.user),
+      });
+      const job = getAccessibleManualSearchJob(req.user, req.params.jobId, {
+        mode: selection.mode,
+        playlistId: selection.playlistId,
+      });
+      if (!job) {
+        return res.status(409).json({ error: "Track is no longer available for manual search" });
+      }
+      const replacement = selection.mode === "replacement";
+      const queued = isFlowOwnerProcess()
+        ? replacement
+          ? downloadTracker.enqueueManualReplacementSelection(job.id, selection)
+          : downloadTracker.enqueueManualSelection(job.id, selection)
+        : await requestFlowOwner(
+          replacement ? "enqueueManualReplacementSelection" : "enqueueManualMissingSelection",
+          [job.id, selection], {
+            timeoutMs: 30_000,
+          },
+        );
+      if (!queued) {
+        return res.status(409).json({
+          error: "Track is no longer available for manual search",
+        });
+      }
+      consumeManualMissingSelection(req.body?.sessionId);
+      invalidateRequestsCache();
+      return res.json({ success: true, jobId: job.id });
+    } catch (error) {
+      return res.status(409).json({
+        error: "Could not queue selected result",
+        message: safeLogDiagnostic(error) || "The selected result could not be queued",
+      });
+    }
   });
 
   router.post("/research-missing", async (req, res) => {

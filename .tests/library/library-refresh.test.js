@@ -39,6 +39,16 @@ test("library scans are not scheduled as a recurring background task", () => {
     SCHEDULED_SYSTEM_TASKS.some((task) => task.name === "library-index-refresh"),
     false,
   );
+  assert.deepEqual(
+    SCHEDULED_SYSTEM_TASKS.find((task) => task.name === "release-metadata-refresh"),
+    {
+      name: "release-metadata-refresh",
+      queue: "system-task",
+      schedule: "@every 24h",
+      payload: { kind: "release-metadata-refresh" },
+      priority: -5,
+    },
+  );
 });
 
 test("library bootstrap runs only until the first completed scan", async () => {

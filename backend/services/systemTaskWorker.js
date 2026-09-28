@@ -70,6 +70,15 @@ export async function processSystemTask(payload = {}, job = null) {
     case "library-index-refresh": {
       return;
     }
+    case "release-metadata-refresh": {
+      const { refreshReleaseMetadata } = await import("./releaseMetadataSync.js");
+      const result = await refreshReleaseMetadata();
+      const { websocketService } = await import("./websocketService.js");
+      websocketService.broadcast("library", {
+        type: "release_metadata_refreshed",
+      });
+      return result;
+    }
     case "library-index-bootstrap": {
       const { hasCompletedLibraryScan, scheduleLibraryScan } = await import(
         "./libraryScanWorker.js"
