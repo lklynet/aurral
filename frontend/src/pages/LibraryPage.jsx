@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 
 import ArtistImage from "../components/ArtistImage";
+import { AurralAlbumStatus } from "../components/AurralAlbumStatus";
 import { DotLoader } from "../components/DotLoader";
 import { LibraryItemMenu, LibraryItemSubmenu } from "../components/LibraryItemMenu";
 import TooltipButton from "../components/TooltipButton";
@@ -1418,6 +1419,14 @@ function LibraryPage() {
     loadAlbumTracks(libraryAlbum).catch(() => {});
   }, [isPreviewLibrary, libraryAlbum, loadAlbumTracks]);
 
+  const reloadLibraryAlbumTracks = useCallback(async () => {
+    if (!libraryAlbum) return;
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.libraryAlbumTracks(String(libraryAlbum.id), libraryAlbum.releaseGroupMbid || null),
+    });
+    await loadAlbumTracks(libraryAlbum).catch(() => {});
+  }, [libraryAlbum, loadAlbumTracks]);
+
   useEffect(() => {
     if (!libraryAlbum || isPreviewLibrary) return undefined;
     const tracks = getAlbumTracks(libraryAlbum);
@@ -2406,6 +2415,15 @@ function LibraryPage() {
                 .filter(Boolean)
                 .join(" · ")}
             </p>
+            {libraryAlbum.managedBy === "aurral" && !isPreviewLibrary && (
+              <AurralAlbumStatus
+                key={libraryAlbum.id}
+                album={libraryAlbum}
+                artist={artist}
+                canManage={canAddTracks}
+                onSettled={reloadLibraryAlbumTracks}
+              />
+            )}
             <div className="native-library-detail__actions">
               <button
                 type="button"

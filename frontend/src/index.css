@@ -8792,6 +8792,52 @@ button.native-library-genre-row:focus-visible {
   height: 0.8rem;
 }
 
+.native-library-detail__discover:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.native-library-album-status {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.75rem;
+}
+
+.native-library-detail .native-library-album-status__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  color: var(--aurral-text);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.native-library-album-status[data-tone="warning"] .native-library-album-status__label {
+  color: var(--aurral-warning);
+}
+
+.native-library-album-status[data-tone="danger"] .native-library-album-status__label {
+  color: var(--aurral-danger);
+}
+
+.native-library-detail .native-library-album-status__recovery {
+  margin: 0;
+  max-width: 36rem;
+}
+
+.native-library-album-status__recovery a {
+  color: var(--aurral-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.native-library-album-status__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
 .native-library-detail__section {
   display: grid;
   min-width: 0;
