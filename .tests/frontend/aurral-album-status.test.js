@@ -14,7 +14,7 @@ test("every Aurral album status has a visible label and the right actions", () =
   const expected = {
     queued: ["Queued", ["Cancel downloads"]],
     downloading: ["Downloading", ["Cancel downloads"]],
-    partial: ["Partially available", []],
+    partial: ["Partially available", ["Download missing tracks"]],
     complete: ["In library", []],
     failed: ["Failed", ["Retry"]],
     blocked: ["Needs attention", []],
@@ -34,7 +34,7 @@ test("missing albums offer to download missing tracks instead of Retry", () => {
   assert.deepEqual(state.actions, [{ id: "retry", label: "Download missing tracks" }]);
 });
 
-test("a partial album offers Retry only when a source failed", () => {
+test("a partial album offers Retry when a source failed and otherwise downloads missing tracks", () => {
   const recovery = { code: "source_failed", message: "No source had the tracks." };
   const state = describeAurralAlbumStatus({ status: "partial", recovery });
   assert.deepEqual(actionLabels(state), ["Retry"]);

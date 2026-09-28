@@ -26,6 +26,7 @@ const albumActions = (status, recoveryCode) => {
   if (status === "missing") return [DOWNLOAD_MISSING_ACTION];
   if (RETRY_STATUSES.has(status)) return [RETRY_ACTION];
   if (status === "partial" && recoveryCode === "source_failed") return [RETRY_ACTION];
+  if (status === "partial") return [DOWNLOAD_MISSING_ACTION];
   return [];
 };
 
