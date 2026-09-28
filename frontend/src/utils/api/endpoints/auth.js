@@ -121,6 +121,9 @@ export const getMyLibraryOwner = ({ signal } = {}) =>
 
 export const getMyDiscoverLayout = () => getData("/users/me/discover-layout");
 
+export const updateMyLibraryOwner = (defaultLibraryOwner) =>
+  postData("/users/me/library-owner", { defaultLibraryOwner });
+
 export const updateMyListeningHistory = (userId, payload) =>
   patchData(`/users/${userId}`, payload);
 

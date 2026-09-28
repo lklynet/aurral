@@ -311,7 +311,10 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
     },
   });
   const lidarrQueries = useQueries({
-    queries: buildLidarrQueries(lidarrResourceConfig, activeTab === "lidarr"),
+    queries: buildLidarrQueries(
+      lidarrResourceConfig,
+      activeTab === "lidarr" && settings.integrations?.lidarr?.enabled !== false,
+    ),
   });
   const [lidarrRootFoldersQuery, lidarrProfilesQuery, lidarrMetadataProfilesQuery, lidarrTagsQuery] =
     lidarrQueries;
