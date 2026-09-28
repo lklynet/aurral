@@ -202,6 +202,33 @@ test("client bypasses a cached playlist when a fresh provider read is required",
   assert.equal(playlistRequests, 2);
 });
 
+test("client force refresh bypasses an in-flight playlist load", async () => {
+  const resolvers = [];
+  let playlistRequests = 0;
+  const client = new YoutubeMusicPlaylistClient({
+    playlistRequestIntervalMs: 0,
+    createInnertube: async () => ({
+      music: {
+        async getPlaylist() {
+          playlistRequests += 1;
+          return new Promise((resolve) => resolvers.push(resolve));
+        },
+      },
+    }),
+  });
+
+  const preview = client.getPlaylist("PLabcdefghij_123");
+  await new Promise((resolve) => setImmediate(resolve));
+  const refreshed = client.getPlaylist("PLabcdefghij_123", { forceRefresh: true });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(playlistRequests, 2);
+  resolvers[0]({ header: { title: text("Preview") }, contents: [] });
+  resolvers[1]({ header: { title: text("Fresh") }, contents: [] });
+  assert.equal((await preview).name, "Preview");
+  assert.equal((await refreshed).name, "Fresh");
+});
+
 test("client spaces provider requests shared by concurrent playlist loads", async () => {
   const starts = [];
   const client = new YoutubeMusicPlaylistClient({

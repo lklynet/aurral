@@ -264,8 +264,7 @@ export class YoutubeMusicPlaylistClient {
     const id = validateYoutubePlaylistId(value);
     const now = Date.now();
     const cached = this.playlistCache.get(id);
-    const pending = cached?.expiresAt === Number.POSITIVE_INFINITY;
-    if (cached && cached.expiresAt > now && (!forceRefresh || pending)) return cached.promise;
+    if (cached && cached.expiresAt > now && !forceRefresh) return cached.promise;
     if (cached) this.playlistCache.delete(id);
 
     for (const [cachedId, entry] of this.playlistCache) {
