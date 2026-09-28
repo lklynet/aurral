@@ -191,9 +191,14 @@ test("albums that Aurral does not manage have no monitored toggle", () => {
 test("unmonitoring asks first only while downloads are unfinished", () => {
   assert.equal(shouldConfirmUnmonitor("queued"), true);
   assert.equal(shouldConfirmUnmonitor("downloading"), true);
-  for (const status of ["complete", "partial", "missing", "failed", "cancelled", "blocked", undefined]) {
+  for (const status of ["complete", "partial", "missing", "failed", "cancelled", "blocked"]) {
     assert.equal(shouldConfirmUnmonitor(status), false, String(status));
   }
+});
+
+test("unmonitoring asks first when the download status is unknown", () => {
+  assert.equal(shouldConfirmUnmonitor(undefined), true);
+  assert.equal(shouldConfirmUnmonitor(null), true);
 });
 
 test("unmonitoring result reports cancelled downloads", () => {

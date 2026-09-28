@@ -88,7 +88,8 @@ export const getAlbumMonitoredState = (album) => {
   return monitored === true && album.monitorMode !== "unmonitored";
 };
 
-export const shouldConfirmUnmonitor = (status) => shouldPollAlbumStatus(status);
+export const shouldConfirmUnmonitor = (status) =>
+  status == null || shouldPollAlbumStatus(status);
 
 export const describeAlbumMonitoringResult = (result) => {
   if (result?.monitored !== false) return { message: "Album monitored", warning: false };
