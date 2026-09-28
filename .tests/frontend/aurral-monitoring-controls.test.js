@@ -5,6 +5,7 @@ import { getMonitorOptionsForManager } from "../../frontend/src/utils/libraryDes
 import {
   MONITOR_OPTIONS,
   describeAlbumMonitoringResult,
+  describeArtistMonitoringResult,
   describeAurralMonitoringError,
   getAlbumMonitoredState,
   shouldConfirmUnmonitor,
@@ -195,4 +196,30 @@ test("monitoring an album is reported as monitored", () => {
     message: "Album monitored",
     warning: false,
   });
+});
+
+test("Aurral artist monitoring result takes state and message from the server", () => {
+  const result = describeArtistMonitoringResult({
+    id: 7,
+    monitored: true,
+    monitorOption: "latest",
+    monitoring: { mode: "latest", releaseGroupIds: ["rg1"], skipped: [], queued: true },
+  });
+  assert.deepEqual(result.patch, { monitored: true, monitorOption: "latest" });
+  assert.equal(result.message, "Queued 1 album for download");
+});
+
+test("turning Aurral monitoring off leaves the artist unmonitored", () => {
+  const result = describeArtistMonitoringResult({
+    monitored: false,
+    monitorOption: "none",
+    monitoring: { mode: "none", releaseGroupIds: [], skipped: [], queued: false },
+  });
+  assert.deepEqual(result.patch, { monitored: false, monitorOption: "none" });
+  assert.equal(result.message, "Monitoring turned off");
+});
+
+test("Lidarr artist updates carry no Aurral monitoring result", () => {
+  assert.equal(describeArtistMonitoringResult({ id: 3, monitorOption: "all" }), null);
+  assert.equal(describeArtistMonitoringResult(undefined), null);
 });

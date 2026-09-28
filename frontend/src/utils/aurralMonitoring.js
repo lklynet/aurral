@@ -52,6 +52,14 @@ export const summarizeAurralMonitoring = (monitoring) => {
   return { headline, details, message: [headline, ...details].join(". ") };
 };
 
+export const describeArtistMonitoringResult = (response) => {
+  if (!response?.monitoring) return null;
+  return {
+    patch: { monitored: response.monitored, monitorOption: response.monitorOption },
+    message: summarizeAurralMonitoring(response.monitoring).message,
+  };
+};
+
 const METADATA_UNAVAILABLE_MESSAGE =
   "Couldn't load this artist's releases from the metadata service, so monitoring was not changed. Try again in a moment.";
 
