@@ -72,6 +72,7 @@ import {
   describeAurralAlbumStatus,
   shouldPollAlbumStatuses,
 } from "../utils/aurralAlbumStatus.js";
+import { describeAlbumBadges, trackSourceLabel } from "../utils/librarySourceBadges.js";
 import { navigateToLibraryAlbum } from "../utils/searchNavigation";
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { libraryPreviewData, libraryPreviewFavorites } from "./libraryPreviewData";
@@ -1779,7 +1780,7 @@ function LibraryPage() {
     setSearchParams(next);
   };
 
-  const renderTrackList = (tracks, label) => (
+  const renderTrackList = (tracks, label, { showSources = false } = {}) => (
     <div className="native-library-track-list">
       <div
         className="native-library-track native-library-track--heading"
@@ -1800,6 +1801,7 @@ function LibraryPage() {
           const album = getAlbumForTrack(track);
           const artist = getArtistForAlbum(album);
           const file = firstAvailableFile(track);
+          const sourceLabel = showSources ? trackSourceLabel(file) : null;
           const researchFile = firstAvailableAurralFile(track);
           const researchAlbumRelation = track?.albums?.find(
             (entry) => String(entry.albumId) === String(researchFile?.albumId),
@@ -1952,7 +1954,12 @@ function LibraryPage() {
                 onClick={() => playTrack(track, tracks)}
               >
                 <span>{track.title || "Unknown Track"}</span>
-                <small>{artistName}</small>
+                <small>
+                  {artistName}
+                  {sourceLabel && (
+                    <span className="native-library-track__source">{" · " + sourceLabel}</span>
+                  )}
+                </small>
               </button>
             </Tooltip>
             {artist ? (
@@ -2425,6 +2432,7 @@ function LibraryPage() {
     const artist = getArtistForAlbum(libraryAlbum);
     const albumTracks = getAlbumTracks(libraryAlbum);
     const availability = albumAvailability(libraryAlbum);
+    const badges = describeAlbumBadges(libraryAlbum);
     const durationMs = albumTracks.reduce(
       (total, track) => total + Number(firstAvailableFile(track)?.durationMs || 0),
       0,
@@ -2454,6 +2462,14 @@ function LibraryPage() {
                 .filter(Boolean)
                 .join(" · ")}
             </p>
+            {(badges.manager || badges.sources.length > 0) && (
+              <ul className="native-library-detail__badges" aria-label="Library source">
+                {badges.manager && <li>{badges.manager.label}</li>}
+                {badges.sources.map((badge) => (
+                  <li key={badge.id}>{badge.label}</li>
+                ))}
+              </ul>
+            )}
             {libraryAlbum.managedBy === "aurral" && !isPreviewLibrary && (
               <AurralAlbumStatus
                 key={libraryAlbum.id}
@@ -2554,7 +2570,9 @@ function LibraryPage() {
             <h3>Tracks</h3>
             <span>{availability.total}</span>
           </div>
-          {renderTrackList(albumTracks, libraryAlbum.title + " tracks")}
+          {renderTrackList(albumTracks, libraryAlbum.title + " tracks", {
+            showSources: badges.showTrackSources,
+          })}
         </section>
       </section>
     );

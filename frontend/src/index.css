@@ -8809,6 +8809,24 @@ button.native-library-genre-row:focus-visible {
   opacity: 0.6;
 }
 
+.native-library-detail__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.native-library-detail__badges li {
+  border: 1px solid var(--aurral-border);
+  border-radius: 9999px;
+  padding: 0.1rem 0.5rem;
+  color: var(--aurral-text-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
 .native-library-album-status {
   display: grid;
   gap: 0.25rem;
