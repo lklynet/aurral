@@ -357,6 +357,12 @@ export const getDownloadStatus = async (albumIds, { signal, bypassCache = false 
   });
 };
 
+export const getAurralAlbumStatus = (canonicalId, { signal } = {}) =>
+  getData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}/status`, { signal });
+
+export const cancelAurralAlbum = (canonicalId) =>
+  postData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}/cancel`);
+
 export const refreshLibraryArtist = (mbid) =>
   postData(`/library/artists/${mbid}/refresh`);
 
