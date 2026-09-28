@@ -9,7 +9,10 @@ import {
   getCanonicalLibraryReadModelForAlbumReferences,
   getCanonicalLibraryReadModelForArtists,
 } from "../../../services/canonicalLibraryReadAdapter.js";
-import { getCanonicalArtistMbids } from "../../../services/libraryQueryService.js";
+import {
+  getCanonicalArtistMbids,
+  getCanonicalArtistProjection,
+} from "../../../services/libraryQueryService.js";
 
 const ARTIST_LOOKUP_BATCH_MAX = 100;
 
@@ -78,6 +81,16 @@ export async function getArtistLibraryLookup(mbid) {
     mbids: [mbid],
   });
   const artist = artists.find((candidate) => candidate.mbid === mbid);
+  const aurralArtist = getCanonicalArtistProjection({ reference: mbid })
+    .find((candidate) => candidate.mbid === mbid && candidate.managedBy === "aurral");
+  if (aurralArtist) {
+    return {
+      exists: true,
+      artist: toLibraryArtist(aurralArtist),
+      albums: albums.filter((album) => album.artistMbid === mbid).map(toLibraryAlbum),
+      canonical: true,
+    };
+  }
   const { lidarrClient } = await import("../../../services/lidarrClient.js");
   const lidarrConfigured = lidarrClient.isConfigured();
   let lidarrArtist;
