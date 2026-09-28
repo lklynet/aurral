@@ -5,6 +5,7 @@ import {
   buildAurralAlbumRetryPayload,
   describeAurralAlbumStatus,
   shouldPollAlbumStatus,
+  shouldPollAlbumStatuses,
 } from "../../frontend/src/utils/aurralAlbumStatus.js";
 
 const actionLabels = (state) => state.actions.map((action) => action.label);
@@ -78,6 +79,19 @@ test("polling continues only while work is queued or downloading", () => {
   const polling = ["queued", "downloading", "partial", "complete", "failed", "blocked", "cancelled", "missing", undefined]
     .filter(shouldPollAlbumStatus);
   assert.deepEqual(polling, ["queued", "downloading"]);
+});
+
+test("library lists poll only while an album in the batch is active", () => {
+  assert.equal(shouldPollAlbumStatuses({}), false);
+  assert.equal(shouldPollAlbumStatuses(undefined), false);
+  assert.equal(
+    shouldPollAlbumStatuses({ "aurral:1": { status: "complete" }, "aurral:2": { status: "failed" } }),
+    false,
+  );
+  assert.equal(
+    shouldPollAlbumStatuses({ "aurral:1": { status: "complete" }, "aurral:2": { status: "queued" } }),
+    true,
+  );
 });
 
 test("retry re-requests the album through Aurral", () => {

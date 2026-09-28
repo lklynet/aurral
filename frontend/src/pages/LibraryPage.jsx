@@ -49,6 +49,7 @@ import {
   fetchCanonicalLibraryPage,
   getActiveLibraryRefresh,
   getCanonicalLibraryPage,
+  getDownloadStatus,
   getLibraryFavorites,
   getLibraryRefreshStatus,
   getRequests,
@@ -66,6 +67,11 @@ import {
 } from "../utils/api/endpoints/playlists.js";
 import { buildAuthenticatedApiUrl } from "../utils/api/core.js";
 import { mergeAlbumMetadataTracks } from "../utils/libraryTrackHydration.js";
+import {
+  aurralAlbumStatusKey,
+  describeAurralAlbumStatus,
+  shouldPollAlbumStatuses,
+} from "../utils/aurralAlbumStatus.js";
 import { navigateToLibraryAlbum } from "../utils/searchNavigation";
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { libraryPreviewData, libraryPreviewFavorites } from "./libraryPreviewData";
@@ -1419,6 +1425,28 @@ function LibraryPage() {
     loadAlbumTracks(libraryAlbum).catch(() => {});
   }, [isPreviewLibrary, libraryAlbum, loadAlbumTracks]);
 
+  const aurralAlbumStatusKeys = useMemo(() => {
+    if (libraryAlbum || isPreviewLibrary) return [];
+    return library.albums
+      .filter((album) => {
+        if (album.managedBy !== "aurral") return false;
+        const { total, available } = albumAvailability(album);
+        return !total || available < total;
+      })
+      .map((album) => aurralAlbumStatusKey(album.id))
+      .sort();
+  }, [albumAvailability, isPreviewLibrary, library.albums, libraryAlbum]);
+  const aurralAlbumStatusesQuery = useQuery({
+    queryKey: queryKeys.downloadStatus(aurralAlbumStatusKeys),
+    queryFn: ({ signal }) =>
+      getDownloadStatus(aurralAlbumStatusKeys, { signal, bypassCache: true }),
+    enabled: aurralAlbumStatusKeys.length > 0,
+    staleTime: 0,
+    refetchInterval: (query) => (shouldPollAlbumStatuses(query.state.data) ? 4000 : false),
+    refetchIntervalInBackground: false,
+  });
+  const aurralAlbumStatuses = aurralAlbumStatusesQuery.data || {};
+
   const reloadLibraryAlbumTracks = useCallback(async () => {
     if (!libraryAlbum) return;
     await queryClient.invalidateQueries({
@@ -2140,6 +2168,10 @@ function LibraryPage() {
           (availability.total || 0) +
           " tracks";
     const isFavorite = favoriteIds.has(favoriteId("album", album));
+    const aurralState = album.managedBy === "aurral"
+      ? describeAurralAlbumStatus(aurralAlbumStatuses[aurralAlbumStatusKey(album.id)] || {})
+      : null;
+    const cardStatus = aurralState?.status === "complete" ? null : aurralState;
     return (
       <article className="native-library-card" data-library-menu-target key={album.id}>
         <div className="native-library-card__cover-wrap">
@@ -2255,7 +2287,14 @@ function LibraryPage() {
               {artist?.name || album.albumArtist || "Unknown Artist"}
             </span>
           )}
-          <span className="native-library-card__meta">{meta}</span>
+          <span className="native-library-card__meta">
+            {cardStatus && (
+              <span className="native-library-card__status" data-tone={cardStatus.tone}>
+                {cardStatus.label + " · "}
+              </span>
+            )}
+            {meta}
+          </span>
         </div>
       </article>
     );

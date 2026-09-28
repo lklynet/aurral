@@ -8241,6 +8241,18 @@ textarea {
   color: var(--aurral-text-muted);
 }
 
+.native-library-card__status {
+  color: var(--aurral-text);
+}
+
+.native-library-card__status[data-tone="warning"] {
+  color: var(--aurral-warning);
+}
+
+.native-library-card__status[data-tone="danger"] {
+  color: var(--aurral-danger);
+}
+
 .native-library-card__artist,
 .native-library-card__meta {
   display: block;

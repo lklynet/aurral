@@ -33,6 +33,9 @@ export const aurralAlbumStatusKey = (canonicalId) => `aurral:${canonicalId}`;
 
 export const shouldPollAlbumStatus = (status) => ACTIVE_STATUSES.has(status);
 
+export const shouldPollAlbumStatuses = (statuses) =>
+  Object.values(statuses || {}).some((entry) => shouldPollAlbumStatus(entry?.status));
+
 export const describeAurralAlbumStatus = ({ status, recovery } = {}) => {
   const display = STATUS_DISPLAY[status];
   if (!display) return null;
