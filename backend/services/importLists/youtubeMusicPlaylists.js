@@ -248,6 +248,15 @@ export class YoutubeMusicPlaylistClient {
     });
   }
 
+  trimPlaylistCache(maxSize) {
+    while (this.playlistCache.size > maxSize) {
+      const evictable = [...this.playlistCache]
+        .find(([, entry]) => entry.expiresAt !== Number.POSITIVE_INFINITY);
+      if (!evictable) break;
+      this.playlistCache.delete(evictable[0]);
+    }
+  }
+
   async getPlaylist(value, { forceRefresh = false } = {}) {
     const id = validateYoutubePlaylistId(value);
     const now = Date.now();
@@ -259,9 +268,7 @@ export class YoutubeMusicPlaylistClient {
     for (const [cachedId, entry] of this.playlistCache) {
       if (entry.expiresAt <= now) this.playlistCache.delete(cachedId);
     }
-    while (this.playlistCache.size >= this.maxCachedPlaylists) {
-      this.playlistCache.delete(this.playlistCache.keys().next().value);
-    }
+    this.trimPlaylistCache(this.maxCachedPlaylists - 1);
 
     const promise = this.loadPlaylist(id);
     const entry = { promise, expiresAt: Number.POSITIVE_INFINITY };
@@ -269,6 +276,7 @@ export class YoutubeMusicPlaylistClient {
     try {
       const playlist = await promise;
       entry.expiresAt = Date.now() + this.playlistCacheTtlMs;
+      this.trimPlaylistCache(this.maxCachedPlaylists);
       return playlist;
     } catch (error) {
       if (this.playlistCache.get(id) === entry) this.playlistCache.delete(id);
@@ -306,7 +314,10 @@ export class YoutubeMusicPlaylistClient {
     const session = await this.getSession();
     const signal = this.operationContext.getStore()?.signal;
     let page = await this.playlistRequestLimiter.schedule(
-      () => session.music.getPlaylist(id),
+      () => this.operationContext.run(
+        { signal },
+        () => session.music.getPlaylist(id),
+      ),
       { signal },
     );
     const name = getPlaylistName(page);
@@ -352,7 +363,10 @@ export class YoutubeMusicPlaylistClient {
       }
       continuations.add(key);
       page = await this.playlistRequestLimiter.schedule(
-        () => page.getContinuation(),
+        () => this.operationContext.run(
+          { signal },
+          () => page.getContinuation(),
+        ),
         { signal },
       );
     }

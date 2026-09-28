@@ -228,6 +228,73 @@ test("client spaces provider requests shared by concurrent playlist loads", asyn
   assert.ok(starts[1].at - starts[0].at >= 20);
 });
 
+test("queued playlist requests keep their own operation timeout context", { timeout: 1_000 }, async () => {
+  const client = new YoutubeMusicPlaylistClient({
+    operationTimeoutMs: 200,
+    playlistRequestIntervalMs: 50,
+    createInnertube: async ({ fetch }) => ({
+      music: {
+        async getPlaylist(id) {
+          if (id === "PLabcdefghij_000") {
+            return {
+              header: { title: text("Warmup") },
+              contents: [song({ id: "warmup", title: "Warmup", artist: "Artist" })],
+            };
+          }
+          await fetch(`https://music.youtube.com/youtubei/v1/browse?id=${id}`);
+        },
+      },
+    }),
+    fetchImpl: async (_url, options) => new Promise((resolve, reject) => {
+      options.signal.addEventListener(
+        "abort",
+        () => reject(options.signal.reason),
+        { once: true },
+      );
+    }),
+  });
+
+  await client.getPlaylist("PLabcdefghij_000");
+  const first = client.getPlaylist("PLabcdefghij_123");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const second = client.getPlaylist("PLabcdefghij_456");
+
+  await assert.rejects(first, { code: "YOUTUBE_PLAYLIST_TIMEOUT" });
+  await assert.rejects(second, { code: "YOUTUBE_PLAYLIST_TIMEOUT" });
+});
+
+test("cache keeps pending playlist loads available for request coalescing", async () => {
+  let releaseRequests;
+  const released = new Promise((resolve) => { releaseRequests = resolve; });
+  const requests = new Map();
+  const client = new YoutubeMusicPlaylistClient({
+    maxCachedPlaylists: 1,
+    playlistRequestIntervalMs: 0,
+    createInnertube: async () => ({
+      music: {
+        async getPlaylist(id) {
+          requests.set(id, (requests.get(id) || 0) + 1);
+          await released;
+          return {
+            header: { title: text(id) },
+            contents: [song({ id: `song-${id}`, title: id, artist: "Artist" })],
+          };
+        },
+      },
+    }),
+  });
+
+  const first = client.getPlaylist("PLabcdefghij_123");
+  const second = client.getPlaylist("PLabcdefghij_456");
+  const repeatedFirst = client.getPlaylist("PLabcdefghij_123");
+  await new Promise((resolve) => setImmediate(resolve));
+  releaseRequests();
+  await Promise.all([first, second, repeatedFirst]);
+
+  assert.equal(requests.get("PLabcdefghij_123"), 1);
+  assert.equal(requests.get("PLabcdefghij_456"), 1);
+});
+
 test("client opens a local cooldown when YouTube Music returns a rate limit", async () => {
   let requests = 0;
   const client = new YoutubeMusicPlaylistClient({
