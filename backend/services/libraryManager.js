@@ -52,6 +52,7 @@ import {
   selectAurralReleases,
 } from "./aurralMonitoring.js";
 import { enqueueSystemTaskJob } from "./honkerDb.js";
+import { scheduleReleaseMetadataRefresh } from "./releaseMetadataSync.js";
 const normalizeTypeName = (value) =>
   String(value || "")
     .toLowerCase()
@@ -556,6 +557,7 @@ export class LibraryManager {
           monitorMode: "none",
         });
       }
+      scheduleReleaseMetadataRefresh();
       return canonicalArtistFallback(existing.id) || existing;
     }
 
@@ -606,6 +608,7 @@ export class LibraryManager {
       managedBy: "aurral",
       monitorMode: "none",
     });
+    scheduleReleaseMetadataRefresh();
     return canonicalArtistFallback(artist.id) || artist;
   }
 

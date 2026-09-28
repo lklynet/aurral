@@ -1097,7 +1097,10 @@ test("YouTube Music sync uses the shared import path without logging its externa
     });
 
     assert.equal(getPlaylist.mock.callCount(), 1);
-    assert.deepEqual(getPlaylist.mock.calls[0].arguments, ["PLsecretUnlisted_123"]);
+    assert.deepEqual(getPlaylist.mock.calls[0].arguments, [
+      "PLsecretUnlisted_123",
+      { forceRefresh: true },
+    ]);
     assert.equal(result.trackCount, 1);
     assert.equal(flowPlaylistConfig.getSharedPlaylist(playlist.id).tracks[0].trackName, "New Song");
     assert.equal(JSON.stringify(info.mock.calls).includes("PLsecretUnlisted_123"), false);

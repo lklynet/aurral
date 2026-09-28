@@ -68,6 +68,7 @@ import {
   LibrarySidebarToggleIcon,
 } from "./flows/FlowPlaylistUI";
 import { FlowTracksPanel } from "./flows/flowComponents/flowTrackComponents.jsx";
+import ManualMissingSearchModal from "./activity/ManualMissingSearchModal.jsx";
 import { FlowEmptyState } from "./flows/flowComponents/FlowEmptyState.jsx";
 import { ConfirmModal } from "./flows/flowComponents/ConfirmModal.jsx";
 import { MoreMenu } from "./flows/flowComponents/MoreMenu.jsx";
@@ -222,6 +223,7 @@ function FlowPage({ mode = "all" }) {
   const [applyingFlowNameId, setApplyingFlowNameId] = useState(null);
   const [applyingSharedPlaylistNameId, setApplyingSharedPlaylistNameId] = useState(null);
   const [reSearchingTrackIds, setReSearchingTrackIds] = useState({});
+  const [manualReplacement, setManualReplacement] = useState(null);
   const [searchingUpgradePlaylistId, setSearchingUpgradePlaylistId] = useState(null);
   const [syncingImportPlaylistId, setSyncingImportPlaylistId] = useState(null);
   const [updatingSyncIntervalPlaylistId, setUpdatingSyncIntervalPlaylistId] = useState(null);
@@ -1181,6 +1183,11 @@ function FlowPage({ mode = "all" }) {
     }
   };
 
+  const handleManualReplacement = (playlistId, track) => {
+    if (!playlistId || !track?.id) return;
+    setManualReplacement({ playlistId, job: track });
+  };
+
   const handleSearchPlaylistUpgrades = async (playlistId) => {
     if (!playlistId || searchingUpgradePlaylistId) return;
     setSearchingUpgradePlaylistId(playlistId);
@@ -1951,6 +1958,13 @@ function FlowPage({ mode = "all" }) {
                       )
                   : undefined
             }
+            onManualReSearchTrack={
+              selectedIsFlow
+                ? (track) => handleManualReplacement(selectedFlow.id, track)
+                : selectedPlaylist
+                  ? (track) => handleManualReplacement(selectedPlaylist.id, track)
+                  : undefined
+            }
             onDeleteTrack={
               selectedIsFlow || !selectedPlaylist
                 ? undefined
@@ -2340,6 +2354,19 @@ function FlowPage({ mode = "all" }) {
           setIsCreatePlaylistOpen(false);
         }}
         onSubmit={handleCreatePlaylist}
+      />
+      <ManualMissingSearchModal
+        job={manualReplacement?.job || null}
+        mode="replacement"
+        playlistId={manualReplacement?.playlistId || null}
+        onClose={() => setManualReplacement(null)}
+        onQueued={(job) => {
+          showSuccess(`Replacing ${job.trackName || "selected track"}`);
+          void fetchStatus();
+          if (manualReplacement?.playlistId) {
+            void fetchFlowTracks(manualReplacement.playlistId, { showSpinner: false });
+          }
+        }}
       />
     </div>
   );

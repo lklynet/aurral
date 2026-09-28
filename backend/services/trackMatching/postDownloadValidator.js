@@ -26,7 +26,7 @@ import { runMatcherOperation } from "./beetsClient.js";
 import {
   toProtocolRequest,
 } from "./decisionEngine.js";
-import { getNormalizedText } from "../providers/brainzmashRanking.js";
+import { getNormalizedText, scoreTextMatch } from "../providers/brainzmashRanking.js";
 import {
   DEFAULT_MATCH_THRESHOLDS,
   MATCHER_UNAVAILABLE_MESSAGE,
@@ -41,6 +41,8 @@ export const POST_DOWNLOAD_DECISIONS = {
   AMBIGUOUS: "AMBIGUOUS",
   FAILED: "FAILED",
 };
+
+const MANUAL_RELEASE_FILE_TITLE_THRESHOLD = 70;
 
 function readTagText(value) {
   return String(value || "").trim() || null;
@@ -168,6 +170,7 @@ export async function validateDownloadedTrackFile({
   const quality = validateParsedQuality(parsed, filePath, {
     upgradeForJobId: trackRequest.upgradeForJobId || null,
     manualReplacementSearch: trackRequest.manualReplacementSearch,
+    manualSelection: options.manualSelection === true,
   });
   if (!quality.valid) {
     return {
@@ -180,6 +183,26 @@ export async function validateDownloadedTrackFile({
       actual: { tags: actual, durationMs: actualDurationMs },
       actualDurationMs,
       parsedTags: actual,
+    };
+  }
+
+  // A manual search is an explicit identity decision by the user. Keep the
+  // technical audio checks above, but do not let automatic title, artist,
+  // album, duration, variant, or matcher policy overrule that choice.
+  if (options.manualSelection === true) {
+    return {
+      decision: POST_DOWNLOAD_DECISIONS.VERIFIED,
+      valid: true,
+      blocked: false,
+      reason: null,
+      filePath,
+      source,
+      actualDurationMs,
+      quality: quality.quality,
+      strict: false,
+      actual: { tags: actual, durationMs: actualDurationMs },
+      parsedTags: actual,
+      manualSelection: true,
     };
   }
 
@@ -370,7 +393,11 @@ export async function selectVerifiedDownloadedFile({
   const tracklist = Array.isArray(trackRequest.albumTrackTitles)
     ? trackRequest.albumTrackTitles
     : [];
-  if (tracklist.length >= 2 && parsedFiles.length >= 2) {
+  if (
+    options.manualSelection !== true &&
+    tracklist.length >= 2 &&
+    parsedFiles.length >= 2
+  ) {
     const targetKey = getNormalizedText(getCoreTitle(trackRequest.trackName));
     let targetIndex = tracklist.findIndex(
       (title) => getNormalizedText(getCoreTitle(title)) === targetKey,
@@ -413,6 +440,47 @@ export async function selectVerifiedDownloadedFile({
         }
       }
     }
+  }
+
+
+  if (options.manualSelection === true && parsedFiles.length > 1) {
+    const expectedTrackNumber = Number(trackRequest.trackNumber || 0);
+    const selected = parsedFiles
+      .map((entry, index) => {
+        const taggedTitle = readTagText(entry.parsed?.common?.title);
+        const filename = getFileBaseName(entry.filePath);
+        const actualTrackNumber = Number(entry.parsed?.common?.track?.no || 0);
+        const titleScore = Math.max(
+          scoreTextMatch(taggedTitle, trackRequest.trackName),
+          scoreTextMatch(filename, trackRequest.trackName),
+        );
+        const trackNumberMatches =
+          expectedTrackNumber > 0 && actualTrackNumber === expectedTrackNumber;
+        return { entry, index, titleScore, trackNumberMatches };
+      })
+      .sort((left, right) =>
+        right.titleScore - left.titleScore ||
+        Number(right.trackNumberMatches) - Number(left.trackNumberMatches) ||
+        left.index - right.index)[0];
+    if (selected?.entry && selected.titleScore >= MANUAL_RELEASE_FILE_TITLE_THRESHOLD) {
+      const validation = await validateDownloadedTrackFile({
+        request: trackRequest,
+        candidate,
+        filePath: selected.entry.filePath,
+        source,
+        options,
+      });
+      if (validation.valid) return { filePath: selected.entry.filePath, validation };
+    }
+    return {
+      filePath: null,
+      validation: {
+        decision: POST_DOWNLOAD_DECISIONS.FAILED,
+        valid: false,
+        blocked: false,
+        reason: "selected release does not contain a file matching the requested track",
+      },
+    };
   }
 
   let best = null;

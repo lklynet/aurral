@@ -5,6 +5,7 @@ import { dbOps } from "../db/helpers/index.js";
 import { enqueueLibraryScanJob, getLibraryScanQueue } from "./honkerDb.js";
 import { isHonkerDatabaseClosedError } from "./honkerWorkerRuntime.js";
 import { resolveLibraryScanChangedPaths } from "./libraryScanRequest.js";
+import { scheduleReleaseMetadataRefresh } from "./releaseMetadataSync.js";
 import { websocketService } from "./websocketService.js";
 
 const WORKER_NAME = "library-scan";
@@ -261,6 +262,7 @@ export function onLibraryScanSuccess(_payload, job) {
       changedPaths: pending.fullScan ? null : pending.paths,
     });
   }
+  scheduleReleaseMetadataRefresh({ delaySeconds: 5 });
 }
 
 export function beginLibraryScanJob(jobId, payload) {

@@ -344,7 +344,8 @@ function isSourceConfigured(sourceId) {
   return getEnabledDownloadSources().some((source) => source.id === sourceId);
 }
 
-function buildNextSourcePayload(payload, failedSource = null, reason = null) {
+export function buildNextSourcePayload(payload, failedSource = null, reason = null) {
+  if (payload?.manualSelection === true) return null;
   const allowedSources = Array.isArray(payload?.allowedSources)
     ? new Set(payload.allowedSources)
     : null;
@@ -697,6 +698,7 @@ function recordPayloadOutcome(job, payload, status, reason, details = {}) {
 }
 
 function retrySameCandidateAllowed(payload) {
+  if (payload?.manualSelection === true) return false;
   return (
     getCandidateRetryCount(payload, Number(payload?.candidateIndex || 0)) <
     MAX_TRANSFER_RETRIES_PER_CANDIDATE
@@ -1178,6 +1180,7 @@ async function handleFinalize(payload) {
     source: "soulseek",
     options: {
       strict: candidate?.evaluation?.decision !== "accept",
+      manualSelection: payload.manualSelection === true,
     },
   });
   if (!isPipelinePayloadActive(payload)) {

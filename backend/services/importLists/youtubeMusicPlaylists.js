@@ -1,11 +1,14 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Innertube } from "youtubei.js";
+import createRateLimiter from "../apiClients/rateLimiter.js";
 import {
   buildSharedTrackIdentity,
   dedupeSharedTracks,
 } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
 
 const PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{10,150}$/;
+const RATE_LIMIT_FALLBACK_MS = 60_000;
+const RATE_LIMIT_MAX_MS = 15 * 60_000;
 const YOUTUBE_HOSTS = new Set([
   "youtube.com",
   "www.youtube.com",
@@ -24,6 +27,24 @@ const invalidReference = () => providerError(
   "Enter a valid public YouTube or YouTube Music playlist URL",
   { code: "YOUTUBE_PLAYLIST_INVALID", statusCode: 400 },
 );
+
+const rateLimited = () => providerError(
+  "YouTube Music is rate limiting playlist requests; try again later",
+  { code: "YOUTUBE_PLAYLIST_RATE_LIMITED", statusCode: 429 },
+);
+
+const getRateLimitDelayMs = (value, now = Date.now()) => {
+  const retryAfter = String(value || "").trim();
+  const seconds = Number(retryAfter);
+  if (retryAfter && Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1_000, RATE_LIMIT_MAX_MS);
+  }
+  const retryAt = Date.parse(retryAfter);
+  if (Number.isFinite(retryAt)) {
+    return Math.min(Math.max(0, retryAt - now), RATE_LIMIT_MAX_MS);
+  }
+  return RATE_LIMIT_FALLBACK_MS;
+};
 
 export function validateYoutubePlaylistId(value) {
   const id = String(value || "").trim();
@@ -167,6 +188,10 @@ export class YoutubeMusicPlaylistClient {
     operationTimeoutMs = 4 * 60_000,
     maxPages = 200,
     maxItems = 10_000,
+    playlistCacheTtlMs = 15 * 60_000,
+    maxCachedPlaylists = 20,
+    playlistRequestIntervalMs = 100,
+    maxQueuedPlaylistRequests = 50,
   } = {}) {
     this.createInnertube = createInnertube;
     this.fetchImpl = fetchImpl;
@@ -174,14 +199,30 @@ export class YoutubeMusicPlaylistClient {
     this.operationTimeoutMs = operationTimeoutMs;
     this.maxPages = maxPages;
     this.maxItems = maxItems;
+    this.playlistCacheTtlMs = Math.max(0, playlistCacheTtlMs);
+    this.maxCachedPlaylists = Math.max(1, maxCachedPlaylists);
+    this.playlistRequestLimiter = createRateLimiter(playlistRequestIntervalMs, {
+      maxQueue: maxQueuedPlaylistRequests,
+    });
     this.operationContext = new AsyncLocalStorage();
     this.sessionPromise = null;
+    this.playlistCache = new Map();
+    this.rateLimitedUntil = 0;
   }
 
   async fetch(input, init = {}) {
+    if (Date.now() < this.rateLimitedUntil) throw rateLimited();
     const signals = [init.signal, this.operationContext.getStore()?.signal].filter(Boolean);
     signals.push(AbortSignal.timeout(this.requestTimeoutMs));
-    return this.fetchImpl(input, { ...init, signal: AbortSignal.any(signals) });
+    const response = await this.fetchImpl(input, { ...init, signal: AbortSignal.any(signals) });
+    if (response?.status === 429) {
+      this.rateLimitedUntil = Math.max(
+        this.rateLimitedUntil,
+        Date.now() + getRateLimitDelayMs(response.headers?.get("retry-after")),
+      );
+      throw rateLimited();
+    }
+    return response;
   }
 
   async getSession() {
@@ -210,8 +251,42 @@ export class YoutubeMusicPlaylistClient {
     });
   }
 
-  async getPlaylist(value) {
+  trimPlaylistCache(maxSize) {
+    while (this.playlistCache.size > maxSize) {
+      const evictable = [...this.playlistCache]
+        .find(([, entry]) => entry.expiresAt !== Number.POSITIVE_INFINITY);
+      if (!evictable) break;
+      this.playlistCache.delete(evictable[0]);
+    }
+  }
+
+  async getPlaylist(value, { forceRefresh = false } = {}) {
     const id = validateYoutubePlaylistId(value);
+    const now = Date.now();
+    const cached = this.playlistCache.get(id);
+    if (cached && cached.expiresAt > now && !forceRefresh) return cached.promise;
+    if (cached) this.playlistCache.delete(id);
+
+    for (const [cachedId, entry] of this.playlistCache) {
+      if (entry.expiresAt <= now) this.playlistCache.delete(cachedId);
+    }
+    this.trimPlaylistCache(this.maxCachedPlaylists - 1);
+
+    const promise = this.loadPlaylist(id);
+    const entry = { promise, expiresAt: Number.POSITIVE_INFINITY };
+    this.playlistCache.set(id, entry);
+    try {
+      const playlist = await promise;
+      entry.expiresAt = Date.now() + this.playlistCacheTtlMs;
+      this.trimPlaylistCache(this.maxCachedPlaylists);
+      return playlist;
+    } catch (error) {
+      if (this.playlistCache.get(id) === entry) this.playlistCache.delete(id);
+      throw error;
+    }
+  }
+
+  async loadPlaylist(id) {
     const operationController = new AbortController();
     const timeout = setTimeout(() => operationController.abort(), this.operationTimeoutMs);
     timeout.unref?.();
@@ -239,7 +314,14 @@ export class YoutubeMusicPlaylistClient {
 
   async getCompletePlaylist(id) {
     const session = await this.getSession();
-    let page = await session.music.getPlaylist(id);
+    const signal = this.operationContext.getStore()?.signal;
+    let page = await this.playlistRequestLimiter.schedule(
+      () => this.operationContext.run(
+        { signal },
+        () => session.music.getPlaylist(id),
+      ),
+      { signal },
+    );
     const name = getPlaylistName(page);
     if (!name || !Array.isArray(page?.contents)) {
       throw providerError("The YouTube Music playlist is unavailable", {
@@ -282,7 +364,13 @@ export class YoutubeMusicPlaylistClient {
         });
       }
       continuations.add(key);
-      page = await page.getContinuation();
+      page = await this.playlistRequestLimiter.schedule(
+        () => this.operationContext.run(
+          { signal },
+          () => page.getContinuation(),
+        ),
+        { signal },
+      );
     }
 
     return { id, name, ...normalizeRows(rows) };
