@@ -19,16 +19,7 @@ import { getDiscoveryFeedbackLabel } from "../../../utils/discoveryFeedback";
 import TooltipButton from "../../../components/TooltipButton";
 import Tooltip from "../../../components/Tooltip";
 import { getMonitorOptionsForManager } from "../../../utils/libraryDestination";
-
-const MONITOR_OPTIONS = [
-  { value: "none", label: "None (Artist Only)" },
-  { value: "existing", label: "Existing Albums" },
-  { value: "all", label: "All Albums" },
-  { value: "future", label: "Future Albums" },
-  { value: "missing", label: "Missing Albums" },
-  { value: "latest", label: "Latest Album" },
-  { value: "first", label: "First Album" },
-];
+import { MONITOR_OPTIONS } from "../../../utils/aurralMonitoring";
 
 export function ArtistDetailsActionBar({
   library,
@@ -97,7 +88,7 @@ export function ArtistDetailsActionBar({
                     disabled={library.updatingMonitor}
                     className="artist-menu-item"
                   >
-                    <span>Monitor: {library.getCurrentMonitorOption()}</span>
+                    <span>Monitor: {currentMonitorOption ?? "custom"}</span>
                     <ChevronDown
                       className={`artist-icon-sm${library.showMonitorOptionMenu ? " artist-chevron--open" : ""}`}
                     />

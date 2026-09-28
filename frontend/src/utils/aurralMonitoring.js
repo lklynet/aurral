@@ -1,5 +1,5 @@
 import { shouldPollAlbumStatus } from "./aurralAlbumStatus.js";
-import { normalizeLibraryManager } from "./libraryDestination.js";
+import { getMonitorOptionsForManager, normalizeLibraryManager } from "./libraryDestination.js";
 
 export const MONITOR_OPTIONS = [
   { value: "none", label: "None (artist only)" },
@@ -13,6 +13,14 @@ export const MONITOR_OPTIONS = [
 
 export const getMonitorOptionLabel = (value) =>
   MONITOR_OPTIONS.find((option) => option.value === value)?.label || value;
+
+export const resolveCurrentMonitorOption = (artist, managedBy) => {
+  if (!artist || artist.monitored === false) return "none";
+  const stored = artist.monitorOption || artist.addOptions?.monitor || artist.monitorNewItems;
+  if (!stored) return artist.monitored ? "all" : "none";
+  const offered = getMonitorOptionsForManager(MONITOR_OPTIONS, managedBy);
+  return offered.some((option) => option.value === stored) ? stored : null;
+};
 
 const plural = (count, singular, pluralForm = `${singular}s`) =>
   `${count} ${count === 1 ? singular : pluralForm}`;

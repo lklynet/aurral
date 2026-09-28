@@ -8,6 +8,7 @@ import {
   describeArtistMonitoringResult,
   describeAurralMonitoringError,
   getAlbumMonitoredState,
+  resolveCurrentMonitorOption,
   shouldConfirmUnmonitor,
   summarizeAurralMonitoring,
 } from "../../frontend/src/utils/aurralMonitoring.js";
@@ -222,4 +223,47 @@ test("turning Aurral monitoring off leaves the artist unmonitored", () => {
 test("Lidarr artist updates carry no Aurral monitoring result", () => {
   assert.equal(describeArtistMonitoringResult({ id: 3, monitorOption: "all" }), null);
   assert.equal(describeArtistMonitoringResult(undefined), null);
+});
+
+test("current monitor option comes from the stored artist value", () => {
+  assert.equal(
+    resolveCurrentMonitorOption({ monitored: true, monitorOption: "latest" }, "aurral"),
+    "latest",
+  );
+  assert.equal(
+    resolveCurrentMonitorOption({ monitored: true, addOptions: { monitor: "missing" } }, "aurral"),
+    "missing",
+  );
+  assert.equal(
+    resolveCurrentMonitorOption({ monitored: true, monitorNewItems: "future" }, "lidarr"),
+    "future",
+  );
+});
+
+test("current monitor option is none for an unmonitored or absent artist", () => {
+  assert.equal(resolveCurrentMonitorOption(null, "aurral"), "none");
+  assert.equal(
+    resolveCurrentMonitorOption({ monitored: false, monitorOption: "all" }, "aurral"),
+    "none",
+  );
+  assert.equal(resolveCurrentMonitorOption({ monitored: false }, "lidarr"), "none");
+});
+
+test("current monitor option keeps the legacy fallback for monitored Lidarr artists", () => {
+  assert.equal(resolveCurrentMonitorOption({ monitored: true }, "lidarr"), "all");
+});
+
+test("a stored option the manager does not offer is not remapped", () => {
+  assert.equal(
+    resolveCurrentMonitorOption({ monitored: true, monitorOption: "existing" }, "aurral"),
+    null,
+  );
+  assert.equal(
+    resolveCurrentMonitorOption({ monitored: true, monitorOption: "existing" }, "lidarr"),
+    "existing",
+  );
+  assert.equal(
+    resolveCurrentMonitorOption({ monitored: true, monitorOption: "sometimes" }, "lidarr"),
+    null,
+  );
 });
