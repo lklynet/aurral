@@ -150,6 +150,38 @@ test("album monitored state follows the server for Aurral albums", () => {
   assert.equal(getAlbumMonitoredState({ managedBy: "aurral" }), false);
 });
 
+test("album monitored state reads the canonical library page shape", () => {
+  assert.equal(
+    getAlbumMonitoredState({ managedBy: "aurral", monitorMode: null, metadata: { monitored: true } }),
+    true,
+  );
+  assert.equal(
+    getAlbumMonitoredState({ managedBy: "aurral", monitorMode: null, metadata: { monitored: false } }),
+    false,
+  );
+});
+
+test("a server response for the album overrides the stored library metadata", () => {
+  assert.equal(
+    getAlbumMonitoredState({
+      managedBy: "aurral",
+      monitored: false,
+      monitorMode: "unmonitored",
+      metadata: { monitored: true },
+    }),
+    false,
+  );
+  assert.equal(
+    getAlbumMonitoredState({
+      managedBy: "aurral",
+      monitored: true,
+      monitorMode: "monitored",
+      metadata: { monitored: false },
+    }),
+    true,
+  );
+});
+
 test("albums that Aurral does not manage have no monitored toggle", () => {
   assert.equal(getAlbumMonitoredState({ managedBy: "lidarr", monitored: true }), null);
   assert.equal(getAlbumMonitoredState({ monitored: true }), null);

@@ -84,7 +84,8 @@ export const describeAurralMonitoringError = (
 
 export const getAlbumMonitoredState = (album) => {
   if (normalizeLibraryManager(album?.managedBy) !== "aurral") return null;
-  return album.monitored === true && album.monitorMode !== "unmonitored";
+  const monitored = album.monitored ?? album.metadata?.monitored;
+  return monitored === true && album.monitorMode !== "unmonitored";
 };
 
 export const shouldConfirmUnmonitor = (status) => shouldPollAlbumStatus(status);
