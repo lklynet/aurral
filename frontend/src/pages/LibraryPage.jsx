@@ -1448,6 +1448,10 @@ function LibraryPage() {
   });
   const aurralAlbumStatuses = aurralAlbumStatusesQuery.data || {};
 
+  const refreshLibraryActivity = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: activityQueryKey }),
+    [activityQueryKey],
+  );
   const reloadLibraryAlbumTracks = useCallback(async () => {
     if (!libraryAlbum) return;
     await queryClient.invalidateQueries({
@@ -2476,6 +2480,7 @@ function LibraryPage() {
                 album={libraryAlbum}
                 artist={artist}
                 canManage={canAddTracks}
+                onChanged={refreshLibraryActivity}
                 onSettled={reloadLibraryAlbumTracks}
               />
             )}

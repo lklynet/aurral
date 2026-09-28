@@ -22,7 +22,7 @@ const POLL_INTERVAL_MS = 4000;
 const errorMessage = (error, fallback) =>
   error?.response?.data?.message || error?.response?.data?.error || error?.message || fallback;
 
-export function AurralAlbumStatus({ album, artist, canManage = false, onSettled }) {
+export function AurralAlbumStatus({ album, artist, canManage = false, onChanged, onSettled }) {
   const { showError } = useToast();
   const [pendingAction, setPendingAction] = useState(null);
   const statusQuery = useQuery({
@@ -56,6 +56,7 @@ export function AurralAlbumStatus({ album, artist, canManage = false, onSettled 
         await requestAlbumFromSearch(buildAurralAlbumRetryPayload({ album, artist }));
       }
       await statusQuery.refetch();
+      onChanged?.();
     } catch (error) {
       showError(
         errorMessage(
