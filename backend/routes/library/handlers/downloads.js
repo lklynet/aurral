@@ -520,7 +520,7 @@ export function registerDownloads(router) {
 
       const artist = album.artistId ? await libraryManager.getArtistById(album.artistId) : null;
       if (artist) {
-        await libraryManager.ensureArtistMonitored(artist);
+        await libraryManager.ensureArtistMonitored(artist, "none");
       }
       if (!album.monitored) {
         await libraryManager.updateAlbum(albumId, { monitored: true });
@@ -586,7 +586,7 @@ export function registerDownloads(router) {
 
         const artist = album.artistId ? await libraryManager.getArtistById(album.artistId) : null;
         if (artist) {
-          await libraryManager.ensureArtistMonitored(artist);
+          await libraryManager.ensureArtistMonitored(artist, "none");
         }
 
         if (!album.monitored) {

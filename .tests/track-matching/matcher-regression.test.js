@@ -28,7 +28,7 @@ const GET_LUCKY = {
   durationMs: 248000,
 };
 
-test("health operation reports the pinned beets version", { skip: skipReason }, async () => {
+test("health operation reports the installed beets version", { skip: skipReason }, async () => {
   const outcome = await runMatcherOperation("health");
   assert.equal(outcome.ok, true);
   assert.match(outcome.result.beetsVersion, /^\d+\.\d+\.\d+$/);

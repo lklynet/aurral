@@ -149,9 +149,9 @@ beets is part of the Aurral image. If the matcher is unavailable there is no
 fallback to weaker matching: attempts fail with a clear diagnostic, jobs
 retry/fail through the normal source-fallback path, and the health endpoint
 reports the matcher runtime status (`matcher.available`). A startup self-test
-verifies the Python interpreter, the pinned beets version, and the protocol
-version; results are cached in the health payload, not re-discovered per
-request.
+verifies the Python interpreter, that beets can score a track, and the
+protocol version; results are cached in the health payload, not re-discovered
+per request. The installed beets version is reported in the health payload.
 
 ## Known gap: independent audio verification (Chromaprint/AcoustID)
 

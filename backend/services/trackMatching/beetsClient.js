@@ -212,7 +212,6 @@ export function resetMatcherAvailability() {
 // Startup self-test. beets is a production-critical part of the Aurral
 // image, so a broken installation must be obvious at startup and through
 // the health endpoint instead of being rediscovered per download.
-const PINNED_BEETS_VERSION = "2.14.1";
 const SUPPORTED_PROTOCOL_VERSION = 1;
 
 let runtimeStatus = {
@@ -263,19 +262,6 @@ export async function verifyMatcherRuntime(options = {}) {
     logger.error(MATCHER_CATEGORY, "beets matcher protocol mismatch", {
       protocolVersion,
       supported: SUPPORTED_PROTOCOL_VERSION,
-    });
-    return runtimeStatus;
-  }
-  if (beetsVersion !== PINNED_BEETS_VERSION) {
-    runtimeStatus.error = {
-      code: "version_mismatch",
-      message: `beets ${beetsVersion || "unknown"} != required ${PINNED_BEETS_VERSION}`,
-      found: beetsVersion,
-      required: PINNED_BEETS_VERSION,
-    };
-    logger.error(MATCHER_CATEGORY, "bundled beets version differs from the pinned version", {
-      found: beetsVersion,
-      pinned: PINNED_BEETS_VERSION,
     });
     return runtimeStatus;
   }

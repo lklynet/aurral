@@ -1147,8 +1147,9 @@ export class LibraryManager {
       return artist;
     }
 
-    const nextMonitorOption =
-      [monitorOption, artist.monitorOption, artist.addOptions?.monitor]
+    const nextMonitorOption = monitorOption === "none"
+      ? "none"
+      : [monitorOption, artist.monitorOption, artist.addOptions?.monitor]
         .find((mode) => mode && mode !== "none") || "all";
     const updated = await this.updateArtist(mbid, {
       monitored: true,
@@ -1166,7 +1167,7 @@ export class LibraryManager {
 
     let artist = await this.getArtistById(normalizedArtistId);
     if (artist?.monitored === false) {
-      artist = await this.ensureArtistMonitored(artist, options.monitorOption);
+      artist = await this.ensureArtistMonitored(artist, options.monitorOption ?? "none");
     }
 
     let album = await this.getAlbumById(normalizedAlbumId);
@@ -2503,7 +2504,7 @@ export class LibraryManager {
       throw error;
     }
 
-    artist = await this.ensureArtistMonitored(artist);
+    artist = await this.ensureArtistMonitored(artist, "none");
 
     let existingAlbum = await lidarr.getAlbumByMbid(normalizedAlbumMbid, {
       forceRefresh: true,

@@ -289,6 +289,7 @@ function setDownloadSourceConfigured(configured) {
     ...settings,
     integrations: {
       ...settings.integrations,
+      ytdlp: { ...settings.integrations?.ytdlp, enabled: false },
       slskd: configured
         ? { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" }
         : { enabled: false },
