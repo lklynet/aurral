@@ -216,7 +216,10 @@ export class YoutubeMusicPlaylistClient {
     signals.push(AbortSignal.timeout(this.requestTimeoutMs));
     const response = await this.fetchImpl(input, { ...init, signal: AbortSignal.any(signals) });
     if (response?.status === 429) {
-      this.rateLimitedUntil = Date.now() + getRateLimitDelayMs(response.headers?.get("retry-after"));
+      this.rateLimitedUntil = Math.max(
+        this.rateLimitedUntil,
+        Date.now() + getRateLimitDelayMs(response.headers?.get("retry-after")),
+      );
       throw rateLimited();
     }
     return response;

@@ -326,6 +326,30 @@ test("client opens a local cooldown when YouTube Music returns a rate limit", as
   assert.equal(requests, 1);
 });
 
+test("client keeps the longest cooldown from overlapping rate limits", async () => {
+  const responses = [];
+  let requests = 0;
+  const client = new YoutubeMusicPlaylistClient({
+    fetchImpl: async () => {
+      requests += 1;
+      if (requests > 2) return new Response(null, { status: 200 });
+      return new Promise((resolve) => responses.push(resolve));
+    },
+  });
+
+  const longer = client.fetch("https://music.youtube.com/youtubei/v1/browse");
+  const shorter = client.fetch("https://music.youtube.com/youtubei/v1/browse");
+  responses[0](new Response(null, { status: 429, headers: { "retry-after": "120" } }));
+  await assert.rejects(longer, { code: "YOUTUBE_PLAYLIST_RATE_LIMITED" });
+  responses[1](new Response(null, { status: 429, headers: { "retry-after": "0" } }));
+  await assert.rejects(shorter, { code: "YOUTUBE_PLAYLIST_RATE_LIMITED" });
+
+  await assert.rejects(client.fetch("https://music.youtube.com/youtubei/v1/browse"), {
+    code: "YOUTUBE_PLAYLIST_RATE_LIMITED",
+  });
+  assert.equal(requests, 2);
+});
+
 test("client rejects repeated continuations instead of returning a partial playlist", async () => {
   const page = {
     header: { title: text("Loop") },
