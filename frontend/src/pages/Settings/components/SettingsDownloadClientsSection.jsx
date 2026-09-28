@@ -7,6 +7,7 @@ import DownloadFolderField from "../../../components/DownloadFolderField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
 import { SettingsAdapterFields } from "./SettingsAdapterFields";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
+import { RootOverlapWarning } from "./RootOverlapWarning";
 import { getProviderStatus } from "../utils/integrationStatus";
 import { PATH_MAPPING_SOURCE_OPTIONS, PathMappingModal } from "./PathMappingModal";
 import { QUALITY_TIER_LABELS, QualityProfileModal } from "./QualityProfileModal";
@@ -244,6 +245,7 @@ export function SettingsDownloadClientsSection({
       </SettingsArrFieldSet>
 
       <SettingsArrFieldSet legend="Downloads folder">
+        <RootOverlapWarning rootWarnings={settings.rootWarnings} />
         <SettingsArrFormGroup
           label="Path"
           labelFor="download-clients-download-folder"

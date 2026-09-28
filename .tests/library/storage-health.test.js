@@ -160,6 +160,28 @@ test("runStorageHealthCheck does not warn about preferred shared-root convention
   assert.equal(downloads?.steps.some((step) => step.id === "shared-root"), false);
 });
 
+test("storage health warns when any Lidarr root overlaps the Aurral root", async () => {
+  const downloadFolder = process.env.DOWNLOAD_FOLDER;
+  const nestedLidarrRoot = path.join(downloadFolder, "lidarr");
+  dbOps.updateSettings({
+    ...dbOps.getSettings(),
+    integrations: {
+      lidarr: {
+        rootFolderPath: path.join(isolatedState.baseDir, "separate-lidarr"),
+        rootFolderPaths: [nestedLidarrRoot],
+      },
+    },
+  });
+
+  const result = await runStorageHealthCheck({ force: true });
+  const downloads = result.sections.find((section) => section.id === "downloads");
+  const overlap = downloads?.steps.find((step) => step.id === "root-overlap");
+
+  assert.equal(overlap?.status, "warn");
+  assert.match(overlap.detail, new RegExp(nestedLidarrRoot.replaceAll("/", "\\/")));
+  assert.equal(downloads.status, "warn");
+});
+
 test("passing checks never include remediation text", async () => {
   const result = await runStorageHealthCheck({ force: true });
   const passingSteps = result.sections.flatMap((section) => section.steps || []).filter(

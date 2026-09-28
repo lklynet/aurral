@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   getMyListeningHistory,
+  getMyLibraryOwner,
   getMyLidarrPreferences,
+  updateMyLibraryOwner,
   updateMyListeningHistory,
   updateMyLidarrPreferences,
 } from "../../../utils/api/endpoints/auth.js";
@@ -72,7 +74,14 @@ export function useAccountSettings(authUser, showError) {
     enabled: authUser?.id != null,
     staleTime: 30_000,
   });
-  const loading = historyQuery.isPending || lidarrQuery.isPending;
+  const libraryOwnerQueryKey = queryKeys.libraryOwner(authUser?.id);
+  const libraryOwnerQuery = useQuery({
+    queryKey: libraryOwnerQueryKey,
+    queryFn: ({ signal }) => getMyLibraryOwner({ signal }),
+    enabled: authUser?.id != null,
+    staleTime: 30_000,
+  });
+  const loading = historyQuery.isPending || lidarrQuery.isPending || libraryOwnerQuery.isPending;
   const { mutateAsync: saveHistory } = useMutation({
     mutationFn: (payload) => updateMyListeningHistory(authUser.id, payload),
     onSuccess: (data) => queryClient.setQueryData(historyQueryKey, data),
@@ -81,6 +90,21 @@ export function useAccountSettings(authUser, showError) {
     mutationFn: updateMyLidarrPreferences,
     onSuccess: (data) => queryClient.setQueryData(lidarrQueryKey, data),
   });
+
+  const { mutateAsync: saveLibraryOwnerRequest, isPending: savingLibraryOwner } = useMutation({
+    mutationFn: updateMyLibraryOwner,
+    onSuccess: (data) => queryClient.setQueryData(libraryOwnerQueryKey, data),
+  });
+  const saveLibraryOwner = useCallback(
+    async (defaultLibraryOwner) => {
+      try {
+        await saveLibraryOwnerRequest(defaultLibraryOwner);
+      } catch {
+        showError("Failed to save the default library manager");
+      }
+    },
+    [saveLibraryOwnerRequest, showError],
+  );
 
   hasUnsavedChangesRef.current = hasUnsavedChanges;
   isListenHistoryValidRef.current = isListenHistoryValid;
@@ -143,8 +167,10 @@ export function useAccountSettings(authUser, showError) {
   }, [authUser?.id]);
 
   useEffect(() => {
-    if (historyQuery.error || lidarrQuery.error) showError("Failed to load account settings");
-  }, [historyQuery.error, lidarrQuery.error, showError]);
+    if (historyQuery.error || lidarrQuery.error || libraryOwnerQuery.error) {
+      showError("Failed to load account settings");
+    }
+  }, [historyQuery.error, lidarrQuery.error, libraryOwnerQuery.error, showError]);
 
   const handleSave = useCallback(async () => {
     if (!authUser?.id) return;
@@ -286,8 +312,11 @@ export function useAccountSettings(authUser, showError) {
     setLidarrRootFolderPath,
     lidarrQualityProfileId,
     setLidarrQualityProfileId,
+    libraryOwner: libraryOwnerQuery.data,
+    saveLibraryOwner,
+    savingLibraryOwner,
     loading,
-    saving,
+    saving: saving || savingLibraryOwner,
     handleSave,
   };
 }

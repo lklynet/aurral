@@ -2114,6 +2114,11 @@
   background: color-mix(in srgb, var(--aurral-text) 3%, transparent);
 }
 
+.settings-arr .arr-info--warning {
+  border-color: var(--arr-warning-text-soft);
+  background: var(--arr-warning-soft);
+}
+
 .settings-arr .settings-page__banner {
   padding: 0.875rem 1rem;
 }

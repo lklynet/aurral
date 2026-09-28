@@ -348,6 +348,14 @@ function compareRoots(left, right) {
   return "disjoint";
 }
 
+export function getOverlapCheckedLidarrRoots(lidarrSettings = {}) {
+  if (lidarrSettings?.enabled === false) return [];
+  return [
+    ...(Array.isArray(lidarrSettings?.rootFolderPaths) ? lidarrSettings.rootFolderPaths : []),
+    lidarrSettings?.rootFolderPath,
+  ];
+}
+
 export function computeLibraryRootOverlaps({ aurralRoot, lidarrRoots } = {}) {
   const resolvedAurralRoot = String(aurralRoot || "").trim();
   if (!resolvedAurralRoot) return [];

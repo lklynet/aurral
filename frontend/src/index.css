@@ -525,6 +525,10 @@ textarea {
   color: var(--aurral-text);
 }
 
+.btn-add-action--managed {
+  cursor: default;
+}
+
 .btn-add-action:disabled {
   opacity: 0.7;
   cursor: not-allowed;
@@ -595,7 +599,9 @@ textarea {
     opacity 0.2s ease;
 }
 
-.btn-add-action-options:hover:not(:disabled) {
+.btn-add-action-options:hover:not(:disabled),
+.btn-add-action-options:focus-visible,
+.btn-add-action-options.is-open {
   background: var(--aurral-surface-hover);
   color: var(--aurral-text);
 }
@@ -13655,6 +13661,20 @@ button.native-library-genre-row:focus-visible {
 .profile-settings__field > .pill-toggle {
   grid-area: control;
   min-width: 0;
+}
+
+.profile-settings__control {
+  display: flex;
+  grid-area: control;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.profile-settings__control-status {
+  color: var(--aurral-text-muted);
+  font-size: 0.8125rem;
 }
 
 .profile-settings__field > .settings-page__hint {

@@ -30,7 +30,10 @@ export async function fetchImportedPlaylistTracks({
     return lastfmStationClient.getStationTracks(userId, externalId, externalUsername);
   }
   if (provider === "youtube-music-playlist") {
-    const { tracks, stats, excluded } = await youtubeMusicPlaylistClient.getPlaylist(externalId);
+    const { tracks, stats, excluded } = await youtubeMusicPlaylistClient.getPlaylist(
+      externalId,
+      { forceRefresh },
+    );
     return { tracks, stats, excluded };
   }
   const error = new Error(`Unsupported playlist import provider: ${provider || "unknown"}`);

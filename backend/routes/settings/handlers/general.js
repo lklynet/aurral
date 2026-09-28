@@ -14,6 +14,7 @@ import {
   resolveYtdlpStagingRoot,
   validateDownloadFolderPath,
   computeLibraryRootOverlaps,
+  getOverlapCheckedLidarrRoots,
 } from "../../../services/downloadFolderConfig.js";
 import { normalizePathMappings } from "../../../services/pathMappings.js";
 import { logger } from "../../../services/logger.js";
@@ -35,16 +36,7 @@ function mergeIntegrations(existing, input, keys) {
 
 function resolveLibraryRootWarnings(settings) {
   const aurralRoot = settings?.downloadFolderPath || resolvePlaylistRoot();
-  const configuredLidarr = settings?.integrations?.lidarr || {};
-  const lidarrRoots =
-    configuredLidarr.enabled === false
-      ? []
-      : [
-          ...(Array.isArray(configuredLidarr.rootFolderPaths)
-            ? configuredLidarr.rootFolderPaths
-            : []),
-          configuredLidarr.rootFolderPath,
-        ];
+  const lidarrRoots = getOverlapCheckedLidarrRoots(settings?.integrations?.lidarr);
   return computeLibraryRootOverlaps({ aurralRoot, lidarrRoots });
 }
 

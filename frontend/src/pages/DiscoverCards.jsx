@@ -7,6 +7,7 @@ import AddActionButton from "../components/AddActionButton";
 import { ArtistContextMenu } from "../components/ArtistContextMenu";
 import SearchLibraryCheck from "../components/SearchLibraryCheck";
 import { getReleaseNavigationTarget } from "../utils/searchNavigation";
+import { getItemDestination } from "../utils/libraryDestination";
 import { formatDate } from "../utils/dateTime.js";
 import Tooltip from "../components/Tooltip";
 const parseCalendarDate = (value) => {
@@ -191,6 +192,7 @@ export const AlbumCard = memo(
     canAddAlbum = false,
     isPending = false,
     onAlbumAction,
+    libraryDestination,
   }) => {
     const releaseGroupMbid = album.mbid || album.foreignAlbumId;
     const artistMbid = album.artistMbid || album.foreignArtistId;
@@ -295,13 +297,10 @@ export const AlbumCard = memo(
               onClick={(event) => event.stopPropagation()}
             >
               <AddActionButton
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onAlbumAction(album);
-                }}
+                destination={getItemDestination(album.managedBy, libraryDestination)}
+                onAdd={(managedBy) => onAlbumAction(album, managedBy)}
                 isLoading={isPending}
                 disabled={isPending}
-                label="Add to library"
               />
             </div>
           ) : null}
@@ -348,6 +347,8 @@ export const AlbumCard = memo(
       prevProps.canAddAlbum === nextProps.canAddAlbum &&
       prevProps.isPending === nextProps.isPending &&
       prevProps.onNavigate === nextProps.onNavigate &&
+      prevProps.album.managedBy === nextProps.album.managedBy &&
+      prevProps.libraryDestination === nextProps.libraryDestination &&
       prevProps.onAlbumAction === nextProps.onAlbumAction
     );
   },
