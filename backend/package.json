@@ -31,10 +31,10 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
-    "music-metadata": "^11.15.0",
+    "music-metadata": "^11.16.1",
     "openid-client": "^6.8.8",
     "sharp": "^0.35.4",
-    "undici": "^8.10.2",
+    "undici": "^8.11.2",
     "ws": "^8.21.3",
     "youtubei.js": "~18.1.0"
   }
