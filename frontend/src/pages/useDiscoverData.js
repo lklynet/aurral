@@ -442,7 +442,7 @@ export function useDiscoverData() {
   const handleAddArtistToLibrary = useCallback(
     async (artist, managedBy = libraryDestination.primary) => {
       const artistId = getArtistId(artist);
-      if (!artist?.name || !artistId) return false;
+      if (!artist?.name || !artistId || !libraryDestination.ready) return false;
       try {
         await addArtistToLibrary(buildArtistAddPayload({
           artistMbid: artistId,
@@ -465,7 +465,7 @@ export function useDiscoverData() {
         return false;
       }
     },
-    [libraryDestination.primary, showError, showSuccess],
+    [libraryDestination.primary, libraryDestination.ready, showError, showSuccess],
   );
 
   const handleRecentReleaseAlbumAction = useCallback(

@@ -219,6 +219,7 @@ export function ArtistDetailsDownloadTargets({
                 <div>
                   <AddActionButton
                     destination={libraryDestination}
+                    ownerConflict={getAlbumStatus(missingReleasePick.releaseGroupId)?.ownerConflict}
                     onAdd={(managedBy) =>
                       handleRequestAlbum(
                         missingReleasePick.releaseGroupId,

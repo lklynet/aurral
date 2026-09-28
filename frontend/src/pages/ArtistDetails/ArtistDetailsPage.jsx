@@ -205,7 +205,7 @@ function ArtistDetailsPage() {
   const handleAddSimilarArtistToLibrary = useCallback(
     async (similarArtist) => {
       const artistId = similarArtist?.id || similarArtist?.mbid;
-      if (!similarArtist?.name || !artistId) return false;
+      if (!similarArtist?.name || !artistId || !libraryDestination.ready) return false;
       try {
         await addSimilarArtist(buildArtistAddPayload({
           artistMbid: artistId,
@@ -224,7 +224,7 @@ function ArtistDetailsPage() {
         return false;
       }
     },
-    [addSimilarArtist, libraryDestination.primary, showError, showSuccess],
+    [addSimilarArtist, libraryDestination.primary, libraryDestination.ready, showError, showSuccess],
   );
 
   const library = useArtistDetailsLibrary({

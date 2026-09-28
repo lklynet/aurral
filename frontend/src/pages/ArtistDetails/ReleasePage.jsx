@@ -99,7 +99,9 @@ function ReleasePage() {
   const navigate = useNavigate();
   const { showSuccess, showError, showInfo } = useToast();
   const libraryDestination = useLibraryDestination();
-  const [ownerConflict, setOwnerConflict] = useState(null);
+  const [ownerConflictState, setOwnerConflictState] = useState(null);
+  const ownerConflict =
+    ownerConflictState?.releaseMbid === releaseMbid ? ownerConflictState.conflict : null;
   const { hasPermission } = useAuth();
   const canAddAlbum = hasPermission("addAlbum");
 
@@ -511,7 +513,7 @@ function ReleasePage() {
     } catch (err) {
       const conflict = settleLibraryOwnerConflict(err);
       if (conflict) {
-        setOwnerConflict(conflict);
+        setOwnerConflictState({ releaseMbid, conflict });
         showInfo(`${release.title || "Album"}: ${conflict.message}`);
         return;
       }

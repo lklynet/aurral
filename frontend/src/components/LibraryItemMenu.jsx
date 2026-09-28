@@ -298,7 +298,8 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
   const handleMenuKeyDown = (event) => {
     const keys = ["ArrowDown", "ArrowUp", "Home", "End"];
     if (!keys.includes(event.key)) return;
-    const buttons = [...(menuRef.current?.querySelectorAll("button:not(:disabled)") || [])];
+    const buttons = [...(menuRef.current?.querySelectorAll("button:not(:disabled)") || [])]
+      .filter((button) => button.checkVisibility());
     if (!buttons.length) return;
     event.preventDefault();
     event.stopPropagation();

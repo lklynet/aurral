@@ -967,7 +967,7 @@ function SearchResultsPage() {
   const handleArtistAction = useCallback(
     async (artist, managedBy = libraryDestination.primary) => {
       const artistId = getArtistRecordId(artist);
-      if (!artist?.name || !artistId) return false;
+      if (!artist?.name || !artistId || !libraryDestination.ready) return false;
       setPendingArtistIds((prev) => ({ ...prev, [artistId]: true }));
       try {
         await addArtistToLibrary(buildArtistAddPayload({
@@ -993,7 +993,7 @@ function SearchResultsPage() {
         setPendingArtistIds(({ [artistId]: _, ...prev }) => prev);
       }
     },
-    [libraryDestination.primary, showError, showSuccess],
+    [libraryDestination.primary, libraryDestination.ready, showError, showSuccess],
   );
 
   const handleArtistFeedback = useCallback(
