@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { dbOps } from "../db/helpers/index.js";
 import { resolveBlockedJobSourceFilename } from "./playlistDownloadUtils.js";
 import { flowPlaylistConfig } from "./weeklyFlow/weeklyFlowPlaylistConfig.js";
+import { getCanonicalLibraryForAlbumReferences } from "./libraryQueryService.js";
 
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const STALE_TRACK_JOB_MS = 15 * 60 * 1000;
@@ -39,6 +40,18 @@ const buildPlaylistHref = (playlistId) => {
   const id = String(playlistId || "").trim();
   if (!id) return "/playlists";
   return `/playlists?selected=${encodeURIComponent(id)}`;
+};
+
+const buildTrackJobHref = (job) => {
+  const playlistId = job?.playlistId || job?.playlistType;
+  if (playlistId === "library" && job?.albumMbid) {
+    const album = getCanonicalLibraryForAlbumReferences({
+      source: "all",
+      references: [job.albumMbid],
+    }).albums[0];
+    if (album?.id != null) return `/library/album/${album.id}`;
+  }
+  return buildPlaylistHref(playlistId);
 };
 
 const buildArtistHref = (artistMbid) => {
@@ -872,6 +885,7 @@ export const recordTrackJobActivity = ({
   downloadSource = null,
   downloadClient = null,
   sourceFilename = null,
+  href = null,
 } = {}) => {
   const id = String(jobId || "").trim();
   if (!id) return null;
@@ -888,7 +902,7 @@ export const recordTrackJobActivity = ({
     subtitle: subtitle || `${artist} · ${playlistName}`,
     status,
     statusLabel,
-    href: buildPlaylistHref(playlistId),
+    href: href || buildPlaylistHref(playlistId),
     metadata: {
       jobId: id,
       trackName: track,
@@ -910,6 +924,7 @@ const trackJobFields = (job) => ({
   playlistId: job?.playlistId || job?.playlistType,
   downloadSource: job?.downloadSource,
   downloadClient: job?.downloadClient,
+  href: buildTrackJobHref(job),
 });
 
 const recordTrackJob = (job, patch) =>
@@ -1042,7 +1057,7 @@ const buildActiveTrackHistory = (job) => {
     subtitle: `${job?.artistName || "Artist"} · ${resolvePlaylistName(playlistId)}`,
     status,
     statusLabel,
-    href: buildPlaylistHref(playlistId),
+    href: buildTrackJobHref(job),
     metadata: {
       jobId: job?.id,
       trackName: job?.trackName,
