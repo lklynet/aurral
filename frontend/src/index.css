@@ -6922,7 +6922,7 @@ textarea {
 
 .search-mixed-results__row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 2rem;
+  grid-template-columns: minmax(0, 1fr) auto minmax(2rem, auto);
   align-items: center;
   column-gap: 1rem;
   border-bottom: 1px solid var(--aurral-border);
