@@ -1,3 +1,4 @@
+import { describeAlbumRequestResult } from "../utils/albumAddAction";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -11,6 +12,7 @@ import {
   buildAlbumRequestPayload,
   buildArtistAddPayload,
   getItemDestination,
+  getManagerName,
 } from "../utils/libraryDestination";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { getDiscovery } from "../utils/api/endpoints/discovery.js";
@@ -453,19 +455,22 @@ export function useDiscoverData() {
           ...prev,
           [artistId]: true,
         }));
-        showSuccess(`Adding ${artist.name}...`);
+        showSuccess(`Added ${artist.name} to ${getManagerName(managedBy)}`);
         return true;
       } catch (err) {
-        showError(
-          err.response?.data?.message ||
-            err.response?.data?.error ||
-            err.message ||
-            "Failed to add artist to library",
-        );
+        const conflict = settleLibraryOwnerConflict(err);
+        if (conflict) {
+          setLibraryLookup((previous) => ({ ...previous, [artistId]: true }));
+          showInfo(`${artist.name}: ${conflict.message}`);
+          return false;
+        }
+        showError(`Failed to add artist to ${getManagerName(managedBy)}: ${
+          err.response?.data?.message || err.response?.data?.error || err.message
+        }`);
         return false;
       }
     },
-    [libraryDestination.primary, libraryDestination.ready, showError, showSuccess],
+    [libraryDestination.primary, libraryDestination.ready, showError, showInfo, showSuccess],
   );
 
   const handleRecentReleaseAlbumAction = useCallback(
@@ -476,7 +481,7 @@ export function useDiscoverData() {
       if (!albumMbid || !artistMbid || !albumKey) return;
       setPendingRecentReleaseIds((prev) => ({ ...prev, [albumKey]: true }));
       try {
-        await requestAlbumFromSearch(buildAlbumRequestPayload({
+        const result = await requestAlbumFromSearch(buildAlbumRequestPayload({
           albumMbid,
           albumName: album.albumName || album.title,
           artistMbid,
@@ -487,19 +492,17 @@ export function useDiscoverData() {
         queryClient.invalidateQueries({
           queryKey: queryKeys.recentReleases(authUser?.id),
         });
-        showSuccess(`Searching for ${album.albumName || "album"}`);
+        const outcome = describeAlbumRequestResult(result, album.albumName || album.title || "album", managedBy);
+        (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
       } catch (err) {
         const conflict = settleLibraryOwnerConflict(err);
         if (conflict) {
           showInfo(`${album.albumName || "Album"}: ${conflict.message}`);
           return;
         }
-        showError(
-          err.response?.data?.message ||
-            err.response?.data?.error ||
-            err.message ||
-            "Failed to request album",
-        );
+        showError(`Failed to add album to ${getManagerName(managedBy)}: ${
+          err.response?.data?.message || err.response?.data?.error || err.message
+        }`);
       } finally {
         setPendingRecentReleaseIds(({ [albumKey]: _, ...prev }) => prev);
       }

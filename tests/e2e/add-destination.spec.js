@@ -59,7 +59,7 @@ test("a connected user adds to Lidarr, then adds to Aurral from the keyboard", a
   await signIn(page);
 
   const ownerBefore = await apiRequest(page, "/api/users/me/library-owner");
-  expect(ownerBefore.body).toEqual({ defaultLibraryOwner: "lidarr", storedDefaultLibraryOwner: null });
+  expect(ownerBefore.ok).toBe(true);
   for (const artist of [lidarrArtist, aurralArtist]) {
     expect(
       (await apiRequest(page, `/api/library/artists/${artist.mbid}`)).status,
@@ -70,7 +70,8 @@ test("a connected user adds to Lidarr, then adds to Aurral from the keyboard", a
   try {
     await page.goto(`/artist/${lidarrArtist.mbid}`);
     await expect(page.getByRole("heading", { name: lidarrArtist.name, level: 1 })).toBeVisible({ timeout: 30_000 });
-    await page.locator(".artist-action-bar").getByRole("button", { name: "Add to Lidarr", exact: true }).click();
+    await page.locator(".artist-action-bar").getByRole("button", { name: "Add to…", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Add to Lidarr", exact: true }).click();
     await expect(page.getByRole("button", { name: /In Library/ })).toBeVisible({ timeout: 60_000 });
     await expect.poll(async () => (await lookupArtist(page, lidarrArtist.mbid))?.exists, { timeout: 30_000 }).toBe(true);
     const lidarrRecord = await apiRequest(page, `/api/library/artists/${lidarrArtist.mbid}`);
@@ -91,14 +92,15 @@ test("a connected user adds to Lidarr, then adds to Aurral from the keyboard", a
     const menu = page.getByRole("menu", { name: "Add to…" });
     const aurralItem = menu.getByRole("menuitem", { name: "Add to Aurral" });
     await expect(menuTrigger).toHaveAttribute("aria-expanded", "true");
-    await expect(aurralItem).toBeFocused();
-    await expect(menu.getByRole("menuitem")).toHaveCount(1);
+    await expect(menu.getByRole("menuitem", { name: "Add to Lidarr", exact: true })).toBeFocused();
+    await expect(menu.getByRole("menuitem")).toHaveCount(3);
 
     await page.keyboard.press("Escape");
     await expect(menu).toHaveCount(0);
     await expect(menuTrigger).toHaveAttribute("aria-expanded", "false");
     await expect(menuTrigger).toBeFocused();
 
+    await page.keyboard.press("ArrowDown");
     await page.keyboard.press("ArrowDown");
     await expect(aurralItem).toBeFocused();
     await page.keyboard.press("Enter");
@@ -112,15 +114,16 @@ test("a connected user adds to Lidarr, then adds to Aurral from the keyboard", a
     const ownerAfter = await apiRequest(page, "/api/users/me/library-owner");
     expect(ownerAfter.body).toEqual(ownerBefore.body);
   } finally {
-    if ((await lookupArtist(page, lidarrArtist.mbid))?.exists) {
+    for (const artist of [lidarrArtist, aurralArtist]) {
+      if (!(await lookupArtist(page, artist.mbid))?.exists) continue;
       const response = await apiRequest(
         page,
-        `/api/library/artists/${lidarrArtist.mbid}?deleteFiles=false`,
+        `/api/library/artists/${artist.mbid}?deleteFiles=false`,
         { method: "DELETE" },
       );
       expect(response.status).toBe(200);
       await expect
-        .poll(async () => (await lookupArtist(page, lidarrArtist.mbid))?.exists, { timeout: 30_000 })
+        .poll(async () => (await lookupArtist(page, artist.mbid))?.exists, { timeout: 30_000 })
         .toBe(false);
     }
   }

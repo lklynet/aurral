@@ -23,7 +23,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { CornerUpLeft, ExternalLink, Library, Music } from "lucide-react";
 import AddActionButton from "../../components/AddActionButton";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
-import { buildAlbumAddAction } from "../../utils/albumAddAction";
+import { buildAlbumAddAction, describeAlbumRequestResult } from "../../utils/albumAddAction";
 import { buildAlbumRequestPayload, getManagerName } from "../../utils/libraryDestination";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
@@ -468,6 +468,7 @@ function ReleasePage() {
         const trackFileCount = Number(statistics.trackFileCount || 0);
         entry = {
           inLibrary: true,
+          managedBy: addedAlbum.managedBy || result?.managedBy || managedBy,
           libraryAlbumId: String(addedAlbum.id),
           libraryArtistId:
             addedAlbum.artistId != null ? String(addedAlbum.artistId) : null,
@@ -505,11 +506,8 @@ function ReleasePage() {
           );
         }
       }
-      showSuccess(
-        triggerSearch
-          ? `Searching for ${release.title || "album"}`
-          : `Added ${release.title || "album"} to ${getManagerName(managedBy)}`,
-      );
+      const outcome = describeAlbumRequestResult(result, release.title || "album", managedBy);
+      (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
     } catch (err) {
       const conflict = settleLibraryOwnerConflict(err);
       if (conflict) {
@@ -517,12 +515,9 @@ function ReleasePage() {
         showInfo(`${release.title || "Album"}: ${conflict.message}`);
         return;
       }
-      showError(
-        err.response?.data?.message ||
-          err.response?.data?.error ||
-          err.message ||
-          "Failed to add album",
-      );
+      showError(`Failed to add album to ${getManagerName(managedBy)}: ${
+        err.response?.data?.message || err.response?.data?.error || err.message
+      }`);
     } finally {
       setRequestingAlbum(false);
     }

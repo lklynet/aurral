@@ -39,6 +39,16 @@ test("getAlbumAddAction searches a monitored album through its own manager witho
   assert.deepEqual(action.destination, { primary: "aurral", alternative: null, ready: true });
 });
 
+test("an unmonitored album stays with its owner when the default is another manager", () => {
+  const action = getAlbumAddAction(
+    { status: "unmonitored", inLibrary: true, managedBy: "aurral" },
+    { primary: "lidarr", alternative: "aurral", ready: true },
+  );
+  assert.equal(action.destination.primary, "aurral");
+  assert.equal(action.destination.alternative, null);
+  assert.equal(action.label, "Add to Aurral");
+});
+
 test("isAlbumCompleteInLibrary only treats on-disk albums as complete", () => {
   assert.equal(isAlbumCompleteInLibrary({ status: "monitored" }), false);
   assert.equal(isAlbumCompleteInLibrary({ status: "available" }), true);
@@ -46,13 +56,17 @@ test("isAlbumCompleteInLibrary only treats on-disk albums as complete", () => {
 });
 
 test("describeAlbumRequestResult does not claim a blocked album is downloading", () => {
-  assert.deepEqual(describeAlbumRequestResult({ status: "queued", jobIds: ["a"] }, "Dummy"), {
-    kind: "success",
-    message: "Downloading album: Dummy",
-  });
-  assert.deepEqual(
-    describeAlbumRequestResult({ status: "blocked", albumStatus: { recovery: { code: "download_source_missing" } } }, "Dummy"),
-    { kind: "info", message: "Added Dummy, but nothing is downloading. Open the album to see why." },
-  );
+  const queued = describeAlbumRequestResult({ status: "queued", jobIds: ["a"] }, "Dummy", "aurral");
+  assert.equal(queued.kind, "success");
+  assert.match(queued.message, /Aurral/);
+  assert.match(queued.message, /queued/i);
+  assert.doesNotMatch(queued.message, /downloading/i);
+  const blocked = describeAlbumRequestResult({ status: "blocked", albumStatus: { recovery: { code: "download_source_missing" } } }, "Dummy", "lidarr");
+  assert.equal(blocked.kind, "info");
+  assert.match(blocked.message, /Lidarr/);
+  assert.match(blocked.message, /nothing is downloading/);
   assert.equal(describeAlbumRequestResult({ albumStatus: { status: "blocked" } }, "Dummy").kind, "info");
+  const available = describeAlbumRequestResult({ status: "available" }, "Dummy", "aurral");
+  assert.match(available.message, /Aurral/);
+  assert.doesNotMatch(available.message, /queued|downloading/i);
 });

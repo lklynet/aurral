@@ -10,6 +10,7 @@ import {
 } from "../../utils/api/endpoints/artists.js";
 import {
   addArtistToLibrary,
+  settleLibraryOwnerConflict,
   downloadTrackToLibrary,
 } from "../../utils/api/endpoints/library.js";
 import {
@@ -50,7 +51,7 @@ import { DeleteArtistModal } from "./components/DeleteArtistModal";
 import { DeleteAlbumModal } from "./components/DeleteAlbumModal";
 import { AddArtistCustomizeModal } from "./components/AddArtistCustomizeModal";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
-import { buildArtistAddPayload } from "../../utils/libraryDestination";
+import { buildArtistAddPayload, getManagerName } from "../../utils/libraryDestination";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import TooltipButton from "../../components/TooltipButton";
 const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -203,28 +204,30 @@ function ArtistDetailsPage() {
   );
 
   const handleAddSimilarArtistToLibrary = useCallback(
-    async (similarArtist) => {
+    async (similarArtist, managedBy = libraryDestination.primary) => {
       const artistId = similarArtist?.id || similarArtist?.mbid;
       if (!similarArtist?.name || !artistId || !libraryDestination.ready) return false;
       try {
         await addSimilarArtist(buildArtistAddPayload({
           artistMbid: artistId,
           artistName: similarArtist.name,
-          managedBy: libraryDestination.primary,
+          managedBy,
         }));
-        showSuccess(`Adding ${similarArtist.name}...`);
+        showSuccess(`Added ${similarArtist.name} to ${getManagerName(managedBy)}`);
         return true;
       } catch (err) {
-        showError(
-          err.response?.data?.message ||
-            err.response?.data?.error ||
-            err.message ||
-            "Failed to add artist to library",
-        );
+        const conflict = settleLibraryOwnerConflict(err);
+        if (conflict) {
+          showInfo(`${similarArtist.name}: ${conflict.message}`);
+          return true;
+        }
+        showError(`Failed to add artist to ${getManagerName(managedBy)}: ${
+          err.response?.data?.message || err.response?.data?.error || err.message
+        }`);
         return false;
       }
     },
-    [addSimilarArtist, libraryDestination.primary, libraryDestination.ready, showError, showSuccess],
+    [addSimilarArtist, libraryDestination.primary, libraryDestination.ready, showError, showInfo, showSuccess],
   );
 
   const library = useArtistDetailsLibrary({
@@ -707,6 +710,7 @@ function ArtistDetailsPage() {
       />
 
       <AddArtistCustomizeModal
+        error={library.customizeAddError}
         show={library.showAddCustomizeModal}
         artistName={artist?.name}
         loading={library.loadingLidarrPreferences}

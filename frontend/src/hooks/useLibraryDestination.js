@@ -6,7 +6,7 @@ import { queryKeys } from "../queryClient.js";
 import { resolveLibraryDestination } from "../utils/libraryDestination.js";
 
 export function useLibraryDestination() {
-  const { user, bootstrap } = useAuth();
+  const { user } = useAuth();
   const ownerQuery = useQuery({
     queryKey: queryKeys.libraryOwner(user?.id),
     queryFn: ({ signal }) => getMyLibraryOwner({ signal }),
@@ -17,17 +17,19 @@ export function useLibraryDestination() {
     queryFn: ({ signal }) => fetchHealth({ signal }),
     staleTime: 30_000,
   });
-  const lidarrConfigured =
-    healthQuery.data?.lidarrConfigured ?? bootstrap?.lidarrConfigured ?? false;
+  const lidarrConfigured = healthQuery.data?.lidarrConfigured;
   const libraryOwner = ownerQuery.data?.storedDefaultLibraryOwner ?? null;
-  const ready = !ownerQuery.isPending &&
-    (!healthQuery.isPending || bootstrap?.lidarrConfigured !== undefined);
+  const ready = typeof lidarrConfigured === "boolean";
+  const error = !ready && !healthQuery.isPending;
+  const retry = healthQuery.refetch;
 
   return useMemo(
     () => ({
       ...resolveLibraryDestination({ libraryOwner, lidarrConfigured }),
       ready,
+      error,
+      retry,
     }),
-    [libraryOwner, lidarrConfigured, ready],
+    [libraryOwner, lidarrConfigured, ready, error, retry],
   );
 }

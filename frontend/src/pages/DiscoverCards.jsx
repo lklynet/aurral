@@ -7,7 +7,7 @@ import AddActionButton from "../components/AddActionButton";
 import { ArtistContextMenu } from "../components/ArtistContextMenu";
 import SearchLibraryCheck from "../components/SearchLibraryCheck";
 import { getReleaseNavigationTarget } from "../utils/searchNavigation";
-import { getItemDestination } from "../utils/libraryDestination";
+import { getAlbumAddAction } from "../utils/albumAddAction";
 import { formatDate } from "../utils/dateTime.js";
 import Tooltip from "../components/Tooltip";
 const parseCalendarDate = (value) => {
@@ -297,7 +297,7 @@ export const AlbumCard = memo(
               onClick={(event) => event.stopPropagation()}
             >
               <AddActionButton
-                destination={getItemDestination(album.managedBy, libraryDestination)}
+                {...getAlbumAddAction(album, libraryDestination)}
                 onAdd={(managedBy) => onAlbumAction(album, managedBy)}
                 isLoading={isPending}
                 disabled={isPending}

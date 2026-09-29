@@ -7,7 +7,6 @@ import {
   Pencil,
   Play,
   RefreshCw,
-  SlidersHorizontal,
   ThumbsDown,
   ThumbsUp,
   Trash2,
@@ -18,7 +17,7 @@ import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import { getDiscoveryFeedbackLabel } from "../../../utils/discoveryFeedback";
 import TooltipButton from "../../../components/TooltipButton";
 import Tooltip from "../../../components/Tooltip";
-import { getMonitorOptionsForManager } from "../../../utils/libraryDestination";
+import { getManagedByLabel, getMonitorOptionsForManager } from "../../../utils/libraryDestination";
 import { MONITOR_OPTIONS } from "../../../utils/aurralMonitoring";
 
 export function ArtistDetailsActionBar({
@@ -56,10 +55,12 @@ export function ArtistDetailsActionBar({
     if (existsInLibrary) {
       return (
         <div className="artist-relative">
+          <Tooltip content={getManagedByLabel(artistManagedBy)}>
           <button
             type="button"
             onClick={() => library.setShowRemoveDropdown(!library.showRemoveDropdown)}
             className="btn btn-neutral-active btn--bold btn-min-h"
+            aria-label={artistManagedBy ? `In Library · ${getManagedByLabel(artistManagedBy)}` : "In Library"}
           >
             <SearchLibraryCheck size="sm" />
             In Library
@@ -69,6 +70,7 @@ export function ArtistDetailsActionBar({
               />
             )}
           </button>
+          </Tooltip>
           {library.showRemoveDropdown && (canChangeMonitoring || canDeleteArtist) && (
             <>
               <button
@@ -140,23 +142,12 @@ export function ArtistDetailsActionBar({
     if (!canAddArtist) return null;
 
     return (
-      <div className="btn-add-action-group">
         <AddActionButton
           destination={libraryDestination}
           onAdd={library.handleAddToLibrary}
+          onCustomize={library.handleOpenAddCustomizeModal}
           isLoading={library.addingToLibrary}
         />
-        {libraryDestination.primary === "lidarr" && (
-          <AddActionButton
-            type="button"
-            icon={SlidersHorizontal}
-            label="Customize Lidarr add options"
-            onClick={library.handleOpenAddCustomizeModal}
-            disabled={library.addingToLibrary}
-            className="btn-add-action-options"
-          />
-        )}
-      </div>
     );
   };
 

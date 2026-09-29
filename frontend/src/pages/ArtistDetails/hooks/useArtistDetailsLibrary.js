@@ -19,6 +19,7 @@ import {
 import {
   buildAlbumRequestPayload,
   buildArtistAddPayload,
+  getManagerName,
 } from "../../../utils/libraryDestination.js";
 import {
   describeArtistMonitoringResult,
@@ -97,6 +98,7 @@ export function useArtistDetailsLibrary({
   const [reSearchingMissingAlbums, setReSearchingMissingAlbums] = useState(false);
   const [reSearchOverrides, setReSearchOverrides] = useState({});
   const [showAddCustomizeModal, setShowAddCustomizeModal] = useState(false);
+  const [customizeAddError, setCustomizeAddError] = useState(null);
   const [customizeRootFolderPath, setCustomizeRootFolderPath] = useState("");
   const [customizeQualityProfileId, setCustomizeQualityProfileId] = useState("");
   const [customizeTagId, setCustomizeTagId] = useState("");
@@ -436,6 +438,7 @@ export function useArtistDetailsLibrary({
   };
 
   const handleOpenAddCustomizeModal = async () => {
+    setCustomizeAddError(null);
     setShowAddCustomizeModal(true);
     try {
       const preferences = await loadLidarrPreferenceState();
@@ -456,6 +459,7 @@ export function useArtistDetailsLibrary({
       showError("Artist information not available");
       return;
     }
+    setCustomizeAddError(null);
     try {
       const result = await addArtistMutation.mutateAsync(buildArtistAddPayload({
         artistMbid: artist.id,
@@ -477,14 +481,26 @@ export function useArtistDetailsLibrary({
       if (!fullArtist) {
         throw new Error("Artist is taking longer than expected to add");
       }
-      showSuccess(`${artist.name} added to library successfully!`);
+      showSuccess(`${artist.name} added to ${getManagerName(managedBy)}`);
       return true;
     } catch (err) {
-      showError(
-        `Failed to add artist to library: ${
+      const conflict = settleLibraryOwnerConflict(err);
+      if (conflict) {
+        try {
+          const lookup = await lookupArtistInLibrary(artist.id, { bypassCache: true });
+          if (lookup.exists && lookup.artist) {
+            await resolveLookupArtist(lookup.artist, { refresh: false, hydrateAlbums: true });
+          }
+        } catch {}
+        setShowAddCustomizeModal(false);
+        showInfo(`${artist.name}: ${conflict.message}`);
+        return false;
+      }
+      const message = `Failed to add artist to ${getManagerName(managedBy)}: ${
           err.response?.data?.message || err.response?.data?.error || err.message
-        }`,
-      );
+        }`;
+      if (showAddCustomizeModal) setCustomizeAddError(message);
+      else showError(message);
       return false;
     }
   };
@@ -522,13 +538,15 @@ export function useArtistDetailsLibrary({
       const addedArtist = result?.artist;
       const addedAlbum = result?.album;
       if (!addedArtist?.id || !addedAlbum?.id) {
-        throw new Error("Lidarr did not return the completed album request");
+        throw new Error(`${getManagerName(managedBy)} did not return the completed album request`);
       }
 
-      setLibraryArtist({
+      setLibraryArtist((previous) => ({
+        ...previous,
         ...addedArtist,
+        managedBy: addedArtist.managedBy || previous?.managedBy,
         foreignArtistId: addedArtist.foreignArtistId || addedArtist.mbid || artist.id,
-      });
+      }));
       setExistsInLibrary(true);
       setLibraryAlbums((previous) =>
         deduplicateAlbums([
@@ -540,6 +558,7 @@ export function useArtistDetailsLibrary({
           ),
           {
             ...addedAlbum,
+            managedBy: addedAlbum.managedBy || result?.managedBy || managedBy,
             mbid: addedAlbum.mbid || addedAlbum.foreignAlbumId || albumId,
             foreignAlbumId: addedAlbum.foreignAlbumId || addedAlbum.mbid || albumId,
             monitored: true,
@@ -558,7 +577,7 @@ export function useArtistDetailsLibrary({
           return next;
         },
       );
-      const outcome = describeAlbumRequestResult(result, title);
+      const outcome = describeAlbumRequestResult(result, title, managedBy);
       (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
     } catch (err) {
       const conflict = settleLibraryOwnerConflict(err);
@@ -568,7 +587,7 @@ export function useArtistDetailsLibrary({
         return;
       }
       showError(
-        `Failed to add album: ${
+        `Failed to add album to ${getManagerName(managedBy)}: ${
           err.response?.data?.message || err.response?.data?.error || err.message
         }`,
       );
@@ -885,6 +904,7 @@ export function useArtistDetailsLibrary({
     deletingArtist: deleteArtistMutation.isPending,
     addingToLibrary: addArtistMutation.isPending,
     showAddCustomizeModal,
+    customizeAddError,
     setShowAddCustomizeModal,
     loadingLidarrPreferences: lidarrPreferencesQuery.isFetching,
     lidarrPreferences: lidarrPreferencesQuery.data || null,

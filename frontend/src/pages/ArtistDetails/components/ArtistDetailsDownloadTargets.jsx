@@ -1,3 +1,4 @@
+import { getAlbumAddAction } from "../../../utils/albumAddAction";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Music, Star } from "lucide-react";
@@ -218,7 +219,10 @@ export function ArtistDetailsDownloadTargets({
               {canAddAlbum && missingReleasePick.releaseGroupId && (
                 <div>
                   <AddActionButton
-                    destination={libraryDestination}
+                    {...getAlbumAddAction({
+                      ...getAlbumStatus(missingReleasePick.releaseGroupId),
+                      managedBy: getAlbumStatus(missingReleasePick.releaseGroupId)?.albumInfo?.managedBy,
+                    }, libraryDestination)}
                     ownerConflict={getAlbumStatus(missingReleasePick.releaseGroupId)?.ownerConflict}
                     onAdd={(managedBy) =>
                       handleRequestAlbum(

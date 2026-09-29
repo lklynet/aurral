@@ -186,7 +186,11 @@ export function ArtistDetailsSimilar({
                         artist={similar}
                         isInLibrary={!!libraryLookup[artistId]}
                         canAddArtist={canAddArtist}
-                        onAddToLibrary={onAddToLibrary}
+                        onAddToLibrary={async (artist, managedBy) => {
+                          const success = await onAddToLibrary(artist, managedBy);
+                          if (success) setLibraryLookup((previous) => ({ ...previous, [artistId]: true }));
+                          return success;
+                        }}
                         onFeedback={onArtistFeedback}
                         feedbackUsed={
                           artistFeedbackLookup

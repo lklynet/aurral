@@ -303,6 +303,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
     mutationFn: updateAppSettings,
     onSuccess: (savedSettings) => {
       queryClient.setQueryData(queryKeys.appSettings, savedSettings);
+      queryClient.invalidateQueries({ queryKey: queryKeys.appHealth });
       // Settings such as the Lidarr "available only" toggle change what the
       // Library endpoints return without changing the query key, so mark the
       // Library views stale on save to pick up the new filtering on next view.

@@ -135,6 +135,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     menuLabel = `${label} actions`,
     disabled = false,
     contextMenu = true,
+    align = "end",
   },
   ref,
 ) {
@@ -162,7 +163,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
       registeredCloserRef.current = null;
     }
     if (restoreFocus && ownsActiveMenu) {
-      window.requestAnimationFrame(() => triggerRef.current?.focus());
+      window.requestAnimationFrame(() => triggerRef.current?.focus({ preventScroll: true }));
     }
   }, []);
 
@@ -187,7 +188,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
   const openFromTrigger = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    openMenu({ kind: "trigger", top: rect.top, right: rect.right, bottom: rect.bottom });
+    openMenu({ kind: "trigger", top: rect.top, left: rect.left, right: rect.right, bottom: rect.bottom });
   }, [openMenu]);
 
   const openAt = useCallback(
@@ -225,17 +226,26 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
       if (event.key === "Escape") closeMenu();
     };
     const closeOnViewportChange = () => closeMenu(false);
+    const handleScroll = (event) => {
+      if (menuRef.current?.contains(event.target)) return;
+      if (anchor?.kind !== "trigger") {
+        closeMenu(false);
+        return;
+      }
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (rect) setAnchor({ kind: "trigger", top: rect.top, left: rect.left, right: rect.right, bottom: rect.bottom });
+    };
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleEscape);
     window.addEventListener("resize", closeOnViewportChange);
-    window.addEventListener("scroll", closeOnViewportChange, true);
+    window.addEventListener("scroll", handleScroll, true);
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleEscape);
       window.removeEventListener("resize", closeOnViewportChange);
-      window.removeEventListener("scroll", closeOnViewportChange, true);
+      window.removeEventListener("scroll", handleScroll, true);
     };
-  }, [closeMenu, open]);
+  }, [anchor, closeMenu, open]);
 
   useEffect(() => {
     return () => {
@@ -248,7 +258,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
 
   useEffect(() => {
     if (!open) return;
-    menuRef.current?.querySelector("button:not(:disabled)")?.focus();
+    menuRef.current?.querySelector("button:not(:disabled)")?.focus({ preventScroll: true });
   }, [open]);
 
   const updatePosition = useCallback(() => {
@@ -258,7 +268,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     const gap = 8;
     const width = menu.offsetWidth;
     const height = menu.offsetHeight;
-    let left = anchor.kind === "context" ? anchor.x : anchor.right - width;
+    let left = anchor.kind === "context" ? anchor.x : align === "start" ? anchor.left : anchor.right - width;
     let top = anchor.kind === "context" ? anchor.y : anchor.bottom + gap;
 
     if (anchor.kind === "trigger" && top + height > window.innerHeight - edge) {
@@ -276,7 +286,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     setPosition((current) =>
       current?.left === left && current?.top === top ? current : { left, top },
     );
-  }, [anchor]);
+  }, [align, anchor]);
 
   useLayoutEffect(() => {
     if (open) updatePosition();
@@ -287,10 +297,16 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     if (item.disabled || pendingAction) return;
     setPendingAction(item.id);
     try {
+      if (item.closeBeforeSelect) {
+        closeMenu(false);
+        triggerRef.current?.focus({ preventScroll: true });
+        await item.onSelect?.(event);
+        return;
+      }
       await item.onSelect?.(event);
     } catch {
     } finally {
-      closeMenu();
+      if (!item.closeBeforeSelect) closeMenu();
       setPendingAction("");
     }
   };
@@ -310,7 +326,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
       Home: 0,
       End: buttons.length - 1,
     }[event.key];
-    buttons[next].focus();
+    buttons[next].focus({ preventScroll: true });
   };
 
   const renderItems = () => (

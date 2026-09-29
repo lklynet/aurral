@@ -35,10 +35,11 @@ import {
   isSuggestionInLibrary,
   buildTrackPlaylistPayload,
 } from "../utils/globalSearchUtils";
-import { getAlbumAddAction, shouldTriggerAlbumSearch } from "../utils/albumAddAction";
+import { describeAlbumRequestResult, getAlbumAddAction, shouldTriggerAlbumSearch } from "../utils/albumAddAction";
 import {
   buildAlbumRequestPayload,
   buildArtistAddPayload,
+  getManagerName,
 } from "../utils/libraryDestination";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { useDebouncedTask } from "../hooks/useDebouncedTask";
@@ -376,21 +377,24 @@ function GlobalSearch({ settingsMode = false }) {
           managedBy,
         }));
         updateSuggestionItem(artist, { inLibrary: true });
-        showSuccess(`Adding ${artist.name}...`);
+        showSuccess(`Added ${artist.name} to ${getManagerName(managedBy)}`);
         return true;
       } catch (err) {
-        showError(
-          err.response?.data?.message ||
-            err.response?.data?.error ||
-            err.message ||
-            "Failed to add artist to library",
-        );
+        const conflict = settleLibraryOwnerConflict(err);
+        if (conflict) {
+          updateSuggestionItem(artist, { inLibrary: true });
+          showInfo(`${artist.name}: ${conflict.message}`);
+          return false;
+        }
+        showError(`Failed to add artist to ${getManagerName(managedBy)}: ${
+          err.response?.data?.message || err.response?.data?.error || err.message
+        }`);
         return false;
       } finally {
         setPendingArtistIds(({ [artistId]: _, ...prev }) => prev);
       }
     },
-    [libraryDestination.primary, libraryDestination.ready, showError, showSuccess, updateSuggestionItem],
+    [libraryDestination.primary, libraryDestination.ready, showError, showInfo, showSuccess, updateSuggestionItem],
   );
 
   const handleAlbumAction = useCallback(
@@ -411,22 +415,16 @@ function GlobalSearch({ settingsMode = false }) {
           managedBy,
           triggerSearch: shouldTriggerSearch,
         }));
-        const nextAlbum = result?.queued
-          ? { inLibrary: true, status: "processing" }
-          : {
-              inLibrary: true,
-              libraryAlbumId: result.album?.id,
-              libraryArtistId: result.artist?.id,
-              status: result.status,
-            };
+        const nextAlbum = {
+          inLibrary: true,
+          managedBy: result?.album?.managedBy || result?.managedBy || managedBy,
+          libraryAlbumId: result.album?.id,
+          libraryArtistId: result.artist?.id,
+          status: result?.queued ? "processing" : result.status,
+        };
         updateSuggestionItem(album, nextAlbum);
-        showSuccess(
-          result?.queued
-            ? `Adding ${album.title}...`
-            : result.triggeredSearch
-              ? `Search triggered for ${album.title}`
-              : `${album.title} added to library`,
-        );
+        const outcome = describeAlbumRequestResult(result, album.title, managedBy);
+        (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
       } catch (err) {
         const conflict = settleLibraryOwnerConflict(err);
         if (conflict) {
@@ -434,12 +432,9 @@ function GlobalSearch({ settingsMode = false }) {
           showInfo(`${album.title}: ${conflict.message}`);
           return;
         }
-        showError(
-          err.response?.data?.error ||
-            err.response?.data?.message ||
-            err.message ||
-            "Failed to request album",
-        );
+        showError(`Failed to add album to ${getManagerName(managedBy)}: ${
+          err.response?.data?.message || err.response?.data?.error || err.message
+        }`);
       } finally {
         setPendingAlbumIds(({ [album.id]: _, ...prev }) => prev);
       }

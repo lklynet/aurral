@@ -549,6 +549,13 @@ textarea {
   filter: drop-shadow(var(--aurral-shadow-action-icon));
 }
 
+@media (pointer: coarse) {
+  .btn-add-action {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+}
+
 .aurral-tooltip {
   position: fixed;
   top: 0;
