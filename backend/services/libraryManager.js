@@ -241,6 +241,51 @@ function canonicalArtistFallback(reference) {
   return getCanonicalArtistProjection({ reference })[0] || null;
 }
 
+function recordLidarrOwner(lidarrArtist, lidarrAlbum = null) {
+  const artistProviderId = String(lidarrArtist?.foreignArtistId || "").trim();
+  const artistName = String(lidarrArtist?.artistName || lidarrArtist?.name || "").trim();
+  if (!artistProviderId || !artistName) return;
+  const claim = (entityKind, entityId, monitorMode) => {
+    if (getLibraryManagementEntry(entityKind, entityId)) return;
+    setLibraryManagement({ entityKind, entityId, managedBy: "lidarr", monitorMode });
+  };
+  try {
+    const artistIsMbid = UUID_REGEX.test(artistProviderId);
+    const artist =
+      canonicalArtistFallback(artistProviderId) ||
+      upsertLibraryArtist({
+        identityKey: buildIdentityKey(artistIsMbid ? "mbid" : "lidarr-artist", artistProviderId),
+        mbid: artistIsMbid ? artistProviderId : null,
+        name: artistName,
+        sortName: lidarrArtist.sortName || null,
+        metadata: { ...lidarrArtist, librarySource: "lidarr" },
+      });
+    claim("artist", artist.id, lidarrArtist.monitor || lidarrArtist.addOptions?.monitor || null);
+
+    const albumProviderId = String(lidarrAlbum?.foreignAlbumId || "").trim();
+    const albumTitle = String(lidarrAlbum?.title || "").trim();
+    if (!albumProviderId || !albumTitle) return;
+    const albumIsMbid = UUID_REGEX.test(albumProviderId);
+    const album =
+      canonicalAlbumForReference(albumProviderId) ||
+      upsertLibraryAlbum({
+        identityKey: buildIdentityKey(albumIsMbid ? "release-group" : "lidarr-album", albumProviderId),
+        mbid: albumIsMbid ? albumProviderId : null,
+        releaseGroupMbid: albumIsMbid ? albumProviderId : null,
+        artistId: artist.id,
+        title: albumTitle,
+        albumArtist: artistName,
+        releaseDate: lidarrAlbum.releaseDate || null,
+        metadata: { ...lidarrAlbum, librarySource: "lidarr" },
+      });
+    claim("album", album.id, lidarrAlbum.monitor || lidarrAlbum.addOptions?.monitor || null);
+  } catch (error) {
+    logger.warn("library", "Could not record Lidarr ownership", {
+      message: error?.message || String(error),
+    });
+  }
+}
+
 function canonicalLibraryForArtist(reference) {
   return getCanonicalLibraryForArtistReferences({
     source: "all",
@@ -658,6 +703,7 @@ export class LibraryManager {
       logger.info('library', `[LibraryManager] Added artist "${artistName}" to Lidarr`);
       const mappedArtist = this.mapLidarrArtist(lidarrArtist);
       upsertCachedArtist(mappedArtist);
+      recordLidarrOwner(lidarrArtist);
       scheduleCanonicalLibraryReconciliation();
       import("./aurralHistoryService.js")
         .then(({ recordArtistAdded }) =>
@@ -2247,6 +2293,7 @@ export class LibraryManager {
         const refreshedArtist = await lidarr.getArtist(artistId).catch(() => fallbackArtist);
         if (!refreshedArtist) return null;
         const mapped = this.mapLidarrAlbum(refreshedExisting, refreshedArtist);
+        recordLidarrOwner(refreshedArtist, refreshedExisting);
         scheduleCanonicalLibraryReconciliation();
         return mapped;
       };
@@ -2349,6 +2396,7 @@ export class LibraryManager {
       }
       const updatedArtist = await lidarr.getArtist(artistId);
       const mapped = this.mapLidarrAlbum(lidarrAlbum, updatedArtist);
+      recordLidarrOwner(updatedArtist, lidarrAlbum);
       scheduleCanonicalLibraryReconciliation();
       return mapped;
     } catch (error) {
