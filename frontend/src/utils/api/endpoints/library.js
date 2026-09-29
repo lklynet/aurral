@@ -252,6 +252,11 @@ export const deleteAlbumFromLibrary = (id, deleteFiles = false) =>
     params: { deleteFiles },
   });
 
+export const deleteAurralAlbumFromLibrary = (canonicalId, deleteFiles = false) =>
+  deleteData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}`, {
+    params: { deleteFiles },
+  });
+
 export const deleteTrackFromLibrary = (id) =>
   deleteData(`/library/tracks/${encodeURIComponent(id)}`);
 

@@ -465,7 +465,7 @@ export function ArtistDetailsLibraryAlbums({
                               >
                                 <span className="artist-menu-item__main">
                                   <Trash2 className="artist-icon-sm" />
-                                  Delete Album
+                                  {libraryAlbum.managedBy === "aurral" ? "Remove album" : "Delete Album"}
                                 </span>
                               </button>
                             </>

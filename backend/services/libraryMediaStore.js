@@ -482,6 +482,69 @@ export function removeLibraryTrackIfNoAvailableMedia(trackId) {
   return removed;
 }
 
+export function removeLibraryArtistIfEmpty(artistId) {
+  const normalizedArtistId = Number(artistId);
+  if (!Number.isSafeInteger(normalizedArtistId)) return false;
+  const removed = db.prepare(
+    `DELETE FROM library_artists
+     WHERE id = ?
+       AND NOT EXISTS (SELECT 1 FROM library_albums WHERE artist_id = ?)`,
+  ).run(normalizedArtistId, normalizedArtistId).changes > 0;
+  if (removed) {
+    removeLibrarySearchDocument("artist", normalizedArtistId);
+    invalidateLibraryCache();
+  }
+  return removed;
+}
+
+export function removeLibraryAlbumTracksWithoutAvailableMedia(albumId) {
+  const normalizedAlbumId = Number(albumId);
+  if (!Number.isSafeInteger(normalizedAlbumId)) return { albumRemoved: false };
+  const result = db.transaction(() => {
+    const trackIds = db.prepare(
+      `SELECT link.track_id AS id
+       FROM library_album_tracks link
+       WHERE link.album_id = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM library_media_files file
+           WHERE file.track_id = link.track_id AND file.available = 1
+         )`,
+    ).all(normalizedAlbumId).map((row) => row.id);
+
+    for (const trackId of trackIds) {
+      db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?")
+        .run(normalizedAlbumId, trackId);
+      const linkedElsewhere = db.prepare(
+        "SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1",
+      ).get(trackId);
+      if (linkedElsewhere) {
+        db.prepare("DELETE FROM library_media_files WHERE track_id = ? AND album_id = ?")
+          .run(trackId, normalizedAlbumId);
+        continue;
+      }
+      removeLibrarySearchDocument("track", trackId);
+      db.prepare("DELETE FROM library_media_files WHERE track_id = ?").run(trackId);
+      db.prepare("DELETE FROM library_tracks WHERE id = ?").run(trackId);
+    }
+
+    const albumRemoved = db.prepare(
+      `DELETE FROM library_albums
+       WHERE id = ?
+         AND NOT EXISTS (SELECT 1 FROM library_album_tracks WHERE album_id = ?)`,
+    ).run(normalizedAlbumId, normalizedAlbumId).changes > 0;
+    if (albumRemoved) {
+      db.prepare("DELETE FROM library_media_files WHERE album_id = ? AND available = 0")
+        .run(normalizedAlbumId);
+      removeLibrarySearchDocument("album", normalizedAlbumId);
+    } else {
+      touchLibraryAlbum(normalizedAlbumId);
+    }
+    return { albumRemoved, changed: albumRemoved || trackIds.length > 0 };
+  }).immediate();
+  if (result.changed) invalidateLibraryCache();
+  return { albumRemoved: result.albumRemoved };
+}
+
 export function upsertLibraryMediaFile({
   trackId,
   albumId = null,
