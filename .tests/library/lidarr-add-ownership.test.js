@@ -91,3 +91,12 @@ test("a Lidarr add leaves an artist Aurral already owns untouched", async () => 
   assert.equal(managementStore.getLibraryManagementEntry("artist", seeded.id).managedBy, "aurral");
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM library_artists").get().n, 1);
 });
+
+test("an Aurral album add does not take over an album Lidarr just added", async () => {
+  await libraryManager.addAlbum("41", albumMbid, "Owned Album", { managedBy: "lidarr" });
+  const artist = db.prepare("SELECT id FROM library_artists").get();
+
+  const result = await libraryManager.addAlbum(artist.id, albumMbid, "Owned Album", { managedBy: "aurral" });
+  assert.equal(result.statusCode, 409);
+  assert.equal(ownerOf("library_albums", "album"), "lidarr");
+});

@@ -2042,6 +2042,14 @@ export class LibraryManager {
     if (existing?.managedBy && existing.managedBy !== "aurral") {
       return buildAlbumConflict(existing);
     }
+    const storedAlbum = existing
+      ? null
+      : db.prepare("SELECT id, title FROM library_albums WHERE identity_key = ?")
+        .get(buildIdentityKey("release-group", normalizedAlbumMbid));
+    const storedOwner = getLibraryManagementEntry("album", storedAlbum?.id)?.managedBy;
+    if (storedOwner && storedOwner !== "aurral") {
+      return buildAlbumConflict({ ...storedAlbum, managedBy: storedOwner, mbid: normalizedAlbumMbid });
+    }
     if (existing) {
       const existingLibrary = canonicalLibraryForAlbum(existing.id);
       if (existingLibrary.tracks.length > 0) {
