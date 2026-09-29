@@ -25,6 +25,8 @@ yt-dlp stages downloads in `/config/_staging` by default. You can mount another 
 
 ## Library safety
 
+- Lidarr is optional. Aurral and Lidarr each keep their own root, and the Library combines both without moving files.
 - Aurral does not write into your Lidarr root music library.
+- Aurral does not migrate artists, albums, or files between managers. Overlapping roots are allowed but not recommended; see [Settings warn that roots overlap](/admin/troubleshooting/#settings-warn-that-roots-overlap).
 - Changes to artists and albums that Lidarr manages go through Lidarr.
 - Aurral-owned media stays under the Downloads Folder path. Flow files use `_flows`; permanent tracks use the canonical `artist/album/track` layout.

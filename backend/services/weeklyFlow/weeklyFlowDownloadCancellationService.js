@@ -35,6 +35,7 @@ function payloadBelongsToPlaylist(payload, playlistId, jobIds) {
 function readTransferEntries(payload) {
   const entries = [];
   if (payload?.legacyTransfer) entries.push(payload.legacyTransfer);
+  if (Array.isArray(payload?.albumTransfers)) entries.push(...payload.albumTransfers);
   const batchTransfers = payload?.batch?.transfers || payload?.batch?.Transfers;
   if (Array.isArray(batchTransfers)) entries.push(...batchTransfers);
   if (payload?.transfer) entries.push(payload.transfer);

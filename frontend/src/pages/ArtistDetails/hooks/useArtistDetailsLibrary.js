@@ -5,6 +5,7 @@ import {
   updateLibraryAlbum,
   deleteArtistFromLibrary,
   deleteAlbumFromLibrary,
+  deleteAurralAlbumFromLibrary,
   updateLibraryArtist,
   getLibraryArtist,
   triggerAlbumSearch,
@@ -218,6 +219,10 @@ export function useArtistDetailsLibrary({
     mutationFn: ({ id, deleteFiles }) => deleteAlbumFromLibrary(id, deleteFiles),
     onSuccess: () => invalidateLibraryQueries(),
   });
+  const deleteAurralAlbumMutation = useMutation({
+    mutationFn: ({ id, deleteFiles }) => deleteAurralAlbumFromLibrary(id, deleteFiles),
+    onSuccess: () => invalidateLibraryQueries(),
+  });
   const searchAlbumMutation = useMutation({
     mutationFn: triggerAlbumSearch,
   });
@@ -315,7 +320,11 @@ export function useArtistDetailsLibrary({
       );
       setShowDeleteModal(false);
     } catch (err) {
-      showError(`Failed to delete artist: ${err.response?.data?.message || err.message}`);
+      showError(
+        `Failed to remove artist: ${
+          err.response?.data?.message || err.response?.data?.error || err.message
+        }`,
+      );
     }
   };
 
@@ -679,7 +688,8 @@ export function useArtistDetailsLibrary({
   };
 
   const handleDeleteAlbumClick = (albumId, title) => {
-    setShowDeleteAlbumModal({ id: albumId, title });
+    const managedBy = libraryAlbums.find((a) => a.foreignAlbumId === albumId)?.managedBy || null;
+    setShowDeleteAlbumModal({ id: albumId, title, managedBy });
     setAlbumDropdownOpen(null);
   };
 
@@ -694,7 +704,15 @@ export function useArtistDetailsLibrary({
       const libraryAlbum = libraryAlbums.find((a) => a.foreignAlbumId === albumId);
       if (!libraryAlbum) throw new Error("Album not found in library");
       setRemovingAlbum(albumId);
-      if (deleteAlbumFiles) {
+      if (libraryAlbum.managedBy === "aurral") {
+        await deleteAurralAlbumMutation.mutateAsync({
+          id: libraryAlbum.canonicalId || libraryAlbum.id,
+          deleteFiles: deleteAlbumFiles,
+        });
+        deletedAlbumAtRef.current[libraryAlbum.id] = Date.now();
+        setLibraryAlbums((prev) => prev.filter((a) => a.id !== libraryAlbum.id));
+        showSuccess(`Removed ${title} from library${deleteAlbumFiles ? " and deleted its files" : ""}`);
+      } else if (deleteAlbumFiles) {
         await deleteAlbumMutation.mutateAsync({ id: libraryAlbum.id, deleteFiles: true });
         deletedAlbumAtRef.current[libraryAlbum.id] = Date.now();
         setLibraryAlbums((prev) => prev.filter((a) => a.id !== libraryAlbum.id));
@@ -712,9 +730,14 @@ export function useArtistDetailsLibrary({
       }
       setShowDeleteAlbumModal(null);
     } catch (err) {
+      const action = showDeleteAlbumModal.managedBy === "aurral"
+        ? "remove"
+        : deleteAlbumFiles
+          ? "delete"
+          : "unmonitor";
       showError(
-        `Failed to ${deleteAlbumFiles ? "delete" : "unmonitor"} album: ${
-          err.response?.data?.message || err.message
+        `Failed to ${action} album: ${
+          err.response?.data?.message || err.response?.data?.error || err.message
         }`,
       );
     } finally {

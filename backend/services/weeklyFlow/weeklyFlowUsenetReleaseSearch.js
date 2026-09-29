@@ -4,7 +4,7 @@
 // ranking stays release-oriented (title identity gate plus format/size/noise
 // tie-breakers). Post-download identity is validated by the shared
 // trackMatching engine: downloaded files are assigned to expected tracks
-// with beets' assignment and validated per file.
+// with native one-to-one assignment and validated per file.
 
 import path from "path";
 import {

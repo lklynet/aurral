@@ -23,12 +23,15 @@ import {
   clearCanonicalLidarrArtist,
   linkLibraryAlbumTrack,
   markLibraryMediaFilesUnavailable,
+  removeLibraryAlbumTracksWithoutAvailableMedia,
+  removeLibraryArtistIfEmpty,
   removeLibraryTrackIfNoAvailableMedia,
   upsertLibraryAlbum,
   upsertLibraryArtist,
   upsertLibraryTrack,
 } from "./libraryMediaStore.js";
 import {
+  clearLibraryManagement,
   getLibraryManagementEntry,
   getManagedByMap,
   setLibraryManagement,
@@ -348,22 +351,30 @@ function isLidarrNotFoundError(error) {
     /\b404\b|not found in lidarr/i.test(String(error?.message || ""));
 }
 
-async function removeLibraryDownloadJobs(track) {
+async function removeLibraryDownloadJobs(tracks, { albumMbid = null } = {}) {
   const normalize = (value) => String(value || "").trim().toLocaleLowerCase();
-  const trackMbid = normalize(track?.mbid);
-  const artistName = normalize(track?.artistName);
-  const trackName = normalize(track?.title);
+  const trackKeys = tracks.map((track) => ({
+    mbid: normalize(track?.mbid),
+    artistName: normalize(track?.artistName),
+    title: normalize(track?.title),
+  }));
+  const albumKey = normalize(albumMbid);
   const jobs = downloadTracker.getAll();
   const removedJobIds = new Set();
   for (const job of jobs) {
     if (job.playlistType !== "library") continue;
     const jobTrackMbid = normalize(job.trackMbid);
-    const matchesName = normalize(job.artistName) === artistName
-      && normalize(job.trackName) === trackName;
-    const matchesTrack = trackMbid && jobTrackMbid
-      ? jobTrackMbid === trackMbid
-      : matchesName;
-    if (matchesTrack) {
+    const belongsElsewhere = albumKey && (
+      job.managedBy === "lidarr" ||
+      (normalize(job.albumMbid) && normalize(job.albumMbid) !== albumKey)
+    );
+    const matchesTrack = !belongsElsewhere && trackKeys.some((track) =>
+      track.mbid && jobTrackMbid
+        ? jobTrackMbid === track.mbid
+        : normalize(job.artistName) === track.artistName && normalize(job.trackName) === track.title,
+    );
+    const matchesAlbum = albumKey && job.managedBy === "aurral" && normalize(job.albumMbid) === albumKey;
+    if (matchesTrack || matchesAlbum) {
       removedJobIds.add(job.id);
     }
   }
@@ -381,6 +392,38 @@ async function removeLibraryDownloadJobs(track) {
     downloadTracker.removeJob(job.id);
   }
   return [...committedPaths];
+}
+
+async function deleteAurralLibraryFiles(paths) {
+  const deletionResults = await Promise.allSettled(paths.map(async (filePath) => {
+    const removal = await removePlaylistFileIfUnshared(filePath, "library", {
+      deleteIfUnshared: true,
+      protectPlayback: false,
+    });
+    if (removal.action === "skipped") {
+      const resolvedPath = path.resolve(filePath);
+      const referencedByAnotherJob = downloadTracker.getAll().some((job) =>
+        job.status === "done" &&
+        typeof job.finalPath === "string" &&
+        path.resolve(job.finalPath) === resolvedPath,
+      );
+      if (!referencedByAnotherJob) {
+        try {
+          await fsp.unlink(filePath);
+        } catch (error) {
+          if (error?.code !== "ENOENT") throw error;
+        }
+      }
+    }
+    return filePath;
+  }));
+  const reconciledPaths = deletionResults
+    .filter((result) => result.status === "fulfilled")
+    .map((result) => result.value);
+  if (reconciledPaths.length > 0) {
+    markLibraryMediaFilesUnavailable("aurral", reconciledPaths);
+  }
+  return deletionResults.find((result) => result.status === "rejected")?.reason || null;
 }
 
 function buildTrackFileIndex(trackFiles) {
@@ -1530,6 +1573,10 @@ export class LibraryManager {
   }
 
   async deleteArtist(mbid, deleteFiles = false) {
+    const canonicalArtist = canonicalArtistFallback(mbid);
+    if (canonicalArtist?.managedBy === "aurral") {
+      return this._deleteAurralArtist(canonicalArtist, deleteFiles);
+    }
     const lidarr = await getLidarrClient();
     if (!lidarr || !lidarr.isConfigured()) {
       return { success: false, error: "Lidarr is not configured" };
@@ -2021,6 +2068,89 @@ export class LibraryManager {
       managedBy: "aurral",
       ...result,
     };
+  }
+
+  async deleteAurralAlbum(canonicalId, deleteFiles = false) {
+    const resolved = this._resolveAurralAlbum(canonicalId);
+    if (resolved.error) return resolved;
+    const { album, library, mappedAlbum } = resolved;
+    const artistState = getLibraryManagementEntry("artist", Number(album.artistId));
+    if (artistState?.managedBy === "aurral" && artistState.monitorMode && artistState.monitorMode !== "none") {
+      return {
+        error: "The album was not removed. Aurral monitors this artist and would add it again. Set the artist's monitoring to None, then remove the album.",
+        statusCode: 409,
+        code: "artist_monitored",
+      };
+    }
+    const result = await this._removeAurralAlbumContents(album, library.tracks, deleteFiles);
+    if (result.error) return result;
+    return { success: true, canonicalId: mappedAlbum.canonicalId };
+  }
+
+  async _removeAurralAlbumContents(album, libraryTracks, deleteFiles) {
+    const tracks = libraryTracks.filter((track) => album.trackIds.includes(track.id));
+    let committedPaths;
+    try {
+      committedPaths = await removeLibraryDownloadJobs(tracks, {
+        albumMbid: album.mbid || album.releaseGroupMbid,
+      });
+    } catch (error) {
+      logger.error("library", `[LibraryManager] Failed to cancel album downloads: ${error.message}`);
+      return {
+        error: "Downloads could not be cancelled, so nothing more was removed. Try again.",
+        statusCode: 409,
+        code: "download_cancellation_failed",
+      };
+    }
+    const paths = [...new Set([
+      ...tracks.flatMap((track) =>
+        track.files.filter((file) => file.source === "aurral" && file.path).map((file) => file.path),
+      ),
+      ...committedPaths,
+    ])];
+    if (deleteFiles) {
+      const lidarrFile = db.prepare(
+        "SELECT 1 FROM library_media_files WHERE source = 'lidarr' AND available = 1 AND path IN (?, ?)",
+      );
+      const sharedWithLidarr = new Set(
+        paths.filter((filePath) => lidarrFile.get(filePath, path.resolve(filePath))),
+      );
+      markLibraryMediaFilesUnavailable("aurral", [...sharedWithLidarr]);
+      const error = await deleteAurralLibraryFiles(
+        paths.filter((filePath) => !sharedWithLidarr.has(filePath)),
+      );
+      if (error) {
+        logger.error("library", `[LibraryManager] Failed to delete Aurral album file: ${error.message}`);
+        return { error: error.message, statusCode: 500, code: "failed" };
+      }
+    } else {
+      markLibraryMediaFilesUnavailable("aurral", paths);
+    }
+    removeLibraryAlbumTracksWithoutAvailableMedia(album.id);
+    clearLibraryManagement("album", album.id);
+    logger.info("library", `[LibraryManager] Removed Aurral album "${album.title}"`);
+    return {};
+  }
+
+  async _deleteAurralArtist(artist, deleteFiles) {
+    setLibraryManagement({
+      entityKind: "artist",
+      entityId: Number(artist.id),
+      managedBy: "aurral",
+      monitorMode: "none",
+    });
+    const library = canonicalLibraryForArtist(artist.id);
+    for (const album of library.albums) {
+      if (album.managedBy === "lidarr") continue;
+      const result = await this._removeAurralAlbumContents(album, library.tracks, deleteFiles);
+      if (result.error) {
+        return { success: false, code: result.code, statusCode: result.statusCode, error: result.error };
+      }
+    }
+    clearLibraryManagement("artist", Number(artist.id));
+    removeLibraryArtistIfEmpty(artist.id);
+    logger.info("library", `[LibraryManager] Removed Aurral artist "${artist.name}"`);
+    return { success: true };
   }
 
   async _addAurralAlbum(artistId, releaseGroupMbid, albumName, options = {}) {
@@ -2776,7 +2906,7 @@ export class LibraryManager {
       if (aurralFiles.length > 0 && lidarrFiles.length === 0) {
         let committedPaths;
         try {
-          committedPaths = await removeLibraryDownloadJobs(track);
+          committedPaths = await removeLibraryDownloadJobs([track]);
         } catch (error) {
           logger.error("library", `[LibraryManager] Failed to cancel track downloads: ${error.message}`);
           return {
@@ -2790,37 +2920,8 @@ export class LibraryManager {
           ...committedPaths,
         ])];
         try {
-          const deletionResults = await Promise.allSettled(paths.map(async (filePath) => {
-            const removal = await removePlaylistFileIfUnshared(filePath, "library", {
-              deleteIfUnshared: true,
-              protectPlayback: false,
-            });
-            if (removal.action === "skipped") {
-              const resolvedPath = path.resolve(filePath);
-              const referencedByAnotherJob = downloadTracker.getAll().some((job) =>
-                job.status === "done" &&
-                typeof job.finalPath === "string" &&
-                path.resolve(job.finalPath) === resolvedPath,
-              );
-              if (!referencedByAnotherJob) {
-                try {
-                  await fsp.unlink(filePath);
-                } catch (error) {
-                  if (error?.code !== "ENOENT") throw error;
-                }
-              }
-            }
-            return filePath;
-          }));
-          const reconciledPaths = deletionResults
-            .filter((result) => result.status === "fulfilled")
-            .map((result) => result.value);
-          if (reconciledPaths.length > 0) {
-            markLibraryMediaFilesUnavailable("aurral", reconciledPaths);
-          }
-          const failure = deletionResults.find((result) => result.status === "rejected");
-          if (failure) {
-            const error = failure.reason;
+          const error = await deleteAurralLibraryFiles(paths);
+          if (error) {
             logger.error("library", `[LibraryManager] Failed to delete Aurral track file: ${error.message}`);
             return { success: false, code: "failed", error: error.message };
           }

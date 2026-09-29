@@ -83,6 +83,7 @@ instance API key for WebSocket connections.
 | `PUT` | `/api/library/albums/aurral/:canonicalId` | Monitor or stop monitoring an Aurral-managed album with `{ "monitored": true \| false }` |
 | `GET` | `/api/library/albums/aurral/:canonicalId/status` | Get the download status of an Aurral-managed album |
 | `POST` | `/api/library/albums/aurral/:canonicalId/cancel` | Cancel queued and active downloads for an Aurral-managed album |
+| `DELETE` | `/api/library/albums/aurral/:canonicalId?deleteFiles=true\|false` | Remove an Aurral-managed album |
 | `GET` | `/api/library/tracks` | List album tracks |
 | `DELETE` | `/api/library/tracks/:id` | Delete a library track file and prune canonical records when no media remains |
 | `POST` | `/api/library/refresh` | Queue a canonical library scan; `mode` is `quick` (default) or `full` to re-read every file |
@@ -128,10 +129,20 @@ response includes `monitoring.releaseGroupIds` for the albums being queued and
 unavailable, the route returns `503` with `metadata_unavailable` and keeps the
 previous mode.
 
+`DELETE /api/library/albums/aurral/:canonicalId` and
+`DELETE /api/library/artists/:mbid` for an Aurral-managed artist cancel
+unfinished downloads first. They return `409` with `download_cancellation_failed`
+when a download client does not confirm the cancellation, and album removal
+returns `409` with `artist_monitored` while Aurral monitors the album's artist.
+
 Cancelling an album stops pending and active downloads and keeps tracks that
 already finished. Requesting the album again retries cancelled and failed
 tracks. Without a configured download source, an Aurral album request saves
 the album and reports `download_source_missing` instead of queueing downloads.
+For Aurral-managed albums, a complete Usenet, Soulseek, or deemix release can
+fill several track jobs with one download attempt. If only some files verify,
+the remaining tracks continue through per-track fallback. Lidarr-managed
+albums keep Lidarr acquisition behavior.
 
 `POST /api/library/downloads/track` requires an authenticated user with the
 `addAlbum` permission.

@@ -46,6 +46,7 @@ import {
   clearCanonicalLibraryPageCache,
   deleteAlbumFromLibrary,
   deleteArtistFromLibrary,
+  deleteAurralAlbumFromLibrary,
   deleteTrackFromLibrary,
   fetchCanonicalLibraryPage,
   getActiveLibraryRefresh,
@@ -1029,6 +1030,8 @@ function LibraryPage() {
       if (!isPreviewLibrary) {
         if (removal.kind === "artist") {
           await deleteArtistFromLibrary(entity.mbid, deleteFiles);
+        } else if (removal.kind === "album" && entity.managedBy === "aurral") {
+          await deleteAurralAlbumFromLibrary(entity.canonicalId || entity.id, deleteFiles);
         } else if (removal.kind === "album") {
           await deleteAlbumFromLibrary(entity.providerId || entity.id, deleteFiles);
         } else {
@@ -2266,7 +2269,7 @@ function LibraryPage() {
                     },
                   ]
                 : []),
-              ...(canDeleteAlbum && album.providerId
+              ...(canDeleteAlbum && (album.providerId || album.managedBy === "aurral")
                 ? [
                     {
                       id: "delete",
@@ -2554,7 +2557,7 @@ function LibraryPage() {
                     separatorBefore: true,
                     onSelect: () => toggleFavorite("album", libraryAlbum),
                   },
-                  ...(canDeleteAlbum && libraryAlbum.providerId
+                  ...(canDeleteAlbum && (libraryAlbum.providerId || libraryAlbum.managedBy === "aurral")
                     ? [
                         {
                           id: "delete",
@@ -2770,6 +2773,7 @@ function LibraryPage() {
         show={libraryRemoval?.kind === "artist"}
         artistName={libraryRemoval?.entity?.name}
         libraryArtistName={libraryRemoval?.entity?.artistName}
+        managedBy={libraryRemoval?.entity?.managedBy}
         deleteFiles={deleteFiles}
         onDeleteFilesChange={setDeleteFiles}
         onCancel={() => setLibraryRemoval(null)}
@@ -2779,6 +2783,7 @@ function LibraryPage() {
       <DeleteAlbumModal
         show={libraryRemoval?.kind === "album"}
         title={libraryRemoval?.entity?.title || libraryRemoval?.entity?.albumName}
+        managedBy={libraryRemoval?.entity?.managedBy}
         deleteFiles={deleteFiles}
         onDeleteFilesChange={setDeleteFiles}
         onCancel={() => setLibraryRemoval(null)}

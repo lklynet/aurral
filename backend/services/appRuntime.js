@@ -349,14 +349,4 @@ export function startBackgroundWorkers({ logger = console } = {}) {
 export function initializeAppRuntime({ logger = console } = {}) {
   if (process.env.AURRAL_TEST_SERVER === "1") startHonkerScheduler();
   startBackgroundWorkers({ logger });
-  // The bundled beets matcher is production-critical for downloads; a broken
-  // Python/beets installation must be obvious at startup.
-  void import("./trackMatching/index.js")
-    .then(({ verifyMatcherRuntime }) => verifyMatcherRuntime())
-    .catch((error) => {
-      logger.warn?.(
-        "[AppRuntime] Track matcher self-test crashed:",
-        error?.message || error,
-      );
-    });
 }

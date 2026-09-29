@@ -62,3 +62,12 @@ test("disabling Lidarr keeps the library root folder configured", async () => {
   assert.equal(payload.lidarrConfigured, false);
   assert.equal(payload.rootFolderConfigured, true);
 });
+
+test("unauthenticated health exposes the native matcher policy version", async () => {
+  const response = await fetch(`${baseUrl}/api/health`);
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.matcher.available, true);
+  assert.ok(payload.matcher.policyVersion);
+});

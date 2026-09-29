@@ -36,9 +36,17 @@ Playlist and flow deletion run in the background. The page reports **removal que
 
 If a download client still shows work after Aurral removes the playlist, check that client's queue. Aurral blocks the removed job from creating a playlist file. If Aurral cannot remove the item from the client, the removal fails and Aurral retries it.
 
+## Albums are missing from the Library
+
+When Lidarr is connected, **Settings > Lidarr > Show available music only** is on by default. It hides albums without downloaded files, including albums that Aurral is still downloading. Turn it off to see them, or follow the download on the album page and in **Activity**. Without Lidarr, the Library shows every album you add.
+
+## Settings warn that roots overlap
+
+Aurral shows this warning when its Downloads Folder and a Lidarr root folder are the same folder or one is inside the other. Aurral allows it, but Lidarr can rename, import, or delete files under a folder it treats as its root. Aurral never moves files to resolve the overlap. To clear the warning, set **Settings > Download clients > Downloads Folder > Path** to a folder outside every Lidarr root folder, and move existing files yourself if you want them there.
+
 ## Files do not appear in Navidrome
 
-- Make sure that Aurral mounts the same media root as Lidarr ([Filesystem and mounts](/getting-started/storage/)).
+- If you use Lidarr, make sure that Aurral mounts the same media root as Lidarr ([Filesystem and mounts](/getting-started/storage/)).
 - Make sure that **Settings > Download clients > Downloads Folder > Path** is under that mount.
 - In **Settings > Playback > Navidrome**, test the Navidrome connection. Changes save automatically.
 - Make sure that Navidrome scans Aurral's downloads path and not only Lidarr's library.

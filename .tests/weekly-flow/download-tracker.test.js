@@ -10,13 +10,15 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps }, trackerModule, qualityProfileService, workerModule] = await setupIsolatedBackend(
+const [isolatedState, { db }, { dbOps }, trackerModule, qualityProfileService, workerModule, orchestratorWorker, honkerDb] = await setupIsolatedBackend(
   "download-tracker",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
   "backend/services/qualityProfileService.js",
   "backend/services/weeklyFlow/weeklyFlowWorker.js",
+  "backend/services/slskdOrchestratorWorker.js",
+  "backend/services/honkerDb.js",
 );
 
 const { WeeklyFlowDownloadTracker } = trackerModule;
@@ -50,6 +52,134 @@ test("getNextPendingMatching skips future-dated retry jobs and returns ready wor
   );
 
   assert.equal(ready?.id, secondId);
+});
+
+test("one album pipeline reserves sibling jobs before queue handoff", () => {
+  const settings = dbOps.getSettings();
+  dbOps.updateSettings({ ...settings, integrations: {
+    ...settings.integrations,
+    slskd: { enabled: true, url: "http://127.0.0.1:9" },
+  } });
+  const queued = [];
+  const tracker = new WeeklyFlowDownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
+  const tracks = ["First", "Second", "Third"].map((trackName, index) => ({
+    artistName: "The Band", albumName: "Album", albumMbid: "album-test",
+    trackName, trackNumber: index + 1, requestGroupId: "album-request",
+  }));
+  const jobIds = tracks.map((track) => tracker.addJob(track, "library"));
+
+  assert.equal(tracker.enqueueDownloadPipeline(jobIds[0]), true);
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0].albumGrab, true);
+  assert.deepEqual(queued[0].albumGroupJobIds, jobIds);
+  assert.deepEqual(jobIds.slice(1).map((id) => tracker.getJob(id).status),
+    ["downloading", "downloading"]);
+  assert.equal(tracker.getNextPending(), null);
+});
+
+test("album grabs are skipped when only a per-track source is enabled", async () => {
+  const binDir = path.join(isolatedState.baseDir, "fake-bin");
+  await mkdir(binDir, { recursive: true });
+  await writeFile(path.join(binDir, "yt-dlp"), "#!/bin/sh\n", { mode: 0o755 });
+  const previousPath = process.env.PATH;
+  process.env.PATH = `${binDir}${path.delimiter}${previousPath}`;
+  try {
+    const settings = dbOps.getSettings();
+    dbOps.updateSettings({ ...settings, integrations: {
+      ...settings.integrations,
+      slskd: { enabled: false },
+      ytdlp: { enabled: true },
+    } });
+    const queued = [];
+    const tracker = new WeeklyFlowDownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
+    const ids = ["First", "Second"].map((trackName, index) => tracker.addJob({
+      artistName: "The Band", albumName: "Album", albumMbid: "ytdlp-album",
+      trackName, trackNumber: index + 1, requestGroupId: "ytdlp-request",
+    }, "library"));
+
+    assert.equal(tracker.enqueueDownloadPipeline(ids[0]), true);
+    assert.equal(queued[0].albumGrab, undefined);
+    assert.equal(tracker.getJob(ids[1]).status, "pending");
+  } finally {
+    process.env.PATH = previousPath;
+  }
+});
+
+test("album siblings return to individual searches when the leader stops mid-grab", async () => {
+  const settings = dbOps.getSettings();
+  dbOps.updateSettings({ ...settings, integrations: {
+    ...settings.integrations,
+    slskd: { enabled: true, url: "http://127.0.0.1:9" },
+  } });
+  const tracker = trackerModule.downloadTracker;
+  const ids = ["First", "Second", "Third"].map((trackName, index) => tracker.addJob({
+    artistName: "The Band", albumName: "Album", albumMbid: "stopped-album",
+    trackName, trackNumber: index + 1, requestGroupId: "stopped-request",
+  }, "library"));
+  assert.equal(tracker.enqueueDownloadPipeline(ids[0]), true);
+  const grab = honkerDb.listHonkerJobs("slskd-pipeline")
+    .find((entry) => entry.payload?.jobId === ids[0]).payload;
+  assert.equal(grab.albumGrab, true);
+
+  tracker.setFailed(ids[0], "Stopped by the user");
+  await orchestratorWorker.processOrchestratorJob(grab);
+
+  for (const id of ids.slice(1)) {
+    const sibling = tracker.getJob(id);
+    assert.equal(sibling.status, "pending");
+    assert.match(sibling.error, /album download ended/);
+  }
+});
+
+test("partial album fallback persists per-track mode across restart", () => {
+  const settings = dbOps.getSettings();
+  dbOps.updateSettings({ ...settings, integrations: {
+    ...settings.integrations,
+    slskd: { enabled: true, url: "http://127.0.0.1:9" },
+  } });
+  const queued = [];
+  const tracker = new WeeklyFlowDownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
+  const ids = ["First", "Second", "Third"].map((trackName, index) => tracker.addJob({
+    artistName: "The Band", albumName: "Album", albumMbid: "partial-album",
+    trackName, trackNumber: index + 1, requestGroupId: "partial-request",
+  }, "library"));
+  assert.equal(tracker.enqueueDownloadPipeline(ids[0]), true);
+  tracker.setPending(ids[1]);
+  tracker.setPending(ids[2]);
+
+  const restarted = new WeeklyFlowDownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
+  assert.equal(restarted.enqueueDownloadPipeline(ids[1]), true);
+  assert.equal(queued.length, 2);
+  assert.equal(queued[1].albumGrab, undefined);
+  assert.equal(restarted.getJob(ids[2]).status, "pending");
+});
+
+test("restart reuses the queued album pipeline instead of submitting another grab", async () => {
+  const settings = dbOps.getSettings();
+  dbOps.updateSettings({ ...settings, integrations: {
+    ...settings.integrations,
+    slskd: { enabled: true, url: "http://127.0.0.1:9" },
+  } });
+  const tracker = new WeeklyFlowDownloadTracker();
+  const ids = ["First", "Second"].map((trackName, index) => tracker.addJob({
+    artistName: "The Band", albumName: "Album", albumMbid: "restart-album",
+    trackName, trackNumber: index + 1, requestGroupId: "restart-request",
+  }, "library"));
+  assert.equal(tracker.enqueueDownloadPipeline(ids[0]), true);
+  const { listHonkerJobs } = await import("../../backend/services/honkerDb.js");
+  const before = listHonkerJobs("slskd-pipeline").filter((entry) => entry.payload?.jobId === ids[0]);
+  assert.equal(before.length, 1);
+  assert.equal(tracker.enqueueDownloadPipeline(ids[1]), true);
+  assert.equal(listHonkerJobs("slskd-pipeline").filter((entry) =>
+    entry.payload?.albumGroupJobIds?.includes(ids[1])).length, 1);
+
+  tracker.resetDownloadingToPending();
+  const restarted = new WeeklyFlowDownloadTracker();
+  assert.equal(restarted.enqueueDownloadPipeline(ids[1]), true);
+  assert.equal(restarted.enqueueDownloadPipeline(ids[0]), true);
+  const after = listHonkerJobs("slskd-pipeline").filter((entry) => entry.payload?.jobId === ids[0]);
+  assert.equal(after.length, 1);
+  assert.equal(restarted.getJob(ids[1]).status, "downloading");
 });
 
 test("a web-side tracker reads job changes made by the flow owner", () => {

@@ -3,31 +3,24 @@ import test from "node:test";
 
 import { resolveCanonicalAvailableOnly } from "../../backend/routes/library/handlers/canonical.js";
 
+const connected = (extra = {}) => ({
+  integrations: { lidarr: { url: "http://lidarr:8686", apiKey: "key", ...extra } },
+});
+
 test("explicit availableOnly query param overrides the configured default", () => {
-  const settingsOn = { integrations: { lidarr: { availableOnly: true } } };
-  const settingsOff = { integrations: { lidarr: { availableOnly: false } } };
-
-  assert.equal(resolveCanonicalAvailableOnly("true", settingsOff), true);
-  assert.equal(resolveCanonicalAvailableOnly("false", settingsOn), false);
+  assert.equal(resolveCanonicalAvailableOnly("true", connected({ availableOnly: false })), true);
+  assert.equal(resolveCanonicalAvailableOnly("false", connected({ availableOnly: true })), false);
+  assert.equal(resolveCanonicalAvailableOnly("true", {}), true);
 });
 
-test("absent availableOnly query param follows the lidarr setting", () => {
-  assert.equal(
-    resolveCanonicalAvailableOnly(undefined, { integrations: { lidarr: { availableOnly: true } } }),
-    true,
-  );
-  assert.equal(
-    resolveCanonicalAvailableOnly(undefined, { integrations: { lidarr: { availableOnly: false } } }),
-    false,
-  );
+test("with Lidarr connected, the setting decides and defaults to on", () => {
+  assert.equal(resolveCanonicalAvailableOnly(undefined, connected({ availableOnly: true })), true);
+  assert.equal(resolveCanonicalAvailableOnly(undefined, connected({ availableOnly: false })), false);
+  assert.equal(resolveCanonicalAvailableOnly(undefined, connected()), true);
+  assert.equal(resolveCanonicalAvailableOnly(undefined, connected({ enabled: false })), true);
 });
 
-test("absent query param and unset setting defaults to available-only (on)", () => {
-  assert.equal(resolveCanonicalAvailableOnly(undefined, undefined), true);
-  assert.equal(resolveCanonicalAvailableOnly(undefined, {}), true);
-  assert.equal(resolveCanonicalAvailableOnly(undefined, { integrations: {} }), true);
-  assert.equal(
-    resolveCanonicalAvailableOnly(undefined, { integrations: { lidarr: {} } }),
-    true,
-  );
+test("without a Lidarr connection, nothing is hidden", () => {
+  assert.equal(resolveCanonicalAvailableOnly(undefined, undefined), false);
+  assert.equal(resolveCanonicalAvailableOnly(undefined, { integrations: { lidarr: { availableOnly: true } } }), false);
 });

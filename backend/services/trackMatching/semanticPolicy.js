@@ -1,9 +1,7 @@
 // Aurral-owned semantic variant policy.
 //
-// beets' string distance under-penalizes parenthesized descriptors ("Get
-// Lucky" vs "Get Lucky (Live)" is only ~0.1), so variant contradictions are
-// detected here BEFORE candidates reach beets. Contradictions are
-// non-overridable: positive fuzzy-title evidence must never outweigh them.
+// Variant contradictions are non-overridable: positive title evidence must
+// never outweigh them.
 //
 // Variant detection is intentionally conservative: it only fires on explicit
 // descriptors, never on words that commonly appear inside real titles
@@ -300,11 +298,8 @@ function isPromoGroup(inner) {
   return words.length > 0 && words.every((word) => PROMO_GROUP_WORDS.has(word));
 }
 
-// Version descriptors move a lot in file and video titles. beets string
-// distance only lightly penalizes them, but the semantic policy has already
-// judged variant compatibility — so identity scoring compares core titles.
-// Descriptors preserved via extractVariants() never reach this function
-// destructively.
+// Version descriptors move a lot in file and video titles. Identity scoring
+// compares core titles after variant compatibility is checked.
 export function stripPromoDescriptors(value) {
   let text = String(value || "").trim();
   text = text.replace(/[([]([^)\]]*)[)\]]/g, (group, inner) => (isPromoGroup(inner) ? " " : group));
