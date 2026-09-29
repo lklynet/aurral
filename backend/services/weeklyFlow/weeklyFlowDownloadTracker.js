@@ -441,20 +441,19 @@ export class WeeklyFlowDownloadTracker {
   enqueueDownloadPipeline(jobId) {
     if (!isAnyDownloadSourceConfigured()) return false;
     const job = this.jobs.get(jobId);
-    if (!job || job.status !== "pending") return false;
-    if (this.isSlskdDispatched(jobId)) return false;
+    if (!job) return false;
     const activeGrab = job.requestGroupId ? listHonkerJobs("slskd-pipeline").find((entry) =>
-      entry.payload?.albumGrab === true && entry.payload?.jobId === jobId
-      && entry.payload?.albumGroupJobIds?.includes(jobId)) : null;
-    if (activeGrab) {
+      entry.payload?.albumGrab === true && entry.payload?.albumGroupJobIds?.includes(jobId)) : null;
+    if (activeGrab && ["pending", "downloading"].includes(job.status)) {
       for (const siblingId of activeGrab.payload.albumGroupJobIds) {
-        if (siblingId !== jobId && this.jobs.get(siblingId)?.status === "pending") {
+        if (this.jobs.get(siblingId)?.status === "pending") {
           this.setDownloading(siblingId);
         }
       }
       this.markSlskdDispatched(jobId);
       return true;
     }
+    if (job.status !== "pending" || this.isSlskdDispatched(jobId)) return false;
     const payload = buildPipelinePayload(job);
     if (!isPipelinePayloadActive(payload)) return false;
     const siblings = job.managedBy === "aurral" && job.playlistType === "library"

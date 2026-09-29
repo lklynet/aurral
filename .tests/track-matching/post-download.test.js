@@ -84,6 +84,21 @@ btest("strong original tags and matching duration verify", async () => {
   assert.ok(outcome.native.evidence.includes("duration"));
 });
 
+test("filename variants reject a tagged original before import", async () => {
+  for (const variant of ["Cover", "Nightcore"]) {
+    const outcome = await validateDownloadedTrackFile({
+      request: GET_LUCKY,
+      filePath: `/staging/Get Lucky (${variant}).flac`,
+      source: "soulseek",
+      options: { parseFile: stubParseFile(stubParsed({
+        title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories",
+      })) },
+    });
+    assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED, variant);
+    assert.equal(outcome.valid, false, variant);
+  }
+});
+
 test("karaoke tags are auto-rejected, never routed to review", async () => {
   const outcome = await validateDownloadedTrackFile({
     request: GET_LUCKY,

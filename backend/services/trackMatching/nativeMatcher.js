@@ -168,6 +168,59 @@ export function decideRecording(request, candidates, policy = MATCH_POLICY) {
   return { decision, selectedIndex, candidates: assessed, policyVersion: policy.version };
 }
 
+function maximumWeightColumns(weights) {
+  const rowCount = weights.length;
+  const columnCount = weights[0]?.length || 0;
+  const rowPotential = new Array(rowCount + 1).fill(0);
+  const columnPotential = new Array(columnCount + 1).fill(0);
+  const rowForColumn = new Array(columnCount + 1).fill(0);
+  const previousColumn = new Array(columnCount + 1).fill(0);
+  for (let row = 1; row <= rowCount; row += 1) {
+    rowForColumn[0] = row;
+    let column = 0;
+    const distance = new Array(columnCount + 1).fill(Infinity);
+    const visited = new Array(columnCount + 1).fill(false);
+    do {
+      visited[column] = true;
+      const currentRow = rowForColumn[column];
+      let nextColumn = 0;
+      let smallest = Infinity;
+      for (let candidate = 1; candidate <= columnCount; candidate += 1) {
+        if (visited[candidate]) continue;
+        const reducedCost = -weights[currentRow - 1][candidate - 1]
+          - rowPotential[currentRow] - columnPotential[candidate];
+        if (reducedCost < distance[candidate]) {
+          distance[candidate] = reducedCost;
+          previousColumn[candidate] = column;
+        }
+        if (distance[candidate] < smallest) {
+          smallest = distance[candidate];
+          nextColumn = candidate;
+        }
+      }
+      for (let candidate = 0; candidate <= columnCount; candidate += 1) {
+        if (visited[candidate]) {
+          rowPotential[rowForColumn[candidate]] += smallest;
+          columnPotential[candidate] -= smallest;
+        } else {
+          distance[candidate] -= smallest;
+        }
+      }
+      column = nextColumn;
+    } while (rowForColumn[column] !== 0);
+    do {
+      const nextColumn = previousColumn[column];
+      rowForColumn[column] = rowForColumn[nextColumn];
+      column = nextColumn;
+    } while (column !== 0);
+  }
+  const columns = new Array(rowCount).fill(-1);
+  for (let column = 1; column <= columnCount; column += 1) {
+    if (rowForColumn[column]) columns[rowForColumn[column] - 1] = column - 1;
+  }
+  return columns;
+}
+
 export function assignReleaseFiles(tracks, files, policy = MATCH_POLICY) {
   const titleCounts = new Map();
   for (const track of tracks) {
@@ -196,24 +249,21 @@ export function assignReleaseFiles(tracks, files, policy = MATCH_POLICY) {
     && (edge.evidence.includes("title") || edge.evidence.includes("position"))
     && edge.score >= policy.selectableScore)
     .sort((left, right) => right.score - left.score || left.fileIndex - right.fileIndex));
+  const cardinalityBonus = tracks.length + 1;
+  const weights = edges.map((trackEdges) => {
+    const row = new Array(files.length + tracks.length).fill(0);
+    for (const edge of trackEdges) row[edge.fileIndex] = cardinalityBonus + edge.score;
+    return row;
+  });
+  const assignedColumns = maximumWeightColumns(weights);
   const trackForFile = new Array(files.length).fill(-1);
-  function match(trackIndex, visited) {
-    for (const edge of edges[trackIndex]) {
-      if (visited.has(edge.fileIndex)) continue;
-      visited.add(edge.fileIndex);
-      const previous = trackForFile[edge.fileIndex];
-      if (previous === -1 || match(previous, visited)) {
-        trackForFile[edge.fileIndex] = trackIndex;
-        return true;
-      }
-    }
-    return false;
-  }
-  for (let trackIndex = 0; trackIndex < tracks.length; trackIndex += 1) match(trackIndex, new Set());
-  const pairs = trackForFile.flatMap((trackIndex, fileIndex) => trackIndex < 0 ? [] : [{
-    trackIndex, fileIndex,
-    score: edges[trackIndex].find((edge) => edge.fileIndex === fileIndex).score,
-  }]).sort((left, right) => left.trackIndex - right.trackIndex);
+  const pairs = assignedColumns.flatMap((fileIndex, trackIndex) => {
+    const edge = fileIndex < files.length
+      ? edges[trackIndex].find((item) => item.fileIndex === fileIndex) : null;
+    if (!edge) return [];
+    trackForFile[fileIndex] = trackIndex;
+    return [{ trackIndex, fileIndex, score: edge.score }];
+  });
   return {
     pairs,
     unassignedTrackIndexes: tracks.flatMap((_, index) => pairs.some((pair) => pair.trackIndex === index) ? [] : [index]),

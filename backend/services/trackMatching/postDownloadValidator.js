@@ -205,7 +205,7 @@ export async function validateDownloadedTrackFile({
     recordingMbid: trackRequest.recordingMbid,
   }, {
     title: actual.cleanedTitle || actual.title,
-    fileNameTitle: /\s[-–—]\s|\b(?:live|remix|karaoke|instrumental|acoustic|demo|edit)\b/iu.test(actual.filename)
+    fileNameTitle: /\s[-–—]\s|\b(?:live|remix|karaoke|instrumental|acoustic|demo|edit|cover|nightcore)\b/iu.test(actual.filename)
       ? claimedTitle(parseListingTitle(actual.filename).title) : null,
     artists: actual.artists,
     durationMs: actualDurationMs,
@@ -216,7 +216,7 @@ export async function validateDownloadedTrackFile({
   const contradictions = verification.contradictions.map((entry) => {
     if (entry === "recording-mbid") return "recording-mbid-conflict";
     if (entry === "variant" || entry === "filename-variant") {
-      const namedVariant = ["karaoke", "live", "remix", "acoustic", "instrumental", "demo", "edit", "cover"]
+      const namedVariant = ["karaoke", "live", "remix", "acoustic", "instrumental", "demo", "edit", "cover", "nightcore"]
         .find((name) => new RegExp(`\\b${name}\\b`, "iu").test(`${actual.title} ${actual.filename}`));
       return namedVariant || entry;
     }

@@ -113,9 +113,13 @@ test("restart reuses the queued album pipeline instead of submitting another gra
   const { listHonkerJobs } = await import("../../backend/services/honkerDb.js");
   const before = listHonkerJobs("slskd-pipeline").filter((entry) => entry.payload?.jobId === ids[0]);
   assert.equal(before.length, 1);
+  assert.equal(tracker.enqueueDownloadPipeline(ids[1]), true);
+  assert.equal(listHonkerJobs("slskd-pipeline").filter((entry) =>
+    entry.payload?.albumGroupJobIds?.includes(ids[1])).length, 1);
 
   tracker.resetDownloadingToPending();
   const restarted = new WeeklyFlowDownloadTracker();
+  assert.equal(restarted.enqueueDownloadPipeline(ids[1]), true);
   assert.equal(restarted.enqueueDownloadPipeline(ids[0]), true);
   const after = listHonkerJobs("slskd-pipeline").filter((entry) => entry.payload?.jobId === ids[0]);
   assert.equal(after.length, 1);

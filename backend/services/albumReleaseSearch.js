@@ -8,16 +8,35 @@ import {
 
 const AUDIO_EXTENSIONS = new Set([".flac", ".mp3", ".m4a", ".ogg", ".wav", ".aac", ".opus", ".alac", ".ape", ".wma"]);
 
-function folderNamesArtist(folder, job) {
-  const names = [job.artistName, ...(job.artistAliases || [])]
+function folderFitsRequest(folder, jobs) {
+  const names = jobs.flatMap((job) => [job.artistName, ...(job.artistAliases || [])])
     .map(normalizeMatchText).filter(Boolean);
-  return String(folder.directoryPath || "").split(/[\\/]/).some((segment) =>
-    names.includes(normalizeMatchText(segment)));
+  const albumName = normalizeMatchText(jobs[0].albumName);
+  return String(folder.directoryPath || "").split(/[\\/]/).some((segment) => {
+    const label = normalizeMatchText(segment);
+    return names.some((name) => ` ${label} `.includes(` ${name} `))
+      || (albumName && label === albumName);
+  });
 }
 
-function soulseekFile(item, job) {
+function groupAlbumDiscFolders(groups) {
+  const albums = new Map();
+  for (const group of groups) {
+    const parts = String(group.directoryPath || "").split("/");
+    const discDirectory = /^(?:cd|disc|disk)\s*0*\d{1,2}(?:\s*of\s*\d+)?$/iu.test(parts.at(-1));
+    const directoryPath = discDirectory && parts.length > 1
+      ? parts.slice(0, -1).join("/") : group.directoryPath;
+    const key = `${group.user}\0${directoryPath}`;
+    const album = albums.get(key) || { ...group, directoryPath, audioFiles: [] };
+    album.audioFiles.push(...group.audioFiles);
+    albums.set(key, album);
+  }
+  return [...albums.values()];
+}
+
+function soulseekFile(item, jobs) {
   const parsed = parseListingTitle(item.file);
-  const names = [job.artistName, ...(job.artistAliases || [])].filter(Boolean);
+  const names = jobs.flatMap((job) => [job.artistName, ...(job.artistAliases || [])]).filter(Boolean);
   let title = parsed.title || "";
   let artist = null;
   for (const name of names) {
@@ -49,12 +68,12 @@ export function selectSoulseekAlbumFolder(results, jobs) {
     recordingMbid: job.trackMbid,
     trackNumber: job.trackNumber,
   }));
-  const groups = groupFlowSearchResults(results, {
+  const groups = groupAlbumDiscFolders(groupFlowSearchResults(results, {
     isAudioFile: (filePath) => AUDIO_EXTENSIONS.has(getFileExtension(filePath)),
-  });
-  const folders = groups.filter((group) => folderNamesArtist(group, leader)).map((group) => ({
+  }));
+  const folders = groups.filter((group) => folderFitsRequest(group, jobs)).map((group) => ({
     rawGroup: group,
-    files: group.audioFiles.map((item) => soulseekFile(item, leader)),
+    files: group.audioFiles.map((item) => soulseekFile(item, jobs)),
   }));
   const result = selectReleaseSession({
     releases: [{ tracks }], folders,

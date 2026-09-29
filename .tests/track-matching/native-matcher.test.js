@@ -134,6 +134,18 @@ test("one-to-one release assignment handles scrambled files and leaves wrong var
   assert.equal(assessment.coverage, 1);
 });
 
+test("release assignment keeps the highest-scoring complete pairing", () => {
+  const tracks = [
+    { title: "Interlude", artists: ["The Band"], durationMs: 100000 },
+    { title: "Interlude", artists: ["The Band"], durationMs: 101000 },
+  ];
+  const files = [
+    { title: "Interlude", artists: ["The Band"], durationMs: 100000 },
+    { title: "Interlude", artists: ["The Band"], durationMs: 102000 },
+  ];
+  assert.deepEqual(assignReleaseFiles(tracks, files).pairs.map((pair) => pair.fileIndex), [0, 1]);
+});
+
 test("an exact album listing can fit when filenames lack artist tags", () => {
   const titles = Array.from({ length: 11 }, (_, index) => `Song ${index + 1}`);
   const result = assessRelease(
