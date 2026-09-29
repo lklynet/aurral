@@ -335,7 +335,7 @@ export function musicbrainzGetCachedArtistMbidByName(artistName) {
   return cached.mbid || null;
 }
 
-async function resolveCachedArtistMbid(cacheKey, artistName, resolve) {
+async function resolveCachedArtistMbid(cacheKey, artistName, resolve, { throwOnError = false } = {}) {
   const cached = dbOps.getMusicbrainzArtistMbidCache(cacheKey);
   const now = Date.now();
   const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -352,6 +352,7 @@ async function resolveCachedArtistMbid(cacheKey, artistName, resolve) {
     dbOps.setMusicbrainzArtistMbidCache(cacheKey, resolved);
     return resolved;
   } catch (e) {
+    if (throwOnError) throw e;
     if (cached) {
       return cached.mbid || null;
     }
@@ -376,6 +377,7 @@ export async function musicbrainzResolveLibraryArtistMbid(artistName) {
     `library:${normalizeArtistNameKey(rawName)}`,
     rawName,
     resolveMetadataLibraryArtistByName,
+    { throwOnError: true },
   );
 }
 

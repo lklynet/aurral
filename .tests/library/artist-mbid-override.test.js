@@ -153,6 +153,11 @@ test("a user can link an unmatched artist to a MusicBrainz ID", async () => {
 test("linking to an MBID already in the library merges the albums into that artist", async () => {
   const existing = createArtist("Other Artist", { mbid: OTHER_MBID });
   const duplicate = createArtist("Other Artist Variant");
+  db.prepare(
+    `INSERT INTO library_release_calendar
+      (release_group_mbid, artist_id, title, release_date, refreshed_at, created_at, updated_at)
+     VALUES ('calendar-release', ?, 'Upcoming', '2099-01-01', 0, 0, 0)`,
+  ).run(duplicate.artist.id);
 
   const response = await updateMbid(duplicate.artist.id, OTHER_MBID);
 
@@ -162,6 +167,27 @@ test("linking to an MBID already in the library merges the albums into that arti
   assert.equal(
     db.prepare("SELECT artist_id FROM library_albums WHERE id = ?").get(duplicate.album.id).artist_id,
     existing.artist.id,
+  );
+  assert.equal(
+    db.prepare("SELECT artist_id FROM library_release_calendar WHERE release_group_mbid = 'calendar-release'")
+      .get()?.artist_id,
+    existing.artist.id,
+  );
+});
+
+test("removing an MBID never merges two artists that share a name", async () => {
+  const unmatched = createArtist("Shared Name");
+  const tagged = createArtist("Shared Name", { mbid: KNOWN_MBID.replace(/1$/, "9") });
+
+  const response = await updateMbid(tagged.artist.id, null);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.merged, false);
+  assert.equal(artistRow(tagged.artist.id).mbid, null);
+  assert.ok(artistRow(unmatched.artist.id));
+  assert.equal(
+    db.prepare("SELECT artist_id FROM library_albums WHERE id = ?").get(tagged.album.id).artist_id,
+    tagged.artist.id,
   );
 });
 

@@ -617,7 +617,7 @@ test("a configured scan resolves untagged artists only on one unambiguous MusicB
   ).get(`${name} Album`);
 
   try {
-    for (const name of Object.values(names)) {
+    for (const name of [names.renamed, names.merged, names.ambiguous]) {
       await createAudioFile(root, `${name}/${name} Album/01 Track.mp3`);
     }
     await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
@@ -632,6 +632,9 @@ test("a configured scan resolves untagged artists only on one unambiguous MusicB
       0,
     );
     assert.equal(artistFor(names.ambiguous).mbid, null);
+
+    await createAudioFile(root, `${names.offline}/${names.offline} Album/01 Track.mp3`);
+    await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
     assert.equal(artistFor(names.offline).mbid, null);
 
     offlineAvailable = true;

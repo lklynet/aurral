@@ -130,6 +130,8 @@ function moveLibraryArtistStars(fromKey, toKey) {
 function mergeLibraryArtistInto(fallback, resolved) {
   if (!fallback || !resolved || fallback.id === resolved.id) return false;
   let changed = moveLibraryArtistStars(fallback.identity_key, resolved.identity_key);
+  changed = db.prepare("UPDATE OR IGNORE library_release_calendar SET artist_id = ? WHERE artist_id = ?")
+    .run(resolved.id, fallback.id).changes > 0 || changed;
   changed = db.prepare("UPDATE library_albums SET artist_id = ? WHERE artist_id = ?")
     .run(resolved.id, fallback.id).changes > 0 || changed;
   changed = db.prepare("DELETE FROM library_artists WHERE id = ?")
@@ -185,16 +187,20 @@ export function setLibraryArtistMbid(artistId, mbid) {
     if (!artist) return { error: "not_found" };
     const metadata = dbHelpers.parseJSON(artist.metadata_json) || {};
     if (metadata.id != null) return { error: "lidarr_managed" };
+    const fallbackKey = buildFallbackIdentityKey("artist", artist.name);
+    const fallbackTaken = !mbid && db
+      .prepare("SELECT 1 FROM library_artists WHERE id != ? AND identity_key = ?")
+      .get(artist.id, fallbackKey);
     const key = mbid
       ? buildIdentityKey("mbid", mbid)
-      : buildFallbackIdentityKey("artist", artist.name);
-    const target = db
-      .prepare(
-        mbid
-          ? "SELECT * FROM library_artists WHERE id != ? AND (identity_key = ? OR mbid = ?) ORDER BY identity_key = ? DESC, id LIMIT 1"
-          : "SELECT * FROM library_artists WHERE id != ? AND identity_key = ? AND mbid IS NULL",
-      )
-      .get(...(mbid ? [artist.id, key, mbid, key] : [artist.id, key]));
+      : fallbackTaken ? `${fallbackKey}:${artist.id}` : fallbackKey;
+    const target = mbid
+      ? db
+          .prepare(
+            "SELECT * FROM library_artists WHERE id != ? AND (identity_key = ? OR mbid = ?) ORDER BY identity_key = ? DESC, id LIMIT 1",
+          )
+          .get(artist.id, key, mbid, key)
+      : null;
     if (target) {
       const targetMetadata = dbHelpers.parseJSON(target.metadata_json) || {};
       mergeLibraryArtistInto(artist, target);

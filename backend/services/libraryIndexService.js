@@ -110,7 +110,15 @@ async function canonicalizeAurralArtistNames(jobMetadataByPath, paths = null) {
 async function resolveUnmatchedLibraryArtists() {
   let changed = false;
   for (const artist of getUnresolvedLibraryArtists()) {
-    const mbid = await musicbrainzResolveLibraryArtistMbid(artist.name);
+    let mbid;
+    try {
+      mbid = await musicbrainzResolveLibraryArtistMbid(artist.name);
+    } catch (error) {
+      logger.warn("library", "Stopped matching unmatched artists; metadata provider unavailable", {
+        message: error?.message || String(error),
+      });
+      break;
+    }
     if (mbid && assignLibraryArtistMbid(artist.id, mbid)) changed = true;
   }
   return changed;

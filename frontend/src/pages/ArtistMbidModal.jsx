@@ -107,6 +107,7 @@ export default function ArtistMbidModal({ artist, onClose, onSaved }) {
           }}
           className="input input--tall"
           placeholder="https://musicbrainz.org/artist/…"
+          disabled={Boolean(saving)}
           spellCheck={false}
           autoComplete="off"
           autoFocus
