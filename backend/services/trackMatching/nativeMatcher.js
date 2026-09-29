@@ -32,7 +32,7 @@ export function parseListingTitle(path) {
   const base = String(path || "").split(/[\\/]/).at(-1).replace(/\.[^.]+$/, "").trim();
   if (/^\d{1,3}$/u.test(base)) return { title: null, trackNumber: Number(base) };
   const patterns = [
-    /^(\d{1,2})-(\d{1,3})\s*[-.]\s*(.+)$/u,
+    /^(\d{1,2})-(\d{1,3})(?:\s*[-.]\s*|\s+)(.+)$/u,
     /^.+?\s+-\s+CD(\d{1,2})\s+-\s+(\d{1,3})\s+(.+)$/iu,
     /^\[(\d{1,2})\.(\d{1,3})\]\s*(.+)$/u,
     /^.+?\s+-\s+(\d{1,3})\s+-\s+(.+)$/u,
@@ -100,8 +100,8 @@ function asNames(value) {
 
 function compareRecording(request, candidate, policy) {
   const contradictions = [];
-  const requestId = request.recordingMbid || request.recording_mbid;
-  const candidateId = candidate.recordingMbid || candidate.recording_mbid;
+  const requestId = String(request.recordingMbid || request.recording_mbid || "").toLowerCase();
+  const candidateId = String(candidate.recordingMbid || candidate.recording_mbid || "").toLowerCase();
   if (requestId && candidateId && requestId !== candidateId) contradictions.push("recording-mbid");
   const requestVariants = variants(request.title);
   const candidateVariants = variants(candidate.title);
@@ -315,6 +315,14 @@ export function selectReleaseSession({ releases = [], folders = [], requestedRec
 
 export function verifyDownloadedRecording(request, observed, policy = MATCH_POLICY) {
   const result = compareRecording(request, observed, policy);
+  const expectedTrackNumber = Number(request.trackNumber || 0);
+  const actualTrackNumber = Number(observed.trackNumber || 0);
+  const siblingTitle = expectedTrackNumber > 0 && actualTrackNumber > 0
+    && expectedTrackNumber !== actualTrackNumber
+    ? request.albumTrackTitles?.[actualTrackNumber - 1] : null;
+  if (siblingTitle && normalizeMatchText(siblingTitle) !== normalizeMatchText(request.title)) {
+    result.contradictions.push("sibling-track-index");
+  }
   if (result.titleSimilarity >= policy.minTitleSimilarity
     && observed.fileNameTitle && normalizeMatchText(observed.fileNameTitle)
     && similarity(coreMatchTitle(request.title), coreMatchTitle(observed.fileNameTitle))

@@ -84,6 +84,31 @@ btest("strong original tags and matching duration verify", async () => {
   assert.ok(outcome.native.evidence.includes("duration"));
 });
 
+test("recording IDs differing only in case verify", async () => {
+  const outcome = await validateDownloadedTrackFile({
+    request: { ...GET_LUCKY, recordingMbid: "A1234567-0000-4000-8000-000000000000" },
+    filePath: "/staging/Get Lucky.flac",
+    source: "deemix",
+    options: { parseFile: stubParseFile(stubParsed({
+      title: "Get Lucky", artist: "Daft Punk", mbid: "a1234567-0000-4000-8000-000000000000",
+    })) },
+  });
+  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+});
+
+test("a downloaded file tagged as a different album sibling is conflicted", async () => {
+  const outcome = await validateDownloadedTrackFile({
+    request: { ...GET_LUCKY, trackNumber: 2, albumTrackTitles: ["Other Song", "Get Lucky"] },
+    filePath: "/staging/Get Lucky.flac",
+    source: "deemix",
+    options: { parseFile: stubParseFile(stubParsed({
+      title: "Get Lucky", artist: "Daft Punk", track: 1,
+    })) },
+  });
+  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+  assert.ok(outcome.contradictions.includes("sibling-track-index"));
+});
+
 test("filename variants reject a tagged original before import", async () => {
   for (const variant of ["Cover", "Nightcore"]) {
     const outcome = await validateDownloadedTrackFile({

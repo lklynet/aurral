@@ -203,6 +203,8 @@ export async function validateDownloadedTrackFile({
     artists: [trackRequest.artistName, ...(trackRequest.artistAliases || [])].filter(Boolean),
     durationMs: trackRequest.durationMs,
     recordingMbid: trackRequest.recordingMbid,
+    trackNumber: trackRequest.trackNumber,
+    albumTrackTitles: trackRequest.albumTrackTitles,
   }, {
     title: actual.cleanedTitle || actual.title,
     fileNameTitle: /\s[-–—]\s|\b(?:live|remix|karaoke|instrumental|acoustic|demo|edit|cover|nightcore)\b/iu.test(actual.filename)
@@ -210,6 +212,7 @@ export async function validateDownloadedTrackFile({
     artists: actual.artists,
     durationMs: actualDurationMs,
     recordingMbid: actual.recordingMbid,
+    trackNumber: actual.trackNumber,
   });
   const hasOriginalIdentityTags = Boolean(readTagText(parsed?.common?.title)
     || readTagText(parsed?.common?.artist));

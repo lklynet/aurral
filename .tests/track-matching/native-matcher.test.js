@@ -35,6 +35,7 @@ test("listing titles parse common album file layouts without changing song subti
   const examples = [
     ["01 Sexy Boy.flac", "Sexy Boy"],
     ["1-02 - Orfeo ed Euridice: Melodie.flac", "Orfeo ed Euridice: Melodie"],
+    ["1-02 Song.flac", "Song"],
     ["Evil Genius - CD1 - 01 Off the Boat.flac", "Off the Boat"],
     ["[1.03] Moscow Olympics.flac", "Moscow Olympics"],
     ["Grateful Dead - 01 - Estimated Prophet.flac", "Estimated Prophet"],
@@ -42,6 +43,7 @@ test("listing titles parse common album file layouts without changing song subti
     ["06.flac", null],
   ];
   for (const [path, title] of examples) assert.equal(parseListingTitle(path).title, title);
+  assert.equal(parseListingTitle("1-02 Song.flac").trackNumber, 2);
 });
 
 test("known recording, variant, and duration contradictions cannot be rescued by title", () => {
