@@ -85,8 +85,13 @@ export const ArtistCard = memo(
   }) => {
     const navigateTo = artist.navigateTo || artist.id;
     const hasValidMbid = navigateTo && navigateTo !== "null" && navigateTo !== "undefined";
+    const canOpen = Boolean(artist.libraryPath || hasValidMbid);
     const artistMetaText = getRecommendationReason(artist);
     const handleClick = useCallback(() => {
+      if (artist.libraryPath) {
+        onNavigate(artist.libraryPath);
+        return;
+      }
       if (hasValidMbid) {
         onNavigate(`/artist/${navigateTo}`, {
           state: {
@@ -95,16 +100,16 @@ export const ArtistCard = memo(
           },
         });
       }
-    }, [navigateTo, hasValidMbid, artist.name, isInLibrary, onNavigate]);
+    }, [navigateTo, hasValidMbid, artist.libraryPath, artist.name, isInLibrary, onNavigate]);
     return (
       <div
         role="button"
-        tabIndex={hasValidMbid ? 0 : -1}
+        tabIndex={canOpen ? 0 : -1}
         onClick={handleClick}
         onKeyDown={(event) => handleCoverKeyDown(event, handleClick)}
-        className={`artist-discover-card artist-discover-card--artist${hasValidMbid ? "" : " is-disabled"}`}
+        className={`artist-discover-card artist-discover-card--artist${canOpen ? "" : " is-disabled"}`}
         aria-label={`Open ${artist.name}`}
-        aria-disabled={!hasValidMbid}
+        aria-disabled={!canOpen}
       >
         <div className="artist-discover-card__cover">
           <ArtistImage
@@ -124,7 +129,7 @@ export const ArtistCard = memo(
             <div className="artist-card-title-row--discover">
               <Tooltip content={artist.name}>
                 <span
-                  className={`artist-card-title--discover${hasValidMbid ? "" : " is-disabled"}`}
+                  className={`artist-card-title--discover${canOpen ? "" : " is-disabled"}`}
                 >
                   {artist.name}
                 </span>
@@ -168,6 +173,8 @@ export const ArtistCard = memo(
       prevProps.artist.imageUrl === nextProps.artist.imageUrl &&
       prevProps.artist.name === nextProps.artist.name &&
       prevProps.artist.navigateTo === nextProps.artist.navigateTo &&
+      prevProps.artist.libraryPath === nextProps.artist.libraryPath &&
+      prevProps.artist.canonicalId === nextProps.artist.canonicalId &&
       prevProps.artist.subtitle === nextProps.artist.subtitle &&
       getRecommendationReason(prevProps.artist) === getRecommendationReason(nextProps.artist) &&
       prevProps.status === nextProps.status &&

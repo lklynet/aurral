@@ -201,12 +201,15 @@ export function upsertLibraryArtist({
       }
     }
     const existing = db.prepare("SELECT * FROM library_artists WHERE identity_key = ?").get(key);
+    const mergedMetadataText = existing && metadata
+      ? stringify({ ...dbHelpers.parseJSON(existing.metadata_json), ...metadata })
+      : metadataText;
     if (
       existing &&
       (artistMbid == null || artistMbid === existing.mbid) &&
       artistName === existing.name &&
       (artistSortName == null || artistSortName === existing.sort_name) &&
-      (metadataText == null || metadataText === existing.metadata_json)
+      (mergedMetadataText == null || mergedMetadataText === existing.metadata_json)
     ) {
       if (syncSearch) syncLibrarySearchArtist(existing.id);
       return existing;
@@ -220,7 +223,7 @@ export function upsertLibraryArtist({
          sort_name = COALESCE(excluded.sort_name, library_artists.sort_name),
          metadata_json = COALESCE(excluded.metadata_json, library_artists.metadata_json),
          updated_at = excluded.updated_at`,
-    ).run(key, artistMbid, artistName, artistSortName, metadataText, timestamp, timestamp);
+    ).run(key, artistMbid, artistName, artistSortName, mergedMetadataText, timestamp, timestamp);
     libraryChanged = true;
     const row = db.prepare("SELECT * FROM library_artists WHERE identity_key = ?").get(key);
     if (syncSearch) syncLibrarySearchArtist(row?.id);
