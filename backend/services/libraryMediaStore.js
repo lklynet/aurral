@@ -540,7 +540,7 @@ export function removeLibraryAlbumTracksWithoutAvailableMedia(albumId) {
       touchLibraryAlbum(normalizedAlbumId);
     }
     return { albumRemoved, changed: albumRemoved || trackIds.length > 0 };
-  })();
+  }).immediate();
   if (result.changed) invalidateLibraryCache();
   return { albumRemoved: result.albumRemoved };
 }
