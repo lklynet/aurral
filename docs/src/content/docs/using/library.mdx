@@ -44,6 +44,14 @@ media for the track is available, it also removes the canonical track and any
 empty album or artist record. If one of several files cannot be deleted, Aurral
 keeps the track until a later deletion succeeds.
 
+Removing an Aurral-owned album or artist cancels its unfinished downloads.
+Choose **Delete files** to also delete the files Aurral downloaded for it;
+otherwise they stay on disk. Files from Lidarr are never deleted, so an album
+with Lidarr files stays in the Library with just those tracks. While Aurral
+monitors an artist, you cannot remove one of its albums, because monitoring
+would add it again. Set the artist's monitoring to **None** first, or remove
+the artist. Removing a Lidarr artist leaves any Aurral-owned albums in place.
+
 Navidrome remains optional. Lidarr is optional. When it is configured, Aurral
 uses it for managed library changes and explicit provider actions.
 
