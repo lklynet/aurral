@@ -686,6 +686,7 @@ function ArtistDetailsPage() {
         show={library.showDeleteModal && !!libraryArtist}
         artistName={artist?.name}
         libraryArtistName={libraryArtist?.artistName}
+        managedBy={libraryArtist?.managedBy}
         deleteFiles={library.deleteFiles}
         onDeleteFilesChange={library.setDeleteFiles}
         onCancel={library.handleDeleteCancel}
@@ -696,6 +697,8 @@ function ArtistDetailsPage() {
       <DeleteAlbumModal
         show={!!library.showDeleteAlbumModal}
         title={library.showDeleteAlbumModal?.title}
+        managedBy={library.showDeleteAlbumModal?.managedBy}
+        keepFilesAction="unmonitor"
         deleteFiles={library.deleteAlbumFiles}
         onDeleteFilesChange={library.setDeleteAlbumFiles}
         onCancel={library.handleDeleteAlbumCancel}

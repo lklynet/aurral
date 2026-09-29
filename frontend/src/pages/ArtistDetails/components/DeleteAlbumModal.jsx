@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useRef } from "react";
 import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.js";
 
@@ -6,6 +6,7 @@ export function DeleteAlbumModal({
   show,
   title,
   managedBy,
+  keepFilesAction = "remove",
   deleteFiles,
   onDeleteFilesChange,
   onCancel,
@@ -13,11 +14,15 @@ export function DeleteAlbumModal({
   removing,
 }) {
   const titleId = useId();
+  const cancelRef = useRef(null);
   const { dialogRef } = useModalDialog({
     open: show,
     onClose: onCancel,
     closeDisabled: Boolean(removing),
+    initialFocusRef: cancelRef,
   });
+  const isAurral = managedBy === "aurral";
+  const unmonitors = !isAurral && keepFilesAction === "unmonitor" && !deleteFiles;
 
   if (!show) return null;
   return (
@@ -31,10 +36,23 @@ export function DeleteAlbumModal({
         tabIndex={-1}
       >
         <h3 id={titleId} className="artist-modal__title">
-          Delete Album from Library
+          {isAurral ? "Remove album from library" : "Delete Album from Library"}
         </h3>
         <p className="artist-modal__copy">
-          Are you sure you want to delete <strong>{title}</strong> from library?
+          {unmonitors ? (
+            <>
+              <strong>{title}</strong> stays in Lidarr and stops being monitored. Delete its files
+              to remove it.
+            </>
+          ) : isAurral ? (
+            <>
+              <strong>{title}</strong> will leave your Aurral library.
+            </>
+          ) : (
+            <>
+              Are you sure you want to delete <strong>{title}</strong> from library?
+            </>
+          )}
         </p>
 
         <div>
@@ -68,15 +86,24 @@ export function DeleteAlbumModal({
         </div>
 
         <div className="artist-modal__actions">
-          <button onClick={onCancel} disabled={!!removing} className="btn btn-secondary">
+          <button
+            ref={cancelRef}
+            onClick={onCancel}
+            disabled={!!removing}
+            className="btn btn-secondary"
+          >
             Cancel
           </button>
           <button onClick={onConfirm} disabled={!!removing} className="btn btn-danger">
             {removing ? (
               <>
                 <DotLoader size="sm" label={null} />
-                Deleting...
+                {unmonitors ? "Unmonitoring..." : isAurral ? "Removing..." : "Deleting..."}
               </>
+            ) : unmonitors ? (
+              "Unmonitor album"
+            ) : isAurral ? (
+              "Remove album"
             ) : (
               "Delete Album"
             )}
