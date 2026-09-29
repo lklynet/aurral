@@ -364,7 +364,11 @@ async function removeLibraryDownloadJobs(tracks, { albumMbid = null } = {}) {
   for (const job of jobs) {
     if (job.playlistType !== "library") continue;
     const jobTrackMbid = normalize(job.trackMbid);
-    const matchesTrack = trackKeys.some((track) =>
+    const belongsElsewhere = albumKey && (
+      job.managedBy === "lidarr" ||
+      (normalize(job.albumMbid) && normalize(job.albumMbid) !== albumKey)
+    );
+    const matchesTrack = !belongsElsewhere && trackKeys.some((track) =>
       track.mbid && jobTrackMbid
         ? jobTrackMbid === track.mbid
         : normalize(job.artistName) === track.artistName && normalize(job.trackName) === track.title,
@@ -2105,7 +2109,16 @@ export class LibraryManager {
       ...committedPaths,
     ])];
     if (deleteFiles) {
-      const error = await deleteAurralLibraryFiles(paths);
+      const lidarrFile = db.prepare(
+        "SELECT 1 FROM library_media_files WHERE source = 'lidarr' AND available = 1 AND path IN (?, ?)",
+      );
+      const sharedWithLidarr = new Set(
+        paths.filter((filePath) => lidarrFile.get(filePath, path.resolve(filePath))),
+      );
+      markLibraryMediaFilesUnavailable("aurral", [...sharedWithLidarr]);
+      const error = await deleteAurralLibraryFiles(
+        paths.filter((filePath) => !sharedWithLidarr.has(filePath)),
+      );
       if (error) {
         logger.error("library", `[LibraryManager] Failed to delete Aurral album file: ${error.message}`);
         return { error: error.message, statusCode: 500, code: "failed" };

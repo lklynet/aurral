@@ -419,3 +419,57 @@ test("removing a Lidarr artist goes through Lidarr and leaves its Aurral albums"
   assert.equal(managementStore.getLibraryManagementEntry("album", album.id)?.managedBy, "aurral");
   assert.equal(await exists(tracks[0].filePath), true);
 });
+
+test("album removal keeps downloads that belong to Lidarr or to another album", async () => {
+  const { artist, album, tracks, jobFor } = await createAurralAlbum();
+  const ownJob = jobFor(0);
+  const otherAlbumJob = downloadTracker.addJob(
+    {
+      artistName: artist.name,
+      trackName: tracks[0].title,
+      albumName: "Compilation",
+      albumMbid: "12121212-1212-4212-8212-121212121212",
+      trackMbid: tracks[0].trackMbid,
+      managedBy: "aurral",
+    },
+    "library",
+  );
+  const lidarrJob = downloadTracker.addJob(
+    {
+      artistName: artist.name,
+      trackName: tracks[1].title,
+      trackMbid: tracks[1].trackMbid,
+      managedBy: "lidarr",
+    },
+    "library",
+  );
+
+  const response = await removeAlbum(album, false);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(downloadTracker.getJob(ownJob), null);
+  assert.notEqual(downloadTracker.getJob(otherAlbumJob), null);
+  assert.notEqual(downloadTracker.getJob(lidarrJob), null);
+});
+
+test("album removal never deletes a file Lidarr also lists as available", async () => {
+  const { album, tracks } = await createAurralAlbum();
+  libraryStore.upsertLibraryMediaFile({
+    trackId: tracks[0].id,
+    albumId: album.id,
+    source: "lidarr",
+    path: tracks[0].filePath,
+    available: true,
+  });
+
+  const response = await removeAlbum(album, true);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(await exists(tracks[0].filePath), true);
+  assert.equal(await exists(tracks[1].filePath), false);
+  assert.equal(
+    db.prepare("SELECT available FROM library_media_files WHERE source = ? AND path = ?")
+      .get("lidarr", tracks[0].filePath)?.available,
+    1,
+  );
+});
