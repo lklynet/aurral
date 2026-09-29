@@ -273,6 +273,30 @@ export function registerAlbums(router) {
     },
   );
 
+  router.delete(
+    "/albums/aurral/:canonicalId",
+    requireAuth,
+    requirePermission("deleteAlbum"),
+    async (req, res) => {
+      try {
+        const result = await libraryManager.deleteAurralAlbum(
+          req.params.canonicalId,
+          req.query?.deleteFiles === "true",
+        );
+        if (result?.error) {
+          const { error, statusCode, ...details } = result;
+          return res.status(statusCode || 500).json({ ...details, error });
+        }
+        return res.json(result);
+      } catch (error) {
+        return res.status(500).json({
+          error: "Failed to remove album",
+          message: error.message,
+        });
+      }
+    },
+  );
+
   router.post(
     "/albums/aurral/:canonicalId/cancel",
     requireAuth,
