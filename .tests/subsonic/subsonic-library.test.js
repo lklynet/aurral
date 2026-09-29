@@ -212,3 +212,73 @@ test("resolves playlist descriptors to library tracks in bulk", () => {
   assert.equal(resolved.slice(5).every((entry) => entry === null), true);
   assert.ok(statements <= 4, `expected a handful of statements, ran ${statements}`);
 });
+
+test("favorite reads preserve shared relationships, media filters, and user isolation", async () => {
+  const { getCanonicalLibrary } = await import("../../backend/services/libraryQueryService.js");
+  const existing = db.prepare("SELECT id, identity_key FROM library_tracks WHERE title = 'Old Song'").get();
+  const guest = upsertLibraryArtist({ identityKey: "favorite:guest", name: "Guest Artist" });
+  const guestAlbum = upsertLibraryAlbum({
+    identityKey: "favorite:guest-album",
+    artistId: guest.id,
+    title: "Guest Album",
+  });
+  linkLibraryAlbumTrack({ albumId: guestAlbum.id, trackId: existing.id });
+  const missing = upsertLibraryTrack({ identityKey: "favorite:no-media", title: "Unfinished Song" });
+  linkLibraryAlbumTrack({ albumId: guestAlbum.id, trackId: missing.id });
+  const scoped = upsertLibraryMediaFile({
+    albumId: guestAlbum.id,
+    trackId: existing.id,
+    source: "aurral",
+    path: "/test/favorite/guest.flac",
+    available: false,
+  });
+  const createUser = db.prepare(
+    "INSERT INTO users (username, password_hash, role, permissions) VALUES (?, '', 'user', '{}') RETURNING id",
+  );
+  const first = createUser.get("favorite-reader-first");
+  const second = createUser.get("favorite-reader-second");
+  const star = db.prepare(
+    "INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (?, ?, ?, ?)",
+  );
+  star.run(first.id, "song", existing.identity_key, 1000);
+  star.run(first.id, "album", "favorite:guest-album", 2000);
+  star.run(second.id, "song", "favorite:no-media", 3000);
+  const starsBefore = db.prepare("SELECT * FROM subsonic_stars ORDER BY user_id, entity_kind, entity_key").all();
+  const jobsBefore = db.prepare("SELECT COUNT(*) AS count FROM playlist_download_jobs").get();
+
+  try {
+    const result = subsonic.getStarredWithLibrary(first);
+    assert.deepEqual(result.starred.song.map((song) => song.id), [idFor("song", existing.identity_key)]);
+    assert.deepEqual(result.starred.album.map((album) => album.id), [idFor("album", "favorite:guest-album")]);
+    assert.equal(result.starred.song[0].starred, new Date(1000).toISOString());
+    assert.equal(result.library.tracks.length, 1);
+    assert.equal(result.library.tracks[0].albums.length, 2);
+    assert.equal(result.library.tracks[0].files.length, 2);
+    assert.deepEqual(subsonic.getStarred(second), { artist: [], album: [], song: [] });
+    assert.deepEqual(subsonic.getStarredWithLibrary(second).library.tracks, []);
+
+    const favoriteKeys = [
+      { kind: "song", key: existing.identity_key },
+      { kind: "song", key: existing.identity_key },
+      { kind: "album", key: "favorite:guest-album" },
+      { kind: "song", key: "removed-target" },
+    ];
+    const filtered = getCanonicalLibrary({ source: "aurral", favoriteKeys });
+    assert.deepEqual(filtered.albums.map((album) => album.title), ["Guest Album"]);
+    assert.deepEqual(filtered.tracks.map((track) => track.id), [existing.id]);
+    assert.deepEqual(filtered.tracks[0].files.map((file) => file.path), ["/test/favorite/guest.flac"]);
+    assert.deepEqual(getCanonicalLibrary({
+      source: "aurral", availableOnly: true, favoriteKeys,
+    }), { artists: [], albums: [], tracks: [] });
+    assert.deepEqual(getCanonicalLibrary({ favoriteKeys: [] }), { artists: [], albums: [], tracks: [] });
+    assert.deepEqual(db.prepare("SELECT * FROM subsonic_stars ORDER BY user_id, entity_kind, entity_key").all(), starsBefore);
+    assert.deepEqual(db.prepare("SELECT COUNT(*) AS count FROM playlist_download_jobs").get(), jobsBefore);
+  } finally {
+    db.prepare("DELETE FROM users WHERE id IN (?, ?)").run(first.id, second.id);
+    db.prepare("DELETE FROM library_media_files WHERE id = ?").run(scoped.id);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(guestAlbum.id);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(guestAlbum.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(guest.id);
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(missing.id);
+  }
+});
