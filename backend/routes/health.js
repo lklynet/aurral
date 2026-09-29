@@ -241,6 +241,7 @@ function serializeBootstrapMatcherStatus(status, authenticated) {
   return {
     available: Boolean(status.available),
     checked: Boolean(status.checked),
+    policyVersion: status.policyVersion || null,
     error: status.error
       ? { code: status.error.code || "matcher_error" }
       : null,
