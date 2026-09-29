@@ -10,6 +10,7 @@ import {
   fetchImportedPlaylistTracks,
 } from "../../../services/importLists/importPlaylist.js";
 import { syncSharedPlaylistImport } from "../../../services/importLists/importListSync.js";
+import { flowPlaylistConfig } from "../../../services/weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { getAccessibleSharedPlaylist } from "./utils.js";
 
 const parseExpiresAt = (value) => {
@@ -40,7 +41,12 @@ function sendSpotifyError(res, error, fallback) {
 
 export function registerSpotifyImport(router) {
   router.get("/import/spotify/status", (req, res) => {
-    res.json(spotifyConnectionStore.getPublicStatus(req.user.id));
+    const status = spotifyConnectionStore.getPublicStatus(req.user.id);
+    const hasSyncedPlaylists = flowPlaylistConfig.getSharedPlaylists().some((playlist) =>
+      Number(playlist?.ownerUserId) === Number(req.user.id) &&
+      playlist?.importSource?.provider === "spotify-playlist" &&
+      playlist.importSource.syncEnabled);
+    res.json({ ...status, reconnectRequired: !status.connected && hasSyncedPlaylists });
   });
 
   router.post("/import/spotify/oauth/start", (req, res) => {

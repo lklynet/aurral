@@ -1438,3 +1438,45 @@ test("Spotify cleanup serializes retention updates with file removal", async () 
     weeklyFlowWorker.stop();
   }
 });
+
+test("Spotify status asks the owner to reconnect only when synced imports lost their connection", async () => {
+  const spotifyRoutes = await importFromRepo("backend/routes/weeklyFlow/handlers/spotifyImport.js");
+  const { spotifyConnectionStore } = await importFromRepo(
+    "backend/services/spotify/spotifyConnectionStore.js",
+  );
+  const handlers = new Map();
+  spotifyRoutes.registerSpotifyImport({
+    get(route, handler) { handlers.set(route, handler); },
+    post() {},
+    delete() {},
+  });
+  const statusFor = (userId) => {
+    const response = { json(body) { this.body = body; return this; } };
+    handlers.get("/import/spotify/status")({ user: { id: userId } }, response);
+    return response.body;
+  };
+  const playlist = flowPlaylistConfig.createSharedPlaylist({
+    name: "Synced Spotify Mix",
+    ownerUserId: 41,
+    tracks: [],
+    importSource: {
+      provider: "spotify-playlist",
+      externalId: "spotify-mix",
+      syncEnabled: true,
+      syncIntervalHours: 24,
+    },
+  });
+  try {
+    assert.equal(statusFor(41).reconnectRequired, true);
+    assert.equal(statusFor(42).reconnectRequired, false);
+
+    spotifyConnectionStore.saveConnection(41, { accessToken: "access", refreshToken: "refresh" });
+    assert.deepEqual(
+      [statusFor(41).connected, statusFor(41).reconnectRequired],
+      [true, false],
+    );
+  } finally {
+    spotifyConnectionStore.clearConnection(41);
+    flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+  }
+});
