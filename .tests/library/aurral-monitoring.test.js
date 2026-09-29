@@ -417,6 +417,28 @@ test("artist monitoring skips albums managed by Lidarr", async () => {
   assert.equal(lidarrCalls.length, 0);
 });
 
+test("a Lidarr album follow-up never reactivates an Aurral artist that shares its numeric id", async () => {
+  const added = await addAurralArtist("none");
+  const sharedId = String(added.body.artist.id);
+  const stubbed = {
+    isConfigured: lidarrClient.isConfigured,
+    getArtist: lidarrClient.getArtist,
+    getAlbum: lidarrClient.getAlbum,
+  };
+  lidarrClient.isConfigured = () => true;
+  lidarrClient.getArtist = async () => ({ id: Number(sharedId), artistName: "Lidarr Artist", foreignArtistId: otherArtistMbid, monitored: true });
+  lidarrClient.getAlbum = async () => ({ id: 9, artistId: Number(sharedId), title: "Lidarr Album", monitored: true });
+
+  try {
+    await libraryManager.ensureRequestedAlbumMonitoring(sharedId, "9");
+    await runQueuedMonitoringTasks();
+    assert.equal(managementStore.getLibraryManagementEntry("artist", Number(sharedId)).monitorMode, "none");
+    assert.deepEqual(queuedAlbumMbids(), []);
+  } finally {
+    Object.assign(lidarrClient, stubbed);
+  }
+});
+
 test("queued artist acquisition stops after monitoring is disabled", async () => {
   await addAurralArtist("none");
   await callRoute("PUT /artists/:mbid", {

@@ -1166,12 +1166,12 @@ export class LibraryManager {
       return { artist: null, album: null };
     }
 
-    let artist = await this.getArtistById(normalizedArtistId);
+    let artist = await this.getArtistById(normalizedArtistId, { managedBy: "lidarr" });
     if (artist?.monitored === false) {
       artist = await this.ensureArtistMonitored(artist, options.monitorOption);
     }
 
-    let album = await this.getAlbumById(normalizedAlbumId);
+    let album = await this.getAlbumById(normalizedAlbumId, { managedBy: "lidarr" });
     if (album?.monitored === false) {
       album = await this.updateAlbum(normalizedAlbumId, { monitored: true });
     }
