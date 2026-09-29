@@ -3,9 +3,9 @@ title: Storage and backups
 description: Aurral app data, shared media mounts, and what to back up.
 ---
 
-Aurral keeps app state and managed media separate. It also needs compatible filesystem views of Lidarr, your download clients, and any playback server.
+Aurral keeps app state and managed media separate. It also needs compatible filesystem views of your download clients, any playback server, and Lidarr when you use it.
 
-For the complete mount model, follow [Filesystem and mounts](/getting-started/storage/). Use the Lidarr media root and set the Downloads Folder to a path inside Aurral, such as `/data/downloads/aurral`.
+For the complete mount model, follow [Filesystem and mounts](/getting-started/storage/). Mount your media root and set the Downloads Folder to a path inside Aurral, such as `/data/downloads/aurral`. With Lidarr, use the Lidarr media root.
 
 ## Storage locations
 
@@ -25,6 +25,6 @@ yt-dlp stages downloads in `/config/_staging` by default. You can mount another 
 
 ## Library safety
 
-- Aurral does not write into your root music library.
-- Artist and album changes go through Lidarr.
+- Aurral does not write into your Lidarr root music library.
+- Changes to artists and albums that Lidarr manages go through Lidarr.
 - Aurral-owned media stays under the Downloads Folder path. Flow files use `_flows`; permanent tracks use the canonical `artist/album/track` layout.

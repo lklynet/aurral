@@ -7,6 +7,10 @@ Aurral coordinates several applications. It uses APIs to ask them to search, dow
 
 An API test does not test file access. Aurral can connect to Lidarr, Navidrome, Plex, or a download client and still fail to read or move files if the mounts are wrong.
 
+Without Lidarr, Aurral needs one media mount and a Downloads Folder inside it, such as
+`/data/downloads/aurral`. Mount the same folder in your playback server. The Lidarr
+sections below apply when you connect Lidarr.
+
 :::caution
 The simplest setup is one shared media mount, with the same container path in every service that shares files. Use path mappings only when you cannot use the same path.
 :::

@@ -111,3 +111,21 @@ Lidarr additions use your Lidarr defaults, and you can change them on the artist
 you add the artist. Aurral additions never use Lidarr profiles, root folders, or tags. If an
 album already belongs to the other manager, Aurral shows **Managed by Aurral** or
 **Managed by Lidarr** instead of adding it again.
+
+Choose your default under **Profile > Library defaults > Default library
+manager**. Two behaviors are worth knowing:
+
+- **Add to…** appears whenever both managers are available, even if you have only
+  ever used Lidarr. Choosing **Add to Aurral** for one item does not change your
+  default.
+- If you use Aurral without Lidarr and connect Lidarr later, **Add to Lidarr**
+  becomes the primary action until you choose a default. Set the default to keep
+  adding to Aurral.
+
+Connecting Lidarr does not move anything. Items Aurral already manages stay with Aurral,
+and Lidarr's artists and albums stay with Lidarr. Aurral has no automatic migration
+between managers.
+
+Aurral matches Lidarr media to artists by MusicBrainz ID. When Lidarr is disabled, files
+without MusicBrainz tags stay listed in Library, but their artist page can still offer
+**Add to Aurral** because Aurral cannot tell that the files belong to that artist.
