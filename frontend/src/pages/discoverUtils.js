@@ -391,3 +391,12 @@ export const writeStoredDiscoverLayout = (layout, userId) => {
     console.warn("Failed to write discover layout");
   }
 };
+
+export const getLibraryArtistImage = (artist) => {
+  const images = (Array.isArray(artist?.images) ? artist.images : [])
+    .filter((image) => image?.remoteUrl || image?.url || image?.Url);
+  const kind = (image) => String(image.coverType || image.kind || image.CoverType || "").toLowerCase();
+  const image = images.find((image) => kind(image) === "poster") ||
+    images.find((image) => kind(image) === "fanart") || images[0];
+  return image?.remoteUrl || image?.url || image?.Url || null;
+};

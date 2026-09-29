@@ -8,6 +8,7 @@ import {
   ArrowUpZA,
   Download,
   ExternalLink,
+  Fingerprint,
   Grid3X3,
   Heart,
   Info,
@@ -92,6 +93,7 @@ import { DeleteAlbumModal } from "./ArtistDetails/components/DeleteAlbumModal";
 import { DeleteArtistModal } from "./ArtistDetails/components/DeleteArtistModal";
 import { DeleteTrackModal } from "./ArtistDetails/components/DeleteTrackModal";
 import LibraryInfoModal from "./LibraryInfoModal";
+import ArtistMbidModal from "./ArtistMbidModal";
 import {
   buildSharedPlaylistTrackPayload,
   reserveUniquePlaylistName,
@@ -462,6 +464,7 @@ function LibraryPage() {
   const [trackResearchStates, setTrackResearchStates] = useState({});
   const [libraryRemoval, setLibraryRemoval] = useState(null);
   const [libraryInfo, setLibraryInfo] = useState(null);
+  const [mbidArtist, setMbidArtist] = useState(null);
   const [deleteFiles, setDeleteFiles] = useState(false);
   const [deletingLibraryEntity, setDeletingLibraryEntity] = useState(false);
   const [homeAlbumsGridRef, homeAlbumColumns] = useResponsiveReleaseLimit({
@@ -967,6 +970,7 @@ function LibraryPage() {
   const canDeleteTrack = hasPermission("deleteTrack") || canDeleteAlbum;
   const canAddTracks = hasPermission("addAlbum");
   const canChangeMonitoring = hasPermission("changeMonitoring");
+  const canEditArtistMbid = hasPermission("addArtist");
 
   const openLibraryRemoval = useCallback((kind, entity) => {
     setDeleteFiles(false);
@@ -1719,6 +1723,38 @@ function LibraryPage() {
     navigate("/library/artist/" + encodeURIComponent(artist.id) + previewQuery);
   };
 
+  const artistMbidMenuItems = (artist) =>
+    canEditArtistMbid && artist?.providerId == null
+      ? [
+          {
+            id: "mbid",
+            label: "Edit MusicBrainz ID",
+            icon: Fingerprint,
+            onSelect: () => setMbidArtist(artist),
+          },
+        ]
+      : [];
+
+  const handleArtistMbidSaved = (result) => {
+    const previousId = mbidArtist?.id;
+    setMbidArtist(null);
+    const previousName = mbidArtist?.name || "Artist";
+    showSuccess(
+      result.merged
+        ? `Merged ${previousName} into ${result.name}`
+        : result.mbid
+          ? `Linked ${previousName} to ${result.musicbrainzName || "MusicBrainz"}`
+          : `Removed the MusicBrainz ID from ${previousName}`,
+    );
+    if (
+      routeArtistId &&
+      String(routeArtistId) === String(previousId) &&
+      String(result.id) !== String(previousId)
+    ) {
+      handleArtistOpen(result);
+    }
+  };
+
   const openLibraryInfo = (kind, entity, context = {}) => {
     setLibraryInfo({ kind, entity, ...context });
   };
@@ -2122,6 +2158,7 @@ function LibraryPage() {
                 icon: Info,
                 onSelect: () => openLibraryInfo("artist", artist),
               },
+              ...artistMbidMenuItems(artist),
               {
                 id: "favorite",
                 label: isFavorite ? "Remove from favorites" : "Add to favorites",
@@ -2680,6 +2717,7 @@ function LibraryPage() {
                     icon: Info,
                     onSelect: () => openLibraryInfo("artist", libraryArtist),
                   },
+                  ...artistMbidMenuItems(libraryArtist),
                   {
                     id: "favorite",
                     label: favoriteIds.has(favoriteId("artist", libraryArtist))
@@ -2799,6 +2837,11 @@ function LibraryPage() {
         deleting={deletingLibraryEntity}
       />
       <LibraryInfoModal item={libraryInfo} onClose={() => setLibraryInfo(null)} />
+      <ArtistMbidModal
+        artist={mbidArtist}
+        onClose={() => setMbidArtist(null)}
+        onSaved={handleArtistMbidSaved}
+      />
     </>
   );
 

@@ -146,3 +146,14 @@ between managers.
 Aurral matches Lidarr media to artists by MusicBrainz ID. When Lidarr is disabled, files
 without MusicBrainz tags stay listed in Library, but their artist page can still offer
 **Add to Aurral** because Aurral cannot tell that the files belong to that artist.
+
+### Artists without a MusicBrainz ID
+
+When a file has no MusicBrainz artist tag, Aurral looks up the artist name on
+MusicBrainz after each scan. It only links the artist when exactly one MusicBrainz
+artist has that name or alias. Names shared by several artists stay unlinked.
+
+To fix a wrong or missing match, open the artist's menu and choose **Edit
+MusicBrainz ID**. Paste an artist ID or a musicbrainz.org artist link, or remove the
+ID. If another library artist already has that ID, Aurral merges the two. Later
+scans keep your choice. Lidarr artists are not editable here; change them in Lidarr.
