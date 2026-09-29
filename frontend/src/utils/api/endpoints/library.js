@@ -77,6 +77,16 @@ export const settleLibraryOwnerConflict = (error) => {
 export const requestLibraryRefresh = (mode = "quick") =>
   postData("/library/refresh", { mode });
 
+export const updateLibraryArtistMbid = async (artistId, mbid) => {
+  const result = await putData(
+    `/library/canonical/artists/${encodeURIComponent(artistId)}/mbid`,
+    { mbid },
+  );
+  clearCanonicalLibraryPageCache();
+  void queryClient.invalidateQueries({ queryKey: queryKeys.libraryPrefix });
+  return result;
+};
+
 export const getActiveLibraryRefresh = () => getData("/library/refresh");
 
 export const getLibraryRefreshStatus = (jobId) =>

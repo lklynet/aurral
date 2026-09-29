@@ -13,6 +13,7 @@ import {
   legacyMusicbrainzRequest,
   listArtistAlbums as listMetadataArtistAlbums,
   resolveArtistByName as resolveMetadataArtistByName,
+  resolveLibraryArtistByName as resolveMetadataLibraryArtistByName,
 } from "../providers/brainzmashProvider.js";
 import { getLinkedArtistProviderIds } from "../providers/brainzmashMappers.js";
 import { getMusicBrainzContact } from "./config.js";
@@ -334,11 +335,8 @@ export function musicbrainzGetCachedArtistMbidByName(artistName) {
   return cached.mbid || null;
 }
 
-export async function musicbrainzResolveArtistMbidByName(artistName) {
-  const rawName = String(artistName || "").trim();
-  if (!rawName) return null;
-  const normalized = normalizeArtistNameKey(rawName);
-  const cached = dbOps.getMusicbrainzArtistMbidCache(normalized);
+async function resolveCachedArtistMbid(cacheKey, artistName, resolve) {
+  const cached = dbOps.getMusicbrainzArtistMbidCache(cacheKey);
   const now = Date.now();
   const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
   const NEGATIVE_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
@@ -350,8 +348,8 @@ export async function musicbrainzResolveArtistMbidByName(artistName) {
     }
   }
   try {
-    const resolved = await resolveMetadataArtistByName(rawName);
-    dbOps.setMusicbrainzArtistMbidCache(normalized, resolved);
+    const resolved = await resolve(artistName);
+    dbOps.setMusicbrainzArtistMbidCache(cacheKey, resolved);
     return resolved;
   } catch (e) {
     if (cached) {
@@ -359,6 +357,26 @@ export async function musicbrainzResolveArtistMbidByName(artistName) {
     }
     return null;
   }
+}
+
+export async function musicbrainzResolveArtistMbidByName(artistName) {
+  const rawName = String(artistName || "").trim();
+  if (!rawName) return null;
+  return resolveCachedArtistMbid(
+    normalizeArtistNameKey(rawName),
+    rawName,
+    resolveMetadataArtistByName,
+  );
+}
+
+export async function musicbrainzResolveLibraryArtistMbid(artistName) {
+  const rawName = String(artistName || "").trim();
+  if (!rawName) return null;
+  return resolveCachedArtistMbid(
+    `library:${normalizeArtistNameKey(rawName)}`,
+    rawName,
+    resolveMetadataLibraryArtistByName,
+  );
 }
 
 export {
