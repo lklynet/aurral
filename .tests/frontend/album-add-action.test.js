@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  describeAlbumRequestResult,
   getAlbumAddAction,
   isAlbumCompleteInLibrary,
   shouldTriggerAlbumSearch,
@@ -42,4 +43,16 @@ test("isAlbumCompleteInLibrary only treats on-disk albums as complete", () => {
   assert.equal(isAlbumCompleteInLibrary({ status: "monitored" }), false);
   assert.equal(isAlbumCompleteInLibrary({ status: "available" }), true);
   assert.equal(isAlbumCompleteInLibrary({ sizeOnDisk: 1 }), true);
+});
+
+test("describeAlbumRequestResult does not claim a blocked album is downloading", () => {
+  assert.deepEqual(describeAlbumRequestResult({ status: "queued", jobIds: ["a"] }, "Dummy"), {
+    kind: "success",
+    message: "Downloading album: Dummy",
+  });
+  assert.deepEqual(
+    describeAlbumRequestResult({ status: "blocked", albumStatus: { recovery: { code: "download_source_missing" } } }, "Dummy"),
+    { kind: "info", message: "Added Dummy, but nothing is downloading. Open the album to see why." },
+  );
+  assert.equal(describeAlbumRequestResult({ albumStatus: { status: "blocked" } }, "Dummy").kind, "info");
 });

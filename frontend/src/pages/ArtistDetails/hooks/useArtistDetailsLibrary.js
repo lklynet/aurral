@@ -25,6 +25,7 @@ import {
   getMonitorOptionLabel,
   resolveCurrentMonitorOption,
 } from "../../../utils/aurralMonitoring.js";
+import { describeAlbumRequestResult } from "../../../utils/albumAddAction.js";
 import { getMyLidarrPreferences } from "../../../utils/api/endpoints/auth.js";
 import { deduplicateAlbums } from "../utils";
 import { useWebSocketChannel } from "../../../hooks/useWebSocket";
@@ -548,7 +549,8 @@ export function useArtistDetailsLibrary({
           return next;
         },
       );
-      showSuccess(`Downloading album: ${title}`);
+      const outcome = describeAlbumRequestResult(result, title);
+      (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
     } catch (err) {
       const conflict = settleLibraryOwnerConflict(err);
       if (conflict) {

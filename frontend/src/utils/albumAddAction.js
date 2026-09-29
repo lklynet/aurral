@@ -65,3 +65,11 @@ export const isAlbumCompleteInLibrary = ({
   Number(percentOfTracks) >= 100 ||
   Number(sizeOnDisk) > 0 ||
   Number(trackFileCount) > 0;
+
+export const describeAlbumRequestResult = (result, title) =>
+  result?.status === "blocked" || result?.albumStatus?.status === "blocked"
+    ? {
+        kind: "info",
+        message: `Added ${title}, but nothing is downloading. Open the album to see why.`,
+      }
+    : { kind: "success", message: `Downloading album: ${title}` };
