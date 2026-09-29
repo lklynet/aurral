@@ -434,6 +434,15 @@ test("a Lidarr album follow-up never reactivates an Aurral artist that shares it
     await runQueuedMonitoringTasks();
     assert.equal(managementStore.getLibraryManagementEntry("artist", Number(sharedId)).monitorMode, "none");
     assert.deepEqual(queuedAlbumMbids(), []);
+
+    lidarrClient.getArtist = async () => {
+      throw new Error("Lidarr request failed with 503");
+    };
+    lidarrClient.getAlbum = lidarrClient.getArtist;
+    await libraryManager.ensureRequestedAlbumMonitoring(sharedId, "9");
+    await runQueuedMonitoringTasks();
+    assert.equal(managementStore.getLibraryManagementEntry("artist", Number(sharedId)).monitorMode, "none");
+    assert.deepEqual(queuedAlbumMbids(), []);
   } finally {
     Object.assign(lidarrClient, stubbed);
   }

@@ -1122,9 +1122,10 @@ export class LibraryManager {
   }
 
   async getArtistById(id, { managedBy = null } = {}) {
-    const canonical = canonicalArtistFallback(id);
-    if (normalizeLibraryManager(managedBy) === "aurral" ||
-      (managedBy == null && canonical?.managedBy === "aurral")) return canonical;
+    const manager = normalizeLibraryManager(managedBy);
+    const found = canonicalArtistFallback(id);
+    if (manager === "aurral" || (managedBy == null && found?.managedBy === "aurral")) return found;
+    const canonical = manager === "lidarr" && found?.managedBy === "aurral" ? null : found;
     const lidarr = await getLidarrClient();
     if (!lidarr || !lidarr.isConfigured()) return canonical;
     try {
@@ -2587,9 +2588,10 @@ export class LibraryManager {
   }
 
   async getAlbumById(id, { managedBy = null } = {}) {
-    const canonical = canonicalAlbumForReference(id);
-    if (normalizeLibraryManager(managedBy) === "aurral" ||
-      (managedBy == null && canonical?.managedBy === "aurral")) return canonical;
+    const manager = normalizeLibraryManager(managedBy);
+    const found = canonicalAlbumForReference(id);
+    if (manager === "aurral" || (managedBy == null && found?.managedBy === "aurral")) return found;
+    const canonical = manager === "lidarr" && found?.managedBy === "aurral" ? null : found;
     const lidarr = await getLidarrClient();
     if (!lidarr || !lidarr.isConfigured()) return canonical;
     if (!id || id === "undefined" || id === "null") {
