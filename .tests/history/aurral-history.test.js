@@ -262,6 +262,11 @@ test("queued album track jobs open their album, and other library jobs open the 
   const entries = await getAurralHistoryRequests();
   assert.equal(entries.find((item) => item.jobId === withAlbum)?.href, `/library/album/${album.id}`);
   assert.equal(entries.find((item) => item.jobId === withoutAlbum)?.href, "/playlists?selected=library");
+
+  const { finalizeQualityUpgradeFailure } = await importFromRepo("backend/services/qualityProfileService.js");
+  await finalizeQualityUpgradeFailure({ id: "upgrade-of-one", upgradeForJobId: withAlbum }, "No better file");
+  const upgrade = (await getAurralHistoryRequests()).find((item) => item.jobId === "upgrade-of-one");
+  assert.equal(upgrade?.href, `/library/album/${album.id}`);
 });
 
 test("pending tracker jobs without history appear in activity immediately", async () => {

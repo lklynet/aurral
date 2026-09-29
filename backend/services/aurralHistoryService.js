@@ -885,6 +885,7 @@ export const recordTrackJobActivity = ({
   downloadSource = null,
   downloadClient = null,
   sourceFilename = null,
+  albumMbid = null,
   href = null,
 } = {}) => {
   const id = String(jobId || "").trim();
@@ -902,7 +903,7 @@ export const recordTrackJobActivity = ({
     subtitle: subtitle || `${artist} · ${playlistName}`,
     status,
     statusLabel,
-    href: href || buildPlaylistHref(playlistId),
+    href: href || buildTrackJobHref({ playlistType: playlistId, albumMbid }),
     metadata: {
       jobId: id,
       trackName: track,
