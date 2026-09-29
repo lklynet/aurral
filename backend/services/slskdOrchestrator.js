@@ -26,11 +26,17 @@ import {
 import { processUsenetPipelinePayload } from "./usenetOrchestrator.js";
 import { processYtdlpPipelinePayload } from "./ytdlpOrchestrator.js";
 import { processDeemixPipelinePayload } from "./deemixOrchestrator.js";
-import { albumGrabJobs, fallbackAlbumGrabToTracks, finishAlbumGrab } from "./albumGrab.js";
+import {
+  albumGrabJobs,
+  fallbackAlbumGrabToTracks,
+  finishAlbumGrab,
+  releaseAlbumGrabJobs,
+} from "./albumGrab.js";
 import { selectSoulseekAlbumFolder } from "./albumReleaseSearch.js";
 import {
   getDownloadSourceNotConfiguredMessage,
   getEnabledDownloadSources,
+  ALBUM_GRAB_SOURCE_IDS,
   getSourceLabel,
   isAnyDownloadSourceConfigured,
 } from "./downloadSourceService.js";
@@ -355,7 +361,7 @@ export function buildNextSourcePayload(payload, failedSource = null, reason = nu
     : null;
   const sources = getEnabledDownloadSources().filter(
     (source) => (!allowedSources || allowedSources.has(source.id))
-      && (payload?.albumGrab !== true || ["slskd", "usenet", "deemix"].includes(source.id)),
+      && (payload?.albumGrab !== true || ALBUM_GRAB_SOURCE_IDS.includes(source.id)),
   );
   if (sources.length === 0) return null;
   const tried = new Set(Array.isArray(payload?.triedSources) ? payload.triedSources : []);
@@ -432,6 +438,7 @@ async function failOrTryNextSource(payload, job, message, logDetails = {}) {
 export async function failPipelineJob(payload, message) {
   const jobId = payload?.jobId;
   if (!jobId) return;
+  if (payload.albumGrab === true) releaseAlbumGrabJobs(payload, ALBUM_GRAB_ENDED_REASON);
   if (!isPipelinePayloadActive(payload)) return;
   const job = downloadTracker.getJob(jobId);
   if (!job) return;
@@ -1386,6 +1393,8 @@ async function handleFinalize(payload) {
   }
   return committed.result;
 }
+
+export const ALBUM_GRAB_ENDED_REASON = "The album download ended before this track was imported";
 
 export async function processPipelinePayload(payload) {
   if (!payload || !payload.phase || !payload.jobId) {

@@ -15,7 +15,7 @@ The same native matcher checks original file tags after download in `postDownloa
 
 ## Album release grabs
 
-Aurral-managed album requests keep one job per missing track. The first pending job reserves its siblings for one release attempt. Usenet submits one NZB, Soulseek submits one folder batch, and deemix submits one album URL. The completed files are assigned to sibling jobs without reusing a file. Each assigned file must pass its own post-download check before it moves into the Aurral library. Missing, unreadable, contradictory, or failed files leave their jobs pending for per-track fallback.
+Aurral-managed album requests keep one job per missing track. When Soulseek, Usenet, or deemix is enabled, the first pending job reserves its siblings for one release attempt. Usenet submits one NZB, Soulseek submits one folder batch, and deemix submits one album URL. The completed files are assigned to sibling jobs without reusing a file. Each assigned file must pass its own post-download check before it moves into the Aurral library. Missing, unreadable, contradictory, or failed files leave their jobs pending for per-track fallback. If the attempt ends early, for example because the first job fails or is removed, the reserved jobs also return to per-track search.
 
 The release attempt follows configured source priority. yt-dlp remains a per-track source. Lidarr-managed albums continue through Lidarr. Cancellation removes only work owned by the album request, and queued pipeline state resumes after a worker restart.
 

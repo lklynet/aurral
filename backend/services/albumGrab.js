@@ -13,6 +13,8 @@ import {
 import { finalizePipelineJobSuccess } from "./pipelineHelpers.js";
 import { isPipelinePayloadActive, withPipelineCommitLock } from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
 
+const NOT_IN_ALBUM_REASON = "Track was not in the album download";
+
 export function albumGrabJobs(payload) {
   const leader = downloadTracker.getJob(payload.jobId);
   if (!leader?.requestGroupId || payload.albumGrab !== true) return [];
@@ -21,10 +23,16 @@ export function albumGrabJobs(payload) {
     && ["pending", "downloading"].includes(job.status));
 }
 
-export function releaseAlbumGrabJobs(payload, reason = null) {
+function heldAlbumGrabJobs(payload) {
+  return (payload?.albumGroupJobIds || []).filter((id) => id !== payload.jobId)
+    .map((id) => downloadTracker.getJob(id))
+    .filter((job) => job?.status === "downloading" && !downloadTracker.isSlskdDispatched(job.id));
+}
+
+export function releaseAlbumGrabJobs(payload, reason = null, reasons = new Map()) {
   let released = false;
-  for (const job of albumGrabJobs(payload)) {
-    if (job.id !== payload.jobId) released = downloadTracker.setPending(job.id, reason) || released;
+  for (const job of heldAlbumGrabJobs(payload)) {
+    released = downloadTracker.setPending(job.id, reasons.get(job.id) || reason) || released;
   }
   if (released) {
     void import("./weeklyFlow/weeklyFlowWorker.js")
@@ -33,8 +41,8 @@ export function releaseAlbumGrabJobs(payload, reason = null) {
   }
 }
 
-export function fallbackAlbumGrabToTracks(payload, reason = null) {
-  releaseAlbumGrabJobs(payload, reason);
+export function fallbackAlbumGrabToTracks(payload, reason = null, reasons = new Map()) {
+  releaseAlbumGrabJobs(payload, reason, reasons);
   return {
     ...payload,
     albumGrab: false,
@@ -62,6 +70,8 @@ export async function finishAlbumGrab(payload, { filePaths, source, album = null
   const jobs = albumGrabJobs(payload);
   if (jobs.length === 0) return null;
   const assigned = await assignDownloadedAlbumFiles({ jobs, filePaths, source });
+  const reasons = new Map(assigned.rejected.map(({ jobId, reason }) =>
+    [jobId, `Album file failed verification: ${reason}`]));
   const playlistRoot = resolvePlaylistRoot();
   for (const match of assigned.accepted) {
     const job = downloadTracker.getJob(match.jobId);
@@ -82,13 +92,16 @@ export async function finishAlbumGrab(payload, { filePaths, source, album = null
       });
       if (committed.cancelled) continue;
     } catch (error) {
+      reasons.set(job.id, "Album file import failed");
       logger.warn(source, "Album file import failed", {
         jobId: job.id, reason: safeLogDiagnostic(error),
       });
     }
   }
-  releaseAlbumGrabJobs(payload, "No verified file in the album grab");
   const leader = downloadTracker.getJob(payload.jobId);
-  return leader?.status === "done" ? null
-    : fallbackAlbumGrabToTracks(payload, "No verified file in the album grab");
+  if (leader?.status === "done") {
+    releaseAlbumGrabJobs(payload, NOT_IN_ALBUM_REASON, reasons);
+    return null;
+  }
+  return fallbackAlbumGrabToTracks(payload, NOT_IN_ALBUM_REASON, reasons);
 }

@@ -5,7 +5,10 @@ import {
   processPipelinePayload,
   enqueuePendingJobsWithoutBatch,
   failPipelineJob,
+  ALBUM_GRAB_ENDED_REASON,
 } from "./slskdOrchestrator.js";
+import { releaseAlbumGrabJobs } from "./albumGrab.js";
+import { isPipelinePayloadActive } from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
 import { isAnyDownloadSourceConfigured } from "./downloadSourceService.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
 
@@ -15,6 +18,10 @@ export async function processOrchestratorJob(payload, dependencies = {}) {
   const failPayload = dependencies.failPipelineJob || failPipelineJob;
   try {
     const nextPayload = await processPayload(payload);
+    if (payload?.albumGrab === true
+      && !(nextPayload?.albumGrab === true && isPipelinePayloadActive(nextPayload))) {
+      releaseAlbumGrabJobs(payload, ALBUM_GRAB_ENDED_REASON);
+    }
     await continuePayload(nextPayload);
   } catch (error) {
     if (payload?.manualSelection !== true) throw error;

@@ -50,6 +50,7 @@ export async function assignDownloadedAlbumFiles({ jobs, filePaths, source, pars
   }
   const assignment = assignReleaseFiles(jobs.map(trackEvidence), readable.map((entry) => entry.evidence));
   const accepted = [];
+  const rejected = [];
   const unassignedJobIds = new Set(jobs.map((job) => job.id));
   for (const pair of assignment.pairs) {
     const job = jobs[pair.trackIndex];
@@ -63,10 +64,13 @@ export async function assignDownloadedAlbumFiles({ jobs, filePaths, source, pars
     if (validation.valid) {
       accepted.push({ jobId: job.id, filePath: entry.filePath, validation });
       unassignedJobIds.delete(job.id);
+    } else {
+      rejected.push({ jobId: job.id, reason: validation.reason || "no match" });
     }
   }
   return {
     accepted,
+    rejected,
     unassignedJobIds: [...unassignedJobIds],
     unreadableCount: (filePaths || []).length - readable.length,
     policyVersion: assignment.policyVersion,

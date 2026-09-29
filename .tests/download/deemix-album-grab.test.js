@@ -85,6 +85,7 @@ test("one deemix album queue fills verified siblings and retries only a missing 
     assert.equal(removed, 1);
     assert.equal(downloadTracker.getJob(ids[0]).status, "done");
     assert.equal(downloadTracker.getJob(ids[1]).status, "pending");
+    assert.match(downloadTracker.getJob(ids[1]).error, /not in the album download/);
     assert.ok((await stat(downloadTracker.getJob(ids[0]).finalPath)).isFile());
   } finally {
     await mock.close();

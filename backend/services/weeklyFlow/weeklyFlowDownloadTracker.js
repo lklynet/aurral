@@ -2,7 +2,10 @@ import { randomUUID } from "crypto";
 import path from "node:path";
 import { db } from "../../config/db-sqlite.js";
 import { enqueuePipelineJob, listHonkerJobs } from "../honkerDb.js";
-import { isAnyDownloadSourceConfigured } from "../downloadSourceService.js";
+import {
+  isAlbumGrabSourceConfigured,
+  isAnyDownloadSourceConfigured,
+} from "../downloadSourceService.js";
 import {
   normalizePositiveInteger,
   normalizeStringList,
@@ -442,15 +445,17 @@ export class WeeklyFlowDownloadTracker {
     if (!isAnyDownloadSourceConfigured()) return false;
     const job = this.jobs.get(jobId);
     if (!job) return false;
-    const activeGrab = job.requestGroupId ? listHonkerJobs("slskd-pipeline").find((entry) =>
-      entry.payload?.albumGrab === true && entry.payload?.albumGroupJobIds?.includes(jobId)) : null;
+    const activeGrab = job.requestGroupId && job.albumGrabAttempted
+      ? listHonkerJobs("slskd-pipeline").find((entry) => entry.payload?.albumGrab === true
+        && entry.payload?.albumGroupJobIds?.includes(jobId))
+      : null;
     if (activeGrab && ["pending", "downloading"].includes(job.status)) {
       for (const siblingId of activeGrab.payload.albumGroupJobIds) {
         if (this.jobs.get(siblingId)?.status === "pending") {
           this.setDownloading(siblingId);
         }
       }
-      this.markSlskdDispatched(jobId);
+      if (jobId === activeGrab.payload.jobId) this.markSlskdDispatched(jobId);
       return true;
     }
     if (job.status !== "pending" || this.isSlskdDispatched(jobId)) return false;
@@ -458,7 +463,7 @@ export class WeeklyFlowDownloadTracker {
     if (!isPipelinePayloadActive(payload)) return false;
     const siblings = job.managedBy === "aurral" && job.playlistType === "library"
       && job.requestGroupId && !job.upgradeForJobId && !job.manualReplacementSearch
-      && !job.albumGrabAttempted
+      && !job.albumGrabAttempted && isAlbumGrabSourceConfigured()
       ? this.getAll().filter((entry) => entry.requestGroupId === job.requestGroupId
         && entry.albumMbid === job.albumMbid && entry.status === "pending"
         && !entry.upgradeForJobId && !entry.manualReplacementSearch && !entry.albumGrabAttempted)
