@@ -482,6 +482,21 @@ export function removeLibraryTrackIfNoAvailableMedia(trackId) {
   return removed;
 }
 
+export function removeLibraryArtistIfEmpty(artistId) {
+  const normalizedArtistId = Number(artistId);
+  if (!Number.isSafeInteger(normalizedArtistId)) return false;
+  const removed = db.prepare(
+    `DELETE FROM library_artists
+     WHERE id = ?
+       AND NOT EXISTS (SELECT 1 FROM library_albums WHERE artist_id = ?)`,
+  ).run(normalizedArtistId, normalizedArtistId).changes > 0;
+  if (removed) {
+    removeLibrarySearchDocument("artist", normalizedArtistId);
+    invalidateLibraryCache();
+  }
+  return removed;
+}
+
 export function removeLibraryAlbumTracksWithoutAvailableMedia(albumId) {
   const normalizedAlbumId = Number(albumId);
   if (!Number.isSafeInteger(normalizedAlbumId)) return { albumRemoved: false };

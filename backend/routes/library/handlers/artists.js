@@ -229,7 +229,9 @@ export function registerArtists(router) {
         const result = await libraryManager.deleteArtist(mbid, deleteFiles === "true");
         if (!result?.success) {
           const message = result?.error || "Failed to delete artist";
-          return res.status(503).json({ error: message, message });
+          return res
+            .status(result?.statusCode || 503)
+            .json({ error: message, message, code: result?.code });
         }
         res.json({ success: true, message: "Artist deleted successfully" });
       } catch (error) {
