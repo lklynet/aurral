@@ -23,6 +23,14 @@ test("normalization folds diacritics, punctuation, and spacing", () => {
   assert.equal(normalizeMatchText("Sigur   Rós"), "sigur ros");
 });
 
+test("oversized provider titles are not scored or selected", () => {
+  const title = "Song ".repeat(110);
+  const result = decideRecording({ title, artists: ["The Band"], durationMs: 180000 }, [{
+    title, artists: ["The Band"], durationMs: 180000,
+  }]);
+  assert.equal(result.decision, "skip");
+});
+
 test("an artist alias can corroborate a recording without changing its title", () => {
   const result = decideRecording({ ...request, artists: ["Unknown Credit"], artistAliases: ["Sigur Ros"] }, [{
     title: "Hoppipolla", artists: ["Sigur Ros"], durationMs: 275000,

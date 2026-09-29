@@ -53,6 +53,7 @@ function similarity(left, right) {
   const a = normalizeMatchText(left);
   const b = normalizeMatchText(right);
   if (!a || !b) return 0;
+  if (a.length > 512 || b.length > 512) return 0;
   if (a === b) return 1;
   const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
   for (let i = 1; i <= a.length; i += 1) {
