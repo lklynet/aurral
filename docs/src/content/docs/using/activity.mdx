@@ -1,6 +1,6 @@
 ---
 title: Activity
-description: Track active downloads, Lidarr requests, and Aurral playlist jobs.
+description: Track downloads, album requests, and Aurral playlist jobs.
 ---
 
 Activity replaces the older Requests and Downloads views. It has two views:
@@ -26,7 +26,7 @@ Each review row shows the requested track, artist, album, and remote file path. 
 
 Aurral keeps a possible match for review if the duration is not correct. It does not immediately try another source.
 
-When an album request fails in Lidarr, you can retry the search from History when the entry supports it.
+When an album request sent to Lidarr fails, you can retry the search from History when the entry supports it. For an album that Aurral manages, use **Retry** on the album page.
 
 Use the search action on a Wanted row to re-search a failed Aurral operation or
 search for a quality upgrade. These actions apply across flows and static
@@ -40,6 +40,6 @@ the active searches in **Queue** and their result in **History**.
 Use the info action on any activity or Wanted row to inspect the operation
 details without leaving the page.
 
-Album requests store the requester. Activity can show the requester, and external tools can filter requests by user. A Lidarr import webhook can also mark a requested album as available as soon as Lidarr imports it.
+Album requests store the requester. Activity can show the requester, and external tools can filter requests by user. If you use Lidarr, its import webhook can also mark a requested album as available as soon as Lidarr imports it.
 
 See [yt-dlp](/integrations/ytdlp/), [slskd](/integrations/slskd/), and [Usenet](/integrations/usenet/) for download client setup.

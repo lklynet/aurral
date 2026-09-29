@@ -55,10 +55,19 @@ the artist. Removing a Lidarr artist leaves any Aurral-owned albums in place.
 Navidrome remains optional. Lidarr is optional. When it is configured, Aurral
 uses it for managed library changes and explicit provider actions.
 
+## Known limits
+
+- Aurral does not move artists, albums, or files between Aurral and Lidarr.
+  Items keep the manager they were added with. A later release may add a way
+  to import Lidarr monitoring state.
+- When Lidarr is connected and **Show available music only** is on, albums
+  that Aurral is still downloading stay hidden until a track finishes. Turn the
+  setting off in **Settings > Lidarr** to see them.
+
 ## Aurral-owned storage
 
 Permanent Aurral tracks use the canonical `artist/album/track` layout under
-the configured Aurral download folder. Flow media is temporary and lives under
+the configured Downloads Folder. Flow media is temporary and lives under
 `_flows`. It is not added to the canonical Library until you promote a track.
 Static playlist membership is stored by Aurral's Subsonic model, so deleting a
 playlist does not delete a canonical track. A Subsonic favorite can also
@@ -66,8 +75,8 @@ promote a Flow track when **Favorite Flow tracks** is enabled in **Settings > Sy
 
 ## When new files appear
 
-Aurral keeps the canonical library in its own database. It scans the Aurral
-root and the saved Lidarr root folders locally. The scan records provider
+Aurral keeps the canonical library in its own database. It scans the Downloads
+Folder and the saved Lidarr root folders locally. The scan records provider
 identities, album and track metadata, and the readable media files that belong
 to them. A manual or watcher scan does not request Lidarr artist, album, track,
 or track-file data.
