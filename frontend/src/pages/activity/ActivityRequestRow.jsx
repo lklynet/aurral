@@ -8,6 +8,8 @@ import {
   Play,
   RotateCcw,
   XCircle,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import TooltipButton from "../../components/TooltipButton";
 import { DotLoader } from "../../components/DotLoader";
@@ -69,6 +71,9 @@ export default function ActivityRequestRow({
   onDeny,
   onPreview,
   onInfo,
+  onToggle,
+  expanded,
+  tracksId,
 }) {
   const isSlskd = request.source === "slskd";
   const isUsenet = request.source === "nzbget" || request.source === "sabnzbd";
@@ -94,7 +99,8 @@ export default function ActivityRequestRow({
     (artistMbid && artistMbid !== "null" && artistMbid !== "undefined");
   const status = getStatusMeta(request);
   const StatusIcon = status.icon;
-  const timelineTime = formatTimelineTime(request.requestedAt);
+  const timelineAt = request.completedAt || request.requestedAt;
+  const timelineTime = formatTimelineTime(timelineAt);
   const canReSearch =
     request.canReSearch === true && request.albumId && !reSearchingAlbumIds[request.albumId];
   const isReSearching = Boolean(request.albumId && reSearchingAlbumIds[request.albumId]);
@@ -136,7 +142,19 @@ export default function ActivityRequestRow({
       </Tooltip>
       <div className="activity-row__details">
         <h2 className="activity-row__title">
-          {canNavigate ? (
+          {onToggle ? (
+            <button
+              type="button"
+              className="activity-row__title-button activity-album__toggle"
+              aria-label={`${expanded ? "Collapse" : "Expand"} ${displayTitle}`}
+              aria-expanded={expanded}
+              aria-controls={tracksId}
+              onClick={onToggle}
+            >
+              {expanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
+              <span>{displayTitle}</span>
+            </button>
+          ) : canNavigate ? (
             <Tooltip content={displayTitle}>
               <button
                 type="button"
@@ -156,6 +174,15 @@ export default function ActivityRequestRow({
             {displayMeta}
           </p>
         </Tooltip>
+        {request.progressLabel ? (
+          <p className="activity-row__hint">
+            {request.statusLabel} · {request.progressLabel}
+            {request.activeStatusLabel ? ` · ${request.activeStatusLabel}` : ""}
+          </p>
+        ) : null}
+        {request.albumGrab && request.kind === "track_download" && !isBlockedTrack ? (
+          <p className="activity-row__hint">{request.statusLabel}</p>
+        ) : null}
         {reviewReasonSummary ? (
           <Tooltip content={request.subtitle || reviewReasonSummary}>
             <p className="activity-row__hint" >
@@ -175,7 +202,7 @@ export default function ActivityRequestRow({
       <span className={`activity-row__status-label activity-row__status-label--${status.tone}`}>
         {status.label}
       </span>
-      <time className="activity-row__time" dateTime={request.requestedAt || undefined}>
+      <time className="activity-row__time" dateTime={timelineAt || undefined}>
         {timelineTime}
       </time>
       <div className="activity-row__actions" onClick={(event) => event.stopPropagation()}>

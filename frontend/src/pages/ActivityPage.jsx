@@ -19,8 +19,11 @@ import {
   buildHistoryListEntries,
   compareActivityRequests,
   mergeActivityRequests,
+  groupAlbumGrabRequests,
+  matchesActivitySearch,
 } from "./activity/activityListUtils";
 import ActivityRequestRow from "./activity/ActivityRequestRow";
+import ActivityAlbumRow from "./activity/ActivityAlbumRow";
 import ActivityToolbar from "./activity/ActivityToolbar";
 import ActivityMissingPage from "./activity/ActivityMissingPage";
 import ActivityInfoModal from "./activity/ActivityInfoModal";
@@ -112,7 +115,7 @@ function ActivityPage() {
     refetchIntervalInBackground: false,
   });
   const requests = useMemo(
-    () => mergeActivityRequests([], activityQuery.data),
+    () => groupAlbumGrabRequests(mergeActivityRequests([], activityQuery.data)),
     [activityQuery.data],
   );
   const loading = activityQuery.isPending;
@@ -123,20 +126,7 @@ function ActivityPage() {
       const query = filterValue.trim().toLocaleLowerCase();
       return requests.filter((request) => {
         if (!matchesActivityView(request, activeView)) return false;
-        if (!query) return true;
-        return [
-          request.title,
-          request.name,
-          request.trackName,
-          request.albumName,
-          request.artistName,
-          request.subtitle,
-          request.statusLabel,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLocaleLowerCase()
-          .includes(query);
+        return matchesActivitySearch(request, query);
       });
     },
     [activeView, filterValue, requests],
@@ -483,8 +473,9 @@ function ActivityPage() {
                   </div>
                 );
               }
+              const RowComponent = entry.request.kind === "album_download" ? ActivityAlbumRow : ActivityRequestRow;
               const row = (
-                <ActivityRequestRow
+                <RowComponent
                   key={entry.key}
                   request={entry.request}
                   reSearchingAlbumIds={reSearchingAlbumIds}
@@ -499,6 +490,7 @@ function ActivityPage() {
                   onDeny={handleDenyBlockedJob}
                   onPreview={handleReviewPreview}
                   onInfo={setInfoRequest}
+                  filterValue={filterValue}
                 />
               );
               return row;

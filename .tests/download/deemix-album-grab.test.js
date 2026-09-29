@@ -87,6 +87,15 @@ test("one deemix album queue fills verified siblings and retries only a missing 
     assert.equal(downloadTracker.getJob(ids[1]).status, "pending");
     assert.match(downloadTracker.getJob(ids[1]).error, /not in the album download/);
     assert.ok((await stat(downloadTracker.getJob(ids[0]).finalPath)).isFile());
+    const { getAurralHistoryRequests } = await import("../../backend/services/aurralHistoryService.js");
+    const activity = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId));
+    assert.equal(activity.length, 2);
+    const imported = activity.find((item) => item.jobId === ids[0]);
+    assert.equal(imported.downloadMethod, "album");
+    assert.equal(imported.actualDownloadSource, "deemix");
+    assert.equal(imported.albumGrab.phase, "tracks");
+    assert.match(imported.albumGrab.fallbackReason, /not in the album download/);
+    assert.equal(activity.find((item) => item.jobId === ids[1]).actualDownloadSource, null);
   } finally {
     await mock.close();
   }

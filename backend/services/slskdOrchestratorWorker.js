@@ -11,13 +11,20 @@ import { releaseAlbumGrabJobs } from "./albumGrab.js";
 import { isPipelinePayloadActive } from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
 import { isAnyDownloadSourceConfigured } from "./downloadSourceService.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
+import { recordAlbumGrabQueued, recordAlbumGrabPhase } from "./albumGrabActivity.js";
+import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 
 export async function processOrchestratorJob(payload, dependencies = {}) {
   const processPayload = dependencies.processPipelinePayload || processPipelinePayload;
   const continuePayload = dependencies.continuePipeline || continuePipeline;
   const failPayload = dependencies.failPipelineJob || failPipelineJob;
   try {
+    if (payload?.albumGrab === true && isPipelinePayloadActive(payload)) {
+      recordAlbumGrabQueued(payload, downloadTracker.getAll());
+      recordAlbumGrabPhase(payload);
+    }
     const nextPayload = await processPayload(payload);
+    if (nextPayload?.albumGrab === true) recordAlbumGrabPhase(nextPayload);
     if (payload?.albumGrab === true
       && !(nextPayload?.albumGrab === true && isPipelinePayloadActive(nextPayload))) {
       releaseAlbumGrabJobs(payload, ALBUM_GRAB_ENDED_REASON);

@@ -9355,6 +9355,45 @@ button.native-library-genre-row:focus-visible {
   background: var(--aurral-surface-selected);
 }
 
+.activity-row__title-button.activity-album__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+}
+
+.activity-album__toggle svg {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+.activity-album__toggle span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.activity-album__tracks {
+  margin-inline-start: 2.5rem;
+}
+
+.activity-album .activity-row__hint {
+  color: var(--aurral-text-muted);
+}
+
+.activity-album__notice {
+  padding-block: 0.75rem;
+  color: var(--aurral-text-muted);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 767px) {
+  .activity-album__tracks {
+    margin-inline-start: 0.75rem;
+  }
+}
+
 .activity-row__status {
   display: inline-flex;
   width: 1.75rem;
