@@ -112,7 +112,7 @@ export default function Tooltip({ content, children }) {
     }),
     onBlur: chainHandlers(children.props.onBlur, () => hideTooltip("focus")),
     onFocus: chainHandlers(children.props.onFocus, (event) => {
-      if (event.currentTarget.matches(":focus-visible")) showTooltip(event, "focus");
+      if (event.target.matches(":focus-visible")) showTooltip(event, "focus");
     }),
     onPointerEnter: chainHandlers(children.props.onPointerEnter, (event) => showTooltip(event, "pointer")),
     onPointerLeave: chainHandlers(children.props.onPointerLeave, () => hideTooltip("pointer")),
