@@ -18,19 +18,13 @@ import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import { getDiscoveryFeedbackLabel } from "../../../utils/discoveryFeedback";
 import TooltipButton from "../../../components/TooltipButton";
 import Tooltip from "../../../components/Tooltip";
-
-const MONITOR_OPTIONS = [
-  { value: "none", label: "None (Artist Only)" },
-  { value: "existing", label: "Existing Albums" },
-  { value: "all", label: "All Albums" },
-  { value: "future", label: "Future Albums" },
-  { value: "missing", label: "Missing Albums" },
-  { value: "latest", label: "Latest Album" },
-  { value: "first", label: "First Album" },
-];
+import { getMonitorOptionsForManager } from "../../../utils/libraryDestination";
+import { MONITOR_OPTIONS } from "../../../utils/aurralMonitoring";
 
 export function ArtistDetailsActionBar({
   library,
+  libraryDestination,
+  artistManagedBy = null,
   existsInLibrary,
   loadingLibrary,
   canChangeMonitoring,
@@ -54,7 +48,7 @@ export function ArtistDetailsActionBar({
       return (
         <div className="btn btn-secondary btn--bold btn-min-h">
           <DotLoader size="sm" label={null} />
-          {existsInLibrary ? "Loading library" : "Checking Lidarr"}
+          {existsInLibrary ? "Loading library" : "Checking library"}
         </div>
       );
     }
@@ -94,7 +88,7 @@ export function ArtistDetailsActionBar({
                     disabled={library.updatingMonitor}
                     className="artist-menu-item"
                   >
-                    <span>Monitor: {library.getCurrentMonitorOption()}</span>
+                    <span>Monitor: {currentMonitorOption ?? "custom"}</span>
                     <ChevronDown
                       className={`artist-icon-sm${library.showMonitorOptionMenu ? " artist-chevron--open" : ""}`}
                     />
@@ -102,7 +96,7 @@ export function ArtistDetailsActionBar({
                 )}
                 {canChangeMonitoring && library.showMonitorOptionMenu && (
                   <div className="artist-menu-section">
-                    {MONITOR_OPTIONS.map((option) => {
+                    {getMonitorOptionsForManager(MONITOR_OPTIONS, artistManagedBy).map((option) => {
                       const isActive = option.value === currentMonitorOption;
                       return (
                         <button
@@ -148,18 +142,20 @@ export function ArtistDetailsActionBar({
     return (
       <div className="btn-add-action-group">
         <AddActionButton
-          onClick={library.handleAddToLibrary}
+          destination={libraryDestination}
+          onAdd={library.handleAddToLibrary}
           isLoading={library.addingToLibrary}
-          label="Add to Lidarr"
         />
-        <AddActionButton
-          type="button"
-          icon={SlidersHorizontal}
-          label="Customize add options"
-          onClick={library.handleOpenAddCustomizeModal}
-          disabled={library.addingToLibrary}
-          className="btn-add-action-options"
-        />
+        {libraryDestination.primary === "lidarr" && (
+          <AddActionButton
+            type="button"
+            icon={SlidersHorizontal}
+            label="Customize Lidarr add options"
+            onClick={library.handleOpenAddCustomizeModal}
+            disabled={library.addingToLibrary}
+            className="btn-add-action-options"
+          />
+        )}
       </div>
     );
   };

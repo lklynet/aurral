@@ -241,6 +241,51 @@ function canonicalArtistFallback(reference) {
   return getCanonicalArtistProjection({ reference })[0] || null;
 }
 
+function recordLidarrOwner(lidarrArtist, lidarrAlbum = null) {
+  const artistProviderId = String(lidarrArtist?.foreignArtistId || "").trim();
+  const artistName = String(lidarrArtist?.artistName || lidarrArtist?.name || "").trim();
+  if (!artistProviderId || !artistName) return;
+  const claim = (entityKind, entityId, monitorMode) => {
+    if (getLibraryManagementEntry(entityKind, entityId)) return;
+    setLibraryManagement({ entityKind, entityId, managedBy: "lidarr", monitorMode });
+  };
+  try {
+    const artistIsMbid = UUID_REGEX.test(artistProviderId);
+    const artist =
+      canonicalArtistFallback(artistProviderId) ||
+      upsertLibraryArtist({
+        identityKey: buildIdentityKey(artistIsMbid ? "mbid" : "lidarr-artist", artistProviderId),
+        mbid: artistIsMbid ? artistProviderId : null,
+        name: artistName,
+        sortName: lidarrArtist.sortName || null,
+        metadata: { ...lidarrArtist, librarySource: "lidarr" },
+      });
+    claim("artist", artist.id, lidarrArtist.monitor || lidarrArtist.addOptions?.monitor || null);
+
+    const albumProviderId = String(lidarrAlbum?.foreignAlbumId || "").trim();
+    const albumTitle = String(lidarrAlbum?.title || "").trim();
+    if (!albumProviderId || !albumTitle) return;
+    const albumIsMbid = UUID_REGEX.test(albumProviderId);
+    const album =
+      canonicalAlbumForReference(albumProviderId) ||
+      upsertLibraryAlbum({
+        identityKey: buildIdentityKey(albumIsMbid ? "release-group" : "lidarr-album", albumProviderId),
+        mbid: albumIsMbid ? albumProviderId : null,
+        releaseGroupMbid: albumIsMbid ? albumProviderId : null,
+        artistId: artist.id,
+        title: albumTitle,
+        albumArtist: artistName,
+        releaseDate: lidarrAlbum.releaseDate || null,
+        metadata: { ...lidarrAlbum, librarySource: "lidarr" },
+      });
+    claim("album", album.id, lidarrAlbum.monitor || lidarrAlbum.addOptions?.monitor || null);
+  } catch (error) {
+    logger.warn("library", "Could not record Lidarr ownership", {
+      message: error?.message || String(error),
+    });
+  }
+}
+
 function canonicalLibraryForArtist(reference) {
   return getCanonicalLibraryForArtistReferences({
     source: "all",
@@ -658,6 +703,7 @@ export class LibraryManager {
       logger.info('library', `[LibraryManager] Added artist "${artistName}" to Lidarr`);
       const mappedArtist = this.mapLidarrArtist(lidarrArtist);
       upsertCachedArtist(mappedArtist);
+      recordLidarrOwner(lidarrArtist);
       scheduleCanonicalLibraryReconciliation();
       import("./aurralHistoryService.js")
         .then(({ recordArtistAdded }) =>
@@ -1122,9 +1168,10 @@ export class LibraryManager {
   }
 
   async getArtistById(id, { managedBy = null } = {}) {
-    const canonical = canonicalArtistFallback(id);
-    if (normalizeLibraryManager(managedBy) === "aurral" ||
-      (managedBy == null && canonical?.managedBy === "aurral")) return canonical;
+    const manager = normalizeLibraryManager(managedBy);
+    const found = canonicalArtistFallback(id);
+    if (manager === "aurral" || (managedBy == null && found?.managedBy === "aurral")) return found;
+    const canonical = manager === "lidarr" && found?.managedBy === "aurral" ? null : found;
     const lidarr = await getLidarrClient();
     if (!lidarr || !lidarr.isConfigured()) return canonical;
     try {
@@ -1147,9 +1194,11 @@ export class LibraryManager {
       return artist;
     }
 
+    const requestedModes = [monitorOption, artist.monitorOption, artist.addOptions?.monitor];
     const nextMonitorOption =
-      [monitorOption, artist.monitorOption, artist.addOptions?.monitor]
-        .find((mode) => mode && mode !== "none") || "all";
+      artist.managedBy === "aurral"
+        ? requestedModes.find((mode) => mode && mode !== "none") || "all"
+        : requestedModes.find(Boolean) || "none";
     const updated = await this.updateArtist(mbid, {
       monitored: true,
       monitorOption: nextMonitorOption,
@@ -1164,12 +1213,12 @@ export class LibraryManager {
       return { artist: null, album: null };
     }
 
-    let artist = await this.getArtistById(normalizedArtistId);
+    let artist = await this.getArtistById(normalizedArtistId, { managedBy: "lidarr" });
     if (artist?.monitored === false) {
       artist = await this.ensureArtistMonitored(artist, options.monitorOption);
     }
 
-    let album = await this.getAlbumById(normalizedAlbumId);
+    let album = await this.getAlbumById(normalizedAlbumId, { managedBy: "lidarr" });
     if (album?.monitored === false) {
       album = await this.updateAlbum(normalizedAlbumId, { monitored: true });
     }
@@ -1994,6 +2043,14 @@ export class LibraryManager {
     if (existing?.managedBy && existing.managedBy !== "aurral") {
       return buildAlbumConflict(existing);
     }
+    const storedAlbum = existing
+      ? null
+      : db.prepare("SELECT id, title FROM library_albums WHERE identity_key = ?")
+        .get(buildIdentityKey("release-group", normalizedAlbumMbid));
+    const storedOwner = getLibraryManagementEntry("album", storedAlbum?.id)?.managedBy;
+    if (storedOwner && storedOwner !== "aurral") {
+      return buildAlbumConflict({ ...storedAlbum, managedBy: storedOwner, mbid: normalizedAlbumMbid });
+    }
     if (existing) {
       const existingLibrary = canonicalLibraryForAlbum(existing.id);
       if (existingLibrary.tracks.length > 0) {
@@ -2245,6 +2302,7 @@ export class LibraryManager {
         const refreshedArtist = await lidarr.getArtist(artistId).catch(() => fallbackArtist);
         if (!refreshedArtist) return null;
         const mapped = this.mapLidarrAlbum(refreshedExisting, refreshedArtist);
+        recordLidarrOwner(refreshedArtist, refreshedExisting);
         scheduleCanonicalLibraryReconciliation();
         return mapped;
       };
@@ -2347,6 +2405,7 @@ export class LibraryManager {
       }
       const updatedArtist = await lidarr.getArtist(artistId);
       const mapped = this.mapLidarrAlbum(lidarrAlbum, updatedArtist);
+      recordLidarrOwner(updatedArtist, lidarrAlbum);
       scheduleCanonicalLibraryReconciliation();
       return mapped;
     } catch (error) {
@@ -2585,9 +2644,10 @@ export class LibraryManager {
   }
 
   async getAlbumById(id, { managedBy = null } = {}) {
-    const canonical = canonicalAlbumForReference(id);
-    if (normalizeLibraryManager(managedBy) === "aurral" ||
-      (managedBy == null && canonical?.managedBy === "aurral")) return canonical;
+    const manager = normalizeLibraryManager(managedBy);
+    const found = canonicalAlbumForReference(id);
+    if (manager === "aurral" || (managedBy == null && found?.managedBy === "aurral")) return found;
+    const canonical = manager === "lidarr" && found?.managedBy === "aurral" ? null : found;
     const lidarr = await getLidarrClient();
     if (!lidarr || !lidarr.isConfigured()) return canonical;
     if (!id || id === "undefined" || id === "null") {

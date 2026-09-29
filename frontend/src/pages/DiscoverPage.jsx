@@ -80,6 +80,7 @@ function DiscoverPage() {
     canAddAlbum,
     getLibraryArtistImage,
     getRecentReleaseKey,
+    libraryDestination,
     handleAddArtistToLibrary,
     handleRecentReleaseAlbumAction,
     handleDiscoveryFeedback,
@@ -580,6 +581,7 @@ function DiscoverPage() {
                   canAddAlbum={canAddAlbum}
                   isPending={!!pendingRecentReleaseIds[getRecentReleaseKey(album)]}
                   onAlbumAction={handleRecentReleaseAlbumAction}
+                  libraryDestination={libraryDestination}
                 />
               </div>
             ))}

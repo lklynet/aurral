@@ -525,6 +525,10 @@ textarea {
   color: var(--aurral-text);
 }
 
+.btn-add-action--managed {
+  cursor: default;
+}
+
 .btn-add-action:disabled {
   opacity: 0.7;
   cursor: not-allowed;
@@ -595,7 +599,9 @@ textarea {
     opacity 0.2s ease;
 }
 
-.btn-add-action-options:hover:not(:disabled) {
+.btn-add-action-options:hover:not(:disabled),
+.btn-add-action-options:focus-visible,
+.btn-add-action-options.is-open {
   background: var(--aurral-surface-hover);
   color: var(--aurral-text);
 }
@@ -6916,7 +6922,7 @@ textarea {
 
 .search-mixed-results__row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 2rem;
+  grid-template-columns: minmax(0, 1fr) auto minmax(2rem, auto);
   align-items: center;
   column-gap: 1rem;
   border-bottom: 1px solid var(--aurral-border);
@@ -8241,6 +8247,18 @@ textarea {
   color: var(--aurral-text-muted);
 }
 
+.native-library-card__status {
+  color: var(--aurral-text);
+}
+
+.native-library-card__status[data-tone="warning"] {
+  color: var(--aurral-warning);
+}
+
+.native-library-card__status[data-tone="danger"] {
+  color: var(--aurral-danger);
+}
+
 .native-library-card__artist,
 .native-library-card__meta {
   display: block;
@@ -8790,6 +8808,89 @@ button.native-library-genre-row:focus-visible {
 .native-library-detail__discover svg {
   width: 0.8rem;
   height: 0.8rem;
+}
+
+.native-library-detail__discover:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.native-library-detail__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.native-library-detail__badges li {
+  border: 1px solid var(--aurral-border);
+  border-radius: 9999px;
+  padding: 0.1rem 0.5rem;
+  color: var(--aurral-text-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.native-library-album-status {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.75rem;
+}
+
+.native-library-detail .native-library-album-status__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  color: var(--aurral-text);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.native-library-album-status[data-tone="warning"] .native-library-album-status__label {
+  color: var(--aurral-warning);
+}
+
+.native-library-album-status[data-tone="danger"] .native-library-album-status__label {
+  color: var(--aurral-danger);
+}
+
+.native-library-detail .native-library-album-status__recovery {
+  margin: 0;
+  max-width: 36rem;
+}
+
+.native-library-album-status__recovery a {
+  color: var(--aurral-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.native-library-album-status__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.native-library-album-monitoring {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.native-library-detail .native-library-album-monitoring__label {
+  color: var(--aurral-text);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.native-library-album-monitoring__state {
+  color: var(--aurral-text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
 }
 
 .native-library-detail__section {
@@ -13579,6 +13680,20 @@ button.native-library-genre-row:focus-visible {
 .profile-settings__field > .pill-toggle {
   grid-area: control;
   min-width: 0;
+}
+
+.profile-settings__control {
+  display: flex;
+  grid-area: control;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.profile-settings__control-status {
+  color: var(--aurral-text-muted);
+  font-size: 0.8125rem;
 }
 
 .profile-settings__field > .settings-page__hint {

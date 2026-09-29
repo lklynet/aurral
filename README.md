@@ -24,8 +24,8 @@ Aurral is the Lidarr companion for self-hosted music discovery. Best-in-class re
 ## Features
 
 - **Discover**: Best-in-class personalized recommendations, trends, tags, recent releases, discover playlists, and nearby shows.
-- **Search**: Find artists and albums, preview tracks, and add to Lidarr with your defaults.
-- **Library**: Browse and search artists already in Lidarr.
+- **Search**: Find artists and albums, preview tracks, and add them to Aurral or Lidarr with your defaults.
+- **Library**: Browse and search the artists, albums, and tracks that Aurral and Lidarr manage.
 - **Playlists**: Run scheduled flows, adopt discover playlists like Release Radar, import Spotify, YouTube Music, Last.fm, or ListenBrainz playlists, and convert flows to fixed tracklists.
 - **Activity**: Queue and history for Lidarr requests, yt-dlp / slskd / Usenet downloads, plus Wanted actions for Aurral playlist jobs.
 - **Integrations**: Lidarr, Last.fm, ListenBrainz, Koito, yt-dlp, slskd, SABnzbd/NZBGet, Navidrome, Plex, Ticketmaster, Gotify, and webhooks.
@@ -69,7 +69,7 @@ Set `MEDIA_ROOT` to the **same host media path that Lidarr already mounts**. Kee
 docker compose up -d
 ```
 
-Open `http://localhost:3001` and create your admin account. Connect Lidarr if you want managed library changes and provider status.
+Open `http://localhost:3001` and create your admin account. Connect Lidarr if you want it to manage your library, or skip it and let Aurral manage its own library folder.
 
 Want the latest merged changes? Use `ghcr.io/lklynet/aurral:nightly`. Nightly
 builds may be less stable than releases; see the [Docker image channels](https://docs.aurral.org/getting-started/docker/#which-image-tag-to-use).

@@ -131,6 +131,10 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     onMenuOpen,
     triggerIcon = <MoreVertical aria-hidden="true" />,
     triggerLabel = `${label} options`,
+    triggerClassName = "native-library-item-menu__trigger",
+    menuLabel = `${label} actions`,
+    disabled = false,
+    contextMenu = true,
   },
   ref,
 ) {
@@ -194,6 +198,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
   useImperativeHandle(ref, () => ({ openAt, close: closeMenu }), [closeMenu, openAt]);
 
   useEffect(() => {
+    if (!contextMenu) return undefined;
     const target = menuRootRef.current?.closest("[data-library-menu-target]");
     if (!target) return undefined;
     const handleContextMenu = (event) => {
@@ -203,7 +208,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     };
     target.addEventListener("contextmenu", handleContextMenu);
     return () => target.removeEventListener("contextmenu", handleContextMenu);
-  }, [openAt]);
+  }, [contextMenu, openAt]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -290,6 +295,24 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     }
   };
 
+  const handleMenuKeyDown = (event) => {
+    const keys = ["ArrowDown", "ArrowUp", "Home", "End"];
+    if (!keys.includes(event.key)) return;
+    const buttons = [...(menuRef.current?.querySelectorAll("button:not(:disabled)") || [])]
+      .filter((button) => button.checkVisibility());
+    if (!buttons.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const current = buttons.indexOf(document.activeElement);
+    const next = {
+      ArrowDown: (current + 1) % buttons.length,
+      ArrowUp: (current - 1 + buttons.length) % buttons.length,
+      Home: 0,
+      End: buttons.length - 1,
+    }[event.key];
+    buttons[next].focus();
+  };
+
   const renderItems = () => (
     <>
       {items.map((item) => {
@@ -344,15 +367,22 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     <div className="native-library-item-menu" ref={menuRootRef}>
       <TooltipButton
         ref={triggerRef}
-        className={`native-library-item-menu__trigger${open ? " is-open" : ""}`}
+        className={`${triggerClassName}${open ? " is-open" : ""}`}
         label={triggerLabel}
         aria-label={triggerLabel}
         aria-haspopup="menu"
         aria-expanded={open}
+        disabled={disabled}
         onClick={(event) => {
           event.stopPropagation();
           if (open) closeMenu();
           else openFromTrigger();
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowDown" || open) return;
+          event.preventDefault();
+          event.stopPropagation();
+          openFromTrigger();
         }}
       >
         {triggerIcon}
@@ -363,9 +393,10 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
               ref={menuRef}
               className={`native-library-item-menu__panel${submenuSide === "left" ? " is-submenu-left" : ""}`}
               role="menu"
-              aria-label={`${label} actions`}
+              aria-label={menuLabel}
               style={{ left: position.left, top: position.top }}
               onClick={(event) => event.stopPropagation()}
+              onKeyDown={handleMenuKeyDown}
             >
               {renderItems()}
             </div>,

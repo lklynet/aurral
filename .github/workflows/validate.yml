@@ -76,6 +76,9 @@ jobs:
       - name: Run test suite
         run: npm test
 
+      - name: Run integration tests
+        run: npm run test:integration
+
       - name: Build app
         run: npm run build
 

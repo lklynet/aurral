@@ -1,3 +1,5 @@
+import { getAddToManagerLabel, getItemDestination } from "./libraryDestination.js";
+
 const ACTIVE_ALBUM_STATUSES = new Set([
   "adding",
   "searching",
@@ -39,8 +41,16 @@ export const shouldTriggerAlbumSearch = ({
   return Boolean(inLibrary && monitored);
 };
 
-export const getAlbumAddButtonLabel = (input = {}) =>
-  shouldTriggerAlbumSearch(input) ? "Search Album" : "Add to Lidarr";
+export const buildAlbumAddAction = (search, managedBy, destination = {}) =>
+  search
+    ? {
+        label: "Search Album",
+        destination: { ...getItemDestination(managedBy, destination), alternative: null },
+      }
+    : { label: getAddToManagerLabel(destination.primary), destination };
+
+export const getAlbumAddAction = (input = {}, destination = {}) =>
+  buildAlbumAddAction(shouldTriggerAlbumSearch(input), input.managedBy, destination);
 
 export const isAlbumCompleteInLibrary = ({
   status = "",
@@ -55,3 +65,11 @@ export const isAlbumCompleteInLibrary = ({
   Number(percentOfTracks) >= 100 ||
   Number(sizeOnDisk) > 0 ||
   Number(trackFileCount) > 0;
+
+export const describeAlbumRequestResult = (result, title) =>
+  result?.status === "blocked" || result?.albumStatus?.status === "blocked"
+    ? {
+        kind: "info",
+        message: `Added ${title}, but nothing is downloading. Open the album to see why.`,
+      }
+    : { kind: "success", message: `Downloading album: ${title}` };

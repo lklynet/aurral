@@ -13,7 +13,19 @@ import {
   addArtistToLibrary,
   lookupArtistInLibrary,
   requestAlbumFromSearch,
+  settleLibraryOwnerConflict,
 } from "../../../utils/api/endpoints/library.js";
+import {
+  buildAlbumRequestPayload,
+  buildArtistAddPayload,
+} from "../../../utils/libraryDestination.js";
+import {
+  describeArtistMonitoringResult,
+  describeAurralMonitoringError,
+  getMonitorOptionLabel,
+  resolveCurrentMonitorOption,
+} from "../../../utils/aurralMonitoring.js";
+import { describeAlbumRequestResult } from "../../../utils/albumAddAction.js";
 import { getMyLidarrPreferences } from "../../../utils/api/endpoints/auth.js";
 import { deduplicateAlbums } from "../utils";
 import { useWebSocketChannel } from "../../../hooks/useWebSocket";
@@ -66,7 +78,10 @@ export function useArtistDetailsLibrary({
   appSettings,
   showSuccess,
   showError,
+  showInfo,
+  libraryDestination,
 }) {
+  const [ownerConflicts, setOwnerConflicts] = useState({});
   const [requestingAlbum, setRequestingAlbum] = useState(null);
   const [removingAlbum, setRemovingAlbum] = useState(null);
   const [albumDropdownOpen, setAlbumDropdownOpen] = useState(null);
@@ -319,27 +334,20 @@ export function useArtistDetailsLibrary({
       delete updatedArtist.statistics;
       delete updatedArtist.images;
       delete updatedArtist.links;
-      await updateArtistMutation.mutateAsync({ mbid: libraryArtist.mbid, data: updatedArtist });
+      const response = await updateArtistMutation.mutateAsync({
+        mbid: libraryArtist.mbid,
+        data: updatedArtist,
+      });
       const refreshedArtist = await getLibraryArtist(libraryArtist.mbid, { bypassCache: true });
       setLibraryArtist(refreshedArtist);
       setShowRemoveDropdown(false);
-      const monitorLabels = {
-        none: "None (Artist Only)",
-        existing: "Existing Albums",
-        all: "All Albums",
-        future: "Future Albums",
-        missing: "Missing Albums",
-        latest: "Latest Album",
-        first: "First Album",
-      };
-      showSuccess(`Monitor option updated to: ${monitorLabels[newMonitorOption]}`);
+      showSuccess(
+        describeArtistMonitoringResult(response)?.message ||
+          `Monitor option updated to: ${getMonitorOptionLabel(newMonitorOption)}`,
+      );
     } catch (err) {
       console.error("Update error:", err);
-      showError(
-        `Failed to update monitor option: ${
-          err.response?.data?.message || err.response?.data?.error || err.message
-        }`,
-      );
+      showError(`Failed to update monitor option: ${describeAurralMonitoringError(err)}`);
     }
   };
 
@@ -389,21 +397,8 @@ export function useArtistDetailsLibrary({
     });
   };
 
-  const getCurrentMonitorOption = () => {
-    if (!libraryArtist) return "none";
-    if (libraryArtist.monitored === false) return "none";
-    const monitorOption =
-      libraryArtist.monitorOption ||
-      libraryArtist.addOptions?.monitor ||
-      libraryArtist.monitorNewItems;
-    if (
-      monitorOption &&
-      ["none", "existing", "all", "future", "missing", "latest", "first"].includes(monitorOption)
-    ) {
-      return monitorOption;
-    }
-    return libraryArtist.monitored ? "all" : "none";
-  };
+  const getCurrentMonitorOption = () =>
+    resolveCurrentMonitorOption(libraryArtist, libraryArtist?.managedBy);
 
   const applyCustomizeDefaults = (preferences) => {
     const nextRootFolderPath =
@@ -447,24 +442,19 @@ export function useArtistDetailsLibrary({
     }
   };
 
-  const addArtistWithOptions = async (overrides = {}) => {
+  const addArtistWithOptions = async (managedBy, lidarrOptions = {}) => {
     if (!artist) {
       showError("Artist information not available");
       return;
     }
     try {
-      const result = await addArtistMutation.mutateAsync({
-        foreignArtistId: artist.id,
+      const result = await addArtistMutation.mutateAsync(buildArtistAddPayload({
+        artistMbid: artist.id,
         artistName: artist.name,
         quality: appSettings?.quality || "standard",
-        ...(Object.hasOwn(overrides, "rootFolderPath")
-          ? { rootFolderPath: overrides.rootFolderPath }
-          : {}),
-        ...(Object.hasOwn(overrides, "qualityProfileId")
-          ? { qualityProfileId: overrides.qualityProfileId }
-          : {}),
-        ...(Object.hasOwn(overrides, "tagId") ? { tagId: overrides.tagId } : {}),
-      });
+        managedBy,
+        lidarrOptions,
+      }));
       let fullArtist = await resolveArtistFromAddResponse(result, {
         refresh: true,
         hydrateAlbums: true,
@@ -490,10 +480,11 @@ export function useArtistDetailsLibrary({
     }
   };
 
-  const handleAddToLibrary = async () => addArtistWithOptions();
+  const handleAddToLibrary = async (managedBy = libraryDestination.primary) =>
+    addArtistWithOptions(managedBy);
 
   const handleCustomizeAddToLibrary = async () => {
-    const success = await addArtistWithOptions({
+    const success = await addArtistWithOptions("lidarr", {
       rootFolderPath: customizeRootFolderPath || null,
       qualityProfileId: customizeQualityProfileId ? Number(customizeQualityProfileId) : null,
       tagId: customizeTagId ? Number(customizeTagId) : null,
@@ -504,20 +495,21 @@ export function useArtistDetailsLibrary({
     return success;
   };
 
-  const handleRequestAlbum = async (albumId, title) => {
+  const handleRequestAlbum = async (albumId, title, managedBy = libraryDestination.primary) => {
     setRequestingAlbum(albumId);
     try {
       if (!artist?.id || !artist?.name) {
         throw new Error("Artist information not available");
       }
 
-      const result = await requestAlbumMutation.mutateAsync({
+      const result = await requestAlbumMutation.mutateAsync(buildAlbumRequestPayload({
         albumMbid: albumId,
         albumName: title,
         artistMbid: artist.id,
         artistName: artist.name,
+        managedBy,
         triggerSearch: true,
-      });
+      }));
       const addedArtist = result?.artist;
       const addedAlbum = result?.album;
       if (!addedArtist?.id || !addedAlbum?.id) {
@@ -557,8 +549,15 @@ export function useArtistDetailsLibrary({
           return next;
         },
       );
-      showSuccess(`Downloading album: ${title}`);
+      const outcome = describeAlbumRequestResult(result, title);
+      (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
     } catch (err) {
+      const conflict = settleLibraryOwnerConflict(err);
+      if (conflict) {
+        setOwnerConflicts((previous) => ({ ...previous, [albumId]: conflict }));
+        showInfo(`${title}: ${conflict.message}`);
+        return;
+      }
       showError(
         `Failed to add album: ${
           err.response?.data?.message || err.response?.data?.error || err.message
@@ -724,6 +723,10 @@ export function useArtistDetailsLibrary({
   };
 
   const getAlbumStatus = (releaseGroupId) => {
+    const ownerConflict = ownerConflicts[releaseGroupId];
+    if (ownerConflict) {
+      return { status: "managed", label: ownerConflict.label, ownerConflict };
+    }
     if (!existsInLibrary || !libraryArtist || libraryAlbums.length === 0) {
       return null;
     }

@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useRef } from "react";
 import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.js";
 
@@ -13,10 +13,12 @@ export function DeleteArtistModal({
   deleting,
 }) {
   const titleId = useId();
+  const cancelRef = useRef(null);
   const { dialogRef } = useModalDialog({
     open: show,
     onClose: onCancel,
     closeDisabled: deleting,
+    initialFocusRef: cancelRef,
   });
 
   if (!show) return null;
@@ -57,7 +59,12 @@ export function DeleteArtistModal({
         </div>
 
         <div className="artist-modal__actions">
-          <button onClick={onCancel} disabled={deleting} className="btn btn-secondary">
+          <button
+            ref={cancelRef}
+            onClick={onCancel}
+            disabled={deleting}
+            className="btn btn-secondary"
+          >
             Cancel
           </button>
           <button onClick={onConfirm} disabled={deleting} className="btn btn-danger">

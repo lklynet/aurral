@@ -284,7 +284,7 @@ function buildBootstrapPayload(req) {
       permissions: currentUser.permissions,
     };
     payload.authUser = currentUser.username;
-    payload.rootFolderConfigured = lidarrConfigured;
+    payload.rootFolderConfigured = lidarrConfigured || Boolean(resolvePlaylistRoot());
     payload.lidarr = {
       configured: lidarrConfigured,
       circuitOpen: lidarrClient.isCircuitOpen(),

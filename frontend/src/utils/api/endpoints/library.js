@@ -10,6 +10,7 @@ import {
   queryClient,
   queryKeys,
 } from "../../../queryClient.js";
+import { getLibraryOwnerConflict } from "../../libraryDestination.js";
 
 const buildStreamUrl = (path) => buildAuthenticatedApiUrl(path);
 const SLOW_LIBRARY_REQUEST_TIMEOUT_MS = 90000;
@@ -63,6 +64,14 @@ export const clearCanonicalLibraryPageCache = () => {
     queryKey: queryKeys.libraryCanonicalPrefix,
     predicate: (query) => query.state.fetchStatus !== "fetching",
   });
+};
+
+export const settleLibraryOwnerConflict = (error) => {
+  const conflict = getLibraryOwnerConflict(error);
+  if (!conflict) return null;
+  clearCanonicalLibraryPageCache();
+  queryClient.invalidateQueries({ queryKey: queryKeys.libraryPrefix });
+  return conflict;
 };
 
 export const requestLibraryRefresh = (mode = "quick") =>
@@ -356,6 +365,15 @@ export const getDownloadStatus = async (albumIds, { signal, bypassCache = false 
     staleTime: 4_000,
   });
 };
+
+export const getAurralAlbumStatus = (canonicalId, { signal } = {}) =>
+  getData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}/status`, { signal });
+
+export const cancelAurralAlbum = (canonicalId) =>
+  postData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}/cancel`);
+
+export const setAurralAlbumMonitoring = (canonicalId, monitored) =>
+  putData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}`, { monitored });
 
 export const refreshLibraryArtist = (mbid) =>
   postData(`/library/artists/${mbid}/refresh`);

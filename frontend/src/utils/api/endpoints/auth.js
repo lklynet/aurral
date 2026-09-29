@@ -1,10 +1,12 @@
 import { getData, postData, putData, patchData, deleteData } from "../core.js";
 import { queryClient, queryKeys } from "../../../queryClient.js";
 
+export const fetchHealth = ({ signal } = {}) => getData("/health", { signal });
+
 export const checkHealth = ({ force = false } = {}) =>
   queryClient.fetchQuery({
     queryKey: queryKeys.appHealth,
-    queryFn: ({ signal: querySignal }) => getData("/health", { signal: querySignal }),
+    queryFn: ({ signal: querySignal }) => fetchHealth({ signal: querySignal }),
     staleTime: force ? 0 : 5_000,
   });
 
@@ -114,7 +116,13 @@ export const linkKoito = (token, url) =>
 export const getMyLidarrPreferences = ({ signal } = {}) =>
   getData("/users/me/lidarr-preferences", { signal });
 
+export const getMyLibraryOwner = ({ signal } = {}) =>
+  getData("/users/me/library-owner", { signal });
+
 export const getMyDiscoverLayout = () => getData("/users/me/discover-layout");
+
+export const updateMyLibraryOwner = (defaultLibraryOwner) =>
+  postData("/users/me/library-owner", { defaultLibraryOwner });
 
 export const updateMyListeningHistory = (userId, payload) =>
   patchData(`/users/${userId}`, payload);

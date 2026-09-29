@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { Music } from "lucide-react";
 import SearchLibraryCheck from "./SearchLibraryCheck";
 import AddActionButton from "./AddActionButton";
-import { getAlbumAddButtonLabel, isAlbumCompleteInLibrary } from "../utils/albumAddAction";
+import { getAlbumAddAction, isAlbumCompleteInLibrary } from "../utils/albumAddAction";
 import { getReleaseNavigationTarget } from "../utils/searchNavigation";
 import Tooltip from "./Tooltip";
 
@@ -40,14 +40,9 @@ function AlbumCover({ src, alt }) {
   );
 }
 
-function AlbumAction({ album, isPending, canAddAlbum, onAlbumAction }) {
+function AlbumAction({ album, isPending, canAddAlbum, onAlbumAction, libraryDestination }) {
   const actionDisabled = isAlbumActionDisabled(album, isPending, canAddAlbum);
   const isComplete = isAlbumCompleteInLibrary({ status: album.status });
-  const actionLabel = getAlbumAddButtonLabel({
-    status: album.status,
-    inLibrary: album.inLibrary,
-    monitored: album.monitored,
-  });
 
   if (isComplete) {
     return (
@@ -64,13 +59,11 @@ function AlbumAction({ album, isPending, canAddAlbum, onAlbumAction }) {
 
   return (
     <AddActionButton
-      onClick={(event) => {
-        event.stopPropagation();
-        onAlbumAction(album);
-      }}
+      {...getAlbumAddAction(album, libraryDestination)}
+      ownerConflict={album.ownerConflict}
+      onAdd={(managedBy) => onAlbumAction(album, managedBy)}
       isLoading={isPending}
       disabled={actionDisabled}
-      label={actionLabel}
     />
   );
 }
@@ -81,6 +74,7 @@ function SearchAlbumResults({
   canAddAlbum,
   pendingAlbumIds,
   onAlbumAction,
+  libraryDestination,
   navigate,
   viewMode = "grid",
 }) {
@@ -169,6 +163,7 @@ function SearchAlbumResults({
               isPending={isPending}
               canAddAlbum={canAddAlbum}
               onAlbumAction={onAlbumAction}
+              libraryDestination={libraryDestination}
             />
           </div>
         </article>
@@ -201,6 +196,7 @@ function SearchAlbumResults({
               isPending={isPending}
               canAddAlbum={canAddAlbum}
               onAlbumAction={onAlbumAction}
+              libraryDestination={libraryDestination}
             />
           </div>
         </div>

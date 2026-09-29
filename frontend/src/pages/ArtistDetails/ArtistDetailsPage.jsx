@@ -49,6 +49,8 @@ import { ArtistDetailsSimilar } from "./components/ArtistDetailsSimilar";
 import { DeleteArtistModal } from "./components/DeleteArtistModal";
 import { DeleteAlbumModal } from "./components/DeleteAlbumModal";
 import { AddArtistCustomizeModal } from "./components/AddArtistCustomizeModal";
+import { useLibraryDestination } from "../../hooks/useLibraryDestination";
+import { buildArtistAddPayload } from "../../utils/libraryDestination";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import TooltipButton from "../../components/TooltipButton";
 const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -66,7 +68,8 @@ function ArtistDetailsPage() {
     }),
     [locationState?.inLibrary, locationState?.libraryArtist],
   );
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showInfo } = useToast();
+  const libraryDestination = useLibraryDestination();
   const { hasPermission } = useAuth();
   const similarArtistsScrollRef = useRef(null);
   const [showEditIdsModal, setShowEditIdsModal] = useState(false);
@@ -202,12 +205,13 @@ function ArtistDetailsPage() {
   const handleAddSimilarArtistToLibrary = useCallback(
     async (similarArtist) => {
       const artistId = similarArtist?.id || similarArtist?.mbid;
-      if (!similarArtist?.name || !artistId) return false;
+      if (!similarArtist?.name || !artistId || !libraryDestination.ready) return false;
       try {
-        await addSimilarArtist({
-          foreignArtistId: artistId,
+        await addSimilarArtist(buildArtistAddPayload({
+          artistMbid: artistId,
           artistName: similarArtist.name,
-        });
+          managedBy: libraryDestination.primary,
+        }));
         showSuccess(`Adding ${similarArtist.name}...`);
         return true;
       } catch (err) {
@@ -220,7 +224,7 @@ function ArtistDetailsPage() {
         return false;
       }
     },
-    [addSimilarArtist, showError, showSuccess],
+    [addSimilarArtist, libraryDestination.primary, libraryDestination.ready, showError, showSuccess],
   );
 
   const library = useArtistDetailsLibrary({
@@ -234,6 +238,8 @@ function ArtistDetailsPage() {
     appSettings,
     showSuccess,
     showError,
+    showInfo,
+    libraryDestination,
   });
 
   useArtistSearchFocus({
@@ -516,6 +522,8 @@ function ArtistDetailsPage() {
 
       <ArtistDetailsActionBar
         library={library}
+        libraryDestination={libraryDestination}
+        artistManagedBy={libraryArtist?.managedBy}
         existsInLibrary={existsInLibrary}
         loadingLibrary={loadingLibrary}
         canChangeMonitoring={canChangeMonitoring}
@@ -561,6 +569,7 @@ function ArtistDetailsPage() {
         canAddAlbum={canAddAlbum}
         requestingAlbum={library.requestingAlbum}
         handleRequestAlbum={library.handleRequestAlbum}
+        libraryDestination={libraryDestination}
         playbackSource={playbackSource}
         artistName={artistDisplayName}
         onAddTrackToPlaylist={handleReleaseTrackAdd}
@@ -608,6 +617,7 @@ function ArtistDetailsPage() {
           getAlbumStatus={library.getAlbumStatus}
           canAddAlbum={canAddAlbum}
           handleRequestAlbum={library.handleRequestAlbum}
+          libraryDestination={libraryDestination}
           requestingAlbum={library.requestingAlbum}
           artistName={artistDisplayName}
           onVisibleCoverIdsChange={setVisibleReleaseGroupCoverIds}
@@ -631,6 +641,7 @@ function ArtistDetailsPage() {
           getAlbumStatus={library.getAlbumStatus}
           canAddAlbum={canAddAlbum}
           handleRequestAlbum={library.handleRequestAlbum}
+          libraryDestination={libraryDestination}
           requestingAlbum={library.requestingAlbum}
           artistName={artistDisplayName}
           onVisibleCoverIdsChange={setVisibleAppearsOnCoverIds}

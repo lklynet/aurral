@@ -85,6 +85,7 @@ const SETTINGS_SEARCH_METADATA = {
       MusicBrainz: "metadata artist ids",
     },
     fields: {
+      Enabled: "enable disable turn off reconnect unreachable",
       "Server URL": "address host connection",
       "API key": "credentials authentication",
       "External URL": "browser view on lidarr public address",
