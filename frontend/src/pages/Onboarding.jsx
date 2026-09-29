@@ -336,7 +336,7 @@ function Onboarding() {
                   <OnboardingStepHeader title="Use Aurral without Lidarr" />
                   <div className="onboarding-fields">
                     <div className="onboarding-field">
-                      <label htmlFor="onboarding-download-folder">Aurral library folder</label>
+                      <label htmlFor="onboarding-download-folder">Downloads folder</label>
                       <DownloadFolderField
                         id="onboarding-download-folder"
                         value={downloadFolderPath}
@@ -344,7 +344,7 @@ function Onboarding() {
                       />
                     </div>
                     <OnboardingHint>
-                      Aurral adds music here. You can connect Lidarr later in Settings → Lidarr.
+                      Aurral keeps the music it adds here. You can change it in Settings → Download clients, and connect Lidarr later in Settings → Lidarr.
                     </OnboardingHint>
                     <button
                       type="button"
