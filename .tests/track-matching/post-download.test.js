@@ -13,20 +13,10 @@ import { join } from "node:path";
 import {
   validateDownloadedTrackFile,
   selectVerifiedDownloadedFile,
-  isBeetsMatcherAvailable,
-  resetMatcherAvailability,
   POST_DOWNLOAD_DECISIONS,
 } from "../../backend/services/trackMatching/index.js";
 
-resetMatcherAvailability();
-const beetsAvailable = await isBeetsMatcherAvailable();
-const skip = beetsAvailable ? false : "beets not installed for any available Python interpreter";
-const btest = (name, optionsOrFn, maybeFn) => {
-  const options = typeof optionsOrFn === "function" ? {} : optionsOrFn || {};
-  const fn = typeof optionsOrFn === "function" ? optionsOrFn : maybeFn;
-  return test(name, { ...options, skip: options.skip || skip }, fn);
-};
-const test_ = test;
+const btest = test;
 
 const hasFfmpeg = (() => {
   try {
@@ -90,7 +80,8 @@ btest("strong original tags and matching duration verify", async () => {
   assert.equal(outcome.valid, true);
   assert.equal(outcome.blocked, false);
   assert.equal(outcome.parsedTags.title, "Get Lucky");
-  assert.equal(outcome.beets.recommendation, "strong");
+  assert.ok(outcome.native.evidence.includes("artist"));
+  assert.ok(outcome.native.evidence.includes("duration"));
 });
 
 test("karaoke tags are auto-rejected, never routed to review", async () => {
@@ -170,7 +161,7 @@ btest("matching embedded recording MBID verifies even with odd tags", async () =
   assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
 });
 
-btest("strong tags with a conflicting duration are held for review, not silently accepted", async () => {
+btest("strong tags with a conflicting duration require review, never automatic import", async () => {
   const outcome = await validateDownloadedTrackFile({
     request: GET_LUCKY,
     filePath: "/staging/Get Lucky.flac",
@@ -183,11 +174,11 @@ btest("strong tags with a conflicting duration are held for review, not silently
   });
   assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
   assert.equal(outcome.blocked, true);
-  assert.match(outcome.reason, /duration mismatch/);
+  assert.ok(outcome.contradictions.includes("duration"));
 });
 
 btest("strict mode refuses the relaxed duration window for verify-tier candidates", async () => {
-  const parsed = stubParsed({ title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories" }, 330);
+  const parsed = stubParsed({ title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories" }, 249.5);
   const relaxed = await validateDownloadedTrackFile({
     request: GET_LUCKY,
     filePath: "/staging/Get Lucky.flac",
@@ -238,7 +229,7 @@ test("unreadable files fail", async () => {
   assert.equal(outcome.valid, false);
 });
 
-test("matcher unavailability is a controlled conflict with the diagnostic, never an accept", async () => {
+test("native validation verifies original tags without a Python runtime", async () => {
   const outcome = await validateDownloadedTrackFile({
     request: GET_LUCKY,
     filePath: "/staging/Get Lucky.flac",
@@ -249,9 +240,8 @@ test("matcher unavailability is a controlled conflict with the diagnostic, never
       timeoutMs: 2000,
     },
   });
-  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
-  assert.equal(outcome.valid, false);
-  assert.match(outcome.reason, /matcher.*unavailable/i);
+  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+  assert.equal(outcome.valid, true);
 });
 
 test("validation reads original tags before any metadata repair happens", async () => {
@@ -390,22 +380,21 @@ btest("release selection without a usable file reports no path", { skip: hasFfmp
   // Conflicted files are never handed back as import candidates.
   assert.equal(selection.filePath, null);
   assert.equal(selection.validation.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
-  assert.match(selection.validation.reason, /does not match/i);
+  assert.match(selection.validation.reason, /contradicts/i);
 });
 
-test("release selection preserves matcher diagnostics when no file is usable", async () => {
+test("release selection preserves identity diagnostics when no file is usable", async () => {
   const selection = await selectVerifiedDownloadedFile({
-    request: GET_LUCKY,
+    request: { ...GET_LUCKY, recordingMbid: "wanted" },
     filePaths: ["/staging/Get Lucky.flac"],
     source: "deemix",
     options: {
-      parseFile: stubParseFile(stubParsed({ title: "Get Lucky", artist: "Daft Punk" })),
-      pythonPath: "/nonexistent/python-binary",
+      parseFile: stubParseFile(stubParsed({ title: "Get Lucky", artist: "Daft Punk", mbid: "wrong" })),
     },
   });
   assert.equal(selection.filePath, null);
   assert.equal(selection.validation.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
-  assert.equal(selection.validation.error.code, "python_unavailable");
+  assert.ok(selection.validation.contradictions.includes("recording-mbid-conflict"));
 });
 
 test("release selection with an unreadable file set returns nothing usable", { skip: hasFfmpeg ? false : "ffmpeg unavailable" }, async () => {

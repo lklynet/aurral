@@ -20,24 +20,11 @@ export {
   getCoreTitle,
   stripPromoDescriptors,
 } from "./semanticPolicy.js";
-export {
-  runMatcherOperation,
-  isBeetsMatcherAvailable,
-  resetMatcherAvailability,
-  resolveMatcherPythonPath,
-  getMatcherScriptPath,
-  verifyMatcherRuntime,
-  getMatcherRuntimeStatus,
-} from "./beetsClient.js";
+export { MATCH_POLICY, getMatcherStatus } from "./nativeMatcher.js";
 export {
   evaluateTrackCandidates,
   prefilterCandidates,
 } from "./decisionEngine.js";
-export {
-  evaluateTrackIdentity,
-  recommendationFromDistance,
-  MATCHER_UNAVAILABLE_MESSAGE,
-} from "./identityPolicy.js";
 export {
   validateDownloadedTrackFile,
   selectVerifiedDownloadedFile,

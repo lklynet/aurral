@@ -65,6 +65,26 @@ export function buildQueueUuid(trackId, bitrate) {
   return `track_${String(trackId || "").trim()}_${normalizeInteger(bitrate, FLAC_BITRATE)}`;
 }
 
+export function readDeemixAlbumQueue(item) {
+  const status = String(item?.status || "");
+  const finished = ["completed", "withErrors", "failed"].includes(status);
+  const seen = new Set();
+  const filePaths = finished && item?.type === "album"
+    ? (Array.isArray(item.files) ? item.files : []).flatMap((file) => {
+      const path = String(file?.path || "").trim();
+      if (!path || seen.has(path)) return [];
+      seen.add(path);
+      return [path];
+    }) : [];
+  return {
+    finished,
+    status,
+    filePaths,
+    failedCount: Math.max(0, Number(item?.failed) || 0),
+    downloadedCount: Math.max(0, Number(item?.downloaded) || 0),
+  };
+}
+
 // deemix downloads exactly the configured bitrate, so unlike a Soulseek or
 // Usenet release its quality tier is known before anything is downloaded.
 // Deezer serves 16-bit FLAC, which classifies as flac-standard.
@@ -147,11 +167,15 @@ async function requireSession(settings) {
 function normalizeTrack(entry) {
   const id = String(entry?.id || "").trim();
   if (!id) return null;
+  const albumId = String(entry?.album?.id || "").trim();
   return {
     id,
     title: String(entry?.title || "").trim(),
     artist: String(entry?.artist?.name || "").trim(),
     album: String(entry?.album?.title || "").trim(),
+    albumId,
+    albumUrl: String(entry?.album?.link || "").trim()
+      || (albumId ? `https://www.deezer.com/album/${albumId}` : ""),
     durationSec: normalizeInteger(entry?.duration, 0),
     url: String(entry?.link || "").trim() || `https://www.deezer.com/track/${id}`,
     readable: entry?.readable !== false,
@@ -284,6 +308,18 @@ export class DeemixClient {
     const url = String(trackUrl || "").trim();
     if (!url) throw new Error("deemix download requires a Deezer track URL");
     const settings = this._getSettings();
+    return this._addQueueItem(url, buildQueueUuid(trackId, settings.bitrate));
+  }
+
+  async addAlbumToQueue(albumUrl, albumId) {
+    const url = String(albumUrl || "").trim();
+    if (!url) throw new Error("deemix album download requires a Deezer album URL");
+    const settings = this._getSettings();
+    return this._addQueueItem(url, `album_${String(albumId || "").trim()}_${settings.bitrate}`);
+  }
+
+  async _addQueueItem(url, fallbackUuid) {
+    const settings = this._getSettings();
     const connected = await requireSession(settings);
     const data = await request(settings, "POST", "/api/addToQueue", {
       data: { url, bitrate: settings.bitrate },
@@ -297,7 +333,7 @@ export class DeemixClient {
     const queued = Array.isArray(data?.data?.obj) ? data.data.obj[0] : data?.data?.obj;
     // A track already in the queue comes back without an object, so fall back to
     // the uuid deemix derives from the track and bitrate.
-    return String(queued?.uuid || "").trim() || buildQueueUuid(trackId, settings.bitrate);
+    return String(queued?.uuid || "").trim() || fallbackUuid;
   }
 
   async getQueueItem(uuid) {

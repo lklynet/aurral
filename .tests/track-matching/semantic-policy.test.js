@@ -7,7 +7,7 @@ import {
   detectNoise,
   buildRequestVariantProfile,
 } from "../../backend/services/trackMatching/semanticPolicy.js";
-import { evaluateTrackIdentity } from "../../backend/services/trackMatching/identityPolicy.js";
+import { decideRecording, verifyDownloadedRecording } from "../../backend/services/trackMatching/nativeMatcher.js";
 
 test("extractVariants detects variant descriptors without inventing them", () => {
   const plain = extractVariants("Get Lucky");
@@ -133,31 +133,13 @@ test("re-recordings contradict; ordinary remasters do not", () => {
   assert.equal(remaster.contradictions.length, 0);
 });
 
-test("the shared identity evaluator applies semantic conflicts at both stages", () => {
-  const request = { artistName: "Daft Punk", trackName: "Get Lucky" };
-  const candidate = { title: "Get Lucky (Karaoke Version)", artists: ["Daft Punk"] };
-  const match = {
-    distance: 0,
-    penalties: { track_title: 0, track_artist: 0 },
-    maxDistance: 1,
-    rawDistance: 0,
-  };
-
-  const preDownload = evaluateTrackIdentity({
-    request,
-    candidate,
-    match,
-    phase: "pre",
-  });
-  const postDownload = evaluateTrackIdentity({
-    request,
-    candidate,
-    match,
-    phase: "post",
-  });
-
-  assert.equal(preDownload.decision, "reject");
-  assert.equal(postDownload.decision, "CONFLICTED");
-  assert.ok(preDownload.contradictions.includes("karaoke"));
-  assert.deepEqual(postDownload.contradictions, preDownload.contradictions);
+test("native pre-download and post-download paths reject the same variant conflict", () => {
+  const request = { title: "Get Lucky", artists: ["Daft Punk"], durationMs: 248000 };
+  const candidate = { title: "Get Lucky (Karaoke Version)", artists: ["Daft Punk"], durationMs: 248000 };
+  const preDownload = decideRecording(request, [candidate]);
+  const postDownload = verifyDownloadedRecording(request, candidate);
+  assert.equal(preDownload.decision, "skip");
+  assert.equal(postDownload.decision, "no_match");
+  assert.ok(preDownload.candidates[0].contradictions.includes("karaoke"));
+  assert.ok(postDownload.contradictions.includes("karaoke"));
 });

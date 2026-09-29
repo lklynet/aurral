@@ -2,13 +2,12 @@
 //
 // Every download source routes its raw search results through here:
 //   raw results → provider adapter (evidence + canonical candidates)
-//     → semantic pre-filter (Node-only, no Python)
-//     → ONE beets track_distance call for the whole result set
+//     → semantic pre-filter
+//     → native release and recording decisions
 //     → per-candidate decisions
 //
-// `hasUsableSearchCandidates` is the cheap Node-only early-exit used while
-// queries are still running; it never spawns Python. `buildSourceCandidates`
-// performs the single full evaluation once the search pool is complete.
+// `hasUsableSearchCandidates` is the cheap early-exit used while queries are
+// still running. `buildSourceCandidates` evaluates the complete search pool.
 
 import { buildTrackRequest } from "./trackIdentity.js";
 import { prefilterCandidates, evaluateTrackCandidates } from "./decisionEngine.js";

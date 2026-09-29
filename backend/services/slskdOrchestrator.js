@@ -2,7 +2,7 @@ import path from "path";
 import fs from "fs/promises";
 import { db } from "../config/db-sqlite.js";
 import { getDownloadClient } from "./download/downloadClientSettings.js";
-import { logger } from "./logger.js";
+import { logger, safeLogDiagnostic } from "./logger.js";
 import { enqueuePipelineJob, listHonkerJobs } from "./honkerDb.js";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 import {
@@ -16,7 +16,6 @@ import {
   toPipelineCandidate,
   usableEvaluationEntries,
   validateDownloadedTrackFile,
-  MATCHER_UNAVAILABLE_MESSAGE,
 } from "./trackMatching/index.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
@@ -27,6 +26,8 @@ import {
 import { processUsenetPipelinePayload } from "./usenetOrchestrator.js";
 import { processYtdlpPipelinePayload } from "./ytdlpOrchestrator.js";
 import { processDeemixPipelinePayload } from "./deemixOrchestrator.js";
+import { albumGrabJobs, fallbackAlbumGrabToTracks, finishAlbumGrab } from "./albumGrab.js";
+import { selectSoulseekAlbumFolder } from "./albumReleaseSearch.js";
 import {
   getDownloadSourceNotConfiguredMessage,
   getEnabledDownloadSources,
@@ -88,10 +89,13 @@ export function buildSlskdSearchTierGroups(resolvedTrack) {
 }
 
 export function hasSlskdSearchCandidates(aggregated, resolvedTrack, searchOptions) {
+  if (searchOptions?.albumJobs) {
+    return selectSoulseekAlbumFolder(aggregated, searchOptions.albumJobs).decision === "selectable";
+  }
   // Node-only pre-filter: no matcher process is spawned during searches.
   // Soulseek folder plausibility is source evidence, not a fuzzy identity
   // score; use it here so an early exit cannot be triggered by unrelated
-  // same-format files while beets remains the only title/artist matcher.
+  // same-format files before the shared title and artist matcher runs.
   const built = buildSoulseekCandidates(aggregated, resolvedTrack, searchOptions);
   const prefiltered = prefilterCandidates({
     request: resolvedTrack,
@@ -350,7 +354,8 @@ export function buildNextSourcePayload(payload, failedSource = null, reason = nu
     ? new Set(payload.allowedSources)
     : null;
   const sources = getEnabledDownloadSources().filter(
-    (source) => !allowedSources || allowedSources.has(source.id),
+    (source) => (!allowedSources || allowedSources.has(source.id))
+      && (payload?.albumGrab !== true || ["slskd", "usenet", "deemix"].includes(source.id)),
   );
   if (sources.length === 0) return null;
   const tried = new Set(Array.isArray(payload?.triedSources) ? payload.triedSources : []);
@@ -416,6 +421,9 @@ async function failOrTryNextSource(payload, job, message, logDetails = {}) {
     });
     downloadTracker.clearSlskdDispatched(job.id);
     return nextPayload;
+  }
+  if (payload?.albumGrab === true) {
+    return fallbackAlbumGrabToTracks(payload, summarizeSourceErrors(payload, message));
   }
   await failJob(job, summarizeSourceErrors(payload, message));
   return null;
@@ -810,6 +818,7 @@ async function handleSearch(payload) {
     qualityProfile: getQualityProfile(),
     currentTier,
     upgrade: payload.upgrade === true,
+    albumJobs: payload.albumGrab === true ? albumGrabJobs(payload) : null,
   };
   const aggregated = [];
   const seen = new Set();
@@ -847,6 +856,27 @@ async function handleSearch(payload) {
     updateSlskdMetaStmt.run(searchIdRef.value, null, null, null, job.id);
     job.slskdSearchId = searchIdRef.value;
   }
+  if (payload.albumGrab === true) {
+    const selection = selectSoulseekAlbumFolder(aggregated, searchOptions.albumJobs);
+    if (selection.decision !== "selectable") {
+      if (searchIds.length > 0) {
+        await slskdClient.cleanupAfterRun({ searchIds, transfers: [] })
+          .then((result) => clearTrackedSearches(result?.cleanedSearchIds))
+          .catch((error) => logger.warn("slskd", "Album search cleanup failed", {
+            jobId: job.id, reason: safeLogDiagnostic(error),
+          }));
+      }
+      return failOrTryNextSource(payload, job, "No selectable Soulseek album folder");
+    }
+    return {
+      ...payload, phase: "download", source: "slskd", searchId: searchIdRef.value,
+      searchIds: [...new Set(searchIds)], candidateIndex: 0,
+      candidates: [{ raw: { user: selection.selected.group.user,
+        files: selection.selected.files },
+        resolvedAlbumName: job.albumName, score: selection.selected.fit }],
+      policyVersion: selection.policyVersion,
+    };
+  }
   const rankingOptions = { ...searchOptions };
   const historyOptions = buildSlskdRankingHistoryOptions();
   const evaluation = await buildSourceCandidates({
@@ -859,16 +889,6 @@ async function handleSearch(payload) {
       getUserQueuePenalty: historyOptions.getUserQueuePenalty,
     },
   });
-  if (evaluation.decision === "error") {
-    logger.error("slskd", "Unified matcher unavailable during slskd ranking", {
-      jobId: job.id,
-      code: evaluation.error?.code,
-    });
-    return failOrTryNextSource(payload, job, MATCHER_UNAVAILABLE_MESSAGE, {
-      queryCount: queries.length,
-      rawResultCount: aggregated.length,
-    });
-  }
   // Quality profile preference is primary here. Preserve the matcher decision
   // and distance order within each quality tier; queue history only breaks a
   // true identity tie and must never move review candidates ahead of accepts.
@@ -968,6 +988,41 @@ async function handleDownload(payload) {
     ? payload.candidates
     : [];  const index = Number(payload.candidateIndex || 0);
   const candidate = candidates[index];
+  if (payload.albumGrab === true) {
+    const files = candidate?.raw?.files || [];
+    if (!candidate?.raw?.user || files.length === 0) {
+      return failOrTryNextSource(payload, job, "No Soulseek album files available");
+    }
+    let submission;
+    try {
+      submission = await withPipelineCommitLock(payload, async () => {
+        const result = await slskdClient.enqueueBatch({
+          username: candidate.raw.user,
+          files: files.map((file) => ({ filename: file.file, size: Number(file.size || 0) })),
+        });
+        const transfers = Array.isArray(result.transfers) ? result.transfers : [];
+        if (transfers.length !== files.length || transfers.some((transfer) => !readTransferId(transfer))) {
+          for (const transfer of transfers) {
+            const id = readTransferId(transfer);
+            if (id) await slskdClient.deleteTransfer(candidate.raw.user, id, { remove: true }).catch(() => {});
+          }
+          throw new Error("slskd did not return a transfer ID for every album file");
+        }
+        downloadTracker.updateDownloadMetadata(job.id, {
+          downloadSource: "slskd", downloadClient: "slskd",
+          downloadClientId: readTransferId(transfers[0]),
+          remoteUsername: candidate.raw.user,
+          remoteFilename: files[0].file,
+        });
+        return transfers;
+      });
+    } catch (error) {
+      return failOrTryNextSource(payload, job, safeLogDiagnostic(error));
+    }
+    if (submission.cancelled || !isPipelinePayloadActive(payload)) return null;
+    return { ...payload, phase: "poll", candidate, albumTransfers: submission.result,
+      pollAttempts: 0 };
+  }
   if (!candidate?.raw?.user || !candidate?.raw?.file) {
     return failOrTryNextSource(payload, job, "No download candidate available");
   }
@@ -1056,6 +1111,25 @@ async function handlePoll(payload) {
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
   const pollAttempts = Number(payload.pollAttempts || 0) + 1;
+  if (payload.albumGrab === true) {
+    if (pollAttempts > MAX_POLL_ATTEMPTS) {
+      for (const transfer of payload.albumTransfers || []) {
+        const id = readTransferId(transfer);
+        if (id) await slskdClient.deleteTransfer(payload.candidate?.raw?.user, id, { remove: true })
+          .catch((error) => logger.warn("slskd", "Timed-out album transfer cleanup failed", {
+            jobId: job.id, transferId: id, reason: safeLogDiagnostic(error),
+          }));
+      }
+      return failOrTryNextSource(payload, job, "Soulseek album transfer timed out");
+    }
+    const username = payload.candidate?.raw?.user;
+    const transfers = await Promise.all((payload.albumTransfers || []).map(async (transfer) =>
+      slskdClient.getTransfer(username, readTransferId(transfer)).catch(() => null)));
+    if (transfers.some((transfer) => !transfer || classifyTransferState(readTransferState(transfer)) === "pending")) {
+      return { ...payload, phase: "poll", pollAttempts, delaySeconds: POLL_DELAY_SECONDS };
+    }
+    return { ...payload, phase: "finalize", pollAttempts, albumTransfers: transfers };
+  }
   if (pollAttempts > MAX_POLL_ATTEMPTS) {
     recordPayloadOutcome(job, payload, "transfer_timeout", "slskd transfer polling timed out");
     return failOrTryNextSource(payload, job, "slskd transfer polling timed out");
@@ -1133,6 +1207,35 @@ async function handleFinalize(payload) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
+  if (payload.albumGrab === true) {
+    const slskdRoot = resolveLocalPath(
+      await slskdClient.getDownloadDirectory(), getPathMappings("slskd"));
+    const playlistRoot = resolvePlaylistRoot();
+    const remoteFiles = payload.candidate?.raw?.files || [];
+    const paths = [];
+    for (const [index, transfer] of (payload.albumTransfers || []).entries()) {
+      if (classifyTransferState(readTransferState(transfer)) !== "success") continue;
+      const remote = remoteFiles[index];
+      const local = await locateCompletedDownload(slskdRoot, playlistRoot, remote?.file, {
+        expectedSizeBytes: Number(remote?.size || 0), transfer,
+      });
+      if (local) paths.push(local);
+    }
+    const next = await finishAlbumGrab(payload, {
+      filePaths: paths, source: "soulseek", album: job.albumName,
+    });
+    if (slskdClient.isCleanupAfterRunsEnabled()) {
+      const transfers = (payload.albumTransfers || []).map((transfer) => ({
+        username: payload.candidate?.raw?.user,
+        transferId: readTransferId(transfer),
+      })).filter((entry) => entry.username && entry.transferId);
+      await slskdClient.cleanupAfterRun({ searchIds: getPayloadSearchIds(payload), transfers })
+        .catch((error) => logger.warn("slskd", "Album transfer cleanup failed", {
+          jobId: job.id, reason: safeLogDiagnostic(error),
+        }));
+    }
+    return next;
+  }
   const playlistRoot = resolvePlaylistRoot();
   const slskdRoot = resolveLocalPath(
     await slskdClient.getDownloadDirectory(),

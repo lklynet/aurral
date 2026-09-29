@@ -9,15 +9,10 @@ import assert from "node:assert/strict";
 import {
   buildSourceCandidates,
   hasUsableSearchCandidates,
-  isBeetsMatcherAvailable,
-  resetMatcherAvailability,
   usableEvaluationEntries,
 } from "../../backend/services/trackMatching/index.js";
 
-resetMatcherAvailability();
-const beetsAvailable = await isBeetsMatcherAvailable();
-const skip = beetsAvailable ? false : "beets not installed for any available Python interpreter";
-const btest = (name, fn) => test(name, { skip }, fn);
+const btest = test;
 import { orderAdvertisedQualityCandidates, getAdvertisedQualityRank } from "../../backend/services/qualityProfileModel.js";
 import { getQualityProfile } from "../../backend/services/qualityProfileService.js";
 
@@ -263,10 +258,10 @@ btest("strong title and album match is usable without the artist anywhere in the
     },
   );
   const usable = usableEvaluationEntries(evaluation);
-  // Nobody in the path names Gorillaz: the candidate survives as a
-  // last-resort verify, never as a straight accept.
+  // Nobody in the path names Gorillaz: retain this only for strict
+  // post-download review, never as a straight accept.
   assert.equal(usable.length, 1);
-  assert.equal(usable[0].decision, "verify");
+  assert.equal(usable[0].decision, "review");
   assert.equal(usable[0].reasons.some((reason) => reason.includes("requested artist")), true);
 });
 
@@ -386,7 +381,7 @@ btest("requested mix variant accepts an undeclared file and rejects a different 
     ],
     track,
   );
-  assert.equal(usableFileNames(undeclared).length, 1);
+  assert.equal(usableFileNames(undeclared).length, 0);
 
   const declared = await evaluate(
     [
@@ -413,7 +408,7 @@ btest("requested mix variant accepts an undeclared file and rejects a different 
   assert.deepEqual(usableFileNames(extended), []);
   const rejected = extended.evaluations[0];
   assert.equal(rejected.decision, "reject");
-  assert.ok(rejected.contradictions.includes("extended"));
+  assert.ok(rejected.contradictions.includes("extended-mix"));
 });
 
 btest("plain request rejects candidates declaring a mix variant", async () => {
@@ -464,7 +459,7 @@ btest("a declared requested variant ranks above an undeclared copy", async () =>
     },
   );
   const usable = usableEvaluationEntries(evaluation);
-  assert.equal(usable.length, 2);
+  assert.equal(usable.length, 1);
   assert.equal(usable[0].candidate.raw.user, "labelledUser");
 });
 
@@ -559,7 +554,7 @@ btest("the folder artist score survives a guest-artist filename", async () => {
   );
   const usable = usableEvaluationEntries(evaluation);
   assert.equal(usable.length, 1);
-  assert.equal(usable[0].decision, "accept");
+  assert.equal(usable[0].decision, "verify");
 });
 
 btest("'live' inside ordinary title words is not a variant", async () => {
@@ -697,10 +692,8 @@ btest("sibling-track conflict rejects a same-title different-track candidate", a
     },
   );
   const usable = usableEvaluationEntries(evaluation);
-  // The wrong-position file costs index confidence: verify, not accept.
-  assert.equal(usable.length, 1);
-  assert.equal(usable[0].decision, "verify");
-  assert.equal(usable[0].penalties.track_index > 0, true);
+  assert.equal(usable.length, 0);
+  assert.ok(evaluation.evaluations[0].contradictions.includes("sibling-track-index"));
 });
 
 btest("wrong track number with imperfect metadata is rejected; exact identity rescues it", async () => {
@@ -797,7 +790,7 @@ btest("advertised duration: near matches are usable, far matches are not offered
     [result({ user: "peer", file: "Massive Attack/Mezzanine/Teardrop.mp3", length: 199 })],
     track,
   );
-  assert.equal(usableFileNames(withinWindow).length, 1);
+  assert.equal(usableFileNames(withinWindow).length, 0);
 });
 
 btest("the correct-duration file wins over a longer off-duration copy in the same folder", async () => {

@@ -132,6 +132,10 @@ Cancelling an album stops pending and active downloads and keeps tracks that
 already finished. Requesting the album again retries cancelled and failed
 tracks. Without a configured download source, an Aurral album request saves
 the album and reports `download_source_missing` instead of queueing downloads.
+For Aurral-managed albums, a complete Usenet, Soulseek, or deemix release can
+fill several track jobs with one download attempt. If only some files verify,
+the remaining tracks continue through per-track fallback. Lidarr-managed
+albums keep Lidarr acquisition behavior.
 
 `POST /api/library/downloads/track` requires an authenticated user with the
 `addAlbum` permission.

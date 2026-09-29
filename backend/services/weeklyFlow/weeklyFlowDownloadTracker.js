@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import path from "node:path";
 import { db } from "../../config/db-sqlite.js";
-import { enqueuePipelineJob } from "../honkerDb.js";
+import { enqueuePipelineJob, listHonkerJobs } from "../honkerDb.js";
 import { isAnyDownloadSourceConfigured } from "../downloadSourceService.js";
 import {
   normalizePositiveInteger,
@@ -97,6 +97,7 @@ function rowToJob(row) {
     playlistType: row.playlist_type || row.playlist_id,
     managedBy: row.managed_by === "lidarr" ? "lidarr" : "aurral",
     requestGroupId: row.request_group_id || null,
+    albumGrabAttempted: row.album_grab_attempted === 1,
     status: row.status,
     startedAt: row.started_at,
     completedAt: row.completed_at,
@@ -205,6 +206,9 @@ const updateStmt = db.prepare(`
 `);
 
 const deleteStmt = db.prepare(`DELETE FROM ${JOBS_TABLE} WHERE id = ?`);
+const updateAlbumGrabAttemptedStmt = db.prepare(
+  `UPDATE ${JOBS_TABLE} SET album_grab_attempted = ? WHERE id = ?`,
+);
 const deleteAllStmt = db.prepare(`DELETE FROM ${JOBS_TABLE}`);
 const selectAllStmt = db.prepare(`SELECT * FROM ${JOBS_TABLE} ORDER BY created_at ASC, id ASC`);
 const updatePlaylistTypeStmt = db.prepare(
@@ -359,6 +363,14 @@ export class WeeklyFlowDownloadTracker {
     return this.slskdDispatched.has(id) || !!job?.slskdBatchId || !!job?.slskdSearchId;
   }
 
+  setAlbumGrabAttempted(id, attempted) {
+    const job = this.jobs.get(id);
+    if (!job) return false;
+    job.albumGrabAttempted = attempted === true;
+    updateAlbumGrabAttemptedStmt.run(job.albumGrabAttempted ? 1 : 0, id);
+    return true;
+  }
+
   markSlskdDispatched(id) {
     this.slskdDispatched.add(id);
   }
@@ -431,9 +443,47 @@ export class WeeklyFlowDownloadTracker {
     const job = this.jobs.get(jobId);
     if (!job || job.status !== "pending") return false;
     if (this.isSlskdDispatched(jobId)) return false;
+    const activeGrab = job.requestGroupId ? listHonkerJobs("slskd-pipeline").find((entry) =>
+      entry.payload?.albumGrab === true && entry.payload?.jobId === jobId
+      && entry.payload?.albumGroupJobIds?.includes(jobId)) : null;
+    if (activeGrab) {
+      for (const siblingId of activeGrab.payload.albumGroupJobIds) {
+        if (siblingId !== jobId && this.jobs.get(siblingId)?.status === "pending") {
+          this.setDownloading(siblingId);
+        }
+      }
+      this.markSlskdDispatched(jobId);
+      return true;
+    }
     const payload = buildPipelinePayload(job);
     if (!isPipelinePayloadActive(payload)) return false;
-    enqueuePipelineJob(payload);
+    const siblings = job.managedBy === "aurral" && job.playlistType === "library"
+      && job.requestGroupId && !job.upgradeForJobId && !job.manualReplacementSearch
+      && !job.albumGrabAttempted
+      ? this.getAll().filter((entry) => entry.requestGroupId === job.requestGroupId
+        && entry.albumMbid === job.albumMbid && entry.status === "pending"
+        && !entry.upgradeForJobId && !entry.manualReplacementSearch && !entry.albumGrabAttempted)
+      : [];
+    if (siblings.length > 1) {
+      payload.albumGrab = true;
+      payload.albumGroupJobIds = [jobId, ...siblings.filter((entry) => entry.id !== jobId)
+        .sort((left, right) => Number(left.trackNumber || 0) - Number(right.trackNumber || 0)
+          || String(left.id).localeCompare(String(right.id)))
+        .map((entry) => entry.id)];
+      for (const sibling of siblings) this.setAlbumGrabAttempted(sibling.id, true);
+      for (const sibling of siblings) {
+        if (sibling.id !== jobId) this.setDownloading(sibling.id);
+      }
+    }
+    try {
+      this.enqueuePipeline(payload);
+    } catch (error) {
+      for (const siblingId of payload.albumGroupJobIds || []) {
+        if (siblingId !== jobId) this.setPending(siblingId);
+        this.setAlbumGrabAttempted(siblingId, false);
+      }
+      throw error;
+    }
     this.markSlskdDispatched(jobId);
     return true;
   }
@@ -1118,6 +1168,7 @@ export class WeeklyFlowDownloadTracker {
     if (!job || this._isCancelledAlbumJob(job)) return false;
     const previousStatus = job.status;
     const asRetryCycle = options?.asRetryCycle === true;
+    if (asRetryCycle) this.setAlbumGrabAttempted(id, false);
     this.clearSlskdPipelineState(id);
     job.status = "pending";
     job.startedAt = null;
