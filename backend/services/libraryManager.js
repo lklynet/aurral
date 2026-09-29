@@ -2073,7 +2073,7 @@ export class LibraryManager {
     const artistState = getLibraryManagementEntry("artist", Number(album.artistId));
     if (artistState?.managedBy === "aurral" && artistState.monitorMode && artistState.monitorMode !== "none") {
       return {
-        error: "Aurral is monitoring this artist and would add the album again. Set the artist's monitoring to None before removing the album.",
+        error: "The album was not removed. Aurral monitors this artist and would add it again. Set the artist's monitoring to None, then remove the album.",
         statusCode: 409,
         code: "artist_monitored",
       };
@@ -2093,7 +2093,7 @@ export class LibraryManager {
     } catch (error) {
       logger.error("library", `[LibraryManager] Failed to cancel album downloads: ${error.message}`);
       return {
-        error: "Downloads could not be cancelled. Try again.",
+        error: "Downloads could not be cancelled, so nothing more was removed. Try again.",
         statusCode: 409,
         code: "download_cancellation_failed",
       };

@@ -5,6 +5,7 @@ import { useModalDialog } from "../../../hooks/useModalDialog.js";
 export function DeleteAlbumModal({
   show,
   title,
+  managedBy,
   deleteFiles,
   onDeleteFilesChange,
   onCancel,
@@ -45,11 +46,23 @@ export function DeleteAlbumModal({
               className="artist-checkbox"
             />
             <div>
-              <span className="artist-card-title">Delete album folder and files</span>
-              <p className="artist-modal__subcopy">
-                This will permanently delete the album&apos;s folder and all music files from your
-                disk. This action cannot be undone.
-              </p>
+              {managedBy === "aurral" ? (
+                <>
+                  <span className="artist-card-title">Delete album files</span>
+                  <p className="artist-modal__subcopy">
+                    Permanently deletes the files Aurral downloaded for this album. Files managed
+                    by Lidarr stay on disk. This cannot be undone.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <span className="artist-card-title">Delete album folder and files</span>
+                  <p className="artist-modal__subcopy">
+                    This will permanently delete the album&apos;s folder and all music files from
+                    your disk. This action cannot be undone.
+                  </p>
+                </>
+              )}
             </div>
           </label>
         </div>
