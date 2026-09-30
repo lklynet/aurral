@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Library, Sparkles } from "lucide-react";
 import Tooltip from "./Tooltip";
 

@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from "react-router";
 import { useState, useEffect, Suspense, lazy, useRef } from "react";
 import Layout from "./components/Layout";
 import { checkHealthLive, getBootstrapStatus } from "./utils/api/endpoints/auth.js";

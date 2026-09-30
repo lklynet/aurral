@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 import { useAuth } from "../contexts/AuthContext";
 import { ACTIVITY_VIEWS, buildActivityPath, WANTED_VIEWS } from "./activityNavConfig";
 import { LIBRARY_VIEWS } from "./libraryNavConfig";

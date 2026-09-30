@@ -1,5 +1,5 @@
 import { ListMusic, Sparkles, Upload } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { DotLoader } from "../../../components/DotLoader";
 
 function getFlowEmptyCopy(libraryFilter, canCreate) {

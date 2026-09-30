@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Newspaper } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useLibraryNews } from "../hooks/useLibraryNews";

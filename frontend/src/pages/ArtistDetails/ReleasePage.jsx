@@ -19,7 +19,7 @@ import {
 import { useSharedPlaylists } from "../../hooks/useSharedPlaylists";
 import { useWebSocketChannel } from "../../hooks/useWebSocket";
 
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router";
 import { CornerUpLeft, ExternalLink, Music } from "lucide-react";
 import AddActionButton from "../../components/AddActionButton";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";

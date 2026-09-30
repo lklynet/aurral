@@ -18,7 +18,7 @@ import {
 import { DotLoader } from "../../../components/DotLoader";
 import TooltipButton from "../../../components/TooltipButton";
 import { getFlowTrackDisplayNumber, sortFlowTracks } from "../../../utils/flowTrackSort";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { normalizeFlowTrack } from "../../../utils/audioQueue";
 import { TrackPlaylistMenu, TrackPlaylistSubmenu } from "../../ArtistDetails/components/TrackPlaylistMenu";

@@ -17,7 +17,7 @@ import { extractTwoToneGradientFromImage } from "../utils/imageColors";
 import { reserveUniquePlaylistName } from "./ArtistDetails/utils";
 import { ArrowLeft, Crosshair } from "lucide-react";
 
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router";
 import { FlowTracksPanel } from "./flows/flowComponents/flowTrackComponents.jsx";
 import { DotLoader } from "../components/DotLoader";
 const getPlaylistTextColor = (hex) => {

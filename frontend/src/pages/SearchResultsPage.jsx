@@ -57,7 +57,7 @@ import {
   ARTIST_IMAGE_HYDRATION_CONCURRENCY,
   ALBUM_COVER_HYDRATION_CONCURRENCY,
 } from "./searchPageUtils";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {

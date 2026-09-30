@@ -1,4 +1,4 @@
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { Music, MapPin, AlertCircle } from "lucide-react";
 import { DotLoader } from "../components/DotLoader";

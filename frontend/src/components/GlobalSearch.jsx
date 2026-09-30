@@ -45,7 +45,7 @@ import {
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { useDebouncedTask } from "../hooks/useDebouncedTask";
 import { useSharedPlaylists } from "../hooks/useSharedPlaylists";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router";
 import { Clock, Search } from "lucide-react";
 import { DotLoader } from "./DotLoader";
 import AddActionButton from "./AddActionButton";

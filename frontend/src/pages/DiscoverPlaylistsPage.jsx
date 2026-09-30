@@ -9,7 +9,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { Crosshair, Music } from "lucide-react";
 import { DotLoader } from "../components/DotLoader";
 
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useDiscoverData } from "./useDiscoverData";
 import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { DiscoverPlaylistContextMenu } from "../components/DiscoverPlaylistContextMenu";

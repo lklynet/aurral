@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react
 import { useQuery } from "@tanstack/react-query";
 import { Check, Play, FilePlus2, Download, Trash2, RefreshCw, ClipboardCopy, ListMusic } from "lucide-react";
 import { DotLoader } from "../components/DotLoader";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router";
 import {
   getFlowJobs,
   createFlow,
