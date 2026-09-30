@@ -8495,9 +8495,8 @@ textarea {
   height: 2rem;
   border-color: transparent;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--aurral-overlay-base) 50%, transparent);
+  background: color-mix(in srgb, var(--aurral-overlay-base) 62%, transparent);
   color: var(--aurral-overlay-foreground);
-  backdrop-filter: blur(6px);
 }
 
 .native-library-card__cover-wrap .native-library-item-menu__trigger:hover,
@@ -9534,7 +9533,6 @@ button.native-library-genre-row:focus-visible {
       color-mix(in srgb, var(--aurral-overlay-base) 50%, transparent) 1rem,
       transparent calc(1rem + 1px)
     );
-    backdrop-filter: none;
   }
 
   .native-library-detail__discover,
