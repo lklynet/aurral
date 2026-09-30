@@ -2678,6 +2678,10 @@ function LibraryPage() {
     );
     const artistTracks = artistAlbums.flatMap(getAlbumTracks);
     const artistTopTracks = topArtistTracks(artistTracks, albumsById);
+    const artistTrackTotal = artistAlbums.reduce(
+      (total, album) => total + Number(albumAvailability(album).total || 0),
+      0,
+    );
     const discoverArtist = libraryArtist.mbid ? libraryArtist : null;
     return (
       <section className="native-library-detail">
@@ -2704,7 +2708,14 @@ function LibraryPage() {
             <p className="native-library-kicker">Artist</p>
             <h2>{libraryArtist.name || "Unknown Artist"}</h2>
             <p className="native-library-detail__meta">
-              {artistAlbums.length} album{artistAlbums.length === 1 ? "" : "s"}
+              {[
+                artistAlbums.length + (artistAlbums.length === 1 ? " album" : " albums"),
+                artistTrackTotal
+                  ? artistTrackTotal + (artistTrackTotal === 1 ? " track" : " tracks")
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </p>
             <div className="native-library-detail__actions">
               <button

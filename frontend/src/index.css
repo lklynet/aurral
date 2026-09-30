@@ -8055,15 +8055,32 @@ textarea {
   right: 0.45rem;
 }
 
+.native-library-card__cover-wrap .native-library-item-menu__trigger {
+  width: 2rem;
+  height: 2rem;
+  border-color: transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--aurral-overlay-base) 50%, transparent);
+  color: var(--aurral-overlay-foreground);
+  backdrop-filter: blur(6px);
+}
+
+.native-library-card__cover-wrap .native-library-item-menu__trigger:hover,
+.native-library-card__cover-wrap .native-library-item-menu__trigger:focus-visible,
+.native-library-card__cover-wrap .native-library-item-menu__trigger.is-open {
+  background: color-mix(in srgb, var(--aurral-overlay-base) 72%, transparent);
+  color: var(--aurral-overlay-foreground);
+}
+
 .native-library-item-menu__trigger {
   display: inline-flex;
   width: 2.25rem;
   height: 2.25rem;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--aurral-border-strong);
+  border: 1px solid transparent;
   border-radius: var(--aurral-radius-sm);
-  background: var(--aurral-surface);
+  background: transparent;
   color: var(--aurral-text-muted);
   cursor: pointer;
   opacity: 0;
@@ -8774,7 +8791,7 @@ button.native-library-genre-row:focus-visible {
 .native-library-detail__hero {
   display: grid;
   grid-template-columns: minmax(12rem, 18rem) minmax(0, 1fr);
-  align-items: start;
+  align-items: end;
   gap: 2rem;
 }
 
@@ -8879,21 +8896,65 @@ button.native-library-genre-row:focus-visible {
 }
 
 .native-library-detail__actions {
+  --native-library-detail-action-size: 2.25rem;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.55rem;
-  margin-top: 1rem;
+  gap: 0.35rem;
+  margin-top: 1.25rem;
 }
 
-.native-library-detail__actions .native-library-favorite {
-  width: 2rem;
-  height: 2rem;
-  opacity: 1;
+.native-library-detail__actions .native-library-page-play {
+  min-height: var(--native-library-detail-action-size);
+  margin: 0 0.4rem 0 0;
+  padding: 0 1rem 0 0.85rem;
+  gap: 0.45rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
+.native-library-detail__actions .native-library-page-play svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.native-library-detail__actions .native-library-favorite,
+.native-library-detail__actions .cross-view-link,
 .native-library-detail__actions .native-library-item-menu__trigger {
+  width: var(--native-library-detail-action-size);
+  min-width: 0;
+  height: var(--native-library-detail-action-size);
+  min-height: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--aurral-text-muted);
   opacity: 1;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.native-library-detail__actions .native-library-favorite:hover,
+.native-library-detail__actions .native-library-favorite:focus-visible,
+.native-library-detail__actions .cross-view-link:hover,
+.native-library-detail__actions .cross-view-link:focus-visible,
+.native-library-detail__actions .native-library-item-menu__trigger:hover,
+.native-library-detail__actions .native-library-item-menu__trigger:focus-visible,
+.native-library-detail__actions .native-library-item-menu__trigger.is-open {
+  border-color: transparent;
+  background: var(--aurral-surface-hover);
+  color: var(--aurral-text);
+}
+
+.native-library-detail__actions .native-library-favorite.is-active {
+  color: var(--aurral-text);
+}
+
+.native-library-detail__actions .native-library-favorite svg,
+.native-library-detail__actions .cross-view-link svg,
+.native-library-detail__actions .native-library-item-menu__trigger svg {
+  width: 1.1rem;
+  height: 1.1rem;
 }
 
 .native-library-detail__discover {
@@ -9020,6 +9081,27 @@ button.native-library-genre-row:focus-visible {
     height: 2.75rem;
   }
 
+  .native-library-detail__actions {
+    --native-library-detail-action-size: 2.75rem;
+  }
+
+  .native-library-card__cover-wrap > .native-library-item-menu {
+    top: 0.1rem;
+    right: 0.1rem;
+  }
+
+  .native-library-card__cover-wrap .native-library-item-menu__trigger,
+  .native-library-card__cover-wrap .native-library-item-menu__trigger:hover,
+  .native-library-card__cover-wrap .native-library-item-menu__trigger:focus-visible,
+  .native-library-card__cover-wrap .native-library-item-menu__trigger.is-open {
+    background: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--aurral-overlay-base) 50%, transparent) 1rem,
+      transparent calc(1rem + 1px)
+    );
+    backdrop-filter: none;
+  }
+
   .native-library-detail__discover,
   .native-library-filter-reset,
   .native-library-track__download {
@@ -9087,6 +9169,7 @@ button.native-library-genre-row:focus-visible {
   .native-library-detail__hero,
   .native-library-detail__hero--artist {
     grid-template-columns: 1fr;
+    align-items: start;
     gap: 1.25rem;
   }
 
@@ -9183,6 +9266,7 @@ button.native-library-genre-row:focus-visible {
 
   .native-library-detail__hero {
     grid-template-columns: 1fr;
+    align-items: start;
     gap: 1.25rem;
   }
 
