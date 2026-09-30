@@ -21,6 +21,7 @@ import {
   RefreshCw,
   ScanSearch,
   Search,
+  Sparkles,
   Trash2,
   UserRound,
   X,
@@ -2192,8 +2193,8 @@ function LibraryPage() {
                 : []),
               {
                 id: "discover",
-                label: "Explore in Discover",
-                icon: ExternalLink,
+                label: "Open in Discover",
+                icon: Sparkles,
                 separatorBefore: true,
                 onSelect: () => handleDiscoverArtistOpen(artist),
                 disabled: !artist.mbid,
@@ -2331,8 +2332,8 @@ function LibraryPage() {
                 : []),
               {
                 id: "discover",
-                label: "Explore in Discover",
-                icon: ExternalLink,
+                label: "Open in Discover",
+                icon: Sparkles,
                 separatorBefore: true,
                 onSelect: () => handleDiscoverAlbumOpen(album),
                 disabled: !artist?.mbid || !(album.releaseGroupMbid || album.mbid),
@@ -2629,14 +2630,6 @@ function LibraryPage() {
                         },
                       ]
                     : []),
-                  {
-                    id: "discover",
-                    label: "Explore in Discover",
-                    icon: ExternalLink,
-                    separatorBefore: true,
-                    onSelect: () => handleDiscoverAlbumOpen(libraryAlbum),
-                    disabled: !artist?.mbid || !(libraryAlbum.releaseGroupMbid || libraryAlbum.mbid),
-                  },
                 ]}
               />
               {discoverAlbumTarget && (
@@ -2749,14 +2742,6 @@ function LibraryPage() {
                         },
                       ]
                     : []),
-                  {
-                    id: "discover",
-                    label: "Explore in Discover",
-                    icon: ExternalLink,
-                    separatorBefore: true,
-                    onSelect: () => handleDiscoverArtistOpen(libraryArtist),
-                    disabled: !libraryArtist.mbid,
-                  },
                 ]}
                 additionalItemsAfter="favorite"
                 renderAdditionalItems={({ closeMenu }) =>
@@ -2982,7 +2967,7 @@ function LibraryPage() {
                   )
                 }
               >
-                <ExternalLink aria-hidden="true" />
+                <Sparkles aria-hidden="true" />
                 Explore in Discover
               </button>
             )}

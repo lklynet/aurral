@@ -8799,34 +8799,9 @@ button.native-library-genre-row:focus-visible {
   opacity: 1;
 }
 
-.native-library-detail__discover {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  min-height: 2rem;
-  border: 0;
-  padding: 0.3rem 0.2rem;
-  background: transparent;
-  color: var(--aurral-text-muted);
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.72rem;
-}
 
-.native-library-detail__discover:hover,
-.native-library-detail__discover:focus-visible {
-  color: var(--aurral-text);
-}
 
-.native-library-detail__discover svg {
-  width: 0.8rem;
-  height: 0.8rem;
-}
 
-.native-library-detail__discover:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
 
 .native-library-detail__badges {
   display: flex;
@@ -8960,7 +8935,6 @@ button.native-library-genre-row:focus-visible {
     height: 2.75rem;
   }
 
-  .native-library-detail__discover,
   .native-library-filter-reset,
   .native-library-track__download {
     min-height: 2.75rem;
