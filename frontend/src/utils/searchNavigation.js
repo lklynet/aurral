@@ -139,8 +139,28 @@ export function getReleaseNavigationTarget(item) {
   };
 }
 
+function getLibraryResultPath(item) {
+  if (item?.source !== "library") return null;
+  if (item.type === "artist" && item.canonicalId) {
+    return `/library/artist/${encodeURIComponent(item.canonicalId)}`;
+  }
+  if (item.type === "album" && item.canonicalId) {
+    return `/library/album/${encodeURIComponent(item.canonicalId)}`;
+  }
+  if (item.type === "track" && item.albumCanonicalId) {
+    return `/library/album/${encodeURIComponent(item.albumCanonicalId)}`;
+  }
+  return null;
+}
+
 export function navigateFromSearchResult(navigate, item, { query = "" } = {}) {
   if (!item || typeof navigate !== "function") return;
+
+  const libraryPath = getLibraryResultPath(item);
+  if (libraryPath) {
+    navigate(libraryPath);
+    return;
+  }
 
   if (item.type === "artist") {
     if (item.id) {
@@ -455,8 +475,9 @@ export function buildUnifiedSuggestionSections(data) {
   const sections = [];
 
   const libraryArtists = dedupeItems(data.library?.artists || [], seen, seenArtistNames);
+  const libraryAlbums = dedupeItems(data.library?.albums || [], seen, seenArtistNames);
   const libraryTracks = dedupeItems(data.library?.tracks || [], seen, seenArtistNames);
-  const libraryItems = [...libraryArtists, ...libraryTracks];
+  const libraryItems = [...libraryArtists, ...libraryAlbums, ...libraryTracks];
   if (libraryItems.length > 0) {
     sections.push({ key: "library", label: "Your Library", items: libraryItems });
   }

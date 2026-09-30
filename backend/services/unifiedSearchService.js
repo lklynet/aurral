@@ -14,7 +14,6 @@ import { parsePositiveInt } from "./searchService.js";
 
 const unifiedSearchCache = createCache(60);
 const catalogSearchCache = createCache(60);
-const catalogSearchInflight = new Map();
 
 const SUGGEST_LIMIT = 5;
 const FULL_LIMIT = 20;
@@ -432,19 +431,21 @@ function mapBrainzmashAlbum(item) {
   };
 }
 
-async function searchBrainzmashCatalog(query, limit) {
+async function searchBrainzmashCatalog(query, limit, signal) {
   const RELEVANCE_THRESHOLD = 60;
   const trimmed = String(query || "").trim();
 
   const [artistSettled, albumSettled] = await Promise.allSettled([
-    searchArtists(trimmed, { limit, offset: 0 }),
+    searchArtists(trimmed, { limit, offset: 0, signal }),
     searchAlbums(trimmed, {
       limit,
       offset: 0,
       releaseTypes: [],
       sort: "relevance",
+      signal,
     }),
   ]);
+  signal?.throwIfAborted();
 
   const artistResult =
     artistSettled.status === "fulfilled" ? artistSettled.value : null;
@@ -478,21 +479,12 @@ async function searchBrainzmashCatalog(query, limit) {
   };
 }
 
-async function searchCatalog(query, limit) {
+async function searchCatalog(query, limit, signal) {
   const cacheKey = String(query || "").trim().toLowerCase();
   let catalog = catalogSearchCache.get(cacheKey);
   if (!catalog) {
-    let pending = catalogSearchInflight.get(cacheKey);
-    if (!pending) {
-      pending = searchBrainzmashCatalog(query, 30)
-        .then((result) => {
-          catalogSearchCache.set(cacheKey, result);
-          return result;
-        })
-        .finally(() => catalogSearchInflight.delete(cacheKey));
-      catalogSearchInflight.set(cacheKey, pending);
-    }
-    catalog = await pending;
+    catalog = await searchBrainzmashCatalog(query, 30, signal);
+    catalogSearchCache.set(cacheKey, catalog);
   }
   const sliced = {
     artists: sliceCatalogItems(catalog.artists, limit),
@@ -577,12 +569,12 @@ export function clearSearchContextCache() {
 
 export function searchLocalFromData(
   query,
-  { artists = [], tracks = [] } = {},
+  { artists = [], albums = [], tracks = [] } = {},
   limit = SUGGEST_LIMIT,
 ) {
   const normalizedQuery = getNormalizedText(query);
   if (!normalizedQuery) {
-    return { artists: [], tracks: [] };
+    return { artists: [], albums: [], tracks: [] };
   }
 
   const artistResults = dedupeSearchArtists(artists)
@@ -596,11 +588,41 @@ export function searchLocalFromData(
         type: "artist",
         source: "library",
         id: mbid,
-        key: `library-artist:${mbid}`,
+        canonicalId: artist?.canonicalId || null,
+        key: `library-artist:${artist?.canonicalId || mbid}`,
         name,
         sortName: name,
         inLibrary: true,
         hasMbid: true,
+        score,
+      };
+    })
+    .filter(Boolean)
+    .sort(compareSearchResults)
+    .slice(0, limit);
+
+  const albumResults = albums
+    .map((album) => {
+      const title = String(album?.title || "").trim();
+      const artistName = String(album?.artistName || "").trim();
+      if (!title || !album?.canonicalId) return null;
+      const score = Math.max(
+        scorePlaylistContentMatch(query, title),
+        scorePlaylistContentMatch(query, artistName),
+      );
+      if (score <= 0) return null;
+      return {
+        type: "album",
+        source: "library",
+        id: album.releaseGroupMbid || null,
+        canonicalId: album.canonicalId,
+        key: `library-album:${album.canonicalId}`,
+        title,
+        artistName: artistName || "Unknown Artist",
+        artistMbid: album.artistMbid || null,
+        releaseDate: album.releaseDate || null,
+        status: "available",
+        inLibrary: true,
         score,
       };
     })
@@ -628,6 +650,8 @@ export function searchLocalFromData(
         title,
         artistName: artistName || "Unknown Artist",
         albumTitle: albumTitle || null,
+        albumMbid: track.albumMbid || null,
+        albumCanonicalId: track.albumCanonicalId || null,
         streamPath: track.streamPath || null,
         inLibrary: true,
         score,
@@ -639,75 +663,104 @@ export function searchLocalFromData(
 
   return {
     artists: artistResults,
+    albums: albumResults,
     tracks: trackResults,
   };
 }
 
-async function searchLocalLibrary(query, limit, user) {
-  try {
-    const context = getSearchContext(user);
-    const canonical = getCanonicalSearchPage({
-      source: "all",
-      availableOnly: true,
-      query,
-      artistLimit: limit,
-      albumLimit: 0,
-      songLimit: limit,
-    });
-    const albums = new Map(
-      [
-        ...(canonical.albums?.albums || []),
-        ...(canonical.tracks?.albums || []),
-      ].map((album) => [album.id, album]),
-    );
-    const artists = dedupeSearchArtists([
-      ...context.artists,
-      ...(canonical.artists || []),
-      ...(canonical.tracks?.artists || []),
-    ]);
-    const tracks = (canonical.tracks?.tracks || []).map((track) => {
-      const album = track.albums
-        ?.map((entry) => albums.get(entry.albumId))
-        .find(Boolean);
-      const artist = artists.find((entry) => entry.id === album?.artistId);
-      return {
-        id: track.id,
-        title: track.title,
-        artistName: artist?.name || track.artistName,
-        albumTitle: album?.title || null,
-        streamPath: album
-          ? `/library/canonical-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`
-          : null,
-      };
-    });
+function searchLocalLibrary(query, limit, context) {
+  const canonical = getCanonicalSearchPage({
+    source: "all",
+    availableOnly: true,
+    query,
+    artistLimit: limit,
+    albumLimit: limit,
+    songLimit: limit,
+  });
+  const artists = dedupeSearchArtists([
+    ...context.artists,
+    ...(canonical.artists || []),
+    ...(canonical.albums?.artists || []),
+    ...(canonical.tracks?.artists || []),
+  ]);
+  const artistsById = new Map(artists.map((artist) => [String(artist.id), artist]));
+  const albumsById = new Map(
+    [
+      ...(canonical.albums?.albums || []),
+      ...(canonical.tracks?.albums || []),
+    ].map((album) => [String(album.id), album]),
+  );
+  const describeAlbum = (album) => {
+    const artist = artistsById.get(String(album.artistId));
     return {
-      context,
-      library: searchLocalFromData(
-        query,
-        {
-          artists,
-          tracks: [...context.tracks, ...tracks],
-        },
-        limit,
-      ),
+      canonicalId: String(album.id),
+      title: album.title,
+      artistName: artist?.name || album.albumArtist || "",
+      artistMbid: artist?.mbid || null,
+      releaseGroupMbid: album.releaseGroupMbid || null,
+      releaseDate: album.releaseDate || null,
     };
+  };
+  const albums = (canonical.albums?.albums || []).map(describeAlbum);
+  const tracks = (canonical.tracks?.tracks || []).map((track) => {
+    const album = track.albums
+      ?.map((entry) => albumsById.get(String(entry.albumId)))
+      .find(Boolean);
+    const albumDetails = album ? describeAlbum(album) : null;
+    return {
+      id: track.id,
+      title: track.title,
+      artistName: albumDetails?.artistName || track.artistName,
+      albumTitle: albumDetails?.title || null,
+      albumMbid: albumDetails?.releaseGroupMbid || null,
+      albumCanonicalId: albumDetails?.canonicalId || null,
+      streamPath: album
+        ? `/library/canonical-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`
+        : null,
+    };
+  });
+  return searchLocalFromData(
+    query,
+    {
+      artists,
+      albums,
+      tracks: [...context.tracks, ...tracks],
+    },
+    limit,
+  );
+}
+
+export function searchLibrary(query, { limit, user = null } = {}) {
+  const trimmed = String(query || "").trim();
+  if (!trimmed) {
+    return { query: "", artists: [], albums: [], tracks: [] };
+  }
+  const perBucketLimit = bucketLimit("full", limit);
+  return {
+    query: trimmed,
+    ...searchLocalLibrary(trimmed, perBucketLimit, getSearchContext(user)),
+  };
+}
+
+function getSearchContextOrFallback(user) {
+  try {
+    return getSearchContext(user);
   } catch (error) {
     console.warn("[UnifiedSearch] Local search context failed:", error.message);
     const playlists = getAllPlaylistsForSearch(user);
-    const fallbackContext = {
+    return {
       playlists,
       artists: [],
       tracks: [],
       index: buildSearchContextIndex({ playlists }),
     };
-    return {
-      context: fallbackContext,
-      library: searchLocalFromData(query, {}, limit),
-    };
   }
 }
 
-export async function searchUnified(query, { mode = "suggest", limit, user = null } = {}) {
+export async function searchUnified(
+  query,
+  { mode = "suggest", limit, user = null, signal } = {},
+) {
   const trimmed = String(query || "").trim();
   const normalizedMode = normalizeMode(mode);
   const perBucketLimit = bucketLimit(normalizedMode, limit);
@@ -718,7 +771,6 @@ export async function searchUnified(query, { mode = "suggest", limit, user = nul
       query: "",
       mode: normalizedMode,
       top: null,
-      library: { artists: [], tracks: [] },
       catalog: { artists: [], albums: [], tracks: [] },
       localSearchConfigured: catalogSearchConfigured,
       filters: ["all", "artists", "albums", "singles"],
@@ -729,12 +781,8 @@ export async function searchUnified(query, { mode = "suggest", limit, user = nul
   const cached = unifiedSearchCache.get(cacheKey);
   if (cached) return cached;
 
-  const [fetchedCatalog, local] = await Promise.all([
-    searchCatalog(trimmed, perBucketLimit),
-    searchLocalLibrary(trimmed, perBucketLimit, user),
-  ]);
-  const library = local?.library || { artists: [], tracks: [] };
-  const context = local?.context || EMPTY_SEARCH_CONTEXT;
+  const fetchedCatalog = await searchCatalog(trimmed, perBucketLimit, signal);
+  const context = getSearchContextOrFallback(user);
   const catalog = applyCatalogSearchContext(fetchedCatalog, trimmed, context, perBucketLimit);
   const rawTop = fetchedCatalog?.top || pickCatalogTopFallback(catalog);
   const top = rawTop ? annotateSearchItem(rawTop, trimmed, context) : null;
@@ -743,10 +791,6 @@ export async function searchUnified(query, { mode = "suggest", limit, user = nul
     query: trimmed,
     mode: normalizedMode,
     top: top?.type ? top : null,
-    library: {
-      artists: library.artists,
-      tracks: library.tracks,
-    },
     catalog,
     localSearchConfigured: catalogSearchConfigured,
     filters: ["all", "artists", "albums", "singles"],

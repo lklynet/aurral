@@ -7142,6 +7142,17 @@ textarea {
   gap: 2rem;
 }
 
+.search-page__section {
+  margin-bottom: 2rem;
+}
+
+.search-page__section-title {
+  margin: 0 0 1rem;
+  color: var(--aurral-text);
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
 .search-page__filter.is-active {
   background: transparent;
   color: var(--aurral-text);

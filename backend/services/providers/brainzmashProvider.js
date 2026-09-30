@@ -349,18 +349,20 @@ export async function getAlbumTracksByAlbumMbid(albumMbid) {
   return Array.isArray(release?.tracks) ? release.tracks : [];
 }
 
-export async function searchArtists(query, { limit = 24, offset = 0 } = {}) {
+export async function searchArtists(query, { limit = 24, offset = 0, signal } = {}) {
   let items = [];
   try {
     const data = await request("/search/artist", {
       query,
       limit,
-    });
+    }, { signal });
     const source = Array.isArray(data) ? data : [];
     items = source.map((entry) => ({
       ...toNormalizedArtist(entry),
     }));
-  } catch {}
+  } catch {
+    signal?.throwIfAborted();
+  }
   return {
     query,
     count: items.length,
@@ -371,7 +373,7 @@ export async function searchArtists(query, { limit = 24, offset = 0 } = {}) {
 
 export async function searchAlbums(
   query,
-  { artistName = "", limit = 24, offset = 0, releaseTypes = [], sort = "relevance" } = {},
+  { artistName = "", limit = 24, offset = 0, releaseTypes = [], sort = "relevance", signal } = {},
 ) {
   const requestedLimit = Math.max(limit + offset, limit);
   let items = [];
@@ -381,7 +383,7 @@ export async function searchAlbums(
       query,
       limit: requestedLimit,
       ...(artistName ? { artist: artistName } : {}),
-    });
+    }, { signal });
     const source = Array.isArray(data) ? data : [];
     items = source.map((entry, index) => {
       const artists = Array.isArray(entry?.artists) ? entry.artists : [];
@@ -402,7 +404,9 @@ export async function searchAlbums(
         releaseStatuses: [],
       };
     });
-  } catch {}
+  } catch {
+    signal?.throwIfAborted();
+  }
 
   if (items.length === 0 && isNarrowFallbacksEnabled()) {
     const escapeLucenePhrase = (value) =>
@@ -423,6 +427,7 @@ export async function searchAlbums(
       headers: {
         "User-Agent": `${APP_NAME}/${APP_VERSION} (metadata album fallback)`,
       },
+      signal,
     });
     const source = Array.isArray(response?.data?.["release-groups"])
       ? response.data["release-groups"]
