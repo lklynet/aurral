@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Play, FilePlus2, Download, Trash2, Search, RefreshCw, ClipboardCopy, ListMusic } from "lucide-react";
+import { Check, Play, FilePlus2, Download, Trash2, RefreshCw, ClipboardCopy, ListMusic } from "lucide-react";
 import { DotLoader } from "../components/DotLoader";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -26,7 +26,6 @@ import {
   setPlaylistTrackAvailability,
   setPlaylistRecordHistory,
   searchTrackUpgrade,
-  searchPlaylistUpgrades,
   syncSharedPlaylistImport,
   getFlowLidarrImportListUrl,
 } from "../utils/api/endpoints/playlists.js";
@@ -224,7 +223,6 @@ function FlowPage({ mode = "all" }) {
   const [applyingSharedPlaylistNameId, setApplyingSharedPlaylistNameId] = useState(null);
   const [reSearchingTrackIds, setReSearchingTrackIds] = useState({});
   const [manualReplacement, setManualReplacement] = useState(null);
-  const [searchingUpgradePlaylistId, setSearchingUpgradePlaylistId] = useState(null);
   const [syncingImportPlaylistId, setSyncingImportPlaylistId] = useState(null);
   const [updatingSyncIntervalPlaylistId, setUpdatingSyncIntervalPlaylistId] = useState(null);
   const [updatingAvailabilityPlaylistId, setUpdatingAvailabilityPlaylistId] = useState(null);
@@ -1194,26 +1192,6 @@ function FlowPage({ mode = "all" }) {
     setManualReplacement({ playlistId, job: track });
   };
 
-  const handleSearchPlaylistUpgrades = async (playlistId) => {
-    if (!playlistId || searchingUpgradePlaylistId) return;
-    setSearchingUpgradePlaylistId(playlistId);
-    try {
-      const result = await searchPlaylistUpgrades(playlistId);
-      showSuccess(
-        result?.scheduled
-          ? "Upgrade search queued"
-          : result?.queued > 0
-          ? `Searching upgrades for ${result.queued} track${result.queued !== 1 ? "s" : ""}`
-          : "No tracks are eligible for an upgrade",
-      );
-      await fetchFlowTracks(playlistId, { showSpinner: false });
-    } catch (err) {
-      showError(getApiErrorMessage(err, "Failed to search for upgrades"));
-    } finally {
-      setSearchingUpgradePlaylistId(null);
-    }
-  };
-
   const handleSyncImportedPlaylist = async (playlist) => {
     if (!playlist?.id || syncingImportPlaylistId) return;
     setSyncingImportPlaylistId(playlist.id);
@@ -1701,21 +1679,6 @@ function FlowPage({ mode = "all" }) {
             />
           </div>
           <div className="flow-page__menu-divider" />
-          <button
-            type="button"
-            className="artist-menu-item"
-            onClick={() => handleSearchPlaylistUpgrades(selectedFlow.id)}
-            disabled={searchingUpgradePlaylistId === selectedFlow.id}
-          >
-            <span className="artist-menu-item__main">
-              {searchingUpgradePlaylistId === selectedFlow.id ? (
-                <DotLoader size="sm" label={null} />
-              ) : (
-                <Search className="artist-icon-sm" />
-              )}
-              Search for upgrades
-            </span>
-          </button>
           <button
             type="button"
             className="artist-menu-item"

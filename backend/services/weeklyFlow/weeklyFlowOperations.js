@@ -769,9 +769,10 @@ async function deleteSharedPlaylistTrack({ playlistId, jobId } = {}) {
 async function researchPlaylistTrack({ playlistId, jobId } = {}) {
   const safePlaylistId = String(playlistId || "").trim();
   const safeJobId = String(jobId || "").trim();
+  const isLibraryJob = safePlaylistId === "library";
   const sharedPlaylist = flowPlaylistConfig.getSharedPlaylist(safePlaylistId);
   const flow = flowPlaylistConfig.getFlow(safePlaylistId);
-  if (!sharedPlaylist && !flow) return { missingPlaylist: true };
+  if (!isLibraryJob && !sharedPlaylist && !flow) return { missingPlaylist: true };
   const job = downloadTracker.getJob(safeJobId);
   if (!job || job.playlistType !== safePlaylistId) {
     return { missingJob: true };
@@ -806,6 +807,13 @@ async function researchPlaylistTrack({ playlistId, jobId } = {}) {
       jobId: replacementJobId,
       playlistId: safePlaylistId,
     };
+  }
+  if (isLibraryJob) {
+    if (!downloadTracker.setPending(safeJobId, null)) {
+      throw new Error("Failed to requeue track");
+    }
+    await wakeDownloadWorker();
+    return { success: true, reused: false, jobId: safeJobId, playlistId: safePlaylistId };
   }
   let reused = false;
   await withPlaylistMutation(
