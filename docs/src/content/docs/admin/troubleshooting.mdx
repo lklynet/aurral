@@ -1,173 +1,177 @@
 ---
 title: Troubleshooting
-description: Common setup and runtime issues.
+description: Fixes for common setup and runtime problems.
 ---
 
-## Lidarr will not connect
+Start with **Settings > Storage health > Run checks**. Most file problems show up there with the exact path and a suggested fix.
 
-- Use the URL that Aurral can reach. Do not use the browser URL.
+## Lidarr does not connect
+
+- Use a URL that the Aurral server can reach, not the URL in your browser.
 - If both containers share a Docker network, the URL is often `http://lidarr:8686`.
 - Make sure that the Lidarr API key is correct.
+- Make sure that **Enabled** is on in **Settings > Lidarr**.
 
 ## Discover is empty
 
-- Make sure that Aurral can connect to Lidarr.
-- Make sure that Lidarr contains artists.
-- Add a Last.fm API key for better discovery.
-- Set your listening-history provider in **Profile** (Local only, a Last.fm or ListenBrainz username,
-  or a Koito instance URL).
-- Run a manual refresh from **Settings > Discover**.
+- Make sure that your Library has artists. Discover recommends artists based on the Library.
+- For better recommendations, add a Last.fm API key in **Settings > Connect > Last.fm**.
+- Set your listening-history provider in **Profile > Listening history**.
+- Start a refresh in **Settings > Discover**.
 
 ## Playlists do not download
 
-- Configure one or more download sources. Use **Settings > Download clients** or **Settings > Indexers**.
-- For yt-dlp, select **Test connection**.
-- Make sure that the host has `yt-dlp` and ffmpeg. The Docker image includes both programs.
-- For slskd, check the connection and the Soulseek login status.
-- For Usenet, enable the Prowlarr indexers.
-- Make sure that the Usenet client can reach completed files.
-- If FLAC matches are scarce, enable acceptable MP3 or M4A tiers in **Settings > Download clients > Quality profile**.
-- Make sure that the cutoff and tier order match the quality that you want.
-- Check job states on the Playlists or Flows page and **Activity**.
+- Configure one or more download sources in **Settings > Download clients**. For Usenet, also configure **Settings > Indexers**.
+- For yt-dlp, select **Test connection**. Outside Docker, make sure that the host has `yt-dlp` and `ffmpeg`. The Docker image includes both.
+- For slskd, check the connection and the Soulseek sign-in status.
+- For Usenet, turn on the Prowlarr indexers, and make sure that Aurral can read the completed files.
+- If few FLAC files are found, turn on MP3 or M4A tiers in **Settings > Download clients > Quality profile**.
+- Make sure that the cutoff and the tier order match the quality that you want.
+- Check the job states on the playlist page and in **Activity**.
+- For a single track that keeps failing, choose the download yourself. See [Choose a download yourself](/using/activity/#choose-a-download-yourself).
 
 ## Removed playlist tracks still appear in Activity
 
-Playlist and flow deletion run in the background. The page reports **removal queued** until the operation worker finishes.
+Aurral deletes playlists and flows in the background. The page shows **removal queued** until the work finishes.
 
-If a download client still shows work after Aurral removes the playlist, check that client's queue. Aurral blocks the removed job from creating a playlist file. If Aurral cannot remove the item from the client, the removal fails and Aurral retries it.
+If a download client still shows work after the removal, check that client's queue. Aurral does not import results into the removed playlist. If Aurral cannot remove the item from the client, the removal fails and Aurral tries again.
 
 ## Albums are missing from the Library
 
-When Lidarr is connected, **Settings > Lidarr > Show available music only** is on by default. It hides albums without downloaded files, including albums that Aurral is still downloading. Turn it off to see them, or follow the download on the album page and in **Activity**. Without Lidarr, the Library shows every album you add.
+When Lidarr is connected, **Settings > Lidarr > Show available music only** is on by default. It hides albums without downloaded files, including albums that Aurral is still downloading. Turn it off to see them, or follow the download on the album page and in **Activity**. Without Lidarr, the Library shows every album that you add.
 
 ## Settings warn that roots overlap
 
-Aurral shows this warning when its Downloads Folder and a Lidarr root folder are the same folder or one is inside the other. Aurral allows it, but Lidarr can rename, import, or delete files under a folder it treats as its root. Aurral never moves files to resolve the overlap. To clear the warning, set **Settings > Download clients > Downloads Folder > Path** to a folder outside every Lidarr root folder, and move existing files yourself if you want them there.
+Aurral shows this warning when the Downloads Folder and a Lidarr root folder are the same folder, or when one is inside the other. Aurral allows it, but Lidarr can rename, import, or delete files under its root folders. Aurral never moves files to remove the overlap.
+
+To clear the warning, set **Settings > Download clients > Downloads Folder > Path** to a folder outside every Lidarr root folder. Move the existing files yourself if you want them in the new folder.
+
+## Browse folders does not show my media folder
+
+By default, **Browse folders** opens only `/data`, the app data folder, and the Downloads Folder. If your media mount is at another path, such as `/music`, set `FILE_BROWSE_ROOTS=/music` and recreate the container. See [Environment variables](/admin/environment/#mounts-and-permissions).
 
 ## Files do not appear in Navidrome
 
-- If you use Lidarr, make sure that Aurral mounts the same media root as Lidarr ([Filesystem and mounts](/getting-started/storage/)).
-- Make sure that **Settings > Download clients > Downloads Folder > Path** is under that mount.
-- In **Settings > Playback > Navidrome**, test the Navidrome connection. Changes save automatically.
-- Make sure that Navidrome scans Aurral's downloads path and not only Lidarr's library.
-- Aurral's **Aurral Playlists** library can be empty until a flow finishes a download. Check for a file in the Downloads Folder or `_flows`, then wait for the Navidrome scan.
-- If the library is missing, check that the Navidrome account can manage libraries through its API.
-- Review the [Navidrome missing-track setting](/integrations/navidrome/#remove-missing-tracks).
+- Make sure that **Settings > Download clients > Downloads Folder > Path** is under the shared media mount.
+- If you use Lidarr, make sure that Aurral mounts the same media root as Lidarr. See [Filesystem and mounts](/getting-started/storage/).
+- In **Settings > Playback > Navidrome**, test the connection.
+- Make sure that Navidrome scans the Downloads Folder, not only the Lidarr library.
+- The **Aurral Playlists** library stays empty until the first download finishes. Check for a file in the Downloads Folder or under `_flows`, then wait for the Navidrome scan.
+- If the library is missing, make sure that the Navidrome account can manage libraries through the API.
+- Read about [removing missing tracks in Navidrome](/integrations/navidrome/#remove-missing-tracks).
 
-## Library reuse or download handoff fails on Windows
+## Library reuse or download import fails on Windows
 
-Symptoms can include the message `Lidarr track exists but file is not accessible from Aurral`.
+The log can show `Lidarr track exists but file is not accessible from Aurral`. Completed slskd or Usenet files can also stay in their download folders. The **Lidarr library** storage check can fail while Lidarr itself works.
 
-Completed slskd or Usenet files can also remain in their source folders. **Test library access** can fail while Lidarr is operational.
+1. Mount the parent host folder that Lidarr uses into Aurral, for example `N:/ServerFolders/Music:/music`. Do not use separate mounts for the library and the downloads.
+2. Set **Downloads Folder > Path** under that mount, for example `/music/Aurral`.
+3. Set `FILE_BROWSE_ROOTS=/music`, so that **Browse folders** can open the mount.
+4. After you change `volumes` or `environment` in the Compose file, recreate the container: `docker compose up -d --force-recreate`.
+5. Run **Settings > Storage health > Run checks**. The **Lidarr library** section shows the exact path that Aurral cannot read.
+6. If necessary, add a mapping in **Settings > Download clients > Remote path mappings**, or set `PATH_MAPPINGS=N:/ServerFolders/Music|/music`.
+7. For NZBGet on Windows, open **Settings > Download clients > NZBGet**. If Aurral cannot find the finished downloads, set **Completed download path**.
 
-- Mount the same parent host folder that Lidarr uses into Aurral.
-- Do not use separate mounts for the library and downloads.
-- For example, use `N:/ServerFolders/Music:/music`.
-- Set **Downloads Folder > Path** under that mount, for example, `/music/Aurral`.
-- After you change Compose `volumes` or `environment`, recreate the container: `docker compose up -d --force-recreate`.
-- Run **Settings > Lidarr > Test library access** to see the exact path Aurral cannot read.
-- If necessary, set `PATH_MAPPINGS=N:/ServerFolders/Music|/music` in the Compose file.
-- You can also add mappings under **Settings > Download clients > Remote Path Mappings**.
-- For NZBGet on Windows, open **Settings > Download clients > NZBGet**.
-- Set **Completed download path** if Aurral cannot detect the folder automatically.
-
-See [Filesystem and mounts: Windows and mixed Docker setups](/getting-started/storage/#windows-and-mixed-docker-setups).
+See [Windows and mixed Docker setups](/getting-started/storage/#windows-and-mixed-docker-setups).
 
 ## Library access fails on a folder that is not your root folder
 
-**Test library access** and **Storage health** can fail on a sample track whose path sits outside every Lidarr root folder, even though the root folder itself passes.
-
-Lidarr keeps each artist's own folder when you change or rename a root folder, so artists stay at the old location.
+The **Lidarr library** storage check can fail on a sample track outside every Lidarr root folder, while the root folder itself passes. When you change or rename a root folder in Lidarr, Lidarr leaves each artist folder where it was.
 
 - Compare the failing path with **Root folder in Lidarr** in the same check.
-- If the failing path is outside it, open that artist in Lidarr, select **Edit**, and move the files into the current root folder.
-- Otherwise, add the old location as a Lidarr root folder and mount it into Aurral.
+- If the failing path is outside the root folder, open that artist in Lidarr, select **Edit**, and move the files to the current root folder.
+- Otherwise, add the old folder as a Lidarr root folder and mount it in Aurral.
 
-## Navidrome playlists show but tracks will not play
+## Navidrome playlists appear, but tracks do not play
 
-Flows or shared playlists can appear in Navidrome, but the tracks do not play.
+First, wait for Navidrome to finish its scan. Aurral adds tracks to a Navidrome playlist only after Navidrome indexes them.
 
-First, wait for Navidrome to finish its scan. Aurral creates the API playlist after Navidrome indexes the tracks.
-
-- Make sure that **Test library access** passes in Lidarr settings.
-- Make sure that Navidrome scans the Aurral download folder and each reused Lidarr library folder.
-- Make sure the Aurral download tree uses the same absolute path in both containers.
-- Run or save a flow. You can also edit and save a shared playlist.
-- Run a full Navidrome scan and wait for Aurral's catch-up attempt.
+- Make sure that the **Lidarr library** storage check passes.
+- Make sure that Navidrome scans the Downloads Folder and each Lidarr folder that playlists reuse.
+- Make sure that the Downloads Folder has the same absolute path in both containers.
+- Run a flow, or edit and save a static playlist.
+- Run a full Navidrome scan and wait for Aurral's next update.
 
 See [Navidrome: Filesystem paths](/integrations/navidrome/#filesystem-paths).
 
 ## Plex playlists are empty or tracks are missing
 
-**Sync to Plex now** can succeed while the playlists have no tracks. The Aurral library can also stay empty while Plex is still scanning.
+**Sync to Plex now** can succeed while the playlists have no tracks. The **Aurral** library can also stay empty while Plex scans.
 
-- Make sure that Plex can read the flow download tree.
-- The Plex container or host must contain the Downloads Folder, including `<downloads>/artist/album/track` and `<downloads>/_flows/<flow-id>/...`.
-- If Plex and Aurral use different mounts, set **Settings > Playback > Plex > Plex Aurral Library path** to the folder that Plex sees.
-- Leave **Plex Aurral Library path** blank if both apps use the same path prefix.
-- Make sure the Plex settings have finished saving automatically.
-- Select **Sync to Plex now** again.
-- Initial scans can take several minutes. Aurral runs catch-up synchronization in the background while Plex indexes files.
-- Make sure that flows finish their downloads before you expect Plex playlists to populate.
-See [Plex integration](/integrations/plex/).
+- Make sure that Plex can read the Downloads Folder, including `<downloads>/Artist/Album/Track` and `<downloads>/_flows/<flow-id>/...`.
+- If Plex and Aurral use different paths, set **Settings > Playback > Plex > Plex Aurral Library path** to the folder that Plex sees. If they use the same path, leave it blank.
+- Wait for the Plex settings to save, then select **Sync to Plex now** again.
+- Wait for the first scan. It can take several minutes. Aurral runs catch-up syncs while Plex indexes files.
+- Make sure that the flow finished its downloads.
+- For another user's playlists, make sure that the user linked a Plex account.
+
+See [Plex](/integrations/plex/).
+
+## A Subsonic client cannot sign in
+
+- Sign in with a local Aurral account. The instance API key does not work for Subsonic.
+- If the client reports `Token authentication failed`, switch it to password authentication. In Music Assistant, turn on legacy authentication. In Feishin, set `LEGACY_AUTHENTICATION=true`.
+- An account created before Aurral stored Subsonic credentials needs one Aurral sign-in, or a password reset by an admin.
+- An account created by OIDC or a reverse proxy needs a local password first.
+
+See [Navidrome and Subsonic](/integrations/navidrome/#connect-a-subsonic-client).
+
+## Google or Plex sign-in says the account is not linked
+
+Google and Plex sign-in work only for accounts that already linked them. Sign in another way, then link the account in **Profile > Connected accounts** or **Profile > Plex account**. See [Sign in with Google or Plex](/admin/users/#sign-in-with-google-or-plex).
 
 ## Sign-in page or blank page behind a reverse proxy
 
-- Make sure that `AUTH_PROXY_TRUSTED_IPS` matches the source address of your reverse proxy.
-- This value is different from `TRUST_PROXY`. Use the proxy access logs to find its source address.
-- If you enable proxy authentication, set `AUTH_PROXY_TRUSTED_IPS` before you expose the app.
-- Reload the page. Aurral shows its sign-in page when the browser holds no valid session, and a reload lets your proxy authenticate again.
-- A brief backend restart should not sign out an already authenticated tab, and the discovery connection stays closed while the sign-in screen is shown. If the logs repeatedly show `WebSocket server initialized` and `Server running`, the backend process is restarting; check the container or file-watcher supervisor.
-- Page loads always reach your proxy, and an open tab reloads itself when the proxy rejects an API call, so ending the identity-provider session no longer needs a manual hard refresh.
-- If errors such as "Error Loading Artist" persist instead, your proxy is answering rejected API calls with an Aurral-shaped JSON error. Let it return its own redirect or `401`.
-- For Authelia or forwardAuth, set `AUTH_PROXY_DOMAIN` to your authentication origin.
-- For Authentik, `curl -i https://your-aurral-host/outpost.goauthentik.io/ping` must return `204`.
-- If it returns Aurral HTML, route `/outpost.goauthentik.io` directly to the Authentik outpost.
-- Use the same correction if it returns another authentication redirect.
-- Do not apply `auth_request` to that route.
-- If Authentik logout returns to Aurral's login page, check the logout variable.
-- Use the exact variable name `AUTH_PROXY_LOGOUT_URL`.
-- Set its value to `https://your-aurral-host/outpost.goauthentik.io/sign_out`.
-- If the **Log out** control is missing, that variable is unset. Aurral hides the control when it cannot end the proxy session.
-- This problem affects only proxy-auth setups that use `AUTH_PROXY_ENABLED` or `AUTH_PROXY_HEADER`. It does not affect local password login.
+This section applies only when `AUTH_PROXY_ENABLED` or `AUTH_PROXY_HEADER` is set. It does not affect local password sign-in.
+
+- Make sure that `AUTH_PROXY_TRUSTED_IPS` matches the address that your reverse proxy connects from. Find it in the proxy access logs. This value is different from `TRUST_PROXY`.
+- Set `AUTH_PROXY_TRUSTED_IPS` before you expose Aurral.
+- Reload the page. Aurral shows its sign-in page when the browser has no valid session. A reload lets your proxy authenticate again.
+- A short backend restart does not sign out an open tab. If the log repeats `WebSocket server initialized` and `Server running`, the backend keeps restarting. Check the container or the file-watcher process.
+- If an error such as "Error Loading Artist" stays on the page, your proxy answers rejected API calls with a JSON error in Aurral's format. Let the proxy return its own redirect or `401` instead.
+- For Authelia or another forward-auth proxy, set `AUTH_PROXY_DOMAIN` to your sign-in address.
+- For Authentik, `curl -i https://your-aurral-host/outpost.goauthentik.io/ping` must return `204`. If it returns Aurral HTML or another sign-in redirect, route `/outpost.goauthentik.io` directly to the Authentik outpost. Do not apply `auth_request` to that route.
+- If an Authentik logout returns to Aurral's sign-in page, set `AUTH_PROXY_LOGOUT_URL=https://your-aurral-host/outpost.goauthentik.io/sign_out`. Check the spelling of the variable name.
+- If **Log out** is missing, `AUTH_PROXY_LOGOUT_URL` is not set. Aurral hides **Log out** when it cannot end the proxy session.
 
 ## Docker memory looks high after you view cover art
 
-Official images preload jemalloc. This lets sharp return free native memory after it optimizes cover art.
+The official image preloads jemalloc, so Sharp returns free memory to the system after it processes cover art.
 
-Aurral returns provider image links to the web UI, so web artwork is fetched and cached by the browser. Native library clients that require Aurral to serve artwork still fetch covers on demand and cache them as 512px WebP images.
+The web app loads artwork directly from the provider links, and the browser caches it. Subsonic clients that need Aurral to serve artwork get covers on demand. Aurral caches these as 512 px WebP images.
 
-The image-proxy disk cache has a 256MB limit and uses least-recently-used removal. Restart Aurral if you need a clean memory baseline.
+The artwork disk cache holds up to 256 MB and removes the least recently used images first. To start from a clean memory baseline, restart Aurral.
 
-Aurral stores image links in SQLite separately from the native-library image bytes. When the byte cache evicts an image, Aurral can fetch it again without another metadata lookup.
+Aurral stores artwork links in SQLite, separately from the cached image files. When the cache removes an image, Aurral can fetch it again without a new metadata lookup.
 
-After upgrading to link-first artwork, Aurral removes obsolete web-image bytes once and keeps native-library bytes. It retains only the small legacy metadata needed to translate older local image links.
-
-The **Clear artwork cache** action removes those stored links and native-library image files. Discovery recommendations are kept; artwork is rebuilt on demand.
+**Clear artwork cache** in **Settings > Discover** removes the stored links and the cached image files. It keeps your recommendations. Aurral rebuilds the artwork when it needs it.
 
 ## The container exits with code 137
 
-Exit code 137 means that the container received `SIGKILL`. Check whether Docker killed it for exceeding its memory limit:
+Exit code 137 means that the container received `SIGKILL`. Check whether Docker stopped it for using too much memory:
 
 ```bash
 docker inspect <container> --format 'oom={{.State.OOMKilled}} memory_limit={{.HostConfig.Memory}}'
 ```
 
-If the container is still running, capture its current memory use:
+If the container still runs, check its current memory use:
 
 ```bash
 docker stats --no-stream <container>
 ```
 
-If the container has stopped, `docker stats` has no historical usage data. Use the `docker inspect` result and the host's out-of-memory logs instead. If `oom=true`, increase the container memory limit. If `oom=false`, check the container supervisor and Docker daemon logs for the process that sent `SIGKILL`.
+`docker stats` has no data for a stopped container. Use the `docker inspect` result and the host's out-of-memory logs instead.
+
+- If `oom=true`, increase the memory limit of the container.
+- If `oom=false`, check the container supervisor and the Docker daemon logs for the process that sent `SIGKILL`.
 
 ## Permission errors
 
-- Make sure mounted folders are writable by the container user.
-- Set `PUID` and `PGID` to match your host folder owner. Follow [Servarr's Docker Guide](https://wiki.servarr.com/docker-guide) for shared-group setups.
+- Make sure that the container user can write to the mounted folders.
+- Set `PUID` and `PGID` to the owner of the host folders. For shared groups, follow the [Servarr Docker Guide](https://wiki.servarr.com/docker-guide).
 
-## Need more logs
+## Get more logs
 
 1. Set `AURRAL_VERBOSE_LOGS=true`.
 2. Restart Aurral.
-3. Check the container logs.
+3. Read the container logs.

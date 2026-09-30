@@ -9,7 +9,7 @@ import {
   createSharedPlaylist,
 } from "../utils/api/endpoints/playlists.js";
 import { getTagSuggestions } from "../utils/api/endpoints/discovery.js";
-import { searchUnified } from "../utils/api/endpoints/search.js";
+import { searchLibrary, searchUnified } from "../utils/api/endpoints/search.js";
 import { getArtistRecordId } from "../utils/artistTaste";
 import {
   buildUnifiedSuggestionSections,
@@ -24,6 +24,7 @@ import {
 
 import {
   AUTOCOMPLETE_DEBOUNCE_MS,
+  LIBRARY_AUTOCOMPLETE_DEBOUNCE_MS,
   SUGGEST_LIMIT,
   TAG_SUGGESTIONS_LIMIT,
   ALBUM_PENDING_STATUSES,
@@ -53,6 +54,9 @@ import { TrackPlaylistMenu } from "../pages/ArtistDetails/components/TrackPlayli
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { searchSettingsItems } from "../pages/Settings/settingsTabsConfig";
+
+const EMPTY_SUGGESTION_RESULTS = { library: null, catalog: null };
+
 function GlobalSearch({ settingsMode = false }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [lastfmConfigured, setLastfmConfigured] = useState(true);
@@ -65,7 +69,9 @@ function GlobalSearch({ settingsMode = false }) {
   const [recentSearches, setRecentSearches] = useState(() => readRecentSearches());
   const searchContainerRef = useRef(null);
   const inputRef = useRef(null);
+  const suggestionResultsRef = useRef(EMPTY_SUGGESTION_RESULTS);
   const { schedule: scheduleSuggest, cancel: cancelSuggest } = useDebouncedTask();
+  const { schedule: scheduleLibrarySuggest, cancel: cancelLibrarySuggest } = useDebouncedTask();
   const navigate = useNavigate();
   const location = useLocation();
   const { hasPermission, bootstrap } = useAuth();
@@ -137,9 +143,21 @@ function GlobalSearch({ settingsMode = false }) {
   }, []);
 
   const closeAutocomplete = useCallback(() => {
+    suggestionResultsRef.current = EMPTY_SUGGESTION_RESULTS;
     setSuggestionRows([]);
     setSuggestionMode(null);
     setSuggestionIndex(-1);
+  }, []);
+
+  const showUnifiedSuggestions = useCallback((results, { resetIndex = false } = {}) => {
+    suggestionResultsRef.current = results;
+    setSuggestionRows(
+      flattenSuggestionSections(
+        buildUnifiedSuggestionSections({ ...results.catalog, library: results.library }),
+      ),
+    );
+    setSuggestionMode("unified");
+    if (resetIndex) setSuggestionIndex(-1);
   }, []);
 
   useEffect(() => {
@@ -170,16 +188,22 @@ function GlobalSearch({ settingsMode = false }) {
 
   useEffect(() => {
     const trimmed = searchQuery.trim();
-    if (settingsMode) {
+    const cancelAll = () => {
       cancelSuggest();
+      cancelLibrarySuggest();
+    };
+    if (settingsMode) {
+      cancelAll();
       setLoadingSuggestions(false);
       closeAutocomplete();
-      return cancelSuggest;
+      return cancelAll;
     }
     const isTagShortcut = lastfmConfigured && trimmed.startsWith("#");
     const tagPart = isTagShortcut ? trimmed.slice(1).trim() : trimmed;
 
     if (isTagShortcut) {
+      cancelLibrarySuggest();
+      suggestionResultsRef.current = EMPTY_SUGGESTION_RESULTS;
       if (tagPart.length < 2) {
         cancelSuggest();
         setLoadingSuggestions(false);
@@ -226,29 +250,37 @@ function GlobalSearch({ settingsMode = false }) {
     }
 
     if (trimmed.length < 2) {
-      cancelSuggest();
+      cancelAll();
       setLoadingSuggestions(false);
       closeAutocomplete();
       return;
     }
 
+    scheduleLibrarySuggest(async (isCurrent, signal) => {
+      const library = await searchLibrary(trimmed, { limit: SUGGEST_LIMIT, signal }).catch(
+        () => null,
+      );
+      if (!isCurrent()) return;
+      showUnifiedSuggestions(
+        { ...suggestionResultsRef.current, library },
+        { resetIndex: true },
+      );
+    }, LIBRARY_AUTOCOMPLETE_DEBOUNCE_MS);
+
     scheduleSuggest(async (isCurrent, signal) => {
       setLoadingSuggestions(true);
       try {
-        const data = await searchUnified(trimmed, {
+        const catalog = await searchUnified(trimmed, {
           mode: "suggest",
           limit: SUGGEST_LIMIT,
           signal,
         });
         if (!isCurrent()) return;
-        setLocalSearchConfigured(!!data?.localSearchConfigured);
-        const sections = buildUnifiedSuggestionSections(data);
-        setSuggestionRows(flattenSuggestionSections(sections));
-        setSuggestionMode("unified");
-        setSuggestionIndex(-1);
+        setLocalSearchConfigured(!!catalog?.localSearchConfigured);
+        showUnifiedSuggestions({ ...suggestionResultsRef.current, catalog });
       } catch {
         if (isCurrent()) {
-          closeAutocomplete();
+          showUnifiedSuggestions({ ...suggestionResultsRef.current, catalog: null });
         }
       } finally {
         if (isCurrent()) {
@@ -257,8 +289,18 @@ function GlobalSearch({ settingsMode = false }) {
       }
     }, AUTOCOMPLETE_DEBOUNCE_MS);
 
-    return cancelSuggest;
-  }, [searchQuery, closeAutocomplete, lastfmConfigured, scheduleSuggest, cancelSuggest, settingsMode]);
+    return cancelAll;
+  }, [
+    searchQuery,
+    closeAutocomplete,
+    lastfmConfigured,
+    scheduleSuggest,
+    cancelSuggest,
+    scheduleLibrarySuggest,
+    cancelLibrarySuggest,
+    showUnifiedSuggestions,
+    settingsMode,
+  ]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -700,7 +742,7 @@ function GlobalSearch({ settingsMode = false }) {
         </div>
       )}
 
-      {!loadingSuggestions && !settingsMode && suggestionRows.length > 0 && (
+      {!settingsMode && suggestionRows.length > 0 && (
         <div className="global-search__suggestions global-search__suggestions--grouped">
           {suggestionMode === "tag"
             ? suggestionRows.map((row, index) => (

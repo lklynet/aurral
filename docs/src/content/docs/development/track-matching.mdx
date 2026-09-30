@@ -1,35 +1,69 @@
 ---
 title: Track matching architecture
-description: How Aurral selects recordings and verifies downloaded releases.
+description: How Aurral chooses recordings and checks downloaded files.
 ---
 
-Aurral matches tracks with native JavaScript rules. The matcher has no Python runtime, external service, or audio fingerprint dependency. Provider adapters supply only evidence the provider actually exposes; they do not turn a missing artist, duration, or recording ID into a match.
+Aurral matches tracks with native JavaScript rules. The matcher needs no Python runtime, external service, or audio fingerprints. A source adapter supplies only the evidence that its provider really exposes. A missing artist, duration, or recording ID never counts as a match.
 
 ## Decision path
 
-`trackIdentity.js` builds the requested recording. `candidateNormalizer.js` and the source adapters map search results into comparable candidates. `nativeMatcher.js` applies one versioned policy to recording contradictions, ranking, release fit, and one-to-one file assignment. `decisionEngine.js` adds provider evidence and returns `accept`, `verify`, `review`, or `reject` for each search result.
+1. `trackIdentity.js` builds the requested recording.
+2. `candidateNormalizer.js` and the source adapters turn search results into comparable candidates.
+3. `nativeMatcher.js` applies one versioned policy. It checks contradictions, ranks candidates, checks release fit, and assigns files one to one.
+4. `decisionEngine.js` adds provider evidence and returns `accept`, `verify`, `review`, or `reject` for each result.
 
-The same native matcher checks original file tags after download in `postDownloadValidator.js`. Aurral writes its own tags only after verification. A known conflicting recording ID, variant, artist, or duration cannot be overridden by a strong title score. Missing evidence does not count as agreement. A duration-only conflict with otherwise matching original tags is held for review; a file without usable original identity tags is not imported automatically.
+After a download, `postDownloadValidator.js` runs the same matcher on the original file tags. Aurral writes its own tags only after this check passes.
 
-Filename titles retain dash-separated version suffixes. A remaster can match the original recording, while a radio edit must match the requested version. Matching folds Latin accents and treats canonically equivalent Unicode spellings alike. If either core title contains non-Latin letters, different normalized core titles are contradictions, even when artist, duration, or recording ID agrees. This rule also applies to downloaded filename evidence and album file assignment. Transliteration and fuzzy spelling differences in those titles require an explicit user choice.
+- A strong title score cannot override a known conflict in the recording ID, version, artist, or duration.
+- Missing evidence does not count as agreement.
+- A file whose original tags match except for the duration goes to review.
+- A file without usable identity tags is not imported automatically.
 
-`MATCH_POLICY.version` is recorded with matcher decisions and exposed through the health response. Change the policy in one place, then run the fixture harness and the cross-source regression tests.
+## Titles and scripts
+
+A title in a file name keeps its dash-separated version suffix. A remaster can match the original recording, but a radio edit must match the requested version.
+
+Matching removes Latin accents and treats equivalent Unicode spellings as equal. If either core title contains non-Latin letters, two different normalized titles are a contradiction, even when the artist, duration, or recording ID agrees. This rule also applies to file names and to album file assignment. A transliteration or spelling difference in such a title needs the user to choose.
+
+## yt-dlp files
+
+yt-dlp names files by video ID, so the file name is not title evidence. yt-dlp writes the video metadata into the file, and splits a title of the form `Artist - Title` into the artist and title tags. Before matching, the validator removes promotional labels such as "Official Music Video" from the title.
+
+## Manual selections
+
+When a user chooses a result in a manual search, the choice decides the identity. The validator still requires readable audio with a known quality tier. It accepts tiers that the quality profile turns off. It does not apply the title, artist, album, duration, or version rules. Aurral downloads only the chosen result and does not fall back to another result or source.
+
+## Policy version
+
+`MATCH_POLICY.version` in `nativeMatcher.js` is stored with each matcher decision and returned by the health response. Change the policy in one place. Then run the fixture evaluation and the cross-source regression tests.
 
 ## Album release grabs
 
-Aurral-managed album requests keep one job per missing track. When Soulseek, Usenet, or deemix is enabled, the first pending job reserves its siblings for one release attempt. Usenet submits one NZB, Soulseek submits one folder batch, and deemix submits one album URL. The completed files are assigned to sibling jobs without reusing a file. Each assigned file must pass its own post-download check before it moves into the Aurral library. Missing, unreadable, contradictory, or failed files leave their jobs pending for per-track fallback. If the attempt ends early, for example because the first job fails or is removed, the reserved jobs also return to per-track search.
+An Aurral album request keeps one job for each missing track. When Soulseek, Usenet, or deemix is enabled, the first pending job reserves the other jobs for one release attempt:
 
-The release attempt follows configured source priority. yt-dlp remains a per-track source. Lidarr-managed albums continue through Lidarr. Cancellation removes only work owned by the album request, and queued pipeline state resumes after a worker restart.
+- Usenet submits one NZB.
+- Soulseek submits one folder batch.
+- deemix submits one album URL.
 
-## Adding a source
+Aurral assigns the finished files to the reserved jobs and never uses one file twice. Each assigned file must pass its own post-download check before it moves into the Library. A missing, unreadable, contradictory, or failed file leaves its job pending for the per-track fallback. If the attempt ends early, for example because the first job fails or is removed, the reserved jobs also return to per-track search.
 
-1. Declare the evidence the source provides in `candidateNormalizer.js`.
-2. Map provider results through `buildSourceCandidates()` and keep provider-specific availability checks at the adapter boundary.
-3. Use the shared post-download validator before writing metadata or importing files.
-4. For whole-release acquisition, feed the completed file paths to `finishAlbumGrab()` and test partial and failed downloads.
+The release attempt follows the configured source priority. yt-dlp stays a per-track source. Lidarr albums go through Lidarr. Cancellation removes only work that belongs to the album request. Queued pipeline state resumes after a worker restart.
+
+## Add a source
+
+1. Declare the evidence that the source provides in `candidateNormalizer.js`.
+2. Map provider results through `buildSourceCandidates()`. Keep provider-specific availability checks in the adapter.
+3. Run the shared post-download validator before you write tags or import files.
+4. For whole-release downloads, pass the finished file paths to `finishAlbumGrab()`, and test partial and failed downloads.
 
 ## Verification
 
-`.tests/track-matching/fixtures/` contains identity-disjoint development and acceptance cases derived from CC0 MusicBrainz data. Run `node .tests/track-matching/native-evaluation.mjs` for per-flow correct, wrong, abstention, contradiction, and yield counts. The held-out acceptance run is a release gate; tune rules against the development split. Cross-source and download tests cover provider mapping, actual audio tags, one-grab imports, partial failures, cancellation, and fallback.
+`.tests/track-matching/fixtures/` holds development and acceptance cases built from CC0 MusicBrainz data. The two sets share no identities. To get correct, wrong, abstained, contradicted, and yield counts for each flow, run:
 
-Metadata cannot distinguish two recordings whose visible evidence is identical. Aurral does not use audio fingerprints. If that case matters for an installation, a user can review the downloaded file before import.
+```bash
+node .tests/track-matching/native-evaluation.mjs
+```
+
+The held-out acceptance run is a release gate. Tune rules against the development set only. The cross-source and download tests cover provider mapping, real audio tags, album imports, partial failures, cancellation, and fallback.
+
+Metadata cannot tell apart two recordings with identical visible evidence. Aurral does not use audio fingerprints. If that case matters, review the downloaded file before import, or choose the file with a manual search.

@@ -128,6 +128,7 @@ export const queryKeys = {
   searchCatalog: (query, scope, options) => ["search", scope, query, options],
   searchDiscovery: (offset, limit) => ["search", "discovery", offset || 0, limit || null],
   searchUnified: (query, mode, limit) => ["search", "unified", query, mode, limit],
+  searchLibrary: (query, limit) => ["search", "library", query, limit],
   storageHealth: ["settings", "storage-health"],
   settingsTasks: ["settings", "tasks"],
   prowlarrIndexers: ["settings", "prowlarr-indexers"],

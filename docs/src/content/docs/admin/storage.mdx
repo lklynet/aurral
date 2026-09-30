@@ -1,32 +1,32 @@
 ---
 title: Storage and backups
-description: Aurral app data, shared media mounts, and what to back up.
+description: Where Aurral keeps its data and media, and what to back up.
 ---
 
-Aurral keeps app state and managed media separate. It also needs compatible filesystem views of your download clients, any playback server, and Lidarr when you use it.
+Aurral keeps its own data separate from your music. It also needs the same view of the media files as your download clients, your playback server, and Lidarr if you use it.
 
-For the complete mount model, follow [Filesystem and mounts](/getting-started/storage/). Mount your media root and set the Downloads Folder to a path inside Aurral, such as `/data/downloads/aurral`. With Lidarr, use the Lidarr media root.
+For the full mount setup, follow [Filesystem and mounts](/getting-started/storage/). In short, mount your media root, and set the Downloads Folder to a path inside Aurral, such as `/data/downloads/aurral`. If you use Lidarr, mount the Lidarr media root at the same path that Lidarr uses.
 
 ## Storage locations
 
-| Path                             | Contains                                                                                                                                                                   |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/config`                        | Database, settings, users, sessions, cache state, playlist jobs, and the default yt-dlp staging directory. Mount it with `./config:/config`. Do not share it with other apps. |
-| `/data` (or Lidarr's media root) | Shared library and downloads. Mount the same host media root here in Aurral, Lidarr, download clients, and playback servers.                                                      |
-| Downloads Folder                 | Aurral-owned permanent tracks, temporary Flow tracks, imported playlists, and playlist artwork. Set in **Settings > Download clients > Downloads Folder > Path** (for example `/data/downloads/aurral`). |
+| Path | Contents |
+| --- | --- |
+| `/config` | The database, settings, users, sessions, caches, playlist jobs, and the default yt-dlp staging folder. Mount it with `./config:/config`. Do not share it with other applications. |
+| `/data` | The shared media root. Mount the same host folder here in Aurral, Lidarr, your download clients, and your playback servers. |
+| Downloads Folder | Aurral's permanent tracks, temporary flow tracks, and playlist artwork. Set it in **Settings > Download clients > Downloads Folder > Path**, for example `/data/downloads/aurral`. |
+
+yt-dlp writes downloads to `/config/_staging` first. To use another disk, mount it and select it in **Settings > Download clients > yt-dlp > Staging path**. Keep this folder outside every media server library, so that servers do not scan unfinished files.
 
 ## Back up your data
 
-- Back up the mounted `/config` folder.
-- Back up the Downloads Folder if you want to keep generated playlists after a rebuild.
-- Back up the Compose file and the environment file that contains your host paths.
-
-yt-dlp stages downloads in `/config/_staging` by default. You can mount another persistent path and select it under **Settings > Download clients > yt-dlp > Staging path**. Keep it outside media-server libraries to avoid scanner activity while files are incomplete.
+- Back up the `/config` folder.
+- Back up the Downloads Folder. Without Lidarr, it holds all of your music.
+- Back up the Compose file and the environment file with your host paths.
 
 ## Library safety
 
-- Lidarr is optional. Aurral and Lidarr each keep their own root, and the Library combines both without moving files.
-- Aurral does not write into your Lidarr root music library.
-- Aurral does not migrate artists, albums, or files between managers. Overlapping roots are allowed but not recommended; see [Settings warn that roots overlap](/admin/troubleshooting/#settings-warn-that-roots-overlap).
-- Changes to artists and albums that Lidarr manages go through Lidarr.
-- Aurral-owned media stays under the Downloads Folder path. Flow files use `_flows`; permanent tracks use the canonical `artist/album/track` layout.
+- Lidarr is optional. Aurral and Lidarr each keep their own folders. The Library shows both without moving files.
+- Aurral never writes into a Lidarr root folder. Changes to Lidarr artists and albums go through Lidarr.
+- Aurral does not move artists, albums, or files between Aurral and Lidarr.
+- Aurral keeps its own media in the Downloads Folder. Flow files use `_flows`. Permanent tracks use `Artist/Album/Track` folders.
+- The Downloads Folder and a Lidarr root folder can overlap, but it is not recommended. See [Settings warn that roots overlap](/admin/troubleshooting/#settings-warn-that-roots-overlap).

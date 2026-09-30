@@ -1343,7 +1343,7 @@ export class LibraryManager {
           _cachedArtists = lidarrArtists.map((a) => this.mapLidarrArtist(a));
           _artistsCachedAt = Date.now();
           scheduleCanonicalLibraryReconciliation();
-          import("../../services/unifiedSearchService.js").then(({ clearSearchContextCache }) => clearSearchContextCache()).catch(() => {});
+          import("./unifiedSearchService.js").then(({ clearSearchContextCache }) => clearSearchContextCache()).catch(() => {});
           return _cachedArtists;
         } catch (error) {
           const wasHealthy = _lastLidarrFailureAt === 0;

@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronRight, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import AddActionButton from "../../../components/AddActionButton";
 import { DotLoader } from "../../../components/DotLoader";
@@ -325,18 +326,21 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
   const [openSubmenu, setOpenSubmenu] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
   const menuRef = useRef(null);
+  const panelRef = useRef(null);
   const buttonRef = useRef(null);
 
   useEffect(() => {
     if (!open) return undefined;
     const handlePointerDown = (event) => {
-      if (menuRef.current?.contains(event.target)) return;
+      if (menuRef.current?.contains(event.target) || panelRef.current?.contains(event.target)) {
+        return;
+      }
       setOpen(false);
       setOpenSubmenu(false);
       onOpenChange?.(false);
     };
     const handleViewportChange = (event) => {
-      if (event?.type === "scroll" && menuRef.current?.contains(event.target)) return;
+      if (event?.type === "scroll" && panelRef.current?.contains(event.target)) return;
       setOpen(false);
       setOpenSubmenu(false);
       onOpenChange?.(false);
@@ -441,8 +445,9 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
         )
       ) : null}
 
-      {open ? (
+      {open ? createPortal(
         <div
+          ref={panelRef}
           className={menuClassName}
           style={{
             top: menuPosition.top,
@@ -499,7 +504,8 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
               onSelect={handleSelect}
             />
           )}
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </div>
   );

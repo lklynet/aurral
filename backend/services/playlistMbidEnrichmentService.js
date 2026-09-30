@@ -295,7 +295,7 @@ export async function enrichSharedPlaylistMbids(
       }
 
       // updateSharedPlaylist already busts cache, but bust again for the full enrichment context
-      import("../../services/unifiedSearchService.js").then(({ clearSearchContextCache }) => clearSearchContextCache()).catch(() => {});
+      import("./unifiedSearchService.js").then(({ clearSearchContextCache }) => clearSearchContextCache()).catch(() => {});
 
       const jobs = downloadTracker.getByPlaylistType(safePlaylistId);
       let jobsUpdated = 0;
