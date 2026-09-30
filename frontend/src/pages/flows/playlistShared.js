@@ -14,10 +14,10 @@ import {
   slugifyFilePart,
 } from "./flowPageUtils";
 import { getPlaylistRunActivity } from "./flowRunActivity";
-import lastfmLogo from "../../../images/logos/last-fm.svg";
-import listenbrainzLogo from "../../../images/logos/listenbrainz.svg";
-import spotifyLogo from "../../../images/logos/spotify.svg";
-import youtubeMusicLogo from "../../../images/logos/youtube-music.svg";
+import lastfmLogo from "../../../images/logos/last-fm-color.svg";
+import listenbrainzLogo from "../../../images/logos/listenbrainz-color.svg";
+import spotifyLogo from "../../../images/logos/spotify-color.svg";
+import youtubeMusicLogo from "../../../images/logos/youtube-music-color.svg";
 import { formatTrackCountLabel } from "./flowStats";
 
 export const SYNCABLE_IMPORT_PROVIDERS = new Set([

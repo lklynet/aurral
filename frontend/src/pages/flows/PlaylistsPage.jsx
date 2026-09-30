@@ -33,11 +33,7 @@ function SyncedBadge({ importSource }) {
   return (
     <Tooltip content={label}>
       <span className="playlists-page__synced" role="img" aria-label={label} tabIndex={0}>
-        <span
-          className="playlists-page__synced-logo"
-          style={{ "--synced-logo": `url("${logo}")` }}
-          aria-hidden="true"
-        />
+        <img className="playlists-page__synced-logo" src={logo} alt="" aria-hidden="true" />
       </span>
     </Tooltip>
   );
