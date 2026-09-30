@@ -494,7 +494,7 @@ export class SlskdClient {
       }
       data = { ...refreshed };
       Object.defineProperty(data, NORMALIZED_SEARCH_RESULTS, { value: [...collected.values()] });
-      if (collected.size > collectedCount) return data;
+      if (fileCount > 0 ? collected.size >= fileCount : collected.size > collectedCount) return data;
       if (Date.now() >= hydrationDeadline || signal?.aborted || shouldCancel?.()) break;
       const failed = [status, payload].find((result) => result.status === "rejected");
       if (failed) throw failed.reason;

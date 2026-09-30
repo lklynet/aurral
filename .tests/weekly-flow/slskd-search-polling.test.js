@@ -150,3 +150,17 @@ test("final hydration merges equal-sized partial status and response snapshots",
   const files = slskdClient.flattenSearchResults(await slskdClient.waitForSearch("final-partials", 60000));
   assert.deepEqual(files.map((file) => file.file).sort(), ["First.flac", "Second.flac", "Third.flac"]);
 });
+
+test("final hydration collects the advertised files across successive partial snapshots", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 1000 });
+  let polls = 0;
+  t.mock.method(slskdClient, "getSearch", async () => ({ state: "Completed", fileCount: 3,
+    responses: [{ username: "peer", files: [{ filename: ["First.flac", "Second.flac", "Third.flac"][polls++] }] }],
+  }));
+  t.mock.method(slskdClient, "getSearchResponses", async () => []);
+  const pending = slskdClient.waitForSearch("successive-final-partials", 60000);
+  await new Promise(setImmediate);
+  t.mock.timers.tick(500);
+  const files = slskdClient.flattenSearchResults(await pending);
+  assert.deepEqual(files.map((file) => file.file).sort(), ["First.flac", "Second.flac", "Third.flac"]);
+});
