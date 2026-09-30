@@ -55,7 +55,7 @@ import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { buildArtistAddPayload, getManagerName } from "../../utils/libraryDestination";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import TooltipButton from "../../components/TooltipButton";
-import ViewSwitch from "../../components/ViewSwitch";
+import CrossViewLink from "../../components/CrossViewLink";
 const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function ArtistDetailsPage() {
@@ -537,11 +537,11 @@ function ArtistDetailsPage() {
         libraryDestination={libraryDestination}
         artistManagedBy={libraryArtist?.managedBy}
         existsInLibrary={existsInLibrary}
-        viewSwitch={
+        libraryLink={
           libraryCanonicalId ? (
-            <ViewSwitch
-              current="discover"
-              library={{ to: `/library/artist/${encodeURIComponent(libraryCanonicalId)}` }}
+            <CrossViewLink
+              view="library"
+              to={`/library/artist/${encodeURIComponent(libraryCanonicalId)}`}
             />
           ) : null
         }

@@ -50,17 +50,17 @@ async function findUntaggedArtist(page) {
   return artist;
 }
 
-test("the view switch moves between the Library and Discover views of one artist", async ({ page }) => {
+test("library and Discover artist pages link to each other", async ({ page }) => {
   test.setTimeout(120_000);
   await signIn(page);
   const artist = await findUntaggedArtist(page);
   const libraryPath = `/library/artist/${encodeURIComponent(artist.id)}`;
-  const viewSwitch = page.getByRole("navigation", { name: "View", exact: true });
+  const openInDiscover = page.getByRole("link", { name: "Open in Discover", exact: true });
+  const openInLibrary = page.getByRole("link", { name: "Open in library", exact: true });
 
-  await page.goto("/library/artists");
   await page.goto(libraryPath);
   await expect(page.getByRole("heading", { name: artist.name })).toBeVisible();
-  await expect(viewSwitch).toHaveCount(0);
+  await expect(openInDiscover).toHaveCount(0);
 
   try {
     const linked = await apiRequest(page, `/api/library/canonical/artists/${artist.id}/mbid`, {
@@ -71,22 +71,18 @@ test("the view switch moves between the Library and Discover views of one artist
     expect(linked.body?.merged).toBe(false);
 
     await page.reload();
-    await expect(viewSwitch.getByText("Library")).toHaveAttribute("aria-current", "page");
-    await viewSwitch.getByRole("link", { name: "Discover" }).click();
-
+    await openInDiscover.click();
     await expect(page).toHaveURL(new RegExp(`/artist/${linkedMbid}$`));
-    await expect(viewSwitch.getByText("Discover")).toHaveAttribute("aria-current", "page", {
-      timeout: 30_000,
-    });
+    await expect(openInLibrary).toBeVisible({ timeout: 30_000 });
     await page.screenshot({ path: test.info().outputPath("discover-view.png") });
-    await viewSwitch.getByRole("link", { name: "Library" }).click();
 
+    await openInLibrary.click();
     await expect(page).toHaveURL(new RegExp(`${libraryPath}$`));
-    await expect(viewSwitch.getByText("Library")).toHaveAttribute("aria-current", "page");
+    await expect(openInDiscover).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("library-view.png") });
 
     await page.goBack();
-    await expect(page).toHaveURL(/\/library\/artists$/);
+    await expect(page).toHaveURL(new RegExp(`/artist/${linkedMbid}$`));
   } finally {
     const restored = await apiRequest(page, `/api/library/canonical/artists/${artist.id}/mbid`, {
       method: "PUT",

@@ -43,7 +43,8 @@ import {
   resolveReleaseLibraryDisplay,
   sumTrackDurationMs,
 } from "./utils";
-import ViewSwitch from "../../components/ViewSwitch";
+import Tooltip from "../../components/Tooltip";
+import CrossViewLink from "../../components/CrossViewLink";
 const getReleaseTypeLabel = (release) => {
   const types = [
     release?.["primary-type"],
@@ -601,9 +602,15 @@ function ReleasePage() {
           ) : null}
           <div className="release-page__actions">
             {libraryInfo?.canonicalInLibrary ? (
-              <ViewSwitch current="discover" library={{ to: libraryPath }} />
+              <CrossViewLink view="library" to={libraryPath} />
             ) : libraryDisplay.label ? (
-              <ViewSwitch current="discover" library={{ status: libraryDisplay.label }} />
+              <Tooltip content={libraryDisplay.label}>
+                <span
+                  className={`release-page__library-status release-page__library-status--${libraryDisplay.kind}`}
+                >
+                  <span>{libraryDisplay.label}</span>
+                </span>
+              </Tooltip>
             ) : null}
             {canAddAlbum && !isComplete ? (
               <AddActionButton

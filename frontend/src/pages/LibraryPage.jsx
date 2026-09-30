@@ -33,7 +33,7 @@ import { AurralAlbumStatus } from "../components/AurralAlbumStatus";
 import { DotLoader } from "../components/DotLoader";
 import { LibraryItemMenu, LibraryItemSubmenu } from "../components/LibraryItemMenu";
 import TooltipButton from "../components/TooltipButton";
-import ViewSwitch from "../components/ViewSwitch";
+import CrossViewLink from "../components/CrossViewLink";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
@@ -84,7 +84,6 @@ import {
   describeArtistMonitoringResult,
   describeAurralMonitoringError,
 } from "../utils/aurralMonitoring.js";
-import { getLibraryAlbumNavigationTarget } from "../utils/searchNavigation";
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { libraryPreviewData, libraryPreviewFavorites } from "./libraryPreviewData";
 import {
@@ -1779,19 +1778,8 @@ function LibraryPage() {
     navigate("/library/album/" + encodeURIComponent(album.id) + previewQuery);
   };
 
-  const getDiscoverAlbumTarget = (album) => {
-    const artist = getArtistForAlbum(album);
-    if (!artist?.mbid || !(album?.releaseGroupMbid || album?.mbid)) return null;
-    return getLibraryAlbumNavigationTarget(album, {
-      artistMbid: artist.mbid,
-      artistName: artist.name,
-      coverUrl: getAlbumCover(album),
-    });
-  };
-
   const handleDiscoverAlbumOpen = (album) => {
-    const target = getDiscoverAlbumTarget(album);
-    if (target) navigate(target.pathname, { state: target.state });
+    handleDiscoverArtistOpen(getArtistForAlbum(album));
   };
 
   const favoriteCount =
@@ -2336,7 +2324,7 @@ function LibraryPage() {
                 icon: Sparkles,
                 separatorBefore: true,
                 onSelect: () => handleDiscoverAlbumOpen(album),
-                disabled: !artist?.mbid || !(album.releaseGroupMbid || album.mbid),
+                disabled: !artist?.mbid,
               },
             ]}
           />
@@ -2511,7 +2499,7 @@ function LibraryPage() {
     const albumTracks = getAlbumTracks(libraryAlbum);
     const availability = albumAvailability(libraryAlbum);
     const badges = describeAlbumBadges(libraryAlbum);
-    const discoverAlbumTarget = getDiscoverAlbumTarget(libraryAlbum);
+    const discoverArtist = artist?.mbid ? artist : null;
     const durationMs = albumTracks.reduce(
       (total, track) => total + Number(firstAvailableFile(track)?.durationMs || 0),
       0,
@@ -2581,6 +2569,13 @@ function LibraryPage() {
                 label={libraryAlbum.title || "album"}
                 onClick={() => toggleFavorite("album", libraryAlbum)}
               />
+              {discoverArtist && (
+                <CrossViewLink
+                  view="discover"
+                  to={"/artist/" + encodeURIComponent(discoverArtist.mbid)}
+                  state={discoverArtistState(discoverArtist)}
+                />
+              )}
               <LibraryItemMenu
                 label={libraryAlbum.title || "Album"}
                 items={[
@@ -2632,12 +2627,6 @@ function LibraryPage() {
                     : []),
                 ]}
               />
-              {discoverAlbumTarget && (
-                <ViewSwitch
-                  current="library"
-                  discover={{ to: discoverAlbumTarget.pathname, state: discoverAlbumTarget.state }}
-                />
-              )}
             </div>
           </div>
         </div>
@@ -2661,6 +2650,7 @@ function LibraryPage() {
     );
     const artistTracks = artistAlbums.flatMap(getAlbumTracks);
     const artistTopTracks = topArtistTracks(artistTracks, albumsById);
+    const discoverArtist = libraryArtist.mbid ? libraryArtist : null;
     return (
       <section className="native-library-detail">
         <div
@@ -2703,6 +2693,13 @@ function LibraryPage() {
                 label={libraryArtist.name || "artist"}
                 onClick={() => toggleFavorite("artist", libraryArtist)}
               />
+              {discoverArtist && (
+                <CrossViewLink
+                  view="discover"
+                  to={"/artist/" + encodeURIComponent(discoverArtist.mbid)}
+                  state={discoverArtistState(discoverArtist)}
+                />
+              )}
               <LibraryItemMenu
                 label={libraryArtist.name || "Artist"}
                 items={[
@@ -2758,15 +2755,6 @@ function LibraryPage() {
                   ) : null
                 }
               />
-              {libraryArtist.mbid && (
-                <ViewSwitch
-                  current="library"
-                  discover={{
-                    to: "/artist/" + encodeURIComponent(libraryArtist.mbid),
-                    state: discoverArtistState(libraryArtist),
-                  }}
-                />
-              )}
             </div>
           </div>
         </div>

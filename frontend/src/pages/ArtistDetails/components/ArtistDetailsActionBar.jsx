@@ -3,6 +3,7 @@ import {
   Ban,
   ChevronDown,
   MoreHorizontal,
+  MoreVertical,
   Pause,
   Pencil,
   Play,
@@ -25,7 +26,7 @@ export function ArtistDetailsActionBar({
   libraryDestination,
   artistManagedBy = null,
   existsInLibrary,
-  viewSwitch = null,
+  libraryLink = null,
   loadingLibrary,
   canChangeMonitoring,
   canDeleteArtist,
@@ -54,25 +55,28 @@ export function ArtistDetailsActionBar({
     }
 
     if (existsInLibrary) {
+      const hasLibraryMenu = canChangeMonitoring || canDeleteArtist;
+      const libraryStateLabel = [
+        "In library",
+        getManagedByLabel(artistManagedBy),
+      ].filter(Boolean).join(" · ");
       return (
         <div className="artist-relative">
-          <Tooltip content={getManagedByLabel(artistManagedBy)}>
-          <button
-            type="button"
-            onClick={() => library.setShowRemoveDropdown(!library.showRemoveDropdown)}
-            className="btn btn-neutral-active btn--bold btn-min-h"
-            aria-label={artistManagedBy ? `In Library · ${getManagedByLabel(artistManagedBy)}` : "In Library"}
+          <TooltipButton
+            label={libraryStateLabel}
+            onClick={hasLibraryMenu
+              ? () => library.setShowRemoveDropdown(!library.showRemoveDropdown)
+              : undefined}
+            className={`btn btn-add-action${hasLibraryMenu ? " btn-add-action--menu" : ""}${library.showRemoveDropdown ? " is-open" : ""}`}
+            aria-haspopup={hasLibraryMenu ? "menu" : undefined}
+            aria-expanded={hasLibraryMenu ? library.showRemoveDropdown : undefined}
           >
-            <SearchLibraryCheck size="sm" />
-            In Library
-            {(canChangeMonitoring || canDeleteArtist) && (
-              <ChevronDown
-                className={`artist-icon-sm${library.showRemoveDropdown ? " artist-chevron--open" : ""}`}
-              />
-            )}
-          </button>
-          </Tooltip>
-          {library.showRemoveDropdown && (canChangeMonitoring || canDeleteArtist) && (
+            <span className="btn-add-action__icon">
+              <SearchLibraryCheck action aria-hidden="true" aria-label={undefined} />
+            </span>
+            {hasLibraryMenu && <MoreVertical className="btn-add-action__more" aria-hidden="true" />}
+          </TooltipButton>
+          {library.showRemoveDropdown && hasLibraryMenu && (
             <>
               <button
                 type="button"
@@ -173,7 +177,7 @@ export function ArtistDetailsActionBar({
             )}
           </TooltipButton>
           {renderLibraryAction()}
-          {viewSwitch}
+          {libraryLink}
         </div>
 
         <div className="artist-row-actions">
