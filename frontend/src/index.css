@@ -565,6 +565,24 @@ textarea {
   background-color: var(--aurral-surface-hover);
 }
 
+.btn-add-action--labeled {
+  width: auto;
+  gap: 0.375rem;
+  padding-inline: 0.5rem;
+  border-color: var(--aurral-border-strong);
+  background-color: var(--aurral-surface-raised);
+}
+
+.btn-add-action--labeled .btn-add-action__icon {
+  width: 1rem;
+}
+
+.btn-add-action__label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .btn-add-action__more {
   width: 0.875rem;
   height: 0.875rem;

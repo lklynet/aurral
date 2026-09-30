@@ -67,13 +67,14 @@ export function ArtistDetailsActionBar({
             onClick={hasLibraryMenu
               ? () => library.setShowRemoveDropdown(!library.showRemoveDropdown)
               : undefined}
-            className={`btn btn-add-action${hasLibraryMenu ? " btn-add-action--menu" : ""}${library.showRemoveDropdown ? " is-open" : ""}`}
+            className={`btn btn-add-action btn-add-action--labeled${hasLibraryMenu ? " btn-add-action--menu" : ""}${library.showRemoveDropdown ? " is-open" : ""}`}
             aria-haspopup={hasLibraryMenu ? "menu" : undefined}
             aria-expanded={hasLibraryMenu ? library.showRemoveDropdown : undefined}
           >
             <span className="btn-add-action__icon">
               <SearchLibraryCheck action aria-hidden="true" aria-label={undefined} />
             </span>
+            <span className="btn-add-action__label">In library</span>
             {hasLibraryMenu && <MoreVertical className="btn-add-action__more" aria-hidden="true" />}
           </TooltipButton>
           {library.showRemoveDropdown && hasLibraryMenu && (
@@ -152,6 +153,7 @@ export function ArtistDetailsActionBar({
           onAdd={library.handleAddToLibrary}
           onCustomize={library.handleOpenAddCustomizeModal}
           isLoading={library.addingToLibrary}
+          showLabel
         />
     );
   };

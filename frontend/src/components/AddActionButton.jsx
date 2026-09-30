@@ -21,6 +21,7 @@ const AddActionButton = forwardRef(function AddActionButton(
     icon: Icon = Plus,
     isLoading = false,
     disabled = false,
+    showLabel = false,
     className = "",
     children,
     type = "button",
@@ -43,7 +44,13 @@ const AddActionButton = forwardRef(function AddActionButton(
     );
   }
 
-  const classes = ["btn", children ? null : "btn-add-action", className].filter(Boolean).join(" ");
+  const classes = [
+    "btn",
+    children ? null : "btn-add-action",
+    showLabel && !children ? "btn-add-action--labeled" : null,
+    className,
+  ].filter(Boolean).join(" ");
+  const visibleLabel = showLabel ? <span className="btn-add-action__label">Add to library</span> : null;
   const opensMenu = !children && buttonProps["aria-haspopup"] === "menu";
   const primary = destination?.primary || null;
   const alternative = destination?.alternative || null;
@@ -106,6 +113,7 @@ const AddActionButton = forwardRef(function AddActionButton(
               <span className="btn-add-action__icon">
                 {isLoading ? <DotLoader size="sm" label={null} /> : <Icon aria-hidden="true" />}
               </span>
+              {visibleLabel}
               <MoreVertical className="btn-add-action__more" aria-hidden="true" />
             </>
           }
@@ -141,6 +149,7 @@ const AddActionButton = forwardRef(function AddActionButton(
           <Icon aria-hidden="true" />
         )}
       </span>}
+      {children ? null : visibleLabel}
       {opensMenu ? <MoreVertical className="btn-add-action__more" aria-hidden="true" /> : null}
     </TooltipButton>
   );
