@@ -77,9 +77,9 @@ function removeSabnzbdItem(nzbId, jobId) {
   });
 }
 
-function hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions) {
+function hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions, albumGrab) {
   const ranked = rankUsenetReleases(aggregated, resolvedTrack).filter(
-    (entry) => entry.releaseAdmissible,
+    (entry) => entry.releaseAdmissible && (!albumGrab || entry.resolvedAlbumName),
   );
   return orderAdvertisedQualityCandidates(ranked, {
     ...qualityOptions,
@@ -204,18 +204,25 @@ async function handleUsenetSearch(payload, helpers) {
     upgrade: payload.upgrade === true,
   };
   const searchTiers = buildFlowSearchTiers(resolvedTrack);
+  const deniedSources = Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [];
+  const deniedSourceGuidSet = new Set(
+    deniedSources
+      .filter((entry) => Array.isArray(entry) && entry[0] === "usenet")
+      .map((entry) => String(entry[1] || "").trim()),
+  );
   const aggregated = [];
   const seen = new Set();
   const queries = [];
   let lastError = "";
   for (const tier of searchTiers) {
-    if (hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions)) break;
+    if (hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions, payload.albumGrab === true)) break;
     for (const query of tier.queries) {
-      if (hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions)) break;
+      if (hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions, payload.albumGrab === true)) break;
       queries.push(query);
       try {
         const releases = await prowlarrClient.search(query);
-        mergeSearchResults(aggregated, seen, releases, (release) =>
+        mergeSearchResults(aggregated, seen, releases.filter((release) =>
+          !deniedSourceGuidSet.has(String(release.guid || "").trim())), (release) =>
           [release.guid, release.downloadUrl, release.indexerId, release.title]
             .map((entry) => String(entry || "").trim().toLowerCase())
             .join("\0"),
@@ -231,12 +238,6 @@ async function handleUsenetSearch(payload, helpers) {
     }
   }
   const ranked = rankUsenetReleases(aggregated, resolvedTrack);
-  const deniedSources = Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [];
-  const deniedSourceGuidSet = new Set(
-    deniedSources
-      .filter((entry) => Array.isArray(entry) && entry[0] === "usenet")
-      .map((entry) => String(entry[1] || "").trim()),
-  );
   const filteredRanked = deniedSourceGuidSet.size > 0
     ? ranked.filter((entry) => !deniedSourceGuidSet.has(String(entry?.raw?.guid || "").trim()))
     : ranked;

@@ -411,3 +411,33 @@ test("Usenet matcher prefers matching audio releases and keeps fallback candidat
   const selected = selectRankedUsenetCandidates(ranked, 2);
   assert.equal(selected.length, 2);
 });
+
+for (const albumGrab of [false, true]) {
+  test(`Usenet continues past ${albumGrab ? "track-only album-grab" : "denied"} results`, async () => {
+    const jobId = downloadTracker.addJob({ artistName: "The Band", trackName: "First",
+      albumName: "Album", durationMs: 180000 }, "usenet-exclusions");
+    if (!albumGrab) {
+      for (const id of ["first-1", "first-2"]) downloadTracker.recordDeniedSource(jobId, "usenet", id);
+    }
+    const originalDenials = structuredClone(downloadTracker.getJob(jobId).deniedRemoteSources);
+    const original = prowlarrClient.search;
+    let searches = 0;
+    prowlarrClient.search = async () => {
+      const first = ++searches === 1;
+      return [1, 2].map((index) => ({ guid: `${first ? "first" : "allowed"}-${index}`,
+        title: `The Band - ${first ? "First" : "Album"} FLAC`, protocol: "usenet",
+        downloadUrl: `https://release.invalid/${first}/${index}`, indexerId: index, size: 100000000 }));
+    };
+    try {
+      const result = await processUsenetPipelinePayload({ phase: "search", source: "usenet", jobId, albumGrab }, {
+        failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }),
+      });
+      assert.equal(result.phase, "download");
+      assert.deepEqual(result.candidates.map((entry) => entry.raw.guid), ["allowed-1", "allowed-2"]);
+      assert.deepEqual(downloadTracker.getJob(jobId).deniedRemoteSources,
+        originalDenials);
+    } finally {
+      prowlarrClient.search = original;
+    }
+  });
+}
