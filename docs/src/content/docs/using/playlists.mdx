@@ -19,10 +19,10 @@ Aurral does not write these files to your main music library.
 | Controls  | Schedule, source mix, focus, deep dive | Import, sync, and retention settings      |
 | Worker    | Shared download worker                 | Shared download worker                    |
 
-Flows refresh on a schedule and use your flow settings. Static playlists come from Spotify, YouTube Music, Last.fm, ListenBrainz, JSON files, or exported flow tracklists. Synced imports follow provider membership; their removed-track file-retention setting is available in the import flow and playlist menu.
+Flows refresh on a schedule and use your flow settings. Static playlists come from Spotify, YouTube Music, Last.fm, ListenBrainz, JSON files, or exported flow tracklists. Synced imports follow provider membership; their removed-track file-retention setting is available in the import flow and the playlist's options menu.
 
-Open any flow or static playlist's **More** menu to set **Record listening
-history**. Turn it off when playback from that playlist should not affect future
+Open any flow or static playlist's options menu to set **Scrobble tracks**.
+Turn it off when playback from that playlist should not affect future
 Discover recommendations or connected scrobblers. The setting is independent
 for each playlist and does not remove plays already recorded.
 
@@ -94,8 +94,6 @@ The default profile accepts all tiers and uses **FLAC standard** as the cutoff.
 Aurral can use search-result names and bitrate data to order candidates. Aurral does not trust that data for final admission. It reads the downloaded file and rejects it when the format, bitrate, sample rate, or bit depth does not match an enabled tier.
 
 An unknown final quality is not valid. A quality rejection does not go to **Activity > Queue**. Queue review stays for track identity and duration decisions, including upgrade downloads.
-
-The **Quality** column on the Playlists page shows the measured tier and its profile state. It labels a file reused from Lidarr as **Lidarr**.
 
 ## Track upgrades
 

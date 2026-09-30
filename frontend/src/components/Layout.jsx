@@ -76,7 +76,7 @@ function Layout({ children, headerActions }) {
   const sectionBarRef = useRef(null);
   const { authRequired, canLogOut, logout, user, bootstrap } = useAuth();
   const { isActive: isPlayerActive } = useAudioQueue();
-  const isArtistDetailsRoute = /^\/artist\/[^/]+(\/(albums|appears-on|release\/[^/]+))?$/.test(
+  const isArtistDetailsRoute = /^\/artist\/[^/]+(\/(albums|appears-on))?$/.test(
     location.pathname,
   );
   const isSettingsRoute = location.pathname.startsWith("/settings");

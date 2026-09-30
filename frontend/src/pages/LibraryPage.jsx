@@ -34,6 +34,12 @@ import { AurralAlbumStatus } from "../components/AurralAlbumStatus";
 import { DotLoader } from "../components/DotLoader";
 import { LibraryItemMenu, LibraryItemSubmenu } from "../components/LibraryItemMenu";
 import TooltipButton from "../components/TooltipButton";
+import { FavoriteButton, TrackList } from "../components/TrackList";
+import {
+  CollectionHeader,
+  CollectionPlayButtons,
+  useCollectionTint,
+} from "../components/CollectionHeader";
 import CrossViewLink from "../components/CrossViewLink";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
@@ -402,21 +408,6 @@ function Cover({ src, label, round = false, compact = false }) {
     >
       {text(label).slice(0, 1).toUpperCase() || "—"}
     </span>
-  );
-}
-
-function FavoriteButton({ active, pending, label, onClick, className = "" }) {
-  return (
-    <TooltipButton
-      className={"native-library-favorite " + className + (active ? " is-active" : "")}
-      onClick={onClick}
-      disabled={pending}
-      label={active ? "Remove from favorites" : "Add to favorites"}
-      aria-label={active ? "Remove " + label + " from favorites" : "Add " + label + " to favorites"}
-      aria-pressed={active}
-    >
-      <Heart aria-hidden="true" fill={active ? "currentColor" : "none"} />
-    </TooltipButton>
   );
 }
 
@@ -1614,6 +1605,7 @@ function LibraryPage() {
     (album) => album?.coverUrl || covers[getAlbumCoverId(album)] || "",
     [covers],
   );
+  const albumTint = useCollectionTint(libraryAlbum ? getAlbumCover(libraryAlbum) : null);
 
   const buildPlayableTrack = useCallback(
     (track) => {
@@ -1872,274 +1864,184 @@ function LibraryPage() {
     setSearchParams(next);
   };
 
-  const renderTrackList = (tracks, label, { showSources = false } = {}) => (
-    <div className="native-library-track-list">
-      <div
-        className="native-library-track native-library-track--heading"
-        aria-hidden="true"
-      >
-        <span />
-        <span className="native-library-track__number">#</span>
-        <span />
-        <span>Title</span>
-        <span>Artist</span>
-        <span>Album</span>
-        <span className="native-library-track__time">Time</span>
-        <span />
-        <span />
-      </div>
-      <div role="list" aria-label={label}>
-        {tracks.map((track, index) => {
-          const album = getAlbumForTrack(track);
-          const artist = getArtistForAlbum(album);
-          const file = firstAvailableFile(track);
-          const sourceLabel = showSources ? trackSourceLabel(file) : null;
-          const researchFile = firstAvailableAurralFile(track);
-          const researchAlbumRelation = track?.albums?.find(
-            (entry) => String(entry.albumId) === String(researchFile?.albumId),
-          );
-          const researchAlbum = researchAlbumRelation
-            ? albumsById.get(String(researchAlbumRelation.albumId))
-            : null;
-          const downloadKey = trackDownloadIdentity(track);
-          const downloadState = trackDownloadStates[downloadKey];
-          const downloadPending = TRACK_DOWNLOAD_ACTIVE_STATUSES.has(downloadState?.status);
-          const downloadLabel = trackDownloadActionLabel(downloadState?.status);
-          const active =
-            String(currentTrack?.id) === String(track.id) &&
-            matchesSource(librarySource);
-          const artistName = artist?.name || track.artistName || "Unknown Artist";
-          const albumName = album?.title || track.albumName || track.album || "Unknown Album";
-          const trackNumber = track.albums?.find(
-            (entry) => String(entry.albumId) === String(album?.id),
-          )?.trackNumber;
-          const isFavorite = favoriteIds.has(favoriteId("song", track));
-          const trackMenuItems = [
-            {
-              id: "play",
-              label: active && isPlaying ? "Pause" : "Play",
-              icon: active && isPlaying ? Pause : Play,
-              onSelect: () => playTrack(track, tracks),
-              disabled: !file || (active && isLoading),
-            },
-            {
-              id: "info",
-              label: "View info",
-              icon: Info,
-              onSelect: () => openLibraryInfo("track", track, { artist, album, trackNumber }),
-            },
-            {
-              id: "favorite",
-              label: isFavorite ? "Remove from favorites" : "Add to favorites",
-              icon: Heart,
-              selected: isFavorite,
-              separatorBefore: true,
-              onSelect: () => toggleFavorite("song", track),
-            },
-            ...(!file
-              ? [
-                  {
-                    id: "download",
-                    label: downloadLabel,
-                    icon: Download,
-                    separatorBefore: true,
-                    onSelect: () => downloadMissingTrack(track),
-                    disabled: isPreviewLibrary || downloadPending,
-                  },
-                ]
-              : []),
-            ...(researchAlbum?.id && researchFile && canAddTracks
-              ? [
-                  {
-                    id: "research",
-                    label: "Re-search",
-                    icon: RefreshCw,
-                    separatorBefore: true,
-                    disabled: isPreviewLibrary || trackResearchStates[`${track.id}:${researchAlbum.id}`] === true,
-                    onSelect: () => handleReSearchLibraryTrack(track, researchAlbum),
-                  },
-                ]
-              : []),
-            ...(album
-              ? [
-                  {
-                    id: "album",
-                    label: "Go to album",
-                    icon: ExternalLink,
-                    separatorBefore: true,
-                    onSelect: () => handleAlbumOpen(album),
-                  },
-                ]
-              : []),
-            ...(artist
-              ? [
-                  {
-                    id: "artist",
-                    label: "Go to artist",
-                    icon: UserRound,
-                    onSelect: () => handleArtistOpen(artist),
-                  },
-                ]
-              : []),
-            ...(canDeleteTrack && (file || hasAurralTrackFile(track))
-              ? [
-                  {
-                    id: "delete",
-                    label: file ? "Delete track file" : "Remove track from library",
-                    icon: Trash2,
-                    danger: true,
-                    separatorBefore: true,
-                    onSelect: () => openLibraryRemoval("track", track),
-                  },
-                ]
-              : []),
-          ];
-          return (
-            <div
-              className={
-                "native-library-track" +
-                (active ? " is-active" : "") +
-                (file ? "" : " is-missing")
-              }
-              data-library-menu-target
-              key={track.id}
-              role="listitem"
+  const renderTrackList = (tracks, label, { showSources = false, variant = "collection" } = {}) => (
+    <TrackList
+      label={label}
+      variant={variant}
+      rows={tracks.map((track, index) => {
+        const album = getAlbumForTrack(track);
+        const artist = getArtistForAlbum(album);
+        const file = firstAvailableFile(track);
+        const sourceLabel = showSources ? trackSourceLabel(file) : null;
+        const researchFile = firstAvailableAurralFile(track);
+        const researchAlbumRelation = track?.albums?.find(
+          (entry) => String(entry.albumId) === String(researchFile?.albumId),
+        );
+        const researchAlbum = researchAlbumRelation
+          ? albumsById.get(String(researchAlbumRelation.albumId))
+          : null;
+        const downloadKey = trackDownloadIdentity(track);
+        const downloadState = trackDownloadStates[downloadKey];
+        const downloadPending = TRACK_DOWNLOAD_ACTIVE_STATUSES.has(downloadState?.status);
+        const downloadLabel = trackDownloadActionLabel(downloadState?.status);
+        const active =
+          String(currentTrack?.id) === String(track.id) &&
+          matchesSource(librarySource);
+        const artistName = artist?.name || track.artistName || "Unknown Artist";
+        const albumName = album?.title || track.albumName || track.album || "Unknown Album";
+        const trackNumber = track.albums?.find(
+          (entry) => String(entry.albumId) === String(album?.id),
+        )?.trackNumber;
+        const isFavorite = favoriteIds.has(favoriteId("song", track));
+        const trackMenuItems = [
+          {
+            id: "play",
+            label: active && isPlaying ? "Pause" : "Play",
+            icon: active && isPlaying ? Pause : Play,
+            onSelect: () => playTrack(track, tracks),
+            disabled: !file || (active && isLoading),
+          },
+          {
+            id: "info",
+            label: "View info",
+            icon: Info,
+            onSelect: () => openLibraryInfo("track", track, { artist, album, trackNumber }),
+          },
+          {
+            id: "favorite",
+            label: isFavorite ? "Remove from favorites" : "Add to favorites",
+            icon: Heart,
+            selected: isFavorite,
+            separatorBefore: true,
+            onSelect: () => toggleFavorite("song", track),
+          },
+          ...(!file
+            ? [
+                {
+                  id: "download",
+                  label: downloadLabel,
+                  icon: Download,
+                  separatorBefore: true,
+                  onSelect: () => downloadMissingTrack(track),
+                  disabled: isPreviewLibrary || downloadPending,
+                },
+              ]
+            : []),
+          ...(researchAlbum?.id && researchFile && canAddTracks
+            ? [
+                {
+                  id: "research",
+                  label: "Re-search",
+                  icon: RefreshCw,
+                  separatorBefore: true,
+                  disabled: isPreviewLibrary || trackResearchStates[`${track.id}:${researchAlbum.id}`] === true,
+                  onSelect: () => handleReSearchLibraryTrack(track, researchAlbum),
+                },
+              ]
+            : []),
+          ...(album
+            ? [
+                {
+                  id: "album",
+                  label: "Go to album",
+                  icon: ExternalLink,
+                  separatorBefore: true,
+                  onSelect: () => handleAlbumOpen(album),
+                },
+              ]
+            : []),
+          ...(artist
+            ? [
+                {
+                  id: "artist",
+                  label: "Go to artist",
+                  icon: UserRound,
+                  onSelect: () => handleArtistOpen(artist),
+                },
+              ]
+            : []),
+          ...(canDeleteTrack && (file || hasAurralTrackFile(track))
+            ? [
+                {
+                  id: "delete",
+                  label: file ? "Delete track file" : "Remove track from library",
+                  icon: Trash2,
+                  danger: true,
+                  separatorBefore: true,
+                  onSelect: () => openLibraryRemoval("track", track),
+                },
+              ]
+            : []),
+        ];
+        return {
+          key: track.id,
+          number: variant === "release" && trackNumber ? trackNumber : index + 1,
+          title: track.title || "Unknown Track",
+          subtitle: sourceLabel ? `${artistName} · ${sourceLabel}` : artistName,
+          artist: { label: artistName, onOpen: artist ? () => handleArtistOpen(artist) : null },
+          album: { label: albumName, onOpen: album ? () => handleAlbumOpen(album) : null },
+          cover: {
+            src: album ? getAlbumCover(album) : "",
+            label: albumName,
+            onOpen: album ? () => handleAlbumOpen(album) : null,
+          },
+          time: formatDuration(trackDurationMs(track)) || "Unavailable",
+          timeMissing: !file,
+          active,
+          playing: active && isPlaying,
+          missing: !file,
+          onPlay: file ? () => playTrack(track, tracks) : null,
+          playDisabled: active && isLoading,
+          trailing: !file ? (
+            <TooltipButton
+              className="native-library-track__download"
+              onClick={() => downloadMissingTrack(track)}
+              disabled={downloadPending}
+              label={downloadLabel}
+              aria-label={downloadLabel}
             >
-            {file ? (
-              <TooltipButton
-                className="native-library-track__play"
-                onClick={() => playTrack(track, tracks)}
-                disabled={active && isLoading}
-                label={(active && isPlaying ? "Pause " : "Play ") + track.title}
-                aria-label={(active && isPlaying ? "Pause " : "Play ") + track.title}
-              >
-                {active && isPlaying ? (
-                  <span aria-hidden="true">Ⅱ</span>
-                ) : (
-                  <Play aria-hidden="true" fill="currentColor" />
-                )}
-              </TooltipButton>
-            ) : (
-              <span aria-hidden="true" />
-            )}
-            <span className="native-library-track__number" aria-hidden="true">
-              {index + 1}
-            </span>
-            {album ? (
-              <button
-                type="button"
-                className="native-library-track__cover"
-                onClick={() => handleAlbumOpen(album)}
-                aria-label={"Open " + albumName}
-              >
-                <Cover src={getAlbumCover(album)} label={albumName} compact />
-              </button>
-            ) : (
-              <span className="native-library-track__cover">
-                <Cover label={albumName} compact />
-              </span>
-            )}
-            <Tooltip content={track.title || "Unknown Track"}>
-              <button
-                type="button"
-                className="native-library-track__title"
-                onClick={() => playTrack(track, tracks)}
-              >
-                <span>{track.title || "Unknown Track"}</span>
-                <small>
-                  {artistName}
-                  {sourceLabel && (
-                    <span className="native-library-track__source">{" · " + sourceLabel}</span>
-                  )}
-                </small>
-              </button>
-            </Tooltip>
-            {artist ? (
-              <button
-                type="button"
-                className="native-library-track__link native-library-track__artist"
-                onClick={() => handleArtistOpen(artist)}
-              >
-                {artistName}
-              </button>
-            ) : (
-              <span className="native-library-track__link native-library-track__artist">{artistName}</span>
-            )}
-            {album ? (
-              <button
-                type="button"
-                className="native-library-track__link native-library-track__album"
-                onClick={() => handleAlbumOpen(album)}
-              >
-                {albumName}
-              </button>
-            ) : (
-              <span className="native-library-track__link native-library-track__album">{albumName}</span>
-            )}
-            <span className={"native-library-track__time" + (!file ? " is-missing" : "")}>
-              {formatDuration(trackDurationMs(track)) || "Unavailable"}
-            </span>
-            {!file ? (
-              <TooltipButton
-                className="native-library-track__download"
-                onClick={() => downloadMissingTrack(track)}
-                disabled={downloadPending}
-                label={downloadLabel}
-                aria-label={downloadLabel}
-              >
-                {downloadPending ? (
-                  <DotLoader size="sm" label={null} />
-                ) : (
-                  <Download aria-hidden="true" />
-                )}
-              </TooltipButton>
-            ) : (
-              <span />
-            )}
-            <LibraryItemMenu
-              label={track.title || "Track"}
-              items={trackMenuItems}
-              additionalItemsAfter="play"
-              onMenuOpen={loadSharedPlaylists}
-              renderAdditionalItems={({ closeMenu }) => (
-                <>
-                  <div className="native-library-item-menu__separator" />
-                  <TrackPlaylistSubmenu
-                    label="Add to playlist"
-                    track={track}
-                    playlists={sharedPlaylists}
-                    loading={playlistsLoading}
-                    saving={playlistSavingKey === String(track.id)}
-                    error={playlistsError}
-                    defaultNewPlaylistName={getDefaultTrackPlaylistName(track)}
-                    onSelect={(target) => addLibraryTrackToPlaylist(track, target)}
-                    onClose={closeMenu}
-                    toggleOnClick
-                  />
-                  <TrackPlaylistRemoveSubmenu
-                    track={track}
-                    playlists={sharedPlaylists}
-                    saving={playlistSavingKey === String(track.id)}
-                    error={playlistsError}
-                    onSelect={(target) => removeLibraryTrackFromPlaylist(track, target)}
-                    onClose={closeMenu}
-                    toggleOnClick
-                  />
-                </>
-              )}
-            />
-            <FavoriteButton
-              className="native-library-track__favorite"
-              active={favoriteIds.has(favoriteId("song", track))}
-              pending={Boolean(pendingFavorite)}
-              label={track.title || "track"}
-              onClick={() => toggleFavorite("song", track)}
-            />
-            </div>
-          );
-        })}
-      </div>
-    </div>
+              {downloadPending ? <DotLoader size="sm" label={null} /> : <Download aria-hidden="true" />}
+            </TooltipButton>
+          ) : null,
+          menu: {
+            items: trackMenuItems,
+            additionalItemsAfter: "play",
+            onMenuOpen: loadSharedPlaylists,
+            renderAdditionalItems: ({ closeMenu }) => (
+              <>
+                <div className="native-library-item-menu__separator" />
+                <TrackPlaylistSubmenu
+                  label="Add to playlist"
+                  track={track}
+                  playlists={sharedPlaylists}
+                  loading={playlistsLoading}
+                  saving={playlistSavingKey === String(track.id)}
+                  error={playlistsError}
+                  defaultNewPlaylistName={getDefaultTrackPlaylistName(track)}
+                  onSelect={(target) => addLibraryTrackToPlaylist(track, target)}
+                  onClose={closeMenu}
+                  toggleOnClick
+                />
+                <TrackPlaylistRemoveSubmenu
+                  track={track}
+                  playlists={sharedPlaylists}
+                  saving={playlistSavingKey === String(track.id)}
+                  error={playlistsError}
+                  onSelect={(target) => removeLibraryTrackFromPlaylist(track, target)}
+                  onClose={closeMenu}
+                  toggleOnClick
+                />
+              </>
+            ),
+          },
+          favorite: {
+            active: isFavorite,
+            pending: Boolean(pendingFavorite),
+            onToggle: () => toggleFavorite("song", track),
+          },
+        };
+      })}
+    />
   );
 
   const renderArtistCard = (artist) => {
@@ -2532,16 +2434,18 @@ function LibraryPage() {
       (total, track) => total + Number(firstAvailableFile(track)?.durationMs || 0),
       0,
     );
+    const albumPlayable = albumTracks.some((track) => firstAvailableFile(track));
+    const albumIsCurrent =
+      matchesSource(librarySource) &&
+      albumTracks.some((track) => String(track.id) === String(currentTrack?.id));
     return (
       <section className="native-library-detail">
-        <div className="native-library-detail__hero" data-library-menu-target>
-          <div className="native-library-detail__cover">
-            <Cover src={getAlbumCover(libraryAlbum)} label={libraryAlbum.title} />
-          </div>
-          <div className="native-library-detail__body">
-            <p className="native-library-kicker">Album</p>
-            <h2>{libraryAlbum.title || "Unknown Album"}</h2>
-            {artist ? (
+        <CollectionHeader
+          cover={<Cover src={getAlbumCover(libraryAlbum)} label={libraryAlbum.title} />}
+          kicker="Album"
+          title={libraryAlbum.title || "Unknown Album"}
+          subtitle={
+            artist ? (
               <button
                 type="button"
                 className="native-library-detail__artist"
@@ -2551,27 +2455,31 @@ function LibraryPage() {
               </button>
             ) : (
               <p>{libraryAlbum.albumArtist || "Unknown Artist"}</p>
+            )
+          }
+          meta={
+            <>
+            {[
+              yearOf(libraryAlbum.releaseDate),
+              availability.total + " tracks",
+              formatLongDuration(durationMs),
+              ...badges.sources.map((badge) => badge.label),
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+            {badges.manager && (
+              <>
+                {" · "}
+                <ManagerMark
+                  manager={badges.manager}
+                  unmonitored={albumMonitoring.monitored === false}
+                />
+              </>
             )}
-            <p className="native-library-detail__meta">
-              {[
-                yearOf(libraryAlbum.releaseDate),
-                availability.total + " tracks",
-                formatLongDuration(durationMs),
-                ...badges.sources.map((badge) => badge.label),
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-              {badges.manager && (
-                <>
-                  {" · "}
-                  <ManagerMark
-                    manager={badges.manager}
-                    unmonitored={albumMonitoring.monitored === false}
-                  />
-                </>
-              )}
-            </p>
-            {libraryAlbum.managedBy === "aurral" && !isPreviewLibrary && (
+            </>
+          }
+          status={
+            libraryAlbum.managedBy === "aurral" && !isPreviewLibrary ? (
               <AurralAlbumStatus
                 key={libraryAlbum.id}
                 album={libraryAlbum}
@@ -2580,16 +2488,18 @@ function LibraryPage() {
                 onChanged={refreshLibraryActivity}
                 onSettled={reloadLibraryAlbumTracks}
               />
-            )}
-            <div className="native-library-detail__actions">
-              <button
-                type="button"
-                className="native-library-page-play"
-                onClick={() => playTracks(albumTracks)}
-                disabled={!albumTracks.some((track) => firstAvailableFile(track))}
-              >
-                <Play aria-hidden="true" fill="currentColor" /> Play
-              </button>
+            ) : null
+          }
+          actions={
+            <>
+              <CollectionPlayButtons
+                label={libraryAlbum.title || "album"}
+                disabled={!albumPlayable}
+                isPlaying={albumIsCurrent && isPlaying}
+                isShuffleEnabled={false}
+                onPlay={() => (albumIsCurrent ? togglePlayPause() : playTracks(albumTracks))}
+                onShuffle={() => playTracks(albumTracks, null, true)}
+              />
               <FavoriteButton
                 active={favoriteIds.has(favoriteId("album", libraryAlbum))}
                 pending={Boolean(pendingFavorite)}
@@ -2655,18 +2565,13 @@ function LibraryPage() {
                     : []),
                 ]}
               />
-            </div>
-          </div>
-        </div>
-        <section className="native-library-detail__section">
-          <div className="native-library-detail__section-heading">
-            <h3>Tracks</h3>
-            <span>{availability.total}</span>
-          </div>
-          {renderTrackList(albumTracks, libraryAlbum.title + " tracks", {
-            showSources: badges.showTrackSources,
-          })}
-        </section>
+            </>
+          }
+        />
+        {renderTrackList(albumTracks, libraryAlbum.title + " tracks", {
+          showSources: badges.showTrackSources,
+          variant: "release",
+        })}
         {albumMonitoring.dialog}
       </section>
     );
@@ -2901,7 +2806,10 @@ function LibraryPage() {
 
   if (isDetail) {
     return (
-      <main className="library-page native-library-page">
+      <main
+        className={`library-page native-library-page${libraryAlbum ? " collection-page" : ""}`}
+        style={libraryAlbum && albumTint ? { "--collection-tint": albumTint } : undefined}
+      >
         {renderLibraryModals()}
         {renderStatus()}
         {!loading && !error && !libraryAlbum && !libraryArtist && (

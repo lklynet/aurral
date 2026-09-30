@@ -15,11 +15,16 @@ import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { useToast } from "../contexts/ToastContext";
 import { extractTwoToneGradientFromImage } from "../utils/imageColors";
 import { reserveUniquePlaylistName } from "./ArtistDetails/utils";
-import { ArrowLeft, Crosshair } from "lucide-react";
+import { AudioWaveform, Crosshair, ListMusic, MoreVertical, Plus } from "lucide-react";
 
 import { Link, useParams } from "react-router-dom";
-import { FlowTracksPanel } from "./flows/flowComponents/flowTrackComponents.jsx";
+import { FlowTracksPanel, useFlowTrackPlayback } from "./flows/flowComponents/flowTrackComponents.jsx";
+import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../components/CollectionHeader";
+import { LibraryItemMenu } from "../components/LibraryItemMenu";
+import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.js";
+import { formatTrackTotal } from "./flows/playlistShared";
 import { DotLoader } from "../components/DotLoader";
+import { flowPath, playlistPath } from "../navigation/playlistPaths";
 const getPlaylistTextColor = (hex) => {
   const raw = String(hex || "").trim();
   if (raw === "#ffffff" || raw === "#fffac8" || raw === "#ffe119" || raw === "#fabed4" || raw === "#dcbeff" || raw === "#aaffc3") return "#222";
@@ -94,10 +99,6 @@ export default function DiscoverPlaylistDetailPage() {
   const tracks = useMemo(
     () => (playlist ? mapPlaylistTracks(previewTracks || playlist.tracks || [], playlist.presetId) : []),
     [playlist, previewTracks],
-  );
-  const hasAlbumMetadata = useMemo(
-    () => tracks.some((track) => String(track?.albumName || "").trim()),
-    [tracks],
   );
 
   const [adoptingFlowId, setAdoptingFlowId] = useState(null);
@@ -210,7 +211,7 @@ export default function DiscoverPlaylistDetailPage() {
     async () => {
       if (!playlist) return;
       if (playlist.adoptedFlowId) {
-        navigate(`/playlists?selected=${encodeURIComponent(playlist.adoptedFlowId)}`);
+        navigate(flowPath(playlist.adoptedFlowId));
         return;
       }
       setAdoptingFlowId(playlist.presetId);
@@ -223,7 +224,7 @@ export default function DiscoverPlaylistDetailPage() {
             : `Added ${playlist.name} as a rotating flow`,
         );
         if (flowId) {
-          navigate(`/playlists?selected=${encodeURIComponent(flowId)}`);
+          navigate(flowPath(flowId));
         }
       } catch (err) {
         showError(
@@ -243,7 +244,7 @@ export default function DiscoverPlaylistDetailPage() {
     async () => {
       if (!playlist) return;
       if (playlist.adoptedPlaylistId) {
-        navigate(`/playlists?selected=${encodeURIComponent(playlist.adoptedPlaylistId)}`);
+        navigate(playlistPath(playlist.adoptedPlaylistId));
         return;
       }
       setAdoptingPlaylistId(playlist.presetId);
@@ -256,7 +257,7 @@ export default function DiscoverPlaylistDetailPage() {
             : `Added ${playlist.name} as a static playlist`,
         );
         if (playlistId) {
-          navigate(`/playlists?selected=${encodeURIComponent(playlistId)}`);
+          navigate(playlistPath(playlistId));
         }
       } catch (err) {
         showError(
@@ -272,136 +273,180 @@ export default function DiscoverPlaylistDetailPage() {
     [navigate, playlist, showError, showSuccess],
   );
 
-  if (!data && !error) {
-    return (
-      <div className="discover-playlist-detail">
-        <section className="discover-playlist-detail__status" aria-live="polite">
-          <DotLoader size="lg" label={null} />
-          <h1>Loading playlist</h1>
-        </section>
+  const renderState = (content, role) => (
+    <main className="library-page native-library-page collection-page">
+      <div className="native-library-content">
+        <div className="native-library-state" role={role}>
+          {content}
+        </div>
       </div>
-    );
-  }
+    </main>
+  );
 
-  if (error && !playlist) {
-    return (
-      <div className="discover-playlist-detail">
-        <section className="discover-playlist-detail__status" role="alert">
-          <h1>Unable to load playlist</h1>
-          <p>{error}</p>
-          <Link className="btn btn-secondary btn-sm" to="/discover/playlists">
-            Back to playlists
-          </Link>
-        </section>
-      </div>
+  const playbackSource = useMemo(
+    () => ({
+      type: "discover-playlist-preview",
+      id: presetId,
+      label: playlist?.name || "Playlist",
+      recordHistory: false,
+    }),
+    [playlist?.name, presetId],
+  );
+  const playback = useFlowTrackPlayback({ tracks, playbackSource });
+
+  const handleNavigateAlbum = useCallback(
+    (track) => {
+      if (!track?.artistMbid || !track?.albumMbid) return;
+      navigate(`/artist/${track.artistMbid}/release/${track.albumMbid}`, {
+        state: {
+          artistName: track.artistName,
+          focusReleaseGroupMbid: track.albumMbid,
+          focusReleaseGroup: { id: track.albumMbid, title: track.albumName || "" },
+        },
+      });
+    },
+    [navigate],
+  );
+
+  const [artworkByAlbumMbid, setArtworkByAlbumMbid] = useState({});
+  useEffect(() => {
+    const items = tracks
+      .filter((track) => track.albumMbid)
+      .map((track) => ({
+        mbid: track.albumMbid,
+        artistName: track.artistName,
+        albumTitle: track.albumName,
+      }));
+    if (!items.length) return undefined;
+    let cancelled = false;
+    getReleaseGroupCoversBatch(items)
+      .then((covers) => {
+        if (cancelled) return;
+        setArtworkByAlbumMbid(
+          Object.fromEntries(
+            Object.entries(covers || {})
+              .map(([mbid, cover]) => [mbid, cover?.image || ""])
+              .filter(([, image]) => image),
+          ),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [tracks]);
+
+  if (!data && !error) {
+    return renderState(
+      <>
+        <DotLoader size="xl" label={null} />
+        <span>Loading playlist…</span>
+      </>,
+      "status",
     );
   }
 
   if (!playlist) {
-    return (
-      <div className="discover-playlist-detail">
-        <section className="discover-playlist-detail__status">
-          <h1>Playlist not found</h1>
-          <p>This discovery playlist is no longer available.</p>
-          <Link className="btn btn-secondary btn-sm" to="/discover/playlists">
-            Back to playlists
-          </Link>
-        </section>
-      </div>
+    return renderState(
+      <>
+        <strong>{error ? "Playlist unavailable" : "Playlist not found"}</strong>
+        <span>{error || "This discovery playlist is no longer available."}</span>
+        <Link className="native-library-state__action" to="/discover/playlists">
+          Back to playlists
+        </Link>
+      </>,
+      error ? "alert" : undefined,
     );
   }
 
   const isBusy = adoptingFlowId === playlist.presetId || adoptingPlaylistId === playlist.presetId;
+  const isPreviewPlaylist = playlist.type === "editorial";
 
   return (
-    <div
-      className="discover-playlist-detail"
-      style={{ "--discover-playlist-hero-color": heroColor }}
-    >
-      <Link className="discover-playlist-detail__back" to="/discover/playlists">
-        <ArrowLeft aria-hidden="true" />
-        Back to playlists
-      </Link>
-      <div className="discover-playlist-detail__hero">
-        <div className="discover-playlist-detail__cover">
-          {showArtwork ? (
-            <img
-              src={getDiscoverArtworkUrl(playlist.presetId)}
-              alt={playlist.name}
-              loading="eager"
-              onError={() => setFailedArtwork(true)}
-            />
+    <CollectionPage tintSrc={artworkUrl} tintColor={heroColor}>
+      <CollectionHeader
+        cover={
+          showArtwork ? (
+            <img src={artworkUrl} alt="" loading="eager" onError={() => setFailedArtwork(true)} />
           ) : (
             <div
               className="discover-playlist-detail__cover-fallback"
               style={{ backgroundColor: heroColor }}
             >
-              {playlist?.type === "editorial" ? (
-                <Crosshair className="artist-icon-xl" aria-hidden="true" />
-              ) : null}
-              {sourceLine && (
+              {isPreviewPlaylist ? <Crosshair className="artist-icon-xl" aria-hidden="true" /> : null}
+              {sourceLine ? (
                 <span
                   className="discover-playlist-detail__cover-label"
                   style={{ color: getPlaylistTextColor(heroColor) }}
                 >
                   {sourceLine}
                 </span>
-              )}
+              ) : null}
             </div>
-          )}
-        </div>
-
-        <div className="discover-playlist-detail__info">
-          <h1 className="release-page__title">{playlist.name}</h1>
-          {sourceLine && (
-            <span className="discover-playlist-detail__type-badge">{sourceLine}</span>
-          )}
-          {playlist.description && (
-            <p className="discover-playlist-detail__description">{playlist.description}</p>
-          )}
-          <p className="discover-playlist-detail__meta">
-            {playlist.trackCount || 0} tracks
-          </p>
-
-          <div className="discover-playlist-detail__actions">
-            <button
-              type="button"
-              className="btn btn-surface btn-sm"
+          )
+        }
+        context={<Link to="/discover/playlists">Discover playlists</Link>}
+        kicker={sourceLine ? `${sourceLine} playlist` : "Playlist"}
+        title={playlist.name}
+        subtitle={playlist.description || null}
+        meta={formatTrackTotal(Number(playlist.trackCount || tracks.length))}
+        status={
+          previewMessage ? (
+            <p className="native-library-detail__meta" role="status">
+              {previewMessage}
+            </p>
+          ) : null
+        }
+        actions={
+          <>
+            {isPreviewPlaylist ? (
+              <CollectionPlayButtons
+                label={`${playlist.name} previews`}
+                disabled={playback.disabled}
+                isPlaying={playback.isListPlaying}
+                isShuffleEnabled={playback.isShuffleEnabled}
+                onPlay={playback.handlePlayAll}
+                onShuffle={playback.handleShufflePlay}
+              />
+            ) : null}
+            <LibraryItemMenu
+              label={playlist.name}
+              contextMenu={false}
               disabled={isBusy}
-              onClick={handleAdoptFlow}
-            >
-              {playlist.adoptedFlowId ? "Open rotating flow" : "Add as rotating flow"}
-            </button>
-            <button
-              type="button"
-              className="btn btn-surface btn-sm"
-              disabled={isBusy}
-              onClick={handleAdoptPlaylist}
-            >
-              {playlist.adoptedPlaylistId ? "Open static playlist" : "Add as static playlist"}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {previewMessage ? (
-        <p className="flow-page__tracks-error" role="status">{previewMessage}</p>
-      ) : null}
+              triggerLabel="Add to library"
+              triggerClassName="native-library-item-menu__trigger collection-header__add"
+              triggerIcon={
+                <>
+                  {isBusy ? <DotLoader size="sm" label={null} /> : <Plus aria-hidden="true" />}
+                  <MoreVertical aria-hidden="true" />
+                </>
+              }
+              menuLabel="Add to library"
+              items={[
+                {
+                  id: "flow",
+                  label: playlist.adoptedFlowId ? "Open rotating flow" : "Add as rotating flow",
+                  icon: AudioWaveform,
+                  onSelect: handleAdoptFlow,
+                },
+                {
+                  id: "playlist",
+                  label: playlist.adoptedPlaylistId ? "Open static playlist" : "Add as static playlist",
+                  icon: ListMusic,
+                  onSelect: handleAdoptPlaylist,
+                },
+              ]}
+            />
+          </>
+        }
+      />
       <FlowTracksPanel
+        label={`${playlist.name} tracks`}
         tracks={tracks}
         loading={false}
-        playbackSource={{
-          type: "discover-playlist-preview",
-          id: playlist.presetId,
-          label: playlist.name,
-          recordHistory: false,
-        }}
-        showPlaybackControls={playlist.type === "editorial"}
-        hideAlbumColumn={!hasAlbumMetadata}
-        hideStatusColumn
-        hideQualityColumn
+        playbackSource={playbackSource}
+        showPlaybackControls={isPreviewPlaylist}
         emptyMessage="No tracks in this playlist."
-        playlistTriggerVariant="expand"
         playlists={sharedPlaylists}
         playlistsLoading={playlistsLoading}
         playlistSavingKey={playlistMenuSavingKey}
@@ -410,7 +455,9 @@ export default function DiscoverPlaylistDetailPage() {
         onLoadPlaylists={loadSharedPlaylists}
         onAddTrackToPlaylist={handleAddTrackToPlaylist}
         onNavigateArtist={handleNavigateArtist}
+        onNavigateAlbum={handleNavigateAlbum}
+        artworkByAlbumMbid={artworkByAlbumMbid}
       />
-    </div>
+    </CollectionPage>
   );
 }

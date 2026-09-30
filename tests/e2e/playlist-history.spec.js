@@ -39,7 +39,7 @@ async function apiRequest(page, path, { method = "GET", body } = {}) {
   }, { requestPath: path, requestMethod: method, requestBody: body });
 }
 
-test("shared playlist history preference is available in More and persists", async ({ page }) => {
+test("shared playlist opens from Playlists and its scrobble setting persists", async ({ page }) => {
   await signIn(page);
 
   const playlistName = `E2E history ${Date.now()}`;
@@ -53,29 +53,31 @@ test("shared playlist history preference is available in More and persists", asy
 
   try {
     await page.goto("/library/playlists");
-    const playlistButton = page
-      .locator(".flow-page__library-item-main")
-      .filter({ hasText: playlistName });
-    await expect(playlistButton).toBeVisible({ timeout: 15_000 });
-    await playlistButton.click();
+    const playlistLink = page.getByRole("link", { name: playlistName, exact: true });
+    await expect(playlistLink).toBeVisible({ timeout: 15_000 });
+    await playlistLink.click();
 
-    await page.getByRole("button", { name: "More options" }).click();
-    const enabledToggle = page.getByRole("switch", {
-      name: "Record listening history on",
-      exact: true,
-    });
-    await expect(enabledToggle).toHaveAttribute("aria-checked", "true");
-    await enabledToggle.click();
+    await expect(page).toHaveURL(new RegExp(`/library/playlists/${encodeURIComponent(playlistId)}$`));
+    await expect(page.getByRole("heading", { name: playlistName, exact: true })).toBeVisible();
 
-    const disabledToggle = page.getByRole("switch", {
-      name: "Record listening history off",
-      exact: true,
-    });
-    await expect(disabledToggle).toHaveAttribute("aria-checked", "false");
+    const openMenu = () => page.getByRole("button", { name: `${playlistName} options` }).click();
+    const scrobbleOption = page.getByRole("menuitemcheckbox", { name: "Scrobble tracks" });
+    await openMenu();
+    await expect(scrobbleOption).toHaveAttribute("aria-checked", "true");
+    await scrobbleOption.click();
+    await expect(page.getByText("Scrobbling turned off")).toBeVisible();
 
     const statusResponse = await apiRequest(page, "/api/playlists/status");
     expect(statusResponse.ok).toBe(true);
     expect(statusResponse.body.sharedPlaylists.find((playlist) => playlist.id === playlistId).recordHistory).toBe(false);
+
+    await page.reload();
+    await openMenu();
+    await expect(scrobbleOption).toHaveAttribute("aria-checked", "false");
+    await page.keyboard.press("Escape");
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/library\/playlists$/);
   } finally {
     const deleteResponse = await apiRequest(
       page,

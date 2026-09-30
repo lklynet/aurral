@@ -47,7 +47,11 @@ const ArtistDetailsPage = lazy(() => import("./pages/ArtistDetails/ArtistDetails
 const ArtistReleaseListPage = lazy(() => import("./pages/ArtistDetails/ArtistReleaseListPage"));
 const ReleasePage = lazy(() => import("./pages/ArtistDetails/ReleasePage"));
 const ActivityPage = lazy(() => import("./pages/ActivityPage"));
-const FlowPage = lazy(() => import("./pages/FlowPage"));
+const PlaylistsPage = lazy(() => import("./pages/flows/PlaylistsPage"));
+const PlaylistDetailPage = lazy(() => import("./pages/flows/PlaylistDetailPage"));
+const FlowsPage = lazy(() => import("./pages/flows/FlowsPage"));
+const FlowDetailPage = lazy(() => import("./pages/flows/FlowDetailPage"));
+const PlaylistRedirect = lazy(() => import("./pages/flows/PlaylistRedirect"));
 const DiscoverPlaylistsPage = lazy(() => import("./pages/DiscoverPlaylistsPage"));
 const DiscoverPlaylistDetailPage = lazy(() => import("./pages/DiscoverPlaylistDetailPage"));
 const NewsPage = lazy(() => import("./pages/NewsPage"));
@@ -268,7 +272,15 @@ function AppContent() {
                         path="/library/playlists"
                         element={
                           <PermissionRoute permission="accessFlow">
-                            <FlowPage mode="playlists" />
+                            <PlaylistsPage />
+                          </PermissionRoute>
+                        }
+                      />
+                      <Route
+                        path="/library/playlists/:playlistId"
+                        element={
+                          <PermissionRoute permission="accessFlow">
+                            <PlaylistDetailPage />
                           </PermissionRoute>
                         }
                       />
@@ -279,11 +291,26 @@ function AppContent() {
                         path="/flows"
                         element={
                           <PermissionRoute permission="accessFlow">
-                            <FlowPage mode="flows" />
+                            <FlowsPage />
                           </PermissionRoute>
                         }
                       />
-                      <Route path="/playlists" element={<Navigate to="/library/playlists" replace />} />
+                      <Route
+                        path="/flows/:flowId"
+                        element={
+                          <PermissionRoute permission="accessFlow">
+                            <FlowDetailPage />
+                          </PermissionRoute>
+                        }
+                      />
+                      <Route
+                        path="/playlists"
+                        element={
+                          <PermissionRoute permission="accessFlow">
+                            <PlaylistRedirect />
+                          </PermissionRoute>
+                        }
+                      />
                       <Route path="/flow" element={<Navigate to="/flows" replace />} />
                       <Route path="/downloads" element={<Navigate to="/activity/queue" replace />} />
                       <Route path="/requests" element={<Navigate to="/activity/queue" replace />} />

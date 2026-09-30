@@ -3,7 +3,7 @@ import { normalizeMediaUrl } from "./normalizeMediaUrl.js";
 
 const N = 64;
 const gradientCache = new Map();
-const FALLBACK_GRADIENT = { top: "#343434", bottom: "#171717" };
+export const FALLBACK_GRADIENT = { top: "#343434", bottom: "#171717" };
 
 function avgHex(data, y0, y1) {
   let r = 0,

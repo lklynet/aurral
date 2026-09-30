@@ -12,6 +12,7 @@ import { DiscoverPlaylistContextMenu } from "../components/DiscoverPlaylistConte
 import { DiscoverRail } from "../components/DiscoverRail";
 import DiscoveryStatusPill from "../components/DiscoveryStatusPill";
 import Tooltip from "../components/Tooltip";
+import { flowPath, playlistPath } from "../navigation/playlistPaths";
 const RECIPE_LABELS = {
   discover: "Discovery",
   mix: "Library",
@@ -85,7 +86,7 @@ export function DiscoverPlaylistSection({
   const handleAdoptFlow = useCallback(
     async (playlist) => {
       if (playlist.adoptedFlowId) {
-        navigate(`/playlists?selected=${encodeURIComponent(playlist.adoptedFlowId)}`);
+        navigate(flowPath(playlist.adoptedFlowId));
         return;
       }
       setAdoptingFlowId(playlist.presetId);
@@ -99,7 +100,7 @@ export function DiscoverPlaylistSection({
             : `Added ${playlist.name} as a rotating flow`,
         );
         if (flowId) {
-          navigate(`/playlists?selected=${encodeURIComponent(flowId)}`);
+          navigate(flowPath(flowId));
         }
       } catch (error) {
         showError(
@@ -118,7 +119,7 @@ export function DiscoverPlaylistSection({
   const handleAdoptPlaylist = useCallback(
     async (playlist) => {
       if (playlist.adoptedPlaylistId) {
-        navigate(`/playlists?selected=${encodeURIComponent(playlist.adoptedPlaylistId)}`);
+        navigate(playlistPath(playlist.adoptedPlaylistId));
         return;
       }
       setAdoptingPlaylistId(playlist.presetId);
@@ -132,7 +133,7 @@ export function DiscoverPlaylistSection({
             : `Added ${playlist.name} as a static playlist`,
         );
         if (playlistId) {
-          navigate(`/playlists?selected=${encodeURIComponent(playlistId)}`);
+          navigate(playlistPath(playlistId));
         }
       } catch (error) {
         showError(

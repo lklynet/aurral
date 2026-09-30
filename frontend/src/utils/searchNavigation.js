@@ -1,3 +1,5 @@
+import { flowPath, playlistPath } from "../navigation/playlistPaths.js";
+
 export function getSearchResultLabel(item) {
   if (!item) return "";
   if (item.type === "artist") return item.name || "";
@@ -193,10 +195,10 @@ export function navigateFromSearchResult(navigate, item, { query = "" } = {}) {
       return;
     }
     if (item.sourceFlowId) {
-      navigate("/flows", { state: { selectedFlowId: item.sourceFlowId } });
+      navigate(flowPath(item.sourceFlowId));
       return;
     }
-    navigate("/playlists", { state: { selectedPlaylistId: item.id } });
+    navigate(playlistPath(item.id));
   }
 }
 

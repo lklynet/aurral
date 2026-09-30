@@ -159,7 +159,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
       if (item.section === "activity") return isOnActivity;
       if (item.section === "wanted") return isOnWanted;
       if (item.path === "/discover" && location.pathname === "/") return true;
-      return location.pathname === item.path;
+      return location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
     },
     [isDiscoverSectionActive, isOnActivity, isOnLibrary, isOnNews, isOnShows, isOnWanted, location.pathname],
   );

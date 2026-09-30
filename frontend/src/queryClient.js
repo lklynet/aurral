@@ -99,6 +99,7 @@ export const queryKeys = {
   news: (userId, mode, limit) => ["news", "library", userId || null, mode, limit],
   playlistStatus: ["playlists", "status"],
   playlistJobs: (flowId) => ["playlists", "jobs", flowId || "all"],
+  playlistArtworkRevisions: ["playlists", "artwork-revisions"],
   releaseGroupDetails: (id) => ["artists", "release-group", id],
   releaseGroupTracks: (id, context) => ["artists", "release-group-tracks", id, context],
   releaseGroupRatings: (ids) => ["artists", "release-group-ratings", [...ids].sort()],
