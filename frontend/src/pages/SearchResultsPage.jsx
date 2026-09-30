@@ -443,11 +443,15 @@ function SearchResultsPage() {
     if (isAlbumSearch) return undefined;
 
     let cancelled = false;
-    const artists = isUnifiedSearch ? buildSearchArtistResults(unifiedResults, {}) : results;
+    const artists = isUnifiedSearch
+      ? [
+          ...(libraryResults?.artists || []).filter(
+            (artist) => String(artist.id) !== String(artist.canonicalId),
+          ),
+          ...buildSearchArtistResults(unifiedResults, {}),
+        ]
+      : results;
 
-    if (isUnifiedSearch && !unifiedResults) {
-      return undefined;
-    }
     if (!artists.length) {
       return undefined;
     }
@@ -506,7 +510,7 @@ function SearchResultsPage() {
     return () => {
       cancelled = true;
     };
-  }, [artistImages, isAlbumSearch, isUnifiedSearch, results, unifiedResults]);
+  }, [artistImages, isAlbumSearch, isUnifiedSearch, libraryResults, results, unifiedResults]);
 
   useEffect(() => {
     if (isAlbumSearch || isUnifiedSearch) return undefined;
