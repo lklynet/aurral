@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ListMusic, MoreVertical, Plus, Upload } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
+import Tooltip from "../../components/Tooltip";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
 import { CreatePlaylistModal } from "../../components/PlaylistModals";
 import { useAuth } from "../../contexts/AuthContext";
@@ -14,6 +15,7 @@ import { normalizeNameKey, reserveUniqueFlowName } from "./flowPageUtils";
 import {
   formatTrackTotal,
   getImportedProviderLabel,
+  getImportedProviderLogo,
   usePlaylistArtwork,
 } from "./playlistShared";
 import { useFlowStatus } from "./useFlowStatus";
@@ -22,6 +24,24 @@ import { playlistPath } from "../../navigation/playlistPaths";
 const PlaylistImportModal = lazy(() =>
   import("./import/PlaylistImportModal.jsx").then((m) => ({ default: m.PlaylistImportModal })),
 );
+
+function SyncedBadge({ importSource }) {
+  const logo =
+    importSource?.syncEnabled === true ? getImportedProviderLogo(importSource.provider) : null;
+  if (!logo) return null;
+  const label = `Synced from ${getImportedProviderLabel(importSource.provider)}`;
+  return (
+    <Tooltip content={label}>
+      <span className="playlists-page__synced" role="img" aria-label={label} tabIndex={0}>
+        <span
+          className="playlists-page__synced-logo"
+          style={{ "--synced-logo": `url("${logo}")` }}
+          aria-hidden="true"
+        />
+      </span>
+    </Tooltip>
+  );
+}
 
 export default function PlaylistsPage() {
   useDocumentTitle("Playlists");
@@ -77,9 +97,6 @@ export default function PlaylistsPage() {
     if (playlist.ownerUsername && (user?.role === "admin" || playlist.ownerUsername !== user?.username)) {
       parts.unshift(playlist.ownerUsername);
     }
-    if (playlist.importSource?.syncEnabled === true) {
-      parts.push(`Synced from ${getImportedProviderLabel(playlist.importSource.provider)}`);
-    }
     return parts.join(" · ");
   };
 
@@ -129,13 +146,16 @@ export default function PlaylistsPage() {
       <div className="native-library-grid" role="list" aria-label="Playlists">
         {sharedPlaylists.map((playlist) => (
           <article className="native-library-card" role="listitem" key={playlist.id}>
-            <Link
-              to={playlistPath(playlist.id)}
-              className="native-library-card__cover playlists-page__cover"
-              aria-label={`Open ${playlist.name}`}
-            >
-              <PlaylistArtworkThumb artworkUrl={artworkUrlFor(playlist.id)} name={playlist.name} />
-            </Link>
+            <div className="native-library-card__cover-wrap">
+              <Link
+                to={playlistPath(playlist.id)}
+                className="native-library-card__cover playlists-page__cover"
+                aria-label={`Open ${playlist.name}`}
+              >
+                <PlaylistArtworkThumb artworkUrl={artworkUrlFor(playlist.id)} name={playlist.name} />
+              </Link>
+              <SyncedBadge importSource={playlist.importSource} />
+            </div>
             <div className="native-library-card__body">
               <Link to={playlistPath(playlist.id)} className="native-library-card__title playlists-page__title">
                 {playlist.name}
@@ -153,10 +173,7 @@ export default function PlaylistsPage() {
       <header className="native-library-header">
         <div className="native-library-title-row">
           <div className="native-library-title">
-            <h1 className="page-title">
-              Playlists
-              {status ? <span className="native-library-count">{sharedPlaylists.length}</span> : null}
-            </h1>
+            <h1 className="page-title">Playlists</h1>
           </div>
           <div className="native-library-header-actions">
             <LibraryItemMenu

@@ -150,10 +150,7 @@ export default function FlowsPage() {
       <header className="native-library-header">
         <div className="native-library-title-row">
           <div className="native-library-title">
-            <h1 className="page-title">
-              Flows
-              {status ? <span className="native-library-count">{flows.length}</span> : null}
-            </h1>
+            <h1 className="page-title">Flows</h1>
           </div>
           {canCreate && flows.length > 0 ? (
             <div className="native-library-header-actions">

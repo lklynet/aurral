@@ -5064,6 +5064,7 @@ textarea {
 
 .artist-playlist-menu__scroll {
   max-height: 16rem;
+  overflow-x: hidden;
   overflow-y: auto;
   padding-top: 0.25rem;
 }
@@ -8446,6 +8447,7 @@ textarea {
   right: auto;
   left: calc(100% + 0.5rem);
   max-height: calc(100vh - 1rem);
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -9186,35 +9188,50 @@ button.native-library-genre-row:focus-visible {
   color: var(--aurral-text);
 }
 
-.native-library-detail__actions .collection-header__action {
-  display: inline-flex;
-  min-height: var(--native-library-detail-action-size);
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0 0.9rem;
-  border: 1px solid var(--aurral-border-strong);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--aurral-text);
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
+.collection-header {
+  position: relative;
 }
 
-.native-library-detail__actions .collection-header__action:hover:not(:disabled),
-.native-library-detail__actions .collection-header__action:focus-visible {
-  background: var(--aurral-surface-hover);
+.collection-header__corner {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
 }
 
-.native-library-detail__actions .collection-header__action:disabled {
+.native-library-icon-button[aria-disabled="true"] {
   cursor: default;
   opacity: 0.45;
 }
 
-.native-library-detail__actions .collection-header__action svg {
-  width: 0.9rem;
-  height: 0.9rem;
+.playlists-page__synced {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  display: inline-flex;
+  width: 1.4rem;
+  height: 1.4rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--aurral-overlay-base) 62%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.playlists-page__synced:focus-visible {
+  outline: 2px solid var(--aurral-ring);
+  outline-offset: 2px;
+}
+
+.playlists-page__synced-logo {
+  width: 0.8rem;
+  height: 0.8rem;
+  background: var(--aurral-overlay-foreground);
+  mask: var(--synced-logo) center / contain no-repeat;
+}
+
+.playlist-menu-new {
+  justify-content: flex-start;
 }
 
 .native-library-detail__actions .native-library-item-menu__trigger.collection-header__add {

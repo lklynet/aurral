@@ -223,7 +223,6 @@ export default function DiscoverPlaylistsPage() {
             playlistsUpdateMessage={playlistsUpdateMessage}
           />
         </div>
-        <p className="page-subtitle">{visiblePlaylists.length} playlists</p>
       </header>
 
       <div className="artist-albums-grid">

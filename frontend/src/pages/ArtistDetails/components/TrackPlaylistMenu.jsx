@@ -117,7 +117,7 @@ export function TrackPlaylistPickerContent({
     <>
       <button
         type="button"
-        className="artist-menu-item"
+        className="artist-menu-item playlist-menu-new"
         onClick={() =>
           onSelect?.({
             mode: "new",

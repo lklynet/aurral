@@ -556,11 +556,6 @@ function ReleasePage() {
             </span>
           )
         }
-        context={
-          <Link to={`/artist/${artistMbid}/albums`} state={artistLinkState}>
-            {artistName ? `${artistName} releases` : "Releases"}
-          </Link>
-        }
         kicker={releaseTypeLabel || "Release"}
         title={releaseTitle}
         subtitle={

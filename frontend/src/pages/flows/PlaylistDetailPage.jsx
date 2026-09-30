@@ -29,6 +29,7 @@ import {
   exportPlaylistTracklist,
   formatTrackTotal,
   getImportedProviderLabel,
+  choiceMenuItem,
   optionMenuItem,
   usePlaylistArtwork,
   usePlaylistTracks,
@@ -275,6 +276,18 @@ function PlaylistDetail({ playlist, stats, sharedPlaylists, fetchStatus }) {
             <PlaylistArtworkThumb artworkUrl={artworkUrlFor(playlist.id)} name={playlist.name} />
           </button>
         }
+        corner={
+          isSyncable ? (
+            <TooltipButton
+              className="native-library-icon-button"
+              label={syncing ? "Syncing…" : "Sync now"}
+              onClick={() => !syncing && handleSync()}
+              aria-disabled={syncing}
+            >
+              {syncing ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
+            </TooltipButton>
+          ) : null
+        }
         kicker="Playlist"
         title={playlist.name}
         meta={metaParts.filter(Boolean).join(" · ")}
@@ -288,16 +301,6 @@ function PlaylistDetail({ playlist, stats, sharedPlaylists, fetchStatus }) {
               onPlay={playback.handlePlayAll}
               onShuffle={playback.handleShufflePlay}
             />
-            {isSyncable ? (
-              <TooltipButton
-                className="native-library-item-menu__trigger"
-                label={syncing ? "Syncing…" : "Sync now"}
-                onClick={handleSync}
-                disabled={syncing}
-              >
-                {syncing ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
-              </TooltipButton>
-            ) : null}
             <LibraryItemMenu
               label={playlist.name}
               contextMenu={false}
@@ -322,12 +325,14 @@ function PlaylistDetail({ playlist, stats, sharedPlaylists, fetchStatus }) {
                         label: "Auto-sync",
                         icon: Clock,
                         separatorBefore: true,
-                        submenuItems: SYNC_INTERVAL_OPTIONS.map((option) => ({
-                          id: `sync-${option.value}`,
-                          label: option.label,
-                          selected: syncInterval === option.value,
-                          onSelect: () => updateSyncInterval(option.value),
-                        })),
+                        submenuItems: SYNC_INTERVAL_OPTIONS.map((option) =>
+                          choiceMenuItem({
+                            id: `sync-${option.value}`,
+                            label: option.label,
+                            checked: syncInterval === option.value,
+                            onSelect: () => updateSyncInterval(option.value),
+                          }),
+                        ),
                       },
                       optionMenuItem({
                         id: "keep-removed",

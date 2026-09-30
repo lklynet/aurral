@@ -53,9 +53,10 @@ export function CollectionPlayButtons({ label, disabled, isPlaying, isShuffleEna
   );
 }
 
-export function CollectionHeader({ cover, context, kicker, title, subtitle, meta, status, actions }) {
+export function CollectionHeader({ cover, context, kicker, title, subtitle, meta, status, actions, corner }) {
   return (
     <header className="native-library-detail__hero collection-header">
+      {corner ? <div className="collection-header__corner">{corner}</div> : null}
       <div className="native-library-detail__cover">{cover}</div>
       <div className="native-library-detail__body">
         {context ? <div className="collection-header__context">{context}</div> : null}

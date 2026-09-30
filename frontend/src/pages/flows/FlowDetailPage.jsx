@@ -4,6 +4,7 @@ import { Check, ClipboardCopy, Download, FilePlus2, Pencil, RefreshCw, Trash2 } 
 import { DotLoader } from "../../components/DotLoader";
 import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../../components/CollectionHeader";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
+import TooltipButton from "../../components/TooltipButton";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
@@ -146,6 +147,7 @@ function FlowDetail({ flow }) {
     : isFlowDirty(flow, draft);
   const activity = getFlowActivityMessage({ flow, status, stats, rerunning: running });
   const lastRun = formatFlowLastRun(flow.lastRunAt);
+  const canRunNow = enabled && !running && !activity;
   const metaParts = [
     flow.ownerUsername || user?.username || null,
     formatFlowTrackLabel(getFlowDisplayTrackCount(flow, stats, tracks.length), stats),
@@ -300,6 +302,22 @@ function FlowDetail({ flow }) {
             <PlaylistArtworkThumb artworkUrl={artworkUrlFor(flow.id)} name={flow.name} />
           </button>
         }
+        corner={
+          <TooltipButton
+            className="native-library-icon-button"
+            onClick={() => canRunNow && handleRunNow()}
+            aria-disabled={!canRunNow}
+            label={
+              !enabled
+                ? "Turn the flow on to run it"
+                : running || activity
+                  ? "Flow is running"
+                  : "Run now"
+            }
+          >
+            {running ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
+          </TooltipButton>
+        }
         kicker="Flow"
         title={flow.name}
         meta={metaParts.filter(Boolean).join(" · ")}
@@ -321,15 +339,6 @@ function FlowDetail({ flow }) {
               onPlay={playback.handlePlayAll}
               onShuffle={playback.handleShufflePlay}
             />
-            <button
-              type="button"
-              className="collection-header__action"
-              onClick={handleRunNow}
-              disabled={!enabled || running || Boolean(activity)}
-            >
-              {running ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
-              Run now
-            </button>
             <span className="playlist-detail__switch">
               <FlowEnabledSwitch flow={flow} onChanged={fetchStatus} />
               <span aria-hidden="true">{enabled ? "On" : "Off"}</span>

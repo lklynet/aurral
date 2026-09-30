@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Square, SquareCheck } from "lucide-react";
+import { Circle, CircleDot, Square, SquareCheck } from "lucide-react";
 import {
   getFlowArtworkUrl,
   getFlowJobs,
@@ -14,6 +14,10 @@ import {
   slugifyFilePart,
 } from "./flowPageUtils";
 import { getPlaylistRunActivity } from "./flowRunActivity";
+import lastfmLogo from "../../../images/logos/last-fm.svg";
+import listenbrainzLogo from "../../../images/logos/listenbrainz.svg";
+import spotifyLogo from "../../../images/logos/spotify.svg";
+import youtubeMusicLogo from "../../../images/logos/youtube-music.svg";
 import { formatTrackCountLabel } from "./flowStats";
 
 export const SYNCABLE_IMPORT_PROVIDERS = new Set([
@@ -25,12 +29,20 @@ export const SYNCABLE_IMPORT_PROVIDERS = new Set([
 ]);
 
 export const SYNC_INTERVAL_OPTIONS = [
-  { value: 0, label: "Off" },
+  { value: 0, label: "None" },
   { value: 6, label: "Every 6 hours" },
   { value: 12, label: "Every 12 hours" },
   { value: 24, label: "Every 24 hours" },
   { value: 72, label: "Every 3 days" },
 ];
+
+export function getImportedProviderLogo(provider) {
+  if (String(provider || "").startsWith("listenbrainz-")) return listenbrainzLogo;
+  if (provider === "lastfm-station") return lastfmLogo;
+  if (provider === "youtube-music-playlist") return youtubeMusicLogo;
+  if (provider === "spotify-playlist") return spotifyLogo;
+  return null;
+}
 
 export function getImportedProviderLabel(provider) {
   if (String(provider || "").startsWith("listenbrainz-")) return "ListenBrainz";
@@ -41,8 +53,14 @@ export function getImportedProviderLabel(provider) {
 
 export const optionMenuItem = ({ checked, ...item }) => ({
   ...item,
-  selected: checked,
+  checked,
   icon: checked ? SquareCheck : Square,
+});
+
+export const choiceMenuItem = ({ checked, ...item }) => ({
+  ...item,
+  checked,
+  icon: checked ? CircleDot : Circle,
 });
 
 export const formatTrackTotal = (count) => `${count} ${count === 1 ? "track" : "tracks"}`;
