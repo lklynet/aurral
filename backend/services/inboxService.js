@@ -478,10 +478,6 @@ export async function enqueueInboxRefreshForAllUsers(options = {}) {
   return jobs;
 }
 
-export async function refreshInboxForAllUsers(options = {}) {
-  return enqueueInboxRefreshForAllUsers({ reason: "scheduled", ...options });
-}
-
 export function getInboxForUser(userId, options = {}) {
   const kinds = getEnabledKinds(getInboxPreferences());
   const refreshStatus = getInboxRefreshStatus(userId);
