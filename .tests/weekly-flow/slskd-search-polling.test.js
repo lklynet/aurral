@@ -119,3 +119,19 @@ test("completed counts hydrate files missing from earlier snapshots", async (t) 
   const files = slskdClient.flattenSearchResults(await pending);
   assert.deepEqual(files.map((file) => file.file).sort(), ["First.flac", "Second.flac"]);
 });
+
+test("cancellation during final hydration stops only the owned search", async (t) => {
+  const controller = new AbortController();
+  let polls = 0;
+  const deleted = [];
+  t.mock.method(slskdClient, "getSearch", async () => {
+    if (++polls === 1) return { state: "Completed", fileCount: 1, responses: [] };
+    controller.abort();
+    throw new Error("request aborted during hydration");
+  });
+  t.mock.method(slskdClient, "getSearchResponses", async () => { throw new Error("responses request aborted"); });
+  t.mock.method(slskdClient, "deleteSearch", async (id) => { deleted.push(id); return true; });
+  const result = await slskdClient.waitForSearch("owned-hydration", 60000, { signal: controller.signal });
+  assert.equal(result, null);
+  assert.deepEqual(deleted, ["owned-hydration"]);
+});

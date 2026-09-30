@@ -480,7 +480,7 @@ export class SlskdClient {
     const collectedCount = this.flattenSearchResults(data).length;
     if (collectedCount > 0 && (fileCount <= 0 || collectedCount >= fileCount)) return data;
     const hydrationDeadline = Math.min(deadline, Date.now() + 15000);
-    while (Date.now() < hydrationDeadline && !shouldCancel?.()) {
+    while (Date.now() < hydrationDeadline && !signal?.aborted && !shouldCancel?.()) {
       const timeout = Math.max(1, Math.min(60000, hydrationDeadline - Date.now()));
       const [status, payload] = await Promise.allSettled([
         this.getSearch(searchId, { timeout, signal }),
@@ -491,11 +491,12 @@ export class SlskdClient {
       if (payload.status === "fulfilled" && payload.value.length > 0) {
         return { ...refreshed, responses: payload.value };
       }
-      if (Date.now() >= hydrationDeadline || shouldCancel?.()) break;
+      if (Date.now() >= hydrationDeadline || signal?.aborted || shouldCancel?.()) break;
       const failed = [status, payload].find((result) => result.status === "rejected");
       if (failed) throw failed.reason;
-      await new Promise((resolve) => setTimeout(resolve, Math.min(500, hydrationDeadline - Date.now())));
+      await waitSearchDelay(Math.min(500, hydrationDeadline - Date.now()), signal);
     }
+    if (signal?.aborted || shouldCancel?.()) return data;
     logger.warn("slskd", "slskd search completed with counts but no file payloads", { searchId, responseCount, fileCount });
     return data;
   }
