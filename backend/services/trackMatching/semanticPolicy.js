@@ -271,6 +271,7 @@ const DESCRIPTOR_GROUP_WORDS = new Set([
 const PROMO_GROUP_WORDS = new Set([
   "official",
   "audio",
+  "music",
   "video",
   "lyric",
   "lyrics",

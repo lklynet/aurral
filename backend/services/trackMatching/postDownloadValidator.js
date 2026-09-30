@@ -21,7 +21,7 @@
 import { parseFile } from "music-metadata";
 import { buildTrackRequest } from "./trackIdentity.js";
 import { getFileName, getFileBaseName, claimedTitle, parseFilenameArtistTitle } from "./candidateNormalizer.js";
-import { getCoreTitle } from "./semanticPolicy.js";
+import { getCoreTitle, stripPromoDescriptors } from "./semanticPolicy.js";
 import { assignReleaseFiles, parseListingTitle, verifyDownloadedRecording } from "./nativeMatcher.js";
 import { getNormalizedText, scoreTextMatch } from "../providers/brainzmashRanking.js";
 import { validateParsedQuality } from "../qualityProfileService.js";
@@ -201,6 +201,8 @@ export async function validateDownloadedTrackFile({
   const listedTitle = parseListingTitle(actual.filename).title;
   const filenameTitle = parseFilenameArtistTitle(listedTitle,
     [trackRequest.artistName, ...(trackRequest.artistAliases || [])].filter(Boolean)).title || listedTitle;
+  const hasYtdlpIdFilename = source === "ytdlp"
+    && getFileBaseName(actual.filename) === readTagText(actual.provider.id);
   const verification = verifyDownloadedRecording({
     title: trackRequest.trackName,
     artists: [trackRequest.artistName, ...(trackRequest.artistAliases || [])].filter(Boolean),
@@ -209,9 +211,10 @@ export async function validateDownloadedTrackFile({
     trackNumber: trackRequest.trackNumber,
     albumTrackTitles: trackRequest.albumTrackTitles,
   }, {
-    title: actual.title,
-    fileNameTitle: /\s[-–—]\s|\b(?:live|remix|karaoke|instrumental|acoustic|demo|edit|cover|nightcore)\b/iu.test(actual.filename)
-      || /(?!\p{Script=Latin})\p{L}/u.test(`${trackRequest.trackName} ${filenameTitle}`)
+    title: source === "ytdlp" ? stripPromoDescriptors(actual.title) || actual.title : actual.title,
+    fileNameTitle: !hasYtdlpIdFilename && (
+      /\s[-–—]\s|\b(?:live|remix|karaoke|instrumental|acoustic|demo|edit|cover|nightcore)\b/iu.test(actual.filename)
+      || /(?!\p{Script=Latin})\p{L}/u.test(`${trackRequest.trackName} ${filenameTitle}`))
       ? filenameTitle : null,
     artists: actual.artists,
     durationMs: actualDurationMs,
