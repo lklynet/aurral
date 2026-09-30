@@ -403,6 +403,14 @@ export function AudioQueueProvider({ children }) {
     }
   }, []);
 
+  const skipTo = useCallback((playbackIndex) => {
+    const s = stateRef.current;
+    if (playbackIndex < 0 || playbackIndex >= s.playbackOrder.length) return;
+    if (playbackIndex === s.currentIndex) return;
+    loadedSignatureRef.current = null;
+    dispatch({ type: "SET_CURRENT_INDEX", index: playbackIndex });
+  }, []);
+
   const clearQueue = useCallback(() => {
     loadedSignatureRef.current = null;
     dispatch({ type: "CLEAR_QUEUE" });
@@ -412,6 +420,62 @@ export function AudioQueueProvider({ children }) {
 
   const currentTrack = state.currentIndex >= 0 ? getTrackAt(state.currentIndex) : null;
   const isActive = state.queue.length > 0 && state.currentIndex >= 0;
+  const playbackQueue = useMemo(
+    () => state.playbackOrder.map((queueIndex) => state.queue[queueIndex]).filter(Boolean),
+    [state.playbackOrder, state.queue],
+  );
+
+  useEffect(() => {
+    const mediaSession = navigator.mediaSession;
+    if (!mediaSession || typeof MediaMetadata === "undefined") return;
+    mediaSession.metadata = currentTrack
+      ? new MediaMetadata({
+          title: currentTrack.title || "",
+          artist: currentTrack.artist || "",
+          album: currentTrack.album || "",
+          artwork: currentTrack.artwork
+            ? [{ src: new URL(currentTrack.artwork, window.location.href).href }]
+            : [],
+        })
+      : null;
+  }, [currentTrack]);
+
+  useEffect(() => {
+    const mediaSession = navigator.mediaSession;
+    if (!mediaSession) return;
+    mediaSession.playbackState = !isActive ? "none" : player.isPlaying ? "playing" : "paused";
+  }, [isActive, player.isPlaying]);
+
+  useEffect(() => {
+    const mediaSession = navigator.mediaSession;
+    if (!mediaSession || !isActive) return undefined;
+    const handlers = {
+      play: () => {
+        if (!playerRef.current.isPlaying) togglePlayPause();
+      },
+      pause: () => {
+        if (playerRef.current.isPlaying) togglePlayPause();
+      },
+      nexttrack: playNext,
+      previoustrack: playPrevious,
+      seekto: (details) => {
+        if (Number.isFinite(details?.seekTime)) playerRef.current.seek(details.seekTime);
+      },
+      stop: clearQueue,
+    };
+    for (const [action, handler] of Object.entries(handlers)) {
+      try {
+        mediaSession.setActionHandler(action, handler);
+      } catch {}
+    }
+    return () => {
+      for (const action of Object.keys(handlers)) {
+        try {
+          mediaSession.setActionHandler(action, null);
+        } catch {}
+      }
+    };
+  }, [clearQueue, isActive, playNext, playPrevious, togglePlayPause]);
 
   const matchesSource = useCallback(
     (candidate) => {
@@ -426,6 +490,7 @@ export function AudioQueueProvider({ children }) {
   const value = useMemo(
     () => ({
       queue: state.queue,
+      playbackQueue,
       currentTrack,
       currentIndex: state.currentIndex,
       source: state.source,
@@ -449,11 +514,14 @@ export function AudioQueueProvider({ children }) {
       playNext,
       playPrevious,
       clearQueue,
+      skipTo,
       toggleShuffle,
       matchesSource,
     }),
     [
       clearQueue,
+      playbackQueue,
+      skipTo,
       currentTrack,
       isActive,
       matchesSource,

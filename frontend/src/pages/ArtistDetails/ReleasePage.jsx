@@ -105,7 +105,6 @@ function ReleasePage() {
   const { hasPermission } = useAuth();
   const canAddAlbum = hasPermission("addAlbum");
 
-  const artistName = locationState?.artistName || "";
   const focusTrackMbid = locationState?.focusTrackMbid || null;
 
   const baseRelease = useMemo(
@@ -123,6 +122,15 @@ function ReleasePage() {
     () => mergeReleaseDetails(baseRelease, releaseDetailsQuery.data),
     [baseRelease, releaseDetailsQuery.data],
   );
+  const artistCredits = releaseDetailsQuery.data?.["artist-credit"];
+  const artistName =
+    locationState?.artistName ||
+    (Array.isArray(artistCredits)
+      ? (
+          artistCredits.find((credit) => credit?.artist?.id === artistMbid) ||
+          artistCredits[0]
+        )?.name || ""
+      : "");
 
   const [coverUrl, setCoverUrl] = useState(release._coverUrl || "");
   const [coverRetryUrl, setCoverRetryUrl] = useState("");
@@ -545,7 +553,11 @@ function ReleasePage() {
       className="artist-details-page release-page"
       style={
         heroColor
-          ? { background: `linear-gradient(180deg, ${heroColor} 0%, ${heroColor} 120px, var(--aurral-surface) 400px)` }
+          ? {
+              "--release-hero-wash": `color-mix(in srgb, ${heroColor} 55%, var(--aurral-surface))`,
+              background:
+                "linear-gradient(180deg, var(--release-hero-wash) 0%, var(--release-hero-wash) 120px, var(--aurral-surface) 400px)",
+            }
           : undefined
       }
     >

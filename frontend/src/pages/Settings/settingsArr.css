@@ -17,7 +17,12 @@
 
 .app-shell:has(.settings-arr) .app-main-wrap {
   background: var(--aurral-surface);
-  border-radius: var(--aurral-radius);
+}
+
+@media (min-width: 768px) {
+  .app-shell:has(.settings-arr) .app-main-wrap {
+    border-radius: var(--aurral-radius);
+  }
 }
 
 .settings-arr,
