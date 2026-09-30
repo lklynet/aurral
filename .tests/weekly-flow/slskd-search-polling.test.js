@@ -135,3 +135,18 @@ test("cancellation during final hydration stops only the owned search", async (t
   assert.equal(result, null);
   assert.deepEqual(deleted, ["owned-hydration"]);
 });
+
+test("final hydration merges equal-sized partial status and response snapshots", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: 1000 });
+  let polls = 0;
+  t.mock.method(slskdClient, "getSearch", async () => ({
+    state: "Completed", fileCount: 3,
+    responses: [{ username: "peer", files: [{ filename: ++polls === 1 ? "First.flac" : "Second.flac" }] }],
+  }));
+  t.mock.method(slskdClient, "getSearchResponses", async () => {
+    t.mock.timers.setTime(61000);
+    return [{ username: "peer", files: [{ filename: "Third.flac" }] }];
+  });
+  const files = slskdClient.flattenSearchResults(await slskdClient.waitForSearch("final-partials", 60000));
+  assert.deepEqual(files.map((file) => file.file).sort(), ["First.flac", "Second.flac", "Third.flac"]);
+});

@@ -479,6 +479,7 @@ export class SlskdClient {
     if (responseCount <= 0 && fileCount <= 0) return data;
     const collectedCount = this.flattenSearchResults(data).length;
     if (collectedCount > 0 && (fileCount <= 0 || collectedCount >= fileCount)) return data;
+    const collected = new Map(this.flattenSearchResults(data).map((file) => [`${file.user}\0${file.file}`, file]));
     const hydrationDeadline = Math.min(deadline, Date.now() + 15000);
     while (Date.now() < hydrationDeadline && !signal?.aborted && !shouldCancel?.()) {
       const timeout = Math.max(1, Math.min(60000, hydrationDeadline - Date.now()));
@@ -487,10 +488,13 @@ export class SlskdClient {
         this.getSearchResponses(searchId, { timeout, signal }),
       ]);
       const refreshed = status.status === "fulfilled" ? status.value : data;
-      if (this.flattenSearchResults(refreshed).length > collectedCount) return refreshed;
-      if (payload.status === "fulfilled" && payload.value.length > 0) {
-        return { ...refreshed, responses: payload.value };
+      for (const file of this.flattenSearchResults(refreshed)) collected.set(`${file.user}\0${file.file}`, file);
+      if (payload.status === "fulfilled") {
+        for (const file of this.flattenSearchResults(payload.value)) collected.set(`${file.user}\0${file.file}`, file);
       }
+      data = { ...refreshed };
+      Object.defineProperty(data, NORMALIZED_SEARCH_RESULTS, { value: [...collected.values()] });
+      if (collected.size > collectedCount) return data;
       if (Date.now() >= hydrationDeadline || signal?.aborted || shouldCancel?.()) break;
       const failed = [status, payload].find((result) => result.status === "rejected");
       if (failed) throw failed.reason;
