@@ -211,7 +211,7 @@ export async function validateDownloadedTrackFile({
     trackNumber: trackRequest.trackNumber,
     albumTrackTitles: trackRequest.albumTrackTitles,
   }, {
-    title: source === "ytdlp" ? stripPromoDescriptors(actual.title) : actual.title,
+    title: source === "ytdlp" ? stripPromoDescriptors(actual.title) || actual.title : actual.title,
     fileNameTitle: !hasYtdlpIdFilename && (
       /\s[-–—]\s|\b(?:live|remix|karaoke|instrumental|acoustic|demo|edit|cover|nightcore)\b/iu.test(actual.filename)
       || /(?!\p{Script=Latin})\p{L}/u.test(`${trackRequest.trackName} ${filenameTitle}`))

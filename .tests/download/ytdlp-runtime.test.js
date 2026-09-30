@@ -36,6 +36,7 @@ test("yt-dlp stages source metadata that validates before canonical tags are wri
       ["Shawn Mendes - Stitches (Audio)", true],
       ["Shawn Mendes - Stitches (Lyrics)", true],
       ["Shawn Mendes - Stitches (Official Music Video)", true],
+      ["Shawn Mendes - (Music)", true, "(Music)"],
       ["Shawn Mendes - Stitches - Radio Edit", true, "Stitches - Radio Edit"],
       ["Shawn Mendes – Life of the Party (Audio)", true, "Life of the Party"],
       ["宇多田ヒカル - 光 (Audio)", true, "光", "宇多田ヒカル"],
