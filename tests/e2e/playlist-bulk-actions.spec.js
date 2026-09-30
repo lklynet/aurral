@@ -32,7 +32,7 @@ test("one bulk request reports partial completion against its original playlist"
   await signIn(page);
   await page.goto("/library/playlists");
   await page.locator(".playlists-page__title").filter({ hasText: source.name }).click();
-  await page.getByRole("button", { name: "Edit tracks", exact: true }).click();
+  await page.getByRole("button", { name: "Select tracks", exact: true }).click();
   await page.getByLabel("Select all tracks").check();
   await page.getByRole("button", { name: "Move", exact: true }).click();
   await page.getByRole("button", { name: `Add to ${target.name}`, exact: true }).click();
