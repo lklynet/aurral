@@ -9062,7 +9062,7 @@ button.native-library-genre-row:focus-visible {
 
 .native-library-track.is-search-focused {
   background: var(--aurral-surface-selected);
-  box-shadow: inset 2px 0 var(--aurral-text);
+  box-shadow: inset 0 0 0 1px var(--aurral-border-strong);
 }
 
 .native-library-track-list--release .native-library-track {
@@ -10844,7 +10844,7 @@ button.native-library-genre-row:focus-visible {
   margin: 0.5rem 0 0;
   padding: 0.625rem 0.875rem;
   border-radius: var(--aurral-radius-sm);
-  border-left: 3px solid var(--aurral-border-strong);
+  border: 1px solid var(--aurral-border-strong);
   background: var(--aurral-surface-raised);
   color: var(--aurral-text);
   font-size: 0.875rem;
@@ -15072,10 +15072,6 @@ button.native-library-genre-row:focus-visible {
   background: var(--aurral-surface-hover);
 }
 
-.discover-news-card--highlighted {
-  border-inline-start: 3px solid var(--aurral-text);
-}
-
 .discover-news-card__image-wrap {
   border-bottom: 1px solid var(--aurral-border);
 }
@@ -15310,7 +15306,8 @@ button.native-library-genre-row:focus-visible {
 
 .login-error {
   padding: 0.625rem 0.75rem;
-  border-left: 2px solid var(--aurral-danger);
+  border: 1px solid color-mix(in srgb, var(--aurral-danger) 45%, transparent);
+  border-radius: var(--aurral-radius-sm);
   background: color-mix(in srgb, var(--aurral-danger) 7%, transparent);
   text-align: left;
   line-height: 1.45;
@@ -15575,7 +15572,8 @@ button.native-library-genre-row:focus-visible {
 .onboarding-error {
   margin: 0;
   padding: 0.625rem 0.75rem;
-  border-left: 2px solid var(--aurral-danger);
+  border: 1px solid color-mix(in srgb, var(--aurral-danger) 45%, transparent);
+  border-radius: var(--aurral-radius-sm);
   background: color-mix(in srgb, var(--aurral-danger) 7%, transparent);
   text-align: left;
   line-height: 1.45;

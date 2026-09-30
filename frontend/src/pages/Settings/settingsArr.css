@@ -217,18 +217,19 @@
 
 .arr-health-list__item {
   padding: 0.5rem 0.625rem;
-  border-left: 0.1875rem solid var(--aurral-border-strong);
+  border: 0.0625rem solid var(--aurral-border-strong);
+  border-radius: var(--aurral-radius-sm);
   background: var(--aurral-surface-popover);
   color: var(--aurral-text-muted);
   line-height: 1.45;
 }
 
 .arr-health-list__item.is-warn {
-  border-left-color: var(--aurral-warning);
+  border-color: var(--aurral-warning);
 }
 
 .arr-health-list__item.is-fail {
-  border-left-color: var(--aurral-danger);
+  border-color: var(--aurral-danger);
 }
 
 .arr-input,
@@ -644,15 +645,15 @@
 }
 
 .arr-health__summary.is-pass {
-  border-left: 0.1875rem solid var(--aurral-success);
+  border-color: var(--aurral-success);
 }
 
 .arr-health__summary.is-warn {
-  border-left: 0.1875rem solid var(--aurral-warning);
+  border-color: var(--aurral-warning);
 }
 
 .arr-health__summary.is-fail {
-  border-left: 0.1875rem solid var(--aurral-danger);
+  border-color: var(--aurral-danger);
 }
 
 .arr-health__summary-main {
