@@ -19,8 +19,8 @@ import {
 import { useSharedPlaylists } from "../../hooks/useSharedPlaylists";
 import { useWebSocketChannel } from "../../hooks/useWebSocket";
 
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { CornerUpLeft, ExternalLink, Library, Music } from "lucide-react";
+import { Link, useLocation, useParams } from "react-router-dom";
+import { CornerUpLeft, ExternalLink, Music } from "lucide-react";
 import AddActionButton from "../../components/AddActionButton";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { buildAlbumAddAction, describeAlbumRequestResult } from "../../utils/albumAddAction";
@@ -43,7 +43,7 @@ import {
   resolveReleaseLibraryDisplay,
   sumTrackDurationMs,
 } from "./utils";
-import Tooltip from "../../components/Tooltip";
+import ViewSwitch from "../../components/ViewSwitch";
 const getReleaseTypeLabel = (release) => {
   const types = [
     release?.["primary-type"],
@@ -96,7 +96,6 @@ const ACTIVE_DOWNLOAD_STATUSES = new Set([
 function ReleasePage() {
   const { mbid: artistMbid, releaseMbid } = useParams();
   const { state: locationState } = useLocation();
-  const navigate = useNavigate();
   const { showSuccess, showError, showInfo } = useToast();
   const libraryDestination = useLibraryDestination();
   const [ownerConflictState, setOwnerConflictState] = useState(null);
@@ -602,22 +601,9 @@ function ReleasePage() {
           ) : null}
           <div className="release-page__actions">
             {libraryInfo?.canonicalInLibrary ? (
-              <button
-                type="button"
-                className="btn btn-surface btn-sm release-page__external-link"
-                onClick={() => navigate(libraryPath)}
-              >
-                <Library className="artist-icon-sm" />
-                Open in library
-              </button>
+              <ViewSwitch current="discover" library={{ to: libraryPath }} />
             ) : libraryDisplay.label ? (
-              <Tooltip content={libraryDisplay.label}>
-                <span
-                  className={`release-page__library-status release-page__library-status--${libraryDisplay.kind}`}
-                >
-                  <span>{libraryDisplay.label}</span>
-                </span>
-              </Tooltip>
+              <ViewSwitch current="discover" library={{ status: libraryDisplay.label }} />
             ) : null}
             {canAddAlbum && !isComplete ? (
               <AddActionButton

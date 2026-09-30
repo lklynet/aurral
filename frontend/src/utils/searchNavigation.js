@@ -103,18 +103,21 @@ export function navigateToReleaseGroup(
   return true;
 }
 
-export function navigateToLibraryAlbum(
-  navigate,
+export function getLibraryAlbumNavigationTarget(
   libraryAlbum,
   { artistMbid, artistName, coverUrl = "" } = {},
 ) {
-  const target = getReleaseNavigationTarget(
+  return getReleaseNavigationTarget(
     buildLibraryAlbumNavigationItem(libraryAlbum, {
       artistMbid,
       artistName,
       coverUrl,
     }),
   );
+}
+
+export function navigateToLibraryAlbum(navigate, libraryAlbum, options) {
+  const target = getLibraryAlbumNavigationTarget(libraryAlbum, options);
   if (!target) return false;
   navigate(target.pathname, { state: target.state });
   return true;

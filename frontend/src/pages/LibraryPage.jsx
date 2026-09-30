@@ -83,7 +83,7 @@ import {
   describeArtistMonitoringResult,
   describeAurralMonitoringError,
 } from "../utils/aurralMonitoring.js";
-import { navigateToLibraryAlbum } from "../utils/searchNavigation";
+import { getLibraryAlbumNavigationTarget } from "../utils/searchNavigation";
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { libraryPreviewData, libraryPreviewFavorites } from "./libraryPreviewData";
 import {
@@ -1778,15 +1778,19 @@ function LibraryPage() {
     navigate("/library/album/" + encodeURIComponent(album.id) + previewQuery);
   };
 
-  const handleDiscoverAlbumOpen = (album) => {
+  const getDiscoverAlbumTarget = (album) => {
     const artist = getArtistForAlbum(album);
-    if (artist?.mbid && (album?.releaseGroupMbid || album?.mbid)) {
-      navigateToLibraryAlbum(navigate, album, {
-        artistMbid: artist.mbid,
-        artistName: artist.name,
-        coverUrl: getAlbumCover(album),
-      });
-    }
+    if (!artist?.mbid || !(album?.releaseGroupMbid || album?.mbid)) return null;
+    return getLibraryAlbumNavigationTarget(album, {
+      artistMbid: artist.mbid,
+      artistName: artist.name,
+      coverUrl: getAlbumCover(album),
+    });
+  };
+
+  const handleDiscoverAlbumOpen = (album) => {
+    const target = getDiscoverAlbumTarget(album);
+    if (target) navigate(target.pathname, { state: target.state });
   };
 
   const favoriteCount =
@@ -2506,6 +2510,7 @@ function LibraryPage() {
     const albumTracks = getAlbumTracks(libraryAlbum);
     const availability = albumAvailability(libraryAlbum);
     const badges = describeAlbumBadges(libraryAlbum);
+    const discoverAlbumTarget = getDiscoverAlbumTarget(libraryAlbum);
     const durationMs = albumTracks.reduce(
       (total, track) => total + Number(firstAvailableFile(track)?.durationMs || 0),
       0,
@@ -2634,14 +2639,11 @@ function LibraryPage() {
                   },
                 ]}
               />
-              {artist?.mbid && (libraryAlbum.releaseGroupMbid || libraryAlbum.mbid) && (
-                <button
-                  type="button"
-                  className="native-library-detail__discover"
-                  onClick={() => handleDiscoverAlbumOpen(libraryAlbum)}
-                >
-                  <ExternalLink aria-hidden="true" /> Explore in Discover
-                </button>
+              {discoverAlbumTarget && (
+                <ViewSwitch
+                  current="library"
+                  discover={{ to: discoverAlbumTarget.pathname, state: discoverAlbumTarget.state }}
+                />
               )}
             </div>
           </div>
