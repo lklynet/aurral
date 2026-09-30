@@ -179,6 +179,9 @@ export function TrackPlaylistSubmenu({
   isOpen = false,
   onToggle,
 }) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const submenuOpen = typeof onToggle === "function" ? isOpen : internalOpen;
+
   const handleSelect = async (target) => {
     await onSelect?.(target);
     onClose?.();
@@ -186,19 +189,18 @@ export function TrackPlaylistSubmenu({
 
   const handleTriggerClick = (event) => {
     event.stopPropagation();
-    if (toggleOnClick) {
-      onToggle?.();
-    }
+    if (onToggle) onToggle();
+    else setInternalOpen((value) => !value);
   };
 
   return (
-    <div className={`artist-menu-submenu${toggleOnClick && isOpen ? " is-open" : ""}`}>
+    <div className={`artist-menu-submenu${toggleOnClick && submenuOpen ? " is-open" : ""}`}>
       <button
         type="button"
         className="artist-menu-item artist-menu-submenu__trigger"
         role="menuitem"
         tabIndex={toggleOnClick ? undefined : 0}
-        aria-expanded={toggleOnClick ? isOpen : undefined}
+        aria-expanded={toggleOnClick ? submenuOpen : undefined}
         onClick={toggleOnClick ? handleTriggerClick : undefined}
       >
         <span className="artist-menu-item__main">
@@ -206,7 +208,7 @@ export function TrackPlaylistSubmenu({
           {label}
         </span>
         <ChevronRight
-          className={`artist-icon-sm${toggleOnClick && isOpen ? " artist-chevron--open" : ""}`}
+          className={`artist-icon-sm${toggleOnClick && submenuOpen ? " artist-chevron--open" : ""}`}
           aria-hidden="true"
         />
       </button>

@@ -2114,6 +2114,7 @@ function LibraryPage() {
                     defaultNewPlaylistName={getDefaultTrackPlaylistName(track)}
                     onSelect={(target) => addLibraryTrackToPlaylist(track, target)}
                     onClose={closeMenu}
+                    toggleOnClick
                   />
                   <TrackPlaylistRemoveSubmenu
                     track={track}
