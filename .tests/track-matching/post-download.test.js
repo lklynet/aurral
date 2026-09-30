@@ -94,6 +94,8 @@ test("downloaded version suffixes retain the original title and filename evidenc
     ["Queen", "Bohemian Rhapsody", "Bohemian Rhapsody - Remastered 2011", "Queen - Bohemian Rhapsody - Remastered 2011.flac"],
     ["Artist Name", "Wide Awake Tonight - Radio Edit", "Wide Awake Tonight - Radio Edit", "11 - Artist Name - Wide Awake Tonight - Radio Edit.flac"],
     ["X", "がみ - Radio Edit", "か\u3099み - Radio Edit", "X - がみ - Radio Edit.flac"],
+    ["Beyonce", "Halo", "Halo", "Beyoncé - Halo.flac"],
+    ["Beyonce", "Halo", "Halo - Remastered 2011", "Beyoncé - Halo - Remastered 2011.flac"],
   ]) {
     const outcome = await validateDownloadedTrackFile({
       request: { artistName, trackName, durationMs: 200000 },

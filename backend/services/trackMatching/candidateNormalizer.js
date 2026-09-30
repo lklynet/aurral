@@ -4,6 +4,8 @@
 // keeps only what a source actually provides and
 // never fabricates values.
 
+import { foldDiacritics } from "../providers/brainzmashRanking.js";
+
 export const SOURCE_CAPABILITIES = {
   deemix: {
     structuredArtist: true,
@@ -213,8 +215,8 @@ export function parseFilenameArtistTitle(baseName, knownArtistNames = []) {
     if (!segments) continue;
     const artist = segments[0];
     const match = knownArtistNames.some((name) => {
-      const left = String(name || "").toLowerCase();
-      return left && artist.toLowerCase() === left;
+      const left = foldDiacritics(name).toLowerCase();
+      return left && foldDiacritics(artist).toLowerCase() === left;
     });
     if (match || knownArtistNames.length === 0) {
       return { artist, title: segments.slice(1).join(" - ") };

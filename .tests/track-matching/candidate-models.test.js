@@ -110,6 +110,10 @@ test("filename parsing preserves title subtitles after an anchored artist", () =
   }, { parseFilename: true, knownArtistNames: ["50 Cent"] });
   assert.equal(candidate.filenameTitle, "In Da Club - Remastered 2011");
   assert.deepEqual(candidate.artists, ["50 Cent"]);
+  const accentedArtist = normalizeCandidate("soulseek", {
+    file: "Beyoncé - Halo - Remastered 2011.mp3",
+  }, { parseFilename: true, knownArtistNames: ["Beyonce"] });
+  assert.equal(accentedArtist.filenameTitle, "Halo - Remastered 2011");
 });
 
 test("provider capabilities keep noisy sources honest", () => {
