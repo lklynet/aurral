@@ -438,12 +438,15 @@ test("real tagged audio: karaoke tags conflict before any metadata write", { ski
 
 test("real audio without tags falls back to secondary evidence and stays conflicted", { skip: hasFfmpeg ? false : "ffmpeg unavailable" }, async () => {
   const filePath = generateTaggedAudio("untagged.mp3", { title: "", artist: "" });
-  const outcome = await validateDownloadedTrackFile({
-    request: { ...GET_LUCKY, durationMs: 4000 },
-    filePath,
-    source: "soulseek",
-  });
-  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+  for (const source of ["soulseek", "ytdlp"]) {
+    const outcome = await validateDownloadedTrackFile({
+      request: { ...GET_LUCKY, durationMs: 4000 },
+      candidate: { title: "Get Lucky", artists: ["Daft Punk"] },
+      filePath,
+      source,
+    });
+    assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED, source);
+  }
 });
 
 btest("release selection: the file assigned to the requested track is the verified one", { skip: hasFfmpeg ? false : "ffmpeg unavailable" }, async () => {

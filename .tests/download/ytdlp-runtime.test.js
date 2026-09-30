@@ -5,6 +5,64 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { buildYtdlpInvocationArgs, YtdlpClient } from "../../backend/services/ytdlpClient.js";
+import { validateDownloadedTrackFile } from "../../backend/services/trackMatching/index.js";
+
+test("yt-dlp stages source metadata that validates before canonical tags are written", {
+  skip: process.platform === "win32",
+}, async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "aurral-ytdlp-validation-"));
+  const binaryPath = path.join(tempDir, "yt-dlp");
+  const previousPath = process.env.PATH;
+  await writeFile(binaryPath, [
+    "#!/usr/bin/env node",
+    "const { execFileSync } = require('node:child_process');",
+    "const args = process.argv.slice(2);",
+    "const title = new URL(args.at(-1)).searchParams.get('title');",
+    "const output = args[args.indexOf('-o') + 1].replace('%(id)s', 'abc123DEF45').replace('%(ext)s', 'm4a');",
+    "const tags = [];",
+    "if (args.includes('--embed-metadata')) {",
+    "  const parse = args[args.indexOf('--parse-metadata') + 1];",
+    "  const pattern = parse && parse.startsWith('title:') ? parse.slice(6).replace(/\\(\\?P</g, '(?<') : null;",
+    "  const pair = pattern ? new RegExp(pattern).exec(title) : null;",
+    "  tags.push('-metadata', `title=${pair?.groups?.title || title}`, '-metadata', `artist=${pair?.groups?.artist || 'Music Channel'}`);",
+    "}",
+    "execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'anoisesrc=r=44100', '-t', '4', '-c:a', 'aac', '-b:a', '192k', ...tags, output]);",
+  ].join("\n"));
+  await chmod(binaryPath, 0o755);
+  process.env.PATH = `${tempDir}${path.delimiter}${previousPath || ""}`;
+  const client = new YtdlpClient({ enabled: true, stagingPath: tempDir });
+  try {
+    for (const [title, valid, trackName = "Stitches", artistName = "Shawn Mendes"] of [
+      ["Shawn Mendes - Stitches (Audio)", true],
+      ["Shawn Mendes - Stitches (Lyrics)", true],
+      ["Shawn Mendes - Stitches (Official Music Video)", true],
+      ["Shawn Mendes - Stitches - Radio Edit", true, "Stitches - Radio Edit"],
+      ["Shawn Mendes – Life of the Party (Audio)", true, "Life of the Party"],
+      ["宇多田ヒカル - 光 (Audio)", true, "光", "宇多田ヒカル"],
+      ["Shawn Mendes - Stitches (Karaoke Version)", false],
+      ["Shawn Mendes - Life of the Party (Audio)", false],
+      ["Another Artist - Stitches (Audio)", false],
+    ]) {
+      const { filePath } = await client.downloadAudio(
+        `https://example.test/video?title=${encodeURIComponent(title)}`,
+        { jobId: "source-metadata" },
+      );
+      const validation = await validateDownloadedTrackFile({
+        request: { artistName, trackName, durationMs: 4000 },
+        candidate: { provider: { id: "abc123DEF45" } },
+        filePath,
+        source: "ytdlp",
+      });
+      assert.equal(validation.valid, valid, `${title}: ${validation.reason}`);
+      assert.equal(validation.parsedTags.title, title.replace(/^.+?\s+[-–—]\s+/, ""));
+      await client.cleanupStaging("source-metadata");
+      assert.equal(existsSync(filePath), false);
+    }
+  } finally {
+    process.env.PATH = previousPath;
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
 
 test("yt-dlp invocations use Node for YouTube JavaScript challenges when available", () => {
   assert.deepEqual(
