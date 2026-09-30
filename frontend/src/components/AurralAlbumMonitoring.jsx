@@ -17,27 +17,29 @@ const errorMessage = (error) =>
   error?.message ||
   "Could not update album monitoring";
 
-export function useAurralAlbumMonitoring({ album, enabled, onChanged }) {
+export function useAurralAlbumMonitoring({ album, enabled, canChange, onChanged }) {
   const { showSuccess, showError } = useToast();
   const [pending, setPending] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const [confirmingId, setConfirmingId] = useState(null);
   const monitored = enabled ? getAlbumMonitoredState(album) : null;
 
   if (monitored === null) return { monitored: null, menuItem: null, dialog: null };
+  if (!canChange) return { monitored, menuItem: null, dialog: null };
 
+  const albumId = album.id;
   const apply = async (nextMonitored) => {
     setPending(true);
     try {
-      const result = await setAurralAlbumMonitoring(album.id, nextMonitored);
+      const result = await setAurralAlbumMonitoring(albumId, nextMonitored);
       const { message, warning } = describeAlbumMonitoringResult(result);
       (warning ? showError : showSuccess)(message);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.aurralAlbumStatus(album.id) });
-      onChanged?.(result);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.aurralAlbumStatus(albumId) });
+      onChanged?.(albumId, result);
     } catch (error) {
       showError(errorMessage(error));
     } finally {
       setPending(false);
-      setConfirming(false);
+      setConfirmingId(null);
     }
   };
 
@@ -45,11 +47,11 @@ export function useAurralAlbumMonitoring({ album, enabled, onChanged }) {
     if (!monitored) return apply(true);
     const status = await queryClient
       .fetchQuery({
-        queryKey: queryKeys.aurralAlbumStatus(album.id),
-        queryFn: ({ signal }) => getAurralAlbumStatus(album.id, { signal }),
+        queryKey: queryKeys.aurralAlbumStatus(albumId),
+        queryFn: ({ signal }) => getAurralAlbumStatus(albumId, { signal }),
       })
       .catch(() => null);
-    if (shouldConfirmUnmonitor(status?.status)) setConfirming(true);
+    if (shouldConfirmUnmonitor(status?.status)) setConfirmingId(albumId);
     else apply(false);
   };
 
@@ -65,13 +67,13 @@ export function useAurralAlbumMonitoring({ album, enabled, onChanged }) {
     },
     dialog: (
       <ConfirmModal
-        open={confirming}
+        open={confirmingId === albumId}
         title="Stop monitoring this album?"
         body="Aurral will skip this album when it downloads releases for this artist, and unfinished downloads will be cancelled. Tracks already in your library are kept."
         confirmLabel="Stop monitoring"
         busyLabel="Stopping"
         busy={pending}
-        onCancel={() => setConfirming(false)}
+        onCancel={() => setConfirmingId(null)}
         onConfirm={() => apply(false)}
       />
     ),

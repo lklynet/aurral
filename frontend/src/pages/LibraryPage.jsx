@@ -1503,8 +1503,9 @@ function LibraryPage() {
   );
   const albumMonitoring = useAurralAlbumMonitoring({
     album: libraryAlbum,
-    enabled: Boolean(libraryAlbum) && !isPreviewLibrary && canChangeMonitoring,
-    onChanged: (result) => updateAlbumMonitoringState(libraryAlbum.id, result),
+    enabled: Boolean(libraryAlbum) && !isPreviewLibrary,
+    canChange: canChangeMonitoring,
+    onChanged: updateAlbumMonitoringState,
   });
 
   const reloadLibraryAlbumTracks = useCallback(async () => {
