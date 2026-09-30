@@ -17,7 +17,7 @@ import { extractTwoToneGradientFromImage } from "../utils/imageColors";
 import { reserveUniquePlaylistName } from "./ArtistDetails/utils";
 import { AudioWaveform, Crosshair, ListMusic, MoreVertical, Plus } from "lucide-react";
 
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router";
 import { FlowTracksPanel, useFlowTrackPlayback } from "./flows/flowComponents/flowTrackComponents.jsx";
 import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../components/CollectionHeader";
 import { LibraryItemMenu } from "../components/LibraryItemMenu";

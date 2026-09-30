@@ -26,7 +26,7 @@ import {
 import { useArtistTasteFeedback } from "../../hooks/useArtistTasteFeedback";
 import { useSharedPlaylists } from "../../hooks/useSharedPlaylists";
 
-import { useParams, useLocation } from "react-router-dom";
+import { useParams, useLocation } from "react-router";
 import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
 import { Music, X } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";

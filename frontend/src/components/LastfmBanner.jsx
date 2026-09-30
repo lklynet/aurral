@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 const LEGACY_DISMISS_KEY = "lastfm_banner_dismissed";
 const DISMISS_KEY_PREFIX = "aurral:lastfm-banner-dismissed";
 

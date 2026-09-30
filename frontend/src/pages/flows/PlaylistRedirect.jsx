@@ -1,4 +1,4 @@
-import { Navigate, useSearchParams } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router";
 import { DotLoader } from "../../components/DotLoader";
 import { flowPath, playlistPath } from "../../navigation/playlistPaths";
 import { useFlowStatus } from "./useFlowStatus";

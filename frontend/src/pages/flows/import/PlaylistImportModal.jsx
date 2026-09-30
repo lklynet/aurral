@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileJson, Music2, Upload } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { ModalShell } from "../../../components/PlaylistModals";
 import { DotLoader } from "../../../components/DotLoader";
 import {

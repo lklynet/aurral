@@ -28,7 +28,7 @@ import ActivityToolbar from "./activity/ActivityToolbar";
 import ActivityMissingPage from "./activity/ActivityMissingPage";
 import ActivityInfoModal from "./activity/ActivityInfoModal";
 
-import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import { AlertCircle, Music } from "lucide-react";
 import { DotLoader } from "../components/DotLoader";
 import { queryClient, queryKeys } from "../queryClient.js";

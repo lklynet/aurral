@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { Check, ClipboardCopy, Download, FilePlus2, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
 import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../../components/CollectionHeader";

@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { SettingsSelect } from "../pages/Settings/components/SettingsField";
 
 export function PageSectionMobileNav({

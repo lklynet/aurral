@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router";
 import { ListMusic, MoreVertical, Plus, Upload } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
 import Tooltip from "../../components/Tooltip";

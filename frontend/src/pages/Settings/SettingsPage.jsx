@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
