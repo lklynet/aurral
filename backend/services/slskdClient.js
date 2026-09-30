@@ -4,6 +4,7 @@ import { dbOps } from "../db/helpers/index.js";
 import { withHonkerLock } from "./honkerDb.js";
 import { logger } from "./logger.js";
 
+const NORMALIZED_SEARCH_RESULTS = Symbol("normalizedSearchResults");
 const DEFAULT_SEARCH_TIMEOUT_MS = 60000;
 const DEFAULT_EMPTY_SEARCH_TIMEOUT_MS = 10000;
 const DEFAULT_SEARCH_GRACE_PERIOD_MS = 20000;
@@ -230,6 +231,52 @@ function readId(value) {
   return readProperty(value, "id", "Id");
 }
 
+function createSearchCancellation(shouldCancel, externalSignal) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (externalSignal?.aborted || shouldCancel?.()) abort();
+  externalSignal?.addEventListener("abort", abort, { once: true });
+  const timer = typeof shouldCancel === "function" ? setInterval(() => {
+    if (shouldCancel()) abort();
+  }, 100) : null;
+  timer?.unref();
+  return {
+    signal: controller.signal,
+    dispose: () => { clearInterval(timer); externalSignal?.removeEventListener("abort", abort); },
+  };
+}
+
+function waitSearchDelay(ms, signal) {
+  return new Promise((resolve) => {
+    let timer;
+    const finish = () => { clearTimeout(timer); signal?.removeEventListener("abort", finish); resolve(); };
+    if (signal?.aborted) return resolve();
+    timer = setTimeout(() => {
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", finish, { once: true });
+  });
+}
+
+async function withSearchLock(name, operation, { deadline, signal }) {
+  const lockDeadline = Number(deadline) || Date.now() + 300000;
+  while (true) {
+    if (signal.aborted) throw new Error("slskd search cancelled");
+    const remaining = lockDeadline - Date.now();
+    if (remaining <= 0) throw new Error("slskd search deadline expired");
+    try {
+      return await withHonkerLock(name, () => {
+        if (signal.aborted) throw new Error("slskd search cancelled");
+        if (Date.now() >= lockDeadline) throw new Error("slskd search deadline expired");
+        return operation();
+      }, { waitTimeoutMs: Math.min(250, remaining) });
+    } catch (error) {
+      if (error.message !== `Timed out waiting for Honker lock: ${name}`) throw error;
+    }
+  }
+}
+
 export class SlskdClient {
   constructor(config = null) {
     this.key = "slskd";
@@ -339,52 +386,79 @@ export class SlskdClient {
   }
 
   async createSearch(searchText, options = {}) {
-    return withHonkerLock("slskd-api", async () => {
-      const client = buildClient(this._config);
-      const id = String(options.id || randomUUID());
-      const searchTimeoutMs = Math.max(
-        5000,
-        Math.floor(Number(options.searchTimeoutMs || DEFAULT_SEARCH_TIMEOUT_MS)),
-      );
-      const body = {
-        id,
-        searchText: String(searchText || "").trim(),
-        fileLimit: Number(options.fileLimit || DEFAULT_FILE_LIMIT),
-        filterResponses: options.filterResponses !== false,
-        maximumPeerQueueLength: Number(options.maximumPeerQueueLength || DEFAULT_MAX_PEER_QUEUE),
-        minimumPeerUploadSpeed: Number(options.minimumPeerUploadSpeed || DEFAULT_MIN_PEER_SPEED),
-        minimumResponseFileCount: Number(options.minimumResponseFileCount || 1),
-        responseLimit: Number(options.responseLimit || DEFAULT_RESPONSE_LIMIT),
-        searchTimeout: searchTimeoutMs,
-      };
-      let retryCount = 0;
-      let delaySeconds = 30;
-      while (retryCount <= 3) {
-        const response = await client.post("/api/v0/searches", body);
-        if (response.status === 201 || response.status === 200) {
-          return { id, searchText: body.searchText };
+    const control = createSearchCancellation(options.shouldCancel, options.signal);
+    const id = String(options.id || randomUUID());
+    const client = buildClient(this._config);
+    const searchTimeoutMs = Math.max(5000, Math.floor(Number(options.searchTimeoutMs || DEFAULT_SEARCH_TIMEOUT_MS)));
+    const body = {
+      id,
+      searchText: String(searchText || "").trim(),
+      fileLimit: Number(options.fileLimit || DEFAULT_FILE_LIMIT),
+      filterResponses: options.filterResponses !== false,
+      maximumPeerQueueLength: Number(options.maximumPeerQueueLength || DEFAULT_MAX_PEER_QUEUE),
+      minimumPeerUploadSpeed: Number(options.minimumPeerUploadSpeed || DEFAULT_MIN_PEER_SPEED),
+      minimumResponseFileCount: Number(options.minimumResponseFileCount || 1),
+      responseLimit: Number(options.responseLimit || DEFAULT_RESPONSE_LIMIT),
+    };
+    const lockOptions = { deadline: options.deadline, signal: control.signal };
+    let creationUncertain = false;
+    try {
+      return await withSearchLock("slskd-search-create", async () => {
+        for (let attempt = 0; attempt <= 3; attempt++) {
+          const response = await withSearchLock("slskd-api", async () => {
+            const remaining = Number(options.deadline) ? options.deadline - Date.now() : Infinity;
+            if (remaining < 5000) throw new Error("slskd search deadline expired");
+            options.onSearchCreated?.(id);
+            creationUncertain = true;
+            let result;
+            try {
+              result = await client.post("/api/v0/searches", {
+                ...body, searchTimeout: Math.min(searchTimeoutMs, remaining),
+              }, { timeout: Math.min(60000, remaining), signal: control.signal });
+            } catch (error) {
+              options.onSearchCreated?.(id);
+              throw error;
+            }
+            if ([200, 201].includes(result.status)) options.onSearchCreated?.(id);
+            else if ([409, 429].includes(result.status)) {
+              creationUncertain = false;
+              options.onSearchSettled?.(id);
+            }
+            return result;
+          }, lockOptions);
+          if ([200, 201].includes(response.status)) return { id, searchText: body.searchText };
+          if (response.status === 429 && attempt < 3) {
+            const remaining = Number(options.deadline) ? options.deadline - Date.now() : Infinity;
+            await waitSearchDelay(Math.min(30000 * 2 ** attempt, remaining), control.signal);
+            continue;
+          }
+          if (response.status === 409) throw new Error("slskd Soulseek connection unavailable (409)");
+          throw new Error(`slskd search failed: HTTP ${response.status} ${String(response.data || "")}`);
         }
-        if (response.status === 429 && retryCount < 3) {
-          await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
-          retryCount += 1;
-          delaySeconds *= 2;
-          continue;
+        throw new Error("slskd search busy after retries");
+      }, lockOptions);
+    } catch (error) {
+      if (creationUncertain) {
+        options.onSearchCreated?.(id);
+        try {
+          if (await this.deleteSearch(id, { timeout: Math.max(1, Number(options.cleanupTimeoutMs) || 20000) })) {
+            options.onSearchSettled?.(id);
+          }
+        } catch (cleanupError) {
+          logger.warn("slskd", "Could not stop owned search after creation failed", { searchId: id, reason: cleanupError?.message });
         }
-        if (response.status === 409) {
-          throw new Error("slskd Soulseek connection unavailable (409)");
-        }
-        throw new Error(
-          `slskd search failed: HTTP ${response.status} ${String(response.data || "")}`,
-        );
       }
-      throw new Error("slskd search busy after retries");
-    });
+      throw error;
+    } finally {
+      control.dispose();
+    }
   }
 
-  async getSearch(searchId) {
+  async getSearch(searchId, options = {}) {
     const client = buildClient(this._config);
     const response = await client.get(`/api/v0/searches/${searchId}`, {
       params: { includeResponses: true },
+      ...options,
     });
     if (response.status !== 200) {
       throw new Error(`slskd search status failed: HTTP ${response.status}`);
@@ -392,135 +466,139 @@ export class SlskdClient {
     return response.data;
   }
 
-  async getSearchResponses(searchId) {
+  async getSearchResponses(searchId, options = {}) {
     const client = buildClient(this._config);
-    const response = await client.get(`/api/v0/searches/${searchId}/responses`);
+    const response = await client.get(`/api/v0/searches/${searchId}/responses`, options);
     if (response.status !== 200) return [];
     return readSearchResponses(response.data);
   }
 
-  async hydrateCompletedSearch(searchId, data) {
+  async hydrateCompletedSearch(searchId, data, { deadline = Date.now() + 15000, shouldCancel, signal } = {}) {
     const responseCount = Number(data?.responseCount || data?.ResponseCount || 0);
     const fileCount = Number(data?.fileCount || data?.FileCount || 0);
     if (responseCount <= 0 && fileCount <= 0) return data;
-    if (this.flattenSearchResults(data).length > 0) return data;
-
-    const deadline = Date.now() + 15000;
-    while (Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      const refreshed = await this.getSearch(searchId);
-      if (this.flattenSearchResults(refreshed).length > 0) {
-        return refreshed;
+    const collectedCount = this.flattenSearchResults(data).length;
+    if (collectedCount > 0 && (fileCount <= 0 || collectedCount >= fileCount)) return data;
+    const hydrationDeadline = Math.min(deadline, Date.now() + 15000);
+    while (Date.now() < hydrationDeadline && !shouldCancel?.()) {
+      const timeout = Math.max(1, Math.min(60000, hydrationDeadline - Date.now()));
+      const [status, payload] = await Promise.allSettled([
+        this.getSearch(searchId, { timeout, signal }),
+        this.getSearchResponses(searchId, { timeout, signal }),
+      ]);
+      const refreshed = status.status === "fulfilled" ? status.value : data;
+      if (this.flattenSearchResults(refreshed).length > collectedCount) return refreshed;
+      if (payload.status === "fulfilled" && payload.value.length > 0) {
+        return { ...refreshed, responses: payload.value };
       }
-      const responses = await this.getSearchResponses(searchId);
-      if (responses.length > 0) {
-        return { ...refreshed, responses };
-      }
+      if (Date.now() >= hydrationDeadline || shouldCancel?.()) break;
+      const failed = [status, payload].find((result) => result.status === "rejected");
+      if (failed) throw failed.reason;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(500, hydrationDeadline - Date.now())));
     }
-
-    const responses = await this.getSearchResponses(searchId);
-    if (responses.length > 0) {
-      return { ...data, responses };
-    }
-    logger.warn("slskd", "slskd search completed with counts but no file payloads", {
-      searchId,
-      responseCount,
-      fileCount,
-    });
+    logger.warn("slskd", "slskd search completed with counts but no file payloads", { searchId, responseCount, fileCount });
     return data;
   }
 
   async waitForSearch(searchId, timeoutMs = DEFAULT_SEARCH_TIMEOUT_MS, options = {}) {
-    const earlyExitWhen =
-      typeof options.earlyExitWhen === "function" ? options.earlyExitWhen : null;
-    const shouldCancel =
-      typeof options.shouldCancel === "function" ? options.shouldCancel : null;
-    const emptyTimeoutMs = Math.max(
-      0,
-      Number(options.emptyTimeoutMs ?? DEFAULT_EMPTY_SEARCH_TIMEOUT_MS),
-    );
-    const activeTimeoutMs =
-      Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
-        ? Number(timeoutMs)
-        : DEFAULT_SEARCH_TIMEOUT_MS;
-    const gracePeriodMs = Math.max(
-      0,
-      Number(options.gracePeriodMs ?? DEFAULT_SEARCH_GRACE_PERIOD_MS),
-    );
+    const { earlyExitWhen, shouldCancel, signal: externalSignal, onSearchSettled } = options;
+    const control = createSearchCancellation(shouldCancel, externalSignal);
+    const signal = control.signal;
+    const emptyTimeoutMs = Math.max(0, Number(options.emptyTimeoutMs ?? DEFAULT_EMPTY_SEARCH_TIMEOUT_MS));
+    const activeTimeoutMs = Number(timeoutMs) > 0 ? Number(timeoutMs) : DEFAULT_SEARCH_TIMEOUT_MS;
+    const gracePeriodMs = Math.max(0, Number(options.gracePeriodMs ?? DEFAULT_SEARCH_GRACE_PERIOD_MS));
     const start = Date.now();
-    let grace = false;
-    let graceUntil = 0;
+    const deadline = Math.min(Number(options.deadline) || Infinity, start + activeTimeoutMs + gracePeriodMs);
     let totalFiles = 0;
     let hasSeenFiles = false;
-    const cancelSearch = async () => {
-      await this.deleteSearch(searchId).catch(() => {});
-      return null;
-    };
-
-    while (true) {
-      if (shouldCancel?.()) {
-        return cancelSearch();
-      }
-
-      let data;
+    let latest = null;
+    const collected = new Map();
+    let eligibilityAssessed = false;
+    let lastEligibility = false;
+    const stopSearch = async () => {
       try {
-        data = await this.getSearch(searchId);
+        const deleted = await this.deleteSearch(searchId, { timeout: Math.max(1, Number(options.cleanupTimeoutMs) || 20000) });
+        if (deleted) onSearchSettled?.(searchId);
+        else logger.warn("slskd", "Could not stop owned search", { searchId });
       } catch (error) {
-        if (shouldCancel?.()) {
-          return cancelSearch();
-        }
-        throw error;
+        logger.warn("slskd", "Could not stop owned search", { searchId, reason: error?.message });
       }
-
-      if (shouldCancel?.()) {
-        return cancelSearch();
-      }
-
-      const flattenedCount = this.flattenSearchResults(data).length;
-      const fileCount = Number(data?.fileCount || data?.FileCount || 0);
-      totalFiles = Math.max(totalFiles, fileCount, flattenedCount);
-      if (totalFiles > 0) {
-        hasSeenFiles = true;
-      }
-      if (earlyExitWhen?.(data)) {
-        return await this.hydrateCompletedSearch(searchId, data);
-      }
-      if (isSearchComplete(data)) {
-        return await this.hydrateCompletedSearch(searchId, data);
-      }
-      if (!isSearchInProgress(data)) {
-        return await this.hydrateCompletedSearch(searchId, data);
-      }
-      const elapsed = Date.now() - start;
-      if (!hasSeenFiles && elapsed >= emptyTimeoutMs) {
-        return await this.hydrateCompletedSearch(searchId, data);
-      }
-      if (hasSeenFiles && elapsed > activeTimeoutMs && !grace) {
-        grace = true;
-        graceUntil = Date.now() + gracePeriodMs;
-      } else if (hasSeenFiles && grace && Date.now() > graceUntil) {
-        return await this.hydrateCompletedSearch(searchId, data);
-      }
-      const progress = Math.min(1, totalFiles / DEFAULT_FILE_LIMIT);
-      let waitMs = (grace ? 1 : calculateQuadraticDelay(progress)) * 1000;
-      if (!hasSeenFiles) {
-        const remainingEmptyMs = emptyTimeoutMs - elapsed;
-        if (remainingEmptyMs <= 0) {
-          return await this.hydrateCompletedSearch(searchId, data);
-        }
-        waitMs = Math.min(waitMs, remainingEmptyMs);
-      } else if (!grace) {
-        const remainingActiveMs = activeTimeoutMs - elapsed;
-        if (remainingActiveMs > 0) {
-          waitMs = Math.min(waitMs, remainingActiveMs);
-        }
+    };
+    const finish = async (data) => {
+      if (isSearchComplete(data) && !this.isCleanupAfterRunsEnabled()) {
+        onSearchSettled?.(searchId);
       } else {
-        const remainingGraceMs = graceUntil - Date.now();
-        if (remainingGraceMs > 0) {
-          waitMs = Math.min(waitMs, remainingGraceMs);
-        }
+        await stopSearch();
       }
-      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      return data;
+    };
+    try {
+      while (true) {
+        if (signal.aborted || shouldCancel?.()) { await stopSearch(); return null; }
+        const cutoff = hasSeenFiles ? deadline : Math.min(deadline, start + emptyTimeoutMs);
+        if (Date.now() >= cutoff) return await finish(latest);
+        let data;
+        try {
+          data = await this.getSearch(searchId, { timeout: Math.max(1, Math.min(60000, cutoff - Date.now())), signal });
+        } catch (error) {
+          if (signal.aborted || shouldCancel?.()) { await stopSearch(); return null; }
+          if (Date.now() >= cutoff) return await finish(latest);
+          throw error;
+        }
+        if (signal.aborted || shouldCancel?.()) { await stopSearch(); return null; }
+        const files = this.flattenSearchResults(data);
+        let eligibilityChanged = false;
+        for (const file of files) {
+          const key = `${file.user}\0${file.file}`;
+          const previous = collected.get(key);
+          if (!previous || Object.keys(file).some((field) => !Object.is(file[field], previous[field]))) {
+            collected.set(key, file);
+            eligibilityChanged = true;
+          }
+        }
+        if (collected.size > files.length) {
+          const responses = new Map();
+          for (const file of collected.values()) {
+            const response = responses.get(file.user) || { username: file.user, files: [] };
+            response.files.push(file);
+            responses.set(file.user, response);
+          }
+          data = { ...data, responses: [...responses.values()] };
+        }
+        data = { ...data };
+        Object.defineProperty(data, NORMALIZED_SEARCH_RESULTS, { value: [...collected.values()] });
+        latest = data;
+        const fileCount = Number(data?.fileCount || data?.FileCount || 0);
+        totalFiles = Math.max(totalFiles, fileCount, files.length);
+        hasSeenFiles ||= totalFiles > 0;
+        if (earlyExitWhen && (!eligibilityAssessed || eligibilityChanged)) {
+          lastEligibility = earlyExitWhen(data);
+          eligibilityAssessed = true;
+        }
+        if (lastEligibility || !isSearchInProgress(data)) {
+          let hydrated = isSearchComplete(data)
+            ? await this.hydrateCompletedSearch(searchId, data, { deadline, shouldCancel, signal })
+            : data;
+          if (signal.aborted || shouldCancel?.()) { await stopSearch(); return null; }
+          if (hydrated !== data) {
+            for (const file of this.flattenSearchResults(hydrated)) collected.set(`${file.user}\0${file.file}`, file);
+            hydrated = { ...hydrated };
+            Object.defineProperty(hydrated, NORMALIZED_SEARCH_RESULTS, { value: [...collected.values()] });
+          }
+          return await finish(hydrated);
+        }
+        const nextCutoff = hasSeenFiles ? deadline : Math.min(deadline, start + emptyTimeoutMs);
+        if (Date.now() >= nextCutoff) return await finish(latest);
+        const progress = Math.min(1, totalFiles / DEFAULT_FILE_LIMIT);
+        const grace = Date.now() >= start + activeTimeoutMs;
+        const waitMs = Math.min((grace ? 1 : calculateQuadraticDelay(progress)) * 1000, nextCutoff - Date.now());
+        await waitSearchDelay(waitMs, signal);
+      }
+    } catch (error) {
+      await stopSearch();
+      throw error;
+    } finally {
+      control.dispose();
     }
   }
 
@@ -545,6 +623,7 @@ export class SlskdClient {
   }
 
   flattenSearchResults(searchData) {
+    if (searchData?.[NORMALIZED_SEARCH_RESULTS]) return searchData[NORMALIZED_SEARCH_RESULTS];
     const results = [];
     const seen = new Set();
     for (const response of readSearchResponses(searchData)) {
@@ -575,12 +654,13 @@ export class SlskdClient {
   }
 
   async searchQuery(searchText, options = {}) {
-    const created = await this.createSearch(searchText, options);
-    const completed = await this.waitForSearch(
-      created.id,
-      Number(options.timeoutMs || DEFAULT_SEARCH_TIMEOUT_MS),
-    );
-    await this.settleSearch(created.id);
+    const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs)
+      : DEFAULT_SEARCH_TIMEOUT_MS + DEFAULT_SEARCH_GRACE_PERIOD_MS;
+    const deadline = Number(options.deadline) || Date.now() + timeoutMs;
+    const created = await this.createSearch(searchText, {
+      ...options, deadline, searchTimeoutMs: Math.min(Number(options.searchTimeoutMs) || timeoutMs, deadline - Date.now()),
+    });
+    const completed = await this.waitForSearch(created.id, timeoutMs, { ...options, deadline });
     return this.flattenSearchResults(completed);
   }
 
@@ -681,11 +761,11 @@ export class SlskdClient {
     return normalizeArrayPayload(response.data);
   }
 
-  async deleteSearch(searchId) {
+  async deleteSearch(searchId, options = {}) {
     const id = String(searchId || "").trim();
     if (!id) return false;
     const client = buildClient(this._config);
-    const response = await client.delete(`/api/v0/searches/${encodeURIComponent(id)}`);
+    const response = await client.delete(`/api/v0/searches/${encodeURIComponent(id)}`, options);
     return [200, 204, 404].includes(response.status);
   }
 

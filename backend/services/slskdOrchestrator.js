@@ -94,9 +94,17 @@ export function buildSlskdSearchTierGroups(resolvedTrack) {
   return buildFlowSearchTiers(resolvedTrack);
 }
 
+function isDeniedSoulseekFile(raw, deniedSourceKeys) {
+  const user = String(raw?.user || "").trim().toLowerCase();
+  const file = String(raw?.file || "").trim().toLowerCase();
+  return deniedSourceKeys?.has(`${user}\0${file}`) === true;
+}
+
 export function hasSlskdSearchCandidates(aggregated, resolvedTrack, searchOptions) {
   if (searchOptions?.albumJobs) {
-    return selectSoulseekAlbumFolder(aggregated, searchOptions.albumJobs).decision === "selectable";
+    return selectSoulseekAlbumFolder(aggregated.filter((raw) =>
+      !isDeniedSoulseekFile(raw, searchOptions.deniedSourceKeys)
+      && !searchOptions.isUserBlacklisted?.(raw.user)), searchOptions.albumJobs).decision === "selectable";
   }
   // Node-only pre-filter: no matcher process is spawned during searches.
   // Soulseek folder plausibility is source evidence, not a fuzzy identity
@@ -108,7 +116,8 @@ export function hasSlskdSearchCandidates(aggregated, resolvedTrack, searchOption
     source: "soulseek",
     candidates: built.candidates,
   })
-    .filter((entry, index) => !entry.rejected && built.providerEvidence[index]?.folder?.plausible)
+    .filter((entry, index) => !entry.rejected && built.providerEvidence[index]?.folder?.plausible
+      && !isDeniedSoulseekFile(entry.candidate.raw, searchOptions?.deniedSourceKeys))
     .map((entry) => entry.candidate);
   const eligible = orderAdvertisedQualityCandidates(prefiltered, {
     profile: searchOptions?.qualityProfile || getQualityProfile(),
@@ -754,15 +763,16 @@ async function runSearchQuery(
   isCancelled = () => false,
   workContext = {},
 ) {
-  const created = await slskdClient.createSearch(query);
-  registerDownloadProviderWork({
-    jobId: workContext.jobId,
-    playlistId: workContext.playlistId,
-    provider: "slskd-search",
-    workId: created.id,
+  const created = await slskdClient.createSearch(query, {
+    shouldCancel: isCancelled,
+    onSearchCreated: (id) => registerDownloadProviderWork({
+      jobId: workContext.jobId, playlistId: workContext.playlistId,
+      provider: "slskd-search", workId: id,
+    }),
+    onSearchSettled: (id) => clearDownloadProviderWork({ provider: "slskd-search", workId: id }),
   });
   const deleteTrackedSearch = async () => {
-    const deleted = await slskdClient.deleteSearch(created.id).catch(() => false);
+    const deleted = await slskdClient.deleteSearch(created.id, { timeout: 20000 }).catch(() => false);
     if (deleted) clearDownloadProviderWork({ provider: "slskd-search", workId: created.id });
     return deleted;
   };
@@ -778,6 +788,7 @@ async function runSearchQuery(
   }
   const completed = await slskdClient.waitForSearch(created.id, undefined, {
     shouldCancel: isCancelled,
+    onSearchSettled: (id) => clearDownloadProviderWork({ provider: "slskd-search", workId: id }),
     earlyExitWhen: (data) =>
       hasSlskdSearchCandidates(
         probeAggregatedResults(aggregated, slskdClient.flattenSearchResults(data), seen),
@@ -785,22 +796,8 @@ async function runSearchQuery(
         searchOptions,
       ),
   });
-  if (isCancelled()) {
-    await deleteTrackedSearch();
-    return [];
-  }
+  if (isCancelled()) return [];
   const results = slskdClient.flattenSearchResults(completed);
-  const shouldCancel = hasSlskdSearchCandidates(
-    probeAggregatedResults(aggregated, results, seen),
-    resolvedTrack,
-    searchOptions,
-  );
-  if (shouldCancel) {
-    await deleteTrackedSearch();
-  } else {
-    await slskdClient.settleSearch(created.id);
-    clearDownloadProviderWork({ provider: "slskd-search", workId: created.id });
-  }
   return results;
 }
 
@@ -820,7 +817,14 @@ async function handleSearch(payload) {
   const currentTier = payload.upgradeForJobId
     ? downloadTracker.getJob(payload.upgradeForJobId)?.qualityTier
     : null;
+  const deniedSources = Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [];
+  const deniedSourceKeys = new Set(
+    deniedSources
+      .filter((entry) => Array.isArray(entry) && entry[0] === "slskd")
+      .map((entry) => String(entry[1] || "").trim().toLowerCase()),
+  );
   const searchOptions = {
+    deniedSourceKeys,
     ...(await getWorkerSearchOptions()),
     qualityProfile: getQualityProfile(),
     currentTier,
@@ -864,15 +868,10 @@ async function handleSearch(payload) {
     job.slskdSearchId = searchIdRef.value;
   }
   if (payload.albumGrab === true) {
-    const selection = selectSoulseekAlbumFolder(aggregated, searchOptions.albumJobs);
+    const selection = selectSoulseekAlbumFolder(aggregated.filter((raw) =>
+      !isDeniedSoulseekFile(raw, deniedSourceKeys)
+      && !searchOptions.isUserBlacklisted?.(raw.user)), searchOptions.albumJobs);
     if (selection.decision !== "selectable") {
-      if (searchIds.length > 0) {
-        await slskdClient.cleanupAfterRun({ searchIds, transfers: [] })
-          .then((result) => clearTrackedSearches(result?.cleanedSearchIds))
-          .catch((error) => logger.warn("slskd", "Album search cleanup failed", {
-            jobId: job.id, reason: safeLogDiagnostic(error),
-          }));
-      }
       return failOrTryNextSource(payload, job, "No selectable Soulseek album folder");
     }
     return {
@@ -931,18 +930,8 @@ async function handleSearch(payload) {
         left.originalOrder - right.originalOrder,
     )
     .map(({ entry }) => entry);
-  const deniedSources = Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [];
-  const deniedSourceKeys = new Set(
-    deniedSources
-      .filter((entry) => Array.isArray(entry) && entry[0] === "slskd")
-      .map((entry) => String(entry[1] || "").trim().toLowerCase()),
-  );
   const filteredPool = deniedSourceKeys.size > 0
-    ? ordered.filter((entry) => {
-        const user = String(entry.candidate?.raw?.user || "").trim().toLowerCase();
-        const file = String(entry.candidate?.raw?.file || "").trim().toLowerCase();
-        return !deniedSourceKeys.has(`${user}\0${file}`);
-      })
+    ? ordered.filter((entry) => !isDeniedSoulseekFile(entry.candidate.raw, deniedSourceKeys))
     : ordered;
   const candidates = selectRankedMatchAttempts(
     filteredPool.map(toPipelineCandidate),
@@ -958,14 +947,6 @@ async function handleSearch(payload) {
       rankedCount: evaluation.evaluations.length,
       eligibleCount: ordered.length,
     });
-    if (searchIds.length > 0) {
-      try {
-        const result = await slskdClient.cleanupAfterRun({ searchIds, transfers: [] });
-        clearTrackedSearches(result?.cleanedSearchIds);
-      } catch (err) {
-        logger.warn("slskd", "Failed to clean up slskd run after empty search", { error: err?.message || String(err) });
-      }
-    }
     return failOrTryNextSource(payload, job, "No suitable slskd search results", {
       queryCount: queries.length,
       rawResultCount: aggregated.length,
