@@ -22,11 +22,15 @@ const [isolatedState, { db }, { dbOps }, libraryStore, provider, indexService] =
   );
 
 const { registerArtists } = await import("../../backend/routes/library/handlers/artists.js");
+const { getArtistLibraryLookup } = await import("../../backend/routes/library/handlers/misc.js");
+const { lidarrClient } = await import("../../backend/services/lidarrClient.js");
 
 const KNOWN_MBID = "55555555-5555-4555-8555-555555555551";
 const OTHER_MBID = "55555555-5555-4555-8555-555555555552";
 const MISSING_MBID = "55555555-5555-4555-8555-555555555553";
 const MATCHED_BY_NAME_MBID = "55555555-5555-4555-8555-555555555554";
+const LINKED_MBID = "55555555-5555-4555-8555-555555555555";
+const LIDARR_MBID = "55555555-5555-4555-8555-555555555556";
 
 let providerAvailable = true;
 let server;
@@ -220,4 +224,24 @@ test("MBID edits are rejected without changing the artist when they cannot be ve
   );
   assert.equal(artistRow(artist.id).mbid, null);
   assert.equal(artistRow(lidarr.artist.id).mbid, null);
+});
+
+test("the Discover lookup points to the library artist whether or not Lidarr manages it", async (t) => {
+  const indexed = createArtist("Indexed Only Artist", { mbid: LINKED_MBID });
+  const managed = createArtist("Lidarr Managed Artist", { mbid: LIDARR_MBID, metadata: { id: 4242 } });
+  const lidarrArtist = { id: 4242, foreignArtistId: LIDARR_MBID, artistName: "Lidarr Managed Artist" };
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  t.mock.method(lidarrClient, "getArtistByMbid", async (mbid) =>
+    mbid === LIDARR_MBID ? lidarrArtist : null);
+  t.mock.method(lidarrClient, "request", async () => []);
+
+  const indexedLookup = await getArtistLibraryLookup(LINKED_MBID);
+  const managedLookup = await getArtistLibraryLookup(LIDARR_MBID);
+  const missingLookup = await getArtistLibraryLookup(MISSING_MBID);
+
+  assert.equal(indexedLookup.exists, false);
+  assert.equal(indexedLookup.libraryArtistId, String(indexed.artist.id));
+  assert.equal(managedLookup.exists, true);
+  assert.equal(managedLookup.libraryArtistId, String(managed.artist.id));
+  assert.equal(missingLookup.libraryArtistId, null);
 });

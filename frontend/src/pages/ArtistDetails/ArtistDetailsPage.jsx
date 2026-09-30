@@ -253,15 +253,12 @@ function ArtistDetailsPage() {
     locationState,
   });
 
-  const libraryCanonicalLookup = useQuery({
+  const libraryLookup = useQuery({
     queryKey: queryKeys.libraryLookupDetails(mbid),
     queryFn: ({ signal }) => lookupArtistInLibrary(mbid, { signal }),
-    enabled: Boolean(mbid && existsInLibrary && !libraryArtist?.canonicalId),
-    staleTime: 15_000,
+    enabled: false,
   });
-  const libraryCanonicalId =
-    existsInLibrary &&
-    (libraryArtist?.canonicalId || libraryCanonicalLookup.data?.artist?.canonicalId || null);
+  const libraryCanonicalId = libraryLookup.data?.libraryArtistId || null;
 
   const preview = usePreviewPlayer(mbid, artistNameFromNav, artist);
   const {

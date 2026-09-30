@@ -81,6 +81,7 @@ export async function getArtistLibraryLookup(mbid) {
     mbids: [mbid],
   });
   const artist = artists.find((candidate) => candidate.mbid === mbid);
+  const libraryArtistId = artist ? String(artist.canonicalId ?? artist.id) : null;
   const aurralArtist = getCanonicalArtistProjection({ reference: mbid })
     .find((candidate) => candidate.mbid === mbid && candidate.managedBy === "aurral");
   if (aurralArtist) {
@@ -89,6 +90,7 @@ export async function getArtistLibraryLookup(mbid) {
       artist: toLibraryArtist(aurralArtist),
       albums: albums.filter((album) => album.artistMbid === mbid).map(toLibraryAlbum),
       canonical: true,
+      libraryArtistId,
     };
   }
   const { lidarrClient } = await import("../../../services/lidarrClient.js");
@@ -122,6 +124,7 @@ export async function getArtistLibraryLookup(mbid) {
       artist: toLibraryArtist(libraryManager.mapLidarrArtist(lidarrArtist)),
       albums: lidarrAlbums,
       canonical: true,
+      libraryArtistId,
     };
   }
   if (lidarrArtist === undefined && artist && (!lidarrConfigured || artist.lidarrManaged)) {
@@ -130,6 +133,7 @@ export async function getArtistLibraryLookup(mbid) {
       artist: toLibraryArtist(artist),
       albums: albums.filter((album) => album.artistMbid === mbid).map(toLibraryAlbum),
       canonical: true,
+      libraryArtistId,
     };
   }
   return {
@@ -137,6 +141,7 @@ export async function getArtistLibraryLookup(mbid) {
     artist: null,
     albums: [],
     canonical: true,
+    libraryArtistId,
   };
 }
 

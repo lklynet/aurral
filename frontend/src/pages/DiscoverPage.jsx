@@ -396,7 +396,7 @@ function DiscoverPage() {
       if (!artistId) return;
       try {
         const lookup = await lookupArtistInLibrary(artistId);
-        const canonicalId = lookup?.artist?.canonicalId;
+        const canonicalId = lookup?.libraryArtistId;
         if (!canonicalId) throw new Error("Library artist was not found");
         navigate(`/library/artist/${encodeURIComponent(canonicalId)}`);
         return true;
