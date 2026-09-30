@@ -40,9 +40,9 @@ const normalizeArtistKey = (value) =>
     .trim()
     .toLowerCase();
 
-export const getBlockedArtistKeys = (userId = "global") => {
+export const getBlockedArtistKeys = (userId = "global", feedback = getDiscoveryFeedback(userId)) => {
   const keys = new Set();
-  for (const entry of getDiscoveryFeedback(userId)) {
+  for (const entry of feedback) {
     if (entry.action !== "block_artist") continue;
     const artistId = normalizeArtistKey(entry.artistId);
     const artistName = normalizeArtistKey(entry.artistName);
@@ -74,8 +74,7 @@ const artistMatchesBlockedKeys = (artist, blockedKeys) => {
   return artistKeys.some((key) => blockedKeys.has(key));
 };
 
-export const filterBlockedArtistsForUser = (userId = "global", artists = []) => {
-  const blockedKeys = getBlockedArtistKeys(userId);
+export const filterBlockedArtistsForUser = (userId = "global", artists = [], blockedKeys = getBlockedArtistKeys(userId)) => {
   if (blockedKeys.size === 0) return Array.isArray(artists) ? artists : [];
   return (Array.isArray(artists) ? artists : []).filter(
     (artist) => !artistMatchesBlockedKeys(artist, blockedKeys),

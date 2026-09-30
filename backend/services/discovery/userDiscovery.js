@@ -4,11 +4,12 @@ import {
   getDiscoveryPlaylistBuildStatus,
   getDiscoveryMode,
   getDiscoveryFeedback,
+  getBlockedArtistKeys,
   filterBlockedArtistsForUser,
   serveCachedRecommendations,
 } from "./index.js";
 import { getLastfmApiKey } from "../apiClients/index.js";
-import { iterateCanonicalArtistProjection } from "../libraryQueryService.js";
+import { getCanonicalArtistKeyProjection } from "../libraryQueryService.js";
 import { userOps } from "../../db/helpers/index.js";
 import {
   DISCOVERY_PROVIDER_LASTFM,
@@ -29,7 +30,7 @@ import { getTopPlayedArtists } from "../playEventService.js";
 
 export async function getUserDiscovery(userId, limit = 50, offset = 0) {
   const hasLastfmKey = !!getLastfmApiKey();
-  const libraryArtists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
+  const libraryArtists = getCanonicalArtistKeyProjection();
 
   const reqUser = userOps.getUserById(userId);
   const externalListenHistoryProfile = getListenHistoryProfile(reqUser || {});
@@ -73,6 +74,7 @@ export async function getUserDiscovery(userId, limit = 50, offset = 0) {
     : provider || DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK;
   capabilities = capabilities || getDiscoveryCapabilities(hasLastfmKey);
   const feedback = getDiscoveryFeedback(userId || "global");
+  const blockedKeys = getBlockedArtistKeys(userId || "global", feedback);
   const discoveryMode = getDiscoveryMode();
 
   const existingArtistKeys = buildArtistKeySet(libraryArtists);
@@ -107,7 +109,7 @@ export async function getUserDiscovery(userId, limit = 50, offset = 0) {
   })];
   fallbackGenres = (Array.isArray(fallbackGenres) ? fallbackGenres : []).map((section) => ({
     ...section,
-    artists: filterBlockedArtistsForUser(userId || "global", section?.artists || []),
+    artists: filterBlockedArtistsForUser(userId || "global", section?.artists || [], blockedKeys),
   }));
 
   const parsedLastUpdated = lastUpdated ? new Date(lastUpdated).getTime() : 0;
@@ -128,7 +130,7 @@ export async function getUserDiscovery(userId, limit = 50, offset = 0) {
     await import("./playlistBuilder.js");
   const playlists = annotateDiscoverPlaylistsForUser(discoverPlaylists, userId)
     .map((playlist) => {
-      const tracks = filterBlockedArtistsForUser(userId || "global", playlist.tracks || []);
+      const tracks = filterBlockedArtistsForUser(userId || "global", playlist.tracks || [], blockedKeys);
       return {
         ...playlist,
         tracks,
