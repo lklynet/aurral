@@ -1,0 +1,60 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
+
+const [state, { dbOps }, { flowPlaylistConfig }, { downloadTracker }, { processOrchestratorJob }, guards, cancellation] = await setupIsolatedBackend(
+  "download-mutation-lock", "backend/db/helpers/index.js", "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
+  "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js", "backend/services/slskdOrchestratorWorker.js",
+  "backend/services/weeklyFlow/weeklyFlowMutationGuards.js", "backend/services/weeklyFlow/weeklyFlowDownloadCancellation.js",
+);
+test.after(() => cleanupIsolatedState(state));
+const deferred = () => Promise.withResolvers();
+
+test("playlist mutation waits for the active provider stage before changing ownership", async () => {
+  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Owner" });
+  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Track" }, playlist.id);
+  const started = deferred();
+  const release = deferred();
+  const processing = processOrchestratorJob({ jobId, playlistId: playlist.id, playlistGeneration: 0 }, {
+    async processPipelinePayload() { started.resolve(); await release.promise; return null; },
+    async continuePipeline() {},
+  });
+  await started.promise;
+  let mutated = false;
+  const mutation = guards.withPlaylistMutationLock(playlist.id, () => { mutated = true; });
+  try {
+    await new Promise(setImmediate);
+    assert.equal(mutated, false);
+  } finally {
+    release.resolve();
+    await processing;
+    await mutation;
+  }
+  assert.equal(mutated, true);
+});
+
+test("pipeline commit can reuse a live playlist lock", { timeout: 2000 }, async () => {
+  const result = await guards.withPlaylistMutationLock("nested", () => cancellation.withPipelineCommitLock({ playlistId: "nested", playlistGeneration: 0 }, () => "committed"));
+  assert.deepEqual(result, { cancelled: false, result: "committed" });
+});
+
+test("an escaped async context cannot reuse a released lease", async () => {
+  const escaped = deferred();
+  const release = deferred();
+  let delayed;
+  await guards.withPlaylistMutationLock("lease", async () => {
+    delayed = escaped.promise.then(() => guards.withPlaylistMutationLock("lease", () => "late"));
+  });
+  const entered = deferred();
+  const holder = guards.withPlaylistMutationLock("lease", async () => { entered.resolve(); await release.promise; });
+  await entered.promise;
+  let completed = false;
+  delayed.then(() => { completed = true; });
+  escaped.resolve();
+  await new Promise(setImmediate);
+  assert.equal(completed, false);
+  release.resolve();
+  await holder;
+  assert.equal(await delayed, "late");
+});

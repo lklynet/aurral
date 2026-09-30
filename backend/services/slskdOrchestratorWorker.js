@@ -13,8 +13,9 @@ import { isAnyDownloadSourceConfigured } from "./downloadSourceService.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
 import { recordAlbumGrabQueued, recordAlbumGrabPhase } from "./albumGrabActivity.js";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
+import { withDownloadPayloadMutation } from "./weeklyFlow/weeklyFlowMutationGuards.js";
 
-export async function processOrchestratorJob(payload, dependencies = {}) {
+async function processLockedOrchestratorJob(payload, dependencies = {}) {
   const processPayload = dependencies.processPipelinePayload || processPipelinePayload;
   const continuePayload = dependencies.continuePipeline || continuePipeline;
   const failPayload = dependencies.failPipelineJob || failPipelineJob;
@@ -40,6 +41,10 @@ export async function processOrchestratorJob(payload, dependencies = {}) {
     });
     await failPayload(payload, message);
   }
+}
+
+export function processOrchestratorJob(payload, dependencies = {}) {
+  return withDownloadPayloadMutation(payload, (current) => processLockedOrchestratorJob(current, dependencies));
 }
 
 const {
@@ -68,7 +73,7 @@ const {
       message,
       stack: error?.stack || null,
     });
-    return failPipelineJob(job.payload, message);
+    return withDownloadPayloadMutation(job.payload, (payload) => failPipelineJob(payload, message));
   },
 });
 

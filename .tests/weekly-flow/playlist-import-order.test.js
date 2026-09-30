@@ -1038,7 +1038,10 @@ test("ListenBrainz sync uses the shared import update path", async (t) => {
       force: true,
     });
 
-    assert.deepEqual(flowPlaylistConfig.getSharedPlaylist(playlist.id).tracks, [
+    const syncedTracks = flowPlaylistConfig.getSharedPlaylist(playlist.id).tracks;
+    assert.ok(syncedTracks[0].membershipId);
+    assert.notEqual(syncedTracks[0].membershipId, playlist.tracks[0].membershipId);
+    assert.deepEqual(syncedTracks.map(({ membershipId: _membershipId, ...track }) => track), [
       {
         artistName: "New Artist",
         trackName: "New Song",

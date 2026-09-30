@@ -13,6 +13,7 @@ import {
 } from "./playlistDownloadUtils.js";
 import { finalizePipelineJobSuccess } from "./pipelineHelpers.js";
 import { isPipelinePayloadActive, withPipelineCommitLock } from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
+import { downloadDestinationForJob } from "./weeklyFlow/weeklyFlowDownloadOwnership.js";
 
 const NOT_IN_ALBUM_REASON = "Track was not in the album download";
 
@@ -80,11 +81,12 @@ export async function finishAlbumGrab(payload, { filePaths, source, album = null
   for (const match of assigned.accepted) {
     const job = downloadTracker.getJob(match.jobId);
     if (!job || !["pending", "downloading"].includes(job.status)) continue;
-    const peerPayload = { ...payload, jobId: job.id, playlistGeneration: job.playlistGeneration };
+    const peerPayload = { ...payload, jobId: job.id, playlistId: job.playlistId || job.playlistType,
+      playlistGeneration: job.playlistGeneration, destination: downloadDestinationForJob(job) };
     if (!isPipelinePayloadActive(peerPayload)) continue;
     try {
       const ext = path.extname(match.filePath).toLowerCase() || ".flac";
-      const destination = joinUnderRoot(playlistRoot, payload.destination);
+      const destination = joinUnderRoot(playlistRoot, peerPayload.destination);
       const finalPath = path.join(destination, `${sanitizePathPart(job.trackName, "Unknown Track")}${ext}`);
       const committed = await withPipelineCommitLock(peerPayload, async () => {
         await writeAudioMetadata(match.filePath, buildResolvedPlaylistTrack(job));

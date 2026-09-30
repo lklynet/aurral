@@ -3,6 +3,10 @@ import { weeklyFlowWorker } from "./weeklyFlowWorker.js";
 import { withHonkerLock } from "../honkerDb.js";
 import { isFlowOwnerProcess, requestFlowOwner } from "./weeklyFlowOwnerClient.js";
 import { logger } from "../logger.js";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { resolveTransferredDownloadPayload } from "./weeklyFlowDownloadOwnership.js";
+
+const mutationLeases = new AsyncLocalStorage();
 
 const normalizePlaylistTypes = (playlistTypes) => [
   ...new Set(
@@ -93,7 +97,51 @@ export async function withPlaylistMutation(playlistTypes, operation, options = {
 
 export async function withPlaylistMutationLock(playlistTypes, operation) {
   const types = normalizePlaylistTypes(playlistTypes);
-  return withPlaylistLocks(types, operation);
+  const current = mutationLeases.getStore();
+  if (current?.active) {
+    if (types.every((type) => current.types.has(type))) return operation();
+    const error = new Error("The download owner changed while holding playlist locks");
+    error.code = "DOWNLOAD_LOCK_SET_CHANGED";
+    throw error;
+  }
+  return withPlaylistLocks(types, async () => {
+    const lease = { active: true, types: new Set(types) };
+    return mutationLeases.run(lease, async () => {
+      try {
+        return await operation();
+      } finally {
+        lease.active = false;
+      }
+    });
+  });
+}
+
+function payloadOwners(payload) {
+  const owners = [payload?.playlistId];
+  for (const id of [payload?.jobId, ...(payload?.albumGroupJobIds || [])]) {
+    const job = downloadTracker.getJob(id);
+    if (job) owners.push(job.playlistId || job.playlistType);
+  }
+  return normalizePlaylistTypes(owners);
+}
+
+export async function withDownloadPayloadMutation(payload, operation) {
+  while (true) {
+    const owners = payloadOwners(resolveTransferredDownloadPayload(payload));
+    try {
+      return await withPlaylistMutationLock(owners, () => {
+        const current = resolveTransferredDownloadPayload(payload);
+        if (!payloadOwners(current).every((owner) => owners.includes(owner))) {
+          const error = new Error("Download ownership changed before mutation");
+          error.code = "DOWNLOAD_LOCK_SET_CHANGED";
+          throw error;
+        }
+        return operation(current);
+      });
+    } catch (error) {
+      if (error.code !== "DOWNLOAD_LOCK_SET_CHANGED" || mutationLeases.getStore()?.active) throw error;
+    }
+  }
 }
 
 export async function restartWorkerIfPending() {
