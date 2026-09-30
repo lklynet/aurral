@@ -1,55 +1,80 @@
 ---
 title: Activity
-description: Track downloads, album requests, and Aurral playlist jobs.
+description: Follow downloads, album requests, and playlist jobs, and fix missing tracks.
 ---
 
-Activity replaces the older Requests and Downloads views. It has two views:
+**Activity** shows the work that Aurral does for you. It has two views:
 
-- **Queue**: album requests, queued or active downloads, playlist imports, and tracks waiting for review
-- **History**: completed, denied, and failed events
+- **Queue** lists album requests, queued and active downloads, playlist imports, and tracks that wait for your review.
+- **History** lists finished, denied, and failed work.
 
-The **Wanted** section combines Aurral-owned tracks that need another search with
-files that do not meet the configured quality cutoff.
+**Wanted** in the sidebar lists Aurral tracks that need more work. It has two filters:
 
-Use the **Missing** and **Cutoff unmet** links under **Wanted** to switch between
-those two filters.
+- **Missing** lists tracks whose download failed.
+- **Cutoff unmet** lists tracks with files below your quality cutoff.
 
 ![Aurral activity timeline](../../../assets/screenshots/history.webp)
 
-Use **Queue** to see queued and active downloads and processes, including playlist imports that have not started yet. Review items stay in this list because they are queued for your decision. A duration or identity mismatch can remain here for preview, approval, or denial.
+To see the details of any row in Activity or Wanted, select its info action.
 
-Select **Open** on a queued track that Aurral is downloading for an album to go to that album. Its page shows the download state and lets you cancel or retry.
+## Queue
 
-When Aurral attempts a full-album grab, Activity groups its tracks under one
-album row. Expand the row to see each track's status and review controls. The
-album shows how many tracks are ready and stays in Queue while any track is
-active or waiting for review. Its History row shows Completed only when every
-track is ready; failed or missing tracks leave it incomplete.
+**Queue** shows active work, including playlist imports that have not started yet. A track stays in the queue when it waits for your decision, for example when its duration or identity is unclear.
 
-If the album grab falls back to individual downloads, those tracks stay in the
-same row. The info action shows the fallback reason and download sources.
-Requests that download only track by track keep their individual rows.
+For a track that Aurral downloads for an album, select **Open** to go to the album page. That page shows the download state and lets you cancel or retry.
 
-Use the review controls in **Queue** when you must listen to a track before import. Use **History** to see completed and failed events.
+### Album downloads
 
-Each review row shows the requested track, artist, album, and remote file path. It also shows the match scores and duration.
+When Aurral downloads a whole album release at once, Activity shows its tracks in one album row. Expand the row to see each track's status and review controls.
 
-Aurral keeps a possible match for review if the duration is not correct. It does not immediately try another source.
+- The row shows how many tracks are ready.
+- The row stays in **Queue** while any track is active or waits for review.
+- In **History**, the row shows **Completed** only when every track is ready. A failed or missing track leaves the album incomplete.
 
-When an album request sent to Lidarr fails, you can retry the search from History when the entry supports it. For an album that Aurral manages, use **Retry** on the album page.
+If Aurral falls back to downloading tracks one by one, those tracks stay in the same album row. The info action shows the reason for the fallback and the download sources. A request that only ever downloads track by track shows one row for each track.
 
-Use the search action on a Wanted row to re-search a failed Aurral operation or
-search for a quality upgrade. Wanted includes every Aurral-owned Library track,
-whichever playlists use it, and tracks from the flows you can open.
+### Review a track
 
-Use **Search all** to re-search every missing track or queue upgrade searches
-for every cutoff-unmet track in the active Wanted view. Cutoff rows change to
-**Upgrade queued** immediately and keep that state after a page refresh. Follow
-the active searches in **Queue** and their result in **History**.
+Aurral holds a download for review when the file looks like the requested track but its duration is wrong. It does not try another source at once.
 
-Use the info action on any activity or Wanted row to inspect the operation
-details without leaving the page.
+Each review row shows the requested track, artist, and album, the path of the downloaded file, the match scores, and the duration. Preview the track, then approve or deny it.
 
-Album requests store the requester. Activity can show the requester, and external tools can filter requests by user. If you use Lidarr, its import webhook can also mark a requested album as available as soon as Lidarr imports it.
+## History
 
-See [yt-dlp](/integrations/ytdlp/), [slskd](/integrations/slskd/), and [Usenet](/integrations/usenet/) for download client setup.
+**History** shows finished, denied, and failed work.
+
+When an album request to Lidarr fails, you can retry the search from **History** if the row offers it. For an album that Aurral manages, use **Retry** on the album page.
+
+Aurral stores who requested each album. Activity can show the requester, and other tools can filter requests by user. If you use Lidarr, its import webhook can mark a requested album as available as soon as Lidarr imports it. See [Lidarr](/integrations/lidarr/#request-availability-notifications).
+
+## Wanted
+
+**Wanted** includes every Library track that Aurral manages, the tracks in your playlists, and the tracks in the flows that you can open.
+
+- To search again for one missing track, select **Re-search track** on its row.
+- To search for a better file for one track, select **Search for upgrade** on its row in **Cutoff unmet**.
+- To search for every track in the current filter, select **Search all**.
+
+A row in **Cutoff unmet** changes to **Upgrade queued** at once, and keeps that state after a page refresh. Follow the searches in **Queue** and their results in **History**.
+
+### Choose a download yourself
+
+Automatic search picks a result for you. When it picks the wrong one, or none, you can choose the file yourself.
+
+1. In **Wanted > Missing**, select **Choose a download manually** on a track.
+2. In **Download client**, select a client. The list shows the configured clients: Soulseek, deemix, yt-dlp, and Usenet through SABnzbd or NZBGet.
+3. Select **Search**. Aurral shows up to 100 results from that client.
+4. Select one result, then select **Download selected**.
+
+To replace a finished track in a flow or static playlist, right-click it and select **Re-search > Manual**. The same window opens.
+
+A manual choice works differently from an automatic search:
+
+- Aurral downloads only the result that you chose. If that download fails, the job fails. Aurral does not try other results or other clients.
+- Aurral does not check the title, artist, album, or duration of the file.
+- Aurral still requires readable audio with a known quality. It accepts quality tiers that your profile turns off.
+- Search results expire after 10 minutes. If they expire, search again.
+
+## Download client setup
+
+See [yt-dlp](/integrations/ytdlp/), [slskd](/integrations/slskd/), [deemix](/integrations/deemix/), and [Usenet](/integrations/usenet/).

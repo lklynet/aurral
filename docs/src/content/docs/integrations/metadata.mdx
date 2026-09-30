@@ -1,24 +1,21 @@
 ---
 title: Metadata and search
-description: Aurral Search and metadata hydration settings.
+description: Where Aurral gets artist and album data, and how to point it at another metadata server.
 ---
 
-Aurral uses hosted services for artist pages, album details, and catalog search. Aurral uses fallback services if the primary services fail.
+Aurral gets artist pages, album details, release dates, genres, and catalog search from BrainzMash, a hosted service built on MusicBrainz data. Most installations need no setup.
 
-## Defaults
+When BrainzMash has no data for an item, Aurral asks other services. For example, it uses Deezer for artist images and previews, and Last.fm for tags. It uses the Deezer ID from the BrainzMash links when one exists, so it does not have to search Deezer by name.
 
-Most installs use Aurral's hosted metadata and search backends with no extra configuration.
+## Use another metadata server
 
-## Custom providers
+To use your own BrainzMash server:
 
-Admins can configure metadata hydration and the Aurral Search catalog backend at `/settings/metadata`.
+1. Open `/settings/metadata`. This page is not in the Settings navigation.
+2. Enter the server address in **Base URL**.
 
-The metadata page does not appear in the main settings navigation.
-
-Use custom providers when you self-host search infrastructure or need alternate metadata sources.
+Leave **Base URL** empty to use the hosted service. You can also set the address with the `BRAINZMASH_BASE_URL` environment variable. A value in Settings takes precedence.
 
 ## Sponsorship
 
-Hosted metadata and search services run on personal infrastructure. These services can sometimes be unavailable.
-
-[Sponsor Aurral](/sponsorship/) to help keep these services reliable.
+The hosted metadata service runs on the maintainer's own infrastructure and can be unavailable at times. [Sponsor Aurral](/sponsorship/) to help keep it reliable.

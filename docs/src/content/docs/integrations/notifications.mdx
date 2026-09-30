@@ -1,62 +1,59 @@
 ---
 title: Notifications (Gotify and webhooks)
-description: Get alerts when flows finish, discovery updates, and album requests change.
+description: Send alerts when discovery updates, a flow finishes, or an album request changes.
 ---
 
-Aurral can send a notification when a Flow download completes. It can also send one when daily recommendations are ready, when a user requests an album, and when that album becomes available.
+Aurral can send a notification for these events:
 
-Two delivery methods are available. You can use one or both.
+- **Discover updated**: the daily recommendation refresh finished.
+- **Weekly flow finished**: a flow finished its downloads. The message includes the number of finished and failed tracks.
+- **Request made**: a user requested an album.
+- **Request available**: a requested album was downloaded, or was already on disk.
+
+Aurral can send notifications to Gotify, to webhooks, or to both. Gotify and webhooks have separate event switches. Aurral does not send an event that is turned off, even when a webhook URL exists.
 
 ## Gotify
 
-Gotify is a self-hosted push notification server. Configure it in **Settings > Connect**. Gotify and webhooks have separate event toggles, so configure each delivery method independently.
+Gotify is a self-hosted push notification server.
 
-Enter these values:
-- **Server URL**: the base URL Aurral can reach (for example, `http://gotify:8888` in Docker)
-- **App token**: the token for a Gotify application
-
-Toggle which events fire:
-- **Notify when discovery updates**: sends a notification when the daily recommendation refresh finishes
-- **Notify when weekly flow finishes**: sends a notification with the number of completed and failed tracks
-- **Notify when a request is made**: sends a notification when a user requests an album
-- **Notify when a request is available**: sends a notification when a requested album is downloaded or already on disk
-
-Select **Test notification** on the Gotify card to test the connection.
+1. Open **Settings > Connect > Gotify**.
+2. Set **Server URL** to a Gotify address that Aurral can reach, for example `http://gotify:8888` in Docker.
+3. Enter the **Application token** of a Gotify application.
+4. Under **Notification events**, turn on the events that you want.
+5. Select **Test notification**.
 
 ## Webhooks
 
-Webhooks send an HTTP request for each enabled event. Configure them in the **Webhooks** section under **Settings > Connect**.
+A webhook sends one HTTP request for each event. Configure webhooks in the **Webhooks** section of **Settings > Connect**. Each webhook has these fields:
 
-Enter these values for each webhook:
-- **URL**: the endpoint to call (must start with `http://` or `https://`)
-- **Body**: optional JSON data. Use these placeholders:
-  - `$flowName`: playlist display name
-  - `$flowPath`: on-disk Aurral media path. For a Flow, this is `_flows/<flow-id>`; for a static playlist, it is the Downloads Folder root.
-  - `$albumName`, `$artistName`, `$username`, `$userId`, and `$event` for request events
-- **Headers**: optional key-value pairs
+- **URL**: the endpoint to call. It must start with `http://` or `https://`.
+- **Body**: optional JSON. Leave it blank to send a `GET` request. Enter a body to send a `POST` request.
+- **Headers**: optional header names and values.
 
-Leave **Body** blank to send a GET request. Enter a body to send a POST request.
+The body can use these placeholders:
 
-Toggle which events fire for your webhooks:
-- **Notify when discovery updates**
-- **Notify when weekly flow finishes**
-- **Notify when a request is made**
-- **Notify when a request is available**
+| Placeholder | Value |
+| --- | --- |
+| `$flowName` | The playlist name |
+| `$flowPath` | The media path. For a flow, `_flows/<flow-id>`. For a static playlist, the Downloads Folder. |
+| `$albumName`, `$artistName` | The requested album and its artist |
+| `$username`, `$userId` | The user who requested the album |
+| `$event` | The event name |
 
-Aurral does not send events that you turn off, even if you configured webhook URLs.
+The album, user, and event placeholders apply to request events.
 
-Select **Test webhook** on a webhook card to send that webhook's current URL,
-body, and headers immediately. The test does not depend on the notification
-event switches and does not save the settings. A blank body sends a `GET`
-request. A body sends a `POST` request with the same placeholder interpolation
-used by notification events.
+Under **Notification events** in the same tab, turn on the events that your webhooks send.
 
-Test requests use these placeholder values:
+### Test a webhook
 
-- `$event`: `webhookTest`
-- `$flowName`: `Aurral webhook test`
-- `$flowPath`: `/aurral/test-webhook`
-- `$albumName`: `Test album`
-- `$artistName`: `Test artist`
-- `$username`: `webhook-test-user`
-- `$userId`: `webhook-test-user`
+Select **Test webhook** on a webhook card. Aurral sends the current URL, body, and headers at once. The test ignores the event switches and does not save the settings. It fills the placeholders with these values:
+
+| Placeholder | Test value |
+| --- | --- |
+| `$event` | `webhookTest` |
+| `$flowName` | `Aurral webhook test` |
+| `$flowPath` | `/aurral/test-webhook` |
+| `$albumName` | `Test album` |
+| `$artistName` | `Test artist` |
+| `$username` | `webhook-test-user` |
+| `$userId` | `webhook-test-user` |

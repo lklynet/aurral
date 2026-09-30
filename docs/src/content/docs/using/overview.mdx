@@ -1,9 +1,9 @@
 ---
 title: App overview
-description: Main sections of the Aurral interface.
+description: The main sections of the Aurral interface.
 ---
 
-Aurral is a self-hosted app for music discovery and playback. It keeps a canonical index of readable Aurral and optional Lidarr library files.
+Aurral indexes the music in its Downloads Folder and, if you connect Lidarr, in the Lidarr root folders. This page describes each part of the app.
 
 ## Main sections
 
@@ -11,99 +11,98 @@ Aurral is a self-hosted app for music discovery and playback. It keeps a canonic
 
 ![Aurral Discover page](../../../assets/screenshots/discover.webp)
 
-Discover shows recommendations, trends, tags, recent releases, playlists, new artists, and nearby shows.
-
-Each user can select and arrange the sections.
+Discover shows recommendations, trending artists, tags, recent and upcoming releases, discover playlists, artist news, and nearby shows. Each user chooses which sections appear and in what order. See [Discover](/using/discover/).
 
 ### Inbox
 
-The Inbox icon beside the profile menu collects library-based release updates, nearby shows, optional artist news, and personalized discoveries. It keeps read, saved, dismissed, and added state per user.
+The bell icon beside the profile menu opens the Inbox. It collects new releases from library artists, nearby shows, artist news, and new discoveries. Each user has their own read, saved, dismissed, and added state. See [Inbox](/using/inbox/).
 
 ### Search
 
 ![Aurral search results](../../../assets/screenshots/search.webp)
 
-Use Search to find artists, albums, and tags. You can preview tracks, check library status, open a canonical Library page, and add items to Aurral or Lidarr.
+Search finds artists, albums, and tags. From the results, you can preview tracks, see what is already in the Library, and add an artist or album.
 
 ### Library
 
-Library shows the canonical music index built from readable Aurral and Lidarr files. It includes search, sort controls, artwork, favorites, playable tracks, missing-file states, and artist and album pages. Artist and album actions use the selected library manager. Aurral-owned files stay under the Downloads Folder, and Lidarr-owned files stay under the Lidarr root.
+Library lists the artists, albums, and tracks that Aurral has indexed. You can search, sort, play tracks, mark favorites, and open artist and album pages. See [Library](/using/library/).
 
-Artists managed by Aurral can be monitored without Lidarr. Aurral only picks up official albums and EPs. It skips singles, live albums, compilations, and other releases with a secondary type. The monitor options work like this:
+Each artist and album has one library manager, Aurral or Lidarr:
 
-- **All albums** and **Missing albums** download every album that is not complete yet.
-- **Latest album** and **First album** download the newest or oldest album.
-- **Future albums** downloads only albums released after you start monitoring.
-- **None** stops new downloads and keeps what you already have.
+- Aurral keeps its files in the Downloads Folder. Aurral searches for and downloads them.
+- Lidarr keeps its files in its root folders. Lidarr searches for and downloads them.
 
-After you change an artist's monitoring, Aurral reports how many albums it queued and why it skipped others. If it cannot load the artist's releases, it tells you and leaves the monitoring as it was.
+Artist and album pages have a Discover view and a Library view. Select **Open in library** or **Open in Discover** to switch between them.
 
-Aurral checks monitored artists for new releases once a day. Albums that Lidarr manages are left to Lidarr. To stop monitoring a single album, turn off **Monitored** on its Library page. If the album has unfinished downloads, Aurral asks first, then cancels them and keeps the tracks it already downloaded. That album stays unmonitored when the artist's monitoring changes. The **Existing albums** option applies only to Lidarr.
+Aurral can also monitor the artists that it manages and download their new albums. See [Monitor Aurral artists](/using/library/#monitor-aurral-artists).
 
 ### Playlists and Flows
 
 ![Aurral playlists](../../../assets/screenshots/playlists.webp)
 
-Library > Playlists contains static playlists, in-app playback, and their
-download status. Flows is a separate section for scheduled discovery mixes.
+**Library > Playlists** holds your static playlists and their download status. **Flows** in the sidebar holds your scheduled discovery mixes.
 
-Flows regenerate on a schedule. Static playlists keep fixed tracklists or synchronize with Spotify, Last.fm, or ListenBrainz. You can play canonical Library tracks and accessible flow or playlist tracks in Aurral. Navidrome, Plex, and other Subsonic clients are optional destinations.
+A flow builds a new tracklist on a schedule. A static playlist keeps a fixed tracklist, or follows a Spotify, YouTube Music, Last.fm, or ListenBrainz playlist. You can play both in Aurral. Navidrome, Plex, Jellyfin, and other Subsonic clients are optional. See [Playlists overview](/using/playlists/).
 
-### Activity
+### News
+
+**News** in the sidebar lists recent stories from your RSS feeds that mention library artists or recommended artists. An admin turns on news in **Settings > RSS news**.
+
+### Activity and Wanted
 
 ![Aurral activity timeline](../../../assets/screenshots/history.webp)
 
-When Lidarr is configured, Activity shows its requests alongside download client activity and Aurral playlist jobs.
+**Activity** shows downloads, album requests, and playlist jobs. **Queue** lists active work and tracks that wait for your review. **History** lists finished, denied, and failed work.
 
-Queue combines active work with tracks waiting for review. History shows completed and failed events. Wanted shows Aurral-owned tracks that need another search or a quality upgrade.
+**Wanted** lists Aurral tracks that are missing or below your quality cutoff. From there, you can search again, choose a download yourself, or search for an upgrade. See [Activity](/using/activity/).
 
 ### Blocklist
 
-Manage the artists that Aurral excludes from recommendations, playlist previews, and future playlist downloads.
+The blocklist holds the artists that you excluded. Aurral removes them from recommendations, playlist previews, and future playlist downloads.
 
 ### Shows
 
 ![Aurral nearby shows](../../../assets/screenshots/shows.webp)
 
-When you configure Ticketmaster, this section shows nearby concerts for specified artists.
+When an admin configures Ticketmaster, **Shows** lists nearby concerts for library, recommended, and trending artists.
 
 ### Profile
 
 ![Aurral profile listening history](../../../assets/screenshots/profile-listening.webp)
 
-Profile contains appearance, listening history, Lidarr defaults, and personal preferences. Under
-**Appearance**, choose a built-in palette, **System**, **Light**, or **Dark** mode. Aurral saves the
-selection on the current device. Browse the pre-existing terminal.sexy color schemes, preview them,
-and select them like any other theme. Matching light and dark schemes share one card and follow the
-selected mode; use **Find a scheme** to search the collection, preview results, and add the ones you
-want to keep in a modal.
+Profile holds your personal settings:
 
-Aurral supports Last.fm, ListenBrainz, and Koito history.
+- **Appearance.** Choose a built-in palette, and **System**, **Light**, or **Dark** mode. Aurral saves the choice on the current device. You can also browse terminal.sexy color schemes. A light and a dark version of one scheme share one card and follow the selected mode. Use **Find a scheme** to search the collection and add schemes to your list.
+- **Listening history.** Choose **Local only**, Last.fm, ListenBrainz, or Koito.
+- **Connected accounts.** Link a Google or Plex account that you can use to sign in. See [Users and authentication](/admin/users/#sign-in-with-google-or-plex).
+- **Plex account.** Link your own Plex account for your playlists.
+- **Library defaults.** Choose your **Default library manager**, and your default Lidarr root folder and quality profile.
+- **Discovery tastes.** Reset your recommendation feedback, or open your blocklist.
 
 ### Settings
 
 ![Aurral user settings](../../../assets/screenshots/settings-user.webp)
 
-Settings contains the admin configuration. The page has these tabs:
+Settings holds the admin configuration. It has these tabs:
 
-| Tab                  | What it covers                                                      |
-| -------------------- | ------------------------------------------------------------------- |
-| **System**           | Runtime details, display format, Subsonic behavior, and API access |
-| **Storage health**   | Library, download, playback, and disk checks                       |
-| **Tasks**            | Scheduled jobs and worker management                                |
-| **Lidarr**           | Lidarr connection, profiles, tags, and library access               |
-| **Indexers**         | Prowlarr connection, indexer management, and search priorities     |
-| **Download clients** | yt-dlp, slskd, SABnzbd, NZBGet, source priority, and quality        |
-| **Playback**         | Navidrome, Plex, scrobbling, and cover art                          |
-| **Discover**         | Recommendation refresh, mode, and generated playlists              |
-| **Connect**          | Gotify, webhooks, Last.fm, Ticketmaster, and Inbox                  |
-| **RSS news**         | RSS feeds and feed groups                                           |
-| **Users**            | Accounts, permissions, and Plex links                               |
+| Tab | What it covers |
+| --- | --- |
+| **System** | Runtime details, date format, Subsonic behavior, and the API key |
+| **Storage health** | Checks for storage, downloads, Lidarr files, path mappings, and playback |
+| **Tasks** | Scheduled jobs, workers, and the job queue |
+| **Lidarr** | Lidarr connection, the **Enabled** switch, defaults, and library display |
+| **Indexers** | Prowlarr connection, indexers, and indexer priorities |
+| **Download clients** | Quality profile, Downloads Folder, remote path mappings, and download clients |
+| **Playback** | Navidrome, Plex, Jellyfin, scrobbling, and cover art |
+| **Connect** | Gotify, webhooks, Last.fm, Ticketmaster, Google sign-in, and Inbox |
+| **RSS news** | RSS feeds and feed groups |
+| **Discover** | Recommendation refresh, discovery mode, and discover playlists |
+| **Users** | Accounts, permissions, account status, sign-in mode, and local-network auto-login |
 
-Settings and Profile changes save automatically after you edit them. Connection tests and sync
-actions remain separate actions.
+Use the search field in Settings to find a setting by name.
 
-Administrators can set dates and times to the browser default, day-first format, or year-first
-format under **Settings > System > Display**. The selected format applies to all users.
+Settings and Profile save each change automatically. Connection tests and sync actions have their own buttons.
 
-Advanced metadata settings are available at `/settings/metadata`. They do not appear in the main settings navigation.
+To set the date and time format for all users, open **Settings > System > Display**. Choose the browser default, day first, or year first.
+
+Advanced metadata settings are at `/settings/metadata`. This page is not in the Settings navigation. See [Metadata and search](/integrations/metadata/).
