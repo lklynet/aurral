@@ -25,6 +25,7 @@ export function ArtistDetailsActionBar({
   libraryDestination,
   artistManagedBy = null,
   existsInLibrary,
+  viewSwitch = null,
   loadingLibrary,
   canChangeMonitoring,
   canDeleteArtist,
@@ -172,6 +173,7 @@ export function ArtistDetailsActionBar({
             )}
           </TooltipButton>
           {renderLibraryAction()}
+          {viewSwitch}
         </div>
 
         <div className="artist-row-actions">

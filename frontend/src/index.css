@@ -3260,6 +3260,34 @@ textarea {
   outline-offset: 2px;
 }
 
+.view-switch {
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  gap: 0.125rem;
+  padding: 0.125rem;
+}
+
+.view-switch .artist-segmented-button {
+  min-height: 1.75rem;
+  padding: 0.25rem 0.75rem;
+  text-decoration: none;
+}
+
+.view-switch__segment--disabled {
+  color: var(--aurral-text-subtle);
+  cursor: default;
+}
+
+.view-switch__status {
+  font-weight: 500;
+}
+
+@media (pointer: coarse) {
+  .view-switch .artist-segmented-button {
+    min-height: 2.75rem;
+  }
+}
+
 .artist-link-button {
   display: inline-flex;
   align-items: center;

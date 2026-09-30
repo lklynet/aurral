@@ -12,6 +12,7 @@ import {
   addArtistToLibrary,
   settleLibraryOwnerConflict,
   downloadTrackToLibrary,
+  lookupArtistInLibrary,
 } from "../../utils/api/endpoints/library.js";
 import {
   addSharedPlaylistTracks,
@@ -54,6 +55,7 @@ import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { buildArtistAddPayload, getManagerName } from "../../utils/libraryDestination";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import TooltipButton from "../../components/TooltipButton";
+import ViewSwitch from "../../components/ViewSwitch";
 const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function ArtistDetailsPage() {
@@ -250,6 +252,16 @@ function ArtistDetailsPage() {
     mbid,
     locationState,
   });
+
+  const libraryCanonicalLookup = useQuery({
+    queryKey: queryKeys.libraryLookupDetails(mbid),
+    queryFn: ({ signal }) => lookupArtistInLibrary(mbid, { signal }),
+    enabled: Boolean(mbid && existsInLibrary && !libraryArtist?.canonicalId),
+    staleTime: 15_000,
+  });
+  const libraryCanonicalId =
+    existsInLibrary &&
+    (libraryArtist?.canonicalId || libraryCanonicalLookup.data?.artist?.canonicalId || null);
 
   const preview = usePreviewPlayer(mbid, artistNameFromNav, artist);
   const {
@@ -528,6 +540,14 @@ function ArtistDetailsPage() {
         libraryDestination={libraryDestination}
         artistManagedBy={libraryArtist?.managedBy}
         existsInLibrary={existsInLibrary}
+        viewSwitch={
+          libraryCanonicalId ? (
+            <ViewSwitch
+              current="discover"
+              library={{ to: `/library/artist/${encodeURIComponent(libraryCanonicalId)}` }}
+            />
+          ) : null
+        }
         loadingLibrary={loadingLibrary}
         canChangeMonitoring={canChangeMonitoring}
         canDeleteArtist={canDeleteArtist}

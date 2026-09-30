@@ -32,6 +32,7 @@ import { AurralAlbumStatus } from "../components/AurralAlbumStatus";
 import { DotLoader } from "../components/DotLoader";
 import { LibraryItemMenu, LibraryItemSubmenu } from "../components/LibraryItemMenu";
 import TooltipButton from "../components/TooltipButton";
+import ViewSwitch from "../components/ViewSwitch";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
@@ -1759,10 +1760,16 @@ function LibraryPage() {
     setLibraryInfo({ kind, entity, ...context });
   };
 
+  const discoverArtistState = (artist) => ({
+    artistName: artist.name,
+    inLibrary: true,
+    libraryArtist: artist,
+  });
+
   const handleDiscoverArtistOpen = (artist) => {
     if (!artist?.mbid) return;
     navigate("/artist/" + encodeURIComponent(artist.mbid), {
-      state: { artistName: artist.name, inLibrary: true, libraryArtist: artist },
+      state: discoverArtistState(artist),
     });
   };
 
@@ -2765,13 +2772,13 @@ function LibraryPage() {
                 }
               />
               {libraryArtist.mbid && (
-                <button
-                  type="button"
-                  className="native-library-detail__discover"
-                  onClick={() => handleDiscoverArtistOpen(libraryArtist)}
-                >
-                  <ExternalLink aria-hidden="true" /> Explore in Discover
-                </button>
+                <ViewSwitch
+                  current="library"
+                  discover={{
+                    to: "/artist/" + encodeURIComponent(libraryArtist.mbid),
+                    state: discoverArtistState(libraryArtist),
+                  }}
+                />
               )}
             </div>
           </div>
