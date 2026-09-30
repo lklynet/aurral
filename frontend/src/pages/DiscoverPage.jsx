@@ -388,6 +388,10 @@ function DiscoverPage() {
 
   const handleOpenArtistInLibrary = useCallback(
     async (artist) => {
+      if (artist.canonicalId) {
+        navigate(`/library/artist/${encodeURIComponent(artist.canonicalId)}`);
+        return true;
+      }
       const artistId = getArtistId(artist);
       if (!artistId) return;
       try {
@@ -526,12 +530,14 @@ function DiscoverPage() {
                 <div key={`artist-${artist.id}`} className="artist-discover-shelf-card">
                   <ArtistCard
                     status="available"
-                    isInLibrary={!!libraryLookup[artistId]}
+                    isInLibrary={true}
                     canAddArtist={false}
                     onNavigate={navigate}
                     onOpenInLibrary={handleOpenArtistInLibrary}
                     artist={{
                       id: artistId,
+                      canonicalId: artist.canonicalId || artist.id,
+                      libraryPath: artistId ? null : `/library/artist/${encodeURIComponent(artist.canonicalId || artist.id)}`,
                       name: artist.artistName,
                       image: getLibraryArtistImage(artist),
                       type: "Artist",

@@ -21,6 +21,8 @@ const formatTimestamp = (value) => {
 };
 
 const formatSource = (item) => {
+  if (item.sourceSummary) return item.sourceSummary;
+  if (item.albumGrab) return text(item.actualDownloadSource) || "Unknown";
   const source = text(item.downloadSource || item.downloadClient || item.source);
   if (!source) return "";
   return source === "lidarr" ? "Lidarr" : source === "aurral" ? "Aurral" : source;
@@ -29,6 +31,7 @@ const formatSource = (item) => {
 const formatKind = (kind) => {
   const labels = {
     album_requested: "Album request",
+    album_download: "Album download",
     track_download: "Track download",
     playlist_import: "Playlist import",
     track_reused_aurral: "Reused track",
@@ -55,6 +58,8 @@ function getRows(item) {
   return [
     ["Status", item.statusLabel || item.status],
     ["Type", formatKind(item.kind)],
+    ["Download method", item.downloadMethodLabel || (item.downloadMethod === "album" ? "Album download" : item.downloadMethod === "track" ? "Individual track download" : null)],
+    ["Progress", item.progressLabel],
     ["Artist", item.artistName],
     ["Album", item.albumName],
     ["Track", item.trackName],
@@ -63,9 +68,12 @@ function getRows(item) {
     ["Quality", item.qualityLabel],
     ["Quality state", formatQualityState(item.qualityState)],
     ["Requested", formatTimestamp(item.requestedAt || item.createdAt)],
+    ["Completed", formatTimestamp(item.completedAt)],
     ["Requester", requester],
     ["Source file", item.sourceFilename],
     ["Details", details],
+    ["Track fallback", item.albumGrab?.fallbackReason],
+    ["Previous errors", item.previousErrors?.join("; ")],
     ["ID", id],
   ].filter(([, value]) => text(value));
 }

@@ -14,6 +14,7 @@ import { AudioQueueProvider } from "./contexts/AudioQueueProvider";
 import { AlertTriangle, XCircle } from "lucide-react";
 import ReloadPrompt from "./components/ReloadPrompt";
 import UpdateIndicator from "./components/UpdateIndicator";
+import SpotifyReconnectNotice from "./components/SpotifyReconnectNotice";
 import { DotLoader } from "./components/DotLoader";
 import { useWebSocketChannel } from "./hooks/useWebSocket";
 import { buildActivityPath, DEFAULT_ACTIVITY_VIEW } from "./navigation/activityNavConfig";
@@ -216,6 +217,7 @@ function AppContent() {
                     />
                   }
                 >
+                  <SpotifyReconnectNotice />
                   {healthIssue === "lidarr" && isHealthy && (
                     <div className="app-status-banner app-status-banner--warning">
                       <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />

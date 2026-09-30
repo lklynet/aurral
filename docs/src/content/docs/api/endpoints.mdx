@@ -74,6 +74,7 @@ instance API key for WebSocket connections.
 | `PUT` | `/api/library/artists/:mbid` | Update artist monitoring |
 | `DELETE` | `/api/library/artists/:mbid` | Delete an artist |
 | `POST` | `/api/library/artists/:mbid/refresh` | Refresh an artist in Lidarr |
+| `PUT` | `/api/library/canonical/artists/:id/mbid` | Set a library artist's MusicBrainz ID with `{ "mbid": "…" }`, or clear it with `{ "mbid": null }` |
 | `GET` | `/api/library/albums?artistId=:id` | List an artist's albums |
 | `GET` | `/api/library/albums/:id` | Get an album |
 | `POST` | `/api/library/albums` | Add an album |

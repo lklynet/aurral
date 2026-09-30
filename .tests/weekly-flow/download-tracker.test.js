@@ -77,6 +77,155 @@ test("one album pipeline reserves sibling jobs before queue handoff", () => {
   assert.equal(tracker.getNextPending(), null);
 });
 
+test("a queued album grab exposes durable membership without replacing track activity", async () => {
+  const settings = dbOps.getSettings();
+  dbOps.updateSettings({ ...settings, integrations: { slskd: { enabled: true, url: "http://127.0.0.1:9" } } });
+  const tracker = trackerModule.downloadTracker;
+  const ids = ["First", "Second"].map((trackName, index) => tracker.addJob({
+    artistName: "The Band", albumName: "Album", albumMbid: "activity-album",
+    trackName, trackNumber: index + 1, requestGroupId: "activity-request",
+  }, "library"));
+  assert.equal(tracker.enqueueDownloadPipeline(ids[0]), true);
+  const { getAurralHistoryRequests, recordTrackJobSearching } = await import("../../backend/services/aurralHistoryService.js");
+  recordTrackJobSearching(tracker.getJob(ids[0]));
+  const requests = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId));
+  assert.equal(requests.length, 2);
+  assert.ok(requests.every((item) => item.kind === "track_download"));
+  assert.ok(requests[0].albumGrab?.id);
+  assert.equal(requests[0].albumGrab.id, requests[1].albumGrab.id);
+  assert.deepEqual(requests[0].albumGrab.memberJobIds, ids);
+  assert.equal(requests[0].albumGrab.phase, "search");
+  assert.equal(requests[0].albumGrab.source, null);
+  assert.ok(requests.every((item) => item.requestedAt === requests[0].albumGrab.requestedAt));
+});
+
+test("failed queue handoff and attempted flags alone do not create album activity", async () => {
+  const settings = dbOps.getSettings();
+  dbOps.updateSettings({ ...settings, integrations: { slskd: { enabled: true, url: "http://127.0.0.1:9" } } });
+  const tracker = new WeeklyFlowDownloadTracker({ enqueuePipeline: () => { throw new Error("handoff rejected"); } });
+  const ids = ["First", "Second"].map((trackName) => tracker.addJob({
+    artistName: "The Band", albumName: "Album", albumMbid: "failed-activity-album",
+    trackName, requestGroupId: "failed-activity-request",
+  }, "library"));
+  assert.throws(() => tracker.enqueueDownloadPipeline(ids[0]), /handoff rejected/);
+  trackerModule.downloadTracker._load();
+  trackerModule.downloadTracker.setAlbumGrabAttempted(ids[0], true);
+  const { getAurralHistoryRequests } = await import("../../backend/services/aurralHistoryService.js");
+  const requests = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId));
+  assert.equal(requests.length, 2);
+  assert.ok(requests.every((item) => !item.albumGrab));
+});
+
+test("album track outcomes retain source, failures, and timestamps after retry and job cleanup", async () => {
+  dbOps.updateSettings({ ...dbOps.getSettings(), integrations: { slskd: { enabled: true, url: "http://127.0.0.1:9" } } });
+  const tracker = trackerModule.downloadTracker;
+  const ids = ["First", "Second"].map((trackName, index) => tracker.addJob({
+    artistName: "The Band", albumName: "Album", albumMbid: "outcome-album",
+    trackName, trackNumber: index + 1, requestGroupId: "outcome-request",
+  }, "library"));
+  tracker.enqueueDownloadPipeline(ids[0]);
+  tracker.updateDownloadMetadata(ids[0], { downloadSource: "slskd" });
+  tracker.setDone(ids[0], path.join(isolatedState.baseDir, "first.flac"));
+  tracker.setFailed(ids[1], "Album file missing");
+  tracker.setPending(ids[1], "Retrying missing track");
+  tracker.updateDownloadMetadata(ids[1], { downloadSource: "ytdlp" });
+  tracker.setDone(ids[1], path.join(isolatedState.baseDir, "second.m4a"));
+  const { getAurralHistoryRequests } = await import("../../backend/services/aurralHistoryService.js");
+  const before = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId));
+  assert.equal(before.length, 2);
+  assert.ok(before.every((item) => item.status === "completed"));
+  assert.ok(before.every((item) => item.completedAt && item.requestedAt === item.albumGrab.requestedAt));
+  assert.deepEqual(before.map((item) => item.actualDownloadSource).sort(), ["slskd", "ytdlp"]);
+  assert.ok(before.find((item) => item.jobId === ids[1]).previousErrors.includes("Album file missing"));
+  tracker.clearCompleted();
+  const after = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId));
+  assert.deepEqual(after, before);
+});
+
+test("history limits keep an album together and pruning does not recreate removed track records", async () => {
+  dbOps.updateSettings({ ...dbOps.getSettings(), integrations: { slskd: { enabled: true, url: "http://127.0.0.1:9" } } });
+  const tracker = trackerModule.downloadTracker;
+  const ids = ["First", "Second", "Third"].map((trackName, index) => tracker.addJob({
+    artistName: "The Band", albumName: "Album", albumMbid: "limited-album",
+    trackName, trackNumber: index + 1, requestGroupId: "limited-request",
+  }, "library"));
+  tracker.enqueueDownloadPipeline(ids[0]);
+  const older = Date.now() - 60 * 60 * 1000;
+  for (const id of ids) db.prepare("UPDATE aurral_history SET created_at = ? WHERE id = ?").run(older, `aurral-track_download-${id}`);
+  for (let index = 0; index < 320; index += 1) {
+    dbOps.insertAurralHistory({ id: `unrelated-${index}`, kind: "artist_added", title: "Unrelated event", status: "completed", createdAt: Date.now() });
+  }
+  tracker.setDone(ids[0], path.join(isolatedState.baseDir, "first.flac"));
+  const { getAurralHistoryRequests } = await import("../../backend/services/aurralHistoryService.js");
+  const limited = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId));
+  assert.equal(limited.length, 3);
+  for (const id of ids.slice(1)) tracker.setDone(id, path.join(isolatedState.baseDir, `${id}.flac`));
+  tracker.clearCompleted();
+  const grab = limited[0].albumGrab;
+  db.prepare("DELETE FROM aurral_history WHERE id = ?").run(`aurral-track_download-${ids[1]}`);
+  const retained = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId));
+  assert.equal(retained.length, 2);
+  assert.deepEqual(retained[0].albumGrab.memberJobIds, grab.memberJobIds);
+  assert.equal(dbOps.getAurralHistoryById(`aurral-track_download-${ids[1]}`), null);
+});
+
+test("album activity preserves canonical disc order and does not revive expired history", async () => {
+  const { upsertLibraryArtist, upsertLibraryAlbum, upsertLibraryTrack, linkLibraryAlbumTrack } = await import("../../backend/services/libraryMediaStore.js");
+  const artist = upsertLibraryArtist({ identityKey: "artist:discs", name: "The Band" });
+  const album = upsertLibraryAlbum({ identityKey: "release-group:discs", mbid: "discs", artistId: artist.id, title: "Album" });
+  dbOps.updateSettings({ ...dbOps.getSettings(), integrations: { slskd: { enabled: true, url: "http://127.0.0.1:9" } } });
+  const tracker = trackerModule.downloadTracker;
+  const ids = [2, 1].map((discNumber) => {
+    const track = upsertLibraryTrack({ identityKey: `recording:disc-${discNumber}`, mbid: `disc-${discNumber}`, title: `Disc ${discNumber}`, artistName: "The Band" });
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, discNumber, trackNumber: 1 });
+    return tracker.addJob({ artistName: "The Band", albumName: "Album", albumMbid: "discs", trackMbid: track.mbid,
+      trackName: track.title, trackNumber: 1, requestGroupId: "discs-request" }, "library");
+  });
+  tracker.enqueueDownloadPipeline(ids[0]);
+  const { getAurralHistoryRequests } = await import("../../backend/services/aurralHistoryService.js");
+  const active = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId));
+  assert.deepEqual(ids.map((id) => active.find((item) => item.jobId === id).discNumber), [2, 1]);
+  for (const id of ids) tracker.setDone(id, path.join(isolatedState.baseDir, `${id}.flac`));
+  tracker.clearCompleted();
+  db.prepare("UPDATE aurral_history SET created_at = ? WHERE id = ?").run(1, `aurral-track_download-${ids[0]}`);
+  const retained = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId));
+  assert.deepEqual(retained.map((item) => item.jobId), [ids[1]]);
+});
+
+test("album activity excludes hidden member identities from an authorized response", async () => {
+  dbOps.updateSettings({ ...dbOps.getSettings(), integrations: { slskd: { enabled: true, url: "http://127.0.0.1:9" } } });
+  const tracker = trackerModule.downloadTracker;
+  const ids = ["Public", "Private"].map((trackName) => tracker.addJob({ artistName: "Artist", albumName: "Album",
+    albumMbid: "visible-album", trackName, requestGroupId: "visible-request" }, "library"));
+  tracker.enqueueDownloadPipeline(ids[0]);
+  const privateEntry = dbOps.getAurralHistoryById(`aurral-track_download-${ids[1]}`);
+  dbOps.insertAurralHistory({ ...privateEntry, metadata: { ...privateEntry.metadata, ownerUserId: 99 } });
+  const { getAurralHistoryRequests } = await import("../../backend/services/aurralHistoryService.js");
+  const visible = (await getAurralHistoryRequests(null, { id: 42, role: "user" })).filter((item) => ids.includes(item.jobId));
+  assert.equal(visible.length, 1);
+  assert.deepEqual(visible[0].albumGrab.memberJobIds, [ids[0]]);
+  const admin = (await getAurralHistoryRequests(null, { role: "admin" })).filter((item) => ids.includes(item.jobId));
+  assert.equal(admin.length, 2);
+  assert.deepEqual(admin[0].albumGrab.memberJobIds, ids);
+});
+
+test("activity write failures do not interrupt or duplicate an album handoff", () => {
+  dbOps.updateSettings({ ...dbOps.getSettings(), integrations: { slskd: { enabled: true, url: "http://127.0.0.1:9" } } });
+  const queued = [];
+  const tracker = new WeeklyFlowDownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
+  const ids = ["One", "Two"].map((trackName) => tracker.addJob({ artistName: "Artist", albumName: "Album",
+    albumMbid: "write-failure-album", trackName, requestGroupId: "write-failure-request" }, "library"));
+  db.exec("CREATE TRIGGER reject_album_activity BEFORE INSERT ON aurral_history WHEN NEW.kind = 'album_grab' BEGIN SELECT RAISE(ABORT, 'Activity unavailable'); END");
+  try {
+    assert.equal(tracker.enqueueDownloadPipeline(ids[0]), true);
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].albumGrab, true);
+    assert.equal(tracker.getJob(ids[1]).status, "downloading");
+  } finally {
+    db.exec("DROP TRIGGER reject_album_activity");
+  }
+});
+
 test("album grabs are skipped when only a per-track source is enabled", async () => {
   const binDir = path.join(isolatedState.baseDir, "fake-bin");
   await mkdir(binDir, { recursive: true });

@@ -612,6 +612,12 @@ function FlowPage({ mode = "all" }) {
   );
 
   useEffect(() => {
+    if (!location.state?.openImport) return;
+    setImportModalOpen(true);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.pathname, location.state?.openImport, navigate]);
+
+  useEffect(() => {
     const navPlaylistId = location.state?.selectedPlaylistId;
     if (navPlaylistId) {
       const navEntry = collection.find((entry) => entry.id === navPlaylistId);

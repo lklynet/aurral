@@ -4,14 +4,19 @@ import { dbOps } from "../db/helpers/index.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
 import { scanMusicRoot, scanMusicRoots } from "./libraryFileScanner.js";
 import {
+  assignLibraryArtistMbid,
   getLibraryMediaPaths,
+  getUnresolvedLibraryArtists,
   removeLibraryMediaFiles,
   upsertLibraryArtist,
 } from "./libraryMediaStore.js";
 import { flowPlaylistConfig } from "./weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { rebuildLibrarySearchIndex } from "./librarySearchIndex.js";
 import { rebuildCanonicalGenreStats } from "./libraryQueryService.js";
-import { musicbrainzGetArtistNameByMbid } from "./apiClients/index.js";
+import {
+  musicbrainzGetArtistNameByMbid,
+  musicbrainzResolveLibraryArtistMbid,
+} from "./apiClients/index.js";
 import { logger } from "./logger.js";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
 
@@ -102,6 +107,23 @@ async function canonicalizeAurralArtistNames(jobMetadataByPath, paths = null) {
   }
 }
 
+async function resolveUnmatchedLibraryArtists() {
+  let changed = false;
+  for (const artist of getUnresolvedLibraryArtists()) {
+    let mbid;
+    try {
+      mbid = await musicbrainzResolveLibraryArtistMbid(artist.name);
+    } catch (error) {
+      logger.warn("library", "Stopped matching unmatched artists; metadata provider unavailable", {
+        message: error?.message || String(error),
+      });
+      break;
+    }
+    if (mbid && assignLibraryArtistMbid(artist.id, mbid)) changed = true;
+  }
+  return changed;
+}
+
 function configuredLidarrRoots(lidarrClient, override) {
   if (Array.isArray(override)) return override;
   const fromClient = lidarrClient?.getConfiguredRootFolderPaths?.();
@@ -153,6 +175,7 @@ export async function scanConfiguredLibrary({
   let lidarr = { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   let flow = skippedScan();
   let scanFailed = false;
+  let artistsResolved = false;
   try {
     local = targeted && localPaths.length === 0
       ? skippedScan()
@@ -195,11 +218,12 @@ export async function scanConfiguredLibrary({
         };
       }
     }
+    artistsResolved = await resolveUnmatchedLibraryArtists();
   } catch (error) {
     scanFailed = true;
     throw error;
   } finally {
-    if (scanFailed || local?.changed || lidarr?.changed || flow?.changed) {
+    if (scanFailed || artistsResolved || local?.changed || lidarr?.changed || flow?.changed) {
       rebuildLibrarySearchIndex();
       rebuildCanonicalGenreStats();
     }

@@ -18,6 +18,7 @@ import {
 } from "../playlistPaths.js";
 import { flowPlaylistConfig } from "./weeklyFlowPlaylistConfig.js";
 import { logger } from "../logger.js";
+import { recordAlbumGrabQueued, recordAlbumTrackState } from "../albumGrabActivity.js";
 import {
   cancelDownloadJob,
   cancelDownloadJobs,
@@ -438,6 +439,7 @@ export class WeeklyFlowDownloadTracker {
       metadata.remoteFilename ?? null,
       id,
     );
+    recordAlbumTrackState(job);
     return true;
   }
 
@@ -450,6 +452,7 @@ export class WeeklyFlowDownloadTracker {
         && entry.payload?.albumGroupJobIds?.includes(jobId))
       : null;
     if (activeGrab && ["pending", "downloading"].includes(job.status)) {
+      recordAlbumGrabQueued(activeGrab.payload, activeGrab.payload.albumGroupJobIds.map((id) => this.jobs.get(id)).filter(Boolean));
       for (const siblingId of activeGrab.payload.albumGroupJobIds) {
         if (this.jobs.get(siblingId)?.status === "pending") {
           this.setDownloading(siblingId);
@@ -489,6 +492,7 @@ export class WeeklyFlowDownloadTracker {
       throw error;
     }
     this.markSlskdDispatched(jobId);
+    if (payload.albumGrab === true) recordAlbumGrabQueued(payload, siblings);
     return true;
   }
 
@@ -779,6 +783,7 @@ export class WeeklyFlowDownloadTracker {
       job.manualReplacementSearch ? 1 : 0,
       job.id,
     );
+    recordAlbumTrackState(job);
     this._touchRevision();
   }
 

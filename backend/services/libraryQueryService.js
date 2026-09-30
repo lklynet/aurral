@@ -306,6 +306,7 @@ const canonicalArtistProjection = (row) => {
     artistName: row.name,
     name: row.name,
     sortName: row.sort_name || row.name,
+    images: Array.isArray(metadata.images) ? metadata.images : [],
     path: metadata.path || null,
     addedAt: metadata.added || (row.created_at ? new Date(row.created_at).toISOString() : null),
     monitored: metadata.monitored === true,
@@ -2407,6 +2408,12 @@ export function getCanonicalLibraryPage({
       .filter((artist, index, values) =>
         values.findIndex((candidate) => candidate.id === artist.id) === index,
       );
+  if (artistId && !relatedArtists.some((artist) => String(artist.id) === String(artistId))) {
+    relatedArtists.push(...getCanonicalArtistPage({
+      source: sourceFilter,
+      artistIds: [artistId],
+    }).artists);
+  }
 
   return {
     kind: normalizedKind,

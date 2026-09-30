@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { expandAlbumGrabHistory } from "./albumGrabActivity.js";
 import { dbOps } from "../db/helpers/index.js";
 import { resolveBlockedJobSourceFilename } from "./playlistDownloadUtils.js";
 import { flowPlaylistConfig } from "./weeklyFlow/weeklyFlowPlaylistConfig.js";
@@ -20,6 +21,7 @@ const KIND_SOURCE_MAP = {
 };
 
 const ACTIVITY_HIDDEN_KINDS = new Set([
+  "album_grab",
   "discovery_refresh",
   "flow_generating",
   "playlist_tracks_added",
@@ -156,7 +158,9 @@ export const upsertAurralHistory = (entry = {}) => {
     status: String(entry.status || "completed").trim(),
     statusLabel: entry.statusLabel ? String(entry.statusLabel).trim() : null,
     href: entry.href ? String(entry.href).trim() : null,
-    metadata: entry.metadata && typeof entry.metadata === "object" ? entry.metadata : null,
+    metadata: existing?.metadata?.albumGrabId
+      ? { ...existing.metadata, ...entry.metadata }
+      : entry.metadata && typeof entry.metadata === "object" ? entry.metadata : null,
   };
   const changed = hasHistoryRecordChanged(existing, nextRecord);
   const record = {
@@ -1012,7 +1016,16 @@ export const toHistoryRequestItem = (entry, options = {}) => {
     subtitle: entry.subtitle || null,
     status: entry.status || "completed",
     statusLabel: entry.statusLabel || null,
-    requestedAt: toIso(entry.createdAt),
+    requestedAt: entry.metadata?.requestedAt || toIso(entry.createdAt),
+    ...(options.albumGrab ? { albumGrab: options.albumGrab } : {}),
+    ...(options.albumGrab ? {
+      completedAt: entry.metadata?.completedAt || null,
+      actualDownloadSource: entry.metadata?.actualDownloadSource || null,
+      downloadMethod: entry.metadata?.downloadMethod || null,
+      previousErrors: entry.metadata?.previousErrors || [],
+      trackNumber: entry.metadata?.trackNumber || null,
+      discNumber: entry.metadata?.discNumber || null,
+    } : {}),
     href: entry.href || null,
     kind,
     playlistId: entry.metadata?.playlistId || null,
@@ -1095,15 +1108,15 @@ export const getAurralHistoryRequests = async (lidarrClient = null, user = null)
 
   const now = Date.now();
   const jobsById = new Map(downloadTracker.getAll().map((job) => [job.id, job]));
-  return entries
+  const canViewEntry = (entry) => canViewPlaylistActivity(
+    user, entry.metadata?.playlistId || entry.metadata?.playlistType, entry.metadata?.ownerUserId,
+  );
+  const expanded = expandAlbumGrabHistory(entries, now - MAX_AGE_MS, canViewEntry);
+  return expanded.entries
     .filter(
       (e) =>
         !ACTIVITY_HIDDEN_KINDS.has(e.kind) &&
-        canViewPlaylistActivity(
-          user,
-          e.metadata?.playlistId || e.metadata?.playlistType,
-          e.metadata?.ownerUserId,
-        ) &&
+        canViewEntry(e) &&
         (e.status !== "failed" || now - e.createdAt < FAILED_RETENTION_MS),
     )
     .map((entry) => {
@@ -1129,6 +1142,9 @@ export const getAurralHistoryRequests = async (lidarrClient = null, user = null)
         entry.status = "completed";
         entry.statusLabel = isReused ? "Reused" : "Downloaded";
       }
-      return toHistoryRequestItem(entry, { sourceFilename, albumName, trackName });
+      return toHistoryRequestItem(entry, {
+        sourceFilename, albumName, trackName,
+        albumGrab: expanded.manifests.get(entry.metadata?.albumGrabId),
+      });
     });
 };
