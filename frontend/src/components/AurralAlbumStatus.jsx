@@ -45,7 +45,7 @@ export function AurralAlbumStatus({ album, artist, canManage = false, onChanged,
     }
   }, [onSettled, statusQuery.data?.status]);
 
-  if (!state) return null;
+  if (!state || state.status === "complete") return null;
 
   const runAction = async (action) => {
     setPendingAction(action.id);

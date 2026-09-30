@@ -8753,6 +8753,28 @@ button.native-library-genre-row:focus-visible {
   font-size: 0.78rem;
 }
 
+.native-library-detail__manager {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: -3px;
+}
+
+.native-library-detail__manager img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.native-library-detail__manager[data-unmonitored] img {
+  opacity: 0.45;
+}
+
+.native-library-detail__manager svg {
+  width: 13px;
+  height: 13px;
+}
+
 .native-library-detail__artist {
   display: block;
   max-width: 100%;
@@ -8822,24 +8844,6 @@ button.native-library-genre-row:focus-visible {
   opacity: 0.6;
 }
 
-.native-library-detail__badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin: 0.6rem 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.native-library-detail__badges li {
-  border: 1px solid var(--aurral-border);
-  border-radius: 9999px;
-  padding: 0.1rem 0.5rem;
-  color: var(--aurral-text-muted);
-  font-size: 0.68rem;
-  font-weight: 600;
-}
-
 .native-library-album-status {
   display: grid;
   gap: 0.25rem;
@@ -8879,25 +8883,6 @@ button.native-library-genre-row:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 0.55rem;
-}
-
-.native-library-album-monitoring {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
-}
-
-.native-library-detail .native-library-album-monitoring__label {
-  color: var(--aurral-text);
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-.native-library-album-monitoring__state {
-  color: var(--aurral-text-muted);
-  font-size: 0.72rem;
-  font-weight: 600;
 }
 
 .native-library-detail__section {

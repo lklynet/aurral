@@ -8,6 +8,7 @@ import {
   ArrowUpZA,
   Download,
   ExternalLink,
+  EyeOff,
   Fingerprint,
   Grid3X3,
   Heart,
@@ -27,7 +28,7 @@ import {
 } from "lucide-react";
 
 import ArtistImage from "../components/ArtistImage";
-import { AurralAlbumMonitoring } from "../components/AurralAlbumMonitoring";
+import { useAurralAlbumMonitoring } from "../components/AurralAlbumMonitoring";
 import { AurralAlbumStatus } from "../components/AurralAlbumStatus";
 import { DotLoader } from "../components/DotLoader";
 import { LibraryItemMenu, LibraryItemSubmenu } from "../components/LibraryItemMenu";
@@ -101,6 +102,7 @@ import {
 import { useResponsiveReleaseLimit } from "./ArtistDetails/hooks/useResponsiveReleaseLimit";
 import { queryClient, queryKeys } from "../queryClient.js";
 import Tooltip from "../components/Tooltip";
+import lidarrLogo from "../../images/logos/lidarr-color.svg";
 
 const LIBRARY_VIEW_IDS = new Set(LIBRARY_VIEWS.map((view) => view.id));
 
@@ -423,6 +425,25 @@ function EmptyState({ title, message }) {
       <strong>{title}</strong>
       <span>{message}</span>
     </div>
+  );
+}
+
+const MANAGER_LOGOS = { aurral: "/arralogo.svg", lidarr: lidarrLogo };
+
+function ManagerMark({ manager, unmonitored }) {
+  const label = unmonitored ? `${manager.label} · Not monitored` : manager.label;
+  return (
+    <Tooltip content={label}>
+      <span
+        className="native-library-detail__manager"
+        data-unmonitored={unmonitored || undefined}
+        role="img"
+        aria-label={label}
+      >
+        <img src={MANAGER_LOGOS[manager.id]} alt="" />
+        {unmonitored && <EyeOff aria-hidden="true" />}
+      </span>
+    </Tooltip>
   );
 }
 
@@ -1480,6 +1501,11 @@ function LibraryPage() {
     },
     [refreshLibraryActivity, setLibrary],
   );
+  const albumMonitoring = useAurralAlbumMonitoring({
+    album: libraryAlbum,
+    enabled: Boolean(libraryAlbum) && !isPreviewLibrary && canChangeMonitoring,
+    onChanged: (result) => updateAlbumMonitoringState(libraryAlbum.id, result),
+  });
 
   const reloadLibraryAlbumTracks = useCallback(async () => {
     if (!libraryAlbum) return;
@@ -2524,25 +2550,24 @@ function LibraryPage() {
               <p>{libraryAlbum.albumArtist || "Unknown Artist"}</p>
             )}
             <p className="native-library-detail__meta">
-              {[yearOf(libraryAlbum.releaseDate), availability.total + " tracks", formatLongDuration(durationMs)]
+              {[
+                yearOf(libraryAlbum.releaseDate),
+                availability.total + " tracks",
+                formatLongDuration(durationMs),
+                ...badges.sources.map((badge) => badge.label),
+              ]
                 .filter(Boolean)
                 .join(" · ")}
+              {badges.manager && (
+                <>
+                  {" · "}
+                  <ManagerMark
+                    manager={badges.manager}
+                    unmonitored={albumMonitoring.monitored === false}
+                  />
+                </>
+              )}
             </p>
-            {(badges.manager || badges.sources.length > 0) && (
-              <ul className="native-library-detail__badges" aria-label="Library source">
-                {badges.manager && <li>{badges.manager.label}</li>}
-                {badges.sources.map((badge) => (
-                  <li key={badge.id}>{badge.label}</li>
-                ))}
-              </ul>
-            )}
-            {libraryAlbum.managedBy === "aurral" && !isPreviewLibrary && canChangeMonitoring && (
-              <AurralAlbumMonitoring
-                key={`monitoring-${libraryAlbum.id}`}
-                album={libraryAlbum}
-                onChanged={(result) => updateAlbumMonitoringState(libraryAlbum.id, result)}
-              />
-            )}
             {libraryAlbum.managedBy === "aurral" && !isPreviewLibrary && (
               <AurralAlbumStatus
                 key={libraryAlbum.id}
@@ -2594,6 +2619,7 @@ function LibraryPage() {
                     separatorBefore: true,
                     onSelect: () => toggleFavorite("album", libraryAlbum),
                   },
+                  ...(albumMonitoring.menuItem ? [albumMonitoring.menuItem] : []),
                   ...(canDeleteAlbum && (libraryAlbum.providerId || libraryAlbum.managedBy === "aurral")
                     ? [
                         {
@@ -2648,6 +2674,7 @@ function LibraryPage() {
             showSources: badges.showTrackSources,
           })}
         </section>
+        {albumMonitoring.dialog}
       </section>
     );
   };

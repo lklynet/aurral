@@ -1,7 +1,6 @@
-import { useId, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 
-import PillToggle from "./PillToggle";
 import { useToast } from "../contexts/ToastContext";
 import { queryClient, queryKeys } from "../queryClient.js";
 import { getAurralAlbumStatus, setAurralAlbumMonitoring } from "../utils/api/endpoints/library.js";
@@ -18,19 +17,13 @@ const errorMessage = (error) =>
   error?.message ||
   "Could not update album monitoring";
 
-export function AurralAlbumMonitoring({ album, onChanged }) {
+export function useAurralAlbumMonitoring({ album, enabled, onChanged }) {
   const { showSuccess, showError } = useToast();
-  const toggleId = useId();
   const [pending, setPending] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const statusQuery = useQuery({
-    queryKey: queryKeys.aurralAlbumStatus(album.id),
-    queryFn: ({ signal }) => getAurralAlbumStatus(album.id, { signal }),
-    staleTime: 0,
-  });
-  const monitored = getAlbumMonitoredState(album);
+  const monitored = enabled ? getAlbumMonitoredState(album) : null;
 
-  if (monitored === null) return null;
+  if (monitored === null) return { monitored: null, menuItem: null, dialog: null };
 
   const apply = async (nextMonitored) => {
     setPending(true);
@@ -48,37 +41,39 @@ export function AurralAlbumMonitoring({ album, onChanged }) {
     }
   };
 
-  const handleChange = () => {
-    if (monitored && shouldConfirmUnmonitor(statusQuery.data?.status)) {
-      setConfirming(true);
-      return;
-    }
-    apply(!monitored);
+  const toggle = async () => {
+    if (!monitored) return apply(true);
+    const status = await queryClient
+      .fetchQuery({
+        queryKey: queryKeys.aurralAlbumStatus(album.id),
+        queryFn: ({ signal }) => getAurralAlbumStatus(album.id, { signal }),
+      })
+      .catch(() => null);
+    if (shouldConfirmUnmonitor(status?.status)) setConfirming(true);
+    else apply(false);
   };
 
-  return (
-    <div className="native-library-album-monitoring">
-      <label htmlFor={toggleId} className="native-library-album-monitoring__label">
-        Monitored
-      </label>
-      <PillToggle
-        id={toggleId}
-        checked={monitored}
-        onChange={handleChange}
-        disabled={pending}
-        aria-label="Monitored"
-      />
-      <span className="native-library-album-monitoring__state">{monitored ? "On" : "Off"}</span>
+  return {
+    monitored,
+    menuItem: {
+      id: "monitoring",
+      label: monitored ? "Stop monitoring album" : "Monitor album",
+      icon: monitored ? EyeOff : Eye,
+      separatorBefore: true,
+      disabled: pending,
+      onSelect: toggle,
+    },
+    dialog: (
       <ConfirmModal
         open={confirming}
         title="Stop monitoring this album?"
-        body="Unmonitoring cancels unfinished downloads. Tracks already in your library are kept."
-        confirmLabel="Unmonitor"
-        busyLabel="Unmonitoring"
+        body="Aurral will skip this album when it downloads releases for this artist, and unfinished downloads will be cancelled. Tracks already in your library are kept."
+        confirmLabel="Stop monitoring"
+        busyLabel="Stopping"
         busy={pending}
         onCancel={() => setConfirming(false)}
         onConfirm={() => apply(false)}
       />
-    </div>
-  );
+    ),
+  };
 }
