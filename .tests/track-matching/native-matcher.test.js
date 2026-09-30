@@ -23,6 +23,40 @@ test("normalization folds diacritics, punctuation, and spacing", () => {
   assert.equal(normalizeMatchText("Sigur   Rós"), "sigur ros");
 });
 
+test("distinct non-Latin titles cannot be selected, assigned, or verified", () => {
+  for (const [expected, offered] of [
+    ["時", "詩"], ["愛", "哀"], ["Мой", "Мои"], ["かみ", "がみ"],
+    ["Мой любимый город", "Мои любимый город"], ["Song がみ", "Song かみ"], ["कि", "की"],
+    ["時", "shi"], ["shi", "時"],
+  ]) {
+    const wanted = { title: expected, artists: ["X"], durationMs: 200000, recordingMbid: "same" };
+    const candidate = { ...wanted, title: offered };
+    assert.equal(decideRecording(wanted, [candidate]).decision, "skip", `${expected}/${offered}`);
+    assert.deepEqual(assignReleaseFiles([wanted], [candidate]).pairs, [], `${expected}/${offered}`);
+    assert.equal(verifyDownloadedRecording(wanted, candidate).decision, "no_match", `${expected}/${offered}`);
+    assert.equal(verifyDownloadedRecording(wanted, {
+      ...wanted, fileNameTitle: offered,
+    }).decision, "no_match", `filename ${expected}/${offered}`);
+    assert.equal(verifyDownloadedRecording(wanted, {
+      ...wanted, title: null, fileNameTitle: offered,
+    }).decision, "no_match", `missing tag ${expected}/${offered}`);
+  }
+});
+
+test("script-safe identity preserves canonical equivalents and allowed title suffixes", () => {
+  for (const [expected, offered] of [
+    ["Мой", "Мои\u0306"], ["がみ", "か\u3099み"],
+    ["Song がみ", "Song か\u3099み"], ["Hoppípolla", "Hoppipolla"],
+    ["時", "時 - Remastered 2011"], ["がみ - Radio Edit", "がみ (Radio Edit)"],
+    ["कि", "कि"],
+  ]) {
+    const wanted = { title: expected, artists: ["X"], durationMs: 200000 };
+    const candidate = { ...wanted, title: offered };
+    assert.equal(decideRecording(wanted, [candidate]).decision, "selectable", `${expected}/${offered}`);
+    assert.equal(verifyDownloadedRecording(wanted, candidate).decision, "matched", `${expected}/${offered}`);
+  }
+});
+
 test("oversized provider titles are not scored or selected", () => {
   const title = "Song ".repeat(110);
   const result = decideRecording({ title, artists: ["The Band"], durationMs: 180000 }, [{

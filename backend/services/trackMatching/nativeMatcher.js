@@ -1,7 +1,8 @@
 import { checkVariantCompatibility } from "./semanticPolicy.js";
+import { foldDiacritics } from "../providers/brainzmashRanking.js";
 
 export const MATCH_POLICY = Object.freeze({
-  version: "aurral-native-1",
+  version: "aurral-native-2",
   maxDurationGapMs: 10000,
   selectedDurationGapMs: 2000,
   minTitleSimilarity: 0.7,
@@ -19,11 +20,9 @@ export function getMatcherStatus() {
 }
 
 export function normalizeMatchText(value) {
-  return String(value || "")
-    .normalize("NFKD")
+  return foldDiacritics(String(value || "").normalize("NFKD"))
     .toLowerCase()
-    .replace(/\p{M}/gu, "")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/[^\p{L}\p{N}\p{M}]+/gu, " ")
     .trim()
     .replace(/\s+/g, " ");
 }
@@ -94,6 +93,12 @@ function coreArtist(name) {
   return String(name || "").replace(/\s+\b(?:feat\.?|ft\.?|featuring)\s+.+$/iu, "").trim();
 }
 
+function nonLatinTitleContradiction(left, right) {
+  const a = normalizeMatchText(coreMatchTitle(left));
+  const b = normalizeMatchText(coreMatchTitle(right));
+  return Boolean(a && b && a !== b && /(?!\p{Script=Latin})\p{L}/u.test(`${a} ${b}`));
+}
+
 function asNames(value) {
   if (Array.isArray(value)) return value.filter(Boolean);
   return value ? [value] : [];
@@ -101,6 +106,7 @@ function asNames(value) {
 
 function compareRecording(request, candidate, policy) {
   const contradictions = [];
+  if (nonLatinTitleContradiction(request.title, candidate.title)) contradictions.push("title");
   const requestId = String(request.recordingMbid || request.recording_mbid || "").toLowerCase();
   const candidateId = String(candidate.recordingMbid || candidate.recording_mbid || "").toLowerCase();
   if (requestId && candidateId && requestId !== candidateId) contradictions.push("recording-mbid");
@@ -324,10 +330,12 @@ export function verifyDownloadedRecording(request, observed, policy = MATCH_POLI
   if (siblingTitle && normalizeMatchText(siblingTitle) !== normalizeMatchText(request.title)) {
     result.contradictions.push("sibling-track-index");
   }
-  if (result.titleSimilarity >= policy.minTitleSimilarity
-    && observed.fileNameTitle && normalizeMatchText(observed.fileNameTitle)
-    && similarity(coreMatchTitle(request.title), coreMatchTitle(observed.fileNameTitle))
-      < policy.minTitleSimilarity) {
+  if (observed.fileNameTitle
+    && (nonLatinTitleContradiction(request.title, observed.fileNameTitle)
+      || result.titleSimilarity >= policy.minTitleSimilarity
+        && normalizeMatchText(observed.fileNameTitle)
+        && similarity(coreMatchTitle(request.title), coreMatchTitle(observed.fileNameTitle))
+          < policy.minTitleSimilarity)) {
     result.contradictions.push("filename-title");
   }
   if (observed.fileNameTitle

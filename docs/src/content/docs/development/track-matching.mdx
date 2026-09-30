@@ -11,6 +11,8 @@ Aurral matches tracks with native JavaScript rules. The matcher has no Python ru
 
 The same native matcher checks original file tags after download in `postDownloadValidator.js`. Aurral writes its own tags only after verification. A known conflicting recording ID, variant, artist, or duration cannot be overridden by a strong title score. Missing evidence does not count as agreement. A duration-only conflict with otherwise matching original tags is held for review; a file without usable original identity tags is not imported automatically.
 
+Filename titles retain dash-separated version suffixes. A remaster can match the original recording, while a radio edit must match the requested version. Matching folds Latin accents and treats canonically equivalent Unicode spellings alike. If either core title contains non-Latin letters, different normalized core titles are contradictions, even when artist, duration, or recording ID agrees. This rule also applies to downloaded filename evidence and album file assignment. Transliteration and fuzzy spelling differences in those titles require an explicit user choice.
+
 `MATCH_POLICY.version` is recorded with matcher decisions and exposed through the health response. Change the policy in one place, then run the fixture harness and the cross-source regression tests.
 
 ## Album release grabs

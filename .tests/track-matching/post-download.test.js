@@ -65,6 +65,69 @@ function stubParseFile(parsed) {
   return async () => parsed;
 }
 
+test("original non-Latin tag contradictions block import even with matching filenames", async () => {
+  for (const [trackName, title] of [
+    ["Мой", "Мои"], ["かみ", "がみ"], ["時", "詩"], ["愛", "哀"],
+    ["Мой любимый город", "Мои любимый город"],
+  ]) {
+    const outcome = await validateDownloadedTrackFile({
+      request: { artistName: "X", trackName, durationMs: 200000 },
+      filePath: `/staging/${trackName}.flac`, source: "deemix",
+      options: { parseFile: stubParseFile(stubParsed({ title, artist: "X" }, 200)) },
+    });
+    assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED, `${trackName}/${title}`);
+    assert.equal(outcome.valid, false);
+  }
+});
+
+test("a non-Latin filename contradiction blocks matching original tags", async () => {
+  const outcome = await validateDownloadedTrackFile({
+    request: { artistName: "X", trackName: "Мой любимый город", durationMs: 200000 },
+    filePath: "/staging/01 - Мои любимый город.flac", source: "soulseek",
+    options: { parseFile: stubParseFile(stubParsed({ title: "Мой любимый город", artist: "X" }, 200)) },
+  });
+  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+});
+
+test("downloaded version suffixes retain the original title and filename evidence", async () => {
+  for (const [artistName, trackName, title, filename] of [
+    ["Queen", "Bohemian Rhapsody", "Bohemian Rhapsody - Remastered 2011", "Queen - Bohemian Rhapsody - Remastered 2011.flac"],
+    ["Artist Name", "Wide Awake Tonight - Radio Edit", "Wide Awake Tonight - Radio Edit", "11 - Artist Name - Wide Awake Tonight - Radio Edit.flac"],
+    ["X", "がみ - Radio Edit", "か\u3099み - Radio Edit", "X - がみ - Radio Edit.flac"],
+  ]) {
+    const outcome = await validateDownloadedTrackFile({
+      request: { artistName, trackName, durationMs: 200000 },
+      filePath: `/staging/${filename}`, source: "soulseek",
+      options: { parseFile: stubParseFile(stubParsed({ title, artist: artistName }, 200)) },
+    });
+    assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED, filename);
+  }
+});
+
+test("a plain non-Latin filename cannot hide a different title behind matching tags", async () => {
+  const outcome = await validateDownloadedTrackFile({
+    request: { artistName: "X", trackName: "かみ", durationMs: 200000 },
+    filePath: "/staging/がみ.flac", source: "soulseek",
+    options: { parseFile: stubParseFile(stubParsed({ title: "かみ", artist: "X" }, 200)) },
+  });
+  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+});
+
+test("release selection keeps distinct non-Latin siblings separate", async () => {
+  const parsed = new Map([
+    ["/staging/01 कि.flac", stubParsed({ title: "कि", artist: "X", track: 1 }, 200)],
+    ["/staging/02 की.flac", stubParsed({ title: "की", artist: "X", track: 2 }, 200)],
+  ]);
+  const outcome = await selectVerifiedDownloadedFile({
+    request: { artistName: "X", trackName: "की", durationMs: 200000,
+      trackNumber: 2, albumTrackTitles: ["कि", "की"] },
+    filePaths: [...parsed.keys()], source: "soulseek",
+    options: { parseFile: async (filePath) => parsed.get(filePath) },
+  });
+  assert.equal(outcome.filePath, "/staging/02 की.flac");
+  assert.equal(outcome.validation.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+});
+
 btest("strong original tags and matching duration verify", async () => {
   const outcome = await validateDownloadedTrackFile({
     request: GET_LUCKY,

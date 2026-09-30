@@ -172,7 +172,7 @@ export function normalizeCandidate(source, raw = {}, options = {}) {
   return {
     source,
     title,
-    cleanedTitle: claimedTitle(title),
+    cleanedTitle: capabilities.structuredArtist ? title : claimedTitle(title),
     filenameTitle,
     artists,
     album: cleanText(raw.album || raw.albumName),
@@ -217,7 +217,7 @@ export function parseFilenameArtistTitle(baseName, knownArtistNames = []) {
       return left && artist.toLowerCase() === left;
     });
     if (match || knownArtistNames.length === 0) {
-      return { artist, title: segments[segments.length - 1] };
+      return { artist, title: segments.slice(1).join(" - ") };
     }
   }
   return { artist: null, title: null };
