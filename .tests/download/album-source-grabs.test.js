@@ -63,6 +63,10 @@ test("one Usenet NZB fills two sibling jobs", async (t) => {
     assert.equal(job.status, "done");
     assert.ok((await stat(job.finalPath)).isFile());
   }
+  const { getAurralHistoryRequests } = await import("../../backend/services/aurralHistoryService.js");
+  const activity = (await getAurralHistoryRequests()).filter((item) => album.ids.includes(item.jobId));
+  assert.equal(activity.length, 2);
+  assert.ok(activity.every((item) => item.downloadMethod === "album" && item.actualDownloadSource === "usenet"));
 });
 
 test("one Soulseek batch fills two sibling jobs", async (t) => {
@@ -91,4 +95,8 @@ test("one Soulseek batch fills two sibling jobs", async (t) => {
     assert.equal(job.status, "done");
     assert.ok((await stat(job.finalPath)).isFile());
   }
+  const { getAurralHistoryRequests } = await import("../../backend/services/aurralHistoryService.js");
+  const activity = (await getAurralHistoryRequests()).filter((item) => album.ids.includes(item.jobId));
+  assert.equal(activity.length, 2);
+  assert.ok(activity.every((item) => item.downloadMethod === "album" && item.actualDownloadSource === "slskd"));
 });

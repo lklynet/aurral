@@ -31,6 +31,7 @@ import {
   mergeDiscoveryHttp,
   getStoredRecentlyAddedAt,
   getStoredRecentReleasesAt,
+  getLibraryArtistImage,
 } from "./discoverUtils";
 
 import { useWebSocketChannel } from "../hooks/useWebSocket";
@@ -166,6 +167,11 @@ export function useDiscoverData() {
   );
 
   useWebSocketChannel("library", (msg) => {
+    if (msg.type === "library_scan_completed") {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.recentlyAdded(authUser?.id),
+      });
+    }
     if (msg.type !== "release_metadata_refreshed") return;
     queryClient.invalidateQueries({
       queryKey: queryKeys.recentReleases(authUser?.id),
@@ -424,17 +430,6 @@ export function useDiscoverData() {
       setTicketmasterConfigured(!!bootstrap.ticketmasterConfigured);
     }
   }, [bootstrap]);
-
-  const getLibraryArtistImage = (artist) => {
-    if (artist.images && artist.images.length > 0) {
-      const posterImage = artist.images.find(
-        (img) => img.coverType === "poster" || img.coverType === "fanart",
-      );
-      const image = posterImage || artist.images[0];
-      return image?.remoteUrl || image?.url || null;
-    }
-    return null;
-  };
 
   const getRecentReleaseKey = useCallback(
     (album) => album.mbid || album.foreignAlbumId || album.id,

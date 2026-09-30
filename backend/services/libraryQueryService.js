@@ -306,6 +306,7 @@ const canonicalArtistProjection = (row) => {
     artistName: row.name,
     name: row.name,
     sortName: row.sort_name || row.name,
+    images: Array.isArray(metadata.images) ? metadata.images : [],
     path: metadata.path || null,
     addedAt: metadata.added || (row.created_at ? new Date(row.created_at).toISOString() : null),
     monitored: metadata.monitored === true,
@@ -1113,7 +1114,8 @@ export function getCanonicalLibrary({ source = null, availableOnly = false, favo
       "artist",
     );
     if (!targetQueries.length) return { artists: [], albums: [], tracks: [] };
-    conditions.push(`media.track_id IN (${targetQueries.join(" UNION ")})`);
+    conditions.push(`track.id IN (${targetQueries.join(" UNION ")})`);
+    conditions.push("media.id IS NOT NULL");
   }
 
   const rows = db.prepare(
@@ -1302,6 +1304,13 @@ export function getCanonicalArtistPage({
          ON search_fts.rowid = search_document.id AND library_search_fts MATCH ?`
     : "";
   if (searchMatch) {
+    const pattern = `%${escapeLike(normalizedQuery)}%`;
+    const document = Array.isArray(artistIds) || db.prepare(
+      `SELECT 1 FROM library_search_documents
+       WHERE entity_kind = 'artist' AND lower(title) LIKE ? ESCAPE '\\'
+       LIMIT 1`,
+    ).get(pattern);
+    if (!document) return { artists: [], albums: [], tracks: [] };
     parameters.unshift(searchMatch);
     conditions.push("lower(search_document.title) LIKE ? ESCAPE '\\'");
     parameters.push(`%${escapeLike(normalizedQuery)}%`);
@@ -1529,6 +1538,14 @@ export function getCanonicalAlbumPage({
          ON search_fts.rowid = search_document.id AND library_search_fts MATCH ?`
     : "";
   if (searchMatch) {
+    const pattern = `%${escapeLike(normalizedQuery)}%`;
+    const document = db.prepare(
+      `SELECT 1 FROM library_search_documents
+       WHERE entity_kind = 'album'
+         AND (lower(title) LIKE ? ESCAPE '\\' OR lower(artist_name) LIKE ? ESCAPE '\\')
+       LIMIT 1`,
+    ).get(pattern, pattern);
+    if (!document) return { artists: [], albums: [], tracks: [] };
     parameters.unshift(searchMatch);
     conditions.push("(lower(search_document.title) LIKE ? ESCAPE '\\' OR lower(search_document.artist_name) LIKE ? ESCAPE '\\')");
     parameters.push(`%${escapeLike(normalizedQuery)}%`, `%${escapeLike(normalizedQuery)}%`);
@@ -2391,6 +2408,12 @@ export function getCanonicalLibraryPage({
       .filter((artist, index, values) =>
         values.findIndex((candidate) => candidate.id === artist.id) === index,
       );
+  if (artistId && !relatedArtists.some((artist) => String(artist.id) === String(artistId))) {
+    relatedArtists.push(...getCanonicalArtistPage({
+      source: sourceFilter,
+      artistIds: [artistId],
+    }).artists);
+  }
 
   return {
     kind: normalizedKind,

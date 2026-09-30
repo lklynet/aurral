@@ -8,6 +8,7 @@ import {
   MUSICBRAINZ_API,
 } from "../../config/constants.js";
 import {
+  getNormalizedText,
   rankAlbumCandidates,
   rankArtistCandidates,
   scoreTextMatch,
@@ -482,6 +483,35 @@ export async function resolveArtistByName(name) {
   const result = await searchArtists(name, { limit: 10, offset: 0 });
   const ranked = rankArtistCandidates(name, result.items);
   return ranked[0]?.id || null;
+}
+
+function artistNameForms(name) {
+  const value = String(name || "").trim();
+  const parts = value.split(",").map((part) => part.trim());
+  const variants = parts.length === 2 && parts.every(Boolean)
+    ? [value, `${parts[1]} ${parts[0]}`]
+    : [value];
+  return variants
+    .map((variant) => getNormalizedText(variant).replace(/^the /, ""))
+    .filter(Boolean);
+}
+
+export async function resolveLibraryArtistByName(name) {
+  const forms = new Set(artistNameForms(name));
+  if (forms.size === 0) return null;
+  const data = await request("/search/artist", { query: String(name).trim(), limit: 10 });
+  const matches = new Set(
+    (Array.isArray(data) ? data : [])
+      .map(toNormalizedArtist)
+      .filter((artist) =>
+        artist.id &&
+        [artist.name, ...artist.aliases].some((candidate) =>
+          artistNameForms(candidate).some((form) => forms.has(form)),
+        ),
+      )
+      .map((artist) => artist.id),
+  );
+  return matches.size === 1 ? [...matches][0] : null;
 }
 
 export async function resolveAlbumByArtistAndTitle({

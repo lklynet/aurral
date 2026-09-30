@@ -700,8 +700,15 @@ async function main() {
     };
     const boundedReadCompleted = Object.values(subsonicReads).every((read) =>
       read.nonVacuous);
+    const targetedReadChecks = {
+      nonVacuousCompletedSamples: ["search3", "starred"].every((name) =>
+        subsonicReads[name].nonVacuous && subsonicReads[name].statisticsComplete),
+      searchMedianUnder300ms: isFiniteBelow(subsonicReads.search3.medianMs, 300),
+      starredMedianUnder75ms: isFiniteBelow(subsonicReads.starred.medianMs, 75),
+    };
     const checks = {
       boundedReadCompleted,
+      targetedReadBudgets: Object.values(targetedReadChecks).every(Boolean),
       measuredQueryBudgets: Object.values(measuredQueryChecks).every(Boolean),
       pageBudgets: Object.values(pageBudgetChecks).every(Boolean),
       compatibilityReadBudgets: Object.values(compatibilityReadChecks).every(Boolean),
@@ -735,10 +742,13 @@ async function main() {
         targets: {
           warmPageP95Ms: 250,
           coldPageP95Ms: 750,
+          searchMedianMs: 300,
+          starredMedianMs: 75,
           responseBytes: 2 * 1024 * 1024,
           requestRssDeltaBytes: 64 * 1024 * 1024,
         },
         measuredQueryChecks,
+        targetedReadChecks,
         pageBudgetChecks,
         compatibilityReadChecks,
         deferredIntegrationChecks: [

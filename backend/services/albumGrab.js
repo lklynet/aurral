@@ -1,4 +1,5 @@
 import path from "node:path";
+import { recordAlbumGrabQueued, recordAlbumGrabPhase, recordAlbumTrackState } from "./albumGrabActivity.js";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
 import { assignDownloadedAlbumFiles } from "./albumReleaseAssignment.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
@@ -35,6 +36,7 @@ export function releaseAlbumGrabJobs(payload, reason = null, reasons = new Map()
     released = downloadTracker.setPending(job.id, reasons.get(job.id) || reason) || released;
   }
   if (released) {
+    recordAlbumGrabPhase(payload, reason || "Album attempt ended; searching for missing tracks");
     void import("./weeklyFlow/weeklyFlowWorker.js")
       .then(({ weeklyFlowWorker }) => weeklyFlowWorker.wake(0))
       .catch(() => {});
@@ -42,6 +44,7 @@ export function releaseAlbumGrabJobs(payload, reason = null, reasons = new Map()
 }
 
 export function fallbackAlbumGrabToTracks(payload, reason = null, reasons = new Map()) {
+  recordAlbumGrabPhase(payload, reason || "Album attempt ended; searching for missing tracks");
   releaseAlbumGrabJobs(payload, reason, reasons);
   return {
     ...payload,
@@ -69,6 +72,7 @@ export function fallbackAlbumGrabToTracks(payload, reason = null, reasons = new 
 export async function finishAlbumGrab(payload, { filePaths, source, album = null } = {}) {
   const jobs = albumGrabJobs(payload);
   if (jobs.length === 0) return null;
+  recordAlbumGrabQueued(payload, jobs);
   const assigned = await assignDownloadedAlbumFiles({ jobs, filePaths, source });
   const reasons = new Map(assigned.rejected.map(({ jobId, reason }) =>
     [jobId, `Album file failed verification: ${reason}`]));
@@ -91,6 +95,7 @@ export async function finishAlbumGrab(payload, { filePaths, source, album = null
         });
       });
       if (committed.cancelled) continue;
+      if (job.status === "done") recordAlbumTrackState(job, source === "soulseek" ? "slskd" : source);
     } catch (error) {
       reasons.set(job.id, "Album file import failed");
       logger.warn(source, "Album file import failed", {

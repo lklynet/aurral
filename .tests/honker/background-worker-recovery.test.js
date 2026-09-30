@@ -10,11 +10,12 @@ import {
 } from "../../backend/services/libraryScanWorker.js";
 import { dbOps } from "../../backend/db/helpers/index.js";
 
-test("an exited scan process releases its claimed job for retry", async () => {
+test("an exited scan process releases its claimed job for retry", async (t) => {
   const queue = getLibraryScanQueue();
   const pid = 900000001;
   const workerId = `aurral-${pid}`;
   const jobId = queue.enqueue({ force: true });
+  t.after(() => queue.cancel(jobId));
   const claim = queue.claimOne(workerId);
   assert.equal(claim?.id, jobId);
   assert.equal(queue.getJob(jobId)?.state, "processing");
@@ -37,10 +38,11 @@ test("an exited scan process releases its claimed job for retry", async () => {
   assert.equal(registry?.inFlightActive, undefined);
 });
 
-test("a worker exit preserves a full rescan requested during the active scan", async () => {
+test("a worker exit preserves a full rescan requested during the active scan", async (t) => {
   const queue = getLibraryScanQueue();
   const pid = 900000002;
   const jobId = queue.enqueue({ force: false });
+  t.after(() => queue.cancel(jobId));
   assert.equal(queue.claimOne(`aurral-${pid}`)?.id, jobId);
   dbOps.setJSONSetting("pendingLibraryScanJob", {
     jobId,
