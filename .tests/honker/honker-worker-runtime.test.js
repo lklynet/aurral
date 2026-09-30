@@ -243,7 +243,7 @@ test("clearStaleHonkerJobs removes long-running processing jobs", async () => {
   assert.equal(after.summary.staleCount, 0);
 });
 
-test("task status collapses duplicate scheduled discovery refresh jobs", async () => {
+test("task status groups scheduled discovery jobs without cancelling them", async () => {
   const queue = honkerDb.getDiscoveryRefreshQueue();
   const runAt = Math.floor(Date.now() / 1000) + 86400;
   queue.enqueue(
@@ -267,11 +267,16 @@ test("task status collapses duplicate scheduled discovery refresh jobs", async (
   );
 
   assert.equal(grouped.length, 1);
-  assert.equal(grouped[0].duplicateCount, 1);
+  assert.equal(grouped[0].duplicateCount, 2);
   const worker = status.workers.find(
     (entry) => entry.queue === "discovery-refresh",
   );
   assert.equal(worker?.scheduled, 1);
+  assert.equal(honkerDb.listHonkerJobs("discovery-refresh").length, 2);
+  await taskStatus.startHonkerTaskCleanup();
+  await taskStatus.stopHonkerTaskCleanup();
+  const cleaned = await taskStatus.getHonkerTaskStatus();
+  assert.equal(cleaned.workers.find((entry) => entry.queue === "discovery-refresh")?.scheduled, 1);
 });
 
 test("task status groups duplicate completed system task runs", async () => {
@@ -296,7 +301,7 @@ test("task status groups duplicate completed system task runs", async () => {
   assert.equal(grouped[0].payloadSummary, "");
 });
 
-test("task run ledger prunes dead jobs older than one hour", async () => {
+test("periodic cleanup prunes expired dead jobs while status only filters them", async () => {
   const { db } = await importFromRepo("backend/config/db-sqlite.js");
   const twoHoursAgo = Math.floor(Date.now() / 1000) - 7200;
   db.prepare(
@@ -335,10 +340,13 @@ test("task run ledger prunes dead jobs older than one hour", async () => {
       "SELECT COUNT(*) AS count FROM _honker_dead WHERE last_error = 'stale failure'",
     )
     .get();
-  assert.equal(Number(remaining?.count || 0), 0);
+  assert.equal(Number(remaining?.count || 0), 1);
+  await taskStatus.startHonkerTaskCleanup();
+  await taskStatus.stopHonkerTaskCleanup();
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM _honker_dead WHERE last_error = 'stale failure'").get().count, 0);
 });
 
-test("task run ledger prunes entries older than one hour", async () => {
+test("periodic cleanup prunes expired runs while status only filters them", async () => {
   const { db } = await importFromRepo("backend/config/db-sqlite.js");
   const twoHoursAgo = Math.floor(Date.now() / 1000) - 7200;
   db.prepare(
@@ -385,7 +393,14 @@ test("task run ledger prunes entries older than one hour", async () => {
       "SELECT COUNT(*) AS count FROM honker_task_runs WHERE name = 'Stale Task'",
     )
     .get();
-  assert.equal(Number(remaining?.count || 0), 0);
+  assert.equal(Number(remaining?.count || 0), 1);
+  db.prepare("INSERT INTO honker_task_runs(job_id, queue, status, started_at) VALUES(424243, 'system-task', 'running', ?)").run(twoHoursAgo);
+  taskStatus.recordHonkerTaskRunFinished(99999999, "completed");
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM honker_task_runs WHERE name = 'Stale Task'").get().count, 1);
+  await taskStatus.startHonkerTaskCleanup();
+  await taskStatus.stopHonkerTaskCleanup();
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM honker_task_runs WHERE name = 'Stale Task'").get().count, 0);
+  assert.ok(db.prepare("SELECT COUNT(*) AS count FROM honker_task_runs WHERE status = 'running'").get().count > 0);
 });
 
 test("weekly flow operation queue status reflects worker state and depth", () => {
@@ -418,4 +433,29 @@ test("an idle shutdown lets the process exit without waiting out its timeout", (
   });
   assert.equal(result.status, 0, result.stderr);
   assert.ok(Date.now() - startedAt < 10000);
+});
+
+
+test("periodic cleanup retries failed passes and stops on shutdown", async (t) => {
+  const { db } = await importFromRepo("backend/config/db-sqlite.js");
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  t.after(async () => {
+    await taskStatus.stopHonkerTaskCleanup();
+    db.exec("DROP TRIGGER IF EXISTS block_task_cleanup");
+    t.mock.timers.reset();
+  });
+  const old = Math.floor(Date.now() / 1000) - 7200;
+  db.prepare("INSERT INTO honker_task_runs(job_id, queue, status, started_at, ended_at) VALUES(?, ?, 'completed', ?, ?)").run(777777, "system-task", old, old);
+  db.exec("CREATE TRIGGER block_task_cleanup BEFORE DELETE ON honker_task_runs BEGIN SELECT RAISE(FAIL, 'disposable cleanup failure'); END");
+  await taskStatus.startHonkerTaskCleanup();
+  assert.ok(db.prepare("SELECT id FROM honker_task_runs WHERE job_id = 777777").get());
+  db.exec("DROP TRIGGER block_task_cleanup");
+  t.mock.timers.tick(60000);
+  await taskStatus.startHonkerTaskCleanup();
+  assert.equal(db.prepare("SELECT id FROM honker_task_runs WHERE job_id = 777777").get(), undefined);
+  await taskStatus.stopHonkerTaskCleanup();
+  db.prepare("INSERT INTO honker_task_runs(job_id, queue, status, started_at, ended_at) VALUES(?, ?, 'completed', ?, ?)").run(777778, "system-task", old, old);
+  t.mock.timers.tick(60000);
+  await Promise.resolve();
+  assert.ok(db.prepare("SELECT id FROM honker_task_runs WHERE job_id = 777778").get());
 });

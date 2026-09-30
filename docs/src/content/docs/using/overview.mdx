@@ -107,3 +107,5 @@ Administrators can set dates and times to the browser default, day-first format,
 format under **Settings > System > Display**. The selected format applies to all users.
 
 Advanced metadata settings are available at `/settings/metadata`. They do not appear in the main settings navigation.
+
+Release catalogue refreshes have a separate worker in **Settings > Tasks**, so a slow metadata provider does not hold up playlist maintenance. An **Interrupted** run means unfinished work was returned to the queue after shutdown or loss of its execution lease.

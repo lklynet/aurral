@@ -10,7 +10,7 @@ import {
 
 test("only the owning process supervises isolated queues", () => {
   assert.deepEqual(ISOLATED_WORKER_GROUPS, [
-    "library", "discovery-refresh", "discovery-playlist-build",
+    "release-metadata", "library", "discovery-refresh", "discovery-playlist-build",
     "discovery-user-refresh", "maintenance", "inbox", "notifications",
     "play-events", "flow", "scheduler",
   ]);
@@ -23,6 +23,8 @@ test("only the owning process supervises isolated queues", () => {
   assert.equal(isQueueOwnedByGroup("_outbox:play-events", "play-events"), true);
   assert.equal(isQueueOwnedByGroup("notification-outbox", "notifications"), true);
   assert.equal(isQueueOwnedByGroup("system-task", "flow"), true);
+  assert.equal(isQueueOwnedByGroup("release-metadata-refresh", "release-metadata"), true);
+  assert.equal(isQueueOwnedByGroup("release-metadata-refresh", "flow"), false);
   assert.equal(isQueueOwnedByGroup("weekly-flow-operation", "flow"), true);
   assert.equal(isQueueOwnedByGroup("slskd-pipeline", "flow"), true);
   assert.equal(isQueueOwnedByGroup("system-task"), false);

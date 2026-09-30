@@ -1,14 +1,16 @@
 import {
   enqueueHonkerStartupTasks,
+  configureHonkerQueueWake,
   getHonkerDb,
   getHonkerQueueByName,
-  getHonkerQueueDepth,
+  hasClaimableHonkerJobs,
+  hasExpiredHonkerClaims,
   getHonkerQueueNextClaimAt,
   startHonkerScheduler,
 } from "./honkerDb.js";
 import { createBackgroundProcessSupervisor } from "./backgroundProcessSupervisor.js";
 import { ISOLATED_QUEUE_GROUPS, isQueueOwnedByGroup } from "./backgroundWorkerQueues.js";
-import { isHonkerShuttingDown, registerHonkerShutdownHandler } from "./honkerWorkerRuntime.js";
+import { getHonkerWorkerStatuses, isHonkerShuttingDown, registerHonkerShutdownHandler } from "./honkerWorkerRuntime.js";
 import { HONKER_QUEUE_NAMES } from "./honkerDb.js";
 import { configureFlowOwnerClient } from "./weeklyFlow/weeklyFlowOwnerClient.js";
 
@@ -16,6 +18,9 @@ let backgroundWorkersStarted = false;
 let workerSupervisorStarted = false;
 let workerSupervisorInterval = null;
 let workerSupervisorTimer = null;
+let workerSupervisorTimerAt = null;
+let workerSweepInterval = null;
+const startingQueues = new Set();
 let supervisedGroup = null;
 let backgroundProcessSupervisor = null;
 let lastExpiredSweepAt = 0;
@@ -28,10 +33,11 @@ export function getIsolatedWorkerStatuses() {
 const WORKER_SUPERVISOR_POLL_MS = Math.max(
   process.env.AURRAL_BACKGROUND_WORKER_GROUP ? 1000 : 15000,
   Math.floor(Number(process.env.AURRAL_WORKER_SUPERVISOR_POLL_MS) ||
-    (process.env.AURRAL_BACKGROUND_WORKER_GROUP ? 2000 : 60000)),
+    (process.env.AURRAL_BACKGROUND_WORKER_GROUP ? 30000 : 60000)),
 );
 
 const WORKER_STARTS = {
+  "release-metadata-refresh": ["./releaseMetadataWorker.js", "startReleaseMetadataWorker"],
   "system-task": ["./systemTaskWorker.js", "startSystemTaskWorker"],
   "system-task-maintenance": ["./systemTaskWorker.js", "startMaintenanceTaskWorker"],
   "system-task-inbox": ["./systemTaskWorker.js", "startInboxTaskWorker"],
@@ -54,47 +60,77 @@ const QUEUE_WORKERS = HONKER_QUEUE_NAMES.map((queue) => ({
 })).filter((worker) => Array.isArray(worker.start));
 
 function startQueueWorker([modulePath, startName], queueName) {
+  if (startingQueues.has(queueName)) return;
+  startingQueues.add(queueName);
   import(modulePath)
-    .then((module) => module[startName]())
+    .then((module) => {
+      if (!isHonkerShuttingDown() && workerSupervisorStarted) module[startName]();
+    })
     .catch((error) => {
       console.warn(`[AppRuntime] Failed to start ${queueName}:`, error?.message || error);
-    });
+    })
+    .finally(() => startingQueues.delete(queueName));
 }
 
 function clearSupervisorWakeTimer() {
   if (!workerSupervisorTimer) return;
   clearTimeout(workerSupervisorTimer);
   workerSupervisorTimer = null;
+  workerSupervisorTimerAt = null;
 }
 
 function scheduleSupervisorWake(nextClaimAt) {
-  clearSupervisorWakeTimer();
   const timestamp = Number(nextClaimAt);
-  if (!Number.isFinite(timestamp) || timestamp <= 0) return;
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    clearSupervisorWakeTimer();
+    return;
+  }
   const waitMs = timestamp * 1000 - Date.now();
   if (waitMs <= 0) return;
+  const target = Date.now() + Math.max(1000, Math.min(waitMs, 2147483647));
+  if (workerSupervisorTimer && workerSupervisorTimerAt <= target) return;
+  clearSupervisorWakeTimer();
+  workerSupervisorTimerAt = target;
   workerSupervisorTimer = setTimeout(
     () => {
       workerSupervisorTimer = null;
+      workerSupervisorTimerAt = null;
       checkQueuedBackgroundWork(supervisedGroup);
     },
-    Math.max(1000, Math.min(waitMs, WORKER_SUPERVISOR_POLL_MS)),
+    target - Date.now(),
   );
   if (typeof workerSupervisorTimer.unref === "function") {
     workerSupervisorTimer.unref();
   }
 }
 
-function checkQueuedBackgroundWork(group = null) {
-  if (process.env.AURRAL_TEST_SERVER === "1") return;
-  let nextClaimAt = null;
-  const sweepExpired = Date.now() - lastExpiredSweepAt >= 30000;
-  if (sweepExpired) lastExpiredSweepAt = Date.now();
+function sweepExpiredWorkerQueues(group) {
+  if (Date.now() - lastExpiredSweepAt < 30000) return 0;
+  lastExpiredSweepAt = Date.now();
+  let swept = 0;
   for (const worker of QUEUE_WORKERS) {
     if (!isQueueOwnedByGroup(worker.queue, group)) continue;
     try {
-      if (sweepExpired) getHonkerQueueByName(worker.queue)?.sweepExpired();
-      if (getHonkerQueueDepth(worker.queue) > 0) {
+      swept += Number(getHonkerQueueByName(worker.queue)?.sweepExpired()) || 0;
+      if (hasExpiredHonkerClaims(worker.queue)) swept++;
+    } catch (error) {
+      console.warn(`[AppRuntime] Failed to recover ${worker.queue}:`, error?.message || error);
+    }
+  }
+  return swept;
+}
+
+function checkQueuedBackgroundWork(group = null) {
+  if (process.env.AURRAL_TEST_SERVER === "1" || isHonkerShuttingDown()) return;
+  let nextClaimAt = null;
+  sweepExpiredWorkerQueues(group);
+  const running = new Set(getHonkerWorkerStatuses().filter((worker) => worker.running).map((worker) => worker.name));
+  for (const worker of QUEUE_WORKERS) {
+    if (!isQueueOwnedByGroup(worker.queue, group)) continue;
+    try {
+      const workerName = worker.queue === "_outbox:notifications" ? "notification-outbox"
+        : worker.queue === "_outbox:play-events" ? "play-event-outbox" : worker.queue;
+      if (!running.has(workerName) && !startingQueues.has(worker.queue) && hasClaimableHonkerJobs(worker.queue)) {
         startQueueWorker(worker.start, worker.queue);
       }
       const queueNextClaimAt = getHonkerQueueNextClaimAt(worker.queue);
@@ -119,6 +155,10 @@ export function startWorkerSupervisor({ group = null } = {}) {
   supervisedGroup = group;
   checkQueuedBackgroundWork(group);
   workerSupervisorInterval = setInterval(() => checkQueuedBackgroundWork(group), WORKER_SUPERVISOR_POLL_MS);
+  workerSweepInterval = setInterval(() => {
+    if (sweepExpiredWorkerQueues(group) > 0) checkQueuedBackgroundWork(group);
+  }, 30000);
+  workerSweepInterval.unref?.();
   if (typeof workerSupervisorInterval.unref === "function") {
     workerSupervisorInterval.unref();
   }
@@ -128,6 +168,8 @@ function stopWorkerSupervisor() {
   workerSupervisorStarted = false;
   supervisedGroup = null;
   clearSupervisorWakeTimer();
+  clearInterval(workerSweepInterval);
+  workerSweepInterval = null;
   if (workerSupervisorInterval) {
     clearInterval(workerSupervisorInterval);
     workerSupervisorInterval = null;
@@ -329,6 +371,12 @@ export function startBackgroundWorkers({ logger = console } = {}) {
     request: (method, args, options) =>
       backgroundProcessSupervisor.request("flow", method, args, options),
     getStatus: () => backgroundProcessSupervisor.getFlowStatus(),
+  });
+  configureHonkerQueueWake((queue) => {
+    if (isHonkerShuttingDown()) return;
+    const owner = ISOLATED_QUEUE_GROUPS[queue];
+    if (owner) backgroundProcessSupervisor.wake(owner);
+    else checkQueuedBackgroundWork();
   });
   backgroundProcessSupervisor.start();
   void import("./libraryFileWatcher.js")

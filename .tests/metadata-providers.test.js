@@ -1,4 +1,7 @@
 import test from "node:test";
+import { execFile, fork } from "node:child_process";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import {
   setupIsolatedBackend,
@@ -255,7 +258,7 @@ test("missing entity metadata is negatively cached for repeated lookups", async 
   }
 });
 
-test("a metadata 429 opens a local cooldown for subsequent requests", async () => {
+test("a metadata 429 opens a shared cooldown for subsequent requests", async () => {
   const previousSettings = dbOps.getSettings();
   let requests = 0;
   const server = await createMockHttpServer((_request, response) => {
@@ -294,6 +297,17 @@ test("a metadata 429 opens a local cooldown for subsequent requests", async () =
       (error) => error.code === "ERR_METADATA_RATE_LIMITED",
     );
     assert.equal(requests, 1);
+    const providerUrl = new URL("../backend/services/providers/brainzmashProvider.js", import.meta.url).href;
+    const probe = `const { getArtistByMbid } = await import(${JSON.stringify(providerUrl)});
+      try { await getArtistByMbid("other-process-cooldown"); console.log(JSON.stringify({ ok: true })); }
+      catch (error) { console.log(JSON.stringify({ code: error.code })); }
+      process.exit(0);`;
+    const { stdout } = await promisify(execFile)(process.execPath, ["--input-type=module", "-e", probe], {
+      env: { ...process.env },
+      timeout: 10000,
+    });
+    assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)).code, "ERR_METADATA_RATE_LIMITED");
+    assert.equal(requests, 1);
   } finally {
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
@@ -301,7 +315,7 @@ test("a metadata 429 opens a local cooldown for subsequent requests", async () =
   }
 });
 
-test("a metadata 403 opens a local blocked cooldown for subsequent requests", async () => {
+test("a metadata 403 opens a shared blocked cooldown for subsequent requests", async () => {
   const previousSettings = dbOps.getSettings();
   let requests = 0;
   const server = await createMockHttpServer((_request, response) => {
@@ -338,6 +352,13 @@ test("a metadata 403 opens a local blocked cooldown for subsequent requests", as
       () => getArtistByMbid("another-artist"),
       (error) => error.code === "ERR_METADATA_FORBIDDEN",
     );
+    const { stdout } = await promisify(execFile)(process.execPath, ["--input-type=module", "-e", `
+      const { getArtistByMbid } = await import("./backend/services/providers/brainzmashProvider.js");
+      try { await getArtistByMbid("another-process-blocked"); }
+      catch (error) { console.log(JSON.stringify({ code: error.code })); }
+      process.exit(0);
+    `], { cwd: process.cwd(), env: { ...process.env }, timeout: 10000 });
+    assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)).code, "ERR_METADATA_FORBIDDEN");
     assert.equal(requests, 1);
   } finally {
     clearMetadataProviderCaches();
@@ -445,6 +466,66 @@ test("BrainzMash rejects the saturation boundary before its deadline", async () 
     await Promise.allSettled(requests);
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("independent provider processes share request admission", async () => {
+  const previous = dbOps.getSettings();
+  const arrivals = [];
+  const server = await createMockHttpServer((_request, response) => {
+    arrivals.push(performance.now());
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ id: "artist", name: "Artist" }));
+  });
+  try {
+    dbOps.updateSettings({ ...previous, integrations: { ...previous.integrations,
+      metadata: { ...previous.integrations?.metadata, baseUrl: server.url, enableNarrowFallbacks: false } } });
+    clearMetadataProviderCaches();
+    await Promise.all(["first", "second"].map((prefix) => promisify(execFile)(process.execPath,
+      ["--input-type=module", "-e", `
+        const { getArtistByMbid } = await import("./backend/services/providers/brainzmashProvider.js");
+        for (let index = 0; index < 3; index++) await getArtistByMbid(${JSON.stringify(prefix)} + index);
+        process.exit(0);
+      `], { cwd: process.cwd(), env: { ...process.env }, timeout: 10000 })));
+    assert.equal(arrivals.length, 6);
+    for (let index = 1; index < arrivals.length; index++) {
+      assert.ok(arrivals[index] - arrivals[index - 1] >= 75, "independent processes admitted a request burst");
+    }
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previous);
+    await server.close();
+  }
+});
+
+test("clearing caches preserves provider spacing for another process", async () => {
+  const previous = dbOps.getSettings();
+  const arrivals = [];
+  const server = await createMockHttpServer((_request, response) => {
+    arrivals.push(performance.now());
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ id: "artist", name: "Artist" }));
+  });
+  let child;
+  try {
+    dbOps.updateSettings({ ...previous, integrations: { ...previous.integrations,
+      metadata: { ...previous.integrations?.metadata, baseUrl: server.url, enableNarrowFallbacks: false } } });
+    clearMetadataProviderCaches();
+    child = fork(fileURLToPath(new URL("./fixtures/metadata-provider-child.mjs", import.meta.url)), [],
+      { env: { ...process.env }, stdio: ["ignore", "ignore", "ignore", "ipc"] });
+    await new Promise((resolve) => child.once("message", resolve));
+    await getArtistByMbid("before-cache-clear");
+    clearMetadataProviderCaches();
+    const done = new Promise((resolve) => child.once("message", resolve));
+    child.send({ type: "request", mbid: "after-cache-clear" });
+    assert.equal((await done).ok, true);
+    assert.equal(arrivals.length, 2);
+    assert.ok(arrivals[1] - arrivals[0] >= 75, "cache clearing allowed an aggregate request burst");
+  } finally {
+    if (child) await new Promise((resolve) => { child.once("exit", resolve); child.send({ type: "shutdown" }); });
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previous);
     await server.close();
   }
 });

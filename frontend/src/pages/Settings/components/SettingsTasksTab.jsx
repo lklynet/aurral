@@ -14,6 +14,12 @@ const relativeFormatter = new Intl.RelativeTimeFormat(undefined, {
 });
 
 const STATUS_META = {
+  interrupted: {
+    label: "Interrupted",
+    tone: "muted",
+    icon: Clock,
+    title: "Unfinished work was returned to the queue",
+  },
   completed: {
     label: "Completed",
     tone: "ok",

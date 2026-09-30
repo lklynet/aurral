@@ -26,6 +26,13 @@ import {
 import { selectBestAlbumImage } from "../imageService.js";
 import createRateLimiter from "../apiClients/rateLimiter.js";
 import { runSharedInflight } from "../sharedInflight.js";
+import { setTimeout as delay } from "node:timers/promises";
+import {
+  clearMetadataProviderCooldowns,
+  getMetadataProviderBudget,
+  reserveMetadataProviderRequest,
+  setMetadataProviderCooldown,
+} from "../metadataProviderBudget.js";
 
 const METADATA_ENTITY_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
 const METADATA_ENTITY_STALE_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -54,16 +61,13 @@ const providerRequestLimiter = createRateLimiter(METADATA_REQUEST_MIN_INTERVAL_M
   maxQueue: METADATA_MAX_QUEUED_REQUESTS,
 });
 const METADATA_MAX_RETRIES = 1;
-let rateLimitCooldown = { baseUrl: null, until: 0 };
-let forbiddenCooldown = { baseUrl: null, until: 0 };
 
 export function clearMetadataProviderCaches() {
   providerCache.flushAll();
   metadataNotFoundCache.flushAll();
   releaseCache.flushAll();
   providerInflightRequests.clear();
-  rateLimitCooldown = { baseUrl: null, until: 0 };
-  forbiddenCooldown = { baseUrl: null, until: 0 };
+  clearMetadataProviderCooldowns();
 }
 
 const healthState = {
@@ -155,18 +159,19 @@ function getRetryAfterMs(error) {
 
 function getMetadataCircuitError(baseUrl) {
   const now = Date.now();
-  if (forbiddenCooldown.baseUrl === baseUrl && forbiddenCooldown.until > now) {
+  const budget = getMetadataProviderBudget(baseUrl);
+  if (budget.forbidden_until > now) {
     return createMetadataCircuitError(
       "ERR_METADATA_FORBIDDEN",
       403,
-      forbiddenCooldown.until - now,
+      budget.forbidden_until - now,
     );
   }
-  if (rateLimitCooldown.baseUrl === baseUrl && rateLimitCooldown.until > now) {
+  if (budget.rate_limited_until > now) {
     return createMetadataCircuitError(
       "ERR_METADATA_RATE_LIMITED",
       429,
-      rateLimitCooldown.until - now,
+      budget.rate_limited_until - now,
     );
   }
   return null;
@@ -175,11 +180,7 @@ function getMetadataCircuitError(baseUrl) {
 function openMetadataCircuit(baseUrl, status, error) {
   const cooldownMs =
     status === 403 ? METADATA_FORBIDDEN_COOLDOWN_MS : getRetryAfterMs(error);
-  const currentCooldown = status === 403 ? forbiddenCooldown : rateLimitCooldown;
-  const currentUntil = currentCooldown.baseUrl === baseUrl ? currentCooldown.until : 0;
-  const cooldown = { baseUrl, until: Math.max(currentUntil, Date.now() + cooldownMs) };
-  if (status === 403) forbiddenCooldown = cooldown;
-  else rateLimitCooldown = cooldown;
+  setMetadataProviderCooldown(baseUrl, status, Date.now() + cooldownMs);
 }
 
 function isRetryable(error) {
@@ -215,13 +216,33 @@ function refreshMetadata(cacheKey, path, params, { signal } = {}) {
       if (sharedSignal.aborted) throw sharedSignal.reason || new Error("The operation was aborted");
       try {
         const response = await providerRequestLimiter.schedule(
-          (remainingMs) => {
+          async (remainingMs) => {
             const activeCircuitError = getMetadataCircuitError(baseUrl);
             if (activeCircuitError) throw activeCircuitError;
+            const admissionStarted = Date.now();
+            let waitMs;
+            while ((waitMs = reserveMetadataProviderRequest(baseUrl, METADATA_REQUEST_MIN_INTERVAL_MS)) > 0) {
+              if (waitMs >= remainingMs - (Date.now() - admissionStarted)) {
+                const error = new Error("Metadata provider request deadline exceeded");
+                error.code = "ETIMEDOUT";
+                throw error;
+              }
+              await delay(waitMs, undefined, { signal: sharedSignal });
+              const waitingCircuit = getMetadataCircuitError(baseUrl);
+              if (waitingCircuit) throw waitingCircuit;
+            }
+            const circuitAfterWait = getMetadataCircuitError(baseUrl);
+            if (circuitAfterWait) throw circuitAfterWait;
+            const requestTimeoutMs = remainingMs - (Date.now() - admissionStarted);
+            if (requestTimeoutMs <= 0) {
+              const error = new Error("Metadata provider request deadline exceeded");
+              error.code = "ETIMEDOUT";
+              throw error;
+            }
             return axios.get(`${baseUrl}${path}`, {
               params,
-              timeout: Number.isFinite(remainingMs)
-                ? Math.max(1, Math.floor(remainingMs))
+              timeout: Number.isFinite(requestTimeoutMs)
+                ? Math.max(1, Math.floor(requestTimeoutMs))
                 : METADATA_REQUEST_TIMEOUT_MS,
               headers: {
                 "User-Agent": getUserAgent(),

@@ -1,3 +1,4 @@
+import { acquireReleaseMetadataLease } from "./releaseMetadataLease.js";
 import createHonkerWorker from "./honkerWorkerFactory.js";
 import {
   getInboxTaskQueue,
@@ -10,7 +11,7 @@ import { cleanExpiredSessions } from "../config/session-helpers.js";
 import { dbOps } from "../db/helpers/index.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
 
-export async function processSystemTask(payload = {}, job = null) {
+export async function processSystemTask(payload = {}, job = null, context = {}) {
   const kind = String(payload?.kind || "").trim();
   switch (kind) {
     case "weekly-flow-refresh": {
@@ -72,7 +73,7 @@ export async function processSystemTask(payload = {}, job = null) {
     }
     case "release-metadata-refresh": {
       const { refreshReleaseMetadata } = await import("./releaseMetadataSync.js");
-      const result = await refreshReleaseMetadata();
+      const result = await refreshReleaseMetadata({ signal: context.signal, lease: context.lease });
       const { websocketService } = await import("./websocketService.js");
       websocketService.broadcast("library", {
         type: "release_metadata_refreshed",
@@ -218,6 +219,8 @@ const {
   isRunning: isSystemTaskWorkerRunning,
 } = createHonkerWorker({
   name: "system-task",
+  interruptible: (payload) => payload?.kind === "release-metadata-refresh",
+  prepareJob: prepareSystemTask,
   getQueue: getSystemTaskQueue,
   processJob: processSystemTask,
   idlePollS: 10,
@@ -252,3 +255,9 @@ const { start: startInboxTaskWorker } = createHonkerWorker({
 });
 
 export { startMaintenanceTaskWorker, startInboxTaskWorker };
+
+export async function prepareSystemTask(payload, job, { signal }) {
+  if (payload?.kind !== "release-metadata-refresh") return null;
+  const lease = await acquireReleaseMetadataLease({ signal });
+  return { lease, release: () => lease.release() };
+}

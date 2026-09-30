@@ -171,3 +171,15 @@ If the container has stopped, `docker stats` has no historical usage data. Use t
 1. Set `AURRAL_VERBOSE_LOGS=true`.
 2. Restart Aurral.
 3. Check the container logs.
+
+## Roll back after the release metadata worker was introduced
+
+Stop Aurral before restoring a version that has no separate release metadata worker. Using the current version, run the maintenance command against the same application data directory:
+
+```sh
+AURRAL_DATA_DIR=/path/to/config node backend/scripts/restoreReleaseMetadataQueue.js
+```
+
+For Docker, run the command in a temporary container using the current image and the same config volume. Keep the regular Aurral container stopped. Preserve a custom `AURRAL_DB_PATH` if your installation uses one.
+
+The command moves pending refreshes and their schedule to the legacy system queue. It preserves job ids, retry counts, deadlines, and the next scheduled refresh. It refuses to run while metadata jobs remain claimed. Let the current version finish those jobs, then stop it and retry the command before starting the older version.

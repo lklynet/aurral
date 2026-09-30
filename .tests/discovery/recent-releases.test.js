@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { getHonkerDb } from "../../backend/services/honkerDb.js";
 
 import { getRecentMissingReleases } from "../../backend/services/discovery/recentReleases.js";
 import { refreshReleaseMetadata } from "../../backend/services/releaseMetadataSync.js";
@@ -488,5 +489,44 @@ test("canonical release-date reads return dated albums without loading old album
         `DELETE FROM library_tracks WHERE id IN (${trackIds.map(() => "?").join(",")})`,
       ).run(...trackIds);
     }
+  }
+});
+
+test("lease loss during a catalogue request leaves the last good calendar untouched", async () => {
+  getHonkerDb();
+  const artist = createCalendarArtist("Lease Loss Artist");
+  const releaseMbid = addCalendarRelease(artist.id, "Last Good Release", "2026-09-20");
+  try {
+    await assert.rejects(refreshReleaseMetadata({
+      artists: [artist],
+      now: "2026-09-27T12:00:00Z",
+      listAlbums: async () => {
+        db.prepare("UPDATE _honker_locks SET owner = ? WHERE name = ?")
+          .run("replacement-owner", "release-metadata-refresh");
+        return [];
+      },
+    }), { code: "HONKER_JOB_INTERRUPTED" });
+    assert.equal(db.prepare("SELECT present FROM library_release_calendar WHERE release_group_mbid = ?")
+      .get(releaseMbid).present, 1);
+  } finally {
+    db.prepare("DELETE FROM _honker_locks WHERE name = ?").run("release-metadata-refresh");
+    removeCalendarArtist(artist.id);
+  }
+});
+
+test("an aborted metadata refresh never calls the provider or changes the calendar", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const artist = createCalendarArtist("Aborted Refresh Artist");
+  let calls = 0;
+  try {
+    await assert.rejects(refreshReleaseMetadata({
+      artists: [artist],
+      signal: controller.signal,
+      listAlbums: async () => { calls += 1; return []; },
+    }), { code: "HONKER_JOB_INTERRUPTED" });
+    assert.equal(calls, 0);
+  } finally {
+    removeCalendarArtist(artist.id);
   }
 });

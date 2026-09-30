@@ -120,6 +120,8 @@ process.once("disconnect", () => { void stop(); });
 if (group === "scheduler") {
   const { startHonkerScheduler } = await import("./honkerDb.js");
   startHonkerScheduler();
+  const { startHonkerTaskCleanup } = await import("./honkerTaskStatus.js");
+  await startHonkerTaskCleanup();
 } else {
   startWorkerSupervisor({ group });
 }
