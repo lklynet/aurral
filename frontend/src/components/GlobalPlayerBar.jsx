@@ -81,6 +81,15 @@ function GlobalPlayerBar() {
   }, [isActive]);
 
   useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 768px)");
+    const closeOnDesktop = () => {
+      if (desktop.matches) setSheetOpen(false);
+    };
+    desktop.addEventListener("change", closeOnDesktop);
+    return () => desktop.removeEventListener("change", closeOnDesktop);
+  }, []);
+
+  useEffect(() => {
     let frameId;
     let timeoutId;
     if (sheetOpen) {
@@ -174,9 +183,10 @@ function GlobalPlayerBar() {
 
   const handleSheetPointerEnd = (event) => {
     if (dragRef.current?.pointerId !== event.pointerId) return;
+    const distance = event.clientY - dragRef.current.startY;
     dragRef.current = null;
     setIsDragging(false);
-    if (dragOffset > SHEET_DISMISS_DISTANCE) {
+    if (event.type === "pointerup" && distance > SHEET_DISMISS_DISTANCE) {
       setSheetOpen(false);
       return;
     }
@@ -201,7 +211,14 @@ function GlobalPlayerBar() {
       : repeatMode === "all"
         ? "Repeat all tracks"
         : "Enable repeat";
-  const upNext = playbackQueue.slice(currentIndex + 1);
+  const upNext = playbackQueue
+    .map((track, index) => ({ track, index }))
+    .slice(currentIndex + 1)
+    .concat(
+      repeatMode === "all"
+        ? playbackQueue.map((track, index) => ({ track, index })).slice(0, currentIndex)
+        : [],
+    );
 
   return (
     <div className="global-player" role="region" aria-label="Global audio player">
@@ -376,12 +393,12 @@ function GlobalPlayerBar() {
                 <section className="now-playing__queue" aria-label="Up next">
                   <h3 className="now-playing__queue-title">Up next</h3>
                   <ol className="now-playing__queue-list">
-                    {upNext.map((track, offset) => (
-                      <li key={`${track.id}-${offset}`}>
+                    {upNext.map(({ track, index }) => (
+                      <li key={`${track.id}-${index}`}>
                         <button
                           type="button"
                           className="now-playing__queue-item"
-                          onClick={() => skipTo(currentIndex + 1 + offset)}
+                          onClick={() => skipTo(index)}
                         >
                           <span className="now-playing__queue-copy">
                             <span className="now-playing__queue-name">{track.title}</span>

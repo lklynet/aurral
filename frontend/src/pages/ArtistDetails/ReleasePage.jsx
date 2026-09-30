@@ -126,10 +126,7 @@ function ReleasePage() {
   const artistName =
     locationState?.artistName ||
     (Array.isArray(artistCredits)
-      ? (
-          artistCredits.find((credit) => credit?.artist?.id === artistMbid) ||
-          artistCredits[0]
-        )?.name || ""
+      ? artistCredits.find((credit) => credit?.artist?.id === artistMbid)?.name || ""
       : "");
 
   const [coverUrl, setCoverUrl] = useState(release._coverUrl || "");
