@@ -21,6 +21,7 @@ import {
   RefreshCw,
   ScanSearch,
   Search,
+  Sparkles,
   Trash2,
   UserRound,
   X,
@@ -32,6 +33,7 @@ import { AurralAlbumStatus } from "../components/AurralAlbumStatus";
 import { DotLoader } from "../components/DotLoader";
 import { LibraryItemMenu, LibraryItemSubmenu } from "../components/LibraryItemMenu";
 import TooltipButton from "../components/TooltipButton";
+import CrossViewLink from "../components/CrossViewLink";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
@@ -82,7 +84,6 @@ import {
   describeArtistMonitoringResult,
   describeAurralMonitoringError,
 } from "../utils/aurralMonitoring.js";
-import { navigateToLibraryAlbum } from "../utils/searchNavigation";
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { libraryPreviewData, libraryPreviewFavorites } from "./libraryPreviewData";
 import {
@@ -1759,10 +1760,16 @@ function LibraryPage() {
     setLibraryInfo({ kind, entity, ...context });
   };
 
+  const discoverArtistState = (artist) => ({
+    artistName: artist.name,
+    inLibrary: true,
+    libraryArtist: artist,
+  });
+
   const handleDiscoverArtistOpen = (artist) => {
     if (!artist?.mbid) return;
     navigate("/artist/" + encodeURIComponent(artist.mbid), {
-      state: { artistName: artist.name, inLibrary: true, libraryArtist: artist },
+      state: discoverArtistState(artist),
     });
   };
 
@@ -1772,14 +1779,7 @@ function LibraryPage() {
   };
 
   const handleDiscoverAlbumOpen = (album) => {
-    const artist = getArtistForAlbum(album);
-    if (artist?.mbid && (album?.releaseGroupMbid || album?.mbid)) {
-      navigateToLibraryAlbum(navigate, album, {
-        artistMbid: artist.mbid,
-        artistName: artist.name,
-        coverUrl: getAlbumCover(album),
-      });
-    }
+    handleDiscoverArtistOpen(getArtistForAlbum(album));
   };
 
   const favoriteCount =
@@ -2181,8 +2181,8 @@ function LibraryPage() {
                 : []),
               {
                 id: "discover",
-                label: "Explore in Discover",
-                icon: ExternalLink,
+                label: "Open in Discover",
+                icon: Sparkles,
                 separatorBefore: true,
                 onSelect: () => handleDiscoverArtistOpen(artist),
                 disabled: !artist.mbid,
@@ -2320,11 +2320,11 @@ function LibraryPage() {
                 : []),
               {
                 id: "discover",
-                label: "Explore in Discover",
-                icon: ExternalLink,
+                label: "Open in Discover",
+                icon: Sparkles,
                 separatorBefore: true,
                 onSelect: () => handleDiscoverAlbumOpen(album),
-                disabled: !artist?.mbid || !(album.releaseGroupMbid || album.mbid),
+                disabled: !artist?.mbid,
               },
             ]}
           />
@@ -2499,6 +2499,7 @@ function LibraryPage() {
     const albumTracks = getAlbumTracks(libraryAlbum);
     const availability = albumAvailability(libraryAlbum);
     const badges = describeAlbumBadges(libraryAlbum);
+    const discoverArtist = artist?.mbid ? artist : null;
     const durationMs = albumTracks.reduce(
       (total, track) => total + Number(firstAvailableFile(track)?.durationMs || 0),
       0,
@@ -2568,6 +2569,13 @@ function LibraryPage() {
                 label={libraryAlbum.title || "album"}
                 onClick={() => toggleFavorite("album", libraryAlbum)}
               />
+              {discoverArtist && (
+                <CrossViewLink
+                  view="discover"
+                  to={"/artist/" + encodeURIComponent(discoverArtist.mbid)}
+                  state={discoverArtistState(discoverArtist)}
+                />
+              )}
               <LibraryItemMenu
                 label={libraryAlbum.title || "Album"}
                 items={[
@@ -2617,25 +2625,8 @@ function LibraryPage() {
                         },
                       ]
                     : []),
-                  {
-                    id: "discover",
-                    label: "Explore in Discover",
-                    icon: ExternalLink,
-                    separatorBefore: true,
-                    onSelect: () => handleDiscoverAlbumOpen(libraryAlbum),
-                    disabled: !artist?.mbid || !(libraryAlbum.releaseGroupMbid || libraryAlbum.mbid),
-                  },
                 ]}
               />
-              {artist?.mbid && (libraryAlbum.releaseGroupMbid || libraryAlbum.mbid) && (
-                <button
-                  type="button"
-                  className="native-library-detail__discover"
-                  onClick={() => handleDiscoverAlbumOpen(libraryAlbum)}
-                >
-                  <ExternalLink aria-hidden="true" /> Explore in Discover
-                </button>
-              )}
             </div>
           </div>
         </div>
@@ -2659,6 +2650,7 @@ function LibraryPage() {
     );
     const artistTracks = artistAlbums.flatMap(getAlbumTracks);
     const artistTopTracks = topArtistTracks(artistTracks, albumsById);
+    const discoverArtist = libraryArtist.mbid ? libraryArtist : null;
     return (
       <section className="native-library-detail">
         <div
@@ -2701,6 +2693,13 @@ function LibraryPage() {
                 label={libraryArtist.name || "artist"}
                 onClick={() => toggleFavorite("artist", libraryArtist)}
               />
+              {discoverArtist && (
+                <CrossViewLink
+                  view="discover"
+                  to={"/artist/" + encodeURIComponent(discoverArtist.mbid)}
+                  state={discoverArtistState(discoverArtist)}
+                />
+              )}
               <LibraryItemMenu
                 label={libraryArtist.name || "Artist"}
                 items={[
@@ -2740,14 +2739,6 @@ function LibraryPage() {
                         },
                       ]
                     : []),
-                  {
-                    id: "discover",
-                    label: "Explore in Discover",
-                    icon: ExternalLink,
-                    separatorBefore: true,
-                    onSelect: () => handleDiscoverArtistOpen(libraryArtist),
-                    disabled: !libraryArtist.mbid,
-                  },
                 ]}
                 additionalItemsAfter="favorite"
                 renderAdditionalItems={({ closeMenu }) =>
@@ -2764,15 +2755,6 @@ function LibraryPage() {
                   ) : null
                 }
               />
-              {libraryArtist.mbid && (
-                <button
-                  type="button"
-                  className="native-library-detail__discover"
-                  onClick={() => handleDiscoverArtistOpen(libraryArtist)}
-                >
-                  <ExternalLink aria-hidden="true" /> Explore in Discover
-                </button>
-              )}
             </div>
           </div>
         </div>
@@ -2973,7 +2955,7 @@ function LibraryPage() {
                   )
                 }
               >
-                <ExternalLink aria-hidden="true" />
+                <Sparkles aria-hidden="true" />
                 Explore in Discover
               </button>
             )}

@@ -457,6 +457,7 @@ export function useArtistDetailsStream(
         const data = JSON.parse(event.data);
         if (!isCurrentRequest()) return;
         libraryReceived = true;
+        queryClient.setQueryData(queryKeys.libraryLookupDetails(mbid), data);
         if (data.exists && data.artist) {
           optimisticLibraryLookupRef.current = false;
           queryClient.setQueryData(queryKeys.libraryLookup(mbid), true);
