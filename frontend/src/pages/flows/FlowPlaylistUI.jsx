@@ -1,7 +1,7 @@
 import {
   ArrowRight,
   Clock,
-  ChevronDown,
+  MoreVertical,
   ListMusic,
   Plus,
   Sparkles,
@@ -81,45 +81,22 @@ export function FlowLibraryCreateMenu({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen]);
 
-  const triggerContent = (
-    <>
-      <Plus className="flow-page__library-create-icon" aria-hidden="true" />
-      {!compact ? <span className="flow-page__library-create-label">New</span> : null}
-      {!compact ? (
-        <ChevronDown
-          className={`flow-page__library-create-chevron${isOpen ? " is-open" : ""}`}
-          aria-hidden="true"
-        />
-      ) : null}
-    </>
-  );
-
   return (
     <div
       className={`flow-page__library-create${compact ? " is-compact" : ""}${isOpen ? " is-open" : ""}`}
     >
-      {compact ? (
-        <TooltipButton
-          label={triggerLabel}
-          className="flow-page__library-create-btn"
-          onClick={() => setIsOpen((prev) => !prev)}
-          aria-expanded={isOpen}
-          aria-haspopup="menu"
-        >
-          {triggerContent}
-        </TooltipButton>
-      ) : (
-        <button
-          type="button"
-          className="flow-page__library-create-btn"
-          onClick={() => setIsOpen((prev) => !prev)}
-          aria-label={triggerLabel}
-          aria-expanded={isOpen}
-          aria-haspopup="menu"
-        >
-          {triggerContent}
-        </button>
-      )}
+      <TooltipButton
+        label={triggerLabel}
+        className="flow-page__library-create-btn"
+        onClick={() => setIsOpen((prev) => !prev)}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
+      >
+        <Plus className="flow-page__library-create-icon" aria-hidden="true" />
+        {!compact ? (
+          <MoreVertical className="flow-page__library-create-more" aria-hidden="true" />
+        ) : null}
+      </TooltipButton>
       {isOpen ? (
         <>
           <button

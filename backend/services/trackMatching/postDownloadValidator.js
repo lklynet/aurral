@@ -20,7 +20,7 @@
 
 import { parseFile } from "music-metadata";
 import { buildTrackRequest } from "./trackIdentity.js";
-import { getFileName, getFileBaseName, claimedTitle } from "./candidateNormalizer.js";
+import { getFileName, getFileBaseName, claimedTitle, parseFilenameArtistTitle } from "./candidateNormalizer.js";
 import { getCoreTitle } from "./semanticPolicy.js";
 import { assignReleaseFiles, parseListingTitle, verifyDownloadedRecording } from "./nativeMatcher.js";
 import { getNormalizedText, scoreTextMatch } from "../providers/brainzmashRanking.js";
@@ -198,6 +198,9 @@ export async function validateDownloadedTrackFile({
     };
   }
 
+  const listedTitle = parseListingTitle(actual.filename).title;
+  const filenameTitle = parseFilenameArtistTitle(listedTitle,
+    [trackRequest.artistName, ...(trackRequest.artistAliases || [])].filter(Boolean)).title || listedTitle;
   const verification = verifyDownloadedRecording({
     title: trackRequest.trackName,
     artists: [trackRequest.artistName, ...(trackRequest.artistAliases || [])].filter(Boolean),
@@ -206,9 +209,10 @@ export async function validateDownloadedTrackFile({
     trackNumber: trackRequest.trackNumber,
     albumTrackTitles: trackRequest.albumTrackTitles,
   }, {
-    title: actual.cleanedTitle || actual.title,
+    title: actual.title,
     fileNameTitle: /\s[-–—]\s|\b(?:live|remix|karaoke|instrumental|acoustic|demo|edit|cover|nightcore)\b/iu.test(actual.filename)
-      ? claimedTitle(parseListingTitle(actual.filename).title) : null,
+      || /(?!\p{Script=Latin})\p{L}/u.test(`${trackRequest.trackName} ${filenameTitle}`)
+      ? filenameTitle : null,
     artists: actual.artists,
     durationMs: actualDurationMs,
     recordingMbid: actual.recordingMbid,

@@ -41,6 +41,36 @@ function usableFileNames(evaluation) {
   );
 }
 
+btest("dash-separated remasters and requested edits retain the complete recording title", async () => {
+  for (const [artistName, trackName, filename, length, decision] of [
+    ["Queen", "Bohemian Rhapsody", "Queen - Bohemian Rhapsody - Remastered 2011.mp3", 355, "accept"],
+    ["Queen", "Bohemian Rhapsody", "Queen - Bohemian Rhapsody.mp3", 355, "accept"],
+    ["Artist Name", "Wide Awake Tonight - Radio Edit", "11 - Artist Name - Wide Awake Tonight - Radio Edit.mp3", 200, "accept"],
+    ["Artist Name", "Wide Awake Tonight - Radio Edit", "11 - Artist Name - Wide Awake Tonight (Radio Edit).mp3", 200, "accept"],
+    ["Darude", "Sandstorm", "Darude - Sandstorm - Extended Mix.mp3", 200, "reject"],
+    ["Darude", "Sandstorm", "Darude - Sandstorm - Live.mp3", 200, "reject"],
+  ]) {
+    const evaluation = await evaluate([result({
+      user: "u", file: `Music\\${artistName}\\Album\\${filename}`, length,
+    })], { artistName, trackName, durationMs: length * 1000 });
+    assert.equal(evaluation.evaluations[0].decision, decision, filename);
+  }
+});
+
+btest("Soulseek filenames preserve non-Latin title identity", async () => {
+  for (const [trackName, offered, decision] of [
+    ["Мой", "Мои", "reject"], ["かみ", "がみ", "reject"],
+    ["時", "詩", "reject"], ["愛", "哀", "reject"],
+    ["Мой любимый город", "Мои любимый город", "reject"],
+    ["がみ", "か\u3099み", "accept"], ["Мой", "Мой", "accept"],
+  ]) {
+    const evaluation = await evaluate([result({
+      user: "u", file: `Music\\X\\Album\\X - ${offered}.mp3`, length: 200,
+    })], { artistName: "X", trackName, durationMs: 200000 });
+    assert.equal(evaluation.evaluations[0].decision, decision, `${trackName}/${offered}`);
+  }
+});
+
 btest("same-title single from the wrong artist is not offered as a candidate", async () => {
   const evaluation = await evaluate(
     [

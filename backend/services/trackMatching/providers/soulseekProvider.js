@@ -210,7 +210,7 @@ function parseFilenameArtistTitle(baseName, request) {
       .map((segment) => segment.trim())
       .filter(Boolean);
     if (segments.length < 2) return null;
-    return { artist: segments[0], title: segments[segments.length - 1] };
+    return { artist: segments[0], title: segments.slice(1).join(" - ") };
   };
 
   const withoutNumberParse = withoutNumber !== raw ? tryParse(withoutNumber) : null;

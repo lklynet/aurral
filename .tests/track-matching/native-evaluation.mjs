@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
+  MATCH_POLICY,
   assessRelease,
   decideRecording,
   parseListingTitle,
@@ -118,7 +119,7 @@ const split = process.argv[2] || "development";
 const fixtures = loadFixtureSet(split);
 const decisions = new Map(fixtures.map((item) => [item.id, decide(item)]));
 const report = measureFixtureDecisions(fixtures, (item) => decisions.get(item.id));
-process.stdout.write(`${JSON.stringify({ split, matcher: "aurral-native-1", cases: fixtures.length, report }, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ split, matcher: MATCH_POLICY.version, cases: fixtures.length, report }, null, 2)}\n`);
 if (process.env.DEBUG_NATIVE) {
   diagnostics.wrong = fixtures.filter((item) => {
     const selected = decisions.get(item.id);

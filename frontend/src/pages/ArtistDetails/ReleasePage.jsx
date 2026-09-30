@@ -19,8 +19,8 @@ import {
 import { useSharedPlaylists } from "../../hooks/useSharedPlaylists";
 import { useWebSocketChannel } from "../../hooks/useWebSocket";
 
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { CornerUpLeft, ExternalLink, Library, Music } from "lucide-react";
+import { Link, useLocation, useParams } from "react-router-dom";
+import { CornerUpLeft, ExternalLink, Music } from "lucide-react";
 import AddActionButton from "../../components/AddActionButton";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { buildAlbumAddAction, describeAlbumRequestResult } from "../../utils/albumAddAction";
@@ -44,6 +44,7 @@ import {
   sumTrackDurationMs,
 } from "./utils";
 import Tooltip from "../../components/Tooltip";
+import CrossViewLink from "../../components/CrossViewLink";
 const getReleaseTypeLabel = (release) => {
   const types = [
     release?.["primary-type"],
@@ -96,7 +97,6 @@ const ACTIVE_DOWNLOAD_STATUSES = new Set([
 function ReleasePage() {
   const { mbid: artistMbid, releaseMbid } = useParams();
   const { state: locationState } = useLocation();
-  const navigate = useNavigate();
   const { showSuccess, showError, showInfo } = useToast();
   const libraryDestination = useLibraryDestination();
   const [ownerConflictState, setOwnerConflictState] = useState(null);
@@ -602,14 +602,7 @@ function ReleasePage() {
           ) : null}
           <div className="release-page__actions">
             {libraryInfo?.canonicalInLibrary ? (
-              <button
-                type="button"
-                className="btn btn-surface btn-sm release-page__external-link"
-                onClick={() => navigate(libraryPath)}
-              >
-                <Library className="artist-icon-sm" />
-                Open in library
-              </button>
+              <CrossViewLink view="library" to={libraryPath} />
             ) : libraryDisplay.label ? (
               <Tooltip content={libraryDisplay.label}>
                 <span

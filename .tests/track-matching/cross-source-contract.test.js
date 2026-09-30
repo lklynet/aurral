@@ -35,6 +35,37 @@ async function decisionFor(source, candidates, request = TRUTH, options = {}) {
   return { evaluation, best: usable[0] || null, usable };
 }
 
+test("non-Latin title identity is enforced through every source's candidate entry point", async () => {
+  for (const source of ["soulseek", "deemix", "ytdlp", "usenet"]) {
+    for (const [trackName, different] of [["Мой", "Мои"], ["かみ", "がみ"], ["時", "詩"], ["愛", "哀"]]) {
+      for (const offered of [trackName, different]) {
+        const candidates = source === "soulseek" || source === "usenet"
+          ? [{ user: "u", file: `X/Album/X - ${offered}.flac`, durationMs: 200000 }]
+          : source === "ytdlp"
+            ? [{ title: `X - ${offered}`, channel: "X", durationMs: 200000 }]
+            : [{ title: offered, artist: "X", durationMs: 200000 }];
+        const { evaluation, usable } = await decisionFor(source, candidates,
+          { artistName: "X", trackName, durationMs: 200000 });
+        if (offered === trackName) assert.equal(usable.length, 1, `${source}: ${trackName}`);
+        else assert.equal(evaluation.evaluations[0].decision, "reject", `${source}: ${trackName}/${offered}`);
+      }
+    }
+  }
+});
+
+test("structured track titles preserve requested versions and Unicode equivalents", async () => {
+  for (const [trackName, title] of [
+    ["Wide Awake Tonight - Radio Edit", "Wide Awake Tonight - Radio Edit"],
+    ["がみ - Radio Edit", "か\u3099み - Radio Edit"],
+    ["時", "時 - Remastered 2011"],
+  ]) {
+    const { evaluation } = await decisionFor("deemix", [{
+      title, artist: "X", durationMs: 200000,
+    }], { artistName: "X", trackName, durationMs: 200000 });
+    assert.equal(evaluation.evaluations[0].decision, "accept", title);
+  }
+});
+
 btest("structured provider result accepts the right track and rejects wrong artists", { skip }, async () => {
   // Availability (readable) is a provider check the orchestrator applies
   // before results reach the shared engine.

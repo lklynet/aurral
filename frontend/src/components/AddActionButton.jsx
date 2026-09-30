@@ -1,5 +1,5 @@
 import { forwardRef } from "react";
-import { Plus, RefreshCw, SlidersHorizontal } from "lucide-react";
+import { MoreVertical, Plus, RefreshCw, SlidersHorizontal } from "lucide-react";
 import Tooltip from "./Tooltip";
 import TooltipButton from "./TooltipButton";
 import SearchLibraryCheck from "./SearchLibraryCheck";
@@ -21,6 +21,7 @@ const AddActionButton = forwardRef(function AddActionButton(
     icon: Icon = Plus,
     isLoading = false,
     disabled = false,
+    showLabel = false,
     className = "",
     children,
     type = "button",
@@ -43,7 +44,14 @@ const AddActionButton = forwardRef(function AddActionButton(
     );
   }
 
-  const classes = ["btn", children ? null : "btn-add-action", className].filter(Boolean).join(" ");
+  const classes = [
+    "btn",
+    children ? null : "btn-add-action",
+    showLabel && !children ? "btn-add-action--labeled" : null,
+    className,
+  ].filter(Boolean).join(" ");
+  const visibleLabel = showLabel ? <span className="btn-add-action__label">Add to library</span> : null;
+  const opensMenu = !children && buttonProps["aria-haspopup"] === "menu";
   const primary = destination?.primary || null;
   const alternative = destination?.alternative || null;
   const isDisabled = disabled || isLoading || (destination ? !destination.ready : false);
@@ -99,11 +107,15 @@ const AddActionButton = forwardRef(function AddActionButton(
           label={ADD_TO_MENU_LABEL}
           menuLabel={ADD_TO_MENU_LABEL}
           triggerLabel={ADD_TO_MENU_LABEL}
-          triggerClassName={classes}
+          triggerClassName={`${classes} btn-add-action--menu`}
           triggerIcon={
-            <span className="btn-add-action__icon">
-              {isLoading ? <DotLoader size="sm" label={null} /> : <Icon aria-hidden="true" />}
-            </span>
+            <>
+              <span className="btn-add-action__icon">
+                {isLoading ? <DotLoader size="sm" label={null} /> : <Icon aria-hidden="true" />}
+              </span>
+              {visibleLabel}
+              <MoreVertical className="btn-add-action__more" aria-hidden="true" />
+            </>
           }
           disabled={isDisabled}
           contextMenu={false}
@@ -122,7 +134,7 @@ const AddActionButton = forwardRef(function AddActionButton(
         ? "Checking library destinations"
         : buttonProps.title ?? label ?? getAddToManagerLabel(primary)}
       type={type}
-      className={classes}
+      className={opensMenu ? `${classes} btn-add-action--menu` : classes}
       disabled={isDisabled}
       onClick={handleClick}
       onKeyDown={(event) => {
@@ -137,6 +149,8 @@ const AddActionButton = forwardRef(function AddActionButton(
           <Icon aria-hidden="true" />
         )}
       </span>}
+      {children ? null : visibleLabel}
+      {opensMenu ? <MoreVertical className="btn-add-action__more" aria-hidden="true" /> : null}
     </TooltipButton>
   );
 });
