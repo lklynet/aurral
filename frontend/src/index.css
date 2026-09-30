@@ -8948,22 +8948,6 @@ button.native-library-genre-row:focus-visible {
   transition: background 200ms ease;
 }
 
-.collection-header__context {
-  margin-bottom: 0.5rem;
-  font-size: 0.78rem;
-}
-
-.collection-header__context a {
-  color: var(--aurral-text-muted);
-  text-decoration: none;
-}
-
-.collection-header__context a:hover,
-.collection-header__context a:focus-visible {
-  color: var(--aurral-text);
-  text-decoration: underline;
-}
-
 .collection-header__subtitle {
   max-width: 44rem;
 }

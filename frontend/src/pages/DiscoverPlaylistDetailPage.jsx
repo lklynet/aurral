@@ -385,7 +385,6 @@ export default function DiscoverPlaylistDetailPage() {
             </div>
           )
         }
-        context={<Link to="/discover/playlists">Discover playlists</Link>}
         kicker={sourceLine ? `${sourceLine} playlist` : "Playlist"}
         title={playlist.name}
         subtitle={playlist.description || null}
