@@ -1,51 +1,68 @@
 ---
 title: Aurral Lab
-description: Run Aurral and its browser tests in disposable containers with simulated services.
+description: Run Aurral and its browser tests against simulated services, from source or in disposable containers.
 ---
 
-Aurral Lab runs Aurral in Docker next to simulated metadata, Lidarr, and slskd services. You can try a change and run the browser tests without a media library, real services, or private settings. CI runs the same browser tests with the same command.
+Aurral Lab runs Aurral next to simulated versions of every service it connects to. You can try a change, watch downloads move through the whole pipeline, and run the browser tests without a media library, real services, or private settings. CI runs the same browser tests with the same command.
 
-## Requirements
+A Lab never needs `backend/.env` or a copied database. It seeds its own settings, accounts, and library, and it keeps everything under `backend/data/lab/`.
 
-You need Docker Engine with the Compose v2 plugin and Node.js to run the npm scripts. The Lab commands use only Node's built-in modules, so they work before `npm install`.
+## Run a Lab from source
 
-The first start pulls base images and builds Aurral from your checkout, which takes several minutes. Later starts reuse Docker's build cache.
+```sh
+npm run lab:dev
+```
 
-Lab has been checked on Linux. Docker Desktop on macOS and Windows has not been tested.
+This runs the backend with `node --watch` and the frontend with Vite, so frontend edits reload the page and backend edits restart the server. The command seeds the Lab on first start, prints the app URL, and prints a controls URL for the simulated services. Press Ctrl-C to stop it. Its data stays in `backend/data/lab/node/`.
 
-## Start a development Lab
+You need `npm install`, `ffmpeg`, and `openssl`. Docker is not used.
+
+## Run a Lab in Docker
 
 ```sh
 npm run lab:up
 ```
 
-The command builds Aurral, seeds an empty Lab, starts it, and prints its URL. Sign in as `lab-admin` with the password `disposable-lab-password`. Both values live in `tests/lab/lab.env` and are only for Labs.
+The command builds Aurral from your checkout, seeds an empty Lab, starts it, and prints its URL. This is the same build the browser tests use. The first start pulls base images and takes several minutes; later starts reuse Docker's build cache. Lab has been checked on Linux with Docker Engine and the Compose v2 plugin.
 
 Each worktree gets its own Lab on a random port on `127.0.0.1`. Print the URL again with `npm run --silent lab:url`. Show logs with `npm run lab:logs`, and add `--follow`, `--tail <lines>`, or a service name (`aurral`, `fixtures`, or `gateway`) when you need them.
 
-`npm run lab:down` stops the Lab and keeps its data in `backend/data/lab/dev/`. The next `npm run lab:up` starts where you left off. `npm run lab:reset` stops the Lab, deletes its data, and seeds it again.
+`npm run lab:down` stops the Lab and keeps its data in `backend/data/lab/dev/`. `npm run lab:reset` deletes the Lab's data and seeds it again. Run a second Lab from the same checkout with `AURRAL_LAB_ID=second npm run lab:up`. Every Lab command accepts `AURRAL_LAB_ID`, including `lab:dev` and `lab:reset`. Labs never touch another worktree's Lab or containers they did not create.
 
-Run a second Lab from the same checkout by naming it:
-
-```sh
-AURRAL_LAB_ID=second npm run lab:up
-```
-
-Every Lab command accepts `AURRAL_LAB_ID`. Labs never touch another worktree's Lab or containers they did not create.
+Sign in to any Lab as `lab-admin` with the password `disposable-lab-password`. These values and every other Lab credential live in `tests/lab/lab.env` and work only against simulated services.
 
 ## What a Lab contains
 
-A new Lab has a disposable admin, finished onboarding, and an untagged library artist with two short playable tracks. Aurral indexes those tracks during seeding with its own library scan.
+A new Lab has a disposable admin, finished onboarding, and a library artist with two short playable tracks. Every integration is configured and enabled, and the admin's Last.fm, ListenBrainz, Koito, and Spotify accounts are already connected.
 
-The fixtures service simulates three providers on their usual ports:
+The simulated services share one catalog of artists, albums, and tracks in `tests/lab/fixtures/catalog.json`:
 
-- Brainzmash metadata for four artists and their albums, listed in `tests/lab/fixtures/catalog.json`.
-- A Lidarr that keeps the artists and albums Aurral adds or removes.
-- An slskd that answers searches from the same catalog. Downloads stay queued until Aurral cancels them, so the Lab can test monitoring and cancellation but not completed imports.
+- **Metadata:** Brainzmash, MusicBrainz, Deezer, and Last.fm.
+- **Library and downloads:** Lidarr, slskd, Prowlarr with SABnzbd and NZBGet, deemix, and yt-dlp.
+- **Playback:** Navidrome, Plex, and Jellyfin. They index the files in the Lab's library and keep the playlists Aurral writes.
+- **Listening history and imports:** Last.fm, ListenBrainz, Koito, and Spotify.
+- **Sign-in:** a generic OpenID Connect provider, Google, and plex.tv.
+- **Discovery extras:** Ticketmaster shows with location lookups, every built-in news feed, and playlist artwork.
+- **Notifications:** Gotify and a webhook receiver.
 
-Aurral and the browser cannot reach the internet from a Lab. Features that need public services, such as Last.fm, Deezer previews, YouTube Music, news feeds, and update checks, fail in a Lab. Each blocked connection appears once in the Aurral log as a `[lab-egress]` line.
+Downloads behave like a working setup. Each one is queued, makes progress, and then completes with a real tagged audio file in the client's download folder. Aurral then moves and imports it like any other download. Lidarr imports albums into its root folder and calls Aurral's webhook.
 
-The simulators follow the requests Aurral makes today. A passing Lab run does not show that Aurral works with any particular Lidarr or slskd release.
+Public services answer on their real hostnames, such as `api.deezer.com` and `ws.audioscrobbler.com`, behind a certificate authority that only the Lab trusts. Nothing in a Lab reaches the internet. A connection to a host the Lab does not simulate fails and appears once in the Aurral log as a `[lab-egress]` line. YouTube Music playlist imports and update checks are not simulated.
+
+Sign-in pages for Spotify, Last.fm, plex.tv, Google, and the Lab's SSO provider open in the browser. The browser tests map those hostnames to the Lab, but your own browser does not, so these sign-ins only work in browser tests.
+
+The simulators follow the requests Aurral makes today. A passing Lab run does not show that Aurral works with any particular release of a real service.
+
+## Control the simulated services
+
+The controls URL that `lab:dev` prints accepts these requests:
+
+- `GET /state/<service>` shows what a simulator holds, such as Lidarr's artists, Plex playlists, or Last.fm scrobbles.
+- `GET /journal` lists recent requests to every simulator.
+- `POST /downloads` with `{"mode": "hold"}` keeps new downloads queued until you send `{"mode": "complete"}`.
+- `POST /faults` with `{"provider": "slskd", "path": "/api/v0/searches", "status": 500, "count": 1}` makes the next matching requests fail. `DELETE /faults` clears them.
+
+A browser spec that needs downloads to stay queued lists itself in `tests/lab/scenarios.json`.
 
 ## Run the browser tests
 
@@ -55,7 +72,7 @@ npm run test:e2e -- tests/e2e/smoke.spec.js
 npm run test:e2e -- --grep "sign in" tests/e2e/smoke.spec.js
 ```
 
-Each spec file runs in its own new Lab with the Chromium version that matches the project's Playwright package. Test runs never change your development Lab.
+Each spec file runs in its own new Docker Lab with the Chromium version that matches the project's Playwright package. Test runs never change your development Lab.
 
 Lab runs accept `--grep`, `--grep-invert`, `--repeat-each`, `--timeout`, `--max-failures`, and `--trace`. They reject options that would change Lab-owned output, reporters, workers, or retries.
 
@@ -73,7 +90,7 @@ Open a trace with `npx playwright show-trace <path-to-trace.zip>`.
 
 `npm run test:all` runs lint, unit tests, integration tests, the frontend build, and the browser tests in order, and stops at the first failure.
 
-Aurral allows each client 5,000 requests every 15 minutes. A large spec run with a high `--repeat-each` can hit that limit, and the page then fails to load scripts with HTTP 429.
+Aurral allows 10 sign-in attempts and 5,000 requests per client every 15 minutes. Repeated runs against one development Lab can hit these limits. Restart `lab:dev` to clear them.
 
 ## Run Playwright on your machine
 
@@ -88,13 +105,9 @@ The command signs in with the Lab credentials unless you set `AUTH_USER` and `AU
 
 ## Add Lab data or simulated services
 
-Add artists and albums to `tests/lab/fixtures/catalog.json`. Change provider behavior in `tests/lab/services/`. Base each response on the provider's documentation or source, or on a response shape Aurral's tests already use. Today's sources are:
+Add artists and albums to `tests/lab/fixtures/catalog.json`. Change provider behavior in `tests/lab/services/`. Public services live in `tests/lab/services/public/`, and every hostname they answer must also be listed in `tests/lab/services/public-hosts.json`. Base each response on the provider's documentation or source, or on a response shape Aurral's tests already use.
 
-- Brainzmash follows the payloads in `.tests/metadata-providers.test.js` and `.tests/library/aurral-monitoring.test.js`.
-- Lidarr follows the API v1 fake in `.tests/auth/lidarr-preferences.int.test.js`.
-- slskd follows the API v0 responses in `.tests/weekly-flow/slskd-client.test.js`.
-
-`.tests/lab-fixtures.int.test.js` drives Aurral's real clients against these modules. Extend it when you add a response Aurral depends on.
+`.tests/lab-fixtures.int.test.js` and `.tests/lab-public.int.test.js` drive Aurral's real clients against the simulators. Extend them when you add a response Aurral depends on.
 
 When you change `tests/lab/seed.mjs`, raise `SEED_VERSION` in `scripts/lab.mjs`. Existing Labs then ask for `npm run lab:reset` instead of starting with old data.
 
