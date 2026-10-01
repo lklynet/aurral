@@ -8,6 +8,12 @@ import { sanitizePathPart } from "../playlistDownloadUtils.js";
 const settingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
 const saveSettingStmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
 const ownerStmt = db.prepare("SELECT playlist_id, playlist_type, playlist_generation FROM playlist_download_jobs WHERE id = ?");
+const pruneSettledTransfersStmt = db.prepare(`
+  DELETE FROM settings WHERE key LIKE 'downloadJobTransfers:%' AND NOT EXISTS (
+    SELECT 1 FROM json_each(settings.value) AS transfer
+    JOIN playlist_download_jobs AS job ON job.id = json_extract(transfer.value, '$.toJobId')
+    WHERE job.status IN ('pending', 'downloading', 'blocked'))
+`);
 
 function readTransfers(jobId) {
   const row = settingStmt.get(`downloadJobTransfers:${jobId}`);
@@ -55,6 +61,7 @@ function applyTransfer(payload, transfer) {
 }
 
 function recordTransfer(from, to, fromAttemptId, toAttemptId) {
+  pruneSettledTransfersStmt.run();
   const transfers = readTransfers(from.id);
   const transfer = {
     fromJobId: from.id, fromPlaylistId: from.playlistId, fromGeneration: from.playlistGeneration,

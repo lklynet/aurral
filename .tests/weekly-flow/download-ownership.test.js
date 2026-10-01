@@ -104,3 +104,22 @@ test("completed and removed jobs release their active attempt records", () => {
   downloadTracker.removeJob(pendingId);
   assert.equal(cancellation.getActiveDownloadAttemptId(pendingId), null);
 });
+
+test("recording a transfer prunes transfer history for settled downloads only", () => {
+  const source = flowPlaylistConfig.createSharedPlaylist({ name: "History source" });
+  const target = flowPlaylistConfig.createSharedPlaylist({ name: "History target" });
+  const add = (trackName) => downloadTracker.addJob({ artistName: "Artist", trackName }, source.id);
+  const [doneId, failedId, removedId, activeId, nextId] = ["Done", "Failed", "Removed", "Active", "Next"].map(add);
+  const move = (jobId) => {
+    db.transaction(() => ownership.transferDownloadOwnershipInTransaction(jobId, target.id))();
+    downloadTracker.reconcileCommittedJobs();
+  };
+  for (const jobId of [doneId, failedId, removedId, activeId]) move(jobId);
+  db.prepare("UPDATE playlist_download_jobs SET status = 'done' WHERE id = ?").run(doneId);
+  db.prepare("UPDATE playlist_download_jobs SET status = 'failed' WHERE id = ?").run(failedId);
+  db.prepare("DELETE FROM playlist_download_jobs WHERE id = ?").run(removedId);
+  move(nextId);
+  const history = db.prepare("SELECT key FROM settings WHERE key LIKE 'downloadJobTransfers:%' ORDER BY key").all()
+    .map((row) => row.key.slice("downloadJobTransfers:".length));
+  assert.deepEqual(history, [activeId, nextId].sort());
+});
