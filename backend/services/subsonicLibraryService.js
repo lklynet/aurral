@@ -81,6 +81,11 @@ const normalizeOffset = (value) => {
   return Number.isFinite(parsed) ? Math.max(parsed, 0) : 0;
 };
 
+const includesAurralMusicFolder = (options = {}) => {
+  const musicFolderId = String(options.musicFolderId || "").trim();
+  return !musicFolderId || musicFolderId === "1";
+};
+
 const genreNames = (value) =>
   (Array.isArray(value) ? value : [value])
     .map((entry) => String(entry || "").trim())
@@ -470,6 +475,7 @@ export function getMusicDirectory(value, user) {
 }
 
 export function searchLibrary(query, options = {}, user = null) {
+  if (!includesAurralMusicFolder(options)) return { artist: [], album: [], song: [] };
   const needle = String(query || "").trim().toLocaleLowerCase();
   const result = getCanonicalSearchPage({
     source: "all",
@@ -494,6 +500,7 @@ export function searchLibrary(query, options = {}, user = null) {
 }
 
 export function getRandomSongs(options = {}, user = null) {
+  if (!includesAurralMusicFolder(options)) return [];
   const library = indexFocusedLibrary(getCanonicalTrackPage({
     source: "all",
     availableOnly: true,
@@ -507,8 +514,17 @@ export function getRandomSongs(options = {}, user = null) {
 }
 
 export function getAlbumList(options = {}, user = null) {
+  if (!includesAurralMusicFolder(options)) return [];
   const type = String(options.type || "alphabeticalByName");
-  if (type === "starred") return [];
+  const offset = normalizeOffset(options.offset);
+  const limit = normalizeLimit(options.size);
+  if (type === "starred") {
+    return getStarred(user).album.slice(offset, offset + limit);
+  }
+  if (type === "frequent") return getFrequentlyPlayedAlbums(user, { offset, limit });
+  // Aurral does not currently store per-user ratings. Returning no albums is
+  // accurate; falling through would falsely label an alphabetical list as rated.
+  if (type === "highest") return [];
   const library = indexFocusedLibrary(getCanonicalAlbumPage({
     source: "all",
     availableOnly: true,
@@ -516,13 +532,14 @@ export function getAlbumList(options = {}, user = null) {
     genre: options.genre,
     fromYear: options.fromYear,
     toYear: options.toYear,
-    offset: normalizeOffset(options.offset),
-    limit: normalizeLimit(options.size),
+    offset,
+    limit,
   }), starredAtFor(user));
   return library.albums.map((album) => toAlbumSummary(library, album));
 }
 
 export function getSongsByGenre(genre, options = {}, user = null) {
+  if (!includesAurralMusicFolder(options)) return [];
   const target = String(genre || "").trim().toLocaleLowerCase();
   if (!target) return [];
   const library = indexFocusedLibrary(getCanonicalTrackPage({
@@ -542,6 +559,12 @@ export function getGenres() {
 const getStarsStmt = db.prepare(
   "SELECT entity_kind, entity_key, created_at FROM subsonic_stars WHERE user_id = ? ORDER BY created_at, entity_kind, entity_key",
 );
+const getPlayedTracksStmt = db.prepare(`
+  SELECT track_id, album, COUNT(*) AS play_count, MAX(played_at) AS last_played_at
+  FROM play_events
+  WHERE user_id = ?
+  GROUP BY track_id, album
+`);
 const addStarStmt = db.prepare(
   "INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (?, ?, ?, ?)",
 );
@@ -555,6 +578,49 @@ const touchStarsStmt = db.prepare(
 const getStarsChangedStmt = db.prepare(
   "SELECT changed_at FROM subsonic_star_changes WHERE user_id = ?",
 );
+
+function getFrequentlyPlayedAlbums(user, { offset, limit }) {
+  if (!user?.id || limit === 0) return [];
+  const played = getPlayedTracksStmt.all(user.id)
+    .map((row) => ({ ...row, parsed: parseId(row.track_id) }))
+    .filter((row) => row.parsed?.kind === "song");
+  if (!played.length) return [];
+
+  const trackKeys = [...new Set(played.map((row) => row.parsed.key))];
+  const library = indexFocusedLibrary(getCanonicalLibrary({
+    availableOnly: true,
+    favoriteKeys: trackKeys.map((key) => ({ kind: "song", key })),
+  }), starredAtFor(user));
+  const rankings = new Map();
+
+  for (const row of played) {
+    const track = library.tracksByIdentity.get(row.parsed.key);
+    if (!track) continue;
+    const albums = track.albums
+      .map((relation) => library.albumsById.get(relation.albumId))
+      .filter(Boolean);
+    const albumName = String(row.album || "").trim().toLocaleLowerCase();
+    const album = albums.find((entry) => entry.title.toLocaleLowerCase() === albumName) || albums[0];
+    if (!album) continue;
+    const previous = rankings.get(album.identityKey) || {
+      album,
+      playCount: 0,
+      lastPlayedAt: 0,
+    };
+    previous.playCount += Number(row.play_count) || 0;
+    previous.lastPlayedAt = Math.max(previous.lastPlayedAt, Number(row.last_played_at) || 0);
+    rankings.set(album.identityKey, previous);
+  }
+
+  return [...rankings.values()]
+    .sort((left, right) =>
+      right.playCount - left.playCount ||
+      right.lastPlayedAt - left.lastPlayedAt ||
+      left.album.title.localeCompare(right.album.title),
+    )
+    .slice(offset, offset + limit)
+    .map(({ album }) => toAlbumSummary(library, album));
+}
 
 // Clients compare lastModified for equality/greater-than, so a star change must land strictly after
 // both the previous star timestamp and the library timestamp even on a fast clock.
@@ -1076,7 +1142,7 @@ const buildStarred = (library, rows, user) => {
   return starred;
 };
 
-export function getStarredWithLibrary(user) {
+export function getStarredWithLibrary(user, { availableOnly = false } = {}) {
   // Several playlist-song stars can resolve to the same library track; render it once.
   const seen = new Set();
   const rows = canonicalStarRows(user, starredRows(user)).filter((row) => {
@@ -1085,14 +1151,14 @@ export function getStarredWithLibrary(user) {
   });
   const canonicalRows = rows.filter((row) => ["artist", "album", "song"].includes(row.entity_kind));
   const library = getCanonicalLibrary({
-    availableOnly: true,
+    availableOnly,
     favoriteKeys: canonicalRows.map((row) => ({ kind: row.entity_kind, key: row.entity_key })),
   });
   return { starred: buildStarred(indexFocusedLibrary(library, starredAtFromRows(rows)), rows, user), library };
 }
 
 export function getStarred(user) {
-  return getStarredWithLibrary(user).starred;
+  return getStarredWithLibrary(user, { availableOnly: true }).starred;
 }
 
 export function getArtistInfo(value) {

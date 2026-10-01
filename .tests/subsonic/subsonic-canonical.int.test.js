@@ -293,6 +293,11 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.ok(Array.isArray(indexes.indexes.index));
   const albumList = responseJson(await request("getAlbumList2", { type: "newest", size: 10 }));
   assert.equal(albumList.albumList2.album[0].title, "Canonical Album");
+  assert.deepEqual(responseJson(await request("getAlbumList2", {
+    type: "newest",
+    size: 10,
+    musicFolderId: 2,
+  })).albumList2.album, []);
   assert.deepEqual(responseJson(await request("getGenres")).genres.genre, [
     { albumCount: 1, songCount: 1, value: "Rock" },
   ]);
@@ -302,6 +307,14 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
     offset: 0,
   }));
   assert.equal(songsByGenre.songsByGenre.song[0].title, "Canonical Song");
+  assert.deepEqual(responseJson(await request("getSongsByGenre", {
+    genre: "Rock",
+    musicFolderId: 2,
+  })).songsByGenre.song, []);
+  assert.deepEqual(responseJson(await request("getRandomSongs", {
+    size: 10,
+    musicFolderId: 2,
+  })).randomSongs.song, []);
   assert.deepEqual(responseJson(await request("getStarred")).starred, {
     album: [],
     artist: [],

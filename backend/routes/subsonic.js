@@ -336,6 +336,7 @@ async function handleSubsonicRequest(req, res) {
           size: getParameter(req, "size"),
           toYear: getParameter(req, "toYear"),
           type: getParameter(req, "type"),
+          musicFolderId: getParameter(req, "musicFolderId"),
         }, user),
       },
     });
@@ -351,6 +352,7 @@ async function handleSubsonicRequest(req, res) {
         song: getSongsByGenre(genre, {
           count: getParameter(req, "count"),
           offset: getParameter(req, "offset"),
+          musicFolderId: getParameter(req, "musicFolderId"),
         }, user),
       },
     });
@@ -363,6 +365,7 @@ async function handleSubsonicRequest(req, res) {
           genre: getParameter(req, "genre"),
           size: getParameter(req, "size"),
           toYear: getParameter(req, "toYear"),
+          musicFolderId: getParameter(req, "musicFolderId"),
         }, user),
       },
     });

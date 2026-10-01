@@ -140,6 +140,61 @@ test("orders newest albums by media arrival before applying pagination", () => {
   );
 });
 
+test("implements starred and frequent album lists without inventing ratings", () => {
+  const user = db.prepare(
+    "INSERT INTO users (username, password_hash, role, permissions) VALUES (?, '', 'user', '{}') RETURNING id",
+  ).get("subsonic-album-lists");
+  const insertPlay = db.prepare(`
+    INSERT INTO play_events
+      (user_id, track_id, title, artist, album, played_at, source, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, 'subsonic', ?)
+  `);
+
+  try {
+    assert.equal(starMany(user, [idFor("album", "test-album:New Album")]), true);
+    insertPlay.run(
+      user.id,
+      idFor("song", "test-track:Old Song"),
+      "Old Song",
+      "Artist A",
+      "Old Album",
+      1000,
+      1000,
+    );
+    insertPlay.run(
+      user.id,
+      idFor("song", "test-track:Old Song"),
+      "Old Song",
+      "Artist A",
+      "Old Album",
+      2000,
+      2000,
+    );
+    insertPlay.run(
+      user.id,
+      idFor("song", "test-track:New Song"),
+      "New Song",
+      "Artist A",
+      "New Album",
+      3000,
+      3000,
+    );
+
+    assert.deepEqual(
+      getAlbumList({ type: "starred" }, user).map((album) => album.title),
+      ["New Album"],
+    );
+    assert.deepEqual(
+      getAlbumList({ type: "frequent" }, user).map((album) => album.title),
+      ["Old Album", "New Album"],
+    );
+    assert.deepEqual(getAlbumList({ type: "highest" }, user), []);
+    assert.deepEqual(getAlbumList({ musicFolderId: "2" }, user), []);
+  } finally {
+    db.prepare("DELETE FROM users WHERE id = ?").run(user.id);
+  }
+});
+
 test("returns top songs only for the requested artist", () => {
   const songs = getTopSongs("Artist A", { count: 10 });
   assert.deepEqual(songs.map((song) => song.title), ["New Song", "Old Song"]);
@@ -247,7 +302,7 @@ test("favorite reads preserve shared relationships, media filters, and user isol
   const jobsBefore = db.prepare("SELECT COUNT(*) AS count FROM playlist_download_jobs").get();
 
   try {
-    const result = subsonic.getStarredWithLibrary(first);
+    const result = subsonic.getStarredWithLibrary(first, { availableOnly: true });
     assert.deepEqual(result.starred.song.map((song) => song.id), [idFor("song", existing.identity_key)]);
     assert.deepEqual(result.starred.album.map((album) => album.id), [idFor("album", "favorite:guest-album")]);
     assert.equal(result.starred.song[0].starred, new Date(1000).toISOString());
@@ -256,7 +311,10 @@ test("favorite reads preserve shared relationships, media filters, and user isol
     assert.equal(result.library.tracks[0].files.length, 1);
     assert.equal(result.library.tracks[0].files[0].available, true);
     assert.deepEqual(subsonic.getStarred(second), { artist: [], album: [], song: [] });
-    assert.deepEqual(subsonic.getStarredWithLibrary(second).library.tracks, []);
+    assert.deepEqual(
+      subsonic.getStarredWithLibrary(second, { availableOnly: true }).library.tracks,
+      [],
+    );
 
     const favoriteKeys = [
       { kind: "song", key: existing.identity_key },
