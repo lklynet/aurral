@@ -1,15 +1,38 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-const QUEUED_MS = 2000;
-const DOWNLOADING_MS = 3000;
+const LOSSY_CODECS = {
+  ".m4a": ["-c:a", "aac", "-b:a", "256k"],
+  ".mp3": ["-c:a", "libmp3lame", "-b:a", "320k"],
+};
+
+export function searchWords(text) {
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+}
+
+export function includesAllWords(query, text) {
+  const wanted = searchWords(text);
+  return wanted.length > 0 && wanted.every((word) => query.has(word));
+}
 
 export function trackDurationSeconds(index) {
   return 30 + index;
 }
 
-export function createDownloads(initialMode = "complete") {
+export function numericId(seed) {
+  return (parseInt(createHash("sha1").update(String(seed)).digest("hex").slice(0, 8), 16) % 900_000_000) + 100_000_000;
+}
+
+export function createDownloads(initialMode = "complete", { queuedMs = 2000, downloadingMs = 3000 } = {}) {
   let mode = initialMode === "hold" ? "hold" : "complete";
   const items = new Set();
 
@@ -31,13 +54,22 @@ export function createDownloads(initialMode = "complete") {
     remove(item) {
       items.delete(item);
     },
+    tick() {
+      for (const item of items) {
+        try {
+          this.progress(item);
+        } catch (error) {
+          console.error("A simulated download failed to complete:", error);
+        }
+      }
+    },
     progress(item) {
       if (item.completedAt) return { stage: "completed", fraction: 1 };
       if (item.releasedAt == null) return { stage: "queued", fraction: 0 };
       const elapsed = Date.now() - item.releasedAt;
-      if (elapsed < QUEUED_MS) return { stage: "queued", fraction: 0 };
-      if (elapsed < QUEUED_MS + DOWNLOADING_MS) {
-        return { stage: "downloading", fraction: (elapsed - QUEUED_MS) / DOWNLOADING_MS };
+      if (elapsed < queuedMs) return { stage: "queued", fraction: 0 };
+      if (elapsed < queuedMs + downloadingMs) {
+        return { stage: "downloading", fraction: (elapsed - queuedMs) / downloadingMs };
       }
       if (!item.completedAt) {
         item.complete?.();
@@ -48,14 +80,47 @@ export function createDownloads(initialMode = "complete") {
   };
 }
 
-export function writeTrack(target, { artist, album, title, trackNumber, durationSeconds, frequency = 440 }) {
+export function createTrackFiles(cacheDir) {
+  const cache = new Map();
+  return {
+    file(artist, album, index, extension = "flac") {
+      const key = `${album.id}:${index}:${extension}`;
+      if (!cache.has(key)) {
+        const target = path.join(cacheDir, album.id, `${String(index + 1).padStart(2, "0")}.${extension}`);
+        const size = writeTrack(target, {
+          artist: artist.name,
+          album: album.title,
+          title: album.tracks[index],
+          trackNumber: index + 1,
+          durationSeconds: trackDurationSeconds(index),
+          frequency: 330 + index * 55,
+        });
+        cache.set(key, { path: target, size });
+      }
+      return cache.get(key);
+    },
+  };
+}
+
+export function copyInto(source, target) {
   fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.copyFileSync(source, target);
+  return target;
+}
+
+export function writeTrack(target, { artist, album, title, trackNumber, durationSeconds, frequency = 440, sampleRate = 44100 }) {
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const lossy = LOSSY_CODECS[path.extname(target).toLowerCase()];
+  const source = lossy
+    ? `anoisesrc=color=pink:amplitude=0.05:seed=${frequency}:duration=${durationSeconds}`
+    : `sine=frequency=${frequency}:duration=${durationSeconds}`;
   const encoded = spawnSync(
     "ffmpeg",
     [
       "-hide_banner", "-loglevel", "error", "-y",
-      "-f", "lavfi", "-i", `sine=frequency=${frequency}:duration=${durationSeconds}`,
-      "-ac", "1", "-ar", "8000",
+      "-f", "lavfi", "-i", source,
+      "-ac", lossy ? "2" : "1", "-ar", String(sampleRate),
+      ...(lossy || []),
       "-metadata", `artist=${artist}`,
       "-metadata", `album_artist=${artist}`,
       "-metadata", `album=${album}`,

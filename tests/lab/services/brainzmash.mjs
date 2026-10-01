@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { trackDurationSeconds } from "./runtime.mjs";
 
 export function stableUuid(seed) {
   const hex = createHash("sha1").update(seed).digest("hex");
@@ -63,7 +64,7 @@ function albumBody(artist, album) {
           trackname: title,
           trackposition: index + 1,
           mediumnumber: 1,
-          durationms: 180000 + index * 1000,
+          durationms: trackDurationSeconds(index) * 1000,
           artistid: artist.id,
         })),
       },

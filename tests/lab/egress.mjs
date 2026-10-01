@@ -5,7 +5,7 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "aurral", "fixture
 const publicHosts = new Set(JSON.parse(readFileSync(new URL("./services/public-hosts.json", import.meta.url), "utf8")));
 const redirects = JSON.parse(process.env.AURRAL_LAB_REDIRECTS || "{}");
 const [publicTlsHost, publicTlsPort] = String(process.env.AURRAL_LAB_PUBLIC_TLS || "fixtures:8443").split(":");
-const [publicHttpHost, publicHttpPort] = String(process.env.AURRAL_LAB_PUBLIC_HTTP || "fixtures:8080").split(":");
+const [publicHttpHost, publicHttpPort] = String(process.env.AURRAL_LAB_PUBLIC_HTTP || "fixtures:8079").split(":");
 const reported = new Set();
 
 function connectOptions(args) {

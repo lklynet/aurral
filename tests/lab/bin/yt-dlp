@@ -1,0 +1,57 @@
+#!/usr/bin/env node
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { searchWords, trackDurationSeconds, writeTrack } from "../services/runtime.mjs";
+
+const args = process.argv.slice(2);
+if (args.includes("--version")) {
+  console.log("2026.08.19-lab");
+  process.exit(0);
+}
+
+const catalog = JSON.parse(readFileSync(new URL("../fixtures/catalog.json", import.meta.url), "utf8"));
+const videoId = (album, index) => createHash("sha1").update(`youtube:${album.id}:${index}`).digest("base64url").slice(0, 11);
+const entries = catalog.artists.flatMap((artist) =>
+  artist.albums.flatMap((album) => album.tracks.map((title, index) => ({ artist, album, title, index, id: videoId(album, index) }))));
+const words = searchWords;
+
+const search = args.find((arg) => /^ytsearch\d*:/.test(arg));
+if (search) {
+  const [, count, query] = /^ytsearch(\d*):(.*)$/.exec(search);
+  const terms = new Set(words(query));
+  const found = entries.filter((entry) => [...words(entry.artist.name), ...words(entry.title)].every((word) => terms.has(word)));
+  for (const entry of found.slice(0, Number(count) || 5)) {
+    console.log(JSON.stringify({
+      id: entry.id,
+      title: `${entry.artist.name} - ${entry.title}`,
+      url: `https://www.youtube.com/watch?v=${entry.id}`,
+      webpage_url: `https://www.youtube.com/watch?v=${entry.id}`,
+      channel: `${entry.artist.name} - Topic`,
+      uploader: `${entry.artist.name} - Topic`,
+      duration: trackDurationSeconds(entry.index),
+      live_status: "not_live",
+    }));
+  }
+  process.exit(0);
+}
+
+const template = args[args.indexOf("-o") + 1];
+const url = args[args.indexOf("--") + 1];
+let id = null;
+try {
+  id = new URL(url).searchParams.get("v");
+} catch {}
+const entry = entries.find((candidate) => candidate.id === id);
+if (!template || !entry) {
+  console.error(`ERROR: [youtube] ${id || url}: Video unavailable`);
+  process.exit(1);
+}
+Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500);
+writeTrack(template.replace("%(id)s", entry.id).replace("%(ext)s", "m4a"), {
+  artist: entry.artist.name,
+  album: entry.album.title,
+  title: entry.title,
+  trackNumber: entry.index + 1,
+  durationSeconds: trackDurationSeconds(entry.index),
+  frequency: 330 + entry.index * 55,
+});

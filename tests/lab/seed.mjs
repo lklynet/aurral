@@ -38,7 +38,12 @@ dbOps.updateSettings({
   downloadFolderPath: libraryRoot,
   integrations: {
     ...settings.integrations,
-    general: { ...settings.integrations?.general, authUser: username, authPassword: password },
+    general: {
+      ...settings.integrations?.general,
+      authUser: username,
+      authPassword: password,
+      apiKey: process.env.AURRAL_LAB_API_KEY,
+    },
     metadata: {
       ...settings.integrations?.metadata,
       baseUrl: process.env.AURRAL_LAB_METADATA_URL,
@@ -52,6 +57,7 @@ dbOps.updateSettings({
       rootFolderPaths: [lidarrRoot],
       qualityProfileId: 1,
       metadataProfileId: 1,
+      searchOnAdd: true,
     },
     slskd: {
       ...settings.integrations?.slskd,
@@ -59,6 +65,31 @@ dbOps.updateSettings({
       url: process.env.AURRAL_LAB_SLSKD_URL,
       apiKey: process.env.AURRAL_LAB_SLSKD_API_KEY,
     },
+    prowlarr: {
+      ...settings.integrations?.prowlarr,
+      enabled: true,
+      url: process.env.AURRAL_LAB_PROWLARR_URL,
+      apiKey: process.env.AURRAL_LAB_PROWLARR_API_KEY,
+    },
+    sabnzbd: {
+      ...settings.integrations?.sabnzbd,
+      enabled: true,
+      url: process.env.AURRAL_LAB_SABNZBD_URL,
+      apiKey: process.env.AURRAL_LAB_SABNZBD_API_KEY,
+    },
+    nzbget: {
+      ...settings.integrations?.nzbget,
+      enabled: true,
+      url: process.env.AURRAL_LAB_NZBGET_URL,
+      username: process.env.AURRAL_LAB_NZBGET_USERNAME,
+      password: process.env.AURRAL_LAB_NZBGET_PASSWORD,
+    },
+    deemix: {
+      ...settings.integrations?.deemix,
+      enabled: true,
+      url: process.env.AURRAL_LAB_DEEMIX_URL,
+    },
+    ytdlp: { ...settings.integrations?.ytdlp, enabled: true },
   },
   security: { ...settings.security, localNetworkBypass: { enabled: false } },
 });

@@ -14,8 +14,19 @@ const specDir = path.join(repoRoot, "tests", "e2e");
 const labRoot = path.join(repoRoot, "backend", "data", "lab");
 const lockDir = path.join(labRoot, ".locks");
 const LAB_ID = /^[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?$/;
-const SEED_VERSION = 4;
-const FIXTURE_PORTS = { brainzmash: 8601, lidarr: 8686, slskd: 5030, "public-http": 8080, "public-tls": 8443, control: 9000 };
+const SEED_VERSION = 6;
+const FIXTURE_PORTS = {
+  brainzmash: 8601,
+  lidarr: 8686,
+  slskd: 5030,
+  prowlarr: 9696,
+  sabnzbd: 8080,
+  nzbget: 6789,
+  deemix: 6595,
+  "public-http": 8079,
+  "public-tls": 8443,
+  control: 9000,
+};
 const FORWARDED_ENV = [
   "PATH",
   "HOME",
@@ -97,6 +108,7 @@ function labFor(id, { resultsDir, mode = "docker", downloads = "complete" } = {}
     mode,
     downloads,
     tlsDir: path.join(stateDir, "tls"),
+    fixtureDir: path.join(stateDir, "fixtures"),
     project: `${prefix}-${id}`,
     image: `${prefix}:local`,
     runnerImage: `${prefix}-runner:local`,
@@ -129,6 +141,7 @@ function dockerEnv(lab) {
     AURRAL_LAB_MEDIA_DIR: lab.mediaDir,
     AURRAL_LAB_SEED_DIR: lab.seedingDir,
     AURRAL_LAB_TLS_DIR: lab.tlsDir,
+    AURRAL_LAB_FIXTURE_DIR: lab.fixtureDir,
     AURRAL_LAB_DOWNLOADS: lab.downloads,
     AURRAL_LAB_UID: String(process.getuid?.() ?? 1000),
     AURRAL_LAB_GID: String(process.getgid?.() ?? 1000),
@@ -267,7 +280,7 @@ function checkRecord(lab) {
 
 function claimState(lab) {
   const record = checkRecord(lab);
-  for (const dir of [lab.mediaDir, lab.resultsDir, lab.tlsDir]) fs.mkdirSync(dir, { recursive: true });
+  for (const dir of [lab.mediaDir, lab.resultsDir, lab.tlsDir, lab.fixtureDir]) fs.mkdirSync(dir, { recursive: true });
   if (!record) {
     fs.writeFileSync(
       lab.recordPath,
@@ -474,7 +487,7 @@ async function down(lab) {
 }
 
 function deleteLabData(lab) {
-  for (const target of [lab.configDir, lab.mediaDir, lab.seedingDir, lab.seedPath, lab.tlsDir]) {
+  for (const target of [lab.configDir, lab.mediaDir, lab.seedingDir, lab.seedPath, lab.tlsDir, lab.fixtureDir]) {
     fs.rmSync(target, { recursive: true, force: true });
   }
   console.error(`Deleted the data for Lab "${lab.id}".`);
@@ -763,8 +776,10 @@ async function dev(lab) {
           AURRAL_LAB_PORTS: JSON.stringify(Object.fromEntries(Object.keys(FIXTURE_PORTS).map((name) => [name, ports[name]]))),
           AURRAL_LAB_MEDIA_ROOT: lab.mediaDir,
           AURRAL_LAB_TLS_DIR: lab.tlsDir,
+          AURRAL_LAB_FIXTURE_STATE: path.join(lab.fixtureDir, "state.json"),
           AURRAL_LAB_JOURNAL: path.join(lab.resultsDir, "fixtures-journal.jsonl"),
           AURRAL_LAB_DOWNLOADS: lab.downloads,
+          AURRAL_LAB_APP_URL: `http://127.0.0.1:${ports.app}`,
         },
       });
       await waitForUrl(`http://127.0.0.1:${ports.control}/health`, 15000, fixtures, "The fixtures service");

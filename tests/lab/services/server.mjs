@@ -1,10 +1,14 @@
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import http from "node:http";
+import os from "node:os";
+import path from "node:path";
 import https from "node:https";
 import { createBrainzmash } from "./brainzmash.mjs";
 import { createLidarr } from "./lidarr.mjs";
-import { createCertificates, createDownloads } from "./runtime.mjs";
+import { createCertificates, createDownloads, createTrackFiles } from "./runtime.mjs";
 import { createSlskd } from "./slskd.mjs";
+import { createUsenet } from "./usenet.mjs";
+import { createDeemix } from "./deemix.mjs";
 
 const env = process.env;
 const catalog = JSON.parse(readFileSync(new URL("../fixtures/catalog.json", import.meta.url), "utf8"));
@@ -13,7 +17,11 @@ const ports = {
   brainzmash: 8601,
   lidarr: 8686,
   slskd: 5030,
-  "public-http": 8080,
+  prowlarr: 9696,
+  sabnzbd: 8080,
+  nzbget: 6789,
+  deemix: 6595,
+  "public-http": 8079,
   "public-tls": 8443,
   control: 9000,
   ...JSON.parse(env.AURRAL_LAB_PORTS || "{}"),
@@ -22,15 +30,36 @@ const context = {
   catalog,
   mediaRoot: env.AURRAL_LAB_MEDIA_ROOT || "/data",
   downloads: createDownloads(env.AURRAL_LAB_DOWNLOADS),
+  tracks: createTrackFiles(path.join(os.tmpdir(), `aurral-lab-tracks-${process.pid}`)),
 };
 const journal = [];
 const faults = [];
 
 const services = [
   { name: "brainzmash", handle: createBrainzmash(catalog) },
-  { name: "lidarr", handle: createLidarr(catalog, { ...context, apiKey: env.AURRAL_LAB_LIDARR_API_KEY }) },
+  {
+    name: "lidarr",
+    handle: createLidarr(catalog, {
+      ...context,
+      apiKey: env.AURRAL_LAB_LIDARR_API_KEY,
+      webhook: { url: env.AURRAL_LAB_APP_URL || "http://aurral:3001", apiKey: env.AURRAL_LAB_API_KEY },
+    }),
+  },
   { name: "slskd", handle: createSlskd(catalog, { ...context, apiKey: env.AURRAL_LAB_SLSKD_API_KEY }) },
+  { name: "deemix", handle: createDeemix(catalog, context) },
 ];
+const usenet = createUsenet(catalog, {
+  ...context,
+  prowlarrApiKey: env.AURRAL_LAB_PROWLARR_API_KEY,
+  sabnzbdApiKey: env.AURRAL_LAB_SABNZBD_API_KEY,
+  nzbgetUsername: env.AURRAL_LAB_NZBGET_USERNAME,
+  nzbgetPassword: env.AURRAL_LAB_NZBGET_PASSWORD,
+});
+services.push(
+  { name: "prowlarr", handle: usenet.prowlarr },
+  { name: "sabnzbd", handle: usenet.sabnzbd },
+  { name: "nzbget", handle: usenet.nzbget },
+);
 const publicServices = [];
 
 const servedHosts = publicServices.flatMap((service) => service.hosts);
@@ -38,6 +67,10 @@ const unserved = publicHosts.filter((host) => !servedHosts.includes(host));
 const unlisted = servedHosts.filter((host) => !publicHosts.includes(host));
 if (unserved.length || unlisted.length) {
   throw new Error(`public-hosts.json and the public services disagree: ${[...unserved, ...unlisted].join(", ")}`);
+}
+if (env.AURRAL_LAB_FIXTURE_STATE && existsSync(env.AURRAL_LAB_FIXTURE_STATE)) {
+  const saved = JSON.parse(readFileSync(env.AURRAL_LAB_FIXTURE_STATE, "utf8"));
+  for (const service of services) if (saved[service.name] && service.handle.restore) service.handle.restore(saved[service.name]);
 }
 const serviceNames = new Set([...services, ...publicServices].map((service) => service.name));
 
@@ -139,6 +172,12 @@ http
     const url = new URL(request.url, "http://fixtures");
     if (request.method === "GET" && url.pathname === "/health") return send(response, { status: 200, body: { ok: true } });
     if (request.method === "GET" && url.pathname === "/journal") return send(response, { status: 200, body: journal });
+    if (request.method === "GET" && url.pathname.startsWith("/state/")) {
+      const service = services.find((entry) => entry.name === url.pathname.slice("/state/".length));
+      if (!service?.handle.state) return send(response, { status: 404, body: { error: "That service has no inspectable state" } });
+      const body = JSON.parse(JSON.stringify(service.handle.state, (_key, value) => (value instanceof Map ? Object.fromEntries(value) : value)));
+      return send(response, { status: 200, body });
+    }
     if (url.pathname === "/downloads" && request.method === "POST") {
       const { mode } = (await readBody(request)) || {};
       if (!["hold", "complete"].includes(mode)) return send(response, { status: 400, body: { error: "mode must be hold or complete" } });
@@ -174,5 +213,21 @@ http
   })
   .listen(ports.control);
 
-process.on("SIGTERM", () => process.exit(0));
-process.on("SIGINT", () => process.exit(0));
+function saveState() {
+  if (!env.AURRAL_LAB_FIXTURE_STATE) return;
+  const snapshot = Object.fromEntries(
+    services.filter((service) => service.handle.restore).map((service) => [service.name, service.handle.state]),
+  );
+  const temporary = `${env.AURRAL_LAB_FIXTURE_STATE}.tmp`;
+  writeFileSync(temporary, JSON.stringify(snapshot));
+  renameSync(temporary, env.AURRAL_LAB_FIXTURE_STATE);
+}
+
+setInterval(() => context.downloads.tick(), 500).unref();
+setInterval(saveState, 2000).unref();
+for (const signal of ["SIGTERM", "SIGINT"]) {
+  process.on(signal, () => {
+    saveState();
+    process.exit(0);
+  });
+}
