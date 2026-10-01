@@ -767,6 +767,14 @@ export function hasClaimableHonkerJobs(queueName) {
   )[0]);
 }
 
+export function hasActiveHonkerJobs(queueName) {
+  return Boolean(getHonkerDb().query(
+    `SELECT 1 FROM _honker_live WHERE queue = ?
+     AND (state = 'processing' OR (state = 'pending' AND run_at <= ?)) LIMIT 1`,
+    [queueName, Math.floor(Date.now() / 1000)],
+  )[0]);
+}
+
 export function isHonkerScheduleDue() {
   return Boolean(getHonkerDb().query(
     "SELECT 1 FROM _honker_scheduler_tasks WHERE enabled = 1 AND next_fire_at <= ? LIMIT 1",

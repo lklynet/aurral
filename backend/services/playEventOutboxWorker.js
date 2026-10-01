@@ -1,4 +1,4 @@
-import { getPlayEventOutbox, getWorkerId, hasClaimableHonkerJobs } from "./honkerDb.js";
+import { getPlayEventOutbox, getWorkerId, hasActiveHonkerJobs } from "./honkerDb.js";
 import {
   createIdleAbortController,
   getWorkerIdleStopMs,
@@ -16,7 +16,7 @@ let abortController = null;
 async function runLoop() {
   abortController = createIdleAbortController({
     idleStopMs: getWorkerIdleStopMs(),
-    isBusy: () => hasClaimableHonkerJobs(getPlayEventOutbox().queue.name),
+    isBusy: () => hasActiveHonkerJobs(getPlayEventOutbox().queue.name),
   });
   abortController.arm();
   try {

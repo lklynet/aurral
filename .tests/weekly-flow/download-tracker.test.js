@@ -401,6 +401,22 @@ test("worker does not select a job that is already active", () => {
   assert.equal(worker._getNextReadyPendingJob(), null);
 });
 
+test("a started worker keeps its process busy only while downloads are pending", async () => {
+  const worker = new WeeklyFlowWorker(isolatedState.baseDir);
+  await worker.start();
+  await worker.reuseRepairInFlight;
+  try {
+    assert.equal(worker.hasWork(), false);
+    trackerModule.downloadTracker.addJob(
+      { artistName: "Artist", trackName: "Pending Song" },
+      "library",
+    );
+    assert.equal(worker.hasWork(), true);
+  } finally {
+    worker.stop();
+  }
+});
+
 test("persists enriched album context for slskd matching", () => {
   const tracker = new WeeklyFlowDownloadTracker();
   const jobId = tracker.addJob(

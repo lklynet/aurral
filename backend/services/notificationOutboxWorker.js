@@ -1,4 +1,4 @@
-import { getNotificationOutbox, getWorkerId, hasClaimableHonkerJobs } from "./honkerDb.js";
+import { getNotificationOutbox, getWorkerId, hasActiveHonkerJobs } from "./honkerDb.js";
 import {
   createIdleAbortController,
   getWorkerIdleStopMs,
@@ -17,7 +17,7 @@ let abortController = null;
 async function runLoop() {
   abortController = createIdleAbortController({
     idleStopMs: getWorkerIdleStopMs(),
-    isBusy: () => hasClaimableHonkerJobs(getNotificationOutbox().queue.name),
+    isBusy: () => hasActiveHonkerJobs(getNotificationOutbox().queue.name),
   });
   abortController.arm();
   try {

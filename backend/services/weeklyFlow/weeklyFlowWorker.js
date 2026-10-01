@@ -481,10 +481,11 @@ export class WeeklyFlowWorker {
   }
 
   hasWork() {
-    return this.running ||
-      this.activeJobs.size > 0 ||
+    return this.activeJobs.size > 0 ||
+      this.reserveBuildsInFlight.size > 0 ||
       this.blockedPlaylistTypes.size > 0 ||
-      Boolean(this.reuseRepairInFlight);
+      Boolean(this.reuseRepairInFlight) ||
+      (this.running && Boolean(downloadTracker.getNextPending()));
   }
 
   _maybeStopWhenIdle() {

@@ -460,12 +460,18 @@ test("periodic cleanup retries failed passes and stops on shutdown", async (t) =
   assert.ok(db.prepare("SELECT id FROM honker_task_runs WHERE job_id = 777778").get());
 });
 
-test("an idle notification outbox worker stops on its own", { timeout: 5000 }, async (t) => {
+test("a notification outbox worker stops on its own once no delivery is in flight", { timeout: 5000 }, async (t) => {
   const outboxWorker = await importFromRepo("backend/services/notificationOutboxWorker.js");
+  const outbox = honkerDb.getNotificationOutbox();
+  outbox.enqueue({ message: "disposable in-flight delivery" });
+  const delivery = outbox.queue.claimOne("disposable-delivery-owner");
   t.mock.timers.enable({ apis: ["setTimeout"] });
   t.after(() => outboxWorker.stopNotificationOutboxWorker());
   const loop = outboxWorker.startNotificationOutboxWorker();
+  t.mock.timers.tick(60000);
+  await new Promise(setImmediate);
   assert.equal(outboxWorker.isNotificationOutboxWorkerRunning(), true);
+  assert.equal(delivery.ack(), true);
   t.mock.timers.tick(60000);
   await loop;
   assert.equal(outboxWorker.isNotificationOutboxWorkerRunning(), false);
