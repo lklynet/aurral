@@ -95,7 +95,7 @@ export function LibraryItemSubmenu({
         {items.map((item) => {
           const ItemIcon = item.icon;
           const isPending = pendingAction === item.id;
-          const isToggle = typeof item.selected === "boolean";
+          const isToggle = typeof item.selected === "boolean" || typeof item.checked === "boolean";
           return (
             <button
               type="button"
@@ -104,7 +104,7 @@ export function LibraryItemSubmenu({
               key={item.id}
               onClick={(event) => handleAction(event, item)}
               disabled={item.disabled || !!pendingAction}
-              aria-checked={isToggle ? item.selected : undefined}
+              aria-checked={isToggle ? (item.checked ?? item.selected) : undefined}
             >
               <span className="artist-menu-item__main">
                 {isPending ? (
@@ -334,7 +334,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
       {items.map((item) => {
         const Icon = item.icon;
         const isPending = pendingAction === item.id;
-        const isToggle = typeof item.selected === "boolean";
+        const isToggle = typeof item.selected === "boolean" || typeof item.checked === "boolean";
         if (Array.isArray(item.submenuItems)) {
           return (
             <div key={item.id}>
@@ -358,7 +358,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
               className={`artist-menu-item${item.danger ? " artist-menu-item--danger" : ""}${item.selected ? " is-selected" : ""}`}
               onClick={(event) => handleAction(event, item)}
               disabled={item.disabled || !!pendingAction}
-              aria-checked={isToggle ? item.selected : undefined}
+              aria-checked={isToggle ? (item.checked ?? item.selected) : undefined}
             >
               <span className="artist-menu-item__main">
                 {isPending ? (

@@ -60,3 +60,11 @@ export const searchCatalog = async (
     staleTime: 30_000,
   });
 };
+
+export const searchLibrary = async (query, { limit, signal } = {}) => {
+  const params = { q: query };
+  if (limit != null) {
+    params.limit = limit;
+  }
+  return getData("/search/library", { params, signal });
+};

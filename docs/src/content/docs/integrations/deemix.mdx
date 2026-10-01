@@ -1,53 +1,54 @@
 ---
 title: deemix
-description: Tagged Deezer downloads for flows and playlists.
+description: Download tagged tracks and albums from Deezer through deemix.
 ---
 
-[deemix](https://github.com/bambanah/deemix) is a self-hosted Deezer downloader. It returns tagged files with cover art, so Aurral can use it as a download source for flows and playlists.
+[deemix](https://github.com/bambanah/deemix) is a self-hosted Deezer downloader. It returns tagged files with cover art. Aurral can use it as a download source for flows, playlists, and Aurral albums.
 
-Aurral talks to the deemix web server. For an Aurral-managed album request, it selects an album from matching Deezer tracks and adds one album URL to the queue. For a playlist or flow track, it adds one track URL. It imports only files that pass Aurral's recording checks.
+Aurral talks to the deemix web server. For an Aurral album, it picks the Deezer album that matches the requested tracks and adds one album URL to the deemix queue. For a flow or playlist track, it adds one track URL. Aurral imports only the files that pass its checks.
 
-Aurral does not store your ARL. Sign in once in the deemix web UI. Aurral reuses that login through the deemix API.
+Aurral does not store your ARL. Sign in once in the deemix web UI. Aurral reuses that sign-in through the deemix API.
 
-deemix hands that login back over the address you configure, and that address is usually plain HTTP on your own network. Keep deemix on a network you trust, or put it behind HTTPS if the connection leaves one.
+deemix uses the address that you configure, which is usually plain HTTP on your own network. Keep deemix on a network that you trust, or put it behind HTTPS if the connection leaves that network.
 
 ## Setup
 
-1. Run deemix and open its web UI. Sign in with your ARL.
+1. Run deemix, open its web UI, and sign in with your ARL.
 2. Open **Settings > Download clients > deemix**.
 3. Turn on **Enable deemix**.
 4. Set **Server URL** to your deemix address, for example `http://localhost:6595`.
-5. Choose a **Bitrate**. FLAC is the default. Your Deezer plan has to allow it: FLAC needs a lossless plan, and MP3 320 needs a high quality plan. **Test connection** warns you when the selected bitrate is above your plan, and deemix refuses those downloads rather than lowering the quality.
-6. If necessary, set **Source priority**.
+5. Choose a **Bitrate**. FLAC is the default.
+6. If necessary, set **Source priority**. The default is `15`.
 7. Select **Test connection**.
-8. Settings save automatically after each change.
 
-The deemix default priority is `15`. The slskd default is `10`. The Usenet default is `20`. The yt-dlp default is `50`.
+Your Deezer plan must allow the bitrate. FLAC needs a lossless plan, and MP3 320 needs a high-quality plan. If the bitrate is above your plan, **Test connection** warns you. deemix refuses those downloads. It does not lower the quality.
 
 ## Path mapping
 
-deemix writes files into its own download folder. Aurral has to read that same file.
+deemix writes files to its own download folder. Aurral must read the same files.
 
-Mount the deemix download folder into the Aurral container at the same path, or add a remote path mapping under **Settings > Download clients > Remote path mappings** with **Applies to** set to `deemix`. Use the path that deemix reports as the remote path and the path that Aurral sees as the local path.
+Mount the deemix download folder in Aurral at the same path. If you cannot, add a mapping in **Settings > Download clients > Remote path mappings**, with **Applies to** set to **deemix**. Use the path that deemix reports as **Remote path**, and the path inside Aurral as **Local path**.
 
-Aurral moves each verified file into your Downloads Folder. A file that fails verification stays outside the library.
+Aurral moves each checked file into the Downloads Folder. A file that fails the checks stays outside the Library.
 
 ## Behavior
 
-Aurral tries download sources in priority order. It ranks Deezer results by title, artist, album, and duration, and it skips tracks that your account cannot stream.
+Aurral tries download sources in priority order. It ranks Deezer results by title, artist, album, and duration. It skips tracks that your account cannot stream.
 
-Aurral validates the downloaded audio with the same track validation that it uses for other sources, then writes the playlist's title, artist, album, album artist, year, and track number into the file.
+Aurral checks each downloaded file in the same way as files from other sources. It then writes the title, artist, album, album artist, year, and track number into the file.
 
-If an album queue item completes with errors, Aurral assigns its successful files to the matching tracks. Missing or failed tracks continue through the normal per-track source fallback. One completed file cannot fill two track jobs.
+If an album download finishes with errors, Aurral assigns the finished files to their tracks. The missing and failed tracks continue one by one through the other sources. One file never fills two tracks.
 
-When a downloaded file matches the requested track but its duration differs significantly, Aurral retains it under **Activity > Queue** for preview, approval, or denial.
+If a file matches the requested track but its duration is very different, Aurral holds it in **Activity > Queue**. You can preview, approve, or deny it.
 
-Aurral removes its own track queue entry before importing or holding the file for review. It removes an album queue entry after processing that album attempt. A repeated request can then start a new download.
+Aurral removes a track from the deemix queue before it imports the file or holds it for review. It removes an album from the queue after it processes the album. A new request can then start a new download.
 
-If a repeated deemix completion targets a file that is already in the playlist library, Aurral keeps the existing file instead of creating a numbered duplicate.
+If deemix finishes the same track again and the file already exists in the playlist folder, Aurral keeps the existing file. It does not create a numbered copy.
 
-deemix can also serve quality upgrades. Its bitrate setting fixes the tier it delivers, so Aurral compares that tier against the tier of the file you already have and skips deemix when it cannot improve on it. A deemix set to FLAC upgrades an MP3, and a deemix set to MP3 128 is not asked to upgrade anything better. Downloaded files are checked against the quality profile as well, so a track is never replaced by a worse one.
+## Upgrades
+
+deemix can supply quality upgrades. Because its **Bitrate** setting fixes the quality that it delivers, Aurral compares that quality with the file that you have. Aurral skips deemix when it cannot deliver a better file. For example, deemix set to FLAC can upgrade an MP3, but deemix set to MP3 128 does not upgrade anything better than MP3 128. Aurral also checks each downloaded file against the quality profile, so an upgrade never replaces a file with a worse one.
 
 ## Download source priority
 
-See [Usenet](/integrations/usenet/#download-source-priority-and-fallback) for how priority and fallback work across sources.
+See [Download source priority and fallback](/integrations/usenet/#download-source-priority-and-fallback).

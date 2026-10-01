@@ -1,100 +1,181 @@
 ---
 title: Users and authentication
-description: Local users, permissions, LAN auto-login, and reverse-proxy auth.
+description: Users, permissions, account status, and every way to sign in to Aurral.
 ---
 
-Aurral supports multiple local users with individual permissions.
+Aurral supports several users. Each user has their own permissions, playlists, listening history, and recommendations. Admins manage users in **Settings > Users**.
 
 ![Aurral user settings](../../../assets/screenshots/settings-user.webp)
 
 ## Permissions
 
-Admins can control whether users can:
+An admin can give each user these permissions:
 
-- Access playlists and flows
-- Add artists or albums
-- Change monitoring
-- Delete artists or albums
+| Permission | Default for new users |
+| --- | --- |
+| **Access playlists and downloads** | Off |
+| **Add artist** | On |
+| **Add album** | On |
+| **Change artist monitoring** | Off |
+| **Delete artists** | Off |
+| **Delete albums** | Off |
+| **Delete tracks** | Off |
 
-## Authentication
+Admins have every permission.
 
-- Local username and password accounts
-- Optional local-network auto-login for single-admin home setups
-- Reverse-proxy authentication for SSO
-- Native OpenID Connect login
+## Account status
+
+To stop a user from using Aurral without deleting the account, open **Manage** for the user and set **Status** to **Suspended** or **Disabled**. The two values have the same effect:
+
+- The user cannot sign in with any method.
+- Aurral ends the user's sessions at once.
+- The user's scheduled flows do not run.
+
+Set **Status** to **Active** to restore the account. You cannot suspend or disable the protected recovery admin.
+
+## Ways to sign in
+
+Aurral supports these sign-in methods:
+
+- A local username and password
+- Local-network auto-login, for a single admin on a home network
+- Native OpenID Connect (OIDC)
+- Google, for users who linked a Google account
+- Plex, for users who linked a Plex account
+- Reverse-proxy authentication
+
+A user can always sign in with their local password, if they have one.
+
+## Local-network auto-login
+
+Auto-login signs in the only user automatically from the server's local network. Turn it on during first-run setup, or in **Settings > Users > Local network auto-login**.
+
+Auto-login works only when all these conditions are true:
+
+- Setup is complete.
+- Exactly one user exists, and that user is an admin.
+- Aurral can find one trusted IPv4 subnet for the server.
+
+When you add a second user, Aurral turns auto-login off. The setting shows why auto-login is unavailable when a condition is not met.
 
 ## Native OIDC
 
-Set `OIDC_ENABLED=true` and configure your identity provider as a confidential OIDC client.
+Set `OIDC_ENABLED=true` and register Aurral as a client with your identity provider.
 
 Required variables:
 
-- `OIDC_ISSUER` - discovery issuer URL
-- `OIDC_CLIENT_ID`
-- `OIDC_CLIENT_SECRET`
-- `OIDC_REDIRECT_URI` - must be exactly `https://aurral.example.com/sso/callback`
+- `OIDC_ISSUER`: the issuer URL, used for discovery.
+- `OIDC_CLIENT_ID`: the client ID.
+- `OIDC_CLIENT_SECRET`: the client secret. It is not required when `OIDC_TOKEN_ENDPOINT_AUTH_METHOD` is `none`.
+- `OIDC_REDIRECT_URI`: exactly `https://aurral.example.com/sso/callback`, with your Aurral host.
 
 Optional role mapping:
 
-- `OIDC_DEFAULT_ROLE` - `user` (default) or `admin`
-- `OIDC_ADMIN_USERS` - exact usernames promoted to admin at login
-- `OIDC_GROUPS_CLAIM` - ID-token claim with group membership
-- `OIDC_ADMIN_GROUPS` - groups from that claim that grant admin
+- `OIDC_DEFAULT_ROLE`: `user`, the default, or `admin`.
+- `OIDC_ADMIN_USERS`: usernames that get the admin role at sign-in.
+- `OIDC_GROUPS_CLAIM`: the ID-token claim that holds group membership.
+- `OIDC_ADMIN_GROUPS`: the groups in that claim that give the admin role.
 
-Aurral starts login at `/api/auth/oidc/login`, handles the IdP return at `/sso/callback`, then issues a normal Aurral session. Username comes from `OIDC_USERNAME_CLAIM` (default `preferred_username`), with a fallback to `email`.
+See [Environment variables](/admin/environment/#authentication) for every OIDC variable.
 
-OIDC-created users cannot use local password login until an admin sets a password. Role changes from the IdP apply on the next OIDC login.
+The sign-in page shows **Sign in with SSO**. Aurral starts the sign-in at `/api/auth/oidc/login`, receives the result at `/sso/callback`, and then creates a normal Aurral session. The username comes from the `OIDC_USERNAME_CLAIM` claim, which is `preferred_username` by default. If that claim is missing, Aurral uses `email`.
 
-Set `OIDC_LOGOUT_URL` if you want **Log out** to end the identity-provider session as well.
+The first OIDC sign-in of a new person creates an Aurral account. If the username is taken, Aurral adds the first free number, such as `-2`. The identity provider sets the role at each OIDC sign-in, so a role that you change in Aurral changes back at the next sign-in.
 
-Native OIDC and reverse-proxy auth can both stay configured. Use one as the primary browser login path for a given deployment.
+An account created by OIDC has no local password until an admin sets one.
 
-### Claiming existing accounts after upgrading
+To end the identity-provider session when a user selects **Log out**, set `OIDC_LOGOUT_URL`.
 
-Aurral now identifies an OIDC user by the issuer and subject in their token rather than by username, so accounts created before this change have no linked identity yet. Until one is linked, an SSO sign-in does not recognise the old account and creates a separate new one instead.
+You can configure native OIDC and reverse-proxy authentication together. Choose one of them as the main sign-in method for your deployment.
 
-Because a matching username is not proof of ownership, an admin has to approve each account:
+### Claim existing accounts after an upgrade
 
-1. In **Settings > Users**, accounts that predate identity linking show a **no SSO identity** badge.
-2. Open **Manage** on an account you know belongs to an SSO user and turn on **Claim by SSO sign-in**. The badge changes to **awaiting SSO claim**.
-3. That user signs in with SSO once. Their identity is linked to the existing account, keeping its flows, history, settings, and permissions.
+Aurral links an OIDC user to an account by the issuer and subject in the token, not by the username. An account created before identity linking has no linked identity. If that person signs in with SSO, Aurral creates a new account instead of using the old one.
 
-The approval is used up by that first sign-in, and the badge clears.
+A matching username does not prove that the person owns the account, so an admin must approve each claim:
 
-Approve accounts before telling users the upgrade is live. If someone signs in with SSO before their account is approved, their identity is bound to the new empty account and later approval has no effect.
+1. In **Settings > Users**, find the accounts with a **no SSO identity** badge.
+2. Open **Manage** on an account that you know belongs to an SSO user, and turn on **Claim by SSO sign-in**. The badge changes to **awaiting SSO claim**.
+3. The user signs in with SSO once. Aurral links the identity to the existing account and keeps its flows, history, settings, and permissions.
 
-To recover, delete the new duplicate account (Aurral appends the first available numeric suffix, for example `-2`, `-3`, and so on, to the username), approve the original, and have the user sign in again.
+The first SSO sign-in uses up the approval, and the badge goes away.
 
-The protected recovery admin can never be claimed this way.
+:::caution
+Approve the accounts before you tell users that the upgrade is live. If someone signs in with SSO before you approve their account, their identity links to a new empty account, and a later approval has no effect.
+:::
 
-## Reverse-proxy auth
+To recover, delete the new duplicate account, which has a number such as `-2` at the end of its username. Then approve the original account and ask the user to sign in again.
 
-Set `AUTH_PROXY_ENABLED=true` to use reverse-proxy authentication. Use `AUTH_PROXY_HEADER` if the proxy uses a custom header.
+You cannot approve a claim for the protected recovery admin.
 
-The default username header is `x-forwarded-user`.
+## Sign in with Google or Plex
 
-When a proxied username first reaches Aurral, Aurral creates a matching local user. The user role comes from one of these sources:
+Google and Plex sign-in let a user sign in to an account that already exists. They never create an account and never change a role. A user must link the Google or Plex account first, while signed in another way.
 
-- `AUTH_PROXY_DEFAULT_ROLE` - the default for anyone not otherwise granted admin
-- An exact match in `AUTH_PROXY_ADMIN_USERS`
-- Group membership from `AUTH_PROXY_ROLE_HEADER` (for example, Authelia's `Remote-Groups`), compared with `AUTH_PROXY_ADMIN_GROUPS`
+### Set up Google sign-in
 
-Aurral evaluates the role on every request. A proxy or identity-provider role change takes effect on the next request.
-You do not have to edit the account in Aurral.
+1. In the Google Cloud Console, create an OAuth client. Add the redirect URI `https://aurral.example.com/sso/google/callback`, with your Aurral host.
+2. In Aurral, open **Settings > Connect > Google**.
+3. Enter the **Client ID**, **Client secret**, and **Redirect URI**.
+4. Turn on **Enabled**.
 
-Set `AUTH_PROXY_TRUSTED_IPS` to your reverse proxy's address. Without it, Aurral accepts identity headers from any client that can reach Aurral.
+Each user then opens **Profile > Connected accounts** and selects **Connect Google**. After that, the user can select **Sign in with Google** on the sign-in page.
 
-On the first request that your proxy authenticates, Aurral issues its own session and the browser uses it for later API calls. Use `SESSION_EXPIRY_HOURS` to change how long an Aurral session lasts.
+### Set up Plex sign-in
 
-Most setups also protect `/api` with the proxy, so the proxy still decides every request. Page loads always go to the network rather than to Aurral's offline cache, so your proxy can redirect them to the identity provider whenever its session has ended.
+1. Connect Plex in **Settings > Playback > Plex**.
+2. In the same place, turn on **Allow signing in to Aurral with Plex**.
 
-A tab that is already open has no page load to redirect. When the proxy rejects one of its API calls, Aurral reloads that tab, which sends it back through the proxy. Aurral reloads at most once every 30 seconds, so a misconfigured proxy cannot cause a redirect loop.
+Each user then links their own Plex account in **Profile > Plex account**. After that, the user can select **Sign in with Plex**. A Plex Home managed user that an admin linked cannot sign in with Plex. See [Plex](/integrations/plex/#sign-in-to-aurral-with-plex).
 
-When the proxy protects only page loads and leaves `/api` to Aurral's own session, the open page keeps working after the identity-provider session ends, until the Aurral session expires.
+### Manage connected accounts
 
-For Authentik, route `/outpost.goauthentik.io` directly to the Authentik outpost.
+**Profile > Connected accounts** lists the SSO, Google, and Plex identities linked to your account. To remove one, select **Disconnect**.
 
-Do not protect that location with `auth_request`. Verify the route before you test Aurral:
+You cannot remove your last way to sign in. If your account has no local password, set a password or link another account first.
+
+## Confirm your password for account changes
+
+Some account changes need a recent sign-in:
+
+- Change your password
+- Connect or disconnect Google or Plex
+
+If you signed in more than 15 minutes ago, Aurral asks for your current password first. If your account has no local password, sign out and sign in again, then retry.
+
+## SSO-only sign-in mode
+
+To hide the username and password form on the sign-in page, open **Settings > Users > Sign-in Mode** and turn on **SSO-only**. The setting has an effect only when OIDC, Google, or Plex sign-in is configured.
+
+The sign-in page still shows **Sign in with a local account instead**, so local accounts and the recovery admin cannot be locked out.
+
+## Reverse-proxy authentication
+
+Set `AUTH_PROXY_ENABLED=true` to trust a username that your reverse proxy sends. The default header is `x-forwarded-user`. To use another header, set `AUTH_PROXY_HEADER`.
+
+:::caution
+Set `AUTH_PROXY_TRUSTED_IPS` to the address of your reverse proxy. Without it, any client that can reach Aurral can send the header and act as any user.
+:::
+
+When a new username first arrives from the proxy, Aurral creates a local user with that name. The role comes from these settings:
+
+- `AUTH_PROXY_DEFAULT_ROLE`: the role for users who do not get the admin role another way.
+- `AUTH_PROXY_ADMIN_USERS`: usernames that get the admin role.
+- `AUTH_PROXY_ROLE_HEADER` and `AUTH_PROXY_ADMIN_GROUPS`: a header with the user's groups, such as Authelia's `Remote-Groups`, and the groups that give the admin role.
+
+Aurral checks the role on every request. A role change in the proxy or identity provider applies at the next request. You do not have to edit the account in Aurral.
+
+On the first request that your proxy authenticates, Aurral creates its own session, and the browser uses it for later API calls. To change how long a session lasts, set `SESSION_EXPIRY_HOURS`.
+
+Page loads always go to the network, not to Aurral's offline cache, so your proxy can send them to the identity provider when its session ends.
+
+Most setups also protect `/api` with the proxy, so the proxy checks every request. An open tab has no page load to redirect. When the proxy rejects one of its API calls, Aurral reloads the tab, which sends it through the proxy again. Aurral reloads at most once every 30 seconds, so a wrong proxy setup cannot cause a reload loop.
+
+If the proxy protects only page loads and leaves `/api` to Aurral's session, an open page keeps working after the identity-provider session ends, until the Aurral session expires.
+
+### Authentik
+
+Route `/outpost.goauthentik.io` directly to the Authentik outpost. Do not protect that route with `auth_request`. Check the route before you test Aurral:
 
 ```bash
 curl -i https://aurral.example.com/outpost.goauthentik.io/ping
@@ -102,25 +183,29 @@ curl -i https://aurral.example.com/outpost.goauthentik.io/ping
 
 The response must be `204`.
 
-Set `AUTH_PROXY_LOGOUT_URL=https://aurral.example.com/outpost.goauthentik.io/sign_out` to end the Authentik session when you log out.
+To end the Authentik session when a user logs out of Aurral, set:
 
-Aurral hides its **Log out** control while proxy authentication is on and this variable is unset, because clearing an Aurral session cannot end the proxy session. Set the variable to get the control back.
+```bash
+AUTH_PROXY_LOGOUT_URL=https://aurral.example.com/outpost.goauthentik.io/sign_out
+```
 
-Proxy-created users cannot use local password login until an admin sets a password. After creation, admins can manage the account from **Settings > Users**.
+While proxy authentication is on and `AUTH_PROXY_LOGOUT_URL` is not set, Aurral hides **Log out**, because ending the Aurral session cannot end the proxy session.
+
+An account created by the proxy has no local password until an admin sets one. Admins manage these accounts in **Settings > Users**.
 
 ## Per-user Plex accounts
 
-Each user can link their own flow and shared playlists to their own Plex account instead of the shared admin Plex connection. From a user's **Manage** dialog in **Settings > Users**, admins link a Plex Home managed user; anyone can also self-link their own invited/friend Plex account from their **Profile** page. See [Plex - Per-user Plex accounts](/integrations/plex/#per-user-plex-accounts) for the full setup steps.
+Each user can send their flows and static playlists to their own Plex account instead of the admin's. An admin links a Plex Home managed user from **Manage** in **Settings > Users**. A user with their own Plex.tv account links it in **Profile > Plex account**. See [Plex: Per-user Plex accounts](/integrations/plex/#per-user-plex-accounts).
 
-## Reset admin password
+## Reset the admin password
 
-From the repository root:
+Run this command from the repository root:
 
 ```bash
 npm run auth:reset-admin-password -- --password "new-password"
 ```
 
-Generate a random password:
+To generate a random password:
 
 ```bash
 npm run auth:reset-admin-password -- --generate

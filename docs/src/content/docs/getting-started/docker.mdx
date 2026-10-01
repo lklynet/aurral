@@ -1,14 +1,14 @@
 ---
 title: Docker setup
-description: Run Aurral in Docker and connect it to the shared media filesystem.
+description: Run Aurral in Docker and choose an image tag.
 ---
 
 Aurral runs in Docker. It needs two mounts:
 
 - `/config` for Aurral's database, settings, users, and jobs.
-- A shared media mount for the Lidarr library, completed downloads, and Aurral output.
+- A media mount for the Downloads Folder, completed downloads, and the Lidarr library if you use Lidarr.
 
-Read [Filesystem and mounts](/getting-started/storage/) before you create the Compose file. Aurral must share a media mount with Lidarr, your download clients, and Navidrome or Plex.
+Read [Filesystem and mounts](/getting-started/storage/) before you write the Compose file. Every service that shares files with Aurral must see those files at the same path.
 
 ## Minimal Compose file
 
@@ -27,11 +27,11 @@ services:
       - ./config:/config
 ```
 
-Replace `/srv/media` with the host directory that Lidarr already uses. Keep `:/data` as the container side of the mount so every media service sees the same paths.
+Replace `/srv/media` with your host media folder. If you use Lidarr, use the host folder that Lidarr already mounts. Keep `/data` as the container side of the mount, so that every media service sees the same paths.
 
-For example, the host folder `/srv/media/downloads/aurral` is `/data/downloads/aurral` inside Aurral. Set the Downloads Folder to the container path in **Settings > Download clients**, not to the host path.
+For example, the host folder `/srv/media/downloads/aurral` is `/data/downloads/aurral` inside Aurral. In Aurral settings, always enter the container path.
 
-`/config` is only for Aurral. Do not share it with another service.
+Do not share `/config` with another service.
 
 ## Start Aurral
 
@@ -41,46 +41,46 @@ docker compose up -d
 
 1. Open `http://localhost:3001`.
 2. Create the admin account.
-3. Connect Lidarr.
-4. Set the Downloads Folder path and run the storage checks.
+3. Connect Lidarr, or select **Skip for now** and set the Downloads Folder.
+4. Run the storage checks.
 
 Continue with [First run](/getting-started/first-run/).
 
-## Which image tag to use
+## Choose an image tag
 
 | Tag | Contents | Use it when |
 | --- | --- | --- |
 | `latest` | The newest stable release | You want a tested release. |
-| `2.4.0`, `2.4`, `2` | An exact version, or the newest release in that line | You pin versions or need to roll back. |
+| `2.10.0`, `2.10`, `2` | An exact version, or the newest release in that line | You pin versions or need to roll back. |
 | `nightly` | Every change merged since the last release | You want fixes and features early and can report bugs. |
-| `pr-<number>` | The preview image for an open pull request | You were asked to test a proposed change. |
+| `pr-<number>` | The preview image for an open pull request | A maintainer asked you to test a proposed change. |
 
-Aurral checks for a newer build in your channel. When one exists, an update icon appears in the top-right area. Select it to preview the release changes and open the GitHub release or commit list.
+Aurral checks for a newer build in your channel. When one exists, an update icon appears in the top-right corner. Select it to read the changes and open the GitHub release or commit list.
 
-Non-stable channels also mark the sidebar.
+On a nightly or preview image, the sidebar shows artwork for that channel. To hide it, turn off **Profile > Appearance > Environment art**.
 
 :::caution
-`nightly` is not a stable release. Back up `./config` before switching to it.
+`nightly` is not a stable release. Back up `./config` before you switch to it.
 
-Nightly images currently support `linux/amd64` only. On ARM, use `latest` or a versioned stable tag.
+Nightly and preview images support `linux/amd64` only. On ARM, use `latest` or a version tag.
 :::
 
-For the current Nightly scope, see the [Release Readiness issues](https://github.com/lklynet/aurral/issues?q=is%3Aissue+label%3Arelease-readiness+sort%3Aupdated-desc). The latest issue is pinned at the top and lists the current Nightly candidate and included changes.
+The [Release Readiness issues](https://github.com/lklynet/aurral/issues?q=is%3Aissue+label%3Arelease-readiness+sort%3Aupdated-desc) track the current nightly. The pinned issue lists the nightly candidate and the changes it includes.
 
 ## Test a pull request preview
 
-When a pull request has a preview image, its GitHub conversation contains the exact `pr-<number>` image tag and test instructions.
+The pull request conversation on GitHub gives the `pr-<number>` tag and the test steps.
 
 1. Back up `./config`.
-2. Temporarily change the Aurral image to the preview tag.
+2. Change the Aurral image to the preview tag.
 3. Run `docker compose pull aurral && docker compose up -d aurral`.
-4. Test the behavior changed by the pull request.
-5. Restore the image reference that you used before testing.
+4. Test the behavior that the pull request changes.
+5. Change the image back to the tag that you used before.
 
 ## Full stack example
 
-Use [`docker-compose.example.yml`](https://github.com/lklynet/aurral/blob/main/docker-compose.example.yml) for Aurral, Lidarr, slskd, and Navidrome. It uses one `${MEDIA_ROOT:-/srv/media}:/data` mount for the media services.
+[`docker-compose.example.yml`](https://github.com/lklynet/aurral/blob/main/docker-compose.example.yml) runs Aurral, Lidarr, slskd, and Navidrome. All four services use the same `${MEDIA_ROOT:-/srv/media}:/data` mount.
 
-For Plex, see the [Plex setup guide](/integrations/plex/).
+For Plex, see the [Plex guide](/integrations/plex/).
 
 Next: [Filesystem and mounts](/getting-started/storage/)

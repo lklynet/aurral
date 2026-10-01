@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Newspaper } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useLibraryNews } from "../hooks/useLibraryNews";
@@ -70,10 +70,9 @@ export default function NewsPage() {
           </button>
         </section>
       ) : loading && articles.length === 0 ? (
-        <section className="discover-news-page__status">
+        <div className="artist-loading">
           <DotLoader size="2xl" label={null} />
-          <h2>Loading artist news</h2>
-        </section>
+        </div>
       ) : articles.length > 0 ? (
         <>
           {refreshWarning ? (

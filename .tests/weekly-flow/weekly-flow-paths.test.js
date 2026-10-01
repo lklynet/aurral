@@ -16,7 +16,6 @@ const {
   resolvePlaylistRoot: resolveWeeklyFlowRoot,
   remapLegacyPath: remapLegacyWeeklyFlowPath,
   resolveExistingTrackPath: resolveExistingWeeklyFlowTrackPath,
-  migrateLegacyPaths,
   AURRAL_FLOWS_DIR,
 } = playlistPaths;
 
@@ -108,43 +107,4 @@ test("resolveExistingWeeklyFlowTrackPath resolves absolute paths outside playlis
   const resolved = await resolveExistingWeeklyFlowTrackPath(lidarrPath, root);
   assert.equal(resolved?.path, lidarrPath);
   assert.equal(resolved?.migratedFrom, null);
-});
-
-test("migrateLegacyPaths moves reviewed tracks from the bare playlist-id folder", async () => {
-  const fs = await import("fs/promises");
-  const root = path.join(process.env.WEEKLY_FLOW_FOLDER, "reviewed-import-migration");
-  const playlistId = "40ae99ad-92b0-48c6-93e7-7b39e76703ea";
-  const misplacedPath = path.join(root, playlistId, "Artist", "Album", "Track.flac");
-  const expectedPath = path.join(
-    root,
-    "aurral-weekly-flow",
-    playlistId,
-    "Artist",
-    "Album",
-    "Track.flac",
-  );
-  await fs.mkdir(path.dirname(misplacedPath), { recursive: true });
-  await fs.writeFile(misplacedPath, "reviewed audio");
-  const jobs = [
-    {
-      id: "reviewed-job",
-      status: "done",
-      playlistType: playlistId,
-      finalPath: misplacedPath,
-      albumName: "Album",
-      externalPath: null,
-    },
-  ];
-  const updates = [];
-  const tracker = {
-    getAll: () => jobs,
-    setDone: (...args) => updates.push(args),
-  };
-
-  const result = await migrateLegacyPaths(root, tracker);
-
-  assert.equal(result.migrated, 1);
-  assert.equal(updates[0]?.[1], expectedPath);
-  assert.equal(await fs.readFile(expectedPath, "utf8"), "reviewed audio");
-  await assert.rejects(fs.access(misplacedPath));
 });

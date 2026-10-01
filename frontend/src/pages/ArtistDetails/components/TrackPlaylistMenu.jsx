@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronRight, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import AddActionButton from "../../../components/AddActionButton";
 import { DotLoader } from "../../../components/DotLoader";
@@ -116,7 +117,7 @@ export function TrackPlaylistPickerContent({
     <>
       <button
         type="button"
-        className="artist-menu-item"
+        className="artist-menu-item playlist-menu-new"
         onClick={() =>
           onSelect?.({
             mode: "new",
@@ -179,6 +180,9 @@ export function TrackPlaylistSubmenu({
   isOpen = false,
   onToggle,
 }) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const submenuOpen = typeof onToggle === "function" ? isOpen : internalOpen;
+
   const handleSelect = async (target) => {
     await onSelect?.(target);
     onClose?.();
@@ -186,19 +190,18 @@ export function TrackPlaylistSubmenu({
 
   const handleTriggerClick = (event) => {
     event.stopPropagation();
-    if (toggleOnClick) {
-      onToggle?.();
-    }
+    if (onToggle) onToggle();
+    else setInternalOpen((value) => !value);
   };
 
   return (
-    <div className={`artist-menu-submenu${toggleOnClick && isOpen ? " is-open" : ""}`}>
+    <div className={`artist-menu-submenu${toggleOnClick && submenuOpen ? " is-open" : ""}`}>
       <button
         type="button"
         className="artist-menu-item artist-menu-submenu__trigger"
         role="menuitem"
         tabIndex={toggleOnClick ? undefined : 0}
-        aria-expanded={toggleOnClick ? isOpen : undefined}
+        aria-expanded={toggleOnClick ? submenuOpen : undefined}
         onClick={toggleOnClick ? handleTriggerClick : undefined}
       >
         <span className="artist-menu-item__main">
@@ -206,7 +209,7 @@ export function TrackPlaylistSubmenu({
           {label}
         </span>
         <ChevronRight
-          className={`artist-icon-sm${toggleOnClick && isOpen ? " artist-chevron--open" : ""}`}
+          className={`artist-icon-sm${toggleOnClick && submenuOpen ? " artist-chevron--open" : ""}`}
           aria-hidden="true"
         />
       </button>
@@ -323,18 +326,21 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
   const [openSubmenu, setOpenSubmenu] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
   const menuRef = useRef(null);
+  const panelRef = useRef(null);
   const buttonRef = useRef(null);
 
   useEffect(() => {
     if (!open) return undefined;
     const handlePointerDown = (event) => {
-      if (menuRef.current?.contains(event.target)) return;
+      if (menuRef.current?.contains(event.target) || panelRef.current?.contains(event.target)) {
+        return;
+      }
       setOpen(false);
       setOpenSubmenu(false);
       onOpenChange?.(false);
     };
     const handleViewportChange = (event) => {
-      if (event?.type === "scroll" && menuRef.current?.contains(event.target)) return;
+      if (event?.type === "scroll" && panelRef.current?.contains(event.target)) return;
       setOpen(false);
       setOpenSubmenu(false);
       onOpenChange?.(false);
@@ -439,8 +445,9 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
         )
       ) : null}
 
-      {open ? (
+      {open ? createPortal(
         <div
+          ref={panelRef}
           className={menuClassName}
           style={{
             top: menuPosition.top,
@@ -497,7 +504,8 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
               onSelect={handleSelect}
             />
           )}
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </div>
   );

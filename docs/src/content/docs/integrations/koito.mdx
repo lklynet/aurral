@@ -1,45 +1,40 @@
 ---
 title: Koito
-description: Self-hosted listening history for personalized discovery.
+description: Use self-hosted Koito listening history for recommendations and scrobbling.
 ---
 
 [Koito](https://koito.io/) is optional. It is a self-hosted scrobbler that is compatible with ListenBrainz.
 
-Aurral can use your Koito data for personalized discovery. You do not need Last.fm or the public ListenBrainz service.
+Aurral can use your Koito history for personal recommendations. You do not need Last.fm or the public ListenBrainz service.
 
-## Per-user setup
+## Set up Koito for your user
 
-Each user must set a Koito instance URL and API key:
+Each user sets up Koito for their own account:
 
 1. Open **Profile > Listening history**.
-2. Select **Koito**.
-3. Enter a base URL that Aurral can reach.
+2. Choose **Koito**.
+3. Enter a Koito URL that the Aurral server can reach, for example `https://koito.example.com:4110`.
 4. Open **Settings > Playback > Scrobbling > Koito**.
-5. Enter the Koito API key and select **Connect Koito**.
-
-For example, enter `https://koito.example.com:4110`.
+5. Enter the Koito **API key** and select **Connect Koito**.
 
 ![Aurral profile listening history](../../../assets/screenshots/profile-listening.webp)
 
-Aurral reads your top artists from the Koito chart API. Aurral uses these artists for recommendations and discover playlists.
+Aurral reads your top artists from the Koito chart API. It uses them for recommendations and discover playlists.
 
-Aurral sends completed local plays to Koito through its ListenBrainz-compatible `submit-listens`
-endpoint. A provider outage does not remove local history.
-
-The Aurral server must be able to reach Koito.
+Aurral sends finished plays to Koito through its ListenBrainz-compatible `submit-listens` endpoint. If Koito is down, Aurral keeps the plays in its own history.
 
 ## Requirements
 
-- A Koito instance that contains scrobbles
-- Enough listening history for meaningful top-artist charts
-- Artists in Koito must have MusicBrainz IDs so Aurral can match them to your library
+- A Koito instance with scrobbles
+- Enough history for useful top-artist charts
+- MusicBrainz IDs on the Koito artists, so that Aurral can match them to your Library
 
-## Compared to Last.fm and ListenBrainz
+## Compared with Last.fm and ListenBrainz
 
-| Provider     | Admin setup                        | User setup                  |
-| ------------ | ---------------------------------- | --------------------------- |
-| Last.fm      | API key in **Settings > Connect**  | Username in **Profile**     |
-| ListenBrainz | None                               | Username in **Profile**; token in **Settings > Playback > Scrobbling** |
-| Koito        | None                               | Instance URL and history choice in **Profile**; API key in **Settings > Playback > Scrobbling** |
+| Provider | Admin setup | User setup |
+| --- | --- | --- |
+| Last.fm | API key in **Settings > Connect** | Username in **Profile** |
+| ListenBrainz | None | Username in **Profile**. User token in **Settings > Playback > Scrobbling**. |
+| Koito | None | Koito URL in **Profile**. API key in **Settings > Playback > Scrobbling**. |
 
-Last.fm still supplies tags and similar-artist discovery when you configure an API key. Koito supplies listening-history context only.
+Koito supplies listening history only. With a Last.fm API key, Last.fm still supplies similar artists and tags.

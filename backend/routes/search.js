@@ -1,7 +1,7 @@
 import express from "express";
 import { noCache } from "../middleware/cache.js";
 import { searchAlbums, searchArtists, searchTags } from "../services/searchService.js";
-import { searchUnified } from "../services/unifiedSearchService.js";
+import { searchLibrary, searchUnified } from "../services/unifiedSearchService.js";
 
 const router = express.Router();
 
@@ -37,7 +37,26 @@ router.get("/", noCache, async (req, res) => {
   }
 });
 
+router.get("/library", noCache, (req, res) => {
+  try {
+    const { q, limit } = req.query;
+    if (!String(q || "").trim()) {
+      return res.status(400).json({ error: "q parameter is required" });
+    }
+    return res.json(searchLibrary(q, { limit, user: req.user || null }));
+  } catch (error) {
+    res.status(500).json({
+      error: "Failed to search library",
+      message: error.message,
+    });
+  }
+});
+
 router.get("/unified", noCache, async (req, res) => {
+  const controller = new AbortController();
+  res.on("close", () => {
+    if (!res.writableEnded) controller.abort();
+  });
   try {
     const { q, mode = "suggest", limit } = req.query;
     if (!String(q || "").trim()) {
@@ -48,9 +67,11 @@ router.get("/unified", noCache, async (req, res) => {
         mode,
         limit,
         user: req.user || null,
+        signal: controller.signal,
       }),
     );
   } catch (error) {
+    if (controller.signal.aborted) return;
     res.status(500).json({
       error: "Failed to run unified search",
       message: error.message,

@@ -1,47 +1,45 @@
 ---
 title: First run
-description: Create your admin account, configure the filesystem, and optionally connect Lidarr before playback setup.
+description: Create the admin account, choose Lidarr or the Downloads Folder, and check storage.
 ---
 
-First, create the admin account and configure the filesystem. Connect Lidarr if you want managed library changes, requests, or provider status.
+The first run creates your admin account and chooses where your music lives. Connect Lidarr if you want Lidarr to manage artists and albums. Skip it to let Aurral manage your music in its Downloads Folder.
 
 ![Aurral Lidarr connection settings](../../../assets/screenshots/settings-lidarr.webp)
 
-## Before first run
+## Before you start
 
-Complete [Filesystem and mounts](/getting-started/storage/) first. The short version is:
+Complete [Filesystem and mounts](/getting-started/storage/) first. In short:
 
-- Mount the same host media root in Aurral and the services you use.
-- If you use Lidarr, mount its library root in Aurral at the same container path.
-- Use the same container path, normally `/data`.
+- Mount the same host media folder in Aurral and in the services that you use.
+- Use the same container path in each service, usually `/data`.
+- If you use Lidarr, mount its root folder in Aurral at the same container path.
 - Keep Aurral's `/config` mount separate.
 
-## First-run steps
+## Complete setup
 
-1. Open Aurral and create your admin account.
-2. Connect Lidarr, or select **Skip for now** to use Aurral without it. When you skip, setup asks for
-   the Downloads Folder, such as `/data/downloads/aurral`. You can connect Lidarr later.
-3. Open **Settings > Download clients** and check **Downloads Folder > Path** is a writable path inside Aurral.
-4. Open **Settings > Storage health**, select **Run Checks**, and fix failed checks.
-5. If you use Lidarr, open **Settings > Lidarr**.
-6. Prefer an HTTPS Lidarr URL. In a trusted, isolated Docker Compose network, `http://lidarr:8686` is also acceptable because Aurral sends the Lidarr API key to this URL.
-7. If you skipped Lidarr during setup, enter the Lidarr URL and API key, then select **Test connection**.
-8. Select **Test library access** after the connection test passes.
-9. Connect the download clients and playback server that you use. Navidrome and Plex are optional
-   destinations. Aurral can play indexed media in the built-in player when the canonical file is readable.
+1. Open Aurral. Enter a username and password for the admin account.
+2. If you are the only user on a home network, turn on **Auto-login on local network**. See [Local-network auto-login](/admin/users/#local-network-auto-login).
+3. Connect Lidarr, or select **Skip for now**.
+   - To connect Lidarr, enter the Lidarr URL and API key, then select **Test connection**.
+   - If you skip Lidarr, enter the Downloads Folder, such as `/data/downloads/aurral`. You can connect Lidarr later.
+4. Open **Settings > Download clients**. Make sure that **Downloads Folder > Path** is a writable path inside Aurral.
+5. Open **Settings > Storage health** and select **Run checks**. Fix each failed check.
+6. Connect the download clients and the playback server that you use.
 
-The Lidarr connection test checks the API. The library-access and storage checks verify that Aurral
-can read the files and write the Downloads Folder. Aurral can run these filesystem checks without
-Lidarr. The **Aurral-native playback** check reports
-whether indexed media is ready to play. The built-in Subsonic service is available at `/rest` for
-compatible external players.
+Use an HTTPS Lidarr URL when the connection leaves your trusted network. Aurral sends the Lidarr API key to this URL. On a private Docker Compose network, `http://lidarr:8686` is acceptable.
 
-## Configure the other services
+**Test connection** checks the Lidarr API only. **Storage health** checks that Aurral can read your files and write to the Downloads Folder. Its **Lidarr library** section checks the Lidarr files, and Aurral skips that section when Lidarr is not connected. Its **Aurral-native playback** section checks that the built-in player can read indexed media.
 
-- **Download clients:** Open **Settings > Download clients**. Connect slskd, SABnzbd, or NZBGet and make sure their completed path is under the shared media mount. The built-in yt-dlp source needs no separate service.
-- **Navidrome:** Open **Settings > Playback > Navidrome** and connect it. Aurral creates its playlist library when a flow or playlist produces output. See [Navidrome](/integrations/navidrome/).
-- **Plex:** Open **Settings > Playback > Plex**, connect Plex, and select **Sync to Plex now** after a flow downloads tracks. See [Plex](/integrations/plex/).
+Aurral also runs a Subsonic server at `/rest`. Subsonic players can connect to it with an Aurral account. See [Navidrome and Subsonic](/integrations/navidrome/).
 
-If any service uses a different path, see [Path mismatches](/getting-started/storage/#when-paths-cannot-match). Do not add a path mapping until the local folder is mounted inside Aurral.
+## Connect the other services
+
+- **Download clients.** Open **Settings > Download clients**. Connect slskd, SABnzbd, NZBGet, or deemix, and make sure that each client writes completed files under the shared media mount. The built-in yt-dlp source needs no separate service.
+- **Navidrome.** Open **Settings > Playback > Navidrome**. Aurral creates its playlist library when a flow or playlist first downloads a track. See [Navidrome](/integrations/navidrome/).
+- **Plex.** Open **Settings > Playback > Plex** and connect your Plex account. After a flow downloads tracks, select **Sync to Plex now**. See [Plex](/integrations/plex/).
+- **Jellyfin.** Open **Settings > Playback > Jellyfin**. See [Jellyfin](/integrations/jellyfin/).
+
+If a service uses a different path, see [When paths cannot match](/getting-started/storage/#when-paths-cannot-match). Mount the folder inside Aurral before you add a path mapping.
 
 Next: [Discover](/using/discover/)

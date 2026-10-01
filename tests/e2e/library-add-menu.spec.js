@@ -314,6 +314,10 @@ test.describe("touch add controls", () => {
     await trigger.tap();
     const menu = page.getByRole("menu", { name: "Add to…" });
     await expect(menu).toBeVisible();
+    await expect.poll(async () => {
+      const box = await menu.boundingBox();
+      return box.y + box.height;
+    }).toBeLessThanOrEqual(844);
     const bounds = await menu.boundingBox();
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);

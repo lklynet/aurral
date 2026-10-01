@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
   addArtistToLibrary,
   lookupAlbumsInLibraryBatch,
@@ -14,7 +14,7 @@ import {
 import { getDiscovery } from "../utils/api/endpoints/discovery.js";
 import { DotLoader } from "../components/DotLoader";
 import { getArtistCover, getReleaseGroupCover } from "../utils/api/endpoints/artists.js";
-import { searchCatalog, searchUnified } from "../utils/api/endpoints/search.js";
+import { searchCatalog, searchLibrary, searchUnified } from "../utils/api/endpoints/search.js";
 import SearchAlbumResults from "../components/SearchAlbumResults";
 import SearchArtistResults from "../components/SearchArtistResults";
 import AddActionButton from "../components/AddActionButton";
@@ -57,7 +57,7 @@ import {
   ARTIST_IMAGE_HYDRATION_CONCURRENCY,
   ALBUM_COVER_HYDRATION_CONCURRENCY,
 } from "./searchPageUtils";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {
@@ -81,6 +81,7 @@ const RECOMMENDED_SORT_OPTIONS = [
   { value: "popularity", label: "Popularity" },
 ];
 const EMPTY_SEARCH_PAGES = [];
+const LIBRARY_RESULT_LIMIT = 6;
 
 const getRecommendedArtistName = (artist) => String(artist?.name || "").trim();
 
@@ -350,6 +351,25 @@ function SearchResultsPage() {
     () => (isAlbumSearch ? rawResults.map(withAlbumLibraryState) : rawResults),
     [isAlbumSearch, rawResults, withAlbumLibraryState],
   );
+  const librarySearchQuery = useQuery({
+    queryKey: queryKeys.searchLibrary(trimmedQuery, LIBRARY_RESULT_LIMIT),
+    enabled: isUnifiedSearch,
+    queryFn: ({ signal }) =>
+      searchLibrary(trimmedQuery, { limit: LIBRARY_RESULT_LIMIT, signal }),
+    staleTime: 30_000,
+  });
+  const libraryResults = isUnifiedSearch ? librarySearchQuery.data || null : null;
+  const libraryItems = useMemo(
+    () =>
+      libraryResults
+        ? [
+            ...(libraryResults.artists || []),
+            ...(libraryResults.albums || []),
+            ...(libraryResults.tracks || []),
+          ]
+        : [],
+    [libraryResults],
+  );
   const fullList = normalizedType === "trending" ? rawResults : null;
   const loading = searchQuery.isLoading;
   const loadingMore = searchQuery.isFetchingNextPage;
@@ -360,7 +380,7 @@ function SearchResultsPage() {
   const searchTotalCount = isUnifiedSearch
     ? (unifiedResults?.catalog?.artists?.length || 0) +
       (unifiedResults?.catalog?.albums?.length || 0) +
-      (unifiedResults?.library?.tracks?.length || 0)
+      (unifiedResults?.catalog?.tracks?.length || 0)
     : normalizedType === "recommended"
       ? Number(searchPages[searchPages.length - 1]?.recommendationCount || results.length)
       : normalizedType === "trending"
@@ -423,11 +443,15 @@ function SearchResultsPage() {
     if (isAlbumSearch) return undefined;
 
     let cancelled = false;
-    const artists = isUnifiedSearch ? buildSearchArtistResults(unifiedResults, {}) : results;
+    const artists = isUnifiedSearch
+      ? [
+          ...(libraryResults?.artists || []).filter(
+            (artist) => String(artist.id) !== String(artist.canonicalId),
+          ),
+          ...buildSearchArtistResults(unifiedResults, {}),
+        ]
+      : results;
 
-    if (isUnifiedSearch && !unifiedResults) {
-      return undefined;
-    }
     if (!artists.length) {
       return undefined;
     }
@@ -486,7 +510,7 @@ function SearchResultsPage() {
     return () => {
       cancelled = true;
     };
-  }, [artistImages, isAlbumSearch, isUnifiedSearch, results, unifiedResults]);
+  }, [artistImages, isAlbumSearch, isUnifiedSearch, libraryResults, results, unifiedResults]);
 
   useEffect(() => {
     if (isAlbumSearch || isUnifiedSearch) return undefined;
@@ -583,22 +607,17 @@ function SearchResultsPage() {
   }, [albumCovers, isUnifiedSearch, unifiedResults]);
 
   useEffect(() => {
-    if (!isUnifiedSearch || !unifiedResults) {
+    if (!libraryResults) {
       return undefined;
     }
     let cancelled = false;
-    const tracks = unifiedResults.library?.tracks || [];
-    const albums = unifiedResults.catalog?.albums || [];
-    const missingCoverIds = tracks
-      .map((track) => track?.albumMbid)
-      .filter(
-        (albumMbid) =>
-          albumMbid &&
-          albumCovers[albumMbid] === undefined &&
-          !albums.some(
-            (album) => album.id === albumMbid && (album.coverUrl || albumCovers[album.id]),
-          ),
-      )
+    const tracks = libraryResults.tracks || [];
+    const albums = libraryResults.albums || [];
+    const missingCoverIds = [
+      ...albums.map((album) => album?.id),
+      ...tracks.map((track) => track?.albumMbid),
+    ]
+      .filter((albumMbid) => albumMbid && albumCovers[albumMbid] === undefined)
       .filter((albumMbid, index, list) => list.indexOf(albumMbid) === index);
 
     if (missingCoverIds.length === 0) {
@@ -649,7 +668,7 @@ function SearchResultsPage() {
     return () => {
       cancelled = true;
     };
-  }, [albumCovers, isUnifiedSearch, unifiedResults]);
+  }, [albumCovers, libraryResults]);
 
   useEffect(() => {
     if (!isUnifiedSearch || !unifiedResults?.catalog?.albums?.length) {
@@ -1199,7 +1218,10 @@ function SearchResultsPage() {
 
   const showContent =
     !loading && (query || normalizedType === "recommended" || normalizedType === "trending");
-  const isEmpty = isUnifiedSearch ? unifiedView.isEmpty : displayedResults.length === 0;
+  const showLibraryResults = isUnifiedSearch && activeFilter === "all" && libraryItems.length > 0;
+  const isEmpty = isUnifiedSearch
+    ? unifiedView.isEmpty && !showLibraryResults
+    : displayedResults.length === 0;
   const showLoadMore =
     hasMore &&
     (["recommended", "trending", "tag"].includes(normalizedType)
@@ -1554,6 +1576,19 @@ function SearchResultsPage() {
           </>
         )}
       </header>
+
+      {showLibraryResults && (
+        <section className="search-page__section" aria-labelledby="search-library-heading">
+          <h2 id="search-library-heading" className="search-page__section-title">
+            Your library
+          </h2>
+          <SearchMixedResultList items={libraryItems} {...searchListProps} />
+        </section>
+      )}
+
+      {showLibraryResults && (loading || !unifiedView.isEmpty || error) && (
+        <h2 className="search-page__section-title">Discover</h2>
+      )}
 
       {error && (
         <div className="artist-error-panel" role="alert">

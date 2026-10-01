@@ -1,126 +1,119 @@
 ---
 title: Playlist imports
-description: Spotify, YouTube Music, Last.fm, and ListenBrainz imports, JSON formats, retries, and file reuse.
+description: Import Spotify, YouTube Music, Last.fm, ListenBrainz, and JSON playlists.
 ---
 
-Imported playlists are separate from flows.
+An imported playlist is a static playlist. It differs from a flow:
 
-- They do not regenerate from flow settings.
-- Spotify, YouTube Music, Last.fm, and ListenBrainz imports can synchronize on their own schedule.
-- They do not use source mix, focus filters, or deep dive.
-- Synced imports keep their playlist membership equal to the provider.
-- JSON imports keep the exact imported tracklist.
-- They can reuse completed Aurral tracks or existing Lidarr files when worker settings allow.
+- It does not use a source mix, Focus, or Deep Dive.
+- A Spotify, YouTube Music, Last.fm, or ListenBrainz import can sync on its own schedule. A synced import keeps the same tracks as the provider.
+- A JSON import keeps the exact tracklist that you imported.
+- It can reuse finished Aurral tracks and existing Lidarr files instead of downloading them again.
 
 ![Aurral playlist import](../../../assets/screenshots/playlist-import.webp)
 
-## Spotify import
+All imports start in the same place. On **Library > Playlists**, open the create menu and select **Import playlist**.
 
-The fastest path is in-app import on **Playlists**.
+## Sync schedule and removed tracks
 
-1. Open the create menu.
-2. Select **Import playlist**.
-3. Select **Spotify**.
-4. Select **Connect Spotify**.
-5. Approve access in the pop-up window.
-6. Select a playlist.
-7. Start the import.
+Each provider import has a sync schedule. Choose **None** for a fixed tracklist. To change the schedule later, use **Auto-sync** in the playlist menu. To sync at once, select **Sync now**.
 
-You can set a display name and a synchronization schedule. Synchronization gets the Spotify tracklist again, removes tracks that are no longer there, and queues new tracks, so the Aurral playlist count follows Spotify.
+A sync reads the provider playlist again. Aurral removes the tracks that are gone and queues the new tracks.
 
-Spotify returns playlist items in pages of up to 50. Aurral follows every page, so very large playlists can take longer to sync. If Spotify reports more items than Aurral received, the sync fails without replacing the saved Aurral tracklist. Spotify only provides playlist item details for playlists you own or collaborate on.
+By default, a track that the provider removes leaves the Aurral playlist, but its file stays in the Library. To delete the file instead, turn off **Keep removed tracks in library** during the import or in the playlist menu. Aurral then deletes the file if no other playlist uses it. It never deletes Lidarr files or other external files. The setting applies to future syncs.
 
-By default, a track removed from Spotify is removed from the Aurral playlist but its downloaded file stays in the library. Turn off **Keep removed tracks in library** when importing, or from the playlist menu, to delete an Aurral-owned file when it is no longer used by another playlist. Lidarr or other external files are kept. This setting applies to future Spotify syncs.
+## Import from Spotify
 
-Choose **None** for a fixed tracklist. You can change the schedule later from the playlist menu.
-
-Aurral stores the connection for each user. Use **Disconnect** in the import modal to revoke access.
-If Spotify expires or revokes the connection, Aurral disconnects it and asks you to connect again.
-
-Allow the OAuth pop-up window if your browser blocks it. The Aurral origin must provide `oauth.html`.
-
-## YouTube Music import
-
-You can import a public YouTube or YouTube Music playlist without connecting a Google account or adding an API key.
-
-1. Open the create menu on **Playlists**.
-2. Select **Import playlist**.
-3. Select **YouTube Music**.
-4. Paste an HTTPS playlist URL from `youtube.com` or `music.youtube.com`.
-5. Load the preview, choose a name and synchronization schedule, and start the import.
-
-Aurral loads every page before it shows a successful preview or changes a synced playlist. If YouTube returns an incomplete page, repeats a page, times out, or becomes unavailable, Aurral keeps the existing playlist membership and downloaded files unchanged. You can retry the preview or use **Sync now** later.
-
-Unavailable entries, podcasts, rows without an artist or title, and duplicates are skipped. Music videos use the video's first author as the artist and may not include an album. The preview shows the importable and skipped counts before you import.
-
-Public playlists are supported. Unlisted playlists may work when YouTube allows anonymous access, but are best effort. Private playlists, **Liked Music**, a user's library, and personalized account playlists require Google authentication and cannot be imported this way.
-
-Synchronization and **Keep removed tracks in library** work like the other providers. Choose **None** for a fixed tracklist. This integration supplies playlist membership only; your configured download clients still resolve and download the normalized tracks.
-
-## Last.fm import
-
-The Last.fm tab offers three current stations: **Library**, **Mix**, and **Recommended**. If Last.fm is selected as your listening-history provider in your profile, Aurral reuses that username. Otherwise, enter your Last.fm username in the import modal. Aurral saves the username with the imported playlist for future syncs.
-
-1. Open the create menu.
-2. Select **Import playlist**.
-3. Select **Last.fm**.
-4. Enter your username if Aurral does not find it in your profile.
-5. Select a station.
+1. Select **Spotify**.
+2. Select **Connect Spotify**.
+3. Approve access in the pop-up window.
+4. Select a playlist.
+5. Set a display name and a sync schedule.
 6. Start the import.
 
-Last.fm syncs fetch the current station again, so a synced **Library**, **Mix**, or **Recommended** playlist follows Last.fm as it changes. Choose **None** for a fixed tracklist. **Keep removed tracks in library** works the same way as Spotify, YouTube Music, and ListenBrainz imports.
+If your browser blocks the pop-up window, allow it. The Aurral server must serve `oauth.html`.
 
-## ListenBrainz import
+Spotify returns playlist items in pages of up to 50. Aurral reads every page, so a very large playlist takes longer to sync. If Spotify reports more items than Aurral received, the sync fails and Aurral keeps the saved tracklist. Spotify gives item details only for playlists that you own or collaborate on.
 
-Link ListenBrainz in **Settings > Playback** before you import a playlist. Aurral uses the ListenBrainz user token you already use for scrobbling.
+Aurral stores one Spotify connection for each user. To revoke access, select **Disconnect** in the import window.
 
-The import menu lists your owned playlists and two current generated choices: **Weekly Jams** and **Weekly Exploration**. Dated recommendation snapshots from **Created for you** are left out of the menu.
+If Spotify expires or revokes the connection, Aurral disconnects it and pauses your synced Spotify playlists. When you next open Aurral, a **Spotify disconnected** message appears. Select **Reconnect** to open the import window and connect again.
 
-1. Open the create menu.
-2. Select **Import playlist**.
-3. Select **ListenBrainz**.
-4. Select a playlist.
+## Import from YouTube Music
+
+You can import a public YouTube or YouTube Music playlist. You do not need a Google account or an API key.
+
+1. Select **YouTube Music**.
+2. Paste an HTTPS playlist URL from `youtube.com` or `music.youtube.com`.
+3. Load the preview.
+4. Set a name and a sync schedule.
 5. Start the import.
 
-**Weekly Jams** and **Weekly Exploration** are selectors rather than dated playlists. Aurral resolves the newest matching ListenBrainz playlist when it previews, imports, or syncs, so their schedule follows future generated playlists. Other owned playlists sync the specific playlist you selected. Choose **None** for a fixed tracklist. All ListenBrainz imports support **Keep removed tracks in library**.
+Aurral loads every page of the playlist before it shows the preview or changes a synced playlist. If YouTube returns an incomplete or repeated page, times out, or is unavailable, Aurral keeps the playlist tracks and files as they are. Load the preview again, or select **Sync now** later. If YouTube Music limits Aurral's requests, Aurral pauses its requests for a short time.
 
-### Manual CSV import
+The preview shows how many tracks Aurral can import and how many it skips. Aurral skips unavailable entries, podcasts, rows without an artist or title, and duplicates. For a music video, Aurral uses the first author of the video as the artist, and the track can have no album.
 
-When OAuth is not an option:
+Aurral supports public playlists. An unlisted playlist can work when YouTube allows anonymous access. Aurral cannot import private playlists, **Liked Music**, your library, or personal account playlists, because they need a Google sign-in.
 
-1. Export the playlist from [Exportify](https://exportify.net/).
+This import supplies only the tracklist. Your download clients find and download the tracks.
+
+## Import from Last.fm
+
+The Last.fm tab offers three stations: **Library**, **Mix**, and **Recommended**.
+
+1. Select **Last.fm**.
+2. If Aurral does not show your username, enter it. Aurral fills it in when Last.fm is your listening-history provider in **Profile**.
+3. Select a station.
+4. Start the import.
+
+Aurral saves the username with the playlist for future syncs. A synced station follows Last.fm as the station changes.
+
+## Import from ListenBrainz
+
+Before you import, link ListenBrainz in **Settings > Playback > Scrobbling**. Aurral uses the same user token.
+
+1. Select **ListenBrainz**.
+2. Select a playlist.
+3. Start the import.
+
+The list shows the playlists that you own, and two generated playlists: **Weekly Jams** and **Weekly Exploration**. It leaves out the dated snapshots from **Created for you**.
+
+**Weekly Jams** and **Weekly Exploration** always point to the newest generated playlist. Aurral finds the newest one each time it previews, imports, or syncs. Another playlist that you own always syncs that one playlist.
+
+## Import a JSON file
+
+To import a Spotify playlist without connecting Spotify:
+
+1. Export the playlist with [Exportify](https://exportify.net/).
 2. Convert the file with the [Spotify CSV converter](/tools/spotify-csv-converter/).
 3. Import the JSON file on the **JSON file** tab.
 
-You can also use [CSVJSON](https://csvjson.com/csv2json). Aurral accepts its output directly and understands Spotify-style keys like `Track Name`, `Artist Name(s)`, and `Album Name`.
+Aurral also accepts output from [CSVJSON](https://csvjson.com/csv2json). It reads Spotify column names such as `Track Name`, `Artist Name(s)`, and `Album Name`.
 
-## What the importer accepts
+### Accepted file shapes
 
 The importer accepts these JSON shapes:
 
 1. An exported Aurral playlist file
-2. A single playlist object with a `tracks` array
-3. A raw array of tracks
-4. A bundle object with a `playlists` array
-5. A nested `{ "playlist": { ... } }` wrapper
+2. One playlist object with a `tracks` array
+3. An array of tracks
+4. An object with a `playlists` array
+5. An object with a `playlist` property that holds one playlist
 
-## Required track fields
+Aurral reads a top-level array of tracks as one playlist, and a top-level array of playlists as several playlists.
 
-Each track must include:
+### Track fields
 
-- `artistName`
-- `trackName`
+Each track needs an artist and a track name. These keys are accepted:
 
-Accepted aliases:
+| Field | Accepted keys |
+| --- | --- |
+| Artist | `artistName`, `artist`, `artist_name`, `Artist Name(s)` |
+| Track | `trackName`, `title`, `name`, `track`, `Track Name` |
+| Album, optional | `albumName`, `album`, `Album Name` |
+| Artist ID, optional | `artistMbid`, `artistId`, `mbid` |
 
-| Field                | Accepted keys                                           |
-| -------------------- | ------------------------------------------------------- |
-| Artist               | `artistName`, `artist`, `artist_name`, `Artist Name(s)` |
-| Track                | `trackName`, `title`, `name`, `track`, `Track Name`     |
-| Album (optional)     | `albumName`, `album`, `Album Name`                      |
-| Artist ID (optional) | `artistMbid`, `artistId`, `mbid`                        |
-
-Minimum shape:
+The smallest valid track:
 
 ```json
 {
@@ -129,9 +122,9 @@ Minimum shape:
 }
 ```
 
-## Accepted JSON examples
+### Examples
 
-### Exported Aurral playlist file
+An exported Aurral playlist file:
 
 ```json
 {
@@ -159,7 +152,7 @@ Minimum shape:
 }
 ```
 
-### Single playlist object
+One playlist object:
 
 ```json
 {
@@ -171,9 +164,7 @@ Minimum shape:
 }
 ```
 
-### Raw array of tracks
-
-Aurral treats a top-level array of track objects as one playlist.
+An array of tracks:
 
 ```json
 [
@@ -182,7 +173,7 @@ Aurral treats a top-level array of track objects as one playlist.
 ]
 ```
 
-### Multi-playlist bundle
+Several playlists:
 
 ```json
 {
@@ -199,7 +190,7 @@ Aurral treats a top-level array of track objects as one playlist.
 }
 ```
 
-### Nested playlist wrapper
+A `playlist` wrapper:
 
 ```json
 {
@@ -210,47 +201,36 @@ Aurral treats a top-level array of track objects as one playlist.
 }
 ```
 
-## Import notes
+## What happens after an import
 
-- Aurral treats a top-level array of track objects as one playlist.
-- Aurral treats a top-level array of playlist objects as multiple playlists.
-- If an imported playlist name conflicts with an existing playlist, Aurral renames it automatically.
-- Imported playlists queue their own downloads and do not affect any flow configuration.
-- Activity > Queue shows the playlist import and its queued tracks immediately, before a worker starts them.
-- When existing file reuse succeeds, Aurral immediately marks the imported track as complete.
-- Aurral keeps the imported track order in the playlist view and in the Navidrome playlist after reuse and downloads finish.
+- If the name is already in use, Aurral renames the imported playlist.
+- The playlist queues its own downloads. It does not change any flow.
+- **Activity > Queue** shows the import and its tracks at once, before the worker starts them.
+- When Aurral reuses an existing file, it marks the track as complete at once.
+- The playlist keeps the imported track order, in Aurral and in Navidrome.
 
-## Download retries and failure behavior
+## Download retries and failures
 
-Imported playlists behave differently from flows when downloads fail:
+A static playlist handles failed downloads differently from a flow:
 
-- Aurral queues each imported track as a separate worker job.
-- The active download pipeline can try multiple candidates and configured sources.
-- If all options fail, the track stays in the failed state after a restart.
-- To retry a failed track, right-click it and select **Re-search**.
-- To replace an available Aurral-downloaded recording, right-click it and
-  select **Re-search**. Aurral keeps the current file until a replacement
-  passes validation.
-- Only flows can automatically replace a failed download with a different track.
+- Aurral queues each track as a separate job.
+- The download worker can try several candidates and several download sources.
+- If all of them fail, the track stays failed, also after a restart.
+- To search again, right-click the track and select **Re-search**.
+- To replace a finished track that Aurral downloaded, right-click it and select **Re-search**. Aurral keeps the current file until the replacement passes its checks.
+- A static playlist never swaps a failed track for a different track. Only flows do that.
 
-## Existing file reuse
+## Reuse existing files
 
-Aurral can use one file in multiple playlists. This prevents a second download of the same file.
+One file can belong to several playlists. Aurral does not download a track again when a usable file exists.
 
-Reuse does not change the imported track order. Owned tracks stay in their place in the list while missing tracks download.
+- Reuse does not change the track order. A track that you already have keeps its place while the missing tracks download.
+- If you add a flow track to a static playlist, both playlists use the same file. When the flow refreshes, Aurral keeps the file for the static playlist.
+- Aurral prefers files from static playlists and from Lidarr.
+- Before Aurral removes a playlist, it moves shared files to a playlist that still uses them. Navidrome does not show duplicate files.
 
-If you add a flow track to a static playlist, both playlists use the same file.
+To reuse Lidarr files, Aurral must read them at the paths that Lidarr reports. Mount the same media root at the same container path in both services, for example `/data` with the Lidarr root folder `/data/music`. See [Filesystem and mounts](/getting-started/storage/).
 
-When the flow refreshes, Aurral keeps files that the static playlist uses. Aurral then builds the new flow.
+If Lidarr runs on Windows and Aurral runs in Docker, run **Settings > Storage health > Run checks**. The **Lidarr library** section shows the path that Lidarr reports. Add a mapping for that path in **Settings > Download clients > Remote path mappings**.
 
-Aurral prefers static playlists and Lidarr files. Multiple playlists can use one path.
-
-Before Aurral removes a playlist, it moves the other file references. Navidrome does not show duplicate files.
-
-Lidarr-aware reuse requires Aurral to read the files at the paths Lidarr reports. Mount the same media root at the same container path (for example `/data:/data` with root `/data/music`). See [Filesystem and mounts](/getting-started/storage/).
-
-If Lidarr runs on Windows and Aurral runs in Docker, run **Test library access** in **Settings > Lidarr**.
-
-Use the reported path to add a mapping under **Settings > Download clients > Remote Path Mappings**.
-
-Navidrome must scan the corresponding Lidarr library before Aurral can add a reused track to a Navidrome API playlist. See [Navidrome](/integrations/navidrome/#different-navidrome-paths).
+Navidrome must scan the Lidarr library before Aurral can add a reused track to a Navidrome playlist. See [Navidrome: Existing Lidarr library](/integrations/navidrome/#existing-lidarr-library).

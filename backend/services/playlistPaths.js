@@ -5,7 +5,6 @@ import {
   resolveDefaultPlaylistDownloadRoot,
   resolveEnvDownloadFolder,
 } from "./downloadFolderConfig.js";
-import { commitImportToPlaylistLibrary } from "./playlistDownloadUtils.js";
 
 export const PLAYLIST_LIBRARY_DIR = "aurral-weekly-flow";
 export const AURRAL_FLOWS_DIR = "_flows";
@@ -58,15 +57,6 @@ export function remapLegacyPath(finalPath, playlistRoot = resolvePlaylistRoot())
   return resolved;
 }
 
-export function buildPlaylistDestination(playlistId, artistDir, albumDir) {
-  return path.posix.join(
-    PLAYLIST_LIBRARY_DIR,
-    String(playlistId || "").trim(),
-    String(artistDir || "Unknown Artist"),
-    String(albumDir || "Unknown Album"),
-  );
-}
-
 export function buildAurralTrackDestination(
   playlistId,
   artistDir,
@@ -100,85 +90,4 @@ export async function resolveExistingTrackPath(finalPath, playlistRoot = resolve
     } catch {}
   }
   return null;
-}
-
-export async function migrateLegacyPaths(playlistRoot = resolvePlaylistRoot(), tracker) {
-  if (!tracker?.getAll || !tracker?.setDone) {
-    return { scanned: 0, migrated: 0 };
-  }
-
-  const jobs = tracker.getAll();
-  let migrated = 0;
-
-  const root = path.resolve(playlistRoot);
-  const misplacedFiles = new Map();
-  for (const job of jobs) {
-    if (!job?.finalPath || job.status !== "done") continue;
-    const playlistType = String(job.playlistType || "").trim();
-    if (
-      !playlistType ||
-      playlistType === PLAYLIST_LIBRARY_DIR ||
-      playlistType.startsWith(".") ||
-      path.basename(playlistType) !== playlistType
-    ) {
-      continue;
-    }
-    const sourcePath = path.resolve(job.finalPath);
-    const barePlaylistRoot = path.resolve(root, playlistType);
-    if (!isPathInsideRoot(sourcePath, barePlaylistRoot)) continue;
-    try {
-      const stat = await fs.stat(sourcePath);
-      if (!stat.isFile()) continue;
-    } catch {
-      continue;
-    }
-    const targetPath = path.resolve(
-      root,
-      PLAYLIST_LIBRARY_DIR,
-      path.relative(root, sourcePath),
-    );
-    misplacedFiles.set(sourcePath, { sourcePath, targetPath, barePlaylistRoot });
-  }
-
-  const migratedSources = new Set();
-  for (const { sourcePath, targetPath, barePlaylistRoot } of misplacedFiles.values()) {
-    const committedPath = await commitImportToPlaylistLibrary(sourcePath, targetPath);
-    migratedSources.add(sourcePath);
-    for (const job of jobs) {
-      if (job?.status !== "done" || !job.finalPath) continue;
-      if (path.resolve(job.finalPath) !== sourcePath) continue;
-      tracker.setDone(
-        job.id,
-        committedPath,
-        job.albumName || null,
-        job.externalPath || null,
-      );
-      migrated += 1;
-    }
-    let current = path.dirname(sourcePath);
-    while (current === barePlaylistRoot || isPathInsideRoot(current, barePlaylistRoot)) {
-      try {
-        await fs.rmdir(current);
-      } catch {
-        break;
-      }
-      if (current === barePlaylistRoot) break;
-      current = path.dirname(current);
-    }
-  }
-
-  for (const job of jobs) {
-    if (!job?.finalPath || job.status !== "done") continue;
-    if (migratedSources.has(path.resolve(job.finalPath))) continue;
-    const resolved = await resolveExistingTrackPath(job.finalPath, playlistRoot);
-    if (!resolved?.migratedFrom) continue;
-    tracker.setDone(
-      job.id,
-      resolved.path,
-      job.albumName || null,
-      job.externalPath || null,
-    );
-    migrated += 1;
-  }
-  return { scanned: jobs.length, migrated };
 }
