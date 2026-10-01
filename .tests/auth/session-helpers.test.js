@@ -53,15 +53,18 @@ test("creates and resolves sessions with user payload metadata", () => {
 test("deletes expired sessions when looked up or cleaned", () => {
   const hash = bcrypt.hashSync("secret", 4);
   const user = userOps.createUser("bob", hash, "user");
-  const session = createSession(user.id);
+  const lookedUp = createSession(user.id);
+  const cleaned = createSession(user.id);
+  const live = createSession(user.id);
+  const expire = db.prepare("UPDATE sessions SET expires_at = ? WHERE token = ?");
+  expire.run(Date.now() - 1000, lookedUp.token);
+  expire.run(Date.now() - 1000, cleaned.token);
+  const stored = () => db.prepare("SELECT token FROM sessions ORDER BY token").all().map((row) => row.token);
 
-  db.prepare("UPDATE sessions SET expires_at = ? WHERE token = ?").run(
-    Date.now() - 1000,
-    session.token,
-  );
-
-  assert.equal(getSessionByToken(session.token), null);
-  assert.equal(cleanExpiredSessions(), 0);
+  assert.equal(getSessionByToken(lookedUp.token), null);
+  assert.deepEqual(stored(), [cleaned.token, live.token].sort());
+  assert.equal(cleanExpiredSessions(), 1);
+  assert.deepEqual(stored(), [live.token]);
 });
 
 test("can delete one session or all sessions for a user", () => {

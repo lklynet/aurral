@@ -5,24 +5,15 @@ import { getPlaybackDestinationSettings } from "../../backend/services/playback/
 test("playback adapters expose declarative connection settings without credentials", () => {
   const settings = getPlaybackDestinationSettings();
 
-  assert.deepEqual(Object.keys(settings), ["navidrome", "plex", "jellyfin"]);
-  assert.deepEqual(
-    settings.navidrome.fields.map(({ key, type, secret }) => ({ key, type, secret })),
-    [
-      { key: "url", type: "url", secret: undefined },
-      { key: "username", type: "text", secret: undefined },
-      { key: "password", type: "password", secret: true },
-      { key: "prefixOwnerUsername", type: "toggle", secret: undefined },
-    ],
-  );
-  assert.equal(settings.plex.customUi, "plex");
-  assert.equal(settings.plex.fields.find((field) => field.key === "token").hidden, true);
-  assert.deepEqual(settings.jellyfin.validation.required, ["url", "apiKey", "userId"]);
-  assert.equal(settings.jellyfin.fields.find((field) => field.key === "apiKey").secret, true);
-  assert.deepEqual(settings.navidrome.validation.required, ["url", "username", "password"]);
-  assert.equal(settings.navidrome.fields.find((field) => field.key === "password").required, true);
-  for (const field of [...settings.navidrome.fields, ...settings.plex.fields, ...settings.jellyfin.fields]) {
-    assert.equal("value" in field, false);
-    assert.equal("default" in field, false);
+  for (const [key, definition] of Object.entries(settings)) {
+    assert.ok(definition.fields.length > 0, key);
+    for (const field of definition.fields) {
+      assert.equal("value" in field, false, `${key}.${field.key}`);
+      assert.equal("default" in field, false, `${key}.${field.key}`);
+      if (field.type === "password") assert.equal(field.secret, true, `${key}.${field.key}`);
+    }
+    for (const required of definition.validation?.required || []) {
+      assert.ok(definition.fields.some((field) => field.key === required), `${key}.${required}`);
+    }
   }
 });

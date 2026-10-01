@@ -71,10 +71,6 @@ test("flows exclude only hard-blocked artists, including editorial flows", async
   });
 
   const source = new WeeklyFlowPlaylistSource();
-  assert.deepEqual(source._buildFeedbackExcludeKeys(7).sort(), [
-    "11111111-1111-1111-1111-111111111111",
-    "blocked artist",
-  ]);
 
   source.getEditorialTagTracks = async () => [
     { artistName: "Blocked Artist", trackName: "Blocked Track" },

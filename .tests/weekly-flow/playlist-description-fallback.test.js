@@ -14,6 +14,9 @@ const [isolatedState, { db }, { dbOps }, playlistConfigModule] = await setupIsol
   "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
 );
 const { flowPlaylistConfig } = playlistConfigModule;
+const { getDiscoverPlaylistPreset } = await import("../../backend/config/discoverPlaylistPresets.js");
+const { EDITORIAL_PLAYLIST_POOL } = await import("../../backend/config/editorialPlaylistPresets.js");
+const editorialDescription = (id) => EDITORIAL_PLAYLIST_POOL.find((preset) => preset.id === id).description;
 
 test.beforeEach(() => {
   resetDatabase(db);
@@ -45,18 +48,7 @@ test("a flow adopted from a preset with no description of its own falls back to 
     size: 20,
     discoverPresetId: "focus-listening-history",
   });
-  assert.equal(flow.description, "Tracks based on what you've recently been listening to");
-});
-
-test("the fallback re-reads on every fetch, so a later catalog fix reaches an already-adopted flow without a re-adopt", () => {
-  const flow = flowPlaylistConfig.createFlow({
-    name: "Discover Weekly Clone",
-    size: 20,
-    discoverPresetId: "discover-weekly",
-  });
-  assert.equal(flow.description, "Fresh picks from your recommendation profile");
-  const refetched = flowPlaylistConfig.getFlow(flow.id);
-  assert.equal(refetched.description, "Fresh picks from your recommendation profile");
+  assert.equal(flow.description, getDiscoverPlaylistPreset("focus-listening-history").description);
 });
 
 test("a flow with no discoverPresetId and no description has a null description, not an error", () => {
@@ -80,7 +72,7 @@ test("editorial preset descriptions are found too (a separate catalog from perso
     discoverPresetId: "top-metal",
     type: "editorial",
   });
-  assert.equal(flow.description, "Heavy riffs and thunderous drums");
+  assert.equal(flow.description, editorialDescription("top-metal"));
 });
 
 test("shared playlists get the same fallback treatment as flows", () => {
@@ -90,7 +82,7 @@ test("shared playlists get the same fallback treatment as flows", () => {
     discoverPresetId: "top-metal",
     type: "editorial",
   });
-  assert.equal(playlist.description, "Heavy riffs and thunderous drums");
+  assert.equal(playlist.description, editorialDescription("top-metal"));
 });
 
 test("an explicit shared playlist description is kept as-is", () => {

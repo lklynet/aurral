@@ -11,27 +11,24 @@ const [isolatedState, honkerDb] = await setupIsolatedBackend(
   "backend/services/honkerDb.js",
 );
 
-const { getPipelinePriorityForPhase, getPipelineQueue, enqueuePipelineJob } =
-  honkerDb;
+const { getPipelineQueue, enqueuePipelineJob } = honkerDb;
 
 test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("slskd pipeline queue prioritizes active transfer phases over search", () => {
-  assert.ok(getPipelinePriorityForPhase("search") < getPipelinePriorityForPhase("poll"));
-  assert.ok(getPipelinePriorityForPhase("poll") < getPipelinePriorityForPhase("download"));
-  assert.ok(
-    getPipelinePriorityForPhase("download") < getPipelinePriorityForPhase("finalize"),
-  );
-
+test("slskd pipeline claims active transfer phases before searches and upgrades last", () => {
   const queue = getPipelineQueue();
-  enqueuePipelineJob({ phase: "search", jobId: "a" });
-  enqueuePipelineJob({ phase: "search", jobId: "b" });
+  enqueuePipelineJob({ phase: "search", jobId: "search" });
   enqueuePipelineJob({ phase: "finalize", jobId: "upgrade", upgrade: true });
-  enqueuePipelineJob({ phase: "download", jobId: "a" });
-  const claimed = queue.claimOne("priority-test-worker");
-  assert.equal(claimed.payload.phase, "download");
-  assert.equal(claimed.payload.jobId, "a");
-  claimed.ack();
+  enqueuePipelineJob({ phase: "poll", jobId: "poll" });
+  enqueuePipelineJob({ phase: "download", jobId: "download" });
+  enqueuePipelineJob({ phase: "finalize", jobId: "finalize" });
+
+  const claimed = [];
+  for (let job = queue.claimOne("priority-test-worker"); job; job = queue.claimOne("priority-test-worker")) {
+    claimed.push(job.payload.jobId);
+    job.ack();
+  }
+  assert.deepEqual(claimed, ["finalize", "download", "poll", "search", "upgrade"]);
 });

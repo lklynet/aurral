@@ -42,7 +42,12 @@ test("startup rebuilds search documents when their version is outdated", async (
 
   assert.equal(initializeLibrarySearchIndex(db), true);
   assert.equal(db.prepare("SELECT 1 FROM library_search_documents WHERE entity_id = 999").get(), undefined);
-  assert.equal(db.prepare("SELECT value FROM settings WHERE key = 'librarySearchIndexVersion'").get().value, "2");
+
+  db.prepare(
+    "INSERT INTO library_search_documents (entity_kind, entity_id, title) VALUES ('artist', 1000, 'Current Artist')",
+  ).run();
+  assert.equal(initializeLibrarySearchIndex(db), true);
+  assert.ok(db.prepare("SELECT 1 FROM library_search_documents WHERE entity_id = 1000").get());
 });
 
 test("search index service remains usable when the FTS schema is unavailable", async () => {

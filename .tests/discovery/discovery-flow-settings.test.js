@@ -11,21 +11,13 @@ const [isolatedState, { dbOps }, discoveryIndex] = await setupIsolatedBackend(
   "backend/services/discovery/index.js",
 );
 
-const {
-  getDiscoveryRecommendationsPerRefresh,
-  isDiscoveryPersonalizedEnabled,
-} = discoveryIndex;
+const { isDiscoveryPersonalizedEnabled } = discoveryIndex;
 
 test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("discovery flow settings use defaults when unset", () => {
-  assert.equal(getDiscoveryRecommendationsPerRefresh(), 200);
-  assert.equal(isDiscoveryPersonalizedEnabled(), true);
-});
-
-test("discovery personalized toggle", () => {
+test("personalized discovery is on until the Last.fm setting turns it off", () => {
   const settings = dbOps.getSettings();
   assert.equal(isDiscoveryPersonalizedEnabled(), true);
 

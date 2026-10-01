@@ -1,9 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  buildLidarrImportListItems,
-  verifyFlowLidarrFeedToken,
-} from "../../backend/services/lidarrImportListFeed.js";
+  setupIsolatedBackend,
+  cleanupIsolatedState,
+} from "../helpers/backendTestHarness.js";
+
+const [isolatedState, { buildLidarrImportListItems, verifyFlowLidarrFeedToken }, { flowPlaylistConfig }] =
+  await setupIsolatedBackend(
+    "lidarr-import-list-feed",
+    "backend/services/lidarrImportListFeed.js",
+    "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
+  );
+
+test.after(() => cleanupIsolatedState(isolatedState));
 
 test("buildLidarrImportListItems maps jobs to lidarr custom list rows", () => {
   const items = buildLidarrImportListItems([
@@ -31,6 +40,13 @@ test("buildLidarrImportListItems maps jobs to lidarr custom list rows", () => {
   });
 });
 
-test("verifyFlowLidarrFeedToken rejects missing or mismatched tokens", () => {
-  assert.equal(verifyFlowLidarrFeedToken("missing-flow", "token"), null);
+test("verifyFlowLidarrFeedToken accepts only the flow's own token", () => {
+  const flow = flowPlaylistConfig.createFlow({ name: "Feed Flow", size: 10, ownerUserId: 7 });
+  const { lidarrFeedToken } = flowPlaylistConfig.ensureLidarrFeedToken(flow.id);
+
+  assert.equal(verifyFlowLidarrFeedToken("missing-flow", lidarrFeedToken), null);
+  assert.equal(verifyFlowLidarrFeedToken(flow.id, ""), null);
+  const wrongToken = `${lidarrFeedToken.slice(0, -1)}${lidarrFeedToken.endsWith("0") ? "1" : "0"}`;
+  assert.equal(verifyFlowLidarrFeedToken(flow.id, wrongToken), null);
+  assert.equal(verifyFlowLidarrFeedToken(flow.id, lidarrFeedToken)?.id, flow.id);
 });

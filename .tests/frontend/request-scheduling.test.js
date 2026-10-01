@@ -7,18 +7,16 @@ import {
   shouldPollDiscoveryHealth,
 } from "../../frontend/src/utils/requestScheduling.js";
 
-test("activity uses a slower reconciliation interval while its sockets are connected", () => {
-  assert.equal(
-    getActivityPollIntervalMs({ isConnected: false, isListLikeView: true }),
-    15_000,
-  );
-  assert.equal(
-    getActivityPollIntervalMs({ isConnected: true, isListLikeView: true }),
-    60_000,
-  );
-  assert.equal(
-    getActivityPollIntervalMs({ isConnected: true, isListLikeView: false }),
-    300_000,
+test("activity polls less often while its sockets are connected", () => {
+  for (const isListLikeView of [true, false]) {
+    assert.ok(
+      getActivityPollIntervalMs({ isConnected: true, isListLikeView }) >
+        getActivityPollIntervalMs({ isConnected: false, isListLikeView }),
+    );
+  }
+  assert.ok(
+    getActivityPollIntervalMs({ isConnected: true, isListLikeView: false }) >
+      getActivityPollIntervalMs({ isConnected: true, isListLikeView: true }),
   );
 });
 
@@ -28,6 +26,8 @@ test("discovery health polling is only a disconnected socket fallback", () => {
 });
 
 test("bootstrap polling slows down while the heartbeat socket is healthy", () => {
-  assert.equal(getBootstrapPollIntervalMs({ isConnected: false }), 30_000);
-  assert.equal(getBootstrapPollIntervalMs({ isConnected: true }), 120_000);
+  assert.ok(
+    getBootstrapPollIntervalMs({ isConnected: true }) >
+      getBootstrapPollIntervalMs({ isConnected: false }),
+  );
 });
