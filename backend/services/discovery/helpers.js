@@ -1,5 +1,6 @@
 
 import { randomUUID } from "crypto";
+import pMap from "p-map";
 import { dbOps } from "../../db/helpers/index.js";
 
 export const LASTFM_PERIODS = [
@@ -236,13 +237,6 @@ export const selectDiscoverySeedSample = (seeds, failureRatio) => {
 export const getDiscoveryNetworkConcurrency = () => DISCOVERY_NETWORK_CONCURRENCY;
 export { getDiscoveryCandidateLimit };
 
-export const wait = (delayMs) =>
-  delayMs > 0
-    ? new Promise((resolve) => {
-        setTimeout(resolve, delayMs);
-      })
-    : Promise.resolve();
-
 export const mapWithConcurrency = async (
   items,
   concurrency,
@@ -250,32 +244,19 @@ export const mapWithConcurrency = async (
   { stopOnError = false } = {},
 ) => {
   const list = Array.isArray(items) ? items : [];
-  const limit = Math.max(1, Number(concurrency) || 1);
-  if (list.length === 0) return [];
-  const results = new Array(list.length);
-  let nextIndex = 0;
-  let failed = false;
+  const options = { concurrency: Math.max(1, Number(concurrency) || 1) };
+  if (!stopOnError) return pMap(list, worker, options);
   let firstError;
-  const runners = Array.from(
-    { length: Math.min(limit, list.length) },
-    async () => {
-      while (!failed && nextIndex < list.length) {
-        const index = nextIndex;
-        nextIndex += 1;
-        try {
-          results[index] = await worker(list[index], index);
-        } catch (error) {
-          if (!stopOnError) throw error;
-          if (!failed) {
-            failed = true;
-            firstError = error;
-          }
-        }
-      }
-    },
-  );
-  await Promise.all(runners);
-  if (failed) throw firstError;
+  const results = await pMap(list, async (item, index) => {
+    if (firstError) return undefined;
+    try {
+      return await worker(item, index);
+    } catch (error) {
+      firstError ??= error;
+      return undefined;
+    }
+  }, options);
+  if (firstError) throw firstError;
   return results;
 };
 

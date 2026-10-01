@@ -1,4 +1,4 @@
-
+import { setTimeout as wait } from "node:timers/promises";
 import {
   getDiscoveryNetworkConcurrency,
   buildWeightedTopList,
@@ -176,7 +176,7 @@ export const hydrateRecommendationCandidateTags = async ({
   limit,
   depth = 1,
 }) => {
-  const { canInheritTagsFromSeeds, wait } = await import("./helpers.js");
+  const { canInheritTagsFromSeeds } = await import("./helpers.js");
   const items = Array.isArray(recommendations) ? [...recommendations] : [];
   const hydrationLimit = Math.min(items.length, Math.max(0, Number(limit) || 0));
   if (hydrationLimit <= 0) return items;

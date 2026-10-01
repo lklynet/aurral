@@ -1,3 +1,4 @@
+import { setTimeout as wait } from "node:timers/promises";
 import axios from "../../lib/axiosFetch.js";
 import crypto from "crypto";
 import { logger } from "./logger.js";
@@ -19,7 +20,6 @@ const NAVIDROME_RETRYABLE_READ_ENDPOINTS = new Set([
   "getPlaylist",
 ]);
 
-const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 function normalizeLibraryPath(value) {
   return String(value || "")

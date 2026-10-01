@@ -1,10 +1,4 @@
-const sleep = (ms) =>
-  Number(ms) > 0
-    ? new Promise((resolve) => {
-        const timeout = setTimeout(resolve, ms);
-        timeout.unref?.();
-      })
-    : Promise.resolve();
+import { setTimeout as wait } from "node:timers/promises";
 
 const isMonitoringComplete = (result) =>
   Boolean(result?.artist && result?.album) &&
@@ -22,7 +16,7 @@ export const runMonitoringRepairSequence = async ({
   let lastResult = null;
   let lastError = null;
   for (const delayMs of delaysMs) {
-    await sleep(delayMs);
+    await wait(delayMs, undefined, { ref: false });
     try {
       lastResult = await repair();
       lastError = null;

@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import fsp from "fs/promises";
 import path from "path";
 import { randomUUID } from "node:crypto";
@@ -513,10 +514,6 @@ function removeCachedArtistByMbid(mbid) {
   _cachedArtists = _cachedArtists.filter(
     (artist) => artist?.mbid !== mbid && artist?.foreignArtistId !== mbid,
   );
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function getLidarrClient() {

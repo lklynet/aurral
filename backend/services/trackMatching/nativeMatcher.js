@@ -1,3 +1,4 @@
+import { distance } from "fastest-levenshtein";
 import { checkVariantCompatibility } from "./semanticPolicy.js";
 import { foldDiacritics } from "../providers/brainzmashRanking.js";
 
@@ -54,21 +55,7 @@ function similarity(left, right) {
   if (!a || !b) return 0;
   if (a.length > 512 || b.length > 512) return 0;
   if (a === b) return 1;
-  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
-  for (let i = 1; i <= a.length; i += 1) {
-    let diagonal = previous[0];
-    previous[0] = i;
-    for (let j = 1; j <= b.length; j += 1) {
-      const old = previous[j];
-      previous[j] = Math.min(
-        previous[j] + 1,
-        previous[j - 1] + 1,
-        diagonal + Number(a[i - 1] !== b[j - 1]),
-      );
-      diagonal = old;
-    }
-  }
-  return 1 - previous[b.length] / Math.max(a.length, b.length);
+  return 1 - distance(a, b) / Math.max(a.length, b.length);
 }
 
 const VARIANTS = ["live", "remix", "acoustic", "instrumental", "demo", "edit", "karaoke", "cover", "nightcore"];
