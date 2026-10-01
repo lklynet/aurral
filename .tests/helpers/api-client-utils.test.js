@@ -211,7 +211,7 @@ test("public-only transport rejects socket failures without an uncaught exceptio
     let publicLookups = 0;
     dns.lookup = async () => {
       publicLookups += 1;
-      return [{ address: "203.0.113.1", family: 4 }];
+      return [{ address: "8.8.8.8", family: 4 }];
     };
     net.Socket.prototype.connect = function (options) {
       options.lookup(options.hostname || options.host, { all: false }, () => {

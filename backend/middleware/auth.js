@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import net from "net";
 import os from "os";
 import { dbOps, userOps } from "../db/helpers/index.js";
 import { createSession, getSessionByToken } from "../config/session-helpers.js";
@@ -21,6 +22,10 @@ const DEFAULT_PROXY_HEADER = "x-forwarded-user";
 const STREAM_TOKEN_TTL_MS = 2 * 60 * 1000;
 const streamTokenStore = new Map();
 const LOOPBACK_IPS = new Set(["127.0.0.1", "::1"]);
+const privateLanAddresses = new net.BlockList();
+for (const [address, prefix] of [["10.0.0.0", 8], ["172.16.0.0", 12], ["192.168.0.0", 16]]) {
+  privateLanAddresses.addSubnet(address, prefix, "ipv4");
+}
 
 const normalizeLocalNetworkBypassSettings = (settings = dbOps.getSettings()) => ({
   enabled: settings?.security?.localNetworkBypass?.enabled === true,
@@ -126,102 +131,38 @@ function isLoopbackIp(ip) {
 }
 
 function isPrivateIpv4(ip) {
-  const parts = String(ip || "")
-    .trim()
-    .split(".")
-    .map((part) => Number(part));
-  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) {
-    return false;
-  }
-  const [a, b] = parts;
-  if (a === 10) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 168) return true;
-  return false;
+  return net.isIPv4(ip) && privateLanAddresses.check(ip, "ipv4");
 }
 
-function ipv4ToInt(ip) {
-  const parts = String(ip || "")
-    .trim()
-    .split(".")
-    .map((part) => Number(part));
-  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) {
-    return null;
-  }
-  return (
-    (((parts[0] << 24) >>> 0) +
-      ((parts[1] << 16) >>> 0) +
-      ((parts[2] << 8) >>> 0) +
-      (parts[3] >>> 0)) >>>
-    0
-  );
-}
-
-function parseNetmaskPrefix(netmask) {
-  const maskInt = ipv4ToInt(netmask);
-  if (maskInt == null) return null;
-  let prefix = 0;
-  let sawZero = false;
-  for (let bit = 31; bit >= 0; bit -= 1) {
-    const set = (maskInt & (1 << bit)) !== 0;
-    if (set && sawZero) return null;
-    if (set) {
-      prefix += 1;
-    } else {
-      sawZero = true;
-    }
-  }
-  return prefix;
-}
-
-function buildIpv4Subnet(address, netmask, interfaceName) {
-  const ipInt = ipv4ToInt(address);
-  const maskInt = ipv4ToInt(netmask);
-  const prefix = parseNetmaskPrefix(netmask);
-  if (ipInt == null || maskInt == null || prefix == null) return null;
-  const networkInt = (ipInt & maskInt) >>> 0;
-  return {
-    interfaceName,
-    address,
-    netmask,
-    prefix,
-    networkInt,
-    key: `${networkInt}/${prefix}`,
-  };
-}
-
-function getIpv4SubnetCandidates() {
+function getPrivateIpv4Subnets() {
   let interfaces;
   try {
     interfaces = os.networkInterfaces();
   } catch {
     return [];
   }
-  const candidates = [];
-  for (const [name, details] of Object.entries(interfaces)) {
+  const subnets = [];
+  for (const details of Object.values(interfaces)) {
     for (const detail of details || []) {
-      if (!detail || detail.internal) continue;
-      if (detail.family !== "IPv4") continue;
-      const normalizedAddress = normalizeIp(detail.address);
-      if (!isPrivateIpv4(normalizedAddress)) continue;
-      const subnet = buildIpv4Subnet(normalizedAddress, detail.netmask, name);
-      if (subnet) {
-        candidates.push(subnet);
-      }
+      if (!detail || detail.internal || detail.family !== "IPv4") continue;
+      const address = normalizeIp(detail.address);
+      const prefix = Number(String(detail.cidr || "").split("/")[1]);
+      if (!isPrivateIpv4(address) || !Number.isInteger(prefix)) continue;
+      const subnet = new net.BlockList();
+      subnet.addSubnet(address, prefix, "ipv4");
+      subnets.push({ address, prefix, subnet });
     }
   }
-  candidates.sort((a, b) =>
-    `${a.interfaceName}:${a.address}`.localeCompare(`${b.interfaceName}:${b.address}`),
-  );
-  return candidates;
+  return subnets;
 }
 
 export function inferTrustedLocalSubnet() {
-  const candidates = getIpv4SubnetCandidates();
-  if (candidates.length === 0) return null;
-  const unique = new Map(candidates.map((candidate) => [candidate.key, candidate]));
-  if (unique.size !== 1) return null;
-  return Array.from(unique.values())[0];
+  const [first, ...others] = getPrivateIpv4Subnets();
+  if (!first) return null;
+  const sameSubnet = others.every(
+    (other) => other.prefix === first.prefix && first.subnet.check(other.address, "ipv4"),
+  );
+  return sameSubnet ? first.subnet : null;
 }
 
 function getRequestIps(req) {
@@ -376,12 +317,7 @@ export function isRequestFromTrustedLocalSubnet(req) {
   }
   const subnet = inferTrustedLocalSubnet();
   if (!subnet) return false;
-  return requestIps.some((ip) => {
-    if (!isPrivateIpv4(ip)) return false;
-    const ipInt = ipv4ToInt(ip);
-    if (ipInt == null) return false;
-    return (ipInt & ipv4ToInt(subnet.netmask)) >>> 0 === subnet.networkInt;
-  });
+  return requestIps.some((ip) => isPrivateIpv4(ip) && subnet.check(ip, "ipv4"));
 }
 
 export function getLocalNetworkBypassStatus(req) {

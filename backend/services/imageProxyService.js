@@ -1,11 +1,11 @@
 import crypto from "crypto";
 import dns from "node:dns";
 import fs from "fs";
-import net from "node:net";
 import path from "path";
 import { Agent, fetch as undiciFetch } from "undici";
 import sharp from "./sharpConfig.js";
 import { resolveAurralDataDir } from "../config/data-dir.js";
+import { isPrivateAddress, isPrivateHostname } from "../../lib/publicUrl.js";
 
 const IMAGE_PROXY_ROUTE = "/api/image-proxy";
 const DATA_DIR = resolveAurralDataDir();
@@ -29,41 +29,6 @@ const cacheEntriesByKey = new Map();
 const cacheKeysBySourceUrl = new Map();
 let cacheIndexInitialized = false;
 let indexBuildPromise = null;
-
-const blockedAddresses = new net.BlockList();
-for (const [address, prefix] of [
-  ["0.0.0.0", 8],
-  ["10.0.0.0", 8],
-  ["100.64.0.0", 10],
-  ["127.0.0.0", 8],
-  ["169.254.0.0", 16],
-  ["172.16.0.0", 12],
-  ["192.0.0.0", 24],
-  ["192.0.2.0", 24],
-  ["192.168.0.0", 16],
-  ["198.18.0.0", 15],
-  ["198.51.100.0", 24],
-  ["203.0.113.0", 24],
-  ["224.0.0.0", 4],
-  ["240.0.0.0", 4],
-]) {
-  blockedAddresses.addSubnet(address, prefix, "ipv4");
-}
-for (const [address, prefix] of [
-  ["::", 128],
-  ["::1", 128],
-  ["64:ff9b:1::", 48],
-  ["100::", 64],
-  ["2001::", 32],
-  ["2001:db8::", 32],
-  ["2002::", 16],
-  ["fc00::", 7],
-  ["fe80::", 10],
-  ["fec0::", 10],
-  ["ff00::", 8],
-]) {
-  blockedAddresses.addSubnet(address, prefix, "ipv6");
-}
 
 const MIME_EXTENSION_MAP = {
   "image/jpeg": "jpg",
@@ -90,17 +55,6 @@ const OPTIMIZABLE_CONTENT_TYPES = new Set([
   "image/avif",
   "image/svg+xml",
 ]);
-
-export const isPrivateAddress = (address) => {
-  const normalized = String(address || "").split("%")[0];
-  const family = net.isIP(normalized);
-  if (family === 0) return true;
-  if (family === 6) {
-    const canonical = net.SocketAddress.parse(`[${normalized}]:0`)?.address;
-    if (!canonical || canonical.startsWith("::ffff:")) return true;
-  }
-  return blockedAddresses.check(normalized, family === 4 ? "ipv4" : "ipv6");
-};
 
 const safeLookup = (hostname, options, callback) => {
   dns.lookup(hostname, { ...options, all: true }, (error, addresses) => {
@@ -287,25 +241,6 @@ const touchCacheEntry = (imagePath) => {
   if (!imagePath) return;
   const now = new Date();
   fs.promises.utimes(imagePath, now, now).catch(() => {});
-};
-
-export const isPrivateHostname = (hostname) => {
-  let normalized = String(hostname || "")
-    .trim()
-    .toLowerCase();
-  if (normalized.startsWith("[") && normalized.endsWith("]")) {
-    normalized = normalized.slice(1, -1);
-  }
-  if (!normalized) return true;
-  if (
-    normalized === "localhost" ||
-    normalized.endsWith(".localhost") ||
-    normalized.endsWith(".local") ||
-    normalized.endsWith(".home.arpa")
-  ) {
-    return true;
-  }
-  return net.isIP(normalized) ? isPrivateAddress(normalized) : false;
 };
 
 const hashValue = (value) => crypto.createHash("sha256").update(String(value)).digest("hex");

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import os from "node:os";
 
 import bcrypt from "bcrypt";
 
@@ -93,4 +94,29 @@ test("trusted-local bypass rejects an inactive sole administrator", () => {
   };
 
   assert.equal(auth.resolveLocalNetworkBypassUser(req), null);
+});
+
+test("trusted-local bypass accepts only addresses on the server's private subnet", (t) => {
+  userOps.createUser("lan-admin", bcrypt.hashSync("password123", 4), "admin");
+  dbOps.updateSettings({
+    onboardingComplete: true,
+    security: { localNetworkBypass: { enabled: true } },
+  });
+  t.mock.method(os, "networkInterfaces", () => ({
+    lo: [{ address: "127.0.0.1", netmask: "255.0.0.0", family: "IPv4", internal: true, cidr: "127.0.0.1/8" }],
+    eth0: [{ address: "192.168.4.115", netmask: "255.255.255.0", family: "IPv4", internal: false, cidr: "192.168.4.115/24" }],
+    eth1: [{ address: "192.168.4.116", netmask: "255.255.255.0", family: "IPv4", internal: false, cidr: "192.168.4.116/24" }],
+  }));
+  const from = (address) => ({
+    ip: address,
+    ips: [],
+    headers: {},
+    socket: { remoteAddress: address },
+    connection: { remoteAddress: address },
+  });
+
+  assert.equal(auth.resolveLocalNetworkBypassUser(from("192.168.4.20"))?.username, "lan-admin");
+  assert.equal(auth.resolveLocalNetworkBypassUser(from("::ffff:192.168.4.20"))?.username, "lan-admin");
+  assert.equal(auth.resolveLocalNetworkBypassUser(from("192.168.5.20")), null);
+  assert.equal(auth.resolveLocalNetworkBypassUser(from("8.8.8.8")), null);
 });

@@ -5,10 +5,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import {
-  isPrivateAddress,
-  isPrivateHostname,
-} from "../backend/services/imageProxyService.js";
+import { isPrivateAddress, isPrivateHostname, isPublicUrl } from "../lib/publicUrl.js";
 
 test("isPrivateHostname blocks bracketed IPv6 loopback from URL hostnames", () => {
   assert.equal(isPrivateHostname(new URL("http://[::1]/x.jpg").hostname), true);
@@ -25,6 +22,7 @@ test("image proxy rejects non-public address ranges", () => {
     "192.168.0.1",
     "::1",
     "::ffff:127.0.0.1",
+    "64:ff9b::7f00:1",
     "fc00::1",
     "fe80::1",
   ]) {
@@ -32,6 +30,19 @@ test("image proxy rejects non-public address ranges", () => {
   }
   assert.equal(isPrivateAddress("8.8.8.8"), false);
   assert.equal(isPrivateAddress("2606:4700:4700::1111"), false);
+});
+
+test("public URL checks accept public hostnames and reject embedded private addresses", () => {
+  assert.equal(isPublicUrl("https://fdroid.org/feed.xml"), true);
+  assert.equal(isPublicUrl("https://[2606:4700:4700::1111]/feed.xml"), true);
+  for (const url of [
+    "http://[64:ff9b::7f00:1]/feed.xml",
+    "http://[2002:7f00:1::1]/feed.xml",
+    "http://198.51.100.7/feed.xml",
+    "http://printer.local/feed.xml",
+  ]) {
+    assert.equal(isPublicUrl(url), false, url);
+  }
 });
 
 test("image proxy validates every hop and bounds untrusted image data", async () => {
