@@ -86,6 +86,7 @@ The Docker image uses low defaults for artwork processing. Use these variables t
 | --- | --- |
 | `AURRAL_DISCOVERY_ARTWORK_CONCURRENCY` | How many discover playlist covers Aurral renders at the same time. Default `1`. Range `1` to `3`. |
 | `AURRAL_SHARP_CONCURRENCY` | How many image worker threads Sharp uses. Default `2`. Range `1` to `4`. |
+| `AURRAL_WORKER_IDLE_STOP_MS` | How long a background task stays loaded after its last job, in milliseconds. Aurral then stops its process to free memory and starts it again when new work arrives. Default `60000`. Minimum `5000`. Set `0` to keep background processes running once they start. |
 | `MALLOC_CONF` | jemalloc memory settings. The Docker image sets `background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000`, so memory from image processing returns to the operating system sooner, also while Aurral is idle. |
 
 ## Last.fm

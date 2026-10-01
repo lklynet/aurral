@@ -459,3 +459,14 @@ test("periodic cleanup retries failed passes and stops on shutdown", async (t) =
   await Promise.resolve();
   assert.ok(db.prepare("SELECT id FROM honker_task_runs WHERE job_id = 777778").get());
 });
+
+test("an idle notification outbox worker stops on its own", { timeout: 5000 }, async (t) => {
+  const outboxWorker = await importFromRepo("backend/services/notificationOutboxWorker.js");
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.after(() => outboxWorker.stopNotificationOutboxWorker());
+  const loop = outboxWorker.startNotificationOutboxWorker();
+  assert.equal(outboxWorker.isNotificationOutboxWorkerRunning(), true);
+  t.mock.timers.tick(60000);
+  await loop;
+  assert.equal(outboxWorker.isNotificationOutboxWorkerRunning(), false);
+});

@@ -36,6 +36,44 @@ test("web enqueue persists registered and outbox jobs before notifying their own
   }
 });
 
+test("web finds the owners of due work and due schedules without a wake", () => {
+  const now = Math.floor(Date.now() / 1000);
+  const database = honker.getHonkerDb();
+  const scheduler = database.scheduler();
+  const execute = (sql, params) => {
+    const tx = database.transaction();
+    tx.execute(sql, params);
+    tx.commit();
+  };
+  const hasWork = (group) => honker.listBackgroundGroupsWithWork().includes(group);
+  const dueId = honker.getMaintenanceTaskQueue().enqueue({ kind: "session-cleanup" });
+  const laterId = honker.getReleaseMetadataQueue().enqueue({ kind: "release-metadata-refresh" }, { runAt: now + 600 });
+  const claimedId = honker.getInboxTaskQueue().enqueue({ kind: "inbox-refresh" });
+  try {
+    assert.equal(honker.getInboxTaskQueue().claimOne("disposable-live-owner")?.id, claimedId);
+    assert.equal(hasWork("maintenance"), true);
+    assert.equal(hasWork("release-metadata"), false);
+    assert.equal(hasWork("inbox"), false);
+
+    execute("UPDATE _honker_live SET claim_expires_at = ? WHERE id = ?", [now - 1, claimedId]);
+    assert.equal(hasWork("inbox"), true);
+
+    scheduler.add({
+      name: "disposable-demand",
+      queue: "system-task-maintenance",
+      schedule: "@every 1h",
+      payload: { kind: "session-cleanup" },
+    });
+    assert.equal(hasWork("scheduler"), false);
+    execute("UPDATE _honker_scheduler_tasks SET next_fire_at = ? WHERE name = ?", [now - 1, "disposable-demand"]);
+    assert.equal(hasWork("scheduler"), true);
+    scheduler.pause("disposable-demand");
+    assert.equal(hasWork("scheduler"), false);
+  } finally {
+    scheduler.remove("disposable-demand");
+    execute("DELETE FROM _honker_live WHERE id IN (?, ?, ?)", [dueId, laterId, claimedId]);
+  }
+});
 
 test("web wakeups drain a burst in a real isolated owner process", { timeout: 10000 }, async (t) => {
   const ready = Promise.withResolvers();
@@ -45,6 +83,7 @@ test("web wakeups drain a burst in a real isolated owner process", { timeout: 10
   const fixture = fileURLToPath(new URL("../fixtures/queue-wake-child.mjs", import.meta.url));
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["maintenance"],
+    findGroupsWithWork: () => ["maintenance"],
     forkProcess: (_entry, args, options) => fork(fixture, args, options),
     onMessage(message) {
       if (message.type === "ready") ready.resolve();

@@ -6,6 +6,7 @@ import {
   hasClaimableHonkerJobs,
   hasExpiredHonkerClaims,
   getHonkerQueueNextClaimAt,
+  listBackgroundGroupsWithWork,
   startHonkerScheduler,
 } from "./honkerDb.js";
 import { createBackgroundProcessSupervisor } from "./backgroundProcessSupervisor.js";
@@ -206,6 +207,13 @@ export function wakeQueuedBackgroundWork(group = supervisedGroup) {
   checkQueuedBackgroundWork(group);
 }
 
+export function hasQueuedBackgroundWork(group = supervisedGroup) {
+  if (startingQueues.size > 0) return true;
+  if (getHonkerWorkerStatuses().some((worker) => worker.running)) return true;
+  return QUEUE_WORKERS.some((worker) =>
+    isQueueOwnedByGroup(worker.queue, group) && hasClaimableHonkerJobs(worker.queue));
+}
+
 export async function recoverExitedWorkerJobs(group, pid, logger = console, reason = null) {
   if (!Number.isInteger(pid) || pid <= 0) return;
   const workerId = `aurral-${pid}`;
@@ -279,6 +287,7 @@ export function startBackgroundWorkers({ logger = console } = {}) {
   }
   backgroundProcessSupervisor = createBackgroundProcessSupervisor({
     logger,
+    findGroupsWithWork: () => (isHonkerShuttingDown() ? [] : listBackgroundGroupsWithWork()),
     onMessage(message, _group, child) {
       if (message?.type === "queue-wake") {
         const owner = ISOLATED_QUEUE_GROUPS[message.queue];
@@ -343,10 +352,11 @@ export function startBackgroundWorkers({ logger = console } = {}) {
         logger.warn?.("[AppRuntime] Failed to forward worker update:", error?.message || error);
       });
     },
-    onExit(group, _code, _signal, pid, reason) {
+    onExit(group, _code, _signal, pid, reason, retired) {
       const recovery = recoverExitedWorkerJobs(group, pid, logger, reason).catch((error) => {
         logger.warn?.(`[AppRuntime] Could not recover ${group} jobs:`, error?.message || error);
       });
+      if (retired) return recovery;
       if (group !== "discovery-refresh" && group !== "discovery-playlist-build") return recovery;
       void forwardWorkerBroadcast({
         type: "websocket-broadcast",

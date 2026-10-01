@@ -4,7 +4,7 @@ import honker from "@russellthehippo/honker-node";
 import { resolveAurralDataDir } from "../config/data-dir.js";
 import { dbOps } from "../db/helpers/index.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
-import { shouldStartQueueHere } from "./backgroundWorkerQueues.js";
+import { ISOLATED_QUEUE_GROUPS, shouldStartQueueHere } from "./backgroundWorkerQueues.js";
 
 export const PLAYLIST_STARTUP_MIGRATION_VERSION = 1;
 export const PLAYLIST_STARTUP_MIGRATION_SETTING = "playlistStartupMigration";
@@ -765,6 +765,24 @@ export function hasClaimableHonkerJobs(queueName) {
      AND (state = 'pending' OR (state = 'processing' AND claim_expires_at <= ?)) LIMIT 1`,
     [queueName, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)],
   )[0]);
+}
+
+export function isHonkerScheduleDue() {
+  return Boolean(getHonkerDb().query(
+    "SELECT 1 FROM _honker_scheduler_tasks WHERE enabled = 1 AND next_fire_at <= ? LIMIT 1",
+    [Math.floor(Date.now() / 1000)],
+  )[0]);
+}
+
+export function listBackgroundGroupsWithWork() {
+  const now = Math.floor(Date.now() / 1000);
+  const groups = new Set(getHonkerDb().query(
+    `SELECT DISTINCT queue FROM _honker_live WHERE run_at <= ?
+     AND (state = 'pending' OR (state = 'processing' AND claim_expires_at <= ?))`,
+    [now, now],
+  ).map((row) => ISOLATED_QUEUE_GROUPS[row.queue]).filter(Boolean));
+  if (isHonkerScheduleDue()) groups.add("scheduler");
+  return [...groups];
 }
 
 export function hasExpiredHonkerClaims(queueName) {

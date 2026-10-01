@@ -134,6 +134,10 @@ This section applies only when `AUTH_PROXY_ENABLED` or `AUTH_PROXY_HEADER` is se
 - If an Authentik logout returns to Aurral's sign-in page, set `AUTH_PROXY_LOGOUT_URL=https://your-aurral-host/outpost.goauthentik.io/sign_out`. Check the spelling of the variable name.
 - If **Log out** is missing, `AUTH_PROXY_LOGOUT_URL` is not set. Aurral hides **Log out** when it cannot end the proxy session.
 
+## Docker memory rises while tasks run
+
+Library scans, discovery refreshes, playlist downloads, and other tasks run in their own background processes. Aurral starts each process when it has work and stops it about a minute after the work finishes, so `docker stats` rises during tasks and falls back when Aurral is idle. **Settings > Tasks** shows a stopped process as **Standby**.
+
 ## Docker memory looks high after you view cover art
 
 The official image preloads jemalloc, so Sharp returns free memory to the system after it processes cover art.

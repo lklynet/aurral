@@ -59,7 +59,7 @@ export async function withJobHeartbeat(job, queue, fn, extendSeconds = null) {
   }
 }
 
-export function createIdleAbortController({ idleStopMs = 0, onIdleStop = null } = {}) {
+export function createIdleAbortController({ idleStopMs = 0, onIdleStop = null, isBusy = null } = {}) {
   const controller = new AbortController();
   const timeoutMs = Math.max(0, Math.floor(Number(idleStopMs) || 0));
   let timer = null;
@@ -77,6 +77,14 @@ export function createIdleAbortController({ idleStopMs = 0, onIdleStop = null } 
     if (!timeoutMs || controller.signal.aborted) return;
     timer = setTimeout(() => {
       timer = null;
+      let busy = false;
+      try {
+        busy = typeof isBusy === "function" && isBusy();
+      } catch {}
+      if (busy) {
+        arm();
+        return;
+      }
       idleStopped = true;
       if (typeof onIdleStop === "function") {
         try {

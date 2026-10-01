@@ -53,13 +53,17 @@ test("only the owning process supervises isolated queues", () => {
   }
 });
 
-test("supervisor starts each group, forwards messages, and stops without respawning", async () => {
+const quietLogger = { warn() {}, error() {} };
+const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+function createFakeFork() {
   const launches = [];
-  const messages = [];
-  const fakeFork = (_entry, _args, options) => {
+  const forkProcess = (_entry, _args, options) => {
     const child = new EventEmitter();
+    child.group = options.env.AURRAL_BACKGROUND_WORKER_GROUP;
     child.exitCode = null;
     child.signalCode = null;
+    child.connected = true;
     child.sent = [];
     child.send = (message) => {
       child.sent.push(message);
@@ -68,45 +72,168 @@ test("supervisor starts each group, forwards messages, and stops without respawn
         queueMicrotask(() => child.emit("exit", 0, null));
       }
     };
-    child.kill = () => { throw new Error("graceful shutdown should suffice"); };
-    launches.push({ child, options });
+    child.kill = () => {};
+    launches.push(child);
     return child;
   };
+  return { launches, forkProcess };
+}
+
+function exitIdle(child) {
+  child.exitCode = 0;
+  child.emit("exit", 0, null);
+}
+
+function reply(child, result) {
+  const command = child.sent.findLast((message) => message.type === "flow-command");
+  child.emit("message", { type: "flow-response", requestId: command.requestId, result });
+  return command.method;
+}
+
+test("supervisor launches only groups with work, forwards messages, and stops without respawning", async () => {
+  const { launches, forkProcess } = createFakeFork();
+  const messages = [];
+  let withWork = ["library"];
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["library", "discovery"],
-    forkProcess: fakeFork,
+    findGroupsWithWork: () => withWork,
+    forkProcess,
     onMessage: (message, group) => messages.push({ message, group }),
   });
 
   assert.equal(supervisor.start(), true);
   assert.equal(supervisor.start(), false);
-  assert.deepEqual(launches.map(({ options }) => options.env.AURRAL_BACKGROUND_WORKER_GROUP),
-    ["library", "discovery"]);
-  assert.deepEqual(supervisor.getGroups(), ["library", "discovery"]);
-  launches[0].child.emit("message", { type: "websocket-broadcast", channel: "library" });
+  assert.deepEqual(launches.map((child) => child.group), ["library"]);
+  launches[0].emit("message", { type: "websocket-broadcast", channel: "library" });
   assert.deepEqual(messages, [{ message: { type: "websocket-broadcast", channel: "library" }, group: "library" }]);
-  launches[0].child.emit("message", {
+  launches[0].emit("message", {
     type: "heartbeat",
     workers: [{ name: "library-scan", running: true }],
   });
   assert.deepEqual(supervisor.getWorkerStatuses(), [{ name: "library-scan", running: true }]);
 
+  withWork = ["library", "discovery"];
+  assert.equal(supervisor.wake("discovery"), false);
+  assert.deepEqual(launches.map((child) => child.group), ["library", "discovery"]);
+  assert.equal(supervisor.wake("discovery"), false);
+  launches[1].emit("message", { type: "ready" });
   assert.equal(supervisor.wake("discovery"), true);
-  assert.deepEqual(launches[1].child.sent, [{ type: "queue-wake" }]);
+  assert.deepEqual(launches[1].sent, [{ type: "queue-wake" }]);
   assert.equal(supervisor.wake("missing"), false);
 
   await supervisor.stop();
-  assert.deepEqual(launches.map(({ child }) => child.sent),
+  assert.deepEqual(launches.map((child) => child.sent),
     [[{ type: "shutdown" }], [{ type: "queue-wake" }, { type: "shutdown" }]]);
   assert.deepEqual(supervisor.getGroups(), []);
   assert.deepEqual(supervisor.getWorkerStatuses(), []);
+});
+
+test("an idle worker exits without a restart and returns when work arrives", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+  const { launches, forkProcess } = createFakeFork();
+  const exits = [];
+  const warnings = [];
+  let withWork = ["library"];
+  const supervisor = createBackgroundProcessSupervisor({
+    groups: ["library"],
+    findGroupsWithWork: () => withWork,
+    forkProcess,
+    logger: { warn: (...args) => warnings.push(args), error() {} },
+    onExit: (group, _code, _signal, _pid, _reason, retired) => { exits.push({ group, retired }); },
+  });
+  try {
+    supervisor.start();
+    launches[0].emit("message", { type: "ready" });
+    withWork = [];
+    launches[0].emit("message", { type: "idle" });
+    assert.deepEqual(launches[0].sent, [{ type: "retire" }]);
+    exitIdle(launches[0]);
+    await flush();
+    t.mock.timers.tick(60000);
+    await flush();
+    assert.equal(launches.length, 1);
+    assert.deepEqual(supervisor.getGroups(), []);
+    assert.deepEqual(exits, [{ group: "library", retired: true }]);
+    assert.deepEqual(warnings, []);
+
+    withWork = ["library"];
+    t.mock.timers.tick(2000);
+    assert.equal(launches.length, 2);
+  } finally {
+    await supervisor.stop();
+  }
+});
+
+test("a flow request starts its worker and holds off retirement until answered", async () => {
+  const { launches, forkProcess } = createFakeFork();
+  const supervisor = createBackgroundProcessSupervisor({ groups: ["flow"], forkProcess });
+  try {
+    supervisor.start();
+    assert.equal(launches.length, 0);
+    const pending = supervisor.request("flow", "waitForIdle");
+    assert.equal(launches.length, 1);
+    assert.deepEqual(launches[0].sent, []);
+    launches[0].emit("message", { type: "ready" });
+    launches[0].emit("message", { type: "idle" });
+    assert.equal(launches[0].sent.some((message) => message.type === "retire"), false);
+    assert.equal(reply(launches[0], true), "waitForIdle");
+    assert.equal(await pending, true);
+    launches[0].emit("message", { type: "idle" });
+    assert.deepEqual(launches[0].sent.at(-1), { type: "retire" });
+  } finally {
+    await supervisor.stop();
+  }
+});
+
+test("a flow request made while its worker retires reaches the next worker", async () => {
+  const { launches, forkProcess } = createFakeFork();
+  const supervisor = createBackgroundProcessSupervisor({ groups: ["flow"], forkProcess });
+  try {
+    supervisor.start();
+    const first = supervisor.request("flow", "start");
+    launches[0].emit("message", { type: "ready" });
+    reply(launches[0], true);
+    await first;
+    launches[0].emit("message", { type: "idle" });
+    const second = supervisor.request("flow", "wakeOrStart");
+    assert.deepEqual(launches[0].sent.at(-1), { type: "retire" });
+    exitIdle(launches[0]);
+    await flush();
+    assert.equal(launches.length, 2);
+    launches[1].emit("message", { type: "ready" });
+    assert.equal(reply(launches[1], "woken"), "wakeOrStart");
+    assert.equal(await second, "woken");
+  } finally {
+    await supervisor.stop();
+  }
+});
+
+test("a worker that is busy again keeps running and receives waiting requests", async () => {
+  const { launches, forkProcess } = createFakeFork();
+  const supervisor = createBackgroundProcessSupervisor({ groups: ["flow"], forkProcess });
+  try {
+    supervisor.start();
+    const first = supervisor.request("flow", "start");
+    launches[0].emit("message", { type: "ready" });
+    reply(launches[0], true);
+    await first;
+    launches[0].emit("message", { type: "idle" });
+    const second = supervisor.request("flow", "blockPlaylist", ["disposable"]);
+    launches[0].emit("message", { type: "busy" });
+    assert.equal(reply(launches[0], true), "blockPlaylist");
+    assert.equal(await second, true);
+    assert.equal(launches.length, 1);
+  } finally {
+    await supervisor.stop();
+  }
 });
 
 test("supervisor restarts an unexpectedly exited worker", async () => {
   const children = [];
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["library"],
-    logger: { warn() {}, error() {} },
+    findGroupsWithWork: () => ["library"],
+    logger: quietLogger,
     forkProcess: () => {
       const child = new EventEmitter();
       child.exitCode = null;
@@ -130,43 +257,28 @@ test("supervisor restarts an unexpectedly exited worker", async () => {
 });
 
 test("flow requests return replies and reject when their owner exits", async () => {
-  const children = [];
+  const { launches, forkProcess } = createFakeFork();
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["flow"],
-    logger: { warn() {}, error() {} },
-    forkProcess: () => {
-      const child = new EventEmitter();
-      child.exitCode = null;
-      child.signalCode = null;
-      child.connected = true;
-      child.sent = [];
-      child.send = (message) => {
-        child.sent.push(message);
-        if (message.type === "shutdown") {
-          child.exitCode = 0;
-          queueMicrotask(() => child.emit("exit", 0, null));
-        }
-      };
-      child.kill = () => {};
-      children.push(child);
-      return child;
-    },
+    logger: quietLogger,
+    forkProcess,
   });
   try {
     supervisor.start();
     const first = supervisor.request("flow", "start");
-    const request = children[0].sent.at(-1);
+    launches[0].emit("message", { type: "ready" });
+    const request = launches[0].sent.at(-1);
     assert.equal(request.type, "flow-command");
     assert.equal(request.method, "start");
-    children[0].emit("message", { type: "flow-response", requestId: request.requestId, result: true });
+    reply(launches[0], true);
     assert.equal(await first, true);
 
-    children[0].emit("message", {
+    launches[0].emit("message", {
       type: "heartbeat", workers: [], flowStatus: { running: true },
     });
     assert.deepEqual(supervisor.getFlowStatus(), { running: true });
     const pending = supervisor.request("flow", "waitForIdle");
-    children[0].emit("exit", 1, null);
+    launches[0].emit("exit", 1, null);
     await assert.rejects(pending, /exited before responding/);
     assert.equal(supervisor.getFlowStatus(), null);
   } finally {
@@ -180,7 +292,8 @@ test("flow restart waits for job recovery", async () => {
   const recovery = new Promise((resolve) => { finishRecovery = resolve; });
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["flow"],
-    logger: { warn() {}, error() {} },
+    findGroupsWithWork: () => ["flow"],
+    logger: quietLogger,
     onExit: () => recovery,
     forkProcess: () => {
       const child = new EventEmitter();
@@ -215,10 +328,11 @@ test("only the worker with an overdue job is terminated", async () => {
   const killed = [];
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["inbox", "maintenance"],
+    findGroupsWithWork: () => ["inbox", "maintenance"],
     jobTimeoutsMs: { inbox: 25, maintenance: 25 },
     unresponsiveMs: 1000,
     watchdogIntervalMs: 10,
-    logger: { warn() {}, error() {} },
+    logger: quietLogger,
     forkProcess: (_entry, _args, options) => {
       const group = options.env.AURRAL_BACKGROUND_WORKER_GROUP;
       const child = new EventEmitter();

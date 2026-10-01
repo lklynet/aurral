@@ -6,9 +6,11 @@ if (!ISOLATED_WORKER_GROUPS.includes(group) || !process.send) {
   throw new Error("Background worker process requires a supervised queue group");
 }
 
-const { startWorkerSupervisor, wakeQueuedBackgroundWork } = await import("./appRuntime.js");
-const { getHonkerWorkerStatuses, shutdownHonkerInfrastructure } =
+const { startWorkerSupervisor, wakeQueuedBackgroundWork, hasQueuedBackgroundWork } =
+  await import("./appRuntime.js");
+const { getHonkerWorkerStatuses, getWorkerIdleStopMs, shutdownHonkerInfrastructure } =
   await import("./honkerWorkerRuntime.js");
+const { isHonkerScheduleDue } = await import("./honkerDb.js");
 const flowWorker = group === "flow"
   ? (await import("./weeklyFlow/weeklyFlowWorker.js")).weeklyFlowWorker
   : null;
@@ -17,6 +19,8 @@ const flowOperationStatus = group === "flow"
   : null;
 
 let stopping = false;
+let flowCommandsInFlight = 0;
+let lastFlowCommandAt = 0;
 const FLOW_COMMANDS = new Set([
   "start", "stop", "stopAndDrain", "wake", "researchMissingTracks",
   "retryIncompletePlaylist", "setRetryCyclePaused", "updateWorkerSettings",
@@ -108,10 +112,33 @@ async function stop() {
   process.exit(0);
 }
 
+function isIdle() {
+  const idleStopMs = getWorkerIdleStopMs();
+  if (stopping || !idleStopMs) return false;
+  if (flowCommandsInFlight > 0 || Date.now() - lastFlowCommandAt < idleStopMs) return false;
+  if (flowWorker?.hasWork()) return false;
+  try {
+    if (group === "scheduler") return !isHonkerScheduleDue();
+    return !hasQueuedBackgroundWork(group);
+  } catch {
+    return false;
+  }
+}
+
 process.on("message", (message) => {
   if (message?.type === "shutdown") void stop();
-  if (message?.type === "flow-command") void handleFlowCommand(message);
+  if (message?.type === "flow-command") {
+    flowCommandsInFlight += 1;
+    void handleFlowCommand(message).finally(() => {
+      flowCommandsInFlight -= 1;
+      lastFlowCommandAt = Date.now();
+    });
+  }
   if (message?.type === "queue-wake") wakeQueuedBackgroundWork(group);
+  if (message?.type === "retire") {
+    if (isIdle()) void stop();
+    else if (process.connected) process.send({ type: "busy" });
+  }
 });
 process.once("SIGTERM", () => { void stop(); });
 process.once("SIGINT", () => { void stop(); });
@@ -138,6 +165,7 @@ const heartbeat = setInterval(() => {
         isQueueOwnedByGroup(worker.name, group)),
       ...(flowStatus ? { flowStatus } : {}),
     });
+    if (isIdle()) process.send({ type: "idle" });
   }
 }, 5000);
 heartbeat.unref?.();
