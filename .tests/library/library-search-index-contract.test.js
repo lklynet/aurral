@@ -121,3 +121,38 @@ test("targeted configured rescans update related searches and preserve failed or
   assert.equal(read("Second Song").total, 1);
   assert.deepEqual(getCanonicalLibraryPage({ kind: "genres" }).items.map((genre) => genre.name), ["Folk", "Rock"]);
 });
+
+test("merging a fallback artist into its resolved artist updates moved album and track searches", async () => {
+  const { getCanonicalLibraryPage } = await importFromRepo("backend/services/libraryQueryService.js");
+  const fallbackKey = libraryStore.buildFallbackIdentityKey("artist", "Merge Searché");
+  const fallback = libraryStore.upsertLibraryArtist({ identityKey: fallbackKey, name: "Merge Searche" });
+  const resolvedId = Number(db.prepare(
+    `INSERT INTO library_artists (identity_key, mbid, name, created_at, updated_at)
+     VALUES ('mbid:eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'Merge Searché', '', '')`,
+  ).run().lastInsertRowid);
+  searchIndex.syncLibrarySearchArtist(resolvedId);
+  const albumIds = [];
+  for (const index of [1, 2]) {
+    const album = libraryStore.upsertLibraryAlbum({
+      identityKey: `merge-search:album-${index}`, artistId: fallback.id, title: `Moved Album ${index}`,
+    });
+    const track = libraryStore.upsertLibraryTrack({
+      identityKey: `merge-search:track-${index}`, title: `Moved Track ${index}`, artistName: "Merge Searche",
+    });
+    libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+    libraryStore.upsertLibraryMediaFile({
+      trackId: track.id, albumId: album.id, source: "aurral", path: `/merge-search/${index}.flac`,
+    });
+    albumIds.push(album.id);
+  }
+
+  assert.equal(libraryStore.upsertLibraryArtist({ identityKey: fallbackKey, name: "Merge Searche" }).id, resolvedId);
+
+  const search = (kind, query) => getCanonicalLibraryPage({ kind, query, pageSize: 100 }).items;
+  assert.deepEqual(search("albums", "Merge Searché").map((album) => album.id).sort(), albumIds.sort());
+  assert.equal(search("tracks", "Merge Searché").length, 2);
+  assert.deepEqual(search("artists", "Merge Search").map((artist) => artist.id), [resolvedId]);
+  assert.equal(db.prepare(
+    "SELECT 1 FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?",
+  ).get(fallback.id), undefined);
+});

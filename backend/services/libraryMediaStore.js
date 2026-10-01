@@ -128,8 +128,11 @@ function moveLibraryArtistStars(fromKey, toKey) {
   return copied || deleted;
 }
 
-function mergeLibraryArtistInto(fallback, resolved) {
+function mergeLibraryArtistInto(fallback, resolved, { syncSearch = true } = {}) {
   if (!fallback || !resolved || fallback.id === resolved.id) return false;
+  const movedAlbums = syncSearch
+    ? db.prepare("SELECT id FROM library_albums WHERE artist_id = ?").all(fallback.id)
+    : [];
   let changed = moveLibraryArtistStars(fallback.identity_key, resolved.identity_key);
   changed = db.prepare("UPDATE OR IGNORE library_release_calendar SET artist_id = ? WHERE artist_id = ?")
     .run(resolved.id, fallback.id).changes > 0 || changed;
@@ -137,6 +140,15 @@ function mergeLibraryArtistInto(fallback, resolved) {
     .run(resolved.id, fallback.id).changes > 0 || changed;
   changed = db.prepare("DELETE FROM library_artists WHERE id = ?")
     .run(fallback.id).changes > 0 || changed;
+  if (syncSearch) {
+    removeLibrarySearchDocument("artist", fallback.id);
+    for (const album of movedAlbums) {
+      syncLibrarySearchAlbum(album.id);
+      for (const track of db.prepare(
+        "SELECT track_id FROM library_album_tracks WHERE album_id = ?",
+      ).all(album.id)) syncLibrarySearchTrack(track.track_id);
+    }
+  }
   return changed;
 }
 
@@ -170,7 +182,7 @@ export function assignLibraryArtistMbid(artistId, mbid) {
       )
       .get(key, mbid, key);
     if (resolved) {
-      mergeLibraryArtistInto(fallback, resolved);
+      mergeLibraryArtistInto(fallback, resolved, { syncSearch: false });
       return resolved;
     }
     moveLibraryArtistStars(fallback.identity_key, key);
@@ -221,7 +233,6 @@ export function setLibraryArtistMbid(artistId, mbid) {
     return { artist: db.prepare("SELECT * FROM library_artists WHERE id = ?").get(artist.id) };
   })();
   if (result.artist) {
-    if (result.mergedArtistId) removeLibrarySearchDocument("artist", result.mergedArtistId);
     syncLibrarySearchArtist(result.artist.id);
     invalidateLibraryCache();
   }
@@ -269,7 +280,7 @@ export function upsertLibraryArtist({
       return matches.length === 1 ? matches[0] : null;
     };
     const mergeFallbackArtist = (fallback, resolved) => {
-      libraryChanged = mergeLibraryArtistInto(fallback, resolved) || libraryChanged;
+      libraryChanged = mergeLibraryArtistInto(fallback, resolved, { syncSearch }) || libraryChanged;
     };
     if (mbid) {
       const resolved = db.prepare("SELECT id, identity_key FROM library_artists WHERE identity_key = ?").get(key);
