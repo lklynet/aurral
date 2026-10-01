@@ -10,6 +10,7 @@ const composeFile = path.join(repoRoot, "tests", "lab", "compose.yml");
 const labRoot = path.join(repoRoot, "backend", "data", "lab");
 const lockDir = path.join(labRoot, ".locks");
 const LAB_ID = /^[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?$/;
+const SEED_VERSION = 1;
 const FORWARDED_ENV = [
   "PATH",
   "HOME",
@@ -40,7 +41,7 @@ let interruption = null;
 function checkInterrupted() {
   if (interruption) {
     throw new LabError(
-      `Interrupted by ${interruption}. Run the command again, or stop the Lab with npm run lab:down.`,
+      `Interrupted by ${interruption}. Run the command again, or stop the Lab with its lab:down command.`,
       interruption === "SIGINT" ? 130 : 143,
     );
   }
@@ -48,6 +49,10 @@ function checkInterrupted() {
 
 function relative(target) {
   return path.relative(repoRoot, target);
+}
+
+function labCommand(lab, command) {
+  return `${lab.id === "dev" ? "" : `AURRAL_LAB_ID=${lab.id} `}npm run lab:${command}`;
 }
 
 function readJson(file) {
@@ -83,6 +88,8 @@ function selectLab(requestedId) {
     stateDir,
     configDir: path.join(stateDir, "config"),
     mediaDir: path.join(stateDir, "media"),
+    seedingDir: path.join(stateDir, ".seeding"),
+    seedPath: path.join(stateDir, "seed.json"),
     recordPath: path.join(stateDir, "lab.json"),
     lockPath: path.join(lockDir, `${id}.lock`),
   };
@@ -102,6 +109,7 @@ function dockerEnv(lab) {
     AURRAL_LAB_IMAGE: lab.image,
     AURRAL_LAB_CONFIG_DIR: lab.configDir,
     AURRAL_LAB_MEDIA_DIR: lab.mediaDir,
+    AURRAL_LAB_SEED_DIR: lab.seedingDir,
     AURRAL_LAB_UID: String(process.getuid?.() ?? 1000),
     AURRAL_LAB_GID: String(process.getgid?.() ?? 1000),
   };
@@ -212,7 +220,6 @@ function checkRecord(lab) {
 
 function claimState(lab) {
   const record = checkRecord(lab);
-  fs.mkdirSync(lab.configDir, { recursive: true });
   fs.mkdirSync(lab.mediaDir, { recursive: true });
   if (!record) {
     fs.writeFileSync(
@@ -274,13 +281,13 @@ async function labUrl(lab) {
   const result = await compose(lab, ["port", "gateway", "3001"]);
   const address = result.stdout.trim();
   if (result.code !== 0 || !/^127\.0\.0\.1:\d+$/.test(address)) {
-    throw new LabError(`Lab "${lab.id}" is not running. Start it with npm run lab:up.`);
+    throw new LabError(`Lab "${lab.id}" is not running. Start it with ${labCommand(lab, "up")}.`);
   }
   return `http://${address}`;
 }
 
 async function waitForHost(lab, url) {
-  const deadline = Date.now() + 5000;
+  const deadline = Date.now() + 15000;
   for (;;) {
     checkInterrupted();
     try {
@@ -290,45 +297,76 @@ async function waitForHost(lab, url) {
     if (Date.now() > deadline) {
       throw new LabError(
         `Lab "${lab.id}" started, but ${url} is not reachable from this host. ` +
-          "Check npm run lab:logs, then stop it with npm run lab:down.",
+          `Check ${labCommand(lab, "logs")}, then stop it with ${labCommand(lab, "down")}.`,
       );
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
 }
 
+function needsSeed(lab) {
+  const marker = readJson(lab.seedPath);
+  const hasConfig = fs.existsSync(lab.configDir);
+  if (marker?.version === SEED_VERSION && hasConfig) return false;
+  if (!marker && !hasConfig) return true;
+  const problem =
+    marker && marker.version !== SEED_VERSION
+      ? `was seeded with version ${marker.version}, but this checkout needs version ${SEED_VERSION}`
+      : "has incomplete data";
+  throw new LabError(
+    `Lab "${lab.id}" ${problem}. Run ${labCommand(lab, "reset")} to recreate it. Reset deletes this Lab's data.`,
+  );
+}
+
+async function seed(lab) {
+  fs.rmSync(lab.seedingDir, { recursive: true, force: true });
+  fs.mkdirSync(lab.seedingDir);
+  console.error(`Seeding Lab "${lab.id}"...`);
+  const seeded = await compose(lab, ["run", "--rm", "--no-deps", "-T", "seed"], { output: "stderr" });
+  if (seeded.code !== 0) {
+    throw new LabError(`Seeding Lab "${lab.id}" failed. The output is above. Run ${labCommand(lab, "up")} to try again.`);
+  }
+  fs.renameSync(lab.seedingDir, lab.configDir);
+  fs.writeFileSync(lab.seedPath, `${JSON.stringify({ version: SEED_VERSION, seededAt: new Date().toISOString() }, null, 2)}\n`);
+}
+
+async function start(lab) {
+  claimState(lab);
+  await ownedResources(lab);
+  const seedRequired = needsSeed(lab);
+  console.error(`Building Aurral for Lab "${lab.id}"...`);
+  const built = await compose(lab, ["build", "aurral"], { output: "stderr" });
+  if (built.code !== 0) throw new LabError(`Building Aurral for Lab "${lab.id}" failed. The build output is above.`);
+  if (seedRequired) await seed(lab);
+  console.error(`Starting Lab "${lab.id}"...`);
+  const started = await compose(
+    lab,
+    ["up", "--detach", "--wait", "--wait-timeout", "300", "--no-build", "--pull", "never", "--remove-orphans"],
+    { output: "stderr" },
+  );
+  if (started.code !== 0) {
+    await compose(lab, ["logs", "--no-color", "--tail", "200"], { output: "stderr" });
+    throw new LabError(
+      `Lab "${lab.id}" did not start. Its logs are above. Fix the cause and run ${labCommand(lab, "up")} again, ` +
+        `or stop it with ${labCommand(lab, "down")}.`,
+    );
+  }
+  const url = await labUrl(lab);
+  await waitForHost(lab, url);
+  console.error(`Lab "${lab.id}" is ready at ${url}`);
+  process.stdout.write(`${url}\n`);
+}
+
 async function up(lab) {
   await requireDocker();
-  await withLock(lab, async () => {
-    claimState(lab);
-    await ownedResources(lab);
-    console.error(`Building Aurral for Lab "${lab.id}"...`);
-    const built = await compose(lab, ["build", "aurral"], { output: "stderr" });
-    if (built.code !== 0) throw new LabError(`Building Aurral for Lab "${lab.id}" failed. The build output is above.`);
-    console.error(`Starting Lab "${lab.id}"...`);
-    const started = await compose(
-      lab,
-      ["up", "--detach", "--wait", "--wait-timeout", "300", "--no-build", "--pull", "never", "--remove-orphans"],
-      { output: "stderr" },
-    );
-    if (started.code !== 0) {
-      await compose(lab, ["logs", "--no-color", "--tail", "200"], { output: "stderr" });
-      throw new LabError(
-        `Lab "${lab.id}" did not start. Its logs are above. Fix the cause and run npm run lab:up again, or stop it with npm run lab:down.`,
-      );
-    }
-    const url = await labUrl(lab);
-    await waitForHost(lab, url);
-    console.error(`Lab "${lab.id}" is ready at ${url}`);
-    process.stdout.write(`${url}\n`);
-  });
+  await withLock(lab, () => start(lab));
 }
 
 async function url(lab) {
   await requireDocker();
   const { containers } = await ownedResources(lab);
   if (!containers.some((container) => container.service === "gateway" && container.state === "running")) {
-    throw new LabError(`Lab "${lab.id}" is not running. Start it with npm run lab:up.`);
+    throw new LabError(`Lab "${lab.id}" is not running. Start it with ${labCommand(lab, "up")}.`);
   }
   process.stdout.write(`${await labUrl(lab)}\n`);
 }
@@ -354,9 +392,14 @@ async function logs(lab, args) {
   const forwarded = logArguments(args);
   await requireDocker();
   const { containers } = await ownedResources(lab);
-  if (!containers.length) throw new LabError(`Lab "${lab.id}" has no containers. Start it with npm run lab:up.`);
+  if (!containers.length) throw new LabError(`Lab "${lab.id}" has no containers. Start it with ${labCommand(lab, "up")}.`);
   const result = await compose(lab, ["logs", "--no-color", ...forwarded], { output: "stdout" });
   process.exitCode = result.code;
+}
+
+async function stop(lab) {
+  const stopped = await compose(lab, ["down", "--remove-orphans"], { output: "stderr" });
+  if (stopped.code !== 0) throw new LabError(`Stopping Lab "${lab.id}" failed. The Docker output is above.`);
 }
 
 async function down(lab) {
@@ -368,13 +411,29 @@ async function down(lab) {
       console.error(`Lab "${lab.id}" is not running.`);
       return;
     }
-    const stopped = await compose(lab, ["down", "--remove-orphans"], { output: "stderr" });
-    if (stopped.code !== 0) throw new LabError(`Stopping Lab "${lab.id}" failed. The Docker output is above.`);
+    await stop(lab);
     console.error(`Stopped Lab "${lab.id}". Its data is kept in ${relative(lab.stateDir)}.`);
   });
 }
 
-const COMMANDS = { up, url, logs, down };
+async function reset(lab) {
+  await requireDocker();
+  await withLock(lab, async () => {
+    checkRecord(lab);
+    await ownedResources(lab);
+    await stop(lab);
+    if ((await ownedResources(lab)).containers.length) {
+      throw new LabError(`Lab "${lab.id}" still has containers, so its data was kept. Run ${labCommand(lab, "down")}, then retry.`);
+    }
+    for (const target of [lab.configDir, lab.mediaDir, lab.seedingDir, lab.seedPath]) {
+      fs.rmSync(target, { recursive: true, force: true });
+    }
+    console.error(`Deleted the data for Lab "${lab.id}".`);
+    await start(lab);
+  });
+}
+
+const COMMANDS = { up, url, logs, down, reset };
 
 async function main() {
   const [command, ...args] = process.argv.slice(2);
@@ -384,7 +443,7 @@ async function main() {
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, () => {
       interruption ??= signal;
-      if (signal === "SIGTERM") activeChild?.kill("SIGTERM");
+      activeChild?.kill(signal);
     });
   }
   await handler(selectLab(process.env.AURRAL_LAB_ID), args);

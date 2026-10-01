@@ -24,6 +24,7 @@
     "lab:url": "node scripts/lab.mjs url",
     "lab:logs": "node scripts/lab.mjs logs",
     "lab:down": "node scripts/lab.mjs down",
+    "lab:reset": "node scripts/lab.mjs reset",
     "perf:library": "node scripts/benchmark-library.mjs",
     "dev": "node scripts/dev.mjs",
     "wait-and-dev:frontend": "while ! curl -s http://localhost:3001/api/health; do sleep 1; done && npm run dev --workspace frontend",

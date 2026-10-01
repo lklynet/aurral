@@ -25,6 +25,21 @@ services:
       timeout: 5s
       retries: 90
 
+  seed:
+    image: ${AURRAL_LAB_IMAGE:?}
+    profiles: [seed]
+    command: ["node", "/app/tests/lab/seed.mjs"]
+    env_file: lab.env
+    environment:
+      AURRAL_DATA_DIR: /config
+      PUID: ${AURRAL_LAB_UID:?}
+      PGID: ${AURRAL_LAB_GID:?}
+    volumes:
+      - ${AURRAL_LAB_SEED_DIR:?}:/config
+      - ./:/app/tests/lab:ro
+    network_mode: none
+    labels: *lab-labels
+
   gateway:
     image: ${AURRAL_LAB_IMAGE:?}
     entrypoint: ["node", "/lab/gateway.mjs", "aurral:3001"]
@@ -35,6 +50,11 @@ services:
       - ./gateway.mjs:/lab/gateway.mjs:ro
     networks: [lab, ingress]
     labels: *lab-labels
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health/live').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
     depends_on:
       aurral:
         condition: service_healthy

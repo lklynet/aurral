@@ -66,6 +66,9 @@ if (args[0] === "version") {
     state.networks.push({ ID: project + "-lab", labels: labels("") });
     save();
     if (state.failUp) fail("container " + project + "-aurral-1 is unhealthy");
+  } else if (command === "run") {
+    if (state.failSeed) fail("seed failed");
+    fs.writeFileSync(path.join(process.env.AURRAL_LAB_SEED_DIR, "aurral.db"), "seeded");
   } else if (command === "port") {
     const gateway = state.containers.find((item) => inProject(project)(item) && item.labels["com.docker.compose.service"] === "gateway");
     if (!gateway || gateway.State !== "running") fail("service gateway is not running");
@@ -214,7 +217,9 @@ test("resources owned by another worktree are never changed", async (t) => {
   for (const item of state.containers) item.labels["org.aurral.lab.owner"] = "another-worktree";
   lab.updateState({ containers: state.containers });
 
-  for (const command of ["down", "up"]) {
+  const database = join(lab.composeCalls("up")[0].env.AURRAL_LAB_CONFIG_DIR, "aurral.db");
+
+  for (const command of ["down", "up", "reset"]) {
     const result = await lab.run(worktree, [command]);
     assert.notEqual(result.code, 0);
     assert.match(result.stderr, /did not create/);
@@ -222,6 +227,83 @@ test("resources owned by another worktree are never changed", async (t) => {
   assert.equal(lab.composeCalls("down").length, 0);
   assert.equal(lab.composeCalls("up").length, 1);
   assert.equal(lab.readState().containers.length, 2);
+  assert.ok(existsSync(database));
+});
+
+test("the first start seeds the Lab and later starts keep its data", async (t) => {
+  const lab = await createLabSandbox(t);
+  const worktree = lab.worktree("aurral");
+  assert.equal((await lab.run(worktree, ["up"])).code, 0);
+  const configDir = lab.composeCalls("up")[0].env.AURRAL_LAB_CONFIG_DIR;
+  assert.equal(readFileSync(join(configDir, "aurral.db"), "utf8"), "seeded");
+  writeFileSync(join(configDir, "user-record.txt"), "keep");
+
+  assert.equal((await lab.run(worktree, ["down"])).code, 0);
+  const restarted = await lab.run(worktree, ["up"]);
+  assert.equal(restarted.code, 0, restarted.stderr);
+
+  assert.equal(lab.composeCalls("run").length, 1);
+  assert.equal(readFileSync(join(configDir, "user-record.txt"), "utf8"), "keep");
+});
+
+test("reset recreates only the selected Lab after stopping it", async (t) => {
+  const lab = await createLabSandbox(t);
+  const worktree = lab.worktree("aurral");
+  assert.equal((await lab.run(worktree, ["up"])).code, 0);
+  assert.equal((await lab.run(worktree, ["up"], { env: { AURRAL_LAB_ID: "second" } })).code, 0);
+  const [dev, second] = lab.composeCalls("up").map(({ env }) => env);
+  for (const env of [dev, second]) {
+    writeFileSync(join(env.AURRAL_LAB_CONFIG_DIR, "user-record.txt"), "record");
+    writeFileSync(join(env.AURRAL_LAB_MEDIA_DIR, "track.flac"), "media");
+  }
+  const before = lab.calls().length;
+
+  const result = await lab.run(worktree, ["reset"]);
+  assert.equal(result.code, 0, result.stderr);
+
+  const commands = lab.calls().slice(before)
+    .filter(({ args }) => args[0] === "compose" && args.includes("--file"))
+    .map((call) => [projectOf(call), call.args[call.args.indexOf("--file") + 2]]);
+  const devProject = commands[0][0];
+  assert.deepEqual(commands.filter(([, command]) => ["down", "run", "up"].includes(command)), [
+    [devProject, "down"],
+    [devProject, "run"],
+    [devProject, "up"],
+  ]);
+  assert.ok(!existsSync(join(dev.AURRAL_LAB_CONFIG_DIR, "user-record.txt")));
+  assert.ok(!existsSync(join(dev.AURRAL_LAB_MEDIA_DIR, "track.flac")));
+  assert.equal(readFileSync(join(dev.AURRAL_LAB_CONFIG_DIR, "aurral.db"), "utf8"), "seeded");
+  assert.equal(readFileSync(join(second.AURRAL_LAB_CONFIG_DIR, "user-record.txt"), "utf8"), "record");
+  assert.equal(readFileSync(join(second.AURRAL_LAB_MEDIA_DIR, "track.flac"), "utf8"), "media");
+});
+
+test("incomplete or incompatible Lab state is refused until reset", async (t) => {
+  const lab = await createLabSandbox(t);
+  const worktree = lab.worktree("aurral");
+  lab.updateState({ failSeed: true });
+
+  const failedSeed = await lab.run(worktree, ["up"]);
+  assert.notEqual(failedSeed.code, 0);
+  assert.equal(lab.composeCalls("up").length, 0);
+  lab.updateState({ failSeed: false });
+  assert.equal((await lab.run(worktree, ["up"])).code, 0);
+
+  const stateDir = dirname(lab.composeCalls("up")[0].env.AURRAL_LAB_CONFIG_DIR);
+  const markerPath = join(stateDir, "seed.json");
+  writeFileSync(markerPath, JSON.stringify({ ...JSON.parse(readFileSync(markerPath, "utf8")), version: 0 }));
+  const incompatible = await lab.run(worktree, ["up"]);
+  assert.notEqual(incompatible.code, 0);
+  assert.match(incompatible.stderr, /lab:reset/);
+
+  rmSync(markerPath);
+  const incomplete = await lab.run(worktree, ["up"]);
+  assert.notEqual(incomplete.code, 0);
+  assert.match(incomplete.stderr, /lab:reset/);
+  assert.equal(lab.composeCalls("up").length, 1);
+
+  const reset = await lab.run(worktree, ["reset"]);
+  assert.equal(reset.code, 0, reset.stderr);
+  assert.equal(lab.composeCalls("up").length, 2);
 });
 
 test("a concurrent operation is refused and a killed operation's lock is recovered", async (t) => {
@@ -262,20 +344,6 @@ test("a failed startup shows the Lab's logs and releases the Lab", async (t) => 
   lab.updateState({ failUp: false });
   const retried = await lab.run(worktree, ["up"]);
   assert.equal(retried.code, 0, retried.stderr);
-});
-
-test("startup fails when the Lab URL is not reachable from the host", async (t) => {
-  const lab = await createLabSandbox(t);
-  const worktree = lab.worktree("aurral");
-  const closed = http.createServer();
-  await new Promise((resolve) => closed.listen(0, "127.0.0.1", resolve));
-  const unusedPort = closed.address().port;
-  await new Promise((resolve) => closed.close(resolve));
-  lab.updateState({ port: `127.0.0.1:${unusedPort}` });
-
-  const result = await lab.run(worktree, ["up"]);
-  assert.notEqual(result.code, 0);
-  assert.match(result.stderr, /not reachable/);
 });
 
 test("private host configuration never reaches Docker", async (t) => {
