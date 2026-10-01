@@ -162,7 +162,6 @@ export function getWeeklyFlowStatusSnapshot({
   const rawSharedPlaylists = user
     ? flowPlaylistConfig.getSharedPlaylistsForUser(user)
     : flowPlaylistConfig.getSharedPlaylists();
-  cachedSettings = readPlaylistSettingsVersion();
   const flowIds = flows.map((flow) => flow.id);
   const sharedPlaylistIds = rawSharedPlaylists.map((playlist) => playlist.id);
   const scopedStats = downloadTracker.getStatsByPlaylistType([
