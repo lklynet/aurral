@@ -4,7 +4,8 @@ import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
 import { request } from "@playwright/test";
 
-export const AUTH_STATE_PATH = fileURLToPath(new URL("../../playwright/.auth/user.json", import.meta.url));
+export const AUTH_STATE_PATH =
+  process.env.AURRAL_E2E_AUTH_STATE || fileURLToPath(new URL("../../playwright/.auth/user.json", import.meta.url));
 
 function isLoopback(url) {
   const hostname = url.hostname.replace(/^\[|\]$/g, "");

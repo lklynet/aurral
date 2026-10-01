@@ -119,6 +119,7 @@ services:
       PLAYWRIGHT_OUTPUT_DIR: /results/artifacts
       PLAYWRIGHT_HTML_OUTPUT_DIR: /results/report
       PLAYWRIGHT_JSON_OUTPUT_FILE: /results/results.json
+      AURRAL_E2E_AUTH_STATE: /tmp/aurral-e2e/user.json
     volumes:
       - ${AURRAL_LAB_RESULTS_DIR:?}:/results
     labels: *lab-labels
