@@ -8,6 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildSourceCandidates,
+  hasUsableSearchCandidates,
   usableEvaluationEntries,
   validateDownloadedTrackFile,
   POST_DOWNLOAD_DECISIONS,
@@ -244,4 +245,17 @@ btest("diacritics and punctuation fold consistently across sources", { skip }, a
   );
   assert.equal(deemix.best?.decision, "accept");
   assert.equal(soulseek.best?.decision, "accept");
+});
+
+test("early eligibility rejects unrelated titles while keeping weaker valid titles", async () => {
+  for (const source of ["deemix", "ytdlp", "soulseek"]) {
+    const request = { artistName: "The Band", trackName: "First", durationMs: 180000 };
+    const raw = (title) => source === "soulseek"
+      ? { user: "peer", file: `The Band/Album/${title}.flac`, length: 180 }
+      : { id: "candidate", title, artist: "The Band", channel: "The Band", durationSec: 180 };
+    assert.equal(hasUsableSearchCandidates({ source, results: [raw("Completely Different")], request }), false, source);
+    assert.equal(hasUsableSearchCandidates({ source, results: [raw("First")], request }), true, source);
+    const evaluation = await buildSourceCandidates({ source, results: [raw("First")], request });
+    assert.ok(usableEvaluationEntries(evaluation).length > 0, source);
+  }
 });
